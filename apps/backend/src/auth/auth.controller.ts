@@ -27,6 +27,11 @@ export class AuthController {
     return { success: true, data: result };
   }
 
+  /**
+   * @deprecated Temporary Sprint 0.1 scaffold. Use portal-specific
+   * `POST /auth/login/{customer|merchant|rider|driver}` instead.
+   * Removed in S1-C4 when JWT issuance moves to the new session flow.
+   */
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)

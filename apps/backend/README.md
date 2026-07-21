@@ -50,6 +50,10 @@ NestJS API for the Dripplex Super Platform.
 
 Login returns user profile, permissions, and `AuthSession` metadata (`refreshTokenHash` null until S1-C4).
 
+### Deprecation notice
+
+The legacy `POST /api/v1/auth/login` endpoint remains temporarily for backward compatibility. All new development must use the portal-specific login endpoints above. The legacy endpoint will be removed during **S1-C4** when JWT issuance is migrated to the new authentication flow.
+
 See [DPX-013](../docs/DPX-013.md) for full Sprint 1 contracts.
 
 ## Local development
