@@ -137,3 +137,30 @@ pnpm --filter @dripplex/backend build
 ```bash
 docker build -f apps/backend/Dockerfile -t dripplex-backend .
 ```
+
+### S1-C8 — Merchant & business onboarding
+
+| Method  | Path                                        | Auth                               | Notes                        |
+| ------- | ------------------------------------------- | ---------------------------------- | ---------------------------- |
+| `POST`  | `/api/v1/merchant/business`                 | JWT + `merchant:business:manage`   | Create business (submitted)  |
+| `GET`   | `/api/v1/merchant/business`                 | JWT + `merchant:business:manage`   | Own business profile         |
+| `PATCH` | `/api/v1/merchant/business`                 | JWT + `merchant:business:manage`   | Update editable fields       |
+| `POST`  | `/api/v1/merchant/kyc`                      | JWT + `merchant:kyc:manage`        | Submit KYC documents         |
+| `GET`   | `/api/v1/merchant/kyc`                      | JWT + `merchant:kyc:manage`        | KYC status                   |
+| `POST`  | `/api/v1/merchant/bank-account`             | JWT + `merchant:bank:manage`       | Add bank account             |
+| `GET`   | `/api/v1/merchant/bank-account`             | JWT + `merchant:bank:manage`       | List bank accounts           |
+| `PATCH` | `/api/v1/merchant/bank-account/:id/default` | JWT + `merchant:bank:manage`       | Set default                  |
+| `GET`   | `/api/v1/admin/merchants`                   | JWT + `admin:merchants:review`     | Filter + paginate            |
+| `GET`   | `/api/v1/admin/merchant/:id`                | JWT + `admin:merchants:review`     | Full profile + audit summary |
+| `POST`  | `/api/v1/admin/merchant/:id/approve`        | JWT + `admin:merchants:approve`    | Requires verified KYC        |
+| `POST`  | `/api/v1/admin/merchant/:id/reject`         | JWT + `admin:merchants:reject`     | Reason required              |
+| `POST`  | `/api/v1/admin/merchant/:id/suspend`        | JWT + `admin:merchants:suspend`    | Suspend approved merchant    |
+| `POST`  | `/api/v1/admin/merchant/:id/reactivate`     | JWT + `admin:merchants:reactivate` | Restore suspended merchant   |
+
+#### Merchant onboarding flow
+
+1. Register via `/auth/register/merchant` and verify email + phone (S1-C6).
+2. `POST /merchant/business` — creates business, sets merchant `UNDER_REVIEW`.
+3. `POST /merchant/kyc` — submit identity/business documents.
+4. Optionally add bank accounts via `/merchant/bank-account`.
+5. Admin verifies KYC, then `POST /admin/merchant/:id/approve`.

@@ -186,3 +186,34 @@ DriverProfile 1───0..1 DriverOnboarding
 ```
 
 All profile and session relations cascade on user delete.
+
+## S1-C8 models
+
+### `MerchantStatus`
+
+| Value          | Description                          |
+| -------------- | ------------------------------------ |
+| `PENDING`      | Registered; onboarding not submitted |
+| `UNDER_REVIEW` | Business/KYC under ops review        |
+| `APPROVED`     | Live merchant                        |
+| `REJECTED`     | Onboarding rejected                  |
+| `SUSPENDED`    | Temporarily suspended                |
+
+### `Business`
+
+One business profile per merchant user (`merchant_id` unique). Editable fields exclude `status`, `verificationStatus`, and `approvedBy`.
+
+### `MerchantKyc`
+
+Document submissions (`NATIONAL_ID`, `PASSPORT`, `DRIVER_LICENSE`, `CAC_CERTIFICATE`, `BUSINESS_REGISTRATION`). Only one `PENDING` submission allowed at a time.
+
+### `BankAccount`
+
+Merchant settlement accounts. Account numbers are unique per merchant. First account (or explicit flag) becomes default.
+
+```text
+User 1───0..1 Business
+User 1───* MerchantKyc
+User 1───* BankAccount
+Business 1───* MerchantKyc
+```

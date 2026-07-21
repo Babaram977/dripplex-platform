@@ -32,3 +32,5 @@ export const AUTH_AUDIT_ACTIONS = {
   SESSIONS_REVOKED_ALL: 'auth.sessions.revoked_all',
   SESSION_ACTIVITY: 'auth.session.activity',
 } as const;
+
+export { MERCHANT_AUDIT_ACTIONS } from '../merchants/merchant.constants';

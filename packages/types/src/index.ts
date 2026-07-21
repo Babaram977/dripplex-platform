@@ -34,6 +34,31 @@ export { AUTH_AUDIT_ACTIONS } from './auth/index.js';
 
 export type { PaginatedResult, UserSummary } from './user/index.js';
 
+export type {
+  BankAccountDto,
+  BusinessDto,
+  BusinessStatus,
+  BusinessType,
+  BusinessVerificationStatus,
+  CreateBankAccountRequest,
+  CreateBusinessRequest,
+  KycDocumentType,
+  KycStatusResponse,
+  KycVerificationStatus,
+  ListMerchantsQuery,
+  MerchantApprovalDto,
+  MerchantAuditAction,
+  MerchantDetailResponse,
+  MerchantKycDto,
+  MerchantProfileDto,
+  MerchantStatus,
+  PaginatedMerchantsResult,
+  SubmitKycRequest,
+  UpdateBusinessRequest,
+} from './merchant/index.js';
+
+export { MERCHANT_AUDIT_ACTIONS } from './merchant/index.js';
+
 export {
   changePasswordSchema,
   contactSchema,

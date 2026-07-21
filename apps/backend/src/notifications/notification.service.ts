@@ -21,6 +21,23 @@ export interface PhoneOtpNotificationInput {
   expiresInSeconds: number;
 }
 
+export type MerchantLifecycleEvent =
+  | 'business_submitted'
+  | 'kyc_submitted'
+  | 'merchant_approved'
+  | 'merchant_rejected'
+  | 'merchant_suspended'
+  | 'merchant_reactivated';
+
+export interface MerchantLifecycleNotificationInput {
+  email: string;
+  event: MerchantLifecycleEvent;
+  merchantId: string;
+  businessName?: string;
+  documentType?: string;
+  reason?: string;
+}
+
 /**
  * Provider-agnostic notification port for auth emails and SMS.
  * Production adapters (SendGrid, SES, Termii, etc.) implement this interface.
@@ -30,6 +47,7 @@ export interface NotificationService {
   sendPasswordChanged(input: PasswordChangedNotificationInput): Promise<void>;
   sendEmailVerification(input: EmailVerificationNotificationInput): Promise<void>;
   sendPhoneOtp(input: PhoneOtpNotificationInput): Promise<void>;
+  notifyMerchantLifecycle(input: MerchantLifecycleNotificationInput): Promise<void>;
 }
 
 export const NOTIFICATION_SERVICE = Symbol('NOTIFICATION_SERVICE');

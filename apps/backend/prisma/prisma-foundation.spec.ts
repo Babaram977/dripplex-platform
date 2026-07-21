@@ -36,13 +36,16 @@ describe('Prisma schema foundation (S1-C1)', () => {
     expect(Prisma.ModelName.IdentityVerification).toBe('IdentityVerification');
     expect(Prisma.ModelName.CustomerProfile).toBe('CustomerProfile');
     expect(Prisma.ModelName.MerchantProfile).toBe('MerchantProfile');
+    expect(Prisma.ModelName.Business).toBe('Business');
+    expect(Prisma.ModelName.MerchantKyc).toBe('MerchantKyc');
+    expect(Prisma.ModelName.BankAccount).toBe('BankAccount');
     expect(Prisma.ModelName.RiderProfile).toBe('RiderProfile');
     expect(Prisma.ModelName.DriverProfile).toBe('DriverProfile');
   });
 
   it('defines the DPX-013 Sprint 1 role and permission catalog sizes', () => {
     expect(ROLE_SEEDS).toHaveLength(7);
-    expect(PERMISSION_SEEDS).toHaveLength(20);
+    expect(PERMISSION_SEEDS).toHaveLength(28);
     expect(ROLE_SEEDS.map((role: RoleSeed) => role.name)).toEqual(
       expect.arrayContaining([
         'customer',
