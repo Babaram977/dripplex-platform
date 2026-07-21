@@ -118,6 +118,42 @@ export const changePasswordSchema = z
 
 export type ChangePasswordFormValues = z.infer<typeof changePasswordSchema>;
 
+/** S1-C6 — send / resend email verification */
+export const sendVerificationSchema = z.object({
+  email: z.string().trim().email('Enter a valid email address'),
+});
+
+export type SendVerificationDto = z.infer<typeof sendVerificationSchema>;
+
+/** S1-C6 — verify email with signed token */
+export const verifyEmailTokenSchema = z.object({
+  email: z.string().trim().email('Enter a valid email address'),
+  token: z.string().min(20, 'Verification token is required'),
+});
+
+export type VerifyEmailDto = z.infer<typeof verifyEmailTokenSchema>;
+
+/** S1-C6 — send / resend phone OTP */
+export const sendOtpSchema = z.object({
+  phone: z
+    .string()
+    .trim()
+    .regex(/^\+?[0-9]{7,15}$/, 'Enter a valid phone number'),
+});
+
+export type SendOtpDto = z.infer<typeof sendOtpSchema>;
+
+/** S1-C6 — verify phone OTP */
+export const verifyPhoneOtpSchema = z.object({
+  phone: z
+    .string()
+    .trim()
+    .regex(/^\+?[0-9]{7,15}$/, 'Enter a valid phone number'),
+  otp: z.string().regex(/^\d{4,8}$/, 'Enter the numeric code from your message'),
+});
+
+export type VerifyOtpDto = z.infer<typeof verifyPhoneOtpSchema>;
+
 export const verifyOtpSchema = z.object({
   email: z.string().trim().email('Enter a valid email address'),
   otp: z.string().regex(/^\d{4,8}$/, 'Enter the numeric code from your message'),

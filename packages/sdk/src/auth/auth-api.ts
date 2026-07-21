@@ -20,7 +20,12 @@ import type {
   ResetPasswordFormValues,
   ResetPasswordResponse,
   RiderRegistrationValues,
+  SendOtpDto,
+  SendVerificationDto,
+  VerificationSubmittedResponse,
+  VerifyEmailDto,
   VerifyEmailValues,
+  VerifyOtpDto,
   VerifyOtpFormValues,
   VerifyPhoneValues,
 } from '@dripplex/types';
@@ -183,6 +188,56 @@ export class AuthApi {
       method: 'POST',
       body,
       auth: true,
+    });
+  }
+
+  public sendEmailVerification(body: SendVerificationDto): Promise<VerificationSubmittedResponse> {
+    return this.http.request<VerificationSubmittedResponse>('/auth/email/send-verification', {
+      method: 'POST',
+      body,
+      auth: false,
+    });
+  }
+
+  public verifyEmailToken(body: VerifyEmailDto): Promise<EmailVerificationResponse> {
+    return this.http.request<EmailVerificationResponse>('/auth/email/verify', {
+      method: 'POST',
+      body,
+      auth: false,
+    });
+  }
+
+  public resendEmailVerification(
+    body: SendVerificationDto,
+  ): Promise<VerificationSubmittedResponse> {
+    return this.http.request<VerificationSubmittedResponse>('/auth/email/resend', {
+      method: 'POST',
+      body,
+      auth: false,
+    });
+  }
+
+  public sendPhoneOtp(body: SendOtpDto): Promise<VerificationSubmittedResponse> {
+    return this.http.request<VerificationSubmittedResponse>('/auth/phone/send-otp', {
+      method: 'POST',
+      body,
+      auth: false,
+    });
+  }
+
+  public verifyPhoneOtp(body: VerifyOtpDto): Promise<PhoneVerificationResponse> {
+    return this.http.request<PhoneVerificationResponse>('/auth/phone/verify', {
+      method: 'POST',
+      body,
+      auth: false,
+    });
+  }
+
+  public resendPhoneOtp(body: SendOtpDto): Promise<VerificationSubmittedResponse> {
+    return this.http.request<VerificationSubmittedResponse>('/auth/phone/resend', {
+      method: 'POST',
+      body,
+      auth: false,
     });
   }
 

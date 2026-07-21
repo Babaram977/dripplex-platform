@@ -33,6 +33,13 @@ export const envSchema = z.object({
   PASSWORD_RESET_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(900),
   PASSWORD_FORGOT_MAX_PER_HOUR: z.coerce.number().int().positive().default(5),
   OTP_RESET_TTL_SECONDS: z.coerce.number().int().positive().default(900),
+  EMAIL_VERIFICATION_TTL_SECONDS: z.coerce.number().int().positive().default(600),
+  EMAIL_VERIFICATION_MAX_PER_HOUR: z.coerce.number().int().positive().default(5),
+  PHONE_OTP_TTL_SECONDS: z.coerce.number().int().positive().default(300),
+  PHONE_OTP_MAX_PER_HOUR: z.coerce.number().int().positive().default(5),
+  IDENTITY_VERIFICATION_MAX_ATTEMPTS: z.coerce.number().int().positive().default(10),
+  IDENTITY_VERIFICATION_LOCKOUT_SECONDS: z.coerce.number().int().positive().default(1800),
+  IDENTITY_VERIFICATION_RESEND_COOLDOWN_SECONDS: z.coerce.number().int().positive().default(60),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 });
 

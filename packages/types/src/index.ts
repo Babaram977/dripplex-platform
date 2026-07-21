@@ -23,6 +23,7 @@ export type {
   RegistrationVerificationInfo,
   ResetPasswordResponse,
   UserStatus,
+  VerificationSubmittedResponse,
 } from './auth/index.js';
 
 export { AUTH_AUDIT_ACTIONS } from './auth/index.js';
@@ -41,8 +42,12 @@ export {
   registerSchema,
   resetPasswordSchema,
   riderRegistrationSchema,
+  sendOtpSchema,
+  sendVerificationSchema,
   verifyEmailSchema,
+  verifyEmailTokenSchema,
   verifyOtpSchema,
+  verifyPhoneOtpSchema,
   verifyPhoneSchema,
 } from './validation/auth.js';
 
@@ -58,7 +63,11 @@ export type {
   RegisterFormValues,
   ResetPasswordFormValues,
   RiderRegistrationValues,
+  SendOtpDto,
+  SendVerificationDto,
+  VerifyEmailDto,
   VerifyEmailValues,
+  VerifyOtpDto,
   VerifyOtpFormValues,
   VerifyPhoneValues,
 } from './validation/auth.js';

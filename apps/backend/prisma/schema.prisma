@@ -33,6 +33,11 @@ enum OnboardingStatus {
   REJECTED
 }
 
+enum IdentityVerificationType {
+  EMAIL
+  PHONE
+}
+
 model User {
   id                  String               @id @default(uuid()) @db.Uuid
   email               String               @unique @db.Citext
@@ -51,15 +56,16 @@ model User {
   blockedReason       String?              @map("blocked_reason") @db.VarChar(500)
   roles               UserRole[]
   authSessions        AuthSession[]
-  passwordResetTokens PasswordResetToken[]
-  customerProfile     CustomerProfile?
-  merchantProfile     MerchantProfile?
-  riderProfile        RiderProfile?
-  driverProfile       DriverProfile?
-  auditLogs           AuditLog[]
-  createdAt           DateTime             @default(now()) @map("created_at")
-  updatedAt           DateTime             @updatedAt @map("updated_at")
-  deletedAt           DateTime?            @map("deleted_at")
+  passwordResetTokens    PasswordResetToken[]
+  identityVerifications  IdentityVerification[]
+  customerProfile        CustomerProfile?
+  merchantProfile        MerchantProfile?
+  riderProfile           RiderProfile?
+  driverProfile          DriverProfile?
+  auditLogs              AuditLog[]
+  createdAt              DateTime             @default(now()) @map("created_at")
+  updatedAt              DateTime             @updatedAt @map("updated_at")
+  deletedAt              DateTime?            @map("deleted_at")
 
   @@index([status])
   @@index([deletedAt])
@@ -161,6 +167,26 @@ model PasswordResetToken {
   @@index([userId, consumedAt])
   @@index([expiresAt])
   @@map("password_reset_tokens")
+}
+
+model IdentityVerification {
+  id           String                    @id @default(uuid()) @db.Uuid
+  userId       String                    @map("user_id") @db.Uuid
+  type         IdentityVerificationType
+  tokenHash    String?                   @unique @map("token_hash") @db.VarChar(64)
+  otpHash      String?                   @map("otp_hash") @db.VarChar(64)
+  expiresAt    DateTime                  @map("expires_at")
+  consumedAt   DateTime?                 @map("consumed_at")
+  attemptCount Int                       @default(0) @map("attempt_count")
+  createdAt    DateTime                  @default(now()) @map("created_at")
+  updatedAt    DateTime                  @updatedAt @map("updated_at")
+  user         User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@index([userId, type, consumedAt])
+  @@index([otpHash])
+  @@index([expiresAt])
+  @@map("identity_verifications")
 }
 
 model CustomerProfile {

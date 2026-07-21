@@ -65,6 +65,19 @@ NestJS API for the Dripplex Super Platform.
 
 Reset tokens are opaque UUIDs/hex values stored as SHA-256 hashes in `password_reset_tokens`. Notifications go through `NotificationService` (logging stub until email provider wiring).
 
+### S1-C6 — Identity verification
+
+| Method | Path                                   | Auth   | Notes                                        |
+| ------ | -------------------------------------- | ------ | -------------------------------------------- |
+| `POST` | `/api/v1/auth/email/send-verification` | Public | HMAC-signed token; anti-enumeration          |
+| `POST` | `/api/v1/auth/email/verify`            | Public | One-time signed token                        |
+| `POST` | `/api/v1/auth/email/resend`            | Public | Invalidates prior email challenge            |
+| `POST` | `/api/v1/auth/phone/send-otp`          | Public | 6-digit OTP; SHA-256 in DB; anti-enumeration |
+| `POST` | `/api/v1/auth/phone/verify`            | Public | Attempt limits + lockout                     |
+| `POST` | `/api/v1/auth/phone/resend`            | Public | Invalidates prior phone OTP                  |
+
+Challenges are stored in `identity_verifications` (hash-only). Redis is used only for hourly rate limits, resend cooldown, and phone OTP lockout. Legacy registration OTP verify endpoints (`/auth/verify/email|phone`) remain for S1-C2 compatibility.
+
 **JWT access payload** (no permissions in token):
 
 ```json

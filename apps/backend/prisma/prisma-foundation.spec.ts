@@ -33,6 +33,7 @@ describe('Prisma schema foundation (S1-C1)', () => {
     expect(Prisma.ModelName.User).toBe('User');
     expect(Prisma.ModelName.AuthSession).toBe('AuthSession');
     expect(Prisma.ModelName.PasswordResetToken).toBe('PasswordResetToken');
+    expect(Prisma.ModelName.IdentityVerification).toBe('IdentityVerification');
     expect(Prisma.ModelName.CustomerProfile).toBe('CustomerProfile');
     expect(Prisma.ModelName.MerchantProfile).toBe('MerchantProfile');
     expect(Prisma.ModelName.RiderProfile).toBe('RiderProfile');

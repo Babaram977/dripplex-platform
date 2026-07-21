@@ -8,24 +8,30 @@ import { UsersModule } from '../users/users.module';
 
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { EmailVerificationController } from './controllers/email-verification.controller';
 import { LoginController } from './controllers/login.controller';
 import { PasswordController } from './controllers/password.controller';
+import { PhoneVerificationController } from './controllers/phone-verification.controller';
 import { RegistrationController } from './controllers/registration.controller';
 import { VerificationController } from './controllers/verification.controller';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { PermissionsGuard } from './guards/permissions.guard';
 import { AUTH_SESSION_REPOSITORY } from './repositories/auth-session.repository';
+import { IDENTITY_VERIFICATION_REPOSITORY } from './repositories/identity-verification.repository';
 import { PASSWORD_RESET_TOKEN_REPOSITORY } from './repositories/password-reset.repository';
 import { PrismaAuthSessionRepository } from './repositories/prisma-auth-session.repository';
+import { PrismaIdentityVerificationRepository } from './repositories/prisma-identity-verification.repository';
 import { PrismaPasswordResetTokenRepository } from './repositories/prisma-password-reset.repository';
 import { PrismaRegistrationRepository } from './repositories/prisma-registration.repository';
 import { REGISTRATION_REPOSITORY } from './repositories/registration.repository';
+import { EmailVerificationService } from './services/email-verification.service';
 import { LoginAttemptService } from './services/login-attempt.service';
 import { LoginService } from './services/login.service';
 import { LogoutService } from './services/logout.service';
 import { OtpService } from './services/otp.service';
 import { PasswordPolicyService } from './services/password-policy.service';
 import { PasswordService } from './services/password.service';
+import { PhoneVerificationService } from './services/phone-verification.service';
 import { RefreshService } from './services/refresh.service';
 import { RegistrationService } from './services/registration.service';
 import { SessionService } from './services/session.service';
@@ -47,12 +53,16 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     VerificationController,
     LoginController,
     PasswordController,
+    EmailVerificationController,
+    PhoneVerificationController,
   ],
   providers: [
     AuthService,
     OtpService,
     RegistrationService,
     VerificationService,
+    EmailVerificationService,
+    PhoneVerificationService,
     LoginService,
     SessionService,
     LoginAttemptService,
@@ -75,6 +85,10 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     {
       provide: PASSWORD_RESET_TOKEN_REPOSITORY,
       useClass: PrismaPasswordResetTokenRepository,
+    },
+    {
+      provide: IDENTITY_VERIFICATION_REPOSITORY,
+      useClass: PrismaIdentityVerificationRepository,
     },
   ],
   exports: [AuthService, JwtAuthGuard, PermissionsGuard, PassportModule, JwtModule],

@@ -135,6 +135,34 @@ export class AppConfigService {
     return this.configService.get('OTP_RESET_TTL_SECONDS', { infer: true });
   }
 
+  public get emailVerificationTtlSeconds(): number {
+    return this.configService.get('EMAIL_VERIFICATION_TTL_SECONDS', { infer: true });
+  }
+
+  public get emailVerificationMaxPerHour(): number {
+    return this.configService.get('EMAIL_VERIFICATION_MAX_PER_HOUR', { infer: true });
+  }
+
+  public get phoneOtpTtlSeconds(): number {
+    return this.configService.get('PHONE_OTP_TTL_SECONDS', { infer: true });
+  }
+
+  public get phoneOtpMaxPerHour(): number {
+    return this.configService.get('PHONE_OTP_MAX_PER_HOUR', { infer: true });
+  }
+
+  public get identityVerificationMaxAttempts(): number {
+    return this.configService.get('IDENTITY_VERIFICATION_MAX_ATTEMPTS', { infer: true });
+  }
+
+  public get identityVerificationLockoutSeconds(): number {
+    return this.configService.get('IDENTITY_VERIFICATION_LOCKOUT_SECONDS', { infer: true });
+  }
+
+  public get identityVerificationResendCooldownSeconds(): number {
+    return this.configService.get('IDENTITY_VERIFICATION_RESEND_COOLDOWN_SECONDS', { infer: true });
+  }
+
   public get logLevel(): EnvConfig['LOG_LEVEL'] {
     return this.configService.get('LOG_LEVEL', { infer: true });
   }
