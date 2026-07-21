@@ -219,3 +219,48 @@ Per DPX-013 §13.5, **password reset and password change revoke all sessions** f
 - [ ] Reset/change update `passwordChangedAt` and revoke all sessions
 - [ ] Password policy enforced (length, complexity, common denylist)
 - [ ] Audit events: `auth.password.forgot`, `auth.password.reset.*`, `auth.password.changed`, `auth.password.change.failed`, `auth.sessions.revoked.password`
+
+---
+
+# Migration notes — S1-C6 identity verification
+
+Migration: `20260721140000_s1_c6_identity_verification`
+
+## Summary
+
+| Change type   | Detail                                                             |
+| ------------- | ------------------------------------------------------------------ |
+| Enum          | `IdentityVerificationType` (`EMAIL`, `PHONE`)                      |
+| Table         | `identity_verifications` (tokenHash, otpHash, expiry, attempts, …) |
+| API           | `POST /auth/email/{send-verification,verify,resend}`               |
+| API           | `POST /auth/phone/{send-otp,verify,resend}`                        |
+| Config        | Email/phone TTL, hourly limits, max attempts (10), lockout (30m)   |
+| Notifications | `sendEmailVerification`, `sendPhoneOtp` on `NotificationService`   |
+
+## API surface (S1-C6)
+
+| Method | Path                            | Auth   | Description                               |
+| ------ | ------------------------------- | ------ | ----------------------------------------- |
+| POST   | `/auth/email/send-verification` | Public | Issue HMAC-signed email token             |
+| POST   | `/auth/email/verify`            | Public | Consume signed token; mark email verified |
+| POST   | `/auth/email/resend`            | Public | Invalidate prior; issue new token         |
+| POST   | `/auth/phone/send-otp`          | Public | Issue 6-digit OTP (hash stored)           |
+| POST   | `/auth/phone/verify`            | Public | Verify OTP; mark phone verified           |
+| POST   | `/auth/phone/resend`            | Public | Invalidate prior; issue new OTP           |
+
+## Security notes
+
+- Plaintext tokens/OTPs are never persisted
+- Send/resend always return `{ submitted: true }` (anti-enumeration)
+- Resend invalidates previous active challenge for that user + type
+- Redis: hourly counters, resend cooldown, phone OTP lockout
+
+## Verification checklist (S1-C6)
+
+- [ ] Email send creates `identity_verifications` row with `token_hash`
+- [ ] Email verify rejects invalid, expired, and reused tokens
+- [ ] Email resend invalidates previous challenge
+- [ ] Phone send stores `otp_hash` only
+- [ ] Phone verify enforces attempt limits and lockout
+- [ ] Phone resend invalidates previous OTP
+- [ ] Audit events: `auth.email.*`, `auth.phone.*`, `auth.verification.expired`

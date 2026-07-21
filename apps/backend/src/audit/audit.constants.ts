@@ -21,4 +21,11 @@ export const AUTH_AUDIT_ACTIONS = {
   PASSWORD_CHANGED: 'auth.password.changed',
   PASSWORD_CHANGE_FAILED: 'auth.password.change.failed',
   SESSIONS_REVOKED_PASSWORD: 'auth.sessions.revoked.password',
+  EMAIL_SENT: 'auth.email.sent',
+  EMAIL_VERIFIED: 'auth.email.verified',
+  EMAIL_VERIFICATION_FAILED: 'auth.email.failed',
+  PHONE_OTP_SENT: 'auth.phone.otp.sent',
+  PHONE_VERIFIED: 'auth.phone.verified',
+  PHONE_VERIFICATION_FAILED: 'auth.phone.failed',
+  VERIFICATION_EXPIRED: 'auth.verification.expired',
 } as const;

@@ -2,14 +2,16 @@ import { Injectable } from '@nestjs/common';
 import { Logger } from 'nestjs-pino';
 
 import type {
+  EmailVerificationNotificationInput,
   NotificationService,
   PasswordChangedNotificationInput,
   PasswordResetNotificationInput,
+  PhoneOtpNotificationInput,
 } from './notification.service';
 
 /**
  * Development/stub notification adapter. Logs intent without calling a provider.
- * Replace with SES/SendGrid adapter in a later infrastructure commit.
+ * Replace with SES/SendGrid/Termii adapters in a later infrastructure commit.
  */
 @Injectable()
 export class LoggingNotificationService implements NotificationService {
@@ -22,7 +24,6 @@ export class LoggingNotificationService implements NotificationService {
         template: 'password_reset',
         email: input.email,
         expiresInSeconds: input.expiresInSeconds,
-        // Token and OTP are intentionally omitted from structured logs.
       },
       'Password reset notification dispatched',
     );
@@ -37,6 +38,32 @@ export class LoggingNotificationService implements NotificationService {
         email: input.email,
       },
       'Password changed notification dispatched',
+    );
+    return Promise.resolve();
+  }
+
+  public sendEmailVerification(input: EmailVerificationNotificationInput): Promise<void> {
+    this.logger.log(
+      {
+        channel: 'email',
+        template: 'email_verification',
+        email: input.email,
+        expiresInSeconds: input.expiresInSeconds,
+      },
+      'Email verification notification dispatched',
+    );
+    return Promise.resolve();
+  }
+
+  public sendPhoneOtp(input: PhoneOtpNotificationInput): Promise<void> {
+    this.logger.log(
+      {
+        channel: 'sms',
+        template: 'phone_otp',
+        phone: input.phone,
+        expiresInSeconds: input.expiresInSeconds,
+      },
+      'Phone OTP notification dispatched',
     );
     return Promise.resolve();
   }

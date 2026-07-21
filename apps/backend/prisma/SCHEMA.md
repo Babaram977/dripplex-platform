@@ -135,6 +135,25 @@ Opaque password-reset tokens. Only SHA-256 hashes are stored.
 
 **Indexes:** `tokenHash` unique, `(userId)`, `(userId, consumedAt)`, `(expiresAt)`
 
+### `IdentityVerification` (S1-C6)
+
+Email signed-token and phone OTP challenges. Plaintext values are never stored.
+
+| Field          | Type                       | Notes                                |
+| -------------- | -------------------------- | ------------------------------------ |
+| `id`           | UUID                       | Primary key                          |
+| `userId`       | UUID                       | Owner                                |
+| `type`         | `IdentityVerificationType` | `EMAIL` or `PHONE`                   |
+| `tokenHash`    | varchar(64)?               | Unique SHA-256 of signed email token |
+| `otpHash`      | varchar(64)?               | SHA-256 of phone OTP                 |
+| `expiresAt`    | timestamp                  | Challenge expiry                     |
+| `consumedAt`   | timestamp?                 | Set when used or superseded          |
+| `attemptCount` | int                        | Failed verify attempts               |
+| `createdAt`    | timestamp                  | Issuance time                        |
+| `updatedAt`    | timestamp                  | Last update                          |
+
+**Indexes:** `tokenHash` unique, `(userId, type)`, `(userId, type, consumedAt)`, `(otpHash)`, `(expiresAt)`
+
 ### `MerchantOnboarding`, `RiderOnboarding`, `DriverOnboarding`
 
 1:1 with respective profile. Initialized at `DRAFT` during portal registration.
@@ -155,6 +174,7 @@ User 1───* UserRole *───1 Role
 Role 1───* RolePermission *───1 Permission
 User 1───* AuthSession
 User 1───* PasswordResetToken
+User 1───* IdentityVerification
 User 1───0..1 CustomerProfile
 User 1───0..1 MerchantProfile
 User 1───0..1 RiderProfile
