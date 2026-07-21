@@ -1,0 +1,17 @@
+---
+description: TypeScript strictness for the Dripplex monorepo
+globs:
+  - "**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# TypeScript Strict Mode
+
+- Extend `@dripplex/config` TS configs; do not weaken `strict` flags.
+- `any` is an error. Use `unknown`, generics, or discriminated unions.
+- Prefer `import type` for type-only imports.
+- Explicit return types on exported functions and public class methods.
+- No non-null assertions (`!`) unless a comment explains the invariant and tests cover it.
+- Honor `exactOptionalPropertyTypes` — distinguish `undefined` from omitted keys.
+- Honor `noUncheckedIndexedAccess` — narrow indexed access before use.
+- Avoid `as` casts; when required, cast through `unknown` and justify.

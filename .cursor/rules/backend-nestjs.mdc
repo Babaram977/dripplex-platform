@@ -1,0 +1,28 @@
+---
+description: NestJS backend module conventions for Dripplex
+globs:
+  - apps/backend/**/*
+alwaysApply: false
+---
+
+# Backend Module Conventions
+
+Every NestJS domain module must include:
+
+- `*.module.ts`
+- `*.controller.ts` (thin; HTTP mapping only)
+- `*.service.ts` (business rules)
+- `dto/` with class-validator decorated DTOs
+- Repository abstraction + Prisma adapter where persistence is required
+- Unit tests colocated or under `__tests__/`
+
+## Rules
+
+- Business logic belongs in **Services**, not controllers or repositories.
+- Controllers expose `/api/v1/...` routes only.
+- Use Dependency Injection; never instantiate collaborators with `new` inside services when they are injectable.
+- Ban `any`. Type Prisma results into domain types.
+- Soft-delete queries must exclude `deletedAt IS NOT NULL` by default.
+- Emit consistent error types (domain exceptions mapped to HTTP).
+- Add rate limiting and guards (JWT/RBAC) on protected routes.
+- Cover services with unit tests; cover critical module wiring with integration tests.

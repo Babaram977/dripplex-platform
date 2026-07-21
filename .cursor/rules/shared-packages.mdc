@@ -1,0 +1,17 @@
+---
+description: Shared packages and reuse rules for Dripplex
+globs:
+  - packages/**/*
+  - apps/**/*
+alwaysApply: false
+---
+
+# Reusable Components & Packages
+
+- Prefer `@dripplex/ui` primitives and design tokens over local one-off components.
+- Put cross-app types in `@dripplex/types`; never redefine the same enum/DTO shape in two apps.
+- HTTP access goes through `@dripplex/sdk` — do not scatter raw `fetch` clients with duplicated auth headers.
+- Shared React state/effects live in `@dripplex/hooks`.
+- Pure helpers (money, dates, phone NG formats) live in `@dripplex/utils`.
+- Tooling baselines come from `@dripplex/config` (TS / ESLint / Prettier). Extend; do not fork copies.
+- If you need a new shared abstraction, add it to the correct package with exports, types, and tests — do not leave a private copy inside an app.

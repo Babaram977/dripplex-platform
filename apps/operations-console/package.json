@@ -1,0 +1,10 @@
+{
+  "name": "@dripplex/operations-console",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Dripplex operations console for dispatch, support, and live monitoring.",
+  "license": "UNLICENSED",
+  "scripts": {
+    "clean": "rm -rf .next .turbo node_modules/.cache"
+  }
+}

@@ -1,0 +1,31 @@
+---
+description: Core Dripplex architecture and engineering standards for all AI generations
+alwaysApply: true
+---
+
+# Dripplex Architecture Rules
+
+You are contributing to **Dripplex** (`life,Simplified`) — a production Nigerian Super Platform monorepo (Turborepo + pnpm).
+
+## Non-negotiables
+
+1. **Follow the Dripplex architecture** — Clean Architecture, DDD bounded contexts, repository pattern, NestJS DI.
+2. **Never duplicate logic** — shared code belongs in `@dripplex/ui`, `@dripplex/sdk`, `@dripplex/types`, `@dripplex/hooks`, `@dripplex/utils`, or `@dripplex/config`.
+3. **Business logic belongs inside Services** — controllers, pages, and components orchestrate; they do not own domain rules.
+4. **Generate tests** with every behavior change (unit for services/utils; module/integration for Nest modules).
+5. **Generate documentation** for public APIs, ADRs for significant decisions, and update README/CONTRIBUTING when tooling changes.
+6. **TypeScript strict mode** — never use `any`. Prefer `unknown` + narrowing. Honor `exactOptionalPropertyTypes` and `noUncheckedIndexedAccess`.
+7. **Production-ready only** — no demo code, no placeholders, no incomplete stubs that pretend to work.
+8. **Security** — validate all inputs (DTO/Zod), never hardcode secrets, use env vars, enforce RBAC, hash passwords, rate-limit auth/payment paths.
+9. **API** — version endpoints under `/api/v1/`; keep error envelopes consistent.
+10. **Data** — UUID PKs; `createdAt`, `updatedAt`, `deletedAt` soft-delete support via Prisma.
+
+## Monorepo layout
+
+- Apps: `apps/customer-web`, `merchant-portal`, `rider-portal`, `driver-portal`, `operations-console`, `admin-portal`, `backend`
+- Packages: `packages/ui`, `sdk`, `types`, `config`, `hooks`, `utils`
+- Infra: `infrastructure/`, CI: `.github/`, docs: `docs/`
+
+## Incremental delivery
+
+Do not regenerate the entire platform in one pass. Respect the commit plan (workspace → backend → customer-web → shared packages → infrastructure) unless the user explicitly expands scope.

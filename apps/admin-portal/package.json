@@ -1,0 +1,10 @@
+{
+  "name": "@dripplex/admin-portal",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Dripplex admin portal for platform configuration, users, and governance.",
+  "license": "UNLICENSED",
+  "scripts": {
+    "clean": "rm -rf .next .turbo node_modules/.cache"
+  }
+}

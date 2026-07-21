@@ -1,0 +1,10 @@
+{
+  "name": "@dripplex/merchant-portal",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Dripplex merchant portal for store, catalog, inventory, and order management.",
+  "license": "UNLICENSED",
+  "scripts": {
+    "clean": "rm -rf .next .turbo node_modules/.cache"
+  }
+}

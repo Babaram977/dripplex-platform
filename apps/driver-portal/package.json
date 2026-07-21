@@ -1,0 +1,10 @@
+{
+  "name": "@dripplex/driver-portal",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Dripplex driver portal for ride-hailing operations.",
+  "license": "UNLICENSED",
+  "scripts": {
+    "clean": "rm -rf .next .turbo node_modules/.cache"
+  }
+}

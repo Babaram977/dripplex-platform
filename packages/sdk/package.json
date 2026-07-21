@@ -1,0 +1,10 @@
+{
+  "name": "@dripplex/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Dripplex typed HTTP/SDK client for api/v1 consumers across web portals.",
+  "license": "UNLICENSED",
+  "scripts": {
+    "clean": "rm -rf dist .turbo"
+  }
+}

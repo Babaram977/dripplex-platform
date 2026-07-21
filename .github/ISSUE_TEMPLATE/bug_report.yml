@@ -1,0 +1,49 @@
+{
+  'name': 'bug_report',
+  'description': 'Report a defect in the Dripplex platform',
+  'title': '[bug]: ',
+  'labels': ['bug'],
+  'body':
+    [
+      {
+        'type': 'markdown',
+        'attributes':
+          { 'value': 'Security issues must be reported via SECURITY.md, not this form.' },
+      },
+      {
+        'type': 'textarea',
+        'id': 'summary',
+        'attributes': { 'label': 'Summary', 'description': 'What went wrong?' },
+        'validations': { 'required': true },
+      },
+      {
+        'type': 'textarea',
+        'id': 'repro',
+        'attributes':
+          { 'label': 'Reproduction steps', 'description': 'Numbered steps to reproduce.' },
+        'validations': { 'required': true },
+      },
+      {
+        'type': 'dropdown',
+        'id': 'area',
+        'attributes':
+          {
+            'label': 'Area',
+            'options':
+              [
+                'backend',
+                'customer-web',
+                'merchant-portal',
+                'rider-portal',
+                'driver-portal',
+                'operations-console',
+                'admin-portal',
+                'packages',
+                'infrastructure',
+                'other',
+              ],
+          },
+        'validations': { 'required': true },
+      },
+    ],
+}

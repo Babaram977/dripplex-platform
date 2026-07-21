@@ -1,0 +1,10 @@
+{
+  "name": "@dripplex/backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Dripplex NestJS API — REST api/v1, auth, domain modules, and real-time messaging.",
+  "license": "UNLICENSED",
+  "scripts": {
+    "clean": "rm -rf dist .turbo coverage"
+  }
+}

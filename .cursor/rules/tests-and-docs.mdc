@@ -1,0 +1,22 @@
+---
+description: Testing and documentation expectations for Dripplex changes
+alwaysApply: true
+---
+
+# Tests & Documentation
+
+## Tests
+
+- Every new Service method with branching logic needs unit tests.
+- Every bug fix needs a regression test.
+- Utilities and SDK client helpers need unit tests.
+- Prefer deterministic tests (no real network); mock at repository/HTTP boundaries.
+- Do not delete failing tests to “make CI green”; fix the code or update assertions with justification.
+
+## Documentation
+
+- Update `README.md` / `CONTRIBUTING.md` when developer workflows change.
+- Add or update ADRs under `docs/adr/` for architectural decisions.
+- Document public package exports and env vars in `.env.example`.
+- Keep module README notes accurate when creating new backend modules.
+- Cursor rules under `.cursor/rules/` must stay aligned with architecture decisions.

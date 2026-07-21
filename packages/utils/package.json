@@ -1,0 +1,10 @@
+{
+  "name": "@dripplex/utils",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Dripplex shared pure utilities (formatting, money, validation helpers).",
+  "license": "UNLICENSED",
+  "scripts": {
+    "clean": "rm -rf dist .turbo"
+  }
+}

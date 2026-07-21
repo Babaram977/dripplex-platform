@@ -1,0 +1,30 @@
+---
+description: Next.js portal conventions for Dripplex frontends
+globs:
+  - apps/customer-web/**/*
+  - apps/merchant-portal/**/*
+  - apps/rider-portal/**/*
+  - apps/driver-portal/**/*
+  - apps/operations-console/**/*
+  - apps/admin-portal/**/*
+alwaysApply: false
+---
+
+# Frontend Portal Conventions
+
+Each portal must provide:
+
+- App Router + TypeScript + Tailwind + shadcn/ui (via `@dripplex/ui`)
+- Authentication layout and dashboard layout
+- `loading.tsx`, `error.tsx`, and `not-found.tsx`
+- Responsive layout and dark mode support
+
+## Rules
+
+- No business rules in components — call services via `@dripplex/sdk` / server actions that delegate to the API.
+- Forms: React Hook Form + Zod.
+- Server/async state: TanStack Query.
+- Client UI state: Zustand only when local/component state is insufficient.
+- Reuse design tokens (spacing, typography, colors, radius, elevation, animation, icons) from `@dripplex/ui`.
+- Never duplicate portal chrome (auth shell, nav, theme) if it belongs in `@dripplex/ui` or `@dripplex/hooks`.
+- Strict TypeScript; no `any`.

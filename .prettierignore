@@ -1,0 +1,10 @@
+pnpm-lock.yaml
+pnpm-workspace.yaml
+dist
+build
+.next
+.turbo
+coverage
+node_modules
+*.min.js
+CHANGELOG.md
