@@ -14,6 +14,7 @@ import {
 } from '../common/exceptions/domain.exception';
 
 import { CheckoutService } from './checkout.service';
+import { CheckoutFulfillmentType } from './dto/order.dto';
 import { ORDER_AUDIT_ACTIONS } from './order.constants';
 import { ReservationCleanupService } from './reservation-cleanup.service';
 
@@ -298,7 +299,11 @@ describe('CheckoutService', () => {
 
   describe('checkout', () => {
     it('creates an order with snapshots, reservations, and locks the cart', async () => {
-      const result = await service.checkout(customerId, { fulfillmentType: 'DELIVERY' }, context);
+      const result = await service.checkout(
+        customerId,
+        { fulfillmentType: CheckoutFulfillmentType.DELIVERY },
+        context,
+      );
 
       expect(result.order.id).toBe(orderId);
       expect(result.order.total).toBe(5000);
@@ -443,7 +448,11 @@ describe('CheckoutService', () => {
     });
 
     it('allows pickup without delivery address', async () => {
-      await service.checkout(customerId, { fulfillmentType: 'PICKUP' }, context);
+      await service.checkout(
+        customerId,
+        { fulfillmentType: CheckoutFulfillmentType.PICKUP },
+        context,
+      );
       expect(ordersRepository.create).toHaveBeenCalledWith(
         expect.objectContaining({
           fulfillmentType: FulfillmentType.PICKUP,

@@ -121,8 +121,8 @@ export class CheckoutService {
 
     const couponResult = await this.couponCalculator.calculate({
       subtotal,
-      couponCode: dto.couponCode,
       currency: cart.currency,
+      ...(dto.couponCode !== undefined ? { couponCode: dto.couponCode } : {}),
     });
     const discount = roundMoney(couponResult.discount);
 
