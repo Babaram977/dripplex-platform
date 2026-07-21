@@ -88,7 +88,7 @@ See [docs/architecture/overview.md](docs/architecture/overview.md) and [CONTRIBU
 
 ### Sprint 1 progress
 
-Auth foundation through S1-C7 is on `main`. **S1-C8** adds merchant business/KYC/bank onboarding and admin approval APIs — see `apps/backend/prisma/MIGRATIONS.md` and `apps/backend/README.md`.
+Auth foundation through S1-C7 is on `main`. **S1-C8** adds merchant business/KYC/bank onboarding. **S1-C9** adds customer saved addresses — see `apps/backend/prisma/MIGRATIONS.md` and `apps/backend/README.md`.
 
 ## Security
 

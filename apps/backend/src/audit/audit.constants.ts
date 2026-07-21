@@ -34,3 +34,4 @@ export const AUTH_AUDIT_ACTIONS = {
 } as const;
 
 export { MERCHANT_AUDIT_ACTIONS } from '../merchants/merchant.constants';
+export { ADDRESS_AUDIT_ACTIONS } from '../addresses/address.constants';

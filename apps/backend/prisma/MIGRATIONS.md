@@ -349,3 +349,47 @@ pnpm --filter @dripplex/backend prisma:seed
 - [ ] Approve requires verified KYC + business
 - [ ] Audit + notification events for lifecycle transitions
 - [ ] Admin list supports status/verification/country/state/date filters + pagination
+
+---
+
+# Migration notes — S1-C9 customer addresses & saved locations
+
+Migration: `20260721160000_s1_c9_customer_addresses`
+
+## Summary
+
+| Change type | Detail                                                                    |
+| ----------- | ------------------------------------------------------------------------- |
+| Enum        | `AddressLabel` (`HOME`, `WORK`, `OTHER`)                                  |
+| Table       | `customer_addresses`                                                      |
+| Indexes     | `customer_id`, `latitude`, `longitude`, `is_default`, soft-delete helpers |
+| Seed        | `admin:addresses:read`                                                    |
+
+## Apply
+
+```bash
+pnpm --filter @dripplex/backend prisma:migrate:deploy
+pnpm --filter @dripplex/backend prisma:seed
+```
+
+## API surface (S1-C9)
+
+| Method | Path                              | Permission                  |
+| ------ | --------------------------------- | --------------------------- |
+| POST   | `/customer/addresses`             | `customer:addresses:manage` |
+| GET    | `/customer/addresses`             | `customer:addresses:manage` |
+| GET    | `/customer/addresses/default`     | `customer:addresses:manage` |
+| GET    | `/customer/addresses/:id`         | `customer:addresses:manage` |
+| PATCH  | `/customer/addresses/:id`         | `customer:addresses:manage` |
+| DELETE | `/customer/addresses/:id`         | `customer:addresses:manage` |
+| PATCH  | `/customer/addresses/:id/default` | `customer:addresses:manage` |
+| GET    | `/admin/addresses/:id`            | `admin:addresses:read`      |
+
+## Verification checklist (S1-C9)
+
+- [ ] Max 20 active addresses per customer
+- [ ] Only one default address per customer
+- [ ] Soft delete sets `deleted_at` and clears default
+- [ ] Ownership enforced on all customer mutations
+- [ ] Coordinate + delivery-zone stub validation
+- [ ] Audit events for create/update/delete/default_changed
