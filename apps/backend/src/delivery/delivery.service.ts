@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
   AssignmentMethod,
   DeliveryStatus,
@@ -18,6 +18,8 @@ import {
   NotFoundDomainException,
   ValidationDomainException,
 } from '../common/exceptions/domain.exception';
+import { DomainEventBus } from '../events/domain-event-bus';
+import { DOMAIN_EVENTS } from '../events/domain-events';
 import {
   NOTIFICATION_SERVICE,
   type DeliveryLifecycleEvent,
@@ -100,6 +102,8 @@ export class DeliveryService {
     private readonly deliveryFeeService: DeliveryFeeService,
     private readonly auditService: AuditService,
     private readonly prisma: PrismaService,
+    @Optional()
+    private readonly eventBus?: DomainEventBus,
   ) {}
 
   public async createJobForPaidOrder(
@@ -306,6 +310,17 @@ export class DeliveryService {
       riderId,
       proofType: proof.proofType,
     });
+    await this.eventBus?.emit(
+      DOMAIN_EVENTS.DELIVERY_COMPLETED,
+      {
+        deliveryJobId: updated.id,
+        orderId: updated.orderId,
+        customerId: updated.customerId,
+        merchantId: updated.merchantId,
+        riderId,
+      },
+      { actorUserId: riderId },
+    );
     await this.notifyOrderAudience(updated, 'delivered');
     return toDeliveryJobDto(updated);
   }

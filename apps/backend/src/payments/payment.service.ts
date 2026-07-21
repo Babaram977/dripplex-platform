@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
   CartStatus,
   FulfillmentType,
@@ -19,6 +19,8 @@ import {
 } from '../common/exceptions/domain.exception';
 import { AppConfigService } from '../config/app-config.service';
 import { DeliveryService } from '../delivery/delivery.service';
+import { DomainEventBus } from '../events/domain-event-bus';
+import { DOMAIN_EVENTS } from '../events/domain-events';
 import {
   NOTIFICATION_SERVICE,
   type NotificationService,
@@ -74,6 +76,8 @@ export class PaymentService {
     private readonly prisma: PrismaService,
     private readonly config: AppConfigService,
     private readonly deliveryService: DeliveryService,
+    @Optional()
+    private readonly eventBus?: DomainEventBus,
   ) {}
 
   public async initializePayment(
@@ -208,6 +212,7 @@ export class PaymentService {
       );
 
       await this.notifyPaymentOutcome(order, failed, false);
+      await this.emitPaymentFailed(order, failed);
 
       return {
         success: false,
@@ -324,6 +329,7 @@ export class PaymentService {
             metadata: { source: 'webhook', reference: transaction.providerReference },
           },
         );
+        await this.emitPaymentFailed(order, transaction);
         return { accepted: true, message: 'Webhook received; provider verification failed' };
       }
 
@@ -355,6 +361,7 @@ export class PaymentService {
         },
       );
       await this.notifyPaymentOutcome(order, transaction, false);
+      await this.emitPaymentFailed(order, transaction);
     }
 
     return { accepted: true, message: 'Payment failure recorded' };
@@ -432,8 +439,59 @@ export class PaymentService {
     });
 
     await this.notifyPaymentOutcome(input.order, updated, true);
+    await this.emitPaymentSucceeded(input.order, updated, input.source);
 
     return { transaction: updated, alreadyProcessed };
+  }
+
+  private async emitPaymentSucceeded(
+    order: OrderWithItems,
+    transaction: PaymentTransaction,
+    source: 'verify' | 'webhook',
+  ): Promise<void> {
+    if (!this.eventBus) {
+      return;
+    }
+
+    const payload = {
+      orderId: order.id,
+      customerId: order.customerId,
+      merchantId: order.merchantId,
+      transactionId: transaction.id,
+      amount: Number(transaction.amount),
+      currency: transaction.currency,
+      provider: transaction.provider,
+      source,
+    };
+    await this.eventBus.emit(DOMAIN_EVENTS.PAYMENT_SUCCEEDED, payload, {
+      actorUserId: order.customerId,
+    });
+    await this.eventBus.emit(DOMAIN_EVENTS.ORDER_PAID, payload, {
+      actorUserId: order.customerId,
+    });
+  }
+
+  private async emitPaymentFailed(
+    order: OrderWithItems,
+    transaction: PaymentTransaction,
+  ): Promise<void> {
+    if (!this.eventBus) {
+      return;
+    }
+
+    await this.eventBus.emit(
+      DOMAIN_EVENTS.PAYMENT_FAILED,
+      {
+        orderId: order.id,
+        customerId: order.customerId,
+        merchantId: order.merchantId,
+        transactionId: transaction.id,
+        amount: Number(transaction.amount),
+        currency: transaction.currency,
+        provider: transaction.provider,
+      },
+      { actorUserId: order.customerId },
+    );
   }
 
   private async requirePayableOrder(customerId: string, orderId: string): Promise<OrderWithItems> {
