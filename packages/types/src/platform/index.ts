@@ -1,6 +1,5 @@
-import type { PaginatedResult } from '../user/index.js';
-
-export type NotificationStatus = 'PENDING' | 'QUEUED' | 'SENT' | 'DELIVERED' | 'FAILED' | 'DEAD_LETTER';
+export type NotificationStatus =
+  'PENDING' | 'QUEUED' | 'SENT' | 'DELIVERED' | 'FAILED' | 'DEAD_LETTER';
 export type NotificationChannel = 'PUSH' | 'EMAIL' | 'SMS' | 'IN_APP' | 'WHATSAPP';
 export type NotificationPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'CRITICAL';
 export type NotificationType =
@@ -46,13 +45,34 @@ export interface NotificationPreferenceDto {
   updatedAt: string;
 }
 
+export interface NotificationListQuery {
+  status?: NotificationStatus;
+  channel?: NotificationChannel;
+  type?: NotificationType;
+  unreadOnly?: boolean;
+  page?: number;
+  limit?: number;
+}
+
+export interface NotificationListDto {
+  items: NotificationDto[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 export interface UpdateNotificationPreferenceRequest {
   channel: NotificationChannel;
   type: NotificationType;
   enabled: boolean;
 }
 
+export interface UpdateNotificationPreferencesRequest {
+  preferences: UpdateNotificationPreferenceRequest[];
+}
+
 export type SearchEntityType = 'PRODUCT' | 'STORE' | 'CATEGORY' | 'BRAND' | 'TAG';
+export type SearchSort = 'relevance' | 'price_asc' | 'price_desc' | 'rating_desc' | 'newest';
 
 export interface SearchDocumentDto {
   id: string;
@@ -70,20 +90,54 @@ export interface SearchDocumentDto {
   merchantId: string | null;
   categoryId: string | null;
   brandId: string | null;
+  relevanceScore: number;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface SearchQuery {
-  q: string;
-  entityType?: SearchEntityType;
+  q?: string;
+  type?: SearchEntityType;
   page?: number;
-  pageSize?: number;
+  limit?: number;
+  sort?: SearchSort;
+  minPrice?: number;
+  maxPrice?: number;
+  minRating?: number;
+  merchantId?: string;
+  categoryId?: string;
+  available?: boolean;
 }
 
 export interface SearchResultDto {
+  items: SearchDocumentDto[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface SearchSuggestionQuery {
+  q?: string;
+  limit?: number;
+}
+
+export interface SearchAutocompleteQuery extends SearchSuggestionQuery {
+  q: string;
+  type?: SearchEntityType;
+}
+
+export interface PopularSearchDto {
+  id: string;
   query: string;
-  results: PaginatedResult<SearchDocumentDto>;
+  hitCount: number;
+  updatedAt: string;
+}
+
+export interface RecentSearchDto {
+  id: string;
+  userId: string;
+  query: string;
+  createdAt: string;
 }
 
 export type ReviewTargetType = 'PRODUCT' | 'MERCHANT' | 'RIDER';
@@ -97,7 +151,7 @@ export interface ReviewDto {
   orderId: string | null;
   rating: number;
   comment: string | null;
-  photoUrls: string[];
+  photos: string[];
   verifiedPurchase: boolean;
   status: ReviewStatus;
   merchantReply: string | null;
@@ -114,11 +168,41 @@ export interface CreateReviewRequest {
   orderId?: string;
   rating: number;
   comment?: string;
-  photoUrls?: string[];
+  photos?: string[];
 }
 
 export interface ReplyToReviewRequest {
   reply: string;
+}
+
+export interface ReviewListQuery {
+  targetType?: ReviewTargetType;
+  targetId?: string;
+  status?: ReviewStatus;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface ReviewListDto {
+  items: ReviewDto[];
+  meta: { page: number; pageSize: number; total: number; totalPages: number };
+}
+
+export interface ReviewAggregateDto {
+  targetType: ReviewTargetType;
+  targetId: string;
+  averageRating: number;
+  reviewCount: number;
+  rating1: number;
+  rating2: number;
+  rating3: number;
+  rating4: number;
+  rating5: number;
+  updatedAt: string;
+}
+
+export interface ReviewWithAggregateDto extends ReviewListDto {
+  aggregate: ReviewAggregateDto | null;
 }
 
 export type WishlistItemType = 'PRODUCT' | 'STORE' | 'COLLECTION';
@@ -147,6 +231,10 @@ export interface WishlistDto {
 
 export interface CreateWishlistRequest {
   name: string;
+}
+
+export interface UpdateWishlistRequest {
+  name?: string;
   isPublic?: boolean;
 }
 
@@ -156,6 +244,34 @@ export interface AddWishlistItemRequest {
   targetPrice?: number;
   notifyPriceDrop?: boolean;
   notifyBackInStock?: boolean;
+}
+
+export interface UpdateWishlistItemRequest {
+  targetPrice?: number;
+  notifyPriceDrop?: boolean;
+  notifyBackInStock?: boolean;
+}
+
+export interface MoveWishlistToCartProductRequest {
+  productId: string;
+  merchantId: string;
+  variantId?: string;
+  productName: string;
+  sku?: string;
+  imageUrl?: string;
+  unitPrice: number;
+  quantity?: number;
+  currency?: string;
+}
+
+export interface MoveWishlistToCartRequest {
+  products?: MoveWishlistToCartProductRequest[];
+}
+
+export interface MoveWishlistToCartResultDto {
+  wishlistId: string;
+  productIds: string[];
+  addedToCart: string[];
 }
 
 export type PromotionType =
@@ -179,6 +295,13 @@ export interface PromotionDto {
   status: PromotionStatus;
   percentOff: number | null;
   amountOff: number | null;
+  buyQty: number | null;
+  getQty: number | null;
+  priority: number;
+  stackable: boolean;
+  usageLimit: number | null;
+  usageCount: number;
+  perUserLimit: number | null;
   minOrderAmount: number | null;
   startsAt: string | null;
   endsAt: string | null;
@@ -186,6 +309,41 @@ export interface PromotionDto {
   metadata: unknown;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface PromotionListQuery {
+  merchantId?: string;
+  status?: PromotionStatus;
+}
+
+export interface PromotionDiscountDto {
+  promotionId: string;
+  code: string | null;
+  name: string;
+  type: PromotionType;
+  priority: number;
+  stackable: boolean;
+  discountAmount: number;
+}
+
+export interface PromotionEvaluationDto {
+  subtotal: number;
+  discountTotal: number;
+  discounts: PromotionDiscountDto[];
+  couponCode: string | null;
+  valid: boolean;
+}
+
+export interface ValidatePromotionRequest {
+  subtotal: number;
+  merchantId?: string;
+  couponCode?: string;
+}
+
+export interface RedeemPromotionRequest {
+  promotionId?: string;
+  couponCode?: string;
+  orderId: string;
 }
 
 export interface PromotionRedemptionDto {
@@ -229,13 +387,7 @@ export interface RedeemLoyaltyPointsRequest {
 
 export type WalletOwnerType = 'CUSTOMER' | 'MERCHANT' | 'RIDER';
 export type WalletTransactionType =
-  | 'CREDIT'
-  | 'DEBIT'
-  | 'REFUND'
-  | 'SETTLEMENT'
-  | 'CASHBACK'
-  | 'WITHDRAWAL'
-  | 'TRANSFER';
+  'CREDIT' | 'DEBIT' | 'REFUND' | 'SETTLEMENT' | 'CASHBACK' | 'WITHDRAWAL' | 'TRANSFER';
 export type WalletDirection = 'CREDIT' | 'DEBIT';
 
 export interface WalletDto {
@@ -264,10 +416,43 @@ export interface WalletLedgerEntryDto {
   createdAt: string;
 }
 
+export interface WalletHistoryQuery {
+  page?: number;
+  pageSize?: number;
+}
+
 export interface WalletTransferRequest {
-  recipientWalletId: string;
+  toUserId: string;
   amount: number;
+  currency?: string;
   description?: string;
+}
+
+export interface WalletTransferDto {
+  source: WalletDto;
+  destination: WalletDto;
+}
+
+export interface AdminWalletMutationRequest {
+  amount: number;
+  currency?: string;
+  description?: string;
+  referenceType?: string;
+  referenceId?: string;
+}
+
+export interface WalletReconciliationQuery {
+  ownerType: WalletOwnerType;
+  ownerId: string;
+  currency?: string;
+}
+
+export interface WalletReconciliationDto {
+  wallet: WalletDto;
+  ledgerBalance: number;
+  availableBalance: number;
+  difference: number;
+  reconciled: boolean;
 }
 
 export type AnalyticsScopeType = 'PLATFORM' | 'MERCHANT' | 'RIDER';

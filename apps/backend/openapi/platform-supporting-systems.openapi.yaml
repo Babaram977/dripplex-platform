@@ -1,0 +1,1422 @@
+openapi: 3.0.3
+info:
+  title: Dripplex Platform Supporting Systems API
+  version: 0.1.0
+  description: >
+    Interim OpenAPI source of truth for Sprint 1 C14-C23 stabilization endpoints.
+    Paths match the NestJS controllers in apps/backend/src as of this branch.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - name: Notifications
+  - name: Wishlist
+  - name: Search
+  - name: Reviews
+  - name: Promotions
+  - name: Wallet
+paths:
+  /customer/notifications:
+    get:
+      tags: [Notifications]
+      summary: List customer notifications
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/NotificationStatus'
+        - $ref: '#/components/parameters/NotificationChannel'
+        - $ref: '#/components/parameters/NotificationType'
+        - name: unreadOnly
+          in: query
+          schema: { type: boolean }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Notification list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationListResponse'
+  /customer/notifications/{id}/read:
+    patch:
+      tags: [Notifications]
+      summary: Mark a notification as read
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      responses:
+        '200':
+          description: Notification marked read
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationResponse'
+  /customer/notifications/mark-all-read:
+    post:
+      tags: [Notifications]
+      summary: Mark all customer notifications as read
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Count of notifications updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiSuccess'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [updated]
+                        properties:
+                          updated: { type: integer, minimum: 0 }
+  /customer/notifications/{id}:
+    delete:
+      tags: [Notifications]
+      summary: Delete a notification
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      responses:
+        '204':
+          description: Notification deleted
+  /customer/notifications/preferences:
+    get:
+      tags: [Notifications]
+      summary: List notification preferences
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Notification preferences
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPreferencesResponse'
+    put:
+      tags: [Notifications]
+      summary: Replace notification preferences
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateNotificationPreferencesRequest'
+      responses:
+        '200':
+          description: Updated notification preferences
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPreferencesResponse'
+  /customer/wishlists:
+    get:
+      tags: [Wishlist]
+      summary: List customer wishlists
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Customer wishlists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WishlistArrayResponse'
+    post:
+      tags: [Wishlist]
+      summary: Create a customer wishlist
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWishlistRequest'
+      responses:
+        '201':
+          description: Wishlist created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WishlistResponse'
+  /customer/wishlists/{id}:
+    get:
+      tags: [Wishlist]
+      summary: Get a customer wishlist
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      responses:
+        '200':
+          description: Wishlist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WishlistResponse'
+    patch:
+      tags: [Wishlist]
+      summary: Update a customer wishlist
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateWishlistRequest'
+      responses:
+        '200':
+          description: Updated wishlist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WishlistResponse'
+    delete:
+      tags: [Wishlist]
+      summary: Delete a customer wishlist
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      responses:
+        '200':
+          description: Deleted wishlist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WishlistResponse'
+  /customer/wishlists/{id}/items:
+    post:
+      tags: [Wishlist]
+      summary: Add an item to a wishlist
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddWishlistItemRequest'
+      responses:
+        '201':
+          description: Wishlist item added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WishlistItemResponse'
+  /customer/wishlists/{id}/items/{itemId}:
+    patch:
+      tags: [Wishlist]
+      summary: Update a wishlist item
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+        - $ref: '#/components/parameters/UuidPathItemId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateWishlistItemRequest'
+      responses:
+        '200':
+          description: Wishlist item updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WishlistItemResponse'
+    delete:
+      tags: [Wishlist]
+      summary: Remove a wishlist item
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+        - $ref: '#/components/parameters/UuidPathItemId'
+      responses:
+        '200':
+          description: Wishlist item removed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiSuccess'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [removed, itemId]
+                        properties:
+                          removed: { type: boolean, enum: [true] }
+                          itemId: { type: string, format: uuid }
+  /customer/wishlists/{id}/share:
+    post:
+      tags: [Wishlist]
+      summary: Share a wishlist
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      responses:
+        '200':
+          description: Shared wishlist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WishlistResponse'
+  /customer/wishlists/{id}/move-to-cart:
+    post:
+      tags: [Wishlist]
+      summary: Move wishlist products to cart
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MoveWishlistToCartRequest'
+      responses:
+        '200':
+          description: Move-to-cart result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MoveWishlistToCartResponse'
+  /search:
+    get:
+      tags: [Search]
+      summary: Search indexed entities
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string, maxLength: 255 }
+        - name: type
+          in: query
+          schema: { $ref: '#/components/schemas/SearchEntityType' }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [relevance, price_asc, price_desc, rating_desc, newest]
+        - name: minPrice
+          in: query
+          schema: { type: number, minimum: 0 }
+        - name: maxPrice
+          in: query
+          schema: { type: number, minimum: 0 }
+        - name: minRating
+          in: query
+          schema: { type: number, minimum: 0, maximum: 5 }
+        - name: merchantId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: categoryId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: available
+          in: query
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+  /search/autocomplete:
+    get:
+      tags: [Search]
+      summary: Autocomplete search text
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, maxLength: 255 }
+        - name: type
+          in: query
+          schema: { $ref: '#/components/schemas/SearchEntityType' }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 20, default: 10 }
+      responses:
+        '200':
+          description: Autocomplete suggestions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StringArrayResponse'
+  /search/suggestions:
+    get:
+      tags: [Search]
+      summary: Search suggestions
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string, maxLength: 255 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 20, default: 10 }
+      responses:
+        '200':
+          description: Suggestions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StringArrayResponse'
+  /search/popular:
+    get:
+      tags: [Search]
+      summary: Popular searches
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 20, default: 10 }
+      responses:
+        '200':
+          description: Popular searches
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PopularSearchArrayResponse'
+  /customer/search/recent:
+    get:
+      tags: [Search]
+      summary: Recent customer searches
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 20, default: 10 }
+      responses:
+        '200':
+          description: Recent searches
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecentSearchArrayResponse'
+  /reviews:
+    get:
+      tags: [Reviews]
+      summary: List reviews for a target
+      security: []
+      parameters:
+        - name: targetType
+          in: query
+          schema: { $ref: '#/components/schemas/ReviewTargetType' }
+        - name: targetId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/ReviewStatus' }
+        - $ref: '#/components/parameters/Page'
+        - name: pageSize
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100 }
+      responses:
+        '200':
+          description: Reviews with aggregate
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewWithAggregateResponse'
+  /customer/reviews:
+    get:
+      tags: [Reviews]
+      summary: List current customer's reviews
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: targetType
+          in: query
+          schema: { $ref: '#/components/schemas/ReviewTargetType' }
+        - name: targetId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/ReviewStatus' }
+        - $ref: '#/components/parameters/Page'
+        - name: pageSize
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100 }
+      responses:
+        '200':
+          description: Customer reviews
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewListResponse'
+    post:
+      tags: [Reviews]
+      summary: Create a review
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReviewRequest'
+      responses:
+        '201':
+          description: Review created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewResponse'
+  /customer/reviews/{id}:
+    get:
+      tags: [Reviews]
+      summary: Get current customer's review
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      responses:
+        '200':
+          description: Review
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewResponse'
+    patch:
+      tags: [Reviews]
+      summary: Update current customer's review
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                rating: { type: integer, minimum: 1, maximum: 5 }
+                comment: { type: string, maxLength: 5000 }
+                photos:
+                  type: array
+                  maxItems: 10
+                  items: { type: string, maxLength: 2048 }
+      responses:
+        '200':
+          description: Review updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewResponse'
+    delete:
+      tags: [Reviews]
+      summary: Delete current customer's review
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      responses:
+        '200':
+          description: Review deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewResponse'
+  /customer/reviews/{id}/helpful:
+    post:
+      tags: [Reviews]
+      summary: Mark a review as helpful
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      responses:
+        '200':
+          description: Updated review
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewResponse'
+  /customer/reviews/{id}/report:
+    post:
+      tags: [Reviews]
+      summary: Report a review
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 3, maxLength: 500 }
+      responses:
+        '200':
+          description: Updated review
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewResponse'
+  /merchant/reviews/{id}/reply:
+    post:
+      tags: [Reviews]
+      summary: Merchant reply to a review
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reply]
+              properties:
+                reply: { type: string, minLength: 1, maxLength: 5000 }
+      responses:
+        '200':
+          description: Updated review
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewResponse'
+  /admin/reviews/{id}/moderate:
+    patch:
+      tags: [Reviews]
+      summary: Moderate a review
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { $ref: '#/components/schemas/ReviewStatus' }
+                reason: { type: string, maxLength: 1000 }
+      responses:
+        '200':
+          description: Moderated review
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewResponse'
+  /customer/promotions/active:
+    get:
+      tags: [Promotions]
+      summary: List active customer promotions
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: merchantId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Active promotions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromotionArrayResponse'
+  /customer/promotions/validate:
+    post:
+      tags: [Promotions]
+      summary: Validate a promotion or coupon
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidatePromotionRequest'
+      responses:
+        '200':
+          description: Promotion evaluation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromotionEvaluationResponse'
+  /customer/promotions/redeem:
+    post:
+      tags: [Promotions]
+      summary: Redeem a promotion or coupon
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RedeemPromotionRequest'
+      responses:
+        '200':
+          description: Promotion redemption
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromotionRedemptionResponse'
+  /admin/promotions:
+    get:
+      tags: [Promotions]
+      summary: List promotions for admins
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: merchantId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/PromotionStatus' }
+      responses:
+        '200':
+          description: Promotions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromotionArrayResponse'
+    post:
+      tags: [Promotions]
+      summary: Create promotion
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromotionMutationRequest'
+      responses:
+        '201':
+          description: Promotion created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromotionResponse'
+  /admin/promotions/{id}:
+    get:
+      tags: [Promotions]
+      summary: Get promotion
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      responses:
+        '200':
+          description: Promotion
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromotionResponse'
+    patch:
+      tags: [Promotions]
+      summary: Update promotion
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromotionMutationRequest'
+      responses:
+        '200':
+          description: Promotion updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromotionResponse'
+    delete:
+      tags: [Promotions]
+      summary: Delete promotion
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      responses:
+        '200':
+          description: Promotion deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromotionResponse'
+  /customer/wallet:
+    get:
+      tags: [Wallet]
+      summary: Get current customer wallet
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Customer wallet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletResponse'
+  /customer/wallet/transactions:
+    get:
+      tags: [Wallet]
+      summary: List current customer wallet transactions
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - name: pageSize
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: Wallet transactions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletLedgerPageResponse'
+  /customer/wallet/transfer:
+    post:
+      tags: [Wallet]
+      summary: Transfer funds to another customer
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WalletTransferRequest'
+      responses:
+        '200':
+          description: Transfer result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletTransferResponse'
+  /merchant/wallet:
+    get:
+      tags: [Wallet]
+      summary: Get current merchant wallet
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Merchant wallet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletResponse'
+  /rider/wallet:
+    get:
+      tags: [Wallet]
+      summary: Get current rider wallet
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Rider wallet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletResponse'
+  /admin/wallets/reconciliation:
+    get:
+      tags: [Wallet]
+      summary: Reconcile a wallet balance
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: ownerType
+          in: query
+          required: true
+          schema: { $ref: '#/components/schemas/WalletOwnerType' }
+        - name: ownerId
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - name: currency
+          in: query
+          schema: { type: string, maxLength: 3, default: NGN }
+      responses:
+        '200':
+          description: Wallet reconciliation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletReconciliationResponse'
+  /admin/wallets/{ownerType}/{ownerId}/credit:
+    post:
+      tags: [Wallet]
+      summary: Admin credit wallet
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/WalletOwnerTypePath'
+        - $ref: '#/components/parameters/OwnerIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminWalletMutationRequest'
+      responses:
+        '200':
+          description: Credited wallet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletResponse'
+  /admin/wallets/{ownerType}/{ownerId}/debit:
+    post:
+      tags: [Wallet]
+      summary: Admin debit wallet
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/WalletOwnerTypePath'
+        - $ref: '#/components/parameters/OwnerIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminWalletMutationRequest'
+      responses:
+        '200':
+          description: Debited wallet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletResponse'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    UuidPathId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    UuidPathItemId:
+      name: itemId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    OwnerIdPath:
+      name: ownerId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    WalletOwnerTypePath:
+      name: ownerType
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/WalletOwnerType' }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    NotificationStatus:
+      name: status
+      in: query
+      schema: { $ref: '#/components/schemas/NotificationStatus' }
+    NotificationChannel:
+      name: channel
+      in: query
+      schema: { $ref: '#/components/schemas/NotificationChannel' }
+    NotificationType:
+      name: type
+      in: query
+      schema: { $ref: '#/components/schemas/NotificationType' }
+  schemas:
+    ApiSuccess:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, enum: [true] }
+        data: {}
+    Uuid:
+      type: string
+      format: uuid
+    DateTime:
+      type: string
+      format: date-time
+    NotificationStatus:
+      type: string
+      enum: [PENDING, QUEUED, SENT, DELIVERED, FAILED, DEAD_LETTER]
+    NotificationChannel:
+      type: string
+      enum: [PUSH, EMAIL, SMS, IN_APP, WHATSAPP]
+    NotificationType:
+      type: string
+      enum:
+        - ORDER_PLACED
+        - PAYMENT_SUCCESS
+        - PAYMENT_FAILED
+        - RIDER_ASSIGNED
+        - DELIVERY_COMPLETED
+        - REFUND
+        - PROMOTION
+        - OTP
+        - PASSWORD_RESET
+        - WELCOME
+        - LOW_INVENTORY
+        - MERCHANT_APPROVAL
+        - RIDER_APPROVAL
+        - BACK_IN_STOCK
+        - PRICE_DROP
+        - GENERIC
+    SearchEntityType:
+      type: string
+      enum: [PRODUCT, STORE, CATEGORY, BRAND, TAG]
+    ReviewTargetType:
+      type: string
+      enum: [PRODUCT, MERCHANT, RIDER]
+    ReviewStatus:
+      type: string
+      enum: [PENDING, APPROVED, REJECTED, HIDDEN]
+    PromotionStatus:
+      type: string
+      enum: [DRAFT, SCHEDULED, ACTIVE, PAUSED, EXPIRED, CANCELLED]
+    PromotionType:
+      type: string
+      enum:
+        - PERCENTAGE
+        - FIXED
+        - BOGO
+        - FLASH_SALE
+        - HAPPY_HOUR
+        - MERCHANT_CAMPAIGN
+        - PLATFORM_CAMPAIGN
+        - REFERRAL
+        - COUPON
+        - AUTOMATIC
+    WalletOwnerType:
+      type: string
+      enum: [CUSTOMER, MERCHANT, RIDER]
+    Notification:
+      type: object
+      additionalProperties: true
+      required:
+        [id, userId, channel, type, priority, status, title, body, readAt, createdAt, updatedAt]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        userId: { $ref: '#/components/schemas/Uuid' }
+        channel: { $ref: '#/components/schemas/NotificationChannel' }
+        type: { $ref: '#/components/schemas/NotificationType' }
+        priority: { type: string, enum: [LOW, NORMAL, HIGH, CRITICAL] }
+        status: { $ref: '#/components/schemas/NotificationStatus' }
+        title: { type: string }
+        body: { type: string }
+        payload: {}
+        readAt: { nullable: true, allOf: [{ $ref: '#/components/schemas/DateTime' }] }
+        createdAt: { $ref: '#/components/schemas/DateTime' }
+        updatedAt: { $ref: '#/components/schemas/DateTime' }
+    NotificationPreference:
+      type: object
+      required: [id, userId, channel, type, enabled, createdAt, updatedAt]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        userId: { $ref: '#/components/schemas/Uuid' }
+        channel: { $ref: '#/components/schemas/NotificationChannel' }
+        type: { $ref: '#/components/schemas/NotificationType' }
+        enabled: { type: boolean }
+        createdAt: { $ref: '#/components/schemas/DateTime' }
+        updatedAt: { $ref: '#/components/schemas/DateTime' }
+    UpdateNotificationPreferencesRequest:
+      type: object
+      required: [preferences]
+      properties:
+        preferences:
+          type: array
+          items:
+            type: object
+            required: [channel, type, enabled]
+            properties:
+              channel: { $ref: '#/components/schemas/NotificationChannel' }
+              type: { $ref: '#/components/schemas/NotificationType' }
+              enabled: { type: boolean }
+    Wishlist:
+      type: object
+      additionalProperties: true
+    WishlistItem:
+      type: object
+      additionalProperties: true
+    CreateWishlistRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 150 }
+    UpdateWishlistRequest:
+      type: object
+      properties:
+        name: { type: string, minLength: 1, maxLength: 150 }
+        isPublic: { type: boolean }
+    AddWishlistItemRequest:
+      type: object
+      required: [itemType, itemId]
+      properties:
+        itemType: { type: string, enum: [PRODUCT, STORE, COLLECTION] }
+        itemId: { $ref: '#/components/schemas/Uuid' }
+        targetPrice: { type: number, minimum: 0.01 }
+        notifyPriceDrop: { type: boolean }
+        notifyBackInStock: { type: boolean }
+    UpdateWishlistItemRequest:
+      type: object
+      properties:
+        targetPrice: { type: number, minimum: 0.01 }
+        notifyPriceDrop: { type: boolean }
+        notifyBackInStock: { type: boolean }
+    MoveWishlistToCartRequest:
+      type: object
+      properties:
+        products:
+          type: array
+          items:
+            type: object
+            required: [productId, merchantId, productName, unitPrice]
+            properties:
+              productId: { $ref: '#/components/schemas/Uuid' }
+              merchantId: { $ref: '#/components/schemas/Uuid' }
+              variantId: { $ref: '#/components/schemas/Uuid' }
+              productName: { type: string, minLength: 1, maxLength: 255 }
+              sku: { type: string, maxLength: 100 }
+              imageUrl: { type: string, maxLength: 2048 }
+              unitPrice: { type: number, minimum: 0.01 }
+              quantity: { type: integer, minimum: 1, maximum: 999 }
+              currency: { type: string, minLength: 3, maxLength: 3 }
+    SearchDocument:
+      type: object
+      additionalProperties: true
+    Review:
+      type: object
+      additionalProperties: true
+    CreateReviewRequest:
+      type: object
+      required: [targetType, targetId, rating]
+      properties:
+        targetType: { $ref: '#/components/schemas/ReviewTargetType' }
+        targetId: { $ref: '#/components/schemas/Uuid' }
+        orderId: { $ref: '#/components/schemas/Uuid' }
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        comment: { type: string, maxLength: 5000 }
+        photos:
+          type: array
+          maxItems: 10
+          items: { type: string, maxLength: 2048 }
+    Promotion:
+      type: object
+      additionalProperties: true
+    PromotionMutationRequest:
+      type: object
+      properties:
+        code: { type: string, minLength: 2, maxLength: 50 }
+        name: { type: string, minLength: 1, maxLength: 150 }
+        type: { $ref: '#/components/schemas/PromotionType' }
+        status: { $ref: '#/components/schemas/PromotionStatus' }
+        percentOff: { type: number, minimum: 0.01, maximum: 100 }
+        amountOff: { type: number, minimum: 0.01 }
+        buyQty: { type: integer, minimum: 1 }
+        getQty: { type: integer, minimum: 1 }
+        priority: { type: integer, minimum: 0 }
+        stackable: { type: boolean }
+        usageLimit: { type: integer, minimum: 1 }
+        perUserLimit: { type: integer, minimum: 1 }
+        minOrderAmount: { type: number, minimum: 0.01 }
+        startsAt: { $ref: '#/components/schemas/DateTime' }
+        endsAt: { $ref: '#/components/schemas/DateTime' }
+        merchantId: { $ref: '#/components/schemas/Uuid' }
+        metadata: { type: object }
+    ValidatePromotionRequest:
+      type: object
+      required: [subtotal]
+      properties:
+        subtotal: { type: number, minimum: 0 }
+        merchantId: { $ref: '#/components/schemas/Uuid' }
+        couponCode: { type: string, maxLength: 50 }
+    RedeemPromotionRequest:
+      type: object
+      required: [orderId]
+      properties:
+        promotionId: { $ref: '#/components/schemas/Uuid' }
+        couponCode: { type: string, maxLength: 50 }
+        orderId: { $ref: '#/components/schemas/Uuid' }
+    Wallet:
+      type: object
+      additionalProperties: true
+    WalletLedgerEntry:
+      type: object
+      additionalProperties: true
+    WalletTransferRequest:
+      type: object
+      required: [toUserId, amount]
+      properties:
+        toUserId: { $ref: '#/components/schemas/Uuid' }
+        amount: { type: number, minimum: 0.01 }
+        currency: { type: string, maxLength: 3, default: NGN }
+        description: { type: string, maxLength: 500 }
+    AdminWalletMutationRequest:
+      type: object
+      required: [amount]
+      properties:
+        amount: { type: number, minimum: 0.01 }
+        currency: { type: string, maxLength: 3, default: NGN }
+        description: { type: string, maxLength: 500 }
+        referenceType: { type: string, maxLength: 100 }
+        referenceId: { $ref: '#/components/schemas/Uuid' }
+    NotificationResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiSuccess'
+        - type: object
+          properties:
+            data: { $ref: '#/components/schemas/Notification' }
+    NotificationListResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiSuccess'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [items, total, page, limit]
+              properties:
+                items:
+                  type: array
+                  items: { $ref: '#/components/schemas/Notification' }
+                total: { type: integer, minimum: 0 }
+                page: { type: integer, minimum: 1 }
+                limit: { type: integer, minimum: 1 }
+    NotificationPreferencesResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiSuccess'
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: '#/components/schemas/NotificationPreference' }
+    WishlistResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiSuccess'
+        - type: object
+          properties:
+            data: { $ref: '#/components/schemas/Wishlist' }
+    WishlistArrayResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiSuccess'
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: '#/components/schemas/Wishlist' }
+    WishlistItemResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiSuccess'
+        - type: object
+          properties:
+            data: { $ref: '#/components/schemas/WishlistItem' }
+    MoveWishlistToCartResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiSuccess'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [wishlistId, productIds, addedToCart]
+              properties:
+                wishlistId: { $ref: '#/components/schemas/Uuid' }
+                productIds:
+                  type: array
+                  items: { $ref: '#/components/schemas/Uuid' }
+                addedToCart:
+                  type: array
+                  items: { $ref: '#/components/schemas/Uuid' }
+    SearchResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiSuccess'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [items, total, page, limit]
+              properties:
+                items:
+                  type: array
+                  items: { $ref: '#/components/schemas/SearchDocument' }
+                total: { type: integer, minimum: 0 }
+                page: { type: integer, minimum: 1 }
+                limit: { type: integer, minimum: 1 }
+    StringArrayResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiSuccess'
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { type: string }
+    PopularSearchArrayResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiSuccess'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                type: object
+                required: [id, query, hitCount, updatedAt]
+                properties:
+                  id: { $ref: '#/components/schemas/Uuid' }
+                  query: { type: string }
+                  hitCount: { type: integer, minimum: 0 }
+                  updatedAt: { $ref: '#/components/schemas/DateTime' }
+    RecentSearchArrayResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiSuccess'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                type: object
+                required: [id, userId, query, createdAt]
+                properties:
+                  id: { $ref: '#/components/schemas/Uuid' }
+                  userId: { $ref: '#/components/schemas/Uuid' }
+                  query: { type: string }
+                  createdAt: { $ref: '#/components/schemas/DateTime' }
+    ReviewResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiSuccess'
+        - type: object
+          properties:
+            data: { $ref: '#/components/schemas/Review' }
+    ReviewListResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiSuccess'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [items, meta]
+              properties:
+                items:
+                  type: array
+                  items: { $ref: '#/components/schemas/Review' }
+                meta:
+                  type: object
+                  required: [page, pageSize, total, totalPages]
+                  properties:
+                    page: { type: integer, minimum: 1 }
+                    pageSize: { type: integer, minimum: 1 }
+                    total: { type: integer, minimum: 0 }
+                    totalPages: { type: integer, minimum: 0 }
+    ReviewWithAggregateResponse:
+      allOf:
+        - $ref: '#/components/schemas/ReviewListResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                aggregate:
+                  nullable: true
+                  type: object
+                  additionalProperties: true
+    PromotionResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiSuccess'
+        - type: object
+          properties:
+            data: { $ref: '#/components/schemas/Promotion' }
+    PromotionArrayResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiSuccess'
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: '#/components/schemas/Promotion' }
+    PromotionEvaluationResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiSuccess'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [subtotal, discountTotal, discounts, couponCode, valid]
+              properties:
+                subtotal: { type: number }
+                discountTotal: { type: number }
+                discounts:
+                  type: array
+                  items:
+                    type: object
+                    additionalProperties: true
+                couponCode:
+                  type: string
+                  nullable: true
+                valid: { type: boolean }
+    PromotionRedemptionResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiSuccess'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [id, promotionId, userId, orderId, amountSaved, createdAt]
+              properties:
+                id: { $ref: '#/components/schemas/Uuid' }
+                promotionId: { $ref: '#/components/schemas/Uuid' }
+                userId: { $ref: '#/components/schemas/Uuid' }
+                orderId:
+                  nullable: true
+                  allOf: [{ $ref: '#/components/schemas/Uuid' }]
+                amountSaved: { type: number }
+                createdAt: { $ref: '#/components/schemas/DateTime' }
+    WalletResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiSuccess'
+        - type: object
+          properties:
+            data: { $ref: '#/components/schemas/Wallet' }
+    WalletLedgerPageResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiSuccess'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [items, meta]
+              properties:
+                items:
+                  type: array
+                  items: { $ref: '#/components/schemas/WalletLedgerEntry' }
+                meta:
+                  type: object
+                  required: [page, limit, total, totalPages]
+                  properties:
+                    page: { type: integer, minimum: 1 }
+                    limit: { type: integer, minimum: 1 }
+                    total: { type: integer, minimum: 0 }
+                    totalPages: { type: integer, minimum: 1 }
+    WalletTransferResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiSuccess'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [source, destination]
+              properties:
+                source: { $ref: '#/components/schemas/Wallet' }
+                destination: { $ref: '#/components/schemas/Wallet' }
+    WalletReconciliationResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiSuccess'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [wallet, ledgerBalance, availableBalance, difference, reconciled]
+              properties:
+                wallet: { $ref: '#/components/schemas/Wallet' }
+                ledgerBalance: { type: number }
+                availableBalance: { type: number }
+                difference: { type: number }
+                reconciled: { type: boolean }

@@ -1,8 +1,10 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { PromotionStatus, PromotionType } from '@prisma/client';
+import { Prisma, PromotionStatus, PromotionType, type Promotion } from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../audit/audit.service';
 import {
+  ConflictDomainException,
+  ForbiddenDomainException,
   NotFoundDomainException,
   ValidationDomainException,
 } from '../common/exceptions/domain.exception';
@@ -26,7 +28,13 @@ import type {
   RedeemPromotionDto,
   UpdatePromotionDto,
 } from './dto/promotion.dto';
-import type { Prisma, Promotion } from '@prisma/client';
+
+interface PromotionRedeemOrder {
+  id: string;
+  customerId: string;
+  merchantId: string;
+  subtotal: Prisma.Decimal;
+}
 
 @Injectable()
 export class PromotionsService implements OnModuleInit {
@@ -219,55 +227,86 @@ export class PromotionsService implements OnModuleInit {
     if (!dto.promotionId && !dto.couponCode) {
       throw new ValidationDomainException('promotionId or couponCode is required');
     }
+    if (!dto.orderId) {
+      throw new ValidationDomainException('orderId is required');
+    }
+    const order = await this.requireRedeemableOrder(dto.orderId, userId);
+    const now = new Date();
     const promotion = dto.promotionId
       ? await this.requirePromotion(dto.promotionId)
       : await this.requirePromotionByCode(dto.couponCode);
+    this.assertPromotionRedeemable(promotion, order, now);
+    const subtotal = this.roundMoney(Number(order.subtotal));
 
-    if (promotion.usageLimit !== null && promotion.usageCount >= promotion.usageLimit) {
-      throw new ValidationDomainException('Promotion usage limit reached');
-    }
-    if (promotion.perUserLimit !== null) {
-      const userUses = await this.prisma.promotionRedemption.count({
-        where: { promotionId: promotion.id, userId },
-      });
-      if (userUses >= promotion.perUserLimit) {
-        throw new ValidationDomainException('Promotion user limit reached');
-      }
-    }
-
-    const redemption = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.promotionRedemption.create({
-        data: {
-          promotionId: promotion.id,
-          userId,
-          orderId: dto.orderId ?? null,
-          amountSaved: this.roundMoney(dto.amountSaved),
-        },
-      });
-      await tx.promotion.update({
-        where: { id: promotion.id },
-        data: { usageCount: { increment: 1 } },
-      });
-      return created;
-    });
+    const { redemption, amountSaved, redeemedPromotion } = await this.prisma.$transaction(
+      async (tx) => {
+        await this.lockPromotionForRedemption(tx, promotion.id);
+        const lockedPromotion = await tx.promotion.findFirst({
+          where: { id: promotion.id },
+        });
+        if (!lockedPromotion) {
+          throw new NotFoundDomainException('Promotion not found');
+        }
+        this.assertPromotionRedeemable(lockedPromotion, order, now);
+        if (
+          lockedPromotion.usageLimit !== null &&
+          lockedPromotion.usageCount >= lockedPromotion.usageLimit
+        ) {
+          throw new ValidationDomainException('Promotion usage limit reached');
+        }
+        if (lockedPromotion.perUserLimit !== null) {
+          const userUses = await tx.promotionRedemption.count({
+            where: { promotionId: lockedPromotion.id, userId },
+          });
+          if (userUses >= lockedPromotion.perUserLimit) {
+            throw new ValidationDomainException('Promotion user limit reached');
+          }
+        }
+        const existingRedemption = await tx.promotionRedemption.findFirst({
+          where: { promotionId: lockedPromotion.id, orderId: order.id },
+          select: { id: true },
+        });
+        if (existingRedemption) {
+          throw new ConflictDomainException('Promotion already redeemed for order');
+        }
+        const amountSaved = this.calculateDiscount(lockedPromotion, subtotal);
+        if (amountSaved <= 0) {
+          throw new ValidationDomainException('Promotion does not apply to order');
+        }
+        const created = await tx.promotionRedemption.create({
+          data: {
+            promotionId: lockedPromotion.id,
+            userId,
+            orderId: order.id,
+            amountSaved,
+          },
+        });
+        await tx.promotion.update({
+          where: { id: lockedPromotion.id },
+          data: { usageCount: { increment: 1 } },
+        });
+        return { redemption: created, amountSaved, redeemedPromotion: lockedPromotion };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
 
     await this.auditService.record(
       PROMOTION_AUDIT_ACTIONS.REDEEMED,
       { ...context, userId },
       {
         resource: 'promotion',
-        resourceId: promotion.id,
-        metadata: { orderId: dto.orderId ?? null, amountSaved: dto.amountSaved },
+        resourceId: redeemedPromotion.id,
+        metadata: { orderId: order.id, amountSaved },
       },
     );
     await this.eventBus.emit(
       DOMAIN_EVENTS.COUPON_REDEEMED,
       {
-        promotionId: promotion.id,
-        code: promotion.code,
+        promotionId: redeemedPromotion.id,
+        code: redeemedPromotion.code,
         userId,
-        orderId: dto.orderId ?? null,
-        amountSaved: this.roundMoney(dto.amountSaved),
+        orderId: order.id,
+        amountSaved,
       },
       { actorUserId: userId },
     );
@@ -353,6 +392,54 @@ export class PromotionsService implements OnModuleInit {
 
   private isEligibleForSubtotal(promotion: Promotion, subtotal: number): boolean {
     return promotion.minOrderAmount === null || subtotal >= Number(promotion.minOrderAmount);
+  }
+
+  private async requireRedeemableOrder(
+    orderId: string,
+    userId: string,
+  ): Promise<PromotionRedeemOrder> {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: { id: true, customerId: true, merchantId: true, subtotal: true },
+    });
+    if (!order) {
+      throw new NotFoundDomainException('Order not found');
+    }
+    if (order.customerId !== userId) {
+      throw new ForbiddenDomainException('Order does not belong to user');
+    }
+    return order;
+  }
+
+  private assertPromotionRedeemable(
+    promotion: Promotion,
+    order: PromotionRedeemOrder,
+    now: Date,
+  ): void {
+    if (promotion.deletedAt !== null || promotion.status !== PromotionStatus.ACTIVE) {
+      throw new ValidationDomainException('Promotion is not active');
+    }
+    if (promotion.startsAt !== null && promotion.startsAt > now) {
+      throw new ValidationDomainException('Promotion is not active');
+    }
+    if (promotion.endsAt !== null && promotion.endsAt < now) {
+      throw new ValidationDomainException('Promotion is expired');
+    }
+    if (promotion.merchantId !== null && promotion.merchantId !== order.merchantId) {
+      throw new ValidationDomainException('Promotion is not valid for this merchant');
+    }
+    if (!this.isEligibleForSubtotal(promotion, this.roundMoney(Number(order.subtotal)))) {
+      throw new ValidationDomainException('Promotion minimum order amount not met');
+    }
+  }
+
+  private async lockPromotionForRedemption(
+    tx: Prisma.TransactionClient,
+    promotionId: string,
+  ): Promise<void> {
+    await tx.$queryRaw<{ id: string }[]>`
+      SELECT id FROM promotions WHERE id = ${promotionId}::uuid FOR UPDATE
+    `;
   }
 
   private async requirePromotion(id: string): Promise<Promotion> {

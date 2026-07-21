@@ -236,14 +236,6 @@ export class RedeemPromotionDto {
   @MaxLength(50)
   public couponCode?: string;
 
-  @IsOptional()
   @IsUUID()
-  public orderId?: string;
-
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string' || typeof value === 'number' ? Number(value) : value,
-  )
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0)
-  public amountSaved!: number;
+  public orderId!: string;
 }

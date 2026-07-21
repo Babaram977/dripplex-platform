@@ -16,6 +16,7 @@ const adminId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const userId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const promotionId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const merchantId = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+const orderId = '99999999-9999-4999-8999-999999999999';
 const now = new Date('2026-01-01T00:00:00.000Z');
 
 const decimal = (value: number): NonNullable<Promotion['percentOff']> =>
@@ -51,9 +52,17 @@ const redemption = (overrides: Partial<PromotionRedemption> = {}): PromotionRede
   id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
   promotionId,
   userId,
-  orderId: null,
+  orderId,
   amountSaved: decimal(10),
   createdAt: now,
+  ...overrides,
+});
+
+const order = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+  id: orderId,
+  customerId: userId,
+  merchantId,
+  subtotal: decimal(1000),
   ...overrides,
 });
 
@@ -65,10 +74,15 @@ describe('PromotionsService', () => {
       findFirst: jest.fn(),
       update: jest.fn(),
     },
+    order: {
+      findUnique: jest.fn(),
+    },
     promotionRedemption: {
       count: jest.fn(),
+      findFirst: jest.fn(),
       create: jest.fn(),
     },
+    $queryRaw: jest.fn(),
     $transaction: jest.fn(),
   };
 
@@ -86,6 +100,12 @@ describe('PromotionsService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    prisma.order.findUnique.mockResolvedValue(order());
+    prisma.promotionRedemption.findFirst.mockResolvedValue(null);
+    prisma.$queryRaw.mockResolvedValue([{ id: promotionId }]);
+    prisma.$transaction.mockImplementation(
+      async (callback: (tx: typeof prisma) => Promise<unknown>) => await callback(prisma),
+    );
   });
 
   it('subscribes to coupon redeemed events on module init', () => {
@@ -274,7 +294,13 @@ describe('PromotionsService', () => {
     prisma.promotion.findFirst.mockResolvedValue(promotion({ code: 'SAVE10' }));
     prisma.promotionRedemption.count.mockResolvedValue(0);
     prisma.$transaction.mockImplementation(
-      async (callback: (tx: typeof prisma) => Promise<PromotionRedemption>) =>
+      async (
+        callback: (tx: typeof prisma) => Promise<{
+          redemption: PromotionRedemption;
+          amountSaved: number;
+          redeemedPromotion: Promotion;
+        }>,
+      ) =>
         await callback({
           ...prisma,
           promotionRedemption: {
@@ -288,11 +314,7 @@ describe('PromotionsService', () => {
         }),
     );
 
-    const result = await service.redeem(
-      userId,
-      { couponCode: 'save10', amountSaved: 100 },
-      { userId },
-    );
+    const result = await service.redeem(userId, { couponCode: 'save10', orderId }, { userId });
 
     expect(result.amountSaved).toBe(100);
     expect(eventBus.emit).toHaveBeenCalledWith(
@@ -305,7 +327,7 @@ describe('PromotionsService', () => {
   it('rejects redemption after usage limit', async () => {
     prisma.promotion.findFirst.mockResolvedValue(promotion({ usageLimit: 1, usageCount: 1 }));
     await expect(
-      service.redeem(userId, { promotionId, amountSaved: 100 }, { userId }),
+      service.redeem(userId, { promotionId, orderId }, { userId }),
     ).rejects.toBeInstanceOf(ValidationDomainException);
   });
 

@@ -62,9 +62,17 @@ describe('Promotion DTO validation', () => {
     expect(errors.some((error) => error.property === 'subtotal')).toBe(true);
   });
 
-  it('validates redemption payload amount saved', async () => {
-    const dto = plainToInstance(RedeemPromotionDto, { couponCode: 'SAVE10', amountSaved: -1 });
+  it('validates redemption payload order id', async () => {
+    const dto = plainToInstance(RedeemPromotionDto, {
+      couponCode: 'SAVE10',
+      orderId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    });
+    expect(await validate(dto)).toHaveLength(0);
+  });
+
+  it('requires redemption payload order id', async () => {
+    const dto = plainToInstance(RedeemPromotionDto, { couponCode: 'SAVE10' });
     const errors = await validate(dto);
-    expect(errors.some((error) => error.property === 'amountSaved')).toBe(true);
+    expect(errors.some((error) => error.property === 'orderId')).toBe(true);
   });
 });

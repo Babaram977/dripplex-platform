@@ -10,6 +10,7 @@ import { AdminMerchantsApi, MerchantApi } from '../merchant/merchant-api.js';
 import { OrderClient } from '../order/order-client.js';
 import { PaymentClient } from '../payment/payment-client.js';
 import {
+  AdminWalletClient,
   AdminCmsClient,
   AdminFraudClient,
   AnalyticsClient,
@@ -43,6 +44,7 @@ export class DripplexClient {
   public readonly promotions: PromotionsClient;
   public readonly loyalty: LoyaltyClient;
   public readonly wallet: WalletClient;
+  public readonly adminWallet: AdminWalletClient;
   public readonly analytics: AnalyticsClient;
   public readonly cms: CmsClient;
   public readonly adminCms: AdminCmsClient;
@@ -69,6 +71,7 @@ export class DripplexClient {
     this.promotions = new PromotionsClient(this.http);
     this.loyalty = new LoyaltyClient(this.http);
     this.wallet = new WalletClient(this.http);
+    this.adminWallet = new AdminWalletClient(this.http);
     this.analytics = new AnalyticsClient(this.http);
     this.cms = new CmsClient(this.http);
     this.adminCms = new AdminCmsClient(this.http);
@@ -88,6 +91,7 @@ export { RiderDeliveryClient } from '../delivery/rider-delivery-client.js';
 export { OrderClient } from '../order/order-client.js';
 export { PaymentClient } from '../payment/payment-client.js';
 export {
+  AdminWalletClient,
   AdminCmsClient,
   AdminFraudClient,
   AnalyticsClient,
