@@ -87,3 +87,9 @@ Each Next.js 15 app uses App Router, TypeScript, Tailwind, shadcn/ui (via `@drip
 | 5      | Docker Compose, GitHub Actions                                            | Pending |
 
 Subsequent vertical portals reuse packages from Commits 3–4.
+
+## Specifications
+
+| ID      | Title                                | Document                    |
+| ------- | ------------------------------------ | --------------------------- |
+| DPX-013 | Identity & Authentication (Sprint 1) | [DPX-013.md](../DPX-013.md) |
