@@ -235,3 +235,22 @@ Saved delivery locations for a customer user (`customer_id` → `users.id`). Sof
 ```text
 User 1───* CustomerAddress
 ```
+
+## S1-C10 models
+
+### `CartStatus`
+
+| Value         | Description                   |
+| ------------- | ----------------------------- |
+| `ACTIVE`      | Current customer cart         |
+| `CHECKED_OUT` | Converted to order (future)   |
+| `ABANDONED`   | Cleared or replaced lifecycle |
+
+### `Cart` / `CartItem`
+
+One ACTIVE cart per customer (enforced in service). Cart is single-merchant. Item unit prices are snapshotted at add/update time.
+
+```text
+User 1───* Cart
+Cart 1───* CartItem
+```
