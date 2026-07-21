@@ -12,13 +12,16 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { AppConfigService } from './config/app-config.service';
 import { AppConfigModule } from './config/config.module';
 import { DeliveryModule } from './delivery/delivery.module';
+import { EventsModule } from './events/events.module';
 import { HealthModule } from './health/health.module';
 import { AppLoggerModule } from './logger/logger.module';
 import { MerchantsModule } from './merchants/merchants.module';
+import { NotificationCenterModule } from './notification-center/notification-center.module';
 import { OrdersModule } from './orders/orders.module';
 import { PaymentsModule } from './payments/payments.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
+import { SearchModule } from './search/search.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -26,6 +29,7 @@ import { UsersModule } from './users/users.module';
     AppConfigModule,
     AppLoggerModule,
     PrismaModule,
+    EventsModule,
     RedisModule,
     ThrottlerModule.forRootAsync({
       imports: [AppConfigModule],
@@ -45,6 +49,8 @@ import { UsersModule } from './users/users.module';
     OrdersModule,
     PaymentsModule,
     DeliveryModule,
+    NotificationCenterModule,
+    SearchModule,
     HealthModule,
   ],
   providers: [
