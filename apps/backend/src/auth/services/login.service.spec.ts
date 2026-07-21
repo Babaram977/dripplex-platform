@@ -14,8 +14,10 @@ import { LoginService } from './login.service';
 
 import type { LoginAttemptService } from './login-attempt.service';
 import type { SessionService } from './session.service';
+import type { TokenService } from './token.service';
 import type { AuditService } from '../../audit/audit.service';
 import type { UsersService } from '../../users/users.service';
+import type { AuthSessionRepository } from '../repositories/auth-session.repository';
 
 jest.mock('bcrypt', () => ({
   compare: jest.fn(),
@@ -43,7 +45,23 @@ describe('LoginService', () => {
     record: jest.fn(),
   } as unknown as jest.Mocked<AuditService>;
 
-  const service = new LoginService(usersService, sessionService, loginAttemptService, auditService);
+  const tokenService = {
+    issueTokenPair: jest.fn(),
+    hashRefreshToken: jest.fn(),
+  } as unknown as jest.Mocked<TokenService>;
+
+  const authSessionRepository = {
+    updateRefreshTokenHash: jest.fn(),
+  } as unknown as jest.Mocked<AuthSessionRepository>;
+
+  const service = new LoginService(
+    usersService,
+    sessionService,
+    loginAttemptService,
+    auditService,
+    tokenService,
+    authSessionRepository,
+  );
 
   const activeUser = {
     id: '11111111-1111-1111-1111-111111111111',
@@ -69,6 +87,13 @@ describe('LoginService', () => {
     expiresAt: '2026-07-28T08:00:00.000Z',
   };
 
+  const tokens = {
+    accessToken: 'access-token',
+    refreshToken: 'refresh-token',
+    tokenType: 'Bearer' as const,
+    expiresIn: '15m',
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
     (loginAttemptService.assertNotLocked as jest.Mock).mockResolvedValue(undefined);
@@ -89,17 +114,27 @@ describe('LoginService', () => {
     (usersService.recordLoginActivity as jest.Mock).mockResolvedValue(activeUser);
     (loginAttemptService.resetFailures as jest.Mock).mockResolvedValue(undefined);
     (sessionService.createPortalSession as jest.Mock).mockResolvedValue(sessionMetadata);
+    (tokenService.issueTokenPair as jest.Mock).mockResolvedValue(tokens);
+    (tokenService.hashRefreshToken as jest.Mock).mockReturnValue('refresh-hash');
+    (authSessionRepository.updateRefreshTokenHash as jest.Mock).mockResolvedValue({});
   });
 
-  it('logs in a customer successfully without JWT', async () => {
+  it('returns JWT tokens on successful login', async () => {
     const result = await service.loginCustomer(
       { email: 'ada@example.com', password: 'Password1' },
       { ipAddress: '127.0.0.1' },
     );
 
-    expect(result.authentication.state).toBe('session_established');
+    expect(result.accessToken).toBe('access-token');
+    expect(result.refreshToken).toBe('refresh-token');
+    expect(result.expiresIn).toBe('15m');
+    expect(result.tokenType).toBe('Bearer');
     expect(result.session.id).toBe(sessionMetadata.id);
     expect(result.user.roles).toContain('customer');
+    expect(authSessionRepository.updateRefreshTokenHash).toHaveBeenCalledWith({
+      sessionId: sessionMetadata.id,
+      refreshTokenHash: 'refresh-hash',
+    });
     expect(auditService.record).toHaveBeenCalledWith(
       AUTH_AUDIT_ACTIONS.LOGIN_SUCCESS,
       expect.any(Object),
@@ -175,13 +210,20 @@ describe('LoginService', () => {
     ).rejects.toBeInstanceOf(WrongPortalDomainException);
   });
 
-  it('creates a session on successful login', async () => {
+  it('creates a session and stores refresh hash on successful login', async () => {
     await service.loginCustomer({ email: 'ada@example.com', password: 'Password1' }, {});
 
     expect(sessionService.createPortalSession).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: activeUser.id,
         portal: RegistrationChannel.CUSTOMER_WEB,
+      }),
+    );
+    expect(tokenService.issueTokenPair).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: activeUser.id,
+        sessionId: sessionMetadata.id,
+        role: 'customer',
       }),
     );
     expect(usersService.recordLoginActivity).toHaveBeenCalledWith(activeUser.id);

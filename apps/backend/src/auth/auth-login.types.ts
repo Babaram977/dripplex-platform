@@ -21,13 +21,11 @@ export interface LoginSessionMetadata {
   expiresAt: string;
 }
 
-export interface AuthenticationState {
-  state: 'session_established';
-  sessionId: string;
-}
-
 export interface PortalLoginResponse {
   user: AuthUserProfile;
   session: LoginSessionMetadata;
-  authentication: AuthenticationState;
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: string;
+  tokenType: 'Bearer';
 }

@@ -135,3 +135,48 @@ Additive migration on top of S1-C2.
 - [ ] Failed login attempts tracked in Redis with lockout
 - [ ] Audit events: `auth.login.started`, `auth.login.success`, `auth.login.failed`, `auth.session.created`
 - [ ] No JWT or refresh token in login response
+
+---
+
+# Migration notes — S1-C4 JWT, refresh tokens & session rotation
+
+No new database migration — uses S1-C3 `auth_sessions` schema.
+
+## Summary
+
+| Change type | Detail                                                                |
+| ----------- | --------------------------------------------------------------------- |
+| API         | Portal login returns `accessToken`, `refreshToken`, `expiresIn`       |
+| API         | `POST /auth/refresh` — session-bound rotation with reuse detection    |
+| API         | `POST /auth/logout` — JWT-authenticated (no refresh token in body)    |
+| API         | `POST /auth/logout-all` — revokes all sessions for authenticated user |
+| Removed     | `POST /auth/login` (legacy Sprint 0.1)                                |
+| JWT         | Payload: `sub`, `sid`, `role`, `portal`, `typ`, `iat`, `exp`          |
+| JWT         | Permissions **not** embedded; loaded from DB in `JwtStrategy`         |
+| Redis       | Refresh revocation removed; `auth_sessions.refresh_token_hash` only   |
+
+## API surface (S1-C4)
+
+| Method | Path               | Auth   | Description                         |
+| ------ | ------------------ | ------ | ----------------------------------- |
+| POST   | `/auth/refresh`    | Public | Rotate refresh token; issue new JWT |
+| POST   | `/auth/logout`     | JWT    | Revoke current session              |
+| POST   | `/auth/logout-all` | JWT    | Revoke all user sessions            |
+
+## Breaking changes
+
+- `POST /auth/login` removed — use portal-specific login endpoints.
+- `POST /auth/logout` now requires `Authorization: Bearer <accessToken>` instead of refresh token body.
+- Access tokens must include `sid` claim and match an active `auth_sessions` row.
+- Legacy Sprint 0.1 JWTs (with `email`, `roles`, `permissions` claims) are rejected by the JWT guard.
+
+## Verification checklist (S1-C4)
+
+- [ ] Portal login returns `accessToken`, `refreshToken`, `expiresIn`, session metadata
+- [ ] `auth_sessions.refresh_token_hash` populated on login (SHA-256)
+- [ ] Refresh rotates token and overwrites hash
+- [ ] Presenting a rotated refresh token revokes session and returns 401
+- [ ] Logout revokes session and clears hash
+- [ ] Logout-all revokes all sessions for user
+- [ ] Revoked session access token rejected by JWT guard
+- [ ] Audit events: `auth.refresh.started`, `auth.refresh.success`, `auth.refresh.failed`, `auth.refresh.reused`, `auth.logout`, `auth.logout.all`, `auth.session.revoked`

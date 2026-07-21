@@ -18,9 +18,12 @@ import { PrismaRegistrationRepository } from './repositories/prisma-registration
 import { REGISTRATION_REPOSITORY } from './repositories/registration.repository';
 import { LoginAttemptService } from './services/login-attempt.service';
 import { LoginService } from './services/login.service';
+import { LogoutService } from './services/logout.service';
 import { OtpService } from './services/otp.service';
+import { RefreshService } from './services/refresh.service';
 import { RegistrationService } from './services/registration.service';
 import { SessionService } from './services/session.service';
+import { TokenService } from './services/token.service';
 import { VerificationService } from './services/verification.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 
@@ -40,6 +43,9 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     LoginService,
     SessionService,
     LoginAttemptService,
+    TokenService,
+    RefreshService,
+    LogoutService,
     JwtStrategy,
     JwtAuthGuard,
     PermissionsGuard,

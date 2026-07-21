@@ -1,16 +1,21 @@
 export interface AuthenticatedUser {
   id: string;
+  sid: string;
   email: string;
+  role: string;
+  portal: string;
   roles: string[];
   permissions: string[];
 }
 
 export interface JwtPayload {
   sub: string;
-  email: string;
-  roles: string[];
-  permissions: string[];
+  sid: string;
+  role: string;
+  portal: string;
   typ: 'access' | 'refresh';
+  iat?: number;
+  exp?: number;
 }
 
 export interface AuthTokens {

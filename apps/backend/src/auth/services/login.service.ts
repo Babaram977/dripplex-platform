@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { RegistrationChannel, UserStatus, type User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
@@ -15,9 +15,14 @@ import {
   WrongPortalDomainException,
 } from '../../common/exceptions/domain.exception';
 import { UsersService } from '../../users/users.service';
+import {
+  AUTH_SESSION_REPOSITORY,
+  type AuthSessionRepository,
+} from '../repositories/auth-session.repository';
 
 import { LoginAttemptService } from './login-attempt.service';
 import { SessionService } from './session.service';
+import { TokenService } from './token.service';
 
 import type { AuditContext } from '../../audit/audit.service';
 import type { AuthUserProfile, PortalLoginResponse, PortalLoginType } from '../auth-login.types';
@@ -61,6 +66,9 @@ export class LoginService {
     private readonly sessionService: SessionService,
     private readonly loginAttemptService: LoginAttemptService,
     private readonly auditService: AuditService,
+    private readonly tokenService: TokenService,
+    @Inject(AUTH_SESSION_REPOSITORY)
+    private readonly authSessionRepository: AuthSessionRepository,
   ) {}
 
   public loginCustomer(dto: PortalLoginDto, context: AuditContext): Promise<PortalLoginResponse> {
@@ -116,6 +124,19 @@ export class LoginService {
         context: { ...context, userId: user.id },
       });
 
+      const tokens = await this.tokenService.issueTokenPair({
+        userId: user.id,
+        sessionId: session.id,
+        role: config.roleName,
+        portal: config.channel,
+      });
+
+      const refreshTokenHash = this.tokenService.hashRefreshToken(tokens.refreshToken);
+      await this.authSessionRepository.updateRefreshTokenHash({
+        sessionId: session.id,
+        refreshTokenHash,
+      });
+
       await this.auditService.record(
         AUTH_AUDIT_ACTIONS.LOGIN_SUCCESS,
         { ...context, userId: user.id },
@@ -125,10 +146,10 @@ export class LoginService {
       return {
         user: profile,
         session,
-        authentication: {
-          state: 'session_established',
-          sessionId: session.id,
-        },
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+        expiresIn: tokens.expiresIn,
+        tokenType: tokens.tokenType,
       };
     } catch (error) {
       if (error instanceof UnauthorizedDomainException) {

@@ -142,11 +142,17 @@ export class AuthApi {
     });
   }
 
-  public logout(refreshToken: string): Promise<{ loggedOut: true }> {
+  public logout(): Promise<{ loggedOut: true }> {
     return this.http.request<{ loggedOut: true }>('/auth/logout', {
       method: 'POST',
-      body: { refreshToken },
-      auth: false,
+      auth: true,
+    });
+  }
+
+  public logoutAll(): Promise<{ loggedOut: true }> {
+    return this.http.request<{ loggedOut: true }>('/auth/logout-all', {
+      method: 'POST',
+      auth: true,
     });
   }
 

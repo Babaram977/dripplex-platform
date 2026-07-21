@@ -7,4 +7,11 @@ export const AUTH_AUDIT_ACTIONS = {
   LOGIN_SUCCESS: 'auth.login.success',
   LOGIN_FAILED: 'auth.login.failed',
   SESSION_CREATED: 'auth.session.created',
+  REFRESH_STARTED: 'auth.refresh.started',
+  REFRESH_SUCCESS: 'auth.refresh.success',
+  REFRESH_FAILED: 'auth.refresh.failed',
+  REFRESH_REUSED: 'auth.refresh.reused',
+  LOGOUT: 'auth.logout',
+  LOGOUT_ALL: 'auth.logout.all',
+  SESSION_REVOKED: 'auth.session.revoked',
 } as const;

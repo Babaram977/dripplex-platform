@@ -57,30 +57,33 @@ export interface LoginSessionMetadata {
   expiresAt: string;
 }
 
-export interface AuthenticationState {
-  state: 'session_established';
-  sessionId: string;
-}
-
 export interface PortalLoginResponse {
   user: AuthUserProfile;
   session: LoginSessionMetadata;
-  authentication: AuthenticationState;
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: string;
+  tokenType: 'Bearer';
 }
 
 export interface AuthenticatedUser {
   id: string;
+  sid: string;
   email: string;
+  role: string;
+  portal: string;
   roles: string[];
   permissions: string[];
 }
 
 export interface JwtPayload {
   sub: string;
-  email: string;
-  roles: string[];
-  permissions: string[];
+  sid: string;
+  role: string;
+  portal: string;
   typ: 'access' | 'refresh';
+  iat?: number;
+  exp?: number;
 }
 
 export interface AuthTokens {
@@ -115,6 +118,13 @@ export const AUTH_AUDIT_ACTIONS = {
   LOGIN_SUCCESS: 'auth.login.success',
   LOGIN_FAILED: 'auth.login.failed',
   SESSION_CREATED: 'auth.session.created',
+  REFRESH_STARTED: 'auth.refresh.started',
+  REFRESH_SUCCESS: 'auth.refresh.success',
+  REFRESH_FAILED: 'auth.refresh.failed',
+  REFRESH_REUSED: 'auth.refresh.reused',
+  LOGOUT: 'auth.logout',
+  LOGOUT_ALL: 'auth.logout.all',
+  SESSION_REVOKED: 'auth.session.revoked',
 } as const;
 
 export type AuthAuditAction = (typeof AUTH_AUDIT_ACTIONS)[keyof typeof AUTH_AUDIT_ACTIONS];

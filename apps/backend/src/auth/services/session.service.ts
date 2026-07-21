@@ -8,6 +8,7 @@ import {
   AUTH_SESSION_REPOSITORY,
   type AuthSessionRepository,
 } from '../repositories/auth-session.repository';
+import { registrationChannelToPortal } from '../utils/portal.util';
 
 import type { AuditContext } from '../../audit/audit.service';
 import type { LoginSessionMetadata } from '../auth-login.types';
@@ -62,27 +63,12 @@ export class SessionService {
   }): LoginSessionMetadata {
     return {
       id: session.id,
-      portal: this.portalSlug(session.portal),
+      portal: registrationChannelToPortal(session.portal),
       ipAddress: session.ipAddress,
       userAgent: session.userAgent,
       createdAt: session.createdAt.toISOString(),
       lastActiveAt: session.lastActiveAt.toISOString(),
       expiresAt: session.expiresAt.toISOString(),
     };
-  }
-
-  private portalSlug(portal: RegistrationChannel): LoginSessionMetadata['portal'] {
-    switch (portal) {
-      case RegistrationChannel.CUSTOMER_WEB:
-        return 'customer';
-      case RegistrationChannel.MERCHANT_PORTAL:
-        return 'merchant';
-      case RegistrationChannel.RIDER_PORTAL:
-        return 'rider';
-      case RegistrationChannel.DRIVER_PORTAL:
-        return 'driver';
-      default:
-        return 'customer';
-    }
   }
 }
