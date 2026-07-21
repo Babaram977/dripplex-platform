@@ -188,3 +188,23 @@ curl -X POST "$API/api/v1/customer/addresses" \
 curl -H "Authorization: Bearer $TOKEN" "$API/api/v1/customer/addresses"
 curl -H "Authorization: Bearer $TOKEN" "$API/api/v1/customer/addresses/default"
 ```
+
+### S1-C10 — Shopping cart & cart engine
+
+| Method   | Path                                | Auth                         | Notes                 |
+| -------- | ----------------------------------- | ---------------------------- | --------------------- |
+| `GET`    | `/api/v1/customer/cart`             | JWT + `customer:cart:manage` | Active cart or `null` |
+| `POST`   | `/api/v1/customer/cart/items`       | JWT + `customer:cart:manage` | Add / merge item      |
+| `PATCH`  | `/api/v1/customer/cart/items/:id`   | JWT + `customer:cart:manage` | Update quantity       |
+| `DELETE` | `/api/v1/customer/cart/items/:id`   | JWT + `customer:cart:manage` | Remove item           |
+| `DELETE` | `/api/v1/customer/cart`             | JWT + `customer:cart:manage` | Clear + abandon       |
+| `POST`   | `/api/v1/customer/cart/recalculate` | JWT + `customer:cart:manage` | Refresh totals        |
+| `GET`    | `/api/v1/admin/carts/:id`           | JWT + `admin:cart:read`      | Admin read-only       |
+
+```bash
+curl -X POST "$API/api/v1/customer/cart/items" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"merchantId":"<uuid>","productId":"<uuid>","productName":"Jollof Rice","unitPrice":2500,"quantity":2}'
+```
+
+Pricing hooks: `NoCouponEngine`, `NigeriaTaxCalculator` (7.5% VAT), `FlatDeliveryFeeCalculator` (₦1500). Inventory stub always available.

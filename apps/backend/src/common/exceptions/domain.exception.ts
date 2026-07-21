@@ -34,6 +34,15 @@ export class ConflictDomainException extends DomainException {
   }
 }
 
+export class CartMerchantConflictDomainException extends DomainException {
+  constructor(
+    message = 'Cart already contains items from a different merchant',
+    details?: unknown,
+  ) {
+    super('CART_MERCHANT_CONFLICT', message, 409, details);
+  }
+}
+
 export class ValidationDomainException extends DomainException {
   constructor(message = 'Validation failed', details?: unknown) {
     super('VALIDATION_ERROR', message, 422, details);

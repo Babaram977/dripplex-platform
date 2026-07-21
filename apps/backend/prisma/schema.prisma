@@ -88,6 +88,12 @@ enum AddressLabel {
   OTHER
 }
 
+enum CartStatus {
+  ACTIVE
+  CHECKED_OUT
+  ABANDONED
+}
+
 model User {
   id                  String               @id @default(uuid()) @db.Uuid
   email               String               @unique @db.Citext
@@ -116,6 +122,7 @@ model User {
   merchantKycs           MerchantKyc[]
   bankAccounts           BankAccount[]
   customerAddresses      CustomerAddress[]
+  carts                  Cart[]
   auditLogs              AuditLog[]
   createdAt              DateTime             @default(now()) @map("created_at")
   updatedAt              DateTime             @updatedAt @map("updated_at")
@@ -470,4 +477,48 @@ model DriverOnboarding {
 
   @@index([status])
   @@map("driver_onboarding")
+}
+
+model Cart {
+  id          String     @id @default(uuid()) @db.Uuid
+  customerId  String     @map("customer_id") @db.Uuid
+  merchantId  String     @map("merchant_id") @db.Uuid
+  currency    String     @default("NGN") @db.VarChar(3)
+  subtotal    Decimal    @default(0) @db.Decimal(12, 2)
+  discount    Decimal    @default(0) @db.Decimal(12, 2)
+  tax         Decimal    @default(0) @db.Decimal(12, 2)
+  deliveryFee Decimal    @default(0) @map("delivery_fee") @db.Decimal(12, 2)
+  total       Decimal    @default(0) @db.Decimal(12, 2)
+  status      CartStatus @default(ACTIVE)
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+  customer    User       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  items       CartItem[]
+
+  @@index([customerId])
+  @@index([merchantId])
+  @@index([status])
+  @@index([customerId, status])
+  @@map("carts")
+}
+
+model CartItem {
+  id                  String   @id @default(uuid()) @db.Uuid
+  cartId              String   @map("cart_id") @db.Uuid
+  productId           String   @map("product_id") @db.Uuid
+  variantId           String?  @map("variant_id") @db.Uuid
+  productNameSnapshot String   @map("product_name_snapshot") @db.VarChar(255)
+  skuSnapshot         String?  @map("sku_snapshot") @db.VarChar(100)
+  imageSnapshot       String?  @map("image_snapshot") @db.VarChar(2048)
+  unitPriceSnapshot   Decimal  @map("unit_price_snapshot") @db.Decimal(12, 2)
+  quantity            Int
+  subtotal            Decimal  @db.Decimal(12, 2)
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+  cart                Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+
+  @@index([cartId])
+  @@index([productId])
+  @@index([cartId, productId, variantId])
+  @@map("cart_items")
 }

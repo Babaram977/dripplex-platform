@@ -6,6 +6,7 @@ import { AddressesModule } from './addresses/addresses.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from './auth/guards/permissions.guard';
+import { CartModule } from './cart/cart.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { AppConfigService } from './config/app-config.service';
@@ -37,6 +38,7 @@ import { UsersModule } from './users/users.module';
     UsersModule,
     MerchantsModule,
     AddressesModule,
+    CartModule,
     HealthModule,
   ],
   providers: [

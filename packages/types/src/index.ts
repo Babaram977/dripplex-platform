@@ -73,6 +73,20 @@ export type {
 
 export { ADDRESS_AUDIT_ACTIONS } from './address/index.js';
 
+export type {
+  CartAuditAction,
+  CartDto,
+  CartItemDto,
+  CartStatus,
+  CartSummaryDto,
+  CartTotalsDto,
+  CreateCartItemDto,
+  MerchantConflictError,
+  UpdateCartItemDto,
+} from './cart/index.js';
+
+export { CART_AUDIT_ACTIONS } from './cart/index.js';
+
 export {
   changePasswordSchema,
   contactSchema,

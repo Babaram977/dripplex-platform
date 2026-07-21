@@ -70,3 +70,20 @@ const list = await client.addresses.list();
 const def = await client.addresses.getDefault();
 await client.addresses.setDefault(list.items[0].id);
 ```
+
+## Shopping cart (S1-C10)
+
+```ts
+await client.cart.addItem({
+  merchantId,
+  productId,
+  productName: 'Jollof Rice',
+  unitPrice: 2500,
+  quantity: 2,
+});
+
+const cart = await client.cart.get();
+await client.cart.updateItem(cart!.items[0].id, { quantity: 3 });
+await client.cart.recalculate();
+await client.cart.clear();
+```

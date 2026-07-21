@@ -393,3 +393,45 @@ pnpm --filter @dripplex/backend prisma:seed
 - [ ] Ownership enforced on all customer mutations
 - [ ] Coordinate + delivery-zone stub validation
 - [ ] Audit events for create/update/delete/default_changed
+
+---
+
+# Migration notes — S1-C10 shopping cart & cart engine
+
+Migration: `20260721170000_s1_c10_shopping_cart`
+
+## Summary
+
+| Change type | Detail                                              |
+| ----------- | --------------------------------------------------- |
+| Enum        | `CartStatus` (`ACTIVE`, `CHECKED_OUT`, `ABANDONED`) |
+| Table       | `carts` (money fields as `DECIMAL(12,2)`)           |
+| Table       | `cart_items` (price snapshots)                      |
+| Seed        | `customer:cart:manage`, `admin:cart:read`           |
+
+## Apply
+
+```bash
+pnpm --filter @dripplex/backend prisma:migrate:deploy
+pnpm --filter @dripplex/backend prisma:seed
+```
+
+## Cart lifecycle
+
+1. First `POST /customer/cart/items` creates an `ACTIVE` cart for the merchant.
+2. Additional items from the same merchant merge on `productId` + `variantId`.
+3. Items from a different merchant return `409 CART_MERCHANT_CONFLICT` (no silent replace).
+4. `POST /customer/cart/recalculate` refreshes discount/tax/delivery/total via pricing hooks.
+5. `DELETE /customer/cart` clears items and marks the cart `ABANDONED`.
+
+## API surface (S1-C10)
+
+| Method | Path                         | Permission             |
+| ------ | ---------------------------- | ---------------------- |
+| GET    | `/customer/cart`             | `customer:cart:manage` |
+| POST   | `/customer/cart/items`       | `customer:cart:manage` |
+| PATCH  | `/customer/cart/items/:id`   | `customer:cart:manage` |
+| DELETE | `/customer/cart/items/:id`   | `customer:cart:manage` |
+| DELETE | `/customer/cart`             | `customer:cart:manage` |
+| POST   | `/customer/cart/recalculate` | `customer:cart:manage` |
+| GET    | `/admin/carts/:id`           | `admin:cart:read`      |

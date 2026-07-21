@@ -2,3 +2,4 @@ export { DripplexClient, DripplexApiError, resolveSdkConfig } from './client/dri
 export type { SdkConfig } from './client/dripplex-client.js';
 export { AdminMerchantsApi, MerchantApi } from './merchant/merchant-api.js';
 export { AddressClient } from './address/address-client.js';
+export { CartClient } from './cart/cart-client.js';
