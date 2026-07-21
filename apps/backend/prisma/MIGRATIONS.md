@@ -291,3 +291,61 @@ No new database migration — uses existing `auth_sessions` columns (`ip_address
 - [ ] Logout revokes current session and clears refresh hash
 - [ ] JWT guard rejects revoked/expired sessions and inactive users
 - [ ] `lastActiveAt` updates at most once per 60s per session
+
+---
+
+# Migration notes — S1-C8 merchant & business onboarding
+
+Migration: `20260721150000_s1_c8_merchant_onboarding`
+
+## Summary
+
+Additive migration on top of S1-C7 auth sessions.
+
+| Change type | Detail                                                                            |
+| ----------- | --------------------------------------------------------------------------------- |
+| Enum        | `MerchantStatus` (`PENDING`, `UNDER_REVIEW`, `APPROVED`, `REJECTED`, `SUSPENDED`) |
+| Enum        | `BusinessStatus`, `BusinessVerificationStatus`, `BusinessType`                    |
+| Enum        | `KycDocumentType`, `KycVerificationStatus`                                        |
+| Column      | `merchant_profiles.status`, `approved_by`, `rejected_reason`, `suspended_at`      |
+| Table       | `businesses` (1:1 with merchant user)                                             |
+| Table       | `merchant_kyc`                                                                    |
+| Table       | `bank_accounts`                                                                   |
+| Seed        | Merchant self-service + admin merchant lifecycle permissions                      |
+
+## Apply
+
+```bash
+pnpm --filter @dripplex/backend prisma:migrate:deploy
+pnpm --filter @dripplex/backend prisma:seed
+```
+
+## API surface (S1-C8)
+
+| Method | Path                                 | Permission                   |
+| ------ | ------------------------------------ | ---------------------------- |
+| POST   | `/merchant/business`                 | `merchant:business:manage`   |
+| GET    | `/merchant/business`                 | `merchant:business:manage`   |
+| PATCH  | `/merchant/business`                 | `merchant:business:manage`   |
+| POST   | `/merchant/kyc`                      | `merchant:kyc:manage`        |
+| GET    | `/merchant/kyc`                      | `merchant:kyc:manage`        |
+| POST   | `/merchant/bank-account`             | `merchant:bank:manage`       |
+| GET    | `/merchant/bank-account`             | `merchant:bank:manage`       |
+| PATCH  | `/merchant/bank-account/:id/default` | `merchant:bank:manage`       |
+| GET    | `/admin/merchants`                   | `admin:merchants:review`     |
+| GET    | `/admin/merchant/:id`                | `admin:merchants:review`     |
+| POST   | `/admin/merchant/:id/kyc/verify`     | `admin:merchants:approve`    |
+| POST   | `/admin/merchant/:id/kyc/reject`     | `admin:merchants:reject`     |
+| POST   | `/admin/merchant/:id/approve`        | `admin:merchants:approve`    |
+| POST   | `/admin/merchant/:id/reject`         | `admin:merchants:reject`     |
+| POST   | `/admin/merchant/:id/suspend`        | `admin:merchants:suspend`    |
+| POST   | `/admin/merchant/:id/reactivate`     | `admin:merchants:reactivate` |
+
+## Verification checklist (S1-C8)
+
+- [ ] Business create requires verified email + phone
+- [ ] One business per merchant; registration/CAC number unique
+- [ ] Duplicate pending KYC rejected
+- [ ] Approve requires verified KYC + business
+- [ ] Audit + notification events for lifecycle transitions
+- [ ] Admin list supports status/verification/country/state/date filters + pagination

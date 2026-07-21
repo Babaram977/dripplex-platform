@@ -38,6 +38,50 @@ enum IdentityVerificationType {
   PHONE
 }
 
+enum MerchantStatus {
+  PENDING
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum BusinessStatus {
+  DRAFT
+  SUBMITTED
+  ACTIVE
+  SUSPENDED
+}
+
+enum BusinessVerificationStatus {
+  PENDING
+  UNDER_REVIEW
+  VERIFIED
+  REJECTED
+}
+
+enum BusinessType {
+  SOLE_PROPRIETORSHIP
+  PARTNERSHIP
+  LIMITED_LIABILITY
+  CORPORATION
+  OTHER
+}
+
+enum KycDocumentType {
+  NATIONAL_ID
+  PASSPORT
+  DRIVER_LICENSE
+  CAC_CERTIFICATE
+  BUSINESS_REGISTRATION
+}
+
+enum KycVerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
 model User {
   id                  String               @id @default(uuid()) @db.Uuid
   email               String               @unique @db.Citext
@@ -62,6 +106,9 @@ model User {
   merchantProfile        MerchantProfile?
   riderProfile           RiderProfile?
   driverProfile          DriverProfile?
+  businesses             Business[]
+  merchantKycs           MerchantKyc[]
+  bankAccounts           BankAccount[]
   auditLogs              AuditLog[]
   createdAt              DateTime             @default(now()) @map("created_at")
   updatedAt              DateTime             @updatedAt @map("updated_at")
@@ -204,19 +251,101 @@ model CustomerProfile {
 }
 
 model MerchantProfile {
-  id          String              @id @default(uuid()) @db.Uuid
-  userId      String              @unique @map("user_id") @db.Uuid
-  isApproved  Boolean             @default(false) @map("is_approved")
-  approvedAt  DateTime?           @map("approved_at")
-  createdAt   DateTime            @default(now()) @map("created_at")
-  updatedAt   DateTime            @updatedAt @map("updated_at")
-  deletedAt   DateTime?           @map("deleted_at")
-  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  onboarding  MerchantOnboarding?
+  id             String         @id @default(uuid()) @db.Uuid
+  userId         String         @unique @map("user_id") @db.Uuid
+  status         MerchantStatus @default(PENDING)
+  isApproved     Boolean        @default(false) @map("is_approved")
+  approvedAt     DateTime?      @map("approved_at")
+  approvedBy     String?        @map("approved_by") @db.Uuid
+  rejectedReason String?        @map("rejected_reason") @db.VarChar(1000)
+  suspendedAt    DateTime?      @map("suspended_at")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+  deletedAt      DateTime?      @map("deleted_at")
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  onboarding     MerchantOnboarding?
 
+  @@index([status])
   @@index([isApproved])
   @@index([deletedAt])
   @@map("merchant_profiles")
+}
+
+model Business {
+  id                 String                     @id @default(uuid()) @db.Uuid
+  merchantId         String                     @unique @map("merchant_id") @db.Uuid
+  businessName       String                     @map("business_name") @db.VarChar(150)
+  businessType       BusinessType               @map("business_type")
+  registrationNumber String                     @unique @map("registration_number") @db.VarChar(100)
+  taxNumber          String?                    @map("tax_number") @db.VarChar(100)
+  description        String?                    @db.VarChar(2000)
+  email              String                     @db.Citext
+  phone              String                     @db.VarChar(32)
+  country            String                     @db.VarChar(100)
+  state              String                     @db.VarChar(100)
+  city               String                     @db.VarChar(100)
+  address            String                     @db.VarChar(500)
+  latitude           Decimal                    @db.Decimal(10, 7)
+  longitude          Decimal                    @db.Decimal(10, 7)
+  logoUrl            String?                    @map("logo_url") @db.VarChar(2048)
+  coverPhotoUrl      String?                    @map("cover_photo_url") @db.VarChar(2048)
+  status             BusinessStatus             @default(DRAFT)
+  verificationStatus BusinessVerificationStatus @default(PENDING) @map("verification_status")
+  approvedBy         String?                    @map("approved_by") @db.Uuid
+  approvedAt         DateTime?                  @map("approved_at")
+  rejectedReason     String?                    @map("rejected_reason") @db.VarChar(1000)
+  createdAt          DateTime                   @default(now()) @map("created_at")
+  updatedAt          DateTime                   @updatedAt @map("updated_at")
+  merchant           User                       @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  kycDocuments       MerchantKyc[]
+
+  @@index([status])
+  @@index([verificationStatus])
+  @@index([country, state])
+  @@index([createdAt])
+  @@map("businesses")
+}
+
+model MerchantKyc {
+  id                 String                @id @default(uuid()) @db.Uuid
+  merchantId         String                @map("merchant_id") @db.Uuid
+  businessId         String                @map("business_id") @db.Uuid
+  documentType       KycDocumentType       @map("document_type")
+  documentNumber     String                @map("document_number") @db.VarChar(100)
+  frontImage         String                @map("front_image") @db.VarChar(2048)
+  backImage          String?               @map("back_image") @db.VarChar(2048)
+  selfieImage        String?               @map("selfie_image") @db.VarChar(2048)
+  verificationStatus KycVerificationStatus @default(PENDING) @map("verification_status")
+  reviewedBy         String?               @map("reviewed_by") @db.Uuid
+  reviewedAt         DateTime?             @map("reviewed_at")
+  remarks            String?               @db.VarChar(1000)
+  createdAt          DateTime              @default(now()) @map("created_at")
+  merchant           User                  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  business           Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId])
+  @@index([businessId])
+  @@index([verificationStatus])
+  @@index([merchantId, verificationStatus])
+  @@map("merchant_kyc")
+}
+
+model BankAccount {
+  id            String    @id @default(uuid()) @db.Uuid
+  merchantId    String    @map("merchant_id") @db.Uuid
+  bankName      String    @map("bank_name") @db.VarChar(150)
+  accountName   String    @map("account_name") @db.VarChar(150)
+  accountNumber String    @map("account_number") @db.VarChar(20)
+  currency      String    @default("NGN") @db.VarChar(3)
+  isDefault     Boolean   @default(false) @map("is_default")
+  verifiedAt    DateTime? @map("verified_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  merchant      User      @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@unique([merchantId, accountNumber])
+  @@index([merchantId])
+  @@index([merchantId, isDefault])
+  @@map("bank_accounts")
 }
 
 model RiderProfile {
