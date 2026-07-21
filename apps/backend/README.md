@@ -234,3 +234,34 @@ curl -X POST "$API/api/v1/customer/orders/<orderId>/cancel" \
 ```
 
 Checkout pricing hooks default to **0** tax / discount / delivery (`ZeroTaxCalculator`, `ZeroCouponCalculator`, `ZeroDeliveryCalculator`). Inventory is reserved for 30 minutes; cleanup runs every 5 minutes and marks unpaid expired orders `FAILED` while unlocking the cart.
+
+### S1-C12 — Payment gateway integration
+
+| Method | Path                                  | Auth                    | Notes                                     |
+| ------ | ------------------------------------- | ----------------------- | ----------------------------------------- |
+| `POST` | `/api/v1/customer/orders/:id/pay`     | JWT + `customer:orders` | Initialize provider checkout              |
+| `POST` | `/api/v1/customer/orders/:id/verify`  | JWT + `customer:orders` | Verify with provider (never trust client) |
+| `GET`  | `/api/v1/customer/orders/:id/payment` | JWT + `customer:orders` | Latest payment transaction                |
+| `POST` | `/api/v1/webhooks/paystack`           | Public + HMAC signature | Paystack `x-paystack-signature`           |
+| `POST` | `/api/v1/webhooks/flutterwave`        | Public + `verif-hash`   | Flutterwave webhook hash                  |
+
+```bash
+# Initialize payment
+curl -X POST "$API/api/v1/customer/orders/<orderId>/pay" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"provider":"PAYSTACK"}'
+
+# Verify after redirect
+curl -X POST "$API/api/v1/customer/orders/<orderId>/verify" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"reference":"DPX-PAY-..."}'
+```
+
+#### Webhook setup
+
+1. Configure Paystack webhook URL: `https://<host>/api/v1/webhooks/paystack`
+2. Configure Flutterwave webhook URL: `https://<host>/api/v1/webhooks/flutterwave` and set `FLUTTERWAVE_WEBHOOK_HASH`
+3. Set `PAYSTACK_SECRET_KEY` / `FLUTTERWAVE_SECRET_KEY` in the environment
+4. Invalid signatures are rejected and audited as `payment.webhook.rejected`
+
+On success: transaction `SUCCESS`, order `PAID`, inventory deducted (reservation released), cart `CHECKED_OUT`, customer + merchant notifications.

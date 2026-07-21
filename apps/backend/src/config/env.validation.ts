@@ -42,6 +42,15 @@ export const envSchema = z.object({
   IDENTITY_VERIFICATION_RESEND_COOLDOWN_SECONDS: z.coerce.number().int().positive().default(60),
   SESSION_ACTIVITY_THROTTLE_SECONDS: z.coerce.number().int().positive().default(60),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+  PAYSTACK_SECRET_KEY: z.string().default(''),
+  PAYSTACK_PUBLIC_KEY: z.string().default(''),
+  PAYSTACK_BASE_URL: z.string().url().default('https://api.paystack.co'),
+  FLUTTERWAVE_SECRET_KEY: z.string().default(''),
+  FLUTTERWAVE_PUBLIC_KEY: z.string().default(''),
+  FLUTTERWAVE_WEBHOOK_HASH: z.string().default(''),
+  FLUTTERWAVE_BASE_URL: z.string().url().default('https://api.flutterwave.com'),
+  MONIEPOINT_API_KEY: z.string().default(''),
+  PAYMENT_DEFAULT_PROVIDER: z.enum(['PAYSTACK', 'FLUTTERWAVE', 'MONIEPOINT']).default('PAYSTACK'),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

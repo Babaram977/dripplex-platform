@@ -8,6 +8,7 @@ import type {
   OrderCreatedNotificationInput,
   PasswordChangedNotificationInput,
   PasswordResetNotificationInput,
+  PaymentResultNotificationInput,
   PhoneOtpNotificationInput,
 } from './notification.service';
 
@@ -99,6 +100,31 @@ export class LoggingNotificationService implements NotificationService {
         currency: input.currency,
       },
       'Order created notification dispatched',
+    );
+    return Promise.resolve();
+  }
+
+  public notifyPaymentResult(input: PaymentResultNotificationInput): Promise<void> {
+    const template =
+      input.audience === 'merchant'
+        ? 'order_paid_merchant'
+        : input.success
+          ? 'payment_successful_customer'
+          : 'payment_failed_customer';
+
+    this.logger.log(
+      {
+        channel: 'email',
+        template,
+        email: input.email,
+        orderId: input.orderId,
+        orderNumber: input.orderNumber,
+        amount: input.amount,
+        currency: input.currency,
+        reference: input.reference,
+        success: input.success,
+      },
+      'Payment result notification dispatched',
     );
     return Promise.resolve();
   }

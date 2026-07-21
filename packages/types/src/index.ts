@@ -104,6 +104,19 @@ export type {
 
 export { ORDER_AUDIT_ACTIONS } from './order/index.js';
 
+export type {
+  InitializePaymentDto,
+  InitializePaymentResponseDto,
+  PaymentAuditAction,
+  PaymentProvider,
+  PaymentStatusDto,
+  PaymentTransactionDto,
+  PaymentVerificationDto,
+  TransactionStatus,
+} from './payment/index.js';
+
+export { PAYMENT_AUDIT_ACTIONS } from './payment/index.js';
+
 export {
   changePasswordSchema,
   contactSchema,

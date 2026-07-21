@@ -5,6 +5,7 @@ import { HttpClient } from '../client/http-client.js';
 import { resolveSdkConfig } from '../config/sdk-config.js';
 import { AdminMerchantsApi, MerchantApi } from '../merchant/merchant-api.js';
 import { OrderClient } from '../order/order-client.js';
+import { PaymentClient } from '../payment/payment-client.js';
 
 import type { SdkConfig } from '../config/sdk-config.js';
 
@@ -15,6 +16,7 @@ export class DripplexClient {
   public readonly addresses: AddressClient;
   public readonly cart: CartClient;
   public readonly orders: OrderClient;
+  public readonly payments: PaymentClient;
   private readonly http: HttpClient;
 
   public constructor(config: Partial<SdkConfig> = {}) {
@@ -26,6 +28,7 @@ export class DripplexClient {
     this.addresses = new AddressClient(this.http);
     this.cart = new CartClient(this.http);
     this.orders = new OrderClient(this.http);
+    this.payments = new PaymentClient(this.http);
   }
 }
 
@@ -36,3 +39,4 @@ export { AdminMerchantsApi, MerchantApi } from '../merchant/merchant-api.js';
 export { AddressClient } from '../address/address-client.js';
 export { CartClient } from '../cart/cart-client.js';
 export { OrderClient } from '../order/order-client.js';
+export { PaymentClient } from '../payment/payment-client.js';

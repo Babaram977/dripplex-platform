@@ -15,6 +15,8 @@ describe('validateEnv', () => {
     expect(env.API_GLOBAL_PREFIX).toBe('api/v1');
     expect(env.OTP_LENGTH).toBe(6);
     expect(env.BCRYPT_SALT_ROUNDS).toBe(12);
+    expect(env.PAYMENT_DEFAULT_PROVIDER).toBe('PAYSTACK');
+    expect(env.PAYSTACK_SECRET_KEY).toBe('');
   });
 
   it('rejects short JWT secrets', () => {

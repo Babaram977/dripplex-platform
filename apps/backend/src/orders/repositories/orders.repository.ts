@@ -67,6 +67,7 @@ export interface OrdersRepository {
   list(filter: ListOrdersFilter): Promise<{ items: OrderWithItems[]; total: number }>;
   cancelOrder(id: string): Promise<Order>;
   markFailed(id: string): Promise<Order>;
+  markPaid(id: string): Promise<Order>;
   findByCartId(cartId: string): Promise<Order | null>;
   createReservations(inputs: CreateReservationInput[]): Promise<InventoryReservation[]>;
   releaseReservationsForOrder(orderId: string): Promise<number>;
