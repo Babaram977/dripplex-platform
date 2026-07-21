@@ -42,8 +42,23 @@ export class UsersService {
     return this.usersRepository.markLogin(id);
   }
 
+  public recordLoginActivity(id: string): Promise<User> {
+    return this.usersRepository.recordLoginActivity(id);
+  }
+
   public markEmailVerified(id: string): Promise<User> {
     return this.usersRepository.markEmailVerified(id);
+  }
+
+  public markPhoneVerified(id: string): Promise<User> {
+    return this.usersRepository.markPhoneVerified(id);
+  }
+
+  public activateIfVerificationsComplete(
+    id: string,
+    requiresPhoneVerification: boolean,
+  ): Promise<User> {
+    return this.usersRepository.activateIfVerificationsComplete(id, requiresPhoneVerification);
   }
 
   public async getByIdOrThrow(id: string): Promise<User> {

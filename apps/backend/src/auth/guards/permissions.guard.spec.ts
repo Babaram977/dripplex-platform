@@ -34,7 +34,10 @@ describe('PermissionsGuard', () => {
       guard.canActivate(
         createContext({
           id: '1',
+          sid: 'session-1',
           email: 'a@b.c',
+          role: 'admin',
+          portal: 'customer',
           roles: ['admin'],
           permissions: ['users:read', 'users:delete'],
         }),
@@ -48,7 +51,10 @@ describe('PermissionsGuard', () => {
       guard.canActivate(
         createContext({
           id: '1',
+          sid: 'session-1',
           email: 'a@b.c',
+          role: 'customer',
+          portal: 'customer',
           roles: ['customer'],
           permissions: ['users:read'],
         }),

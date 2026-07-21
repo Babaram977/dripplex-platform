@@ -63,6 +63,34 @@ export class AppConfigService {
     return this.configService.get('OTP_TTL_SECONDS', { infer: true });
   }
 
+  public get otpEmailTtlSeconds(): number {
+    return this.configService.get('OTP_EMAIL_TTL_SECONDS', { infer: true });
+  }
+
+  public get otpSmsTtlSeconds(): number {
+    return this.configService.get('OTP_SMS_TTL_SECONDS', { infer: true });
+  }
+
+  public get otpMaxVerifyAttempts(): number {
+    return this.configService.get('OTP_MAX_VERIFY_ATTEMPTS', { infer: true });
+  }
+
+  public get otpLockoutSeconds(): number {
+    return this.configService.get('OTP_LOCKOUT_SECONDS', { infer: true });
+  }
+
+  public get otpResendCooldownSeconds(): number {
+    return this.configService.get('OTP_RESEND_COOLDOWN_SECONDS', { infer: true });
+  }
+
+  public get otpHourlyLimit(): number {
+    return this.configService.get('OTP_HOURLY_LIMIT', { infer: true });
+  }
+
+  public get otpDailyLimit(): number {
+    return this.configService.get('OTP_DAILY_LIMIT', { infer: true });
+  }
+
   public get otpLength(): number {
     return this.configService.get('OTP_LENGTH', { infer: true });
   }
@@ -77,6 +105,22 @@ export class AppConfigService {
 
   public get throttleLimit(): number {
     return this.configService.get('THROTTLE_LIMIT', { infer: true });
+  }
+
+  public get sessionTtlSeconds(): number {
+    return this.configService.get('SESSION_TTL_SECONDS', { infer: true });
+  }
+
+  public get loginMaxAttemptsPerEmail(): number {
+    return this.configService.get('LOGIN_MAX_ATTEMPTS_PER_EMAIL', { infer: true });
+  }
+
+  public get loginMaxAttemptsPerIp(): number {
+    return this.configService.get('LOGIN_MAX_ATTEMPTS_PER_IP', { infer: true });
+  }
+
+  public get loginLockoutSeconds(): number {
+    return this.configService.get('LOGIN_LOCKOUT_SECONDS', { infer: true });
   }
 
   public get logLevel(): EnvConfig['LOG_LEVEL'] {

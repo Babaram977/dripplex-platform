@@ -17,11 +17,19 @@ import { AppConfigService } from '../config/app-config.service';
 import { RedisService } from '../redis/redis.service';
 import { UsersService } from '../users/users.service';
 
-import type { AuthTokens, AuthUserProfile, JwtPayload } from './auth.types';
+import type { AuthTokens, AuthUserProfile } from './auth.types';
 import type { LoginDto } from './dto/login.dto';
 import type { RequestOtpDto, VerifyOtpDto } from './dto/otp.dto';
-import type { RefreshTokenDto } from './dto/refresh-token.dto';
 import type { RegisterDto } from './dto/register.dto';
+
+/** Sprint 0.1 scaffold payload — incompatible with S1-C4 session-bound JWT guard */
+interface ScaffoldJwtPayload {
+  sub: string;
+  email: string;
+  roles: string[];
+  permissions: string[];
+  typ: 'access' | 'refresh';
+}
 
 @Injectable()
 export class AuthService {
@@ -130,53 +138,20 @@ export class AuthService {
     }
 
     await this.usersService.markEmailVerified(user.id);
+    await this.usersService.activateIfVerificationsComplete(user.id, false);
     await this.usersService.markLogin(user.id);
 
     const profile = await this.toProfile(user.id);
-    const tokens = await this.issueTokens(profile);
+    const tokens = await this.issueScaffoldTokens(profile);
     return { user: profile, tokens };
-  }
-
-  public async refresh(dto: RefreshTokenDto): Promise<AuthTokens> {
-    let payload: JwtPayload;
-    try {
-      payload = await this.jwtService.verifyAsync<JwtPayload>(dto.refreshToken, {
-        secret: this.appConfig.jwtRefreshSecret,
-      });
-    } catch {
-      throw new UnauthorizedDomainException('Invalid refresh token');
-    }
-
-    if (payload.typ !== 'refresh') {
-      throw new UnauthorizedDomainException('Invalid refresh token type');
-    }
-
-    const revoked = await this.redis.get(this.revokeKey(dto.refreshToken));
-    if (revoked) {
-      throw new UnauthorizedDomainException('Refresh token has been revoked');
-    }
-
-    const profile = await this.toProfile(payload.sub);
-    return await this.issueTokens(profile);
-  }
-
-  public async logout(refreshToken: string): Promise<void> {
-    try {
-      const payload = await this.jwtService.verifyAsync<JwtPayload>(refreshToken, {
-        secret: this.appConfig.jwtRefreshSecret,
-      });
-      const ttlSeconds = this.parseDurationToSeconds(this.appConfig.jwtRefreshTtl);
-      await this.redis.set(this.revokeKey(refreshToken), payload.sub, ttlSeconds);
-    } catch {
-      // Idempotent logout for invalid tokens
-    }
   }
 
   public async getProfile(userId: string): Promise<AuthUserProfile> {
     return await this.toProfile(userId);
   }
 
-  private async issueTokens(profile: AuthUserProfile): Promise<AuthTokens> {
+  /** Sprint 0.1 tokens without session binding */
+  private async issueScaffoldTokens(profile: AuthUserProfile): Promise<AuthTokens> {
     const baseClaims = {
       sub: profile.id,
       email: profile.email,
@@ -185,11 +160,11 @@ export class AuthService {
     };
 
     const [accessToken, refreshToken] = await Promise.all([
-      this.jwtService.signAsync({ ...baseClaims, typ: 'access' } satisfies JwtPayload, {
+      this.jwtService.signAsync({ ...baseClaims, typ: 'access' } satisfies ScaffoldJwtPayload, {
         secret: this.appConfig.jwtAccessSecret,
         expiresIn: this.parseDurationToSeconds(this.appConfig.jwtAccessTtl),
       }),
-      this.jwtService.signAsync({ ...baseClaims, typ: 'refresh' } satisfies JwtPayload, {
+      this.jwtService.signAsync({ ...baseClaims, typ: 'refresh' } satisfies ScaffoldJwtPayload, {
         secret: this.appConfig.jwtRefreshSecret,
         expiresIn: this.parseDurationToSeconds(this.appConfig.jwtRefreshTtl),
       }),
@@ -201,6 +176,10 @@ export class AuthService {
       tokenType: 'Bearer',
       expiresIn: this.appConfig.jwtAccessTtl,
     };
+  }
+
+  private issueTokens(profile: AuthUserProfile): Promise<AuthTokens> {
+    return this.issueScaffoldTokens(profile);
   }
 
   private async toProfile(userId: string): Promise<AuthUserProfile> {
@@ -242,11 +221,6 @@ export class AuthService {
 
   private otpKey(email: string): string {
     return `auth:otp:${email.toLowerCase()}`;
-  }
-
-  private revokeKey(token: string): string {
-    const digest = createHash('sha256').update(token).digest('hex');
-    return `auth:refresh:revoke:${digest}`;
   }
 
   private parseDurationToSeconds(duration: string): number {

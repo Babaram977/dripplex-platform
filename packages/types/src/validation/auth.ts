@@ -1,5 +1,68 @@
 import { z } from 'zod';
 
+const passwordSchema = z
+  .string()
+  .min(8, 'Password must be at least 8 characters')
+  .max(128, 'Password must be at most 128 characters')
+  .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/, 'Include upper, lower, and a number');
+
+const phoneSchema = z
+  .string()
+  .trim()
+  .regex(/^\+?[0-9]{7,15}$/, 'Enter a valid phone number');
+
+export const portalRegistrationBaseSchema = z.object({
+  firstName: z.string().trim().min(1, 'First name is required').max(100),
+  lastName: z.string().trim().min(1, 'Last name is required').max(100),
+  email: z.string().trim().email('Enter a valid email address'),
+  password: passwordSchema,
+});
+
+export const customerRegistrationSchema = portalRegistrationBaseSchema.extend({
+  phone: phoneSchema.optional().or(z.literal('')),
+});
+
+export const merchantRegistrationSchema = portalRegistrationBaseSchema.extend({
+  phone: phoneSchema.optional().or(z.literal('')),
+});
+
+export const riderRegistrationSchema = portalRegistrationBaseSchema.extend({
+  phone: phoneSchema,
+});
+
+export const driverRegistrationSchema = portalRegistrationBaseSchema.extend({
+  phone: phoneSchema,
+});
+
+export const verifyEmailSchema = z.object({
+  email: z.string().trim().email('Enter a valid email address'),
+  otp: z.string().regex(/^\d{4,8}$/, 'Enter the numeric code from your message'),
+});
+
+export const verifyPhoneSchema = z.object({
+  phone: phoneSchema,
+  otp: z.string().regex(/^\d{4,8}$/, 'Enter the numeric code from your message'),
+});
+
+export const portalLoginSchema = z
+  .object({
+    email: z.string().trim().email('Enter a valid email address').optional(),
+    phone: phoneSchema.optional(),
+    password: passwordSchema,
+  })
+  .refine((values) => (values.email?.length ?? 0) > 0 || (values.phone?.length ?? 0) > 0, {
+    message: 'Either email or phone is required',
+    path: ['email'],
+  });
+
+export type CustomerRegistrationValues = z.infer<typeof customerRegistrationSchema>;
+export type MerchantRegistrationValues = z.infer<typeof merchantRegistrationSchema>;
+export type RiderRegistrationValues = z.infer<typeof riderRegistrationSchema>;
+export type DriverRegistrationValues = z.infer<typeof driverRegistrationSchema>;
+export type VerifyEmailValues = z.infer<typeof verifyEmailSchema>;
+export type VerifyPhoneValues = z.infer<typeof verifyPhoneSchema>;
+export type PortalLoginValues = z.infer<typeof portalLoginSchema>;
+
 export const loginSchema = z.object({
   email: z.string().trim().email('Enter a valid email address'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
@@ -18,10 +81,7 @@ export const registerSchema = z
       .regex(/^\+?[0-9]{7,15}$/, 'Enter a valid phone number')
       .optional()
       .or(z.literal('')),
-    password: z
-      .string()
-      .min(8, 'Password must be at least 8 characters')
-      .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/, 'Include upper, lower, and a number'),
+    password: passwordSchema,
     confirmPassword: z.string().min(8, 'Confirm your password'),
   })
   .refine((values) => values.password === values.confirmPassword, {
@@ -39,10 +99,7 @@ export type ForgotPasswordFormValues = z.infer<typeof forgotPasswordSchema>;
 
 export const resetPasswordSchema = z
   .object({
-    password: z
-      .string()
-      .min(8, 'Password must be at least 8 characters')
-      .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/, 'Include upper, lower, and a number'),
+    password: passwordSchema,
     confirmPassword: z.string().min(8, 'Confirm your password'),
   })
   .refine((values) => values.password === values.confirmPassword, {

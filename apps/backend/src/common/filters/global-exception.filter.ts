@@ -2,7 +2,12 @@ import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus } from
 import { Prisma } from '@prisma/client';
 import { Logger } from 'nestjs-pino';
 
-import { DomainException } from '../exceptions/domain.exception';
+import {
+  DomainException,
+  LoginAttemptsExceededDomainException,
+  OtpAttemptsExceededDomainException,
+  RateLimitedDomainException,
+} from '../exceptions/domain.exception';
 
 import type { ApiErrorResponse } from '../dto/api-response.dto';
 import type { Request, Response } from 'express';
@@ -39,6 +44,14 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       this.logger.error({ err: exception, path: request.url }, message);
     } else {
       this.logger.warn({ err: exception, path: request.url }, message);
+    }
+
+    if (
+      exception instanceof RateLimitedDomainException ||
+      exception instanceof OtpAttemptsExceededDomainException ||
+      exception instanceof LoginAttemptsExceededDomainException
+    ) {
+      response.setHeader('Retry-After', String(exception.retryAfterSeconds));
     }
 
     response.status(statusCode).json(body);

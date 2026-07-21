@@ -3,9 +3,20 @@ import type {
   AuthSessionPayload,
   AuthTokens,
   AuthUserProfile,
+  CustomerRegistrationValues,
+  DriverRegistrationValues,
+  EmailVerificationResponse,
   LoginFormValues,
+  MerchantRegistrationValues,
+  PhoneVerificationResponse,
+  PortalLoginResponse,
+  PortalLoginValues,
   RegisterFormValues,
+  RegistrationResponse,
+  RiderRegistrationValues,
+  VerifyEmailValues,
   VerifyOtpFormValues,
+  VerifyPhoneValues,
 } from '@dripplex/types';
 
 export class AuthApi {
@@ -19,8 +30,88 @@ export class AuthApi {
     });
   }
 
+  public registerCustomer(body: CustomerRegistrationValues): Promise<RegistrationResponse> {
+    return this.http.request<RegistrationResponse>('/auth/register/customer', {
+      method: 'POST',
+      body,
+      auth: false,
+    });
+  }
+
+  public registerMerchant(body: MerchantRegistrationValues): Promise<RegistrationResponse> {
+    return this.http.request<RegistrationResponse>('/auth/register/merchant', {
+      method: 'POST',
+      body,
+      auth: false,
+    });
+  }
+
+  public registerRider(body: RiderRegistrationValues): Promise<RegistrationResponse> {
+    return this.http.request<RegistrationResponse>('/auth/register/rider', {
+      method: 'POST',
+      body,
+      auth: false,
+    });
+  }
+
+  public registerDriver(body: DriverRegistrationValues): Promise<RegistrationResponse> {
+    return this.http.request<RegistrationResponse>('/auth/register/driver', {
+      method: 'POST',
+      body,
+      auth: false,
+    });
+  }
+
+  public verifyEmail(body: VerifyEmailValues): Promise<EmailVerificationResponse> {
+    return this.http.request<EmailVerificationResponse>('/auth/verify/email', {
+      method: 'POST',
+      body,
+      auth: false,
+    });
+  }
+
+  public verifyPhone(body: VerifyPhoneValues): Promise<PhoneVerificationResponse> {
+    return this.http.request<PhoneVerificationResponse>('/auth/verify/phone', {
+      method: 'POST',
+      body,
+      auth: false,
+    });
+  }
+
   public login(body: LoginFormValues): Promise<AuthSessionPayload> {
     return this.http.request<AuthSessionPayload>('/auth/login', {
+      method: 'POST',
+      body,
+      auth: false,
+    });
+  }
+
+  public loginCustomer(body: PortalLoginValues): Promise<PortalLoginResponse> {
+    return this.http.request<PortalLoginResponse>('/auth/login/customer', {
+      method: 'POST',
+      body,
+      auth: false,
+    });
+  }
+
+  public loginMerchant(body: PortalLoginValues): Promise<PortalLoginResponse> {
+    return this.http.request<PortalLoginResponse>('/auth/login/merchant', {
+      method: 'POST',
+      body,
+      auth: false,
+    });
+  }
+
+  public loginRider(body: PortalLoginValues): Promise<PortalLoginResponse> {
+    return this.http.request<PortalLoginResponse>('/auth/login/rider', {
+      method: 'POST',
+      body,
+      auth: false,
+    });
+  }
+
+  public loginDriver(body: PortalLoginValues): Promise<PortalLoginResponse> {
+    return this.http.request<PortalLoginResponse>('/auth/login/driver', {
       method: 'POST',
       body,
       auth: false,
@@ -51,11 +142,17 @@ export class AuthApi {
     });
   }
 
-  public logout(refreshToken: string): Promise<{ loggedOut: true }> {
+  public logout(): Promise<{ loggedOut: true }> {
     return this.http.request<{ loggedOut: true }>('/auth/logout', {
       method: 'POST',
-      body: { refreshToken },
-      auth: false,
+      auth: true,
+    });
+  }
+
+  public logoutAll(): Promise<{ loggedOut: true }> {
+    return this.http.request<{ loggedOut: true }>('/auth/logout-all', {
+      method: 'POST',
+      auth: true,
     });
   }
 
