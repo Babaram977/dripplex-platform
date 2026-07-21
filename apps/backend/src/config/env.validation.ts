@@ -26,6 +26,10 @@ export const envSchema = z.object({
   BCRYPT_SALT_ROUNDS: z.coerce.number().int().min(10).max(15).default(12),
   THROTTLE_TTL_MS: z.coerce.number().int().positive().default(60_000),
   THROTTLE_LIMIT: z.coerce.number().int().positive().default(100),
+  SESSION_TTL_SECONDS: z.coerce.number().int().positive().default(604_800),
+  LOGIN_MAX_ATTEMPTS_PER_EMAIL: z.coerce.number().int().positive().default(10),
+  LOGIN_MAX_ATTEMPTS_PER_IP: z.coerce.number().int().positive().default(30),
+  LOGIN_LOCKOUT_SECONDS: z.coerce.number().int().positive().default(900),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 });
 

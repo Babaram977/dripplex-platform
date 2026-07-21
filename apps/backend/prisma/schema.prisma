@@ -45,6 +45,7 @@ model User {
   emailVerifiedAt     DateTime?            @map("email_verified_at")
   phoneVerifiedAt     DateTime?            @map("phone_verified_at")
   lastLoginAt         DateTime?            @map("last_login_at")
+  lastActiveAt        DateTime?            @map("last_active_at")
   passwordChangedAt   DateTime?            @map("password_changed_at")
   blockedAt           DateTime?            @map("blocked_at")
   blockedReason       String?              @map("blocked_reason") @db.VarChar(500)
@@ -122,23 +123,26 @@ model RolePermission {
 }
 
 model AuthSession {
-  id               String    @id @default(uuid()) @db.Uuid
-  userId           String    @map("user_id") @db.Uuid
-  refreshTokenHash String    @map("refresh_token_hash") @db.VarChar(64)
-  deviceId         String?   @map("device_id") @db.VarChar(128)
-  deviceName       String?   @map("device_name") @db.VarChar(255)
-  ipAddress        String?   @map("ip_address") @db.VarChar(45)
-  userAgent        String?   @map("user_agent") @db.VarChar(512)
-  rememberMe       Boolean   @default(false) @map("remember_me")
-  expiresAt        DateTime  @map("expires_at")
-  revokedAt        DateTime? @map("revoked_at")
-  lastSeenAt       DateTime  @default(now()) @map("last_seen_at")
-  createdAt        DateTime  @default(now()) @map("created_at")
-  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id               String              @id @default(uuid()) @db.Uuid
+  userId           String              @map("user_id") @db.Uuid
+  refreshTokenHash String?             @map("refresh_token_hash") @db.VarChar(64)
+  portal           RegistrationChannel @map("portal")
+  deviceId         String?             @map("device_id") @db.VarChar(128)
+  deviceName       String?             @map("device_name") @db.VarChar(255)
+  ipAddress        String?             @map("ip_address") @db.VarChar(45)
+  userAgent        String?             @map("user_agent") @db.VarChar(512)
+  rememberMe       Boolean             @default(false) @map("remember_me")
+  expiresAt        DateTime            @map("expires_at")
+  revokedAt        DateTime?           @map("revoked_at")
+  lastSeenAt       DateTime            @default(now()) @map("last_seen_at")
+  lastActiveAt     DateTime            @default(now()) @map("last_active_at")
+  createdAt        DateTime            @default(now()) @map("created_at")
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([refreshTokenHash])
   @@index([userId])
   @@index([userId, revokedAt])
+  @@index([portal])
   @@index([expiresAt])
   @@map("auth_sessions")
 }

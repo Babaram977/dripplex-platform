@@ -68,9 +68,17 @@ export class PrismaUsersRepository implements UsersRepository {
   }
 
   public async markLogin(id: string): Promise<User> {
+    return await this.recordLoginActivity(id);
+  }
+
+  public async recordLoginActivity(id: string): Promise<User> {
+    const now = new Date();
     return await this.prisma.user.update({
       where: { id },
-      data: { lastLoginAt: new Date() },
+      data: {
+        lastLoginAt: now,
+        lastActiveAt: now,
+      },
     });
   }
 

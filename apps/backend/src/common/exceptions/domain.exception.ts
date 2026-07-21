@@ -73,3 +73,46 @@ export class OtpAttemptsExceededDomainException extends DomainException {
     this.retryAfterSeconds = retryAfterSeconds;
   }
 }
+
+export class AccountSuspendedDomainException extends DomainException {
+  constructor(message = 'Account is suspended', details?: unknown) {
+    super('ACCOUNT_SUSPENDED', message, 403, details);
+  }
+}
+
+export class AccountBlockedDomainException extends DomainException {
+  constructor(message = 'Account is blocked', details?: unknown) {
+    super('ACCOUNT_BLOCKED', message, 403, details);
+  }
+}
+
+export class EmailNotVerifiedDomainException extends DomainException {
+  constructor(message = 'Email address is not verified', details?: unknown) {
+    super('EMAIL_NOT_VERIFIED', message, 403, details);
+  }
+}
+
+export class PhoneNotVerifiedDomainException extends DomainException {
+  constructor(message = 'Phone number is not verified', details?: unknown) {
+    super('PHONE_NOT_VERIFIED', message, 403, details);
+  }
+}
+
+export class WrongPortalDomainException extends DomainException {
+  constructor(message = 'Account is not permitted for this portal', details?: unknown) {
+    super('WRONG_PORTAL', message, 403, details);
+  }
+}
+
+export class LoginAttemptsExceededDomainException extends DomainException {
+  public readonly retryAfterSeconds: number;
+
+  constructor(
+    message = 'Too many failed login attempts',
+    retryAfterSeconds = 900,
+    details?: unknown,
+  ) {
+    super('LOGIN_ATTEMPTS_EXCEEDED', message, 429, details);
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}

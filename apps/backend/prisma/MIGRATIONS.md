@@ -99,3 +99,39 @@ Additive migration on top of S1-C1.
 - [ ] Email/phone verification updates `emailVerifiedAt` / `phoneVerifiedAt`
 - [ ] `User.status` transitions to `ACTIVE` when required verifications complete
 - [ ] Audit events written for registration and OTP lifecycle
+
+---
+
+# Migration notes — S1-C3 login & session foundation
+
+Migration: `20260721120000_s1_c3_login_session`
+
+## Summary
+
+Additive migration on top of S1-C2.
+
+| Change type | Detail                                                   |
+| ----------- | -------------------------------------------------------- |
+| Column      | `users.last_active_at`                                   |
+| Column      | `auth_sessions.portal` (`RegistrationChannel`, NOT NULL) |
+| Column      | `auth_sessions.last_active_at`                           |
+| Column      | `auth_sessions.refresh_token_hash` nullable              |
+| Index       | `auth_sessions.portal`                                   |
+
+## API surface (S1-C3)
+
+| Method | Path                   | Description                    |
+| ------ | ---------------------- | ------------------------------ |
+| POST   | `/auth/login/customer` | Customer portal login (no JWT) |
+| POST   | `/auth/login/merchant` | Merchant portal login (no JWT) |
+| POST   | `/auth/login/rider`    | Rider portal login (no JWT)    |
+| POST   | `/auth/login/driver`   | Driver portal login (no JWT)   |
+
+## Verification checklist (S1-C3)
+
+- [ ] Successful login creates `auth_sessions` row with `refresh_token_hash IS NULL`
+- [ ] Login rejects `PENDING_VERIFICATION`, `BLOCKED`, `SUSPENDED`, deleted users
+- [ ] Portal role mismatch returns `WRONG_PORTAL`
+- [ ] Failed login attempts tracked in Redis with lockout
+- [ ] Audit events: `auth.login.started`, `auth.login.success`, `auth.login.failed`, `auth.session.created`
+- [ ] No JWT or refresh token in login response

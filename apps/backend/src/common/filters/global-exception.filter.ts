@@ -4,8 +4,9 @@ import { Logger } from 'nestjs-pino';
 
 import {
   DomainException,
-  RateLimitedDomainException,
+  LoginAttemptsExceededDomainException,
   OtpAttemptsExceededDomainException,
+  RateLimitedDomainException,
 } from '../exceptions/domain.exception';
 
 import type { ApiErrorResponse } from '../dto/api-response.dto';
@@ -47,7 +48,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     if (
       exception instanceof RateLimitedDomainException ||
-      exception instanceof OtpAttemptsExceededDomainException
+      exception instanceof OtpAttemptsExceededDomainException ||
+      exception instanceof LoginAttemptsExceededDomainException
     ) {
       response.setHeader('Retry-After', String(exception.retryAfterSeconds));
     }

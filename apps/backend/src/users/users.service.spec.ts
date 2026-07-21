@@ -17,6 +17,7 @@ describe('UsersService', () => {
     markEmailVerified: jest.fn(),
     markPhoneVerified: jest.fn(),
     activateIfVerificationsComplete: jest.fn(),
+    recordLoginActivity: jest.fn(),
     softDelete: jest.fn(),
     list: jest.fn(),
   };
@@ -34,6 +35,7 @@ describe('UsersService', () => {
     emailVerifiedAt: null,
     phoneVerifiedAt: null,
     lastLoginAt: null,
+    lastActiveAt: null,
     registrationChannel: null,
     passwordChangedAt: null,
     blockedAt: null,

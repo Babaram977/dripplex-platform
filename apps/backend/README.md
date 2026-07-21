@@ -39,6 +39,17 @@ NestJS API for the Dripplex Super Platform.
 | `POST` | `/api/v1/auth/verify/email`      | Public | Updates `emailVerifiedAt`       |
 | `POST` | `/api/v1/auth/verify/phone`      | Public | Updates `phoneVerifiedAt`       |
 
+### S1-C3 — Login & sessions
+
+| Method | Path                          | Auth   | Notes                        |
+| ------ | ----------------------------- | ------ | ---------------------------- |
+| `POST` | `/api/v1/auth/login/customer` | Public | Session created; no JWT      |
+| `POST` | `/api/v1/auth/login/merchant` | Public | Portal role enforced; no JWT |
+| `POST` | `/api/v1/auth/login/rider`    | Public | Phone/email login; no JWT    |
+| `POST` | `/api/v1/auth/login/driver`   | Public | Phone/email login; no JWT    |
+
+Login returns user profile, permissions, and `AuthSession` metadata (`refreshTokenHash` null until S1-C4).
+
 See [DPX-013](../docs/DPX-013.md) for full Sprint 1 contracts.
 
 ## Local development

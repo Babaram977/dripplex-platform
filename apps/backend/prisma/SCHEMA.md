@@ -46,6 +46,7 @@ Central identity record. Existing Sprint 0.1 fields retained.
 | `emailVerifiedAt`                     | timestamp?             |                                              |
 | `phoneVerifiedAt`                     | timestamp?             |                                              |
 | `lastLoginAt`                         | timestamp?             |                                              |
+| `lastActiveAt`                        | timestamp?             | Updated on login (S1-C3)                     |
 | `passwordChangedAt`                   | timestamp?             | New in S1-C1                                 |
 | `blockedAt`                           | timestamp?             | Set when `status = BLOCKED`                  |
 | `blockedReason`                       | varchar(500)?          | Admin notes                                  |
@@ -57,19 +58,21 @@ Central identity record. Existing Sprint 0.1 fields retained.
 
 Server-side session bound to a refresh token hash (DPX-013 §1.6, §4).
 
-| Field                    | Type        | Notes                          |
-| ------------------------ | ----------- | ------------------------------ |
-| `refreshTokenHash`       | varchar(64) | SHA-256 hex, unique            |
-| `deviceId`, `deviceName` | optional    | Client metadata                |
-| `ipAddress`, `userAgent` | optional    | Request metadata               |
-| `rememberMe`             | boolean     | Extended refresh TTL when true |
-| `expiresAt`              | timestamp   | Session expiry                 |
-| `revokedAt`              | timestamp?  | Null when active               |
-| `lastSeenAt`             | timestamp   | Updated on refresh             |
+| Field                    | Type                  | Notes                                      |
+| ------------------------ | --------------------- | ------------------------------------------ |
+| `refreshTokenHash`       | varchar(64)?          | Null until refresh token issued (S1-C3/C4) |
+| `portal`                 | `RegistrationChannel` | Portal that created the session (S1-C3)    |
+| `deviceId`, `deviceName` | optional              | Client metadata                            |
+| `ipAddress`, `userAgent` | optional              | Request metadata                           |
+| `rememberMe`             | boolean               | Extended refresh TTL when true             |
+| `expiresAt`              | timestamp             | Session expiry                             |
+| `revokedAt`              | timestamp?            | Null when active                           |
+| `lastSeenAt`             | timestamp             | Updated on refresh                         |
+| `lastActiveAt`           | timestamp             | Updated on login activity (S1-C3)          |
 
 **Cascade:** `ON DELETE CASCADE` from `User`
 
-**Indexes:** `userId`, `(userId, revokedAt)`, `expiresAt`, unique `refreshTokenHash`
+**Indexes:** `userId`, `(userId, revokedAt)`, `portal`, `expiresAt`, unique `refreshTokenHash`
 
 ## Profile stubs (1:1 with `User`)
 

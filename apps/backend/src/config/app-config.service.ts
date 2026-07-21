@@ -107,6 +107,22 @@ export class AppConfigService {
     return this.configService.get('THROTTLE_LIMIT', { infer: true });
   }
 
+  public get sessionTtlSeconds(): number {
+    return this.configService.get('SESSION_TTL_SECONDS', { infer: true });
+  }
+
+  public get loginMaxAttemptsPerEmail(): number {
+    return this.configService.get('LOGIN_MAX_ATTEMPTS_PER_EMAIL', { infer: true });
+  }
+
+  public get loginMaxAttemptsPerIp(): number {
+    return this.configService.get('LOGIN_MAX_ATTEMPTS_PER_IP', { infer: true });
+  }
+
+  public get loginLockoutSeconds(): number {
+    return this.configService.get('LOGIN_LOCKOUT_SECONDS', { infer: true });
+  }
+
   public get logLevel(): EnvConfig['LOG_LEVEL'] {
     return this.configService.get('LOG_LEVEL', { infer: true });
   }

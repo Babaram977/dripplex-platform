@@ -16,6 +16,8 @@ export type OnboardingStatus = 'DRAFT' | 'SUBMITTED' | 'UNDER_REVIEW' | 'APPROVE
 
 export type PortalRegistrationType = 'customer' | 'merchant' | 'rider' | 'driver';
 
+export type PortalLoginType = 'customer' | 'merchant' | 'rider' | 'driver';
+
 export interface RegistrationVerificationInfo {
   emailOtpSent: boolean;
   phoneOtpSent: boolean;
@@ -43,6 +45,27 @@ export interface PhoneVerificationResponse {
   phone: string;
   status: UserStatus;
   phoneVerifiedAt: string;
+}
+
+export interface LoginSessionMetadata {
+  id: string;
+  portal: PortalLoginType;
+  ipAddress: string | null;
+  userAgent: string | null;
+  createdAt: string;
+  lastActiveAt: string;
+  expiresAt: string;
+}
+
+export interface AuthenticationState {
+  state: 'session_established';
+  sessionId: string;
+}
+
+export interface PortalLoginResponse {
+  user: AuthUserProfile;
+  session: LoginSessionMetadata;
+  authentication: AuthenticationState;
 }
 
 export interface AuthenticatedUser {
@@ -88,6 +111,10 @@ export const AUTH_AUDIT_ACTIONS = {
   OTP_SENT: 'auth.otp.sent',
   OTP_VERIFIED: 'auth.otp.verified',
   OTP_FAILED: 'auth.otp.failed',
+  LOGIN_STARTED: 'auth.login.started',
+  LOGIN_SUCCESS: 'auth.login.success',
+  LOGIN_FAILED: 'auth.login.failed',
+  SESSION_CREATED: 'auth.session.created',
 } as const;
 
 export type AuthAuditAction = (typeof AUTH_AUDIT_ACTIONS)[keyof typeof AUTH_AUDIT_ACTIONS];

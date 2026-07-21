@@ -44,12 +44,24 @@ export const verifyPhoneSchema = z.object({
   otp: z.string().regex(/^\d{4,8}$/, 'Enter the numeric code from your message'),
 });
 
+export const portalLoginSchema = z
+  .object({
+    email: z.string().trim().email('Enter a valid email address').optional(),
+    phone: phoneSchema.optional(),
+    password: passwordSchema,
+  })
+  .refine((values) => (values.email?.length ?? 0) > 0 || (values.phone?.length ?? 0) > 0, {
+    message: 'Either email or phone is required',
+    path: ['email'],
+  });
+
 export type CustomerRegistrationValues = z.infer<typeof customerRegistrationSchema>;
 export type MerchantRegistrationValues = z.infer<typeof merchantRegistrationSchema>;
 export type RiderRegistrationValues = z.infer<typeof riderRegistrationSchema>;
 export type DriverRegistrationValues = z.infer<typeof driverRegistrationSchema>;
 export type VerifyEmailValues = z.infer<typeof verifyEmailSchema>;
 export type VerifyPhoneValues = z.infer<typeof verifyPhoneSchema>;
+export type PortalLoginValues = z.infer<typeof portalLoginSchema>;
 
 export const loginSchema = z.object({
   email: z.string().trim().email('Enter a valid email address'),

@@ -52,7 +52,17 @@ docker compose up -d postgres
 | `AuditLog`                                                             | `PasswordResetToken`      |
 | `OnboardingStatus` enum                                                | Full onboarding workflows |
 | `merchant_onboarding`, `rider_onboarding`, `driver_onboarding` (DRAFT) | Session token rotation    |
-| Registration + verification API (no JWT on register/verify)            | Login hardening           |
+| Registration + verification API (no JWT on register/verify)            | Refresh token rotation    |
+
+## S1-C3 scope
+
+| In scope (S1-C3)                                | Deferred (S1-C4+)           |
+| ----------------------------------------------- | --------------------------- |
+| Portal login endpoints (`/auth/login/{portal}`) | Refresh token rotation      |
+| `AuthSession` rows with null `refreshTokenHash` | Logout / session revocation |
+| Login brute-force tracking (Redis)              | JWT issuance on login       |
+| `users.last_active_at`, session `portal` column | Device management           |
+| Audit login/session events                      | Password reset              |
 
 ## Seed policy
 

@@ -9,6 +9,8 @@ import type {
   LoginFormValues,
   MerchantRegistrationValues,
   PhoneVerificationResponse,
+  PortalLoginResponse,
+  PortalLoginValues,
   RegisterFormValues,
   RegistrationResponse,
   RiderRegistrationValues,
@@ -78,6 +80,38 @@ export class AuthApi {
 
   public login(body: LoginFormValues): Promise<AuthSessionPayload> {
     return this.http.request<AuthSessionPayload>('/auth/login', {
+      method: 'POST',
+      body,
+      auth: false,
+    });
+  }
+
+  public loginCustomer(body: PortalLoginValues): Promise<PortalLoginResponse> {
+    return this.http.request<PortalLoginResponse>('/auth/login/customer', {
+      method: 'POST',
+      body,
+      auth: false,
+    });
+  }
+
+  public loginMerchant(body: PortalLoginValues): Promise<PortalLoginResponse> {
+    return this.http.request<PortalLoginResponse>('/auth/login/merchant', {
+      method: 'POST',
+      body,
+      auth: false,
+    });
+  }
+
+  public loginRider(body: PortalLoginValues): Promise<PortalLoginResponse> {
+    return this.http.request<PortalLoginResponse>('/auth/login/rider', {
+      method: 'POST',
+      body,
+      auth: false,
+    });
+  }
+
+  public loginDriver(body: PortalLoginValues): Promise<PortalLoginResponse> {
+    return this.http.request<PortalLoginResponse>('/auth/login/driver', {
       method: 'POST',
       body,
       auth: false,

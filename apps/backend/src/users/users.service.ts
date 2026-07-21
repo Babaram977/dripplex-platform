@@ -42,6 +42,10 @@ export class UsersService {
     return this.usersRepository.markLogin(id);
   }
 
+  public recordLoginActivity(id: string): Promise<User> {
+    return this.usersRepository.recordLoginActivity(id);
+  }
+
   public markEmailVerified(id: string): Promise<User> {
     return this.usersRepository.markEmailVerified(id);
   }

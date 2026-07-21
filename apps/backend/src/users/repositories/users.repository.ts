@@ -30,6 +30,7 @@ export interface UsersRepository {
   findByPhone(phone: string): Promise<User | null>;
   findByIdWithRbac(id: string): Promise<UserWithRbac | null>;
   markLogin(id: string): Promise<User>;
+  recordLoginActivity(id: string): Promise<User>;
   markEmailVerified(id: string): Promise<User>;
   markPhoneVerified(id: string): Promise<User>;
   activateIfVerificationsComplete(id: string, requiresPhoneVerification: boolean): Promise<User>;
