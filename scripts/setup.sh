@@ -35,8 +35,13 @@ fi
 
 pnpm install
 
+echo "==> Validating environment template"
+pnpm validate:env
+
 echo "==> Verifying workspace packages"
 pnpm list -r --depth -1
 
 echo "==> Setup complete"
-echo "    Next: await Commit 2 (backend) approval before implementing NestJS modules."
+echo "    Local API: pnpm --filter @dripplex/backend dev"
+echo "    Customer web: pnpm --filter @dripplex/customer-web dev"
+echo "    Full stack: docker compose up --build"
