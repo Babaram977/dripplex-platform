@@ -31,6 +31,6 @@ import { StubDeliveryZoneService } from './zones/stub-delivery-zone.service';
       useClass: NotConfiguredReverseGeocoder,
     },
   ],
-  exports: [AddressService, DELIVERY_ZONE_SERVICE, REVERSE_GEOCODER],
+  exports: [AddressService, ADDRESS_REPOSITORY, DELIVERY_ZONE_SERVICE, REVERSE_GEOCODER],
 })
 export class AddressesModule {}

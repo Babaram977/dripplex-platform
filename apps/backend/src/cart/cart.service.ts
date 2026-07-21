@@ -47,7 +47,7 @@ export class CartService {
   ) {}
 
   public async getActiveCart(customerId: string): Promise<CartDto | null> {
-    const cart = await this.cartRepository.findActiveByCustomerId(customerId);
+    const cart = await this.cartRepository.findOpenByCustomerId(customerId);
     return cart ? toCartDto(cart) : null;
   }
 
@@ -56,6 +56,7 @@ export class CartService {
     dto: CreateCartItemDto,
     context: AuditContext,
   ): Promise<CartDto> {
+    await this.assertCartMutable(customerId);
     await this.validateMerchant(dto.merchantId);
 
     const availability = await this.inventoryValidator.validateAvailability({
@@ -221,6 +222,7 @@ export class CartService {
   }
 
   public async clearCart(customerId: string, context: AuditContext): Promise<CartSummaryDto> {
+    await this.assertCartMutable(customerId);
     const cart = await this.cartRepository.findActiveByCustomerId(customerId);
     if (!cart) {
       return { cleared: true, cartId: null };
@@ -358,11 +360,19 @@ export class CartService {
   }
 
   private async requireActiveCart(customerId: string): Promise<CartWithItems> {
+    await this.assertCartMutable(customerId);
     const cart = await this.cartRepository.findActiveByCustomerId(customerId);
     if (!cart) {
       throw new NotFoundDomainException('Active cart not found');
     }
     return cart;
+  }
+
+  private async assertCartMutable(customerId: string): Promise<void> {
+    const locked = await this.cartRepository.findLockedByCustomerId(customerId);
+    if (locked) {
+      throw new ValidationDomainException('Cart is locked pending payment and cannot be modified');
+    }
   }
 
   private async requireOwnedItem(cart: CartWithItems, itemId: string): Promise<CartItem> {

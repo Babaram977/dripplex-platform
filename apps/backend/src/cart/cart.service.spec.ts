@@ -68,6 +68,8 @@ const addDto = {
 describe('CartService', () => {
   const repository: jest.Mocked<CartRepository> = {
     findActiveByCustomerId: jest.fn(),
+    findLockedByCustomerId: jest.fn(),
+    findOpenByCustomerId: jest.fn(),
     findById: jest.fn(),
     findByIdForCustomer: jest.fn(),
     createCart: jest.fn(),
@@ -126,6 +128,8 @@ describe('CartService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    repository.findLockedByCustomerId.mockResolvedValue(null);
+    repository.findOpenByCustomerId.mockResolvedValue(null);
     (prisma.merchantProfile.findFirst as jest.Mock).mockResolvedValue({
       userId: merchantId,
       status: MerchantStatus.APPROVED,
@@ -295,6 +299,16 @@ describe('CartService', () => {
         CART_AUDIT_ACTIONS.RECALCULATED,
         expect.any(Object),
         expect.any(Object),
+      );
+    });
+
+    it('rejects mutations when cart is locked', async () => {
+      repository.findLockedByCustomerId.mockResolvedValue({
+        ...sampleCart,
+        status: CartStatus.LOCKED,
+      });
+      await expect(service.addItem(customerId, addDto, context)).rejects.toBeInstanceOf(
+        ValidationDomainException,
       );
     });
 

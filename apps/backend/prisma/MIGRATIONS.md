@@ -435,3 +435,47 @@ pnpm --filter @dripplex/backend prisma:seed
 | DELETE | `/customer/cart`             | `customer:cart:manage` |
 | POST   | `/customer/cart/recalculate` | `customer:cart:manage` |
 | GET    | `/admin/carts/:id`           | `admin:cart:read`      |
+
+---
+
+# S1-C11 — Checkout & orders
+
+Migration: `20260721180000_s1_c11_checkout_orders`
+
+## Summary
+
+| Change type | Detail                                                      |
+| ----------- | ----------------------------------------------------------- |
+| Enum        | `CartStatus` += `LOCKED`                                    |
+| Enum        | `OrderStatus`, `PaymentStatus`, `FulfillmentType`           |
+| Table       | `orders`                                                    |
+| Table       | `order_items` (price/name/sku/image snapshots)              |
+| Table       | `inventory_reservations` (30-minute TTL)                    |
+| Seed        | `customer:checkout`, `customer:orders`, `admin:orders:read` |
+
+## Apply
+
+```bash
+pnpm --filter @dripplex/backend prisma:migrate:deploy
+pnpm --filter @dripplex/backend prisma:seed
+```
+
+## Checkout lifecycle
+
+1. `POST /customer/checkout` validates cart, merchant (approved), customer (verified), inventory, and address.
+2. Order is created as `PENDING_PAYMENT` / payment `PENDING` with line-item snapshots.
+3. Inventory reservations are created (no stock deduction yet) and expire after 30 minutes.
+4. Cart status becomes `LOCKED` (mutations rejected until cancel or expiry).
+5. Background cleanup (every 5 minutes) releases expired reservations, unlocks carts, and marks unpaid orders `FAILED`.
+6. Customer cancel is allowed only while `PENDING_PAYMENT`.
+
+## API surface (S1-C11)
+
+| Method | Path                          | Permission          |
+| ------ | ----------------------------- | ------------------- |
+| POST   | `/customer/checkout`          | `customer:checkout` |
+| GET    | `/customer/orders`            | `customer:orders`   |
+| GET    | `/customer/orders/:id`        | `customer:orders`   |
+| POST   | `/customer/orders/:id/cancel` | `customer:orders`   |
+| GET    | `/admin/orders`               | `admin:orders:read` |
+| GET    | `/admin/orders/:id`           | `admin:orders:read` |

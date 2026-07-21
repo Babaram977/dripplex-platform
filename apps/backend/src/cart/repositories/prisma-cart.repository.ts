@@ -24,6 +24,24 @@ export class PrismaCartRepository implements CartRepository {
     });
   }
 
+  public async findLockedByCustomerId(customerId: string): Promise<CartWithItems | null> {
+    return await this.prisma.cart.findFirst({
+      where: { customerId, status: CartStatus.LOCKED },
+      include: { items: { orderBy: { createdAt: 'asc' } } },
+    });
+  }
+
+  public async findOpenByCustomerId(customerId: string): Promise<CartWithItems | null> {
+    return await this.prisma.cart.findFirst({
+      where: {
+        customerId,
+        status: { in: [CartStatus.ACTIVE, CartStatus.LOCKED] },
+      },
+      include: { items: { orderBy: { createdAt: 'asc' } } },
+      orderBy: { updatedAt: 'desc' },
+    });
+  }
+
   public async findById(id: string): Promise<CartWithItems | null> {
     return await this.prisma.cart.findUnique({
       where: { id },

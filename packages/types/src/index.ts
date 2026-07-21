@@ -87,6 +87,23 @@ export type {
 
 export { CART_AUDIT_ACTIONS } from './cart/index.js';
 
+export type {
+  AdminListOrdersQuery,
+  CancelOrderDto,
+  CheckoutDto,
+  CheckoutResponseDto,
+  FulfillmentType,
+  InventoryReservationDto,
+  ListOrdersQuery,
+  OrderAuditAction,
+  OrderDto,
+  OrderItemDto,
+  OrderStatus,
+  PaymentStatus,
+} from './order/index.js';
+
+export { ORDER_AUDIT_ACTIONS } from './order/index.js';
+
 export {
   changePasswordSchema,
   contactSchema,
