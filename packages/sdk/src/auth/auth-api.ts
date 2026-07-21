@@ -10,6 +10,7 @@ import type {
   EmailVerificationResponse,
   ForgotPasswordFormValues,
   ForgotPasswordResponse,
+  ListSessionsResponse,
   LoginFormValues,
   MerchantRegistrationValues,
   PhoneVerificationResponse,
@@ -238,6 +239,27 @@ export class AuthApi {
       method: 'POST',
       body,
       auth: false,
+    });
+  }
+
+  public listSessions(): Promise<ListSessionsResponse> {
+    return this.http.request<ListSessionsResponse>('/auth/sessions', {
+      method: 'GET',
+      auth: true,
+    });
+  }
+
+  public revokeSession(sessionId: string): Promise<undefined> {
+    return this.http.request<undefined>(`/auth/sessions/${sessionId}`, {
+      method: 'DELETE',
+      auth: true,
+    });
+  }
+
+  public revokeAllOtherSessions(): Promise<{ revokedCount: number }> {
+    return this.http.request<{ revokedCount: number }>('/auth/sessions', {
+      method: 'DELETE',
+      auth: true,
     });
   }
 

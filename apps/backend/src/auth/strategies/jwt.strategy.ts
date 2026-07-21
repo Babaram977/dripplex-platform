@@ -10,6 +10,7 @@ import {
   AUTH_SESSION_REPOSITORY,
   type AuthSessionRepository,
 } from '../repositories/auth-session.repository';
+import { SessionActivityService } from '../services/session-activity.service';
 import { portalToRegistrationChannel } from '../utils/portal.util';
 
 import type { AuthenticatedUser, JwtPayload } from '../auth.types';
@@ -21,6 +22,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     private readonly usersService: UsersService,
     @Inject(AUTH_SESSION_REPOSITORY)
     private readonly authSessionRepository: AuthSessionRepository,
+    private readonly sessionActivityService: SessionActivityService,
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -76,7 +78,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       ),
     ];
 
-    await this.authSessionRepository.updateLastActiveAt(payload.sid);
+    await this.sessionActivityService.touch(payload.sid, payload.sub);
 
     return {
       id: payload.sub,

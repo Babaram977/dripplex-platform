@@ -264,3 +264,30 @@ Migration: `20260721140000_s1_c6_identity_verification`
 - [ ] Phone verify enforces attempt limits and lockout
 - [ ] Phone resend invalidates previous OTP
 - [ ] Audit events: `auth.email.*`, `auth.phone.*`, `auth.verification.expired`
+
+---
+
+# Migration notes — S1-C7 device management & session dashboard
+
+No new database migration — uses existing `auth_sessions` columns (`ip_address`, `user_agent`, `last_active_at`, `revoked_at`, `refresh_token_hash`).
+
+## Summary
+
+| Change type | Detail                                                                    |
+| ----------- | ------------------------------------------------------------------------- |
+| API         | `GET /auth/sessions` — list active sessions with device metadata          |
+| API         | `DELETE /auth/sessions/:sessionId` — revoke one (`204`)                   |
+| API         | `DELETE /auth/sessions` — revoke all except current                       |
+| Service     | `DeviceInfoService` — local User-Agent parsing                            |
+| Service     | `SessionActivityService` — Redis-throttled `lastActiveAt` updates         |
+| Audit       | `auth.session.list`, `auth.sessions.revoked_all`, `auth.session.activity` |
+| Config      | `SESSION_ACTIVITY_THROTTLE_SECONDS` (default 60)                          |
+
+## Verification checklist (S1-C7)
+
+- [ ] Session list returns newest first with `current` flag
+- [ ] Single revoke requires ownership; rejects already-revoked
+- [ ] Revoke-all preserves current session / access token
+- [ ] Logout revokes current session and clears refresh hash
+- [ ] JWT guard rejects revoked/expired sessions and inactive users
+- [ ] `lastActiveAt` updates at most once per 60s per session

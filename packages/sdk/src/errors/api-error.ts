@@ -23,6 +23,10 @@ export class DripplexApiError extends Error {
 }
 
 export async function parseApiResponse<T>(response: Response): Promise<T> {
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
   const payload = (await response.json()) as ApiResponse<T>;
 
   if (!payload.success) {

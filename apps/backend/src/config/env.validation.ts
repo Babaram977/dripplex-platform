@@ -40,6 +40,7 @@ export const envSchema = z.object({
   IDENTITY_VERIFICATION_MAX_ATTEMPTS: z.coerce.number().int().positive().default(10),
   IDENTITY_VERIFICATION_LOCKOUT_SECONDS: z.coerce.number().int().positive().default(1800),
   IDENTITY_VERIFICATION_RESEND_COOLDOWN_SECONDS: z.coerce.number().int().positive().default(60),
+  SESSION_ACTIVITY_THROTTLE_SECONDS: z.coerce.number().int().positive().default(60),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 });
 
