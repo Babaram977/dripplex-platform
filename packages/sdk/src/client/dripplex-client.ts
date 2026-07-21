@@ -9,6 +9,19 @@ import { RiderDeliveryClient } from '../delivery/rider-delivery-client.js';
 import { AdminMerchantsApi, MerchantApi } from '../merchant/merchant-api.js';
 import { OrderClient } from '../order/order-client.js';
 import { PaymentClient } from '../payment/payment-client.js';
+import {
+  AdminCmsClient,
+  AdminFraudClient,
+  AnalyticsClient,
+  CmsClient,
+  LoyaltyClient,
+  NotificationsClient,
+  PromotionsClient,
+  ReviewsClient,
+  SearchClient,
+  WalletClient,
+  WishlistClient,
+} from '../platform/platform-client.js';
 
 import type { SdkConfig } from '../config/sdk-config.js';
 
@@ -23,6 +36,17 @@ export class DripplexClient {
   public readonly delivery: DeliveryClient;
   public readonly riderDelivery: RiderDeliveryClient;
   public readonly adminDelivery: AdminDeliveryClient;
+  public readonly notifications: NotificationsClient;
+  public readonly search: SearchClient;
+  public readonly reviews: ReviewsClient;
+  public readonly wishlist: WishlistClient;
+  public readonly promotions: PromotionsClient;
+  public readonly loyalty: LoyaltyClient;
+  public readonly wallet: WalletClient;
+  public readonly analytics: AnalyticsClient;
+  public readonly cms: CmsClient;
+  public readonly adminCms: AdminCmsClient;
+  public readonly adminFraud: AdminFraudClient;
   private readonly http: HttpClient;
 
   public constructor(config: Partial<SdkConfig> = {}) {
@@ -38,6 +62,17 @@ export class DripplexClient {
     this.delivery = new DeliveryClient(this.http);
     this.riderDelivery = new RiderDeliveryClient(this.http);
     this.adminDelivery = new AdminDeliveryClient(this.http);
+    this.notifications = new NotificationsClient(this.http);
+    this.search = new SearchClient(this.http);
+    this.reviews = new ReviewsClient(this.http);
+    this.wishlist = new WishlistClient(this.http);
+    this.promotions = new PromotionsClient(this.http);
+    this.loyalty = new LoyaltyClient(this.http);
+    this.wallet = new WalletClient(this.http);
+    this.analytics = new AnalyticsClient(this.http);
+    this.cms = new CmsClient(this.http);
+    this.adminCms = new AdminCmsClient(this.http);
+    this.adminFraud = new AdminFraudClient(this.http);
   }
 }
 
@@ -52,3 +87,16 @@ export { DeliveryClient } from '../delivery/delivery-client.js';
 export { RiderDeliveryClient } from '../delivery/rider-delivery-client.js';
 export { OrderClient } from '../order/order-client.js';
 export { PaymentClient } from '../payment/payment-client.js';
+export {
+  AdminCmsClient,
+  AdminFraudClient,
+  AnalyticsClient,
+  CmsClient,
+  LoyaltyClient,
+  NotificationsClient,
+  PromotionsClient,
+  ReviewsClient,
+  SearchClient,
+  WalletClient,
+  WishlistClient,
+} from '../platform/platform-client.js';

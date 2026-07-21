@@ -331,3 +331,36 @@ DeliveryJob 1───* DeliveryTracking
 DeliveryJob 1───* DeliveryProof
 User 1───0..1 RiderAvailability
 ```
+
+## S1-C14-C23 platform supporting systems
+
+The platform migration adds operational tables for notifications, search, reviews, wishlist, promotions, loyalty, wallet, analytics, CMS, and fraud.
+
+### CMS
+
+`CmsContent` stores homepage banners, categories, landing pages, FAQs, static pages, announcements, promo banners, and marketing blocks. Content moves through `DRAFT` -> `SCHEDULED` -> `PUBLISHED` -> `ARCHIVED`; soft deletion uses `deleted_at`. `CmsContentVersion` snapshots content title/body/version on create, update, schedule, and publish.
+
+```text
+CmsContent 1───* CmsContentVersion
+User 1───* CmsContentVersion (creator)
+```
+
+### Fraud
+
+`FraudSignal` stores computed risk signals for users/orders/payments with score, level, details, IP, device fingerprint, and review status. `FraudListEntry` stores active blacklist/whitelist matches for users, IPs, devices, and emails. `FraudThreshold` stores configurable scoring thresholds by key.
+
+```text
+User 1───* FraudSignal (subject)
+User 1───* FraudSignal (reviewer)
+```
+
+### Adjacent platform tables
+
+- Notifications: templates, user notifications, preferences, and delivery attempts.
+- Search: indexed documents, query logs, popular searches, and recent searches.
+- Reviews: reviews, helpful votes, reports, and aggregates.
+- Wishlist: customer wishlists and wishlist items.
+- Promotions: promotions and redemption ledger.
+- Loyalty: account, point ledger, achievements, and user achievements.
+- Wallet: owner wallets and immutable ledger entries.
+- Analytics: daily metric snapshots by platform, merchant, or rider scope.

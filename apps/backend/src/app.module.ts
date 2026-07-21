@@ -7,12 +7,14 @@ import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from './auth/guards/permissions.guard';
 import { CartModule } from './cart/cart.module';
+import { CmsModule } from './cms/cms.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { AppConfigService } from './config/app-config.service';
 import { AppConfigModule } from './config/config.module';
 import { DeliveryModule } from './delivery/delivery.module';
 import { EventsModule } from './events/events.module';
+import { FraudModule } from './fraud/fraud.module';
 import { HealthModule } from './health/health.module';
 import { AppLoggerModule } from './logger/logger.module';
 import { MerchantsModule } from './merchants/merchants.module';
@@ -57,6 +59,8 @@ import { WishlistModule } from './wishlist/wishlist.module';
     PromotionsModule,
     NotificationCenterModule,
     SearchModule,
+    CmsModule,
+    FraudModule,
     HealthModule,
   ],
   providers: [

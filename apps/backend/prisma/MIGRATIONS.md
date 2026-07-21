@@ -573,3 +573,69 @@ pnpm --filter @dripplex/backend prisma:seed
 | POST   | `/admin/delivery/:id/assign`    | `admin:delivery:manage`  |
 | POST   | `/admin/delivery/:id/reassign`  | `admin:delivery:manage`  |
 | POST   | `/admin/delivery/:id/cancel`    | `admin:delivery:manage`  |
+
+---
+
+# S1-C14-C23 — Platform supporting systems
+
+Migration: `20260721210000_s1_c14_c23_platform_supporting_systems`
+
+## Summary
+
+Additive platform-supporting-system migration for notifications, search, reviews, wishlist, promotions, loyalty, wallet, analytics, CMS, and fraud/risk operations.
+
+| Change type | Detail                                                                                          |
+| ----------- | ----------------------------------------------------------------------------------------------- |
+| Enums       | Notification, search, review, wishlist, promotion, loyalty, wallet, analytics, CMS, fraud enums |
+| Tables      | Notifications/preferences/attempts/templates; search docs/logs; reviews/votes/reports           |
+| Tables      | Wishlists/items; promotions/redemptions; loyalty account/ledger/achievements                    |
+| Tables      | Wallets/ledger entries; analytics daily metrics                                                 |
+| Tables      | `cms_contents`, `cms_content_versions`                                                          |
+| Tables      | `fraud_signals`, `fraud_list_entries`, `fraud_thresholds`                                       |
+| Seed        | Platform RBAC permissions for customer, merchant, rider, support, admin, and super admin roles   |
+
+## Apply
+
+```bash
+pnpm --filter @dripplex/backend prisma:migrate:deploy
+pnpm --filter @dripplex/backend prisma:seed
+```
+
+## CMS lifecycle
+
+1. Admins create CMS content as `DRAFT`.
+2. `POST /admin/cms/contents/:id/schedule` moves content to `SCHEDULED` with a future `scheduledAt`.
+3. `POST /admin/cms/contents/:id/publish` moves content to `PUBLISHED`, clears `scheduledAt`, sets `publishedAt`, and records a `CmsContentVersion` snapshot.
+4. `POST /admin/cms/contents/:id/archive` moves content to `ARCHIVED`; `DELETE` soft-deletes and archives it.
+5. Public routes expose only non-deleted `PUBLISHED` pages/banners.
+
+## Fraud lifecycle
+
+1. `FraudService.evaluateOrderRisk(input)` computes score from whitelist/blacklist, failed-payment velocity, order velocity, device fingerprint velocity, high order value, suspicious IP, and geo mismatch.
+2. Each evaluation records a `FraudSignal` for review.
+3. The event subscriber listens for `PAYMENT_FAILED`, `PAYMENT_INITIATED`, and `ORDER_CREATED`.
+4. Support reviewers clear or confirm signals; admins manage thresholds and list entries.
+
+## API surface (S1-C22/S1-C23)
+
+| Method | Path                                  | Auth / Permission        |
+| ------ | ------------------------------------- | ------------------------ |
+| GET    | `/cms/pages/:slug`                    | Public                   |
+| GET    | `/cms/banners`                        | Public                   |
+| GET    | `/admin/cms/contents`                 | `admin:cms:manage`       |
+| POST   | `/admin/cms/contents`                 | `admin:cms:manage`       |
+| PATCH  | `/admin/cms/contents/:id`             | `admin:cms:manage`       |
+| POST   | `/admin/cms/contents/:id/publish`     | `admin:cms:manage`       |
+| POST   | `/admin/cms/contents/:id/schedule`    | `admin:cms:manage`       |
+| POST   | `/admin/cms/contents/:id/archive`     | `admin:cms:manage`       |
+| DELETE | `/admin/cms/contents/:id`             | `admin:cms:manage`       |
+| GET    | `/admin/fraud/queue`                  | `support:fraud:review`   |
+| POST   | `/admin/fraud/signals/:id/review`     | `support:fraud:review`   |
+| POST   | `/admin/fraud/signals/:id/clear`      | `support:fraud:review`   |
+| POST   | `/admin/fraud/signals/:id/confirm`    | `support:fraud:review`   |
+| GET    | `/admin/fraud/thresholds`             | `admin:fraud:configure`  |
+| PATCH  | `/admin/fraud/thresholds/:key`        | `admin:fraud:configure`  |
+| GET    | `/admin/fraud/list-entries`           | `admin:fraud:manage`     |
+| POST   | `/admin/fraud/list-entries`           | `admin:fraud:manage`     |
+| PATCH  | `/admin/fraud/list-entries/:id`       | `admin:fraud:manage`     |
+| DELETE | `/admin/fraud/list-entries/:id`       | `admin:fraud:manage`     |
