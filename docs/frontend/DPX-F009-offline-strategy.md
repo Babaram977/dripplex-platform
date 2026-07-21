@@ -1,3 +1,5 @@
+> **Superseded by the FPX series.** See [`docs/FPX-001-frontend-platform-architecture.md`](../FPX-001-frontend-platform-architecture.md) and [`docs/FPX-README.md`](../FPX-README.md).
+
 # DPX-F009 — Offline Strategy
 
 | Field            | Value                     |

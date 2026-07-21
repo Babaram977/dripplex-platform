@@ -1,18 +1,20 @@
-# Frontend documentation index
+# Frontend docs (legacy DPX-F stubs)
 
-Program B architecture series. **Drafts only** — expand and approve before implementation.
+> **Superseded.** The official series is **FPX** (Frontend Platform Experience).
+>
+> Start here: [FPX-001](../FPX-001-frontend-platform-architecture.md) · [FPX index](../FPX-README.md) · [Program B](../PROGRAM-B.md)
 
-| ID       | Document                                                     |
-| -------- | ------------------------------------------------------------ |
-| DPX-F001 | [Frontend Architecture](./DPX-F001-frontend-architecture.md) |
-| DPX-F002 | [Design System](./DPX-F002-design-system.md)                 |
-| DPX-F003 | [Customer UX](./DPX-F003-customer-ux.md)                     |
-| DPX-F004 | [Merchant UX](./DPX-F004-merchant-ux.md)                     |
-| DPX-F005 | [Admin UX](./DPX-F005-admin-ux.md)                           |
-| DPX-F006 | [Routing](./DPX-F006-routing.md)                             |
-| DPX-F007 | [State Management](./DPX-F007-state-management.md)           |
-| DPX-F008 | [API Integration](./DPX-F008-api-integration.md)             |
-| DPX-F009 | [Offline Strategy](./DPX-F009-offline-strategy.md)           |
-| DPX-F010 | [Accessibility](./DPX-F010-accessibility.md)                 |
+The files below were early drafts during the Backend Core → Program B transition. Do not use them as implementation contracts.
 
-See also: [Program B roadmap](../PROGRAM-B.md) · Backend Core [release notes](../RELEASE-v1.0.0-backend-core.md)
+| Legacy   | Replaced by                        |
+| -------- | ---------------------------------- |
+| DPX-F001 | FPX-001                            |
+| DPX-F002 | FPX-002                            |
+| DPX-F003 | FPX-003                            |
+| DPX-F004 | FPX-004                            |
+| DPX-F005 | FPX-005 (+ FPX-006 for Operations) |
+| DPX-F006 | FPX-009                            |
+| DPX-F007 | FPX-008                            |
+| DPX-F008 | FPX-007                            |
+| DPX-F009 | FPX-007 / FPX-010                  |
+| DPX-F010 | FPX-010                            |

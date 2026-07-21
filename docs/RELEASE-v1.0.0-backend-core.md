@@ -84,13 +84,13 @@ Allowed: documentation, ops, non-core bugfixes, frontend/mobile/infra programs.
 
 ## Programs going forward
 
-| Program | Focus                                                      |
-| ------- | ---------------------------------------------------------- |
-| **A**   | Backend Core — **completed** (this tag)                    |
-| **B**   | Frontend Platform (Customer Web, Merchant, Admin)          |
-| **C**   | Mobile Apps (Customer, Rider, Driver)                      |
-| **D**   | Production Infrastructure (Docker, K8s, CI/CD, monitoring) |
-| **E**   | AI & Automation                                            |
+| Program | Focus                                                                                       |
+| ------- | ------------------------------------------------------------------------------------------- |
+| **A**   | Backend Core — **completed** (this tag)                                                     |
+| **B**   | Frontend Platform — **FPX** series ([FPX-001](./FPX-001-frontend-platform-architecture.md)) |
+| **C**   | Mobile Apps (Customer, Rider, Driver)                                                       |
+| **D**   | Production Infrastructure (Docker, K8s, CI/CD, monitoring)                                  |
+| **E**   | AI & Automation                                                                             |
 
 ## Apply migrations
 

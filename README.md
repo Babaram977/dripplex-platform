@@ -86,9 +86,13 @@ pnpm --filter @dripplex/backend dev
 
 See [docs/architecture/overview.md](docs/architecture/overview.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
-### Sprint 1 progress
+### Backend Core (`v1.0.0-backend-core`)
 
-Auth foundation through S1-C7 is on `main`. Sprint 1 now includes merchant onboarding, customer addresses, cart, checkout/orders, payments, delivery, and platform-supporting systems (notifications, search, reviews, wishlist, promotions, loyalty, wallet, analytics, CMS, and fraud) — see `apps/backend/prisma/MIGRATIONS.md` and `apps/backend/README.md`.
+Marketplace backend is feature-complete for Program A (identity through fulfillment + platform supporting systems). See [docs/RELEASE-v1.0.0-backend-core.md](docs/RELEASE-v1.0.0-backend-core.md). Auth, checkout, payments, and delivery are **feature-frozen** except bugfixes.
+
+### Program B — Frontend (FPX)
+
+Frontend work is governed by the **FPX** series. Start with [FPX-001](docs/FPX-001-frontend-platform-architecture.md). Do not implement product UI until FPX-001→010 are approved and Figma screens are locked. Roadmap: [docs/PROGRAM-B.md](docs/PROGRAM-B.md).
 
 ## Security
 

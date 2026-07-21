@@ -1,105 +1,89 @@
 # Program B — Frontend Platform
 
-| Field            | Value                                          |
-| ---------------- | ---------------------------------------------- |
-| **Program**      | B — Frontend Platform                          |
-| **Baseline**     | Backend Core `v1.0.0-backend-core`             |
-| **Status**       | Planning — documentation before implementation |
-| **Last updated** | 2026-07-21                                     |
+| Field              | Value                                                                                 |
+| ------------------ | ------------------------------------------------------------------------------------- |
+| **Program**        | B — Frontend Platform                                                                 |
+| **Baseline**       | Backend Core `v1.0.0-backend-core` + `v1.0.1-frontend-baseline`                       |
+| **Status**         | Documentation first — **FPX series**                                                  |
+| **Governing docs** | [FPX-001](./FPX-001-frontend-platform-architecture.md) · [FPX index](./FPX-README.md) |
+| **Last updated**   | 2026-07-21                                                                            |
 
 ---
 
 ## Principle
 
-Do **not** start product UI implementation until:
+Think like a **product company**, not a backend sprint team.
 
-1. Frontend lint/type baseline is clean (**TD-001**)
-2. DPX-F001…F010 architecture series is drafted and reviewed
-3. Design system tokens/primitives are defined (DPX-F002)
-4. High-fidelity Figma exists for Customer, Merchant, Admin, and Operations
+Do **not** write frontend product code until:
 
-Backend Core is **feature-frozen** (auth, checkout, payments, delivery — bugfixes only).
+1. **FPX-001 → FPX-010** are reviewed and approved
+2. **FPX-002** design system is implemented in `@dripplex/ui` + Storybook
+3. High-fidelity **Figma** is locked for the screens being built
+
+Backend Core remains **feature-frozen** (auth, checkout, payments, delivery — bugfixes only).
 
 ---
 
 ## Technical debt
 
-| ID         | Title                                                      | Status                                                       |
-| ---------- | ---------------------------------------------------------- | ------------------------------------------------------------ |
-| **TD-001** | Monorepo customer-web `confirmPassword` lint/type failures | Fixed in this baseline PR; tagged `v1.0.1-frontend-baseline` |
-
-Additional frontend debt discovered during B0 should be logged here before feature work.
+| ID         | Title                                                      | Status                                |
+| ---------- | ---------------------------------------------------------- | ------------------------------------- |
+| **TD-001** | Monorepo customer-web `confirmPassword` lint/type failures | Resolved · `v1.0.1-frontend-baseline` |
 
 ---
 
-## Phases
+## FPX documentation series (Phase B0)
 
-### B0 — Frontend Foundation
-
-Next.js App Router, shared design system, theme, auth + SDK integration, responsive layout, Storybook, a11y, i18n.
-
-### B1 — Customer Experience
-
-Landing, registration/login, home, search, product/merchant/category pages, cart, checkout, orders, tracking, wallet, loyalty, notifications, profile.
-
-### B2 — Merchant Portal
-
-Store operations (catalog, orders, promotions, analytics, review replies, KYC/business surfaces).
-
-### B3 — Admin Portal
-
-Platform administration.
-
-### B4 — Operations Portal
-
-Support, fraud queue, CMS, reports.
-
-### B5 — Realtime
-
-Push/in-app notifications UX, live tracking, WebSockets, presence.
+| ID                                                     | Title                          |
+| ------------------------------------------------------ | ------------------------------ |
+| [FPX-001](./FPX-001-frontend-platform-architecture.md) | Frontend Vision & Architecture |
+| FPX-002                                                | Design System                  |
+| FPX-003                                                | Customer Experience            |
+| FPX-004                                                | Merchant Portal                |
+| FPX-005                                                | Admin Platform                 |
+| FPX-006                                                | Operations Portal              |
+| FPX-007                                                | API Integration                |
+| FPX-008                                                | State Management               |
+| FPX-009                                                | Routing                        |
+| FPX-010                                                | Responsive Standards           |
 
 ---
 
-## Documentation series (required before coding)
+## Implementation phases (after FPX approval)
 
-| Doc                                                      | Title                 |
-| -------------------------------------------------------- | --------------------- |
-| [DPX-F001](./frontend/DPX-F001-frontend-architecture.md) | Frontend Architecture |
-| [DPX-F002](./frontend/DPX-F002-design-system.md)         | Design System         |
-| [DPX-F003](./frontend/DPX-F003-customer-ux.md)           | Customer UX           |
-| [DPX-F004](./frontend/DPX-F004-merchant-ux.md)           | Merchant UX           |
-| [DPX-F005](./frontend/DPX-F005-admin-ux.md)              | Admin UX              |
-| [DPX-F006](./frontend/DPX-F006-routing.md)               | Routing               |
-| [DPX-F007](./frontend/DPX-F007-state-management.md)      | State Management      |
-| [DPX-F008](./frontend/DPX-F008-api-integration.md)       | API Integration       |
-| [DPX-F009](./frontend/DPX-F009-offline-strategy.md)      | Offline Strategy      |
-| [DPX-F010](./frontend/DPX-F010-accessibility.md)         | Accessibility         |
+| Phase  | Focus                                                                      |
+| ------ | -------------------------------------------------------------------------- |
+| **B0** | FPX documentation lock                                                     |
+| **B1** | Design system only (tokens, primitives, Storybook) — **not** product pages |
+| **B2** | Customer Web                                                               |
+| **B3** | Merchant Portal                                                            |
+| **B4** | Admin Platform                                                             |
+| **B5** | Operations Platform                                                        |
 
-These are the frontend equivalent of the backend DPX series. Treat them as **implementation contracts**, not essays.
+Realtime (live tracking, sockets) follows readiness — see FPX-001 §13.
 
 ---
 
-## Recommended sequence
+## Figma gate
 
-```
-TD-001 baseline clean
-        ↓
-DPX-F001 … F010 review & approval
-        ↓
-Design system (tokens + primitives) + Storybook
-        ↓
-Figma: Customer / Merchant / Admin / Operations
-        ↓
-B0 foundation implementation
-        ↓
-B1 → B5 product surfaces
-```
+For every major screen:
+
+1. Design in Figma
+2. Review and approve
+3. Lock the design
+4. Implement against `@dripplex/ui`
 
 ---
 
-## Out of scope for Program B kickoff
+## Recommended next deliverable
 
-- New backend marketplace features (S1-C24+)
-- Mobile native apps (Program C)
-- Production K8s/monitoring (Program D)
-- AI/automation (Program E)
+**Approve FPX-001**, then author **FPX-002 — Design System**.
+
+---
+
+## Out of scope
+
+- S1-C24+ backend features
+- Native mobile (Program C)
+- Production infra (Program D)
+- AI automation (Program E)
