@@ -46,6 +46,17 @@ export class UsersService {
     return this.usersRepository.markEmailVerified(id);
   }
 
+  public markPhoneVerified(id: string): Promise<User> {
+    return this.usersRepository.markPhoneVerified(id);
+  }
+
+  public activateIfVerificationsComplete(
+    id: string,
+    requiresPhoneVerification: boolean,
+  ): Promise<User> {
+    return this.usersRepository.activateIfVerificationsComplete(id, requiresPhoneVerification);
+  }
+
   public async getByIdOrThrow(id: string): Promise<User> {
     const user = await this.usersRepository.findById(id);
     if (!user) {

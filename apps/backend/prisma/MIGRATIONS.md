@@ -63,3 +63,39 @@ Do **not** drop enums or columns in production without a follow-up migration. If
 - [ ] `prisma db seed` completes twice without duplicate grants
 - [ ] Existing `users` rows retain data; `registration_channel` backfilled
 - [ ] `pnpm --filter @dripplex/backend test` passes
+
+---
+
+# Migration notes — S1-C2 registration & verification
+
+Migration: `20260721110000_s1_c2_registration_verification`
+
+## Summary
+
+Additive migration on top of S1-C1.
+
+| Change type | Detail                                                                            |
+| ----------- | --------------------------------------------------------------------------------- |
+| Enum        | `OnboardingStatus` (`DRAFT`, `SUBMITTED`, `UNDER_REVIEW`, `APPROVED`, `REJECTED`) |
+| Table       | `audit_logs`                                                                      |
+| Table       | `merchant_onboarding`, `rider_onboarding`, `driver_onboarding`                    |
+| Index       | Audit log query indexes; onboarding status indexes                                |
+
+## API surface (S1-C2)
+
+| Method | Path                      | Description                           |
+| ------ | ------------------------- | ------------------------------------- |
+| POST   | `/auth/register/customer` | Customer self-registration            |
+| POST   | `/auth/register/merchant` | Merchant self-registration            |
+| POST   | `/auth/register/rider`    | Rider self-registration (phone req.)  |
+| POST   | `/auth/register/driver`   | Driver self-registration (phone req.) |
+| POST   | `/auth/verify/email`      | Email OTP verification (no JWT)       |
+| POST   | `/auth/verify/phone`      | Phone OTP verification (no JWT)       |
+
+## Verification checklist (S1-C2)
+
+- [ ] Portal registration creates profile + onboarding `DRAFT` where applicable
+- [ ] Registration returns verification info without tokens
+- [ ] Email/phone verification updates `emailVerifiedAt` / `phoneVerifiedAt`
+- [ ] `User.status` transitions to `ACTIVE` when required verifications complete
+- [ ] Audit events written for registration and OTP lifecycle

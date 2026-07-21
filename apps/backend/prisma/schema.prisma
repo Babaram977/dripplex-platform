@@ -25,6 +25,14 @@ enum RegistrationChannel {
   SEED
 }
 
+enum OnboardingStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+}
+
 model User {
   id                  String               @id @default(uuid()) @db.Uuid
   email               String               @unique @db.Citext
@@ -46,6 +54,7 @@ model User {
   merchantProfile     MerchantProfile?
   riderProfile        RiderProfile?
   driverProfile       DriverProfile?
+  auditLogs           AuditLog[]
   createdAt           DateTime             @default(now()) @map("created_at")
   updatedAt           DateTime             @updatedAt @map("updated_at")
   deletedAt           DateTime?            @map("deleted_at")
@@ -149,14 +158,15 @@ model CustomerProfile {
 }
 
 model MerchantProfile {
-  id          String    @id @default(uuid()) @db.Uuid
-  userId      String    @unique @map("user_id") @db.Uuid
-  isApproved  Boolean   @default(false) @map("is_approved")
-  approvedAt  DateTime? @map("approved_at")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
-  deletedAt   DateTime? @map("deleted_at")
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id          String              @id @default(uuid()) @db.Uuid
+  userId      String              @unique @map("user_id") @db.Uuid
+  isApproved  Boolean             @default(false) @map("is_approved")
+  approvedAt  DateTime?           @map("approved_at")
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+  deletedAt   DateTime?           @map("deleted_at")
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  onboarding  MerchantOnboarding?
 
   @@index([isApproved])
   @@index([deletedAt])
@@ -164,14 +174,15 @@ model MerchantProfile {
 }
 
 model RiderProfile {
-  id         String    @id @default(uuid()) @db.Uuid
-  userId     String    @unique @map("user_id") @db.Uuid
-  isApproved Boolean   @default(false) @map("is_approved")
-  approvedAt DateTime? @map("approved_at")
-  createdAt  DateTime  @default(now()) @map("created_at")
-  updatedAt  DateTime  @updatedAt @map("updated_at")
-  deletedAt  DateTime? @map("deleted_at")
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         String           @id @default(uuid()) @db.Uuid
+  userId     String           @unique @map("user_id") @db.Uuid
+  isApproved Boolean          @default(false) @map("is_approved")
+  approvedAt DateTime?        @map("approved_at")
+  createdAt  DateTime         @default(now()) @map("created_at")
+  updatedAt  DateTime         @updatedAt @map("updated_at")
+  deletedAt  DateTime?        @map("deleted_at")
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  onboarding RiderOnboarding?
 
   @@index([isApproved])
   @@index([deletedAt])
@@ -179,16 +190,70 @@ model RiderProfile {
 }
 
 model DriverProfile {
-  id         String    @id @default(uuid()) @db.Uuid
-  userId     String    @unique @map("user_id") @db.Uuid
-  isApproved Boolean   @default(false) @map("is_approved")
-  approvedAt DateTime? @map("approved_at")
-  createdAt  DateTime  @default(now()) @map("created_at")
-  updatedAt  DateTime  @updatedAt @map("updated_at")
-  deletedAt  DateTime? @map("deleted_at")
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         String            @id @default(uuid()) @db.Uuid
+  userId     String            @unique @map("user_id") @db.Uuid
+  isApproved Boolean           @default(false) @map("is_approved")
+  approvedAt DateTime?         @map("approved_at")
+  createdAt  DateTime          @default(now()) @map("created_at")
+  updatedAt  DateTime          @updatedAt @map("updated_at")
+  deletedAt  DateTime?         @map("deleted_at")
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  onboarding DriverOnboarding?
 
   @@index([isApproved])
   @@index([deletedAt])
   @@map("driver_profiles")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String?  @map("user_id") @db.Uuid
+  action     String   @db.VarChar(150)
+  resource   String?  @db.VarChar(100)
+  resourceId String?  @map("resource_id") @db.Uuid
+  ipAddress  String?  @map("ip_address") @db.VarChar(45)
+  userAgent  String?  @map("user_agent") @db.VarChar(512)
+  metadata   Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at")
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([action, createdAt(sort: Desc)])
+  @@map("audit_logs")
+}
+
+model MerchantOnboarding {
+  id                String           @id @default(uuid()) @db.Uuid
+  merchantProfileId String           @unique @map("merchant_profile_id") @db.Uuid
+  status            OnboardingStatus @default(DRAFT)
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+  merchantProfile   MerchantProfile  @relation(fields: [merchantProfileId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@map("merchant_onboarding")
+}
+
+model RiderOnboarding {
+  id             String           @id @default(uuid()) @db.Uuid
+  riderProfileId String           @unique @map("rider_profile_id") @db.Uuid
+  status         OnboardingStatus @default(DRAFT)
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+  riderProfile   RiderProfile     @relation(fields: [riderProfileId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@map("rider_onboarding")
+}
+
+model DriverOnboarding {
+  id              String           @id @default(uuid()) @db.Uuid
+  driverProfileId String           @unique @map("driver_profile_id") @db.Uuid
+  status          OnboardingStatus @default(DRAFT)
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  driverProfile   DriverProfile    @relation(fields: [driverProfileId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@map("driver_onboarding")
 }

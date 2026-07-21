@@ -130,6 +130,7 @@ export class AuthService {
     }
 
     await this.usersService.markEmailVerified(user.id);
+    await this.usersService.activateIfVerificationsComplete(user.id, false);
     await this.usersService.markLogin(user.id);
 
     const profile = await this.toProfile(user.id);

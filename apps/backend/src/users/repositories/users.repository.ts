@@ -1,4 +1,4 @@
-import type { User, UserStatus } from '@prisma/client';
+import type { User, UserStatus, RegistrationChannel } from '@prisma/client';
 
 export interface CreateUserInput {
   email: string;
@@ -7,6 +7,7 @@ export interface CreateUserInput {
   lastName: string;
   phone?: string;
   status: UserStatus;
+  registrationChannel?: RegistrationChannel;
 }
 
 export interface UserWithRbac extends User {
@@ -30,6 +31,8 @@ export interface UsersRepository {
   findByIdWithRbac(id: string): Promise<UserWithRbac | null>;
   markLogin(id: string): Promise<User>;
   markEmailVerified(id: string): Promise<User>;
+  markPhoneVerified(id: string): Promise<User>;
+  activateIfVerificationsComplete(id: string, requiresPhoneVerification: boolean): Promise<User>;
   softDelete(id: string): Promise<User>;
   list(params: { skip: number; take: number }): Promise<{ items: User[]; total: number }>;
 }

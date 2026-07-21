@@ -15,6 +15,8 @@ describe('UsersService', () => {
     findByIdWithRbac: jest.fn(),
     markLogin: jest.fn(),
     markEmailVerified: jest.fn(),
+    markPhoneVerified: jest.fn(),
+    activateIfVerificationsComplete: jest.fn(),
     softDelete: jest.fn(),
     list: jest.fn(),
   };

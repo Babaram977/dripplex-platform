@@ -37,13 +37,22 @@ docker compose up -d postgres
 
 ## S1-C1 scope
 
-| In scope (S1-C1)                                          | Deferred (S1-C2+)                  |
-| --------------------------------------------------------- | ---------------------------------- |
-| `User` extensions                                         | `AuditLog`                         |
-| `AuthSession`                                             | `PasswordResetToken`               |
-| Profile stubs (`Customer`, `Merchant`, `Rider`, `Driver`) | Onboarding detail tables           |
-| `RegistrationChannel`, `UserStatus.BLOCKED`               | `OnboardingStatus` workflow tables |
-| Roles + permissions seed                                  | Demo / bootstrap users             |
+| In scope (S1-C1)                                          | Deferred (S1-C2+)                 |
+| --------------------------------------------------------- | --------------------------------- |
+| `User` extensions                                         | `PasswordResetToken`              |
+| `AuthSession`                                             | `UserDevice`, `Address`           |
+| Profile stubs (`Customer`, `Merchant`, `Rider`, `Driver`) | Onboarding business detail fields |
+| `RegistrationChannel`, `UserStatus.BLOCKED`               | Demo / bootstrap users            |
+| Roles + permissions seed                                  |                                   |
+
+## S1-C2 scope
+
+| In scope (S1-C2)                                                       | Deferred (S1-C3+)         |
+| ---------------------------------------------------------------------- | ------------------------- |
+| `AuditLog`                                                             | `PasswordResetToken`      |
+| `OnboardingStatus` enum                                                | Full onboarding workflows |
+| `merchant_onboarding`, `rider_onboarding`, `driver_onboarding` (DRAFT) | Session token rotation    |
+| Registration + verification API (no JWT on register/verify)            | Login hardening           |
 
 ## Seed policy
 

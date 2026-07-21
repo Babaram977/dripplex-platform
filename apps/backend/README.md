@@ -10,12 +10,14 @@ NestJS API for the Dripplex Super Platform.
 - JWT + OTP + RBAC (`User`, `Role`, `Permission`)
 - Pino logging, throttling, global validation/exception/logging
 
-## Endpoints (Commit 2)
+## Endpoints
+
+### Sprint 0.1 (legacy scaffold)
 
 | Method   | Path                       | Auth                 |
 | -------- | -------------------------- | -------------------- |
 | `GET`    | `/api/v1/health`           | Public               |
-| `POST`   | `/api/v1/auth/register`    | Public               |
+| `POST`   | `/api/v1/auth/register`    | Public (deprecated)  |
 | `POST`   | `/api/v1/auth/login`       | Public               |
 | `POST`   | `/api/v1/auth/otp/request` | Public               |
 | `POST`   | `/api/v1/auth/otp/verify`  | Public               |
@@ -25,6 +27,19 @@ NestJS API for the Dripplex Super Platform.
 | `GET`    | `/api/v1/users`            | JWT + `users:read`   |
 | `GET`    | `/api/v1/users/:id`        | JWT + `users:read`   |
 | `DELETE` | `/api/v1/users/:id`        | JWT + `users:delete` |
+
+### S1-C2 — Registration & verification
+
+| Method | Path                             | Auth   | Notes                           |
+| ------ | -------------------------------- | ------ | ------------------------------- |
+| `POST` | `/api/v1/auth/register/customer` | Public | No JWT returned                 |
+| `POST` | `/api/v1/auth/register/merchant` | Public | Initializes merchant onboarding |
+| `POST` | `/api/v1/auth/register/rider`    | Public | Phone required                  |
+| `POST` | `/api/v1/auth/register/driver`   | Public | Phone required                  |
+| `POST` | `/api/v1/auth/verify/email`      | Public | Updates `emailVerifiedAt`       |
+| `POST` | `/api/v1/auth/verify/phone`      | Public | Updates `phoneVerifiedAt`       |
+
+See [DPX-013](../docs/DPX-013.md) for full Sprint 1 contracts.
 
 ## Local development
 

@@ -36,6 +36,7 @@
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/throttler": "^6.3.0",
     "@prisma/client": "^6.1.0",
+    "@dripplex/types": "workspace:*",
     "bcrypt": "^5.1.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",

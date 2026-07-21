@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { type User, UserStatus } from '@prisma/client';
 
+import { NotFoundDomainException } from '../../common/exceptions/domain.exception';
 import { PrismaService } from '../../prisma/prisma.service';
 
 import type { CreateUserInput, UserWithRbac, UsersRepository } from './users.repository';
@@ -18,6 +19,9 @@ export class PrismaUsersRepository implements UsersRepository {
         lastName: input.lastName,
         status: input.status,
         ...(input.phone !== undefined ? { phone: input.phone } : {}),
+        ...(input.registrationChannel !== undefined
+          ? { registrationChannel: input.registrationChannel }
+          : {}),
       },
     });
   }
@@ -75,8 +79,42 @@ export class PrismaUsersRepository implements UsersRepository {
       where: { id },
       data: {
         emailVerifiedAt: new Date(),
-        status: UserStatus.ACTIVE,
       },
+    });
+  }
+
+  public async markPhoneVerified(id: string): Promise<User> {
+    return await this.prisma.user.update({
+      where: { id },
+      data: {
+        phoneVerifiedAt: new Date(),
+      },
+    });
+  }
+
+  public async activateIfVerificationsComplete(
+    id: string,
+    requiresPhoneVerification: boolean,
+  ): Promise<User> {
+    const user = await this.prisma.user.findFirst({
+      where: { id, deletedAt: null },
+    });
+
+    if (!user) {
+      throw new NotFoundDomainException('User not found');
+    }
+
+    const emailVerified = user.emailVerifiedAt !== null;
+    const phoneVerified = user.phoneVerifiedAt !== null;
+    const verificationsComplete = emailVerified && (!requiresPhoneVerification || phoneVerified);
+
+    if (!verificationsComplete || user.status === UserStatus.ACTIVE) {
+      return user;
+    }
+
+    return await this.prisma.user.update({
+      where: { id },
+      data: { status: UserStatus.ACTIVE },
     });
   }
 

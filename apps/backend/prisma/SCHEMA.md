@@ -89,7 +89,37 @@ Extended fields (avatar, date of birth, preferences) land in S1-C11.
 | `isApproved` | `false` |
 | `approvedAt` | `null`  |
 
-Onboarding detail tables and document metadata land in S1-C2 and S1-C13–C15.
+Onboarding workflow state is tracked in S1-C2 onboarding tables (`DRAFT` at registration). Business detail fields land in S1-C13–C15.
+
+## S1-C2 models
+
+### `OnboardingStatus`
+
+| Value          | Description               |
+| -------------- | ------------------------- |
+| `DRAFT`        | Initial state at register |
+| `SUBMITTED`    | Submitted for review      |
+| `UNDER_REVIEW` | Ops review in progress    |
+| `APPROVED`     | Approved                  |
+| `REJECTED`     | Rejected; may revise      |
+
+### `AuditLog`
+
+Immutable security audit trail (DPX-013 §13.6).
+
+| Field        | Type          | Notes                     |
+| ------------ | ------------- | ------------------------- |
+| `userId`     | UUID?         | Actor (null if anonymous) |
+| `action`     | varchar(150)  | e.g. `auth.otp.verified`  |
+| `resource`   | varchar(100)? | Affected resource type    |
+| `resourceId` | UUID?         | Affected resource ID      |
+| `metadata`   | JSONB         | Non-sensitive context     |
+
+**Indexes:** `(userId, createdAt DESC)`, `(action, createdAt DESC)`
+
+### `MerchantOnboarding`, `RiderOnboarding`, `DriverOnboarding`
+
+1:1 with respective profile. Initialized at `DRAFT` during portal registration.
 
 ## RBAC (unchanged structure, expanded seed)
 
@@ -110,6 +140,10 @@ User 1───0..1 CustomerProfile
 User 1───0..1 MerchantProfile
 User 1───0..1 RiderProfile
 User 1───0..1 DriverProfile
+User 1───* AuditLog
+MerchantProfile 1───0..1 MerchantOnboarding
+RiderProfile 1───0..1 RiderOnboarding
+DriverProfile 1───0..1 DriverOnboarding
 ```
 
 All profile and session relations cascade on user delete.
