@@ -106,6 +106,19 @@ export const resetPasswordSchema = z.object({
 
 export type ResetPasswordFormValues = z.infer<typeof resetPasswordSchema>;
 
+/** Client-only password confirmation UI (confirmPassword is never sent to the API). */
+export const resetPasswordUiSchema = z
+  .object({
+    password: passwordSchema,
+    confirmPassword: z.string().min(8, 'Confirm your password'),
+  })
+  .refine((values) => values.password === values.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
+  });
+
+export type ResetPasswordUiFormValues = z.infer<typeof resetPasswordUiSchema>;
+
 export const changePasswordSchema = z
   .object({
     currentPassword: z.string().min(8, 'Current password is required'),

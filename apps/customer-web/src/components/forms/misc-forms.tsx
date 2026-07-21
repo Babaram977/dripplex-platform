@@ -3,11 +3,11 @@
 import {
   contactSchema,
   forgotPasswordSchema,
-  resetPasswordSchema,
+  resetPasswordUiSchema,
   verifyOtpSchema,
   type ContactFormValues,
   type ForgotPasswordFormValues,
-  type ResetPasswordFormValues,
+  type ResetPasswordUiFormValues,
   type VerifyOtpFormValues,
 } from '@dripplex/types';
 import { Button, Input, Label, toast } from '@dripplex/ui';
@@ -57,8 +57,8 @@ export function ResetPasswordForm(): React.JSX.Element {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
-  } = useForm<ResetPasswordFormValues>({
-    resolver: zodResolver(resetPasswordSchema),
+  } = useForm<ResetPasswordUiFormValues>({
+    resolver: zodResolver(resetPasswordUiSchema),
     defaultValues: { password: '', confirmPassword: '' },
   });
 
