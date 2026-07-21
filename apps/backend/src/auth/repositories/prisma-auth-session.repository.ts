@@ -32,6 +32,21 @@ export class PrismaAuthSessionRepository implements AuthSessionRepository {
     return await this.prisma.authSession.findUnique({ where: { id } });
   }
 
+  public findBySessionId(sessionId: string): Promise<AuthSession | null> {
+    return this.findById(sessionId);
+  }
+
+  public async findActiveSessions(userId: string): Promise<AuthSession[]> {
+    return await this.prisma.authSession.findMany({
+      where: {
+        userId,
+        revokedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   public async updateRefreshTokenHash(input: UpdateSessionActivityInput): Promise<AuthSession> {
     const now = new Date();
     return await this.prisma.authSession.update({
@@ -45,6 +60,10 @@ export class PrismaAuthSessionRepository implements AuthSessionRepository {
   }
 
   public async updateLastActiveAt(sessionId: string): Promise<void> {
+    await this.updateLastActive(sessionId);
+  }
+
+  public async updateLastActive(sessionId: string): Promise<void> {
     const now = new Date();
     await this.prisma.authSession.update({
       where: { id: sessionId },
@@ -74,5 +93,28 @@ export class PrismaAuthSessionRepository implements AuthSessionRepository {
       },
     });
     return result.count;
+  }
+
+  public async revokeAllExcept(userId: string, currentSessionId: string): Promise<number> {
+    const result = await this.prisma.authSession.updateMany({
+      where: {
+        userId,
+        revokedAt: null,
+        id: { not: currentSessionId },
+      },
+      data: {
+        revokedAt: new Date(),
+        refreshTokenHash: null,
+      },
+    });
+    return result.count;
+  }
+
+  public async isOwnedByUser(sessionId: string, userId: string): Promise<boolean> {
+    const session = await this.prisma.authSession.findFirst({
+      where: { id: sessionId, userId },
+      select: { id: true },
+    });
+    return session !== null;
   }
 }

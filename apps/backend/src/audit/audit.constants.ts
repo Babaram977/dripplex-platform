@@ -28,4 +28,7 @@ export const AUTH_AUDIT_ACTIONS = {
   PHONE_VERIFIED: 'auth.phone.verified',
   PHONE_VERIFICATION_FAILED: 'auth.phone.failed',
   VERIFICATION_EXPIRED: 'auth.verification.expired',
+  SESSION_LIST: 'auth.session.list',
+  SESSIONS_REVOKED_ALL: 'auth.sessions.revoked_all',
+  SESSION_ACTIVITY: 'auth.session.activity',
 } as const;

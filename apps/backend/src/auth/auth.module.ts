@@ -13,6 +13,7 @@ import { LoginController } from './controllers/login.controller';
 import { PasswordController } from './controllers/password.controller';
 import { PhoneVerificationController } from './controllers/phone-verification.controller';
 import { RegistrationController } from './controllers/registration.controller';
+import { SessionsController } from './controllers/sessions.controller';
 import { VerificationController } from './controllers/verification.controller';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { PermissionsGuard } from './guards/permissions.guard';
@@ -24,6 +25,7 @@ import { PrismaIdentityVerificationRepository } from './repositories/prisma-iden
 import { PrismaPasswordResetTokenRepository } from './repositories/prisma-password-reset.repository';
 import { PrismaRegistrationRepository } from './repositories/prisma-registration.repository';
 import { REGISTRATION_REPOSITORY } from './repositories/registration.repository';
+import { DeviceInfoService } from './services/device-info.service';
 import { EmailVerificationService } from './services/email-verification.service';
 import { LoginAttemptService } from './services/login-attempt.service';
 import { LoginService } from './services/login.service';
@@ -34,6 +36,8 @@ import { PasswordService } from './services/password.service';
 import { PhoneVerificationService } from './services/phone-verification.service';
 import { RefreshService } from './services/refresh.service';
 import { RegistrationService } from './services/registration.service';
+import { SessionActivityService } from './services/session-activity.service';
+import { SessionManagementService } from './services/session-management.service';
 import { SessionService } from './services/session.service';
 import { TokenService } from './services/token.service';
 import { VerificationService } from './services/verification.service';
@@ -55,6 +59,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     PasswordController,
     EmailVerificationController,
     PhoneVerificationController,
+    SessionsController,
   ],
   providers: [
     AuthService,
@@ -65,6 +70,9 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     PhoneVerificationService,
     LoginService,
     SessionService,
+    SessionManagementService,
+    SessionActivityService,
+    DeviceInfoService,
     LoginAttemptService,
     TokenService,
     RefreshService,

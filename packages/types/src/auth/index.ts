@@ -139,6 +139,9 @@ export const AUTH_AUDIT_ACTIONS = {
   PHONE_VERIFIED: 'auth.phone.verified',
   PHONE_VERIFICATION_FAILED: 'auth.phone.failed',
   VERIFICATION_EXPIRED: 'auth.verification.expired',
+  SESSION_LIST: 'auth.session.list',
+  SESSIONS_REVOKED_ALL: 'auth.sessions.revoked_all',
+  SESSION_ACTIVITY: 'auth.session.activity',
 } as const;
 
 export type AuthAuditAction = (typeof AUTH_AUDIT_ACTIONS)[keyof typeof AUTH_AUDIT_ACTIONS];
@@ -157,4 +160,32 @@ export interface ChangePasswordResponse {
 
 export interface VerificationSubmittedResponse {
   submitted: true;
+}
+
+export type DeviceType = 'desktop' | 'mobile' | 'tablet' | 'bot' | 'unknown';
+
+export interface DeviceInfoDto {
+  browser: string;
+  operatingSystem: string;
+  device: string;
+  deviceType: DeviceType;
+}
+
+export interface SessionDto {
+  sessionId: string;
+  current: boolean;
+  portal: PortalLoginType;
+  browser: string;
+  operatingSystem: string;
+  device: string;
+  deviceType: DeviceType;
+  ip: string | null;
+  location: string | null;
+  createdAt: string;
+  lastActiveAt: string;
+  expiresAt: string;
+}
+
+export interface ListSessionsResponse {
+  items: SessionDto[];
 }

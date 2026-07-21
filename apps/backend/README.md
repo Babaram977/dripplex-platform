@@ -78,6 +78,17 @@ Reset tokens are opaque UUIDs/hex values stored as SHA-256 hashes in `password_r
 
 Challenges are stored in `identity_verifications` (hash-only). Redis is used only for hourly rate limits, resend cooldown, and phone OTP lockout. Legacy registration OTP verify endpoints (`/auth/verify/email|phone`) remain for S1-C2 compatibility.
 
+### S1-C7 — Device management & session dashboard
+
+| Method   | Path                               | Auth                         | Notes                               |
+| -------- | ---------------------------------- | ---------------------------- | ----------------------------------- |
+| `GET`    | `/api/v1/auth/sessions`            | JWT + `auth:sessions:read`   | List active sessions (newest first) |
+| `DELETE` | `/api/v1/auth/sessions/:sessionId` | JWT + `auth:sessions:revoke` | Revoke one session; `204`           |
+| `DELETE` | `/api/v1/auth/sessions`            | JWT + `auth:sessions:revoke` | Revoke all except current           |
+| `POST`   | `/api/v1/auth/logout`              | JWT                          | Revokes current session             |
+
+Device metadata (`browser`, `os`, `device`, `deviceType`) is parsed from `User-Agent` (no external APIs). `location` is always `null` in this sprint. Session `lastActiveAt` updates are throttled via Redis (`session:last-active:{sid}`, 60s).
+
 **JWT access payload** (no permissions in token):
 
 ```json

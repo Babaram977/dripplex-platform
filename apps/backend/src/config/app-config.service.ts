@@ -163,6 +163,10 @@ export class AppConfigService {
     return this.configService.get('IDENTITY_VERIFICATION_RESEND_COOLDOWN_SECONDS', { infer: true });
   }
 
+  public get sessionActivityThrottleSeconds(): number {
+    return this.configService.get('SESSION_ACTIVITY_THROTTLE_SECONDS', { infer: true });
+  }
+
   public get logLevel(): EnvConfig['LOG_LEVEL'] {
     return this.configService.get('LOG_LEVEL', { infer: true });
   }
