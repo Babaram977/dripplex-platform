@@ -110,8 +110,8 @@ describe('FraudService', () => {
     (prisma.paymentTransaction.count as jest.Mock).mockResolvedValue(0);
     (prisma.order.count as jest.Mock).mockResolvedValue(0);
     (prisma.fraudSignal.count as jest.Mock).mockResolvedValue(0);
-    (prisma.fraudSignal.create as jest.Mock).mockImplementation(({ data }: { data: Partial<FraudSignal> }) =>
-      Promise.resolve(signal(data)),
+    (prisma.fraudSignal.create as jest.Mock).mockImplementation(
+      ({ data }: { data: Partial<FraudSignal> }) => Promise.resolve(signal(data)),
     );
   });
 
@@ -138,22 +138,34 @@ describe('FraudService', () => {
     );
   });
 
-  it('blocks blacklist matches at critical risk', async () => {
+  it('records critical risk for blacklist matches without blocking (observational)', async () => {
     (prisma.fraudListEntry.findMany as jest.Mock).mockResolvedValue([listEntry()]);
-    (prisma.fraudSignal.create as jest.Mock).mockImplementation(({ data }: { data: Partial<FraudSignal> }) =>
-      Promise.resolve(signal({ ...data, riskScore: 100, riskLevel: FraudRiskLevel.CRITICAL })),
+    (prisma.fraudSignal.create as jest.Mock).mockImplementation(
+      ({ data }: { data: Partial<FraudSignal> }) =>
+        Promise.resolve(signal({ ...data, riskScore: 100, riskLevel: FraudRiskLevel.CRITICAL })),
     );
 
     const result = await service.evaluateOrderRisk({ userId, ipAddress: '8.8.8.8' });
 
-    expect(result.blocked).toBe(true);
+    expect(result.blocked).toBe(false);
     expect(result.riskScore).toBe(100);
     expect(result.reasons).toContain('blacklisted_ip');
+    expect(prisma.fraudSignal.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          details: expect.objectContaining({ blocked: false }),
+        }),
+      }),
+    );
   });
 
   it('short-circuits risk for whitelist matches', async () => {
     (prisma.fraudListEntry.findMany as jest.Mock).mockResolvedValue([
-      listEntry({ listType: FraudListType.WHITELIST, matchType: FraudMatchType.USER, matchValue: userId }),
+      listEntry({
+        listType: FraudListType.WHITELIST,
+        matchType: FraudMatchType.USER,
+        matchValue: userId,
+      }),
     ]);
 
     const result = await service.evaluateOrderRisk({
@@ -169,8 +181,9 @@ describe('FraudService', () => {
   });
 
   it('adds a high-value order reason', async () => {
-    (prisma.fraudSignal.create as jest.Mock).mockImplementation(({ data }: { data: Partial<FraudSignal> }) =>
-      Promise.resolve(signal({ ...data, riskScore: 30, riskLevel: FraudRiskLevel.LOW })),
+    (prisma.fraudSignal.create as jest.Mock).mockImplementation(
+      ({ data }: { data: Partial<FraudSignal> }) =>
+        Promise.resolve(signal({ ...data, riskScore: 30, riskLevel: FraudRiskLevel.LOW })),
     );
 
     const result = await service.evaluateOrderRisk({ userId, amount: 500000 });
@@ -181,14 +194,17 @@ describe('FraudService', () => {
 
   it('scores failed payment velocity', async () => {
     (prisma.paymentTransaction.count as jest.Mock).mockResolvedValue(3);
-    (prisma.fraudSignal.create as jest.Mock).mockImplementation(({ data }: { data: Partial<FraudSignal> }) =>
-      Promise.resolve(signal({ ...data, riskScore: 55, riskLevel: FraudRiskLevel.MEDIUM })),
+    (prisma.fraudSignal.create as jest.Mock).mockImplementation(
+      ({ data }: { data: Partial<FraudSignal> }) =>
+        Promise.resolve(signal({ ...data, riskScore: 55, riskLevel: FraudRiskLevel.MEDIUM })),
     );
 
     const result = await service.evaluateOrderRisk({ userId, amount: 500000 });
 
     expect(result.riskLevel).toBe(FraudRiskLevel.MEDIUM);
-    expect(result.reasons).toEqual(expect.arrayContaining(['high_value_order', 'failed_payment_velocity']));
+    expect(result.reasons).toEqual(
+      expect.arrayContaining(['high_value_order', 'failed_payment_velocity']),
+    );
     expect(prisma.paymentTransaction.count).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ customerId: userId, status: TransactionStatus.FAILED }),
@@ -199,8 +215,9 @@ describe('FraudService', () => {
   it('scores order velocity', async () => {
     (prisma.paymentTransaction.count as jest.Mock).mockResolvedValue(3);
     (prisma.order.count as jest.Mock).mockResolvedValue(5);
-    (prisma.fraudSignal.create as jest.Mock).mockImplementation(({ data }: { data: Partial<FraudSignal> }) =>
-      Promise.resolve(signal({ ...data, riskScore: 75, riskLevel: FraudRiskLevel.HIGH })),
+    (prisma.fraudSignal.create as jest.Mock).mockImplementation(
+      ({ data }: { data: Partial<FraudSignal> }) =>
+        Promise.resolve(signal({ ...data, riskScore: 75, riskLevel: FraudRiskLevel.HIGH })),
     );
 
     const result = await service.evaluateOrderRisk({ userId, amount: 500000 });
@@ -211,8 +228,9 @@ describe('FraudService', () => {
 
   it('scores repeated device fingerprints', async () => {
     (prisma.fraudSignal.count as jest.Mock).mockResolvedValue(4);
-    (prisma.fraudSignal.create as jest.Mock).mockImplementation(({ data }: { data: Partial<FraudSignal> }) =>
-      Promise.resolve(signal({ ...data, riskScore: 15, riskLevel: FraudRiskLevel.LOW })),
+    (prisma.fraudSignal.create as jest.Mock).mockImplementation(
+      ({ data }: { data: Partial<FraudSignal> }) =>
+        Promise.resolve(signal({ ...data, riskScore: 15, riskLevel: FraudRiskLevel.LOW })),
     );
 
     const result = await service.evaluateOrderRisk({ deviceFingerprint: 'device-1' });
@@ -226,8 +244,9 @@ describe('FraudService', () => {
   });
 
   it('scores suspicious IP and geo mismatch', async () => {
-    (prisma.fraudSignal.create as jest.Mock).mockImplementation(({ data }: { data: Partial<FraudSignal> }) =>
-      Promise.resolve(signal({ ...data, riskScore: 25, riskLevel: FraudRiskLevel.LOW })),
+    (prisma.fraudSignal.create as jest.Mock).mockImplementation(
+      ({ data }: { data: Partial<FraudSignal> }) =>
+        Promise.resolve(signal({ ...data, riskScore: 25, riskLevel: FraudRiskLevel.LOW })),
     );
 
     const result = await service.evaluateOrderRisk({
@@ -243,8 +262,9 @@ describe('FraudService', () => {
     (prisma.fraudThreshold.findMany as jest.Mock).mockResolvedValue([
       threshold({ key: 'score_critical', value: 25 }),
     ]);
-    (prisma.fraudSignal.create as jest.Mock).mockImplementation(({ data }: { data: Partial<FraudSignal> }) =>
-      Promise.resolve(signal({ ...data, riskScore: 30, riskLevel: FraudRiskLevel.CRITICAL })),
+    (prisma.fraudSignal.create as jest.Mock).mockImplementation(
+      ({ data }: { data: Partial<FraudSignal> }) =>
+        Promise.resolve(signal({ ...data, riskScore: 30, riskLevel: FraudRiskLevel.CRITICAL })),
     );
 
     const result = await service.evaluateOrderRisk({ amount: 500000 });
@@ -366,7 +386,12 @@ describe('FraudService', () => {
     expect(result).toHaveLength(1);
     expect(prisma.fraudListEntry.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { deletedAt: null, listType: FraudListType.BLACKLIST, matchType: FraudMatchType.IP, active: true },
+        where: {
+          deletedAt: null,
+          listType: FraudListType.BLACKLIST,
+          matchType: FraudMatchType.IP,
+          active: true,
+        },
       }),
     );
   });
@@ -396,7 +421,11 @@ describe('FraudService', () => {
       listEntry({ active: false, reason: 'Expired' }),
     );
 
-    const result = await service.updateEntry(entryId, { active: false, reason: 'Expired' }, context);
+    const result = await service.updateEntry(
+      entryId,
+      { active: false, reason: 'Expired' },
+      context,
+    );
 
     expect(result.active).toBe(false);
     expect(result.reason).toBe('Expired');

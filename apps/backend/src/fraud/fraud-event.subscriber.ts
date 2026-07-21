@@ -5,6 +5,10 @@ import { DOMAIN_EVENTS, type DomainEvent } from '../events/domain-events';
 
 import { FraudService } from './fraud.service';
 
+/**
+ * Observational fraud subscriber — records risk signals from domain events.
+ * Does not gate checkout or payment; evaluateOrderRisk always returns blocked=false.
+ */
 @Injectable()
 export class FraudEventSubscriber implements OnModuleInit, OnModuleDestroy {
   constructor(

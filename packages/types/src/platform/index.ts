@@ -598,6 +598,10 @@ export interface EvaluateOrderRiskInput {
 export interface FraudEvaluationResult {
   riskScore: number;
   riskLevel: FraudRiskLevel;
+  /**
+   * Always `false` in S1-C14→C23 observational mode.
+   * Reserved for a future enforcement phase that can block checkout/payment.
+   */
   blocked: boolean;
   reasons: string[];
   signal: FraudSignalDto;
