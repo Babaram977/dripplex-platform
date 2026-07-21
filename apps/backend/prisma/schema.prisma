@@ -8,30 +8,53 @@ datasource db {
 }
 
 enum UserStatus {
+  PENDING_VERIFICATION
   ACTIVE
   INACTIVE
   SUSPENDED
-  PENDING_VERIFICATION
+  BLOCKED
+}
+
+enum RegistrationChannel {
+  CUSTOMER_WEB
+  MERCHANT_PORTAL
+  RIDER_PORTAL
+  DRIVER_PORTAL
+  OPS_INVITE
+  ADMIN_INVITE
+  SEED
 }
 
 model User {
-  id              String     @id @default(uuid()) @db.Uuid
-  email           String     @unique @db.Citext
-  phone           String?    @unique @db.VarChar(32)
-  passwordHash    String     @map("password_hash")
-  firstName       String     @map("first_name") @db.VarChar(100)
-  lastName        String     @map("last_name") @db.VarChar(100)
-  status          UserStatus @default(PENDING_VERIFICATION)
-  emailVerifiedAt DateTime?  @map("email_verified_at")
-  phoneVerifiedAt DateTime?  @map("phone_verified_at")
-  lastLoginAt     DateTime?  @map("last_login_at")
-  roles           UserRole[]
-  createdAt       DateTime   @default(now()) @map("created_at")
-  updatedAt       DateTime   @updatedAt @map("updated_at")
-  deletedAt       DateTime?  @map("deleted_at")
+  id                  String               @id @default(uuid()) @db.Uuid
+  email               String               @unique @db.Citext
+  phone               String?              @unique @db.VarChar(32)
+  passwordHash        String               @map("password_hash")
+  firstName           String               @map("first_name") @db.VarChar(100)
+  lastName            String               @map("last_name") @db.VarChar(100)
+  status              UserStatus           @default(PENDING_VERIFICATION)
+  registrationChannel RegistrationChannel? @map("registration_channel")
+  emailVerifiedAt     DateTime?            @map("email_verified_at")
+  phoneVerifiedAt     DateTime?            @map("phone_verified_at")
+  lastLoginAt         DateTime?            @map("last_login_at")
+  passwordChangedAt   DateTime?            @map("password_changed_at")
+  blockedAt           DateTime?            @map("blocked_at")
+  blockedReason       String?              @map("blocked_reason") @db.VarChar(500)
+  roles               UserRole[]
+  authSessions        AuthSession[]
+  customerProfile     CustomerProfile?
+  merchantProfile     MerchantProfile?
+  riderProfile        RiderProfile?
+  driverProfile       DriverProfile?
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+  deletedAt           DateTime?            @map("deleted_at")
 
   @@index([status])
   @@index([deletedAt])
+  @@index([registrationChannel])
+  @@index([emailVerifiedAt])
+  @@index([phoneVerifiedAt])
   @@map("users")
 }
 
@@ -72,6 +95,7 @@ model UserRole {
 
   @@id([userId, roleId])
   @@index([roleId])
+  @@index([userId])
   @@map("user_roles")
 }
 
@@ -84,5 +108,87 @@ model RolePermission {
 
   @@id([roleId, permissionId])
   @@index([permissionId])
+  @@index([roleId])
   @@map("role_permissions")
+}
+
+model AuthSession {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  refreshTokenHash String    @map("refresh_token_hash") @db.VarChar(64)
+  deviceId         String?   @map("device_id") @db.VarChar(128)
+  deviceName       String?   @map("device_name") @db.VarChar(255)
+  ipAddress        String?   @map("ip_address") @db.VarChar(45)
+  userAgent        String?   @map("user_agent") @db.VarChar(512)
+  rememberMe       Boolean   @default(false) @map("remember_me")
+  expiresAt        DateTime  @map("expires_at")
+  revokedAt        DateTime? @map("revoked_at")
+  lastSeenAt       DateTime  @default(now()) @map("last_seen_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([refreshTokenHash])
+  @@index([userId])
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+  @@map("auth_sessions")
+}
+
+model CustomerProfile {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @unique @map("user_id") @db.Uuid
+  locale    String    @default("en_NG") @db.VarChar(10)
+  timezone  String    @default("Africa/Lagos") @db.VarChar(64)
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([deletedAt])
+  @@map("customer_profiles")
+}
+
+model MerchantProfile {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @unique @map("user_id") @db.Uuid
+  isApproved  Boolean   @default(false) @map("is_approved")
+  approvedAt  DateTime? @map("approved_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([isApproved])
+  @@index([deletedAt])
+  @@map("merchant_profiles")
+}
+
+model RiderProfile {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @unique @map("user_id") @db.Uuid
+  isApproved Boolean   @default(false) @map("is_approved")
+  approvedAt DateTime? @map("approved_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at")
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([isApproved])
+  @@index([deletedAt])
+  @@map("rider_profiles")
+}
+
+model DriverProfile {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @unique @map("user_id") @db.Uuid
+  isApproved Boolean   @default(false) @map("is_approved")
+  approvedAt DateTime? @map("approved_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at")
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([isApproved])
+  @@index([deletedAt])
+  @@map("driver_profiles")
 }

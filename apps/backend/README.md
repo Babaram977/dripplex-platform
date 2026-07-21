@@ -34,8 +34,11 @@ cp .env.example .env
 pnpm install
 pnpm --filter @dripplex/backend prisma:generate
 pnpm --filter @dripplex/backend prisma:migrate:dev
+pnpm --filter @dripplex/backend prisma:seed
 pnpm --filter @dripplex/backend dev
 ```
+
+Identity schema, migrations, and seed documentation: [prisma/README.md](prisma/README.md) (Sprint 1 / DPX-013).
 
 ## Quality gates
 

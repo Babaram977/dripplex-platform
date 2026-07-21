@@ -10,8 +10,8 @@
     "dev": "nest start --watch",
     "start": "node dist/main.js",
     "start:prod": "node dist/main.js",
-    "lint": "eslint \"{src,test}/**/*.ts\" --max-warnings=0",
-    "lint:fix": "eslint \"{src,test}/**/*.ts\" --fix --max-warnings=0",
+    "lint": "eslint \"{src,test}/**/*.ts\" \"prisma/**/*.ts\" --max-warnings=0",
+    "lint:fix": "eslint \"{src,test}/**/*.ts\" \"prisma/**/*.ts\" --fix --max-warnings=0",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "jest --config ./jest.config.ts --passWithNoTests=false",
     "test:watch": "jest --config ./jest.config.ts --watch",
@@ -20,7 +20,12 @@
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
+    "prisma:validate": "prisma validate",
+    "prisma:seed": "prisma db seed",
     "clean": "rm -rf dist .turbo coverage *.tsbuildinfo"
+  },
+  "prisma": {
+    "seed": "ts-node --transpile-only prisma/seed.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
