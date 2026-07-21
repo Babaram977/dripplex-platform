@@ -265,3 +265,48 @@ curl -X POST "$API/api/v1/customer/orders/<orderId>/verify" \
 4. Invalid signatures are rejected and audited as `payment.webhook.rejected`
 
 On success: transaction `SUCCESS`, order `PAID`, inventory deducted (reservation released), cart `CHECKED_OUT`, customer + merchant notifications.
+
+### S1-C13 — Delivery fulfillment
+
+Delivery jobs are created automatically for paid `DELIVERY` orders after payment verification/webhook processing marks the order `PAID`, deducts inventory, and archives the cart.
+
+| Method | Path                                   | Auth                           | Notes                              |
+| ------ | -------------------------------------- | ------------------------------ | ---------------------------------- |
+| `GET`  | `/api/v1/customer/orders/:id/delivery` | JWT + `customer:delivery:read` | Own delivery job                   |
+| `GET`  | `/api/v1/customer/orders/:id/tracking` | JWT + `customer:delivery:read` | Tracking history                   |
+| `GET`  | `/api/v1/customer/orders/:id/eta`      | JWT + `customer:delivery:read` | Distance/duration estimate         |
+| `GET`  | `/api/v1/rider/jobs`                   | JWT + `rider:delivery:manage`  | Assigned rider jobs                |
+| `GET`  | `/api/v1/rider/jobs/:id`               | JWT + `rider:delivery:manage`  | Assigned rider job detail          |
+| `POST` | `/api/v1/rider/jobs/:id/accept`        | JWT + `rider:delivery:manage`  | Accept assignment                  |
+| `POST` | `/api/v1/rider/jobs/:id/reject`        | JWT + `rider:delivery:manage`  | Reject and retry auto-assignment   |
+| `POST` | `/api/v1/rider/jobs/:id/pickup`        | JWT + `rider:delivery:manage`  | Mark picked up                     |
+| `POST` | `/api/v1/rider/jobs/:id/location`      | JWT + `rider:delivery:manage`  | Record rider location              |
+| `POST` | `/api/v1/rider/jobs/:id/arrived`       | JWT + `rider:delivery:manage`  | Mark arrived                       |
+| `POST` | `/api/v1/rider/jobs/:id/deliver`       | JWT + `rider:delivery:manage`  | Complete with proof                |
+| `POST` | `/api/v1/rider/jobs/:id/fail`          | JWT + `rider:delivery:manage`  | Mark failed                        |
+| `POST` | `/api/v1/rider/jobs/:id/return`        | JWT + `rider:delivery:manage`  | Mark returned                      |
+| `POST` | `/api/v1/rider/availability`           | JWT + `rider:delivery:manage`  | Update rider availability/location |
+| `GET`  | `/api/v1/admin/delivery`               | JWT + `admin:delivery:manage`  | Filter + paginate jobs             |
+| `GET`  | `/api/v1/admin/delivery/:id`           | JWT + `admin:delivery:manage`  | Admin job detail                   |
+| `POST` | `/api/v1/admin/delivery/:id/assign`    | JWT + `admin:delivery:manage`  | Manual/auto rider assignment       |
+| `POST` | `/api/v1/admin/delivery/:id/reassign`  | JWT + `admin:delivery:manage`  | Reassign rider                     |
+| `POST` | `/api/v1/admin/delivery/:id/cancel`    | JWT + `admin:delivery:manage`  | Cancel active job                  |
+
+```bash
+# Customer tracking
+curl -H "Authorization: Bearer $TOKEN" "$API/api/v1/customer/orders/<orderId>/delivery"
+curl -H "Authorization: Bearer $TOKEN" "$API/api/v1/customer/orders/<orderId>/eta"
+
+# Rider lifecycle
+curl -X POST "$API/api/v1/rider/availability" \
+  -H "Authorization: Bearer $RIDER_TOKEN" -H "Content-Type: application/json" \
+  -d '{"online":true,"acceptingOrders":true,"latitude":6.5244,"longitude":3.3792}'
+curl -X POST "$API/api/v1/rider/jobs/<jobId>/deliver" \
+  -H "Authorization: Bearer $RIDER_TOKEN" -H "Content-Type: application/json" \
+  -d '{"proofType":"PHOTO","photoUrl":"https://cdn.example/proof.jpg"}'
+
+# Admin assignment
+curl -X POST "$API/api/v1/admin/delivery/<jobId>/assign" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+  -d '{"riderId":"<riderUserId>","method":"MANUAL"}'
+```

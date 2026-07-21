@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Logger } from 'nestjs-pino';
 
 import type {
+  DeliveryLifecycleNotificationInput,
   EmailVerificationNotificationInput,
   MerchantLifecycleNotificationInput,
   NotificationService,
@@ -125,6 +126,23 @@ export class LoggingNotificationService implements NotificationService {
         success: input.success,
       },
       'Payment result notification dispatched',
+    );
+    return Promise.resolve();
+  }
+
+  public notifyDeliveryLifecycle(input: DeliveryLifecycleNotificationInput): Promise<void> {
+    this.logger.log(
+      {
+        channel: 'email',
+        template: `delivery_${input.event}_${input.audience}`,
+        email: input.email,
+        audience: input.audience,
+        event: input.event,
+        orderId: input.orderId,
+        orderNumber: input.orderNumber,
+        jobId: input.jobId,
+      },
+      'Delivery lifecycle notification dispatched',
     );
     return Promise.resolve();
   }

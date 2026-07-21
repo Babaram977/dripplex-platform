@@ -48,7 +48,7 @@ describe('Prisma schema foundation (S1-C1)', () => {
 
   it('defines the DPX-013 Sprint 1 role and permission catalog sizes', () => {
     expect(ROLE_SEEDS).toHaveLength(7);
-    expect(PERMISSION_SEEDS).toHaveLength(34);
+    expect(PERMISSION_SEEDS).toHaveLength(37);
     expect(ROLE_SEEDS.map((role: RoleSeed) => role.name)).toEqual(
       expect.arrayContaining([
         'customer',

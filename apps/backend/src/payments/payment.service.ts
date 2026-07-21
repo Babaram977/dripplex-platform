@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   CartStatus,
+  FulfillmentType,
   MerchantStatus,
   OrderStatus,
   PaymentProvider,
@@ -17,6 +18,7 @@ import {
   ValidationDomainException,
 } from '../common/exceptions/domain.exception';
 import { AppConfigService } from '../config/app-config.service';
+import { DeliveryService } from '../delivery/delivery.service';
 import {
   NOTIFICATION_SERVICE,
   type NotificationService,
@@ -71,6 +73,7 @@ export class PaymentService {
     private readonly notifications: NotificationService,
     private readonly prisma: PrismaService,
     private readonly config: AppConfigService,
+    private readonly deliveryService: DeliveryService,
   ) {}
 
   public async initializePayment(
@@ -408,6 +411,13 @@ export class PaymentService {
       if (cart && cart.status !== CartStatus.CHECKED_OUT) {
         await this.cartRepository.updateStatus(input.order.cartId, CartStatus.CHECKED_OUT);
       }
+    }
+
+    const paidOrder = await this.ordersRepository.findById(input.order.id);
+    if (paidOrder?.fulfillmentType === FulfillmentType.DELIVERY) {
+      await this.deliveryService
+        .createJobForPaidOrder(paidOrder.id, input.context)
+        .catch(() => undefined);
     }
 
     await this.auditService.record(PAYMENT_AUDIT_ACTIONS.VERIFIED, input.context, {

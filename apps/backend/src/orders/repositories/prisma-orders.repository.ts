@@ -99,6 +99,13 @@ export class PrismaOrdersRepository implements OrdersRepository {
     return { items, total };
   }
 
+  public async updateStatus(id: string, status: OrderStatus): Promise<Order> {
+    return await this.prisma.order.update({
+      where: { id },
+      data: { status },
+    });
+  }
+
   public async cancelOrder(id: string): Promise<Order> {
     return await this.prisma.order.update({
       where: { id },

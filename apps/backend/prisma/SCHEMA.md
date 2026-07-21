@@ -286,3 +286,48 @@ Stores provider reference, authorization URL, gateway payloads, and verification
 Order 1───* PaymentTransaction
 User 1───* PaymentTransaction
 ```
+
+## S1-C13 models
+
+### `DeliveryStatus` / `AssignmentMethod` / `ProofType`
+
+Delivery jobs start `PENDING`, move through rider assignment and in-transit states, then finish in a terminal status (`DELIVERED`, `FAILED`, `RETURNED`, or `CANCELLED`). Assignment can be `AUTO` or `MANUAL`. Proof supports `PHOTO`, `OTP`, `SIGNATURE`, or `PHOTO_AND_OTP`.
+
+### `DeliveryJob`
+
+One delivery job per order (`order_id` unique). Jobs store pickup/dropoff coordinates, delivery fee estimates, rider assignment, lifecycle timestamps, and cancellation/failed reason.
+
+| Field                                 | Type               | Notes                                    |
+| ------------------------------------- | ------------------ | ---------------------------------------- |
+| `orderId`                             | UUID               | Unique; cascades with order              |
+| `riderId`                             | UUID?              | Nullable assigned rider                  |
+| `merchantId`, `customerId`            | UUID               | Denormalized for filtering/authorization |
+| `assignmentMethod`                    | `AssignmentMethod` | `AUTO` default                           |
+| `status`                              | `DeliveryStatus`   | `PENDING` default                        |
+| `pickupLatitude`, `pickupLongitude`   | decimal(10,7)      | Merchant pickup point                    |
+| `dropoffLatitude`, `dropoffLongitude` | decimal(10,7)      | Customer address point                   |
+| `estimatedDistanceMeters`             | int?               | Fee/ETA estimate                         |
+| `estimatedDurationSeconds`            | int?               | Fee/ETA estimate                         |
+| `deliveryFee`                         | decimal(12,2)      | Fee snapshot                             |
+
+### `DeliveryTracking`
+
+Rider location points for a delivery job. Indexed by `delivery_job_id` and `(delivery_job_id, created_at)` for tracking history and latest-location reads.
+
+### `DeliveryProof`
+
+Proof captured at delivery completion. Photo/signature URLs are bounded to 2048 characters; OTP is limited to 12 characters; notes are limited to 1000 characters.
+
+### `RiderAvailability`
+
+One row per rider user. Stores whether the rider is online and accepting orders, latest known coordinates, and active delivery job count for assignment capacity checks.
+
+```text
+Order 1───0..1 DeliveryJob
+User 1───* DeliveryJob (customer)
+User 1───* DeliveryJob (merchant)
+User 1───* DeliveryJob (rider)
+DeliveryJob 1───* DeliveryTracking
+DeliveryJob 1───* DeliveryProof
+User 1───0..1 RiderAvailability
+```

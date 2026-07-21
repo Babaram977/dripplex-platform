@@ -117,6 +117,26 @@ export type {
 
 export { PAYMENT_AUDIT_ACTIONS } from './payment/index.js';
 
+export type {
+  AdminDeliveryJobQuery,
+  AssignDeliveryRiderDto,
+  AssignmentMethod,
+  DeliverOrderDto,
+  DeliveryAuditAction,
+  DeliveryEtaDto,
+  DeliveryJobDto,
+  DeliveryLocationUpdateDto,
+  DeliveryProofDto,
+  DeliveryReasonDto,
+  DeliveryStatus,
+  DeliveryTrackingDto,
+  ProofType,
+  RiderLocationDto,
+  UpdateRiderAvailabilityDto,
+} from './delivery/index.js';
+
+export { DELIVERY_AUDIT_ACTIONS } from './delivery/index.js';
+
 export {
   changePasswordSchema,
   contactSchema,
