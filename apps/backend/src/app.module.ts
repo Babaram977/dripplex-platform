@@ -11,6 +11,7 @@ import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { AppConfigService } from './config/app-config.service';
 import { AppConfigModule } from './config/config.module';
+import { DeliveryModule } from './delivery/delivery.module';
 import { HealthModule } from './health/health.module';
 import { AppLoggerModule } from './logger/logger.module';
 import { MerchantsModule } from './merchants/merchants.module';
@@ -43,6 +44,7 @@ import { UsersModule } from './users/users.module';
     CartModule,
     OrdersModule,
     PaymentsModule,
+    DeliveryModule,
     HealthModule,
   ],
   providers: [

@@ -65,6 +65,7 @@ export interface OrdersRepository {
   findById(id: string): Promise<OrderWithItems | null>;
   findByIdForCustomer(id: string, customerId: string): Promise<OrderWithItems | null>;
   list(filter: ListOrdersFilter): Promise<{ items: OrderWithItems[]; total: number }>;
+  updateStatus(id: string, status: OrderStatus): Promise<Order>;
   cancelOrder(id: string): Promise<Order>;
   markFailed(id: string): Promise<Order>;
   markPaid(id: string): Promise<Order>;

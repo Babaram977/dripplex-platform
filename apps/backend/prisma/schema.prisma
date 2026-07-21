@@ -135,6 +135,31 @@ enum TransactionStatus {
   REFUNDED
 }
 
+enum DeliveryStatus {
+  PENDING
+  ASSIGNED
+  ACCEPTED
+  PICKED_UP
+  ON_THE_WAY
+  ARRIVED
+  DELIVERED
+  FAILED
+  RETURNED
+  CANCELLED
+}
+
+enum AssignmentMethod {
+  AUTO
+  MANUAL
+}
+
+enum ProofType {
+  PHOTO
+  OTP
+  SIGNATURE
+  PHOTO_AND_OTP
+}
+
 model User {
   id                  String               @id @default(uuid()) @db.Uuid
   email               String               @unique @db.Citext
@@ -166,6 +191,10 @@ model User {
   carts                  Cart[]
   orders                 Order[]
   paymentTransactions    PaymentTransaction[]
+  deliveryJobsAsCustomer DeliveryJob[]        @relation("DeliveryCustomer")
+  deliveryJobsAsMerchant DeliveryJob[]        @relation("DeliveryMerchant")
+  deliveryJobsAsRider    DeliveryJob[]        @relation("DeliveryRider")
+  riderAvailability      RiderAvailability?
   auditLogs              AuditLog[]
   createdAt              DateTime             @default(now()) @map("created_at")
   updatedAt              DateTime             @updatedAt @map("updated_at")
@@ -590,6 +619,7 @@ model Order {
   items             OrderItem[]
   reservations      InventoryReservation[]
   paymentTransactions PaymentTransaction[]
+  deliveryJobs        DeliveryJob[]
 
   @@index([customerId])
   @@index([merchantId])
@@ -667,4 +697,91 @@ model PaymentTransaction {
   @@index([customerId])
   @@index([merchantId])
   @@map("payment_transactions")
+}
+
+model DeliveryJob {
+  id                       String           @id @default(uuid()) @db.Uuid
+  orderId                  String           @unique @map("order_id") @db.Uuid
+  riderId                  String?          @map("rider_id") @db.Uuid
+  merchantId               String           @map("merchant_id") @db.Uuid
+  customerId               String           @map("customer_id") @db.Uuid
+  assignmentMethod         AssignmentMethod @default(AUTO) @map("assignment_method")
+  status                   DeliveryStatus   @default(PENDING)
+  pickupLatitude           Decimal          @map("pickup_latitude") @db.Decimal(10, 7)
+  pickupLongitude          Decimal          @map("pickup_longitude") @db.Decimal(10, 7)
+  dropoffLatitude          Decimal          @map("dropoff_latitude") @db.Decimal(10, 7)
+  dropoffLongitude         Decimal          @map("dropoff_longitude") @db.Decimal(10, 7)
+  estimatedDistanceMeters  Int?             @map("estimated_distance_meters")
+  estimatedDurationSeconds Int?             @map("estimated_duration_seconds")
+  deliveryFee              Decimal          @default(0) @map("delivery_fee") @db.Decimal(12, 2)
+  assignedAt               DateTime?        @map("assigned_at")
+  acceptedAt               DateTime?        @map("accepted_at")
+  pickedUpAt               DateTime?        @map("picked_up_at")
+  arrivedAt                DateTime?        @map("arrived_at")
+  deliveredAt              DateTime?        @map("delivered_at")
+  failedAt                 DateTime?        @map("failed_at")
+  cancelledAt              DateTime?        @map("cancelled_at")
+  returnedAt               DateTime?        @map("returned_at")
+  cancellationReason       String?          @map("cancellation_reason") @db.VarChar(500)
+  createdAt                DateTime         @default(now()) @map("created_at")
+  updatedAt                DateTime         @updatedAt @map("updated_at")
+  order                    Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  rider                    User?            @relation("DeliveryRider", fields: [riderId], references: [id], onDelete: SetNull)
+  merchant                 User             @relation("DeliveryMerchant", fields: [merchantId], references: [id], onDelete: Cascade)
+  customer                 User             @relation("DeliveryCustomer", fields: [customerId], references: [id], onDelete: Cascade)
+  trackingPoints           DeliveryTracking[]
+  proofs                   DeliveryProof[]
+
+  @@index([riderId])
+  @@index([merchantId])
+  @@index([customerId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("delivery_jobs")
+}
+
+model DeliveryTracking {
+  id            String      @id @default(uuid()) @db.Uuid
+  deliveryJobId String      @map("delivery_job_id") @db.Uuid
+  latitude      Decimal     @db.Decimal(10, 7)
+  longitude     Decimal     @db.Decimal(10, 7)
+  heading       Float?
+  speed         Float?
+  accuracy      Float?
+  createdAt     DateTime    @default(now()) @map("created_at")
+  deliveryJob   DeliveryJob @relation(fields: [deliveryJobId], references: [id], onDelete: Cascade)
+
+  @@index([deliveryJobId])
+  @@index([deliveryJobId, createdAt])
+  @@map("delivery_tracking")
+}
+
+model DeliveryProof {
+  id            String      @id @default(uuid()) @db.Uuid
+  deliveryJobId String      @map("delivery_job_id") @db.Uuid
+  proofType     ProofType   @map("proof_type")
+  photoUrl      String?     @map("photo_url") @db.VarChar(2048)
+  otp           String?     @db.VarChar(12)
+  signatureUrl  String?     @map("signature_url") @db.VarChar(2048)
+  notes         String?     @db.VarChar(1000)
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+  deliveryJob   DeliveryJob @relation(fields: [deliveryJobId], references: [id], onDelete: Cascade)
+
+  @@index([deliveryJobId])
+  @@map("delivery_proofs")
+}
+
+model RiderAvailability {
+  riderId          String   @id @map("rider_id") @db.Uuid
+  online           Boolean  @default(false)
+  acceptingOrders  Boolean  @default(false) @map("accepting_orders")
+  latitude         Decimal? @db.Decimal(10, 7)
+  longitude        Decimal? @db.Decimal(10, 7)
+  activeJobCount   Int      @default(0) @map("active_job_count")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  rider            User     @relation(fields: [riderId], references: [id], onDelete: Cascade)
+
+  @@index([online, acceptingOrders])
+  @@map("rider_availability")
 }

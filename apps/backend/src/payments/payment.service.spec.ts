@@ -3,6 +3,7 @@ import { createHmac } from 'node:crypto';
 import { NotImplementedException } from '@nestjs/common';
 import {
   CartStatus,
+  FulfillmentType,
   MerchantStatus,
   OrderStatus,
   PaymentProvider,
@@ -28,6 +29,7 @@ import type { InventoryDeductionService } from './inventory-deduction.service';
 import type { AuditService } from '../audit/audit.service';
 import type { CartRepository } from '../cart/repositories/cart.repository';
 import type { AppConfigService } from '../config/app-config.service';
+import type { DeliveryService } from '../delivery/delivery.service';
 import type { NotificationService } from '../notifications/notification.service';
 import type { OrdersRepository, OrderWithItems } from '../orders/repositories/orders.repository';
 import type { PrismaService } from '../prisma/prisma.service';
@@ -52,6 +54,9 @@ const sampleOrder = {
   paymentStatus: PaymentStatus.PENDING,
   total: 5000,
   currency: 'NGN',
+  fulfillmentType: FulfillmentType.PICKUP,
+  deliveryAddressId: null,
+  deliveryFee: 0,
   reservations: [
     {
       id: '66666666-6666-6666-6666-666666666666',
@@ -107,6 +112,7 @@ describe('PaymentService', () => {
     findById: jest.fn(),
     findByIdForCustomer: jest.fn(),
     list: jest.fn(),
+    updateStatus: jest.fn(),
     cancelOrder: jest.fn(),
     markFailed: jest.fn(),
     markPaid: jest.fn(),
@@ -163,6 +169,10 @@ describe('PaymentService', () => {
     paymentDefaultProvider: 'PAYSTACK',
   } as unknown as AppConfigService;
 
+  const deliveryService = {
+    createJobForPaidOrder: jest.fn().mockResolvedValue(undefined),
+  } as unknown as jest.Mocked<DeliveryService>;
+
   const service = new PaymentService(
     paymentRepository,
     ordersRepository,
@@ -173,6 +183,7 @@ describe('PaymentService', () => {
     notifications,
     prisma,
     config,
+    deliveryService,
   );
 
   const context = { userId: customerId };
@@ -237,6 +248,7 @@ describe('PaymentService', () => {
       id: cartId,
       status: CartStatus.LOCKED,
     } as never);
+    deliveryService.createJobForPaidOrder.mockResolvedValue(undefined as never);
   });
 
   describe('initializePayment', () => {
@@ -339,6 +351,19 @@ describe('PaymentService', () => {
         expect.any(Object),
       );
       expect(notifications.notifyPaymentResult).toHaveBeenCalled();
+    });
+
+    it('creates a delivery job for a paid delivery order', async () => {
+      ordersRepository.findById.mockResolvedValue({
+        ...sampleOrder,
+        status: OrderStatus.PAID,
+        paymentStatus: PaymentStatus.PAID,
+        fulfillmentType: FulfillmentType.DELIVERY,
+      });
+
+      await service.verifyPayment(customerId, orderId, {}, context);
+
+      expect(deliveryService.createJobForPaidOrder).toHaveBeenCalledWith(orderId, context);
     });
 
     it('is idempotent for already successful transactions', async () => {

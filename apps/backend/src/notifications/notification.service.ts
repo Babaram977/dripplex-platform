@@ -58,6 +58,18 @@ export interface PaymentResultNotificationInput {
   reference: string;
 }
 
+export type DeliveryLifecycleEvent =
+  'rider_assigned' | 'picked_up' | 'arriving' | 'delivered' | 'new_assignment';
+
+export interface DeliveryLifecycleNotificationInput {
+  audience: 'customer' | 'merchant' | 'rider';
+  email: string;
+  event: DeliveryLifecycleEvent;
+  orderId: string;
+  orderNumber: string;
+  jobId: string;
+}
+
 /**
  * Provider-agnostic notification port for auth emails and SMS.
  * Production adapters (SendGrid, SES, Termii, etc.) implement this interface.
@@ -70,6 +82,7 @@ export interface NotificationService {
   notifyMerchantLifecycle(input: MerchantLifecycleNotificationInput): Promise<void>;
   notifyOrderCreated(input: OrderCreatedNotificationInput): Promise<void>;
   notifyPaymentResult(input: PaymentResultNotificationInput): Promise<void>;
+  notifyDeliveryLifecycle(input: DeliveryLifecycleNotificationInput): Promise<void>;
 }
 
 export const NOTIFICATION_SERVICE = Symbol('NOTIFICATION_SERVICE');

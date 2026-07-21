@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module';
 import { CartModule } from '../cart/cart.module';
 import { AppConfigModule } from '../config/config.module';
+import { DeliveryModule } from '../delivery/delivery.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { OrdersModule } from '../orders/orders.module';
 import { PrismaModule } from '../prisma/prisma.module';
@@ -28,6 +29,7 @@ import { PrismaPaymentTransactionRepository } from './repositories/prisma-paymen
     NotificationsModule,
     OrdersModule,
     CartModule,
+    DeliveryModule,
     AppConfigModule,
   ],
   controllers: [CustomerPaymentsController, PaymentWebhooksController],

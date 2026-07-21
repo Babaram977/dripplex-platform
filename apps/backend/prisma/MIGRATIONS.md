@@ -517,3 +517,59 @@ pnpm --filter @dripplex/backend prisma:migrate:deploy
 | GET    | `/customer/orders/:id/payment` | `customer:orders`     |
 | POST   | `/webhooks/paystack`           | Public + signature    |
 | POST   | `/webhooks/flutterwave`        | Public + `verif-hash` |
+
+---
+
+# S1-C13 — Delivery fulfillment
+
+Migration: `20260721200000_s1_c13_delivery_fulfillment`
+
+## Summary
+
+| Change type | Detail                                                         |
+| ----------- | -------------------------------------------------------------- |
+| Enum        | `DeliveryStatus`, `AssignmentMethod`, `ProofType`              |
+| Table       | `delivery_jobs`                                                |
+| Table       | `delivery_tracking`                                            |
+| Table       | `delivery_proofs`                                              |
+| Table       | `rider_availability`                                           |
+| Seed        | Delivery read/manage permissions for customers, riders, admins |
+
+## Apply
+
+```bash
+pnpm --filter @dripplex/backend prisma:migrate:deploy
+pnpm --filter @dripplex/backend prisma:seed
+```
+
+## Delivery lifecycle
+
+1. Successful payment processing reloads the paid order and creates a delivery job for `fulfillmentType = DELIVERY`.
+2. Jobs start `PENDING` and may be auto-assigned to an available nearby rider.
+3. Rider transitions: `ASSIGNED` -> `ACCEPTED` -> `PICKED_UP` -> `ON_THE_WAY`/`ARRIVED` -> `DELIVERED`.
+4. Terminal outcomes are `DELIVERED`, `FAILED`, `RETURNED`, and `CANCELLED`.
+5. Location updates populate `delivery_tracking`; delivery completion stores proof in `delivery_proofs`.
+
+## API surface (S1-C13)
+
+| Method | Path                            | Permission               |
+| ------ | ------------------------------- | ------------------------ |
+| GET    | `/customer/orders/:id/delivery` | `customer:delivery:read` |
+| GET    | `/customer/orders/:id/tracking` | `customer:delivery:read` |
+| GET    | `/customer/orders/:id/eta`      | `customer:delivery:read` |
+| GET    | `/rider/jobs`                   | `rider:delivery:manage`  |
+| GET    | `/rider/jobs/:id`               | `rider:delivery:manage`  |
+| POST   | `/rider/jobs/:id/accept`        | `rider:delivery:manage`  |
+| POST   | `/rider/jobs/:id/reject`        | `rider:delivery:manage`  |
+| POST   | `/rider/jobs/:id/pickup`        | `rider:delivery:manage`  |
+| POST   | `/rider/jobs/:id/location`      | `rider:delivery:manage`  |
+| POST   | `/rider/jobs/:id/arrived`       | `rider:delivery:manage`  |
+| POST   | `/rider/jobs/:id/deliver`       | `rider:delivery:manage`  |
+| POST   | `/rider/jobs/:id/fail`          | `rider:delivery:manage`  |
+| POST   | `/rider/jobs/:id/return`        | `rider:delivery:manage`  |
+| POST   | `/rider/availability`           | `rider:delivery:manage`  |
+| GET    | `/admin/delivery`               | `admin:delivery:manage`  |
+| GET    | `/admin/delivery/:id`           | `admin:delivery:manage`  |
+| POST   | `/admin/delivery/:id/assign`    | `admin:delivery:manage`  |
+| POST   | `/admin/delivery/:id/reassign`  | `admin:delivery:manage`  |
+| POST   | `/admin/delivery/:id/cancel`    | `admin:delivery:manage`  |

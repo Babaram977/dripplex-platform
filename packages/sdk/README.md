@@ -122,3 +122,43 @@ await client.orders.payOrder(order.id);
 await client.orders.verifyOrderPayment(order.id, { reference: init.reference });
 await client.orders.getOrderPayment(order.id);
 ```
+
+## Delivery fulfillment (S1-C13)
+
+```ts
+// Customer tracking
+const delivery = await client.delivery.getDelivery(order.id);
+const tracking = await client.delivery.getTracking(order.id);
+const eta = await client.delivery.getEta(order.id);
+
+// Rider lifecycle
+await client.riderDelivery.updateAvailability({
+  online: true,
+  acceptingOrders: true,
+  latitude: 6.5244,
+  longitude: 3.3792,
+});
+
+const jobs = await client.riderDelivery.listJobs();
+await client.riderDelivery.accept(jobs[0].id);
+await client.riderDelivery.pickUp(jobs[0].id);
+await client.riderDelivery.location(jobs[0].id, {
+  latitude: 6.535,
+  longitude: 3.39,
+});
+await client.riderDelivery.arrived(jobs[0].id);
+await client.riderDelivery.deliver(jobs[0].id, {
+  proofType: 'PHOTO',
+  photoUrl: 'https://cdn.example/proof.jpg',
+});
+
+// Admin dispatch
+const page = await client.adminDelivery.listJobs({ status: 'PENDING', page: 1, pageSize: 20 });
+await client.adminDelivery.assign(page.items[0].id, {
+  riderId,
+  method: 'MANUAL',
+});
+await client.adminDelivery.cancel(page.items[0].id, { reason: 'Customer unavailable' });
+```
+
+Shared DTOs live in `@dripplex/types` (`DeliveryJobDto`, `DeliveryTrackingDto`, `DeliveryEtaDto`, `DeliverOrderDto`, `UpdateRiderAvailabilityDto`).
