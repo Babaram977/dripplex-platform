@@ -37,6 +37,9 @@
     "apps/backend/**/*.{ts,js,mjs,cjs}": [
       "eslint --fix --max-warnings=0 --config apps/backend/eslint.config.mjs"
     ],
+    "apps/customer-web/src/**/*.{ts,tsx}": [
+      "eslint --fix --max-warnings=0 --config apps/customer-web/eslint.config.mjs"
+    ],
     "packages/config/**/*.{js,mjs,cjs}": [
       "eslint --fix --max-warnings=0 --config packages/config/eslint.config.js"
     ],

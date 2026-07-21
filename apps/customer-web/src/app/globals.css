@@ -1,0 +1,97 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 168 20% 97%;
+  --foreground: 168 45% 8%;
+  --card: 0 0% 100%;
+  --card-foreground: 168 45% 8%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 168 45% 8%;
+  --primary: 172 84% 22%;
+  --primary-foreground: 160 40% 98%;
+  --secondary: 168 18% 92%;
+  --secondary-foreground: 168 40% 16%;
+  --muted: 168 14% 93%;
+  --muted-foreground: 168 10% 38%;
+  --accent: 22 92% 52%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 72% 48%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 168 16% 84%;
+  --input: 168 16% 84%;
+  --ring: 172 84% 22%;
+  --brand: 172 84% 22%;
+  --brand-foreground: 160 40% 98%;
+  --brand-muted: 168 35% 90%;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --elevation-1: 0 1px 2px hsl(168 40% 10% / 0.06), 0 1px 3px hsl(168 40% 10% / 0.08);
+  --elevation-2: 0 8px 24px hsl(168 40% 10% / 0.1);
+  --elevation-3: 0 18px 48px hsl(168 40% 10% / 0.16);
+  --hero-glow:
+    radial-gradient(ellipse 80% 60% at 70% 20%, hsl(172 70% 40% / 0.22), transparent 60%),
+    radial-gradient(ellipse 50% 40% at 10% 80%, hsl(22 92% 52% / 0.14), transparent 55%),
+    linear-gradient(160deg, hsl(168 20% 97%) 0%, hsl(168 28% 93%) 45%, hsl(172 35% 88%) 100%);
+}
+
+.dark {
+  --background: 168 40% 6%;
+  --foreground: 40 30% 96%;
+  --card: 168 32% 9%;
+  --card-foreground: 40 30% 96%;
+  --popover: 168 32% 9%;
+  --popover-foreground: 40 30% 96%;
+  --primary: 168 70% 42%;
+  --primary-foreground: 168 45% 8%;
+  --secondary: 168 20% 16%;
+  --secondary-foreground: 40 30% 96%;
+  --muted: 168 18% 14%;
+  --muted-foreground: 168 12% 68%;
+  --accent: 22 92% 55%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 70% 48%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 168 18% 18%;
+  --input: 168 18% 18%;
+  --ring: 168 70% 42%;
+  --brand: 168 70% 42%;
+  --brand-foreground: 168 45% 8%;
+  --brand-muted: 168 25% 14%;
+  --elevation-1: 0 1px 2px hsl(0 0% 0% / 0.35);
+  --elevation-2: 0 10px 30px hsl(0 0% 0% / 0.45);
+  --elevation-3: 0 24px 60px hsl(0 0% 0% / 0.55);
+  --hero-glow:
+    radial-gradient(ellipse 70% 50% at 75% 15%, hsl(168 70% 35% / 0.35), transparent 55%),
+    radial-gradient(ellipse 45% 35% at 15% 85%, hsl(22 92% 45% / 0.2), transparent 50%),
+    linear-gradient(165deg, hsl(168 40% 6%) 0%, hsl(168 35% 9%) 50%, hsl(168 30% 12%) 100%);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    @apply scroll-smooth antialiased;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    background-image: var(--hero-glow);
+    background-attachment: fixed;
+    min-height: 100dvh;
+  }
+
+  :focus-visible {
+    @apply ring-ring ring-offset-background outline-none ring-2 ring-offset-2;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
