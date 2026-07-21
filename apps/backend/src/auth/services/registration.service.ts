@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { RegistrationChannel, UserStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
@@ -9,6 +9,8 @@ import {
   ValidationDomainException,
 } from '../../common/exceptions/domain.exception';
 import { AppConfigService } from '../../config/app-config.service';
+import { DomainEventBus } from '../../events/domain-event-bus';
+import { DOMAIN_EVENTS } from '../../events/domain-events';
 import { UsersService } from '../../users/users.service';
 import {
   REGISTRATION_REPOSITORY,
@@ -76,6 +78,8 @@ export class RegistrationService {
     private readonly otpService: OtpService,
     private readonly auditService: AuditService,
     private readonly appConfig: AppConfigService,
+    @Optional()
+    private readonly eventBus?: DomainEventBus,
   ) {}
 
   public async registerCustomer(
@@ -173,6 +177,17 @@ export class RegistrationService {
           requiresPhoneVerification: config.requiresPhoneVerification,
         },
       },
+    );
+
+    await this.eventBus?.emit(
+      DOMAIN_EVENTS.CUSTOMER_REGISTERED,
+      {
+        userId: result.userId,
+        email: result.email,
+        portal,
+        registrationChannel: config.channel,
+      },
+      { actorUserId: result.userId },
     );
 
     return {

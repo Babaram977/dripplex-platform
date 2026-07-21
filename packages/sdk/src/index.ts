@@ -8,3 +8,16 @@ export { DeliveryClient } from './delivery/delivery-client.js';
 export { RiderDeliveryClient } from './delivery/rider-delivery-client.js';
 export { OrderClient } from './order/order-client.js';
 export { PaymentClient } from './payment/payment-client.js';
+export {
+  AdminCmsClient,
+  AdminFraudClient,
+  AnalyticsClient,
+  CmsClient,
+  LoyaltyClient,
+  NotificationsClient,
+  PromotionsClient,
+  ReviewsClient,
+  SearchClient,
+  WalletClient,
+  WishlistClient,
+} from './platform/platform-client.js';

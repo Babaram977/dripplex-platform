@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
   CartStatus,
   FulfillmentType,
@@ -22,6 +22,8 @@ import {
   NotFoundDomainException,
   ValidationDomainException,
 } from '../common/exceptions/domain.exception';
+import { DomainEventBus } from '../events/domain-event-bus';
+import { DOMAIN_EVENTS } from '../events/domain-events';
 import {
   NOTIFICATION_SERVICE,
   type NotificationService,
@@ -69,6 +71,8 @@ export class CheckoutService {
     @Inject(NOTIFICATION_SERVICE)
     private readonly notifications: NotificationService,
     private readonly prisma: PrismaService,
+    @Optional()
+    private readonly eventBus?: DomainEventBus,
   ) {}
 
   public async checkout(
@@ -209,6 +213,20 @@ export class CheckoutService {
       },
     );
 
+    if (couponResult.couponCode) {
+      await this.eventBus?.emit(
+        DOMAIN_EVENTS.COUPON_REDEEMED,
+        {
+          orderId: order.id,
+          customerId,
+          merchantId: cart.merchantId,
+          couponCode: couponResult.couponCode,
+          discount,
+        },
+        { actorUserId: customerId },
+      );
+    }
+
     await this.dispatchOrderCreatedNotifications(order);
 
     const refreshed = await this.ordersRepository.findById(order.id);
@@ -292,6 +310,16 @@ export class CheckoutService {
     if (!refreshed) {
       throw new NotFoundDomainException('Order not found after cancel');
     }
+    await this.eventBus?.emit(
+      DOMAIN_EVENTS.ORDER_CANCELLED,
+      {
+        orderId: refreshed.id,
+        customerId: refreshed.customerId,
+        merchantId: refreshed.merchantId,
+        reason: reason ?? null,
+      },
+      { actorUserId: customerId },
+    );
     return toOrderDto(refreshed);
   }
 
