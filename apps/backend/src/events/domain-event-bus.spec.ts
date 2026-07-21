@@ -17,6 +17,7 @@ describe('DomainEventBus', () => {
       { orderId: 'order-1' },
       { actorUserId: 'user-1', requestId: 'request-1' },
     );
+    await bus.drain();
 
     expect(handler).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -38,6 +39,7 @@ describe('DomainEventBus', () => {
     await expect(
       bus.emit(DOMAIN_EVENTS.PAYMENT_FAILED, { paymentId: 'p1' }),
     ).resolves.toBeUndefined();
+    await bus.drain();
 
     expect(failingHandler).toHaveBeenCalledTimes(1);
     expect(successfulHandler).toHaveBeenCalledTimes(1);
@@ -50,9 +52,30 @@ describe('DomainEventBus', () => {
     bus.on(DOMAIN_EVENTS.DELIVERY_COMPLETED, second);
 
     await bus.emit(DOMAIN_EVENTS.DELIVERY_COMPLETED, { jobId: 'job-1' });
+    await bus.drain();
 
     expect(first).toHaveBeenCalledTimes(1);
     expect(second).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not wait for handlers on the emit path', async () => {
+    let releaseHandler: (() => void) | undefined;
+    const handlerFinished = jest.fn();
+    bus.on(DOMAIN_EVENTS.ORDER_CREATED, async () => {
+      await new Promise<void>((resolve) => {
+        releaseHandler = resolve;
+      });
+      handlerFinished();
+    });
+
+    await expect(
+      bus.emit(DOMAIN_EVENTS.ORDER_CREATED, { orderId: 'order-1' }),
+    ).resolves.toBeUndefined();
+
+    expect(handlerFinished).not.toHaveBeenCalled();
+    releaseHandler?.();
+    await bus.drain();
+    expect(handlerFinished).toHaveBeenCalledTimes(1);
   });
 
   it('removes handlers with off', async () => {
@@ -61,6 +84,7 @@ describe('DomainEventBus', () => {
     bus.off(DOMAIN_EVENTS.ORDER_PAID, handler);
 
     await bus.emit(DOMAIN_EVENTS.ORDER_PAID, { orderId: 'order-1' });
+    await bus.drain();
 
     expect(handler).not.toHaveBeenCalled();
   });

@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PaymentStatus, ReviewStatus, ReviewTargetType } from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../audit/audit.service';
@@ -8,7 +8,7 @@ import {
   ValidationDomainException,
 } from '../common/exceptions/domain.exception';
 import { DomainEventBus } from '../events/domain-event-bus';
-import { DOMAIN_EVENTS, type DomainEvent } from '../events/domain-events';
+import { DOMAIN_EVENTS } from '../events/domain-events';
 import { PrismaService } from '../prisma/prisma.service';
 
 import { REVIEW_AUDIT_ACTIONS } from './review.constants';
@@ -27,19 +27,15 @@ import type { ModerateReviewDto, ReplyReviewDto, ReportReviewDto } from './dto/r
 import type { UpdateReviewDto } from './dto/update-review.dto';
 import type { Prisma, Review } from '@prisma/client';
 
-const AGGREGATED_REVIEW_STATUSES = [ReviewStatus.PENDING, ReviewStatus.APPROVED] as const;
+const AGGREGATED_REVIEW_STATUSES = [ReviewStatus.APPROVED] as const;
 
 @Injectable()
-export class ReviewsService implements OnModuleInit {
+export class ReviewsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly eventBus: DomainEventBus,
   ) {}
-
-  public onModuleInit(): void {
-    this.eventBus.on(DOMAIN_EVENTS.REVIEW_SUBMITTED, (event) => this.handleReviewSubmitted(event));
-  }
 
   public async createReview(
     authorId: string,
@@ -399,17 +395,6 @@ export class ReviewsService implements OnModuleInit {
       create: { targetType, targetId, averageRating, reviewCount, ...counts },
     });
     return toReviewAggregateDto(aggregate);
-  }
-
-  private async handleReviewSubmitted(event: DomainEvent): Promise<void> {
-    const { targetType, targetId } = event.payload as {
-      targetType?: ReviewTargetType;
-      targetId?: string;
-    };
-    if (targetType === undefined || targetId === undefined) {
-      return;
-    }
-    await this.recalculateAggregate(targetType, targetId);
   }
 
   private async requireReview(reviewId: string): Promise<Review> {

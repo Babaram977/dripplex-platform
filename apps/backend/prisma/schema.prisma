@@ -1397,6 +1397,7 @@ model WalletLedgerEntry {
   createdAt     DateTime              @default(now()) @map("created_at")
   wallet        Wallet                @relation(fields: [walletId], references: [id], onDelete: Cascade)
 
+  @@unique([walletId, referenceType, referenceId], map: "wallet_ledger_entries_wallet_id_reference_type_reference_id_key")
   @@index([walletId])
   @@index([walletId, createdAt])
   @@index([type])

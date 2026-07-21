@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { WalletOwnerType } from '@prisma/client';
 
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
 import { ValidationDomainException } from '../common/exceptions/domain.exception';
 
@@ -18,6 +19,7 @@ import { AdminWalletMutationDto, WalletReconciliationQueryDto } from './dto/wall
 import { WALLET_PERMISSIONS } from './wallet.constants';
 import { WalletService, type WalletDto, type WalletReconciliationDto } from './wallet.service';
 
+import type { AuthenticatedUser } from '../auth/auth.types';
 import type { ApiSuccessResponse } from '../common/dto/api-response.dto';
 import type { Request } from 'express';
 
@@ -47,6 +49,7 @@ export class AdminWalletController {
     @Param('ownerType', new ParseEnumPipe(WalletOwnerType)) ownerType: WalletOwnerType,
     @Param('ownerId', ParseUUIDPipe) ownerId: string,
     @Body() dto: AdminWalletMutationDto,
+    @CurrentUser() admin: AuthenticatedUser,
     @Req() request: Request,
   ): Promise<ApiSuccessResponse<WalletDto>> {
     const data = await this.walletService.credit({
@@ -57,7 +60,7 @@ export class AdminWalletController {
       ...(dto.description !== undefined ? { description: dto.description } : {}),
       ...(dto.referenceType !== undefined ? { referenceType: dto.referenceType } : {}),
       ...(dto.referenceId !== undefined ? { referenceId: dto.referenceId } : {}),
-      context: this.auditContext(request),
+      context: this.auditContext(request, admin.id),
     });
     return { success: true, data };
   }
@@ -68,6 +71,7 @@ export class AdminWalletController {
     @Param('ownerType', new ParseEnumPipe(WalletOwnerType)) ownerType: WalletOwnerType,
     @Param('ownerId', ParseUUIDPipe) ownerId: string,
     @Body() dto: AdminWalletMutationDto,
+    @CurrentUser() admin: AuthenticatedUser,
     @Req() request: Request,
   ): Promise<ApiSuccessResponse<WalletDto>> {
     const data = await this.walletService.debit({
@@ -78,13 +82,17 @@ export class AdminWalletController {
       ...(dto.description !== undefined ? { description: dto.description } : {}),
       ...(dto.referenceType !== undefined ? { referenceType: dto.referenceType } : {}),
       ...(dto.referenceId !== undefined ? { referenceId: dto.referenceId } : {}),
-      context: this.auditContext(request),
+      context: this.auditContext(request, admin.id),
     });
     return { success: true, data };
   }
 
-  private auditContext(request: Request): { ipAddress?: string; userAgent?: string } {
+  private auditContext(
+    request: Request,
+    userId: string,
+  ): { userId: string; ipAddress?: string; userAgent?: string } {
     return {
+      userId,
       ...(request.ip !== undefined ? { ipAddress: request.ip } : {}),
       ...(typeof request.headers['user-agent'] === 'string'
         ? { userAgent: request.headers['user-agent'] }

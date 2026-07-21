@@ -104,14 +104,33 @@ export class NotificationTemplateService {
     return value.replace(/\{\{\s*([A-Za-z0-9_.-]+)\s*\}\}/g, (_match, key: string) => {
       const replacement = variables[key];
       if (replacement === undefined || replacement === null) return '';
-      if (typeof replacement === 'string') return replacement;
+      if (typeof replacement === 'string') return this.escapeHtml(replacement);
       if (typeof replacement === 'number' || typeof replacement === 'boolean') {
-        return replacement.toString();
+        return this.escapeHtml(replacement.toString());
       }
-      if (typeof replacement === 'bigint') return replacement.toString();
-      if (typeof replacement === 'symbol') return replacement.description ?? '';
-      if (typeof replacement === 'object') return JSON.stringify(replacement);
+      if (typeof replacement === 'bigint') return this.escapeHtml(replacement.toString());
+      if (typeof replacement === 'symbol') return this.escapeHtml(replacement.description ?? '');
+      if (typeof replacement === 'object') return this.escapeHtml(JSON.stringify(replacement));
       return '';
+    });
+  }
+
+  private escapeHtml(value: string): string {
+    return value.replace(/[&<>"']/g, (character) => {
+      switch (character) {
+        case '&':
+          return '&amp;';
+        case '<':
+          return '&lt;';
+        case '>':
+          return '&gt;';
+        case '"':
+          return '&quot;';
+        case "'":
+          return '&#39;';
+        default:
+          return character;
+      }
     });
   }
 }

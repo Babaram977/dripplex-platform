@@ -29,6 +29,11 @@ describe('NotificationCenterSubscriber', () => {
     subscriber.onModuleInit();
 
     expect(eventBus.on).toHaveBeenCalledWith(DOMAIN_EVENTS.ORDER_CREATED, expect.any(Function));
+    expect(eventBus.on).toHaveBeenCalledWith(DOMAIN_EVENTS.ORDER_PAID, expect.any(Function));
+    expect(eventBus.on).not.toHaveBeenCalledWith(
+      DOMAIN_EVENTS.PAYMENT_SUCCEEDED,
+      expect.any(Function),
+    );
     expect(eventBus.on).toHaveBeenCalledWith(DOMAIN_EVENTS.PAYMENT_FAILED, expect.any(Function));
     expect(eventBus.on).toHaveBeenCalledWith(DOMAIN_EVENTS.PROMOTION_CREATED, expect.any(Function));
   });
@@ -48,6 +53,33 @@ describe('NotificationCenterSubscriber', () => {
         title: 'Order created',
       }),
     );
+  });
+
+  it('maps order paid events to payment success notifications', async () => {
+    await subscriber.handle({
+      name: DOMAIN_EVENTS.ORDER_PAID,
+      payload: { customerId: 'user-1', orderNumber: 'ORD-1' },
+      occurredAt: new Date().toISOString(),
+    });
+
+    expect(notificationCenter.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'user-1',
+        channel: NotificationChannel.IN_APP,
+        type: NotificationType.PAYMENT_SUCCESS,
+        title: 'Order paid',
+      }),
+    );
+  });
+
+  it('ignores payment succeeded events to avoid duplicate payment success notifications', async () => {
+    await subscriber.handle({
+      name: DOMAIN_EVENTS.PAYMENT_SUCCEEDED,
+      payload: { customerId: 'user-1', reference: 'ref-1' },
+      occurredAt: new Date().toISOString(),
+    });
+
+    expect(notificationCenter.send).not.toHaveBeenCalled();
   });
 
   it('broadcasts promotions when event payload includes user ids', async () => {

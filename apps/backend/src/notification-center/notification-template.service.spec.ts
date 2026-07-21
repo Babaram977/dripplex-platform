@@ -60,6 +60,25 @@ describe('NotificationTemplateService', () => {
     expect(rendered.body).toBe('Welcome to .');
   });
 
+  it('escapes HTML special characters in rendered variables', () => {
+    const rendered = service.renderTemplate(
+      {
+        ...template,
+        subject: 'Hello {{ name }}',
+        body: 'Message: {{ message }}',
+      },
+      {
+        name: `Ada "Admin"`,
+        message: `<script>alert('xss') & more</script>`,
+      },
+    );
+
+    expect(rendered).toEqual({
+      subject: 'Hello Ada &quot;Admin&quot;',
+      body: 'Message: &lt;script&gt;alert(&#39;xss&#39;) &amp; more&lt;/script&gt;',
+    });
+  });
+
   it('loads an active template before rendering', async () => {
     prisma.notificationTemplate.findFirst.mockResolvedValue(template);
 

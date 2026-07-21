@@ -10,6 +10,7 @@ import type { DomainEvent, DomainEventHandler } from './domain-events';
 export class DomainEventBus {
   private readonly logger = new Logger(DomainEventBus.name);
   private readonly handlers = new Map<string, Set<DomainEventHandler>>();
+  private readonly pendingDispatches = new Set<Promise<void>>();
 
   public on(eventName: string, handler: DomainEventHandler): void {
     const set = this.handlers.get(eventName) ?? new Set<DomainEventHandler>();
@@ -21,7 +22,7 @@ export class DomainEventBus {
     this.handlers.get(eventName)?.delete(handler);
   }
 
-  public async emit(
+  public emit(
     name: string,
     payload: Record<string, unknown>,
     meta?: { actorUserId?: string | null; requestId?: string | null },
@@ -35,14 +36,33 @@ export class DomainEventBus {
     };
 
     const handlers = [...(this.handlers.get(name) ?? [])];
-    for (const handler of handlers) {
-      try {
-        await handler(event);
-      } catch (error) {
-        this.logger.error(
-          `Domain event handler failed for ${name}: ${error instanceof Error ? error.message : 'unknown'}`,
-        );
-      }
+    if (handlers.length === 0) {
+      return Promise.resolve();
+    }
+
+    const dispatch = Promise.allSettled(
+      handlers.map((handler) => Promise.resolve().then(() => handler(event))),
+    ).then((results) => {
+      results.forEach((result) => {
+        if (result.status === 'rejected') {
+          this.logger.error(
+            `Domain event handler failed for ${name}: ${result.reason instanceof Error ? result.reason.message : 'unknown'}`,
+          );
+        }
+      });
+    });
+
+    this.pendingDispatches.add(dispatch);
+    void dispatch.finally(() => {
+      this.pendingDispatches.delete(dispatch);
+    });
+
+    return Promise.resolve();
+  }
+
+  public async drain(): Promise<void> {
+    while (this.pendingDispatches.size > 0) {
+      await Promise.allSettled([...this.pendingDispatches]);
     }
   }
 }
