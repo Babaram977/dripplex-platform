@@ -31,6 +31,6 @@ import { PrismaCartRepository } from './repositories/prisma-cart.repository';
     { provide: VAT_RATE, useValue: DEFAULT_VAT_RATE },
     { provide: FLAT_DELIVERY_FEE, useValue: DEFAULT_FLAT_DELIVERY_FEE },
   ],
-  exports: [CartService],
+  exports: [CartService, CART_REPOSITORY],
 })
 export class CartModule {}

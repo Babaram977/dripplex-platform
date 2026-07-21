@@ -208,3 +208,29 @@ curl -X POST "$API/api/v1/customer/cart/items" \
 ```
 
 Pricing hooks: `NoCouponEngine`, `NigeriaTaxCalculator` (7.5% VAT), `FlatDeliveryFeeCalculator` (₦1500). Inventory stub always available.
+
+### S1-C11 — Checkout & order creation
+
+| Method | Path                                 | Auth                      | Notes                                              |
+| ------ | ------------------------------------ | ------------------------- | -------------------------------------------------- |
+| `POST` | `/api/v1/customer/checkout`          | JWT + `customer:checkout` | Create order, reserve inventory, lock cart         |
+| `GET`  | `/api/v1/customer/orders`            | JWT + `customer:orders`   | Paginated, newest first                            |
+| `GET`  | `/api/v1/customer/orders/:id`        | JWT + `customer:orders`   | Own orders only                                    |
+| `POST` | `/api/v1/customer/orders/:id/cancel` | JWT + `customer:orders`   | Pending payment only; releases stock               |
+| `GET`  | `/api/v1/admin/orders`               | JWT + `admin:orders:read` | Filters: status, merchant, customer, date, payment |
+| `GET`  | `/api/v1/admin/orders/:id`           | JWT + `admin:orders:read` | Read-only                                          |
+
+```bash
+# Checkout (no payment gateway — S1-C12)
+curl -X POST "$API/api/v1/customer/checkout" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"fulfillmentType":"DELIVERY","deliveryAddressId":"<uuid>"}'
+
+# List / cancel
+curl -H "Authorization: Bearer $TOKEN" "$API/api/v1/customer/orders?page=1&pageSize=20"
+curl -X POST "$API/api/v1/customer/orders/<orderId>/cancel" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"reason":"Changed mind"}'
+```
+
+Checkout pricing hooks default to **0** tax / discount / delivery (`ZeroTaxCalculator`, `ZeroCouponCalculator`, `ZeroDeliveryCalculator`). Inventory is reserved for 30 minutes; cleanup runs every 5 minutes and marks unpaid expired orders `FAILED` while unlocking the cart.

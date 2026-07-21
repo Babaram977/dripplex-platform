@@ -35,6 +35,8 @@ export interface UpdateCartTotalsInput {
 
 export interface CartRepository {
   findActiveByCustomerId(customerId: string): Promise<CartWithItems | null>;
+  findLockedByCustomerId(customerId: string): Promise<CartWithItems | null>;
+  findOpenByCustomerId(customerId: string): Promise<CartWithItems | null>;
   findById(id: string): Promise<CartWithItems | null>;
   findByIdForCustomer(id: string, customerId: string): Promise<CartWithItems | null>;
   createCart(input: CreateCartInput): Promise<CartWithItems>;

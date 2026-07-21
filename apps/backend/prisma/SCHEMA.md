@@ -240,17 +240,34 @@ User 1───* CustomerAddress
 
 ### `CartStatus`
 
-| Value         | Description                   |
-| ------------- | ----------------------------- |
-| `ACTIVE`      | Current customer cart         |
-| `CHECKED_OUT` | Converted to order (future)   |
-| `ABANDONED`   | Cleared or replaced lifecycle |
+| Value         | Description                                 |
+| ------------- | ------------------------------------------- |
+| `ACTIVE`      | Current mutable customer cart               |
+| `LOCKED`      | Checkout created; pending payment (S1-C11)  |
+| `CHECKED_OUT` | Converted after successful payment (future) |
+| `ABANDONED`   | Cleared or replaced lifecycle               |
 
 ### `Cart` / `CartItem`
 
-One ACTIVE cart per customer (enforced in service). Cart is single-merchant. Item unit prices are snapshotted at add/update time.
+One open cart per customer (`ACTIVE` or `LOCKED`). Cart is single-merchant. Item unit prices are snapshotted at add/update time. Locked carts reject mutations until cancel or reservation expiry.
 
 ```text
 User 1───* Cart
 Cart 1───* CartItem
+```
+
+## S1-C11 models
+
+### `OrderStatus` / `PaymentStatus` / `FulfillmentType`
+
+Orders start as `PENDING_PAYMENT` / `PENDING`. Payment gateway transitions arrive in S1-C12.
+
+### `Order` / `OrderItem` / `InventoryReservation`
+
+Checkout snapshots product name, SKU, image, and unit price onto `order_items`. Reservations hold quantity for 30 minutes without deducting inventory.
+
+```text
+User 1───* Order
+Order 1───* OrderItem
+Order 1───* InventoryReservation
 ```

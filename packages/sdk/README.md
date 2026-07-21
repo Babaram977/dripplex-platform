@@ -87,3 +87,20 @@ await client.cart.updateItem(cart!.items[0].id, { quantity: 3 });
 await client.cart.recalculate();
 await client.cart.clear();
 ```
+
+## Checkout & orders (S1-C11)
+
+```ts
+const { order } = await client.orders.checkout({
+  fulfillmentType: 'DELIVERY',
+  deliveryAddressId,
+});
+
+const page = await client.orders.getOrders({ page: 1, pageSize: 20 });
+const one = await client.orders.getOrder(order.id);
+await client.orders.cancelOrder(order.id, { reason: 'Changed mind' });
+
+// Admin
+await client.orders.adminGetOrders({ status: 'PENDING_PAYMENT', merchantId });
+await client.orders.adminGetOrder(order.id);
+```

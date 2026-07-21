@@ -1,4 +1,4 @@
-export type CartStatus = 'ACTIVE' | 'CHECKED_OUT' | 'ABANDONED';
+export type CartStatus = 'ACTIVE' | 'CHECKED_OUT' | 'ABANDONED' | 'LOCKED';
 
 export interface CartItemDto {
   id: string;

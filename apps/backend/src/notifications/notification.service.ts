@@ -38,6 +38,15 @@ export interface MerchantLifecycleNotificationInput {
   reason?: string;
 }
 
+export interface OrderCreatedNotificationInput {
+  audience: 'customer' | 'merchant';
+  email: string;
+  orderId: string;
+  orderNumber: string;
+  total: number;
+  currency: string;
+}
+
 /**
  * Provider-agnostic notification port for auth emails and SMS.
  * Production adapters (SendGrid, SES, Termii, etc.) implement this interface.
@@ -48,6 +57,7 @@ export interface NotificationService {
   sendEmailVerification(input: EmailVerificationNotificationInput): Promise<void>;
   sendPhoneOtp(input: PhoneOtpNotificationInput): Promise<void>;
   notifyMerchantLifecycle(input: MerchantLifecycleNotificationInput): Promise<void>;
+  notifyOrderCreated(input: OrderCreatedNotificationInput): Promise<void>;
 }
 
 export const NOTIFICATION_SERVICE = Symbol('NOTIFICATION_SERVICE');
