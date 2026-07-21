@@ -44,6 +44,27 @@ export class OtpService {
     context: AuditContext,
     userId?: string,
   ): Promise<OtpDispatchResult> {
+    const result = await this.generateStoreAndDispatch(
+      purpose,
+      identifier,
+      context,
+      undefined,
+      userId,
+    );
+    return { expiresInSeconds: result.expiresInSeconds, channel: result.channel };
+  }
+
+  /**
+   * Generates an OTP, stores its hash, then invokes `dispatch` with the plaintext code
+   * for immediate delivery through a notification abstraction.
+   */
+  public async generateStoreAndDispatch(
+    purpose: OtpPurpose,
+    identifier: string,
+    context: AuditContext,
+    dispatch?: (otp: string, expiresInSeconds: number) => Promise<void>,
+    userId?: string,
+  ): Promise<OtpDispatchResult & { otp: string }> {
     const normalizedIdentifier = this.normalizeIdentifier(purpose, identifier);
     await this.enforceResendPolicy(purpose, normalizedIdentifier);
 
@@ -56,7 +77,9 @@ export class OtpService {
     await this.redis.del(this.attemptsKey(otpKey));
     await this.redis.del(this.lockoutKey(otpKey));
 
-    if (!this.appConfig.isProduction) {
+    if (dispatch) {
+      await dispatch(otp, ttlSeconds);
+    } else if (!this.appConfig.isProduction) {
       this.logger.debug(
         { purpose, identifier: normalizedIdentifier, otp },
         'OTP generated for development',
@@ -73,6 +96,7 @@ export class OtpService {
     return {
       expiresInSeconds: ttlSeconds,
       channel: this.channelForPurpose(purpose),
+      otp,
     };
   }
 
@@ -209,8 +233,9 @@ export class OtpService {
   private ttlForPurpose(purpose: OtpPurpose): number {
     switch (purpose) {
       case 'email_verification':
-      case 'password_reset':
         return this.appConfig.otpEmailTtlSeconds;
+      case 'password_reset':
+        return this.appConfig.otpResetTtlSeconds;
       case 'phone_verification':
       case 'login_step_up':
         return this.appConfig.otpSmsTtlSeconds;

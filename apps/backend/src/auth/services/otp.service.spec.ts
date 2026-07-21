@@ -30,6 +30,7 @@ describe('OtpService', () => {
     otpLength: 6,
     otpEmailTtlSeconds: 600,
     otpSmsTtlSeconds: 300,
+    otpResetTtlSeconds: 900,
     otpMaxVerifyAttempts: 5,
     otpLockoutSeconds: 900,
     otpResendCooldownSeconds: 60,

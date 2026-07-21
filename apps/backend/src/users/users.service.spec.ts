@@ -19,6 +19,7 @@ describe('UsersService', () => {
     activateIfVerificationsComplete: jest.fn(),
     recordLoginActivity: jest.fn(),
     softDelete: jest.fn(),
+    updatePassword: jest.fn(),
     list: jest.fn(),
   };
 

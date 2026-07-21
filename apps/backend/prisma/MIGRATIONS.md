@@ -180,3 +180,42 @@ No new database migration — uses S1-C3 `auth_sessions` schema.
 - [ ] Logout-all revokes all sessions for user
 - [ ] Revoked session access token rejected by JWT guard
 - [ ] Audit events: `auth.refresh.started`, `auth.refresh.success`, `auth.refresh.failed`, `auth.refresh.reused`, `auth.logout`, `auth.logout.all`, `auth.session.revoked`
+
+---
+
+# Migration notes — S1-C5 password management
+
+Migration: `20260721130000_s1_c5_password_management`
+
+## Summary
+
+| Change type   | Detail                                                                                      |
+| ------------- | ------------------------------------------------------------------------------------------- |
+| Table         | `password_reset_tokens` (hash, user, expiry, createdAt, consumedAt)                         |
+| API           | `POST /auth/password/forgot` — anti-enumeration, rate limited                               |
+| API           | `POST /auth/password/reset` — token + OTP, revoke all sessions                              |
+| API           | `POST /auth/password/change` — authenticated, revoke all sessions                           |
+| Config        | `PASSWORD_RESET_TOKEN_TTL_SECONDS`, `PASSWORD_FORGOT_MAX_PER_HOUR`, `OTP_RESET_TTL_SECONDS` |
+| Notifications | `NotificationService` abstraction (logging adapter)                                         |
+
+## API surface (S1-C5)
+
+| Method | Path                    | Auth   | Description                           |
+| ------ | ----------------------- | ------ | ------------------------------------- |
+| POST   | `/auth/password/forgot` | Public | Request reset; always `{ submitted }` |
+| POST   | `/auth/password/reset`  | Public | Complete reset with token + OTP       |
+| POST   | `/auth/password/change` | JWT    | Change password while authenticated   |
+
+## Session revocation
+
+Per DPX-013 §13.5, **password reset and password change revoke all sessions** for the user (including the current session on change). Clients must log in again.
+
+## Verification checklist (S1-C5)
+
+- [ ] Forgot password always returns `{ submitted: true }`
+- [ ] Active user receives reset token (hashed in DB) + OTP via notification port
+- [ ] One active reset token per user (prior tokens invalidated)
+- [ ] Reset rejects invalid, expired, and reused tokens
+- [ ] Reset/change update `passwordChangedAt` and revoke all sessions
+- [ ] Password policy enforced (length, complexity, common denylist)
+- [ ] Audit events: `auth.password.forgot`, `auth.password.reset.*`, `auth.password.changed`, `auth.password.change.failed`, `auth.sessions.revoked.password`

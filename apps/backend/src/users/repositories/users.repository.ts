@@ -35,6 +35,7 @@ export interface UsersRepository {
   markPhoneVerified(id: string): Promise<User>;
   activateIfVerificationsComplete(id: string, requiresPhoneVerification: boolean): Promise<User>;
   softDelete(id: string): Promise<User>;
+  updatePassword(id: string, passwordHash: string): Promise<User>;
   list(params: { skip: number; take: number }): Promise<{ items: User[]; total: number }>;
 }
 

@@ -97,17 +97,26 @@ export const forgotPasswordSchema = z.object({
 
 export type ForgotPasswordFormValues = z.infer<typeof forgotPasswordSchema>;
 
-export const resetPasswordSchema = z
-  .object({
-    password: passwordSchema,
-    confirmPassword: z.string().min(8, 'Confirm your password'),
-  })
-  .refine((values) => values.password === values.confirmPassword, {
-    message: 'Passwords do not match',
-    path: ['confirmPassword'],
-  });
+export const resetPasswordSchema = z.object({
+  email: z.string().trim().email('Enter a valid email address'),
+  resetToken: z.string().min(32, 'Reset token is required'),
+  otp: z.string().regex(/^\d{4,8}$/, 'Enter the numeric code from your message'),
+  password: passwordSchema,
+});
 
 export type ResetPasswordFormValues = z.infer<typeof resetPasswordSchema>;
+
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(8, 'Current password is required'),
+    newPassword: passwordSchema,
+  })
+  .refine((values) => values.currentPassword !== values.newPassword, {
+    message: 'New password must be different from current password',
+    path: ['newPassword'],
+  });
+
+export type ChangePasswordFormValues = z.infer<typeof changePasswordSchema>;
 
 export const verifyOtpSchema = z.object({
   email: z.string().trim().email('Enter a valid email address'),

@@ -120,6 +120,21 @@ Immutable security audit trail (DPX-013 §13.6).
 
 **Indexes:** `(userId, createdAt DESC)`, `(action, createdAt DESC)`
 
+### `PasswordResetToken` (S1-C5)
+
+Opaque password-reset tokens. Only SHA-256 hashes are stored.
+
+| Field        | Type        | Notes                                |
+| ------------ | ----------- | ------------------------------------ |
+| `id`         | UUID        | Primary key                          |
+| `userId`     | UUID        | Owner                                |
+| `tokenHash`  | varchar(64) | Unique SHA-256 of opaque reset token |
+| `expiresAt`  | timestamp   | Token expiry (default 15 minutes)    |
+| `consumedAt` | timestamp?  | Set when used or superseded          |
+| `createdAt`  | timestamp   | Issuance time                        |
+
+**Indexes:** `tokenHash` unique, `(userId)`, `(userId, consumedAt)`, `(expiresAt)`
+
 ### `MerchantOnboarding`, `RiderOnboarding`, `DriverOnboarding`
 
 1:1 with respective profile. Initialized at `DRAFT` during portal registration.
@@ -139,6 +154,7 @@ Immutable security audit trail (DPX-013 §13.6).
 User 1───* UserRole *───1 Role
 Role 1───* RolePermission *───1 Permission
 User 1───* AuthSession
+User 1───* PasswordResetToken
 User 1───0..1 CustomerProfile
 User 1───0..1 MerchantProfile
 User 1───0..1 RiderProfile
