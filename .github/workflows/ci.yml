@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_ENV: test
+  DATABASE_URL: postgresql://dripplex:dripplex@localhost:5432/dripplex?schema=public
+  REDIS_URL: redis://localhost:6379
+  JWT_ACCESS_SECRET: ci-access-secret-with-at-least-32-characters
+  JWT_REFRESH_SECRET: ci-refresh-secret-with-at-least-32-characters
+  NEXT_PUBLIC_API_BASE_URL: http://localhost:3000/api/v1
+  NEXT_PUBLIC_APP_URL: http://localhost:3001
+  NEXT_PUBLIC_APP_NAME: Dripplex
+  NEXT_PUBLIC_APP_TAGLINE: life,Simplified
+
+jobs:
+  quality:
+    name: Install · Lint · Typecheck · Test · Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate environment template
+        run: pnpm validate:env
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build

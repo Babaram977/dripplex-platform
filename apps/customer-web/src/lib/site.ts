@@ -1,9 +1,11 @@
+import { clientEnv } from '@/env';
+
 export const siteConfig = {
-  name: 'Dripplex',
-  tagline: 'life,Simplified',
+  name: clientEnv.NEXT_PUBLIC_APP_NAME,
+  tagline: clientEnv.NEXT_PUBLIC_APP_TAGLINE,
   description:
     'Dripplex is Nigeria’s Super Platform for marketplace, food, parcels, rides, pharmacy, home services, and wallet — built for everyday life.',
-  url: process.env['NEXT_PUBLIC_APP_URL'] ?? 'http://localhost:3001',
+  url: clientEnv.NEXT_PUBLIC_APP_URL,
   locale: 'en_NG',
   links: {
     privacy: '/privacy',

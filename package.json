@@ -20,6 +20,9 @@
     "test:unit": "turbo run test --filter=./packages/* --filter=./apps/backend",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,mjs,cjs,json,md,yml,yaml,css}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,mjs,cjs,json,md,yml,yaml,css}\"",
+    "validate:env": "node scripts/validate-env.mjs",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down",
     "clean": "turbo run clean && rm -rf node_modules .turbo",
     "prepare": "husky"
   },

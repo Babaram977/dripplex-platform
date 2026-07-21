@@ -1,8 +1,13 @@
 import type { NextConfig } from 'next';
 
+import { validateClientEnv } from './src/env';
+
+validateClientEnv();
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  output: 'standalone',
   transpilePackages: [
     '@dripplex/ui',
     '@dripplex/hooks',

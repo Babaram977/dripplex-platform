@@ -82,4 +82,16 @@ export class AppConfigService {
   public get logLevel(): EnvConfig['LOG_LEVEL'] {
     return this.configService.get('LOG_LEVEL', { infer: true });
   }
+
+  public get sentryDsn(): string | undefined {
+    return this.configService.get('SENTRY_DSN', { infer: true });
+  }
+
+  public get sentryEnvironment(): string {
+    return this.configService.get('SENTRY_ENVIRONMENT', { infer: true });
+  }
+
+  public get metricsEnabled(): boolean {
+    return this.configService.get('METRICS_ENABLED', { infer: true });
+  }
 }

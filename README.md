@@ -35,7 +35,7 @@ dripplex-platform/
 
 - Node.js `>= 22`
 - pnpm `>= 9` (enforced via `packageManager` field)
-- Docker & Docker Compose (for local Postgres/Redis — Commit 5)
+- Docker & Docker Compose (local full stack — see `docker-compose.yml`)
 
 ## Getting started
 
@@ -47,26 +47,48 @@ corepack prepare pnpm@9.15.0 --activate
 # Install all workspace dependencies
 pnpm install
 
+# Copy environment template
+cp .env.example .env
+
 # Verify the workspace
+pnpm validate:env
 pnpm lint
 pnpm typecheck
+pnpm test
+pnpm build
 ```
 
-Workspace foundation (Commit 1) provides monorepo tooling, shared `@dripplex/config`, and package skeletons. Application and domain implementations land in subsequent commits.
+### Docker Compose (full stack)
+
+```bash
+docker compose up --build
+```
+
+| Service      | URL                          |
+| ------------ | ---------------------------- |
+| Backend API  | http://localhost:3000/api/v1 |
+| Customer Web | http://localhost:3001        |
+
+See [infrastructure/README.md](infrastructure/README.md) for details.
+
+Workspace foundation spans Commits 1–5: monorepo tooling, backend, customer web, shared packages, and infrastructure.
 
 ## Scripts
 
-| Script              | Description                       |
-| ------------------- | --------------------------------- |
-| `pnpm install`      | Install workspace dependencies    |
-| `pnpm dev`          | Run all `dev` tasks via Turbo     |
-| `pnpm build`        | Build all packages and apps       |
-| `pnpm lint`         | Lint all packages                 |
-| `pnpm typecheck`    | Typecheck all packages            |
-| `pnpm test`         | Run unit tests                    |
-| `pnpm format`       | Format with Prettier              |
-| `pnpm format:check` | Check formatting                  |
-| `pnpm clean`        | Remove build artifacts and caches |
+| Script              | Description                                |
+| ------------------- | ------------------------------------------ |
+| `pnpm install`      | Install workspace dependencies             |
+| `pnpm dev`          | Run all `dev` tasks via Turbo              |
+| `pnpm build`        | Build all packages and apps                |
+| `pnpm lint`         | Lint all packages                          |
+| `pnpm typecheck`    | Typecheck all packages                     |
+| `pnpm test`         | Run unit tests                             |
+| `pnpm format`       | Format with Prettier                       |
+| `pnpm format:check` | Check formatting                           |
+| `pnpm validate:env` | Validate `.env` or `.env.example` template |
+| `pnpm docker:up`    | Build and start Docker Compose stack       |
+| `pnpm docker:down`  | Stop Docker Compose stack                  |
+| `pnpm clean`        | Remove build artifacts and caches          |
 
 Filter a single package:
 

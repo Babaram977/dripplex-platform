@@ -20,6 +20,15 @@ export const envSchema = z.object({
   THROTTLE_TTL_MS: z.coerce.number().int().positive().default(60_000),
   THROTTLE_LIMIT: z.coerce.number().int().positive().default(100),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+  SENTRY_DSN: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim().length === 0 ? undefined : value),
+    z.string().url().optional(),
+  ),
+  SENTRY_ENVIRONMENT: z.string().default('development'),
+  METRICS_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
