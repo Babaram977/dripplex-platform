@@ -9,6 +9,7 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
   { code: 'auth:sessions:read', description: 'List own auth sessions' },
   { code: 'auth:sessions:revoke', description: 'Revoke own auth sessions' },
   { code: 'customer:addresses:manage', description: 'Manage customer addresses' },
+  { code: 'admin:addresses:read', description: 'Read customer addresses (admin)' },
   { code: 'merchant:onboarding:submit', description: 'Submit merchant onboarding' },
   { code: 'merchant:onboarding:approve', description: 'Approve merchant onboarding' },
   { code: 'merchant:business:manage', description: 'Manage own merchant business profile' },

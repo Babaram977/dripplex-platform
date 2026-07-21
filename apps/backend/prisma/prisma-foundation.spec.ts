@@ -35,6 +35,7 @@ describe('Prisma schema foundation (S1-C1)', () => {
     expect(Prisma.ModelName.PasswordResetToken).toBe('PasswordResetToken');
     expect(Prisma.ModelName.IdentityVerification).toBe('IdentityVerification');
     expect(Prisma.ModelName.CustomerProfile).toBe('CustomerProfile');
+    expect(Prisma.ModelName.CustomerAddress).toBe('CustomerAddress');
     expect(Prisma.ModelName.MerchantProfile).toBe('MerchantProfile');
     expect(Prisma.ModelName.Business).toBe('Business');
     expect(Prisma.ModelName.MerchantKyc).toBe('MerchantKyc');
@@ -45,7 +46,7 @@ describe('Prisma schema foundation (S1-C1)', () => {
 
   it('defines the DPX-013 Sprint 1 role and permission catalog sizes', () => {
     expect(ROLE_SEEDS).toHaveLength(7);
-    expect(PERMISSION_SEEDS).toHaveLength(28);
+    expect(PERMISSION_SEEDS).toHaveLength(29);
     expect(ROLE_SEEDS.map((role: RoleSeed) => role.name)).toEqual(
       expect.arrayContaining([
         'customer',

@@ -82,6 +82,12 @@ enum KycVerificationStatus {
   REJECTED
 }
 
+enum AddressLabel {
+  HOME
+  WORK
+  OTHER
+}
+
 model User {
   id                  String               @id @default(uuid()) @db.Uuid
   email               String               @unique @db.Citext
@@ -109,6 +115,7 @@ model User {
   businesses             Business[]
   merchantKycs           MerchantKyc[]
   bankAccounts           BankAccount[]
+  customerAddresses      CustomerAddress[]
   auditLogs              AuditLog[]
   createdAt              DateTime             @default(now()) @map("created_at")
   updatedAt              DateTime             @updatedAt @map("updated_at")
@@ -248,6 +255,38 @@ model CustomerProfile {
 
   @@index([deletedAt])
   @@map("customer_profiles")
+}
+
+model CustomerAddress {
+  id            String       @id @default(uuid()) @db.Uuid
+  customerId    String       @map("customer_id") @db.Uuid
+  label         AddressLabel
+  recipientName String       @map("recipient_name") @db.VarChar(150)
+  phone         String       @db.VarChar(32)
+  addressLine1  String       @map("address_line1") @db.VarChar(255)
+  addressLine2  String?      @map("address_line2") @db.VarChar(255)
+  landmark      String?      @db.VarChar(255)
+  city          String       @db.VarChar(100)
+  state         String       @db.VarChar(100)
+  country       String       @db.VarChar(100)
+  postalCode    String?      @map("postal_code") @db.VarChar(20)
+  latitude      Decimal      @db.Decimal(10, 7)
+  longitude     Decimal      @db.Decimal(10, 7)
+  isDefault     Boolean      @default(false) @map("is_default")
+  isActive      Boolean      @default(true) @map("is_active")
+  verifiedAt    DateTime?    @map("verified_at")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+  deletedAt     DateTime?    @map("deleted_at")
+  customer      User         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([latitude])
+  @@index([longitude])
+  @@index([isDefault])
+  @@index([customerId, deletedAt])
+  @@index([customerId, isDefault])
+  @@map("customer_addresses")
 }
 
 model MerchantProfile {

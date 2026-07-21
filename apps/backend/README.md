@@ -164,3 +164,27 @@ docker build -f apps/backend/Dockerfile -t dripplex-backend .
 3. `POST /merchant/kyc` — submit identity/business documents.
 4. Optionally add bank accounts via `/merchant/bank-account`.
 5. Admin verifies KYC, then `POST /admin/merchant/:id/approve`.
+
+### S1-C9 — Customer addresses & saved locations
+
+| Method   | Path                                     | Auth                              | Notes                |
+| -------- | ---------------------------------------- | --------------------------------- | -------------------- |
+| `POST`   | `/api/v1/customer/addresses`             | JWT + `customer:addresses:manage` | Create (max 20)      |
+| `GET`    | `/api/v1/customer/addresses`             | JWT + `customer:addresses:manage` | List saved addresses |
+| `GET`    | `/api/v1/customer/addresses/default`     | JWT + `customer:addresses:manage` | Get default          |
+| `GET`    | `/api/v1/customer/addresses/:id`         | JWT + `customer:addresses:manage` | Get one (owned)      |
+| `PATCH`  | `/api/v1/customer/addresses/:id`         | JWT + `customer:addresses:manage` | Update               |
+| `DELETE` | `/api/v1/customer/addresses/:id`         | JWT + `customer:addresses:manage` | Soft delete          |
+| `PATCH`  | `/api/v1/customer/addresses/:id/default` | JWT + `customer:addresses:manage` | Set default          |
+| `GET`    | `/api/v1/admin/addresses/:id`            | JWT + `admin:addresses:read`      | Admin read-only      |
+
+```bash
+# Create
+curl -X POST "$API/api/v1/customer/addresses" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"label":"HOME","recipientName":"Ada","phone":"+2348012345678","addressLine1":"12 Allen Avenue","city":"Ikeja","state":"Lagos","country":"Nigeria","latitude":6.6018,"longitude":3.3515,"isDefault":true}'
+
+# List / default
+curl -H "Authorization: Bearer $TOKEN" "$API/api/v1/customer/addresses"
+curl -H "Authorization: Bearer $TOKEN" "$API/api/v1/customer/addresses/default"
+```

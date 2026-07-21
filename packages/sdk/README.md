@@ -49,3 +49,24 @@ await client.adminMerchants.approve(merchantUserId);
 ```
 
 Shared DTOs live in `@dripplex/types` (`BusinessDto`, `MerchantKycDto`, `BankAccountDto`, `MerchantProfileDto`, `MerchantApprovalDto`).
+
+## Customer addresses (S1-C9)
+
+```ts
+await client.addresses.create({
+  label: 'HOME',
+  recipientName: 'Ada Customer',
+  phone: '+2348012345678',
+  addressLine1: '12 Allen Avenue',
+  city: 'Ikeja',
+  state: 'Lagos',
+  country: 'Nigeria',
+  latitude: 6.6018,
+  longitude: 3.3515,
+  isDefault: true,
+});
+
+const list = await client.addresses.list();
+const def = await client.addresses.getDefault();
+await client.addresses.setDefault(list.items[0].id);
+```

@@ -217,3 +217,21 @@ User 1───* MerchantKyc
 User 1───* BankAccount
 Business 1───* MerchantKyc
 ```
+
+## S1-C9 models
+
+### `AddressLabel`
+
+| Value   | Description    |
+| ------- | -------------- |
+| `HOME`  | Home address   |
+| `WORK`  | Work address   |
+| `OTHER` | Custom / other |
+
+### `CustomerAddress`
+
+Saved delivery locations for a customer user (`customer_id` → `users.id`). Soft-deleted via `deleted_at`. At most one `is_default = true` among non-deleted rows.
+
+```text
+User 1───* CustomerAddress
+```

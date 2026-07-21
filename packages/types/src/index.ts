@@ -59,6 +59,20 @@ export type {
 
 export { MERCHANT_AUDIT_ACTIONS } from './merchant/index.js';
 
+export type {
+  AddressLabel,
+  AddressListResponse,
+  CoordinatesDto,
+  CreateAddressDto,
+  CustomerAddressDto,
+  DefaultAddressResponse,
+  DeliveryZoneResult,
+  UpdateAddressDto,
+  AddressAuditAction,
+} from './address/index.js';
+
+export { ADDRESS_AUDIT_ACTIONS } from './address/index.js';
+
 export {
   changePasswordSchema,
   contactSchema,
