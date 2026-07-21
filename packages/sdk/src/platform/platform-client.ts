@@ -1,6 +1,7 @@
 import type { HttpClient } from '../client/http-client.js';
 import type {
   AddWishlistItemRequest,
+  AdminWalletMutationRequest,
   AnalyticsDailyMetricDto,
   AnalyticsQuery,
   CmsContentDto,
@@ -15,25 +16,48 @@ import type {
   FraudSignalDto,
   FraudThresholdDto,
   LoyaltyAccountDto,
+  MoveWishlistToCartRequest,
+  MoveWishlistToCartResultDto,
+  NotificationListDto,
+  NotificationListQuery,
   NotificationDto,
   NotificationPreferenceDto,
   PaginatedResult,
+  PopularSearchDto,
   PromotionDto,
+  PromotionEvaluationDto,
+  PromotionListQuery,
+  PromotionRedemptionDto,
+  RecentSearchDto,
+  RedeemPromotionRequest,
   RedeemLoyaltyPointsRequest,
   ReplyToReviewRequest,
   ReviewDto,
   ReviewFraudSignalRequest,
+  ReviewListQuery,
+  ReviewListDto,
+  ReviewWithAggregateDto,
   ScheduleCmsContentRequest,
+  SearchAutocompleteQuery,
   SearchQuery,
   SearchResultDto,
+  SearchSuggestionQuery,
   UpdateCmsContentRequest,
   UpdateFraudListEntryRequest,
-  UpdateNotificationPreferenceRequest,
+  UpdateNotificationPreferencesRequest,
+  UpdateWishlistItemRequest,
+  UpdateWishlistRequest,
   UpsertFraudThresholdRequest,
+  ValidatePromotionRequest,
+  WalletHistoryQuery,
+  WalletReconciliationDto,
+  WalletReconciliationQuery,
   WalletDto,
   WalletLedgerEntryDto,
+  WalletTransferDto,
   WalletTransferRequest,
   WishlistDto,
+  WishlistItemDto,
 } from '@dripplex/types';
 
 function toQuery(params?: Record<string, boolean | number | string | undefined>): string {
@@ -57,19 +81,46 @@ function enc(value: string): string {
 export class NotificationsClient {
   public constructor(private readonly http: HttpClient) {}
 
-  public list(): Promise<PaginatedResult<NotificationDto>> {
-    return this.http.request<PaginatedResult<NotificationDto>>('/customer/notifications');
+  public list(query: NotificationListQuery = {}): Promise<NotificationListDto> {
+    return this.http.request<NotificationListDto>(
+      `/customer/notifications${toQuery({
+        status: query.status,
+        channel: query.channel,
+        type: query.type,
+        unreadOnly: query.unreadOnly,
+        page: query.page,
+        limit: query.limit,
+      })}`,
+    );
   }
 
   public markRead(id: string): Promise<NotificationDto> {
     return this.http.request<NotificationDto>(`/customer/notifications/${enc(id)}/read`, {
+      method: 'PATCH',
+    });
+  }
+
+  public markAllRead(): Promise<{ updated: number }> {
+    return this.http.request<{ updated: number }>('/customer/notifications/mark-all-read', {
       method: 'POST',
     });
   }
 
-  public updatePreference(body: UpdateNotificationPreferenceRequest): Promise<NotificationPreferenceDto> {
-    return this.http.request<NotificationPreferenceDto>('/customer/notifications/preferences', {
-      method: 'PATCH',
+  public delete(id: string): Promise<undefined> {
+    return this.http.request<undefined>(`/customer/notifications/${enc(id)}`, {
+      method: 'DELETE',
+    });
+  }
+
+  public preferences(): Promise<NotificationPreferenceDto[]> {
+    return this.http.request<NotificationPreferenceDto[]>('/customer/notifications/preferences');
+  }
+
+  public updatePreferences(
+    body: UpdateNotificationPreferencesRequest,
+  ): Promise<NotificationPreferenceDto[]> {
+    return this.http.request<NotificationPreferenceDto[]>('/customer/notifications/preferences', {
+      method: 'PUT',
       body,
     });
   }
@@ -78,11 +129,62 @@ export class NotificationsClient {
 export class SearchClient {
   public constructor(private readonly http: HttpClient) {}
 
-  public search(query: SearchQuery): Promise<SearchResultDto> {
+  public search(query: SearchQuery = {}): Promise<SearchResultDto> {
     return this.http.request<SearchResultDto>(
       `/search${toQuery({
         q: query.q,
-        entityType: query.entityType,
+        type: query.type,
+        page: query.page,
+        limit: query.limit,
+        sort: query.sort,
+        minPrice: query.minPrice,
+        maxPrice: query.maxPrice,
+        minRating: query.minRating,
+        merchantId: query.merchantId,
+        categoryId: query.categoryId,
+        available: query.available,
+      })}`,
+    );
+  }
+
+  public autocomplete(query: SearchAutocompleteQuery): Promise<string[]> {
+    return this.http.request<string[]>(
+      `/search/autocomplete${toQuery({
+        q: query.q,
+        type: query.type,
+        limit: query.limit,
+      })}`,
+    );
+  }
+
+  public suggestions(query: SearchSuggestionQuery = {}): Promise<string[]> {
+    return this.http.request<string[]>(
+      `/search/suggestions${toQuery({ q: query.q, limit: query.limit })}`,
+    );
+  }
+
+  public popular(query: Pick<SearchSuggestionQuery, 'limit'> = {}): Promise<PopularSearchDto[]> {
+    return this.http.request<PopularSearchDto[]>(
+      `/search/popular${toQuery({ limit: query.limit })}`,
+    );
+  }
+
+  public recent(query: Pick<SearchSuggestionQuery, 'limit'> = {}): Promise<RecentSearchDto[]> {
+    return this.http.request<RecentSearchDto[]>(
+      `/customer/search/recent${toQuery({ limit: query.limit })}`,
+    );
+  }
+}
+
+export class ReviewsClient {
+  public constructor(private readonly http: HttpClient) {}
+
+  public list(query: ReviewListQuery = {}): Promise<ReviewWithAggregateDto> {
+    return this.http.request<ReviewWithAggregateDto>(
+      `/reviews${toQuery({
+        targetType: query.targetType,
+        targetId: query.targetId,
+        status: query.status,
         page: query.page,
         pageSize: query.pageSize,
       })}`,
@@ -90,23 +192,28 @@ export class SearchClient {
     );
   }
 
-  public popular(): Promise<string[]> {
-    return this.http.request<string[]>('/search/popular', { auth: false });
-  }
-}
-
-export class ReviewsClient {
-  public constructor(private readonly http: HttpClient) {}
-
-  public listForTarget(targetType: string, targetId: string): Promise<PaginatedResult<ReviewDto>> {
-    return this.http.request<PaginatedResult<ReviewDto>>(
-      `/reviews/${enc(targetType)}/${enc(targetId)}`,
-      { auth: false },
-    );
+  public listForTarget(
+    targetType: NonNullable<ReviewListQuery['targetType']>,
+    targetId: string,
+    query: Omit<ReviewListQuery, 'targetId' | 'targetType'> = {},
+  ): Promise<ReviewWithAggregateDto> {
+    return this.list({ ...query, targetType, targetId });
   }
 
   public create(body: CreateReviewRequest): Promise<ReviewDto> {
     return this.http.request<ReviewDto>('/customer/reviews', { method: 'POST', body });
+  }
+
+  public listMine(query: ReviewListQuery = {}): Promise<ReviewListDto> {
+    return this.http.request<ReviewListDto>(
+      `/customer/reviews${toQuery({
+        targetType: query.targetType,
+        targetId: query.targetId,
+        status: query.status,
+        page: query.page,
+        pageSize: query.pageSize,
+      })}`,
+    );
   }
 
   public reply(id: string, body: ReplyToReviewRequest): Promise<ReviewDto> {
@@ -121,31 +228,105 @@ export class WishlistClient {
   public constructor(private readonly http: HttpClient) {}
 
   public list(): Promise<WishlistDto[]> {
-    return this.http.request<WishlistDto[]>('/customer/wishlist');
+    return this.http.request<WishlistDto[]>('/customer/wishlists');
+  }
+
+  public get(id: string): Promise<WishlistDto> {
+    return this.http.request<WishlistDto>(`/customer/wishlists/${enc(id)}`);
   }
 
   public create(body: CreateWishlistRequest): Promise<WishlistDto> {
-    return this.http.request<WishlistDto>('/customer/wishlist', { method: 'POST', body });
+    return this.http.request<WishlistDto>('/customer/wishlists', { method: 'POST', body });
   }
 
-  public addItem(wishlistId: string, body: AddWishlistItemRequest): Promise<WishlistDto> {
-    return this.http.request<WishlistDto>(`/customer/wishlist/${enc(wishlistId)}/items`, {
+  public update(id: string, body: UpdateWishlistRequest): Promise<WishlistDto> {
+    return this.http.request<WishlistDto>(`/customer/wishlists/${enc(id)}`, {
+      method: 'PATCH',
+      body,
+    });
+  }
+
+  public delete(id: string): Promise<WishlistDto> {
+    return this.http.request<WishlistDto>(`/customer/wishlists/${enc(id)}`, {
+      method: 'DELETE',
+    });
+  }
+
+  public addItem(wishlistId: string, body: AddWishlistItemRequest): Promise<WishlistItemDto> {
+    return this.http.request<WishlistItemDto>(`/customer/wishlists/${enc(wishlistId)}/items`, {
       method: 'POST',
       body,
     });
+  }
+
+  public updateItem(
+    wishlistId: string,
+    itemId: string,
+    body: UpdateWishlistItemRequest,
+  ): Promise<WishlistItemDto> {
+    return this.http.request<WishlistItemDto>(
+      `/customer/wishlists/${enc(wishlistId)}/items/${enc(itemId)}`,
+      {
+        method: 'PATCH',
+        body,
+      },
+    );
+  }
+
+  public removeItem(
+    wishlistId: string,
+    itemId: string,
+  ): Promise<{ removed: true; itemId: string }> {
+    return this.http.request<{ removed: true; itemId: string }>(
+      `/customer/wishlists/${enc(wishlistId)}/items/${enc(itemId)}`,
+      { method: 'DELETE' },
+    );
+  }
+
+  public share(id: string): Promise<WishlistDto> {
+    return this.http.request<WishlistDto>(`/customer/wishlists/${enc(id)}/share`, {
+      method: 'POST',
+    });
+  }
+
+  public moveToCart(
+    id: string,
+    body: MoveWishlistToCartRequest,
+  ): Promise<MoveWishlistToCartResultDto> {
+    return this.http.request<MoveWishlistToCartResultDto>(
+      `/customer/wishlists/${enc(id)}/move-to-cart`,
+      {
+        method: 'POST',
+        body,
+      },
+    );
   }
 }
 
 export class PromotionsClient {
   public constructor(private readonly http: HttpClient) {}
 
-  public list(): Promise<PromotionDto[]> {
-    return this.http.request<PromotionDto[]>('/promotions', { auth: false });
+  public active(query: Pick<PromotionListQuery, 'merchantId'> = {}): Promise<PromotionDto[]> {
+    return this.http.request<PromotionDto[]>(
+      `/customer/promotions/active${toQuery({ merchantId: query.merchantId })}`,
+    );
   }
 
-  public redeem(code: string): Promise<PromotionDto> {
-    return this.http.request<PromotionDto>(`/customer/promotions/${enc(code)}/redeem`, {
+  public list(query: Pick<PromotionListQuery, 'merchantId'> = {}): Promise<PromotionDto[]> {
+    return this.active(query);
+  }
+
+  public validate(body: ValidatePromotionRequest): Promise<PromotionEvaluationDto> {
+    return this.http.request<PromotionEvaluationDto>('/customer/promotions/validate', {
       method: 'POST',
+      body,
+    });
+  }
+
+  public redeem(body: RedeemPromotionRequest): Promise<PromotionRedemptionDto> {
+    return this.http.request<PromotionRedemptionDto>('/customer/promotions/redeem', {
+      method: 'POST',
+      body,
     });
   }
 }
@@ -158,7 +339,10 @@ export class LoyaltyClient {
   }
 
   public redeem(body: RedeemLoyaltyPointsRequest): Promise<LoyaltyAccountDto> {
-    return this.http.request<LoyaltyAccountDto>('/customer/loyalty/redeem', { method: 'POST', body });
+    return this.http.request<LoyaltyAccountDto>('/customer/loyalty/redeem', {
+      method: 'POST',
+      body,
+    });
   }
 }
 
@@ -169,12 +353,63 @@ export class WalletClient {
     return this.http.request<WalletDto>('/customer/wallet');
   }
 
-  public ledger(walletId: string): Promise<WalletLedgerEntryDto[]> {
-    return this.http.request<WalletLedgerEntryDto[]>(`/wallets/${enc(walletId)}/ledger`);
+  public customerTransactions(
+    query: WalletHistoryQuery = {},
+  ): Promise<PaginatedResult<WalletLedgerEntryDto>> {
+    return this.http.request<PaginatedResult<WalletLedgerEntryDto>>(
+      `/customer/wallet/transactions${toQuery({
+        page: query.page,
+        pageSize: query.pageSize,
+      })}`,
+    );
   }
 
-  public transfer(body: WalletTransferRequest): Promise<WalletLedgerEntryDto> {
-    return this.http.request<WalletLedgerEntryDto>('/customer/wallet/transfer', {
+  public transfer(body: WalletTransferRequest): Promise<WalletTransferDto> {
+    return this.http.request<WalletTransferDto>('/customer/wallet/transfer', {
+      method: 'POST',
+      body,
+    });
+  }
+
+  public merchantWallet(): Promise<WalletDto> {
+    return this.http.request<WalletDto>('/merchant/wallet');
+  }
+
+  public riderWallet(): Promise<WalletDto> {
+    return this.http.request<WalletDto>('/rider/wallet');
+  }
+}
+
+export class AdminWalletClient {
+  public constructor(private readonly http: HttpClient) {}
+
+  public reconciliation(query: WalletReconciliationQuery): Promise<WalletReconciliationDto> {
+    return this.http.request<WalletReconciliationDto>(
+      `/admin/wallets/reconciliation${toQuery({
+        ownerType: query.ownerType,
+        ownerId: query.ownerId,
+        currency: query.currency,
+      })}`,
+    );
+  }
+
+  public credit(
+    ownerType: WalletReconciliationQuery['ownerType'],
+    ownerId: string,
+    body: AdminWalletMutationRequest,
+  ): Promise<WalletDto> {
+    return this.http.request<WalletDto>(`/admin/wallets/${enc(ownerType)}/${enc(ownerId)}/credit`, {
+      method: 'POST',
+      body,
+    });
+  }
+
+  public debit(
+    ownerType: WalletReconciliationQuery['ownerType'],
+    ownerId: string,
+    body: AdminWalletMutationRequest,
+  ): Promise<WalletDto> {
+    return this.http.request<WalletDto>(`/admin/wallets/${enc(ownerType)}/${enc(ownerId)}/debit`, {
       method: 'POST',
       body,
     });

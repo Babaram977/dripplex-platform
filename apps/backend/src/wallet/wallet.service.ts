@@ -16,6 +16,11 @@ import type { PaginatedResult } from '@dripplex/types';
 import type { Wallet, WalletLedgerEntry } from '@prisma/client';
 
 type WalletTx = Prisma.TransactionClient;
+interface WalletMutationResult {
+  wallet: Wallet;
+  ledger: WalletLedgerEntry;
+  applied: boolean;
+}
 
 export interface WalletDto {
   id: string;
@@ -280,6 +285,7 @@ export class WalletService {
   ): Promise<WalletDto> {
     const amount = this.toPositiveDecimal(input.amount);
     const currency = this.normalizeCurrency(input.currency);
+    const actorUserId = input.context?.userId ?? input.ownerId;
     const result = await this.prisma.$transaction(
       async (tx) =>
         await this.applyMutation(tx, {
@@ -296,15 +302,21 @@ export class WalletService {
         }),
     );
 
+    if (!result.applied) {
+      return toWalletDto(result.wallet);
+    }
+
     await this.auditService.record(
       direction === WalletDirection.CREDIT
         ? WALLET_AUDIT_ACTIONS.CREDITED
         : WALLET_AUDIT_ACTIONS.DEBITED,
-      { ...(input.context ?? {}), userId: input.ownerId },
+      { ...(input.context ?? {}), userId: actorUserId },
       {
         resource: 'wallet',
         resourceId: result.wallet.id,
         metadata: {
+          ownerType: input.ownerType,
+          ownerId: input.ownerId,
           type,
           direction,
           amount: amount.toNumber(),
@@ -340,13 +352,28 @@ export class WalletService {
       referenceId?: string;
       metadata?: Prisma.InputJsonValue;
     },
-  ): Promise<{ wallet: Wallet; ledger: WalletLedgerEntry }> {
+  ): Promise<WalletMutationResult> {
     const wallet = await this.getOrCreateWalletRecordInTx(
       tx,
       input.ownerType,
       input.ownerId,
       input.currency,
     );
+
+    if (input.referenceType !== undefined && input.referenceId !== undefined) {
+      const existingLedger = await tx.walletLedgerEntry.findFirst({
+        where: {
+          walletId: wallet.id,
+          referenceType: input.referenceType,
+          referenceId: input.referenceId,
+        },
+      });
+      if (existingLedger) {
+        const currentWallet = await tx.wallet.findUniqueOrThrow({ where: { id: wallet.id } });
+        return { wallet: currentWallet, ledger: existingLedger, applied: false };
+      }
+    }
+
     const currentBalance = new Prisma.Decimal(wallet.availableBalance);
     if (input.direction === WalletDirection.DEBIT && currentBalance.lessThan(input.amount)) {
       throw new ValidationDomainException('Insufficient wallet balance');
@@ -388,7 +415,7 @@ export class WalletService {
       },
     });
     const updatedWallet = await tx.wallet.findUniqueOrThrow({ where: { id: wallet.id } });
-    return { wallet: updatedWallet, ledger };
+    return { wallet: updatedWallet, ledger, applied: true };
   }
 
   private async getOrCreateWalletRecord(

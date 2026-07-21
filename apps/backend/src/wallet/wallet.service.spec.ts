@@ -25,6 +25,7 @@ interface WalletPrismaMock {
   };
   walletLedgerEntry: {
     create: jest.Mock;
+    findFirst: jest.Mock;
     findMany: jest.Mock;
     count: jest.Mock;
     aggregate: jest.Mock;
@@ -80,6 +81,7 @@ describe('WalletService', () => {
       },
       walletLedgerEntry: {
         create: jest.fn(),
+        findFirst: jest.fn(),
         findMany: jest.fn(),
         count: jest.fn(),
         aggregate: jest.fn(),
@@ -140,6 +142,75 @@ describe('WalletService', () => {
       }),
     });
     expect(result.availableBalance).toBe(100);
+  });
+
+  it('does not apply duplicate referenced mutations twice', async () => {
+    prisma.wallet.upsert.mockResolvedValue(
+      wallet({ availableBalance: new Prisma.Decimal(100), version: 1 }),
+    );
+    prisma.walletLedgerEntry.findFirst.mockResolvedValue(
+      ledger({
+        referenceType: 'order',
+        referenceId: '66666666-6666-4666-8666-666666666666',
+      }),
+    );
+    prisma.wallet.findUniqueOrThrow.mockResolvedValue(
+      wallet({ availableBalance: new Prisma.Decimal(100), version: 1 }),
+    );
+
+    const result = await service.credit({
+      ownerType: WalletOwnerType.CUSTOMER,
+      ownerId,
+      amount: 100,
+      referenceType: 'order',
+      referenceId: '66666666-6666-4666-8666-666666666666',
+    });
+
+    expect(result.availableBalance).toBe(100);
+    expect(prisma.walletLedgerEntry.findFirst).toHaveBeenCalledWith({
+      where: {
+        walletId,
+        referenceType: 'order',
+        referenceId: '66666666-6666-4666-8666-666666666666',
+      },
+    });
+    expect(prisma.wallet.updateMany).not.toHaveBeenCalled();
+    expect(prisma.walletLedgerEntry.create).not.toHaveBeenCalled();
+    expect(auditService.record).not.toHaveBeenCalled();
+    expect(eventBus.emit).not.toHaveBeenCalled();
+  });
+
+  it('uses context user id as wallet mutation audit actor and keeps owner metadata', async () => {
+    const adminId = '77777777-7777-4777-8777-777777777777';
+    prisma.wallet.upsert.mockResolvedValue(wallet());
+    prisma.walletLedgerEntry.findFirst.mockResolvedValue(null);
+    prisma.wallet.updateMany.mockResolvedValue({ count: 1 });
+    prisma.walletLedgerEntry.create.mockResolvedValue(ledger());
+    prisma.wallet.findUniqueOrThrow.mockResolvedValue(
+      wallet({ availableBalance: new Prisma.Decimal(100), version: 1 }),
+    );
+
+    await service.credit({
+      ownerType: WalletOwnerType.CUSTOMER,
+      ownerId,
+      amount: 100,
+      referenceType: 'admin_adjustment',
+      referenceId: '88888888-8888-4888-8888-888888888888',
+      context: { userId: adminId, ipAddress: '127.0.0.1' },
+    });
+
+    expect(auditService.record).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ userId: adminId, ipAddress: '127.0.0.1' }),
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          ownerType: WalletOwnerType.CUSTOMER,
+          ownerId,
+          referenceType: 'admin_adjustment',
+          referenceId: '88888888-8888-4888-8888-888888888888',
+        }),
+      }),
+    );
   });
 
   it('emits WALLET_CREDITED after credit', async () => {

@@ -37,8 +37,16 @@ import type {
 import type { FraudListEntry } from '@prisma/client';
 
 type ThresholdKey = keyof typeof FRAUD_THRESHOLD_DEFAULTS;
-interface FraudMatchCandidate { matchType: FraudMatchType; matchValue: string }
+interface FraudMatchCandidate {
+  matchType: FraudMatchType;
+  matchValue: string;
+}
 
+/**
+ * Fraud evaluation is intentionally observational in S1-C14→C23.
+ * Signals and risk scores are recorded for admin review, but checkout/payment
+ * are never blocked here. Enforcement belongs to a later phase.
+ */
 @Injectable()
 export class FraudService {
   constructor(
@@ -63,7 +71,8 @@ export class FraudService {
     };
 
     let score = 0;
-    let blocked = false;
+    // Observational mode: never block checkout/payment from this service.
+    const blocked = false;
 
     if (whitelist) {
       reasons.push(`whitelisted_${whitelist.matchType.toLowerCase()}`);
@@ -71,7 +80,6 @@ export class FraudService {
     } else if (blacklist) {
       reasons.push(`blacklisted_${blacklist.matchType.toLowerCase()}`);
       score = 100;
-      blocked = true;
     } else {
       if ((input.amount ?? 0) >= thresholds.high_value_order_amount) {
         score += 30;
@@ -167,9 +175,7 @@ export class FraudService {
     };
   }
 
-  public async listQueue(
-    query: FraudQueueQuery = {},
-  ): Promise<PaginatedResult<FraudSignalDto>> {
+  public async listQueue(query: FraudQueueQuery = {}): Promise<PaginatedResult<FraudSignalDto>> {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     const where: Prisma.FraudSignalWhereInput = { deletedAt: null };
@@ -224,7 +230,11 @@ export class FraudService {
     return toFraudSignalDto(signal);
   }
 
-  public clearSignal(id: string, reviewerId: string, context: AuditContext): Promise<FraudSignalDto> {
+  public clearSignal(
+    id: string,
+    reviewerId: string,
+    context: AuditContext,
+  ): Promise<FraudSignalDto> {
     return this.reviewWithAudit(
       id,
       { status: FraudReviewStatus.CLEARED },
@@ -479,9 +489,7 @@ export class FraudService {
 
   private withReviewNote(details: Prisma.JsonValue, note: string): Prisma.InputJsonObject {
     const base =
-      details !== null && typeof details === 'object' && !Array.isArray(details)
-        ? (details)
-        : {};
+      details !== null && typeof details === 'object' && !Array.isArray(details) ? details : {};
     return {
       ...base,
       reviewNote: note,

@@ -83,12 +83,7 @@ describe('ReviewsService', () => {
     jest.clearAllMocks();
   });
 
-  it('subscribes to review submitted events on module init', () => {
-    service.onModuleInit();
-    expect(eventBus.on).toHaveBeenCalledWith('ReviewSubmitted', expect.any(Function));
-  });
-
-  it('creates a review and emits REVIEW_SUBMITTED', async () => {
+  it('creates a pending review and emits REVIEW_SUBMITTED without aggregating it', async () => {
     prisma.order.count.mockResolvedValue(0);
     prisma.review.create.mockResolvedValue(review());
 
@@ -106,9 +101,15 @@ describe('ReviewsService', () => {
     expect(result.rating).toBe(5);
     expect(prisma.review.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ comment: 'Great', verifiedPurchase: false }),
+        data: expect.objectContaining({
+          comment: 'Great',
+          verifiedPurchase: false,
+        }),
       }),
     );
+    expect(prisma.review.create.mock.calls[0]?.[0].data).not.toHaveProperty('status');
+    expect(prisma.review.findMany).not.toHaveBeenCalled();
+    expect(prisma.reviewAggregate.upsert).not.toHaveBeenCalled();
     expect(eventBus.emit).toHaveBeenCalledWith(
       'ReviewSubmitted',
       expect.objectContaining({ reviewId, targetId }),
@@ -317,6 +318,15 @@ describe('ReviewsService', () => {
     const result = await service.recalculateAggregate(ReviewTargetType.PRODUCT, targetId);
 
     expect(result.averageRating).toBe(3.33);
+    expect(prisma.review.findMany).toHaveBeenCalledWith({
+      where: {
+        targetType: ReviewTargetType.PRODUCT,
+        targetId,
+        deletedAt: null,
+        status: { in: [ReviewStatus.APPROVED] },
+      },
+      select: { rating: true },
+    });
     expect(prisma.reviewAggregate.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         update: expect.objectContaining({ reviewCount: 3, rating5: 1 }),

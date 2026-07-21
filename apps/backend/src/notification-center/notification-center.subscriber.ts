@@ -31,12 +31,6 @@ export class NotificationCenterSubscriber implements OnModuleInit {
         `Payment for order ${this.text(payload, ['orderNumber', 'orderId'], '')} was received.`,
       userKeys: ['customerId', 'userId'],
     },
-    [DOMAIN_EVENTS.PAYMENT_SUCCEEDED]: {
-      type: NotificationType.PAYMENT_SUCCESS,
-      title: 'Payment successful',
-      body: (payload) => `Your payment ${this.text(payload, ['reference'], '')} was successful.`,
-      userKeys: ['customerId', 'userId'],
-    },
     [DOMAIN_EVENTS.PAYMENT_FAILED]: {
       type: NotificationType.PAYMENT_FAILED,
       title: 'Payment failed',
