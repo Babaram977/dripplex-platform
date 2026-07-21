@@ -83,7 +83,7 @@ Each Next.js 15 app uses App Router, TypeScript, Tailwind, shadcn/ui (via `@drip
 | 1      | Workspace, tooling, docs, `@dripplex/config`                              | Done    |
 | 2      | Backend NestJS + Prisma (`User`/`Role`/`Permission`), Redis, Auth, Health | Done    |
 | 3      | Customer web foundation (layouts, auth UI, dashboard shell)               | Done    |
-| 4      | Shared packages (`ui`, `sdk`, `types`, `hooks`, `utils`)                  | Pending |
+| 4      | Shared packages (`ui`, `sdk`, `types`, `hooks`, `utils`)                  | Done    |
 | 5      | Docker Compose, GitHub Actions                                            | Pending |
 
 Subsequent vertical portals reuse packages from Commits 3–4.

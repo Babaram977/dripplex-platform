@@ -1,8 +1,7 @@
+import { ThemeToggle } from '@dripplex/hooks';
+import { DripplexLogo } from '@dripplex/ui';
 import Link from 'next/link';
 import * as React from 'react';
-
-import { DripplexLogo } from '@/components/brand/dripplex-logo';
-import { ThemeToggle } from '@/components/theme/theme-toggle';
 
 export default function AuthLayout({
   children,

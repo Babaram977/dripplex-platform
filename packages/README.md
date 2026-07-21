@@ -1,12 +1,32 @@
 # Shared packages
 
-| Package            | Purpose                    | Primary commit |
-| ------------------ | -------------------------- | -------------- |
-| `@dripplex/config` | TS / ESLint / Prettier     | Commit 1       |
-| `@dripplex/ui`     | Design system & components | Commit 4       |
-| `@dripplex/sdk`    | Typed API client           | Commit 4       |
-| `@dripplex/types`  | Domain & API contracts     | Commit 4       |
-| `@dripplex/hooks`  | Shared React hooks         | Commit 4       |
-| `@dripplex/utils`  | Pure utilities             | Commit 4       |
+| Package            | Purpose                                  | Status   |
+| ------------------ | ---------------------------------------- | -------- |
+| `@dripplex/config` | TS / ESLint / Prettier baselines         | Commit 1 |
+| `@dripplex/types`  | Domain types, API contracts, Zod schemas | Commit 4 |
+| `@dripplex/utils`  | Pure utilities (formatting, `cn`, phone) | Commit 4 |
+| `@dripplex/sdk`    | Typed HTTP client for `/api/v1`          | Commit 4 |
+| `@dripplex/ui`     | Design system, shadcn-style components   | Commit 4 |
+| `@dripplex/hooks`  | Shared React hooks, providers, theme     | Commit 4 |
 
-Package manifests exist from Commit 1 for workspace linking. Implement libraries in Commit 4 (config is complete in Commit 1).
+All portals import from these packages instead of duplicating UI, validation, and API wiring.
+
+## Build model
+
+| Package | Output                               |
+| ------- | ------------------------------------ |
+| `types` | `dist/` via `tsc`                    |
+| `utils` | `dist/` via `tsc`                    |
+| `sdk`   | `dist/` via `tsc`                    |
+| `ui`    | Source exports (`transpilePackages`) |
+| `hooks` | Source exports (`transpilePackages`) |
+
+## Quality gates
+
+```bash
+pnpm --filter @dripplex/types build test lint typecheck
+pnpm --filter @dripplex/utils build test lint typecheck
+pnpm --filter @dripplex/sdk build test lint typecheck
+pnpm --filter @dripplex/ui build lint typecheck
+pnpm --filter @dripplex/hooks build lint typecheck
+```

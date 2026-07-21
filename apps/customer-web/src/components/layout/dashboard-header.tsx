@@ -1,21 +1,22 @@
 'use client';
 
-import { Bell, Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
-import Link from 'next/link';
-import * as React from 'react';
-
-import { SearchBar } from '@/components/layout/search-bar';
-import { ThemeToggle } from '@/components/theme/theme-toggle';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Button } from '@/components/ui/button';
+import { ThemeToggle } from '@dripplex/hooks';
 import {
+  Avatar,
+  AvatarFallback,
+  Button,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+} from '@dripplex/ui';
+import { Bell, Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import Link from 'next/link';
+import * as React from 'react';
+
+import { SearchBar } from '@/components/layout/search-bar';
 import { useUiStore } from '@/stores/ui-store';
 
 export function DashboardHeader(): React.JSX.Element {

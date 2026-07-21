@@ -1,7 +1,7 @@
+import { DripplexLogo } from '@dripplex/ui';
 import Link from 'next/link';
 import * as React from 'react';
 
-import { DripplexLogo } from '@/components/brand/dripplex-logo';
 import { siteConfig } from '@/lib/site';
 
 export function Footer(): React.JSX.Element {

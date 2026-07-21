@@ -61,4 +61,8 @@ pnpm --filter @dripplex/customer-web build
 
 ## Architecture notes
 
-UI primitives currently live under `src/components` so Commit 3 remains runnable without `@dripplex/ui` (planned for Commit 4). Extraction into the shared package should be a move, not a rewrite.
+UI primitives, validation schemas, formatting utilities, and shared providers live in `@dripplex/ui`, `@dripplex/types`, `@dripplex/utils`, and `@dripplex/hooks`. Customer-web keeps app-specific layouts, marketing sections, forms, and route groups.
+
+Tailwind uses the shared preset from `@dripplex/ui/tailwind`. Styles are imported via `@dripplex/ui/styles.css`.
+
+Auth forms validate with Zod schemas from `@dripplex/types`. API integration via `@dripplex/sdk` lands in Sprint 1 (Identity & Authentication).

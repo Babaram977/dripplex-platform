@@ -1,12 +1,12 @@
 'use client';
 
+import { DripplexLogo } from '@dripplex/ui';
+import { cn } from '@dripplex/utils';
 import { Home, LayoutDashboard, Package, ShoppingBag, UserRound, Wallet } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import * as React from 'react';
 
-import { DripplexLogo } from '@/components/brand/dripplex-logo';
-import { cn } from '@/lib/utils';
 import { useUiStore } from '@/stores/ui-store';
 
 const navItems = [

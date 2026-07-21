@@ -1,0 +1,47 @@
+import { cn } from '@dripplex/utils';
+import * as React from 'react';
+
+export function Card({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement>): React.JSX.Element {
+  return (
+    <div
+      className={cn(
+        'border-border/80 bg-card/90 text-card-foreground shadow-elevation-1 rounded-lg border backdrop-blur-sm',
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+export function CardHeader({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement>): React.JSX.Element {
+  return <div className={cn('flex flex-col gap-1.5 p-6', className)} {...props} />;
+}
+
+export function CardTitle({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLHeadingElement>): React.JSX.Element {
+  return (
+    <h3 className={cn('font-display text-lg font-semibold tracking-tight', className)} {...props} />
+  );
+}
+
+export function CardDescription({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLParagraphElement>): React.JSX.Element {
+  return <p className={cn('text-muted-foreground text-sm', className)} {...props} />;
+}
+
+export function CardContent({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement>): React.JSX.Element {
+  return <div className={cn('p-6 pt-0', className)} {...props} />;
+}

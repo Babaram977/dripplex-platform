@@ -1,10 +1,9 @@
 'use client';
 
+import { Input } from '@dripplex/ui';
+import { cn } from '@dripplex/utils';
 import { Search } from 'lucide-react';
 import * as React from 'react';
-
-import { Input } from '@/components/ui/input';
-import { cn } from '@/lib/utils';
 
 interface SearchBarProps {
   className?: string;

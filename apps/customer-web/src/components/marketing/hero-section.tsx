@@ -1,7 +1,7 @@
+import { Button } from '@dripplex/ui';
 import Link from 'next/link';
 import * as React from 'react';
 
-import { Button } from '@/components/ui/button';
 import { siteConfig } from '@/lib/site';
 
 export function HeroSection(): React.JSX.Element {

@@ -1,11 +1,10 @@
 'use client';
 
+import { cn } from '@dripplex/utils';
 import { Home, Package, ShoppingBag, UserRound, Wallet } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import * as React from 'react';
-
-import { cn } from '@/lib/utils';
 
 const items = [
   { href: '/dashboard', label: 'Home', icon: Home },

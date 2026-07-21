@@ -1,8 +1,7 @@
+import { EmptyState } from '@dripplex/ui';
 import * as React from 'react';
 
 import type { Metadata } from 'next';
-
-import { EmptyState } from '@/components/ui/empty-state';
 
 export const metadata: Metadata = {
   title: 'Dashboard',

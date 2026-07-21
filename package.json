@@ -40,11 +40,23 @@
     "apps/customer-web/src/**/*.{ts,tsx}": [
       "eslint --fix --max-warnings=0 --config apps/customer-web/eslint.config.mjs"
     ],
+    "packages/types/src/**/*.{ts,tsx}": [
+      "eslint --fix --max-warnings=0 --config packages/types/eslint.config.js"
+    ],
+    "packages/utils/src/**/*.{ts,tsx}": [
+      "eslint --fix --max-warnings=0 --config packages/utils/eslint.config.js"
+    ],
+    "packages/sdk/src/**/*.{ts,tsx}": [
+      "eslint --fix --max-warnings=0 --config packages/sdk/eslint.config.js"
+    ],
+    "packages/ui/src/**/*.{ts,tsx}": [
+      "eslint --fix --max-warnings=0 --config packages/ui/eslint.config.js"
+    ],
+    "packages/hooks/src/**/*.{ts,tsx}": [
+      "eslint --fix --max-warnings=0 --config packages/hooks/eslint.config.js"
+    ],
     "packages/config/**/*.{js,mjs,cjs}": [
       "eslint --fix --max-warnings=0 --config packages/config/eslint.config.js"
-    ],
-    "eslint.config.js": [
-      "eslint --fix --max-warnings=0"
     ],
     "*.{ts,tsx,js,jsx,mjs,cjs,json,md,yml,yaml,css}": [
       "prettier --write"

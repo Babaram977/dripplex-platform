@@ -1,9 +1,9 @@
+import { AppProviders } from '@dripplex/hooks';
 import { Manrope, Sora } from 'next/font/google';
 import * as React from 'react';
 
 import type { Metadata, Viewport } from 'next';
 
-import { AppProviders } from '@/components/providers/app-providers';
 import { siteConfig } from '@/lib/site';
 
 import './globals.css';

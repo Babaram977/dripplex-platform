@@ -1,7 +1,7 @@
+import { Card, CardDescription, CardHeader, CardTitle } from '@dripplex/ui';
 import { Bike, Home, Pill, ShoppingBag, Truck, UtensilsCrossed, Wallet } from 'lucide-react';
 import * as React from 'react';
 
-import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { featureCatalog } from '@/lib/site';
 
 const icons = {

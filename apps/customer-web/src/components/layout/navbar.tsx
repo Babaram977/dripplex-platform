@@ -1,14 +1,13 @@
 'use client';
 
+import { ThemeToggle } from '@dripplex/hooks';
+import { DripplexLogo, Button } from '@dripplex/ui';
+import { cn } from '@dripplex/utils';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import * as React from 'react';
 
-import { DripplexLogo } from '@/components/brand/dripplex-logo';
-import { ThemeToggle } from '@/components/theme/theme-toggle';
-import { Button } from '@/components/ui/button';
 import { siteConfig } from '@/lib/site';
-import { cn } from '@/lib/utils';
 
 const publicLinks = [
   { href: '/', label: 'Home' },
