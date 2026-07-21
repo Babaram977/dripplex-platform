@@ -53,6 +53,18 @@ NestJS API for the Dripplex Super Platform.
 | `POST` | `/api/v1/auth/logout-all` | JWT    | Revokes all user sessions     |
 | `GET`  | `/api/v1/auth/me`         | JWT    | Session-validated profile     |
 
+### S1-C5 — Password management
+
+| Method | Path                           | Auth   | Notes                                  |
+| ------ | ------------------------------ | ------ | -------------------------------------- |
+| `POST` | `/api/v1/auth/password/forgot` | Public | Anti-enumeration; rate limited 5/hour  |
+| `POST` | `/api/v1/auth/password/reset`  | Public | Token + OTP; revokes all sessions      |
+| `POST` | `/api/v1/auth/password/change` | JWT    | Verifies current password; revokes all |
+
+**Password policy (DPX-013 §3.1):** 8–128 chars; at least one uppercase, lowercase, and digit; rejects a local common-password denylist.
+
+Reset tokens are opaque UUIDs/hex values stored as SHA-256 hashes in `password_reset_tokens`. Notifications go through `NotificationService` (logging stub until email provider wiring).
+
 **JWT access payload** (no permissions in token):
 
 ```json

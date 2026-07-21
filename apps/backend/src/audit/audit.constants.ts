@@ -14,4 +14,11 @@ export const AUTH_AUDIT_ACTIONS = {
   LOGOUT: 'auth.logout',
   LOGOUT_ALL: 'auth.logout.all',
   SESSION_REVOKED: 'auth.session.revoked',
+  PASSWORD_FORGOT: 'auth.password.forgot',
+  PASSWORD_RESET_STARTED: 'auth.password.reset.started',
+  PASSWORD_RESET_SUCCESS: 'auth.password.reset.success',
+  PASSWORD_RESET_FAILED: 'auth.password.reset.failed',
+  PASSWORD_CHANGED: 'auth.password.changed',
+  PASSWORD_CHANGE_FAILED: 'auth.password.change.failed',
+  SESSIONS_REVOKED_PASSWORD: 'auth.sessions.revoked.password',
 } as const;

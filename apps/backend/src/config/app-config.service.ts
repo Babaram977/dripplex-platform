@@ -123,6 +123,18 @@ export class AppConfigService {
     return this.configService.get('LOGIN_LOCKOUT_SECONDS', { infer: true });
   }
 
+  public get passwordResetTokenTtlSeconds(): number {
+    return this.configService.get('PASSWORD_RESET_TOKEN_TTL_SECONDS', { infer: true });
+  }
+
+  public get passwordForgotMaxPerHour(): number {
+    return this.configService.get('PASSWORD_FORGOT_MAX_PER_HOUR', { infer: true });
+  }
+
+  public get otpResetTtlSeconds(): number {
+    return this.configService.get('OTP_RESET_TTL_SECONDS', { infer: true });
+  }
+
   public get logLevel(): EnvConfig['LOG_LEVEL'] {
     return this.configService.get('LOG_LEVEL', { infer: true });
   }

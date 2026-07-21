@@ -7,7 +7,9 @@ export type {
   AuthSessionPayload,
   AuthTokens,
   AuthUserProfile,
+  ChangePasswordResponse,
   EmailVerificationResponse,
+  ForgotPasswordResponse,
   JwtPayload,
   LoginSessionMetadata,
   OnboardingStatus,
@@ -19,6 +21,7 @@ export type {
   RegistrationChannel,
   RegistrationResponse,
   RegistrationVerificationInfo,
+  ResetPasswordResponse,
   UserStatus,
 } from './auth/index.js';
 
@@ -27,6 +30,7 @@ export { AUTH_AUDIT_ACTIONS } from './auth/index.js';
 export type { PaginatedResult, UserSummary } from './user/index.js';
 
 export {
+  changePasswordSchema,
   contactSchema,
   customerRegistrationSchema,
   driverRegistrationSchema,
@@ -43,6 +47,7 @@ export {
 } from './validation/auth.js';
 
 export type {
+  ChangePasswordFormValues,
   ContactFormValues,
   CustomerRegistrationValues,
   DriverRegistrationValues,

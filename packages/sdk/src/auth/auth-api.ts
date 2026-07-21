@@ -3,9 +3,13 @@ import type {
   AuthSessionPayload,
   AuthTokens,
   AuthUserProfile,
+  ChangePasswordFormValues,
+  ChangePasswordResponse,
   CustomerRegistrationValues,
   DriverRegistrationValues,
   EmailVerificationResponse,
+  ForgotPasswordFormValues,
+  ForgotPasswordResponse,
   LoginFormValues,
   MerchantRegistrationValues,
   PhoneVerificationResponse,
@@ -13,6 +17,8 @@ import type {
   PortalLoginValues,
   RegisterFormValues,
   RegistrationResponse,
+  ResetPasswordFormValues,
+  ResetPasswordResponse,
   RiderRegistrationValues,
   VerifyEmailValues,
   VerifyOtpFormValues,
@@ -152,6 +158,30 @@ export class AuthApi {
   public logoutAll(): Promise<{ loggedOut: true }> {
     return this.http.request<{ loggedOut: true }>('/auth/logout-all', {
       method: 'POST',
+      auth: true,
+    });
+  }
+
+  public forgotPassword(body: ForgotPasswordFormValues): Promise<ForgotPasswordResponse> {
+    return this.http.request<ForgotPasswordResponse>('/auth/password/forgot', {
+      method: 'POST',
+      body,
+      auth: false,
+    });
+  }
+
+  public resetPassword(body: ResetPasswordFormValues): Promise<ResetPasswordResponse> {
+    return this.http.request<ResetPasswordResponse>('/auth/password/reset', {
+      method: 'POST',
+      body,
+      auth: false,
+    });
+  }
+
+  public changePassword(body: ChangePasswordFormValues): Promise<ChangePasswordResponse> {
+    return this.http.request<ChangePasswordResponse>('/auth/password/change', {
+      method: 'POST',
+      body,
       auth: true,
     });
   }
