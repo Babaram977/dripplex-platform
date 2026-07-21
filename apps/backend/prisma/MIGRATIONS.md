@@ -479,3 +479,41 @@ pnpm --filter @dripplex/backend prisma:seed
 | POST   | `/customer/orders/:id/cancel` | `customer:orders`   |
 | GET    | `/admin/orders`               | `admin:orders:read` |
 | GET    | `/admin/orders/:id`           | `admin:orders:read` |
+
+---
+
+# S1-C12 — Payments
+
+Migration: `20260721190000_s1_c12_payments`
+
+## Summary
+
+| Change type | Detail                                                      |
+| ----------- | ----------------------------------------------------------- |
+| Enum        | `PaymentProvider` (`PAYSTACK`, `FLUTTERWAVE`, `MONIEPOINT`) |
+| Enum        | `TransactionStatus`                                         |
+| Table       | `payment_transactions`                                      |
+
+## Apply
+
+```bash
+pnpm --filter @dripplex/backend prisma:migrate:deploy
+```
+
+## Payment lifecycle
+
+1. `POST /customer/orders/:id/pay` initializes a provider session and stores a `PENDING` transaction.
+2. Customer completes checkout on the provider authorization URL.
+3. `POST /customer/orders/:id/verify` or provider webhooks call the provider verify API (never trust client/webhook alone).
+4. On success: transaction `SUCCESS`, order `PAID`, inventory deducted, cart `CHECKED_OUT`.
+5. Duplicate verify/webhook calls are idempotent.
+
+## API surface (S1-C12)
+
+| Method | Path                           | Permission / Auth     |
+| ------ | ------------------------------ | --------------------- |
+| POST   | `/customer/orders/:id/pay`     | `customer:orders`     |
+| POST   | `/customer/orders/:id/verify`  | `customer:orders`     |
+| GET    | `/customer/orders/:id/payment` | `customer:orders`     |
+| POST   | `/webhooks/paystack`           | Public + signature    |
+| POST   | `/webhooks/flutterwave`        | Public + `verif-hash` |

@@ -4,9 +4,13 @@ import type {
   CancelOrderDto,
   CheckoutDto,
   CheckoutResponseDto,
+  InitializePaymentDto,
+  InitializePaymentResponseDto,
   ListOrdersQuery,
   OrderDto,
   PaginatedResult,
+  PaymentStatusDto,
+  PaymentVerificationDto,
 } from '@dripplex/types';
 
 function toQuery(params?: Record<string, string | number | undefined>): string {
@@ -58,6 +62,35 @@ export class OrderClient {
     return this.http.request<OrderDto>(`/customer/orders/${id}/cancel`, {
       method: 'POST',
       body,
+      auth: true,
+    });
+  }
+
+  public payOrder(
+    orderId: string,
+    body: InitializePaymentDto = {},
+  ): Promise<InitializePaymentResponseDto> {
+    return this.http.request<InitializePaymentResponseDto>(`/customer/orders/${orderId}/pay`, {
+      method: 'POST',
+      body,
+      auth: true,
+    });
+  }
+
+  public verifyOrderPayment(
+    orderId: string,
+    body: { reference?: string } = {},
+  ): Promise<PaymentVerificationDto> {
+    return this.http.request<PaymentVerificationDto>(`/customer/orders/${orderId}/verify`, {
+      method: 'POST',
+      body,
+      auth: true,
+    });
+  }
+
+  public getOrderPayment(orderId: string): Promise<PaymentStatusDto> {
+    return this.http.request<PaymentStatusDto>(`/customer/orders/${orderId}/payment`, {
+      method: 'GET',
       auth: true,
     });
   }

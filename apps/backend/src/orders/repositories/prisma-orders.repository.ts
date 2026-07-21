@@ -118,6 +118,16 @@ export class PrismaOrdersRepository implements OrdersRepository {
     });
   }
 
+  public async markPaid(id: string): Promise<Order> {
+    return await this.prisma.order.update({
+      where: { id },
+      data: {
+        status: OrderStatus.PAID,
+        paymentStatus: PaymentStatus.PAID,
+      },
+    });
+  }
+
   public async findByCartId(cartId: string): Promise<Order | null> {
     return await this.prisma.order.findFirst({
       where: { cartId },

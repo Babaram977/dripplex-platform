@@ -5,8 +5,10 @@ import { AppModule } from './app.module';
 import { AppConfigService } from './config/app-config.service';
 
 async function bootstrap(): Promise<void> {
+  // rawBody: true preserves request.rawBody for webhook HMAC verification.
   const app = await NestFactory.create(AppModule, {
     bufferLogs: true,
+    rawBody: true,
   });
 
   const logger = app.get(Logger);

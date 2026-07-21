@@ -170,4 +170,40 @@ export class AppConfigService {
   public get logLevel(): EnvConfig['LOG_LEVEL'] {
     return this.configService.get('LOG_LEVEL', { infer: true });
   }
+
+  public get paystackSecretKey(): string {
+    return this.configService.get('PAYSTACK_SECRET_KEY', { infer: true });
+  }
+
+  public get paystackPublicKey(): string {
+    return this.configService.get('PAYSTACK_PUBLIC_KEY', { infer: true });
+  }
+
+  public get paystackBaseUrl(): string {
+    return this.configService.get('PAYSTACK_BASE_URL', { infer: true });
+  }
+
+  public get flutterwaveSecretKey(): string {
+    return this.configService.get('FLUTTERWAVE_SECRET_KEY', { infer: true });
+  }
+
+  public get flutterwavePublicKey(): string {
+    return this.configService.get('FLUTTERWAVE_PUBLIC_KEY', { infer: true });
+  }
+
+  public get flutterwaveWebhookHash(): string {
+    return this.configService.get('FLUTTERWAVE_WEBHOOK_HASH', { infer: true });
+  }
+
+  public get flutterwaveBaseUrl(): string {
+    return this.configService.get('FLUTTERWAVE_BASE_URL', { infer: true });
+  }
+
+  public get moniepointApiKey(): string {
+    return this.configService.get('MONIEPOINT_API_KEY', { infer: true });
+  }
+
+  public get paymentDefaultProvider(): EnvConfig['PAYMENT_DEFAULT_PROVIDER'] {
+    return this.configService.get('PAYMENT_DEFAULT_PROVIDER', { infer: true });
+  }
 }

@@ -271,3 +271,18 @@ User 1───* Order
 Order 1───* OrderItem
 Order 1───* InventoryReservation
 ```
+
+## S1-C12 models
+
+### `PaymentProvider` / `TransactionStatus`
+
+Supported providers: Paystack, Flutterwave, Moniepoint (stub). Transactions start `PENDING` and move to `SUCCESS` / `FAILED` after provider verification.
+
+### `PaymentTransaction`
+
+Stores provider reference, authorization URL, gateway payloads, and verification timestamps. `providerReference` is unique for idempotency.
+
+```text
+Order 1───* PaymentTransaction
+User 1───* PaymentTransaction
+```

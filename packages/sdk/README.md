@@ -104,3 +104,21 @@ await client.orders.cancelOrder(order.id, { reason: 'Changed mind' });
 await client.orders.adminGetOrders({ status: 'PENDING_PAYMENT', merchantId });
 await client.orders.adminGetOrder(order.id);
 ```
+
+## Payments (S1-C12)
+
+```ts
+const init = await client.payments.payOrder(order.id, { provider: 'PAYSTACK' });
+// redirect customer to init.authorizationUrl
+
+const verified = await client.payments.verifyOrderPayment(order.id, {
+  reference: init.reference,
+});
+
+const status = await client.payments.getOrderPayment(order.id);
+
+// Also available on orders client:
+await client.orders.payOrder(order.id);
+await client.orders.verifyOrderPayment(order.id, { reference: init.reference });
+await client.orders.getOrderPayment(order.id);
+```
