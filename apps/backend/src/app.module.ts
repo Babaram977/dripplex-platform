@@ -20,9 +20,12 @@ import { NotificationCenterModule } from './notification-center/notification-cen
 import { OrdersModule } from './orders/orders.module';
 import { PaymentsModule } from './payments/payments.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { PromotionsModule } from './promotions/promotions.module';
 import { RedisModule } from './redis/redis.module';
+import { ReviewsModule } from './reviews/reviews.module';
 import { SearchModule } from './search/search.module';
 import { UsersModule } from './users/users.module';
+import { WishlistModule } from './wishlist/wishlist.module';
 
 @Module({
   imports: [
@@ -49,6 +52,9 @@ import { UsersModule } from './users/users.module';
     OrdersModule,
     PaymentsModule,
     DeliveryModule,
+    ReviewsModule,
+    WishlistModule,
+    PromotionsModule,
     NotificationCenterModule,
     SearchModule,
     HealthModule,
