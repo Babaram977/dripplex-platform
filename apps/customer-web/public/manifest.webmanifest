@@ -1,6 +1,7 @@
 {
   "name": "Dripplex",
   "short_name": "Dripplex",
+  "id": "/",
   "description": "Dripplex — life, Simplified. Nigeria’s Super Platform.",
   "start_url": "/",
   "scope": "/",
@@ -22,6 +23,29 @@
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "short_name": "Home",
+      "description": "Open your Dripplex dashboard",
+      "url": "/dashboard",
+      "icons": [{ "src": "/app-icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Orders",
+      "short_name": "Orders",
+      "description": "View your orders",
+      "url": "/dashboard/orders",
+      "icons": [{ "src": "/app-icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Wallet",
+      "short_name": "Wallet",
+      "description": "Manage your Dripplex wallet",
+      "url": "/dashboard/wallet",
+      "icons": [{ "src": "/app-icon.svg", "sizes": "any", "type": "image/svg+xml" }]
     }
   ]
 }

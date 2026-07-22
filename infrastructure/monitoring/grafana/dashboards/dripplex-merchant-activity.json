@@ -1,0 +1,42 @@
+{
+  "title": "Dripplex Merchant Activity",
+  "uid": "dripplex-merchant-activity",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "tags": ["dripplex", "d3"],
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Merchant portal probe",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "probe_success{instance=\"https://merchant.dripplex.com/\"}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Merchant host traffic",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(nginx_http_requests_total{host=\"merchant.dripplex.com\"}[5m]))",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

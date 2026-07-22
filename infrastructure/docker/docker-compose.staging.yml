@@ -37,6 +37,7 @@ services:
       retries: 5
 
   backend:
+    image: ${BACKEND_IMAGE:-ghcr.io/babaram977/dripplex-backend-core:staging}
     build:
       context: ../..
       dockerfile: apps/backend/Dockerfile
@@ -74,6 +75,44 @@ services:
       timeout: 5s
       retries: 5
       start_period: 40s
+
+  customer-web:
+    image: ${CUSTOMER_IMAGE:-ghcr.io/babaram977/dripplex-customer-web:staging}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+    ports:
+      - '3001:3001'
+    depends_on:
+      - backend
+
+  merchant-portal:
+    image: ${MERCHANT_IMAGE:-ghcr.io/babaram977/dripplex-merchant-portal:staging}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3002
+    ports:
+      - '3002:3002'
+
+  rider-portal:
+    image: ${RIDER_IMAGE:-ghcr.io/babaram977/dripplex-rider-portal:staging}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3003
+    ports:
+      - '3003:3003'
+
+  admin-portal:
+    image: ${ADMIN_IMAGE:-ghcr.io/babaram977/dripplex-admin-portal:staging}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3004
+    ports:
+      - '3004:3004'
 
 volumes:
   dripplex_pg_data:

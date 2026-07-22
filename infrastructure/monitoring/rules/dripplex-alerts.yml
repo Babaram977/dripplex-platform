@@ -1,0 +1,178 @@
+groups:
+  - name: dripplex.availability
+    rules:
+      - alert: ServerDown
+        expr: up{job="node"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: 'Node exporter down'
+          description: 'Instance {{ $labels.instance }} unreachable for 2m.'
+          runbook: 'docs/ops/runbooks/service-down.md'
+
+      - alert: ServiceDown
+        expr: probe_success{job="blackbox-https"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: 'Public service probe failing'
+          description: '{{ $labels.instance }} failed blackbox probe.'
+          runbook: 'docs/ops/runbooks/service-down.md'
+
+      - alert: DatabaseDown
+        expr: up{job="postgres"} == 0 or pg_up == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: 'PostgreSQL down'
+          runbook: 'docs/ops/runbooks/database-down.md'
+
+      - alert: RedisDown
+        expr: up{job="redis"} == 0 or redis_up == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: 'Redis down'
+          runbook: 'docs/ops/runbooks/redis-down.md'
+
+      - alert: ApiFailure
+        expr: probe_success{job="blackbox-api-health"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'API health probe failing'
+          runbook: 'docs/ops/runbooks/api-errors.md'
+
+  - name: dripplex.api
+    rules:
+      - alert: ApiHigh5xxRate
+        expr: |
+          sum(rate(nginx_http_requests_total{status=~"5.."}[5m]))
+            /
+          clamp_min(sum(rate(nginx_http_requests_total[5m])), 0.001)
+            > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'API 5xx rate > 5%'
+          runbook: 'docs/ops/runbooks/api-errors.md'
+
+      - alert: ApiHighLatency
+        expr: histogram_quantile(0.95, sum(rate(nginx_http_request_duration_seconds_bucket[5m])) by (le)) > 2
+        for: 10m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: 'API p95 latency > 2s'
+
+  - name: dripplex.capacity
+    rules:
+      - alert: HighCPU
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: 'High CPU on {{ $labels.instance }}'
+          runbook: 'docs/ops/runbooks/capacity.md'
+
+      - alert: HighMemory
+        expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 90
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: 'High memory on {{ $labels.instance }}'
+          runbook: 'docs/ops/runbooks/capacity.md'
+
+      - alert: DiskFull
+        expr: (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: 'Disk > 85% on {{ $labels.instance }}'
+          runbook: 'docs/ops/runbooks/capacity.md'
+
+      - alert: DiskCritical
+        expr: (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes) * 100 > 95
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: 'Disk > 95% on {{ $labels.instance }}'
+          runbook: 'docs/ops/runbooks/capacity.md'
+
+  - name: dripplex.tls
+    rules:
+      - alert: SslExpiry
+        expr: (probe_ssl_earliest_cert_expiry - time()) / 86400 < 14
+        for: 1h
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: 'TLS certificate expires in < 14 days ({{ $labels.instance }})'
+          runbook: 'docs/ops/runbooks/ssl-expiry.md'
+
+  - name: dripplex.queues
+    rules:
+      - alert: QueueBacklog
+        expr: redis_list_length{key=~"queue:.*"} > 1000
+        for: 10m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: 'Queue backlog high for {{ $labels.key }}'
+          runbook: 'docs/ops/runbooks/queue-failure.md'
+
+      - alert: QueueFailure
+        expr: redis_list_length{key=~"queue:.*:dlq"} > 50
+        for: 15m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'Dead-letter queue growing ({{ $labels.key }})'
+          runbook: 'docs/ops/runbooks/queue-failure.md'
+
+  - name: dripplex.ops
+    rules:
+      - alert: BackupFailure
+        expr: time() - dripplex_backup_last_success_timestamp_seconds > 86400 * 1.5
+        for: 30m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: 'Database backup older than 36h (or metric missing)'
+          description: 'Ensure backup cron exports dripplex_backup_last_success_timestamp_seconds.'
+          runbook: 'docs/ops/runbooks/backup-failure.md'
+
+      - alert: DeploymentFailure
+        expr: dripplex_deploy_last_status == 0
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: 'Last deployment reported failure'
+          runbook: 'docs/cicd/ROLLBACK.md'

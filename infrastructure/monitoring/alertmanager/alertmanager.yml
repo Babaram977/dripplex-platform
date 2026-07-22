@@ -1,0 +1,44 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: default-slack
+  group_by: ['alertname', 'severity']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - matchers:
+        - severity = critical
+      receiver: pager-critical
+      continue: true
+      repeat_interval: 30m
+    - matchers:
+        - team = backend
+      receiver: backend-slack
+
+receivers:
+  - name: default-slack
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL}'
+        channel: '#dripplex-alerts'
+        title: '{{ .Status | toUpper }}: {{ .CommonAnnotations.summary }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}\nRunbook: {{ .Annotations.runbook }}{{ end }}'
+
+  - name: backend-slack
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL}'
+        channel: '#dripplex-backend'
+        title: 'Backend {{ .CommonAnnotations.summary }}'
+
+  - name: pager-critical
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL}'
+        channel: '#dripplex-oncall'
+        title: 'CRITICAL {{ .CommonAnnotations.summary }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}\nRunbook: {{ .Annotations.runbook }}{{ end }}'
+
+inhibit_rules:
+  - source_matchers: [severity = critical]
+    target_matchers: [severity = warning]
+    equal: [alertname]

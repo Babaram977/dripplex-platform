@@ -14,8 +14,13 @@ coverage
 # Environment
 .env
 .env.local
+.env.production
 .env.*.local
 !.env.example
+!infrastructure/secrets/.env.production.example
+
+# Origin TLS material (Cloudflare Origin CA)
+infrastructure/docker/certs/
 
 # Logs
 logs

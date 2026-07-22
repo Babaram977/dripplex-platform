@@ -1,0 +1,42 @@
+{
+  "title": "Dripplex Customer Activity",
+  "uid": "dripplex-customer-activity",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "tags": ["dripplex", "d3"],
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Customer host traffic",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(nginx_http_requests_total{host=~\"www.dripplex.com|dripplex.com\"}[5m]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Auth-related 4xx (proxy)",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(nginx_http_requests_total{status=~\"4..\", host=\"api.dripplex.com\"}[5m]))",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

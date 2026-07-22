@@ -1,0 +1,45 @@
+name: Release Tag
+
+# Creates a semantic version git tag and triggers image retags via publish
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Semver without v prefix (e.g. 1.0.0 or 1.0.0-rc.1)'
+        required: true
+        type: string
+      ref:
+        description: 'Git ref to tag (default: main SHA)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.inputs.ref || 'main' }}
+      - name: Create annotated tag
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          TAG="v${VERSION}"
+          git config user.name "dripplex-ci"
+          git config user.email "ci@dripplex.com"
+          git tag -a "${TAG}" -m "Release ${TAG}"
+          git push origin "${TAG}"
+          echo "Created ${TAG}"
+      - name: Notify
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [ -n "${SLACK_WEBHOOK_URL:-}" ]; then
+            curl -fsS -X POST -H 'Content-type: application/json' \
+              --data "{\"text\":\"*[Dripplex]* Release published v${{ github.event.inputs.version }}\"}" \
+              "$SLACK_WEBHOOK_URL"
+          fi

@@ -1,0 +1,116 @@
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Exact image tag to promote (sha or vX.Y.Z)'
+        required: true
+        type: string
+      confirm:
+        description: 'Type promote-production to confirm'
+        required: true
+        type: string
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  confirm:
+    name: Confirm promotion
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate confirmation phrase
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "promote-production" ]; then
+            echo "Confirmation phrase mismatch"
+            exit 1
+          fi
+
+  quality:
+    name: Re-run CI gate
+    needs: confirm
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    name: Deploy → Production
+    needs: [confirm, quality]
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://www.dripplex.com
+    timeout-minutes: 60
+    env:
+      DRIPPLEX_ENV: production
+      IMAGE_TAG: ${{ github.event.inputs.image_tag }}
+      REGISTRY: ghcr.io/${{ github.repository_owner }}
+      DEPLOY_MODE: ${{ vars.DEPLOY_MODE || 'ssh' }}
+      DEPLOY_HOST: ${{ secrets.PROD_DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.PROD_DEPLOY_USER }}
+      API_BASE_URL: ${{ vars.PROD_API_BASE_URL || 'https://api.dripplex.com/api/v1' }}
+      CUSTOMER_URL: ${{ vars.PROD_CUSTOMER_URL || 'https://www.dripplex.com' }}
+      MERCHANT_URL: ${{ vars.PROD_MERCHANT_URL || 'https://merchant.dripplex.com' }}
+      RIDER_URL: ${{ vars.PROD_RIDER_URL || 'https://rider.dripplex.com' }}
+      ADMIN_URL: ${{ vars.PROD_ADMIN_URL || 'https://admin.dripplex.com' }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      SMOKE_STRICT: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure SSH
+        if: env.DEPLOY_MODE == 'ssh'
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PROD_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Login GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag staging → production alias
+        run: |
+          # Optional: retag image as :production for audit trail (requires package write)
+          echo "Promoting ${IMAGE_TAG} to production hosts"
+
+      - name: Deploy + validate (auto-rollback)
+        run: |
+          chmod +x scripts/cicd/*.sh
+          if [ "${DEPLOY_MODE}" = "dry-run" ] || [ -z "${DEPLOY_HOST}" ]; then
+            export DEPLOY_MODE=dry-run DRY_RUN=1
+            echo "No production host configured — dry-run pipeline"
+          fi
+          ./scripts/cicd/pipeline.sh
+
+      - name: Retag images as production
+        if: success()
+        continue-on-error: true
+        run: |
+          echo "docker buildx imagetools create -t ${REGISTRY}/dripplex-backend-core:production ${REGISTRY}/dripplex-backend-core:${IMAGE_TAG}"
+
+      - name: Notify success
+        if: success()
+        run: |
+          if [ -n "${SLACK_WEBHOOK_URL:-}" ]; then
+            curl -fsS -X POST -H 'Content-type: application/json' \
+              --data "{\"text\":\"*[Dripplex production]* Deploy success tag=${IMAGE_TAG}\"}" \
+              "$SLACK_WEBHOOK_URL"
+          fi
+
+      - name: Notify failure / rollback
+        if: failure()
+        run: |
+          if [ -n "${SLACK_WEBHOOK_URL:-}" ]; then
+            curl -fsS -X POST -H 'Content-type: application/json' \
+              --data "{\"text\":\"*[Dripplex production]* Deploy FAILED tag=${IMAGE_TAG} — rollback executed\"}" \
+              "$SLACK_WEBHOOK_URL"
+          fi
