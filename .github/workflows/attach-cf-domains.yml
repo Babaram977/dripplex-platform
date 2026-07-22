@@ -1,0 +1,74 @@
+# Attach / repair custom domains for already-deployed Workers (no rebuild).
+name: Attach Cloudflare Domains
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/trigger-cf-domains-attach'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  attach:
+    name: Clear conflicting DNS + attach domains
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+    steps:
+      - name: Attach domains
+        run: |
+          set -euo pipefail
+          CF_API="https://api.cloudflare.com/client/v4"
+          auth=(-H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" -H "Content-Type: application/json")
+
+          delete_conflicting_dns() {
+            local hostname="$1"
+            echo "::group::Clear DNS ${hostname}"
+            records=$(curl -sS "${CF_API}/zones/${CLOUDFLARE_ZONE_ID}/dns_records?name=${hostname}&per_page=100" "${auth[@]}")
+            echo "$records"
+            mapfile -t ids < <(echo "$records" | python3 -c "import sys,json; d=json.load(sys.stdin); print('\\n'.join(r['id'] for r in d.get('result',[]) if r.get('type') in ('A','AAAA','CNAME')))")
+            for id in "${ids[@]:-}"; do
+              [[ -z "$id" ]] && continue
+              echo "Deleting ${id}"
+              curl -sS -X DELETE "${CF_API}/zones/${CLOUDFLARE_ZONE_ID}/dns_records/${id}" "${auth[@]}"
+              echo
+            done
+            echo "::endgroup::"
+          }
+
+          attach() {
+            local script="$1" hostname="$2"
+            echo "::group::Attach ${hostname} → ${script}"
+            curl -sS -X PUT \
+              "${CF_API}/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" \
+              "${auth[@]}" \
+              --data "{\"hostname\":\"${hostname}\",\"service\":\"${script}\",\"environment\":\"production\",\"zone_id\":\"${CLOUDFLARE_ZONE_ID}\"}"
+            echo
+            echo "::endgroup::"
+          }
+
+          delete_conflicting_dns dripplex.com
+          delete_conflicting_dns www.dripplex.com
+          attach dripplex-customer-web dripplex.com
+          attach dripplex-customer-web www.dripplex.com
+          attach dripplex-customer-web app.dripplex.com
+          attach dripplex-merchant merchant.dripplex.com
+          attach dripplex-rider rider.dripplex.com
+          attach dripplex-admin admin.dripplex.com
+          attach dripplex-ops ops.dripplex.com
+
+      - name: Probe
+        if: always()
+        run: |
+          set +e
+          for u in https://dripplex.com https://www.dripplex.com https://app.dripplex.com https://merchant.dripplex.com https://rider.dripplex.com https://admin.dripplex.com https://ops.dripplex.com; do
+            code=$(curl -s -o /tmp/p.html -w '%{http_code}' --max-time 25 "$u" || echo 000)
+            title=$(python3 -c "import re; t=open('/tmp/p.html','rb').read().decode('utf-8','ignore'); m=re.search(r'<title>([^<]+)',t); print(m.group(1)[:60] if m else '')")
+            echo "$code $u | $title"
+          done
