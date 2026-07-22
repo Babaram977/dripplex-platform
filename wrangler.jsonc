@@ -1,8 +1,9 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  // Must match the Cloudflare Workers & Pages project name (existing: dripplex-platform).
+  "$schema": "apps/customer-web/node_modules/wrangler/config-schema.json",
+  // Root-level Wrangler config for Workers Builds when Root Directory is the monorepo root.
+  // Prefer setting Root Directory to apps/customer-web in the Cloudflare dashboard.
   "name": "dripplex-platform",
-  "main": ".open-next/worker.js",
+  "main": "apps/customer-web/.open-next/worker.js",
   "compatibility_date": "2026-07-22",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "workers_dev": true,
@@ -11,7 +12,7 @@
     "enabled": true,
   },
   "assets": {
-    "directory": ".open-next/assets",
+    "directory": "apps/customer-web/.open-next/assets",
     "binding": "ASSETS",
   },
   "services": [
