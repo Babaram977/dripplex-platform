@@ -102,15 +102,25 @@ Full text: `docs/RELEASE-RC1.md`.
 
 ## 8. Quality gate results
 
-| Gate             | Result                  |
-| ---------------- | ----------------------- |
-| Typecheck        | _(filled after CI run)_ |
-| Lint             | _(filled after CI run)_ |
-| Tests            | _(filled after CI run)_ |
-| Production build | _(filled after CI run)_ |
-| Dependency audit | _(filled after CI run)_ |
-| Critical issues  | Target: **0**           |
-| High issues      | Target: **0**           |
+| Gate             | Result                                                                        |
+| ---------------- | ----------------------------------------------------------------------------- |
+| Typecheck        | ✅ `pnpm typecheck` — 17/17 tasks                                             |
+| Lint             | ✅ `pnpm lint` — 17/17 tasks                                                  |
+| Tests            | ✅ `pnpm test` — Backend **607** passed; portal/SDK suites green              |
+| Production build | ✅ `pnpm build` — Backend + all five Next portals                             |
+| Dependency audit | ✅ `pnpm audit --prod` — **0** known vulnerabilities (after RC1 remediations) |
+| Critical issues  | **0**                                                                         |
+| High issues      | **0**                                                                         |
+
+### Audit remediations (release blockers)
+
+| Change                            | Reason                                                        |
+| --------------------------------- | ------------------------------------------------------------- |
+| `bcrypt` 5.1.1 → 6.0.0            | Remove transitive vulnerable `tar` via `@mapbox/node-pre-gyp` |
+| `pnpm.overrides.sharp` ≥ 0.35.0   | Patch Next optional `sharp` / libvips advisories              |
+| `pnpm.overrides.postcss` ≥ 8.5.10 | Clear remaining moderate XSS advisory                         |
+
+Password hash API unchanged; backend auth unit tests still **607** pass.
 
 ---
 
