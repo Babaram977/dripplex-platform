@@ -1,10 +1,10 @@
 # Dripplex Brand Identity Compliance
 
-| Field        | Value                         |
-| ------------ | ----------------------------- |
-| **Status**   | Implemented in `@dripplex/ui` |
-| **Tagline**  | `life,Simplified` (exact)     |
-| **Baseline** | Program B brand compliance    |
+| Field        | Value                                              |
+| ------------ | -------------------------------------------------- |
+| **Status**   | Implemented in `@dripplex/ui`                      |
+| **Tagline**  | `life, Simplified` (exact — space after the comma) |
+| **Baseline** | Program B brand compliance                         |
 
 ## Official colours
 
@@ -17,6 +17,29 @@
 | White              | White           | `#FFFFFF` | `--card` / `--dripplex-white`         |
 
 Source of truth: `packages/ui/src/brand/tokens.ts` + `packages/ui/src/styles/globals.css`.
+
+## Tagline
+
+**Approved standard:** `life, Simplified`
+
+- Exact capitalization
+- **Space after the comma**
+- Use `DRIPPLEX_BRAND.tagline`, `siteConfig.tagline`, or `<DripplexTagline />` — do not hardcode variants
+
+## Logo assets
+
+### Current status: temporary placeholder
+
+The mark in `packages/ui/src/brand/dripplex-mark.ts` (and mirrored favicon/app-icon SVGs) was **reconstructed from the official colour palette**. It is **not** the production brand logo.
+
+### TODO (required before treating branding as final)
+
+- [ ] **TODO(brand-assets):** Commit the official Dripplex vector logo (SVG preferred; AI/PDF source optional) under `packages/ui/src/brand/assets/`.
+- [ ] Replace `dripplexMarkSvg` with the official SVG export.
+- [ ] Replace `apps/customer-web/public/favicon.svg` and `app-icon.svg` with official exports.
+- [ ] Verify `DripplexLogo` sizing/contrast on light and dark surfaces after swap.
+
+Until that swap lands, treat the current mark as a **placeholder only**.
 
 ## Buttons
 
@@ -31,13 +54,13 @@ Source of truth: `packages/ui/src/brand/tokens.ts` + `packages/ui/src/styles/glo
 
 Display / sans continue via `--font-display` (Sora) and `--font-sans` (Manrope) as established in Customer Web. Do not introduce alternate stacks in feature code; FPX-002 may lock final type specimens when the brand guide PDF is ingested.
 
-## Assets
+## Assets map
 
-| Asset              | Location                                               |
-| ------------------ | ------------------------------------------------------ |
-| Brand mark SVG     | `packages/ui/src/brand/dripplex-mark.ts`               |
-| Logo component     | `DripplexLogo` / `DripplexTagline`                     |
-| Favicon / app icon | `apps/customer-web/public/favicon.svg`, `app-icon.svg` |
+| Asset              | Location                                 | Status             |
+| ------------------ | ---------------------------------------- | ------------------ |
+| Brand mark         | `packages/ui/src/brand/dripplex-mark.ts` | Placeholder        |
+| Logo component     | `DripplexLogo` / `DripplexTagline`       | OK (consumes mark) |
+| Favicon / app icon | `apps/customer-web/public/*.svg`         | Placeholder        |
 
 ## Rules
 

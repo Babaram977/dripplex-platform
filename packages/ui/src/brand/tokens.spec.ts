@@ -4,7 +4,7 @@ import { DRIPPLEX_BRAND } from './tokens';
 
 describe('DRIPPLEX_BRAND', () => {
   it('exposes the official tagline exactly', () => {
-    expect(DRIPPLEX_BRAND.tagline).toBe('life,Simplified');
+    expect(DRIPPLEX_BRAND.tagline).toBe('life, Simplified');
   });
 
   it('exposes the official colour palette', () => {

@@ -4,6 +4,7 @@ import * as React from 'react';
 import type { Metadata } from 'next';
 
 import { RegisterForm } from '@/components/forms/register-form';
+import { siteConfig } from '@/lib/site';
 
 export const metadata: Metadata = {
   title: 'Create Account',
@@ -16,7 +17,8 @@ export default function RegisterPage(): React.JSX.Element {
       <div className="space-y-2 text-center lg:text-left">
         <h1 className="font-display text-3xl font-semibold tracking-tight">Create Account</h1>
         <p className="text-muted-foreground text-sm">
-          Join Dripplex — <span className="font-display text-foreground">life,Simplified</span>.
+          Join Dripplex — <span className="font-display text-foreground">{siteConfig.tagline}</span>
+          .
         </p>
       </div>
       <RegisterForm />
