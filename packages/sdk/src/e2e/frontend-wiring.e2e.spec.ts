@@ -1,0 +1,42 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { describe, expect, it } from 'vitest';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
+
+function read(rel: string): string {
+  return readFileSync(path.join(root, rel), 'utf8');
+}
+
+describe('C2 Frontend wiring validation (no UI redesign)', () => {
+  it('customer auth forms call live SDK methods', () => {
+    const login = read('apps/customer-web/src/components/forms/login-form.tsx');
+    const register = read('apps/customer-web/src/components/forms/register-form.tsx');
+    const misc = read('apps/customer-web/src/components/forms/misc-forms.tsx');
+    const barrel = read('apps/customer-web/src/lib/sdk.ts');
+
+    expect(barrel).toContain('createCustomerSdk');
+    expect(login).toContain('sdk.auth.loginCustomer');
+    expect(register).toContain('sdk.auth.registerCustomer');
+    expect(misc).toContain('sdk.auth.forgotPassword');
+    expect(misc).toContain('sdk.auth.resetPassword');
+    expect(misc).toContain('sdk.auth.verifyEmail');
+    expect(login).not.toContain('UI only');
+    expect(register).not.toContain('UI only');
+  });
+
+  it('portal apps use exclusive SDK barrels', () => {
+    expect(read('apps/merchant-portal/src/lib/sdk-merchant.ts')).toContain('createMerchantSdk');
+    expect(read('apps/rider-portal/src/lib/sdk-rider.ts')).toContain('createRiderSdk');
+    expect(read('apps/admin-portal/src/lib/sdk-admin.ts')).toContain('createAdminSdk');
+    expect(read('apps/operations-console/src/lib/sdk-admin.ts')).toContain('createAdminSdk');
+  });
+
+  it('auth provider and RBAC hooks are present', () => {
+    expect(read('packages/hooks/src/auth/use-auth.tsx')).toContain('AuthProvider');
+    expect(read('packages/hooks/src/permissions/use-permission.ts')).toContain('usePermission');
+    expect(read('packages/hooks/src/auth/auth-store.ts')).toContain('bindSdkAuth');
+  });
+});
