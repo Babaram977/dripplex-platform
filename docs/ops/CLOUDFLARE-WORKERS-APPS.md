@@ -46,3 +46,11 @@ Configured in each `wrangler.jsonc` via `routes[].custom_domain = true`. Deploy 
 ## Backend / api.dripplex.com
 
 NestJS is not deployed as a Worker. Point `api.dripplex.com` at your API origin (Compose/K8s) with Cloudflare proxy, or use Cloudflare Containers later. See `apps/backend/docs/CLOUDFLARE-DEPLOYMENT.md`.
+
+## Custom domain attach note (D2)
+
+Workers deploy successfully to `*.danwakili.workers.dev` without `routes` in `wrangler.jsonc`.
+
+Custom domains require an **Active** Cloudflare zone for `dripplex.com` and no conflicting CNAME on the hostname.
+The GitHub Actions workflow attempts domain attach via the Workers Domains API after deploy (`continue-on-error`).
+Until the zone is Active and conflicting DNS is cleared, use the `workers.dev` URLs.
