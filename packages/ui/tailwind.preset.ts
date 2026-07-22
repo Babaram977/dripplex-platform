@@ -25,6 +25,8 @@ export const dripplexTailwindPreset: Omit<Config, 'content'> = {
           DEFAULT: 'hsl(var(--brand))',
           foreground: 'hsl(var(--brand-foreground))',
           muted: 'hsl(var(--brand-muted))',
+          navy: 'hsl(var(--brand-navy))',
+          'navy-foreground': 'hsl(var(--brand-navy-foreground))',
         },
         accent: {
           DEFAULT: 'hsl(var(--accent))',
@@ -37,6 +39,21 @@ export const dripplexTailwindPreset: Omit<Config, 'content'> = {
         secondary: {
           DEFAULT: 'hsl(var(--secondary))',
           foreground: 'hsl(var(--secondary-foreground))',
+        },
+        success: {
+          DEFAULT: 'hsl(var(--success))',
+          foreground: 'hsl(var(--success-foreground))',
+        },
+        promotion: {
+          DEFAULT: 'hsl(var(--promotion))',
+          foreground: 'hsl(var(--promotion-foreground))',
+        },
+        dripplex: {
+          emerald: 'var(--dripplex-emerald)',
+          navy: 'var(--dripplex-navy)',
+          yellow: 'var(--dripplex-yellow)',
+          neutral: 'var(--dripplex-neutral)',
+          white: 'var(--dripplex-white)',
         },
         muted: {
           DEFAULT: 'hsl(var(--muted))',

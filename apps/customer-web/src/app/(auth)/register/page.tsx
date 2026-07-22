@@ -15,7 +15,9 @@ export default function RegisterPage(): React.JSX.Element {
     <div className="space-y-6">
       <div className="space-y-2 text-center lg:text-left">
         <h1 className="font-display text-3xl font-semibold tracking-tight">Create Account</h1>
-        <p className="text-muted-foreground text-sm">Join Dripplex and keep life simplified.</p>
+        <p className="text-muted-foreground text-sm">
+          Join Dripplex — <span className="font-display text-foreground">life,Simplified</span>.
+        </p>
       </div>
       <RegisterForm />
       <p className="text-muted-foreground text-center text-sm">
