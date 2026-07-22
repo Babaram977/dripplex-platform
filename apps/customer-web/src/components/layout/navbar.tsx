@@ -1,12 +1,13 @@
 'use client';
 
-import { ThemeToggle } from '@dripplex/hooks';
+import { ThemeToggle, useAuth } from '@dripplex/hooks';
 import { DripplexLogo, Button } from '@dripplex/ui';
 import { cn } from '@dripplex/utils';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import * as React from 'react';
 
+import { describeSdkError, sdk } from '@/lib/sdk';
 import { siteConfig } from '@/lib/site';
 
 const publicLinks = [
@@ -17,6 +18,23 @@ const publicLinks = [
 
 export function Navbar(): React.JSX.Element {
   const pathname = usePathname();
+  const router = useRouter();
+  const { hydrated, isAuthenticated, clearSession, user } = useAuth();
+  const [signingOut, setSigningOut] = React.useState(false);
+
+  const onLogout = async (): Promise<void> => {
+    setSigningOut(true);
+    try {
+      await sdk.auth.logout();
+    } catch (error) {
+      // Clear local session even if the network call fails (expired session, offline).
+      void describeSdkError(error);
+    } finally {
+      clearSession();
+      setSigningOut(false);
+      router.push(siteConfig.links.login);
+    }
+  };
 
   return (
     <header className="border-border/70 bg-background/80 sticky top-0 z-40 border-b backdrop-blur-md">
@@ -44,12 +62,32 @@ export function Navbar(): React.JSX.Element {
         </div>
         <div className="flex items-center gap-2">
           <ThemeToggle />
-          <Button asChild variant="ghost" className="hidden sm:inline-flex">
-            <Link href={siteConfig.links.login}>Login</Link>
-          </Button>
-          <Button asChild>
-            <Link href={siteConfig.links.register}>Create Account</Link>
-          </Button>
+          {!hydrated ? null : isAuthenticated ? (
+            <>
+              <Button asChild variant="ghost" className="hidden sm:inline-flex">
+                <Link href={siteConfig.links.dashboard}>{user ? user.firstName : 'Dashboard'}</Link>
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={signingOut}
+                onClick={() => {
+                  void onLogout();
+                }}
+              >
+                {signingOut ? 'Signing out…' : 'Sign out'}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button asChild variant="ghost" className="hidden sm:inline-flex">
+                <Link href={siteConfig.links.login}>Login</Link>
+              </Button>
+              <Button asChild>
+                <Link href={siteConfig.links.register}>Create Account</Link>
+              </Button>
+            </>
+          )}
         </div>
       </div>
     </header>

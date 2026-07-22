@@ -4,6 +4,8 @@ import { Toaster } from '@dripplex/ui';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as React from 'react';
 
+import { AuthProvider } from '../auth/use-auth';
+
 function makeQueryClient(): QueryClient {
   return new QueryClient({
     defaultOptions: {
@@ -21,8 +23,10 @@ export function AppProviders({ children }: { children: React.ReactNode }): React
 
   return (
     <QueryClientProvider client={queryClient}>
-      {children}
-      <Toaster />
+      <AuthProvider>
+        {children}
+        <Toaster />
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

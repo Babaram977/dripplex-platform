@@ -1,3 +1,4 @@
+import { AuthProvider } from '@dripplex/hooks';
 import { render, screen } from '@testing-library/react';
 import * as React from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -6,6 +7,11 @@ import DashboardShellLayout from '@/app/(dashboard)/layout';
 
 vi.mock('next/navigation', () => ({
   usePathname: () => '/dashboard',
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+    prefetch: vi.fn(),
+  }),
 }));
 
 vi.mock('next/link', () => ({
@@ -23,9 +29,11 @@ vi.mock('next/link', () => ({
 describe('DashboardLayout', () => {
   it('renders header chrome, sidebar, mobile nav, and content area', () => {
     render(
-      <DashboardShellLayout>
-        <div>Dashboard child content</div>
-      </DashboardShellLayout>,
+      <AuthProvider>
+        <DashboardShellLayout>
+          <div>Dashboard child content</div>
+        </DashboardShellLayout>
+      </AuthProvider>,
     );
 
     expect(screen.getAllByLabelText('Search Dripplex').length).toBeGreaterThan(0);

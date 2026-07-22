@@ -1,4 +1,5 @@
 import { parseApiResponse } from '../errors/api-error.js';
+import { DripplexNetworkError, isAbortError } from '../errors/network-error.js';
 
 import type { SdkConfig } from '../config/sdk-config.js';
 
@@ -7,12 +8,43 @@ export interface RequestOptions {
   body?: unknown;
   headers?: Record<string, string>;
   auth?: boolean;
+  /** Internal: skip refresh retry for this request. */
+  _retried?: boolean;
+}
+
+interface RefreshResponse {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn?: string;
+  tokenType?: 'Bearer';
 }
 
 export class HttpClient {
+  private refreshPromise: Promise<boolean> | null = null;
+
   public constructor(private readonly config: SdkConfig) {}
 
   public async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+    try {
+      return await this.execute<T>(path, options);
+    } catch (error) {
+      if (isAbortError(error)) {
+        throw new DripplexNetworkError('TIMEOUT', 'Request timed out. Please try again.');
+      }
+      if (error instanceof TypeError) {
+        const offline = typeof navigator !== 'undefined' && !navigator.onLine;
+        throw new DripplexNetworkError(
+          offline ? 'OFFLINE' : 'NETWORK',
+          offline
+            ? 'You appear to be offline. Check your connection and retry.'
+            : 'Unable to reach the Dripplex API. Check your connection and retry.',
+        );
+      }
+      throw error;
+    }
+  }
+
+  private async execute<T>(path: string, options: RequestOptions): Promise<T> {
     const url = `${this.config.baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
     const headers: Record<string, string> = {
       Accept: 'application/json',
@@ -31,21 +63,76 @@ export class HttpClient {
       }
     }
 
-    const init: RequestInit = {
-      method: options.method ?? 'GET',
-      headers,
-    };
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, this.config.timeoutMs);
 
-    if (options.body !== undefined) {
-      init.body = JSON.stringify(options.body);
+    try {
+      const init: RequestInit = {
+        method: options.method ?? 'GET',
+        headers,
+        signal: controller.signal,
+      };
+
+      if (options.body !== undefined) {
+        init.body = JSON.stringify(options.body);
+      }
+
+      const response = await fetch(url, init);
+
+      if (response.status === 401 && useAuth) {
+        if (!options._retried && path !== '/auth/refresh') {
+          const refreshed = await this.tryRefresh();
+          if (refreshed) {
+            return await this.execute<T>(path, { ...options, _retried: true });
+          }
+        }
+        // Only clear session for authenticated calls — never on public login/register 401s.
+        this.config.onUnauthorized?.();
+      }
+
+      return await parseApiResponse<T>(response);
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  private async tryRefresh(): Promise<boolean> {
+    if (!this.config.getRefreshToken || !this.config.onTokensUpdated) {
+      return false;
     }
 
-    const response = await fetch(url, init);
+    this.refreshPromise ??= this.performRefresh().finally(() => {
+      this.refreshPromise = null;
+    });
 
-    if (response.status === 401 && this.config.onUnauthorized) {
-      this.config.onUnauthorized();
+    return await this.refreshPromise;
+  }
+
+  private async performRefresh(): Promise<boolean> {
+    const refreshToken = this.config.getRefreshToken?.();
+    if (!refreshToken) {
+      return false;
     }
 
-    return await parseApiResponse<T>(response);
+    try {
+      const tokens = await this.execute<RefreshResponse>('/auth/refresh', {
+        method: 'POST',
+        body: { refreshToken },
+        auth: false,
+        _retried: true,
+      });
+
+      this.config.onTokensUpdated?.({
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+        ...(tokens.expiresIn !== undefined ? { expiresIn: tokens.expiresIn } : {}),
+        ...(tokens.tokenType !== undefined ? { tokenType: tokens.tokenType } : {}),
+      });
+      return true;
+    } catch {
+      return false;
+    }
   }
 }

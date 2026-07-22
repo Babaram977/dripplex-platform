@@ -9,6 +9,22 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./sdk": {
+      "types": "./dist/sdk.d.ts",
+      "import": "./dist/sdk.js"
+    },
+    "./sdk-merchant": {
+      "types": "./dist/sdk-merchant.d.ts",
+      "import": "./dist/sdk-merchant.js"
+    },
+    "./sdk-rider": {
+      "types": "./dist/sdk-rider.d.ts",
+      "import": "./dist/sdk-rider.js"
+    },
+    "./sdk-admin": {
+      "types": "./dist/sdk-admin.d.ts",
+      "import": "./dist/sdk-admin.js"
     }
   },
   "main": "./dist/index.js",

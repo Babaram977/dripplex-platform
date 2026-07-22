@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import * as React from 'react';
+import { Suspense } from 'react';
 
 import type { Metadata } from 'next';
 
@@ -17,7 +18,9 @@ export default function ResetPasswordPage(): React.JSX.Element {
         <h1 className="font-display text-3xl font-semibold tracking-tight">Reset password</h1>
         <p className="text-muted-foreground text-sm">Choose a strong password for your account.</p>
       </div>
-      <ResetPasswordForm />
+      <Suspense fallback={<p className="text-muted-foreground text-sm">Loading…</p>}>
+        <ResetPasswordForm />
+      </Suspense>
       <p className="text-muted-foreground text-center text-sm">
         <Link href="/login" className="text-primary font-medium hover:underline">
           Back to login

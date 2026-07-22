@@ -26,13 +26,13 @@ Commit 3 delivers the **customer shell only** — layouts, marketing pages, auth
 
 ### Auth (`(auth)` layout)
 
-| Path               | Description                |
-| ------------------ | -------------------------- |
-| `/login`           | Login form (UI only)       |
-| `/register`        | Register form (UI only)    |
-| `/forgot-password` | Forgot password (UI only)  |
-| `/reset-password`  | Reset password (UI only)   |
-| `/verify-otp`      | OTP verification (UI only) |
+| Path               | Description                                                |
+| ------------------ | ---------------------------------------------------------- |
+| `/login`           | Login → live Backend Core (`sdk.auth.loginCustomer`)       |
+| `/register`        | Register → live Backend Core (`sdk.auth.registerCustomer`) |
+| `/forgot-password` | Forgot password → live Backend Core                        |
+| `/reset-password`  | Reset password → live Backend Core                         |
+| `/verify-otp`      | Email OTP verify → live Backend Core                       |
 
 ### Dashboard (`(dashboard)` layout)
 

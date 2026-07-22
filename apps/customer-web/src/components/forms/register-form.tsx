@@ -3,10 +3,14 @@
 import { registerSchema, type RegisterFormValues } from '@dripplex/types';
 import { Button, Input, Label, toast } from '@dripplex/ui';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useRouter } from 'next/navigation';
 import * as React from 'react';
 import { useForm } from 'react-hook-form';
 
+import { describeSdkError, sdk } from '@/lib/sdk';
+
 export function RegisterForm(): React.JSX.Element {
+  const router = useRouter();
   const {
     register,
     handleSubmit,
@@ -23,11 +27,30 @@ export function RegisterForm(): React.JSX.Element {
     },
   });
 
-  const onSubmit = handleSubmit(() => {
-    toast({
-      title: 'UI only',
-      description: 'Account creation will connect to the Dripplex API in a later commit.',
-    });
+  const onSubmit = handleSubmit(async (values) => {
+    try {
+      const phone = values.phone?.trim() ? values.phone.trim() : undefined;
+      await sdk.auth.registerCustomer({
+        firstName: values.firstName,
+        lastName: values.lastName,
+        email: values.email,
+        password: values.password,
+        ...(phone ? { phone } : {}),
+      });
+      toast({
+        title: 'Account created',
+        description: 'Check your email for a verification code to continue.',
+      });
+      const params = new URLSearchParams({ email: values.email });
+      router.push(`/verify-otp?${params.toString()}`);
+    } catch (error) {
+      const described = describeSdkError(error);
+      toast({
+        title: described.title,
+        description: described.description,
+        variant: 'destructive',
+      });
+    }
   });
 
   return (
@@ -107,7 +130,7 @@ export function RegisterForm(): React.JSX.Element {
         ) : null}
       </div>
       <Button type="submit" className="w-full" disabled={isSubmitting}>
-        Create Account
+        {isSubmitting ? 'Creating account…' : 'Create Account'}
       </Button>
     </form>
   );
