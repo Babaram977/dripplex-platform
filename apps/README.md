@@ -1,9 +1,13 @@
-# Pending application implementations
+# Applications
 
-| App               | Introduced in                    |
-| ----------------- | -------------------------------- |
-| `backend`         | Commit 2 (foundation complete)   |
-| `customer-web`    | Commit 3 (foundation complete)   |
-| Remaining portals | After shared packages (Commit 4) |
+| App                  | Status                                              |
+| -------------------- | --------------------------------------------------- |
+| `backend`            | Program A Backend Core — locked                     |
+| `customer-web`       | Program C1 — live Backend Core via `src/lib/sdk.ts` |
+| `merchant-portal`    | Program C1 — live Backend Core via `sdk-merchant`   |
+| `rider-portal`       | Program C1 — live Backend Core via `sdk-rider`      |
+| `admin-portal`       | Program C1 — live Backend Core via `sdk-admin`      |
+| `operations-console` | Program C1 — live Backend Core via `sdk-admin`      |
+| `driver-portal`      | Package metadata only (out of C1 scope)             |
 
-Workspace membership and package metadata are established in Commit 1 so Turborepo/pnpm resolve the full graph.
+See `docs/PROGRAM-C1.md` for integration report.

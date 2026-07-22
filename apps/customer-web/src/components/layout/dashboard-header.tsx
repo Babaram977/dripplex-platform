@@ -1,6 +1,6 @@
 'use client';
 
-import { ThemeToggle } from '@dripplex/hooks';
+import { ThemeToggle, useAuth } from '@dripplex/hooks';
 import {
   Avatar,
   AvatarFallback,
@@ -14,15 +14,35 @@ import {
 } from '@dripplex/ui';
 import { Bell, Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import * as React from 'react';
 
 import { SearchBar } from '@/components/layout/search-bar';
+import { sdk } from '@/lib/sdk';
+import { siteConfig } from '@/lib/site';
 import { useUiStore } from '@/stores/ui-store';
 
 export function DashboardHeader(): React.JSX.Element {
+  const router = useRouter();
+  const { user, clearSession } = useAuth();
   const collapsed = useUiStore((state) => state.isSidebarCollapsed);
   const toggleSidebarCollapsed = useUiStore((state) => state.toggleSidebarCollapsed);
   const setMobileNavOpen = useUiStore((state) => state.setMobileNavOpen);
+
+  const initials = user
+    ? `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`.toUpperCase()
+    : 'DP';
+
+  const onLogout = async (): Promise<void> => {
+    try {
+      await sdk.auth.logout();
+    } catch {
+      // Local clear still required.
+    } finally {
+      clearSession();
+      router.push(siteConfig.links.login);
+    }
+  };
 
   return (
     <header className="border-border/70 bg-background/85 sticky top-0 z-30 border-b backdrop-blur-md">
@@ -68,12 +88,14 @@ export function DashboardHeader(): React.JSX.Element {
                 aria-label="Open profile menu"
               >
                 <Avatar>
-                  <AvatarFallback>DP</AvatarFallback>
+                  <AvatarFallback>{initials}</AvatarFallback>
                 </Avatar>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
-              <DropdownMenuLabel>My account</DropdownMenuLabel>
+              <DropdownMenuLabel>
+                {user ? `${user.firstName} ${user.lastName}` : 'My account'}
+              </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
                 <Link href="/dashboard#profile">Profile</Link>
@@ -82,8 +104,12 @@ export function DashboardHeader(): React.JSX.Element {
                 <Link href="/dashboard#wallet">Wallet</Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link href="/login">Sign out</Link>
+              <DropdownMenuItem
+                onSelect={() => {
+                  void onLogout();
+                }}
+              >
+                Sign out
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Dripplex — life, Simplified. Nigerian Super Platform monorepo.",
+  "description": "Dripplex \u2014 life, Simplified. Nigerian Super Platform monorepo.",
   "license": "UNLICENSED",
   "engines": {
     "node": ">=22.0.0",
@@ -57,6 +57,18 @@
     ],
     "packages/config/**/*.{js,mjs,cjs}": [
       "eslint --fix --max-warnings=0 --config packages/config/eslint.config.js"
+    ],
+    "apps/merchant-portal/src/**/*.{ts,tsx}": [
+      "eslint --fix --max-warnings=0 --config apps/merchant-portal/eslint.config.mjs"
+    ],
+    "apps/rider-portal/src/**/*.{ts,tsx}": [
+      "eslint --fix --max-warnings=0 --config apps/rider-portal/eslint.config.mjs"
+    ],
+    "apps/admin-portal/src/**/*.{ts,tsx}": [
+      "eslint --fix --max-warnings=0 --config apps/admin-portal/eslint.config.mjs"
+    ],
+    "apps/operations-console/src/**/*.{ts,tsx}": [
+      "eslint --fix --max-warnings=0 --config apps/operations-console/eslint.config.mjs"
     ],
     "*.{ts,tsx,js,jsx,mjs,cjs,json,md,yml,yaml,css}": [
       "prettier --write"

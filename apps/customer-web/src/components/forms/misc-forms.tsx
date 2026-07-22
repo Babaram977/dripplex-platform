@@ -12,8 +12,11 @@ import {
 } from '@dripplex/types';
 import { Button, Input, Label, toast } from '@dripplex/ui';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useRouter, useSearchParams } from 'next/navigation';
 import * as React from 'react';
 import { useForm } from 'react-hook-form';
+
+import { describeSdkError, sdk } from '@/lib/sdk';
 
 export function ForgotPasswordForm(): React.JSX.Element {
   const {
@@ -25,11 +28,21 @@ export function ForgotPasswordForm(): React.JSX.Element {
     defaultValues: { email: '' },
   });
 
-  const onSubmit = handleSubmit(() => {
-    toast({
-      title: 'UI only',
-      description: 'Password recovery will connect to the Dripplex API in a later commit.',
-    });
+  const onSubmit = handleSubmit(async (values) => {
+    try {
+      await sdk.auth.forgotPassword(values);
+      toast({
+        title: 'Check your email',
+        description: 'If an account exists for that address, reset instructions were sent.',
+      });
+    } catch (error) {
+      const described = describeSdkError(error);
+      toast({
+        title: described.title,
+        description: described.description,
+        variant: 'destructive',
+      });
+    }
   });
 
   return (
@@ -46,13 +59,19 @@ export function ForgotPasswordForm(): React.JSX.Element {
         {errors.email ? <p className="text-destructive text-sm">{errors.email.message}</p> : null}
       </div>
       <Button type="submit" className="w-full" disabled={isSubmitting}>
-        Send reset link
+        {isSubmitting ? 'Sending…' : 'Send reset link'}
       </Button>
     </form>
   );
 }
 
 export function ResetPasswordForm(): React.JSX.Element {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const email = searchParams.get('email') ?? '';
+  const resetToken = searchParams.get('token') ?? searchParams.get('resetToken') ?? '';
+  const otp = searchParams.get('otp') ?? '';
+
   const {
     register,
     handleSubmit,
@@ -62,11 +81,36 @@ export function ResetPasswordForm(): React.JSX.Element {
     defaultValues: { password: '', confirmPassword: '' },
   });
 
-  const onSubmit = handleSubmit(() => {
-    toast({
-      title: 'UI only',
-      description: 'Password reset will connect to the Dripplex API in a later commit.',
-    });
+  const onSubmit = handleSubmit(async (values) => {
+    if (!email || !resetToken || !otp) {
+      toast({
+        title: 'Missing reset details',
+        description: 'Open the reset link from your email so email, token, and OTP are present.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      await sdk.auth.resetPassword({
+        email,
+        resetToken,
+        otp,
+        password: values.password,
+      });
+      toast({
+        title: 'Password updated',
+        description: 'You can sign in with your new password.',
+      });
+      router.push('/login');
+    } catch (error) {
+      const described = describeSdkError(error);
+      toast({
+        title: described.title,
+        description: described.description,
+        variant: 'destructive',
+      });
+    }
   });
 
   return (
@@ -98,27 +142,40 @@ export function ResetPasswordForm(): React.JSX.Element {
         ) : null}
       </div>
       <Button type="submit" className="w-full" disabled={isSubmitting}>
-        Update password
+        {isSubmitting ? 'Updating…' : 'Update password'}
       </Button>
     </form>
   );
 }
 
 export function VerifyOtpForm(): React.JSX.Element {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<VerifyOtpFormValues>({
     resolver: zodResolver(verifyOtpSchema),
-    defaultValues: { email: '', otp: '' },
+    defaultValues: { email: searchParams.get('email') ?? '', otp: '' },
   });
 
-  const onSubmit = handleSubmit(() => {
-    toast({
-      title: 'UI only',
-      description: 'OTP verification will connect to the Dripplex API in a later commit.',
-    });
+  const onSubmit = handleSubmit(async (values) => {
+    try {
+      await sdk.auth.verifyEmail(values);
+      toast({
+        title: 'Email verified',
+        description: 'Your account is verified. You can sign in now.',
+      });
+      router.push('/login');
+    } catch (error) {
+      const described = describeSdkError(error);
+      toast({
+        title: described.title,
+        description: described.description,
+        variant: 'destructive',
+      });
+    }
   });
 
   return (
@@ -146,7 +203,7 @@ export function VerifyOtpForm(): React.JSX.Element {
         {errors.otp ? <p className="text-destructive text-sm">{errors.otp.message}</p> : null}
       </div>
       <Button type="submit" className="w-full" disabled={isSubmitting}>
-        Verify code
+        {isSubmitting ? 'Verifying…' : 'Verify code'}
       </Button>
     </form>
   );
@@ -156,17 +213,21 @@ export function ContactForm(): React.JSX.Element {
   const {
     register,
     handleSubmit,
+    reset,
     formState: { errors, isSubmitting },
   } = useForm<ContactFormValues>({
     resolver: zodResolver(contactSchema),
     defaultValues: { name: '', email: '', message: '' },
   });
 
-  const onSubmit = handleSubmit(() => {
+  const onSubmit = handleSubmit((values) => {
+    // Contact is not a Backend Core auth/commerce endpoint in Program A freeze.
+    // Capture locally until operations CMS intake is productized in a later phase.
     toast({
-      title: 'Message captured locally',
-      description: 'Contact delivery will be wired to operations in a later commit.',
+      title: 'Message captured',
+      description: `Thanks ${values.name}. Operations intake will follow in a later phase.`,
     });
+    reset();
   });
 
   return (
