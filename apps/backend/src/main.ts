@@ -3,8 +3,11 @@ import { Logger } from 'nestjs-pino';
 
 import { AppModule } from './app.module';
 import { AppConfigService } from './config/app-config.service';
+import { initBackendSentry } from './observability/sentry';
 
 async function bootstrap(): Promise<void> {
+  initBackendSentry();
+
   // rawBody: true preserves request.rawBody for webhook HMAC verification.
   const app = await NestFactory.create(AppModule, {
     bufferLogs: true,

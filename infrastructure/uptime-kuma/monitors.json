@@ -1,0 +1,62 @@
+{
+  "description": "Uptime Kuma monitor definitions for Dripplex (import manually or via API)",
+  "monitors": [
+    {
+      "name": "dripplex.com",
+      "type": "http",
+      "url": "https://dripplex.com/",
+      "interval": 60,
+      "maxretries": 2,
+      "accepted_statuscodes": ["200-399"]
+    },
+    {
+      "name": "www.dripplex.com",
+      "type": "http",
+      "url": "https://www.dripplex.com/",
+      "interval": 60,
+      "maxretries": 2
+    },
+    {
+      "name": "api.dripplex.com health",
+      "type": "http",
+      "url": "https://api.dripplex.com/api/v1/health",
+      "interval": 30,
+      "maxretries": 2,
+      "accepted_statuscodes": ["200"]
+    },
+    {
+      "name": "merchant.dripplex.com",
+      "type": "http",
+      "url": "https://merchant.dripplex.com/",
+      "interval": 60
+    },
+    {
+      "name": "rider.dripplex.com",
+      "type": "http",
+      "url": "https://rider.dripplex.com/",
+      "interval": 60
+    },
+    {
+      "name": "admin.dripplex.com",
+      "type": "http",
+      "url": "https://admin.dripplex.com/",
+      "interval": 60
+    },
+    {
+      "name": "status.dripplex.com",
+      "type": "http",
+      "url": "https://status.dripplex.com/",
+      "interval": 120
+    }
+  ],
+  "statusPage": {
+    "slug": "dripplex",
+    "title": "Dripplex Status",
+    "description": "Live operational status for Dripplex services",
+    "theme": "auto",
+    "published": true,
+    "showTags": true,
+    "domainNameList": ["status.dripplex.com"],
+    "footerText": "Dripplex — life, Simplified."
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "title": "Dripplex Frontend",
+  "uid": "dripplex-frontend",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "tags": ["dripplex", "d3"],
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Customer/Merchant/Rider/Admin probes",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "probe_success{instance=~\".*(www|merchant|rider|admin).dripplex.com.*\"}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Edge request rate",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(nginx_http_requests_total[5m])) by (host)",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}
