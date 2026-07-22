@@ -1,0 +1,29 @@
+{
+  "name": "@dripplex/customer-mobile",
+  "version": "1.0.0-rc.1",
+  "private": true,
+  "description": "Dripplex Customer — Capacitor shell for Android/iOS store distribution",
+  "type": "module",
+  "scripts": {
+    "cap:sync": "cap sync",
+    "cap:open:android": "cap open android",
+    "cap:open:ios": "cap open ios",
+    "android:debug": "cd android && ./gradlew assembleDebug",
+    "android:release": "cd android && ./gradlew bundleRelease assembleRelease",
+    "android:apk": "cd android && ./gradlew assembleRelease",
+    "verify": "node scripts/verify-config.mjs"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.2.0",
+    "@capacitor/app": "^7.0.1",
+    "@capacitor/core": "^7.2.0",
+    "@capacitor/ios": "^7.2.0",
+    "@capacitor/push-notifications": "^7.0.1",
+    "@capacitor/splash-screen": "^7.0.1",
+    "@capacitor/status-bar": "^7.0.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.2.0",
+    "typescript": "^5.7.2"
+  }
+}
