@@ -52,13 +52,26 @@ App defaults to [http://localhost:3001](http://localhost:3001).
 
 ## Cloudflare Workers (OpenNext)
 
-Production edge deploy uses `@opennextjs/cloudflare`. Config lives in this package (`wrangler.jsonc`, `open-next.config.ts`).
+Production edge deploy uses `@opennextjs/cloudflare`. Config: `wrangler.jsonc` (Worker **`dripplex-customer-web`**).
 
 ```bash
 pnpm --filter @dripplex/customer-web deploy
 ```
 
-**Workers Builds root directory must be `apps/customer-web`** — see `docs/ops/CLOUDFLARE-CUSTOMER-WEB.md` (fixes monorepo “workspace root” errors).
+**Workers Builds root directory must be `apps/customer-web`.** See `docs/ops/CLOUDFLARE-CUSTOMER-WEB.md` and `docs/PROGRAM-B1.md`.
+
+### Dashboard routes (B1)
+
+| Path                       | Status                         |
+| -------------------------- | ------------------------------ |
+| `/dashboard`               | Overview + Backend Core probes |
+| `/dashboard/profile`       | Placeholder                    |
+| `/dashboard/notifications` | Placeholder                    |
+| `/dashboard/wallet`        | Placeholder                    |
+| `/dashboard/orders`        | Placeholder                    |
+| `/dashboard/settings`      | Placeholder                    |
+
+Marketplace commerce UI is Program B2.
 
 ## Quality gates
 
