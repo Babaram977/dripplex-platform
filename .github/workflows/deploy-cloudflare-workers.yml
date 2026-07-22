@@ -97,21 +97,38 @@ jobs:
         continue-on-error: true
         run: |
           set +e
+          CF_API="https://api.cloudflare.com/client/v4"
+          AUTH=(-H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" -H "Content-Type: application/json")
+
+          delete_conflicting_dns() {
+            local hostname="$1"
+            echo "Clearing conflicting DNS for ${hostname}"
+            # List A/AAAA/CNAME for this name
+            records=$(curl -sS "${CF_API}/zones/${CLOUDFLARE_ZONE_ID}/dns_records?name=${hostname}&per_page=100" "${AUTH[@]}")
+            echo "$records" | head -c 1500; echo
+            ids=$(echo "$records" | python3 -c "import sys,json; d=json.load(sys.stdin); print('\n'.join(r['id'] for r in d.get('result',[]) if r.get('type') in ('A','AAAA','CNAME')))")
+            for id in $ids; do
+              echo "Deleting DNS record ${id}"
+              curl -sS -X DELETE "${CF_API}/zones/${CLOUDFLARE_ZONE_ID}/dns_records/${id}" "${AUTH[@]}"
+              echo
+            done
+          }
+
           attach() {
             local script="$1"
             local hostname="$2"
             echo "Attaching ${hostname} → ${script}"
-            # Workers custom domain API
             resp=$(curl -sS -X PUT \
-              "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" \
-              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-              -H "Content-Type: application/json" \
+              "${CF_API}/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" \
+              "${AUTH[@]}" \
               --data "{\"hostname\":\"${hostname}\",\"service\":\"${script}\",\"environment\":\"production\",\"zone_id\":\"${CLOUDFLARE_ZONE_ID}\"}")
             echo "$resp" | head -c 2000
             echo
-            echo "$resp" | grep -q '"success":true'
           }
 
+          # Apex/www blocked by externally managed A/CNAME — remove then attach
+          delete_conflicting_dns dripplex.com
+          delete_conflicting_dns www.dripplex.com
           attach dripplex-customer-web dripplex.com
           attach dripplex-customer-web www.dripplex.com
           attach dripplex-customer-web app.dripplex.com
