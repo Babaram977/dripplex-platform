@@ -1,8 +1,8 @@
 {
   "$schema": "apps/customer-web/node_modules/wrangler/config-schema.json",
-  // Root-level Wrangler config for Workers Builds when Root Directory is the monorepo root.
-  // Prefer setting Root Directory to apps/customer-web in the Cloudflare dashboard.
-  "name": "dripplex-platform",
+  // Prefer Root Directory = apps/customer-web in Workers Builds.
+  // Kept for monorepo-root Builds fallback → dripplex-customer-web.
+  "name": "dripplex-customer-web",
   "main": "apps/customer-web/.open-next/worker.js",
   "compatibility_date": "2026-07-22",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
@@ -18,12 +18,17 @@
   "services": [
     {
       "binding": "WORKER_SELF_REFERENCE",
-      "service": "dripplex-platform",
+      "service": "dripplex-customer-web",
     },
   ],
   "images": {
     "binding": "IMAGES",
   },
+  "routes": [
+    { "pattern": "dripplex.com", "custom_domain": true },
+    { "pattern": "www.dripplex.com", "custom_domain": true },
+    { "pattern": "app.dripplex.com", "custom_domain": true }
+  ],
   "vars": {
     "NEXTJS_ENV": "production",
   },

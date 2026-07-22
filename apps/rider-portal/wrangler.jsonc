@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "dripplex-customer-web",
+  "name": "dripplex-rider",
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-07-22",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
@@ -16,16 +16,14 @@
   "services": [
     {
       "binding": "WORKER_SELF_REFERENCE",
-      "service": "dripplex-customer-web",
+      "service": "dripplex-rider",
     },
   ],
   "images": {
     "binding": "IMAGES",
   },
   "routes": [
-    { "pattern": "dripplex.com", "custom_domain": true },
-    { "pattern": "www.dripplex.com", "custom_domain": true },
-    { "pattern": "app.dripplex.com", "custom_domain": true }
+    { "pattern": "rider.dripplex.com", "custom_domain": true }
   ],
   "vars": {
     "NEXTJS_ENV": "production",
