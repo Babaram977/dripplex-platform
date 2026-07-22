@@ -1,8 +1,8 @@
 {
   "name": "@dripplex/backend",
-  "version": "0.1.0",
+  "version": "1.0.0-rc.1",
   "private": true,
-  "description": "Dripplex NestJS API — REST api/v1, auth, domain modules, and real-time messaging.",
+  "description": "Dripplex NestJS API \u2014 REST api/v1, auth, domain modules, and real-time messaging.",
   "license": "UNLICENSED",
   "scripts": {
     "prebuild": "prisma generate && rm -f tsconfig.build.tsbuildinfo",

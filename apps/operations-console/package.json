@@ -1,6 +1,6 @@
 {
   "name": "@dripplex/operations-console",
-  "version": "0.1.0",
+  "version": "1.0.0-rc.1",
   "private": true,
   "description": "Dripplex operations console \u2014 live Backend Core integration via sdk-admin.",
   "license": "UNLICENSED",

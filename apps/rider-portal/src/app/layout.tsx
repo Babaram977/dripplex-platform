@@ -24,6 +24,10 @@ export const metadata: Metadata = {
     template: `%s · Dripplex Rider Portal`,
   },
   description: 'Dripplex rider portal — live Backend Core integration via sdk-rider.',
+  icons: {
+    icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }],
+    apple: [{ url: '/app-icon.svg' }],
+  },
   robots: { index: false, follow: false },
 };
 

@@ -1,6 +1,6 @@
 {
   "name": "@dripplex/ui",
-  "version": "0.1.0",
+  "version": "1.0.0-rc.1",
   "private": true,
   "description": "Dripplex shared UI kit built on shadcn/ui, design tokens, and accessible primitives.",
   "license": "UNLICENSED",
