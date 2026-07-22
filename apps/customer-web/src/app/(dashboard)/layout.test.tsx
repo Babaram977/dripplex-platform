@@ -1,7 +1,7 @@
-import { AuthProvider } from '@dripplex/hooks';
+import { AuthProvider, useAuthStore } from '@dripplex/hooks';
 import { render, screen } from '@testing-library/react';
 import * as React from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import DashboardShellLayout from '@/app/(dashboard)/layout';
 
@@ -27,6 +27,25 @@ vi.mock('next/link', () => ({
 }));
 
 describe('DashboardLayout', () => {
+  beforeEach(() => {
+    useAuthStore.setState({
+      hydrated: true,
+      accessToken: 'test-access',
+      refreshToken: 'test-refresh',
+      user: {
+        id: 'u1',
+        email: 'a@b.com',
+        phone: null,
+        firstName: 'Ada',
+        lastName: 'Okafor',
+        status: 'ACTIVE',
+        roles: ['CUSTOMER'],
+        permissions: [],
+      },
+      portal: 'customer',
+    });
+  });
+
   it('renders header chrome, sidebar, mobile nav, and content area', () => {
     render(
       <AuthProvider>

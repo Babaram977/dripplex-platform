@@ -103,7 +103,7 @@ export function BackendStatusPanel(): React.JSX.Element {
 
   if (!hydrated) {
     return (
-      <EmptyState title="Loading session" description="Restoring auth from secure local storage." />
+      <EmptyState title="Loading session" description="Restoring your session from this device." />
     );
   }
 

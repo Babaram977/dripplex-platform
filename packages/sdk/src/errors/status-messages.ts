@@ -20,6 +20,7 @@ export function describeSdkError(error: unknown): {
   description: string;
   statusCode?: number;
   retryable: boolean;
+  retryAfterSeconds?: number;
 } {
   if (error instanceof DripplexNetworkError) {
     const result: {
@@ -27,6 +28,7 @@ export function describeSdkError(error: unknown): {
       description: string;
       statusCode?: number;
       retryable: boolean;
+      retryAfterSeconds?: number;
     } = {
       title: error.code === 'TIMEOUT' ? 'Request timed out' : 'Connection problem',
       description: error.message,
@@ -40,12 +42,26 @@ export function describeSdkError(error: unknown): {
 
   if (error instanceof DripplexApiError) {
     const retryable = error.statusCode >= 500 || error.statusCode === 429;
-    return {
+    let description = error.message || messageForHttpStatus(error.statusCode);
+    if (error.statusCode === 429 && error.retryAfterSeconds !== undefined) {
+      description = `${description} Retry after ${String(error.retryAfterSeconds)}s.`;
+    }
+    const result: {
+      title: string;
+      description: string;
+      statusCode?: number;
+      retryable: boolean;
+      retryAfterSeconds?: number;
+    } = {
       title: `Error ${String(error.statusCode)}`,
-      description: error.message || messageForHttpStatus(error.statusCode),
+      description,
       statusCode: error.statusCode,
       retryable,
     };
+    if (error.retryAfterSeconds !== undefined) {
+      result.retryAfterSeconds = error.retryAfterSeconds;
+    }
+    return result;
   }
 
   if (error instanceof Error) {
@@ -59,6 +75,6 @@ export function describeSdkError(error: unknown): {
   return {
     title: 'Unexpected error',
     description: 'Something went wrong.',
-    retryable: true,
+    retryable: false,
   };
 }

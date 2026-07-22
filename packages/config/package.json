@@ -14,12 +14,14 @@
     "./eslint/nextjs": "./eslint/nextjs.js",
     "./eslint/nestjs": "./eslint/nestjs.js",
     "./eslint/react-library": "./eslint/react-library.js",
-    "./prettier": "./prettier/index.json"
+    "./prettier": "./prettier/index.json",
+    "./next/security-headers": "./next/security-headers.js"
   },
   "files": [
     "typescript",
     "eslint",
-    "prettier"
+    "prettier",
+    "next"
   ],
   "scripts": {
     "lint": "eslint .",
