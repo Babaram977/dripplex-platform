@@ -22,11 +22,6 @@
   "images": {
     "binding": "IMAGES",
   },
-  "routes": [
-    { "pattern": "dripplex.com", "custom_domain": true },
-    { "pattern": "www.dripplex.com", "custom_domain": true },
-    { "pattern": "app.dripplex.com", "custom_domain": true }
-  ],
   "vars": {
     "NEXTJS_ENV": "production",
   },
