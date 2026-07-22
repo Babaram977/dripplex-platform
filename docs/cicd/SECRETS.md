@@ -37,3 +37,19 @@ Stored only in GitHub or Doppler — used by D1 IaC / firewall sync scripts, not
 ## JWT / DB / Redis
 
 Injected at container runtime via Compose `env_file` on the host or secret manager → env — never baked into Docker layers.
+
+## Deploy Backend API workflow
+
+Used by `.github/workflows/deploy-backend-api.yml` (repository secrets — no Environment gate):
+
+| Secret                                                   | Required                            |
+| -------------------------------------------------------- | ----------------------------------- |
+| `PROD_DEPLOY_HOST` / `PROD_DEPLOY_USER` / `PROD_SSH_KEY` | yes                                 |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB`    | yes                                 |
+| `REDIS_PASSWORD`                                         | yes                                 |
+| `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET`               | yes                                 |
+| `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ZONE_ID`            | yes (api DNS)                       |
+| `PAYSTACK_*` / `SMTP_*` / `TERMII_*` / `SENTRY_DSN`      | optional                            |
+| `LETSENCRYPT_EMAIL`                                      | optional (default ops@dripplex.com) |
+
+Trigger: push to `main` touching `.github/trigger-backend-api-deploy`, or workflow_dispatch with `confirm=deploy-api-production`.

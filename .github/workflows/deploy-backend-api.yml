@@ -1,0 +1,200 @@
+# Deploy NestJS Backend Core to a Linux host (Docker Compose API stack).
+# Secrets (repository):
+#   PROD_DEPLOY_HOST, PROD_DEPLOY_USER, PROD_SSH_KEY
+#   POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, REDIS_PASSWORD
+#   JWT_ACCESS_SECRET, JWT_REFRESH_SECRET
+#   CLOUDFLARE_API_TOKEN, CLOUDFLARE_ZONE_ID (DNS for api.dripplex.com)
+# Optional: PAYSTACK_*, SMTP_*, TERMII_*, SENTRY_DSN, LETSENCRYPT_EMAIL
+name: Deploy Backend API
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Image tag to deploy (default: git sha)'
+        required: false
+        default: ''
+      confirm:
+        description: 'Type deploy-api-production to confirm'
+        required: true
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - '.github/trigger-backend-api-deploy'
+
+concurrency:
+  group: deploy-backend-api
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  deploy:
+    name: Build · ship · smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    if: >-
+      github.event_name == 'push' ||
+      github.event.inputs.confirm == 'deploy-api-production'
+    env:
+      REGISTRY: ghcr.io/${{ github.repository_owner }}
+      IMAGE_NAME: dripplex-backend-core
+      DEPLOY_HOST: ${{ secrets.PROD_DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.PROD_DEPLOY_USER }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      LETSENCRYPT_EMAIL: ${{ secrets.LETSENCRYPT_EMAIL || 'ops@dripplex.com' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require deploy host secrets
+        run: |
+          if [ -z "${DEPLOY_HOST}" ] || [ -z "${DEPLOY_USER}" ] || [ -z "${{ secrets.PROD_SSH_KEY }}" ]; then
+            echo "::error::Missing PROD_DEPLOY_HOST / PROD_DEPLOY_USER / PROD_SSH_KEY."
+            echo "Add these repository secrets, provision an Ubuntu 24.04 VPS with Docker,"
+            echo "then re-trigger by touching .github/trigger-backend-api-deploy on main."
+            exit 1
+          fi
+          if [ -z "${{ secrets.POSTGRES_PASSWORD }}" ] || [ -z "${{ secrets.REDIS_PASSWORD }}" ]; then
+            echo "::error::Missing POSTGRES_PASSWORD / REDIS_PASSWORD secrets."
+            exit 1
+          fi
+          if [ -z "${{ secrets.JWT_ACCESS_SECRET }}" ] || [ -z "${{ secrets.JWT_REFRESH_SECRET }}" ]; then
+            echo "::error::Missing JWT_ACCESS_SECRET / JWT_REFRESH_SECRET secrets."
+            exit 1
+          fi
+
+      - name: Set image tag
+        id: meta
+        run: |
+          TAG="${{ github.event.inputs.image_tag }}"
+          if [ -z "$TAG" ]; then TAG="${GITHUB_SHA::12}"; fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "image=${REGISTRY}/${IMAGE_NAME}:${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Login GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/backend/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:1.0.0
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:production
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PROD_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Point api.dripplex.com DNS (Cloudflare)
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ZONE_ID != ''
+        env:
+          API_ORIGIN_IP: ${{ secrets.PROD_DEPLOY_HOST }}
+        run: |
+          chmod +x scripts/backend/dns-api.sh
+          # PROD_DEPLOY_HOST may be a hostname — resolve to A if needed
+          if echo "$API_ORIGIN_IP" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+            export API_ORIGIN_IP
+          else
+            export API_ORIGIN_IP="$(getent ahostsv4 "$DEPLOY_HOST" | awk '{print $1; exit}')"
+          fi
+          echo "Origin IP=${API_ORIGIN_IP}"
+          bash scripts/backend/dns-api.sh
+
+      - name: Sync repo + env to host
+        env:
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER || 'dripplex' }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_DB: ${{ secrets.POSTGRES_DB || 'dripplex' }}
+          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+          JWT_ACCESS_SECRET: ${{ secrets.JWT_ACCESS_SECRET }}
+          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
+          PAYSTACK_SECRET_KEY: ${{ secrets.PAYSTACK_SECRET_KEY }}
+          PAYSTACK_PUBLIC_KEY: ${{ secrets.PAYSTACK_PUBLIC_KEY }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          TERMII_API_KEY: ${{ secrets.TERMII_API_KEY }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        run: |
+          chmod +x scripts/backend/*.sh
+          ssh "${DEPLOY_USER}@${DEPLOY_HOST}" 'sudo mkdir -p /opt/dripplex && sudo chown -R '"${DEPLOY_USER}"':'"${DEPLOY_USER}"' /opt/dripplex || mkdir -p /opt/dripplex'
+          rsync -az --delete \
+            --exclude '.git' --exclude 'node_modules' --exclude '.next' --exclude '.open-next' \
+            ./ "${DEPLOY_USER}@${DEPLOY_HOST}:/opt/dripplex/"
+          # Write env on runner then copy (avoids echoing secrets in remote bash -c)
+          bash scripts/backend/write-env-production.sh /tmp/dripplex.env.production
+          scp /tmp/dripplex.env.production "${DEPLOY_USER}@${DEPLOY_HOST}:/opt/dripplex/.env.production"
+          rm -f /tmp/dripplex.env.production
+
+      - name: Bootstrap Docker on host (idempotent)
+        run: |
+          ssh "${DEPLOY_USER}@${DEPLOY_HOST}" 'bash -s' < scripts/backend/bootstrap-host.sh
+
+      - name: Login GHCR on host & deploy API stack
+        run: |
+          ssh "${DEPLOY_USER}@${DEPLOY_HOST}" bash -s <<EOF
+          set -euo pipefail
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          cd /opt/dripplex
+          export BACKEND_IMAGE="${{ steps.meta.outputs.image }}"
+          export LETSENCRYPT_EMAIL="${LETSENCRYPT_EMAIL}"
+          export ENV_FILE=.env.production
+          sudo bash scripts/backend/deploy-api.sh || bash scripts/backend/deploy-api.sh
+          EOF
+
+      - name: HTTPS health check
+        run: |
+          set -e
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /tmp/health.json -w '%{http_code}' --max-time 20 https://api.dripplex.com/api/v1/health || echo 000)
+            echo "attempt $i → HTTP $code"
+            if [ "$code" = "200" ]; then
+              cat /tmp/health.json
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::api.dripplex.com health did not return 200"
+          exit 1
+
+      - name: Smoke tests
+        env:
+          API_BASE_URL: https://api.dripplex.com/api/v1
+          DRIPPLEX_ENV: production
+          SMOKE_STRICT: '1'
+        run: |
+          chmod +x scripts/cicd/*.sh
+          ./scripts/cicd/smoke-test.sh
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Backend API deploy"
+            echo "- Image: \`${{ steps.meta.outputs.image }}\`"
+            echo "- Host: \`${DEPLOY_HOST}\`"
+            echo "- Health: https://api.dripplex.com/api/v1/health"
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 https://api.dripplex.com/api/v1/health || echo 000)
+            echo "- Probe HTTP: $code"
+          } >> "$GITHUB_STEP_SUMMARY"
