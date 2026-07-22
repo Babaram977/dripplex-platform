@@ -17,6 +17,7 @@ Dripplex monorepo is versioned **`1.0.0-rc.1`** across Backend, SDK, Customer, M
 - Deployment, rollback, backup, smoke, and production-config runbooks under `docs/ops/`
 - GitHub Actions CI for typecheck / lint / test / build
 - Staging docker-compose for Postgres + Redis + backend
+- Dependency audit remediations: `bcrypt@6`, `sharp`/`postcss` pnpm overrides (Critical/High → 0)
 
 ## Known issues
 
