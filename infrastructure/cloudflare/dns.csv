@@ -1,9 +1,11 @@
 type,name,content,proxied,ttl,comment
 A,@,REPLACE_LB_IP,true,Auto,apex
-A,www,REPLACE_LB_IP,true,Auto,customer web
+A,www,REPLACE_LB_IP,true,Auto,customer web (www)
+A,app,REPLACE_LB_IP,true,Auto,customer web (app alias)
 A,api,REPLACE_LB_IP,true,Auto,backend API
 A,merchant,REPLACE_LB_IP,true,Auto,merchant portal
 A,rider,REPLACE_LB_IP,true,Auto,rider portal
 A,admin,REPLACE_LB_IP,true,Auto,admin portal
+A,ops,REPLACE_LB_IP,true,Auto,operations console
 A,status,REPLACE_LB_IP,true,Auto,uptime kuma
 CNAME,cdn,REPLACE_R2_PUBLIC_HOST,true,Auto,R2 public bucket custom domain

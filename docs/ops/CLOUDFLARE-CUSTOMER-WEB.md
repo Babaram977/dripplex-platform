@@ -2,6 +2,8 @@
 
 Deploy `@dripplex/customer-web` to **Cloudflare Workers** via [@opennextjs/cloudflare](https://opennext.js.org/cloudflare).
 
+For **all portals** (merchant, rider, admin, ops) see [`CLOUDFLARE-WORKERS-APPS.md`](./CLOUDFLARE-WORKERS-APPS.md). Live cutover status: root [`PRODUCTION_READINESS.md`](../../PRODUCTION_READINESS.md).
+
 ## Files
 
 | File                                    | Purpose                                                    |

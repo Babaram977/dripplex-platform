@@ -1,10 +1,16 @@
+import { initOpenNextCloudflareForDev } from '@opennextjs/cloudflare';
 import { dripplexNextHeaders } from '@dripplex/config/next/security-headers';
 
 import type { NextConfig } from 'next';
 
+/**
+ * `output: 'standalone'` is required for Docker images.
+ * OpenNext / Cloudflare Workers Builds must NOT use standalone — set DOCKER_BUILD=1 only in Docker.
+ */
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  ...(process.env['DOCKER_BUILD'] === '1' ? { output: 'standalone' as const } : {}),
   transpilePackages: [
     '@dripplex/ui',
     '@dripplex/hooks',
@@ -22,3 +28,6 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
+
+// Enable Cloudflare bindings during `next dev`.
+initOpenNextCloudflareForDev();

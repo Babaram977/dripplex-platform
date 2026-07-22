@@ -80,3 +80,18 @@ R2_PUBLIC_BASE_URL=https://cdn.dripplex.com
 ## Terraform variables
 
 See `infrastructure/cloudflare/terraform/variables.tf` for IaC-ready zone settings (apply in D2 when credentials available).
+
+## Workers (OpenNext portals)
+
+Frontends may deploy directly to **Cloudflare Workers** (OpenNext) instead of (or in addition to) origin Docker:
+
+| Hostname pattern | Worker                        |
+| ---------------- | ----------------------------- |
+| `www` / `app`    | `dripplex-platform`           |
+| `merchant`       | `dripplex-merchant-portal`    |
+| `rider`          | `dripplex-rider-portal`       |
+| `admin`          | `dripplex-admin-portal`       |
+| `ops`            | `dripplex-operations-console` |
+| `api`            | NestJS origin (not a Worker)  |
+
+See `docs/ops/CLOUDFLARE-WORKERS-APPS.md` and `scripts/cloudflare/deploy-all.sh`.
