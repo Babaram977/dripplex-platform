@@ -1,11 +1,13 @@
-# Staging / production smoke checklist (RC1)
+# Staging / production smoke checklist
 
-Sign each section after exercise on **staging**. Product UI gaps from Program C2 remain; mark N/A where UI is not shipped and exercise SDK/admin API instead.
+Sign each section after exercise. Product UI gaps from Program C2 remain; mark N/A where UI is not shipped and exercise SDK/admin API instead.
 
-**Release:** `1.0.0-rc.1`  
+**Release:** `1.0.0`  
 **Environment:** _______________  
 **Tester:** _______________  
 **Date:** _______________
+
+> For production cutover, also complete `docs/ops/PRODUCTION-VALIDATION.md` and `docs/ops/PRE-LAUNCH-CHECKLIST.md`.
 
 ## Customer
 
@@ -99,4 +101,4 @@ Sign each section after exercise on **staging**. Product UI gaps from Program C2
 | Eng  |      | Yes / No                    |
 | Ops  |      | Yes / No                    |
 
-**Production deployment requires a separate approval after staging sign-off.**
+**Production deployment requires signed pre-launch checklist + go-live runbook (`docs/ops/GO-LIVE.md`).**

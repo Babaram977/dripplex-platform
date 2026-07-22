@@ -1,6 +1,6 @@
 {
   "name": "@dripplex/customer-mobile",
-  "version": "1.0.0-rc.1",
+  "version": "1.0.0",
   "private": true,
   "description": "Dripplex Customer — Capacitor shell for Android/iOS store distribution",
   "type": "module",

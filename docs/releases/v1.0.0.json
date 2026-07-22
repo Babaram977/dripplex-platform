@@ -1,0 +1,63 @@
+{
+  "release": "GA",
+  "version": "1.0.0",
+  "codename": "Dripplex Production Launch",
+  "status": "go-live-package",
+  "createdAt": "2026-07-22",
+  "freeze": {
+    "source": true,
+    "backendApi": true,
+    "databaseSchema": true,
+    "sdkSurface": true,
+    "uiRedesign": true,
+    "newFeatures": true,
+    "infrastructureRedesign": true
+  },
+  "packages": {
+    "root": "1.0.0",
+    "backend": "1.0.0",
+    "sdk": "1.0.0",
+    "customer-web": "1.0.0",
+    "customer-mobile": "1.0.0",
+    "merchant-portal": "1.0.0",
+    "rider-portal": "1.0.0",
+    "admin-portal": "1.0.0",
+    "operations-console": "1.0.0",
+    "driver-portal": "1.0.0",
+    "types": "1.0.0",
+    "ui": "1.0.0",
+    "hooks": "1.0.0",
+    "utils": "1.0.0",
+    "config": "1.0.0"
+  },
+  "programs": {
+    "A": "LOCKED",
+    "B": "LOCKED",
+    "C": "LOCKED",
+    "D1": "LOCKED",
+    "D2": "LOCKED",
+    "D3": "LOCKED",
+    "D4": "LOCKED",
+    "D5": "COMPLETE"
+  },
+  "git": {
+    "branch": "cursor/program-d5-production-launch-1b33",
+    "base": "cursor/program-d4-mobile-packaging-1b33",
+    "tagSuggestion": "v1.0.0"
+  },
+  "docs": {
+    "program": "docs/PROGRAM-D5.md",
+    "notes": "docs/RELEASE-v1.0.0.md",
+    "goLive": "docs/ops/GO-LIVE.md",
+    "preLaunch": "docs/ops/PRE-LAUNCH-CHECKLIST.md",
+    "validation": "docs/ops/PRODUCTION-VALIDATION.md",
+    "smoke": "docs/ops/SMOKE-CHECKLIST.md",
+    "rollback": "docs/ops/ROLLBACK.md"
+  },
+  "mobile": {
+    "androidVersionName": "1.0.0",
+    "androidVersionCode": 1000100,
+    "iosMarketingVersion": "1.0.0",
+    "iosBuild": "1000100"
+  }
+}

@@ -42,12 +42,19 @@ jobs:
         run: pnpm audit --prod --audit-level=high
       - name: Script syntax check
         run: |
-          for f in scripts/cicd/*.sh scripts/mobile/*.sh; do
+          for f in scripts/cicd/*.sh scripts/mobile/*.sh scripts/golive/*.sh; do
             bash -n "$f"
             echo "OK $f"
           done
       - name: Mobile packaging verify
         run: bash scripts/mobile/verify-mobile.sh
+      - name: Assert v1.0.0 manifest matches package.json
+        run: |
+          PKG=$(node -p "require('./package.json').version")
+          MAN=$(node -p "require('./docs/releases/v1.0.0.json').version")
+          echo "package=$PKG manifest=$MAN"
+          test "$PKG" = "$MAN"
+          test "$PKG" = "1.0.0"
 
   docker-dry:
     name: Dockerfiles present

@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: dripplex/backend:1.0.0-rc.1
+          image: dripplex/backend:1.0.0
           ports:
             - containerPort: 3000
           envFrom:

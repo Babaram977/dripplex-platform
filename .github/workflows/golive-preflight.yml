@@ -1,0 +1,63 @@
+name: Go-Live — Production Preflight
+
+# D5 helper: run packaging checks + optional dry-run without promoting production.
+on:
+  workflow_dispatch:
+    inputs:
+      strict:
+        description: 'Fail job when public prod endpoints are down'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+  push:
+    branches:
+      - 'cursor/program-d5-production-launch-1b33'
+    paths:
+      - 'scripts/golive/**'
+      - 'docs/ops/GO-LIVE.md'
+      - 'docs/PROGRAM-D5.md'
+      - 'docs/releases/v1.0.0.json'
+      - 'package.json'
+
+concurrency:
+  group: golive-preflight-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preflight:
+    name: Version · artifacts · preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Assert package version is 1.0.0
+        run: |
+          V=$(node -p "require('./package.json').version")
+          test "$V" = "1.0.0"
+          test -f docs/releases/v1.0.0.json
+          test -f docs/RELEASE-v1.0.0.md
+          echo "Version OK: $V"
+      - name: Script syntax
+        run: |
+          for f in scripts/golive/*.sh scripts/cicd/*.sh; do
+            bash -n "$f"
+            echo "OK $f"
+          done
+      - name: Go-live dry-run
+        run: |
+          chmod +x scripts/golive/*.sh scripts/cicd/*.sh
+          EXECUTE=0 bash scripts/golive/go-live.sh
+      - name: Public preflight
+        env:
+          PREFLIGHT_STRICT: ${{ inputs.strict == 'true' && '1' || '0' }}
+        run: |
+          set +e
+          bash scripts/golive/preflight.sh
+          ec=$?
+          set -e
+          if [ "$PREFLIGHT_STRICT" = "1" ] && [ "$ec" -ne 0 ]; then
+            exit "$ec"
+          fi
+          echo "Preflight exit=$ec (strict=$PREFLIGHT_STRICT)"

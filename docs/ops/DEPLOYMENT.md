@@ -1,24 +1,28 @@
-# Deployment runbook (RC1)
+# Deployment runbook — Production v1.0.0
 
 ## Preconditions
 
-1. Tag or freeze commit at `v1.0.0-rc.1` / branch `cursor/program-c4-release-candidate-1b33` (after merge chain C1→C4).
+1. Tag or freeze commit at `v1.0.0` (Program D5 / Release Tag workflow).
 2. Secrets loaded from secret manager (never `.env` in images).
-3. Staging Postgres + Redis healthy.
-4. Quality gates green on the freeze commit (see `docs/PROGRAM-C4.md`).
+3. Production Postgres + Redis healthy; pre-migrate backup taken.
+4. Quality gates green on the freeze commit (see `docs/PROGRAM-D5.md`).
+5. `docs/ops/PRE-LAUNCH-CHECKLIST.md` signed.
 
 ## Order of operations
 
 ```text
 1. Database migrations (Prisma deploy)
 2. Backend deploy + health check
-3. Frontend portals (customer → merchant → rider → admin → ops)
-4. Smoke checklist (docs/ops/SMOKE-CHECKLIST.md)
+3. Frontend portals (customer → merchant → rider → admin)
+4. Warm caches (scripts/golive/warm-caches.sh)
+5. Smoke + production validation
 ```
+
+Prefer `docs/ops/GO-LIVE.md` and `scripts/golive/go-live.sh` for the full cutover.
 
 ## 1. Database migration order
 
-From `apps/backend`:
+From `apps/backend` (or migrate container):
 
 ```bash
 pnpm prisma:migrate:deploy
@@ -26,7 +30,7 @@ pnpm prisma:migrate:deploy
 
 Migrations are ordered by timestamp under `apps/backend/prisma/migrations/`. Apply **only** with `migrate deploy` in staging/production (never `migrate dev`).
 
-RC1 schema is frozen — no new migrations in this phase. If a migration fails mid-way:
+Schema is frozen for D5 — no new migrations in this phase. If a migration fails mid-way:
 
 1. Stop frontend and API rollouts.
 2. Follow `docs/ops/ROLLBACK.md`.
@@ -37,11 +41,9 @@ RC1 schema is frozen — no new migrations in this phase. If a migration fails m
 ### Docker (recommended)
 
 ```bash
-docker compose -f infrastructure/docker/docker-compose.staging.yml up -d postgres redis
-# after migrate:
-docker build -f apps/backend/Dockerfile -t dripplex-backend:1.0.0-rc.1 .
-docker compose -f infrastructure/docker/docker-compose.staging.yml up -d backend
-curl -fsS https://api.<staging>/api/v1/health
+# Via CI: Deploy Production workflow with image_tag=v1.0.0
+# Or SSH compose on prod hosts — see scripts/cicd/deploy.sh
+curl -fsS https://api.dripplex.com/api/v1/health
 ```
 
 ### Manual
@@ -59,7 +61,7 @@ Health must report DB + Redis ok before portals go live.
 Build each portal with production env:
 
 ```bash
-export NEXT_PUBLIC_API_BASE_URL=https://api.<staging>/api/v1
+export NEXT_PUBLIC_API_BASE_URL=https://api.dripplex.com/api/v1
 pnpm --filter @dripplex/customer-web build
 pnpm --filter @dripplex/merchant-portal build
 pnpm --filter @dripplex/rider-portal build
@@ -67,7 +69,7 @@ pnpm --filter @dripplex/admin-portal build
 pnpm --filter @dripplex/operations-console build
 ```
 
-Customer-web Dockerfile: `apps/customer-web/Dockerfile` (standalone Next). Other portals follow the same pattern or platform host (Vercel/Cloud Run) with identical env.
+Prefer GHCR images from D2 publish pipeline.
 
 Ensure reverse proxy:
 
@@ -84,7 +86,8 @@ Ensure reverse proxy:
 | Auth login       | Customer + one portal                       |
 | Security headers | Response includes CSP + HSTS                |
 | PWA (customer)   | `/manifest.webmanifest`, `/sw.js` reachable |
-| Version          | Confirm deploy tag `1.0.0-rc.1`             |
+| Version          | Confirm deploy tag `1.0.0` / `v1.0.0`       |
+| Validation       | `docs/ops/PRODUCTION-VALIDATION.md`         |
 
 ## Release checklist (summary)
 
@@ -94,6 +97,6 @@ Ensure reverse proxy:
 - [ ] Backend healthy
 - [ ] All portals built with HTTPS API URL
 - [ ] Smoke checklist signed
-- [ ] Monitoring alerts wired (or accepted deferred)
+- [ ] Monitoring alerts wired
 - [ ] Rollback owner named
-- [ ] Staging approval recorded — **wait before production**
+- [ ] Pre-launch checklist signed — go-live executed
