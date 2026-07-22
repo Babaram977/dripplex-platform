@@ -1,0 +1,35 @@
+name: Deploy Staging
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*-rc*'
+      - 'v*-staging*'
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  quality:
+    name: Gate on CI
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: quality
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Staging deploy (runner placeholder)
+        run: |
+          echo "Tag/ref: ${GITHUB_REF_NAME}"
+          echo "1) Pre-migrate backup via infrastructure/scripts/backup-postgres.sh"
+          echo "2) pnpm --filter @dripplex/backend prisma:migrate:deploy"
+          echo "3) docker compose -f infrastructure/docker/docker-compose.staging.yml up -d"
+          echo "4) curl -fsS \"\${STAGING_API_URL}/api/v1/health\""
+          echo "Wire self-hosted runner + environment secrets before go-live."

@@ -1,0 +1,45 @@
+{
+  "description": "Dripplex WAF / rate-limit rule sketches for Cloudflare dashboard or Terraform",
+  "rules": [
+    {
+      "id": "ratelimit-auth",
+      "expression": "(http.request.uri.path contains \"/api/v1/auth\")",
+      "action": "managed_challenge",
+      "ratelimit": {
+        "characteristics": ["ip.src"],
+        "period": 60,
+        "requests_per_period": 30,
+        "mitigation_timeout": 60
+      }
+    },
+    {
+      "id": "block-bad-bots-admin",
+      "expression": "(http.host eq \"admin.dripplex.com\" and not cf.client.bot and not cf.waf.score gt 0)",
+      "action": "note",
+      "comment": "Prefer Cloudflare Access; keep WAF managed rules enabled"
+    },
+    {
+      "id": "protect-api-burst",
+      "expression": "(http.host eq \"api.dripplex.com\")",
+      "action": "managed_challenge",
+      "ratelimit": {
+        "characteristics": ["ip.src"],
+        "period": 60,
+        "requests_per_period": 120,
+        "mitigation_timeout": 30
+      }
+    }
+  ],
+  "ssl": {
+    "mode": "strict",
+    "min_tls_version": "1.3",
+    "always_use_https": true,
+    "automatic_https_rewrites": true,
+    "hsts": {
+      "enabled": true,
+      "max_age": 15552000,
+      "include_subdomains": true,
+      "preload": false
+    }
+  }
+}

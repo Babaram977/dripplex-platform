@@ -1,26 +1,38 @@
-# Infrastructure
+# Infrastructure — Program D1
 
-Docker Compose and deployment assets for Dripplex RC1.
+Production-grade topology for Dripplex (Cloudflare + Hetzner + Docker + optional Kubernetes).
 
-## Staging stack
+## Quick links
 
-```bash
-docker compose -f infrastructure/docker/docker-compose.staging.yml up -d
-```
+| Topic                | Path                                                                                            |
+| -------------------- | ----------------------------------------------------------------------------------------------- |
+| Program report       | [`docs/PROGRAM-D1.md`](../docs/PROGRAM-D1.md)                                                   |
+| Architecture diagram | [`docs/diagrams/d1-architecture.md`](../docs/diagrams/d1-architecture.md)                       |
+| Deployment readiness | [`docs/infrastructure/DEPLOYMENT-READINESS.md`](../docs/infrastructure/DEPLOYMENT-READINESS.md) |
+| Production Compose   | [`docker/docker-compose.production.yml`](docker/docker-compose.production.yml)                  |
+| Staging Compose      | [`docker/docker-compose.staging.yml`](docker/docker-compose.staging.yml)                        |
+| Nginx LB             | [`nginx/dripplex.conf`](nginx/dripplex.conf)                                                    |
+| Kubernetes           | [`kubernetes/`](kubernetes/)                                                                    |
+| Monitoring           | [`monitoring/`](monitoring/)                                                                    |
+| Logging              | [`logging/`](logging/)                                                                          |
+| Cloudflare           | [`cloudflare/`](cloudflare/)                                                                    |
+| Backup scripts       | [`scripts/`](scripts/)                                                                          |
+| Secrets template     | [`secrets/.env.production.example`](secrets/.env.production.example)                            |
 
-Services:
+## Launch path
 
-- PostgreSQL 16
-- Redis 7
-- Backend (`apps/backend/Dockerfile`)
+1. Review & approve `docs/PROGRAM-D1.md`.
+2. Provision Hetzner nodes per `docs/infrastructure/SERVER-SPEC.md`.
+3. Configure Cloudflare per `docs/infrastructure/CLOUDFLARE.md`.
+4. Load secrets from `secrets/.env.production.example`.
+5. `docker compose -f infrastructure/docker/docker-compose.production.yml --env-file .env.production up -d`
+6. Enable observability profile: `--profile observability`
+7. Run backup restore drill before production traffic.
 
-See `docs/ops/DEPLOYMENT.md` for migration order and frontend rollout.
+## CI/CD
 
-## Images
+- Quality: `.github/workflows/ci.yml`
+- Staging: `.github/workflows/deploy-staging.yml`
+- Production: `.github/workflows/deploy-production.yml`
 
-| Image        | Dockerfile                     |
-| ------------ | ------------------------------ |
-| Backend      | `apps/backend/Dockerfile`      |
-| Customer web | `apps/customer-web/Dockerfile` |
-
-Merchant / rider / admin / ops portals: deploy via host platform with `pnpm build` until dedicated Dockerfiles are added post-RC.
+**Wait for D1 review before D2.**

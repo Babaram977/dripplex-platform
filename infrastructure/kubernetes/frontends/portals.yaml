@@ -1,0 +1,120 @@
+# Portal deployments (merchant / rider / admin) — same pattern as customer-web
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: merchant-portal
+  namespace: dripplex
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: merchant-portal
+  template:
+    metadata:
+      labels:
+        app: merchant-portal
+    spec:
+      containers:
+        - name: merchant-portal
+          image: dripplex/merchant-portal:1.0.0-rc.1
+          ports:
+            - containerPort: 3002
+          env:
+            - name: PORT
+              value: '3002'
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: merchant-portal
+  namespace: dripplex
+spec:
+  selector:
+    app: merchant-portal
+  ports:
+    - port: 3002
+      targetPort: 3002
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rider-portal
+  namespace: dripplex
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rider-portal
+  template:
+    metadata:
+      labels:
+        app: rider-portal
+    spec:
+      containers:
+        - name: rider-portal
+          image: dripplex/rider-portal:1.0.0-rc.1
+          ports:
+            - containerPort: 3003
+          env:
+            - name: PORT
+              value: '3003'
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rider-portal
+  namespace: dripplex
+spec:
+  selector:
+    app: rider-portal
+  ports:
+    - port: 3003
+      targetPort: 3003
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admin-portal
+  namespace: dripplex
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: admin-portal
+  template:
+    metadata:
+      labels:
+        app: admin-portal
+    spec:
+      containers:
+        - name: admin-portal
+          image: dripplex/admin-portal:1.0.0-rc.1
+          ports:
+            - containerPort: 3004
+          env:
+            - name: PORT
+              value: '3004'
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: admin-portal
+  namespace: dripplex
+spec:
+  selector:
+    app: admin-portal
+  ports:
+    - port: 3004
+      targetPort: 3004

@@ -1,0 +1,35 @@
+{
+  "title": "Dripplex Overview",
+  "uid": "dripplex-overview",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "API probe success",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [{ "expr": "probe_success{instance=~\".*api.dripplex.com.*\"}" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU %",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "expr": "100 - (avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Memory used %",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [
+        {
+          "expr": "(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100"
+        }
+      ]
+    }
+  ]
+}

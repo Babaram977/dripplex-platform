@@ -1,0 +1,12 @@
+# Managed Postgres/Redis recommended in K8s. These StatefulSets are for
+# self-hosted clusters only — prefer Hetzner VMs or managed services at launch.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: data-plane-notes
+  namespace: dripplex
+data:
+  README: |
+    Run PostgreSQL + Redis on dedicated data nodes (see SERVER-SPEC.md)
+    or managed offerings. Point Secret dripplex-backend-secrets DATABASE_URL
+    at PgBouncer and REDIS_URL at Redis. Do not expose either publicly.

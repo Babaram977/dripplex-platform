@@ -1,0 +1,34 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: default-slack
+  group_by: ['alertname', 'severity']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - matchers:
+        - severity = critical
+      receiver: pager-critical
+      repeat_interval: 1h
+
+receivers:
+  - name: default-slack
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL}'
+        channel: '#dripplex-alerts'
+        title: '{{ .Status | toUpper }}: {{ .CommonAnnotations.summary }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+
+  - name: pager-critical
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL}'
+        channel: '#dripplex-alerts-critical'
+        title: 'CRITICAL {{ .CommonAnnotations.summary }}'
+    # Add PagerDuty / Opsgenie when available
+
+inhibit_rules:
+  - source_matchers: [severity = critical]
+    target_matchers: [severity = warning]
+    equal: [alertname]

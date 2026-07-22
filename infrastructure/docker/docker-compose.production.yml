@@ -1,0 +1,302 @@
+# Dripplex production stack (Program D1)
+# Deploy on Hetzner private network. Do not expose Postgres/Redis publicly.
+# Usage:
+#   export COMPOSE_FILE=infrastructure/docker/docker-compose.production.yml
+#   docker compose --env-file .env.production up -d
+
+name: dripplex-production
+
+x-restart: &restart
+  restart: unless-stopped
+
+x-logging: &default-logging
+  logging:
+    driver: json-file
+    options:
+      max-size: '50m'
+      max-file: '5'
+
+services:
+  nginx:
+    <<: [*restart, *default-logging]
+    image: nginx:1.27-alpine
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ../nginx/dripplex.conf:/etc/nginx/conf.d/default.conf:ro
+      - ${ORIGIN_TLS_CERT:-./certs/origin.pem}:/etc/nginx/certs/origin.pem:ro
+      - ${ORIGIN_TLS_KEY:-./certs/origin.key}:/etc/nginx/certs/origin.key:ro
+    depends_on:
+      - customer-web
+      - merchant-portal
+      - rider-portal
+      - admin-portal
+      - backend
+      - uptime-kuma
+    networks:
+      - edge
+      - app
+
+  customer-web:
+    <<: [*restart, *default-logging]
+    build:
+      context: ../..
+      dockerfile: apps/customer-web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://www.dripplex.com}
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+    networks: [app]
+    expose: ['3001']
+
+  merchant-portal:
+    <<: [*restart, *default-logging]
+    image: ${MERCHANT_IMAGE:-dripplex/merchant-portal:1.0.0-rc.1}
+    environment:
+      NODE_ENV: production
+      PORT: 3002
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
+    networks: [app]
+    expose: ['3002']
+
+  rider-portal:
+    <<: [*restart, *default-logging]
+    image: ${RIDER_IMAGE:-dripplex/rider-portal:1.0.0-rc.1}
+    environment:
+      NODE_ENV: production
+      PORT: 3003
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
+    networks: [app]
+    expose: ['3003']
+
+  admin-portal:
+    <<: [*restart, *default-logging]
+    image: ${ADMIN_IMAGE:-dripplex/admin-portal:1.0.0-rc.1}
+    environment:
+      NODE_ENV: production
+      PORT: 3004
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
+    networks: [app]
+    expose: ['3004']
+
+  backend:
+    <<: [*restart, *default-logging]
+    build:
+      context: ../..
+      dockerfile: apps/backend/Dockerfile
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      API_HOST: 0.0.0.0
+      API_PORT: 3000
+      API_GLOBAL_PREFIX: api/v1
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      PAYSTACK_SECRET_KEY: ${PAYSTACK_SECRET_KEY:-}
+      PAYSTACK_PUBLIC_KEY: ${PAYSTACK_PUBLIC_KEY:-}
+      PAYMENT_DEFAULT_PROVIDER: ${PAYMENT_DEFAULT_PROVIDER:-PAYSTACK}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+    depends_on:
+      pgbouncer:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    networks: [app, data]
+    expose: ['3000']
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  worker:
+    <<: [*restart, *default-logging]
+    build:
+      context: ../..
+      dockerfile: apps/backend/Dockerfile
+    command: ['node', 'dist/main.js']
+    environment:
+      NODE_ENV: production
+      WORKER_MODE: '1'
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      redis:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_started
+    networks: [app, data]
+
+  postgres:
+    <<: [*restart, *default-logging]
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./postgres/init-roles.sql:/docker-entrypoint-initdb.d/01-roles.sql:ro
+    networks: [data]
+    expose: ['5432']
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    # No host ports — private only
+
+  pgbouncer:
+    <<: [*restart, *default-logging]
+    image: edoburu/pgbouncer:1.22.1.1
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 200
+      DEFAULT_POOL_SIZE: 50
+      AUTH_TYPE: scram-sha-256
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [data]
+    expose: ['5432']
+
+  redis:
+    <<: [*restart, *default-logging]
+    image: redis:7-alpine
+    command:
+      ['redis-server', '/usr/local/etc/redis/redis.conf', '--requirepass', '${REDIS_PASSWORD}']
+    volumes:
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+      - redis_data:/data
+    networks: [data]
+    expose: ['6379']
+    healthcheck:
+      test: ['CMD', 'redis-cli', '-a', '${REDIS_PASSWORD}', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  # --- Observability (can run on obs-01 via profile) ---
+  prometheus:
+    <<: [*restart, *default-logging]
+    image: prom/prometheus:v2.54.1
+    profiles: ['observability']
+    volumes:
+      - ../monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../monitoring/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=15d'
+    networks: [obs, app, data]
+    expose: ['9090']
+
+  alertmanager:
+    <<: [*restart, *default-logging]
+    image: prom/alertmanager:v0.27.0
+    profiles: ['observability']
+    volumes:
+      - ../monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    networks: [obs]
+    expose: ['9093']
+
+  grafana:
+    <<: [*restart, *default-logging]
+    image: grafana/grafana:11.2.0
+    profiles: ['observability']
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-https://grafana.internal.dripplex.com}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks: [obs]
+    expose: ['3000']
+
+  loki:
+    <<: [*restart, *default-logging]
+    image: grafana/loki:3.1.1
+    profiles: ['observability']
+    volumes:
+      - ../logging/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    networks: [obs]
+    expose: ['3100']
+
+  promtail:
+    <<: [*restart, *default-logging]
+    image: grafana/promtail:3.1.1
+    profiles: ['observability']
+    volumes:
+      - ../logging/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [obs]
+    command: ['-config.file=/etc/promtail/config.yml']
+
+  uptime-kuma:
+    <<: [*restart, *default-logging]
+    image: louislam/uptime-kuma:1.23.15
+    volumes:
+      - uptime_data:/app/data
+    networks: [app, edge]
+    expose: ['3001']
+
+  node-exporter:
+    <<: [*restart, *default-logging]
+    image: prom/node-exporter:v1.8.2
+    profiles: ['observability']
+    network_mode: host
+    pid: host
+
+  postgres-exporter:
+    <<: [*restart, *default-logging]
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    profiles: ['observability']
+    environment:
+      DATA_SOURCE_NAME: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
+    networks: [data, obs]
+    expose: ['9187']
+
+  redis-exporter:
+    <<: [*restart, *default-logging]
+    image: oliver006/redis_exporter:v1.62.0
+    profiles: ['observability']
+    environment:
+      REDIS_ADDR: redis://redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    networks: [data, obs]
+    expose: ['9121']
+
+networks:
+  edge:
+  app:
+  data:
+    internal: true
+  obs:
+
+volumes:
+  pg_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+  loki_data:
+  uptime_data:

@@ -1,0 +1,89 @@
+groups:
+  - name: dripplex.availability
+    rules:
+      - alert: ServerDown
+        expr: up{job="node"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Node exporter down'
+          description: 'Instance {{ $labels.instance }} unreachable for 2m.'
+
+      - alert: DatabaseDown
+        expr: up{job="postgres"} == 0 or pg_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'PostgreSQL down'
+
+      - alert: RedisDown
+        expr: up{job="redis"} == 0 or redis_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Redis down'
+
+      - alert: ApiFailure
+        expr: probe_success{instance=~".*api.dripplex.com.*"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'API health probe failing'
+
+  - name: dripplex.capacity
+    rules:
+      - alert: HighCPU
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'High CPU on {{ $labels.instance }}'
+
+      - alert: HighMemory
+        expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'High memory on {{ $labels.instance }}'
+
+      - alert: DiskFull
+        expr: (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Disk > 85% on {{ $labels.instance }}'
+
+      - alert: DiskCritical
+        expr: (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes) * 100 > 95
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Disk > 95% on {{ $labels.instance }}'
+
+  - name: dripplex.tls
+    rules:
+      - alert: SslExpiry
+        expr: (probe_ssl_earliest_cert_expiry - time()) / 86400 < 14
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: 'TLS certificate expires in < 14 days ({{ $labels.instance }})'
+
+  - name: dripplex.queues
+    rules:
+      - alert: QueueBacklog
+        expr: redis_list_length{key=~"queue:.*"} > 1000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Queue backlog high for {{ $labels.key }}'

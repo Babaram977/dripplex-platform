@@ -1,0 +1,61 @@
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Image / release tag (e.g. 1.0.0-rc.1)'
+        required: true
+        type: string
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Record version tag
+        run: |
+          echo "Deploying tag=${{ github.event.inputs.image_tag || github.ref_name }}"
+          echo "VERSION=${{ github.event.inputs.image_tag || github.ref_name }}" >> "$GITHUB_ENV"
+
+      - name: Pre-migrate backup
+        run: |
+          echo "Mandatory: encrypted pg_dump to B2 before migrate"
+          # SSH to data host or runner with network access:
+          # ./infrastructure/scripts/backup-postgres.sh
+
+      - name: Database migrate
+        run: |
+          echo "prisma migrate deploy on production DATABASE_URL"
+          # Failures → stop; restore from backup (docs/ops/ROLLBACK.md + DR plan)
+
+      - name: Pull & roll backend
+        run: |
+          echo "docker compose -f infrastructure/docker/docker-compose.production.yml up -d --no-deps backend worker"
+          echo "Health check api.dripplex.com/api/v1/health"
+
+      - name: Roll frontends
+        run: |
+          echo "Update customer-web merchant-portal rider-portal admin-portal"
+          echo "Reload nginx upstreams"
+
+      - name: Post-deploy smoke
+        run: |
+          echo "Execute docs/ops/SMOKE-CHECKLIST.md subset"
+
+      - name: Rollback instructions
+        if: failure()
+        run: |
+          echo "See docs/ops/ROLLBACK.md and docs/infrastructure/DISASTER-RECOVERY.md"
+          echo "Redeploy previous image tag; restore DB only if migrate failed mid-way"
