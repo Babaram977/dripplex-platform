@@ -50,6 +50,16 @@ pnpm --filter @dripplex/customer-web dev
 
 App defaults to [http://localhost:3001](http://localhost:3001).
 
+## Cloudflare Workers (OpenNext)
+
+Production edge deploy uses `@opennextjs/cloudflare`. Config lives in this package (`wrangler.jsonc`, `open-next.config.ts`).
+
+```bash
+pnpm --filter @dripplex/customer-web deploy
+```
+
+**Workers Builds root directory must be `apps/customer-web`** — see `docs/ops/CLOUDFLARE-CUSTOMER-WEB.md` (fixes monorepo “workspace root” errors).
+
 ## Quality gates
 
 ```bash

@@ -75,6 +75,16 @@ pnpm --filter @dripplex/config lint
 pnpm --filter @dripplex/backend dev
 ```
 
+## Deploy customer-web to Cloudflare Workers
+
+The customer app uses **OpenNext** (`@opennextjs/cloudflare`). Config: `apps/customer-web/wrangler.jsonc`.
+
+In Cloudflare Workers Builds, set **Root directory** to `apps/customer-web` (required for this monorepo). Full guide: [docs/ops/CLOUDFLARE-CUSTOMER-WEB.md](docs/ops/CLOUDFLARE-CUSTOMER-WEB.md).
+
+```bash
+pnpm --filter @dripplex/customer-web deploy
+```
+
 ## Architecture principles
 
 - **Clean Architecture / DDD** — domain logic lives in services; controllers stay thin.

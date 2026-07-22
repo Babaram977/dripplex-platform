@@ -6,10 +6,15 @@ node_modules
 dist
 build
 .next
+.open-next
 .turbo
 out
 coverage
 *.tsbuildinfo
+
+# Cloudflare / Wrangler local
+.dev.vars
+.wrangler
 
 # Environment
 .env

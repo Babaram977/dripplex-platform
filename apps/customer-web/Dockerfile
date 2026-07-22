@@ -24,6 +24,7 @@ COPY packages packages
 COPY apps/customer-web apps/customer-web
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
+ENV DOCKER_BUILD=1
 ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:3000/api/v1
 ARG NEXT_PUBLIC_APP_URL=http://localhost:3001
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
