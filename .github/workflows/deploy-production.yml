@@ -4,58 +4,113 @@ on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: 'Image / release tag (e.g. 1.0.0-rc.1)'
+        description: 'Exact image tag to promote (sha or vX.Y.Z)'
         required: true
         type: string
-  push:
-    tags:
-      - 'v*'
+      confirm:
+        description: 'Type promote-production to confirm'
+        required: true
+        type: string
 
 concurrency:
   group: deploy-production
   cancel-in-progress: false
 
+permissions:
+  contents: read
+  packages: read
+
 jobs:
-  deploy:
+  confirm:
+    name: Confirm promotion
     runs-on: ubuntu-latest
-    environment: production
-    timeout-minutes: 45
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Record version tag
+      - name: Validate confirmation phrase
         run: |
-          echo "Deploying tag=${{ github.event.inputs.image_tag || github.ref_name }}"
-          echo "VERSION=${{ github.event.inputs.image_tag || github.ref_name }}" >> "$GITHUB_ENV"
+          if [ "${{ github.event.inputs.confirm }}" != "promote-production" ]; then
+            echo "Confirmation phrase mismatch"
+            exit 1
+          fi
 
-      - name: Pre-migrate backup
+  quality:
+    name: Re-run CI gate
+    needs: confirm
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    name: Deploy → Production
+    needs: [confirm, quality]
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://www.dripplex.com
+    timeout-minutes: 60
+    env:
+      DRIPPLEX_ENV: production
+      IMAGE_TAG: ${{ github.event.inputs.image_tag }}
+      REGISTRY: ghcr.io/${{ github.repository_owner }}
+      DEPLOY_MODE: ${{ vars.DEPLOY_MODE || 'ssh' }}
+      DEPLOY_HOST: ${{ secrets.PROD_DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.PROD_DEPLOY_USER }}
+      API_BASE_URL: ${{ vars.PROD_API_BASE_URL || 'https://api.dripplex.com/api/v1' }}
+      CUSTOMER_URL: ${{ vars.PROD_CUSTOMER_URL || 'https://www.dripplex.com' }}
+      MERCHANT_URL: ${{ vars.PROD_MERCHANT_URL || 'https://merchant.dripplex.com' }}
+      RIDER_URL: ${{ vars.PROD_RIDER_URL || 'https://rider.dripplex.com' }}
+      ADMIN_URL: ${{ vars.PROD_ADMIN_URL || 'https://admin.dripplex.com' }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      SMOKE_STRICT: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure SSH
+        if: env.DEPLOY_MODE == 'ssh'
         run: |
-          echo "Mandatory: encrypted pg_dump to B2 before migrate"
-          # SSH to data host or runner with network access:
-          # ./infrastructure/scripts/backup-postgres.sh
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PROD_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
 
-      - name: Database migrate
+      - name: Login GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag staging → production alias
         run: |
-          echo "prisma migrate deploy on production DATABASE_URL"
-          # Failures → stop; restore from backup (docs/ops/ROLLBACK.md + DR plan)
+          # Optional: retag image as :production for audit trail (requires package write)
+          echo "Promoting ${IMAGE_TAG} to production hosts"
 
-      - name: Pull & roll backend
+      - name: Deploy + validate (auto-rollback)
         run: |
-          echo "docker compose -f infrastructure/docker/docker-compose.production.yml up -d --no-deps backend worker"
-          echo "Health check api.dripplex.com/api/v1/health"
+          chmod +x scripts/cicd/*.sh
+          if [ "${DEPLOY_MODE}" = "dry-run" ] || [ -z "${DEPLOY_HOST}" ]; then
+            export DEPLOY_MODE=dry-run DRY_RUN=1
+            echo "No production host configured — dry-run pipeline"
+          fi
+          ./scripts/cicd/pipeline.sh
 
-      - name: Roll frontends
+      - name: Retag images as production
+        if: success()
+        continue-on-error: true
         run: |
-          echo "Update customer-web merchant-portal rider-portal admin-portal"
-          echo "Reload nginx upstreams"
+          echo "docker buildx imagetools create -t ${REGISTRY}/dripplex-backend-core:production ${REGISTRY}/dripplex-backend-core:${IMAGE_TAG}"
 
-      - name: Post-deploy smoke
+      - name: Notify success
+        if: success()
         run: |
-          echo "Execute docs/ops/SMOKE-CHECKLIST.md subset"
+          if [ -n "${SLACK_WEBHOOK_URL:-}" ]; then
+            curl -fsS -X POST -H 'Content-type: application/json' \
+              --data "{\"text\":\"*[Dripplex production]* Deploy success tag=${IMAGE_TAG}\"}" \
+              "$SLACK_WEBHOOK_URL"
+          fi
 
-      - name: Rollback instructions
+      - name: Notify failure / rollback
         if: failure()
         run: |
-          echo "See docs/ops/ROLLBACK.md and docs/infrastructure/DISASTER-RECOVERY.md"
-          echo "Redeploy previous image tag; restore DB only if migrate failed mid-way"
+          if [ -n "${SLACK_WEBHOOK_URL:-}" ]; then
+            curl -fsS -X POST -H 'Content-type: application/json' \
+              --data "{\"text\":\"*[Dripplex production]* Deploy FAILED tag=${IMAGE_TAG} — rollback executed\"}" \
+              "$SLACK_WEBHOOK_URL"
+          fi

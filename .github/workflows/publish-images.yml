@@ -1,0 +1,131 @@
+name: Publish Docker Images
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Extra image tag (optional)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
+concurrency:
+  group: publish-images-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io/${{ github.repository_owner }}
+
+jobs:
+  quality:
+    name: Gate on CI
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    name: Build & push images
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: backend-core
+            file: apps/backend/Dockerfile
+            image: dripplex-backend-core
+          - name: customer-web
+            file: apps/customer-web/Dockerfile
+            image: dripplex-customer-web
+            api: https://api.dripplex.com/api/v1
+            app: https://www.dripplex.com
+          - name: merchant-portal
+            file: apps/merchant-portal/Dockerfile
+            image: dripplex-merchant-portal
+            api: https://api.dripplex.com/api/v1
+            app: https://merchant.dripplex.com
+          - name: rider-portal
+            file: apps/rider-portal/Dockerfile
+            image: dripplex-rider-portal
+            api: https://api.dripplex.com/api/v1
+            app: https://rider.dripplex.com
+          - name: admin-portal
+            file: apps/admin-portal/Dockerfile
+            image: dripplex-admin-portal
+            api: https://api.dripplex.com/api/v1
+            app: https://admin.dripplex.com
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set image tags
+        id: meta
+        run: |
+          SHA_SHORT="${GITHUB_SHA::12}"
+          echo "sha=${SHA_SHORT}" >> "$GITHUB_OUTPUT"
+          echo "version=${{ github.event.inputs.tag || SHA_SHORT }}" >> "$GITHUB_OUTPUT"
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.file }}
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ matrix.image }}:${{ steps.meta.outputs.sha }}
+            ${{ env.REGISTRY }}/${{ matrix.image }}:latest
+            ${{ env.REGISTRY }}/${{ matrix.image }}:${{ steps.meta.outputs.version }}
+          build-args: |
+            NEXT_PUBLIC_API_BASE_URL=${{ matrix.api || 'https://api.dripplex.com/api/v1' }}
+            NEXT_PUBLIC_APP_URL=${{ matrix.app || 'https://www.dripplex.com' }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+      - name: Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ matrix.image }}:${{ steps.meta.outputs.sha }}
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          ignore-unfixed: true
+
+  tag-release:
+    name: Tag release commit
+    needs: publish
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create moving build tag
+        run: |
+          TAG="build-${GITHUB_SHA::12}"
+          git tag -f "${TAG}"
+          git push -f origin "refs/tags/${TAG}"
+          echo "Published tag ${TAG}"
+      - name: Notify
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [ -n "${SLACK_WEBHOOK_URL:-}" ]; then
+            curl -fsS -X POST -H 'Content-type: application/json' \
+              --data "{\"text\":\"*[Dripplex]* Release images published for ${GITHUB_SHA::12} → GHCR\"}" \
+              "$SLACK_WEBHOOK_URL"
+          fi

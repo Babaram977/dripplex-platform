@@ -2,34 +2,114 @@ name: Deploy Staging
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - 'v*-rc*'
-      - 'v*-staging*'
+    inputs:
+      image_tag:
+        description: 'Image tag (sha or semver). Default: latest published sha from main.'
+        required: false
+        type: string
+  workflow_run:
+    workflows: ['Publish Docker Images']
+    types: [completed]
+    branches: [main]
 
 concurrency:
   group: deploy-staging
   cancel-in-progress: false
 
+permissions:
+  contents: read
+  packages: read
+
 jobs:
-  quality:
-    name: Gate on CI
-    uses: ./.github/workflows/ci.yml
+  gate:
+    name: Require publish success
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - id: tag
+        run: |
+          if [ -n "${{ github.event.inputs.image_tag }}" ]; then
+            echo "tag=${{ github.event.inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "workflow_run" ]; then
+            echo "tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+            # Prefer the head sha from the publish run when available
+            HEAD="${{ github.event.workflow_run.head_sha }}"
+            if [ -n "$HEAD" ]; then
+              echo "tag=${HEAD::12}" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+          fi
 
   deploy:
-    needs: quality
+    name: Deploy → Staging
+    needs: gate
     runs-on: ubuntu-latest
     environment: staging
-    timeout-minutes: 30
+    timeout-minutes: 45
+    env:
+      DRIPPLEX_ENV: staging
+      IMAGE_TAG: ${{ needs.gate.outputs.image_tag }}
+      REGISTRY: ghcr.io/${{ github.repository_owner }}
+      DEPLOY_MODE: ${{ vars.DEPLOY_MODE || 'ssh' }}
+      DEPLOY_HOST: ${{ secrets.STAGING_DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.STAGING_DEPLOY_USER }}
+      API_BASE_URL: ${{ vars.STAGING_API_BASE_URL || 'https://api.staging.dripplex.com/api/v1' }}
+      CUSTOMER_URL: ${{ vars.STAGING_CUSTOMER_URL || 'https://www.staging.dripplex.com' }}
+      MERCHANT_URL: ${{ vars.STAGING_MERCHANT_URL || 'https://merchant.staging.dripplex.com' }}
+      RIDER_URL: ${{ vars.STAGING_RIDER_URL || 'https://rider.staging.dripplex.com' }}
+      ADMIN_URL: ${{ vars.STAGING_ADMIN_URL || 'https://admin.staging.dripplex.com' }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      SMOKE_STRICT: '1'
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Staging deploy (runner placeholder)
+      - name: Configure SSH
+        if: env.DEPLOY_MODE == 'ssh'
         run: |
-          echo "Tag/ref: ${GITHUB_REF_NAME}"
-          echo "1) Pre-migrate backup via infrastructure/scripts/backup-postgres.sh"
-          echo "2) pnpm --filter @dripplex/backend prisma:migrate:deploy"
-          echo "3) docker compose -f infrastructure/docker/docker-compose.staging.yml up -d"
-          echo "4) curl -fsS \"\${STAGING_API_URL}/api/v1/health\""
-          echo "Wire self-hosted runner + environment secrets before go-live."
+          mkdir -p ~/.ssh
+          echo "${{ secrets.STAGING_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Login GHCR (pull on runner)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pre-migrate backup note
+        run: echo "Host-side backup via infrastructure/scripts/backup-postgres.sh (wired in deploy.sh)"
+
+      - name: Deploy + validate (auto-rollback)
+        run: |
+          chmod +x scripts/cicd/*.sh
+          if [ "${DEPLOY_MODE}" = "dry-run" ] || [ -z "${DEPLOY_HOST}" ]; then
+            export DEPLOY_MODE=dry-run DRY_RUN=1
+            echo "No staging host configured — dry-run pipeline"
+          fi
+          ./scripts/cicd/pipeline.sh
+
+      - name: Notify success
+        if: success()
+        run: |
+          ./scripts/cicd/lib.sh 2>/dev/null || true
+          if [ -n "${SLACK_WEBHOOK_URL:-}" ]; then
+            curl -fsS -X POST -H 'Content-type: application/json' \
+              --data "{\"text\":\"*[Dripplex staging]* Deploy success tag=${IMAGE_TAG}\"}" \
+              "$SLACK_WEBHOOK_URL"
+          fi
+
+      - name: Notify failure
+        if: failure()
+        run: |
+          if [ -n "${SLACK_WEBHOOK_URL:-}" ]; then
+            curl -fsS -X POST -H 'Content-type: application/json' \
+              --data "{\"text\":\"*[Dripplex staging]* Deploy FAILED tag=${IMAGE_TAG} (rollback attempted)\"}" \
+              "$SLACK_WEBHOOK_URL"
+          fi
