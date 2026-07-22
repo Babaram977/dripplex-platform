@@ -1,6 +1,6 @@
 {
   "name": "@dripplex/sdk",
-  "version": "0.1.0",
+  "version": "1.0.0-rc.1",
   "private": true,
   "description": "Dripplex typed HTTP client for api/v1 consumers across web portals.",
   "license": "UNLICENSED",

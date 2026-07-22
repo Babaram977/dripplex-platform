@@ -1,3 +1,5 @@
+import { dripplexNextHeaders } from '@dripplex/config/next/security-headers';
+
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
@@ -10,9 +12,13 @@ const nextConfig: NextConfig = {
     '@dripplex/utils',
     '@dripplex/sdk',
   ],
+  images: {
+    formats: ['image/avif', 'image/webp'],
+  },
   experimental: {
     optimizePackageImports: ['lucide-react', '@dripplex/ui'],
   },
+  headers: dripplexNextHeaders(),
 };
 
 export default nextConfig;

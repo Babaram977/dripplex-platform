@@ -1,8 +1,11 @@
+import { dripplexNextHeaders } from '@dripplex/config/next/security-headers';
+
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  output: 'standalone',
   transpilePackages: [
     '@dripplex/ui',
     '@dripplex/hooks',
@@ -16,6 +19,7 @@ const nextConfig: NextConfig = {
   experimental: {
     optimizePackageImports: ['lucide-react', '@dripplex/ui'],
   },
+  headers: dripplexNextHeaders(),
 };
 
 export default nextConfig;

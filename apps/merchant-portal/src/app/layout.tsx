@@ -24,6 +24,10 @@ export const metadata: Metadata = {
     template: `%s · Dripplex Merchant Portal`,
   },
   description: 'Dripplex merchant portal — live Backend Core integration via sdk-merchant.',
+  icons: {
+    icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }],
+    apple: [{ url: '/app-icon.svg' }],
+  },
   robots: { index: false, follow: false },
 };
 

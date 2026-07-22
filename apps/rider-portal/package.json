@@ -1,6 +1,6 @@
 {
   "name": "@dripplex/rider-portal",
-  "version": "0.1.0",
+  "version": "1.0.0-rc.1",
   "private": true,
   "description": "Dripplex rider portal \u2014 live Backend Core integration via sdk-rider.",
   "license": "UNLICENSED",

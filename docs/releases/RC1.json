@@ -1,0 +1,53 @@
+{
+  "release": "RC1",
+  "version": "1.0.0-rc.1",
+  "codename": "Dripplex Release Candidate 1",
+  "status": "candidate",
+  "createdAt": "2026-07-22",
+  "freeze": {
+    "source": true,
+    "backendApi": true,
+    "databaseSchema": true,
+    "sdkSurface": true,
+    "uiRedesign": true,
+    "newFeatures": true
+  },
+  "packages": {
+    "root": "1.0.0-rc.1",
+    "backend": "1.0.0-rc.1",
+    "sdk": "1.0.0-rc.1",
+    "customer-web": "1.0.0-rc.1",
+    "merchant-portal": "1.0.0-rc.1",
+    "rider-portal": "1.0.0-rc.1",
+    "admin-portal": "1.0.0-rc.1",
+    "operations-console": "1.0.0-rc.1",
+    "driver-portal": "1.0.0-rc.1",
+    "types": "1.0.0-rc.1",
+    "ui": "1.0.0-rc.1",
+    "hooks": "1.0.0-rc.1",
+    "utils": "1.0.0-rc.1",
+    "config": "1.0.0-rc.1"
+  },
+  "programs": {
+    "A": "LOCKED",
+    "B": "LOCKED",
+    "C1": "LOCKED",
+    "C2": "LOCKED",
+    "C3": "LOCKED",
+    "C4": "COMPLETE"
+  },
+  "git": {
+    "branch": "cursor/program-c4-release-candidate-1b33",
+    "base": "cursor/program-c3-perf-security-release-1b33",
+    "tagSuggestion": "v1.0.0-rc.1"
+  },
+  "docs": {
+    "program": "docs/PROGRAM-C4.md",
+    "notes": "docs/RELEASE-RC1.md",
+    "deploy": "docs/ops/DEPLOYMENT.md",
+    "rollback": "docs/ops/ROLLBACK.md",
+    "backups": "docs/ops/BACKUPS.md",
+    "smoke": "docs/ops/SMOKE-CHECKLIST.md",
+    "prodConfig": "docs/ops/PRODUCTION-CONFIG.md"
+  }
+}

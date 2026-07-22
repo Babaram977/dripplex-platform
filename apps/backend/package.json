@@ -1,8 +1,8 @@
 {
   "name": "@dripplex/backend",
-  "version": "0.1.0",
+  "version": "1.0.0-rc.1",
   "private": true,
-  "description": "Dripplex NestJS API — REST api/v1, auth, domain modules, and real-time messaging.",
+  "description": "Dripplex NestJS API \u2014 REST api/v1, auth, domain modules, and real-time messaging.",
   "license": "UNLICENSED",
   "scripts": {
     "prebuild": "prisma generate && rm -f tsconfig.build.tsbuildinfo",
@@ -37,7 +37,7 @@
     "@nestjs/throttler": "^6.3.0",
     "@prisma/client": "^6.1.0",
     "@dripplex/types": "workspace:*",
-    "bcrypt": "^5.1.1",
+    "bcrypt": "^6.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "ioredis": "^5.4.2",
@@ -55,7 +55,7 @@
     "@nestjs/cli": "^11.0.0",
     "@nestjs/schematics": "^11.0.0",
     "@nestjs/testing": "^11.0.1",
-    "@types/bcrypt": "^5.0.2",
+    "@types/bcrypt": "^6.0.0",
     "@types/express": "^5.0.0",
     "@types/jest": "^29.5.14",
     "@types/node": "^22.10.2",

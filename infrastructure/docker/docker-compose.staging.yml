@@ -1,0 +1,79 @@
+# Dripplex staging stack — Postgres, Redis, Backend (RC1)
+# Usage:
+#   cp .env.example .env   # fill secrets
+#   docker compose -f infrastructure/docker/docker-compose.staging.yml up -d
+#   # migrate from host or one-off:
+#   # docker compose exec backend npx prisma migrate deploy
+
+name: dripplex-staging
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dripplex}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dripplex}
+      POSTGRES_DB: ${POSTGRES_DB:-dripplex}
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - dripplex_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-dripplex} -d ${POSTGRES_DB:-dripplex}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build:
+      context: ../..
+      dockerfile: apps/backend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://dripplex:dripplex@postgres:5432/dripplex?schema=public}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      API_HOST: 0.0.0.0
+      API_PORT: 3000
+      API_GLOBAL_PREFIX: api/v1
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3001,http://localhost:3002,http://localhost:3003,http://localhost:3004,http://localhost:3005}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-replace-with-at-least-32-character-access-secret}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-replace-with-at-least-32-character-refresh-secret}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      PAYSTACK_SECRET_KEY: ${PAYSTACK_SECRET_KEY:-}
+      PAYSTACK_PUBLIC_KEY: ${PAYSTACK_PUBLIC_KEY:-}
+      PAYMENT_DEFAULT_PROVIDER: ${PAYMENT_DEFAULT_PROVIDER:-PAYSTACK}
+    ports:
+      - '${API_PORT:-3000}:3000'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+volumes:
+  dripplex_pg_data:

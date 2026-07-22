@@ -71,11 +71,11 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'dripplex-auth',
+      // C3: do not persist profile PII — rehydrate identity via /auth/me after login/probe.
       partialize: (state) => ({
         accessToken: state.accessToken,
         refreshToken: state.refreshToken,
         expiresIn: state.expiresIn,
-        user: state.user,
         portal: state.portal,
       }),
       onRehydrateStorage: () => (state) => {

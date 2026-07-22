@@ -39,3 +39,14 @@ We will not pursue legal action against researchers who:
 - Prefer parameterized Prisma queries; never concatenate SQL.
 - Apply rate limiting on authentication and payment endpoints.
 - Log security-relevant events without logging secrets or full PII payloads.
+
+## Frontend session storage (Program C3)
+
+Until Backend Core issues httpOnly session cookies:
+
+- Access and refresh tokens are persisted in the browser via Zustand (`dripplex-auth`).
+- Profile PII is **not** persisted; identity is refreshed via `/auth/me` after login/probes.
+- All portals emit CSP and related security headers via `@dripplex/config/next/security-headers`.
+- Treat any XSS as a session-compromise risk. Prefer httpOnly + Secure + SameSite cookies in a future Backend Core amendment.
+
+CSRF: not applicable to current Bearer-header authentication. Introduce CSRF defenses when moving to cookie sessions.

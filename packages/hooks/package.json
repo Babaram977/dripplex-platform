@@ -1,6 +1,6 @@
 {
   "name": "@dripplex/hooks",
-  "version": "0.1.0",
+  "version": "1.0.0-rc.1",
   "private": true,
   "description": "Dripplex shared React hooks for auth, queries, and portal UX patterns.",
   "license": "UNLICENSED",

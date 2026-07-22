@@ -1,6 +1,6 @@
 {
   "name": "@dripplex/config",
-  "version": "0.1.0",
+  "version": "1.0.0-rc.1",
   "private": true,
   "description": "Shared TypeScript, ESLint, and Prettier configuration for the Dripplex monorepo.",
   "license": "UNLICENSED",
@@ -14,12 +14,14 @@
     "./eslint/nextjs": "./eslint/nextjs.js",
     "./eslint/nestjs": "./eslint/nestjs.js",
     "./eslint/react-library": "./eslint/react-library.js",
-    "./prettier": "./prettier/index.json"
+    "./prettier": "./prettier/index.json",
+    "./next/security-headers": "./next/security-headers.js"
   },
   "files": [
     "typescript",
     "eslint",
-    "prettier"
+    "prettier",
+    "next"
   ],
   "scripts": {
     "lint": "eslint .",
