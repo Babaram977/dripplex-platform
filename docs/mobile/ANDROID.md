@@ -4,7 +4,7 @@
 | ----------- | ---------------------------------------- |
 | **App**     | Customer (`apps/customer-mobile`)        |
 | **Package** | `com.dripplex.customer`                  |
-| **Version** | `1.0.0-rc.1` (versionCode `100001`)      |
+| **Version** | `1.0.0` (versionCode `1000100`)          |
 | **Shell**   | Capacitor 7 — remote URL to customer-web |
 
 ## Architecture
@@ -44,7 +44,7 @@ CI: `.github/workflows/mobile-build.yml` (workflow_dispatch + branch push).
 | Item                                            | Status                                        |
 | ----------------------------------------------- | --------------------------------------------- |
 | Package name `com.dripplex.customer`            | ✅                                            |
-| Version `1.0.0-rc.1` / code `100001`            | ✅                                            |
+| Version `1.0.0` / code `1000100`                | ✅                                            |
 | Release signing scaffold                        | ✅ (needs keystore secrets)                   |
 | Icons                                           | ⚠️ Capacitor default — replace with brand kit |
 | Splash                                          | ✅ `#0E7A3E` via SplashScreen plugin          |
