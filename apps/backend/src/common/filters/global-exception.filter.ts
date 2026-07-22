@@ -2,6 +2,7 @@ import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus } from
 import { Prisma } from '@prisma/client';
 import { Logger } from 'nestjs-pino';
 
+import { captureServerException } from '../../observability/capture';
 import {
   DomainException,
   LoginAttemptsExceededDomainException,
@@ -42,6 +43,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     if (statusCode >= 500) {
       this.logger.error({ err: exception, path: request.url }, message);
+      captureServerException(exception, {
+        path: request.url,
+        statusCode: String(statusCode),
+      });
     } else {
       this.logger.warn({ err: exception, path: request.url }, message);
     }

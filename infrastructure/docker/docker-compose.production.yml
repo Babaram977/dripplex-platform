@@ -263,6 +263,29 @@ services:
     networks: [app, edge]
     expose: ['3001']
 
+  blackbox-exporter:
+    <<: [*restart, *default-logging]
+    image: prom/blackbox-exporter:v0.25.0
+    profiles: ['observability']
+    volumes:
+      - ../monitoring/blackbox/blackbox.yml:/config/blackbox.yml:ro
+    command: ['--config.file=/config/blackbox.yml']
+    networks: [obs, edge]
+    expose: ['9115']
+
+  cadvisor:
+    <<: [*restart, *default-logging]
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    profiles: ['observability']
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks: [obs]
+    expose: ['8080']
+
   node-exporter:
     <<: [*restart, *default-logging]
     image: prom/node-exporter:v1.8.2

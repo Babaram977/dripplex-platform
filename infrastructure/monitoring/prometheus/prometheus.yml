@@ -1,6 +1,9 @@
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
+  external_labels:
+    platform: dripplex
+    env: production
 
 alerting:
   alertmanagers:
@@ -18,26 +21,61 @@ scrape_configs:
   - job_name: node
     static_configs:
       - targets: ['node-exporter:9100']
+        labels:
+          role: host
+
+  - job_name: cadvisor
+    static_configs:
+      - targets: ['cadvisor:8080']
+        labels:
+          role: containers
 
   - job_name: postgres
     static_configs:
       - targets: ['postgres-exporter:9187']
+        labels:
+          role: database
 
   - job_name: redis
     static_configs:
       - targets: ['redis-exporter:9121']
+        labels:
+          role: redis
 
-  - job_name: blackbox-api-health
+  - job_name: nginx
+    static_configs:
+      - targets: ['nginx-exporter:9113']
+        labels:
+          role: edge
+
+  - job_name: blackbox-https
     metrics_path: /probe
     params:
       module: [http_2xx]
     static_configs:
       - targets:
-          - https://api.dripplex.com/api/v1/health
+          - https://dripplex.com/
           - https://www.dripplex.com/
+          - https://api.dripplex.com/api/v1/health
           - https://merchant.dripplex.com/
           - https://rider.dripplex.com/
           - https://admin.dripplex.com/
+          - https://status.dripplex.com/
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  - job_name: blackbox-api-health
+    metrics_path: /probe
+    params:
+      module: [http_api_health]
+    static_configs:
+      - targets:
+          - https://api.dripplex.com/api/v1/health
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target

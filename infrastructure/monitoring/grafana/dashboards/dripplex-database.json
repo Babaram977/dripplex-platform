@@ -1,0 +1,58 @@
+{
+  "title": "Dripplex Database",
+  "uid": "dripplex-database",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "tags": ["dripplex", "d3"],
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "PG up",
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "pg_up",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Connections",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 8,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "pg_stat_activity_count",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Database size bytes",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "pg_database_size_bytes",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

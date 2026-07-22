@@ -11,7 +11,11 @@ route:
     - matchers:
         - severity = critical
       receiver: pager-critical
-      repeat_interval: 1h
+      continue: true
+      repeat_interval: 30m
+    - matchers:
+        - team = backend
+      receiver: backend-slack
 
 receivers:
   - name: default-slack
@@ -19,14 +23,20 @@ receivers:
       - api_url: '${SLACK_WEBHOOK_URL}'
         channel: '#dripplex-alerts'
         title: '{{ .Status | toUpper }}: {{ .CommonAnnotations.summary }}'
-        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}\nRunbook: {{ .Annotations.runbook }}{{ end }}'
+
+  - name: backend-slack
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL}'
+        channel: '#dripplex-backend'
+        title: 'Backend {{ .CommonAnnotations.summary }}'
 
   - name: pager-critical
     slack_configs:
       - api_url: '${SLACK_WEBHOOK_URL}'
-        channel: '#dripplex-alerts-critical'
+        channel: '#dripplex-oncall'
         title: 'CRITICAL {{ .CommonAnnotations.summary }}'
-    # Add PagerDuty / Opsgenie when available
+        text: '{{ range .Alerts }}{{ .Annotations.description }}\nRunbook: {{ .Annotations.runbook }}{{ end }}'
 
 inhibit_rules:
   - source_matchers: [severity = critical]

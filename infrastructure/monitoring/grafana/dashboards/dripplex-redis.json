@@ -1,0 +1,74 @@
+{
+  "title": "Dripplex Redis",
+  "uid": "dripplex-redis",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "tags": ["dripplex", "d3"],
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Redis up",
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "redis_up",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Memory used",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 8,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "redis_memory_used_bytes",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Connected clients",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "redis_connected_clients",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Queue lengths",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "redis_list_length{key=~\"queue:.*\"}",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

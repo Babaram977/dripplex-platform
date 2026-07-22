@@ -18,6 +18,7 @@ Production-grade topology for Dripplex (Cloudflare + Hetzner + Docker + optional
 | Cloudflare           | [`cloudflare/`](cloudflare/)                                                                    |
 | Backup scripts       | [`scripts/`](scripts/)                                                                          |
 | CI/CD (D2)           | [`docs/PROGRAM-D2.md`](../docs/PROGRAM-D2.md) · [`scripts/cicd/`](../scripts/cicd/)             |
+| Observability (D3)   | [`docs/PROGRAM-D3.md`](../docs/PROGRAM-D3.md) · [`monitoring/`](monitoring/)                    |
 | Secrets template     | [`secrets/.env.production.example`](secrets/.env.production.example)                            |
 
 ## Launch path

@@ -16,12 +16,29 @@ scrape_configs:
       - source_labels: ['__meta_docker_container_name']
         regex: '/(.*)'
         target_label: container
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
+        target_label: service
       - source_labels: ['__meta_docker_container_log_stream']
         target_label: stream
     pipeline_stages:
       - regex:
           expression: '(?i)authorization'
-          source: message
       - replace:
           expression: '(?i)(authorization["\s:=]+)[^\s"]+'
           replace: '${1}[REDACTED]'
+      - match:
+          selector: '{service="backend"}'
+          stages:
+            - json:
+                expressions:
+                  level: level
+                  msg: msg
+            - labels:
+                level:
+
+  - job_name: nginx-access
+    static_configs:
+      - targets: [localhost]
+        labels:
+          job: nginx-access
+          __path__: /var/log/nginx/access.log

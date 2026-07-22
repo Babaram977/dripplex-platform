@@ -1,51 +1,49 @@
-# D1 — Monitoring stack
+# Monitoring stack (D1 + D3)
+
+> Extended in **Program D3** — see `docs/PROGRAM-D3.md` and `docs/observability/ARCHITECTURE.md`.
 
 ## Components
 
-| Component                                                           | Role                                                                      |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| Prometheus                                                          | Metrics scrape + rules                                                    |
-| Grafana                                                             | Dashboards                                                                |
-| redis_exporter / postgres_exporter / node_exporter / nginx_exporter | Exporters                                                                 |
-| Uptime Kuma                                                         | Blackbox HTTP uptime + status page                                        |
-| Sentry                                                              | Application errors (DSN via secrets; SDK enablement is D2 if not present) |
+| Component                                                     | Role                                        |
+| ------------------------------------------------------------- | ------------------------------------------- |
+| Prometheus                                                    | Metrics scrape + rules                      |
+| Grafana                                                       | Dashboards (10 Dripplex boards)             |
+| redis / postgres / node / nginx exporters, cAdvisor, blackbox | Exporters                                   |
+| Uptime Kuma                                                   | Synthetic HTTP uptime + status page         |
+| Sentry                                                        | Application errors + traces (env-gated SDK) |
 
 Configs: `infrastructure/monitoring/`.
 
 ## Scrapes
 
-| Job        | Target                                                             |
-| ---------- | ------------------------------------------------------------------ |
-| prometheus | self                                                               |
-| node       | app/data/obs nodes                                                 |
-| postgres   | postgres_exporter                                                  |
-| redis      | redis_exporter                                                     |
-| nginx      | nginx_exporter                                                     |
-| backend    | `/metrics` if exposed later; else rely on node + blackbox + health |
+| Job                 | Target             |
+| ------------------- | ------------------ |
+| prometheus          | self               |
+| node                | app/data/obs nodes |
+| cadvisor            | containers         |
+| postgres            | postgres_exporter  |
+| redis               | redis_exporter     |
+| nginx               | nginx_exporter     |
+| blackbox-https      | public hostnames   |
+| blackbox-api-health | `/api/v1/health`   |
 
 ## Health endpoints
 
 - `GET https://api.dripplex.com/api/v1/health` — DB + Redis
 - Portal `/` — HTTP 200
-- Uptime Kuma monitors above + SSL expiry
+- Uptime Kuma monitors + SSL expiry
 
 ## Dashboards
 
-- Node resources (CPU, memory, disk)
-- PostgreSQL connections / lag
-- Redis memory / connected clients
-- Nginx request rate / 5xx
-- Queue depth (Redis)
+`infrastructure/monitoring/grafana/dashboards/` — Platform, Backend, Database, Redis, Frontend, Customer/Merchant/Rider/Admin activity, Infrastructure.
 
-JSON placeholders: `infrastructure/monitoring/grafana/dashboards/`.
+## Metrics checklist
 
-## Metrics checklist (from D1 brief)
-
-| Metric   | Source                                    |
-| -------- | ----------------------------------------- |
-| CPU      | node_exporter                             |
-| Memory   | node_exporter                             |
-| Disk     | node_exporter                             |
-| Database | postgres_exporter                         |
-| Redis    | redis_exporter                            |
-| API      | health + nginx 5xx + (future) app metrics |
+| Metric                           | Source                    |
+| -------------------------------- | ------------------------- |
+| CPU / Memory / Disk / Network    | node_exporter             |
+| Containers                       | cAdvisor                  |
+| Database                         | postgres_exporter         |
+| Redis / queues                   | redis_exporter            |
+| Workers                          | queue metrics + logs      |
+| API availability / latency / 5xx | blackbox + nginx + Sentry |

@@ -1,0 +1,58 @@
+{
+  "title": "Dripplex Backend",
+  "uid": "dripplex-backend",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "tags": ["dripplex", "d3"],
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Nginx request rate",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(nginx_http_requests_total[5m]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "5xx rate",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(nginx_http_requests_total{status=~\"5..\"}[5m]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "API health probe",
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "probe_success{job=\"blackbox-api-health\"}",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}
