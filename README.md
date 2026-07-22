@@ -1,6 +1,6 @@
 # Dripplex
 
-**life,Simplified**
+**life, Simplified**
 
 Dripplex is a Nigerian Super Platform combining marketplace, food delivery, parcel delivery, ride hailing, pharmacy, home services, wallet, and operator portals — designed for millions of users and expansion across Africa.
 

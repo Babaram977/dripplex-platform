@@ -25,7 +25,7 @@ describe('LandingPage', () => {
     render(<LandingPage />);
 
     expect(screen.getByText('Dripplex')).toBeInTheDocument();
-    expect(screen.getByText('life,Simplified')).toBeInTheDocument();
+    expect(screen.getByText('life, Simplified')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Create Account' })).toHaveAttribute(
       'href',
       '/register',

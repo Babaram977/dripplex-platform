@@ -1,4 +1,6 @@
-export { DripplexLogo } from './brand/dripplex-logo';
+export { DripplexLogo, DripplexTagline } from './brand/dripplex-logo';
+export { DRIPPLEX_BRAND, type DripplexBrandColors } from './brand/tokens';
+export { dripplexMarkSvg } from './brand/dripplex-mark';
 
 export { Avatar, AvatarFallback, AvatarImage } from './components/ui/avatar';
 export { Badge, type BadgeProps } from './components/ui/badge';

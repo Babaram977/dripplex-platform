@@ -1,5 +1,5 @@
 import { ThemeToggle } from '@dripplex/hooks';
-import { DripplexLogo } from '@dripplex/ui';
+import { DripplexLogo, DripplexTagline } from '@dripplex/ui';
 import Link from 'next/link';
 import * as React from 'react';
 
@@ -10,10 +10,10 @@ export default function AuthLayout({
 }>): React.JSX.Element {
   return (
     <div className="grid min-h-dvh lg:grid-cols-[1.05fr_0.95fr]">
-      <aside className="text-primary-foreground relative hidden overflow-hidden bg-[linear-gradient(145deg,hsl(var(--brand)),hsl(168_45%_14%)_55%,hsl(var(--accent)))] p-10 lg:flex lg:flex-col lg:justify-between">
-        <DripplexLogo className="[&_span:last-child]:text-primary-foreground" />
+      <aside className="text-primary-foreground bg-brand-gradient relative hidden overflow-hidden p-10 lg:flex lg:flex-col lg:justify-between">
+        <DripplexLogo invertWordmark className="text-primary-foreground" />
         <div className="max-w-md space-y-4">
-          <p className="font-display text-4xl font-semibold tracking-tight">life,Simplified</p>
+          <DripplexTagline className="text-4xl font-semibold" />
           <p className="text-primary-foreground/85 text-base">
             Sign in to your Dripplex account to access marketplace, delivery, rides, and wallet from
             one calm home.

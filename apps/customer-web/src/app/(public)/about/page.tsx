@@ -2,6 +2,8 @@ import * as React from 'react';
 
 import type { Metadata } from 'next';
 
+import { siteConfig } from '@/lib/site';
+
 export const metadata: Metadata = {
   title: 'About',
   description: 'Learn why Dripplex exists and how it simplifies everyday life across Nigeria.',
@@ -11,7 +13,7 @@ export default function AboutPage(): React.JSX.Element {
   return (
     <div className="container max-w-3xl py-16">
       <h1 className="font-display text-4xl font-semibold tracking-tight">About Dripplex</h1>
-      <p className="text-muted-foreground mt-4 text-lg">life,Simplified</p>
+      <p className="text-muted-foreground mt-4 text-lg">{siteConfig.tagline}</p>
       <div className="text-foreground/90 mt-8 space-y-4 text-base leading-relaxed">
         <p>
           Dripplex is a Nigerian Super Platform designed to unify marketplace commerce, food and

@@ -54,7 +54,7 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }],
-    apple: [{ url: '/favicon.svg' }],
+    apple: [{ url: '/app-icon.svg' }],
   },
   robots: {
     index: true,
@@ -64,8 +64,8 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#F3F7F6' },
-    { media: '(prefers-color-scheme: dark)', color: '#071A17' },
+    { media: '(prefers-color-scheme: light)', color: '#F4F6F8' },
+    { media: '(prefers-color-scheme: dark)', color: '#0A2540' },
   ],
   width: 'device-width',
   initialScale: 1,

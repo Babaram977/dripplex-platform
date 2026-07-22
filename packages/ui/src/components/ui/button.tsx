@@ -8,11 +8,17 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
+        /** Primary — Emerald Green */
         default: 'bg-primary text-primary-foreground shadow-elevation-1 hover:brightness-110',
-        secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
+        /** Secondary — Deep Navy */
+        secondary: 'bg-secondary text-secondary-foreground shadow-elevation-1 hover:brightness-110',
         outline: 'border border-border bg-background/70 hover:bg-muted',
         ghost: 'hover:bg-muted',
-        accent: 'bg-accent text-accent-foreground shadow-elevation-1 hover:brightness-110',
+        /** Promotion — Sunshine Yellow */
+        accent: 'bg-accent text-accent-foreground shadow-elevation-1 hover:brightness-105',
+        promotion: 'bg-promotion text-promotion-foreground shadow-elevation-1 hover:brightness-105',
+        /** Success — Emerald Green */
+        success: 'bg-success text-success-foreground shadow-elevation-1 hover:brightness-110',
         destructive: 'bg-destructive text-destructive-foreground hover:brightness-110',
         link: 'text-primary underline-offset-4 hover:underline',
       },
