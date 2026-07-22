@@ -13,6 +13,11 @@ export const siteConfig = {
     login: '/login',
     register: '/register',
     dashboard: '/dashboard',
+    profile: '/dashboard/profile',
+    orders: '/dashboard/orders',
+    wallet: '/dashboard/wallet',
+    notifications: '/dashboard/notifications',
+    settings: '/dashboard/settings',
   },
 } as const;
 

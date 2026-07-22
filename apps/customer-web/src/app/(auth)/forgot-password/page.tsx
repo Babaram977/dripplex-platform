@@ -16,7 +16,7 @@ export default function ForgotPasswordPage(): React.JSX.Element {
       <div className="space-y-2 text-center lg:text-left">
         <h1 className="font-display text-3xl font-semibold tracking-tight">Forgot password</h1>
         <p className="text-muted-foreground text-sm">
-          We will email a reset link when API auth is connected.
+          We will email reset instructions if an account exists for that address.
         </p>
       </div>
       <ForgotPasswordForm />

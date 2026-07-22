@@ -76,8 +76,10 @@ export function DashboardHeader(): React.JSX.Element {
         <SearchBar className="hidden sm:block" />
         <div className="ml-auto flex items-center gap-2">
           <ThemeToggle />
-          <Button type="button" variant="ghost" size="icon" aria-label="Notifications">
-            <Bell className="h-5 w-5" aria-hidden="true" />
+          <Button type="button" variant="ghost" size="icon" aria-label="Notifications" asChild>
+            <Link href="/dashboard/notifications">
+              <Bell className="h-5 w-5" aria-hidden="true" />
+            </Link>
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -98,10 +100,13 @@ export function DashboardHeader(): React.JSX.Element {
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
-                <Link href="/dashboard#profile">Profile</Link>
+                <Link href="/dashboard/profile">Profile</Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
-                <Link href="/dashboard#wallet">Wallet</Link>
+                <Link href="/dashboard/wallet">Wallet</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/dashboard/settings">Settings</Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem

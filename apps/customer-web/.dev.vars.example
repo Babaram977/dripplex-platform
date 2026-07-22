@@ -1,2 +1,7 @@
 # Copy to .dev.vars for local wrangler / OpenNext preview (gitignored).
+# NEXT_PUBLIC_* are also read at OpenNext build time — set in Workers Builds
+# or export before `pnpm --filter @dripplex/customer-web cf:build`.
 NEXTJS_ENV=development
+NEXT_PUBLIC_API_BASE_URL=http://localhost:3000/api/v1
+NEXT_PUBLIC_APP_URL=http://localhost:3001
+# NEXT_PUBLIC_SENTRY_DSN=

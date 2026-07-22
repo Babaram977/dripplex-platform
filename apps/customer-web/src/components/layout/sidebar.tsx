@@ -2,7 +2,7 @@
 
 import { DripplexLogo } from '@dripplex/ui';
 import { cn } from '@dripplex/utils';
-import { Home, LayoutDashboard, Package, ShoppingBag, UserRound, Wallet } from 'lucide-react';
+import { Bell, Home, LayoutDashboard, Package, Settings, UserRound, Wallet } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import * as React from 'react';
@@ -11,11 +11,19 @@ import { useUiStore } from '@/stores/ui-store';
 
 const navItems = [
   { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
-  { href: '/dashboard#marketplace', label: 'Marketplace', icon: ShoppingBag },
-  { href: '/dashboard#orders', label: 'Orders', icon: Package },
-  { href: '/dashboard#wallet', label: 'Wallet', icon: Wallet },
-  { href: '/dashboard#profile', label: 'Profile', icon: UserRound },
+  { href: '/dashboard/orders', label: 'Orders', icon: Package },
+  { href: '/dashboard/wallet', label: 'Wallet', icon: Wallet },
+  { href: '/dashboard/notifications', label: 'Notifications', icon: Bell },
+  { href: '/dashboard/profile', label: 'Profile', icon: UserRound },
+  { href: '/dashboard/settings', label: 'Settings', icon: Settings },
 ] as const;
+
+function isActive(pathname: string, href: string): boolean {
+  if (href === '/dashboard') {
+    return pathname === '/dashboard';
+  }
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
 
 export function Sidebar(): React.JSX.Element {
   const pathname = usePathname();
@@ -40,8 +48,7 @@ export function Sidebar(): React.JSX.Element {
       <nav className="flex flex-1 flex-col gap-1 p-3" aria-label="Dashboard">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const active =
-            pathname === item.href || (item.href === '/dashboard' && pathname === '/dashboard');
+          const active = isActive(pathname, item.href);
           return (
             <Link
               key={item.href}
