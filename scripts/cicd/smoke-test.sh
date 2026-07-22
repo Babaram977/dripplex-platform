@@ -58,14 +58,26 @@ req GET /customer/orders 401
 req GET /customer/cart 401
 req GET /search/popular 401
 
+# OTP / password / session (unauthenticated shape checks)
+req POST /auth/otp/request 4xx '{}'
+req POST /auth/otp/verify 4xx '{}'
+req POST /auth/password/forgot 4xx '{}'
+req POST /auth/refresh 4xx '{}'
+req POST /auth/logout 401 '{}'
+
 # Merchant
 req GET /merchant/business 401
 req GET /merchant/wallet 401
 req GET /merchant/analytics/overview 401
+req GET /merchant/kyc 401
 
 # Rider
 req GET /rider/jobs 401
 req GET /rider/wallet 401
+
+# Payments / webhooks (auth or signature required)
+req POST /customer/orders/00000000-0000-0000-0000-000000000000/pay 401 '{}'
+req POST /webhooks/paystack 4xx '{}'
 
 # Admin — CMS, analytics, wallet, fraud
 req GET /admin/cms/contents 401
