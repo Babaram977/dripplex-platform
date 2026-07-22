@@ -15,3 +15,6 @@ runs:
     - name: Install dependencies
       shell: bash
       run: pnpm install --frozen-lockfile
+    - name: Generate Prisma client (Backend Core)
+      shell: bash
+      run: pnpm --filter @dripplex/backend prisma:generate

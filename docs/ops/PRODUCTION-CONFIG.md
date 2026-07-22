@@ -71,13 +71,13 @@ Shared module: `packages/config/next/security-headers.js` — wired on all five 
 
 ## Monitoring & error reporting
 
-| Capability                   | RC1 status                        |
-| ---------------------------- | --------------------------------- |
-| Health endpoint              | ✅ `/api/v1/health`               |
-| Structured APM (Sentry/OTel) | ❌ Deferred — wire in staging ops |
-| Crash reporting (web)        | ❌ Deferred                       |
-| Analytics product APIs       | ✅ Backend; UI partial            |
-| Audit logging                | ✅ Backend                        |
+| Capability              | v1.0.0 status                    |
+| ----------------------- | -------------------------------- |
+| Health endpoint         | ✅ `/api/v1/health`              |
+| Structured APM (Sentry) | ✅ Env-gated (D3)                |
+| Crash reporting (web)   | ✅ `@sentry/nextjs` when DSN set |
+| Analytics product APIs  | ✅ Backend; UI partial           |
+| Audit logging           | ✅ Backend                       |
 
 ## Feature flags
 

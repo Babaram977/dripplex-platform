@@ -4,8 +4,8 @@
 | --------------------- | ----------------------- |
 | **Bundle ID**         | `com.dripplex.customer` |
 | **Display name**      | Dripplex                |
-| **Marketing version** | `1.0.0-rc.1`            |
-| **Build**             | `100001`                |
+| **Marketing version** | `1.0.0`                 |
+| **Build**             | `1000100`               |
 | **Min iOS**           | 14.0                    |
 
 ## Xcode project

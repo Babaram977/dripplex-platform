@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: merchant-portal
-          image: dripplex/merchant-portal:1.0.0-rc.1
+          image: dripplex/merchant-portal:1.0.0
           ports:
             - containerPort: 3002
           env:
@@ -56,7 +56,7 @@ spec:
     spec:
       containers:
         - name: rider-portal
-          image: dripplex/rider-portal:1.0.0-rc.1
+          image: dripplex/rider-portal:1.0.0
           ports:
             - containerPort: 3003
           env:
@@ -96,7 +96,7 @@ spec:
     spec:
       containers:
         - name: admin-portal
-          image: dripplex/admin-portal:1.0.0-rc.1
+          image: dripplex/admin-portal:1.0.0
           ports:
             - containerPort: 3004
           env:

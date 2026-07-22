@@ -55,6 +55,7 @@ req POST /auth/login/rider 4xx '{}'
 req GET /customer/notifications 401
 req GET /customer/wallet 401
 req GET /customer/orders 401
+req GET /customer/cart 401
 req GET /search/popular 401
 
 # Merchant
@@ -66,10 +67,14 @@ req GET /merchant/analytics/overview 401
 req GET /rider/jobs 401
 req GET /rider/wallet 401
 
-# Admin
+# Admin — CMS, analytics, wallet, fraud
 req GET /admin/cms/contents 401
 req GET /admin/analytics/overview 401
 req GET /admin/wallets/reconciliation 401
+req GET /admin/fraud/queue 401
+
+# Public CMS probe
+req GET /cms/banners 200
 
 # Portal shells
 for pair in \

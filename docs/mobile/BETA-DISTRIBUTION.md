@@ -6,7 +6,7 @@
 
 1. Build signed AAB: `scripts/mobile/build-android.sh` with `ANDROID_FLAVOR=internal`
 2. Play Console → **Testing → Internal testing**
-3. Create release → upload AAB `1.0.0-rc.1-internal`
+3. Create release → upload AAB `1.0.0-internal`
 4. Add tester emails (max 100)
 5. Share opt-in link
 
@@ -20,7 +20,7 @@
 ### Release notes (template)
 
 ```
-Dripplex 1.0.0-rc.1 (Beta)
+Dripplex 1.0.0 (Beta)
 
 • Customer app shell loading production/staging web
 • Sign in, browse marketplace, cart, checkout

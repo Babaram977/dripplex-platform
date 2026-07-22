@@ -1,6 +1,6 @@
 {
   "name": "dripplex-platform",
-  "version": "1.0.0-rc.1",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "Dripplex \u2014 life, Simplified. Nigerian Super Platform monorepo.",
