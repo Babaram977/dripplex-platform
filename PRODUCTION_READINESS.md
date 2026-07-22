@@ -13,29 +13,29 @@ Cloudflare account authentication, DNS ownership, and production host secrets.
 
 ## Deployment status
 
-| Surface            | Target                                | Attempted                                                                             | Result                                                 |
-| ------------------ | ------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| Customer Web       | Cloudflare Worker `dripplex-platform` | `wrangler deploy --dry-run` ✅ (~1.43 MiB gzip) / `--temporary` ❌ / authenticated ❌ | No `CLOUDFLARE_API_TOKEN`; preview account 1 MiB limit |
-| Merchant Portal    | Worker `dripplex-merchant-portal`     | OpenNext build ✅ / dry-run ✅ (~1.26 MiB gzip) / authenticated ❌                    | Not live                                               |
-| Rider Portal       | Worker `dripplex-rider-portal`        | OpenNext build ✅ / dry-run ✅ / authenticated ❌                                     | Not live                                               |
-| Admin Portal       | Worker `dripplex-admin-portal`        | OpenNext build ✅ / dry-run ✅ / authenticated ❌                                     | Not live                                               |
-| Operations Console | Worker `dripplex-operations-console`  | OpenNext build ✅ / dry-run ✅ / authenticated ❌                                     | Not live                                               |
-| Backend Core       | `api.dripplex.com` (Docker/SSH)       | `DEPLOY_MODE=dry-run` scripts OK; no host/Docker/secrets                              | Not live — NestJS is not a Worker                      |
+| Surface            | Target                                    | Attempted                                                                             | Result                                                 |
+| ------------------ | ----------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| Customer Web       | Cloudflare Worker `dripplex-customer-web` | `wrangler deploy --dry-run` ✅ (~1.43 MiB gzip) / `--temporary` ❌ / authenticated ❌ | No `CLOUDFLARE_API_TOKEN`; preview account 1 MiB limit |
+| Merchant Portal    | Worker `dripplex-merchant-portal`         | OpenNext build ✅ / dry-run ✅ (~1.26 MiB gzip) / authenticated ❌                    | Not live                                               |
+| Rider Portal       | Worker `dripplex-rider-portal`            | OpenNext build ✅ / dry-run ✅ / authenticated ❌                                     | Not live                                               |
+| Admin Portal       | Worker `dripplex-admin-portal`            | OpenNext build ✅ / dry-run ✅ / authenticated ❌                                     | Not live                                               |
+| Operations Console | Worker `dripplex-operations-console`      | OpenNext build ✅ / dry-run ✅ / authenticated ❌                                     | Not live                                               |
+| Backend Core       | `api.dripplex.com` (Docker/SSH)           | `DEPLOY_MODE=dry-run` scripts OK; no host/Docker/secrets                              | Not live — NestJS is not a Worker                      |
 
 ---
 
 ## Live URLs (verified from this agent)
 
-| URL                                     | Expected           | Observed (2026-07-22)                                       |
-| --------------------------------------- | ------------------ | ----------------------------------------------------------- |
-| `https://www.dripplex.com`              | Customer app       | HTTP 200 — **QServers parking page** (Apache), not Dripplex |
-| `https://app.dripplex.com`              | Customer app       | No usable Dripplex app response                             |
-| `https://api.dripplex.com`              | Backend `/api/v1`  | Unreachable / no API                                        |
-| `https://merchant.dripplex.com`         | Merchant portal    | Unreachable                                                 |
-| `https://rider.dripplex.com`            | Rider portal       | Unreachable                                                 |
-| `https://admin.dripplex.com`            | Admin portal       | Unreachable                                                 |
-| `https://ops.dripplex.com`              | Operations console | Unreachable                                                 |
-| `https://dripplex-platform.workers.dev` | CF preview         | Not serving                                                 |
+| URL                                         | Expected           | Observed (2026-07-22)                                       |
+| ------------------------------------------- | ------------------ | ----------------------------------------------------------- |
+| `https://www.dripplex.com`                  | Customer app       | HTTP 200 — **QServers parking page** (Apache), not Dripplex |
+| `https://app.dripplex.com`                  | Customer app       | No usable Dripplex app response                             |
+| `https://api.dripplex.com`                  | Backend `/api/v1`  | Unreachable / no API                                        |
+| `https://merchant.dripplex.com`             | Merchant portal    | Unreachable                                                 |
+| `https://rider.dripplex.com`                | Rider portal       | Unreachable                                                 |
+| `https://admin.dripplex.com`                | Admin portal       | Unreachable                                                 |
+| `https://ops.dripplex.com`                  | Operations console | Unreachable                                                 |
+| `https://dripplex-customer-web.workers.dev` | CF preview         | Not serving                                                 |
 
 ---
 
@@ -43,7 +43,7 @@ Cloudflare account authentication, DNS ownership, and production host secrets.
 
 | App                | `wrangler.jsonc` name         |
 | ------------------ | ----------------------------- |
-| customer-web       | `dripplex-platform`           |
+| customer-web       | `dripplex-customer-web`       |
 | merchant-portal    | `dripplex-merchant-portal`    |
 | rider-portal       | `dripplex-rider-portal`       |
 | admin-portal       | `dripplex-admin-portal`       |

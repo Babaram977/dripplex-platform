@@ -87,7 +87,7 @@ Frontends may deploy directly to **Cloudflare Workers** (OpenNext) instead of (o
 
 | Hostname pattern | Worker                        |
 | ---------------- | ----------------------------- |
-| `www` / `app`    | `dripplex-platform`           |
+| `www` / `app`    | `dripplex-customer-web`       |
 | `merchant`       | `dripplex-merchant-portal`    |
 | `rider`          | `dripplex-rider-portal`       |
 | `admin`          | `dripplex-admin-portal`       |

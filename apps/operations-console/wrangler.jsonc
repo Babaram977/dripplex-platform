@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "dripplex-operations-console",
+  "name": "dripplex-ops",
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-07-22",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
@@ -16,12 +16,15 @@
   "services": [
     {
       "binding": "WORKER_SELF_REFERENCE",
-      "service": "dripplex-operations-console",
+      "service": "dripplex-ops",
     },
   ],
   "images": {
     "binding": "IMAGES",
   },
+  "routes": [
+    { "pattern": "ops.dripplex.com", "custom_domain": true }
+  ],
   "vars": {
     "NEXTJS_ENV": "production",
   },

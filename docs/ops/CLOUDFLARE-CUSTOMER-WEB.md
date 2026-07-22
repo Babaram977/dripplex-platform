@@ -15,11 +15,11 @@ For **all portals** (merchant, rider, admin, ops) see [`CLOUDFLARE-WORKERS-APPS.
 | `apps/customer-web/scripts/cf-build.sh` | Monorepo-aware OpenNext build (+ default `NEXT_PUBLIC_*`)  |
 | `apps/customer-web/.dev.vars.example`   | Local preview env template                                 |
 
-Worker name: **`dripplex-platform`** (must match the Cloudflare Workers project).
+Worker name: **`dripplex-customer-web`** (must match the Cloudflare Workers project).
 
 ## Workers Builds settings (required)
 
-In **Workers & Pages → dripplex-platform → Settings → Builds**:
+In **Workers & Pages → dripplex-customer-web → Settings → Builds**:
 
 ### Recommended (Root Directory = app)
 
@@ -65,4 +65,4 @@ pnpm --filter @dripplex/customer-web deploy
 
 ## Custom domain
 
-Point `www.dripplex.com` / `app.dripplex.com` at Worker **dripplex-platform** under Domains & Routes (or CNAME to `dripplex-platform.<account>.workers.dev`).
+Point `www.dripplex.com` / `app.dripplex.com` at Worker **dripplex-customer-web** under Domains & Routes (or CNAME to `dripplex-customer-web.<account>.workers.dev`).
