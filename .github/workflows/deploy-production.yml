@@ -36,6 +36,7 @@ jobs:
     name: Re-run CI gate
     needs: confirm
     uses: ./.github/workflows/ci.yml
+    secrets: inherit
 
   deploy:
     name: Deploy → Production

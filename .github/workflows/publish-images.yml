@@ -26,6 +26,7 @@ jobs:
   quality:
     name: Gate on CI
     uses: ./.github/workflows/ci.yml
+    secrets: inherit
 
   publish:
     name: Build & push images
