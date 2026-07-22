@@ -1,6 +1,6 @@
 {
   "name": "dripplex-platform",
-  "version": "0.1.0",
+  "version": "1.0.0-rc.1",
   "private": true,
   "type": "module",
   "description": "Dripplex \u2014 life, Simplified. Nigerian Super Platform monorepo.",
@@ -10,6 +10,12 @@
     "pnpm": ">=9.0.0"
   },
   "packageManager": "pnpm@9.15.0",
+  "pnpm": {
+    "overrides": {
+      "sharp": ">=0.35.0",
+      "postcss": ">=8.5.10"
+    }
+  },
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",

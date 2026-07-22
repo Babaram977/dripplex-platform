@@ -4,6 +4,7 @@ import * as React from 'react';
 
 import type { Metadata, Viewport } from 'next';
 
+import { ServiceWorkerRegister } from '@/components/pwa/service-worker-register';
 import { siteConfig } from '@/lib/site';
 
 import './globals.css';
@@ -56,6 +57,7 @@ export const metadata: Metadata = {
     icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }],
     apple: [{ url: '/app-icon.svg' }],
   },
+  manifest: '/manifest.webmanifest',
   robots: {
     index: true,
     follow: true,
@@ -84,7 +86,10 @@ export default function RootLayout({
             __html: `(function(){try{var t=localStorage.getItem('dripplex-theme');var m=t?JSON.parse(t).state.theme:'system';var d=m==='dark'||(m==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);var e=document.documentElement;e.classList.toggle('dark',d);e.dataset.theme=d?'dark':'light';e.style.colorScheme=d?'dark':'light';}catch(e){}})();`,
           }}
         />
-        <AppProviders>{children}</AppProviders>
+        <AppProviders>
+          <ServiceWorkerRegister />
+          {children}
+        </AppProviders>
       </body>
     </html>
   );

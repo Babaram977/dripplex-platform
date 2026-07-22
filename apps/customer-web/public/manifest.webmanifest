@@ -1,0 +1,27 @@
+{
+  "name": "Dripplex",
+  "short_name": "Dripplex",
+  "description": "Dripplex — life, Simplified. Nigeria’s Super Platform.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#F4F6F8",
+  "theme_color": "#0E7A3E",
+  "lang": "en-NG",
+  "categories": ["shopping", "food", "lifestyle"],
+  "icons": [
+    {
+      "src": "/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
