@@ -3,6 +3,7 @@
 FROM node:22-bookworm-slim AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
+ENV HUSKY=0
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 WORKDIR /app
 
