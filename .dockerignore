@@ -1,0 +1,45 @@
+# Keep the Docker build context small and free of secrets.
+# The backend Dockerfile COPYs only the specific paths it needs, but
+# without this file the whole monorepo (node_modules, .git, dist, other
+# apps) is tarred up and sent to the daemon on every build.
+
+.git
+.github
+
+# Dependencies
+**/node_modules
+.pnpm-store
+
+# Builds
+**/dist
+**/build
+**/.next
+**/.open-next
+**/.turbo
+**/out
+**/coverage
+**/*.tsbuildinfo
+
+# Environment / secrets
+.env
+.env.local
+.env.production
+.env.*.local
+infrastructure/secrets/
+
+# Origin TLS material
+infrastructure/docker/certs/
+
+# Logs
+logs
+*.log
+
+# OS / IDE
+.DS_Store
+.idea
+.vscode
+
+# Testing / tooling
+.nyc_output
+playwright-report
+test-results

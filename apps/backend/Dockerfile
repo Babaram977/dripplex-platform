@@ -10,6 +10,7 @@ WORKDIR /app
 FROM base AS deps
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
 COPY packages/config/package.json packages/config/
+COPY packages/types/package.json packages/types/
 COPY apps/backend/package.json apps/backend/
 RUN pnpm install --filter @dripplex/backend... --frozen-lockfile
 
@@ -17,7 +18,9 @@ FROM base AS build
 COPY --from=deps /app /app
 COPY tsconfig.base.json ./
 COPY packages/config packages/config
+COPY packages/types packages/types
 COPY apps/backend apps/backend
+RUN pnpm --filter @dripplex/types build
 WORKDIR /app/apps/backend
 RUN pnpm prisma generate
 RUN pnpm build
