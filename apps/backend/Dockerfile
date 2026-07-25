@@ -31,12 +31,16 @@ ENV NODE_ENV=production
 WORKDIR /app
 RUN groupadd --system --gid 1001 dripplex \
   && useradd --system --uid 1001 --gid dripplex dripplex
-COPY --from=build --chown=dripplex:dripplex /app/apps/backend/dist ./dist
-COPY --from=build --chown=dripplex:dripplex /app/apps/backend/package.json ./package.json
-COPY --from=build --chown=dripplex:dripplex /app/apps/backend/prisma ./prisma
-COPY --from=build --chown=dripplex:dripplex /app/apps/backend/node_modules ./node_modules
-COPY --from=build --chown=dripplex:dripplex /app/node_modules /app/node_modules
+# apps/backend/node_modules holds pnpm symlinks relative to their original
+# nesting depth (../../../../node_modules/.pnpm/...); flattening onto /app
+# directly breaks them, so this stage preserves the apps/backend/ nesting.
+COPY --from=build --chown=dripplex:dripplex /app/node_modules ./node_modules
+COPY --from=build --chown=dripplex:dripplex /app/apps/backend/dist ./apps/backend/dist
+COPY --from=build --chown=dripplex:dripplex /app/apps/backend/package.json ./apps/backend/package.json
+COPY --from=build --chown=dripplex:dripplex /app/apps/backend/prisma ./apps/backend/prisma
+COPY --from=build --chown=dripplex:dripplex /app/apps/backend/node_modules ./apps/backend/node_modules
 USER dripplex
+WORKDIR /app/apps/backend
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
