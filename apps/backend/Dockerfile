@@ -4,6 +4,10 @@ FROM node:22-bookworm-slim AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 ENV HUSKY=0
+# bookworm-slim omits openssl; Prisma's engine needs it to detect the
+# correct libssl target instead of silently guessing one.
+RUN apt-get update && apt-get install -y --no-install-recommends openssl \
+  && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 WORKDIR /app
 
@@ -28,6 +32,8 @@ RUN pnpm prune --prod
 
 FROM node:22-bookworm-slim AS runner
 ENV NODE_ENV=production
+RUN apt-get update && apt-get install -y --no-install-recommends openssl \
+  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 RUN groupadd --system --gid 1001 dripplex \
   && useradd --system --uid 1001 --gid dripplex dripplex
