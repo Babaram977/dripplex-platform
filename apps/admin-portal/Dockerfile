@@ -28,6 +28,7 @@ ARG NEXT_PUBLIC_APP_URL=http://localhost:3004
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 ENV DOCKER_BUILD=1
+RUN pnpm --filter @dripplex/types build && pnpm --filter @dripplex/utils build && pnpm --filter @dripplex/sdk build
 RUN pnpm --filter @dripplex/admin-portal build
 
 FROM node:22-bookworm-slim AS runner
