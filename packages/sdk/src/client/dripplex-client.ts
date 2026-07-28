@@ -6,7 +6,7 @@ import { resolveSdkConfig } from '../config/sdk-config.js';
 import { AdminDeliveryClient } from '../delivery/admin-delivery-client.js';
 import { DeliveryClient } from '../delivery/delivery-client.js';
 import { RiderDeliveryClient } from '../delivery/rider-delivery-client.js';
-import { AdminMerchantsApi, MerchantApi } from '../merchant/merchant-api.js';
+import { AdminMerchantsApi, MerchantApi, MerchantProductsApi } from '../merchant/merchant-api.js';
 import { OrderClient } from '../order/order-client.js';
 import { PaymentClient } from '../payment/payment-client.js';
 import {
@@ -29,6 +29,7 @@ import type { SdkConfig } from '../config/sdk-config.js';
 export class DripplexClient {
   public readonly auth: AuthApi;
   public readonly merchant: MerchantApi;
+  public readonly merchantProducts: MerchantProductsApi;
   public readonly adminMerchants: AdminMerchantsApi;
   public readonly addresses: AddressClient;
   public readonly cart: CartClient;
@@ -56,6 +57,7 @@ export class DripplexClient {
     this.http = new HttpClient(resolved);
     this.auth = new AuthApi(this.http);
     this.merchant = new MerchantApi(this.http);
+    this.merchantProducts = new MerchantProductsApi(this.http);
     this.adminMerchants = new AdminMerchantsApi(this.http);
     this.addresses = new AddressClient(this.http);
     this.cart = new CartClient(this.http);
@@ -82,7 +84,7 @@ export class DripplexClient {
 export { DripplexApiError } from '../errors/api-error.js';
 export type { SdkConfig } from '../config/sdk-config.js';
 export { resolveSdkConfig } from '../config/sdk-config.js';
-export { AdminMerchantsApi, MerchantApi } from '../merchant/merchant-api.js';
+export { AdminMerchantsApi, MerchantApi, MerchantProductsApi } from '../merchant/merchant-api.js';
 export { AddressClient } from '../address/address-client.js';
 export { CartClient } from '../cart/cart-client.js';
 export { AdminDeliveryClient } from '../delivery/admin-delivery-client.js';

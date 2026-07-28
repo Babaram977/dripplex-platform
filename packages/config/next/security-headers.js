@@ -23,7 +23,8 @@ export function dripplexSecurityHeaders(options = {}) {
     "font-src 'self' data:",
     // next/font inlines + theme bootstrap script on customer-web
     "style-src 'self' 'unsafe-inline'",
-    "script-src 'self' 'unsafe-inline'",
+    // Next.js dev mode (Fast Refresh/Turbopack HMR) requires 'unsafe-eval'; production builds don't.
+    `script-src 'self' 'unsafe-inline'${isProduction ? '' : " 'unsafe-eval'"}`,
     // Backend Core + payment redirects (http localhost for local API)
     "connect-src 'self' http://localhost:* https://localhost:* https:",
   ];

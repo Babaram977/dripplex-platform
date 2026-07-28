@@ -34,5 +34,8 @@ export {
   ModalTitle,
   ModalTrigger,
 } from './components/ui/modal';
+export { Select, type SelectProps } from './components/ui/select';
 export { Skeleton } from './components/ui/skeleton';
+export { Switch, type SwitchProps } from './components/ui/switch';
+export { Textarea, type TextareaProps } from './components/ui/textarea';
 export { toast, Toaster, useToastStore } from './components/ui/toast';
