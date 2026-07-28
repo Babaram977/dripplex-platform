@@ -46,6 +46,7 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
   { code: 'admin:fraud:configure', description: 'Configure fraud thresholds' },
   { code: 'merchant:onboarding:submit', description: 'Submit merchant onboarding' },
   { code: 'merchant:onboarding:approve', description: 'Approve merchant onboarding' },
+  { code: 'merchant:products:manage', description: 'Manage own merchant product catalog' },
   { code: 'merchant:business:manage', description: 'Manage own merchant business profile' },
   { code: 'merchant:kyc:manage', description: 'Manage own merchant KYC documents' },
   { code: 'merchant:bank:manage', description: 'Manage own merchant bank accounts' },

@@ -35,6 +35,27 @@ export { AUTH_AUDIT_ACTIONS } from './auth/index.js';
 export type { PaginatedResult, UserSummary } from './user/index.js';
 
 export type {
+  AddProductImageRequest,
+  BrandDto,
+  CategoryDto,
+  CreateProductRequest,
+  CreateProductVariantRequest,
+  ListMerchantProductsQuery,
+  ProductAuditAction,
+  ProductDto,
+  ProductImageDto,
+  ProductInventoryDto,
+  ProductStatus,
+  ProductVariantDto,
+  ReorderProductImagesRequest,
+  UpdateProductInventoryRequest,
+  UpdateProductRequest,
+  UpdateProductVariantRequest,
+} from './product/index.js';
+
+export { PRODUCT_AUDIT_ACTIONS } from './product/index.js';
+
+export type {
   BankAccountDto,
   BusinessDto,
   BusinessStatus,
