@@ -55,8 +55,24 @@ A founder-requested "Executive Review" against the release documents' claims was
 3. **Dependency vulnerabilities triaged**: 9 findings → 2 remaining (both deferred with documented reasoning, not silently dropped) — see `docs/SECURITY-VULNERABILITY-TRIAGE.md`.
 4. **Release documentation reconciled** — this document, plus archiving `RELEASE-v1.0.0.md`, `RELEASE-RC1.md`, and `PROGRAM-D5.md` to `docs/archive/unrealized-releases/` with correction banners.
 
+## 2026-07-28 — Reality Stage R1.4, R1.5
+
+Built and shipped, still on `claude/dripplex-coolify-deploy-fatig4` (still not merged to `main`):
+
+- **R1.4 — Merchant Product Management UI:** dashboard shell, product list/create/edit, publish/unpublish, image/variant/inventory management, all in `merchant-portal`. Built against the R1.2 API with no Figma access (founder-approved DDS fallback). Found and fixed a real bug along the way: the shared Next.js CSP config blocked `unsafe-eval`, silently breaking client-side interactivity in every portal's local dev server. 745 backend tests unaffected; 11 new SDK tests for the merchant products client.
+- **R1.5 — Customer Marketplace UI:** Marketplace Home, Merchant Listing, Product Listing, Merchant Mini Store, Product Detail, smart search (lightweight structural parsing, not an LLM, per explicit founder decision), and cart/favourite/share on every product card — all in `customer-web`. Required a backend-first phase since R1.3 never shipped a merchant-listing API (`GET /merchants`, `GET /merchants/:id`, both smart-search endpoints, plus a `CustomerProductsApi`/`CustomerMerchantsApi` SDK client that R1.3 also never got). 709 backend tests, 62 SDK tests, all green.
+
+Both milestones were verified with a full manual browser walkthrough against a live local backend with seeded data — not just typecheck/lint/unit tests — and each caught real, previously-undetected bugs before they could reach production:
+
+- R1.5's backend work found `Business.merchantId` (→ `User.id`) and `Product.merchantId` (→ `MerchantProfile.id`) are different ID spaces despite the identical field name — fixed before the merchant-listing API shipped.
+- R1.5's frontend verification found `@dripplex/types`'s `package.json` had no CJS export condition, meaning the backend's compiled output could never actually `require()` it — `node dist/main.js` was silently broken. Also found the pre-existing `CartService` used the wrong ID space (the same class of bug as above, in code that predates this whole effort), meaning **every real Add to Cart call from the marketplace would have failed**. Both fixed and verified via live requests, not just tests.
+
+Each milestone shipped a Design Handoff Package (`docs/REALITY-STAGE-R1.4.md`, `docs/REALITY-STAGE-R1.5.md`).
+
+**Status: real, tested, browser-verified — still not merged to `main`, still not deployed anywhere.** See `docs/AUDIT-PRODUCTION-READINESS-R1.6.md` for what that gap actually means before treating any of this as "in production."
+
 ---
 
 ## What's next
 
-R1.4 (Merchant UI) and R1.5 (Customer Marketplace UI), per the founder's roadmap, building against the API contracts already shipped in R1.1–R1.3. A `v1.0.0` tag gets created when there's a real, deployed, end-to-end-verified product behind it — not before.
+Per `docs/AUDIT-PRODUCTION-READINESS-R1.6.md`: get this branch onto `main` and through CI (neither has happened for any of R1.1–R1.5), then close the commerce loop — there is still no cart/checkout/order/payment UI anywhere, and no merchant-onboarding UI, despite the backend supporting both. A `v1.0.0` tag gets created when there's a real, deployed, end-to-end-verified product behind it — not before.
