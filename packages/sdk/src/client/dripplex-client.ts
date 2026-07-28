@@ -6,7 +6,12 @@ import { resolveSdkConfig } from '../config/sdk-config.js';
 import { AdminDeliveryClient } from '../delivery/admin-delivery-client.js';
 import { DeliveryClient } from '../delivery/delivery-client.js';
 import { RiderDeliveryClient } from '../delivery/rider-delivery-client.js';
-import { AdminMerchantsApi, MerchantApi, MerchantProductsApi } from '../merchant/merchant-api.js';
+import {
+  AdminMerchantsApi,
+  CustomerMerchantsApi,
+  MerchantApi,
+  MerchantProductsApi,
+} from '../merchant/merchant-api.js';
 import { OrderClient } from '../order/order-client.js';
 import { PaymentClient } from '../payment/payment-client.js';
 import {
@@ -23,6 +28,7 @@ import {
   WalletClient,
   WishlistClient,
 } from '../platform/platform-client.js';
+import { CustomerProductsApi } from '../product/product-api.js';
 
 import type { SdkConfig } from '../config/sdk-config.js';
 
@@ -31,6 +37,8 @@ export class DripplexClient {
   public readonly merchant: MerchantApi;
   public readonly merchantProducts: MerchantProductsApi;
   public readonly adminMerchants: AdminMerchantsApi;
+  public readonly products: CustomerProductsApi;
+  public readonly merchants: CustomerMerchantsApi;
   public readonly addresses: AddressClient;
   public readonly cart: CartClient;
   public readonly orders: OrderClient;
@@ -59,6 +67,8 @@ export class DripplexClient {
     this.merchant = new MerchantApi(this.http);
     this.merchantProducts = new MerchantProductsApi(this.http);
     this.adminMerchants = new AdminMerchantsApi(this.http);
+    this.products = new CustomerProductsApi(this.http);
+    this.merchants = new CustomerMerchantsApi(this.http);
     this.addresses = new AddressClient(this.http);
     this.cart = new CartClient(this.http);
     this.orders = new OrderClient(this.http);
@@ -84,7 +94,13 @@ export class DripplexClient {
 export { DripplexApiError } from '../errors/api-error.js';
 export type { SdkConfig } from '../config/sdk-config.js';
 export { resolveSdkConfig } from '../config/sdk-config.js';
-export { AdminMerchantsApi, MerchantApi, MerchantProductsApi } from '../merchant/merchant-api.js';
+export {
+  AdminMerchantsApi,
+  CustomerMerchantsApi,
+  MerchantApi,
+  MerchantProductsApi,
+} from '../merchant/merchant-api.js';
+export { CustomerProductsApi } from '../product/product-api.js';
 export { AddressClient } from '../address/address-client.js';
 export { CartClient } from '../cart/cart-client.js';
 export { AdminDeliveryClient } from '../delivery/admin-delivery-client.js';

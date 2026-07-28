@@ -2,21 +2,26 @@ import type { HttpClient } from '../client/http-client.js';
 import type {
   AddProductImageRequest,
   BankAccountDto,
+  BrowseMerchantsQuery,
   BusinessDto,
   CreateBankAccountRequest,
   CreateBusinessRequest,
   CreateProductRequest,
   CreateProductVariantRequest,
+  CursorPaginatedResult,
   KycStatusResponse,
   ListMerchantProductsQuery,
   ListMerchantsQuery,
   MerchantApprovalDto,
+  MerchantDetailDto,
   MerchantDetailResponse,
   MerchantKycDto,
+  MerchantSummaryDto,
   PaginatedMerchantsResult,
   PaginatedResult,
   ProductDto,
   ReorderProductImagesRequest,
+  SmartSearchResult,
   SubmitKycRequest,
   UpdateBusinessRequest,
   UpdateProductInventoryRequest,
@@ -283,6 +288,42 @@ export class MerchantProductsApi {
       method: 'PATCH',
       body,
       auth: true,
+    });
+  }
+}
+
+export interface MerchantSmartSearchQuery {
+  query: string;
+  lat?: number;
+  lng?: number;
+  cursor?: string;
+  limit?: number;
+}
+
+/** Customer-facing merchant browsing / Mini Store (R1.5) — public, no auth required. */
+export class CustomerMerchantsApi {
+  public constructor(private readonly http: HttpClient) {}
+
+  public browse(query?: BrowseMerchantsQuery): Promise<CursorPaginatedResult<MerchantSummaryDto>> {
+    return this.http.request<CursorPaginatedResult<MerchantSummaryDto>>(
+      `/merchants${toQueryString(query)}`,
+      { method: 'GET', auth: false },
+    );
+  }
+
+  public smartSearch(
+    query: MerchantSmartSearchQuery,
+  ): Promise<SmartSearchResult<MerchantSummaryDto>> {
+    return this.http.request<SmartSearchResult<MerchantSummaryDto>>(
+      `/merchants/smart-search${toQueryString(query)}`,
+      { method: 'GET', auth: false },
+    );
+  }
+
+  public get(id: string, location?: { lat: number; lng: number }): Promise<MerchantDetailDto> {
+    return this.http.request<MerchantDetailDto>(`/merchants/${id}${toQueryString(location)}`, {
+      method: 'GET',
+      auth: false,
     });
   }
 }

@@ -12,6 +12,8 @@ export function createCustomerSdk(config: Partial<SdkConfig> = {}): CustomerSdk 
   return {
     auth: client.auth,
     addresses: client.addresses,
+    products: client.products,
+    merchants: client.merchants,
     cart: client.cart,
     orders: client.orders,
     payments: client.payments,
@@ -31,6 +33,8 @@ export function createCustomerSdk(config: Partial<SdkConfig> = {}): CustomerSdk 
 export interface CustomerSdk {
   auth: DripplexClient['auth'];
   addresses: DripplexClient['addresses'];
+  products: DripplexClient['products'];
+  merchants: DripplexClient['merchants'];
   cart: DripplexClient['cart'];
   orders: DripplexClient['orders'];
   payments: DripplexClient['payments'];

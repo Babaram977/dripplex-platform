@@ -388,8 +388,10 @@ export class CartService {
   }
 
   private async validateMerchant(merchantId: string): Promise<void> {
+    // merchantId here is MerchantProfile.id (matching Product.merchantId
+    // throughout the catalog), not the merchant's User.id.
     const profile = await this.prisma.merchantProfile.findFirst({
-      where: { userId: merchantId, deletedAt: null },
+      where: { id: merchantId, deletedAt: null },
     });
     if (!profile) {
       throw new NotFoundDomainException('Merchant not found');
