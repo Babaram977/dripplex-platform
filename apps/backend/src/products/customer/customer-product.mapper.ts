@@ -30,10 +30,12 @@ function primaryImageUrl(images: ProductWithRelations['images']): string | null 
 export function toProductSummaryDto(
   product: ProductWithRelations,
   rating: RatingSummaryDto = ZERO_RATING,
+  merchantName = 'Merchant',
 ): ProductSummaryDto {
   return {
     id: product.id,
     merchantId: product.merchantId,
+    merchantName,
     categoryId: product.categoryId,
     brandId: product.brandId,
     name: product.name,

@@ -2,9 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { Prisma, ProductStatus, ReviewTargetType } from '@prisma/client';
 
 import { NotFoundDomainException } from '../../common/exceptions/domain.exception';
+import { decodeCursorOffset, encodeCursor } from '../../common/pagination/cursor.util';
+import { parseSmartQuery } from '../../common/search/smart-query.util';
 import { PrismaService } from '../../prisma/prisma.service';
 
-import { decodeCursorOffset, encodeCursor } from './cursor.util';
 import {
   toBrandDto,
   toCategoryDto,
@@ -13,8 +14,9 @@ import {
   ZERO_RATING,
 } from './customer-product.mapper';
 
-import type { ProductWithRelations } from '../product.mapper';
 import type { BrowseProductsQueryDto } from './dto/browse-products-query.dto';
+import type { SmartSearchQueryDto } from '../../common/search/dto/smart-search-query.dto';
+import type { ProductWithRelations } from '../product.mapper';
 import type {
   BrandDto,
   CatalogSort,
@@ -24,12 +26,24 @@ import type {
   ProductMerchantSummaryDto,
   ProductSummaryDto,
   RatingSummaryDto,
+  SmartSearchResult,
 } from '@dripplex/types';
+import type { Business } from '@prisma/client';
+
 const PRODUCT_INCLUDE = {
   images: true,
   variants: true,
   inventory: true,
+  merchant: { include: { user: { include: { businesses: { take: 1 } } } } },
 } satisfies Prisma.ProductInclude;
+
+type ProductWithMerchant = ProductWithRelations & {
+  merchant: { user: { businesses: Business[] } };
+};
+
+function merchantNameOf(product: ProductWithMerchant): string {
+  return product.merchant.user.businesses[0]?.businessName ?? 'Merchant';
+}
 
 const DEFAULT_LIMIT = 20;
 const RELATED_PRODUCTS_LIMIT = 6;
@@ -59,7 +73,12 @@ export class CustomerProductsService {
     const where = await this.buildWhere(query, overrides.isFeatured);
 
     if (COLUMN_SORTS.has(sort)) {
-      return await this.browseByColumn(where, sort as 'newest' | 'price_asc' | 'price_desc', offset, limit);
+      return await this.browseByColumn(
+        where,
+        sort as 'newest' | 'price_asc' | 'price_desc',
+        offset,
+        limit,
+      );
     }
     return await this.browseByComputedScore(
       where,
@@ -69,14 +88,31 @@ export class CustomerProductsService {
     );
   }
 
+  /**
+   * "AI discovery" search — a lightweight structural parser (see
+   * parseSmartQuery), not an LLM call. `openNow` is parsed but unused here;
+   * it only means something for merchants, not products.
+   */
+  public async smartSearch(
+    query: SmartSearchQueryDto,
+  ): Promise<SmartSearchResult<ProductSummaryDto>> {
+    const parsed = parseSmartQuery(query.query);
+    const results = await this.browse({
+      ...(parsed.keywords ? { q: parsed.keywords } : {}),
+      ...(parsed.maxPrice !== undefined ? { maxPrice: parsed.maxPrice } : {}),
+      ...(query.cursor !== undefined ? { cursor: query.cursor } : {}),
+      ...(query.limit !== undefined ? { limit: query.limit } : {}),
+      ...(query.lat !== undefined ? { lat: query.lat } : {}),
+      ...(query.lng !== undefined ? { lng: query.lng } : {}),
+    });
+    return { parsed, results };
+  }
+
   public async getProductDetail(productId: string): Promise<ProductDetailDto> {
-    const product = (await this.prisma.product.findFirst({
+    const product = await this.prisma.product.findFirst({
       where: { id: productId, status: ProductStatus.PUBLISHED, isDeleted: false },
-      include: {
-        ...PRODUCT_INCLUDE,
-        merchant: { include: { user: { include: { businesses: { take: 1 } } } } },
-      },
-    }));
+      include: PRODUCT_INCLUDE,
+    });
 
     if (!product) {
       throw new NotFoundDomainException('Product not found');
@@ -101,7 +137,10 @@ export class CustomerProductsService {
     return toProductDetailDto(product, rating, merchant, related);
   }
 
-  public async listSimilar(productId: string, limit = RELATED_PRODUCTS_LIMIT): Promise<ProductSummaryDto[]> {
+  public async listSimilar(
+    productId: string,
+    limit = RELATED_PRODUCTS_LIMIT,
+  ): Promise<ProductSummaryDto[]> {
     const product = await this.prisma.product.findFirst({
       where: { id: productId, status: ProductStatus.PUBLISHED, isDeleted: false },
       include: PRODUCT_INCLUDE,
@@ -152,7 +191,9 @@ export class CustomerProductsService {
     const ratings = await this.ratingsFor(page.map((product) => product.id));
 
     return {
-      items: page.map((product) => toProductSummaryDto(product, ratings.get(product.id))),
+      items: page.map((product) =>
+        toProductSummaryDto(product, ratings.get(product.id), merchantNameOf(product)),
+      ),
       nextCursor: hasMore ? encodeCursor(sort, offset + limit) : null,
       hasMore,
     };
@@ -187,7 +228,8 @@ export class CustomerProductsService {
         };
       })
       .sort(
-        (a, b) => b.score - a.score || b.product.createdAt.getTime() - a.product.createdAt.getTime(),
+        (a, b) =>
+          b.score - a.score || b.product.createdAt.getTime() - a.product.createdAt.getTime(),
       );
 
     const total = scored.length;
@@ -195,7 +237,9 @@ export class CustomerProductsService {
     const hasMore = offset + limit < total;
 
     return {
-      items: page.map(({ product, rating }) => toProductSummaryDto(product, rating)),
+      items: page.map(({ product, rating }) =>
+        toProductSummaryDto(product, rating, merchantNameOf(product)),
+      ),
       nextCursor: hasMore ? encodeCursor(sort, offset + limit) : null,
       hasMore,
     };
@@ -221,7 +265,7 @@ export class CustomerProductsService {
       take: limit,
     });
     const ratings = await this.ratingsFor(rows.map((row) => row.id));
-    return rows.map((row) => toProductSummaryDto(row, ratings.get(row.id)));
+    return rows.map((row) => toProductSummaryDto(row, ratings.get(row.id), merchantNameOf(row)));
   }
 
   private async buildWhere(
@@ -268,7 +312,9 @@ export class CustomerProductsService {
                 is: {
                   user: {
                     is: {
-                      businesses: { some: { businessName: { contains: term, mode: 'insensitive' } } },
+                      businesses: {
+                        some: { businessName: { contains: term, mode: 'insensitive' } },
+                      },
                     },
                   },
                 },

@@ -428,6 +428,7 @@ model Business {
   longitude          Decimal                    @db.Decimal(10, 7)
   logoUrl            String?                    @map("logo_url") @db.VarChar(2048)
   coverPhotoUrl      String?                    @map("cover_photo_url") @db.VarChar(2048)
+  operatingHours     Json?                      @map("operating_hours")
   status             BusinessStatus             @default(DRAFT)
   verificationStatus BusinessVerificationStatus @default(PENDING) @map("verification_status")
   approvedBy         String?                    @map("approved_by") @db.Uuid

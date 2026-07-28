@@ -44,6 +44,7 @@ export type {
   CreateProductVariantRequest,
   CursorPaginatedResult,
   ListMerchantProductsQuery,
+  ParsedSmartQueryDto,
   ProductAuditAction,
   ProductDetailDto,
   ProductDto,
@@ -55,6 +56,7 @@ export type {
   ProductVariantDto,
   RatingSummaryDto,
   ReorderProductImagesRequest,
+  SmartSearchResult,
   UpdateProductInventoryRequest,
   UpdateProductRequest,
   UpdateProductVariantRequest,
@@ -66,6 +68,7 @@ export { PRODUCT_AUDIT_ACTIONS } from './product/index.js';
 
 export type {
   BankAccountDto,
+  BrowseMerchantsQuery,
   BusinessDto,
   BusinessStatus,
   BusinessType,
@@ -78,16 +81,22 @@ export type {
   ListMerchantsQuery,
   MerchantApprovalDto,
   MerchantAuditAction,
+  MerchantDetailDto,
   MerchantDetailResponse,
   MerchantKycDto,
   MerchantProfileDto,
+  MerchantSort,
   MerchantStatus,
+  MerchantSummaryDto,
+  OperatingHoursDayDto,
+  OperatingHoursDayKey,
+  OperatingHoursDto,
   PaginatedMerchantsResult,
   SubmitKycRequest,
   UpdateBusinessRequest,
 } from './merchant/index.js';
 
-export { MERCHANT_AUDIT_ACTIONS } from './merchant/index.js';
+export { MERCHANT_AUDIT_ACTIONS, MERCHANT_SORTS } from './merchant/index.js';
 
 export type {
   AddressLabel,

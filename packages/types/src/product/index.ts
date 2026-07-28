@@ -145,6 +145,7 @@ export interface ProductMerchantSummaryDto {
 export interface ProductSummaryDto {
   id: string;
   merchantId: string;
+  merchantName: string;
   categoryId: string | null;
   brandId: string | null;
   name: string;
@@ -209,6 +210,18 @@ export interface CursorPaginatedResult<T> {
   items: T[];
   nextCursor: string | null;
   hasMore: boolean;
+}
+
+export interface ParsedSmartQueryDto {
+  keywords: string;
+  maxPrice?: number;
+  nearMe: boolean;
+  openNow: boolean;
+}
+
+export interface SmartSearchResult<T> {
+  parsed: ParsedSmartQueryDto;
+  results: CursorPaginatedResult<T>;
 }
 
 export const PRODUCT_AUDIT_ACTIONS = {
