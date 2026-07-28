@@ -5,19 +5,16 @@ import { AuditModule } from '../audit/audit.module';
 import { CartModule } from '../cart/cart.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { ProductsModule } from '../products/products.module';
 
 import { AdminOrdersController } from './admin-orders.controller';
 import { CheckoutService } from './checkout.service';
 import { CustomerOrdersController } from './customer-orders.controller';
-import {
-  AlwaysAvailableCheckoutInventoryValidator,
-  CHECKOUT_INVENTORY_VALIDATOR,
-} from './inventory/checkout-inventory.validator';
+import { CatalogCheckoutInventoryValidator } from './inventory/catalog-checkout-inventory.validator';
+import { CHECKOUT_INVENTORY_VALIDATOR } from './inventory/checkout-inventory.validator';
 import { InventoryReservationService } from './inventory/inventory-reservation.service';
-import {
-  CHECKOUT_PRODUCT_VALIDATOR,
-  StubCheckoutProductValidator,
-} from './pricing/checkout-product.validator';
+import { CatalogCheckoutProductValidator } from './pricing/catalog-checkout-product.validator';
+import { CHECKOUT_PRODUCT_VALIDATOR } from './pricing/checkout-product.validator';
 import { CouponCalculator, ZeroCouponCalculator } from './pricing/coupon-calculator';
 import { DeliveryCalculator, ZeroDeliveryCalculator } from './pricing/delivery-calculator';
 import { TaxCalculator, ZeroTaxCalculator } from './pricing/tax-calculator';
@@ -26,7 +23,14 @@ import { PrismaOrdersRepository } from './repositories/prisma-orders.repository'
 import { ReservationCleanupService } from './reservation-cleanup.service';
 
 @Module({
-  imports: [PrismaModule, AuditModule, NotificationsModule, CartModule, AddressesModule],
+  imports: [
+    PrismaModule,
+    AuditModule,
+    NotificationsModule,
+    CartModule,
+    AddressesModule,
+    ProductsModule,
+  ],
   controllers: [CustomerOrdersController, AdminOrdersController],
   providers: [
     CheckoutService,
@@ -36,10 +40,10 @@ import { ReservationCleanupService } from './reservation-cleanup.service';
     { provide: TaxCalculator, useClass: ZeroTaxCalculator },
     { provide: DeliveryCalculator, useClass: ZeroDeliveryCalculator },
     { provide: CouponCalculator, useClass: ZeroCouponCalculator },
-    { provide: CHECKOUT_PRODUCT_VALIDATOR, useClass: StubCheckoutProductValidator },
+    { provide: CHECKOUT_PRODUCT_VALIDATOR, useClass: CatalogCheckoutProductValidator },
     {
       provide: CHECKOUT_INVENTORY_VALIDATOR,
-      useClass: AlwaysAvailableCheckoutInventoryValidator,
+      useClass: CatalogCheckoutInventoryValidator,
     },
   ],
   exports: [CheckoutService, InventoryReservationService, ORDERS_REPOSITORY],

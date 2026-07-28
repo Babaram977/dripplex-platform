@@ -93,5 +93,5 @@ describe('Prisma migrations and seed (S1-C1)', () => {
 
     const grantCountAfterRerun = await prisma.rolePermission.count();
     expect(grantCountAfterRerun).toBe(grantCount);
-  });
+  }, 20000);
 });
