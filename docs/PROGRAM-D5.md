@@ -1,5 +1,7 @@
 # Program D — Phase D5: Production Launch & Go-Live
 
+> **⚠️ Superseded — the launch described here did not happen.** No `v1.0.0` tag exists, `docs/ops/LAUNCH-EXECUTION.md` (now archived) self-recorded status "IN PROGRESS — deploy blocked," and `docs/AUDIT-PRODUCTION-READINESS.md` (2026-07-28) found the frontend work this launch depended on was never actually built beyond login pages. "Status: Complete — awaiting review" below describes the PR being merged, not a production launch actually occurring. See `docs/ops/PRODUCTION-RAILWAY.md` for current infrastructure.
+
 | Field            | Value                                          |
 | ---------------- | ---------------------------------------------- |
 | **Program**      | D — Production Launch                          |

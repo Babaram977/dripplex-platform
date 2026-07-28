@@ -1,5 +1,7 @@
 # Release Candidate RC1 — `1.0.0-rc.1`
 
+> **⚠️ Superseded.** No `1.0.0-rc.1` git tag exists. See `docs/AUDIT-PRODUCTION-READINESS.md` (2026-07-28) for the verified current state before treating anything below as settled.
+
 **Date:** 2026-07-22  
 **Program:** C4 — Release Candidate & Deployment Readiness  
 **Freeze:** Source freeze for staging approval. No new features, UI redesign, Backend API, schema, or non-blocker SDK changes.
