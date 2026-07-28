@@ -3,8 +3,10 @@ import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
+import { DomainEventBus } from '../events/domain-event-bus';
 
 import { MerchantProductsService } from './merchant-products.service';
+import { ProductSearchSyncService } from './product-search-sync.service';
 
 import type { AuditLogRepository } from '../audit/repositories/audit-log.repository';
 import type { PrismaService } from '../prisma/prisma.service';
@@ -38,7 +40,8 @@ describe('MerchantProductsService', () => {
       create: jest.fn().mockResolvedValue(undefined),
     };
     const auditService = new AuditService(auditLogRepository);
-    service = new MerchantProductsService(prisma, auditService);
+    const productSearchSync = new ProductSearchSyncService(new DomainEventBus());
+    service = new MerchantProductsService(prisma, auditService, productSearchSync);
 
     const user = await prisma.user.create({
       data: {

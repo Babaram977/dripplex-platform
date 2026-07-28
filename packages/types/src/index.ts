@@ -37,21 +37,30 @@ export type { PaginatedResult, UserSummary } from './user/index.js';
 export type {
   AddProductImageRequest,
   BrandDto,
+  BrowseProductsQuery,
+  CatalogSort,
   CategoryDto,
   CreateProductRequest,
   CreateProductVariantRequest,
+  CursorPaginatedResult,
   ListMerchantProductsQuery,
   ProductAuditAction,
+  ProductDetailDto,
   ProductDto,
   ProductImageDto,
   ProductInventoryDto,
+  ProductMerchantSummaryDto,
   ProductStatus,
+  ProductSummaryDto,
   ProductVariantDto,
+  RatingSummaryDto,
   ReorderProductImagesRequest,
   UpdateProductInventoryRequest,
   UpdateProductRequest,
   UpdateProductVariantRequest,
 } from './product/index.js';
+
+export { CATALOG_SORTS } from './product/index.js';
 
 export { PRODUCT_AUDIT_ACTIONS } from './product/index.js';
 

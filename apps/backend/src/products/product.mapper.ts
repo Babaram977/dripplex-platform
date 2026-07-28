@@ -14,7 +14,7 @@ export type ProductWithRelations = Product & {
   inventory: ProductInventory | null;
 };
 
-function toProductImageDto(image: ProductImage): ProductImageDto {
+export function toProductImageDto(image: ProductImage): ProductImageDto {
   return {
     id: image.id,
     productId: image.productId,
@@ -25,7 +25,7 @@ function toProductImageDto(image: ProductImage): ProductImageDto {
   };
 }
 
-function toProductVariantDto(variant: ProductVariant): ProductVariantDto {
+export function toProductVariantDto(variant: ProductVariant): ProductVariantDto {
   return {
     id: variant.id,
     productId: variant.productId,
@@ -64,6 +64,7 @@ export function toProductDto(product: ProductWithRelations): ProductDto {
     currency: product.currency,
     sku: product.sku,
     status: product.status,
+    isFeatured: product.isFeatured,
     publishedAt: product.publishedAt ? product.publishedAt.toISOString() : null,
     createdAt: product.createdAt.toISOString(),
     updatedAt: product.updatedAt.toISOString(),

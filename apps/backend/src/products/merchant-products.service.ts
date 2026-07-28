@@ -9,6 +9,7 @@ import {
 } from '../common/exceptions/domain.exception';
 import { PrismaService } from '../prisma/prisma.service';
 
+import { ProductSearchSyncService } from './product-search-sync.service';
 import { PRODUCT_AUDIT_ACTIONS, PRODUCT_CURRENCY_DEFAULT } from './product.constants';
 import { slugify, slugifyWithSuffix, toPaginatedProducts, toProductDto } from './product.mapper';
 
@@ -34,6 +35,7 @@ export class MerchantProductsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly productSearchSync: ProductSearchSyncService,
   ) {}
 
   public async createProduct(
@@ -73,6 +75,7 @@ export class MerchantProductsService {
       resourceId: product.id,
       metadata: { name: product.name },
     });
+    await this.productSearchSync.syncProduct(product);
 
     return toProductDto(product);
   }
@@ -102,6 +105,7 @@ export class MerchantProductsService {
         ...(dto.basePrice !== undefined ? { basePrice: new Prisma.Decimal(dto.basePrice) } : {}),
         ...(dto.currency !== undefined ? { currency: dto.currency.toUpperCase() } : {}),
         ...(dto.sku !== undefined ? { sku: dto.sku.trim() } : {}),
+        ...(dto.isFeatured !== undefined ? { isFeatured: dto.isFeatured } : {}),
       },
       include: PRODUCT_INCLUDE,
     });
@@ -110,6 +114,7 @@ export class MerchantProductsService {
       resource: 'product',
       resourceId: product.id,
     });
+    await this.productSearchSync.syncProduct(product);
 
     return toProductDto(product);
   }
@@ -117,15 +122,17 @@ export class MerchantProductsService {
   public async deleteProduct(userId: string, productId: string, context: AuditContext): Promise<void> {
     const owned = await this.requireOwnedProduct(userId, productId);
 
-    await this.prisma.product.update({
+    const product = await this.prisma.product.update({
       where: { id: owned.id },
       data: { isDeleted: true, status: ProductStatus.ARCHIVED },
+      include: PRODUCT_INCLUDE,
     });
 
     await this.auditService.record(PRODUCT_AUDIT_ACTIONS.DELETED, { ...context, userId }, {
       resource: 'product',
       resourceId: owned.id,
     });
+    await this.productSearchSync.syncProduct(product);
   }
 
   public async publishProduct(
@@ -149,6 +156,7 @@ export class MerchantProductsService {
       resource: 'product',
       resourceId: product.id,
     });
+    await this.productSearchSync.syncProduct(product);
 
     return toProductDto(product);
   }
@@ -174,6 +182,7 @@ export class MerchantProductsService {
       resource: 'product',
       resourceId: product.id,
     });
+    await this.productSearchSync.syncProduct(product);
 
     return toProductDto(product);
   }
@@ -364,7 +373,10 @@ export class MerchantProductsService {
       resourceId: owned.id,
     });
 
-    return await this.getOwnProduct(userId, productId);
+    const refreshed = await this.requireOwnedProduct(userId, productId);
+    await this.productSearchSync.syncInventory(refreshed);
+
+    return toProductDto(refreshed);
   }
 
   public async listOwnProducts(

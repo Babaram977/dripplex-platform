@@ -1,5 +1,14 @@
 import { Transform } from 'class-transformer';
-import { IsNumber, IsOptional, IsString, IsUUID, Min, MinLength, MaxLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Min,
+  MinLength,
+  MaxLength,
+} from 'class-validator';
 
 import {
   PRODUCT_DESCRIPTION_MAX_LENGTH,
@@ -46,4 +55,8 @@ export class UpdateProductDto {
   @IsString()
   @MaxLength(PRODUCT_SKU_MAX_LENGTH)
   public sku?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  public isFeatured?: boolean;
 }

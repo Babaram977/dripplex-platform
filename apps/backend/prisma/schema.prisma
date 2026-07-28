@@ -616,6 +616,7 @@ model Product {
   currency    String            @default("NGN") @db.VarChar(3)
   sku         String?           @db.VarChar(100)
   status      ProductStatus     @default(DRAFT)
+  isFeatured  Boolean           @default(false) @map("is_featured")
   isDeleted   Boolean           @default(false) @map("is_deleted")
   publishedAt DateTime?         @map("published_at")
   createdAt   DateTime          @default(now()) @map("created_at")
@@ -635,6 +636,7 @@ model Product {
   @@index([brandId])
   @@index([status])
   @@index([isDeleted])
+  @@index([isFeatured])
   @@map("products")
 }
 
