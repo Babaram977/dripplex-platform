@@ -12,6 +12,7 @@ import { siteConfig } from '@/lib/site';
 
 const publicLinks = [
   { href: '/', label: 'Home' },
+  { href: '/marketplace', label: 'Marketplace' },
   { href: '/about', label: 'About' },
   { href: '/contact', label: 'Contact' },
 ] as const;

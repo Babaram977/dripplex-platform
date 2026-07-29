@@ -2,12 +2,13 @@ import { Module } from '@nestjs/common';
 
 import { AuditModule } from '../audit/audit.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { ProductsModule } from '../products/products.module';
 
 import { AdminCartsController } from './admin-carts.controller';
 import { DEFAULT_FLAT_DELIVERY_FEE, DEFAULT_VAT_RATE } from './cart.constants';
 import { CartController } from './cart.controller';
 import { CartService } from './cart.service';
-import { AlwaysAvailableInventoryValidator } from './inventory/always-available-inventory.validator';
+import { CatalogInventoryValidator } from './inventory/catalog-inventory.validator';
 import { INVENTORY_VALIDATOR } from './inventory/inventory-validator';
 import { COUPON_ENGINE } from './pricing/coupon-engine';
 import { DELIVERY_FEE_CALCULATOR, FLAT_DELIVERY_FEE } from './pricing/delivery-fee-calculator';
@@ -19,7 +20,7 @@ import { CART_REPOSITORY } from './repositories/cart.repository';
 import { PrismaCartRepository } from './repositories/prisma-cart.repository';
 
 @Module({
-  imports: [PrismaModule, AuditModule],
+  imports: [PrismaModule, AuditModule, ProductsModule],
   controllers: [CartController, AdminCartsController],
   providers: [
     CartService,
@@ -27,7 +28,7 @@ import { PrismaCartRepository } from './repositories/prisma-cart.repository';
     { provide: COUPON_ENGINE, useClass: NoCouponEngine },
     { provide: TAX_CALCULATOR, useClass: NigeriaTaxCalculator },
     { provide: DELIVERY_FEE_CALCULATOR, useClass: FlatDeliveryFeeCalculator },
-    { provide: INVENTORY_VALIDATOR, useClass: AlwaysAvailableInventoryValidator },
+    { provide: INVENTORY_VALIDATOR, useClass: CatalogInventoryValidator },
     { provide: VAT_RATE, useValue: DEFAULT_VAT_RATE },
     { provide: FLAT_DELIVERY_FEE, useValue: DEFAULT_FLAT_DELIVERY_FEE },
   ],

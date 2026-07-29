@@ -12,6 +12,7 @@ export function createMerchantSdk(config: Partial<SdkConfig> = {}): MerchantSdk 
   return {
     auth: client.auth,
     merchant: client.merchant,
+    merchantProducts: client.merchantProducts,
     orders: client.orders,
     payments: client.payments,
     notifications: client.notifications,
@@ -25,6 +26,7 @@ export function createMerchantSdk(config: Partial<SdkConfig> = {}): MerchantSdk 
 export interface MerchantSdk {
   auth: DripplexClient['auth'];
   merchant: DripplexClient['merchant'];
+  merchantProducts: DripplexClient['merchantProducts'];
   orders: DripplexClient['orders'];
   payments: DripplexClient['payments'];
   notifications: DripplexClient['notifications'];

@@ -13,6 +13,7 @@ export const siteConfig = {
     login: '/login',
     register: '/register',
     dashboard: '/dashboard',
+    marketplace: '/marketplace',
   },
 } as const;
 

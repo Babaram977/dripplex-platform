@@ -1,5 +1,7 @@
 # Dripplex Release Notes — v1.0.0
 
+> **⚠️ Superseded — not an accurate record of current state.** No `v1.0.0` git tag was ever created, and `docs/AUDIT-PRODUCTION-READINESS.md` (2026-07-28) found this document's claims about frontend completeness don't match the actual source tree: `customer-web` and `merchant-portal` have login/auth pages only, no cart/checkout/order/wallet/product-management UI. See `docs/AUDIT-PRODUCTION-READINESS.md` and `docs/ops/PRODUCTION-RAILWAY.md` for the current, verified state. Kept below as a historical record of what this release was intended to describe, not what actually shipped.
+
 | Field           | Value                            |
 | --------------- | -------------------------------- |
 | **Version**     | `1.0.0`                          |

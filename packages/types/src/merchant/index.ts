@@ -1,3 +1,5 @@
+import type { RatingSummaryDto } from '../product/index.js';
+
 export type MerchantStatus = 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
 
 export type BusinessStatus = 'DRAFT' | 'SUBMITTED' | 'ACTIVE' | 'SUSPENDED';
@@ -197,4 +199,54 @@ export interface MerchantDetailResponse {
 export interface KycStatusResponse {
   latest: MerchantKycDto | null;
   items: MerchantKycDto[];
+}
+
+// --- Customer-facing marketplace (R1.5) ---
+
+export interface OperatingHoursDayDto {
+  open: string;
+  close: string;
+}
+
+export type OperatingHoursDayKey = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
+
+export type OperatingHoursDto = Partial<Record<OperatingHoursDayKey, OperatingHoursDayDto | null>>;
+
+export const MERCHANT_SORTS = ['recommended', 'nearest', 'rating_desc', 'newest'] as const;
+export type MerchantSort = (typeof MERCHANT_SORTS)[number];
+
+export interface MerchantSummaryDto {
+  id: string;
+  businessName: string;
+  businessType: BusinessType;
+  logoUrl: string | null;
+  coverPhotoUrl: string | null;
+  verificationStatus: BusinessVerificationStatus;
+  city: string;
+  state: string;
+  rating: RatingSummaryDto;
+  distanceKm: number | null;
+  /** null when the merchant hasn't set operating hours yet — render as "Hours unavailable", not "Closed". */
+  isOpenNow: boolean | null;
+}
+
+export interface MerchantDetailDto extends MerchantSummaryDto {
+  description: string | null;
+  address: string;
+  country: string;
+  phone: string;
+  email: string;
+  operatingHours: OperatingHoursDto | null;
+  productCount: number;
+}
+
+export interface BrowseMerchantsQuery {
+  q?: string;
+  businessType?: BusinessType;
+  minRating?: number;
+  lat?: number;
+  lng?: number;
+  sort?: MerchantSort;
+  cursor?: string;
+  limit?: number;
 }

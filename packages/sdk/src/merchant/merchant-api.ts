@@ -1,31 +1,54 @@
 import type { HttpClient } from '../client/http-client.js';
 import type {
+  AddProductImageRequest,
   BankAccountDto,
+  BrowseMerchantsQuery,
   BusinessDto,
   CreateBankAccountRequest,
   CreateBusinessRequest,
+  CreateProductRequest,
+  CreateProductVariantRequest,
+  CursorPaginatedResult,
   KycStatusResponse,
+  ListMerchantProductsQuery,
   ListMerchantsQuery,
   MerchantApprovalDto,
+  MerchantDetailDto,
   MerchantDetailResponse,
   MerchantKycDto,
+  MerchantSummaryDto,
   PaginatedMerchantsResult,
+  PaginatedResult,
+  ProductDto,
+  ReorderProductImagesRequest,
+  SmartSearchResult,
   SubmitKycRequest,
   UpdateBusinessRequest,
+  UpdateProductInventoryRequest,
+  UpdateProductRequest,
+  UpdateProductVariantRequest,
 } from '@dripplex/types';
 
-function toQuery(params?: ListMerchantsQuery): string {
+function toQueryString(params?: object): string {
   if (!params) {
     return '';
   }
   const search = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== null && value !== '') {
+  for (const [key, value] of Object.entries(params as Record<string, unknown>)) {
+    if (
+      (typeof value === 'string' && value !== '') ||
+      typeof value === 'number' ||
+      typeof value === 'boolean'
+    ) {
       search.set(key, String(value));
     }
   }
   const qs = search.toString();
   return qs ? `?${qs}` : '';
+}
+
+function toQuery(params?: ListMerchantsQuery): string {
+  return toQueryString(params);
 }
 
 export class MerchantApi {
@@ -152,6 +175,155 @@ export class AdminMerchantsApi {
     return this.http.request<MerchantApprovalDto>(`/admin/merchant/${id}/reactivate`, {
       method: 'POST',
       auth: true,
+    });
+  }
+}
+
+export class MerchantProductsApi {
+  public constructor(private readonly http: HttpClient) {}
+
+  public list(query?: ListMerchantProductsQuery): Promise<PaginatedResult<ProductDto>> {
+    return this.http.request<PaginatedResult<ProductDto>>(
+      `/merchant/products${toQueryString(query)}`,
+      { method: 'GET', auth: true },
+    );
+  }
+
+  public get(id: string): Promise<ProductDto> {
+    return this.http.request<ProductDto>(`/merchant/products/${id}`, {
+      method: 'GET',
+      auth: true,
+    });
+  }
+
+  public create(body: CreateProductRequest): Promise<ProductDto> {
+    return this.http.request<ProductDto>('/merchant/products', {
+      method: 'POST',
+      body,
+      auth: true,
+    });
+  }
+
+  public update(id: string, body: UpdateProductRequest): Promise<ProductDto> {
+    return this.http.request<ProductDto>(`/merchant/products/${id}`, {
+      method: 'PATCH',
+      body,
+      auth: true,
+    });
+  }
+
+  public remove(id: string): Promise<{ deleted: true }> {
+    return this.http.request<{ deleted: true }>(`/merchant/products/${id}`, {
+      method: 'DELETE',
+      auth: true,
+    });
+  }
+
+  public publish(id: string): Promise<ProductDto> {
+    return this.http.request<ProductDto>(`/merchant/products/${id}/publish`, {
+      method: 'POST',
+      auth: true,
+    });
+  }
+
+  public unpublish(id: string): Promise<ProductDto> {
+    return this.http.request<ProductDto>(`/merchant/products/${id}/unpublish`, {
+      method: 'POST',
+      auth: true,
+    });
+  }
+
+  public addImage(id: string, body: AddProductImageRequest): Promise<ProductDto> {
+    return this.http.request<ProductDto>(`/merchant/products/${id}/images`, {
+      method: 'POST',
+      body,
+      auth: true,
+    });
+  }
+
+  public removeImage(id: string, imageId: string): Promise<ProductDto> {
+    return this.http.request<ProductDto>(`/merchant/products/${id}/images/${imageId}`, {
+      method: 'DELETE',
+      auth: true,
+    });
+  }
+
+  public reorderImages(id: string, body: ReorderProductImagesRequest): Promise<ProductDto> {
+    return this.http.request<ProductDto>(`/merchant/products/${id}/images/reorder`, {
+      method: 'PATCH',
+      body,
+      auth: true,
+    });
+  }
+
+  public createVariant(id: string, body: CreateProductVariantRequest): Promise<ProductDto> {
+    return this.http.request<ProductDto>(`/merchant/products/${id}/variants`, {
+      method: 'POST',
+      body,
+      auth: true,
+    });
+  }
+
+  public updateVariant(
+    id: string,
+    variantId: string,
+    body: UpdateProductVariantRequest,
+  ): Promise<ProductDto> {
+    return this.http.request<ProductDto>(`/merchant/products/${id}/variants/${variantId}`, {
+      method: 'PATCH',
+      body,
+      auth: true,
+    });
+  }
+
+  public removeVariant(id: string, variantId: string): Promise<ProductDto> {
+    return this.http.request<ProductDto>(`/merchant/products/${id}/variants/${variantId}`, {
+      method: 'DELETE',
+      auth: true,
+    });
+  }
+
+  public updateInventory(id: string, body: UpdateProductInventoryRequest): Promise<ProductDto> {
+    return this.http.request<ProductDto>(`/merchant/products/${id}/inventory`, {
+      method: 'PATCH',
+      body,
+      auth: true,
+    });
+  }
+}
+
+export interface MerchantSmartSearchQuery {
+  query: string;
+  lat?: number;
+  lng?: number;
+  cursor?: string;
+  limit?: number;
+}
+
+/** Customer-facing merchant browsing / Mini Store (R1.5) — public, no auth required. */
+export class CustomerMerchantsApi {
+  public constructor(private readonly http: HttpClient) {}
+
+  public browse(query?: BrowseMerchantsQuery): Promise<CursorPaginatedResult<MerchantSummaryDto>> {
+    return this.http.request<CursorPaginatedResult<MerchantSummaryDto>>(
+      `/merchants${toQueryString(query)}`,
+      { method: 'GET', auth: false },
+    );
+  }
+
+  public smartSearch(
+    query: MerchantSmartSearchQuery,
+  ): Promise<SmartSearchResult<MerchantSummaryDto>> {
+    return this.http.request<SmartSearchResult<MerchantSummaryDto>>(
+      `/merchants/smart-search${toQueryString(query)}`,
+      { method: 'GET', auth: false },
+    );
+  }
+
+  public get(id: string, location?: { lat: number; lng: number }): Promise<MerchantDetailDto> {
+    return this.http.request<MerchantDetailDto>(`/merchants/${id}${toQueryString(location)}`, {
+      method: 'GET',
+      auth: false,
     });
   }
 }

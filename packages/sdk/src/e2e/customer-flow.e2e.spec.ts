@@ -237,10 +237,12 @@ describe('C2 Customer flow (SDK contract E2E)', () => {
     );
   });
 
-  it('documents Backend Core gap: no dedicated category/store/product browse APIs on customer SDK', () => {
+  it('exposes marketplace product/merchant browsing (R1.3/R1.5) on the customer SDK', () => {
     const sdk = createCustomerSdk({ baseUrl: 'https://api.test/api/v1' });
     expect(sdk.search).toBeDefined();
-    expect(sdk).not.toHaveProperty('products');
+    expect(sdk.products).toBeDefined();
+    expect(sdk.merchants).toBeDefined();
+    // Categories/brands are methods on `products`, not separate top-level clients.
     expect(sdk).not.toHaveProperty('categories');
     expect(sdk).not.toHaveProperty('stores');
   });

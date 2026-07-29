@@ -6,7 +6,13 @@ export { createCustomerSdk, type CustomerSdk } from './sdk.js';
 export { createMerchantSdk, type MerchantSdk } from './sdk-merchant.js';
 export { createRiderSdk, type RiderSdk } from './sdk-rider.js';
 export { createAdminSdk, type AdminSdk } from './sdk-admin.js';
-export { AdminMerchantsApi, MerchantApi } from './merchant/merchant-api.js';
+export {
+  AdminMerchantsApi,
+  CustomerMerchantsApi,
+  MerchantApi,
+  MerchantProductsApi,
+} from './merchant/merchant-api.js';
+export { CustomerProductsApi } from './product/product-api.js';
 export { AddressClient } from './address/address-client.js';
 export { CartClient } from './cart/cart-client.js';
 export { AdminDeliveryClient } from './delivery/admin-delivery-client.js';
