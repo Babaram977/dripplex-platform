@@ -45,6 +45,16 @@ COPY --from=build --chown=dripplex:dripplex /app/apps/backend/dist ./apps/backen
 COPY --from=build --chown=dripplex:dripplex /app/apps/backend/package.json ./apps/backend/package.json
 COPY --from=build --chown=dripplex:dripplex /app/apps/backend/prisma ./apps/backend/prisma
 COPY --from=build --chown=dripplex:dripplex /app/apps/backend/node_modules ./apps/backend/node_modules
+# apps/backend/node_modules/@dripplex/types is a symlink to ../../../../packages/types
+# (pnpm workspace linking) — the target itself must exist in this stage too, or the
+# symlink dangles and every runtime `require('@dripplex/types')` fails at boot.
+# packages/types/node_modules is copied too: it holds pnpm's own symlinks for
+# @dripplex/types's direct deps (e.g. zod), which point back into the root
+# node_modules/.pnpm store copied above — without it, resolving those deps from
+# inside packages/types/dist fails the same way.
+COPY --from=build --chown=dripplex:dripplex /app/packages/types/dist ./packages/types/dist
+COPY --from=build --chown=dripplex:dripplex /app/packages/types/package.json ./packages/types/package.json
+COPY --from=build --chown=dripplex:dripplex /app/packages/types/node_modules ./packages/types/node_modules
 USER dripplex
 WORKDIR /app/apps/backend
 EXPOSE 3000
