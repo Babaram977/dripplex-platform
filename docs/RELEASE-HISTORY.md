@@ -71,8 +71,21 @@ Each milestone shipped a Design Handoff Package (`docs/REALITY-STAGE-R1.4.md`, `
 
 **Status: real, tested, browser-verified — still not merged to `main`, still not deployed anywhere.** See `docs/AUDIT-PRODUCTION-READINESS-R1.6.md` for what that gap actually means before treating any of this as "in production."
 
+## 2026-07-28 — Gate R1.6.1: R1.1–R1.6 merged to `main`
+
+PR #44 (`claude/dripplex-coolify-deploy-fatig4` → `main`) opened, reviewed, and merged the same day, closing the gap `docs/AUDIT-PRODUCTION-READINESS-R1.6.md` identified. Merge commit `d17ff67f`.
+
+- **Mergeability**: clean — `main` had not moved since the branch's fork point, so this was conflict-free (15 commits, 163 files, +10511/-678).
+- **CI**: ran for the first time ever on this lineage. First run failed one check (`Security scan`) on a pre-existing, already-triaged `brace-expansion` advisory (`docs/SECURITY-VULNERABILITY-TRIAGE.md`) surfacing through `admin-portal`'s production Sentry/Cloudflare deps under `pnpm audit --prod` — confirmed via lockfile diff this predates the branch, not introduced by it. Fixed by encoding the already-accepted risk into CI via a scoped `pnpm.auditConfig.ignoreGhsas` entry rather than re-attempting a fix already tried and reverted for breaking `eslint`. All three checks green after that (Security scan, Dockerfiles present, Typecheck·Lint·Test·Build).
+- **Production data safety check**: the catalog migration (`20260728015436_add_product_catalog`) deletes any `cart_items`/`order_items` rows with no matching product before adding a new FK constraint — safe by design since `products` didn't exist before this migration, but verified directly against the live Railway Postgres before merging rather than assumed: both tables were confirmed empty (0 rows).
+- A founder review of the PR (schema, migrations, Merchant/Customer APIs, RBAC, test coverage, trade-offs) approved the merge contingent on that production-data verification passing, which it did.
+
+**Follow-up backlog opened, not blockers to this baseline:** CAT-002 (`ProductAttribute`/`AttributeValue`), CAT-003 (`StockMovement` inventory audit trail), CAT-004 (`ProductTag`), CAT-005 (`Collection`), CAT-006 (advanced search, only if needed later). See `docs/CATALOG-ERD.md` for the current schema diagram.
+
+**Status: R1.1–R1.6 is now real, tested, merged, and on `main`.** Still not deployed with this stage's changes — see "What's next."
+
 ---
 
 ## What's next
 
-Per `docs/AUDIT-PRODUCTION-READINESS-R1.6.md`: get this branch onto `main` and through CI (neither has happened for any of R1.1–R1.5), then close the commerce loop — there is still no cart/checkout/order/payment UI anywhere, and no merchant-onboarding UI, despite the backend supporting both. A `v1.0.0` tag gets created when there's a real, deployed, end-to-end-verified product behind it — not before.
+The commerce loop is still open — there is no cart/checkout/order/payment UI anywhere in `customer-web`, and no merchant-onboarding UI in `merchant-portal`, despite the backend supporting both. That's R1.7 (Customer Commerce Completion) and R1.8 (Merchant Operations) on the roadmap. A `v1.0.0` tag gets created when there's a real, deployed, end-to-end-verified product behind it — not before.
