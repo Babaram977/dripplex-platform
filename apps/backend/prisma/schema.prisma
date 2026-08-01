@@ -46,6 +46,14 @@ enum MerchantStatus {
   SUSPENDED
 }
 
+enum DriverStatus {
+  PENDING
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
 enum BusinessStatus {
   DRAFT
   SUBMITTED
@@ -74,6 +82,7 @@ enum KycDocumentType {
   DRIVER_LICENSE
   CAC_CERTIFICATE
   BUSINESS_REGISTRATION
+  VEHICLE_REGISTRATION
 }
 
 enum KycVerificationStatus {
@@ -201,6 +210,10 @@ model User {
   deliveryJobsAsMerchant  DeliveryJob[]            @relation("DeliveryMerchant")
   deliveryJobsAsRider     DeliveryJob[]            @relation("DeliveryRider")
   riderAvailability       RiderAvailability?
+  ridesAsCustomer         Ride[]                   @relation("RideCustomer")
+  ridesAsDriver           Ride[]                   @relation("RideDriver")
+  driverAvailability      DriverAvailability?
+  driverKycDocuments      DriverKyc[]
   notifications           Notification[]
   notificationPreferences NotificationPreference[]
   searchQueryLogs         SearchQueryLog[]
@@ -505,16 +518,21 @@ model RiderProfile {
 }
 
 model DriverProfile {
-  id         String            @id @default(uuid()) @db.Uuid
-  userId     String            @unique @map("user_id") @db.Uuid
-  isApproved Boolean           @default(false) @map("is_approved")
-  approvedAt DateTime?         @map("approved_at")
-  createdAt  DateTime          @default(now()) @map("created_at")
-  updatedAt  DateTime          @updatedAt @map("updated_at")
-  deletedAt  DateTime?         @map("deleted_at")
-  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  onboarding DriverOnboarding?
+  id             String            @id @default(uuid()) @db.Uuid
+  userId         String            @unique @map("user_id") @db.Uuid
+  status         DriverStatus      @default(PENDING)
+  isApproved     Boolean           @default(false) @map("is_approved")
+  approvedAt     DateTime?         @map("approved_at")
+  approvedBy     String?           @map("approved_by") @db.Uuid
+  rejectedReason String?           @map("rejected_reason") @db.VarChar(1000)
+  suspendedAt    DateTime?         @map("suspended_at")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+  deletedAt      DateTime?         @map("deleted_at")
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  onboarding     DriverOnboarding?
 
+  @@index([status])
   @@index([isApproved])
   @@index([deletedAt])
   @@map("driver_profiles")
@@ -922,6 +940,118 @@ model RiderAvailability {
 
   @@index([online, acceptingOrders])
   @@map("rider_availability")
+}
+
+// ── Ride domain — sibling to delivery, not an extension of it. ──────────────
+// See docs/RIDE-001A-BACKEND-AUDIT.md and docs/RIDE-001B-ARCHITECTURE-SPEC.md.
+
+enum RideType {
+  ECONOMY
+  TRICYCLE
+}
+
+enum RideStatus {
+  REQUESTED
+  SEARCHING
+  DRIVER_ASSIGNED
+  ARRIVED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_DRIVERS_FOUND
+}
+
+enum RideCancelledBy {
+  CUSTOMER
+  DRIVER
+  SYSTEM
+}
+
+model Ride {
+  id                       String           @id @default(uuid()) @db.Uuid
+  customerId               String           @map("customer_id") @db.Uuid
+  driverId                 String?          @map("driver_id") @db.Uuid
+  rideType                 RideType         @map("ride_type")
+  status                   RideStatus       @default(REQUESTED)
+  pickupLatitude           Decimal          @map("pickup_latitude") @db.Decimal(10, 7)
+  pickupLongitude          Decimal          @map("pickup_longitude") @db.Decimal(10, 7)
+  pickupAddress            String?          @map("pickup_address") @db.VarChar(500)
+  dropoffLatitude          Decimal          @map("dropoff_latitude") @db.Decimal(10, 7)
+  dropoffLongitude         Decimal          @map("dropoff_longitude") @db.Decimal(10, 7)
+  dropoffAddress           String?          @map("dropoff_address") @db.VarChar(500)
+  estimatedDistanceMeters  Int?             @map("estimated_distance_meters")
+  estimatedDurationSeconds Int?             @map("estimated_duration_seconds")
+  baseFare                 Decimal          @default(0) @map("base_fare") @db.Decimal(12, 2)
+  distanceFare             Decimal          @default(0) @map("distance_fare") @db.Decimal(12, 2)
+  timeFare                 Decimal          @default(0) @map("time_fare") @db.Decimal(12, 2)
+  totalFare                Decimal          @default(0) @map("total_fare") @db.Decimal(12, 2)
+  requestedAt              DateTime         @default(now()) @map("requested_at")
+  assignedAt               DateTime?        @map("assigned_at")
+  arrivedAt                DateTime?        @map("arrived_at")
+  startedAt                DateTime?        @map("started_at")
+  completedAt              DateTime?        @map("completed_at")
+  cancelledAt              DateTime?        @map("cancelled_at")
+  cancelledBy              RideCancelledBy? @map("cancelled_by")
+  cancellationReason       String?          @map("cancellation_reason") @db.VarChar(500)
+  createdAt                DateTime         @default(now()) @map("created_at")
+  updatedAt                DateTime         @updatedAt @map("updated_at")
+  customer                 User             @relation("RideCustomer", fields: [customerId], references: [id], onDelete: Cascade)
+  driver                   User?            @relation("RideDriver", fields: [driverId], references: [id], onDelete: SetNull)
+  trackingPoints           RideTracking[]
+
+  @@index([customerId])
+  @@index([driverId])
+  @@index([status])
+  @@index([requestedAt])
+  @@map("rides")
+}
+
+model RideTracking {
+  id        String   @id @default(uuid()) @db.Uuid
+  rideId    String   @map("ride_id") @db.Uuid
+  latitude  Decimal  @db.Decimal(10, 7)
+  longitude Decimal  @db.Decimal(10, 7)
+  heading   Float?
+  speed     Float?
+  createdAt DateTime @default(now()) @map("created_at")
+  ride      Ride     @relation(fields: [rideId], references: [id], onDelete: Cascade)
+
+  @@index([rideId, createdAt])
+  @@map("ride_tracking")
+}
+
+model DriverAvailability {
+  driverId        String   @id @map("driver_id") @db.Uuid
+  online          Boolean  @default(false)
+  acceptingRides  Boolean  @default(false) @map("accepting_rides")
+  vehicleType     RideType @map("vehicle_type")
+  latitude        Decimal? @db.Decimal(10, 7)
+  longitude       Decimal? @db.Decimal(10, 7)
+  activeRideCount Int      @default(0) @map("active_ride_count")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  driver          User     @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([online, acceptingRides, vehicleType])
+  @@map("driver_availability")
+}
+
+model DriverKyc {
+  id                 String                @id @default(uuid()) @db.Uuid
+  driverId           String                @map("driver_id") @db.Uuid
+  documentType       KycDocumentType       @map("document_type")
+  documentNumber     String                @map("document_number") @db.VarChar(100)
+  frontImage         String                @map("front_image") @db.VarChar(2048)
+  backImage          String?               @map("back_image") @db.VarChar(2048)
+  verificationStatus KycVerificationStatus @default(PENDING) @map("verification_status")
+  reviewedBy         String?               @map("reviewed_by") @db.Uuid
+  reviewedAt         DateTime?             @map("reviewed_at")
+  remarks            String?               @db.VarChar(1000)
+  createdAt          DateTime              @default(now()) @map("created_at")
+  driver             User                  @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([driverId])
+  @@index([verificationStatus])
+  @@map("driver_kyc")
 }
 
 enum NotificationStatus {
