@@ -13,6 +13,9 @@ CREATE TYPE "RideCancelledBy" AS ENUM ('CUSTOMER', 'DRIVER', 'SYSTEM');
 -- AlterEnum
 ALTER TYPE "KycDocumentType" ADD VALUE 'VEHICLE_REGISTRATION';
 
+-- AlterEnum
+ALTER TYPE "KycDocumentType" ADD VALUE 'GUARANTOR_ID';
+
 -- AlterTable
 ALTER TABLE "driver_profiles" ADD COLUMN     "approved_by" UUID,
 ADD COLUMN     "rejected_reason" VARCHAR(1000),

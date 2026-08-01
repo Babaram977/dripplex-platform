@@ -15,7 +15,8 @@ export type KycDocumentType =
   | 'DRIVER_LICENSE'
   | 'CAC_CERTIFICATE'
   | 'BUSINESS_REGISTRATION'
-  | 'VEHICLE_REGISTRATION';
+  | 'VEHICLE_REGISTRATION'
+  | 'GUARANTOR_ID';
 
 export type KycVerificationStatus = 'PENDING' | 'VERIFIED' | 'REJECTED';
 

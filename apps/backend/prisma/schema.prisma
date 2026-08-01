@@ -83,6 +83,7 @@ enum KycDocumentType {
   CAC_CERTIFICATE
   BUSINESS_REGISTRATION
   VEHICLE_REGISTRATION
+  GUARANTOR_ID
 }
 
 enum KycVerificationStatus {

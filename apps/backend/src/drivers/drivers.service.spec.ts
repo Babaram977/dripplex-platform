@@ -88,7 +88,7 @@ describe('DriversService', () => {
     const kyc = await service.submitKyc(
       driverId,
       {
-        documentType: 'NATIONAL_ID',
+        documentType: 'GUARANTOR_ID',
         documentNumber: 'A1234567',
         frontImage: 'https://example.com/id.jpg',
       },
@@ -107,7 +107,7 @@ describe('DriversService', () => {
     );
   });
 
-  it('approves a driver once license, vehicle registration, and national ID are all verified', async () => {
+  it('approves a driver once license, vehicle registration, and guarantor ID are all verified', async () => {
     if (!databaseAvailable) return;
 
     const licenseKyc = await service.submitKyc(
@@ -129,14 +129,14 @@ describe('DriversService', () => {
       context,
     );
     const profile = await service.getOwnProfile(driverId);
-    const nationalIdKyc = profile.kyc.find((doc) => doc.documentType === 'NATIONAL_ID');
-    if (!nationalIdKyc) {
-      throw new Error('expected national ID KYC from the earlier test to exist');
+    const guarantorKyc = profile.kyc.find((doc) => doc.documentType === 'GUARANTOR_ID');
+    if (!guarantorKyc) {
+      throw new Error('expected guarantor ID KYC from the earlier test to exist');
     }
 
     await service.verifyKyc(licenseKyc.id, adminId, undefined, context);
     await service.verifyKyc(vehicleKyc.id, adminId, undefined, context);
-    await service.verifyKyc(nationalIdKyc.id, adminId, undefined, context);
+    await service.verifyKyc(guarantorKyc.id, adminId, undefined, context);
 
     const approval = await service.approveDriver(driverId, adminId, context);
 

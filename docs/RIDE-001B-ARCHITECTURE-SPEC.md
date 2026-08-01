@@ -6,13 +6,13 @@
 
 ## 1. Locked product decisions
 
-| Decision                          | Answer                                                                                                                                            |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Ride types (Kano beta)            | **Economy + Tricycle (Keke)**                                                                                                                     |
-| Fare model                        | **Base fare + distance + time** (no surge for pilot)                                                                                              |
-| Driver onboarding, mandatory docs | **License + vehicle papers + National ID** (insurance deferred)                                                                                   |
-| Real-time architecture            | **WebSockets**                                                                                                                                    |
-| Driver approval gate              | **`DriverProfile.status` (new enum, mirrors `MerchantStatus`) — administrative approval, separate from `DriverAvailability`'s operational state** |
+| Decision                          | Answer                                                                                                                                                |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ride types (Kano beta)            | **Economy + Tricycle (Keke)**                                                                                                                         |
+| Fare model                        | **Base fare + distance + time** (no surge for pilot)                                                                                                  |
+| Driver onboarding, mandatory docs | **License + vehicle registration + Guarantor/Referee ID** (insurance deferred) — revised from the original "National ID" per a later founder decision |
+| Real-time architecture            | **WebSockets**                                                                                                                                        |
+| Driver approval gate              | **`DriverProfile.status` (new enum, mirrors `MerchantStatus`) — administrative approval, separate from `DriverAvailability`'s operational state**     |
 
 Everything below is designed around these five answers. Changing any of them later is possible but would touch the schema, dispatch matching, or the WebSocket gateway respectively — flagging that cost now so it's visible if reopened.
 
@@ -46,7 +46,7 @@ enum RideCancelledBy {
 }
 ```
 
-`KycDocumentType` gets one new value, `VEHICLE_REGISTRATION` — `NATIONAL_ID` and `DRIVER_LICENSE` already exist and are reused as-is, following the exact pattern `MerchantKyc` already established.
+`KycDocumentType` gets two new values, `VEHICLE_REGISTRATION` and `GUARANTOR_ID` (the latter added after a founder revision — driver KYC uses a guarantor/referee's ID, not the driver's own national ID) — `DRIVER_LICENSE` already existed and is reused as-is, following the exact pattern `MerchantKyc` already established.
 
 ### New models
 

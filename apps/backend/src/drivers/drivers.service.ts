@@ -25,7 +25,7 @@ import type { DriverKyc, DriverProfile, User } from '@prisma/client';
 export const REQUIRED_DRIVER_KYC_DOCUMENT_TYPES: readonly KycDocumentType[] = [
   KycDocumentType.DRIVER_LICENSE,
   KycDocumentType.VEHICLE_REGISTRATION,
-  KycDocumentType.NATIONAL_ID,
+  KycDocumentType.GUARANTOR_ID,
 ];
 
 @Injectable()
