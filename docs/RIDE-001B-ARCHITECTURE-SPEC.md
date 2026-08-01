@@ -1,19 +1,20 @@
 # RIDE-001B — Ride Architecture Specification
 
 **Date:** 2026-08-01
-**Status:** Locked pending founder review. No code has been written against this spec yet — per the founder's explicit instruction, product decisions are locked before RIDE-002 implementation begins.
+**Status:** Fully locked. All five product/architecture decisions answered — nothing deferred to RIDE-002. No code has been written against this spec yet, per the founder's explicit instruction to lock decisions before implementation begins.
 **Builds on:** `docs/RIDE-001A-BACKEND-AUDIT.md` (what exists), `docs/FIGMA-SOURCE-INVENTORY.md` (confirms no Ride UI reference exists yet).
 
 ## 1. Locked product decisions
 
-| Decision                          | Answer                                                          |
-| --------------------------------- | --------------------------------------------------------------- |
-| Ride types (Kano beta)            | **Economy + Tricycle (Keke)**                                   |
-| Fare model                        | **Base fare + distance + time** (no surge for pilot)            |
-| Driver onboarding, mandatory docs | **License + vehicle papers + National ID** (insurance deferred) |
-| Real-time architecture            | **WebSockets**                                                  |
+| Decision                          | Answer                                                                                                                                            |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ride types (Kano beta)            | **Economy + Tricycle (Keke)**                                                                                                                     |
+| Fare model                        | **Base fare + distance + time** (no surge for pilot)                                                                                              |
+| Driver onboarding, mandatory docs | **License + vehicle papers + National ID** (insurance deferred)                                                                                   |
+| Real-time architecture            | **WebSockets**                                                                                                                                    |
+| Driver approval gate              | **`DriverProfile.status` (new enum, mirrors `MerchantStatus`) — administrative approval, separate from `DriverAvailability`'s operational state** |
 
-Everything below is designed around these four answers. Changing any of them later is possible but would touch the schema, dispatch matching, or the WebSocket gateway respectively — flagging that cost now so it's visible if reopened.
+Everything below is designed around these five answers. Changing any of them later is possible but would touch the schema, dispatch matching, or the WebSocket gateway respectively — flagging that cost now so it's visible if reopened.
 
 ## 2. Data model — siblings to `delivery`, not extensions of it
 
@@ -138,9 +139,37 @@ model DriverKyc {
 
 `RideTracking` persists periodic snapshots for audit/history/reconnect-recovery — the live, low-latency feed to the passenger's screen is the WebSocket, not a poll against this table. Same dual-path a lot of ride-hailing systems use: WS for "now," a DB row trail for "what actually happened."
 
-### `DriverProfile`/`RiderProfile` disposition (recommendation, not yet locked)
+### `DriverProfile`/`RiderProfile` disposition — locked
 
-The audit found both orphaned. Recommendation: **repurpose `DriverProfile` as the real driver identity** — `DriverKyc` above hangs off `driverId` (a `User.id`, matching the `DeliveryJob`/`RiderAvailability` convention of relating to `User` directly) rather than `DriverProfile.id`, for consistency with how the working delivery system already does it. That leaves `DriverProfile`/`DriverOnboarding` genuinely still unused after Ride ships too, unless a decision is made to route driver approval status through `DriverProfile.isApproved` instead of inventing a new approval flag. **This still needs an explicit answer before RIDE-002**: either (a) `DriverProfile.isApproved` becomes the real "is this driver allowed to go online" gate, checked by `DriverAvailability` writes, or (b) `DriverProfile` gets dropped entirely and a new field serves that purpose. `RiderProfile` is out of scope for Ride — it stays exactly as orphaned as the audit found it, a separate cleanup decision.
+**`DriverProfile` is now given a real responsibility: it is the authoritative administrative-approval gate for ride eligibility.** `DriverAvailability` stays purely operational (online/offline/busy, changes minute to minute). Dispatch requires both:
+
+```
+DriverProfile.status == APPROVED
+  AND
+DriverAvailability.online == true AND acceptingRides == true
+  AND
+DriverAvailability.activeRideCount == 0
+  ↓
+Eligible for dispatch
+```
+
+This is the same administrative/operational split `MerchantProfile`/`MerchantOnboarding` already draws — approval is a slow-changing state a human reviews, availability is a fast-changing state the driver's app toggles.
+
+Following that precedent exactly: `DriverProfile` gets a **status enum, not a boolean**, mirroring `MerchantStatus` field-for-field rather than inventing a new shape:
+
+```prisma
+enum DriverStatus {
+  PENDING
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+```
+
+`DriverProfile` gains the same field set `MerchantProfile` already carries for this exact purpose — `status DriverStatus @default(PENDING)`, `approvedBy`, `rejectedReason`, `suspendedAt` — replacing the current bare `isApproved`/`approvedAt` pair. `DriverKyc` (§2 above) still hangs off `driverId` (`User.id`), matching how `DeliveryJob`/`RiderAvailability` relate to `User` directly rather than through a profile row — `DriverProfile` is consulted for the status gate, not used as a foreign key target elsewhere.
+
+`RiderProfile` is out of scope for Ride — it stays exactly as orphaned as the audit found it, a separate cleanup decision.
 
 ## 3. Dispatch — extending the existing nearest-candidate pattern
 
@@ -198,6 +227,6 @@ Permission constants follow the existing convention: `customer:ride:manage`, `dr
 - Insurance document verification (deferred per the locked onboarding decision)
 - Multi-stop rides, scheduled/future rides, ride-sharing/pooling
 
-## 9. Open item before RIDE-002 can start
+## 9. Status
 
-The `DriverProfile.isApproved` question in §2 needs an explicit answer — it's the one piece of this spec that's a recommendation, not a locked decision, because it directly determines whether `DriverProfile` finally gets wired to something real or gets removed as dead schema.
+Closed. All open items from the previous revision (`DriverProfile` disposition, approval-state shape) are resolved in §2. Nothing is blocking RIDE-002 from a decisions standpoint — implementation can begin against this spec as written.
