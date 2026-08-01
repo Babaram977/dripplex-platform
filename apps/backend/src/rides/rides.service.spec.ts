@@ -21,6 +21,7 @@ describe('RidesService', () => {
   let databaseAvailable = false;
   let prisma: PrismaService;
   let service: RidesService;
+  let dispatchService: RideDispatchService;
   let customerId: string;
   let otherCustomerId: string;
   let driverId: string;
@@ -62,8 +63,15 @@ describe('RidesService', () => {
       publishToRide: jest.fn(),
       publishToDriver: jest.fn(),
     };
-    const dispatchService = new RideDispatchService(prisma, auditService, notifications, events);
-    service = new RidesService(prisma, new RideFareService(), auditService, dispatchService);
+    dispatchService = new RideDispatchService(prisma, auditService, notifications, events);
+    service = new RidesService(
+      prisma,
+      new RideFareService(),
+      auditService,
+      dispatchService,
+      notifications,
+      events,
+    );
 
     const customer = await prisma.user.create({
       data: {
@@ -202,6 +210,27 @@ describe('RidesService', () => {
     expect(cancelled.status).toBe('CANCELLED');
     expect(cancelled.cancelledBy).toBe('CUSTOMER');
     expect(cancelled.cancellationReason).toBe('Changed my mind');
+  });
+
+  it('frees the assigned driver when a customer cancels after assignment', async () => {
+    if (!databaseAvailable) return;
+
+    const ride = await service.requestRide(
+      customerId,
+      { rideType: 'ECONOMY', ...pickup, ...dropoff },
+      context,
+    );
+    const offer = await prisma.rideOffer.findFirstOrThrow({ where: { rideId: ride.id } });
+    await dispatchService.acceptOffer(driverId, offer.id, context);
+
+    const before = await prisma.driverAvailability.findUniqueOrThrow({ where: { driverId } });
+    expect(before.activeRideCount).toBe(1);
+
+    const cancelled = await service.cancelRide(customerId, ride.id, {}, context);
+    expect(cancelled.status).toBe('CANCELLED');
+
+    const after = await prisma.driverAvailability.findUniqueOrThrow({ where: { driverId } });
+    expect(after.activeRideCount).toBe(0);
   });
 
   it('rejects cancelling a ride that is already cancelled', async () => {

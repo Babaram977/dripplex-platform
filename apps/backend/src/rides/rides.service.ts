@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { RideCancelledBy, RideStatus } from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../audit/audit.service';
@@ -6,9 +6,14 @@ import {
   NotFoundDomainException,
   ValidationDomainException,
 } from '../common/exceptions/domain.exception';
+import {
+  NOTIFICATION_SERVICE,
+  type NotificationService,
+} from '../notifications/notification.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 import { RideDispatchService } from './ride-dispatch.service';
+import { RIDE_EVENTS_PUBLISHER, type RideEventsPublisher } from './ride-events.publisher';
 import { RideFareService } from './ride-fare.service';
 import { CANCELLABLE_RIDE_STATUSES, RIDE_AUDIT_ACTIONS } from './ride.constants';
 import { toDriverAvailabilityDto, toRideDto } from './ride.mapper';
@@ -26,6 +31,10 @@ export class RidesService {
     private readonly fareService: RideFareService,
     private readonly auditService: AuditService,
     private readonly dispatchService: RideDispatchService,
+    @Inject(NOTIFICATION_SERVICE)
+    private readonly notifications: NotificationService,
+    @Inject(RIDE_EVENTS_PUBLISHER)
+    private readonly events: RideEventsPublisher,
   ) {}
 
   public async requestRide(
@@ -113,7 +122,7 @@ export class RidesService {
       throw new ValidationDomainException(`Ride cannot be cancelled from status ${ride.status}`);
     }
 
-    const updated = await this.prisma.ride.update({
+    const rideUpdate = this.prisma.ride.update({
       where: { id: ride.id },
       data: {
         status: RideStatus.CANCELLED,
@@ -123,13 +132,47 @@ export class RidesService {
       },
     });
 
+    const updated = ride.driverId
+      ? (
+          await this.prisma.$transaction([
+            rideUpdate,
+            this.prisma.driverAvailability.update({
+              where: { driverId: ride.driverId },
+              data: { activeRideCount: { decrement: 1 } },
+            }),
+          ])
+        )[0]
+      : await rideUpdate;
+
     await this.auditService.record(
       RIDE_AUDIT_ACTIONS.CANCELLED,
       { ...context, userId: customerId },
       { resource: 'ride', resourceId: ride.id, metadata: { reason: dto.reason } },
     );
 
+    if (ride.driverId) {
+      await this.notifyDriver(ride.driverId, updated.id);
+      this.events.publishToRide(updated.id, 'ride:status', {
+        rideId: updated.id,
+        status: updated.status,
+        driverId: updated.driverId,
+      });
+    }
+
     return toRideDto(updated);
+  }
+
+  private async notifyDriver(driverId: string, rideId: string): Promise<void> {
+    const driver = await this.prisma.user.findUnique({ where: { id: driverId } });
+    if (!driver?.email) {
+      return;
+    }
+    await this.notifications.notifyRideLifecycle({
+      audience: 'driver',
+      email: driver.email,
+      event: 'ride_cancelled',
+      rideId,
+    });
   }
 
   public async updateDriverAvailability(

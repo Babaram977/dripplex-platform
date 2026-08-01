@@ -85,7 +85,14 @@ export interface DriverLifecycleNotificationInput {
   reason?: string;
 }
 
-export type RideLifecycleEvent = 'ride_offered' | 'ride_assigned' | 'ride_no_drivers_found';
+export type RideLifecycleEvent =
+  | 'ride_offered'
+  | 'ride_assigned'
+  | 'ride_no_drivers_found'
+  | 'ride_arrived'
+  | 'ride_started'
+  | 'ride_completed'
+  | 'ride_cancelled';
 
 export interface RideLifecycleNotificationInput {
   audience: 'customer' | 'driver';

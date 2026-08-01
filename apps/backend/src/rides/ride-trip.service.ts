@@ -1,0 +1,184 @@
+import { Inject, Injectable } from '@nestjs/common';
+import { RideCancelledBy, RideStatus } from '@prisma/client';
+
+import { AuditService, type AuditContext } from '../audit/audit.service';
+import {
+  ConflictDomainException,
+  NotFoundDomainException,
+} from '../common/exceptions/domain.exception';
+import {
+  NOTIFICATION_SERVICE,
+  type NotificationService,
+  type RideLifecycleEvent,
+} from '../notifications/notification.service';
+import { PrismaService } from '../prisma/prisma.service';
+
+import { RIDE_EVENTS_PUBLISHER, type RideEventsPublisher } from './ride-events.publisher';
+import { RIDE_AUDIT_ACTIONS } from './ride.constants';
+import { toRideDto } from './ride.mapper';
+
+import type { RideDto } from '@dripplex/types';
+import type { Ride } from '@prisma/client';
+
+const DRIVER_CANCELLABLE_STATUSES: RideStatus[] = [RideStatus.DRIVER_ASSIGNED, RideStatus.ARRIVED];
+
+/**
+ * Driver-side trip lifecycle, entered once a ride has an assigned driver
+ * (RIDE-002.4): DRIVER_ASSIGNED -> ARRIVED -> IN_PROGRESS -> COMPLETED, or a
+ * driver-initiated CANCELLED before the trip starts. A driver can't cancel
+ * once IN_PROGRESS — that's a completion, not a cancellation.
+ */
+@Injectable()
+export class RideTripService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditService: AuditService,
+    @Inject(NOTIFICATION_SERVICE)
+    private readonly notifications: NotificationService,
+    @Inject(RIDE_EVENTS_PUBLISHER)
+    private readonly events: RideEventsPublisher,
+  ) {}
+
+  public async markArrived(
+    driverId: string,
+    rideId: string,
+    context: AuditContext,
+  ): Promise<RideDto> {
+    const ride = await this.requireAssignedRide(driverId, rideId);
+    this.requireStatus(ride, RideStatus.DRIVER_ASSIGNED, 'marked arrived');
+
+    const updated = await this.prisma.ride.update({
+      where: { id: ride.id },
+      data: { status: RideStatus.ARRIVED, arrivedAt: new Date() },
+    });
+
+    await this.audit(RIDE_AUDIT_ACTIONS.ARRIVED, driverId, updated.id, context);
+    await this.notifyAndPublish(updated, 'ride_arrived');
+    return toRideDto(updated);
+  }
+
+  public async startTrip(
+    driverId: string,
+    rideId: string,
+    context: AuditContext,
+  ): Promise<RideDto> {
+    const ride = await this.requireAssignedRide(driverId, rideId);
+    this.requireStatus(ride, RideStatus.ARRIVED, 'started');
+
+    const updated = await this.prisma.ride.update({
+      where: { id: ride.id },
+      data: { status: RideStatus.IN_PROGRESS, startedAt: new Date() },
+    });
+
+    await this.audit(RIDE_AUDIT_ACTIONS.STARTED, driverId, updated.id, context);
+    await this.notifyAndPublish(updated, 'ride_started');
+    return toRideDto(updated);
+  }
+
+  public async completeTrip(
+    driverId: string,
+    rideId: string,
+    context: AuditContext,
+  ): Promise<RideDto> {
+    const ride = await this.requireAssignedRide(driverId, rideId);
+    this.requireStatus(ride, RideStatus.IN_PROGRESS, 'completed');
+
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.ride.update({
+        where: { id: ride.id },
+        data: { status: RideStatus.COMPLETED, completedAt: new Date() },
+      }),
+      this.prisma.driverAvailability.update({
+        where: { driverId },
+        data: { activeRideCount: { decrement: 1 } },
+      }),
+    ]);
+
+    await this.audit(RIDE_AUDIT_ACTIONS.COMPLETED, driverId, updated.id, context);
+    await this.notifyAndPublish(updated, 'ride_completed');
+    return toRideDto(updated);
+  }
+
+  public async cancelByDriver(
+    driverId: string,
+    rideId: string,
+    reason: string | undefined,
+    context: AuditContext,
+  ): Promise<RideDto> {
+    const ride = await this.requireAssignedRide(driverId, rideId);
+    if (!DRIVER_CANCELLABLE_STATUSES.includes(ride.status)) {
+      throw new ConflictDomainException(
+        `Ride cannot be cancelled by the driver from status ${ride.status}`,
+      );
+    }
+
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.ride.update({
+        where: { id: ride.id },
+        data: {
+          status: RideStatus.CANCELLED,
+          cancelledAt: new Date(),
+          cancelledBy: RideCancelledBy.DRIVER,
+          ...(reason !== undefined ? { cancellationReason: reason } : {}),
+        },
+      }),
+      this.prisma.driverAvailability.update({
+        where: { driverId },
+        data: { activeRideCount: { decrement: 1 } },
+      }),
+    ]);
+
+    await this.auditService.record(
+      RIDE_AUDIT_ACTIONS.CANCELLED,
+      { ...context, userId: driverId },
+      { resource: 'ride', resourceId: updated.id, metadata: { cancelledBy: 'DRIVER', reason } },
+    );
+    await this.notifyAndPublish(updated, 'ride_cancelled');
+    return toRideDto(updated);
+  }
+
+  private requireStatus(ride: Ride, expected: RideStatus, action: string): void {
+    if (ride.status !== expected) {
+      throw new ConflictDomainException(`Ride cannot be ${action} from status ${ride.status}`);
+    }
+  }
+
+  private async audit(
+    action: string,
+    driverId: string,
+    rideId: string,
+    context: AuditContext,
+  ): Promise<void> {
+    await this.auditService.record(
+      action,
+      { ...context, userId: driverId },
+      { resource: 'ride', resourceId: rideId },
+    );
+  }
+
+  private async notifyAndPublish(ride: Ride, event: RideLifecycleEvent): Promise<void> {
+    const customer = await this.prisma.user.findUnique({ where: { id: ride.customerId } });
+    if (customer?.email) {
+      await this.notifications.notifyRideLifecycle({
+        audience: 'customer',
+        email: customer.email,
+        event,
+        rideId: ride.id,
+      });
+    }
+
+    this.events.publishToRide(ride.id, 'ride:status', {
+      rideId: ride.id,
+      status: ride.status,
+      driverId: ride.driverId,
+    });
+  }
+
+  private async requireAssignedRide(driverId: string, rideId: string): Promise<Ride> {
+    const ride = await this.prisma.ride.findFirst({ where: { id: rideId, driverId } });
+    if (!ride) {
+      throw new NotFoundDomainException('Ride not found');
+    }
+    return ride;
+  }
+}

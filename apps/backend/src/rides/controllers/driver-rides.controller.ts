@@ -12,8 +12,10 @@ import {
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
+import { CancelRideDto } from '../dto/request-ride.dto';
 import { UpdateDriverAvailabilityDto } from '../dto/update-driver-availability.dto';
 import { RideDispatchService } from '../ride-dispatch.service';
+import { RideTripService } from '../ride-trip.service';
 import { RIDE_PERMISSIONS } from '../ride.constants';
 import { RidesService } from '../rides.service';
 
@@ -28,6 +30,7 @@ export class DriverRidesController {
   constructor(
     private readonly dispatchService: RideDispatchService,
     private readonly ridesService: RidesService,
+    private readonly tripService: RideTripService,
   ) {}
 
   @Post('availability')
@@ -72,6 +75,64 @@ export class DriverRidesController {
   ): Promise<ApiSuccessResponse<null>> {
     await this.dispatchService.declineOffer(user.id, id, this.auditContext(request, user.id));
     return { success: true, data: null };
+  }
+
+  @Post(':id/arrive')
+  @HttpCode(HttpStatus.OK)
+  public async markArrived(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<RideDto>> {
+    const data = await this.tripService.markArrived(
+      user.id,
+      id,
+      this.auditContext(request, user.id),
+    );
+    return { success: true, data };
+  }
+
+  @Post(':id/start')
+  @HttpCode(HttpStatus.OK)
+  public async startTrip(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<RideDto>> {
+    const data = await this.tripService.startTrip(user.id, id, this.auditContext(request, user.id));
+    return { success: true, data };
+  }
+
+  @Post(':id/complete')
+  @HttpCode(HttpStatus.OK)
+  public async completeTrip(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<RideDto>> {
+    const data = await this.tripService.completeTrip(
+      user.id,
+      id,
+      this.auditContext(request, user.id),
+    );
+    return { success: true, data };
+  }
+
+  @Post(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  public async cancelTrip(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CancelRideDto,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<RideDto>> {
+    const data = await this.tripService.cancelByDriver(
+      user.id,
+      id,
+      dto.reason,
+      this.auditContext(request, user.id),
+    );
+    return { success: true, data };
   }
 
   private auditContext(

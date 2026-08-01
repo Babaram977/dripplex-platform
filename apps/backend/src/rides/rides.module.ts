@@ -11,6 +11,7 @@ import { RideDispatchService } from './ride-dispatch.service';
 import { RIDE_EVENTS_PUBLISHER } from './ride-events.publisher';
 import { RideFareService } from './ride-fare.service';
 import { RideOfferSweepService } from './ride-offer-sweep.service';
+import { RideTripService } from './ride-trip.service';
 import { RideGateway } from './ride.gateway';
 import { RidesService } from './rides.service';
 
@@ -22,9 +23,10 @@ import { RidesService } from './rides.service';
     RideFareService,
     RideDispatchService,
     RideOfferSweepService,
+    RideTripService,
     RideGateway,
     { provide: RIDE_EVENTS_PUBLISHER, useExisting: RideGateway },
   ],
-  exports: [RidesService, RideFareService, RideDispatchService],
+  exports: [RidesService, RideFareService, RideDispatchService, RideTripService],
 })
 export class RidesModule {}

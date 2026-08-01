@@ -8,6 +8,9 @@ export const RIDE_AUDIT_ACTIONS = {
   OFFER_DECLINED: 'ride.offer_declined',
   OFFER_EXPIRED: 'ride.offer_expired',
   NO_DRIVERS_FOUND: 'ride.no_drivers_found',
+  ARRIVED: 'ride.arrived',
+  STARTED: 'ride.started',
+  COMPLETED: 'ride.completed',
 } as const;
 
 export const RIDE_PERMISSIONS = {
