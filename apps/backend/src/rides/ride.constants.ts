@@ -15,11 +15,16 @@ export const RIDE_AUDIT_ACTIONS = {
   PAYMENT_SUCCEEDED: 'ride.payment_succeeded',
   PAYMENT_FAILED: 'ride.payment_failed',
   CASH_CONFIRMED: 'ride.cash_confirmed',
+  RATED: 'ride.rated',
+  TIP_ADDED: 'ride.tip_added',
+  PROBLEM_REPORTED: 'ride.problem_reported',
+  PROBLEM_RESOLVED: 'ride.problem_resolved',
 } as const;
 
 export const RIDE_PERMISSIONS = {
   MANAGE: 'customer:ride:manage',
   DRIVER_MANAGE: 'driver:ride:manage',
+  ADMIN_SUPPORT: 'admin:rides:support',
 } as const;
 
 /**
@@ -39,6 +44,7 @@ export const RIDE_PLATFORM_COMMISSION_RATE = 0.15;
 export const RIDE_WALLET_REFERENCE_TYPES = {
   FARE: 'ride_fare',
   EARNING: 'ride_earning',
+  TIP: 'ride_tip',
 } as const;
 
 /** How long a driver has to respond to an offer before it's reassigned. */

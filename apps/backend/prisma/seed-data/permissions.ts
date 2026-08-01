@@ -68,6 +68,7 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
   { code: 'admin:drivers:reject', description: 'Reject drivers' },
   { code: 'admin:drivers:suspend', description: 'Suspend drivers' },
   { code: 'admin:drivers:reactivate', description: 'Reactivate suspended drivers' },
+  { code: 'admin:rides:support', description: 'Review and resolve ride problem reports' },
   { code: 'users:read', description: 'Read user records' },
   { code: 'users:write', description: 'Update user records' },
   { code: 'users:delete', description: 'Soft-delete user records' },

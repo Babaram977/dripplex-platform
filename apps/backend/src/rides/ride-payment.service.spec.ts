@@ -373,4 +373,92 @@ describe('RidePaymentService', () => {
     expect(reconciliation.reconciled).toBe(true);
     expect(reconciliation.difference).toBe(0);
   });
+
+  it('tips the driver 100% with no platform commission on a wallet-paid ride', async () => {
+    if (!databaseAvailable) return;
+
+    await walletService.credit({
+      ownerType: WalletOwnerType.CUSTOMER,
+      ownerId: customerId,
+      amount: 5000,
+      description: 'test top-up',
+    });
+
+    const ride = await createCompletedRide(1000);
+    await service.initiatePayment(customerId, ride.id, 'WALLET', undefined, {});
+
+    const driverWalletBefore = await walletService.getWallet(WalletOwnerType.DRIVER, driverId);
+    const customerWalletBefore = await walletService.getWallet(
+      WalletOwnerType.CUSTOMER,
+      customerId,
+    );
+    const platformWalletBefore = await walletService.getWallet(
+      WalletOwnerType.PLATFORM,
+      PLATFORM_WALLET_OWNER_ID,
+    );
+
+    const result = await service.tipDriver(customerId, ride.id, 200, {});
+    expect(result.tipAmount).toBe(200);
+
+    const driverWalletAfter = await walletService.getWallet(WalletOwnerType.DRIVER, driverId);
+    expect(driverWalletAfter.availableBalance).toBeCloseTo(
+      driverWalletBefore.availableBalance + 200,
+    );
+
+    const customerWalletAfter = await walletService.getWallet(WalletOwnerType.CUSTOMER, customerId);
+    expect(customerWalletAfter.availableBalance).toBeCloseTo(
+      customerWalletBefore.availableBalance - 200,
+    );
+
+    const platformWalletAfter = await walletService.getWallet(
+      WalletOwnerType.PLATFORM,
+      PLATFORM_WALLET_OWNER_ID,
+    );
+    expect(platformWalletAfter.availableBalance).toBeCloseTo(platformWalletBefore.availableBalance);
+  });
+
+  it('records a cash tip without moving any wallet balances', async () => {
+    if (!databaseAvailable) return;
+
+    const ride = await createCompletedRide(900);
+    await service.initiatePayment(customerId, ride.id, 'CASH', undefined, {});
+    await service.confirmCash(driverId, ride.id, {});
+
+    const driverWalletBefore = await walletService.getWallet(WalletOwnerType.DRIVER, driverId);
+
+    const result = await service.tipDriver(customerId, ride.id, 100, {});
+    expect(result.tipAmount).toBe(100);
+
+    const driverWalletAfter = await walletService.getWallet(WalletOwnerType.DRIVER, driverId);
+    expect(driverWalletAfter.availableBalance).toBe(driverWalletBefore.availableBalance);
+  });
+
+  it('rejects tipping a ride that has not been paid yet', async () => {
+    if (!databaseAvailable) return;
+
+    const ride = await createCompletedRide(500);
+
+    await expect(service.tipDriver(customerId, ride.id, 100, {})).rejects.toThrow(
+      'Ride must be paid before it can be tipped',
+    );
+  });
+
+  it('rejects tipping the same ride twice', async () => {
+    if (!databaseAvailable) return;
+
+    await walletService.credit({
+      ownerType: WalletOwnerType.CUSTOMER,
+      ownerId: customerId,
+      amount: 5000,
+      description: 'test top-up',
+    });
+
+    const ride = await createCompletedRide(1000);
+    await service.initiatePayment(customerId, ride.id, 'WALLET', undefined, {});
+    await service.tipDriver(customerId, ride.id, 100, {});
+
+    await expect(service.tipDriver(customerId, ride.id, 100, {})).rejects.toThrow(
+      'Ride has already been tipped',
+    );
+  });
 });

@@ -1007,6 +1007,7 @@ model Ride {
   paymentStatus            RidePaymentStatus        @default(PENDING) @map("payment_status")
   platformCommission       Decimal?                 @map("platform_commission") @db.Decimal(12, 2)
   driverEarning            Decimal?                 @map("driver_earning") @db.Decimal(12, 2)
+  tipAmount                Decimal?                 @map("tip_amount") @db.Decimal(12, 2)
   requestedAt              DateTime                 @default(now()) @map("requested_at")
   assignedAt               DateTime?                @map("assigned_at")
   arrivedAt                DateTime?                @map("arrived_at")
@@ -1022,6 +1023,8 @@ model Ride {
   trackingPoints           RideTracking[]
   offers                   RideOffer[]
   paymentTransactions      RidePaymentTransaction[]
+  ratings                  RideRating[]
+  problemReports           RideProblemReport[]
 
   @@index([customerId])
   @@index([driverId])
@@ -1052,6 +1055,58 @@ model RidePaymentTransaction {
   @@index([providerReference])
   @@index([status])
   @@map("ride_payment_transactions")
+}
+
+enum RideRatingRole {
+  CUSTOMER
+  DRIVER
+}
+
+model RideRating {
+  id              String         @id @default(uuid()) @db.Uuid
+  rideId          String         @map("ride_id") @db.Uuid
+  raterId         String         @map("rater_id") @db.Uuid
+  rateeId         String         @map("ratee_id") @db.Uuid
+  raterRole       RideRatingRole @map("rater_role")
+  rating          Int
+  comment         String?        @db.VarChar(1000)
+  categoryRatings Json?          @map("category_ratings")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  ride            Ride           @relation(fields: [rideId], references: [id], onDelete: Cascade)
+
+  @@unique([rideId, raterRole])
+  @@index([rateeId])
+  @@map("ride_ratings")
+}
+
+enum RideProblemCategory {
+  WRONG_FARE
+  DRIVER_BEHAVIOUR
+  UNSAFE_DRIVING
+  LOST_ITEM
+  VEHICLE_ISSUE
+  OTHER
+}
+
+enum RideProblemStatus {
+  OPEN
+  RESOLVED
+}
+
+model RideProblemReport {
+  id          String              @id @default(uuid()) @db.Uuid
+  rideId      String              @map("ride_id") @db.Uuid
+  reporterId  String              @map("reporter_id") @db.Uuid
+  category    RideProblemCategory
+  description String?             @db.VarChar(2000)
+  status      RideProblemStatus   @default(OPEN)
+  createdAt   DateTime            @default(now()) @map("created_at")
+  resolvedAt  DateTime?           @map("resolved_at")
+  ride        Ride                @relation(fields: [rideId], references: [id], onDelete: Cascade)
+
+  @@index([rideId])
+  @@index([status])
+  @@map("ride_problem_reports")
 }
 
 enum RideOfferStatus {

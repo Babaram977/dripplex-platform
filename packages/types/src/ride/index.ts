@@ -37,6 +37,7 @@ export interface RideDto {
   paymentStatus: RidePaymentStatus;
   platformCommission: number | null;
   driverEarning: number | null;
+  tipAmount: number | null;
   requestedAt: string;
   assignedAt: string | null;
   arrivedAt: string | null;
@@ -58,6 +59,90 @@ export interface InitiateRidePaymentResponse {
   ride: RideDto;
   authorizationUrl?: string;
   reference?: string;
+}
+
+export type RideRatingRole = 'CUSTOMER' | 'DRIVER';
+
+export interface RideCategoryRatings {
+  driving?: number;
+  cleanliness?: number;
+  professionalism?: number;
+  behaviour?: number;
+  waitingTime?: number;
+  paymentExperience?: number;
+}
+
+export interface RideRatingDto {
+  id: string;
+  rideId: string;
+  raterId: string;
+  rateeId: string;
+  raterRole: RideRatingRole;
+  rating: number;
+  comment: string | null;
+  categoryRatings: RideCategoryRatings | null;
+  createdAt: string;
+}
+
+export interface RateRideRequest {
+  rating: number;
+  comment?: string;
+  categoryRatings?: RideCategoryRatings;
+}
+
+export type RideProblemCategory =
+  'WRONG_FARE' | 'DRIVER_BEHAVIOUR' | 'UNSAFE_DRIVING' | 'LOST_ITEM' | 'VEHICLE_ISSUE' | 'OTHER';
+
+export type RideProblemStatus = 'OPEN' | 'RESOLVED';
+
+export interface RideProblemReportDto {
+  id: string;
+  rideId: string;
+  reporterId: string;
+  category: RideProblemCategory;
+  description: string | null;
+  status: RideProblemStatus;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
+export interface ReportRideProblemRequest {
+  category: RideProblemCategory;
+  description?: string;
+}
+
+export interface TipDriverRequest {
+  amount: number;
+}
+
+export interface RideReceiptDriverDto {
+  id: string;
+  name: string;
+  phone: string | null;
+  vehicleType: RideType;
+}
+
+export interface RideReceiptDto {
+  rideId: string;
+  status: RideStatus;
+  driver: RideReceiptDriverDto | null;
+  pickupAddress: string | null;
+  dropoffAddress: string | null;
+  distanceMeters: number | null;
+  durationSeconds: number | null;
+  fare: {
+    baseFare: number;
+    distanceFare: number;
+    timeFare: number;
+    totalFare: number;
+    tipAmount: number | null;
+    platformCommission: number | null;
+    driverEarning: number | null;
+  };
+  paymentMethod: RidePaymentMethod | null;
+  paymentStatus: RidePaymentStatus;
+  requestedAt: string;
+  completedAt: string | null;
 }
 
 export interface RequestRideRequest {

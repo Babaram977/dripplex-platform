@@ -182,6 +182,76 @@ export class RidePaymentService {
     return await this.markPaid(ride, RidePaymentMethod.CASH, split, context);
   }
 
+  /**
+   * 100% of the tip goes to the driver — no platform commission, so unlike
+   * fare settlement this never routes through the platform wallet. Wallet
+   * and gateway payments move a real debit+credit pair; cash payments only
+   * record the figure, since the passenger hands the cash to the driver
+   * directly and it never enters the digital ledger (same treatment as the
+   * cash fare itself).
+   */
+  public async tipDriver(
+    customerId: string,
+    rideId: string,
+    amount: number,
+    context: AuditContext,
+  ): Promise<RideDto> {
+    const ride = await this.requireOwnedRide(customerId, rideId);
+    if (ride.paymentStatus !== RidePaymentStatus.PAID) {
+      throw new ValidationDomainException('Ride must be paid before it can be tipped');
+    }
+    if (ride.tipAmount !== null) {
+      throw new ConflictDomainException('Ride has already been tipped');
+    }
+    if (!ride.driverId) {
+      throw new ValidationDomainException('Ride has no assigned driver to tip');
+    }
+
+    if (ride.paymentMethod !== RidePaymentMethod.CASH) {
+      await this.walletService.debit({
+        ownerType: WalletOwnerType.CUSTOMER,
+        ownerId: customerId,
+        amount,
+        referenceType: RIDE_WALLET_REFERENCE_TYPES.TIP,
+        referenceId: ride.id,
+        description: `Ride tip (${ride.id})`,
+        context,
+      });
+      await this.walletService.credit({
+        ownerType: WalletOwnerType.DRIVER,
+        ownerId: ride.driverId,
+        amount,
+        referenceType: RIDE_WALLET_REFERENCE_TYPES.TIP,
+        referenceId: ride.id,
+        description: `Ride tip (${ride.id})`,
+        context,
+      });
+    }
+
+    const updated = await this.prisma.ride.update({
+      where: { id: ride.id },
+      data: { tipAmount: amount },
+    });
+
+    await this.auditService.record(
+      RIDE_AUDIT_ACTIONS.TIP_ADDED,
+      { ...context, userId: customerId },
+      { resource: 'ride', resourceId: ride.id, metadata: { amount, method: ride.paymentMethod } },
+    );
+
+    const driver = await this.prisma.user.findUnique({ where: { id: ride.driverId } });
+    if (driver?.email) {
+      await this.notifications.notifyRideEarning({
+        email: driver.email,
+        rideId: ride.id,
+        amount,
+        currency: 'NGN',
+      });
+    }
+
+    return toRideDto(updated);
+  }
+
   private async payWithWallet(
     customerId: string,
     rideId: string,

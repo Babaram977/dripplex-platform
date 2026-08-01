@@ -10,7 +10,7 @@ verified driver can accept it, both can track the trip in real time, the trip ca
 completed, payment processed, and ratings recorded. Only after that is fully verified
 does attention shift to the Ride Figma UI.
 
-Last updated: RIDE-002.7 (wallet & payment), not yet merged — see PR #50.
+Last updated: RIDE-002.8 (post ride experience), not yet merged — see PR #50.
 
 ## ✅ Completed
 
@@ -25,18 +25,19 @@ Last updated: RIDE-002.7 (wallet & payment), not yet merged — see PR #50.
 | RIDE-002.4 | Dispatch: `RideOffer` model, nearest-eligible-driver matching, accept/decline, timeout sweep, reassignment up to `MAX_DISPATCH_ATTEMPTS`, ride/driver lifecycle notifications                                                                                                                                                                                          | PR #50, commit `b0ea708`              |
 | RIDE-002.5 | Realtime: `RideGateway` (JWT-authenticated WebSocket, `/rides` namespace), `ride:{id}`/`driver:{id}` rooms, driver location channel, `driver:ride:manage`-gated availability endpoint (`POST /driver/rides/availability`) — a real gap found during this milestone, since dispatch had no way for a driver to ever go online                                           | PR #50, commit `62898c1`              |
 | RIDE-002.6 | Trip lifecycle: `RideTripService` — DRIVER_ASSIGNED → ARRIVED → IN_PROGRESS → COMPLETED, plus driver-initiated cancel from DRIVER_ASSIGNED/ARRIVED (never once IN_PROGRESS). Fixed a real bug found along the way: customer cancellation of an already-assigned ride never freed the driver's `activeRideCount`, permanently blocking that driver from future dispatch | PR #50, commit `bcba41e`              |
-| RIDE-002.7 | Wallet & payment: post-completion payment screen (Cash / OPay / Wallet / Card), `WalletOwnerType` gains `DRIVER`+`PLATFORM`, platform wallet as settlement clearinghouse, `RidePaymentService`, driver wallet access, `OpayProvider` stub. Founder corrected the initial upfront-charge design to a post-completion flow mid-milestone — see design doc                | PR #50, pending push                  |
+| RIDE-002.7 | Wallet & payment: post-completion payment screen (Cash / OPay / Wallet / Card), `WalletOwnerType` gains `DRIVER`+`PLATFORM`, platform wallet as settlement clearinghouse, `RidePaymentService`, driver wallet access, `OpayProvider` stub. Founder corrected the initial upfront-charge design to a post-completion flow mid-milestone — see design doc                | PR #50, commit `aeea323`              |
+| RIDE-002.8 | Post ride experience: `RideRating` (sibling to `Review`, two-sided category ratings), tip driver (100% to driver, no commission), digital receipt (`RideReceiptService`, read-only), report problem (`RideProblemReport` + admin resolve). Founder redirected scope from "just ratings" to the full flow mid-milestone — see design doc                                | PR #50, pending push                  |
 
 ## 🔄 In Progress
 
-Nothing actively in flight — RIDE-002.7 is complete pending commit/push and CI.
+Nothing actively in flight — RIDE-002.8 is complete pending commit/push and CI.
 
 ## ⏳ Planned
 
-| Milestone  | Scope                                                                                 |
-| ---------- | ------------------------------------------------------------------------------------- |
-| RIDE-002.8 | Ratings/reviews reuse for completed rides (mirrors existing `reviews` module)         |
-| Post-002.8 | Ride Figma UI integration — passenger app, driver app, operations console, Kano pilot |
+| Milestone  | Scope                                                                                                                                                                                                 |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| RIDE-002.9 | Final end-to-end backend integration milestone — verify the complete request → dispatch → accept → arrive → start → complete → payment → settlement → receipt → rating → wallet → notifications chain |
+| Post-002.9 | Ride Figma UI integration — passenger app, driver app, operations console, Kano pilot                                                                                                                 |
 
 ## 🚫 Blocked
 
@@ -44,9 +45,9 @@ Nothing currently blocked.
 
 ## 🧪 Tests
 
-Backend suite: **785/785 passing** as of RIDE-002.7 (up from 709 at RIDE-002.1, 743 at
-RIDE-002.3, 757 at RIDE-002.4, 769 at RIDE-002.5, 776 at RIDE-002.6). Ride-specific
-coverage:
+Backend suite: **804/804 passing** as of RIDE-002.8 (up from 709 at RIDE-002.1, 743 at
+RIDE-002.3, 757 at RIDE-002.4, 769 at RIDE-002.5, 776 at RIDE-002.6, 785 at RIDE-002.7).
+Ride-specific coverage:
 
 - `ride.permissions.spec.ts` — customer + driver ride permission constants
 - `ride-fare.service.spec.ts` — fare estimation math
@@ -54,7 +55,10 @@ coverage:
 - `ride-dispatch.service.spec.ts` — nearest-driver matching, `DriverStatus.APPROVED` gate, accept/decline/expire/reassign, `MAX_DISPATCH_ATTEMPTS` exhaustion, real-DB
 - `ride-offer-sweep.service.spec.ts` — sweep delegation, reentrancy guard, timer lifecycle
 - `ride-trip.service.spec.ts` — full arrive/start/complete walk, illegal-transition rejections, driver cancel + availability release, ownership check, real-DB
-- `ride-payment.service.spec.ts` — wallet settlement (customer debit → platform → driver payout), insufficient-balance failure, cash confirmation (no wallet movement), gateway initiate/verify success and failure, double-pay and pre-completion rejection, and an explicit platform-wallet reconciliation check, real-DB
+- `ride-payment.service.spec.ts` — wallet settlement (customer debit → platform → driver payout), insufficient-balance failure, cash confirmation (no wallet movement), gateway initiate/verify success and failure, double-pay and pre-completion rejection, an explicit platform-wallet reconciliation check, plus RIDE-002.8's tip cases (wallet tip moves real balances, cash tip moves none, unpaid-ride and double-tip rejection), real-DB
+- `ride-rating.service.spec.ts` — both rating directions, duplicate-rating rejection, incomplete-ride rejection, no-driver-assigned rejection, ownership check, real-DB
+- `ride-problem-report.service.spec.ts` — report creation, list-by-status, resolve, double-resolve rejection, not-found, real-DB
+- `ride-receipt.service.spec.ts` — full receipt shape (driver/vehicle/fare/payment), null driver, incomplete-ride rejection, ownership check, real-DB
 - `ride.gateway.spec.ts` — handshake auth (missing/invalid/revoked token), room-join authorization, location throttling, best-effort publish
 - `dto/request-ride-dto.validation.spec.ts` — request payload validation
 - `driver.permissions.spec.ts`, `drivers.service.spec.ts`, `dto/driver-dto.validation.spec.ts` — driver KYC/approval flow
@@ -67,30 +71,39 @@ concurrently against the same live database. Fixed by giving `ride-dispatch.serv
 a geographically distinct fixture region — a flaky-test class worth watching for in any
 future real-DB dispatch tests.
 
-**Noted during RIDE-002.6 verification**: two full-suite runs each hit one unrelated
-suite-load crash (`platform-stabilization.contract.spec.ts`, then
-`search.service.spec.ts` — a different file each time, both "class extends undefined"
-errors at module-load time under `--maxWorkers=2`). Both suites pass cleanly in
-isolation and under `--runInBand`. RIDE-002.7's verification re-ran the full suite both
-`--runInBand` and `--maxWorkers=2` and saw no recurrence (785/785 clean both times) —
-still reads as sandbox-level Jest worker-startup flakiness, not a code regression.
+**Noted during RIDE-002.6 verification, recurring since**: full-suite runs under
+`--maxWorkers=2` occasionally hit one unrelated suite-load crash — a different file each
+time (`platform-stabilization.contract.spec.ts` at RIDE-002.6, `search.service.spec.ts`
+at RIDE-002.7, `prisma-product-catalog.spec.ts` at RIDE-002.8 — always "class extends
+undefined" or "X is not a constructor" at module-load time). Every occurrence passes
+cleanly in isolation and under `--runInBand`; RIDE-002.8's verification confirmed this
+again (804/804 clean on both a `--runInBand` run and a clean `--maxWorkers=2` re-run
+after the one-off crash). Still reads as sandbox-level Jest worker-startup flakiness,
+not a code regression — worth fixing at the Jest config level eventually, but not
+blocking any milestone so far.
 
 ## 📊 Coverage / reuse audit
 
 Verified against the existing `delivery` dispatch engine (`AssignmentService`,
-`TrackingService`) before writing RIDE-002.4, and against Wallet/Ledger/Payment before
-writing RIDE-002.7 (full findings in `docs/RIDE-002.7-WALLET-PAYMENT-DESIGN.md`):
+`TrackingService`) before writing RIDE-002.4, against Wallet/Ledger/Payment before
+writing RIDE-002.7 (full findings in `docs/RIDE-002.7-WALLET-PAYMENT-DESIGN.md`), and
+against the `reviews` module and the schema at large before writing RIDE-002.8 (full
+findings in `docs/RIDE-002.8-POST-RIDE-DESIGN.md`):
 
-| Component                | Existed already?                                                                                         | Reused as-is?                                                                                                                       | Ride-specific difference                                                                                                                                                                                                                                                             |
-| ------------------------ | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Haversine distance       | Yes (`delivery-fee.service.ts`)                                                                          | **Yes** — imported directly, zero duplication                                                                                       | none                                                                                                                                                                                                                                                                                 |
-| Nearest-candidate sort   | Yes (`AssignmentService.findNearestRider`)                                                               | Same shape, reimplemented                                                                                                           | Ride eligibility also requires `DriverProfile.status === APPROVED` (delivery riders have no equivalent approval gate), a strict `activeRideCount === 0` cap (vs. delivery's `< 3` batching), and exclusion of drivers with any other pending offer (a concept delivery doesn't have) |
-| Timeout / reassignment   | **No** — confirmed absent; single synchronous pick, no retry loop                                        | New                                                                                                                                 | Built from scratch: `RideOffer` state machine (PENDING/ACCEPTED/DECLINED/EXPIRED), 15s timeout, lazy sweep, capped retries                                                                                                                                                           |
-| Notification flow        | Yes (`NOTIFICATION_SERVICE` port + `notifyDeliveryLifecycle`)                                            | **Yes** — same port pattern, added `notifyRideLifecycle`/`notifyRideEarning` alongside it                                           | Ride-specific events (`ride_offered`, `ride_assigned`, `ride_no_drivers_found`, `ride_payment_succeeded`/`_failed`)                                                                                                                                                                  |
-| Location update flow     | Yes (`TrackingService`, throttled, delivery-job-scoped)                                                  | Pattern reused (same throttle constant), new service (`RideGateway`'s location handler)                                             | RIDE-002.5                                                                                                                                                                                                                                                                           |
-| `WalletService`          | Yes — credit/debit/refund/settlement/cashback/withdrawal/transfer, idempotent                            | **Yes** — zero modifications; ride settlement composes `debit`+`credit` pairs (not `transfer()`, which lacks reference idempotency) | New `WalletOwnerType` values (`DRIVER`, `PLATFORM`) added via additive migration                                                                                                                                                                                                     |
-| Payment → wallet linkage | **No** — order payments never touched the wallet; `WalletEventsSubscriber`'s payment handler was a no-op | New                                                                                                                                 | RIDE-002.7 builds the first payment-to-wallet settlement pattern in this codebase                                                                                                                                                                                                    |
-| Gateway adapters         | Yes (`PaystackProvider`, `FlutterwaveProvider`, `MoniepointProvider` stub)                               | **Yes** — same `PaymentProviderAdapter` interface reused directly, no capture/refund added                                          | `OpayProvider` added following the exact `MoniepointProvider` stub precedent (throws until real credentials exist)                                                                                                                                                                   |
+| Component                | Existed already?                                                                                         | Reused as-is?                                                                                                                                    | Ride-specific difference                                                                                                                                                                                                                                                             |
+| ------------------------ | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Haversine distance       | Yes (`delivery-fee.service.ts`)                                                                          | **Yes** — imported directly, zero duplication                                                                                                    | none                                                                                                                                                                                                                                                                                 |
+| Nearest-candidate sort   | Yes (`AssignmentService.findNearestRider`)                                                               | Same shape, reimplemented                                                                                                                        | Ride eligibility also requires `DriverProfile.status === APPROVED` (delivery riders have no equivalent approval gate), a strict `activeRideCount === 0` cap (vs. delivery's `< 3` batching), and exclusion of drivers with any other pending offer (a concept delivery doesn't have) |
+| Timeout / reassignment   | **No** — confirmed absent; single synchronous pick, no retry loop                                        | New                                                                                                                                              | Built from scratch: `RideOffer` state machine (PENDING/ACCEPTED/DECLINED/EXPIRED), 15s timeout, lazy sweep, capped retries                                                                                                                                                           |
+| Notification flow        | Yes (`NOTIFICATION_SERVICE` port + `notifyDeliveryLifecycle`)                                            | **Yes** — same port pattern, added `notifyRideLifecycle`/`notifyRideEarning` alongside it; `notifyRideEarning` reused as-is for tip payouts      | Ride-specific events (`ride_offered`, `ride_assigned`, `ride_no_drivers_found`, `ride_payment_succeeded`/`_failed`)                                                                                                                                                                  |
+| Location update flow     | Yes (`TrackingService`, throttled, delivery-job-scoped)                                                  | Pattern reused (same throttle constant), new service (`RideGateway`'s location handler)                                                          | RIDE-002.5                                                                                                                                                                                                                                                                           |
+| `WalletService`          | Yes — credit/debit/refund/settlement/cashback/withdrawal/transfer, idempotent                            | **Yes** — zero modifications; ride settlement and tips both compose `debit`+`credit` pairs (not `transfer()`, which lacks reference idempotency) | New `WalletOwnerType` values (`DRIVER`, `PLATFORM`) added via additive migration                                                                                                                                                                                                     |
+| Payment → wallet linkage | **No** — order payments never touched the wallet; `WalletEventsSubscriber`'s payment handler was a no-op | New                                                                                                                                              | RIDE-002.7 builds the first payment-to-wallet settlement pattern in this codebase                                                                                                                                                                                                    |
+| Gateway adapters         | Yes (`PaystackProvider`, `FlutterwaveProvider`, `MoniepointProvider` stub)                               | **Yes** — same `PaymentProviderAdapter` interface reused directly, no capture/refund added                                                       | `OpayProvider` added following the exact `MoniepointProvider` stub precedent (throws until real credentials exist)                                                                                                                                                                   |
+| `Review` / ratings       | Yes — genuinely polymorphic (`targetType`/`targetId`), single overall `rating: Int`                      | **No** — deliberately not extended; new sibling `RideRating` model                                                                               | Two-sided (customer↔driver), per-ride category sub-ratings, `@@unique([rideId, raterRole])` — shapes `Review`'s verified-purchase/aggregate/moderation design never anticipated                                                                                                      |
+| Support/ticket system    | **No** — confirmed absent by a schema-wide search                                                        | New                                                                                                                                              | `RideProblemReport` is a scoped stand-in (`OPEN`/`RESOLVED`, admin resolve), not a real support platform — flagged as a future gap, not fabricated                                                                                                                                   |
+| Vehicle details          | **No** — only `DriverAvailability.vehicleType` (a category, not plate/model/colour) exists anywhere      | N/A                                                                                                                                              | Digital receipt surfaces what's actually available rather than inventing plate/model/colour fields                                                                                                                                                                                   |
+| Ride history             | Yes — `GET /customer/rides` + wallet transaction endpoints already cover it                              | **Yes** — no new work needed                                                                                                                     | none                                                                                                                                                                                                                                                                                 |
 
 ## 📌 Business decisions still required
 
@@ -112,3 +125,11 @@ writing RIDE-002.7 (full findings in `docs/RIDE-002.7-WALLET-PAYMENT-DESIGN.md`)
   migration replay — declared in `schema.prisma` but never actually migrated in
   production. Deliberately not bundled into Ride work. Needs a duplicate-row check
   before applying a fix.
+- **Support ticket system**: `RideProblemReport` (RIDE-002.8) is a scoped stand-in, not
+  a real support platform — no SLAs, no agent assignment, no customer-facing thread.
+  A dedicated support/ticketing milestone is a real gap for a future release.
+- **Vehicle details**: no plate number, model, or colour exists anywhere in the schema
+  (driver KYC/onboarding never capture it). The RIDE-002.8 receipt reflects that
+  honestly; capturing real vehicle data is a driver-onboarding gap.
+- **Tip amount limits**: capped at ₦1–₦100,000 as an engineering sanity bound, not a
+  founder-approved ceiling.

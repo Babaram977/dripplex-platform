@@ -7,6 +7,7 @@ import { PaymentsModule } from '../payments/payments.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { WalletModule } from '../wallet/wallet.module';
 
+import { AdminRideReportsController } from './controllers/admin-ride-reports.controller';
 import { CustomerRidesController } from './controllers/customer-rides.controller';
 import { DriverRidesController } from './controllers/driver-rides.controller';
 import { RideDispatchService } from './ride-dispatch.service';
@@ -14,6 +15,9 @@ import { RIDE_EVENTS_PUBLISHER } from './ride-events.publisher';
 import { RideFareService } from './ride-fare.service';
 import { RideOfferSweepService } from './ride-offer-sweep.service';
 import { RidePaymentService } from './ride-payment.service';
+import { RideProblemReportService } from './ride-problem-report.service';
+import { RideRatingService } from './ride-rating.service';
+import { RideReceiptService } from './ride-receipt.service';
 import { RideTripService } from './ride-trip.service';
 import { RideGateway } from './ride.gateway';
 import { RidesService } from './rides.service';
@@ -27,7 +31,7 @@ import { RidesService } from './rides.service';
     WalletModule,
     PaymentsModule,
   ],
-  controllers: [CustomerRidesController, DriverRidesController],
+  controllers: [CustomerRidesController, DriverRidesController, AdminRideReportsController],
   providers: [
     RidesService,
     RideFareService,
@@ -35,6 +39,9 @@ import { RidesService } from './rides.service';
     RideOfferSweepService,
     RideTripService,
     RidePaymentService,
+    RideRatingService,
+    RideReceiptService,
+    RideProblemReportService,
     RideGateway,
     { provide: RIDE_EVENTS_PUBLISHER, useExisting: RideGateway },
   ],
@@ -44,6 +51,9 @@ import { RidesService } from './rides.service';
     RideDispatchService,
     RideTripService,
     RidePaymentService,
+    RideRatingService,
+    RideReceiptService,
+    RideProblemReportService,
   ],
 })
 export class RidesModule {}

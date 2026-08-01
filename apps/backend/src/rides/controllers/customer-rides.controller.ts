@@ -16,13 +16,25 @@ import { RequirePermissions } from '../../common/decorators/permissions.decorato
 import { ListRidesQueryDto } from '../dto/list-rides-query.dto';
 import { CancelRideDto, RequestRideDto } from '../dto/request-ride.dto';
 import { InitiateRidePaymentDto, VerifyRidePaymentDto } from '../dto/ride-payment.dto';
+import { ReportRideProblemDto } from '../dto/ride-problem-report.dto';
+import { RateRideDto } from '../dto/ride-rating.dto';
+import { TipDriverDto } from '../dto/ride-tip.dto';
 import { RidePaymentService } from '../ride-payment.service';
+import { RideProblemReportService } from '../ride-problem-report.service';
+import { RideRatingService } from '../ride-rating.service';
+import { RideReceiptService } from '../ride-receipt.service';
 import { RIDE_PERMISSIONS } from '../ride.constants';
 import { RidesService } from '../rides.service';
 
 import type { AuthenticatedUser } from '../../auth/auth.types';
 import type { ApiSuccessResponse } from '../../common/dto/api-response.dto';
-import type { InitiateRidePaymentResponse, RideDto } from '@dripplex/types';
+import type {
+  InitiateRidePaymentResponse,
+  RideDto,
+  RideProblemReportDto,
+  RideRatingDto,
+  RideReceiptDto,
+} from '@dripplex/types';
 import type { Request } from 'express';
 
 @Controller('customer/rides')
@@ -31,6 +43,9 @@ export class CustomerRidesController {
   constructor(
     private readonly ridesService: RidesService,
     private readonly paymentService: RidePaymentService,
+    private readonly ratingService: RideRatingService,
+    private readonly receiptService: RideReceiptService,
+    private readonly problemReportService: RideProblemReportService,
   ) {}
 
   @Post()
@@ -113,6 +128,50 @@ export class CustomerRidesController {
     @Body() dto: VerifyRidePaymentDto,
   ): Promise<ApiSuccessResponse<RideDto>> {
     const data = await this.paymentService.verifyPayment(user.id, id, dto.reference, {
+      userId: user.id,
+    });
+    return { success: true, data };
+  }
+
+  @Get(':id/receipt')
+  public async getReceipt(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ApiSuccessResponse<RideReceiptDto>> {
+    const data = await this.receiptService.getReceipt(user.id, id);
+    return { success: true, data };
+  }
+
+  @Post(':id/rate-driver')
+  @HttpCode(HttpStatus.CREATED)
+  public async rateDriver(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RateRideDto,
+  ): Promise<ApiSuccessResponse<RideRatingDto>> {
+    const data = await this.ratingService.rateDriver(user.id, id, dto, { userId: user.id });
+    return { success: true, data };
+  }
+
+  @Post(':id/tip')
+  @HttpCode(HttpStatus.OK)
+  public async tipDriver(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: TipDriverDto,
+  ): Promise<ApiSuccessResponse<RideDto>> {
+    const data = await this.paymentService.tipDriver(user.id, id, dto.amount, { userId: user.id });
+    return { success: true, data };
+  }
+
+  @Post(':id/report')
+  @HttpCode(HttpStatus.CREATED)
+  public async reportProblem(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ReportRideProblemDto,
+  ): Promise<ApiSuccessResponse<RideProblemReportDto>> {
+    const data = await this.problemReportService.reportProblem(user.id, id, dto, {
       userId: user.id,
     });
     return { success: true, data };

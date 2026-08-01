@@ -13,16 +13,18 @@ import {
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 import { CancelRideDto } from '../dto/request-ride.dto';
+import { RateRideDto } from '../dto/ride-rating.dto';
 import { UpdateDriverAvailabilityDto } from '../dto/update-driver-availability.dto';
 import { RideDispatchService } from '../ride-dispatch.service';
 import { RidePaymentService } from '../ride-payment.service';
+import { RideRatingService } from '../ride-rating.service';
 import { RideTripService } from '../ride-trip.service';
 import { RIDE_PERMISSIONS } from '../ride.constants';
 import { RidesService } from '../rides.service';
 
 import type { AuthenticatedUser } from '../../auth/auth.types';
 import type { ApiSuccessResponse } from '../../common/dto/api-response.dto';
-import type { DriverAvailabilityDto, RideDto, RideOfferDto } from '@dripplex/types';
+import type { DriverAvailabilityDto, RideDto, RideOfferDto, RideRatingDto } from '@dripplex/types';
 import type { Request } from 'express';
 
 @Controller('driver/rides')
@@ -33,6 +35,7 @@ export class DriverRidesController {
     private readonly ridesService: RidesService,
     private readonly tripService: RideTripService,
     private readonly paymentService: RidePaymentService,
+    private readonly ratingService: RideRatingService,
   ) {}
 
   @Post('availability')
@@ -144,6 +147,17 @@ export class DriverRidesController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<ApiSuccessResponse<RideDto>> {
     const data = await this.paymentService.confirmCash(user.id, id, { userId: user.id });
+    return { success: true, data };
+  }
+
+  @Post(':id/rate-customer')
+  @HttpCode(HttpStatus.CREATED)
+  public async rateCustomer(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RateRideDto,
+  ): Promise<ApiSuccessResponse<RideRatingDto>> {
+    const data = await this.ratingService.rateCustomer(user.id, id, dto, { userId: user.id });
     return { success: true, data };
   }
 
