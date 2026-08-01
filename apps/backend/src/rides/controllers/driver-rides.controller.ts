@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   HttpCode,
@@ -11,18 +12,33 @@ import {
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
+import { UpdateDriverAvailabilityDto } from '../dto/update-driver-availability.dto';
 import { RideDispatchService } from '../ride-dispatch.service';
 import { RIDE_PERMISSIONS } from '../ride.constants';
+import { RidesService } from '../rides.service';
 
 import type { AuthenticatedUser } from '../../auth/auth.types';
 import type { ApiSuccessResponse } from '../../common/dto/api-response.dto';
-import type { RideDto, RideOfferDto } from '@dripplex/types';
+import type { DriverAvailabilityDto, RideDto, RideOfferDto } from '@dripplex/types';
 import type { Request } from 'express';
 
 @Controller('driver/rides')
 @RequirePermissions(RIDE_PERMISSIONS.DRIVER_MANAGE)
 export class DriverRidesController {
-  constructor(private readonly dispatchService: RideDispatchService) {}
+  constructor(
+    private readonly dispatchService: RideDispatchService,
+    private readonly ridesService: RidesService,
+  ) {}
+
+  @Post('availability')
+  @HttpCode(HttpStatus.OK)
+  public async updateAvailability(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateDriverAvailabilityDto,
+  ): Promise<ApiSuccessResponse<DriverAvailabilityDto>> {
+    const data = await this.ridesService.updateDriverAvailability(user.id, dto);
+    return { success: true, data };
+  }
 
   @Get('offers')
   public async listOwnOffers(

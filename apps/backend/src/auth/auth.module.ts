@@ -99,6 +99,14 @@ import { JwtStrategy } from './strategies/jwt.strategy';
       useClass: PrismaIdentityVerificationRepository,
     },
   ],
-  exports: [AuthService, JwtAuthGuard, PermissionsGuard, PassportModule, JwtModule],
+  exports: [
+    AuthService,
+    JwtAuthGuard,
+    PermissionsGuard,
+    PassportModule,
+    JwtModule,
+    TokenService,
+    AUTH_SESSION_REPOSITORY,
+  ],
 })
 export class AuthModule {}

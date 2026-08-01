@@ -52,6 +52,17 @@ export interface RequestRideRequest {
   dropoffAddress?: string;
 }
 
+export interface DriverAvailabilityDto {
+  driverId: string;
+  online: boolean;
+  acceptingRides: boolean;
+  vehicleType: RideType;
+  latitude: number | null;
+  longitude: number | null;
+  activeRideCount: number;
+  updatedAt: string;
+}
+
 export type RideOfferStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'EXPIRED';
 
 export interface RideOfferDto {

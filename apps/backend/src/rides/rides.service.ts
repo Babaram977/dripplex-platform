@@ -11,11 +11,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RideDispatchService } from './ride-dispatch.service';
 import { RideFareService } from './ride-fare.service';
 import { CANCELLABLE_RIDE_STATUSES, RIDE_AUDIT_ACTIONS } from './ride.constants';
-import { toRideDto } from './ride.mapper';
+import { toDriverAvailabilityDto, toRideDto } from './ride.mapper';
 
 import type { ListRidesQueryDto } from './dto/list-rides-query.dto';
 import type { CancelRideDto, RequestRideDto } from './dto/request-ride.dto';
-import type { RideDto } from '@dripplex/types';
+import type { UpdateDriverAvailabilityDto } from './dto/update-driver-availability.dto';
+import type { DriverAvailabilityDto, RideDto } from '@dripplex/types';
 import type { Ride } from '@prisma/client';
 
 @Injectable()
@@ -129,6 +130,31 @@ export class RidesService {
     );
 
     return toRideDto(updated);
+  }
+
+  public async updateDriverAvailability(
+    driverId: string,
+    dto: UpdateDriverAvailabilityDto,
+  ): Promise<DriverAvailabilityDto> {
+    const availability = await this.prisma.driverAvailability.upsert({
+      where: { driverId },
+      create: {
+        driverId,
+        online: dto.online,
+        acceptingRides: dto.acceptingRides,
+        vehicleType: dto.vehicleType,
+        ...(dto.latitude !== undefined ? { latitude: dto.latitude } : {}),
+        ...(dto.longitude !== undefined ? { longitude: dto.longitude } : {}),
+      },
+      update: {
+        online: dto.online,
+        acceptingRides: dto.acceptingRides,
+        vehicleType: dto.vehicleType,
+        ...(dto.latitude !== undefined ? { latitude: dto.latitude } : {}),
+        ...(dto.longitude !== undefined ? { longitude: dto.longitude } : {}),
+      },
+    });
+    return toDriverAvailabilityDto(availability);
   }
 
   private async requireOwnedRide(customerId: string, rideId: string): Promise<Ride> {

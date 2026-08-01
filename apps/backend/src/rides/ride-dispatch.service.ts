@@ -12,6 +12,7 @@ import {
 } from '../notifications/notification.service';
 import { PrismaService } from '../prisma/prisma.service';
 
+import { RIDE_EVENTS_PUBLISHER, type RideEventsPublisher } from './ride-events.publisher';
 import { haversineMeters } from './ride-fare.service';
 import { MAX_DISPATCH_ATTEMPTS, RIDE_AUDIT_ACTIONS, RIDE_OFFER_TIMEOUT_MS } from './ride.constants';
 import { toRideDto, toRideOfferDto } from './ride.mapper';
@@ -22,10 +23,11 @@ import type { DriverAvailability, Ride, RideOffer } from '@prisma/client';
 /**
  * Finds the nearest eligible driver, creates an offer, and — on decline or
  * expiry — retries the next-nearest candidate, up to MAX_DISPATCH_ATTEMPTS.
- * No WebSocket yet (that's RIDE-002.5): a driver discovers a pending offer
- * by polling GET /driver/rides/offers; expiry is swept lazily by
- * RideOfferSweepService, mirroring ReservationCleanupService's pattern
- * (plain setInterval, no @nestjs/schedule dependency).
+ * Dispatch correctness never depends on realtime: a driver discovers a
+ * pending offer either by polling GET /driver/rides/offers or via the
+ * best-effort RIDE_EVENTS_PUBLISHER push (RIDE-002.5); expiry is swept
+ * lazily by RideOfferSweepService, mirroring ReservationCleanupService's
+ * pattern (plain setInterval, no @nestjs/schedule dependency).
  */
 @Injectable()
 export class RideDispatchService {
@@ -34,6 +36,8 @@ export class RideDispatchService {
     private readonly auditService: AuditService,
     @Inject(NOTIFICATION_SERVICE)
     private readonly notifications: NotificationService,
+    @Inject(RIDE_EVENTS_PUBLISHER)
+    private readonly events: RideEventsPublisher,
   ) {}
 
   public async dispatchRide(rideId: string): Promise<RideDto> {
@@ -84,6 +88,7 @@ export class RideDispatchService {
       { resource: 'ride', resourceId: ride.id, metadata: { driverId: candidate.driverId } },
     );
     await this.notifyUser(candidate.driverId, 'driver', 'ride_offered', ride.id);
+    this.events.publishToDriver(candidate.driverId, 'ride:offered', { rideId: ride.id });
 
     return toRideDto(updated);
   }
@@ -128,6 +133,11 @@ export class RideDispatchService {
       { resource: 'ride', resourceId: offer.rideId, metadata: { driverId } },
     );
     await this.notifyUser(updatedRide.customerId, 'customer', 'ride_assigned', updatedRide.id);
+    this.events.publishToRide(updatedRide.id, 'ride:status', {
+      rideId: updatedRide.id,
+      status: updatedRide.status,
+      driverId: updatedRide.driverId,
+    });
 
     return toRideDto(updatedRide);
   }
@@ -222,6 +232,11 @@ export class RideDispatchService {
       { resource: 'ride', resourceId: ride.id },
     );
     await this.notifyUser(updated.customerId, 'customer', 'ride_no_drivers_found', updated.id);
+    this.events.publishToRide(updated.id, 'ride:status', {
+      rideId: updated.id,
+      status: updated.status,
+      driverId: null,
+    });
     return toRideDto(updated);
   }
 

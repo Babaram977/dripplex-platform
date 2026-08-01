@@ -7,6 +7,7 @@ import { AuditService } from '../audit/audit.service';
 import { RideDispatchService } from './ride-dispatch.service';
 import { MAX_DISPATCH_ATTEMPTS } from './ride.constants';
 
+import type { RideEventsPublisher } from './ride-events.publisher';
 import type { AuditLogRepository } from '../audit/repositories/audit-log.repository';
 import type { NotificationService } from '../notifications/notification.service';
 import type { PrismaService } from '../prisma/prisma.service';
@@ -16,9 +17,14 @@ const databaseUrl =
   process.env['DATABASE_URL'] ??
   'postgresql://dripplex:dripplex@localhost:5432/dripplex?schema=public';
 
-const PICKUP = { lat: 6.6018, lng: 3.3515 };
-const NEARBY = { lat: 6.602, lng: 3.3517 };
-const FARTHER = { lat: 6.65, lng: 3.4 };
+// Deliberately far from other spec files' fixture coordinates (e.g.
+// rides.service.spec.ts uses Lagos-area 6.60/3.35) — real-DB dispatch tests
+// share one live database, and "nearest driver" queries have no radius cap,
+// so overlapping coordinates across concurrently-run spec files can leak a
+// foreign fixture in as the "nearest" candidate.
+const PICKUP = { lat: 12.0, lng: 8.5 };
+const NEARBY = { lat: 12.002, lng: 8.5005 };
+const FARTHER = { lat: 12.05, lng: 8.6 };
 
 describe('RideDispatchService', () => {
   let databaseAvailable = false;
@@ -57,7 +63,11 @@ describe('RideDispatchService', () => {
       notifyDriverLifecycle: jest.fn(),
       notifyRideLifecycle: jest.fn().mockResolvedValue(undefined),
     };
-    service = new RideDispatchService(prisma, auditService, notifications);
+    const events: jest.Mocked<RideEventsPublisher> = {
+      publishToRide: jest.fn(),
+      publishToDriver: jest.fn(),
+    };
+    service = new RideDispatchService(prisma, auditService, notifications, events);
 
     const customer = await prisma.user.create({
       data: {

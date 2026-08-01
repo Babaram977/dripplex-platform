@@ -24,6 +24,9 @@ export const MAX_DISPATCH_ATTEMPTS = 5;
 /** How often the background sweep checks for expired offers. */
 export const RIDE_OFFER_SWEEP_INTERVAL_MS = 5_000;
 
+/** Matches delivery's TRACKING_THROTTLE_MS — reused, not reinvented. */
+export const RIDE_LOCATION_THROTTLE_MS = 5_000;
+
 /** Statuses a ride can still be cancelled from — once IN_PROGRESS or later, it's too late. */
 export const CANCELLABLE_RIDE_STATUSES: readonly string[] = [
   'REQUESTED',

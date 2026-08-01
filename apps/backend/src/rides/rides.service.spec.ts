@@ -8,6 +8,7 @@ import { RideDispatchService } from './ride-dispatch.service';
 import { RideFareService } from './ride-fare.service';
 import { RidesService } from './rides.service';
 
+import type { RideEventsPublisher } from './ride-events.publisher';
 import type { AuditLogRepository } from '../audit/repositories/audit-log.repository';
 import type { NotificationService } from '../notifications/notification.service';
 import type { PrismaService } from '../prisma/prisma.service';
@@ -57,7 +58,11 @@ describe('RidesService', () => {
       notifyDriverLifecycle: jest.fn(),
       notifyRideLifecycle: jest.fn().mockResolvedValue(undefined),
     };
-    const dispatchService = new RideDispatchService(prisma, auditService, notifications);
+    const events: jest.Mocked<RideEventsPublisher> = {
+      publishToRide: jest.fn(),
+      publishToDriver: jest.fn(),
+    };
+    const dispatchService = new RideDispatchService(prisma, auditService, notifications, events);
     service = new RidesService(prisma, new RideFareService(), auditService, dispatchService);
 
     const customer = await prisma.user.create({
@@ -218,5 +223,44 @@ describe('RidesService', () => {
     if (!databaseAvailable) return;
 
     await expect(service.getOwnRide(customerId, randomUUID())).rejects.toThrow('Ride not found');
+  });
+
+  it('updates driver availability, creating a row if none exists', async () => {
+    if (!databaseAvailable) return;
+
+    const other = await prisma.user.create({
+      data: {
+        email: `ride-service-availability-${randomUUID()}@dripplex.test`,
+        passwordHash: 'not-a-real-hash',
+        firstName: 'Availability',
+        lastName: 'Driver',
+      },
+    });
+
+    try {
+      const created = await service.updateDriverAvailability(other.id, {
+        online: true,
+        acceptingRides: true,
+        vehicleType: 'TRICYCLE',
+        latitude: 9.05,
+        longitude: 7.49,
+      });
+      expect(created.online).toBe(true);
+      expect(created.vehicleType).toBe('TRICYCLE');
+      expect(created.latitude).toBe(9.05);
+
+      const updated = await service.updateDriverAvailability(other.id, {
+        online: false,
+        acceptingRides: false,
+        vehicleType: 'TRICYCLE',
+      });
+      expect(updated.online).toBe(false);
+      expect(updated.acceptingRides).toBe(false);
+    } finally {
+      await prisma.driverAvailability
+        .delete({ where: { driverId: other.id } })
+        .catch(() => undefined);
+      await prisma.user.delete({ where: { id: other.id } }).catch(() => undefined);
+    }
   });
 });
