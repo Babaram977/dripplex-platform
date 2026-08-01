@@ -4,10 +4,12 @@ import { PrismaClient } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
 
+import { RideDispatchService } from './ride-dispatch.service';
 import { RideFareService } from './ride-fare.service';
 import { RidesService } from './rides.service';
 
 import type { AuditLogRepository } from '../audit/repositories/audit-log.repository';
+import type { NotificationService } from '../notifications/notification.service';
 import type { PrismaService } from '../prisma/prisma.service';
 
 const databaseUrl =
@@ -20,6 +22,7 @@ describe('RidesService', () => {
   let service: RidesService;
   let customerId: string;
   let otherCustomerId: string;
+  let driverId: string;
   const context = {};
 
   const pickup = { pickupLatitude: 6.6018, pickupLongitude: 3.3515 };
@@ -42,7 +45,20 @@ describe('RidesService', () => {
       create: jest.fn().mockResolvedValue(undefined),
     };
     const auditService = new AuditService(auditLogRepository);
-    service = new RidesService(prisma, new RideFareService(), auditService);
+    const notifications: jest.Mocked<NotificationService> = {
+      sendPasswordReset: jest.fn(),
+      sendPasswordChanged: jest.fn(),
+      sendEmailVerification: jest.fn(),
+      sendPhoneOtp: jest.fn(),
+      notifyMerchantLifecycle: jest.fn(),
+      notifyOrderCreated: jest.fn(),
+      notifyPaymentResult: jest.fn(),
+      notifyDeliveryLifecycle: jest.fn(),
+      notifyDriverLifecycle: jest.fn(),
+      notifyRideLifecycle: jest.fn().mockResolvedValue(undefined),
+    };
+    const dispatchService = new RideDispatchService(prisma, auditService, notifications);
+    service = new RidesService(prisma, new RideFareService(), auditService, dispatchService);
 
     const customer = await prisma.user.create({
       data: {
@@ -63,20 +79,53 @@ describe('RidesService', () => {
       },
     });
     otherCustomerId = other.id;
+
+    const driver = await prisma.user.create({
+      data: {
+        email: `ride-service-driver-${randomUUID()}@dripplex.test`,
+        passwordHash: 'not-a-real-hash',
+        firstName: 'Test',
+        lastName: 'Driver',
+      },
+    });
+    driverId = driver.id;
+    await prisma.driverProfile.create({
+      data: { userId: driverId, status: 'APPROVED', isApproved: true },
+    });
+    await prisma.driverAvailability.create({
+      data: {
+        driverId,
+        online: true,
+        acceptingRides: true,
+        vehicleType: 'ECONOMY',
+        latitude: pickup.pickupLatitude,
+        longitude: pickup.pickupLongitude,
+      },
+    });
+  });
+
+  afterEach(async () => {
+    if (databaseAvailable) {
+      await prisma.rideOffer.deleteMany({ where: { driverId, status: 'PENDING' } });
+    }
   });
 
   afterAll(async () => {
     if (databaseAvailable) {
+      await prisma.rideOffer.deleteMany({ where: { driverId } });
       await prisma.ride.deleteMany({
         where: { customerId: { in: [customerId, otherCustomerId] } },
       });
+      await prisma.driverAvailability.delete({ where: { driverId } }).catch(() => undefined);
+      await prisma.driverProfile.delete({ where: { userId: driverId } }).catch(() => undefined);
       await prisma.user.delete({ where: { id: customerId } }).catch(() => undefined);
       await prisma.user.delete({ where: { id: otherCustomerId } }).catch(() => undefined);
+      await prisma.user.delete({ where: { id: driverId } }).catch(() => undefined);
     }
     await prisma.$disconnect();
   });
 
-  it('creates a ride request with an estimated fare and REQUESTED status', async () => {
+  it('creates a ride request and dispatches it to the nearest eligible driver', async () => {
     if (!databaseAvailable) return;
 
     const ride = await service.requestRide(
@@ -85,10 +134,23 @@ describe('RidesService', () => {
       context,
     );
 
-    expect(ride.status).toBe('REQUESTED');
+    expect(ride.status).toBe('SEARCHING');
     expect(ride.driverId).toBeNull();
     expect(ride.totalFare).toBeGreaterThan(0);
     expect(ride.estimatedDistanceMeters).toBeGreaterThan(0);
+  });
+
+  it('marks a ride NO_DRIVERS_FOUND when no eligible driver exists for the ride type', async () => {
+    if (!databaseAvailable) return;
+
+    const ride = await service.requestRide(
+      customerId,
+      { rideType: 'TRICYCLE', ...pickup, ...dropoff },
+      context,
+    );
+
+    expect(ride.status).toBe('NO_DRIVERS_FOUND');
+    expect(ride.driverId).toBeNull();
   });
 
   it("lists only the requesting customer's own rides", async () => {

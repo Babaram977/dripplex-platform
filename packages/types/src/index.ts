@@ -113,6 +113,8 @@ export type {
   RideAuditAction,
   RideCancelledBy,
   RideDto,
+  RideOfferDto,
+  RideOfferStatus,
   RideStatus,
   RideType,
 } from './ride/index.js';

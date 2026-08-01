@@ -49,6 +49,7 @@ describe('DriversService', () => {
       notifyPaymentResult: jest.fn(),
       notifyDeliveryLifecycle: jest.fn(),
       notifyDriverLifecycle: jest.fn().mockResolvedValue(undefined),
+      notifyRideLifecycle: jest.fn(),
     };
     service = new DriversService(prisma, auditService, notifications);
 

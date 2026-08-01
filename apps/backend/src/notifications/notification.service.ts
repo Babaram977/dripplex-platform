@@ -85,6 +85,15 @@ export interface DriverLifecycleNotificationInput {
   reason?: string;
 }
 
+export type RideLifecycleEvent = 'ride_offered' | 'ride_assigned' | 'ride_no_drivers_found';
+
+export interface RideLifecycleNotificationInput {
+  audience: 'customer' | 'driver';
+  email: string;
+  event: RideLifecycleEvent;
+  rideId: string;
+}
+
 /**
  * Provider-agnostic notification port for auth emails and SMS.
  * Production adapters (SendGrid, SES, Termii, etc.) implement this interface.
@@ -99,6 +108,7 @@ export interface NotificationService {
   notifyPaymentResult(input: PaymentResultNotificationInput): Promise<void>;
   notifyDeliveryLifecycle(input: DeliveryLifecycleNotificationInput): Promise<void>;
   notifyDriverLifecycle(input: DriverLifecycleNotificationInput): Promise<void>;
+  notifyRideLifecycle(input: RideLifecycleNotificationInput): Promise<void>;
 }
 
 export const NOTIFICATION_SERVICE = Symbol('NOTIFICATION_SERVICE');

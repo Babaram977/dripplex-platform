@@ -4,6 +4,10 @@ describe('RIDE_PERMISSIONS', () => {
   it('defines the customer ride self-service permission', () => {
     expect(RIDE_PERMISSIONS.MANAGE).toBe('customer:ride:manage');
   });
+
+  it('defines the driver ride self-service permission', () => {
+    expect(RIDE_PERMISSIONS.DRIVER_MANAGE).toBe('driver:ride:manage');
+  });
 });
 
 describe('CANCELLABLE_RIDE_STATUSES', () => {

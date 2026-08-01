@@ -12,6 +12,7 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
   { code: 'admin:addresses:read', description: 'Read customer addresses (admin)' },
   { code: 'customer:cart:manage', description: 'Manage own shopping cart' },
   { code: 'customer:ride:manage', description: 'Request, view, and cancel own rides' },
+  { code: 'driver:ride:manage', description: 'View and respond to own ride offers' },
   { code: 'admin:cart:read', description: 'Read shopping carts (admin)' },
   { code: 'customer:checkout', description: 'Create orders from shopping cart' },
   { code: 'customer:orders', description: 'View and cancel own orders' },

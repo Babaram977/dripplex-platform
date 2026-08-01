@@ -8,6 +8,7 @@ import {
 } from '../common/exceptions/domain.exception';
 import { PrismaService } from '../prisma/prisma.service';
 
+import { RideDispatchService } from './ride-dispatch.service';
 import { RideFareService } from './ride-fare.service';
 import { CANCELLABLE_RIDE_STATUSES, RIDE_AUDIT_ACTIONS } from './ride.constants';
 import { toRideDto } from './ride.mapper';
@@ -23,6 +24,7 @@ export class RidesService {
     private readonly prisma: PrismaService,
     private readonly fareService: RideFareService,
     private readonly auditService: AuditService,
+    private readonly dispatchService: RideDispatchService,
   ) {}
 
   public async requestRide(
@@ -61,7 +63,7 @@ export class RidesService {
       { resource: 'ride', resourceId: ride.id, metadata: { rideType: ride.rideType } },
     );
 
-    return toRideDto(ride);
+    return await this.dispatchService.dispatchRide(ride.id);
   }
 
   public async getOwnRide(customerId: string, rideId: string): Promise<RideDto> {

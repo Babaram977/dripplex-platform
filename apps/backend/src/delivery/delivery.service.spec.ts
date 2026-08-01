@@ -233,6 +233,7 @@ describe('DeliveryService', () => {
     notifyPaymentResult: jest.fn(),
     notifyDeliveryLifecycle: jest.fn(),
     notifyDriverLifecycle: jest.fn(),
+    notifyRideLifecycle: jest.fn(),
   };
 
   const assignmentService = {

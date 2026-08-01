@@ -52,9 +52,26 @@ export interface RequestRideRequest {
   dropoffAddress?: string;
 }
 
+export type RideOfferStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'EXPIRED';
+
+export interface RideOfferDto {
+  id: string;
+  rideId: string;
+  driverId: string;
+  status: RideOfferStatus;
+  offeredAt: string;
+  expiresAt: string;
+  respondedAt: string | null;
+}
+
 export const RIDE_AUDIT_ACTIONS = {
   REQUESTED: 'ride.requested',
   CANCELLED: 'ride.cancelled',
+  OFFERED: 'ride.offered',
+  OFFER_ACCEPTED: 'ride.offer_accepted',
+  OFFER_DECLINED: 'ride.offer_declined',
+  OFFER_EXPIRED: 'ride.offer_expired',
+  NO_DRIVERS_FOUND: 'ride.no_drivers_found',
 } as const;
 
 export type RideAuditAction = (typeof RIDE_AUDIT_ACTIONS)[keyof typeof RIDE_AUDIT_ACTIONS];

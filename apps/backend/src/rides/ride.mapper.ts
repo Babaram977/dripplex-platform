@@ -1,5 +1,5 @@
-import type { RideDto } from '@dripplex/types';
-import type { Ride } from '@prisma/client';
+import type { RideDto, RideOfferDto } from '@dripplex/types';
+import type { Ride, RideOffer } from '@prisma/client';
 
 export function toRideDto(ride: Ride): RideDto {
   return {
@@ -30,5 +30,17 @@ export function toRideDto(ride: Ride): RideDto {
     cancellationReason: ride.cancellationReason,
     createdAt: ride.createdAt.toISOString(),
     updatedAt: ride.updatedAt.toISOString(),
+  };
+}
+
+export function toRideOfferDto(offer: RideOffer): RideOfferDto {
+  return {
+    id: offer.id,
+    rideId: offer.rideId,
+    driverId: offer.driverId,
+    status: offer.status,
+    offeredAt: offer.offeredAt.toISOString(),
+    expiresAt: offer.expiresAt.toISOString(),
+    respondedAt: offer.respondedAt ? offer.respondedAt.toISOString() : null,
   };
 }

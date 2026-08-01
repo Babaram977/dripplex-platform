@@ -54,6 +54,7 @@ export const ROLE_PERMISSION_GRANTS: Record<string, string[]> = {
     'auth:sessions:revoke',
     'driver:onboarding:submit',
     'driver:kyc:manage',
+    'driver:ride:manage',
   ],
   operations_staff: [
     'profile:read',
@@ -143,6 +144,7 @@ export const ROLE_PERMISSION_GRANTS: Record<string, string[]> = {
     'admin:orders:read',
     'customer:delivery:read',
     'customer:ride:manage',
+    'driver:ride:manage',
     'rider:delivery:manage',
     'admin:delivery:manage',
     'customer:loyalty:read',

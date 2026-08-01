@@ -12,6 +12,7 @@ import type {
   PasswordResetNotificationInput,
   PaymentResultNotificationInput,
   PhoneOtpNotificationInput,
+  RideLifecycleNotificationInput,
 } from './notification.service';
 
 /**
@@ -159,6 +160,21 @@ export class LoggingNotificationService implements NotificationService {
         reason: input.reason,
       },
       'Driver lifecycle notification dispatched',
+    );
+    return Promise.resolve();
+  }
+
+  public notifyRideLifecycle(input: RideLifecycleNotificationInput): Promise<void> {
+    this.logger.log(
+      {
+        channel: 'email',
+        template: `ride_${input.event}_${input.audience}`,
+        email: input.email,
+        audience: input.audience,
+        event: input.event,
+        rideId: input.rideId,
+      },
+      'Ride lifecycle notification dispatched',
     );
     return Promise.resolve();
   }
