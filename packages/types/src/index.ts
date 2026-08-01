@@ -109,6 +109,17 @@ export type {
 export { DRIVER_AUDIT_ACTIONS } from './driver/index.js';
 
 export type {
+  RequestRideRequest,
+  RideAuditAction,
+  RideCancelledBy,
+  RideDto,
+  RideStatus,
+  RideType,
+} from './ride/index.js';
+
+export { RIDE_AUDIT_ACTIONS } from './ride/index.js';
+
+export type {
   AddressLabel,
   AddressListResponse,
   CoordinatesDto,

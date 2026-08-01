@@ -1,0 +1,139 @@
+import { Injectable } from '@nestjs/common';
+import { RideCancelledBy, RideStatus } from '@prisma/client';
+
+import { AuditService, type AuditContext } from '../audit/audit.service';
+import {
+  NotFoundDomainException,
+  ValidationDomainException,
+} from '../common/exceptions/domain.exception';
+import { PrismaService } from '../prisma/prisma.service';
+
+import { RideFareService } from './ride-fare.service';
+import { CANCELLABLE_RIDE_STATUSES, RIDE_AUDIT_ACTIONS } from './ride.constants';
+import { toRideDto } from './ride.mapper';
+
+import type { ListRidesQueryDto } from './dto/list-rides-query.dto';
+import type { CancelRideDto, RequestRideDto } from './dto/request-ride.dto';
+import type { RideDto } from '@dripplex/types';
+import type { Ride } from '@prisma/client';
+
+@Injectable()
+export class RidesService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly fareService: RideFareService,
+    private readonly auditService: AuditService,
+  ) {}
+
+  public async requestRide(
+    customerId: string,
+    dto: RequestRideDto,
+    context: AuditContext,
+  ): Promise<RideDto> {
+    const estimate = this.fareService.estimate(
+      dto.rideType,
+      { lat: dto.pickupLatitude, lng: dto.pickupLongitude },
+      { lat: dto.dropoffLatitude, lng: dto.dropoffLongitude },
+    );
+
+    const ride = await this.prisma.ride.create({
+      data: {
+        customerId,
+        rideType: dto.rideType,
+        pickupLatitude: dto.pickupLatitude,
+        pickupLongitude: dto.pickupLongitude,
+        ...(dto.pickupAddress !== undefined ? { pickupAddress: dto.pickupAddress } : {}),
+        dropoffLatitude: dto.dropoffLatitude,
+        dropoffLongitude: dto.dropoffLongitude,
+        ...(dto.dropoffAddress !== undefined ? { dropoffAddress: dto.dropoffAddress } : {}),
+        estimatedDistanceMeters: estimate.distanceMeters,
+        estimatedDurationSeconds: estimate.durationSeconds,
+        baseFare: estimate.baseFare,
+        distanceFare: estimate.distanceFare,
+        timeFare: estimate.timeFare,
+        totalFare: estimate.totalFare,
+      },
+    });
+
+    await this.auditService.record(
+      RIDE_AUDIT_ACTIONS.REQUESTED,
+      { ...context, userId: customerId },
+      { resource: 'ride', resourceId: ride.id, metadata: { rideType: ride.rideType } },
+    );
+
+    return toRideDto(ride);
+  }
+
+  public async getOwnRide(customerId: string, rideId: string): Promise<RideDto> {
+    const ride = await this.requireOwnedRide(customerId, rideId);
+    return toRideDto(ride);
+  }
+
+  public async listOwnRides(
+    customerId: string,
+    query: ListRidesQueryDto,
+  ): Promise<{
+    items: RideDto[];
+    meta: { page: number; limit: number; total: number; totalPages: number };
+  }> {
+    const where = { customerId, ...(query.status ? { status: query.status } : {}) };
+    const [rides, total] = await Promise.all([
+      this.prisma.ride.findMany({
+        where,
+        orderBy: { requestedAt: 'desc' },
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+      }),
+      this.prisma.ride.count({ where }),
+    ]);
+
+    return {
+      items: rides.map(toRideDto),
+      meta: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages: Math.ceil(total / query.limit),
+      },
+    };
+  }
+
+  public async cancelRide(
+    customerId: string,
+    rideId: string,
+    dto: CancelRideDto,
+    context: AuditContext,
+  ): Promise<RideDto> {
+    const ride = await this.requireOwnedRide(customerId, rideId);
+
+    if (!CANCELLABLE_RIDE_STATUSES.includes(ride.status)) {
+      throw new ValidationDomainException(`Ride cannot be cancelled from status ${ride.status}`);
+    }
+
+    const updated = await this.prisma.ride.update({
+      where: { id: ride.id },
+      data: {
+        status: RideStatus.CANCELLED,
+        cancelledAt: new Date(),
+        cancelledBy: RideCancelledBy.CUSTOMER,
+        ...(dto.reason !== undefined ? { cancellationReason: dto.reason } : {}),
+      },
+    });
+
+    await this.auditService.record(
+      RIDE_AUDIT_ACTIONS.CANCELLED,
+      { ...context, userId: customerId },
+      { resource: 'ride', resourceId: ride.id, metadata: { reason: dto.reason } },
+    );
+
+    return toRideDto(updated);
+  }
+
+  private async requireOwnedRide(customerId: string, rideId: string): Promise<Ride> {
+    const ride = await this.prisma.ride.findFirst({ where: { id: rideId, customerId } });
+    if (!ride) {
+      throw new NotFoundDomainException('Ride not found');
+    }
+    return ride;
+  }
+}

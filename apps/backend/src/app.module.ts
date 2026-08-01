@@ -28,6 +28,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { PromotionsModule } from './promotions/promotions.module';
 import { RedisModule } from './redis/redis.module';
 import { ReviewsModule } from './reviews/reviews.module';
+import { RidesModule } from './rides/rides.module';
 import { SearchModule } from './search/search.module';
 import { UsersModule } from './users/users.module';
 import { WalletModule } from './wallet/wallet.module';
@@ -59,6 +60,7 @@ import { WishlistModule } from './wishlist/wishlist.module';
     PaymentsModule,
     DeliveryModule,
     DriversModule,
+    RidesModule,
     ReviewsModule,
     WishlistModule,
     PromotionsModule,
