@@ -29,6 +29,7 @@ import {
   WishlistClient,
 } from '../platform/platform-client.js';
 import { CustomerProductsApi } from '../product/product-api.js';
+import { CustomerRideClient } from '../rides/customer-ride-client.js';
 
 import type { SdkConfig } from '../config/sdk-config.js';
 
@@ -46,6 +47,7 @@ export class DripplexClient {
   public readonly delivery: DeliveryClient;
   public readonly riderDelivery: RiderDeliveryClient;
   public readonly adminDelivery: AdminDeliveryClient;
+  public readonly rides: CustomerRideClient;
   public readonly notifications: NotificationsClient;
   public readonly search: SearchClient;
   public readonly reviews: ReviewsClient;
@@ -76,6 +78,7 @@ export class DripplexClient {
     this.delivery = new DeliveryClient(this.http);
     this.riderDelivery = new RiderDeliveryClient(this.http);
     this.adminDelivery = new AdminDeliveryClient(this.http);
+    this.rides = new CustomerRideClient(this.http);
     this.notifications = new NotificationsClient(this.http);
     this.search = new SearchClient(this.http);
     this.reviews = new ReviewsClient(this.http);
@@ -108,6 +111,7 @@ export { DeliveryClient } from '../delivery/delivery-client.js';
 export { RiderDeliveryClient } from '../delivery/rider-delivery-client.js';
 export { OrderClient } from '../order/order-client.js';
 export { PaymentClient } from '../payment/payment-client.js';
+export { CustomerRideClient } from '../rides/customer-ride-client.js';
 export {
   AdminWalletClient,
   AdminCmsClient,

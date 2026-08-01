@@ -18,6 +18,7 @@ export function createCustomerSdk(config: Partial<SdkConfig> = {}): CustomerSdk 
     orders: client.orders,
     payments: client.payments,
     delivery: client.delivery,
+    rides: client.rides,
     notifications: client.notifications,
     search: client.search,
     reviews: client.reviews,
@@ -39,6 +40,7 @@ export interface CustomerSdk {
   orders: DripplexClient['orders'];
   payments: DripplexClient['payments'];
   delivery: DripplexClient['delivery'];
+  rides: DripplexClient['rides'];
   notifications: DripplexClient['notifications'];
   search: DripplexClient['search'];
   reviews: DripplexClient['reviews'];
