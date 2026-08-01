@@ -70,6 +70,21 @@ export interface DeliveryLifecycleNotificationInput {
   jobId: string;
 }
 
+export type DriverLifecycleEvent =
+  | 'kyc_submitted'
+  | 'driver_approved'
+  | 'driver_rejected'
+  | 'driver_suspended'
+  | 'driver_reactivated';
+
+export interface DriverLifecycleNotificationInput {
+  email: string;
+  event: DriverLifecycleEvent;
+  driverId: string;
+  documentType?: string;
+  reason?: string;
+}
+
 /**
  * Provider-agnostic notification port for auth emails and SMS.
  * Production adapters (SendGrid, SES, Termii, etc.) implement this interface.
@@ -83,6 +98,7 @@ export interface NotificationService {
   notifyOrderCreated(input: OrderCreatedNotificationInput): Promise<void>;
   notifyPaymentResult(input: PaymentResultNotificationInput): Promise<void>;
   notifyDeliveryLifecycle(input: DeliveryLifecycleNotificationInput): Promise<void>;
+  notifyDriverLifecycle(input: DriverLifecycleNotificationInput): Promise<void>;
 }
 
 export const NOTIFICATION_SERVICE = Symbol('NOTIFICATION_SERVICE');

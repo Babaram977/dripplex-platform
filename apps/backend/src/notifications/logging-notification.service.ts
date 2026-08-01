@@ -3,6 +3,7 @@ import { Logger } from 'nestjs-pino';
 
 import type {
   DeliveryLifecycleNotificationInput,
+  DriverLifecycleNotificationInput,
   EmailVerificationNotificationInput,
   MerchantLifecycleNotificationInput,
   NotificationService,
@@ -143,6 +144,21 @@ export class LoggingNotificationService implements NotificationService {
         jobId: input.jobId,
       },
       'Delivery lifecycle notification dispatched',
+    );
+    return Promise.resolve();
+  }
+
+  public notifyDriverLifecycle(input: DriverLifecycleNotificationInput): Promise<void> {
+    this.logger.log(
+      {
+        channel: 'email',
+        template: `driver_${input.event}`,
+        email: input.email,
+        driverId: input.driverId,
+        documentType: input.documentType,
+        reason: input.reason,
+      },
+      'Driver lifecycle notification dispatched',
     );
     return Promise.resolve();
   }

@@ -14,6 +14,7 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { AppConfigService } from './config/app-config.service';
 import { AppConfigModule } from './config/config.module';
 import { DeliveryModule } from './delivery/delivery.module';
+import { DriversModule } from './drivers/drivers.module';
 import { EventsModule } from './events/events.module';
 import { FraudModule } from './fraud/fraud.module';
 import { HealthModule } from './health/health.module';
@@ -57,6 +58,7 @@ import { WishlistModule } from './wishlist/wishlist.module';
     OrdersModule,
     PaymentsModule,
     DeliveryModule,
+    DriversModule,
     ReviewsModule,
     WishlistModule,
     PromotionsModule,

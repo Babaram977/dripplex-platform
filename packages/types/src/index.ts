@@ -99,6 +99,16 @@ export type {
 export { MERCHANT_AUDIT_ACTIONS, MERCHANT_SORTS } from './merchant/index.js';
 
 export type {
+  DriverApprovalDto,
+  DriverAuditAction,
+  DriverKycDto,
+  DriverProfileDto,
+  DriverStatus,
+} from './driver/index.js';
+
+export { DRIVER_AUDIT_ACTIONS } from './driver/index.js';
+
+export type {
   AddressLabel,
   AddressListResponse,
   CoordinatesDto,

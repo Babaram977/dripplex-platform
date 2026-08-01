@@ -232,6 +232,7 @@ describe('DeliveryService', () => {
     notifyOrderCreated: jest.fn(),
     notifyPaymentResult: jest.fn(),
     notifyDeliveryLifecycle: jest.fn(),
+    notifyDriverLifecycle: jest.fn(),
   };
 
   const assignmentService = {
