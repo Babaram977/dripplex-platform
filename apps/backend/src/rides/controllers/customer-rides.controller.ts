@@ -15,18 +15,23 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 import { ListRidesQueryDto } from '../dto/list-rides-query.dto';
 import { CancelRideDto, RequestRideDto } from '../dto/request-ride.dto';
+import { InitiateRidePaymentDto, VerifyRidePaymentDto } from '../dto/ride-payment.dto';
+import { RidePaymentService } from '../ride-payment.service';
 import { RIDE_PERMISSIONS } from '../ride.constants';
 import { RidesService } from '../rides.service';
 
 import type { AuthenticatedUser } from '../../auth/auth.types';
 import type { ApiSuccessResponse } from '../../common/dto/api-response.dto';
-import type { RideDto } from '@dripplex/types';
+import type { InitiateRidePaymentResponse, RideDto } from '@dripplex/types';
 import type { Request } from 'express';
 
 @Controller('customer/rides')
 @RequirePermissions(RIDE_PERMISSIONS.MANAGE)
 export class CustomerRidesController {
-  constructor(private readonly ridesService: RidesService) {}
+  constructor(
+    private readonly ridesService: RidesService,
+    private readonly paymentService: RidePaymentService,
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -80,6 +85,36 @@ export class CustomerRidesController {
       dto,
       this.auditContext(request, user.id),
     );
+    return { success: true, data };
+  }
+
+  @Post(':id/pay')
+  @HttpCode(HttpStatus.OK)
+  public async initiatePayment(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: InitiateRidePaymentDto,
+  ): Promise<ApiSuccessResponse<InitiateRidePaymentResponse>> {
+    const data = await this.paymentService.initiatePayment(
+      user.id,
+      id,
+      dto.method,
+      dto.callbackUrl,
+      { userId: user.id },
+    );
+    return { success: true, data };
+  }
+
+  @Post(':id/pay/verify')
+  @HttpCode(HttpStatus.OK)
+  public async verifyPayment(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: VerifyRidePaymentDto,
+  ): Promise<ApiSuccessResponse<RideDto>> {
+    const data = await this.paymentService.verifyPayment(user.id, id, dto.reference, {
+      userId: user.id,
+    });
     return { success: true, data };
   }
 

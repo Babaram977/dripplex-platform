@@ -17,6 +17,7 @@ import { PaymentWebhooksController } from './payment-webhooks.controller';
 import { PaymentService } from './payment.service';
 import { FlutterwaveProvider } from './providers/flutterwave.provider';
 import { MoniepointProvider } from './providers/moniepoint.provider';
+import { OpayProvider } from './providers/opay.provider';
 import { PAYMENT_PROVIDER_ADAPTERS } from './providers/payment-provider.adapter';
 import { PaystackProvider } from './providers/paystack.provider';
 import { PAYMENT_TRANSACTION_REPOSITORY } from './repositories/payment-transaction.repository';
@@ -38,14 +39,16 @@ import { PrismaPaymentTransactionRepository } from './repositories/prisma-paymen
     PaystackProvider,
     FlutterwaveProvider,
     MoniepointProvider,
+    OpayProvider,
     {
       provide: PAYMENT_PROVIDER_ADAPTERS,
       useFactory: (
         paystack: PaystackProvider,
         flutterwave: FlutterwaveProvider,
         moniepoint: MoniepointProvider,
-      ) => [paystack, flutterwave, moniepoint],
-      inject: [PaystackProvider, FlutterwaveProvider, MoniepointProvider],
+        opay: OpayProvider,
+      ) => [paystack, flutterwave, moniepoint, opay],
+      inject: [PaystackProvider, FlutterwaveProvider, MoniepointProvider, OpayProvider],
     },
     {
       provide: PAYMENT_TRANSACTION_REPOSITORY,
@@ -56,6 +59,6 @@ import { PrismaPaymentTransactionRepository } from './repositories/prisma-paymen
       useClass: ReservationBackedInventoryDeductionService,
     },
   ],
-  exports: [PaymentService],
+  exports: [PaymentService, PAYMENT_PROVIDER_ADAPTERS],
 })
 export class PaymentsModule {}

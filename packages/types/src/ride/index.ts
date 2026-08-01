@@ -12,6 +12,9 @@ export type RideStatus =
 
 export type RideCancelledBy = 'CUSTOMER' | 'DRIVER' | 'SYSTEM';
 
+export type RidePaymentMethod = 'WALLET' | 'PAYSTACK' | 'FLUTTERWAVE' | 'OPAY' | 'CASH';
+export type RidePaymentStatus = 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED';
+
 export interface RideDto {
   id: string;
   customerId: string;
@@ -30,6 +33,10 @@ export interface RideDto {
   distanceFare: number;
   timeFare: number;
   totalFare: number;
+  paymentMethod: RidePaymentMethod | null;
+  paymentStatus: RidePaymentStatus;
+  platformCommission: number | null;
+  driverEarning: number | null;
   requestedAt: string;
   assignedAt: string | null;
   arrivedAt: string | null;
@@ -40,6 +47,17 @@ export interface RideDto {
   cancellationReason: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface InitiateRidePaymentRequest {
+  method: RidePaymentMethod;
+  callbackUrl?: string;
+}
+
+export interface InitiateRidePaymentResponse {
+  ride: RideDto;
+  authorizationUrl?: string;
+  reference?: string;
 }
 
 export interface RequestRideRequest {

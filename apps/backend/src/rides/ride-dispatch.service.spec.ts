@@ -62,6 +62,7 @@ describe('RideDispatchService', () => {
       notifyDeliveryLifecycle: jest.fn(),
       notifyDriverLifecycle: jest.fn(),
       notifyRideLifecycle: jest.fn().mockResolvedValue(undefined),
+      notifyRideEarning: jest.fn().mockResolvedValue(undefined),
     };
     const events: jest.Mocked<RideEventsPublisher> = {
       publishToRide: jest.fn(),

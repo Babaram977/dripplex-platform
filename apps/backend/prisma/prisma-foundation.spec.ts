@@ -49,12 +49,13 @@ describe('Prisma schema foundation (S1-C1)', () => {
     expect(Prisma.ModelName.DriverAvailability).toBe('DriverAvailability');
     expect(Prisma.ModelName.DriverKyc).toBe('DriverKyc');
     expect(Prisma.ModelName.RideOffer).toBe('RideOffer');
+    expect(Prisma.ModelName.RidePaymentTransaction).toBe('RidePaymentTransaction');
   });
 
   it('defines the DPX-013 Sprint 1 role and permission catalog sizes', () => {
     expect(ROLE_SEEDS).toHaveLength(7);
     expect(PERMISSION_SEEDS.length).toBeGreaterThanOrEqual(37);
-    expect(PERMISSION_SEEDS).toHaveLength(72);
+    expect(PERMISSION_SEEDS).toHaveLength(73);
     expect(ROLE_SEEDS.map((role: RoleSeed) => role.name)).toEqual(
       expect.arrayContaining([
         'customer',

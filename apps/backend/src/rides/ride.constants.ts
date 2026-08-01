@@ -11,11 +11,34 @@ export const RIDE_AUDIT_ACTIONS = {
   ARRIVED: 'ride.arrived',
   STARTED: 'ride.started',
   COMPLETED: 'ride.completed',
+  PAYMENT_INITIATED: 'ride.payment_initiated',
+  PAYMENT_SUCCEEDED: 'ride.payment_succeeded',
+  PAYMENT_FAILED: 'ride.payment_failed',
+  CASH_CONFIRMED: 'ride.cash_confirmed',
 } as const;
 
 export const RIDE_PERMISSIONS = {
   MANAGE: 'customer:ride:manage',
   DRIVER_MANAGE: 'driver:ride:manage',
+} as const;
+
+/**
+ * Percentage of the fare the platform retains; the remainder is the
+ * driver's earning. TODO: founder approval required before production —
+ * same placeholder discipline as RIDE_FARE_RATES below.
+ */
+export const RIDE_PLATFORM_COMMISSION_RATE = 0.15;
+
+/**
+ * WalletLedgerEntry.referenceType values used for ride settlement.
+ * Both are paired with referenceId = ride.id, which is what makes each
+ * wallet mutation idempotent (WalletService.applyMutation skips a mutation
+ * that already has a ledger entry for the same walletId+referenceType+
+ * referenceId) — safe to retry a whole settlement without double-crediting.
+ */
+export const RIDE_WALLET_REFERENCE_TYPES = {
+  FARE: 'ride_fare',
+  EARNING: 'ride_earning',
 } as const;
 
 /** How long a driver has to respond to an offer before it's reassigned. */

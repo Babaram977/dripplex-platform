@@ -385,7 +385,7 @@ export interface RedeemLoyaltyPointsRequest {
   referenceId?: string;
 }
 
-export type WalletOwnerType = 'CUSTOMER' | 'MERCHANT' | 'RIDER';
+export type WalletOwnerType = 'CUSTOMER' | 'MERCHANT' | 'RIDER' | 'DRIVER' | 'PLATFORM';
 export type WalletTransactionType =
   'CREDIT' | 'DEBIT' | 'REFUND' | 'SETTLEMENT' | 'CASHBACK' | 'WITHDRAWAL' | 'TRANSFER';
 export type WalletDirection = 'CREDIT' | 'DEBIT';

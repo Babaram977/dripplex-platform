@@ -55,6 +55,7 @@ export const ROLE_PERMISSION_GRANTS: Record<string, string[]> = {
     'driver:onboarding:submit',
     'driver:kyc:manage',
     'driver:ride:manage',
+    'driver:wallet:read',
   ],
   operations_staff: [
     'profile:read',
@@ -154,6 +155,7 @@ export const ROLE_PERMISSION_GRANTS: Record<string, string[]> = {
     'customer:wallet:transfer',
     'merchant:wallet:read',
     'rider:wallet:read',
+    'driver:wallet:read',
     'admin:wallet:manage',
     'merchant:analytics:read',
     'admin:analytics:read',

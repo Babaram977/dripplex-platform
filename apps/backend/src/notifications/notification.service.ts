@@ -92,13 +92,22 @@ export type RideLifecycleEvent =
   | 'ride_arrived'
   | 'ride_started'
   | 'ride_completed'
-  | 'ride_cancelled';
+  | 'ride_cancelled'
+  | 'ride_payment_succeeded'
+  | 'ride_payment_failed';
 
 export interface RideLifecycleNotificationInput {
   audience: 'customer' | 'driver';
   email: string;
   event: RideLifecycleEvent;
   rideId: string;
+}
+
+export interface RideEarningNotificationInput {
+  email: string;
+  rideId: string;
+  amount: number;
+  currency: string;
 }
 
 /**
@@ -116,6 +125,7 @@ export interface NotificationService {
   notifyDeliveryLifecycle(input: DeliveryLifecycleNotificationInput): Promise<void>;
   notifyDriverLifecycle(input: DriverLifecycleNotificationInput): Promise<void>;
   notifyRideLifecycle(input: RideLifecycleNotificationInput): Promise<void>;
+  notifyRideEarning(input: RideEarningNotificationInput): Promise<void>;
 }
 
 export const NOTIFICATION_SERVICE = Symbol('NOTIFICATION_SERVICE');

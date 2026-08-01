@@ -1,4 +1,4 @@
-export type PaymentProvider = 'PAYSTACK' | 'FLUTTERWAVE' | 'MONIEPOINT';
+export type PaymentProvider = 'PAYSTACK' | 'FLUTTERWAVE' | 'MONIEPOINT' | 'OPAY';
 
 export type TransactionStatus =
   'PENDING' | 'SUCCESS' | 'FAILED' | 'ABANDONED' | 'CANCELLED' | 'REFUNDED';

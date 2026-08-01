@@ -15,6 +15,7 @@ import { RequirePermissions } from '../../common/decorators/permissions.decorato
 import { CancelRideDto } from '../dto/request-ride.dto';
 import { UpdateDriverAvailabilityDto } from '../dto/update-driver-availability.dto';
 import { RideDispatchService } from '../ride-dispatch.service';
+import { RidePaymentService } from '../ride-payment.service';
 import { RideTripService } from '../ride-trip.service';
 import { RIDE_PERMISSIONS } from '../ride.constants';
 import { RidesService } from '../rides.service';
@@ -31,6 +32,7 @@ export class DriverRidesController {
     private readonly dispatchService: RideDispatchService,
     private readonly ridesService: RidesService,
     private readonly tripService: RideTripService,
+    private readonly paymentService: RidePaymentService,
   ) {}
 
   @Post('availability')
@@ -132,6 +134,16 @@ export class DriverRidesController {
       dto.reason,
       this.auditContext(request, user.id),
     );
+    return { success: true, data };
+  }
+
+  @Post(':id/cash-confirm')
+  @HttpCode(HttpStatus.OK)
+  public async confirmCash(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ApiSuccessResponse<RideDto>> {
+    const data = await this.paymentService.confirmCash(user.id, id, { userId: user.id });
     return { success: true, data };
   }
 

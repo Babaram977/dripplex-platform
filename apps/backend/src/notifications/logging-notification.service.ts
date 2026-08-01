@@ -12,6 +12,7 @@ import type {
   PasswordResetNotificationInput,
   PaymentResultNotificationInput,
   PhoneOtpNotificationInput,
+  RideEarningNotificationInput,
   RideLifecycleNotificationInput,
 } from './notification.service';
 
@@ -175,6 +176,21 @@ export class LoggingNotificationService implements NotificationService {
         rideId: input.rideId,
       },
       'Ride lifecycle notification dispatched',
+    );
+    return Promise.resolve();
+  }
+
+  public notifyRideEarning(input: RideEarningNotificationInput): Promise<void> {
+    this.logger.log(
+      {
+        channel: 'email',
+        template: 'ride_earning_received',
+        email: input.email,
+        rideId: input.rideId,
+        amount: input.amount,
+        currency: input.currency,
+      },
+      'Ride earning notification dispatched',
     );
     return Promise.resolve();
   }
