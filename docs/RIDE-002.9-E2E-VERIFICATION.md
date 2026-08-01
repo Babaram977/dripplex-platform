@@ -44,11 +44,10 @@ giving that test a real eligible driver so the ride reaches a genuine pre-assign
 
 - **No verification-code / PIN confirmation step.** The founder's happy-path diagram
   included "Driver arrives → Verification code confirmed → Ride starts," but no such
-  field or check exists anywhere in the schema or `RideTripService` — `markArrived` →
-  `startTrip` requires only that the driver owns the ride and it's in the right status.
-  This isn't a defect (the locked RIDE-001B trip lifecycle never specified one), but
-  it's worth a product decision before launch: Uber/Bolt use this to prevent a driver
-  starting the meter for the wrong passenger.
+  field or check existed anywhere in the schema or `RideTripService`. Flagged as a
+  business decision rather than assumed — **resolved by RIDE-002.10** (see below):
+  the founder locked "no mandatory passenger OTP" and asked for GPS proximity
+  validation on `startTrip` instead, which has now been built and verified.
 - **No SOS / emergency / trip-sharing feature exists anywhere in the backend** —
   confirmed via a targeted search of the `rides` module and the schema (no
   `verificationCode`, no `SOS`/`emergency`, no `shareTrip`/`tripShare` field or
@@ -70,3 +69,42 @@ to stop expanding and start being connected to real screens. Per the roadmap agr
 finish RIDE-002.9, then RIDE-003 (Ride Customer UI integration) — no further backend
 milestones are planned unless RIDE-003's UI integration surfaces a real gap the backend
 needs to close.
+
+## RIDE-002.10 addendum — locked decision: no mandatory passenger OTP
+
+The founder reviewed the verification-code gap above and made an explicit product
+decision, appropriately treating it as a Kano-market fit question rather than a
+default-to-industry-practice one: requiring a spoken OTP creates real friction for a
+meaningful share of the target market, so it is **not** mandatory before ride start.
+
+**Locked flow (unchanged from what RIDE-002.9 already verified):** request → accept →
+arrive → passenger boards → driver taps "Start Ride" → ride begins. No code exchange.
+
+**Safety measure substituted, and built:** `RideTripService.startTrip` now requires the
+driver's last-known location (`DriverAvailability.latitude`/`longitude`, already
+tracked since RIDE-002.5's location-update flow) to be within `RIDE_START_PROXIMITY_METERS`
+(50m, the more lenient end of the founder's own 30–50m range) of the ride's pickup
+point, using the existing `haversineMeters` utility — zero new distance-calculation
+logic. Two new rejection paths: the driver is too far from pickup, or the driver has no
+location on record at all (can't verify what isn't known). The measured distance is
+recorded on the `ride.started` audit log entry. No new schema, no new endpoint, no
+change to the `Ride` status machine — exactly "preserve the current ride lifecycle," as
+instructed.
+
+**Not built, and explicitly still open** (the founder's other "safety measures instead"
+bullets — driver photo, vehicle photo, vehicle model, plate number, shown to the
+passenger before boarding): this requires new schema (no plate/model/colour/photo field
+exists anywhere, confirmed in RIDE-002.8's audit) and, for photos, an upload/storage
+decision. The founder's arrival-notification bullet is already covered — `markArrived`
+has fired `ride_arrived` to the passenger since RIDE-002.4. The founder's explicit
+instruction to Claude covered the OTP removal, the GPS check, and preserving the
+lifecycle; it did not ask for the driver/vehicle-identity display to be built now, so
+it wasn't — flagged here for an explicit decision on timing instead, same discipline as
+every other gap in this document.
+
+**Verification**: two new `ride-trip.service.spec.ts` cases (rejects when too far,
+rejects when location unknown) plus the existing `ride-lifecycle.e2e.spec.ts` full-chain
+suite updated to simulate a driver's location snapping to the pickup point on arrival
+(mirroring the real live-location-ping flow) so every `startTrip` call in the suite
+continues to exercise a realistic, passing proximity check. 817/817 backend tests
+passing, both `--runInBand` and `--maxWorkers=2`, typecheck and lint clean.

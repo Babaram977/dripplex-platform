@@ -81,18 +81,27 @@ describe('RideTripService', () => {
     });
     driverId = driver.id;
     await prisma.driverAvailability.create({
-      data: { driverId, online: true, acceptingRides: true, vehicleType: 'ECONOMY' },
+      data: {
+        driverId,
+        online: true,
+        acceptingRides: true,
+        vehicleType: 'ECONOMY',
+        // At the ride's pickup point (6.6, 3.35) — startTrip's GPS proximity
+        // gate needs the driver's last-known location to be within 50m.
+        latitude: 6.6,
+        longitude: 3.35,
+      },
     });
   });
 
   afterEach(async () => {
-    // Reset the shared driver's active-ride counter so each test's own
-    // increment/decrement assertions start from a known baseline, regardless
-    // of whether the previous test's transition completed or was rejected.
+    // Reset the shared driver's active-ride counter and location so each
+    // test's own assertions start from a known baseline, regardless of
+    // whether the previous test's transition completed or was rejected.
     if (databaseAvailable) {
       await prisma.driverAvailability.update({
         where: { driverId },
-        data: { activeRideCount: 0 },
+        data: { activeRideCount: 0, latitude: 6.6, longitude: 3.35 },
       });
     }
   });
@@ -162,6 +171,37 @@ describe('RideTripService', () => {
 
     await expect(service.startTrip(driverId, ride.id, context)).rejects.toThrow(
       'Ride cannot be started from status DRIVER_ASSIGNED',
+    );
+  });
+
+  it('rejects starting a trip when the driver is too far from pickup', async () => {
+    if (!databaseAvailable) return;
+
+    const ride = await createAssignedRide();
+    await service.markArrived(driverId, ride.id, context);
+    await prisma.driverAvailability.update({
+      where: { driverId },
+      // ~1.6km from the pickup point (6.6, 3.35) — well past the 50m gate.
+      data: { latitude: 6.615, longitude: 3.365 },
+    });
+
+    await expect(service.startTrip(driverId, ride.id, context)).rejects.toThrow(
+      'Driver is too far from pickup to start the ride',
+    );
+  });
+
+  it('rejects starting a trip when the driver has no location on record', async () => {
+    if (!databaseAvailable) return;
+
+    const ride = await createAssignedRide();
+    await service.markArrived(driverId, ride.id, context);
+    await prisma.driverAvailability.update({
+      where: { driverId },
+      data: { latitude: null, longitude: null },
+    });
+
+    await expect(service.startTrip(driverId, ride.id, context)).rejects.toThrow(
+      'Driver location is not available; cannot verify proximity to pickup',
     );
   });
 

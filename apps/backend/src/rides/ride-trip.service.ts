@@ -5,6 +5,7 @@ import { AuditService, type AuditContext } from '../audit/audit.service';
 import {
   ConflictDomainException,
   NotFoundDomainException,
+  ValidationDomainException,
 } from '../common/exceptions/domain.exception';
 import {
   NOTIFICATION_SERVICE,
@@ -14,11 +15,12 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 
 import { RIDE_EVENTS_PUBLISHER, type RideEventsPublisher } from './ride-events.publisher';
-import { RIDE_AUDIT_ACTIONS } from './ride.constants';
+import { haversineMeters } from './ride-fare.service';
+import { RIDE_AUDIT_ACTIONS, RIDE_START_PROXIMITY_METERS } from './ride.constants';
 import { toRideDto } from './ride.mapper';
 
 import type { RideDto } from '@dripplex/types';
-import type { Ride } from '@prisma/client';
+import type { Prisma, Ride } from '@prisma/client';
 
 const DRIVER_CANCELLABLE_STATUSES: RideStatus[] = [RideStatus.DRIVER_ASSIGNED, RideStatus.ARRIVED];
 
@@ -64,13 +66,16 @@ export class RideTripService {
   ): Promise<RideDto> {
     const ride = await this.requireAssignedRide(driverId, rideId);
     this.requireStatus(ride, RideStatus.ARRIVED, 'started');
+    const distanceMeters = await this.requireDriverNearPickup(driverId, ride);
 
     const updated = await this.prisma.ride.update({
       where: { id: ride.id },
       data: { status: RideStatus.IN_PROGRESS, startedAt: new Date() },
     });
 
-    await this.audit(RIDE_AUDIT_ACTIONS.STARTED, driverId, updated.id, context);
+    await this.audit(RIDE_AUDIT_ACTIONS.STARTED, driverId, updated.id, context, {
+      distanceFromPickupMeters: distanceMeters,
+    });
     await this.notifyAndPublish(updated, 'ride_started');
     return toRideDto(updated);
   }
@@ -148,12 +153,44 @@ export class RideTripService {
     driverId: string,
     rideId: string,
     context: AuditContext,
+    metadata?: Prisma.InputJsonValue,
   ): Promise<void> {
     await this.auditService.record(
       action,
       { ...context, userId: driverId },
-      { resource: 'ride', resourceId: rideId },
+      { resource: 'ride', resourceId: rideId, ...(metadata ? { metadata } : {}) },
     );
+  }
+
+  /**
+   * Founder-locked decision: no mandatory passenger OTP/PIN before ride
+   * start. Instead, gate "Start Ride" on the driver's last-known location
+   * being within RIDE_START_PROXIMITY_METERS of the pickup point — reduces
+   * accidental or fraudulent starts without requiring any passenger
+   * interaction. Returns the measured distance for the audit trail.
+   */
+  private async requireDriverNearPickup(driverId: string, ride: Ride): Promise<number> {
+    const availability = await this.prisma.driverAvailability.findUnique({
+      where: { driverId },
+    });
+    if (!availability?.latitude || !availability.longitude) {
+      throw new ValidationDomainException(
+        'Driver location is not available; cannot verify proximity to pickup',
+      );
+    }
+
+    const distanceMeters = haversineMeters(
+      Number(availability.latitude),
+      Number(availability.longitude),
+      Number(ride.pickupLatitude),
+      Number(ride.pickupLongitude),
+    );
+    if (distanceMeters > RIDE_START_PROXIMITY_METERS) {
+      throw new ValidationDomainException(
+        `Driver is too far from pickup to start the ride (${String(Math.round(distanceMeters))}m away, must be within ${String(RIDE_START_PROXIMITY_METERS)}m)`,
+      );
+    }
+    return distanceMeters;
   }
 
   private async notifyAndPublish(ride: Ride, event: RideLifecycleEvent): Promise<void> {

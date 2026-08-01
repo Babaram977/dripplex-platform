@@ -239,6 +239,18 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
     return requested;
   }
 
+  // startTrip's GPS proximity gate (RIDE-002.10, locked in place of a
+  // mandatory passenger OTP) requires the driver's last-known location to
+  // be within 50m of pickup. In production this comes from the driver's
+  // live location pings as they actually drive there; simulate that here
+  // by snapping their recorded location to the pickup point once arrived.
+  async function simulateArrivalAtPickup(driverId: string): Promise<void> {
+    await prisma.driverAvailability.update({
+      where: { driverId },
+      data: { latitude: PICKUP.lat, longitude: PICKUP.lng },
+    });
+  }
+
   describe('Scenario 1 — happy path', () => {
     it('walks request -> dispatch -> accept -> trip -> payment -> tip -> ratings -> receipt -> report/resolve, notifying over the WebSocket port at every step and leaving every wallet reconciled', async () => {
       if (!databaseAvailable) return;
@@ -273,6 +285,7 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
 
       const arrived = await tripService.markArrived(driverId, requested.id, {});
       expect(arrived.status).toBe('ARRIVED');
+      await simulateArrivalAtPickup(driverId);
       const started = await tripService.startTrip(driverId, requested.id, {});
       expect(started.status).toBe('IN_PROGRESS');
       const completed = await tripService.completeTrip(driverId, requested.id, {});
@@ -384,6 +397,7 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
       expect(assigned.driverId).toBe(farDriverId);
 
       await tripService.markArrived(farDriverId, requested.id, {});
+      await simulateArrivalAtPickup(farDriverId);
       await tripService.startTrip(farDriverId, requested.id, {});
       const completed = await tripService.completeTrip(farDriverId, requested.id, {});
       expect(completed.status).toBe('COMPLETED');
@@ -467,6 +481,7 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
       });
       await dispatchService.acceptOffer(driverId, offer.id, {});
       await tripService.markArrived(driverId, requested.id, {});
+      await simulateArrivalAtPickup(driverId);
       await tripService.startTrip(driverId, requested.id, {});
       await tripService.completeTrip(driverId, requested.id, {});
 
@@ -510,6 +525,7 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
       });
       await dispatchService.acceptOffer(driverId, offer.id, {});
       await tripService.markArrived(driverId, requested.id, {});
+      await simulateArrivalAtPickup(driverId);
       await tripService.startTrip(driverId, requested.id, {});
       await tripService.completeTrip(driverId, requested.id, {});
 
@@ -643,6 +659,7 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
       });
       await dispatchService.acceptOffer(driverId, offer.id, {});
       await tripService.markArrived(driverId, requested.id, {});
+      await simulateArrivalAtPickup(driverId);
       await tripService.startTrip(driverId, requested.id, {});
 
       await expect(ridesService.cancelRide(customerId, requested.id, {}, {})).rejects.toThrow(

@@ -70,6 +70,15 @@ export const CANCELLABLE_RIDE_STATUSES: readonly string[] = [
 export const DEFAULT_RIDE_SPEED_MPS = 8.33;
 
 /**
+ * Founder-locked decision (no mandatory passenger OTP/PIN before ride start):
+ * a driver may only tap "Start Ride" when their last-known location is
+ * within this distance of the pickup point. Founder specified 30-50m; 50m
+ * chosen as the more lenient end of that explicit range, not a placeholder
+ * awaiting approval like RIDE_FARE_RATES below.
+ */
+export const RIDE_START_PROXIMITY_METERS = 50;
+
+/**
  * Placeholder fare constants — anchored to delivery's existing per-km pricing
  * magnitude (FEE_PER_KM = 150), not a founder-approved fare table. Real ride
  * economics (base fare, per-km, per-minute, per ride type) need explicit
