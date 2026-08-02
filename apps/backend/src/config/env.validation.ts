@@ -54,6 +54,7 @@ export const envSchema = z.object({
   FIREBASE_PROJECT_ID: z.string().default(''),
   FIREBASE_CLIENT_EMAIL: z.string().default(''),
   FIREBASE_PRIVATE_KEY: z.string().default(''),
+  GOOGLE_MAPS_SERVER_API_KEY: z.string().default(''),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

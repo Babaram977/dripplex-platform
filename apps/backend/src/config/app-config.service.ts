@@ -226,4 +226,12 @@ export class AppConfigService {
       this.firebasePrivateKey !== ''
     );
   }
+
+  public get googleMapsServerApiKey(): string {
+    return this.configService.get('GOOGLE_MAPS_SERVER_API_KEY', { infer: true });
+  }
+
+  public get googleMapsConfigured(): boolean {
+    return this.googleMapsServerApiKey !== '';
+  }
 }
