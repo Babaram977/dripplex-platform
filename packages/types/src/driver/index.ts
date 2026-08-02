@@ -34,6 +34,13 @@ export interface DriverProfileDto {
   kyc: DriverKycDto[];
 }
 
+export interface SubmitDriverKycRequest {
+  documentType: KycDocumentType;
+  documentNumber: string;
+  frontImage: string;
+  backImage?: string;
+}
+
 export interface DriverApprovalDto {
   driverId: string;
   status: DriverStatus;

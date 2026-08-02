@@ -17,9 +17,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RIDE_EVENTS_PUBLISHER, type RideEventsPublisher } from './ride-events.publisher';
 import { haversineMeters } from './ride-fare.service';
 import { MAX_DISPATCH_ATTEMPTS, RIDE_AUDIT_ACTIONS, RIDE_OFFER_TIMEOUT_MS } from './ride.constants';
-import { toRideDto, toRideOfferDto } from './ride.mapper';
+import { toRideDto, toRideOfferDto, toRideOfferPreviewDto } from './ride.mapper';
 
-import type { RideDto, RideOfferDto } from '@dripplex/types';
+import type { RideDto, RideOfferDto, RideOfferPreviewDto } from '@dripplex/types';
 import type { DriverAvailability, Ride, RideOffer } from '@prisma/client';
 
 /**
@@ -102,6 +102,15 @@ export class RideDispatchService {
       orderBy: { offeredAt: 'asc' },
     });
     return offers.map(toRideOfferDto);
+  }
+
+  /** Preview shown to the driver before accept/decline — deliberately omits
+   * customer identity, which only becomes visible via RideDto after the
+   * driver accepts (see RideOfferPreviewDto doc comment). */
+  public async getOfferPreview(driverId: string, offerId: string): Promise<RideOfferPreviewDto> {
+    const offer = await this.requireLiveOffer(driverId, offerId);
+    const ride = await this.requireRide(offer.rideId);
+    return toRideOfferPreviewDto(offer, ride);
   }
 
   public async acceptOffer(

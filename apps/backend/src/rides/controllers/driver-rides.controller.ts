@@ -24,7 +24,13 @@ import { RidesService } from '../rides.service';
 
 import type { AuthenticatedUser } from '../../auth/auth.types';
 import type { ApiSuccessResponse } from '../../common/dto/api-response.dto';
-import type { DriverAvailabilityDto, RideDto, RideOfferDto, RideRatingDto } from '@dripplex/types';
+import type {
+  DriverAvailabilityDto,
+  RideDto,
+  RideOfferDto,
+  RideOfferPreviewDto,
+  RideRatingDto,
+} from '@dripplex/types';
 import type { Request } from 'express';
 
 @Controller('driver/rides')
@@ -53,6 +59,15 @@ export class DriverRidesController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<ApiSuccessResponse<RideOfferDto[]>> {
     const data = await this.dispatchService.listOwnOffers(user.id);
+    return { success: true, data };
+  }
+
+  @Get('offers/:id')
+  public async getOfferPreview(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ApiSuccessResponse<RideOfferPreviewDto>> {
+    const data = await this.dispatchService.getOfferPreview(user.id, id);
     return { success: true, data };
   }
 

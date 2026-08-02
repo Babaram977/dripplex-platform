@@ -14,6 +14,8 @@ export function createDriverSdk(config: Partial<SdkConfig> = {}): DriverSdk {
     driverCampaign: client.driverCampaign,
     notifications: client.driverNotifications,
     wallet: client.wallet,
+    rides: client.driverRides,
+    profile: client.driverProfile,
   };
 }
 
@@ -22,6 +24,8 @@ export interface DriverSdk {
   driverCampaign: DripplexClient['driverCampaign'];
   notifications: DripplexClient['driverNotifications'];
   wallet: DripplexClient['wallet'];
+  rides: DripplexClient['driverRides'];
+  profile: DripplexClient['driverProfile'];
 }
 
 export function resolveDriverSdkConfig(config: Partial<SdkConfig> = {}): SdkConfig {

@@ -210,6 +210,37 @@ describe('RideDispatchService', () => {
     expect(offers).toHaveLength(0);
   });
 
+  it('returns pickup/dropoff/fare preview without exposing customer identity', async () => {
+    if (!databaseAvailable) return;
+
+    const driverId = await createDriver(NEARBY);
+    const ride = await createRide();
+    await service.dispatchRide(ride.id);
+    const offer = await prisma.rideOffer.findFirstOrThrow({ where: { rideId: ride.id } });
+
+    const preview = await service.getOfferPreview(driverId, offer.id);
+
+    expect(preview.rideId).toBe(ride.id);
+    expect(preview.status).toBe('PENDING');
+    expect(preview.pickupLatitude).toBeCloseTo(Number(ride.pickupLatitude));
+    expect(preview.dropoffLatitude).toBeCloseTo(Number(ride.dropoffLatitude));
+    expect(preview.totalFare).toBe(Number(ride.totalFare));
+    expect(preview).not.toHaveProperty('customerId');
+    expect(preview).not.toHaveProperty('driverId');
+  });
+
+  it('rejects previewing an offer belonging to another driver', async () => {
+    if (!databaseAvailable) return;
+
+    await createDriver(NEARBY);
+    const otherDriverId = await createDriver(FARTHER);
+    const ride = await createRide();
+    await service.dispatchRide(ride.id);
+    const offer = await prisma.rideOffer.findFirstOrThrow({ where: { rideId: ride.id } });
+
+    await expect(service.getOfferPreview(otherDriverId, offer.id)).rejects.toThrow();
+  });
+
   it('assigns the driver and increments activeRideCount on accept', async () => {
     if (!databaseAvailable) return;
 

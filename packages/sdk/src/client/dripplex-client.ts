@@ -6,6 +6,7 @@ import { resolveSdkConfig } from '../config/sdk-config.js';
 import { AdminDeliveryClient } from '../delivery/admin-delivery-client.js';
 import { DeliveryClient } from '../delivery/delivery-client.js';
 import { RiderDeliveryClient } from '../delivery/rider-delivery-client.js';
+import { DriverProfileClient } from '../drivers/driver-profile-client.js';
 import {
   AdminMerchantsApi,
   CustomerMerchantsApi,
@@ -36,6 +37,7 @@ import {
 } from '../platform/platform-client.js';
 import { CustomerProductsApi } from '../product/product-api.js';
 import { CustomerRideClient } from '../rides/customer-ride-client.js';
+import { DriverRideClient } from '../rides/driver-ride-client.js';
 
 import type { SdkConfig } from '../config/sdk-config.js';
 
@@ -54,6 +56,8 @@ export class DripplexClient {
   public readonly riderDelivery: RiderDeliveryClient;
   public readonly adminDelivery: AdminDeliveryClient;
   public readonly rides: CustomerRideClient;
+  public readonly driverRides: DriverRideClient;
+  public readonly driverProfile: DriverProfileClient;
   public readonly notifications: NotificationsClient;
   public readonly driverNotifications: NotificationsClient;
   public readonly devices: DevicesClient;
@@ -92,6 +96,8 @@ export class DripplexClient {
     this.riderDelivery = new RiderDeliveryClient(this.http);
     this.adminDelivery = new AdminDeliveryClient(this.http);
     this.rides = new CustomerRideClient(this.http);
+    this.driverRides = new DriverRideClient(this.http);
+    this.driverProfile = new DriverProfileClient(this.http);
     this.notifications = new NotificationsClient(this.http);
     this.driverNotifications = new NotificationsClient(this.http, '/driver/notifications');
     this.devices = new DevicesClient(this.http);

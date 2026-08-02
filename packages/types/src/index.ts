@@ -104,6 +104,7 @@ export type {
   DriverKycDto,
   DriverProfileDto,
   DriverStatus,
+  SubmitDriverKycRequest,
 } from './driver/index.js';
 
 export { DRIVER_AUDIT_ACTIONS } from './driver/index.js';
@@ -122,6 +123,7 @@ export type {
   RideCategoryRatings,
   RideDto,
   RideOfferDto,
+  RideOfferPreviewDto,
   RideOfferStatus,
   RidePaymentMethod,
   RidePaymentStatus,
@@ -135,6 +137,7 @@ export type {
   RideStatus,
   RideType,
   TipDriverRequest,
+  UpdateDriverAvailabilityRequest,
 } from './ride/index.js';
 
 export { RIDE_AUDIT_ACTIONS } from './ride/index.js';

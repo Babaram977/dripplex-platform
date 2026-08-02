@@ -3,6 +3,7 @@ import type {
   RideCategoryRatings,
   RideDto,
   RideOfferDto,
+  RideOfferPreviewDto,
   RideProblemReportDto,
   RideRatingDto,
 } from '@dripplex/types';
@@ -75,6 +76,26 @@ export function toRideOfferDto(offer: RideOffer): RideOfferDto {
     offeredAt: offer.offeredAt.toISOString(),
     expiresAt: offer.expiresAt.toISOString(),
     respondedAt: offer.respondedAt ? offer.respondedAt.toISOString() : null,
+  };
+}
+
+export function toRideOfferPreviewDto(offer: RideOffer, ride: Ride): RideOfferPreviewDto {
+  return {
+    id: offer.id,
+    rideId: offer.rideId,
+    status: offer.status,
+    expiresAt: offer.expiresAt.toISOString(),
+    rideType: ride.rideType,
+    pickupLatitude: Number(ride.pickupLatitude),
+    pickupLongitude: Number(ride.pickupLongitude),
+    pickupAddress: ride.pickupAddress,
+    dropoffLatitude: Number(ride.dropoffLatitude),
+    dropoffLongitude: Number(ride.dropoffLongitude),
+    dropoffAddress: ride.dropoffAddress,
+    estimatedDistanceMeters: ride.estimatedDistanceMeters,
+    estimatedDurationSeconds: ride.estimatedDurationSeconds,
+    totalFare: Number(ride.totalFare),
+    paymentMethod: ride.paymentMethod,
   };
 }
 

@@ -190,6 +190,14 @@ export interface DriverAvailabilityDto {
   updatedAt: string;
 }
 
+export interface UpdateDriverAvailabilityRequest {
+  online: boolean;
+  acceptingRides: boolean;
+  vehicleType: RideType;
+  latitude?: number;
+  longitude?: number;
+}
+
 export type RideOfferStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'EXPIRED';
 
 export interface RideOfferDto {
@@ -200,6 +208,27 @@ export interface RideOfferDto {
   offeredAt: string;
   expiresAt: string;
   respondedAt: string | null;
+}
+
+/** What a driver sees before accepting/declining — deliberately excludes
+ * customer identity (name/phone), which is only revealed after acceptance
+ * via RideDto. */
+export interface RideOfferPreviewDto {
+  id: string;
+  rideId: string;
+  status: RideOfferStatus;
+  expiresAt: string;
+  rideType: RideType;
+  pickupLatitude: number;
+  pickupLongitude: number;
+  pickupAddress: string | null;
+  dropoffLatitude: number;
+  dropoffLongitude: number;
+  dropoffAddress: string | null;
+  estimatedDistanceMeters: number | null;
+  estimatedDurationSeconds: number | null;
+  totalFare: number;
+  paymentMethod: RidePaymentMethod | null;
 }
 
 export const RIDE_AUDIT_ACTIONS = {
