@@ -25,6 +25,7 @@ export { EmptyState } from './components/ui/empty-state';
 export { Input, type InputProps } from './components/ui/input';
 export { Label } from './components/ui/label';
 export { LoadingSpinner } from './components/ui/loading-spinner';
+export { Progress, type ProgressProps } from './components/ui/progress';
 export {
   Modal,
   ModalClose,

@@ -22,6 +22,10 @@
       "types": "./dist/sdk-rider.d.ts",
       "import": "./dist/sdk-rider.js"
     },
+    "./sdk-driver": {
+      "types": "./dist/sdk-driver.d.ts",
+      "import": "./dist/sdk-driver.js"
+    },
     "./sdk-admin": {
       "types": "./dist/sdk-admin.d.ts",
       "import": "./dist/sdk-admin.js"

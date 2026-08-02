@@ -32,6 +32,7 @@ import {
   toReferralRewardDto,
   toReferralStatisticsDto,
   type DriverCampaignDashboardDto,
+  type DriverLeaderboardEntryDto,
   type LeaderboardEntryDto,
   type ReferralCampaignDto,
   type ReferralFraudCheckDto,
@@ -484,6 +485,39 @@ export class DriverCampaignService {
       orderBy: { periodStart: 'desc' },
     });
     return campaigns.map(toReferralCampaignDto);
+  }
+
+  /**
+   * Driver-facing equivalent of getLeaderboard() below — scoped to the
+   * currently active campaign (drivers have no reason to browse past
+   * campaigns' rankings) and returns DriverLeaderboardEntryDto rows, which
+   * omit the referral code and full name (see the DTO's own doc comment).
+   */
+  public async getLeaderboardForActiveCampaign(
+    requestingDriverId: string,
+  ): Promise<DriverLeaderboardEntryDto[]> {
+    const campaign = await this.requireActiveCampaign();
+    const referrals = await this.prisma.driverReferral.findMany({
+      where: { campaignId: campaign.id },
+      include: { statistics: true, driver: true },
+      orderBy: { statistics: { qualifiedCount: 'desc' } },
+    });
+    return referrals
+      .filter((referral) => referral.statistics)
+      .map((referral, index) => {
+        const statistics = referral.statistics;
+        const tier = statistics
+          ? this.computeTier(campaign, statistics)
+          : ReferralCampaignTier.NONE;
+        return {
+          position: index + 1,
+          driverName: `${referral.driver.firstName} ${referral.driver.lastName.charAt(0)}.`,
+          qualifiedCount: statistics?.qualifiedCount ?? 0,
+          currentTier: tier,
+          estimatedRewardAmount: this.rewardAmountForTier(campaign, tier),
+          isCurrentDriver: referral.driverId === requestingDriverId,
+        };
+      });
   }
 
   public async getLeaderboard(campaignId: string): Promise<LeaderboardEntryDto[]> {

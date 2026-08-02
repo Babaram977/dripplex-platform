@@ -32,6 +32,21 @@ describe('C2 Frontend wiring validation (no UI redesign)', () => {
     expect(read('apps/rider-portal/src/lib/sdk-rider.ts')).toContain('createRiderSdk');
     expect(read('apps/admin-portal/src/lib/sdk-admin.ts')).toContain('createAdminSdk');
     expect(read('apps/operations-console/src/lib/sdk-admin.ts')).toContain('createAdminSdk');
+    expect(read('apps/driver-portal/src/lib/sdk-driver.ts')).toContain('createDriverSdk');
+  });
+
+  it('driver portal campaign screens call live SDK methods', () => {
+    const code = read('apps/driver-portal/src/hooks/use-driver-campaign.ts');
+    const wallet = read('apps/driver-portal/src/hooks/use-driver-wallet.ts');
+    const login = read('apps/driver-portal/src/components/login-form.tsx');
+
+    expect(code).toContain('sdk.driverCampaign.getMyCode');
+    expect(code).toContain('sdk.driverCampaign.getDashboard');
+    expect(code).toContain('sdk.driverCampaign.getLeaderboard');
+    expect(code).toContain('sdk.driverCampaign.recordInvite');
+    expect(wallet).toContain('sdk.wallet.driverWallet');
+    expect(wallet).toContain('sdk.wallet.driverTransactions');
+    expect(login).toContain('sdk.auth.loginDriver');
   });
 
   it('auth provider and RBAC hooks are present', () => {

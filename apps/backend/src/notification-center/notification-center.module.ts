@@ -8,6 +8,7 @@ import { AdminNotificationsController } from './admin-notifications.controller';
 import { CustomerDevicesController } from './customer-devices.controller';
 import { CustomerNotificationsController } from './customer-notifications.controller';
 import { DeviceRegistryService } from './device-registry.service';
+import { DriverNotificationsController } from './driver-notifications.controller';
 import { NotificationCenterService } from './notification-center.service';
 import { NotificationCenterSubscriber } from './notification-center.subscriber';
 import { NotificationPreferencesService } from './notification-preferences.service';
@@ -20,6 +21,7 @@ import { EMAIL_PROVIDER, PUSH_PROVIDER, SMS_PROVIDER } from './providers/notific
   controllers: [
     CustomerNotificationsController,
     CustomerDevicesController,
+    DriverNotificationsController,
     AdminNotificationsController,
   ],
   providers: [

@@ -235,6 +235,7 @@ export type {
   CreateReviewRequest,
   CreateWishlistRequest,
   DriverCampaignDashboardDto,
+  DriverCampaignLeaderboardEntryDto,
   DriverReferralDto,
   DriverReferralLeaderboardEntryDto,
   DriverReferralRewardDto,

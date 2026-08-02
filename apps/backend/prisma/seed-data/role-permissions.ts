@@ -58,6 +58,8 @@ export const ROLE_PERMISSION_GRANTS: Record<string, string[]> = {
     'driver:ride:manage',
     'driver:wallet:read',
     'driver:referral_campaign:use',
+    'customer:notifications:read',
+    'customer:notifications:manage',
   ],
   operations_staff: [
     'profile:read',

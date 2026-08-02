@@ -22,6 +22,12 @@ describe('DRIVER_CAMPAIGN_PERMISSIONS', () => {
     ).toEqual([DRIVER_CAMPAIGN_PERMISSIONS.DRIVER_USE]);
   });
 
+  it('protects the driver leaderboard endpoint', () => {
+    expect(
+      Reflect.getMetadata(PERMISSIONS_KEY, DriverCampaignController.prototype.getLeaderboard),
+    ).toEqual([DRIVER_CAMPAIGN_PERMISSIONS.DRIVER_USE]);
+  });
+
   it('protects admin campaign creation', () => {
     expect(
       Reflect.getMetadata(PERMISSIONS_KEY, AdminDriverCampaignController.prototype.create),

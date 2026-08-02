@@ -616,6 +616,55 @@ describe('DriverCampaignService', () => {
     });
   });
 
+  describe('getLeaderboardForActiveCampaign', () => {
+    it('ranks drivers by qualified count, masks names, and flags the requesting driver', async () => {
+      prisma.referralCampaign.findFirst.mockResolvedValue(campaign);
+      prisma.driverReferral.findMany.mockResolvedValue([
+        {
+          driverId: 'driver-1',
+          driver: { firstName: 'Ada', lastName: 'Lovelace' },
+          statistics: { qualifiedCount: 60, registeredCount: 70 },
+        },
+        {
+          driverId: 'driver-2',
+          driver: { firstName: 'Grace', lastName: 'Hopper' },
+          statistics: { qualifiedCount: 10, registeredCount: 20 },
+        },
+      ]);
+
+      const result = await service.getLeaderboardForActiveCampaign('driver-2');
+
+      expect(result).toEqual([
+        {
+          position: 1,
+          driverName: 'Ada L.',
+          qualifiedCount: 60,
+          currentTier: ReferralCampaignTier.SILVER,
+          estimatedRewardAmount: 40000,
+          isCurrentDriver: false,
+        },
+        {
+          position: 2,
+          driverName: 'Grace H.',
+          qualifiedCount: 10,
+          currentTier: ReferralCampaignTier.NONE,
+          estimatedRewardAmount: 0,
+          isCurrentDriver: true,
+        },
+      ]);
+      // no referral `code` field leaked to the driver-facing view
+      expect(result.every((entry) => !('code' in entry))).toBe(true);
+    });
+
+    it('rejects when there is no active campaign', async () => {
+      prisma.referralCampaign.findFirst.mockResolvedValue(null);
+
+      await expect(service.getLeaderboardForActiveCampaign('driver-1')).rejects.toThrow(
+        'No active driver referral campaign right now',
+      );
+    });
+  });
+
   describe('campaign sweep', () => {
     it('activates due campaigns and ends expired ones', async () => {
       prisma.referralCampaign.updateMany.mockResolvedValueOnce({ count: 2 });

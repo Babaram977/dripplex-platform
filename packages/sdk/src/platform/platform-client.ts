@@ -14,6 +14,7 @@ import type {
   CreateWishlistRequest,
   DeviceTokenDto,
   DriverCampaignDashboardDto,
+  DriverCampaignLeaderboardEntryDto,
   DriverReferralDto,
   DriverReferralLeaderboardEntryDto,
   DriverReferralRewardDto,
@@ -97,11 +98,14 @@ function enc(value: string): string {
 }
 
 export class NotificationsClient {
-  public constructor(private readonly http: HttpClient) {}
+  public constructor(
+    private readonly http: HttpClient,
+    private readonly basePath = '/customer/notifications',
+  ) {}
 
   public list(query: NotificationListQuery = {}): Promise<NotificationListDto> {
     return this.http.request<NotificationListDto>(
-      `/customer/notifications${toQuery({
+      `${this.basePath}${toQuery({
         status: query.status,
         category: query.category,
         channel: query.channel,
@@ -114,31 +118,31 @@ export class NotificationsClient {
   }
 
   public markRead(id: string): Promise<NotificationDto> {
-    return this.http.request<NotificationDto>(`/customer/notifications/${enc(id)}/read`, {
+    return this.http.request<NotificationDto>(`${this.basePath}/${enc(id)}/read`, {
       method: 'PATCH',
     });
   }
 
   public markAllRead(): Promise<{ updated: number }> {
-    return this.http.request<{ updated: number }>('/customer/notifications/mark-all-read', {
+    return this.http.request<{ updated: number }>(`${this.basePath}/mark-all-read`, {
       method: 'POST',
     });
   }
 
   public delete(id: string): Promise<undefined> {
-    return this.http.request<undefined>(`/customer/notifications/${enc(id)}`, {
+    return this.http.request<undefined>(`${this.basePath}/${enc(id)}`, {
       method: 'DELETE',
     });
   }
 
   public preferences(): Promise<NotificationPreferenceDto[]> {
-    return this.http.request<NotificationPreferenceDto[]>('/customer/notifications/preferences');
+    return this.http.request<NotificationPreferenceDto[]>(`${this.basePath}/preferences`);
   }
 
   public updatePreferences(
     body: UpdateNotificationPreferencesRequest,
   ): Promise<NotificationPreferenceDto[]> {
-    return this.http.request<NotificationPreferenceDto[]>('/customer/notifications/preferences', {
+    return this.http.request<NotificationPreferenceDto[]>(`${this.basePath}/preferences`, {
       method: 'PUT',
       body,
     });
@@ -415,6 +419,12 @@ export class DriverCampaignClient {
   public getDashboard(): Promise<DriverCampaignDashboardDto> {
     return this.http.request<DriverCampaignDashboardDto>('/driver/referral-campaign/dashboard');
   }
+
+  public getLeaderboard(): Promise<DriverCampaignLeaderboardEntryDto[]> {
+    return this.http.request<DriverCampaignLeaderboardEntryDto[]>(
+      '/driver/referral-campaign/leaderboard',
+    );
+  }
 }
 
 export class AdminDriverCampaignClient {
@@ -562,6 +572,21 @@ export class WalletClient {
 
   public riderWallet(): Promise<WalletDto> {
     return this.http.request<WalletDto>('/rider/wallet');
+  }
+
+  public driverWallet(): Promise<WalletDto> {
+    return this.http.request<WalletDto>('/driver/wallet');
+  }
+
+  public driverTransactions(
+    query: WalletHistoryQuery = {},
+  ): Promise<PaginatedResult<WalletLedgerEntryDto>> {
+    return this.http.request<PaginatedResult<WalletLedgerEntryDto>>(
+      `/driver/wallet/transactions${toQuery({
+        page: query.page,
+        pageSize: query.pageSize,
+      })}`,
+    );
   }
 }
 

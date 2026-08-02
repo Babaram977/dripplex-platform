@@ -95,6 +95,22 @@ export interface LeaderboardEntryDto {
   currentTier: string;
 }
 
+/**
+ * Driver-facing leaderboard row — deliberately narrower than the admin
+ * LeaderboardEntryDto above: no referral `code` (a driver could reuse
+ * another driver's code to pollute their stats) and a masked name
+ * (first name + last-initial) rather than the full name, since this is
+ * shown to competing drivers rather than platform staff.
+ */
+export interface DriverLeaderboardEntryDto {
+  position: number;
+  driverName: string;
+  qualifiedCount: number;
+  currentTier: string;
+  estimatedRewardAmount: number;
+  isCurrentDriver: boolean;
+}
+
 export function toReferralCampaignDto(campaign: ReferralCampaign): ReferralCampaignDto {
   return {
     id: campaign.id,

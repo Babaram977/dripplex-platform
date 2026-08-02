@@ -9,6 +9,7 @@ import { DriverCampaignService } from './driver-campaign.service';
 
 import type {
   DriverCampaignDashboardDto,
+  DriverLeaderboardEntryDto,
   DriverReferralDto,
   ReferralCampaignDto,
 } from './driver-campaign.mapper';
@@ -46,6 +47,15 @@ export class DriverCampaignController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<ApiSuccessResponse<DriverCampaignDashboardDto>> {
     const data = await this.driverCampaignService.getDashboard(user.id);
+    return { success: true, data };
+  }
+
+  @Get('leaderboard')
+  @RequirePermissions(DRIVER_CAMPAIGN_PERMISSIONS.DRIVER_USE)
+  public async getLeaderboard(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ApiSuccessResponse<DriverLeaderboardEntryDto[]>> {
+    const data = await this.driverCampaignService.getLeaderboardForActiveCampaign(user.id);
     return { success: true, data };
   }
 

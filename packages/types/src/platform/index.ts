@@ -40,7 +40,13 @@ export type NotificationType =
   | 'RIDE_STARTED'
   | 'RIDE_COMPLETED'
   | 'REFERRAL_REDEEMED'
-  | 'REFERRAL_REWARDED';
+  | 'REFERRAL_REWARDED'
+  | 'DRIVER_REFERRAL_PASSENGER_REGISTERED'
+  | 'DRIVER_REFERRAL_PASSENGER_QUALIFIED'
+  | 'DRIVER_REFERRAL_TIER_SILVER'
+  | 'DRIVER_REFERRAL_TIER_GOLD'
+  | 'DRIVER_REFERRAL_REWARD_APPROVED'
+  | 'DRIVER_REFERRAL_REWARD_PAID';
 
 /**
  * Event-name mapping for the client's sound abstraction (DPX-CORE-001
@@ -87,6 +93,12 @@ export const NOTIFICATION_SOUND_EVENTS: Record<NotificationType, NotificationSou
   GENERIC: 'notification',
   REFERRAL_REDEEMED: 'promotion',
   REFERRAL_REWARDED: 'payment_success',
+  DRIVER_REFERRAL_PASSENGER_REGISTERED: 'notification',
+  DRIVER_REFERRAL_PASSENGER_QUALIFIED: 'promotion',
+  DRIVER_REFERRAL_TIER_SILVER: 'promotion',
+  DRIVER_REFERRAL_TIER_GOLD: 'promotion',
+  DRIVER_REFERRAL_REWARD_APPROVED: 'payment_success',
+  DRIVER_REFERRAL_REWARD_PAID: 'payment_success',
 };
 
 export function getNotificationSoundEvent(type: NotificationType): NotificationSoundEvent {
@@ -563,6 +575,21 @@ export interface DriverReferralLeaderboardEntryDto {
   registeredCount: number;
   qualifiedCount: number;
   currentTier: ReferralCampaignTier;
+}
+
+/**
+ * Driver-facing leaderboard row (GET /driver/referral-campaign/leaderboard)
+ * — deliberately narrower than the admin DriverReferralLeaderboardEntryDto
+ * above: no referral code, masked name, plus an isCurrentDriver flag so
+ * the UI can highlight the viewer's own row.
+ */
+export interface DriverCampaignLeaderboardEntryDto {
+  position: number;
+  driverName: string;
+  qualifiedCount: number;
+  currentTier: ReferralCampaignTier;
+  estimatedRewardAmount: number;
+  isCurrentDriver: boolean;
 }
 
 export interface CreateReferralCampaignRequest {
