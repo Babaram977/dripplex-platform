@@ -334,3 +334,117 @@ wiring once a portal actually needs browser push, not before.
 Verification: backend `tsc --noEmit` clean, `eslint --max-warnings=0`
 clean, `jest --runInBand` 132/132 suites, 896/896 tests (4 new tests in
 `firebase-push.provider.spec.ts`).
+
+## Phase D-2 (2026-08-02): client FCM registration
+
+Phase D made the backend able to _send_ push. This phase makes a client
+actually _register_ for it — closing the "no device ever calls
+`POST /customer/devices`" gap that made `FirebasePushProvider` untested
+against a real token until now. Founder supplied the Firebase web-app
+config (`apiKey`/`authDomain`/`projectId`/`messagingSenderId`/`appId`)
+and the Cloud Messaging VAPID key in this pass, which is what unblocked
+the web-push half below.
+
+### What actually exists to wire this into
+
+A repo-wide check before writing any code found **one** real mobile
+pathway, not four. `apps/customer-mobile` is a Capacitor **remote-URL
+shell** — `capacitor.config.ts` points `server.url` at the deployed
+customer-web app; there's no separate mobile-app source tree. That means
+the code that runs inside the native shell _is_ customer-web's own
+bundle, and any native plugin call has to live there, not in
+`customer-mobile`. `apps/merchant-mobile`, `apps/rider-mobile`, and any
+driver-mobile app **do not exist** — `docs/mobile/MERCHANT-RIDER-PACKAGING.md`
+already documented Merchant/Rider mobile as "planned (post-D4),
+duplicate the customer-mobile pattern," never built; a Driver mobile app
+has no plan document at all, since `driver-portal` (web) only shipped
+this same day and Capacitor-wrapping it was never decided. Per instruction,
+this phase stops at the shared integration layer for those three and
+documents the gap rather than scaffolding apps nobody asked to exist yet.
+
+### Shared layer: `usePushRegistration` (`@dripplex/hooks`)
+
+One hook, usable by any portal app today with zero config: with no
+Firebase web config and no Capacitor shell, every code path inside it
+resolves to a no-op. Split into independently-tested pieces rather than
+one large effect:
+
+- **`native-push.ts`** — `Capacitor.isNativePlatform()` detection +
+  `@capacitor/push-notifications` permission/token flow, wrapped so
+  permission denial, a registration error, or a 15s timeout all resolve
+  `null` rather than reject (a provider that throws for "no token" would
+  make every unauthenticated device look like a crash).
+- **`web-push.ts`** — browser `Notification.requestPermission()` +
+  Firebase JS SDK `getToken()` against a service-worker registration.
+  Deliberately still uses the deprecated `getToken()` API rather than the
+  newer FID-based `register()`/`onRegistered()` flow, for the identical
+  reason `firebase-push.provider.ts` still uses `Messaging.sendEach()`
+  server-side: `DeviceToken.token` is a classic FCM registration token,
+  not a Firebase Installation ID, and the two aren't interchangeable.
+- **`push-registration-service.ts`** — 3-attempt exponential-backoff
+  retry around `devicesClient.register()`. Safe to retry freely because
+  `DeviceRegistryService.register()` is an upsert keyed on
+  `(userId, platform, token)` — a retried call can never create a
+  duplicate row, so "keep registration idempotent" is a property of the
+  backend this phase didn't need to re-implement client-side.
+- **`use-push-registration.ts`** — the React glue: registers on the
+  `isAuthenticated` false→true transition, deregisters (best-effort,
+  swallowing failures — a stale token still self-heals server-side the
+  next time FCM reports it dead) on the true→false transition. The
+  registered device's id is cached in `localStorage` so logout can find
+  it without an extra list-devices round trip.
+
+### Wired into customer-web (the one app with a real mobile pathway)
+
+- `<PushRegistration />` (`src/components/pwa/push-registration.tsx`) —
+  renders nothing, mounted once in the root layout next to the existing
+  `<ServiceWorkerRegister />`, calls the hook with `sdk.devices` (already
+  existed in the SDK, just never had a caller) plus the resolved Firebase
+  config.
+- `src/lib/firebase-push-config.ts` reads the six `NEXT_PUBLIC_FIREBASE_*`
+  env vars and returns `undefined` if any are unset — same
+  "gracefully do nothing until configured" contract as the backend's
+  `firebaseConfigured` getter.
+- **`public/sw.js` was extended, not duplicated.** customer-web already
+  ships a hand-written offline-fallback service worker at `/sw.js`; only
+  one worker can control a scope, so this phase added Firebase's
+  background-message handling into that same file via `importScripts()`
+  of the Firebase compat CDN bundles — the officially documented way to
+  combine a custom worker with FCM — rather than registering a second,
+  competing `firebase-messaging-sw.js`.
+- The Firebase web-app config (`apiKey` etc.) and the VAPID key are
+  **not secrets** — Firebase's own docs say this config is safe in a
+  client bundle, unlike the Admin SDK service account Phase D used — so
+  real values went directly into `.env.example` (both root and
+  `apps/customer-web/`) and into `public/sw.js` itself, rather than
+  blank placeholders.
+
+### Explicitly out of scope, per instruction
+
+- **Merchant mobile, Rider mobile, Driver mobile apps.** None exist in
+  this repo. Building them was not requested this pass and would be
+  fabricating product/platform decisions (bundle IDs, store listings,
+  signing) nobody has made. `driver-portal`/`merchant-portal`/`rider-portal`
+  are real web apps that _could_ receive the same web-push wiring
+  customer-web just got — that's a small, well-understood follow-up, not
+  done here since it wasn't the ask.
+- **Real native FCM/APNs delivery.** `google-services.json` in
+  `apps/customer-mobile/android/app/` is still only the `.example`
+  template — no Android app is actually registered against the
+  `dripplex-3a92d` Firebase project. No `GoogleService-Info.plist` or
+  APNs key exists for iOS either. `usePushRegistration`'s native path is
+  real, tested code, but it has never been exercised against a real
+  native build — it will silently fail permission/registration until
+  those config files exist. Documented in `docs/mobile/PUSH-NOTIFICATIONS.md`'s
+  status table, not silently assumed working.
+- **Foreground `onMessage()` handling.** Only `onBackgroundMessage()` was
+  added to `sw.js`. A foreground browser tab still relies on
+  `NotificationBell`'s existing 60-second poll, not an instant push
+  event — no `onMessage()` listener was added to any page, since that's a
+  UI-visible behavior change (toast-on-push) beyond "register the
+  device," not requested this pass.
+
+Verification: `@dripplex/hooks` `tsc --noEmit` clean, `eslint --max-warnings=0`
+clean, `vitest run` 10/10 tests (native-push, web-push,
+push-registration-service). customer-web `tsc`, `eslint`, `vitest`
+(4/4), `next build` (21/21 routes) all clean.

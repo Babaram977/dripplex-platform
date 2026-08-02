@@ -4,6 +4,7 @@ import * as React from 'react';
 
 import type { Metadata, Viewport } from 'next';
 
+import { PushRegistration } from '@/components/pwa/push-registration';
 import { ServiceWorkerRegister } from '@/components/pwa/service-worker-register';
 import { siteConfig } from '@/lib/site';
 
@@ -88,6 +89,7 @@ export default function RootLayout({
         />
         <AppProviders>
           <ServiceWorkerRegister />
+          <PushRegistration />
           {children}
         </AppProviders>
       </body>

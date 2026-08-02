@@ -2,6 +2,16 @@
 
 Native push is scaffolded; **backend registration endpoints are unchanged** in D4 (no API changes).
 
+**Update (DPX-CORE-001 Phase D-2):** the backend device API this doc
+called "post-D4" now exists (`CustomerDevicesController`,
+`DeviceRegistryService`), and `FirebasePushProvider` sends real pushes
+through it (see `docs/DPX-CORE-001-NOTIFICATION-PLATFORM.md`'s Phase D
+section). Client-side registration described below is wired for
+customer-web/customer-mobile via `usePushRegistration`
+(`packages/hooks/src/notifications/`) — see that doc's Phase D-2 section
+for what's live and what's still a documented gap (merchant/rider mobile
+shells don't exist yet; see `MERCHANT-RIDER-PACKAGING.md`).
+
 ## Firebase Cloud Messaging (Android)
 
 1. Create Firebase project `dripplex-customer`
@@ -18,7 +28,10 @@ Native push is scaffolded; **backend registration endpoints are unchanged** in D
 
 ## Capacitor plugin
 
-`@capacitor/push-notifications` is installed. Client registration (to be wired in customer-web or shell):
+`@capacitor/push-notifications` is installed and wired — see
+`packages/hooks/src/notifications/native-push.ts`, called from
+`usePushRegistration` on login. The manual sequence below is what that
+module does internally; you shouldn't need to call it directly:
 
 ```typescript
 import { PushNotifications } from '@capacitor/push-notifications';
@@ -47,10 +60,15 @@ Payload `data.url` → open `https://app.dripplex.com/...` or `dripplex://open/.
 
 ## Status
 
-| Component                | Status                            |
-| ------------------------ | --------------------------------- |
-| FCM config template      | ✅ `google-services.json.example` |
-| APNS entitlements        | ✅                                |
-| Plugin dependency        | ✅                                |
-| Backend device token API | ❌ Out of scope D4                |
-| Web Push (VAPID)         | ❌ Not in D4                      |
+| Component                        | Status                                                                                                    |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| FCM config template              | ✅ `google-services.json.example`                                                                         |
+| APNS entitlements                | ✅                                                                                                        |
+| Plugin dependency                | ✅                                                                                                        |
+| Backend device token API         | ✅ DPX-CORE-001 (`CustomerDevicesController`, `DeviceRegistryService`)                                    |
+| Backend push delivery            | ✅ DPX-CORE-001 Phase D (`FirebasePushProvider`, real FCM sends)                                          |
+| Web Push (VAPID)                 | ✅ DPX-CORE-001 Phase D-2 — wired in customer-web (`usePushRegistration` + `public/sw.js`)                |
+| Native token registration (call) | ✅ Phase D-2 — `usePushRegistration` calls `@capacitor/push-notifications` when Capacitor-native          |
+| Real Android FCM config          | ❌ `google-services.json` is still only the `.example` template — no real Firebase Android app registered |
+| Real iOS APNs config             | ❌ No `GoogleService-Info.plist`, no APNs key uploaded — untested end-to-end                              |
+| Merchant/Rider/Driver mobile app | ❌ Do not exist — see `MERCHANT-RIDER-PACKAGING.md` and DPX-CORE-001's Phase D-2 section                  |
