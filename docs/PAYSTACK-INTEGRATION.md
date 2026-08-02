@@ -38,30 +38,60 @@ this pass began (`fix(payments): register WalletModule in PaymentsModule`).
   `apps/backend/src/wallet/wallet-funding.service.ts`. New
   `WalletTopUpTransaction` table, new `customer:wallet:fund` permission.
 
-## Outstanding — needs founder input
+## Status: keys wired, live verification blocked in this sandbox
 
-**Test-mode API keys.** `PAYSTACK_SECRET_KEY`/`PAYSTACK_PUBLIC_KEY` are
-still empty in `.env.example` — every card-payment code path above is real
-but inert until a key is set (`PaystackProvider` throws "Paystack is not
-configured" otherwise, same NotConfigured-style guard used throughout this
-codebase). From the Paystack dashboard, **Settings → API Keys & Webhooks**
-(stay in Test Mode toggle, top-right):
+`PAYSTACK_SECRET_KEY`/`PAYSTACK_PUBLIC_KEY` in root `.env.example` are now
+real DrippleX **Test Mode** keys (from Settings → API Keys & Webhooks,
+2026-08-02). `PaystackProvider` is no longer inert — every card-payment
+path above (order pay, ride pay, wallet fund) will make real calls against
+Paystack's sandbox once these values are present in whatever `.env` the
+backend actually runs from.
 
-1. Copy the **Test Secret Key** (`sk_test_...`) → backend `PAYSTACK_SECRET_KEY`.
-2. Copy the **Test Public Key** (`pk_test_...`) → any frontend that needs
-   inline card collection (not currently used — the flow redirects to
-   Paystack's hosted checkout via `authorizationUrl`, so the public key
-   isn't required yet, only the secret key is).
-3. Set the webhook URL (same page) to `<backend base URL>/api/v1/webhooks/paystack`
-   — needs a real deployed backend URL (Coolify/Railway), not localhost.
+**I could not live-verify the call myself.** This session's outbound network
+goes through a policy-enforcing egress proxy, and `api.paystack.co` isn't on
+its allowlist — both `curl` and Node's own `fetch` (i.e. exactly what
+`PaystackProvider` uses) get an explicit `403 Host not in allowlist` here,
+confirmed directly against the real key. This is a restriction on _this
+sandbox's_ network policy, not a problem with the integration code or the
+keys — it's a different, more restrictive proxy than whatever allowed the
+earlier Google Maps `curl` checks through. It should not affect a real
+deployment (Railway/Coolify are standard cloud egress, not behind this
+proxy), but it does mean the actual "call Paystack and see JSON back" check
+still needs to happen from an environment that isn't this one — either your
+own machine, or once the backend is deployed.
 
-Once the secret key is set, I can live-verify: initialize a real Paystack
-test transaction, confirm the returned `authorizationUrl` resolves, and
-(with a webhook URL configured) confirm a webhook round-trips correctly.
-Full checkout completion (entering Paystack's test card
-`4084084084084081`) is a manual step in a browser — I can prepare
-everything up to that point but can't click through Paystack's hosted
-checkout UI myself.
+**Still outstanding:**
+
+1. **Live-verify from a real environment** — either run the backend
+   locally on your own machine and call `POST /customer/wallet/fund` (or
+   the order/ride pay endpoints), or wait until it's deployed and do the
+   same against the live URL. Either should now return a real
+   `authorizationUrl` pointing at Paystack's hosted checkout.
+2. **Webhook URL** (Settings → API Keys & Webhooks → Test Webhook URL) —
+   needs a publicly reachable HTTPS URL, so it can't be set until the
+   backend has a real deployed address (Coolify/Railway). Point it at
+   `<backend base URL>/api/v1/webhooks/paystack` once that exists. Not
+   blocking in the meantime — ride and wallet payments verify explicitly
+   (`POST .../pay/verify`, `POST .../fund/verify`) rather than waiting on
+   a webhook; only marketplace order payments currently rely on it.
+3. **Test Callback URL** (same page) — only used as a _fallback_ when an
+   API call doesn't pass its own `callback_url`; our code always passes
+   one dynamically per request, so this dashboard field is optional. Fine
+   to leave blank.
+4. **IP Whitelist** (same page) — optional API-request restriction by
+   source IP. Skip it — Railway/Coolify's outbound IP isn't static by
+   default, and this is a Test Mode key anyway (no real funds at risk if
+   left open).
+5. **Test Public Key** — not used anywhere in the code yet (no inline
+   Paystack.js card widget; the flow redirects to Paystack's own hosted
+   checkout page via `authorizationUrl`). Stored in `.env.example` for
+   when/if that changes, same precedent as the Google Maps browser key
+   being committed ahead of its UI.
+
+Full checkout completion (entering Paystack's test card `4084084084084081`)
+is a manual browser step regardless of where verification happens — I can
+prepare everything up to the checkout redirect but can't click through
+Paystack's hosted UI myself.
 
 ## Known pre-existing schema drift (not touched this pass)
 
