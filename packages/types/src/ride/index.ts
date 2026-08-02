@@ -155,6 +155,23 @@ export interface RequestRideRequest {
   dropoffAddress?: string;
 }
 
+export interface EstimateRideFareRequest {
+  rideType: RideType;
+  pickupLatitude: number;
+  pickupLongitude: number;
+  dropoffLatitude: number;
+  dropoffLongitude: number;
+}
+
+export interface EstimateRideFareResponse {
+  distanceMeters: number;
+  durationSeconds: number;
+  baseFare: number;
+  distanceFare: number;
+  timeFare: number;
+  totalFare: number;
+}
+
 export interface DriverAvailabilityDto {
   driverId: string;
   online: boolean;

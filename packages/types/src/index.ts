@@ -110,6 +110,8 @@ export { DRIVER_AUDIT_ACTIONS } from './driver/index.js';
 
 export type {
   DriverAvailabilityDto,
+  EstimateRideFareRequest,
+  EstimateRideFareResponse,
   InitiateRidePaymentRequest,
   InitiateRidePaymentResponse,
   RateRideRequest,

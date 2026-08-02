@@ -58,6 +58,43 @@ export class RequestRideDto {
   public dropoffAddress?: string;
 }
 
+export class EstimateRideFareDto {
+  @IsEnum(RideType)
+  public rideType!: RideType;
+
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' || typeof value === 'number' ? Number(value) : value,
+  )
+  @IsNumber({ maxDecimalPlaces: 7 })
+  @Min(-90)
+  @Max(90)
+  public pickupLatitude!: number;
+
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' || typeof value === 'number' ? Number(value) : value,
+  )
+  @IsNumber({ maxDecimalPlaces: 7 })
+  @Min(-180)
+  @Max(180)
+  public pickupLongitude!: number;
+
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' || typeof value === 'number' ? Number(value) : value,
+  )
+  @IsNumber({ maxDecimalPlaces: 7 })
+  @Min(-90)
+  @Max(90)
+  public dropoffLatitude!: number;
+
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' || typeof value === 'number' ? Number(value) : value,
+  )
+  @IsNumber({ maxDecimalPlaces: 7 })
+  @Min(-180)
+  @Max(180)
+  public dropoffLongitude!: number;
+}
+
 export class CancelRideDto {
   @IsOptional()
   @IsString()

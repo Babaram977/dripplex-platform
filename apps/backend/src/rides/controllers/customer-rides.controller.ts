@@ -14,11 +14,12 @@ import {
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 import { ListRidesQueryDto } from '../dto/list-rides-query.dto';
-import { CancelRideDto, RequestRideDto } from '../dto/request-ride.dto';
+import { CancelRideDto, EstimateRideFareDto, RequestRideDto } from '../dto/request-ride.dto';
 import { InitiateRidePaymentDto, VerifyRidePaymentDto } from '../dto/ride-payment.dto';
 import { ReportRideProblemDto } from '../dto/ride-problem-report.dto';
 import { RateRideDto } from '../dto/ride-rating.dto';
 import { TipDriverDto } from '../dto/ride-tip.dto';
+import { RideFareService } from '../ride-fare.service';
 import { RidePaymentService } from '../ride-payment.service';
 import { RideProblemReportService } from '../ride-problem-report.service';
 import { RideRatingService } from '../ride-rating.service';
@@ -29,6 +30,7 @@ import { RidesService } from '../rides.service';
 import type { AuthenticatedUser } from '../../auth/auth.types';
 import type { ApiSuccessResponse } from '../../common/dto/api-response.dto';
 import type {
+  EstimateRideFareResponse,
   InitiateRidePaymentResponse,
   RideDto,
   RideProblemReportDto,
@@ -46,7 +48,21 @@ export class CustomerRidesController {
     private readonly ratingService: RideRatingService,
     private readonly receiptService: RideReceiptService,
     private readonly problemReportService: RideProblemReportService,
+    private readonly fareService: RideFareService,
   ) {}
+
+  @Post('estimate')
+  @HttpCode(HttpStatus.OK)
+  public estimateFare(
+    @Body() dto: EstimateRideFareDto,
+  ): ApiSuccessResponse<EstimateRideFareResponse> {
+    const data = this.fareService.estimate(
+      dto.rideType,
+      { lat: dto.pickupLatitude, lng: dto.pickupLongitude },
+      { lat: dto.dropoffLatitude, lng: dto.dropoffLongitude },
+    );
+    return { success: true, data };
+  }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)

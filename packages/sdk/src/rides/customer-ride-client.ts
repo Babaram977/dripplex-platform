@@ -1,5 +1,7 @@
 import type { HttpClient } from '../client/http-client.js';
 import type {
+  EstimateRideFareRequest,
+  EstimateRideFareResponse,
   InitiateRidePaymentRequest,
   InitiateRidePaymentResponse,
   PaginatedResult,
@@ -34,13 +36,18 @@ export interface ListRidesQuery {
 
 /**
  * Customer-side Ride HTTP surface — mirrors CustomerRidesController exactly
- * (apps/backend/src/rides/controllers/customer-rides.controller.ts). No
- * fare-quote/estimate method exists here because the backend has none: the
- * only way to get a fare is to call requestRide, which computes and
- * persists it atomically. See docs/RIDE-003-INTEGRATION-MAP.md.
+ * (apps/backend/src/rides/controllers/customer-rides.controller.ts).
  */
 export class CustomerRideClient {
   public constructor(private readonly http: HttpClient) {}
+
+  public estimateFare(body: EstimateRideFareRequest): Promise<EstimateRideFareResponse> {
+    return this.http.request<EstimateRideFareResponse>('/customer/rides/estimate', {
+      method: 'POST',
+      body,
+      auth: true,
+    });
+  }
 
   public requestRide(body: RequestRideRequest): Promise<RideDto> {
     return this.http.request<RideDto>('/customer/rides', {
