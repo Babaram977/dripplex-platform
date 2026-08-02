@@ -182,7 +182,13 @@ export class RidePaymentService {
       },
     );
 
-    return await this.markPaid(ride, RidePaymentMethod.CASH, split, context);
+    const paid = await this.markPaid(ride, RidePaymentMethod.CASH, split, context);
+    await this.eventBus.emit(DOMAIN_EVENTS.RIDE_CASH_CONFIRMED, {
+      driverId,
+      rideId: ride.id,
+      totalFare: String(ride.totalFare),
+    });
+    return paid;
   }
 
   /**

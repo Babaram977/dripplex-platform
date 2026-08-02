@@ -4,6 +4,7 @@ import { PrismaClient, WalletOwnerType } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
 import { DomainEventBus } from '../events/domain-event-bus';
+import { DOMAIN_EVENTS } from '../events/domain-events';
 import { PLATFORM_WALLET_OWNER_ID } from '../wallet/wallet.constants';
 import { WalletService } from '../wallet/wallet.service';
 
@@ -34,6 +35,7 @@ describe('RidePaymentService', () => {
   let databaseAvailable = false;
   let prisma: PrismaService;
   let service: RidePaymentService;
+  let eventBus: DomainEventBus;
   let walletService: WalletService;
   let paystackAdapter: jest.Mocked<PaymentProviderAdapter>;
   let customerId: string;
@@ -83,6 +85,7 @@ describe('RidePaymentService', () => {
     const flutterwaveAdapter = fakeAdapter('FLUTTERWAVE');
     const opayAdapter = fakeAdapter('OPAY');
 
+    eventBus = new DomainEventBus();
     service = new RidePaymentService(
       prisma,
       walletService,
@@ -90,7 +93,7 @@ describe('RidePaymentService', () => {
       notifications,
       events,
       [paystackAdapter, flutterwaveAdapter, opayAdapter],
-      new DomainEventBus(),
+      eventBus,
     );
 
     const customer = await prisma.user.create({
@@ -227,6 +230,7 @@ describe('RidePaymentService', () => {
     await service.initiatePayment(customerId, ride.id, 'CASH', undefined, {});
 
     const driverWalletBefore = await walletService.getWallet(WalletOwnerType.DRIVER, driverId);
+    const emitSpy = jest.spyOn(eventBus, 'emit');
 
     const result = await service.confirmCash(driverId, ride.id, {});
 
@@ -236,6 +240,11 @@ describe('RidePaymentService', () => {
 
     const driverWalletAfter = await walletService.getWallet(WalletOwnerType.DRIVER, driverId);
     expect(driverWalletAfter.availableBalance).toBe(driverWalletBefore.availableBalance);
+
+    expect(emitSpy).toHaveBeenCalledWith(
+      DOMAIN_EVENTS.RIDE_CASH_CONFIRMED,
+      expect.objectContaining({ driverId, rideId: ride.id }),
+    );
   });
 
   it('rejects cash confirmation from a driver who is not assigned to the ride', async () => {

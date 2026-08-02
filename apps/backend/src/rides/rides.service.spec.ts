@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
 import { DomainEventBus } from '../events/domain-event-bus';
+import { DOMAIN_EVENTS } from '../events/domain-events';
 import { PromotionsService } from '../promotions/promotions.service';
 import { WalletService } from '../wallet/wallet.service';
 
@@ -25,6 +26,7 @@ describe('RidesService', () => {
   let prisma: PrismaService;
   let service: RidesService;
   let dispatchService: RideDispatchService;
+  let eventBus: DomainEventBus;
   let customerId: string;
   let otherCustomerId: string;
   let driverId: string;
@@ -75,7 +77,7 @@ describe('RidesService', () => {
       events,
       new DomainEventBus(),
     );
-    const eventBus = new DomainEventBus();
+    eventBus = new DomainEventBus();
     const walletService = new WalletService(prisma, auditService, eventBus);
     const promotionsService = new PromotionsService(prisma, auditService, eventBus, walletService);
     service = new RidesService(
@@ -86,6 +88,7 @@ describe('RidesService', () => {
       notifications,
       events,
       promotionsService,
+      eventBus,
     );
 
     const customer = await prisma.user.create({
@@ -241,11 +244,17 @@ describe('RidesService', () => {
     const before = await prisma.driverAvailability.findUniqueOrThrow({ where: { driverId } });
     expect(before.activeRideCount).toBe(1);
 
+    const emitSpy = jest.spyOn(eventBus, 'emit');
     const cancelled = await service.cancelRide(customerId, ride.id, {}, context);
     expect(cancelled.status).toBe('CANCELLED');
 
     const after = await prisma.driverAvailability.findUniqueOrThrow({ where: { driverId } });
     expect(after.activeRideCount).toBe(0);
+
+    expect(emitSpy).toHaveBeenCalledWith(
+      DOMAIN_EVENTS.RIDE_CANCELLED,
+      expect.objectContaining({ driverId, rideId: ride.id }),
+    );
   });
 
   it('rejects cancelling a ride that is already cancelled', async () => {

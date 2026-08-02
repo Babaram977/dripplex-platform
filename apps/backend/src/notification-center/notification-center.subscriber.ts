@@ -202,12 +202,34 @@ export class NotificationCenterSubscriber implements OnModuleInit {
       userKeys: ['customerId', 'userId'],
       deepLink: '/ride',
     },
+    [DOMAIN_EVENTS.RIDE_CANCELLED]: {
+      category: NotificationCategory.RIDE,
+      type: NotificationType.GENERIC,
+      title: 'Ride cancelled',
+      body: () => 'A ride you were on has been cancelled.',
+      priority: NotificationPriority.HIGH,
+      /** Emitted from both cancellation call sites (RidesService.cancelRide
+       * for a customer-initiated cancel, RideTripService.cancelByDriver for
+       * a driver-initiated one) — each includes only the *other* party's id
+       * in the payload, so this single mapping naturally routes to whichever
+       * side didn't do the cancelling, the same pattern DELIVERY_ASSIGNED
+       * already uses for riderId vs customerId. */
+      userKeys: ['driverId', 'customerId', 'userId'],
+    },
     [DOMAIN_EVENTS.RIDE_PAYMENT_SUCCEEDED]: {
       category: NotificationCategory.RIDE,
       type: NotificationType.PAYMENT_SUCCESS,
       title: 'Ride payment received',
       body: () => 'Your ride payment was successful.',
       userKeys: ['customerId', 'userId'],
+    },
+    [DOMAIN_EVENTS.RIDE_CASH_CONFIRMED]: {
+      category: NotificationCategory.RIDE,
+      type: NotificationType.PAYMENT_SUCCESS,
+      title: 'Cash payment confirmed',
+      body: (payload) =>
+        `You confirmed a cash payment of ₦${this.text(payload, ['totalFare'], '0')}.`,
+      userKeys: ['driverId', 'userId'],
     },
     [DOMAIN_EVENTS.RIDE_PAYMENT_FAILED]: {
       category: NotificationCategory.RIDE,

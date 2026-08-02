@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
 import { DomainEventBus } from '../events/domain-event-bus';
+import { DOMAIN_EVENTS } from '../events/domain-events';
 
 import { RideTripService } from './ride-trip.service';
 
@@ -21,6 +22,7 @@ describe('RideTripService', () => {
   let databaseAvailable = false;
   let prisma: PrismaService;
   let service: RideTripService;
+  let eventBus: DomainEventBus;
   let customerId: string;
   let driverId: string;
   const createdRideIds: string[] = [];
@@ -61,13 +63,8 @@ describe('RideTripService', () => {
       publishToRide: jest.fn(),
       publishToDriver: jest.fn(),
     };
-    service = new RideTripService(
-      prisma,
-      auditService,
-      notifications,
-      events,
-      new DomainEventBus(),
-    );
+    eventBus = new DomainEventBus();
+    service = new RideTripService(prisma, auditService, notifications, events, eventBus);
 
     const customer = await prisma.user.create({
       data: {
@@ -228,6 +225,7 @@ describe('RideTripService', () => {
     if (!databaseAvailable) return;
 
     const ride = await createAssignedRide();
+    const emitSpy = jest.spyOn(eventBus, 'emit');
 
     const cancelled = await service.cancelByDriver(driverId, ride.id, 'car trouble', context);
 
@@ -239,6 +237,11 @@ describe('RideTripService', () => {
       where: { driverId },
     });
     expect(availability.activeRideCount).toBe(0);
+
+    expect(emitSpy).toHaveBeenCalledWith(
+      DOMAIN_EVENTS.RIDE_CANCELLED,
+      expect.objectContaining({ customerId, rideId: ride.id }),
+    );
   });
 
   it('rejects a driver cancelling a trip that is already in progress', async () => {

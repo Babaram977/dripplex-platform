@@ -6,6 +6,8 @@ import {
   NotFoundDomainException,
   ValidationDomainException,
 } from '../common/exceptions/domain.exception';
+import { DomainEventBus } from '../events/domain-event-bus';
+import { DOMAIN_EVENTS } from '../events/domain-events';
 import {
   NOTIFICATION_SERVICE,
   type NotificationService,
@@ -42,6 +44,7 @@ export class RidesService {
     @Inject(RIDE_EVENTS_PUBLISHER)
     private readonly events: RideEventsPublisher,
     private readonly promotionsService: PromotionsService,
+    private readonly eventBus: DomainEventBus,
   ) {}
 
   /** Read-only preview — does not redeem or lock anything. Used by the
@@ -301,6 +304,10 @@ export class RidesService {
         rideId: updated.id,
         status: updated.status,
         driverId: updated.driverId,
+      });
+      await this.eventBus.emit(DOMAIN_EVENTS.RIDE_CANCELLED, {
+        driverId: ride.driverId,
+        rideId: updated.id,
       });
     }
 

@@ -44,13 +44,17 @@ export class RideTripService {
     private readonly eventBus: DomainEventBus,
   ) {}
 
-  /** Which of the 4 real trip-lifecycle events feed the persisted in-app
-   * notification feed (DPX-CORE-001) — 'ride_cancelled' has no mapped
-   * NotificationType yet, so it's deliberately not included here. */
+  /** Which trip-lifecycle events feed the persisted in-app notification
+   * feed (DPX-CORE-001). ride_cancelled's payload below always carries
+   * customerId (this service only cancels rides on the driver's behalf),
+   * which the RIDE_CANCELLED mapping's userKeys picks up — the same
+   * mapping RidesService.cancelRide uses with driverId instead, since only
+   * one of the two ids is ever present per emission. */
   private static readonly NOTIFICATION_EVENTS: Partial<Record<RideLifecycleEvent, string>> = {
     ride_arrived: DOMAIN_EVENTS.RIDE_DRIVER_ARRIVED,
     ride_started: DOMAIN_EVENTS.RIDE_STARTED,
     ride_completed: DOMAIN_EVENTS.RIDE_COMPLETED,
+    ride_cancelled: DOMAIN_EVENTS.RIDE_CANCELLED,
   };
 
   public async markArrived(
