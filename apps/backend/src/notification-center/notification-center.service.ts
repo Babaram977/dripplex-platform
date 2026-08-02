@@ -126,6 +126,7 @@ export class NotificationCenterService {
       userId,
       deletedAt: null,
       ...(query.status !== undefined ? { status: query.status } : {}),
+      ...(query.category !== undefined ? { category: query.category } : {}),
       ...(query.channel !== undefined ? { channel: query.channel } : {}),
       ...(query.type !== undefined ? { type: query.type } : {}),
       ...(query.unreadOnly === true ? { readAt: null } : {}),
@@ -276,6 +277,7 @@ export class NotificationCenterService {
       dto.userIds.map((userId) => {
         const request: NotificationRequest = {
           userId,
+          category: dto.category,
           channel: dto.channel,
           type: dto.type,
           title: dto.title,
@@ -283,6 +285,7 @@ export class NotificationCenterService {
           ...(dto.priority !== undefined ? { priority: dto.priority } : {}),
           ...(dto.templateCode !== undefined ? { templateCode: dto.templateCode } : {}),
           ...(dto.payload !== undefined ? { payload: dto.payload } : {}),
+          ...(dto.expiresAt !== undefined ? { expiresAt: dto.expiresAt } : {}),
         };
         return this.send(request, context);
       }),
@@ -433,6 +436,7 @@ export class NotificationCenterService {
   ): Prisma.NotificationUncheckedCreateInput {
     return {
       userId: dto.userId,
+      category: dto.category,
       channel: dto.channel,
       type: dto.type,
       priority: dto.priority ?? NotificationPriority.NORMAL,
@@ -442,6 +446,7 @@ export class NotificationCenterService {
       ...(dto.templateCode !== undefined ? { templateCode: dto.templateCode } : {}),
       ...(dto.payload !== undefined ? { payload: dto.payload as Prisma.InputJsonValue } : {}),
       ...(dto.scheduledAt !== undefined ? { scheduledAt: dto.scheduledAt } : {}),
+      ...(dto.expiresAt !== undefined ? { expiresAt: dto.expiresAt } : {}),
     };
   }
 

@@ -1,12 +1,24 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { NotificationChannel, NotificationPriority, NotificationType } from '@prisma/client';
+import {
+  NotificationCategory,
+  NotificationChannel,
+  NotificationPriority,
+  NotificationType,
+} from '@prisma/client';
 
 import { DomainEventBus } from '../events/domain-event-bus';
 import { DOMAIN_EVENTS, type DomainEvent } from '../events/domain-events';
 
 import { NotificationCenterService } from './notification-center.service';
 
+/** Every payload constructed here includes `version: 1` — see
+ * docs/DPX-CORE-001-NOTIFICATION-PLATFORM.md's payload-versioning note.
+ * Lets mobile/web clients evolve how they read `payload` without breaking
+ * older builds still receiving unversioned or v1 shapes. */
+const PAYLOAD_VERSION = 1;
+
 interface NotificationEventMapping {
+  category: NotificationCategory;
   type: NotificationType;
   title: string;
   body: (payload: Record<string, unknown>) => string;
@@ -18,6 +30,7 @@ interface NotificationEventMapping {
 export class NotificationCenterSubscriber implements OnModuleInit {
   private readonly mappings: Record<string, NotificationEventMapping> = {
     [DOMAIN_EVENTS.ORDER_CREATED]: {
+      category: NotificationCategory.MARKETPLACE,
       type: NotificationType.ORDER_PLACED,
       title: 'Order created',
       body: (payload) =>
@@ -25,6 +38,7 @@ export class NotificationCenterSubscriber implements OnModuleInit {
       userKeys: ['customerId', 'userId'],
     },
     [DOMAIN_EVENTS.ORDER_PAID]: {
+      category: NotificationCategory.MARKETPLACE,
       type: NotificationType.PAYMENT_SUCCESS,
       title: 'Order paid',
       body: (payload) =>
@@ -32,6 +46,7 @@ export class NotificationCenterSubscriber implements OnModuleInit {
       userKeys: ['customerId', 'userId'],
     },
     [DOMAIN_EVENTS.PAYMENT_FAILED]: {
+      category: NotificationCategory.MARKETPLACE,
       type: NotificationType.PAYMENT_FAILED,
       title: 'Payment failed',
       body: (payload) =>
@@ -40,6 +55,7 @@ export class NotificationCenterSubscriber implements OnModuleInit {
       userKeys: ['customerId', 'userId'],
     },
     [DOMAIN_EVENTS.DELIVERY_ASSIGNED]: {
+      category: NotificationCategory.DELIVERY,
       type: NotificationType.RIDER_ASSIGNED,
       title: 'Delivery assigned',
       body: (payload) =>
@@ -47,6 +63,7 @@ export class NotificationCenterSubscriber implements OnModuleInit {
       userKeys: ['riderId', 'customerId', 'userId'],
     },
     [DOMAIN_EVENTS.DELIVERY_COMPLETED]: {
+      category: NotificationCategory.DELIVERY,
       type: NotificationType.DELIVERY_COMPLETED,
       title: 'Delivery completed',
       body: (payload) =>
@@ -54,6 +71,7 @@ export class NotificationCenterSubscriber implements OnModuleInit {
       userKeys: ['customerId', 'riderId', 'userId'],
     },
     [DOMAIN_EVENTS.PASSWORD_RESET]: {
+      category: NotificationCategory.SECURITY,
       type: NotificationType.PASSWORD_RESET,
       title: 'Password reset requested',
       body: () => 'A password reset was requested for your account.',
@@ -61,6 +79,7 @@ export class NotificationCenterSubscriber implements OnModuleInit {
       userKeys: ['userId', 'customerId'],
     },
     [DOMAIN_EVENTS.OTP_REQUESTED]: {
+      category: NotificationCategory.SECURITY,
       type: NotificationType.OTP,
       title: 'Verification code requested',
       body: () => 'A verification code was requested for your account.',
@@ -68,6 +87,7 @@ export class NotificationCenterSubscriber implements OnModuleInit {
       userKeys: ['userId', 'customerId'],
     },
     [DOMAIN_EVENTS.CUSTOMER_REGISTERED]: {
+      category: NotificationCategory.SYSTEM,
       type: NotificationType.WELCOME,
       title: 'Welcome to Dripplex',
       body: (payload) =>
@@ -75,6 +95,7 @@ export class NotificationCenterSubscriber implements OnModuleInit {
       userKeys: ['userId', 'customerId'],
     },
     [DOMAIN_EVENTS.INVENTORY_LOW]: {
+      category: NotificationCategory.MERCHANT,
       type: NotificationType.LOW_INVENTORY,
       title: 'Inventory is low',
       body: (payload) =>
@@ -83,18 +104,21 @@ export class NotificationCenterSubscriber implements OnModuleInit {
       userKeys: ['merchantId', 'userId'],
     },
     [DOMAIN_EVENTS.MERCHANT_APPROVED]: {
+      category: NotificationCategory.MERCHANT,
       type: NotificationType.MERCHANT_APPROVAL,
       title: 'Merchant approved',
       body: () => 'Your merchant account has been approved.',
       userKeys: ['merchantId', 'userId'],
     },
     [DOMAIN_EVENTS.RIDER_APPROVED]: {
+      category: NotificationCategory.DELIVERY,
       type: NotificationType.RIDER_APPROVAL,
       title: 'Rider approved',
       body: () => 'Your rider account has been approved.',
       userKeys: ['riderId', 'userId'],
     },
     [DOMAIN_EVENTS.PROMOTION_CREATED]: {
+      category: NotificationCategory.MARKETING,
       type: NotificationType.PROMOTION,
       title: 'New promotion',
       body: (payload) =>
@@ -102,12 +126,14 @@ export class NotificationCenterSubscriber implements OnModuleInit {
       userKeys: ['userId', 'customerId'],
     },
     [DOMAIN_EVENTS.RIDE_DRIVER_ASSIGNED]: {
+      category: NotificationCategory.RIDE,
       type: NotificationType.RIDE_DRIVER_ASSIGNED,
       title: 'Driver assigned',
       body: () => 'A driver has been assigned to your ride.',
       userKeys: ['customerId', 'userId'],
     },
     [DOMAIN_EVENTS.RIDE_DRIVER_ARRIVED]: {
+      category: NotificationCategory.RIDE,
       type: NotificationType.RIDE_DRIVER_ARRIVED,
       title: 'Driver arrived',
       body: () => 'Your driver has arrived at the pickup point.',
@@ -115,12 +141,14 @@ export class NotificationCenterSubscriber implements OnModuleInit {
       userKeys: ['customerId', 'userId'],
     },
     [DOMAIN_EVENTS.RIDE_STARTED]: {
+      category: NotificationCategory.RIDE,
       type: NotificationType.RIDE_STARTED,
       title: 'Trip started',
       body: () => 'Your trip has started.',
       userKeys: ['customerId', 'userId'],
     },
     [DOMAIN_EVENTS.RIDE_COMPLETED]: {
+      category: NotificationCategory.RIDE,
       type: NotificationType.RIDE_COMPLETED,
       title: 'Trip completed',
       body: (payload) =>
@@ -128,12 +156,14 @@ export class NotificationCenterSubscriber implements OnModuleInit {
       userKeys: ['customerId', 'userId'],
     },
     [DOMAIN_EVENTS.RIDE_PAYMENT_SUCCEEDED]: {
+      category: NotificationCategory.RIDE,
       type: NotificationType.PAYMENT_SUCCESS,
       title: 'Ride payment received',
       body: () => 'Your ride payment was successful.',
       userKeys: ['customerId', 'userId'],
     },
     [DOMAIN_EVENTS.RIDE_PAYMENT_FAILED]: {
+      category: NotificationCategory.RIDE,
       type: NotificationType.PAYMENT_FAILED,
       title: 'Ride payment failed',
       body: () => 'Your ride payment could not be completed.',
@@ -141,6 +171,7 @@ export class NotificationCenterSubscriber implements OnModuleInit {
       userKeys: ['customerId', 'userId'],
     },
     [DOMAIN_EVENTS.RIDE_REFUNDED]: {
+      category: NotificationCategory.RIDE,
       type: NotificationType.REFUND,
       title: 'Ride refunded',
       body: (payload) =>
@@ -167,11 +198,15 @@ export class NotificationCenterSubscriber implements OnModuleInit {
       return;
     }
 
-    const payload = this.objectPayload(event.payload);
+    const payload: Record<string, unknown> = {
+      version: PAYLOAD_VERSION,
+      ...this.objectPayload(event.payload),
+    };
     const broadcastUserIds = this.stringArray(payload['userIds']);
     if (event.name === DOMAIN_EVENTS.PROMOTION_CREATED && broadcastUserIds.length > 0) {
       await this.notificationCenter.broadcast({
         userIds: broadcastUserIds,
+        category: mapping.category,
         channel: NotificationChannel.IN_APP,
         type: mapping.type,
         title: mapping.title,
@@ -189,6 +224,7 @@ export class NotificationCenterSubscriber implements OnModuleInit {
 
     await this.notificationCenter.send({
       userId,
+      category: mapping.category,
       channel: NotificationChannel.IN_APP,
       type: mapping.type,
       title: mapping.title,

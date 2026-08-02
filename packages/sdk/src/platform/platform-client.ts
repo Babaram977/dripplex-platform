@@ -87,6 +87,7 @@ export class NotificationsClient {
     return this.http.request<NotificationListDto>(
       `/customer/notifications${toQuery({
         status: query.status,
+        category: query.category,
         channel: query.channel,
         type: query.type,
         unreadOnly: query.unreadOnly,

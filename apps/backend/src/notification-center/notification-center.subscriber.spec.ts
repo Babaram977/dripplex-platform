@@ -1,4 +1,4 @@
-import { NotificationChannel, NotificationType } from '@prisma/client';
+import { NotificationCategory, NotificationChannel, NotificationType } from '@prisma/client';
 
 import { DOMAIN_EVENTS } from '../events/domain-events';
 
@@ -48,9 +48,11 @@ describe('NotificationCenterSubscriber', () => {
     expect(notificationCenter.send).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: 'user-1',
+        category: NotificationCategory.MARKETPLACE,
         channel: NotificationChannel.IN_APP,
         type: NotificationType.ORDER_PLACED,
         title: 'Order created',
+        payload: expect.objectContaining({ version: 1, customerId: 'user-1' }),
       }),
     );
   });
@@ -94,6 +96,23 @@ describe('NotificationCenterSubscriber', () => {
         userIds: ['user-1', 'user-2'],
         type: NotificationType.PROMOTION,
         body: 'Flash sale is now available.',
+      }),
+    );
+  });
+
+  it('maps ride driver assigned events to a RIDE-category notification', async () => {
+    await subscriber.handle({
+      name: DOMAIN_EVENTS.RIDE_DRIVER_ASSIGNED,
+      payload: { customerId: 'user-1', rideId: 'ride-1' },
+      occurredAt: new Date().toISOString(),
+    });
+
+    expect(notificationCenter.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'user-1',
+        category: NotificationCategory.RIDE,
+        type: NotificationType.RIDE_DRIVER_ASSIGNED,
+        payload: expect.objectContaining({ version: 1, rideId: 'ride-1' }),
       }),
     );
   });

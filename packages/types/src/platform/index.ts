@@ -2,6 +2,22 @@ export type NotificationStatus =
   'PENDING' | 'QUEUED' | 'SENT' | 'DELIVERED' | 'FAILED' | 'DEAD_LETTER';
 export type NotificationChannel = 'PUSH' | 'EMAIL' | 'SMS' | 'IN_APP' | 'WHATSAPP';
 export type NotificationPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'CRITICAL';
+/** Which module a notification belongs to — orthogonal to NotificationType
+ * ("what happened?"); Category answers "which module?". Not derivable from
+ * type alone since some types (PAYMENT_SUCCESS, PAYMENT_FAILED) are shared
+ * across categories. */
+export type NotificationCategory =
+  | 'RIDE'
+  | 'DELIVERY'
+  | 'MARKETPLACE'
+  | 'WALLET'
+  | 'MERCHANT'
+  | 'ADMIN'
+  | 'SUPPORT'
+  | 'EMERGENCY'
+  | 'MARKETING'
+  | 'SYSTEM'
+  | 'SECURITY';
 export type NotificationType =
   | 'ORDER_PLACED'
   | 'PAYMENT_SUCCESS'
@@ -76,6 +92,7 @@ export function getNotificationSoundEvent(type: NotificationType): NotificationS
 export interface NotificationDto {
   id: string;
   userId: string;
+  category: NotificationCategory;
   channel: NotificationChannel;
   type: NotificationType;
   priority: NotificationPriority;
@@ -83,6 +100,7 @@ export interface NotificationDto {
   title: string;
   body: string;
   payload: unknown;
+  expiresAt: string | null;
   readAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -118,6 +136,7 @@ export interface NotificationPreferenceDto {
 
 export interface NotificationListQuery {
   status?: NotificationStatus;
+  category?: NotificationCategory;
   channel?: NotificationChannel;
   type?: NotificationType;
   unreadOnly?: boolean;

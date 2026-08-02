@@ -1235,6 +1235,25 @@ enum DevicePlatform {
   WEB
 }
 
+/// Which module a notification belongs to — orthogonal to NotificationType
+/// ("what happened?"). Deliberately not derived from type: several types
+/// (PAYMENT_SUCCESS, PAYMENT_FAILED) are shared across categories (a ride
+/// payment and a marketplace order payment both use PAYMENT_SUCCESS), so
+/// category must be set explicitly by the caller, not inferred.
+enum NotificationCategory {
+  RIDE
+  DELIVERY
+  MARKETPLACE
+  WALLET
+  MERCHANT
+  ADMIN
+  SUPPORT
+  EMERGENCY
+  MARKETING
+  SYSTEM
+  SECURITY
+}
+
 enum SearchEntityType {
   PRODUCT
   STORE
@@ -1388,6 +1407,7 @@ model NotificationTemplate {
 model Notification {
   id             String                        @id @default(uuid()) @db.Uuid
   userId         String                        @map("user_id") @db.Uuid
+  category       NotificationCategory          @default(SYSTEM)
   channel        NotificationChannel
   type           NotificationType
   priority       NotificationPriority          @default(NORMAL)
@@ -1397,6 +1417,7 @@ model Notification {
   templateCode   String?                       @map("template_code") @db.VarChar(100)
   payload        Json?
   scheduledAt    DateTime?                     @map("scheduled_at")
+  expiresAt      DateTime?                     @map("expires_at")
   sentAt         DateTime?                     @map("sent_at")
   readAt         DateTime?                     @map("read_at")
   failureReason  String?                       @map("failure_reason") @db.Text
@@ -1412,8 +1433,10 @@ model Notification {
   @@index([userId])
   @@index([status])
   @@index([channel, type])
+  @@index([category])
   @@index([priority, status])
   @@index([scheduledAt])
+  @@index([expiresAt])
   @@index([readAt])
   @@index([deletedAt])
   @@map("notifications")

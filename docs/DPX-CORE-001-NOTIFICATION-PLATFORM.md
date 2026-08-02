@@ -217,3 +217,47 @@ Verification: backend `tsc --noEmit` clean, full backend `jest` suite
 `eslint --max-warnings=0` clean, `vitest run` 4/4 passed, `next build`
 clean (21/21 routes). SDK/types packages rebuilt (`dist`) so downstream
 consumers pick up the new exports.
+
+## Phase 1 (founder-approved 2026-08-02): complete the notification core before Firebase
+
+Per the founder's sequencing — finish the model, then Referral, then
+Promo, then Firebase (so push benefits every existing notification type
+at once instead of only Ride), then SOS last (an SOS that only writes a
+DB row isn't a real SOS system).
+
+- **`NotificationCategory`** — new enum (RIDE/DELIVERY/MARKETPLACE/WALLET/
+  MERCHANT/ADMIN/SUPPORT/EMERGENCY/MARKETING/SYSTEM/SECURITY), new
+  `Notification.category` column (`NOT NULL DEFAULT 'SYSTEM'` — the
+  default only backfills pre-existing rows; every new `send()`/`create()`/
+  `broadcast()` call requires it explicitly via `CreateNotificationDto`/
+  `BroadcastNotificationDto`, it's never inferred from `type`). Deliberately
+  orthogonal to `NotificationType`: `PAYMENT_SUCCESS`/`PAYMENT_FAILED` are
+  reused across both ride and marketplace payments, so category can't be
+  derived from type alone — every `NotificationCenterSubscriber` mapping
+  now sets it explicitly per domain event.
+- **`expiresAt`** — new nullable `Notification.expiresAt` column + index.
+  Not populated by anything yet (no caller sets it) — it's schema-ready for
+  whichever feature first needs auto-expiring notifications (e.g. a stale
+  "driver arrived" alert), not retrofitted onto existing types speculatively.
+- **`deepLink`/`image`/`sound` stay in `payload`**, not promoted to columns
+  — per the founder's own reasoning, matching what was already recommended:
+  no query pattern needs them as indexed columns today.
+- **Payload versioning** — every payload the subscriber constructs now
+  starts with `version: 1` before the domain event's own fields, centralized
+  in `NotificationCenterSubscriber.handle()` (not duplicated at each ride
+  event's `eventBus.emit()` call site, since the version stamp is applied
+  once, downstream, right before persistence). Lets client apps evolve how
+  they read `payload` without breaking older builds.
+- **Category filtering** — added to `ListNotificationsQueryDto`/
+  `NotificationListQuery`/`sdk.notifications.list()`, matching the existing
+  status/channel/type filters, so `GET /customer/notifications?category=RIDE`
+  works today even before any UI groups by category.
+
+Migration: `20260802010000_add_notification_category_expires`. Verified:
+backend `tsc`/full `jest` suite green, SDK/types/customer-web `tsc`/
+`eslint`/`vitest`/`next build` all green.
+
+Next: RIDE-004.1 (Referral backend) and RIDE-004.2 (Promo, likely
+extending the existing `promotions` module to accept ride fares rather
+than building a second promo system — to be confirmed against real code
+before large implementation, same discipline as everything else here).

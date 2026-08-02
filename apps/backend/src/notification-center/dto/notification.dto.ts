@@ -1,4 +1,5 @@
 import {
+  NotificationCategory,
   NotificationChannel,
   NotificationPriority,
   NotificationStatus,
@@ -23,6 +24,10 @@ export class ListNotificationsQueryDto {
   @IsOptional()
   @IsEnum(NotificationStatus)
   public status?: NotificationStatus;
+
+  @IsOptional()
+  @IsEnum(NotificationCategory)
+  public category?: NotificationCategory;
 
   @IsOptional()
   @IsEnum(NotificationChannel)
@@ -59,6 +64,9 @@ export class CreateNotificationDto {
   @IsUUID()
   public userId!: string;
 
+  @IsEnum(NotificationCategory)
+  public category!: NotificationCategory;
+
   @IsEnum(NotificationChannel)
   public channel!: NotificationChannel;
 
@@ -89,12 +97,19 @@ export class CreateNotificationDto {
   @IsOptional()
   @Type(() => Date)
   public scheduledAt?: Date;
+
+  @IsOptional()
+  @Type(() => Date)
+  public expiresAt?: Date;
 }
 
 export class BroadcastNotificationDto {
   @IsArray()
   @IsUUID('4', { each: true })
   public userIds!: string[];
+
+  @IsEnum(NotificationCategory)
+  public category!: NotificationCategory;
 
   @IsEnum(NotificationChannel)
   public channel!: NotificationChannel;
@@ -122,4 +137,8 @@ export class BroadcastNotificationDto {
   @IsOptional()
   @IsObject()
   public payload?: Record<string, unknown>;
+
+  @IsOptional()
+  @Type(() => Date)
+  public expiresAt?: Date;
 }

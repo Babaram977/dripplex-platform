@@ -1,4 +1,5 @@
 import {
+  NotificationCategory,
   NotificationChannel,
   NotificationPriority,
   NotificationStatus,
@@ -23,6 +24,7 @@ const makeNotification = (
 ): Notification => ({
   id: notificationId,
   userId,
+  category: NotificationCategory.SYSTEM,
   channel: NotificationChannel.IN_APP,
   type: NotificationType.WELCOME,
   priority: NotificationPriority.NORMAL,
@@ -32,6 +34,7 @@ const makeNotification = (
   templateCode: null,
   payload: null,
   scheduledAt: null,
+  expiresAt: null,
   sentAt: null,
   readAt: null,
   failureReason: null,
@@ -118,6 +121,7 @@ describe('NotificationCenterService', () => {
 
     const result = await service.send({
       userId,
+      category: NotificationCategory.MARKETING,
       channel: NotificationChannel.EMAIL,
       type: NotificationType.PROMOTION,
       title: 'Sale',
@@ -144,6 +148,7 @@ describe('NotificationCenterService', () => {
 
     const result = await service.send({
       userId,
+      category: NotificationCategory.SYSTEM,
       channel: NotificationChannel.IN_APP,
       type: NotificationType.WELCOME,
       title: 'Welcome',
@@ -180,6 +185,7 @@ describe('NotificationCenterService', () => {
 
     const result = await service.send({
       userId,
+      category: NotificationCategory.SYSTEM,
       channel: NotificationChannel.IN_APP,
       type: NotificationType.WELCOME,
       title: 'Welcome',
@@ -214,6 +220,7 @@ describe('NotificationCenterService', () => {
 
     const result = await service.send({
       userId,
+      category: NotificationCategory.SYSTEM,
       channel: NotificationChannel.EMAIL,
       type: NotificationType.WELCOME,
       title: 'Welcome',
@@ -284,6 +291,7 @@ describe('NotificationCenterService', () => {
 
     const result = await service.broadcast({
       userIds: [userId, '33333333-3333-4333-8333-333333333333'],
+      category: NotificationCategory.MARKETING,
       channel: NotificationChannel.IN_APP,
       type: NotificationType.PROMOTION,
       title: 'Sale',
