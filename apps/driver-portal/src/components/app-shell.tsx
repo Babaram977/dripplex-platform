@@ -12,6 +12,7 @@ import { sdk } from '@/lib/sdk';
 
 const NAV_LINKS = [
   { href: '/', label: 'Dashboard' },
+  { href: '/campaign', label: 'Campaign' },
   { href: '/rewards', label: 'Rewards' },
   { href: '/activity', label: 'Activity' },
   { href: '/leaderboard', label: 'Leaderboard' },

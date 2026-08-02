@@ -7,11 +7,13 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   Req,
 } from '@nestjs/common';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
+import { ListRidesQueryDto } from '../dto/list-rides-query.dto';
 import { CancelRideDto } from '../dto/request-ride.dto';
 import { RateRideDto } from '../dto/ride-rating.dto';
 import { UpdateDriverAvailabilityDto } from '../dto/update-driver-availability.dto';
@@ -51,6 +53,36 @@ export class DriverRidesController {
     @Body() dto: UpdateDriverAvailabilityDto,
   ): Promise<ApiSuccessResponse<DriverAvailabilityDto>> {
     const data = await this.ridesService.updateDriverAvailability(user.id, dto);
+    return { success: true, data };
+  }
+
+  @Get('availability')
+  public async getAvailability(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ApiSuccessResponse<DriverAvailabilityDto | null>> {
+    const data = await this.ridesService.getOwnAvailability(user.id);
+    return { success: true, data };
+  }
+
+  @Get('active')
+  public async getActiveRide(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ApiSuccessResponse<RideDto | null>> {
+    const data = await this.ridesService.getActiveRide(user.id);
+    return { success: true, data };
+  }
+
+  @Get()
+  public async listOwnRides(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: ListRidesQueryDto,
+  ): Promise<
+    ApiSuccessResponse<{
+      items: RideDto[];
+      meta: { page: number; limit: number; total: number; totalPages: number };
+    }>
+  > {
+    const data = await this.ridesService.listOwnRidesForDriver(user.id, query);
     return { success: true, data };
   }
 

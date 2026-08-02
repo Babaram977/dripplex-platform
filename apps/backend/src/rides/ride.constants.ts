@@ -1,4 +1,4 @@
-import { RideType } from '@prisma/client';
+import { RideStatus, RideType } from '@prisma/client';
 
 export const RIDE_AUDIT_ACTIONS = {
   REQUESTED: 'ride.requested',
@@ -70,6 +70,14 @@ export const CANCELLABLE_RIDE_STATUSES: readonly string[] = [
   'SEARCHING',
   'DRIVER_ASSIGNED',
   'ARRIVED',
+];
+
+/** Statuses that count as "the driver currently has a trip in progress" —
+ * used to recover the active ride reference after a page refresh. */
+export const ACTIVE_DRIVER_RIDE_STATUSES: RideStatus[] = [
+  RideStatus.DRIVER_ASSIGNED,
+  RideStatus.ARRIVED,
+  RideStatus.IN_PROGRESS,
 ];
 
 export const DEFAULT_RIDE_SPEED_MPS = 8.33;

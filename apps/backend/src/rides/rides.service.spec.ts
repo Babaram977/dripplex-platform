@@ -307,4 +307,73 @@ describe('RidesService', () => {
       await prisma.user.delete({ where: { id: other.id } }).catch(() => undefined);
     }
   });
+
+  it('returns null from getOwnAvailability when the driver has no availability row', async () => {
+    if (!databaseAvailable) return;
+
+    const other = await prisma.user.create({
+      data: {
+        email: `ride-service-no-availability-${randomUUID()}@dripplex.test`,
+        passwordHash: 'not-a-real-hash',
+        firstName: 'No',
+        lastName: 'Availability',
+      },
+    });
+
+    try {
+      await expect(service.getOwnAvailability(other.id)).resolves.toBeNull();
+    } finally {
+      await prisma.user.delete({ where: { id: other.id } }).catch(() => undefined);
+    }
+  });
+
+  it("returns the driver's own availability from getOwnAvailability", async () => {
+    if (!databaseAvailable) return;
+
+    const availability = await service.getOwnAvailability(driverId);
+    expect(availability?.online).toBe(true);
+    expect(availability?.vehicleType).toBe('ECONOMY');
+  });
+
+  it('returns null from getActiveRide when the driver has no ride in progress', async () => {
+    if (!databaseAvailable) return;
+
+    await expect(service.getActiveRide(driverId)).resolves.toBeNull();
+  });
+
+  it('returns the in-progress ride from getActiveRide once a driver accepts an offer', async () => {
+    if (!databaseAvailable) return;
+
+    const ride = await service.requestRide(
+      customerId,
+      { rideType: 'ECONOMY', ...pickup, ...dropoff },
+      context,
+    );
+    const offer = await prisma.rideOffer.findFirstOrThrow({ where: { rideId: ride.id } });
+    await dispatchService.acceptOffer(driverId, offer.id, context);
+
+    const active = await service.getActiveRide(driverId);
+    expect(active?.id).toBe(ride.id);
+    expect(active?.status).toBe('DRIVER_ASSIGNED');
+
+    await service.cancelRide(customerId, ride.id, {}, context);
+  });
+
+  it("lists only the requesting driver's own rides via listOwnRidesForDriver", async () => {
+    if (!databaseAvailable) return;
+
+    const ride = await service.requestRide(
+      customerId,
+      { rideType: 'ECONOMY', ...pickup, ...dropoff },
+      context,
+    );
+    const offer = await prisma.rideOffer.findFirstOrThrow({ where: { rideId: ride.id } });
+    await dispatchService.acceptOffer(driverId, offer.id, context);
+
+    const mine = await service.listOwnRidesForDriver(driverId, { page: 1, limit: 20 });
+    expect(mine.items.some((item) => item.id === ride.id)).toBe(true);
+    expect(mine.items.every((item) => item.driverId === driverId)).toBe(true);
+
+    await service.cancelRide(customerId, ride.id, {}, context);
+  });
 });

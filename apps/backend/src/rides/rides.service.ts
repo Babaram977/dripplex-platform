@@ -17,6 +17,7 @@ import { RideDispatchService } from './ride-dispatch.service';
 import { RIDE_EVENTS_PUBLISHER, type RideEventsPublisher } from './ride-events.publisher';
 import { type RideFareEstimate, RideFareService } from './ride-fare.service';
 import {
+  ACTIVE_DRIVER_RIDE_STATUSES,
   CANCELLABLE_RIDE_STATUSES,
   RIDE_AUDIT_ACTIONS,
   RIDE_PROMOTION_REFERENCE_TYPE,
@@ -222,6 +223,38 @@ export class RidesService {
     };
   }
 
+  /** Driver-side mirror of listOwnRides — same shape, keyed by driverId
+   * instead of customerId. Backs both the dashboard's ride-statistics
+   * widget and the Ride History screen. */
+  public async listOwnRidesForDriver(
+    driverId: string,
+    query: ListRidesQueryDto,
+  ): Promise<{
+    items: RideDto[];
+    meta: { page: number; limit: number; total: number; totalPages: number };
+  }> {
+    const where = { driverId, ...(query.status ? { status: query.status } : {}) };
+    const [rides, total] = await Promise.all([
+      this.prisma.ride.findMany({
+        where,
+        orderBy: { requestedAt: 'desc' },
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+      }),
+      this.prisma.ride.count({ where }),
+    ]);
+
+    return {
+      items: rides.map(toRideDto),
+      meta: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages: Math.ceil(total / query.limit),
+      },
+    };
+  }
+
   public async cancelRide(
     customerId: string,
     rideId: string,
@@ -310,6 +343,22 @@ export class RidesService {
       },
     });
     return toDriverAvailabilityDto(availability);
+  }
+
+  public async getOwnAvailability(driverId: string): Promise<DriverAvailabilityDto | null> {
+    const availability = await this.prisma.driverAvailability.findUnique({ where: { driverId } });
+    return availability ? toDriverAvailabilityDto(availability) : null;
+  }
+
+  /** Lets the dashboard recover "you have a trip in progress" after a page
+   * refresh — acceptOffer/arrive/start all return the updated RideDto
+   * directly, but nothing persists that reference client-side. */
+  public async getActiveRide(driverId: string): Promise<RideDto | null> {
+    const ride = await this.prisma.ride.findFirst({
+      where: { driverId, status: { in: ACTIVE_DRIVER_RIDE_STATUSES } },
+      orderBy: { assignedAt: 'desc' },
+    });
+    return ride ? toRideDto(ride) : null;
   }
 
   private async requireOwnedRide(customerId: string, rideId: string): Promise<Ride> {

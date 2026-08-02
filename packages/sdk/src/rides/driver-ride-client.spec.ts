@@ -10,6 +10,27 @@ function createHttpMock(): { http: HttpClient; request: ReturnType<typeof vi.fn>
 }
 
 describe('DriverRideClient', () => {
+  it('listOwnRides() gets /driver/rides with query params and auth', async () => {
+    const { http, request } = createHttpMock();
+    const client = new DriverRideClient(http);
+
+    await client.listOwnRides({ page: 2, limit: 10, status: 'COMPLETED' });
+
+    expect(request).toHaveBeenCalledWith('/driver/rides?page=2&limit=10&status=COMPLETED', {
+      method: 'GET',
+      auth: true,
+    });
+  });
+
+  it('listOwnRides() gets /driver/rides with no query params by default', async () => {
+    const { http, request } = createHttpMock();
+    const client = new DriverRideClient(http);
+
+    await client.listOwnRides();
+
+    expect(request).toHaveBeenCalledWith('/driver/rides', { method: 'GET', auth: true });
+  });
+
   it('updateAvailability() posts to /driver/rides/availability with auth', async () => {
     const { http, request } = createHttpMock();
     const client = new DriverRideClient(http);
@@ -28,6 +49,27 @@ describe('DriverRideClient', () => {
       body,
       auth: true,
     });
+  });
+
+  it('getAvailability() gets /driver/rides/availability with auth', async () => {
+    const { http, request } = createHttpMock();
+    const client = new DriverRideClient(http);
+
+    await client.getAvailability();
+
+    expect(request).toHaveBeenCalledWith('/driver/rides/availability', {
+      method: 'GET',
+      auth: true,
+    });
+  });
+
+  it('getActiveRide() gets /driver/rides/active with auth', async () => {
+    const { http, request } = createHttpMock();
+    const client = new DriverRideClient(http);
+
+    await client.getActiveRide();
+
+    expect(request).toHaveBeenCalledWith('/driver/rides/active', { method: 'GET', auth: true });
   });
 
   it('listOffers() gets /driver/rides/offers with auth', async () => {
