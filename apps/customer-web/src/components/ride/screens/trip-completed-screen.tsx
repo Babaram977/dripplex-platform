@@ -81,7 +81,7 @@ export function TripCompletedScreen({
           </p>
           <p
             className="text-[14px]"
-            style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.38)' }}
+            style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
           >
             {ride.data?.dropoffAddress ?? 'Destination'}
           </p>
@@ -104,7 +104,7 @@ export function TripCompletedScreen({
               <div key={labelText} className="mb-2.5 flex justify-between">
                 <p
                   className="text-[13px]"
-                  style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.38)' }}
+                  style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
                 >
                   {labelText}
                 </p>

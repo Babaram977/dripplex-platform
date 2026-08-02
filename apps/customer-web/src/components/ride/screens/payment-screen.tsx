@@ -53,7 +53,7 @@ export function PaymentScreen({
         >
           <p
             className="text-[12px]"
-            style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.38)' }}
+            style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
           >
             {ride.data?.pickupAddress ?? 'Pickup'} → {ride.data?.dropoffAddress ?? 'Destination'}
           </p>

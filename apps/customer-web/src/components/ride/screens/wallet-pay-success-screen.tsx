@@ -71,7 +71,7 @@ export function WalletPaySuccessScreen({
           <div key={labelText} className="mb-2 flex justify-between">
             <p
               className="text-[12px]"
-              style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.38)' }}
+              style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
             >
               {labelText}
             </p>

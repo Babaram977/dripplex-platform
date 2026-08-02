@@ -81,7 +81,7 @@ export function DriverArrivedScreen({
           }}
           disabled={cancelRide.isPending}
           className="w-full text-center text-[14px] font-medium"
-          style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.38)' }}
+          style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
         >
           {cancelRide.isPending ? 'Cancelling…' : 'Cancel ride'}
         </button>

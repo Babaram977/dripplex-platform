@@ -160,7 +160,7 @@ export function FareEstimateScreen({
                 className="rounded-2xl p-4 text-[13px]"
                 style={{
                   fontFamily: "'Inter',sans-serif",
-                  color: 'rgba(255,255,255,.38)',
+                  color: 'rgba(255,255,255,.5)',
                   background: '#112238',
                   border: '1px solid rgba(255,255,255,.08)',
                 }}

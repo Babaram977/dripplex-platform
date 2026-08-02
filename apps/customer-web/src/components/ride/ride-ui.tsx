@@ -262,7 +262,7 @@ export function StatusBanner({
       {subtitle ? (
         <p
           className="text-[14px]"
-          style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.38)' }}
+          style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
         >
           {subtitle}
         </p>
@@ -285,7 +285,7 @@ export function ETAChip({ label, value }: { label: string; value: string }): Rea
       </p>
       <p
         className="text-[10px]"
-        style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.38)' }}
+        style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
       >
         {label}
       </p>
@@ -380,7 +380,7 @@ export function DriverCard({ onViewProfile }: { onViewProfile?: () => void }): R
         </p>
         <p
           className="text-[12px]"
-          style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.38)' }}
+          style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
         >
           Name, photo, and vehicle details aren&apos;t available yet — pending a backend
           driver-profile endpoint
@@ -442,7 +442,12 @@ export function MapCanvas({
   const pathD = `M${String(r.cx)},${String(r.cy)} Q${String(midX)},${String(midY)} ${String(r.dx)},${String(r.dy)}`;
   const filled = Math.round(280 * Math.max(0, Math.min(1, progress)));
   return (
-    <svg width="390" height="320" viewBox="0 0 390 320" style={{ display: 'block' }}>
+    <svg
+      viewBox="0 0 390 320"
+      preserveAspectRatio="xMidYMid slice"
+      className="h-full w-full"
+      style={{ display: 'block' }}
+    >
       <rect width="390" height="320" fill="#0D1B2E" />
       <line x1="0" y1="180" x2="390" y2="180" stroke="rgba(255,255,255,.07)" strokeWidth="2.5" />
       <line x1="195" y1="0" x2="195" y2="320" stroke="rgba(255,255,255,.07)" strokeWidth="2.5" />

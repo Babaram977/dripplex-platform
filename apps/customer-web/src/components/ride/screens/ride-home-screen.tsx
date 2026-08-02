@@ -90,7 +90,7 @@ export function RideHomeScreen({
             </p>
             <p
               className="text-[13px]"
-              style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.38)' }}
+              style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
             >
               Set your destination to see fares nearby
             </p>
@@ -117,7 +117,7 @@ export function RideHomeScreen({
                 style={{
                   fontFamily: "'Inter',sans-serif",
                   fontSize: 15,
-                  color: 'rgba(255,255,255,.38)',
+                  color: 'rgba(255,255,255,.5)',
                 }}
               >
                 Where are you going?
@@ -151,7 +151,7 @@ export function RideHomeScreen({
                     </p>
                     <p
                       className="truncate text-[11px]"
-                      style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.38)' }}
+                      style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
                     >
                       {place.addressLine1}
                     </p>
@@ -163,7 +163,7 @@ export function RideHomeScreen({
           <div className="mb-3 flex items-center justify-between">
             <p
               className="text-[13px] font-semibold"
-              style={{ fontFamily: "'Poppins',sans-serif", color: 'rgba(255,255,255,.38)' }}
+              style={{ fontFamily: "'Poppins',sans-serif", color: 'rgba(255,255,255,.5)' }}
             >
               SAVED PLACES
             </p>
@@ -179,11 +179,13 @@ export function RideHomeScreen({
           {(savedPlaces.data?.items ?? []).length === 0 ? (
             <p
               className="text-[13px]"
-              style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.38)' }}
+              style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
             >
               {savedPlaces.isLoading
                 ? 'Loading…'
-                : 'No saved places yet — add one from Destination Search.'}
+                : savedPlaces.isError
+                  ? "Couldn't load your saved places."
+                  : 'No saved places yet — add one from Destination Search.'}
             </p>
           ) : (
             (savedPlaces.data?.items ?? []).map((place) => (
@@ -210,7 +212,7 @@ export function RideHomeScreen({
                   </p>
                   <p
                     className="truncate text-[12px]"
-                    style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.38)' }}
+                    style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
                   >
                     {place.city}, {place.state}
                   </p>

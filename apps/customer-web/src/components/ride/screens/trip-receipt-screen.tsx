@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 
-import { FareBreakdown, RideHeader } from '../ride-ui';
+import { ActionButton, FareBreakdown, RideHeader, StatusBanner } from '../ride-ui';
 
 import { useRideReceipt } from '@/hooks/rides';
 
@@ -27,10 +27,28 @@ export function TripReceiptScreen({
         {receipt.isLoading ? (
           <p
             className="py-4 text-[13px]"
-            style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.38)' }}
+            style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
           >
             Loading receipt…
           </p>
+        ) : null}
+        {receipt.isError ? (
+          <div className="flex flex-col items-center gap-4 py-8">
+            <StatusBanner
+              tone="error"
+              title="Couldn't load this receipt"
+              subtitle="Check your connection and try again."
+            />
+            <div className="w-full max-w-[200px]">
+              <ActionButton
+                label="Retry"
+                variant="secondary"
+                onClick={() => {
+                  void receipt.refetch();
+                }}
+              />
+            </div>
+          </div>
         ) : null}
         {receipt.data ? (
           <>
@@ -45,7 +63,7 @@ export function TripReceiptScreen({
                 <div>
                   <p
                     className="text-[11px] font-semibold"
-                    style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.38)' }}
+                    style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
                   >
                     RECEIPT
                   </p>
@@ -92,7 +110,7 @@ export function TripReceiptScreen({
                   <div key={labelText} className="mb-3 flex justify-between">
                     <p
                       className="text-[13px]"
-                      style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.38)' }}
+                      style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
                     >
                       {labelText}
                     </p>
@@ -115,7 +133,7 @@ export function TripReceiptScreen({
             {receipt.data.fare.tipAmount ? (
               <p
                 className="mt-3 text-center text-[12px]"
-                style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.38)' }}
+                style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
               >
                 Includes ₦{receipt.data.fare.tipAmount.toLocaleString()} tip
               </p>
@@ -124,7 +142,7 @@ export function TripReceiptScreen({
               type="button"
               onClick={onReport}
               className="mt-4 w-full text-center text-[13px]"
-              style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.38)' }}
+              style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
             >
               Report an issue with this trip
             </button>

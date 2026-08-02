@@ -59,7 +59,7 @@ export function DriverEnRouteScreen({
               className="rounded-full px-2 py-0.5 text-[10px] font-bold"
               style={{
                 background: tracking.connected ? 'rgba(43,172,82,.15)' : 'rgba(255,255,255,.06)',
-                color: tracking.connected ? '#47CF72' : 'rgba(255,255,255,.38)',
+                color: tracking.connected ? '#47CF72' : 'rgba(255,255,255,.5)',
                 fontFamily: "'Inter',sans-serif",
               }}
             >

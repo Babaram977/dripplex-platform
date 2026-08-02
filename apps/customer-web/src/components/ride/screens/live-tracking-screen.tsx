@@ -3,11 +3,13 @@
 import * as React from 'react';
 
 import {
+  ActionButton,
   BackArrow,
   MapCanvas,
   QuickActionButton,
   RideBottomSheet,
   RideStatusBar,
+  StatusBanner,
 } from '../ride-ui';
 
 import { useRide, useRideTracking } from '@/hooks/rides';
@@ -91,36 +93,60 @@ export function LiveTrackingScreen({
       </div>
       <RideBottomSheet peek anchored>
         <div className="px-5 pb-8 pt-5">
-          <p
-            className="mb-1 text-[16px] font-bold"
-            style={{ fontFamily: "'Poppins',sans-serif", color: '#fff' }}
-          >
-            On the way to {ride.data?.dropoffAddress ?? 'destination'}
-          </p>
-          <p
-            className="mb-3 text-[13px]"
-            style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.6)' }}
-          >
-            {distanceRemainingLabel}
-          </p>
-          <div className="mb-4 h-2 rounded-full" style={{ background: '#112238' }}>
-            <div
-              className="h-2 rounded-full transition-all"
-              style={{ background: '#47CF72', width: `${String(Math.round(progress * 100))}%` }}
-            />
-          </div>
-          <div className="mb-2 flex gap-2">
-            <QuickActionButton icon="📍" label="Share Trip" disabled />
-            <QuickActionButton icon="🚨" label="SOS" disabled />
-            <QuickActionButton icon="📞" label="Call" disabled />
-          </div>
-          <p
-            className="text-center text-[11px]"
-            style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.3)' }}
-          >
-            Share Trip, SOS, and Call aren&apos;t available yet — no trip-sharing, emergency, or
-            telephony capability exists in the backend today.
-          </p>
+          {ride.isError ? (
+            <div className="flex flex-col items-center gap-4 py-2">
+              <StatusBanner
+                tone="error"
+                title="Couldn't load this ride"
+                subtitle="Check your connection and try again."
+              />
+              <div className="w-full max-w-[200px]">
+                <ActionButton
+                  label="Retry"
+                  variant="secondary"
+                  onClick={() => {
+                    void ride.refetch();
+                  }}
+                />
+              </div>
+            </div>
+          ) : (
+            <>
+              <p
+                className="mb-1 text-[16px] font-bold"
+                style={{ fontFamily: "'Poppins',sans-serif", color: '#fff' }}
+              >
+                On the way to {ride.data?.dropoffAddress ?? 'destination'}
+              </p>
+              <p
+                className="mb-3 text-[13px]"
+                style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.6)' }}
+              >
+                {distanceRemainingLabel}
+              </p>
+              <div className="mb-4 h-2 rounded-full" style={{ background: '#112238' }}>
+                <div
+                  className="h-2 rounded-full transition-all"
+                  style={{
+                    background: '#47CF72',
+                    width: `${String(Math.round(progress * 100))}%`,
+                  }}
+                />
+              </div>
+              <div className="mb-2 flex gap-2">
+                <QuickActionButton icon="📍" label="Share Trip" disabled />
+                <QuickActionButton icon="🚨" label="SOS" disabled />
+                <QuickActionButton icon="📞" label="Call" disabled />
+              </div>
+              <p
+                className="text-center text-[11px]"
+                style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.3)' }}
+              >
+                Share Trip, SOS, and Call aren&apos;t available yet — no trip-sharing, emergency, or
+                telephony capability exists in the backend today.
+              </p>
+            </>
+          )}
         </div>
       </RideBottomSheet>
     </div>

@@ -46,7 +46,7 @@ export function DriverProfileSheet({ onBack }: { onBack: () => void }): React.JS
         >
           <p
             className="mb-3 text-[11px] font-semibold uppercase tracking-wide"
-            style={{ fontFamily: "'Poppins',sans-serif", color: 'rgba(255,255,255,.38)' }}
+            style={{ fontFamily: "'Poppins',sans-serif", color: 'rgba(255,255,255,.5)' }}
           >
             Integration status
           </p>
@@ -68,7 +68,7 @@ export function DriverProfileSheet({ onBack }: { onBack: () => void }): React.JS
               </p>
               <p
                 className="text-right text-[12px]"
-                style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.38)' }}
+                style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
               >
                 {status}
               </p>

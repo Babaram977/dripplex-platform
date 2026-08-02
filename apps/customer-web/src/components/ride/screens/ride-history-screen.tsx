@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 
-import { RideHeader } from '../ride-ui';
+import { ActionButton, RideHeader, StatusBanner } from '../ride-ui';
 
 import type { RideStatus } from '@dripplex/types';
 
@@ -64,7 +64,7 @@ export function RideHistoryScreen({
               className="h-9 flex-1 rounded-xl text-[12px] font-semibold capitalize"
               style={{
                 background: tab === t ? '#2BAC52' : '#112238',
-                color: tab === t ? '#fff' : 'rgba(255,255,255,.38)',
+                color: tab === t ? '#fff' : 'rgba(255,255,255,.5)',
                 fontFamily: "'Inter',sans-serif",
               }}
             >
@@ -77,15 +77,33 @@ export function RideHistoryScreen({
         {rides.isLoading ? (
           <p
             className="py-4 text-[13px]"
-            style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.38)' }}
+            style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
           >
             Loading your rides…
           </p>
         ) : null}
-        {!rides.isLoading && (rides.data?.items.length ?? 0) === 0 ? (
+        {rides.isError ? (
+          <div className="flex flex-col items-center gap-4 py-8">
+            <StatusBanner
+              tone="error"
+              title="Couldn't load your rides"
+              subtitle="Check your connection and try again."
+            />
+            <div className="w-full max-w-[200px]">
+              <ActionButton
+                label="Retry"
+                variant="secondary"
+                onClick={() => {
+                  void rides.refetch();
+                }}
+              />
+            </div>
+          </div>
+        ) : null}
+        {!rides.isLoading && !rides.isError && (rides.data?.items.length ?? 0) === 0 ? (
           <p
             className="py-4 text-[13px]"
-            style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.38)' }}
+            style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
           >
             No rides here yet.
           </p>
@@ -113,7 +131,7 @@ export function RideHistoryScreen({
                     </p>
                     <p
                       className="text-[11px]"
-                      style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.38)' }}
+                      style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
                     >
                       {formatDate(ride.requestedAt)}
                     </p>
@@ -147,7 +165,7 @@ export function RideHistoryScreen({
               {!completed && ride.cancellationReason ? (
                 <p
                   className="mt-2 text-[11px]"
-                  style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(239,68,68,.7)' }}
+                  style={{ fontFamily: "'Inter',sans-serif", color: '#EF4444' }}
                 >
                   {ride.cancellationReason}
                 </p>
@@ -198,7 +216,7 @@ export function RideHistoryScreen({
             </button>
             <p
               className="text-[12px]"
-              style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.38)' }}
+              style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
             >
               Page {page} of {rides.data.meta.totalPages}
             </p>

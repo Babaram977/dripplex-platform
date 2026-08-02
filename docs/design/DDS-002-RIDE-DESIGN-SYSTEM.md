@@ -43,7 +43,7 @@ Every rgba color in active use (verified via `grep -rohE "rgba\(...\)" .`), grou
 | Border (default)                     | `rgba(255,255,255,.08)`                                                                                                                                                                                                                                                                                                                                                                                          |
 | Text — full white                    | `#fff`                                                                                                                                                                                                                                                                                                                                                                                                           |
 | Text — dim                           | `rgba(255,255,255,.6)` / `.7` / `.8`                                                                                                                                                                                                                                                                                                                                                                             |
-| Text — muted                         | `rgba(255,255,255,.38)`                                                                                                                                                                                                                                                                                                                                                                                          |
+| Text — muted                         | `rgba(255,255,255,.5)` (raised from `.38` — see §9 Production Audit fix)                                                                                                                                                                                                                                                                                                                                         |
 | Text — disabled                      | `rgba(255,255,255,.22)` / `.3`                                                                                                                                                                                                                                                                                                                                                                                   |
 | Hairline / faint                     | `rgba(255,255,255,.06)` / `.07` / `.15` / `.5` / `.55`                                                                                                                                                                                                                                                                                                                                                           |
 | Green tint (icon/status backgrounds) | `rgba(43,172,82,.08–.4)` — the brand-green family, used for icon tiles, chips, selected-state borders                                                                                                                                                                                                                                                                                                            |
@@ -198,3 +198,17 @@ before writing this document. Findings:
    4/8/12/16/20/24/32/40/48 grid are half-step values that are themselves
    real, sourced from Figma Make (see Section 3) — not drift to fix, but
    real design decisions from the source to keep.
+
+## 10. Production Audit fix (post-Slice-4)
+
+`docs/RIDE-003-PRODUCTION-AUDIT.md` computed real WCAG contrast ratios for
+every text token against both real backgrounds and found the "muted" token
+(`rgba(255,255,255,.38)`) failed AA's 4.5:1 minimum for normal text —
+**3.57:1** against `#0A1628`, **3.47:1** against `#112238`. This is the one
+place this document's own value has changed since the RIDE-003A lock: the
+opacity was raised to `.5`, computed to clear 4.5:1 against both real
+backgrounds (4.58:1 against `#112238`, the tighter constraint; 4.78:1
+against `#0A1628`). Applied everywhere the token was used — `ride-ui.tsx`
+and all 16 screen files that referenced it — via a single mechanical
+find-and-replace, not a per-screen judgment call. No other token in this
+document changed.

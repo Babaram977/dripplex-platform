@@ -5,6 +5,14 @@ instruction: audit first, fix nothing until the audit is signed off, then
 fix only verified issues — not speculative ones. This document is that
 audit. No code was changed while writing it.
 
+**Status: Phase A (production blockers + defects) fixed, per the
+founder's approved 5-phase sequence** (Phase A: fix blockers → Phase B:
+DPX-NOTIFY-001 infra → Phase C: sound assets → Phase D: provider
+credentials → Phase E: RIDE-004). See the "Phase A fix log" at the bottom
+of this document for exactly what changed and how each fix was verified.
+Sections 1-5 below are left as originally written (the as-found audit);
+they are not edited in place so the record of what was found stays intact.
+
 ## Methodology and honest limits
 
 This sandbox has no `DATABASE_URL`/`REDIS_URL`/JWT secrets and no way to
@@ -289,3 +297,60 @@ silently carrying it forward.
    unilaterally under the current freeze rules.
 4. Everything else (3.x, 4.x, 5.x) is real but not urgent — schedule
    opportunistically, not as a blocking pass.
+
+---
+
+## Phase A fix log
+
+Applied in the order above, immediately after founder sign-off. All fixes
+verified via `tsc --noEmit` (clean), `eslint --max-warnings=0` (clean),
+`vitest run` (4/4 passed, unchanged), `next build` (clean, `/ride`
+31.6 kB → 31.9 kB — the small increase is the new error-state UI).
+
+- **1.1 (WS fallback)** — fixed. `useRideStatusTransition`
+  (`use-ride-status-transition.ts`) now polls `ride.refetch()` every 4s
+  whenever the current status hasn't reached a target, the same pattern
+  `FindingDriverScreen`/`CashPaymentScreen` already used independently.
+  `DriverAssignedScreen`, `DriverEnRouteScreen`, `DriverArrivedScreen`, and
+  `RideInProgressScreen` all inherit it automatically since they're built
+  on this hook — no per-screen changes needed for the polling itself.
+- **1.2 (query error states)** — fixed on the 7 screens that read
+  ride/address data as primary or blocking content:
+  `RideHistoryScreen`, `SavedPlacesScreen`, `DestinationSearchScreen`,
+  `TripReceiptScreen`, `DriverAssignedScreen`, `RideInProgressScreen`,
+  `LiveTrackingScreen`. Each now checks `.isError` and shows
+  `StatusBanner(tone="error")` + a `Retry` button (`void query.refetch()`)
+  instead of falling through to an empty/placeholder state.
+  `RideHomeScreen`'s saved-places section got a lighter inline-text
+  version since a failed fetch there is a secondary-content failure, not
+  a blocking one — the primary "Where to?" search flow still works.
+- **2.1 (WCAG contrast)** — fixed. Raised `rgba(255,255,255,.38)` to
+  `rgba(255,255,255,.5)` everywhere it appeared (`ride-ui.tsx` + 15 screen
+  files, 42 occurrences, one mechanical find-and-replace — no per-site
+  judgment calls). Computed contrast is now 4.58:1 against `#112238`
+  (was 3.47:1) and 4.78:1 against `#0A1628` (was 3.57:1) — both clear the
+  4.5:1 AA threshold. `DDS-002-RIDE-DESIGN-SYSTEM.md` §1 and §10 and
+  `DDS-002-RIDE-UI-KIT.md`'s token table updated to record the new value
+  and why — DDS-002 is otherwise unchanged, this is the one token that
+  moved.
+- **2.2 (MapCanvas overflow)** — fixed. Dropped the fixed `width="390"
+height="320"` attributes in favor of `className="w-full h-full"` with
+  `preserveAspectRatio="xMidYMid slice"` (fills its container instead of
+  letterboxing, matching how the illustration is meant to sit full-bleed
+  behind the header/status bar). The `viewBox="0 0 390 320"` — and every
+  route/marker coordinate computed against it — is unchanged; this was a
+  pure CSS-sizing fix, not a redraw. No longer crops on <390px viewports.
+- **2.3 (self-introduced token deviation)** — fixed. The one-line
+  `rgba(239,68,68,.7)` in `ride-history-screen.tsx` is now the documented
+  `#EF4444` solid token.
+- **2.4 (double `useRide` subscription)** — not changed. Confirmed
+  harmless (same query key, React Query shares the underlying `Query`
+  object, no extra network cost) and fixing the structural redundancy
+  would mean reworking `useRideStatusTransition`'s API to return ride data
+  instead of just status, touching every call site for a code-cleanliness
+  gain with no behavioral upside — left as documented technical debt
+  rather than bundled into this fix pass.
+- **3.x / 4.x / 5.x (technical debt / improvements / nice-to-haves)** —
+  intentionally not touched this pass, per the founder's own instruction
+  to fix verified blockers/defects now and schedule the rest
+  opportunistically.

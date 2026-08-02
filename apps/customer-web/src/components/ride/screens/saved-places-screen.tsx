@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 
-import { ActionButton, RideHeader } from '../ride-ui';
+import { ActionButton, RideHeader, StatusBanner } from '../ride-ui';
 
 import type { AddressLabel, CustomerAddressDto } from '@dripplex/types';
 
@@ -68,7 +68,7 @@ function TextField({
     <div className="mb-3">
       <p
         className="mb-1.5 text-[11px] font-semibold"
-        style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.38)' }}
+        style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
       >
         {label}
         {required ? ' *' : ''}
@@ -143,7 +143,7 @@ function PlaceForm({
               className="h-9 flex-1 rounded-xl text-[12px] font-semibold capitalize"
               style={{
                 background: form.label === label ? '#2BAC52' : '#112238',
-                color: form.label === label ? '#fff' : 'rgba(255,255,255,.38)',
+                color: form.label === label ? '#fff' : 'rgba(255,255,255,.5)',
                 fontFamily: "'Inter',sans-serif",
               }}
             >
@@ -341,16 +341,34 @@ export function SavedPlacesScreen({ onBack }: { onBack: () => void }): React.JSX
         {savedPlaces.isLoading ? (
           <p
             className="py-4 text-[13px]"
-            style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.38)' }}
+            style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
           >
             Loading saved places…
           </p>
         ) : null}
-        {homeWork.length > 0 ? (
+        {savedPlaces.isError ? (
+          <div className="flex flex-col items-center gap-4 py-8">
+            <StatusBanner
+              tone="error"
+              title="Couldn't load your saved places"
+              subtitle="Check your connection and try again."
+            />
+            <div className="w-full max-w-[200px]">
+              <ActionButton
+                label="Retry"
+                variant="secondary"
+                onClick={() => {
+                  void savedPlaces.refetch();
+                }}
+              />
+            </div>
+          </div>
+        ) : null}
+        {!savedPlaces.isError && homeWork.length > 0 ? (
           <>
             <p
               className="mb-3 text-[11px] font-semibold"
-              style={{ fontFamily: "'Poppins',sans-serif", color: 'rgba(255,255,255,.38)' }}
+              style={{ fontFamily: "'Poppins',sans-serif", color: 'rgba(255,255,255,.5)' }}
             >
               HOME &amp; WORK
             </p>
@@ -371,11 +389,11 @@ export function SavedPlacesScreen({ onBack }: { onBack: () => void }): React.JSX
             ))}
           </>
         ) : null}
-        {other.length > 0 ? (
+        {!savedPlaces.isError && other.length > 0 ? (
           <>
             <p
               className="mb-3 mt-4 text-[11px] font-semibold"
-              style={{ fontFamily: "'Poppins',sans-serif", color: 'rgba(255,255,255,.38)' }}
+              style={{ fontFamily: "'Poppins',sans-serif", color: 'rgba(255,255,255,.5)' }}
             >
               OTHER PLACES
             </p>
@@ -396,10 +414,13 @@ export function SavedPlacesScreen({ onBack }: { onBack: () => void }): React.JSX
             ))}
           </>
         ) : null}
-        {!savedPlaces.isLoading && homeWork.length === 0 && other.length === 0 ? (
+        {!savedPlaces.isLoading &&
+        !savedPlaces.isError &&
+        homeWork.length === 0 &&
+        other.length === 0 ? (
           <p
             className="py-4 text-[13px]"
-            style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.38)' }}
+            style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
           >
             No saved places yet.
           </p>

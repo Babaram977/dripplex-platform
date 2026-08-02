@@ -89,7 +89,7 @@ export function FindingDriverScreen({
               }}
               disabled={cancelRide.isPending}
               className="text-[14px] font-medium"
-              style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.38)' }}
+              style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
             >
               {cancelRide.isPending ? 'Cancelling…' : 'Cancel ride'}
             </button>
@@ -98,7 +98,7 @@ export function FindingDriverScreen({
               type="button"
               onClick={onBack}
               className="text-[14px] font-medium"
-              style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.38)' }}
+              style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
             >
               Back to Home
             </button>

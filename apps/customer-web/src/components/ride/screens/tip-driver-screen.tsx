@@ -107,7 +107,7 @@ export function TipDriverScreen({
           type="button"
           onClick={onSkip}
           className="h-10 w-full text-sm"
-          style={{ color: 'rgba(255,255,255,.38)', fontFamily: "'Inter',sans-serif" }}
+          style={{ color: 'rgba(255,255,255,.5)', fontFamily: "'Inter',sans-serif" }}
         >
           Skip, no tip
         </button>
