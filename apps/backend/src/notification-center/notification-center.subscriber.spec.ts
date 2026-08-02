@@ -112,9 +112,20 @@ describe('NotificationCenterSubscriber', () => {
         userId: 'user-1',
         category: NotificationCategory.RIDE,
         type: NotificationType.RIDE_DRIVER_ASSIGNED,
-        payload: expect.objectContaining({ version: 1, rideId: 'ride-1' }),
+        payload: expect.objectContaining({ version: 1, rideId: 'ride-1', deepLink: '/ride' }),
       }),
     );
+  });
+
+  it('omits deepLink for events with no real destination route', async () => {
+    await subscriber.handle({
+      name: DOMAIN_EVENTS.ORDER_CREATED,
+      payload: { customerId: 'user-1', orderId: 'order-1' },
+      occurredAt: new Date().toISOString(),
+    });
+
+    const call = notificationCenter.send.mock.calls[0]?.[0];
+    expect(call?.payload).not.toHaveProperty('deepLink');
   });
 
   it('maps referral redeemed events to a MARKETING-category notification for the referrer', async () => {

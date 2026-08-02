@@ -448,3 +448,103 @@ Verification: `@dripplex/hooks` `tsc --noEmit` clean, `eslint --max-warnings=0`
 clean, `vitest run` 10/10 tests (native-push, web-push,
 push-registration-service). customer-web `tsc`, `eslint`, `vitest`
 (4/4), `next build` (21/21 routes) all clean.
+
+## Phase D-3 (2026-08-02): foreground UX + notification-center sync
+
+D-2 registered devices for push. This phase makes an already-open app
+_react_ to one (toast/sound/vibrate/badge) and makes tapping a push —
+foreground, background, or native — land on the right screen with the
+notification marked read, closing the loop D-2's own doc explicitly
+called out as deferred ("no `onMessage()` listener was added").
+
+### Deep links are now real, not guessed
+
+`NotificationCenterSubscriber`'s `NotificationEventMapping` gained an
+optional `deepLink` field, set to `/ride` for the four ride-lifecycle
+mappings only (`RIDE_DRIVER_ASSIGNED`/`ARRIVED`/`STARTED`/`COMPLETED`) —
+the one destination in customer-web unambiguous enough to be worth
+wiring. Every other event type (orders, wallet, referrals, promotions)
+was deliberately left without one: customer-web has no per-order or
+per-transaction detail route today, so mapping them would mean guessing
+a destination rather than reflecting one that exists. `handle()` merges
+`deepLink` into the persisted `payload` when present;
+`FirebasePushProvider.extractDeepLink()` reads it back out of that same
+`payload` and forwards it as FCM `data.deepLink` — the actual field a
+service worker or native tap handler receives, since `data` (not
+`payload`) is what crosses the wire in a push message.
+
+### Foreground: toast, chime, vibration, badge
+
+- **`useForegroundPush`** (`@dripplex/hooks`) wraps Firebase's
+  `onMessage()` — the foreground-only counterpart to `sw.js`'s
+  `onBackgroundMessage()` from D-2. Mounted via customer-web's new
+  `<ForegroundPushListener />`, gated on `isAuthenticated` (an
+  unauthenticated visitor never has a registered device, so there's
+  nothing for it to receive).
+- **No sound asset file exists in this repo** — Phase C explicitly
+  deferred "real audio files." Rather than reference a file that isn't
+  there, `playNotificationChime()` synthesizes a short tone via the Web
+  Audio API (`AudioContext` oscillator + gain envelope). A real sound,
+  not a fabricated path.
+- **`vibrateForNotification()`** — `navigator.vibrate()`, a silent no-op
+  on desktop browsers (no vibration hardware), which is correct behavior,
+  not a bug to work around.
+- **`setAppBadgeCount()`** wraps the Web Badging API
+  (`navigator.setAppBadge`/`clearAppBadge`) — unsupported in most desktop
+  browsers today, same "graceful no-op" contract as everything else in
+  this module. `useSyncAppBadge()` (customer-web) mirrors the existing
+  `useUnreadNotificationCount()` value onto it, gated on
+  `isAuthenticated` for the same reason as the listener above — it's
+  mounted in the root layout, not just inside the authenticated dashboard
+  section like the bell already was.
+- **Toast is intentionally not clickable.** `@dripplex/ui`'s `toast()`
+  has no `onClick`/action slot, and adding one is a shared-component
+  change outside this pass's scope. The toast is ambient awareness only;
+  the OS notification (background) and the bell dropdown (via the query
+  invalidation below) are the real tappable/actionable surfaces.
+
+### Tap-to-navigate + read sync, three paths
+
+- **Background (web):** `sw.js`'s `onBackgroundMessage` now attaches
+  `data` (including `deepLink`/`notificationId`) to the shown
+  notification's options. A new `notificationclick` listener reads it
+  back, then either `WindowClient.navigate()`s an already-open tab or
+  `clients.openWindow()`s a new one, at
+  `{deepLink ?? '/dashboard'}?readNotification={id}`.
+- **App-side:** `<ReadNotificationOnOpen />` (mounted root-layout-wide)
+  reads that `readNotification` param from `window.location` on mount,
+  calls `sdk.notifications.markRead()`, then strips the param via
+  `history.replaceState` so a refresh doesn't re-fire it. Deliberately
+  reads `window.location` directly rather than `useSearchParams()` —
+  that hook forces every consuming route out of static generation unless
+  wrapped in Suspense, and this component is mounted on all of them.
+  Verified: `next build` still shows all 21 routes as `○ (Static)`.
+  The worker can't call `markRead` itself — it has no access to the
+  page's in-memory auth token — so this two-step (open at a URL, then let
+  the authenticated page finish the job) is the realistic shape, not a
+  shortcut.
+- **Native:** `listenForNativeNotificationTaps()`
+  (`@dripplex/hooks/notifications/native-push.ts`) wraps Capacitor's
+  `pushNotificationActionPerformed` listener. Capacitor already
+  foregrounds the app on tap, so `<NativeNotificationTapHandler />`
+  (customer-web) can call `markRead` and `router.push()` directly — no
+  query-param round trip needed, unlike the background/web path.
+
+### Explicitly out of scope, per instruction
+
+- **Deep links for non-ride events.** Documented above — not a gap so
+  much as an honest reflection of which customer-web routes actually
+  exist today.
+- **A clickable toast.** Would require extending `@dripplex/ui`'s shared
+  `toast()` component; flagged, not done.
+- Everything D-2's own "explicitly out of scope" section already listed
+  (merchant/rider/driver mobile apps, real native FCM/APNs config files)
+  is still true and unchanged by this phase.
+
+Verification: backend `tsc --noEmit` clean, `eslint --max-warnings=0`
+clean, `jest --runInBand` 132/132 suites, 899/899 tests (3 new:
+subscriber deepLink mapping + omission, FirebasePushProvider data
+forwarding). `@dripplex/hooks` `tsc`, `eslint`, `vitest` 21/21 tests (11
+new: notification-effects, foreground-push, native tap listener).
+customer-web `tsc`, `eslint`, `vitest` (4/4), `next build` (21/21 routes,
+still fully static) all clean.

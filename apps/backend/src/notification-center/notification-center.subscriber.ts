@@ -24,6 +24,12 @@ interface NotificationEventMapping {
   body: (payload: Record<string, unknown>) => string;
   priority?: NotificationPriority;
   userKeys: string[];
+  /** Merged into `payload.deepLink` and forwarded as FCM `data.deepLink`
+   * (see firebase-push.provider.ts) so a tapped push can open the right
+   * screen. Only set where a real destination route exists — omitted
+   * (not a guessed fallback) rather than mapped to some page for every
+   * event type. */
+  deepLink?: string;
 }
 
 @Injectable()
@@ -131,6 +137,7 @@ export class NotificationCenterSubscriber implements OnModuleInit {
       title: 'Driver assigned',
       body: () => 'A driver has been assigned to your ride.',
       userKeys: ['customerId', 'userId'],
+      deepLink: '/ride',
     },
     [DOMAIN_EVENTS.RIDE_DRIVER_ARRIVED]: {
       category: NotificationCategory.RIDE,
@@ -139,6 +146,7 @@ export class NotificationCenterSubscriber implements OnModuleInit {
       body: () => 'Your driver has arrived at the pickup point.',
       priority: NotificationPriority.HIGH,
       userKeys: ['customerId', 'userId'],
+      deepLink: '/ride',
     },
     [DOMAIN_EVENTS.RIDE_STARTED]: {
       category: NotificationCategory.RIDE,
@@ -146,6 +154,7 @@ export class NotificationCenterSubscriber implements OnModuleInit {
       title: 'Trip started',
       body: () => 'Your trip has started.',
       userKeys: ['customerId', 'userId'],
+      deepLink: '/ride',
     },
     [DOMAIN_EVENTS.RIDE_COMPLETED]: {
       category: NotificationCategory.RIDE,
@@ -154,6 +163,7 @@ export class NotificationCenterSubscriber implements OnModuleInit {
       body: (payload) =>
         `Your trip has ended${this.text(payload, ['totalFare'], '') ? ` — total fare ₦${this.text(payload, ['totalFare'], '')}` : ''}.`,
       userKeys: ['customerId', 'userId'],
+      deepLink: '/ride',
     },
     [DOMAIN_EVENTS.RIDE_PAYMENT_SUCCEEDED]: {
       category: NotificationCategory.RIDE,
@@ -262,6 +272,7 @@ export class NotificationCenterSubscriber implements OnModuleInit {
     const payload: Record<string, unknown> = {
       version: PAYLOAD_VERSION,
       ...this.objectPayload(event.payload),
+      ...(mapping.deepLink !== undefined ? { deepLink: mapping.deepLink } : {}),
     };
     const broadcastUserIds = this.stringArray(payload['userIds']);
     if (event.name === DOMAIN_EVENTS.PROMOTION_CREATED && broadcastUserIds.length > 0) {

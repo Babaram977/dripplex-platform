@@ -43,11 +43,16 @@ export class FirebasePushProvider implements NotificationProvider {
     // carries its own `token` since DeviceToken stores classic FCM
     // registration tokens, not Firebase Installation IDs (fids), which is
     // what the newer FidMulticastMessage overload expects instead.
+    const deepLink = this.extractDeepLink(notification.payload);
     const response = await this.messaging.sendEach(
       devices.map((device) => ({
         token: device.token,
         notification: { title: notification.title, body: notification.body },
-        data: { notificationId: notification.id, type: notification.type },
+        data: {
+          notificationId: notification.id,
+          type: notification.type,
+          ...(deepLink !== null ? { deepLink } : {}),
+        },
       })),
     );
 
@@ -65,6 +70,18 @@ export class FirebasePushProvider implements NotificationProvider {
         ? { providerMessageId: firstSuccess.messageId }
         : {}),
     };
+  }
+
+  /** FCM `data` values must all be strings, so this reads the same
+   * `payload.deepLink` the subscriber writes (notification-center.subscriber.ts)
+   * out of the loosely-typed Prisma `Json` column, rather than trusting
+   * its shape. */
+  private extractDeepLink(payload: Notification['payload']): string | null {
+    if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
+      return null;
+    }
+    const deepLink = (payload as Record<string, unknown>)['deepLink'];
+    return typeof deepLink === 'string' ? deepLink : null;
   }
 
   private async deactivateInvalidTokens(

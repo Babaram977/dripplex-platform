@@ -75,3 +75,43 @@ describe('obtainNativeToken', () => {
     await expect(obtainNativeToken()).resolves.toBe('fcm-tok');
   });
 });
+
+describe('listenForNativeNotificationTaps', () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns null on a non-native platform', async () => {
+    const { Capacitor } = await import('@capacitor/core');
+    vi.mocked(Capacitor.isNativePlatform).mockReturnValue(false);
+    const { listenForNativeNotificationTaps } = await import('./native-push');
+
+    await expect(listenForNativeNotificationTaps(vi.fn())).resolves.toBeNull();
+  });
+
+  it('maps a tapped notification action to notificationId/deepLink', async () => {
+    const { Capacitor } = await import('@capacitor/core');
+    vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);
+    vi.mocked(Capacitor.getPlatform).mockReturnValue('android');
+
+    const { PushNotifications } = await import('@capacitor/push-notifications');
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- vi.mocked() never invokes with `this`
+    const addListener = PushNotifications.addListener as unknown as (
+      event: string,
+      handler: (action: { notification: { data: Record<string, unknown> } }) => void,
+    ) => Promise<{ remove: () => void }>;
+    vi.mocked(addListener).mockImplementation((event, handler) => {
+      if (event === 'pushNotificationActionPerformed') {
+        handler({ notification: { data: { notificationId: 'notif-1', deepLink: '/ride' } } });
+      }
+      return Promise.resolve({ remove: vi.fn() });
+    });
+
+    const { listenForNativeNotificationTaps } = await import('./native-push');
+    const onTap = vi.fn();
+    const unsubscribe = await listenForNativeNotificationTaps(onTap);
+
+    expect(onTap).toHaveBeenCalledWith({ notificationId: 'notif-1', deepLink: '/ride' });
+    expect(unsubscribe).toBeInstanceOf(Function);
+  });
+});

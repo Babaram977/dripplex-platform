@@ -4,7 +4,10 @@ import * as React from 'react';
 
 import type { Metadata, Viewport } from 'next';
 
+import { ForegroundPushListener } from '@/components/pwa/foreground-push-listener';
+import { NativeNotificationTapHandler } from '@/components/pwa/native-notification-tap-handler';
 import { PushRegistration } from '@/components/pwa/push-registration';
+import { ReadNotificationOnOpen } from '@/components/pwa/read-notification-on-open';
 import { ServiceWorkerRegister } from '@/components/pwa/service-worker-register';
 import { siteConfig } from '@/lib/site';
 
@@ -90,6 +93,9 @@ export default function RootLayout({
         <AppProviders>
           <ServiceWorkerRegister />
           <PushRegistration />
+          <ForegroundPushListener />
+          <ReadNotificationOnOpen />
+          <NativeNotificationTapHandler />
           {children}
         </AppProviders>
       </body>

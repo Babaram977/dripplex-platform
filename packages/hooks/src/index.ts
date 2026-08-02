@@ -16,3 +16,15 @@ export type {
   PushDevicesClient,
   UsePushRegistrationOptions,
 } from './notifications/push-types';
+export {
+  useForegroundPush,
+  type UseForegroundPushOptions,
+} from './notifications/use-foreground-push';
+export type { ForegroundPushPayload } from './notifications/foreground-push';
+export {
+  playNotificationChime,
+  setAppBadgeCount,
+  vibrateForNotification,
+} from './notifications/notification-effects';
+export { useNativeNotificationTap } from './notifications/use-native-notification-tap';
+export type { NativeNotificationTapPayload } from './notifications/native-push';

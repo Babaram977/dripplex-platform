@@ -56,3 +56,40 @@ export async function obtainNativeToken(): Promise<string | null> {
     }, NATIVE_REGISTRATION_TIMEOUT_MS);
   });
 }
+
+export interface NativeNotificationTapPayload {
+  notificationId?: string;
+  deepLink?: string;
+}
+
+/** DPX-CORE-001 Phase D-3 — the native counterpart to sw.js's
+ * notificationclick. Capacitor already foregrounds the app on tap, so
+ * there's no open/focus dance to do here, just read the same
+ * notificationId/deepLink data FirebasePushProvider sends. Returns null
+ * on non-native platforms, same contract as the rest of this module. */
+export async function listenForNativeNotificationTaps(
+  onTap: (payload: NativeNotificationTapPayload) => void,
+): Promise<(() => void) | null> {
+  const platform = await detectNativePlatform();
+  if (!platform) {
+    return null;
+  }
+
+  const { PushNotifications } = await import('@capacitor/push-notifications');
+  const handle = await PushNotifications.addListener(
+    'pushNotificationActionPerformed',
+    (action) => {
+      const data = (action.notification.data ?? {}) as Record<string, unknown>;
+      const notificationId = data['notificationId'];
+      const deepLink = data['deepLink'];
+      onTap({
+        ...(typeof notificationId === 'string' ? { notificationId } : {}),
+        ...(typeof deepLink === 'string' ? { deepLink } : {}),
+      });
+    },
+  );
+
+  return () => {
+    void handle.remove();
+  };
+}

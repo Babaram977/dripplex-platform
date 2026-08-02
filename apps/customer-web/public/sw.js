@@ -23,17 +23,46 @@ firebase.initializeApp({
 });
 
 // Only background messages land here — a foreground tab handles push via
-// onMessage() in the page itself (not yet wired; DPX-CORE-001's existing
-// 60s-poll NotificationBell is the foreground path today).
+// onMessage() in the page itself (useForegroundPush, DPX-CORE-001 Phase D-3).
 const messaging = firebase.messaging.isSupported() ? firebase.messaging() : null;
 if (messaging) {
   messaging.onBackgroundMessage((payload) => {
     const title =
       payload.notification && payload.notification.title ? payload.notification.title : 'Dripplex';
     const body = payload.notification && payload.notification.body ? payload.notification.body : '';
-    self.registration.showNotification(title, { body, icon: '/favicon.svg' });
+    // `data` carries straight through to notificationclick below, since
+    // that's a separate event with no access to this payload otherwise.
+    self.registration.showNotification(title, {
+      body,
+      icon: '/favicon.svg',
+      data: payload.data || {},
+    });
   });
 }
+
+// DPX-CORE-001 Phase D-3 — tapping a background push opens (or focuses)
+// the app at the notification's deep link. Marking it read happens once
+// the app is actually open and authenticated (this worker has no access
+// to the user's auth token), via the ?readNotification= param a focused
+// page reads on load — see ReadNotificationOnOpen in customer-web.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const data = event.notification.data || {};
+  const targetPath = data.deepLink || '/dashboard';
+  const url = data.notificationId
+    ? `${targetPath}?readNotification=${encodeURIComponent(data.notificationId)}`
+    : targetPath;
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      const existing = clientList.find((client) => 'navigate' in client && 'focus' in client);
+      if (existing) {
+        return existing.navigate(url).then((client) => client && client.focus());
+      }
+      return self.clients.openWindow(url);
+    }),
+  );
+});
 
 const OFFLINE_URL = '/offline.html';
 const CACHE_NAME = 'dripplex-rc1-offline-v1';

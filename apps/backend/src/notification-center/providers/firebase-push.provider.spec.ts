@@ -100,6 +100,43 @@ describe('FirebasePushProvider', () => {
     expect(result).toEqual({ configured: true, provider: 'fcm' });
   });
 
+  it('forwards payload.deepLink as FCM data.deepLink when present', async () => {
+    const sendEach = jest.fn().mockResolvedValue({
+      responses: [{ success: true, messageId: 'msg-1' }],
+    });
+    const messaging = { sendEach } as unknown as Messaging;
+    const devices = [makeDevice()];
+    const deviceRegistry = {
+      list: jest.fn().mockResolvedValue(devices),
+      deactivate: jest.fn(),
+    } as unknown as DeviceRegistryService;
+    const provider = new FirebasePushProvider(messaging, deviceRegistry);
+
+    await provider.send(makeNotification({ payload: { version: 1, deepLink: '/ride' } }));
+
+    expect(sendEach).toHaveBeenCalledWith([
+      expect.objectContaining({ data: expect.objectContaining({ deepLink: '/ride' }) }),
+    ]);
+  });
+
+  it('omits deepLink from FCM data when the notification has none', async () => {
+    const sendEach = jest.fn().mockResolvedValue({
+      responses: [{ success: true, messageId: 'msg-1' }],
+    });
+    const messaging = { sendEach } as unknown as Messaging;
+    const devices = [makeDevice()];
+    const deviceRegistry = {
+      list: jest.fn().mockResolvedValue(devices),
+      deactivate: jest.fn(),
+    } as unknown as DeviceRegistryService;
+    const provider = new FirebasePushProvider(messaging, deviceRegistry);
+
+    await provider.send(makeNotification({ payload: { version: 1 } }));
+
+    const call = sendEach.mock.calls[0]?.[0] as { data: Record<string, unknown> }[];
+    expect(call[0]?.data).not.toHaveProperty('deepLink');
+  });
+
   it('does not deactivate tokens that failed for a transient reason', async () => {
     const sendEach = jest.fn().mockResolvedValue({
       responses: [{ success: false, error: { code: 'messaging/internal-error' } }],
