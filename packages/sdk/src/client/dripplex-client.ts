@@ -15,6 +15,7 @@ import {
 import { OrderClient } from '../order/order-client.js';
 import { PaymentClient } from '../payment/payment-client.js';
 import {
+  AdminDriverCampaignClient,
   AdminReferralsClient,
   AdminWalletClient,
   AdminCmsClient,
@@ -22,6 +23,7 @@ import {
   AnalyticsClient,
   CmsClient,
   DevicesClient,
+  DriverCampaignClient,
   LoyaltyClient,
   NotificationsClient,
   PromotionsClient,
@@ -59,6 +61,8 @@ export class DripplexClient {
   public readonly promotions: PromotionsClient;
   public readonly referrals: ReferralsClient;
   public readonly adminReferrals: AdminReferralsClient;
+  public readonly driverCampaign: DriverCampaignClient;
+  public readonly adminDriverCampaign: AdminDriverCampaignClient;
   public readonly loyalty: LoyaltyClient;
   public readonly wallet: WalletClient;
   public readonly adminWallet: AdminWalletClient;
@@ -93,6 +97,8 @@ export class DripplexClient {
     this.promotions = new PromotionsClient(this.http);
     this.referrals = new ReferralsClient(this.http);
     this.adminReferrals = new AdminReferralsClient(this.http);
+    this.driverCampaign = new DriverCampaignClient(this.http);
+    this.adminDriverCampaign = new AdminDriverCampaignClient(this.http);
     this.loyalty = new LoyaltyClient(this.http);
     this.wallet = new WalletClient(this.http);
     this.adminWallet = new AdminWalletClient(this.http);
@@ -122,6 +128,7 @@ export { OrderClient } from '../order/order-client.js';
 export { PaymentClient } from '../payment/payment-client.js';
 export { CustomerRideClient } from '../rides/customer-ride-client.js';
 export {
+  AdminDriverCampaignClient,
   AdminReferralsClient,
   AdminWalletClient,
   AdminCmsClient,
@@ -129,6 +136,7 @@ export {
   AnalyticsClient,
   CmsClient,
   DevicesClient,
+  DriverCampaignClient,
   LoyaltyClient,
   NotificationsClient,
   PromotionsClient,

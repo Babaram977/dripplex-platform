@@ -23,10 +23,12 @@ export { PaymentClient } from './payment/payment-client.js';
 export { CustomerRideClient, type ListRidesQuery } from './rides/customer-ride-client.js';
 export {
   AdminCmsClient,
+  AdminDriverCampaignClient,
   AdminFraudClient,
   AdminReferralsClient,
   AnalyticsClient,
   CmsClient,
+  DriverCampaignClient,
   LoyaltyClient,
   NotificationsClient,
   PromotionsClient,

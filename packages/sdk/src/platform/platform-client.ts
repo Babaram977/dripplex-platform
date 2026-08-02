@@ -9,14 +9,22 @@ import type {
   CmsContentListQuery,
   CreateCmsContentRequest,
   CreateFraudListEntryRequest,
+  CreateReferralCampaignRequest,
   CreateReviewRequest,
   CreateWishlistRequest,
   DeviceTokenDto,
+  DriverCampaignDashboardDto,
+  DriverReferralDto,
+  DriverReferralLeaderboardEntryDto,
+  DriverReferralRewardDto,
   FraudListEntryDto,
   FraudListEntryQuery,
   FraudQueueQuery,
   FraudSignalDto,
   FraudThresholdDto,
+  ListDriverRewardsQuery,
+  ListReferralCampaignsQuery,
+  ListReferralFraudChecksQuery,
   LoyaltyAccountDto,
   MoveWishlistToCartRequest,
   MoveWishlistToCartResultDto,
@@ -33,7 +41,10 @@ import type {
   RecentSearchDto,
   RedeemPromotionRequest,
   RedeemLoyaltyPointsRequest,
+  ReferralCampaignDto,
   ReferralDto,
+  ReferralFraudCheckDto,
+  ReferralFraudCheckStatus,
   ReferralRedemptionDto,
   ReferralStatsDto,
   RegisterDeviceTokenRequest,
@@ -48,6 +59,7 @@ import type {
   SearchQuery,
   SearchResultDto,
   SearchSuggestionQuery,
+  UpdateCampaignRewardsRequest,
   UpdateCmsContentRequest,
   UpdateFraudListEntryRequest,
   UpdateNotificationPreferencesRequest,
@@ -383,6 +395,123 @@ export class AdminReferralsClient {
         page: query.page,
         pageSize: query.pageSize,
       })}`,
+    );
+  }
+}
+
+export class DriverCampaignClient {
+  public constructor(private readonly http: HttpClient) {}
+
+  public getMyCode(): Promise<{ campaign: ReferralCampaignDto; referral: DriverReferralDto }> {
+    return this.http.request<{ campaign: ReferralCampaignDto; referral: DriverReferralDto }>(
+      '/driver/referral-campaign/code',
+    );
+  }
+
+  public async recordInvite(): Promise<void> {
+    await this.http.request('/driver/referral-campaign/invite', { method: 'POST' });
+  }
+
+  public getDashboard(): Promise<DriverCampaignDashboardDto> {
+    return this.http.request<DriverCampaignDashboardDto>('/driver/referral-campaign/dashboard');
+  }
+}
+
+export class AdminDriverCampaignClient {
+  public constructor(private readonly http: HttpClient) {}
+
+  public createCampaign(body: CreateReferralCampaignRequest): Promise<ReferralCampaignDto> {
+    return this.http.request<ReferralCampaignDto>('/admin/referral-campaigns', {
+      method: 'POST',
+      body,
+    });
+  }
+
+  public listCampaigns(query: ListReferralCampaignsQuery = {}): Promise<ReferralCampaignDto[]> {
+    return this.http.request<ReferralCampaignDto[]>(
+      `/admin/referral-campaigns${toQuery({ status: query.status })}`,
+    );
+  }
+
+  public updateRewards(
+    campaignId: string,
+    body: UpdateCampaignRewardsRequest,
+  ): Promise<ReferralCampaignDto> {
+    return this.http.request<ReferralCampaignDto>(
+      `/admin/referral-campaigns/${enc(campaignId)}/rewards`,
+      { method: 'PATCH', body },
+    );
+  }
+
+  public pauseCampaign(campaignId: string): Promise<ReferralCampaignDto> {
+    return this.http.request<ReferralCampaignDto>(
+      `/admin/referral-campaigns/${enc(campaignId)}/pause`,
+      { method: 'POST' },
+    );
+  }
+
+  public resumeCampaign(campaignId: string): Promise<ReferralCampaignDto> {
+    return this.http.request<ReferralCampaignDto>(
+      `/admin/referral-campaigns/${enc(campaignId)}/resume`,
+      { method: 'POST' },
+    );
+  }
+
+  public leaderboard(campaignId: string): Promise<DriverReferralLeaderboardEntryDto[]> {
+    return this.http.request<DriverReferralLeaderboardEntryDto[]>(
+      `/admin/referral-campaigns/${enc(campaignId)}/leaderboard`,
+    );
+  }
+
+  public exportUrl(campaignId: string): string {
+    return `/admin/referral-campaigns/${enc(campaignId)}/export`;
+  }
+
+  public listRewards(query: ListDriverRewardsQuery = {}): Promise<DriverReferralRewardDto[]> {
+    return this.http.request<DriverReferralRewardDto[]>(
+      `/admin/referral-campaigns/rewards${toQuery({
+        campaignId: query.campaignId,
+        status: query.status,
+      })}`,
+    );
+  }
+
+  public approveReward(rewardId: string): Promise<DriverReferralRewardDto> {
+    return this.http.request<DriverReferralRewardDto>(
+      `/admin/referral-campaigns/rewards/${enc(rewardId)}/approve`,
+      { method: 'POST' },
+    );
+  }
+
+  public rejectReward(rewardId: string, reason: string): Promise<DriverReferralRewardDto> {
+    return this.http.request<DriverReferralRewardDto>(
+      `/admin/referral-campaigns/rewards/${enc(rewardId)}/reject`,
+      { method: 'POST', body: { reason } },
+    );
+  }
+
+  public payReward(rewardId: string): Promise<DriverReferralRewardDto> {
+    return this.http.request<DriverReferralRewardDto>(
+      `/admin/referral-campaigns/rewards/${enc(rewardId)}/pay`,
+      { method: 'POST' },
+    );
+  }
+
+  public listFraudChecks(
+    query: ListReferralFraudChecksQuery = {},
+  ): Promise<ReferralFraudCheckDto[]> {
+    return this.http.request<ReferralFraudCheckDto[]>(
+      `/admin/referral-campaigns/fraud-checks${toQuery({ status: query.status })}`,
+    );
+  }
+
+  public reviewFraudCheck(
+    fraudCheckId: string,
+    status: ReferralFraudCheckStatus,
+  ): Promise<ReferralFraudCheckDto> {
+    return this.http.request<ReferralFraudCheckDto>(
+      `/admin/referral-campaigns/fraud-checks/${enc(fraudCheckId)}/review`,
+      { method: 'POST', body: { status } },
     );
   }
 }

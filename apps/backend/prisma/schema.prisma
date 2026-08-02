@@ -222,6 +222,9 @@ model User {
   deviceTokens            DeviceToken[]
   referral                Referral?
   referralRedemption      ReferralRedemption?
+  driverReferrals         DriverReferral[]
+  passengerReferral       PassengerReferral?
+  referralRewards         ReferralReward[]
   searchQueryLogs         SearchQueryLog[]
   recentSearches          RecentSearch[]
   reviews                 Review[]                 @relation("ReviewAuthor")
@@ -1231,6 +1234,12 @@ enum NotificationType {
   RIDE_COMPLETED
   REFERRAL_REDEEMED
   REFERRAL_REWARDED
+  DRIVER_REFERRAL_PASSENGER_REGISTERED
+  DRIVER_REFERRAL_PASSENGER_QUALIFIED
+  DRIVER_REFERRAL_TIER_SILVER
+  DRIVER_REFERRAL_TIER_GOLD
+  DRIVER_REFERRAL_REWARD_APPROVED
+  DRIVER_REFERRAL_REWARD_PAID
 }
 
 enum DevicePlatform {
@@ -1885,6 +1894,186 @@ model ReferralRedemption {
   @@index([referralId])
   @@index([status])
   @@map("referral_redemptions")
+}
+
+enum ReferralCampaignStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ENDED
+}
+
+enum ReferralCampaignTier {
+  NONE
+  SILVER
+  GOLD
+}
+
+enum PassengerReferralStatus {
+  REGISTERED
+  QUALIFIED
+}
+
+enum DriverReferralRewardStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PAID
+}
+
+enum ReferralFraudCheckType {
+  SELF_REFERRAL
+  DUPLICATE_REFEREE
+  MANUAL_FLAG
+}
+
+enum ReferralFraudCheckStatus {
+  CLEARED
+  FLAGGED
+  REJECTED
+}
+
+/// Driver Growth Campaign — a monthly driver-refers-passenger program,
+/// distinct from (but living alongside) the generic customer Referral
+/// model above. One campaign row per calendar month.
+model ReferralCampaign {
+  id                        String                  @id @default(uuid()) @db.Uuid
+  name                      String                  @db.VarChar(150)
+  periodStart               DateTime                @map("period_start")
+  periodEnd                 DateTime                @map("period_end")
+  status                    ReferralCampaignStatus  @default(DRAFT)
+  requiredTripsPerPassenger Int                     @default(5) @map("required_trips_per_passenger")
+  silverThreshold           Int                     @default(50) @map("silver_threshold")
+  silverRewardAmount        Decimal                 @default(40000) @map("silver_reward_amount") @db.Decimal(12, 2)
+  goldThreshold             Int                     @default(100) @map("gold_threshold")
+  goldRewardAmount          Decimal                 @default(100000) @map("gold_reward_amount") @db.Decimal(12, 2)
+  goldQualificationRate     Decimal                 @default(0.75) @map("gold_qualification_rate") @db.Decimal(4, 3)
+  createdBy                 String?                 @map("created_by") @db.Uuid
+  createdAt                 DateTime                @default(now()) @map("created_at")
+  updatedAt                 DateTime                @updatedAt @map("updated_at")
+  driverReferrals           DriverReferral[]
+  rewards                   ReferralReward[]
+
+  @@unique([periodStart, periodEnd])
+  @@index([status])
+  @@map("referral_campaigns")
+}
+
+/// One row per driver per campaign — holds the driver's unique code for
+/// that campaign month. Live progress rollups live in ReferralStatistics
+/// (below), not here, so dashboard reads never need to aggregate
+/// PassengerReferral rows.
+model DriverReferral {
+  id                 String              @id @default(uuid()) @db.Uuid
+  campaignId         String              @map("campaign_id") @db.Uuid
+  driverId           String              @map("driver_id") @db.Uuid
+  code               String              @unique @db.VarChar(16)
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+  campaign           ReferralCampaign    @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  driver             User                @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  passengerReferrals PassengerReferral[]
+  statistics         ReferralStatistics?
+
+  @@unique([campaignId, driverId])
+  @@index([code])
+  @@index([driverId])
+  @@map("driver_referrals")
+}
+
+/// Live rollup of a driver's progress within one campaign — updated
+/// incrementally in the same transaction as each underlying state change
+/// (invite tap, passenger registration, passenger qualification), not
+/// recomputed by aggregate query on every dashboard read. invitesSent is
+/// the one figure with no other source of truth: it counts share-button
+/// taps (POST .../invite), since there is no real invite-delivery
+/// mechanism (SMS/email) to count against — an honest "shared" counter,
+/// not a fabricated "sent" guarantee.
+model ReferralStatistics {
+  id               String               @id @default(uuid()) @db.Uuid
+  driverReferralId String               @unique @map("driver_referral_id") @db.Uuid
+  invitesSent      Int                  @default(0) @map("invites_sent")
+  registeredCount  Int                  @default(0) @map("registered_count")
+  qualifiedCount   Int                  @default(0) @map("qualified_count")
+  completedTrips   Int                  @default(0) @map("completed_trips")
+  currentTier      ReferralCampaignTier @default(NONE) @map("current_tier")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+  driverReferral   DriverReferral       @relation(fields: [driverReferralId], references: [id], onDelete: Cascade)
+
+  @@map("referral_statistics")
+}
+
+/// One row per passenger referred through a driver's campaign code.
+/// refereeUserId is unique platform-wide — a passenger can only be
+/// counted toward one driver, one campaign, ever (mirrors
+/// ReferralRedemption's refereeUserId uniqueness above).
+model PassengerReferral {
+  id               String                   @id @default(uuid()) @db.Uuid
+  driverReferralId String                   @map("driver_referral_id") @db.Uuid
+  refereeUserId    String                   @unique @map("referee_user_id") @db.Uuid
+  status           PassengerReferralStatus  @default(REGISTERED)
+  completedTrips   Int                      @default(0) @map("completed_trips")
+  qualifiedAt      DateTime?                @map("qualified_at")
+  createdAt        DateTime                 @default(now()) @map("created_at")
+  updatedAt        DateTime                 @updatedAt @map("updated_at")
+  driverReferral   DriverReferral           @relation(fields: [driverReferralId], references: [id], onDelete: Cascade)
+  refereeUser      User                     @relation(fields: [refereeUserId], references: [id], onDelete: Cascade)
+  fraudChecks      ReferralFraudCheck[]
+
+  @@index([driverReferralId])
+  @@index([status])
+  @@map("passenger_referrals")
+}
+
+/// One row per driver per campaign — created/updated as the driver's tier
+/// improves, never duplicated (unique on campaignId+driverId), so "only
+/// one reward tier is paid per campaign" is a schema-level guarantee, not
+/// just application logic. status doubles as the payment-status tracker:
+/// PENDING (accruing, not yet reviewed) -> APPROVED -> PAID, or REJECTED.
+model ReferralReward {
+  id                      String                      @id @default(uuid()) @db.Uuid
+  campaignId              String                      @map("campaign_id") @db.Uuid
+  driverId                String                      @map("driver_id") @db.Uuid
+  tier                    ReferralCampaignTier
+  amount                  Decimal                     @db.Decimal(12, 2)
+  qualifiedPassengerCount Int                          @map("qualified_passenger_count")
+  status                  DriverReferralRewardStatus  @default(PENDING)
+  approvedAt              DateTime?                   @map("approved_at")
+  approvedBy              String?                     @map("approved_by") @db.Uuid
+  rejectedAt              DateTime?                   @map("rejected_at")
+  rejectedBy              String?                     @map("rejected_by") @db.Uuid
+  rejectionReason         String?                     @map("rejection_reason") @db.VarChar(500)
+  paidAt                  DateTime?                   @map("paid_at")
+  createdAt               DateTime                    @default(now()) @map("created_at")
+  updatedAt               DateTime                    @updatedAt @map("updated_at")
+  campaign                ReferralCampaign             @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  driver                  User                         @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, driverId])
+  @@index([status])
+  @@map("referral_rewards")
+}
+
+/// Automated + manual fraud review trail. Only SELF_REFERRAL and
+/// DUPLICATE_REFEREE are checks this codebase can actually verify today
+/// (no device fingerprinting / IP correlation infrastructure exists) —
+/// MANUAL_FLAG is how an admin records a judgment call that isn't
+/// mechanically detectable. See design doc for what's real vs. not.
+model ReferralFraudCheck {
+  id                  String                    @id @default(uuid()) @db.Uuid
+  passengerReferralId String?                   @map("passenger_referral_id") @db.Uuid
+  driverReferralId    String?                   @map("driver_referral_id") @db.Uuid
+  checkType           ReferralFraudCheckType    @map("check_type")
+  status              ReferralFraudCheckStatus  @default(CLEARED)
+  details             String?                   @db.VarChar(1000)
+  reviewedAt          DateTime?                 @map("reviewed_at")
+  reviewedBy          String?                   @map("reviewed_by") @db.Uuid
+  createdAt           DateTime                  @default(now()) @map("created_at")
+  passengerReferral   PassengerReferral?        @relation(fields: [passengerReferralId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([passengerReferralId])
+  @@map("referral_fraud_checks")
 }
 
 model AnalyticsDailyMetric {

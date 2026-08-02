@@ -480,6 +480,124 @@ export interface AdminReferralRedemptionsQuery {
   pageSize?: number;
 }
 
+export type ReferralCampaignStatus = 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ENDED';
+export type ReferralCampaignTier = 'NONE' | 'SILVER' | 'GOLD';
+export type PassengerReferralStatus = 'REGISTERED' | 'QUALIFIED';
+export type DriverReferralRewardStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'PAID';
+export type ReferralFraudCheckType = 'SELF_REFERRAL' | 'DUPLICATE_REFEREE' | 'MANUAL_FLAG';
+export type ReferralFraudCheckStatus = 'CLEARED' | 'FLAGGED' | 'REJECTED';
+
+export interface ReferralCampaignDto {
+  id: string;
+  name: string;
+  periodStart: string;
+  periodEnd: string;
+  status: ReferralCampaignStatus;
+  requiredTripsPerPassenger: number;
+  silverThreshold: number;
+  silverRewardAmount: number;
+  goldThreshold: number;
+  goldRewardAmount: number;
+  goldQualificationRate: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DriverReferralDto {
+  id: string;
+  campaignId: string;
+  driverId: string;
+  code: string;
+  createdAt: string;
+}
+
+export interface ReferralStatisticsDto {
+  invitesSent: number;
+  registeredCount: number;
+  qualifiedCount: number;
+  completedTrips: number;
+  currentTier: ReferralCampaignTier;
+}
+
+export interface DriverReferralRewardDto {
+  id: string;
+  campaignId: string;
+  driverId: string;
+  tier: ReferralCampaignTier;
+  amount: number;
+  qualifiedPassengerCount: number;
+  status: DriverReferralRewardStatus;
+  approvedAt: string | null;
+  paidAt: string | null;
+  rejectionReason: string | null;
+  createdAt: string;
+}
+
+export interface DriverCampaignDashboardDto {
+  campaign: ReferralCampaignDto | null;
+  referral: DriverReferralDto | null;
+  statistics: ReferralStatisticsDto | null;
+  progressToSilver: number;
+  progressToGold: number;
+  estimatedRewardAmount: number;
+  estimatedTier: ReferralCampaignTier;
+  campaignCountdownSeconds: number | null;
+  rewardHistory: DriverReferralRewardDto[];
+}
+
+export interface ReferralFraudCheckDto {
+  id: string;
+  passengerReferralId: string | null;
+  driverReferralId: string | null;
+  checkType: ReferralFraudCheckType;
+  status: ReferralFraudCheckStatus;
+  details: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+}
+
+export interface DriverReferralLeaderboardEntryDto {
+  driverId: string;
+  driverName: string;
+  code: string;
+  registeredCount: number;
+  qualifiedCount: number;
+  currentTier: ReferralCampaignTier;
+}
+
+export interface CreateReferralCampaignRequest {
+  name: string;
+  periodStart: string;
+  periodEnd: string;
+  requiredTripsPerPassenger?: number;
+  silverThreshold?: number;
+  silverRewardAmount?: number;
+  goldThreshold?: number;
+  goldRewardAmount?: number;
+  goldQualificationRate?: number;
+}
+
+export interface UpdateCampaignRewardsRequest {
+  silverRewardAmount?: number;
+  goldRewardAmount?: number;
+  silverThreshold?: number;
+  goldThreshold?: number;
+  goldQualificationRate?: number;
+}
+
+export interface ListReferralCampaignsQuery {
+  status?: ReferralCampaignStatus;
+}
+
+export interface ListDriverRewardsQuery {
+  campaignId?: string;
+  status?: DriverReferralRewardStatus;
+}
+
+export interface ListReferralFraudChecksQuery {
+  status?: ReferralFraudCheckStatus;
+}
+
 export type LoyaltyTier = 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM' | 'VIP';
 
 export interface LoyaltyAccountDto {

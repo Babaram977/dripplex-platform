@@ -17,6 +17,7 @@ export function createAdminSdk(config: Partial<SdkConfig> = {}): AdminSdk {
     adminCms: client.adminCms,
     adminFraud: client.adminFraud,
     adminReferrals: client.adminReferrals,
+    adminDriverCampaign: client.adminDriverCampaign,
     analytics: client.analytics,
     notifications: client.notifications,
     promotions: client.promotions,
@@ -35,6 +36,7 @@ export interface AdminSdk {
   adminCms: DripplexClient['adminCms'];
   adminFraud: DripplexClient['adminFraud'];
   adminReferrals: DripplexClient['adminReferrals'];
+  adminDriverCampaign: DripplexClient['adminDriverCampaign'];
   analytics: DripplexClient['analytics'];
   notifications: DripplexClient['notifications'];
   promotions: DripplexClient['promotions'];

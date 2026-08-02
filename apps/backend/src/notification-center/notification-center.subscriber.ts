@@ -193,6 +193,53 @@ export class NotificationCenterSubscriber implements OnModuleInit {
       body: (payload) => `You earned ₦${this.text(payload, ['amount'], '0')} from a referral.`,
       userKeys: ['userId'],
     },
+    [DOMAIN_EVENTS.DRIVER_REFERRAL_PASSENGER_REGISTERED]: {
+      category: NotificationCategory.RIDE,
+      type: NotificationType.DRIVER_REFERRAL_PASSENGER_REGISTERED,
+      title: 'New referral signup',
+      body: () => 'Someone signed up using your driver referral code.',
+      userKeys: ['userId'],
+    },
+    [DOMAIN_EVENTS.DRIVER_REFERRAL_PASSENGER_QUALIFIED]: {
+      category: NotificationCategory.RIDE,
+      type: NotificationType.DRIVER_REFERRAL_PASSENGER_QUALIFIED,
+      title: 'Referral qualified',
+      body: () => 'A passenger you referred completed their required trips this month.',
+      userKeys: ['userId'],
+    },
+    [DOMAIN_EVENTS.DRIVER_REFERRAL_TIER_SILVER_REACHED]: {
+      category: NotificationCategory.RIDE,
+      type: NotificationType.DRIVER_REFERRAL_TIER_SILVER,
+      title: 'Silver tier reached',
+      body: () => "You've reached Silver tier in this month's referral campaign!",
+      priority: NotificationPriority.HIGH,
+      userKeys: ['userId'],
+    },
+    [DOMAIN_EVENTS.DRIVER_REFERRAL_TIER_GOLD_REACHED]: {
+      category: NotificationCategory.RIDE,
+      type: NotificationType.DRIVER_REFERRAL_TIER_GOLD,
+      title: 'Gold tier reached',
+      body: () => "You've reached Gold tier in this month's referral campaign!",
+      priority: NotificationPriority.HIGH,
+      userKeys: ['userId'],
+    },
+    [DOMAIN_EVENTS.DRIVER_REFERRAL_REWARD_APPROVED]: {
+      category: NotificationCategory.WALLET,
+      type: NotificationType.DRIVER_REFERRAL_REWARD_APPROVED,
+      title: 'Referral reward approved',
+      body: (payload) =>
+        `Your ₦${this.text(payload, ['amount'], '0')} referral campaign reward was approved.`,
+      userKeys: ['userId'],
+    },
+    [DOMAIN_EVENTS.DRIVER_REFERRAL_REWARD_PAID]: {
+      category: NotificationCategory.WALLET,
+      type: NotificationType.DRIVER_REFERRAL_REWARD_PAID,
+      title: 'Referral reward paid',
+      body: (payload) =>
+        `Your ₦${this.text(payload, ['amount'], '0')} referral campaign reward has been paid.`,
+      priority: NotificationPriority.HIGH,
+      userKeys: ['userId'],
+    },
   };
 
   constructor(

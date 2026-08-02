@@ -44,6 +44,14 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
   { code: 'admin:promotions:manage', description: 'Manage platform promotions' },
   { code: 'customer:referrals:use', description: 'Read own referral code and stats' },
   { code: 'admin:referrals:manage', description: 'View referral redemptions (admin)' },
+  {
+    code: 'driver:referral_campaign:use',
+    description: 'Use the driver growth referral campaign',
+  },
+  {
+    code: 'admin:referral_campaigns:manage',
+    description: 'Manage driver growth referral campaigns',
+  },
   { code: 'admin:cms:manage', description: 'Manage CMS content' },
   { code: 'customer:cms:read', description: 'Read published CMS content' },
   { code: 'admin:fraud:manage', description: 'Manage fraud signals and lists' },

@@ -11,6 +11,7 @@ import {
 import { AppConfigService } from '../../config/app-config.service';
 import { DomainEventBus } from '../../events/domain-event-bus';
 import { DOMAIN_EVENTS } from '../../events/domain-events';
+import { DriverCampaignService } from '../../referrals/driver-campaign.service';
 import { ReferralsService } from '../../referrals/referrals.service';
 import { UsersService } from '../../users/users.service';
 import {
@@ -84,6 +85,8 @@ export class RegistrationService {
     private readonly eventBus?: DomainEventBus,
     @Optional()
     private readonly referralsService?: ReferralsService,
+    @Optional()
+    private readonly driverCampaignService?: DriverCampaignService,
   ) {}
 
   public async registerCustomer(
@@ -195,10 +198,19 @@ export class RegistrationService {
     );
 
     if (portal === 'customer' && dto.referralCode) {
-      await this.referralsService?.tryRedeemAtRegistration(result.userId, dto.referralCode, {
-        ...context,
-        userId: result.userId,
-      });
+      const redemptionContext = { ...context, userId: result.userId };
+      const claimedByDriverCampaign = await this.driverCampaignService?.tryRedeemDriverCode(
+        result.userId,
+        dto.referralCode,
+        redemptionContext,
+      );
+      if (!claimedByDriverCampaign) {
+        await this.referralsService?.tryRedeemAtRegistration(
+          result.userId,
+          dto.referralCode,
+          redemptionContext,
+        );
+      }
     }
 
     return {

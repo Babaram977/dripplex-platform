@@ -39,6 +39,12 @@ export const DOMAIN_EVENTS = {
   RIDE_REFUNDED: 'RideRefunded',
   REFERRAL_REDEEMED: 'ReferralRedeemed',
   REFERRAL_REWARDED: 'ReferralRewarded',
+  DRIVER_REFERRAL_PASSENGER_REGISTERED: 'DriverReferralPassengerRegistered',
+  DRIVER_REFERRAL_PASSENGER_QUALIFIED: 'DriverReferralPassengerQualified',
+  DRIVER_REFERRAL_TIER_SILVER_REACHED: 'DriverReferralTierSilverReached',
+  DRIVER_REFERRAL_TIER_GOLD_REACHED: 'DriverReferralTierGoldReached',
+  DRIVER_REFERRAL_REWARD_APPROVED: 'DriverReferralRewardApproved',
+  DRIVER_REFERRAL_REWARD_PAID: 'DriverReferralRewardPaid',
 } as const;
 
 export type DomainEventName = (typeof DOMAIN_EVENTS)[keyof typeof DOMAIN_EVENTS];
