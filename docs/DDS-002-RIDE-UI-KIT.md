@@ -1,5 +1,12 @@
 # DDS-002 — DrippleX Ride UI Kit
 
+Component-level reference — for the token-level system (colors, spacing,
+radius, shadows, gradients, animation timing, all extracted and audited
+against every Ride screen) see
+`docs/design/DDS-002-RIDE-DESIGN-SYSTEM.md`. The two together are DDS-002:
+this file catalogs the frozen components, that one catalogs the raw
+design tokens they're built from.
+
 A code document, not a design document: this is a human-readable catalog
 of every primitive already implemented in
 `apps/customer-web/src/components/ride/ride-ui.tsx`. **The code is the
@@ -16,22 +23,24 @@ received one.
 
 ## Design tokens (used throughout, not re-declared per primitive)
 
-| Token             | Value                                               | Used for                                                                       |
-| ----------------- | --------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Background (deep) | `#060E1C`                                           | full-screen backdrop on hero/map screens                                       |
-| Background (base) | `#0A1628`                                           | full-screen backdrop on list/form screens, bottom sheets                       |
-| Card              | `#0D1B2E`                                           | `MapCanvas` fill                                                               |
-| Surface           | `#112238`                                           | cards, chips, inputs, secondary buttons                                        |
-| Primary green     | `#2BAC52`                                           | icons, active states, map markers                                              |
-| Green dark        | `#176B30`                                           | gradient start (`ActionButton` primary)                                        |
-| Green light       | `#47CF72`                                           | gradient end, success text, active accents                                     |
-| Border (default)  | `rgba(255,255,255,.08)`                             | every card/surface border                                                      |
-| Text (muted)      | `rgba(255,255,255,.38)`                             | secondary/help text                                                            |
-| Text (dim)        | `rgba(255,255,255,.6)`                              | body text on dark surfaces                                                     |
-| Danger            | `#EF4444`                                           | destructive actions, error states                                              |
-| Danger surface    | `rgba(239,68,68,.08)` / border `rgba(239,68,68,.2)` | danger button/banner backgrounds                                               |
-| Heading font      | `'Poppins', sans-serif`                             | all bold/emphasis text — loaded via `(ride)/ride/layout.tsx`, not the app root |
-| Body font         | `'Inter', sans-serif`                               | all regular text — same scoped load                                            |
+| Token             | Value                                               | Used for                                                                                                                                                            |
+| ----------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Background (deep) | `#060E1C`                                           | full-screen backdrop on hero/map screens                                                                                                                            |
+| Background (base) | `#0A1628`                                           | full-screen backdrop on list/form screens, bottom sheets                                                                                                            |
+| Card              | `#0D1B2E`                                           | `MapCanvas` fill                                                                                                                                                    |
+| Surface           | `#112238`                                           | cards, chips, inputs, secondary buttons                                                                                                                             |
+| Primary green     | `#2BAC52`                                           | icons, active states, map markers                                                                                                                                   |
+| Green dark        | `#176B30`                                           | gradient start (`ActionButton` primary)                                                                                                                             |
+| Green light       | `#47CF72`                                           | gradient end, success text, active accents                                                                                                                          |
+| Border (default)  | `rgba(255,255,255,.08)`                             | every card/surface border                                                                                                                                           |
+| Text (muted)      | `rgba(255,255,255,.38)`                             | secondary/help text                                                                                                                                                 |
+| Text (dim)        | `rgba(255,255,255,.6)`                              | body text on dark surfaces                                                                                                                                          |
+| Danger            | `#EF4444`                                           | destructive actions, error states                                                                                                                                   |
+| Danger surface    | `rgba(239,68,68,.08)` / border `rgba(239,68,68,.2)` | danger button/banner backgrounds                                                                                                                                    |
+| Warning           | `#F59E0B` (surface `rgba(245,158,11,.12)`)          | "free cancellation" note, cash-payment accent — real, found in a later audit pass                                                                                   |
+| Selection tint    | `rgba(34,197,94,.06–.15)`                           | "this option is selected" backgrounds (payment method, report category, promo) — a distinct green from the brand-green tint above, real and sourced from Figma Make |
+| Heading font      | `'Poppins', sans-serif`                             | all bold/emphasis text — loaded via `(ride)/ride/layout.tsx`, not the app root                                                                                      |
+| Body font         | `'Inter', sans-serif`                               | all regular text — same scoped load                                                                                                                                 |
 
 ## Primitives
 

@@ -42,7 +42,7 @@ export function TipDriverScreen({
           style={{ background: '#0D1B2E', border: '1px solid rgba(255,255,255,.08)' }}
         >
           <div
-            className="flex h-12 w-12 items-center justify-center rounded-full text-lg font-bold"
+            className="flex h-12 w-12 items-center justify-center rounded-full text-[16px] font-bold"
             style={{
               background: 'linear-gradient(135deg,#176B30,#2BAC52)',
               color: '#fff',
