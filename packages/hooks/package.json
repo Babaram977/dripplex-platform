@@ -20,10 +20,13 @@
     "clean": "rm -rf dist .turbo coverage"
   },
   "dependencies": {
+    "@capacitor/core": "^7.2.0",
+    "@capacitor/push-notifications": "^7.0.1",
     "@dripplex/sdk": "workspace:*",
     "@dripplex/types": "workspace:*",
     "@dripplex/ui": "workspace:*",
     "@tanstack/react-query": "^5.62.8",
+    "firebase": "^12.17.0",
     "lucide-react": "^0.469.0",
     "zustand": "^5.0.2"
   },
