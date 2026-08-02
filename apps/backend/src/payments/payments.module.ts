@@ -7,6 +7,7 @@ import { DeliveryModule } from '../delivery/delivery.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { OrdersModule } from '../orders/orders.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { WalletModule } from '../wallet/wallet.module';
 
 import { AdminPaymentsController } from './admin-payments.controller';
 import { CustomerPaymentsController } from './customer-payments.controller';
@@ -33,6 +34,7 @@ import { PrismaPaymentTransactionRepository } from './repositories/prisma-paymen
     CartModule,
     DeliveryModule,
     AppConfigModule,
+    WalletModule,
   ],
   controllers: [CustomerPaymentsController, PaymentWebhooksController, AdminPaymentsController],
   providers: [
