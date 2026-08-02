@@ -246,6 +246,8 @@ export type {
   LoyaltyAccountDto,
   LoyaltyLedgerEntryDto,
   LoyaltyTier,
+  DevicePlatform,
+  DeviceTokenDto,
   MoveWishlistToCartProductRequest,
   MoveWishlistToCartRequest,
   MoveWishlistToCartResultDto,
@@ -255,6 +257,7 @@ export type {
   NotificationListQuery,
   NotificationPreferenceDto,
   NotificationPriority,
+  NotificationSoundEvent,
   NotificationStatus,
   NotificationType,
   PopularSearchDto,
@@ -268,6 +271,7 @@ export type {
   RedeemLoyaltyPointsRequest,
   RedeemPromotionRequest,
   RecentSearchDto,
+  RegisterDeviceTokenRequest,
   ReplyToReviewRequest,
   ReviewAggregateDto,
   ReviewDto,
@@ -307,6 +311,7 @@ export type {
   WishlistItemDto,
   WishlistItemType,
 } from './platform/index.js';
+export { getNotificationSoundEvent, NOTIFICATION_SOUND_EVENTS } from './platform/index.js';
 
 export {
   changePasswordSchema,

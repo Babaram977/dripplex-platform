@@ -16,6 +16,7 @@ describe('portal SDK barrels', () => {
         'cart',
         'cms',
         'delivery',
+        'devices',
         'loyalty',
         'merchants',
         'notifications',

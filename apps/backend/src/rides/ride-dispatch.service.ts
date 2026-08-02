@@ -6,6 +6,8 @@ import {
   ConflictDomainException,
   NotFoundDomainException,
 } from '../common/exceptions/domain.exception';
+import { DomainEventBus } from '../events/domain-event-bus';
+import { DOMAIN_EVENTS } from '../events/domain-events';
 import {
   NOTIFICATION_SERVICE,
   type NotificationService,
@@ -38,6 +40,7 @@ export class RideDispatchService {
     private readonly notifications: NotificationService,
     @Inject(RIDE_EVENTS_PUBLISHER)
     private readonly events: RideEventsPublisher,
+    private readonly eventBus: DomainEventBus,
   ) {}
 
   public async dispatchRide(rideId: string): Promise<RideDto> {
@@ -137,6 +140,10 @@ export class RideDispatchService {
       rideId: updatedRide.id,
       status: updatedRide.status,
       driverId: updatedRide.driverId,
+    });
+    await this.eventBus.emit(DOMAIN_EVENTS.RIDE_DRIVER_ASSIGNED, {
+      customerId: updatedRide.customerId,
+      rideId: updatedRide.id,
     });
 
     return toRideDto(updatedRide);

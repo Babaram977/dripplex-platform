@@ -112,7 +112,13 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
     const providers = [fakeAdapter('PAYSTACK'), fakeAdapter('FLUTTERWAVE'), opayAdapter];
 
     const fareService = new RideFareService();
-    dispatchService = new RideDispatchService(prisma, auditService, notifications, events);
+    dispatchService = new RideDispatchService(
+      prisma,
+      auditService,
+      notifications,
+      events,
+      new DomainEventBus(),
+    );
     ridesService = new RidesService(
       prisma,
       fareService,
@@ -121,7 +127,13 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
       notifications,
       events,
     );
-    tripService = new RideTripService(prisma, auditService, notifications, events);
+    tripService = new RideTripService(
+      prisma,
+      auditService,
+      notifications,
+      events,
+      new DomainEventBus(),
+    );
     paymentService = new RidePaymentService(
       prisma,
       walletService,
@@ -129,6 +141,7 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
       notifications,
       events,
       providers,
+      new DomainEventBus(),
     );
     ratingService = new RideRatingService(prisma, auditService);
     receiptService = new RideReceiptService(prisma);

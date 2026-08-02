@@ -12,11 +12,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@dripplex/ui';
-import { Bell, Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import * as React from 'react';
 
+import { NotificationBell } from '@/components/layout/notification-bell';
 import { SearchBar } from '@/components/layout/search-bar';
 import { sdk } from '@/lib/sdk';
 import { siteConfig } from '@/lib/site';
@@ -76,9 +77,7 @@ export function DashboardHeader(): React.JSX.Element {
         <SearchBar className="hidden sm:block" />
         <div className="ml-auto flex items-center gap-2">
           <ThemeToggle />
-          <Button type="button" variant="ghost" size="icon" aria-label="Notifications">
-            <Bell className="h-5 w-5" aria-hidden="true" />
-          </Button>
+          <NotificationBell />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button

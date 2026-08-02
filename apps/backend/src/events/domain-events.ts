@@ -30,6 +30,13 @@ export const DOMAIN_EVENTS = {
   PASSWORD_RESET: 'PasswordReset',
   OTP_REQUESTED: 'OTPRequested',
   NOTIFICATION_FAILED: 'NotificationFailed',
+  RIDE_DRIVER_ASSIGNED: 'RideDriverAssigned',
+  RIDE_DRIVER_ARRIVED: 'RideDriverArrived',
+  RIDE_STARTED: 'RideStarted',
+  RIDE_COMPLETED: 'RideCompleted',
+  RIDE_PAYMENT_SUCCEEDED: 'RidePaymentSucceeded',
+  RIDE_PAYMENT_FAILED: 'RidePaymentFailed',
+  RIDE_REFUNDED: 'RideRefunded',
 } as const;
 
 export type DomainEventName = (typeof DOMAIN_EVENTS)[keyof typeof DOMAIN_EVENTS];

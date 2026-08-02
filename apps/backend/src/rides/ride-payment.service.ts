@@ -13,6 +13,8 @@ import {
   NotFoundDomainException,
   ValidationDomainException,
 } from '../common/exceptions/domain.exception';
+import { DomainEventBus } from '../events/domain-event-bus';
+import { DOMAIN_EVENTS } from '../events/domain-events';
 import {
   NOTIFICATION_SERVICE,
   type NotificationService,
@@ -74,6 +76,7 @@ export class RidePaymentService {
     private readonly events: RideEventsPublisher,
     @Inject(PAYMENT_PROVIDER_ADAPTERS)
     private readonly providers: PaymentProviderAdapter[],
+    private readonly eventBus: DomainEventBus,
   ) {}
 
   public async initiatePayment(
@@ -467,15 +470,19 @@ export class RidePaymentService {
 
   private async notifyPaymentOutcome(ride: Ride, success: boolean): Promise<void> {
     const customer = await this.prisma.user.findUnique({ where: { id: ride.customerId } });
-    if (!customer?.email) {
-      return;
+    if (customer?.email) {
+      await this.notifications.notifyRideLifecycle({
+        audience: 'customer',
+        email: customer.email,
+        event: success ? 'ride_payment_succeeded' : 'ride_payment_failed',
+        rideId: ride.id,
+      });
     }
-    await this.notifications.notifyRideLifecycle({
-      audience: 'customer',
-      email: customer.email,
-      event: success ? 'ride_payment_succeeded' : 'ride_payment_failed',
-      rideId: ride.id,
-    });
+
+    await this.eventBus.emit(
+      success ? DOMAIN_EVENTS.RIDE_PAYMENT_SUCCEEDED : DOMAIN_EVENTS.RIDE_PAYMENT_FAILED,
+      { customerId: ride.customerId, rideId: ride.id, totalFare: String(ride.totalFare) },
+    );
   }
 
   private getAdapter(provider: PaymentProvider): PaymentProviderAdapter {

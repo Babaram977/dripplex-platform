@@ -1,9 +1,18 @@
 import { AuthProvider, useAuthStore } from '@dripplex/hooks';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import * as React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import DashboardShellLayout from '@/app/(dashboard)/layout';
+
+vi.mock('@/lib/sdk', () => ({
+  sdk: {
+    notifications: {
+      list: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 10 }),
+    },
+  },
+}));
 
 vi.mock('next/navigation', () => ({
   usePathname: () => '/dashboard',
@@ -47,12 +56,18 @@ describe('DashboardLayout', () => {
   });
 
   it('renders header chrome, sidebar, mobile nav, and content area', () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
     render(
-      <AuthProvider>
-        <DashboardShellLayout>
-          <div>Dashboard child content</div>
-        </DashboardShellLayout>
-      </AuthProvider>,
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <DashboardShellLayout>
+            <div>Dashboard child content</div>
+          </DashboardShellLayout>
+        </AuthProvider>
+      </QueryClientProvider>,
     );
 
     expect(screen.getAllByLabelText('Search Dripplex').length).toBeGreaterThan(0);

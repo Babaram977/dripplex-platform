@@ -9,6 +9,7 @@ import { NotificationCenterService } from './notification-center.service';
 
 import type { NotificationPreferencesService } from './notification-preferences.service';
 import type { NotificationTemplateService } from './notification-template.service';
+import type { NotificationProvider } from './providers/notification-provider';
 import type { AuditService } from '../audit/audit.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { Notification } from '@prisma/client';
@@ -58,6 +59,9 @@ describe('NotificationCenterService', () => {
   let auditService: jest.Mocked<AuditService>;
   let preferencesService: jest.Mocked<NotificationPreferencesService>;
   let templateService: jest.Mocked<NotificationTemplateService>;
+  let pushProvider: jest.Mocked<NotificationProvider>;
+  let emailProvider: jest.Mocked<NotificationProvider>;
+  let smsProvider: jest.Mocked<NotificationProvider>;
   let service: NotificationCenterService;
 
   beforeEach(() => {
@@ -89,11 +93,23 @@ describe('NotificationCenterService', () => {
       update: jest.fn(),
       delete: jest.fn(),
     } as unknown as jest.Mocked<NotificationTemplateService>;
+    pushProvider = {
+      send: jest.fn().mockResolvedValue({ configured: false, provider: 'fcm' }),
+    };
+    emailProvider = {
+      send: jest.fn().mockResolvedValue({ configured: false, provider: 'email' }),
+    };
+    smsProvider = {
+      send: jest.fn().mockResolvedValue({ configured: false, provider: 'sms' }),
+    };
     service = new NotificationCenterService(
       prisma as unknown as PrismaService,
       auditService,
       preferencesService,
       templateService,
+      pushProvider,
+      emailProvider,
+      smsProvider,
     );
   });
 
@@ -176,6 +192,43 @@ describe('NotificationCenterService', () => {
       data: expect.objectContaining({
         status: NotificationStatus.DEAD_LETTER,
         failureReason: 'provider down',
+        retryCount: 1,
+        deadLetteredAt: expect.any(Date),
+      }),
+    });
+  });
+
+  it('dead-letters immediately, without retrying, when no provider is configured for the channel', async () => {
+    const queued = makeNotification(NotificationStatus.QUEUED, {
+      channel: NotificationChannel.EMAIL,
+    });
+    const dead = makeNotification(NotificationStatus.DEAD_LETTER, {
+      channel: NotificationChannel.EMAIL,
+      retryCount: 1,
+      failureReason: 'No provider configured for EMAIL (email)',
+      deadLetteredAt: new Date(),
+    });
+    prisma.notification.create.mockResolvedValue(queued);
+    prisma.notificationDeliveryAttempt.create.mockResolvedValue({});
+    prisma.notification.update.mockResolvedValue(dead);
+
+    const result = await service.send({
+      userId,
+      channel: NotificationChannel.EMAIL,
+      type: NotificationType.WELCOME,
+      title: 'Welcome',
+      body: 'Hello',
+    });
+
+    expect(emailProvider.send).toHaveBeenCalledTimes(1);
+    expect(pushProvider.send).not.toHaveBeenCalled();
+    expect(smsProvider.send).not.toHaveBeenCalled();
+    expect(result.notification?.status).toBe(NotificationStatus.DEAD_LETTER);
+    expect(prisma.notification.update).toHaveBeenCalledWith({
+      where: { id: notificationId },
+      data: expect.objectContaining({
+        status: NotificationStatus.DEAD_LETTER,
+        failureReason: 'No provider configured for EMAIL (email)',
         retryCount: 1,
         deadLetteredAt: expect.any(Date),
       }),

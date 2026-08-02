@@ -219,6 +219,7 @@ model User {
   rideOffers              RideOffer[]
   notifications           Notification[]
   notificationPreferences NotificationPreference[]
+  deviceTokens            DeviceToken[]
   searchQueryLogs         SearchQueryLog[]
   recentSearches          RecentSearch[]
   reviews                 Review[]                 @relation("ReviewAuthor")
@@ -1222,6 +1223,16 @@ enum NotificationType {
   BACK_IN_STOCK
   PRICE_DROP
   GENERIC
+  RIDE_DRIVER_ASSIGNED
+  RIDE_DRIVER_ARRIVED
+  RIDE_STARTED
+  RIDE_COMPLETED
+}
+
+enum DevicePlatform {
+  IOS
+  ANDROID
+  WEB
 }
 
 enum SearchEntityType {
@@ -1439,6 +1450,26 @@ model NotificationDeliveryAttempt {
   @@index([notificationId])
   @@index([status])
   @@map("notification_delivery_attempts")
+}
+
+/// Registered push destinations for a user (DPX-CORE-001). One user can
+/// have several active tokens (phone + tablet + web) — a push send fans
+/// out to every active token, not just one.
+model DeviceToken {
+  id         String         @id @default(uuid()) @db.Uuid
+  userId     String         @map("user_id") @db.Uuid
+  platform   DevicePlatform
+  token      String         @db.Text
+  active     Boolean        @default(true)
+  lastSeenAt DateTime       @default(now()) @map("last_seen_at")
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, platform, token])
+  @@index([userId])
+  @@index([active])
+  @@map("device_tokens")
 }
 
 model SearchDocument {

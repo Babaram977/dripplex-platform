@@ -25,6 +25,7 @@ describe('platform SDK clients', () => {
     const client = new DripplexClient({ baseUrl: 'https://api.example.test' });
 
     expect(client.notifications).toBeDefined();
+    expect(client.devices).toBeDefined();
     expect(client.search).toBeDefined();
     expect(client.reviews).toBeDefined();
     expect(client.wishlist).toBeDefined();
@@ -36,6 +37,27 @@ describe('platform SDK clients', () => {
     expect(client.cms).toBeDefined();
     expect(client.adminCms).toBeDefined();
     expect(client.adminFraud).toBeDefined();
+  });
+
+  it('registers, lists, and deactivates device tokens on the customer route', async () => {
+    const client = new DripplexClient({
+      baseUrl: 'https://api.example.test',
+      getAccessToken: () => 'token',
+    });
+    const fetchMock = vi.mocked(fetch);
+
+    await client.devices.register({ platform: 'ANDROID', token: 'tok-1' });
+    const registerCall = fetchMock.mock.calls[0];
+    expect(registerCall?.[0]).toBe('https://api.example.test/customer/devices');
+    expect(registerCall?.[1]?.method).toBe('POST');
+
+    await client.devices.list();
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('https://api.example.test/customer/devices');
+
+    await client.devices.deactivate('device-1');
+    const deactivateCall = fetchMock.mock.calls[2];
+    expect(deactivateCall?.[0]).toBe('https://api.example.test/customer/devices/device-1');
+    expect(deactivateCall?.[1]?.method).toBe('DELETE');
   });
 
   it('calls public CMS routes without authorization', async () => {

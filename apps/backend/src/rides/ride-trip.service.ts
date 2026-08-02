@@ -7,6 +7,8 @@ import {
   NotFoundDomainException,
   ValidationDomainException,
 } from '../common/exceptions/domain.exception';
+import { DomainEventBus } from '../events/domain-event-bus';
+import { DOMAIN_EVENTS } from '../events/domain-events';
 import {
   NOTIFICATION_SERVICE,
   type NotificationService,
@@ -39,7 +41,17 @@ export class RideTripService {
     private readonly notifications: NotificationService,
     @Inject(RIDE_EVENTS_PUBLISHER)
     private readonly events: RideEventsPublisher,
+    private readonly eventBus: DomainEventBus,
   ) {}
+
+  /** Which of the 4 real trip-lifecycle events feed the persisted in-app
+   * notification feed (DPX-CORE-001) — 'ride_cancelled' has no mapped
+   * NotificationType yet, so it's deliberately not included here. */
+  private static readonly NOTIFICATION_EVENTS: Partial<Record<RideLifecycleEvent, string>> = {
+    ride_arrived: DOMAIN_EVENTS.RIDE_DRIVER_ARRIVED,
+    ride_started: DOMAIN_EVENTS.RIDE_STARTED,
+    ride_completed: DOMAIN_EVENTS.RIDE_COMPLETED,
+  };
 
   public async markArrived(
     driverId: string,
@@ -209,6 +221,15 @@ export class RideTripService {
       status: ride.status,
       driverId: ride.driverId,
     });
+
+    const domainEventName = RideTripService.NOTIFICATION_EVENTS[event];
+    if (domainEventName) {
+      await this.eventBus.emit(domainEventName, {
+        customerId: ride.customerId,
+        rideId: ride.id,
+        totalFare: String(ride.totalFare),
+      });
+    }
   }
 
   private async requireAssignedRide(driverId: string, rideId: string): Promise<Ride> {

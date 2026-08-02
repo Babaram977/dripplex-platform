@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
+import { DomainEventBus } from '../events/domain-event-bus';
 
 import { RideTripService } from './ride-trip.service';
 
@@ -59,7 +60,13 @@ describe('RideTripService', () => {
       publishToRide: jest.fn(),
       publishToDriver: jest.fn(),
     };
-    service = new RideTripService(prisma, auditService, notifications, events);
+    service = new RideTripService(
+      prisma,
+      auditService,
+      notifications,
+      events,
+      new DomainEventBus(),
+    );
 
     const customer = await prisma.user.create({
       data: {

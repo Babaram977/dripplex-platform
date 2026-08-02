@@ -82,11 +82,15 @@ describe('RidePaymentService', () => {
     const flutterwaveAdapter = fakeAdapter('FLUTTERWAVE');
     const opayAdapter = fakeAdapter('OPAY');
 
-    service = new RidePaymentService(prisma, walletService, auditService, notifications, events, [
-      paystackAdapter,
-      flutterwaveAdapter,
-      opayAdapter,
-    ]);
+    service = new RidePaymentService(
+      prisma,
+      walletService,
+      auditService,
+      notifications,
+      events,
+      [paystackAdapter, flutterwaveAdapter, opayAdapter],
+      new DomainEventBus(),
+    );
 
     const customer = await prisma.user.create({
       data: {

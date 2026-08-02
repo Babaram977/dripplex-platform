@@ -18,7 +18,60 @@ export type NotificationType =
   | 'RIDER_APPROVAL'
   | 'BACK_IN_STOCK'
   | 'PRICE_DROP'
-  | 'GENERIC';
+  | 'GENERIC'
+  | 'RIDE_DRIVER_ASSIGNED'
+  | 'RIDE_DRIVER_ARRIVED'
+  | 'RIDE_STARTED'
+  | 'RIDE_COMPLETED';
+
+/**
+ * Event-name mapping for the client's sound abstraction (DPX-CORE-001
+ * Phase B) — real audio files are Phase C, not built yet. This is a pure
+ * client-side lookup from the already-returned `NotificationDto.type`,
+ * not a new backend field: the backend has no `soundEvent` column to add
+ * without a real reason, and computing it here means the mapping the
+ * founder described ("only the mapping changes") lives in exactly one
+ * place, shared by every app that imports `@dripplex/types`.
+ */
+export type NotificationSoundEvent =
+  | 'ride_driver_assigned'
+  | 'ride_driver_arrived'
+  | 'ride_started'
+  | 'ride_completed'
+  | 'new_order'
+  | 'payment_success'
+  | 'payment_failed'
+  | 'refund'
+  | 'promotion'
+  | 'notification'
+  | 'warning';
+
+export const NOTIFICATION_SOUND_EVENTS: Record<NotificationType, NotificationSoundEvent> = {
+  RIDE_DRIVER_ASSIGNED: 'ride_driver_assigned',
+  RIDE_DRIVER_ARRIVED: 'ride_driver_arrived',
+  RIDE_STARTED: 'ride_started',
+  RIDE_COMPLETED: 'ride_completed',
+  ORDER_PLACED: 'new_order',
+  PAYMENT_SUCCESS: 'payment_success',
+  PAYMENT_FAILED: 'payment_failed',
+  REFUND: 'refund',
+  PROMOTION: 'promotion',
+  RIDER_ASSIGNED: 'notification',
+  DELIVERY_COMPLETED: 'notification',
+  OTP: 'notification',
+  PASSWORD_RESET: 'warning',
+  WELCOME: 'notification',
+  LOW_INVENTORY: 'warning',
+  MERCHANT_APPROVAL: 'notification',
+  RIDER_APPROVAL: 'notification',
+  BACK_IN_STOCK: 'notification',
+  PRICE_DROP: 'notification',
+  GENERIC: 'notification',
+};
+
+export function getNotificationSoundEvent(type: NotificationType): NotificationSoundEvent {
+  return NOTIFICATION_SOUND_EVENTS[type];
+}
 
 export interface NotificationDto {
   id: string;
@@ -33,6 +86,24 @@ export interface NotificationDto {
   readAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export type DevicePlatform = 'IOS' | 'ANDROID' | 'WEB';
+
+export interface DeviceTokenDto {
+  id: string;
+  userId: string;
+  platform: DevicePlatform;
+  token: string;
+  active: boolean;
+  lastSeenAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RegisterDeviceTokenRequest {
+  platform: DevicePlatform;
+  token: string;
 }
 
 export interface NotificationPreferenceDto {

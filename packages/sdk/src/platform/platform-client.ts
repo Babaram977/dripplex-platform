@@ -10,6 +10,7 @@ import type {
   CreateFraudListEntryRequest,
   CreateReviewRequest,
   CreateWishlistRequest,
+  DeviceTokenDto,
   FraudListEntryDto,
   FraudListEntryQuery,
   FraudQueueQuery,
@@ -31,6 +32,7 @@ import type {
   RecentSearchDto,
   RedeemPromotionRequest,
   RedeemLoyaltyPointsRequest,
+  RegisterDeviceTokenRequest,
   ReplyToReviewRequest,
   ReviewDto,
   ReviewFraudSignalRequest,
@@ -122,6 +124,27 @@ export class NotificationsClient {
     return this.http.request<NotificationPreferenceDto[]>('/customer/notifications/preferences', {
       method: 'PUT',
       body,
+    });
+  }
+}
+
+export class DevicesClient {
+  public constructor(private readonly http: HttpClient) {}
+
+  public register(body: RegisterDeviceTokenRequest): Promise<DeviceTokenDto> {
+    return this.http.request<DeviceTokenDto>('/customer/devices', {
+      method: 'POST',
+      body,
+    });
+  }
+
+  public list(): Promise<DeviceTokenDto[]> {
+    return this.http.request<DeviceTokenDto[]>('/customer/devices');
+  }
+
+  public deactivate(id: string): Promise<undefined> {
+    return this.http.request<undefined>(`/customer/devices/${enc(id)}`, {
+      method: 'DELETE',
     });
   }
 }

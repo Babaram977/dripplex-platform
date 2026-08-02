@@ -101,6 +101,53 @@ export class NotificationCenterSubscriber implements OnModuleInit {
         `${this.text(payload, ['title', 'promotionName'], 'A new promotion')} is now available.`,
       userKeys: ['userId', 'customerId'],
     },
+    [DOMAIN_EVENTS.RIDE_DRIVER_ASSIGNED]: {
+      type: NotificationType.RIDE_DRIVER_ASSIGNED,
+      title: 'Driver assigned',
+      body: () => 'A driver has been assigned to your ride.',
+      userKeys: ['customerId', 'userId'],
+    },
+    [DOMAIN_EVENTS.RIDE_DRIVER_ARRIVED]: {
+      type: NotificationType.RIDE_DRIVER_ARRIVED,
+      title: 'Driver arrived',
+      body: () => 'Your driver has arrived at the pickup point.',
+      priority: NotificationPriority.HIGH,
+      userKeys: ['customerId', 'userId'],
+    },
+    [DOMAIN_EVENTS.RIDE_STARTED]: {
+      type: NotificationType.RIDE_STARTED,
+      title: 'Trip started',
+      body: () => 'Your trip has started.',
+      userKeys: ['customerId', 'userId'],
+    },
+    [DOMAIN_EVENTS.RIDE_COMPLETED]: {
+      type: NotificationType.RIDE_COMPLETED,
+      title: 'Trip completed',
+      body: (payload) =>
+        `Your trip has ended${this.text(payload, ['totalFare'], '') ? ` — total fare ₦${this.text(payload, ['totalFare'], '')}` : ''}.`,
+      userKeys: ['customerId', 'userId'],
+    },
+    [DOMAIN_EVENTS.RIDE_PAYMENT_SUCCEEDED]: {
+      type: NotificationType.PAYMENT_SUCCESS,
+      title: 'Ride payment received',
+      body: () => 'Your ride payment was successful.',
+      userKeys: ['customerId', 'userId'],
+    },
+    [DOMAIN_EVENTS.RIDE_PAYMENT_FAILED]: {
+      type: NotificationType.PAYMENT_FAILED,
+      title: 'Ride payment failed',
+      body: () => 'Your ride payment could not be completed.',
+      priority: NotificationPriority.HIGH,
+      userKeys: ['customerId', 'userId'],
+    },
+    [DOMAIN_EVENTS.RIDE_REFUNDED]: {
+      type: NotificationType.REFUND,
+      title: 'Ride refunded',
+      body: (payload) =>
+        `Your ride fare${this.text(payload, ['amount'], '') ? ` of ₦${this.text(payload, ['amount'], '')}` : ''} was refunded.`,
+      priority: NotificationPriority.HIGH,
+      userKeys: ['customerId', 'userId'],
+    },
   };
 
   constructor(

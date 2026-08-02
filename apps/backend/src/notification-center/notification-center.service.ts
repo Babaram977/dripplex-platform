@@ -1,5 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { NotificationPriority, NotificationStatus, Prisma } from '@prisma/client';
+import { Inject, Injectable } from '@nestjs/common';
+import {
+  NotificationChannel,
+  NotificationPriority,
+  NotificationStatus,
+  Prisma,
+} from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../audit/audit.service';
 import { NotFoundDomainException } from '../common/exceptions/domain.exception';
@@ -8,6 +13,13 @@ import { PrismaService } from '../prisma/prisma.service';
 import { NOTIFICATION_CENTER_AUDIT_ACTIONS } from './notification-center.constants';
 import { NotificationPreferencesService } from './notification-preferences.service';
 import { NotificationTemplateService } from './notification-template.service';
+import {
+  EMAIL_PROVIDER,
+  PUSH_PROVIDER,
+  SMS_PROVIDER,
+  type NotificationProvider,
+  type NotificationProviderResult,
+} from './providers/notification-provider';
 
 import type { UpdateNotificationPreferencesDto } from './dto/notification-preference.dto';
 import type {
@@ -51,13 +63,14 @@ type NotificationRequest = Omit<CreateNotificationDto, 'priority'> & {
 
 @Injectable()
 export class NotificationCenterService {
-  private readonly logger = new Logger(NotificationCenterService.name);
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly preferencesService: NotificationPreferencesService,
     private readonly templateService: NotificationTemplateService,
+    @Inject(PUSH_PROVIDER) private readonly pushProvider: NotificationProvider,
+    @Inject(EMAIL_PROVIDER) private readonly emailProvider: NotificationProvider,
+    @Inject(SMS_PROVIDER) private readonly smsProvider: NotificationProvider,
   ) {}
 
   public async create(
@@ -319,7 +332,19 @@ export class NotificationCenterService {
     const attemptNumber = notification.retryCount + 1;
     try {
       const response = await this.sendToChannel(notification);
-      await this.createAttempt(notification.id, attemptNumber, NotificationStatus.SENT, response);
+      if (!response.configured) {
+        // Not a transient failure — no provider is wired for this channel
+        // yet (Phase D). Retrying will never succeed, so this goes
+        // straight to a terminal state on the first attempt instead of
+        // burning through maxRetries for something retrying can't fix.
+        return await this.recordUndeliverable(notification, attemptNumber, response, context);
+      }
+      await this.createAttempt(
+        notification.id,
+        attemptNumber,
+        NotificationStatus.SENT,
+        response as unknown as Record<string, unknown>,
+      );
       const delivered = await this.prisma.notification.update({
         where: { id: notification.id },
         data: {
@@ -430,14 +455,60 @@ export class NotificationCenterService {
     }
   }
 
-  private sendToChannel(notification: Notification): Promise<Record<string, unknown>> {
-    this.logger.log(
-      `Stub ${notification.channel.toLowerCase()} notification ${notification.id} sent`,
+  private async recordUndeliverable(
+    notification: Notification,
+    attemptNumber: number,
+    response: NotificationProviderResult,
+    context: AuditContext,
+  ): Promise<Notification> {
+    const failureReason = `No provider configured for ${notification.channel} (${response.provider})`;
+    await this.createAttempt(
+      notification.id,
+      attemptNumber,
+      NotificationStatus.DEAD_LETTER,
+      response as unknown as Record<string, unknown>,
+      failureReason,
     );
-    return Promise.resolve({
-      provider: 'stub',
-      channel: notification.channel,
-      notificationId: notification.id,
+    const failed = await this.prisma.notification.update({
+      where: { id: notification.id },
+      data: {
+        status: NotificationStatus.DEAD_LETTER,
+        failureReason,
+        retryCount: attemptNumber,
+        deadLetteredAt: new Date(),
+      },
     });
+    await this.auditService.record(NOTIFICATION_CENTER_AUDIT_ACTIONS.DEAD_LETTERED, context, {
+      resource: 'notification',
+      resourceId: notification.id,
+      userId: notification.userId,
+      metadata: { failureReason, attemptNumber, reason: 'not_configured' },
+    });
+    return failed;
+  }
+
+  /**
+   * IN_APP has no external delivery step — the persisted row itself is the
+   * "delivery" (it's what GET /customer/notifications reads), so it always
+   * succeeds. Every other channel goes through its provider adapter, which
+   * is honest about being unconfigured rather than pretending to send.
+   * WHATSAPP has no dedicated adapter yet (no real usage anywhere in the
+   * codebase to build one against) — it reuses the same "not configured"
+   * shape as the other unconfigured channels until a real WhatsApp
+   * integration is a genuine requirement, not a speculative one.
+   */
+  private sendToChannel(notification: Notification): Promise<NotificationProviderResult> {
+    switch (notification.channel) {
+      case NotificationChannel.IN_APP:
+        return Promise.resolve({ configured: true, provider: 'in_app' });
+      case NotificationChannel.PUSH:
+        return this.pushProvider.send(notification);
+      case NotificationChannel.EMAIL:
+        return this.emailProvider.send(notification);
+      case NotificationChannel.SMS:
+        return this.smsProvider.send(notification);
+      case NotificationChannel.WHATSAPP:
+        return Promise.resolve({ configured: false, provider: 'whatsapp' });
+    }
   }
 }

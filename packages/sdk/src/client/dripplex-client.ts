@@ -20,6 +20,7 @@ import {
   AdminFraudClient,
   AnalyticsClient,
   CmsClient,
+  DevicesClient,
   LoyaltyClient,
   NotificationsClient,
   PromotionsClient,
@@ -49,6 +50,7 @@ export class DripplexClient {
   public readonly adminDelivery: AdminDeliveryClient;
   public readonly rides: CustomerRideClient;
   public readonly notifications: NotificationsClient;
+  public readonly devices: DevicesClient;
   public readonly search: SearchClient;
   public readonly reviews: ReviewsClient;
   public readonly wishlist: WishlistClient;
@@ -80,6 +82,7 @@ export class DripplexClient {
     this.adminDelivery = new AdminDeliveryClient(this.http);
     this.rides = new CustomerRideClient(this.http);
     this.notifications = new NotificationsClient(this.http);
+    this.devices = new DevicesClient(this.http);
     this.search = new SearchClient(this.http);
     this.reviews = new ReviewsClient(this.http);
     this.wishlist = new WishlistClient(this.http);
@@ -118,6 +121,7 @@ export {
   AdminFraudClient,
   AnalyticsClient,
   CmsClient,
+  DevicesClient,
   LoyaltyClient,
   NotificationsClient,
   PromotionsClient,
