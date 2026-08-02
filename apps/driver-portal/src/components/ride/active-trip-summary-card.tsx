@@ -1,6 +1,7 @@
 'use client';
 
-import { Badge, Card, CardContent, CardHeader, CardTitle } from '@dripplex/ui';
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from '@dripplex/ui';
+import Link from 'next/link';
 import * as React from 'react';
 
 import { useActiveRide } from '@/hooks/rides/use-active-ride';
@@ -41,6 +42,11 @@ export function ActiveTripSummaryCard(): React.JSX.Element | null {
           <span className="text-sm font-medium">Fare</span>
           <span className="font-display text-lg font-semibold">{formatNaira(ride.totalFare)}</span>
         </div>
+        <Link href="/trip">
+          <Button type="button" className="w-full">
+            Manage trip
+          </Button>
+        </Link>
       </CardContent>
     </Card>
   );

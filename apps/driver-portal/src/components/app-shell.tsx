@@ -8,6 +8,8 @@ import * as React from 'react';
 
 import { NotificationBell } from '@/components/notification-bell';
 import { PortalAuthGate } from '@/components/portal-auth-gate';
+import { useDriverAvailability } from '@/hooks/rides/use-driver-availability';
+import { useReportDriverLocation } from '@/hooks/rides/use-report-driver-location';
 import { sdk } from '@/lib/sdk';
 
 const NAV_LINKS = [
@@ -86,9 +88,16 @@ function AppNav(): React.JSX.Element {
   );
 }
 
+function LocationReporter(): null {
+  const availability = useDriverAvailability();
+  useReportDriverLocation(availability.data?.online ?? false);
+  return null;
+}
+
 export function AppShell({ children }: { children: React.ReactNode }): React.JSX.Element {
   return (
     <PortalAuthGate>
+      <LocationReporter />
       <div className="flex min-h-dvh flex-col">
         <AppNav />
         <main className="container flex-1 py-8">{children}</main>
