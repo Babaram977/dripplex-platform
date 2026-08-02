@@ -150,6 +150,7 @@ describe('MerchantsService', () => {
     findMerchantProfileByUserId: jest.fn(),
     findMerchantProfileById: jest.fn(),
     findBusinessByMerchantId: jest.fn(),
+    setBusinessPauseState: jest.fn(),
     findBusinessByRegistrationNumber: jest.fn(),
     createBusiness: jest.fn(),
     updateBusiness: jest.fn(),
@@ -287,6 +288,84 @@ describe('MerchantsService', () => {
       await expect(
         service.updateBusiness(merchantId, { businessName: 'X' }, context),
       ).rejects.toBeInstanceOf(NotFoundDomainException);
+    });
+  });
+
+  describe('pauseStore / resumeStore', () => {
+    it('pauses an active store and audits', async () => {
+      repository.findBusinessByMerchantId.mockResolvedValue({
+        ...business,
+        status: BusinessStatus.ACTIVE,
+      });
+      repository.setBusinessPauseState.mockResolvedValue({
+        ...business,
+        status: BusinessStatus.PAUSED,
+        pausedAt: new Date(),
+        pauseReason: 'Out of ingredients',
+      });
+
+      const result = await service.pauseStore(merchantId, 'Out of ingredients', context);
+
+      expect(result.status).toBe('PAUSED');
+      expect(repository.setBusinessPauseState).toHaveBeenCalledWith(businessId, {
+        status: BusinessStatus.PAUSED,
+        pausedAt: expect.any(Date),
+        pauseReason: 'Out of ingredients',
+      });
+      expect(auditService.record).toHaveBeenCalledWith(
+        MERCHANT_AUDIT_ACTIONS.STORE_PAUSED,
+        expect.any(Object),
+        expect.any(Object),
+      );
+    });
+
+    it('rejects pausing a non-active store', async () => {
+      repository.findBusinessByMerchantId.mockResolvedValue({
+        ...business,
+        status: BusinessStatus.PAUSED,
+      });
+
+      await expect(service.pauseStore(merchantId, undefined, context)).rejects.toBeInstanceOf(
+        ValidationDomainException,
+      );
+    });
+
+    it('resumes a paused store and audits', async () => {
+      repository.findBusinessByMerchantId.mockResolvedValue({
+        ...business,
+        status: BusinessStatus.PAUSED,
+      });
+      repository.setBusinessPauseState.mockResolvedValue({
+        ...business,
+        status: BusinessStatus.ACTIVE,
+        pausedAt: null,
+        pauseReason: null,
+      });
+
+      const result = await service.resumeStore(merchantId, context);
+
+      expect(result.status).toBe('ACTIVE');
+      expect(repository.setBusinessPauseState).toHaveBeenCalledWith(businessId, {
+        status: BusinessStatus.ACTIVE,
+        pausedAt: null,
+        pauseReason: null,
+      });
+      expect(auditService.record).toHaveBeenCalledWith(
+        MERCHANT_AUDIT_ACTIONS.STORE_RESUMED,
+        expect.any(Object),
+        expect.any(Object),
+      );
+    });
+
+    it('rejects resuming a non-paused store', async () => {
+      repository.findBusinessByMerchantId.mockResolvedValue({
+        ...business,
+        status: BusinessStatus.ACTIVE,
+      });
+
+      await expect(service.resumeStore(merchantId, context)).rejects.toBeInstanceOf(
+        ValidationDomainException,
+      );
     });
   });
 

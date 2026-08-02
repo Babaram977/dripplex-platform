@@ -4,13 +4,18 @@ import { OrderStatus, PaymentStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 import type {
+  CreateDisputeInput,
   CreateOrderInput,
   CreateReservationInput,
   ListOrdersFilter,
   OrdersRepository,
+  OrderTransitionInput,
   OrderWithItems,
+  ResolveDisputeInput,
 } from './orders.repository';
-import type { InventoryReservation, Order } from '@prisma/client';
+import type { InventoryReservation, Order, OrderDispute } from '@prisma/client';
+
+const ORDER_INCLUDE = { items: true, reservations: true, disputes: true } as const;
 
 @Injectable()
 export class PrismaOrdersRepository implements OrdersRepository {
@@ -30,7 +35,7 @@ export class PrismaOrdersRepository implements OrdersRepository {
         deliveryFee: input.deliveryFee,
         total: input.total,
         currency: input.currency,
-        status: OrderStatus.PENDING_PAYMENT,
+        status: OrderStatus.PENDING,
         paymentStatus: PaymentStatus.PENDING,
         ...(input.couponCode !== undefined ? { couponCode: input.couponCode } : {}),
         ...(input.deliveryAddressId !== undefined
@@ -51,21 +56,28 @@ export class PrismaOrdersRepository implements OrdersRepository {
           })),
         },
       },
-      include: { items: true, reservations: true },
+      include: ORDER_INCLUDE,
     });
   }
 
   public async findById(id: string): Promise<OrderWithItems | null> {
     return await this.prisma.order.findUnique({
       where: { id },
-      include: { items: true, reservations: true },
+      include: ORDER_INCLUDE,
     });
   }
 
   public async findByIdForCustomer(id: string, customerId: string): Promise<OrderWithItems | null> {
     return await this.prisma.order.findFirst({
       where: { id, customerId },
-      include: { items: true, reservations: true },
+      include: ORDER_INCLUDE,
+    });
+  }
+
+  public async findByIdForMerchant(id: string, merchantId: string): Promise<OrderWithItems | null> {
+    return await this.prisma.order.findFirst({
+      where: { id, merchantId },
+      include: ORDER_INCLUDE,
     });
   }
 
@@ -88,7 +100,7 @@ export class PrismaOrdersRepository implements OrdersRepository {
     const [items, total] = await this.prisma.$transaction([
       this.prisma.order.findMany({
         where,
-        include: { items: true, reservations: true },
+        include: ORDER_INCLUDE,
         skip: filter.skip,
         take: filter.take,
         orderBy: { createdAt: 'desc' },
@@ -99,38 +111,25 @@ export class PrismaOrdersRepository implements OrdersRepository {
     return { items, total };
   }
 
-  public async updateStatus(id: string, status: OrderStatus): Promise<Order> {
-    return await this.prisma.order.update({
-      where: { id },
-      data: { status },
-    });
-  }
-
-  public async cancelOrder(id: string): Promise<Order> {
+  public async transition(id: string, input: OrderTransitionInput): Promise<Order> {
     return await this.prisma.order.update({
       where: { id },
       data: {
-        status: OrderStatus.CANCELLED,
-      },
-    });
-  }
-
-  public async markFailed(id: string): Promise<Order> {
-    return await this.prisma.order.update({
-      where: { id },
-      data: {
-        status: OrderStatus.FAILED,
-        paymentStatus: PaymentStatus.FAILED,
-      },
-    });
-  }
-
-  public async markPaid(id: string): Promise<Order> {
-    return await this.prisma.order.update({
-      where: { id },
-      data: {
-        status: OrderStatus.PAID,
-        paymentStatus: PaymentStatus.PAID,
+        status: input.status,
+        ...(input.paymentStatus !== undefined ? { paymentStatus: input.paymentStatus } : {}),
+        ...(input.estimatedReadyAt !== undefined
+          ? { estimatedReadyAt: input.estimatedReadyAt }
+          : {}),
+        ...(input.confirmedAt !== undefined ? { confirmedAt: input.confirmedAt } : {}),
+        ...(input.readyAt !== undefined ? { readyAt: input.readyAt } : {}),
+        ...(input.deliveredAt !== undefined ? { deliveredAt: input.deliveredAt } : {}),
+        ...(input.completedAt !== undefined ? { completedAt: input.completedAt } : {}),
+        ...(input.cancelledAt !== undefined ? { cancelledAt: input.cancelledAt } : {}),
+        ...(input.cancelledBy !== undefined ? { cancelledBy: input.cancelledBy } : {}),
+        ...(input.cancellationReason !== undefined
+          ? { cancellationReason: input.cancellationReason }
+          : {}),
+        ...(input.refundedAt !== undefined ? { refundedAt: input.refundedAt } : {}),
       },
     });
   }
@@ -188,7 +187,7 @@ export class PrismaOrdersRepository implements OrdersRepository {
   public async findUnpaidOrdersWithExpiredReservations(now: Date): Promise<OrderWithItems[]> {
     return await this.prisma.order.findMany({
       where: {
-        status: OrderStatus.PENDING_PAYMENT,
+        status: OrderStatus.PENDING,
         paymentStatus: PaymentStatus.PENDING,
         reservations: {
           some: {
@@ -197,7 +196,50 @@ export class PrismaOrdersRepository implements OrdersRepository {
           },
         },
       },
-      include: { items: true, reservations: true },
+      include: ORDER_INCLUDE,
+    });
+  }
+
+  public async findAutoCompletableOrders(before: Date): Promise<OrderWithItems[]> {
+    return await this.prisma.order.findMany({
+      where: {
+        status: OrderStatus.DELIVERED,
+        deliveredAt: { lte: before },
+      },
+      include: ORDER_INCLUDE,
+    });
+  }
+
+  public async createDispute(input: CreateDisputeInput): Promise<OrderDispute> {
+    return await this.prisma.orderDispute.create({
+      data: {
+        orderId: input.orderId,
+        raisedBy: input.raisedBy,
+        reason: input.reason,
+      },
+    });
+  }
+
+  public async findDisputeById(id: string): Promise<OrderDispute | null> {
+    return await this.prisma.orderDispute.findUnique({ where: { id } });
+  }
+
+  public async findOpenDisputeForOrder(orderId: string): Promise<OrderDispute | null> {
+    return await this.prisma.orderDispute.findFirst({
+      where: { orderId, status: 'OPEN' },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  public async resolveDispute(id: string, input: ResolveDisputeInput): Promise<OrderDispute> {
+    return await this.prisma.orderDispute.update({
+      where: { id },
+      data: {
+        status: input.status,
+        resolution: input.resolution,
+        resolvedBy: input.resolvedBy,
+        resolvedAt: new Date(),
+      },
     });
   }
 }

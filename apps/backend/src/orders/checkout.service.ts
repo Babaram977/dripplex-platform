@@ -3,6 +3,7 @@ import {
   CartStatus,
   FulfillmentType,
   MerchantStatus,
+  OrderDisputeStatus,
   OrderStatus,
   UserStatus,
 } from '@prisma/client';
@@ -277,7 +278,7 @@ export class CheckoutService {
       throw new NotFoundDomainException('Order not found');
     }
 
-    if (order.status !== OrderStatus.PENDING_PAYMENT) {
+    if (order.status !== OrderStatus.PENDING) {
       throw new ValidationDomainException('Only orders pending payment can be cancelled');
     }
 
@@ -287,7 +288,12 @@ export class CheckoutService {
       reason: reason ?? 'customer_cancel',
     });
 
-    await this.ordersRepository.cancelOrder(order.id);
+    await this.ordersRepository.transition(order.id, {
+      status: OrderStatus.CANCELLED,
+      cancelledAt: new Date(),
+      cancelledBy: 'CUSTOMER',
+      ...(reason !== undefined ? { cancellationReason: reason } : {}),
+    });
 
     if (order.cartId) {
       const cart = await this.cartRepository.findById(order.cartId);
@@ -363,6 +369,96 @@ export class CheckoutService {
       throw new NotFoundDomainException('Order not found');
     }
     return toOrderDto(order);
+  }
+
+  public async raiseDispute(
+    customerId: string,
+    orderId: string,
+    reason: string,
+    context: AuditContext,
+  ): Promise<OrderDto> {
+    const order = await this.ordersRepository.findByIdForCustomer(orderId, customerId);
+    if (!order) {
+      throw new NotFoundDomainException('Order not found');
+    }
+    if (order.status !== OrderStatus.DELIVERED) {
+      throw new ValidationDomainException('Only delivered orders can be disputed');
+    }
+
+    const existing = await this.ordersRepository.findOpenDisputeForOrder(order.id);
+    if (existing) {
+      throw new ConflictDomainException('This order already has an open dispute');
+    }
+
+    await this.ordersRepository.createDispute({ orderId: order.id, raisedBy: customerId, reason });
+    await this.ordersRepository.transition(order.id, { status: OrderStatus.DISPUTED });
+
+    await this.auditService.record(
+      ORDER_AUDIT_ACTIONS.DISPUTE_RAISED,
+      { ...context, userId: customerId },
+      { resource: 'order', resourceId: order.id, metadata: { reason } },
+    );
+
+    await this.eventBus?.emit(
+      DOMAIN_EVENTS.ORDER_DISPUTED,
+      { orderId: order.id, customerId, merchantId: order.merchantId, reason },
+      { actorUserId: customerId },
+    );
+
+    const refreshed = await this.ordersRepository.findById(order.id);
+    if (!refreshed) {
+      throw new NotFoundDomainException('Order not found after dispute');
+    }
+    return toOrderDto(refreshed);
+  }
+
+  public async resolveDispute(
+    adminId: string,
+    disputeId: string,
+    resolution: string,
+    context: AuditContext,
+  ): Promise<OrderDto> {
+    const dispute = await this.ordersRepository.findDisputeById(disputeId);
+    if (!dispute) {
+      throw new NotFoundDomainException('Dispute not found');
+    }
+    if (dispute.status === OrderDisputeStatus.RESOLVED) {
+      throw new ConflictDomainException('Dispute has already been resolved');
+    }
+
+    await this.ordersRepository.resolveDispute(dispute.id, {
+      status: OrderDisputeStatus.RESOLVED,
+      resolution,
+      resolvedBy: adminId,
+    });
+    await this.ordersRepository.transition(dispute.orderId, {
+      status: OrderStatus.COMPLETED,
+      completedAt: new Date(),
+    });
+
+    await this.auditService.record(
+      ORDER_AUDIT_ACTIONS.DISPUTE_RESOLVED,
+      { ...context, userId: adminId },
+      { resource: 'order', resourceId: dispute.orderId, metadata: { resolution } },
+    );
+
+    const refreshed = await this.ordersRepository.findById(dispute.orderId);
+    if (!refreshed) {
+      throw new NotFoundDomainException('Order not found after dispute resolution');
+    }
+
+    await this.eventBus?.emit(
+      DOMAIN_EVENTS.ORDER_DISPUTE_RESOLVED,
+      {
+        orderId: refreshed.id,
+        customerId: refreshed.customerId,
+        merchantId: refreshed.merchantId,
+        resolution,
+      },
+      { actorUserId: adminId },
+    );
+
+    return toOrderDto(refreshed);
   }
 
   private async resolveCart(customerId: string, cartId?: string): Promise<CartWithItems> {

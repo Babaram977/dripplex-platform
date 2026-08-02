@@ -11,6 +11,7 @@ import { AssignmentService } from './assignment.service';
 import { CustomerDeliveryController } from './customer-delivery.controller';
 import { DeliveryFeeService } from './delivery-fee.service';
 import { DeliveryService } from './delivery.service';
+import { OrderReadySubscriber } from './order-ready.subscriber';
 import { DELIVERY_REPOSITORY } from './repositories/delivery.repository';
 import { PrismaDeliveryRepository } from './repositories/prisma-delivery.repository';
 import { RiderDeliveryController } from './rider-delivery.controller';
@@ -24,6 +25,7 @@ import { TrackingService } from './tracking.service';
     DeliveryFeeService,
     AssignmentService,
     TrackingService,
+    OrderReadySubscriber,
     {
       provide: DELIVERY_REPOSITORY,
       useClass: PrismaDeliveryRepository,

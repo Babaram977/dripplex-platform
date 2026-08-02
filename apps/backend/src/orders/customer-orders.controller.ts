@@ -15,7 +15,12 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
 
 import { CheckoutService } from './checkout.service';
-import { CancelOrderDto, CheckoutDto, CustomerOrderListQueryDto } from './dto/order.dto';
+import {
+  CancelOrderDto,
+  CheckoutDto,
+  CustomerOrderListQueryDto,
+  RaiseOrderDisputeDto,
+} from './dto/order.dto';
 import { ORDER_PERMISSIONS } from './order.constants';
 
 import type { AuthenticatedUser } from '../auth/auth.types';
@@ -76,6 +81,23 @@ export class CustomerOrdersController {
       id,
       this.auditContext(request, user.id),
       dto.reason,
+    );
+    return { success: true, data };
+  }
+
+  @Post('orders/:id/dispute')
+  @RequirePermissions(ORDER_PERMISSIONS.ORDERS)
+  public async raiseDispute(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RaiseOrderDisputeDto,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<OrderDto>> {
+    const data = await this.checkoutService.raiseDispute(
+      user.id,
+      id,
+      dto.reason,
+      this.auditContext(request, user.id),
     );
     return { success: true, data };
   }

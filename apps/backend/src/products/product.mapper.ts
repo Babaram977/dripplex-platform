@@ -1,12 +1,13 @@
 import { randomUUID } from 'node:crypto';
 
-import type { PaginatedResult, ProductDto, ProductImageDto, ProductInventoryDto, ProductVariantDto } from '@dripplex/types';
 import type {
-  Product,
-  ProductImage,
-  ProductInventory,
-  ProductVariant,
-} from '@prisma/client';
+  PaginatedResult,
+  ProductDto,
+  ProductImageDto,
+  ProductInventoryDto,
+  ProductVariantDto,
+} from '@dripplex/types';
+import type { Product, ProductImage, ProductInventory, ProductVariant } from '@prisma/client';
 
 export type ProductWithRelations = Product & {
   images: ProductImage[];
@@ -47,6 +48,7 @@ function toProductInventoryDto(inventory: ProductInventory): ProductInventoryDto
     available: inventory.quantity - inventory.reserved,
     lowStockAlert: inventory.lowStockAlert,
     trackInventory: inventory.trackInventory,
+    manuallyDisabled: inventory.manuallyDisabled,
     updatedAt: inventory.updatedAt.toISOString(),
   };
 }

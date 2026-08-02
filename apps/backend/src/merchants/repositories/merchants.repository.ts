@@ -102,6 +102,12 @@ export interface AuditSummaryItem {
   lastAt: Date | null;
 }
 
+export interface SetBusinessPauseStateInput {
+  status: BusinessStatus;
+  pausedAt: Date | null;
+  pauseReason: string | null;
+}
+
 export interface MerchantsRepository {
   findMerchantProfileByUserId(userId: string): Promise<MerchantProfileWithUser | null>;
   findMerchantProfileById(id: string): Promise<MerchantProfileWithUser | null>;
@@ -109,6 +115,7 @@ export interface MerchantsRepository {
   findBusinessByRegistrationNumber(registrationNumber: string): Promise<Business | null>;
   createBusiness(input: CreateBusinessInput): Promise<Business>;
   updateBusiness(id: string, input: UpdateBusinessInput): Promise<Business>;
+  setBusinessPauseState(id: string, input: SetBusinessPauseStateInput): Promise<Business>;
   createKyc(input: CreateKycInput): Promise<MerchantKyc>;
   findLatestKycByMerchantId(merchantId: string): Promise<MerchantKyc | null>;
   findActivePendingKyc(merchantId: string): Promise<MerchantKyc | null>;

@@ -50,7 +50,7 @@ function makeOrder(overrides: Record<string, unknown> = {}): OrderWithItems {
     merchantId,
     cartId,
     orderNumber: 'DPX-20260721-ABC123',
-    status: OrderStatus.PAID,
+    status: OrderStatus.READY,
     paymentStatus: PaymentStatus.PAID,
     fulfillmentType: FulfillmentType.DELIVERY,
     subtotal: 5000,
@@ -199,16 +199,19 @@ describe('DeliveryService', () => {
     create: jest.fn(),
     findById: jest.fn(),
     findByIdForCustomer: jest.fn(),
+    findByIdForMerchant: jest.fn(),
     list: jest.fn(),
-    updateStatus: jest.fn(),
-    cancelOrder: jest.fn(),
-    markFailed: jest.fn(),
-    markPaid: jest.fn(),
+    transition: jest.fn(),
     findByCartId: jest.fn(),
     createReservations: jest.fn(),
     releaseReservationsForOrder: jest.fn(),
     findExpiredActiveReservations: jest.fn(),
     findUnpaidOrdersWithExpiredReservations: jest.fn(),
+    findAutoCompletableOrders: jest.fn(),
+    createDispute: jest.fn(),
+    findDisputeById: jest.fn(),
+    findOpenDisputeForOrder: jest.fn(),
+    resolveDispute: jest.fn(),
   };
 
   const addressRepository: jest.Mocked<AddressRepository> = {
@@ -230,6 +233,7 @@ describe('DeliveryService', () => {
     sendPhoneOtp: jest.fn(),
     notifyMerchantLifecycle: jest.fn(),
     notifyOrderCreated: jest.fn(),
+    notifyOrderLifecycle: jest.fn(),
     notifyPaymentResult: jest.fn(),
     notifyDeliveryLifecycle: jest.fn(),
     notifyDriverLifecycle: jest.fn(),
@@ -271,7 +275,7 @@ describe('DeliveryService', () => {
     jest.clearAllMocks();
 
     ordersRepository.findById.mockResolvedValue(makeOrder());
-    ordersRepository.updateStatus.mockResolvedValue(makeOrder());
+    ordersRepository.transition.mockResolvedValue(makeOrder());
     deliveryRepository.findJobByOrderId.mockResolvedValue(null);
     deliveryRepository.findJobById.mockResolvedValue(
       makeJob({ riderId, status: DeliveryStatus.ASSIGNED }),
@@ -349,7 +353,7 @@ describe('DeliveryService', () => {
   it('creates a delivery job for a paid order and auto-assigns the nearest rider', async () => {
     assignmentService.findNearestRider.mockResolvedValue(makeRiderAvailability(riderId));
 
-    const result = await service.createJobForPaidOrder(orderId, { userId: merchantId });
+    const result = await service.createDeliveryJob(orderId, { userId: merchantId });
 
     expect(result).toMatchObject({
       id: jobId,
@@ -381,7 +385,7 @@ describe('DeliveryService', () => {
   });
 
   it('leaves a newly created job pending when no rider is available', async () => {
-    const result = await service.createJobForPaidOrder(orderId);
+    const result = await service.createDeliveryJob(orderId);
 
     expect(result.status).toBe(DeliveryStatus.PENDING);
     expect(result.riderId).toBeNull();
@@ -393,15 +397,15 @@ describe('DeliveryService', () => {
       makeOrder({ fulfillmentType: FulfillmentType.PICKUP }),
     );
 
-    await expect(service.createJobForPaidOrder(orderId)).rejects.toBeInstanceOf(
+    await expect(service.createDeliveryJob(orderId)).rejects.toBeInstanceOf(
       ValidationDomainException,
     );
   });
 
-  it('rejects orders that are not paid', async () => {
-    ordersRepository.findById.mockResolvedValue(makeOrder({ status: OrderStatus.PENDING_PAYMENT }));
+  it('rejects orders that are not ready', async () => {
+    ordersRepository.findById.mockResolvedValue(makeOrder({ status: OrderStatus.PENDING }));
 
-    await expect(service.createJobForPaidOrder(orderId)).rejects.toBeInstanceOf(
+    await expect(service.createDeliveryJob(orderId)).rejects.toBeInstanceOf(
       ValidationDomainException,
     );
   });
@@ -411,7 +415,7 @@ describe('DeliveryService', () => {
       makeOrder({ paymentStatus: PaymentStatus.PENDING }),
     );
 
-    await expect(service.createJobForPaidOrder(orderId)).rejects.toBeInstanceOf(
+    await expect(service.createDeliveryJob(orderId)).rejects.toBeInstanceOf(
       ValidationDomainException,
     );
   });
@@ -420,7 +424,7 @@ describe('DeliveryService', () => {
     const existing = makeJob({ status: DeliveryStatus.ACCEPTED, riderId });
     deliveryRepository.findJobByOrderId.mockResolvedValue(existing);
 
-    const result = await service.createJobForPaidOrder(orderId);
+    const result = await service.createDeliveryJob(orderId);
 
     expect(result.status).toBe(DeliveryStatus.ACCEPTED);
     expect(deliveryRepository.createJob).not.toHaveBeenCalled();
@@ -429,7 +433,7 @@ describe('DeliveryService', () => {
   it('rejects paid delivery orders without a delivery address', async () => {
     ordersRepository.findById.mockResolvedValue(makeOrder({ deliveryAddressId: null }));
 
-    await expect(service.createJobForPaidOrder(orderId)).rejects.toBeInstanceOf(
+    await expect(service.createDeliveryJob(orderId)).rejects.toBeInstanceOf(
       ValidationDomainException,
     );
   });
@@ -437,7 +441,7 @@ describe('DeliveryService', () => {
   it('rejects paid delivery orders with a missing address', async () => {
     addressRepository.findByIdForCustomer.mockResolvedValue(null);
 
-    await expect(service.createJobForPaidOrder(orderId)).rejects.toBeInstanceOf(
+    await expect(service.createDeliveryJob(orderId)).rejects.toBeInstanceOf(
       NotFoundDomainException,
     );
   });
@@ -445,7 +449,7 @@ describe('DeliveryService', () => {
   it('uses default pickup coordinates when the merchant business is missing', async () => {
     businessFindUnique.mockResolvedValue(null);
 
-    await service.createJobForPaidOrder(orderId);
+    await service.createDeliveryJob(orderId);
 
     expect(deliveryRepository.createJob).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -458,7 +462,7 @@ describe('DeliveryService', () => {
   it('passes an existing order delivery fee as the merchant override estimate', async () => {
     ordersRepository.findById.mockResolvedValue(makeOrder({ deliveryFee: 750 }));
 
-    await service.createJobForPaidOrder(orderId);
+    await service.createDeliveryJob(orderId);
 
     expect(deliveryFeeService.estimate).toHaveBeenCalledWith(expect.any(Number), 750);
   });
@@ -542,7 +546,9 @@ describe('DeliveryService', () => {
     const result = await service.acceptJob(riderId, jobId, { userId: riderId });
 
     expect(result.status).toBe(DeliveryStatus.ACCEPTED);
-    expect(ordersRepository.updateStatus).toHaveBeenCalledWith(orderId, OrderStatus.PROCESSING);
+    expect(ordersRepository.transition).toHaveBeenCalledWith(orderId, {
+      status: OrderStatus.DRIVER_ASSIGNED,
+    });
     expect(auditService.record).toHaveBeenCalledWith(
       DELIVERY_AUDIT_ACTIONS.ACCEPTED,
       { userId: riderId },
@@ -597,10 +603,9 @@ describe('DeliveryService', () => {
     const result = await service.pickUp(riderId, jobId, { userId: riderId });
 
     expect(result.status).toBe(DeliveryStatus.PICKED_UP);
-    expect(ordersRepository.updateStatus).toHaveBeenCalledWith(
-      orderId,
-      OrderStatus.OUT_FOR_DELIVERY,
-    );
+    expect(ordersRepository.transition).toHaveBeenCalledWith(orderId, {
+      status: OrderStatus.PICKED_UP,
+    });
     expect(notifications.notifyDeliveryLifecycle).toHaveBeenCalledWith(
       expect.objectContaining({ audience: 'customer', event: 'picked_up' }),
     );
@@ -614,10 +619,9 @@ describe('DeliveryService', () => {
     const result = await service.markOnTheWay(riderId, jobId, { userId: riderId });
 
     expect(result.status).toBe(DeliveryStatus.ON_THE_WAY);
-    expect(ordersRepository.updateStatus).toHaveBeenCalledWith(
-      orderId,
-      OrderStatus.OUT_FOR_DELIVERY,
-    );
+    expect(ordersRepository.transition).toHaveBeenCalledWith(orderId, {
+      status: OrderStatus.IN_TRANSIT,
+    });
     expect(auditService.record).toHaveBeenCalledWith(
       DELIVERY_AUDIT_ACTIONS.LOCATION_UPDATED,
       { userId: riderId },
@@ -671,7 +675,10 @@ describe('DeliveryService', () => {
       proofType: ProofType.PHOTO,
       photoUrl: 'https://cdn.example/proof.jpg',
     });
-    expect(ordersRepository.updateStatus).toHaveBeenCalledWith(orderId, OrderStatus.DELIVERED);
+    expect(ordersRepository.transition).toHaveBeenCalledWith(orderId, {
+      status: OrderStatus.DELIVERED,
+      deliveredAt: expect.any(Date),
+    });
   });
 
   it('delivers with OTP proof', async () => {

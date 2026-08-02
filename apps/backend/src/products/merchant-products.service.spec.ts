@@ -93,7 +93,11 @@ describe('MerchantProductsService', () => {
     if (!databaseAvailable) return;
 
     await service.createProduct(userId, { name: 'Bread Loaf', basePrice: 800 }, context);
-    const second = await service.createProduct(userId, { name: 'Bread Loaf', basePrice: 900 }, context);
+    const second = await service.createProduct(
+      userId,
+      { name: 'Bread Loaf', basePrice: 900 },
+      context,
+    );
 
     expect(second.slug).not.toBe('bread-loaf');
     expect(second.slug.startsWith('bread-loaf-')).toBe(true);
@@ -102,7 +106,11 @@ describe('MerchantProductsService', () => {
   it('updates only the provided fields', async () => {
     if (!databaseAvailable) return;
 
-    const created = await service.createProduct(userId, { name: 'Cooking Oil', basePrice: 2000 }, context);
+    const created = await service.createProduct(
+      userId,
+      { name: 'Cooking Oil', basePrice: 2000 },
+      context,
+    );
     const updated = await service.updateProduct(userId, created.id, { basePrice: 2200 }, context);
 
     expect(updated.name).toBe('Cooking Oil');
@@ -112,7 +120,11 @@ describe('MerchantProductsService', () => {
   it('rejects updates to a product owned by a different merchant', async () => {
     if (!databaseAvailable) return;
 
-    const created = await service.createProduct(userId, { name: 'Sugar 1kg', basePrice: 1200 }, context);
+    const created = await service.createProduct(
+      userId,
+      { name: 'Sugar 1kg', basePrice: 1200 },
+      context,
+    );
 
     await expect(
       service.updateProduct(otherUserId, created.id, { basePrice: 1 }, context),
@@ -122,7 +134,11 @@ describe('MerchantProductsService', () => {
   it('publishes a draft product and rejects publishing twice', async () => {
     if (!databaseAvailable) return;
 
-    const created = await service.createProduct(userId, { name: 'Beans 5kg', basePrice: 3000 }, context);
+    const created = await service.createProduct(
+      userId,
+      { name: 'Beans 5kg', basePrice: 3000 },
+      context,
+    );
     const published = await service.publishProduct(userId, created.id, context);
 
     expect(published.status).toBe('PUBLISHED');
@@ -136,7 +152,11 @@ describe('MerchantProductsService', () => {
   it('unpublishes a published product and rejects unpublishing a draft', async () => {
     if (!databaseAvailable) return;
 
-    const created = await service.createProduct(userId, { name: 'Milk 1L', basePrice: 1500 }, context);
+    const created = await service.createProduct(
+      userId,
+      { name: 'Milk 1L', basePrice: 1500 },
+      context,
+    );
 
     await expect(service.unpublishProduct(userId, created.id, context)).rejects.toThrow(
       'Product is not published',
@@ -150,7 +170,11 @@ describe('MerchantProductsService', () => {
   it('soft-deletes a product and excludes it from ownership lookups', async () => {
     if (!databaseAvailable) return;
 
-    const created = await service.createProduct(userId, { name: 'Tomato Paste', basePrice: 500 }, context);
+    const created = await service.createProduct(
+      userId,
+      { name: 'Tomato Paste', basePrice: 500 },
+      context,
+    );
     await service.deleteProduct(userId, created.id, context);
 
     await expect(service.getOwnProduct(userId, created.id)).rejects.toThrow('Product not found');
@@ -159,7 +183,11 @@ describe('MerchantProductsService', () => {
   it('manages images including reordering with exact-set validation', async () => {
     if (!databaseAvailable) return;
 
-    const created = await service.createProduct(userId, { name: 'Yam Tuber', basePrice: 1000 }, context);
+    const created = await service.createProduct(
+      userId,
+      { name: 'Yam Tuber', basePrice: 1000 },
+      context,
+    );
     const withFirst = await service.addImage(
       userId,
       created.id,
@@ -201,7 +229,11 @@ describe('MerchantProductsService', () => {
   it('manages variants scoped to the owning merchant', async () => {
     if (!databaseAvailable) return;
 
-    const created = await service.createProduct(userId, { name: 'T-Shirt', basePrice: 5000 }, context);
+    const created = await service.createProduct(
+      userId,
+      { name: 'T-Shirt', basePrice: 5000 },
+      context,
+    );
     const withVariant = await service.createVariant(
       userId,
       created.id,
@@ -233,7 +265,11 @@ describe('MerchantProductsService', () => {
   it('updates inventory quantity and stock tracking', async () => {
     if (!databaseAvailable) return;
 
-    const created = await service.createProduct(userId, { name: 'Rice Bag 10kg', basePrice: 9000 }, context);
+    const created = await service.createProduct(
+      userId,
+      { name: 'Rice Bag 10kg', basePrice: 9000 },
+      context,
+    );
     const updated = await service.updateInventory(
       userId,
       created.id,
@@ -244,7 +280,24 @@ describe('MerchantProductsService', () => {
     expect(updated.inventory).toMatchObject({ quantity: 50, available: 50, lowStockAlert: 5 });
   });
 
-  it('lists only the merchant\'s own, non-deleted products with pagination', async () => {
+  it('marks a product out of stock and available again on restock', async () => {
+    if (!databaseAvailable) return;
+
+    const created = await service.createProduct(
+      userId,
+      { name: 'Manual Toggle Item', basePrice: 1200 },
+      context,
+    );
+    await service.updateInventory(userId, created.id, { quantity: 20 }, context);
+
+    const disabled = await service.setOutOfStock(userId, created.id, true, context);
+    expect(disabled.inventory).toMatchObject({ manuallyDisabled: true });
+
+    const reenabled = await service.setOutOfStock(userId, created.id, false, context);
+    expect(reenabled.inventory).toMatchObject({ manuallyDisabled: false });
+  });
+
+  it("lists only the merchant's own, non-deleted products with pagination", async () => {
     if (!databaseAvailable) return;
 
     const created = await service.createProduct(

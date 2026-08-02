@@ -1,13 +1,13 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
   CartStatus,
-  FulfillmentType,
   MerchantStatus,
   OrderStatus,
   PaymentProvider,
   PaymentStatus,
   TransactionStatus,
   UserStatus,
+  WalletOwnerType,
 } from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../audit/audit.service';
@@ -18,19 +18,20 @@ import {
   ValidationDomainException,
 } from '../common/exceptions/domain.exception';
 import { AppConfigService } from '../config/app-config.service';
-import { DeliveryService } from '../delivery/delivery.service';
 import { DomainEventBus } from '../events/domain-event-bus';
 import { DOMAIN_EVENTS } from '../events/domain-events';
 import {
   NOTIFICATION_SERVICE,
   type NotificationService,
 } from '../notifications/notification.service';
+import { ORDER_WALLET_REFERENCE_TYPE } from '../orders/order.constants';
 import {
   ORDERS_REPOSITORY,
   type OrdersRepository,
   type OrderWithItems,
 } from '../orders/repositories/orders.repository';
 import { PrismaService } from '../prisma/prisma.service';
+import { WalletService } from '../wallet/wallet.service';
 
 import {
   INVENTORY_DEDUCTION_SERVICE,
@@ -75,7 +76,7 @@ export class PaymentService {
     private readonly notifications: NotificationService,
     private readonly prisma: PrismaService,
     private readonly config: AppConfigService,
-    private readonly deliveryService: DeliveryService,
+    private readonly walletService: WalletService,
     @Optional()
     private readonly eventBus?: DomainEventBus,
   ) {}
@@ -236,8 +237,8 @@ export class PaymentService {
     return {
       success: true,
       alreadyProcessed: completed.alreadyProcessed,
-      orderStatus: 'PAID',
-      paymentStatus: 'PAID',
+      orderStatus: OrderStatus.CONFIRMED,
+      paymentStatus: PaymentStatus.PAID,
       transaction: toPaymentTransactionDto(completed.transaction),
     };
   }
@@ -404,8 +405,12 @@ export class PaymentService {
 
     const alreadyProcessed = false;
 
-    if (input.order.status !== OrderStatus.PAID) {
-      await this.ordersRepository.markPaid(input.order.id);
+    if (input.order.status !== OrderStatus.CONFIRMED) {
+      await this.ordersRepository.transition(input.order.id, {
+        status: OrderStatus.CONFIRMED,
+        paymentStatus: PaymentStatus.PAID,
+        confirmedAt: new Date(),
+      });
     }
 
     await this.inventoryDeduction.deductForOrder({
@@ -418,13 +423,6 @@ export class PaymentService {
       if (cart && cart.status !== CartStatus.CHECKED_OUT) {
         await this.cartRepository.updateStatus(input.order.cartId, CartStatus.CHECKED_OUT);
       }
-    }
-
-    const paidOrder = await this.ordersRepository.findById(input.order.id);
-    if (paidOrder?.fulfillmentType === FulfillmentType.DELIVERY) {
-      await this.deliveryService
-        .createJobForPaidOrder(paidOrder.id, input.context)
-        .catch(() => undefined);
     }
 
     await this.auditService.record(PAYMENT_AUDIT_ACTIONS.VERIFIED, input.context, {
@@ -510,10 +508,10 @@ export class PaymentService {
     if (order.status === OrderStatus.FAILED) {
       throw new ValidationDomainException('Expired or failed orders cannot be paid');
     }
-    if (order.status === OrderStatus.PAID || order.paymentStatus === PaymentStatus.PAID) {
+    if (order.status === OrderStatus.CONFIRMED || order.paymentStatus === PaymentStatus.PAID) {
       throw new ConflictDomainException('Order is already paid');
     }
-    if (order.status !== OrderStatus.PENDING_PAYMENT) {
+    if (order.status !== OrderStatus.PENDING) {
       throw new ValidationDomainException('Order is not awaiting payment');
     }
 
@@ -605,5 +603,76 @@ export class PaymentService {
         reference: transaction.providerReference,
       });
     }
+  }
+
+  /** Admin-triggered refund. Reverses the order's paid total into the
+   * customer's wallet via WalletService.refund() — regardless of the
+   * original gateway — rather than calling back out to a
+   * provider-specific refund API (none of the four provider adapters
+   * expose one yet, see docs/MARKETPLACE-FOUNDATION.md's honest
+   * limitations). `referenceType`/`referenceId` give the mutation the
+   * same idempotency guarantee every other wallet-crediting flow in this
+   * codebase relies on (WalletService.applyMutation skips a mutation that
+   * already has a ledger entry for the same reference pair). */
+  public async refundOrder(
+    adminId: string,
+    orderId: string,
+    reason: string,
+    context: AuditContext,
+  ): Promise<OrderWithItems> {
+    const order = await this.ordersRepository.findById(orderId);
+    if (!order) {
+      throw new NotFoundDomainException('Order not found');
+    }
+    if (order.status === OrderStatus.REFUNDED) {
+      throw new ConflictDomainException('Order has already been refunded');
+    }
+    if (order.paymentStatus !== PaymentStatus.PAID) {
+      throw new ValidationDomainException('Only paid orders can be refunded');
+    }
+
+    await this.walletService.refund({
+      ownerType: WalletOwnerType.CUSTOMER,
+      ownerId: order.customerId,
+      amount: Number(order.total),
+      referenceType: ORDER_WALLET_REFERENCE_TYPE,
+      referenceId: order.id,
+      description: `Refund for order ${order.orderNumber}`,
+      context,
+    });
+
+    await this.ordersRepository.transition(order.id, {
+      status: OrderStatus.REFUNDED,
+      paymentStatus: PaymentStatus.REFUNDED,
+      refundedAt: new Date(),
+    });
+
+    await this.auditService.record(
+      PAYMENT_AUDIT_ACTIONS.REFUNDED,
+      { ...context, userId: adminId },
+      {
+        resource: 'order',
+        resourceId: order.id,
+        metadata: { reason, amount: Number(order.total) },
+      },
+    );
+
+    await this.eventBus?.emit(
+      DOMAIN_EVENTS.ORDER_REFUNDED,
+      {
+        orderId: order.id,
+        customerId: order.customerId,
+        merchantId: order.merchantId,
+        amount: String(order.total),
+        reason,
+      },
+      { actorUserId: adminId },
+    );
+
+    const refreshed = await this.ordersRepository.findById(order.id);
+    if (!refreshed) {
+      throw new NotFoundDomainException('Order not found after refund');
+    }
+    return refreshed;
   }
 }

@@ -34,6 +34,9 @@ export class ProductSearchSyncService {
       return false;
     }
     const inventory = product.inventory;
+    if (inventory?.manuallyDisabled) {
+      return false;
+    }
     if (!inventory?.trackInventory) {
       return true;
     }

@@ -106,7 +106,11 @@ export class DeliveryService {
     private readonly eventBus?: DomainEventBus,
   ) {}
 
-  public async createJobForPaidOrder(
+  /** Creates the delivery job once the merchant has marked the order
+   * READY — dispatch (rider search) intentionally starts after prep, not
+   * at payment time, so a rider isn't sitting at the merchant waiting on
+   * food that isn't ready yet. See docs/MARKETPLACE-FOUNDATION.md. */
+  public async createDeliveryJob(
     orderId: string,
     context: AuditContext = {},
   ): Promise<DeliveryJobDto> {
@@ -114,8 +118,8 @@ export class DeliveryService {
     if (order.fulfillmentType !== FulfillmentType.DELIVERY) {
       throw new ValidationDomainException('Order is not a delivery order');
     }
-    if (order.status !== OrderStatus.PAID || order.paymentStatus !== PaymentStatus.PAID) {
-      throw new ValidationDomainException('Order must be paid before delivery can be created');
+    if (order.status !== OrderStatus.READY || order.paymentStatus !== PaymentStatus.PAID) {
+      throw new ValidationDomainException('Order must be ready before delivery can be created');
     }
 
     const existing = await this.deliveryRepository.findJobByOrderId(order.id);
@@ -209,7 +213,7 @@ export class DeliveryService {
     const job = await this.requireRiderJob(riderId, jobId);
     this.requireStatus(job, DeliveryStatus.ASSIGNED);
     const updated = await this.deliveryRepository.updateJobStatus(job.id, DeliveryStatus.ACCEPTED);
-    await this.ordersRepository.updateStatus(job.orderId, OrderStatus.PROCESSING);
+    await this.ordersRepository.transition(job.orderId, { status: OrderStatus.DRIVER_ASSIGNED });
     await this.auditLifecycle(DELIVERY_AUDIT_ACTIONS.ACCEPTED, updated, context, {
       riderId,
     });
@@ -243,7 +247,7 @@ export class DeliveryService {
     const job = await this.requireRiderJob(riderId, jobId);
     this.requireStatus(job, DeliveryStatus.ACCEPTED);
     const updated = await this.deliveryRepository.updateJobStatus(job.id, DeliveryStatus.PICKED_UP);
-    await this.ordersRepository.updateStatus(job.orderId, OrderStatus.OUT_FOR_DELIVERY);
+    await this.ordersRepository.transition(job.orderId, { status: OrderStatus.PICKED_UP });
     await this.auditLifecycle(DELIVERY_AUDIT_ACTIONS.PICKED_UP, updated, context, {
       riderId,
     });
@@ -262,7 +266,7 @@ export class DeliveryService {
       job.id,
       DeliveryStatus.ON_THE_WAY,
     );
-    await this.ordersRepository.updateStatus(job.orderId, OrderStatus.OUT_FOR_DELIVERY);
+    await this.ordersRepository.transition(job.orderId, { status: OrderStatus.IN_TRANSIT });
     await this.auditLifecycle(DELIVERY_AUDIT_ACTIONS.LOCATION_UPDATED, updated, context, {
       riderId,
       status: DeliveryStatus.ON_THE_WAY,
@@ -305,7 +309,10 @@ export class DeliveryService {
     });
     const updated = await this.deliveryRepository.updateJobStatus(job.id, DeliveryStatus.DELIVERED);
     await this.deliveryRepository.decrementRiderActiveJobCount(riderId);
-    await this.ordersRepository.updateStatus(job.orderId, OrderStatus.DELIVERED);
+    await this.ordersRepository.transition(job.orderId, {
+      status: OrderStatus.DELIVERED,
+      deliveredAt: new Date(),
+    });
     await this.auditLifecycle(DELIVERY_AUDIT_ACTIONS.COMPLETED, updated, context, {
       riderId,
       proofType: proof.proofType,

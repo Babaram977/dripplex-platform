@@ -17,15 +17,19 @@ export enum CheckoutFulfillmentType {
 }
 
 export enum CheckoutOrderStatus {
-  PENDING_PAYMENT = 'PENDING_PAYMENT',
-  PAID = 'PAID',
-  PROCESSING = 'PROCESSING',
-  READY_FOR_PICKUP = 'READY_FOR_PICKUP',
-  OUT_FOR_DELIVERY = 'OUT_FOR_DELIVERY',
+  DRAFT = 'DRAFT',
+  PENDING = 'PENDING',
+  CONFIRMED = 'CONFIRMED',
+  PREPARING = 'PREPARING',
+  READY = 'READY',
+  DRIVER_ASSIGNED = 'DRIVER_ASSIGNED',
+  PICKED_UP = 'PICKED_UP',
+  IN_TRANSIT = 'IN_TRANSIT',
   DELIVERED = 'DELIVERED',
+  COMPLETED = 'COMPLETED',
   CANCELLED = 'CANCELLED',
   REFUNDED = 'REFUNDED',
-  FAILED = 'FAILED',
+  DISPUTED = 'DISPUTED',
 }
 
 export enum CheckoutPaymentStatus {
@@ -65,6 +69,18 @@ export class CancelOrderDto {
   @IsString()
   @MaxLength(500)
   public reason?: string;
+}
+
+export class RaiseOrderDisputeDto {
+  @IsString()
+  @MaxLength(1000)
+  public reason!: string;
+}
+
+export class ResolveOrderDisputeDto {
+  @IsString()
+  @MaxLength(1000)
+  public resolution!: string;
 }
 
 export class AdminOrderListQueryDto {

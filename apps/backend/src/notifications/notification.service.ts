@@ -58,6 +58,17 @@ export interface PaymentResultNotificationInput {
   reference: string;
 }
 
+export type OrderLifecycleEvent =
+  'order_accepted' | 'order_rejected' | 'order_ready' | 'order_delayed' | 'order_cancelled';
+
+export interface OrderLifecycleNotificationInput {
+  email: string;
+  event: OrderLifecycleEvent;
+  orderId: string;
+  orderNumber: string;
+  reason?: string;
+}
+
 export type DeliveryLifecycleEvent =
   'rider_assigned' | 'picked_up' | 'arriving' | 'delivered' | 'new_assignment';
 
@@ -121,6 +132,7 @@ export interface NotificationService {
   sendPhoneOtp(input: PhoneOtpNotificationInput): Promise<void>;
   notifyMerchantLifecycle(input: MerchantLifecycleNotificationInput): Promise<void>;
   notifyOrderCreated(input: OrderCreatedNotificationInput): Promise<void>;
+  notifyOrderLifecycle(input: OrderLifecycleNotificationInput): Promise<void>;
   notifyPaymentResult(input: PaymentResultNotificationInput): Promise<void>;
   notifyDeliveryLifecycle(input: DeliveryLifecycleNotificationInput): Promise<void>;
   notifyDriverLifecycle(input: DriverLifecycleNotificationInput): Promise<void>;

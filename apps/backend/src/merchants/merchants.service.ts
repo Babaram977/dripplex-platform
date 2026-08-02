@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
   BusinessStatus,
   BusinessVerificationStatus,
@@ -16,6 +16,8 @@ import {
   PhoneNotVerifiedDomainException,
   ValidationDomainException,
 } from '../common/exceptions/domain.exception';
+import { DomainEventBus } from '../events/domain-event-bus';
+import { DOMAIN_EVENTS } from '../events/domain-events';
 import {
   NOTIFICATION_SERVICE,
   type NotificationService,
@@ -57,6 +59,8 @@ export class MerchantsService {
     private readonly auditService: AuditService,
     @Inject(NOTIFICATION_SERVICE)
     private readonly notifications: NotificationService,
+    @Optional()
+    private readonly eventBus?: DomainEventBus,
   ) {}
 
   public async createBusiness(
@@ -207,6 +211,72 @@ export class MerchantsService {
         resourceId: updated.id,
         metadata: { fields: Object.keys(dto) },
       },
+    );
+
+    return toBusinessDto(updated);
+  }
+
+  public async pauseStore(
+    merchantUserId: string,
+    reason: string | undefined,
+    context: AuditContext,
+  ): Promise<BusinessDto> {
+    await this.requireMerchantProfile(merchantUserId);
+    const business = await this.merchantsRepository.findBusinessByMerchantId(merchantUserId);
+    if (!business) {
+      throw new NotFoundDomainException('Business not found');
+    }
+    if (business.status !== BusinessStatus.ACTIVE) {
+      throw new ValidationDomainException('Only active stores can be paused');
+    }
+
+    const updated = await this.merchantsRepository.setBusinessPauseState(business.id, {
+      status: BusinessStatus.PAUSED,
+      pausedAt: new Date(),
+      pauseReason: reason ?? null,
+    });
+
+    await this.auditService.record(
+      MERCHANT_AUDIT_ACTIONS.STORE_PAUSED,
+      { ...context, userId: merchantUserId },
+      { resource: 'business', resourceId: updated.id, metadata: { reason: reason ?? null } },
+    );
+
+    await this.eventBus?.emit(
+      DOMAIN_EVENTS.STORE_PAUSED,
+      { merchantId: merchantUserId, businessId: updated.id, reason: reason ?? null },
+      { actorUserId: merchantUserId },
+    );
+
+    return toBusinessDto(updated);
+  }
+
+  public async resumeStore(merchantUserId: string, context: AuditContext): Promise<BusinessDto> {
+    await this.requireMerchantProfile(merchantUserId);
+    const business = await this.merchantsRepository.findBusinessByMerchantId(merchantUserId);
+    if (!business) {
+      throw new NotFoundDomainException('Business not found');
+    }
+    if (business.status !== BusinessStatus.PAUSED) {
+      throw new ValidationDomainException('Only paused stores can be resumed');
+    }
+
+    const updated = await this.merchantsRepository.setBusinessPauseState(business.id, {
+      status: BusinessStatus.ACTIVE,
+      pausedAt: null,
+      pauseReason: null,
+    });
+
+    await this.auditService.record(
+      MERCHANT_AUDIT_ACTIONS.STORE_RESUMED,
+      { ...context, userId: merchantUserId },
+      { resource: 'business', resourceId: updated.id, metadata: {} },
+    );
+
+    await this.eventBus?.emit(
+      DOMAIN_EVENTS.STORE_RESUMED,
+      { merchantId: merchantUserId, businessId: updated.id },
+      { actorUserId: merchantUserId },
     );
 
     return toBusinessDto(updated);

@@ -8,6 +8,7 @@ import type {
   MerchantLifecycleNotificationInput,
   NotificationService,
   OrderCreatedNotificationInput,
+  OrderLifecycleNotificationInput,
   PasswordChangedNotificationInput,
   PasswordResetNotificationInput,
   PaymentResultNotificationInput,
@@ -104,6 +105,21 @@ export class LoggingNotificationService implements NotificationService {
         currency: input.currency,
       },
       'Order created notification dispatched',
+    );
+    return Promise.resolve();
+  }
+
+  public notifyOrderLifecycle(input: OrderLifecycleNotificationInput): Promise<void> {
+    this.logger.log(
+      {
+        channel: 'email',
+        template: input.event,
+        email: input.email,
+        orderId: input.orderId,
+        orderNumber: input.orderNumber,
+        reason: input.reason,
+      },
+      'Order lifecycle notification dispatched',
     );
     return Promise.resolve();
   }

@@ -6,6 +6,7 @@ import { CartModule } from '../cart/cart.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { ProductsModule } from '../products/products.module';
+import { WalletModule } from '../wallet/wallet.module';
 
 import { AdminOrdersController } from './admin-orders.controller';
 import { CheckoutService } from './checkout.service';
@@ -13,6 +14,9 @@ import { CustomerOrdersController } from './customer-orders.controller';
 import { CatalogCheckoutInventoryValidator } from './inventory/catalog-checkout-inventory.validator';
 import { CHECKOUT_INVENTORY_VALIDATOR } from './inventory/checkout-inventory.validator';
 import { InventoryReservationService } from './inventory/inventory-reservation.service';
+import { MerchantOrdersController } from './merchant-orders.controller';
+import { MerchantOrdersService } from './merchant-orders.service';
+import { OrderCompletionSweepService } from './order-completion-sweep.service';
 import { CatalogCheckoutProductValidator } from './pricing/catalog-checkout-product.validator';
 import { CHECKOUT_PRODUCT_VALIDATOR } from './pricing/checkout-product.validator';
 import { CouponCalculator, ZeroCouponCalculator } from './pricing/coupon-calculator';
@@ -30,12 +34,15 @@ import { ReservationCleanupService } from './reservation-cleanup.service';
     CartModule,
     AddressesModule,
     ProductsModule,
+    WalletModule,
   ],
-  controllers: [CustomerOrdersController, AdminOrdersController],
+  controllers: [CustomerOrdersController, AdminOrdersController, MerchantOrdersController],
   providers: [
     CheckoutService,
+    MerchantOrdersService,
     InventoryReservationService,
     ReservationCleanupService,
+    OrderCompletionSweepService,
     { provide: ORDERS_REPOSITORY, useClass: PrismaOrdersRepository },
     { provide: TaxCalculator, useClass: ZeroTaxCalculator },
     { provide: DeliveryCalculator, useClass: ZeroDeliveryCalculator },

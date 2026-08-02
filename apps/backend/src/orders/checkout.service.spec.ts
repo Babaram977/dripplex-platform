@@ -77,7 +77,7 @@ const sampleOrder = {
   merchantId,
   cartId,
   orderNumber: 'DPX-20260721-ABC123',
-  status: OrderStatus.PENDING_PAYMENT,
+  status: OrderStatus.PENDING,
   paymentStatus: PaymentStatus.PENDING,
   fulfillmentType: FulfillmentType.DELIVERY,
   subtotal: 5000,
@@ -126,16 +126,19 @@ describe('CheckoutService', () => {
     create: jest.fn(),
     findById: jest.fn(),
     findByIdForCustomer: jest.fn(),
+    findByIdForMerchant: jest.fn(),
     list: jest.fn(),
-    updateStatus: jest.fn(),
-    cancelOrder: jest.fn(),
-    markFailed: jest.fn(),
-    markPaid: jest.fn(),
+    transition: jest.fn(),
     findByCartId: jest.fn(),
     createReservations: jest.fn(),
     releaseReservationsForOrder: jest.fn(),
     findExpiredActiveReservations: jest.fn(),
     findUnpaidOrdersWithExpiredReservations: jest.fn(),
+    findAutoCompletableOrders: jest.fn(),
+    createDispute: jest.fn(),
+    findDisputeById: jest.fn(),
+    findOpenDisputeForOrder: jest.fn(),
+    resolveDispute: jest.fn(),
   };
 
   const cartRepository: jest.Mocked<CartRepository> = {
@@ -268,7 +271,7 @@ describe('CheckoutService', () => {
     ordersRepository.findById.mockResolvedValue(sampleOrder);
     ordersRepository.findByIdForCustomer.mockResolvedValue(sampleOrder);
     ordersRepository.list.mockResolvedValue({ items: [sampleOrder], total: 1 });
-    ordersRepository.cancelOrder.mockResolvedValue({
+    ordersRepository.transition.mockResolvedValue({
       ...sampleOrder,
       status: OrderStatus.CANCELLED,
     });
@@ -516,7 +519,7 @@ describe('CheckoutService', () => {
     it('rejects cancel when not pending payment', async () => {
       ordersRepository.findByIdForCustomer.mockResolvedValue({
         ...sampleOrder,
-        status: OrderStatus.PAID,
+        status: OrderStatus.CONFIRMED,
       });
       await expect(
         service.cancelCustomerOrder(customerId, orderId, context),
@@ -527,7 +530,7 @@ describe('CheckoutService', () => {
   describe('admin orders', () => {
     it('filters by status merchant customer payment and date', async () => {
       await service.listAdminOrders({
-        status: 'PENDING_PAYMENT',
+        status: 'PENDING',
         paymentStatus: 'PENDING',
         merchantId,
         customerId,
@@ -539,7 +542,7 @@ describe('CheckoutService', () => {
 
       expect(ordersRepository.list).toHaveBeenCalledWith(
         expect.objectContaining({
-          status: 'PENDING_PAYMENT',
+          status: 'PENDING',
           paymentStatus: 'PENDING',
           merchantId,
           customerId,
@@ -554,6 +557,126 @@ describe('CheckoutService', () => {
       expect(result.orderNumber).toBe('DPX-20260721-ABC123');
     });
   });
+
+  describe('disputes', () => {
+    const disputeId = '77777777-7777-7777-7777-777777777777';
+
+    it('raises a dispute on a delivered order', async () => {
+      ordersRepository.findByIdForCustomer.mockResolvedValue({
+        ...sampleOrder,
+        status: OrderStatus.DELIVERED,
+      });
+      ordersRepository.findOpenDisputeForOrder.mockResolvedValue(null);
+
+      const result = await service.raiseDispute(customerId, orderId, 'Item was damaged', context);
+
+      expect(ordersRepository.createDispute).toHaveBeenCalledWith({
+        orderId,
+        raisedBy: customerId,
+        reason: 'Item was damaged',
+      });
+      expect(ordersRepository.transition).toHaveBeenCalledWith(orderId, {
+        status: OrderStatus.DISPUTED,
+      });
+      expect(auditService.record).toHaveBeenCalledWith(
+        ORDER_AUDIT_ACTIONS.DISPUTE_RAISED,
+        expect.any(Object),
+        expect.any(Object),
+      );
+      expect(result.orderNumber).toBe('DPX-20260721-ABC123');
+    });
+
+    it('rejects disputing an order that is not delivered', async () => {
+      ordersRepository.findByIdForCustomer.mockResolvedValue({
+        ...sampleOrder,
+        status: OrderStatus.PREPARING,
+      });
+
+      await expect(
+        service.raiseDispute(customerId, orderId, 'Too soon', context),
+      ).rejects.toBeInstanceOf(ValidationDomainException);
+    });
+
+    it('rejects a second dispute while one is already open', async () => {
+      ordersRepository.findByIdForCustomer.mockResolvedValue({
+        ...sampleOrder,
+        status: OrderStatus.DELIVERED,
+      });
+      ordersRepository.findOpenDisputeForOrder.mockResolvedValue({
+        id: disputeId,
+        orderId,
+        raisedBy: customerId,
+        reason: 'Already raised',
+        status: 'OPEN',
+        resolution: null,
+        resolvedBy: null,
+        createdAt: new Date(),
+        resolvedAt: null,
+      } as never);
+
+      await expect(
+        service.raiseDispute(customerId, orderId, 'Again', context),
+      ).rejects.toBeInstanceOf(ConflictDomainException);
+    });
+
+    it('resolves an open dispute and completes the order', async () => {
+      ordersRepository.findDisputeById.mockResolvedValue({
+        id: disputeId,
+        orderId,
+        raisedBy: customerId,
+        reason: 'Item was damaged',
+        status: 'OPEN',
+        resolution: null,
+        resolvedBy: null,
+        createdAt: new Date(),
+        resolvedAt: null,
+      } as never);
+
+      const result = await service.resolveDispute(
+        merchantId,
+        disputeId,
+        'Refund issued to customer',
+        context,
+      );
+
+      expect(ordersRepository.resolveDispute).toHaveBeenCalledWith(disputeId, {
+        status: 'RESOLVED',
+        resolution: 'Refund issued to customer',
+        resolvedBy: merchantId,
+      });
+      expect(ordersRepository.transition).toHaveBeenCalledWith(orderId, {
+        status: OrderStatus.COMPLETED,
+        completedAt: expect.any(Date),
+      });
+      expect(result.orderNumber).toBe('DPX-20260721-ABC123');
+    });
+
+    it('rejects resolving a dispute that is already resolved', async () => {
+      ordersRepository.findDisputeById.mockResolvedValue({
+        id: disputeId,
+        orderId,
+        raisedBy: customerId,
+        reason: 'Item was damaged',
+        status: 'RESOLVED',
+        resolution: 'Handled',
+        resolvedBy: merchantId,
+        createdAt: new Date(),
+        resolvedAt: new Date(),
+      } as never);
+
+      await expect(
+        service.resolveDispute(merchantId, disputeId, 'Again', context),
+      ).rejects.toBeInstanceOf(ConflictDomainException);
+    });
+
+    it('rejects resolving a dispute that does not exist', async () => {
+      ordersRepository.findDisputeById.mockResolvedValue(null);
+
+      await expect(
+        service.resolveDispute(merchantId, disputeId, 'N/A', context),
+      ).rejects.toBeInstanceOf(NotFoundDomainException);
+    });
+  });
 });
 
 describe('ReservationCleanupService', () => {
@@ -561,16 +684,19 @@ describe('ReservationCleanupService', () => {
     create: jest.fn(),
     findById: jest.fn(),
     findByIdForCustomer: jest.fn(),
+    findByIdForMerchant: jest.fn(),
     list: jest.fn(),
-    updateStatus: jest.fn(),
-    cancelOrder: jest.fn(),
-    markFailed: jest.fn(),
-    markPaid: jest.fn(),
+    transition: jest.fn(),
     findByCartId: jest.fn(),
     createReservations: jest.fn(),
     releaseReservationsForOrder: jest.fn(),
     findExpiredActiveReservations: jest.fn(),
     findUnpaidOrdersWithExpiredReservations: jest.fn(),
+    findAutoCompletableOrders: jest.fn(),
+    createDispute: jest.fn(),
+    findDisputeById: jest.fn(),
+    findOpenDisputeForOrder: jest.fn(),
+    resolveDispute: jest.fn(),
   };
 
   const cartRepository: jest.Mocked<CartRepository> = {
@@ -611,15 +737,21 @@ describe('ReservationCleanupService', () => {
       ...sampleCart,
       status: CartStatus.LOCKED,
     });
-    ordersRepository.markFailed.mockResolvedValue({
+    ordersRepository.transition.mockResolvedValue({
       ...sampleOrder,
-      status: OrderStatus.FAILED,
+      status: OrderStatus.CANCELLED,
       paymentStatus: PaymentStatus.FAILED,
     });
 
     const result = await cleanup.runCleanup();
 
-    expect(ordersRepository.markFailed).toHaveBeenCalledWith(orderId);
+    expect(ordersRepository.transition).toHaveBeenCalledWith(orderId, {
+      status: OrderStatus.CANCELLED,
+      paymentStatus: PaymentStatus.FAILED,
+      cancelledAt: expect.any(Date),
+      cancelledBy: 'SYSTEM',
+      cancellationReason: 'Payment window expired',
+    });
     expect(cartRepository.updateStatus).toHaveBeenCalledWith(cartId, CartStatus.ACTIVE);
     expect(reservationService.releaseExpired).toHaveBeenCalled();
     expect(result.failedOrders).toBe(1);

@@ -87,6 +87,8 @@ describe('ProductSearchSyncService', () => {
           reserved: 0,
           lowStockAlert: null,
           trackInventory: true,
+          manuallyDisabled: false,
+          lowStockNotifiedAt: null,
           createdAt: new Date(),
           updatedAt: new Date(),
         },
@@ -112,6 +114,8 @@ describe('ProductSearchSyncService', () => {
           reserved: 3,
           lowStockAlert: null,
           trackInventory: true,
+          manuallyDisabled: false,
+          lowStockNotifiedAt: null,
           createdAt: new Date(),
           updatedAt: new Date(),
         },
@@ -121,6 +125,33 @@ describe('ProductSearchSyncService', () => {
     expect(emit).toHaveBeenCalledWith(
       DOMAIN_EVENTS.INVENTORY_CHANGED,
       expect.objectContaining({ available: true }),
+    );
+  });
+
+  it('marks a manually disabled, in-stock product as unavailable', async () => {
+    const { eventBus, emit } = buildEventBus();
+    const service = new ProductSearchSyncService(eventBus);
+
+    await service.syncInventory(
+      buildProduct({
+        inventory: {
+          id: 'inv1',
+          productId: 'p1',
+          quantity: 10,
+          reserved: 0,
+          lowStockAlert: null,
+          trackInventory: true,
+          manuallyDisabled: true,
+          lowStockNotifiedAt: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      }),
+    );
+
+    expect(emit).toHaveBeenCalledWith(
+      DOMAIN_EVENTS.INVENTORY_CHANGED,
+      expect.objectContaining({ available: false }),
     );
   });
 });

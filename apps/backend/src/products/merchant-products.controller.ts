@@ -21,6 +21,7 @@ import { CreateProductVariantDto } from './dto/create-product-variant.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 import { ListMerchantProductsQueryDto } from './dto/list-merchant-products-query.dto';
 import { ReorderProductImagesDto } from './dto/reorder-product-images.dto';
+import { SetOutOfStockDto } from './dto/set-out-of-stock.dto';
 import { UpdateProductInventoryDto } from './dto/update-product-inventory.dto';
 import { UpdateProductVariantDto } from './dto/update-product-variant.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -62,7 +63,11 @@ export class MerchantProductsController {
     @Body() dto: CreateProductDto,
     @Req() request: Request,
   ): Promise<ApiSuccessResponse<ProductDto>> {
-    const data = await this.productsService.createProduct(user.id, dto, this.auditContext(request, user.id));
+    const data = await this.productsService.createProduct(
+      user.id,
+      dto,
+      this.auditContext(request, user.id),
+    );
     return { success: true, data };
   }
 
@@ -128,7 +133,12 @@ export class MerchantProductsController {
     @Body() dto: AddProductImageDto,
     @Req() request: Request,
   ): Promise<ApiSuccessResponse<ProductDto>> {
-    const data = await this.productsService.addImage(user.id, id, dto, this.auditContext(request, user.id));
+    const data = await this.productsService.addImage(
+      user.id,
+      id,
+      dto,
+      this.auditContext(request, user.id),
+    );
     return { success: true, data };
   }
 
@@ -226,6 +236,22 @@ export class MerchantProductsController {
       user.id,
       id,
       dto,
+      this.auditContext(request, user.id),
+    );
+    return { success: true, data };
+  }
+
+  @Patch(':id/stock-status')
+  public async setOutOfStock(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetOutOfStockDto,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<ProductDto>> {
+    const data = await this.productsService.setOutOfStock(
+      user.id,
+      id,
+      dto.outOfStock,
       this.auditContext(request, user.id),
     );
     return { success: true, data };

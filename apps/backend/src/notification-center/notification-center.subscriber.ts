@@ -51,6 +51,43 @@ export class NotificationCenterSubscriber implements OnModuleInit {
         `Payment for order ${this.text(payload, ['orderNumber', 'orderId'], '')} was received.`,
       userKeys: ['customerId', 'userId'],
     },
+    [DOMAIN_EVENTS.ORDER_ACCEPTED]: {
+      category: NotificationCategory.MARKETPLACE,
+      type: NotificationType.ORDER_ACCEPTED,
+      title: 'Order accepted',
+      body: () => 'Your order has been accepted and is being prepared.',
+      userKeys: ['customerId', 'userId'],
+    },
+    [DOMAIN_EVENTS.ORDER_REJECTED]: {
+      category: NotificationCategory.MARKETPLACE,
+      type: NotificationType.ORDER_REJECTED,
+      title: 'Order declined',
+      body: (payload) =>
+        `Your order was declined by the merchant${this.text(payload, ['reason'], '') ? `: ${this.text(payload, ['reason'], '')}` : ''}. A refund has been issued.`,
+      priority: NotificationPriority.HIGH,
+      userKeys: ['customerId', 'userId'],
+    },
+    [DOMAIN_EVENTS.ORDER_READY]: {
+      category: NotificationCategory.MARKETPLACE,
+      type: NotificationType.ORDER_READY,
+      title: 'Order ready',
+      body: () => 'Your order is ready.',
+      userKeys: ['customerId', 'userId'],
+    },
+    [DOMAIN_EVENTS.ORDER_DELAYED]: {
+      category: NotificationCategory.MARKETPLACE,
+      type: NotificationType.ORDER_DELAYED,
+      title: 'Order delayed',
+      body: () => 'Your order is taking a bit longer than expected.',
+      userKeys: ['customerId', 'userId'],
+    },
+    [DOMAIN_EVENTS.ORDER_COMPLETED]: {
+      category: NotificationCategory.MARKETPLACE,
+      type: NotificationType.ORDER_COMPLETED,
+      title: 'Order completed',
+      body: () => 'Your order has been marked as completed.',
+      userKeys: ['customerId', 'userId'],
+    },
     [DOMAIN_EVENTS.PAYMENT_FAILED]: {
       category: NotificationCategory.MARKETPLACE,
       type: NotificationType.PAYMENT_FAILED,

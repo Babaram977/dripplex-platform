@@ -30,6 +30,8 @@ export function toBusinessDto(business: Business): BusinessDto {
     approvedBy: business.approvedBy,
     approvedAt: business.approvedAt ? business.approvedAt.toISOString() : null,
     rejectedReason: business.rejectedReason,
+    pausedAt: business.pausedAt ? business.pausedAt.toISOString() : null,
+    pauseReason: business.pauseReason,
     createdAt: business.createdAt.toISOString(),
     updatedAt: business.updatedAt.toISOString(),
   };

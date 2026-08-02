@@ -1,11 +1,18 @@
 import type {
   CheckoutResponseDto,
   InventoryReservationDto,
+  OrderDisputeDto,
   OrderDto,
   OrderItemDto,
   PaginatedResult,
 } from '@dripplex/types';
-import type { InventoryReservation, Order, OrderItem } from '@prisma/client';
+import type { InventoryReservation, Order, OrderDispute, OrderItem } from '@prisma/client';
+
+export type OrderWithRelations = Order & {
+  items: OrderItem[];
+  reservations?: InventoryReservation[];
+  disputes?: OrderDispute[];
+};
 
 export function roundMoney(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
@@ -43,9 +50,21 @@ export function toInventoryReservationDto(
   };
 }
 
-export function toOrderDto(
-  order: Order & { items: OrderItem[]; reservations?: InventoryReservation[] },
-): OrderDto {
+export function toOrderDisputeDto(dispute: OrderDispute): OrderDisputeDto {
+  return {
+    id: dispute.id,
+    orderId: dispute.orderId,
+    raisedBy: dispute.raisedBy,
+    reason: dispute.reason,
+    status: dispute.status,
+    resolution: dispute.resolution,
+    resolvedBy: dispute.resolvedBy,
+    createdAt: dispute.createdAt.toISOString(),
+    resolvedAt: dispute.resolvedAt ? dispute.resolvedAt.toISOString() : null,
+  };
+}
+
+export function toOrderDto(order: OrderWithRelations): OrderDto {
   return {
     id: order.id,
     customerId: order.customerId,
@@ -64,23 +83,31 @@ export function toOrderDto(
     deliveryAddressId: order.deliveryAddressId,
     notes: order.notes,
     currency: order.currency,
+    estimatedReadyAt: order.estimatedReadyAt ? order.estimatedReadyAt.toISOString() : null,
+    confirmedAt: order.confirmedAt ? order.confirmedAt.toISOString() : null,
+    readyAt: order.readyAt ? order.readyAt.toISOString() : null,
+    deliveredAt: order.deliveredAt ? order.deliveredAt.toISOString() : null,
+    completedAt: order.completedAt ? order.completedAt.toISOString() : null,
+    cancelledAt: order.cancelledAt ? order.cancelledAt.toISOString() : null,
+    cancelledBy: order.cancelledBy,
+    cancellationReason: order.cancellationReason,
+    refundedAt: order.refundedAt ? order.refundedAt.toISOString() : null,
     items: order.items.map(toOrderItemDto),
     reservations: (order.reservations ?? []).map(toInventoryReservationDto),
+    disputes: (order.disputes ?? []).map(toOrderDisputeDto),
     createdAt: order.createdAt.toISOString(),
     updatedAt: order.updatedAt.toISOString(),
   };
 }
 
-export function toCheckoutResponseDto(
-  order: Order & { items: OrderItem[]; reservations?: InventoryReservation[] },
-): CheckoutResponseDto {
+export function toCheckoutResponseDto(order: OrderWithRelations): CheckoutResponseDto {
   return {
     order: toOrderDto(order),
   };
 }
 
 export function toPaginatedOrders(
-  items: (Order & { items: OrderItem[]; reservations?: InventoryReservation[] })[],
+  items: OrderWithRelations[],
   total: number,
   page: number,
   pageSize: number,

@@ -8,6 +8,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { OrdersModule } from '../orders/orders.module';
 import { PrismaModule } from '../prisma/prisma.module';
 
+import { AdminPaymentsController } from './admin-payments.controller';
 import { CustomerPaymentsController } from './customer-payments.controller';
 import {
   INVENTORY_DEDUCTION_SERVICE,
@@ -33,7 +34,7 @@ import { PrismaPaymentTransactionRepository } from './repositories/prisma-paymen
     DeliveryModule,
     AppConfigModule,
   ],
-  controllers: [CustomerPaymentsController, PaymentWebhooksController],
+  controllers: [CustomerPaymentsController, PaymentWebhooksController, AdminPaymentsController],
   providers: [
     PaymentService,
     PaystackProvider,

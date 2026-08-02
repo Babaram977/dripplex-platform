@@ -19,6 +19,7 @@ import type {
   MerchantAdminDetail,
   MerchantProfileWithUser,
   MerchantsRepository,
+  SetBusinessPauseStateInput,
   UpdateBusinessInput,
 } from './merchants.repository';
 import type { BankAccount, Business, MerchantKyc } from '@prisma/client';
@@ -120,6 +121,20 @@ export class PrismaMerchantsRepository implements MerchantsRepository {
         ...(input.longitude !== undefined ? { longitude: input.longitude } : {}),
         ...(input.logoUrl !== undefined ? { logoUrl: input.logoUrl } : {}),
         ...(input.coverPhotoUrl !== undefined ? { coverPhotoUrl: input.coverPhotoUrl } : {}),
+      },
+    });
+  }
+
+  public async setBusinessPauseState(
+    id: string,
+    input: SetBusinessPauseStateInput,
+  ): Promise<Business> {
+    return await this.prisma.business.update({
+      where: { id },
+      data: {
+        status: input.status,
+        pausedAt: input.pausedAt,
+        pauseReason: input.pauseReason,
       },
     });
   }

@@ -15,6 +15,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 import { CreateBankAccountDto } from '../dto/create-bank-account.dto';
 import { CreateBusinessDto } from '../dto/create-business.dto';
+import { PauseStoreDto } from '../dto/pause-store.dto';
 import { SubmitKycDto } from '../dto/submit-kyc.dto';
 import { UpdateBusinessDto } from '../dto/update-business.dto';
 import { MERCHANT_PERMISSIONS } from '../merchant.constants';
@@ -64,6 +65,34 @@ export class MerchantController {
     const data = await this.merchantsService.updateBusiness(
       user.id,
       dto,
+      this.auditContext(request, user.id),
+    );
+    return { success: true, data };
+  }
+
+  @Post('business/pause')
+  @RequirePermissions(MERCHANT_PERMISSIONS.BUSINESS_MANAGE)
+  public async pauseStore(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: PauseStoreDto,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<BusinessDto>> {
+    const data = await this.merchantsService.pauseStore(
+      user.id,
+      dto.reason,
+      this.auditContext(request, user.id),
+    );
+    return { success: true, data };
+  }
+
+  @Post('business/resume')
+  @RequirePermissions(MERCHANT_PERMISSIONS.BUSINESS_MANAGE)
+  public async resumeStore(
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<BusinessDto>> {
+    const data = await this.merchantsService.resumeStore(
+      user.id,
       this.auditContext(request, user.id),
     );
     return { success: true, data };

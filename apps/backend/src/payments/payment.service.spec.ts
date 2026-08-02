@@ -29,10 +29,10 @@ import type { InventoryDeductionService } from './inventory-deduction.service';
 import type { AuditService } from '../audit/audit.service';
 import type { CartRepository } from '../cart/repositories/cart.repository';
 import type { AppConfigService } from '../config/app-config.service';
-import type { DeliveryService } from '../delivery/delivery.service';
 import type { NotificationService } from '../notifications/notification.service';
 import type { OrdersRepository, OrderWithItems } from '../orders/repositories/orders.repository';
 import type { PrismaService } from '../prisma/prisma.service';
+import type { WalletService } from '../wallet/wallet.service';
 import type { PaymentProviderAdapter } from './providers/payment-provider.adapter';
 import type { PaymentTransactionRepository } from './repositories/payment-transaction.repository';
 import type { PaymentTransaction } from '@prisma/client';
@@ -50,7 +50,7 @@ const sampleOrder = {
   merchantId,
   cartId,
   orderNumber: 'DPX-20260721-ABC123',
-  status: OrderStatus.PENDING_PAYMENT,
+  status: OrderStatus.PENDING,
   paymentStatus: PaymentStatus.PENDING,
   total: 5000,
   currency: 'NGN',
@@ -111,16 +111,19 @@ describe('PaymentService', () => {
     create: jest.fn(),
     findById: jest.fn(),
     findByIdForCustomer: jest.fn(),
+    findByIdForMerchant: jest.fn(),
     list: jest.fn(),
-    updateStatus: jest.fn(),
-    cancelOrder: jest.fn(),
-    markFailed: jest.fn(),
-    markPaid: jest.fn(),
+    transition: jest.fn(),
     findByCartId: jest.fn(),
     createReservations: jest.fn(),
     releaseReservationsForOrder: jest.fn(),
     findExpiredActiveReservations: jest.fn(),
     findUnpaidOrdersWithExpiredReservations: jest.fn(),
+    findAutoCompletableOrders: jest.fn(),
+    createDispute: jest.fn(),
+    findDisputeById: jest.fn(),
+    findOpenDisputeForOrder: jest.fn(),
+    resolveDispute: jest.fn(),
   };
 
   const cartRepository: jest.Mocked<CartRepository> = {
@@ -169,9 +172,9 @@ describe('PaymentService', () => {
     paymentDefaultProvider: 'PAYSTACK',
   } as unknown as AppConfigService;
 
-  const deliveryService = {
-    createJobForPaidOrder: jest.fn().mockResolvedValue(undefined),
-  } as unknown as jest.Mocked<DeliveryService>;
+  const walletService = {
+    refund: jest.fn().mockResolvedValue(undefined),
+  } as unknown as jest.Mocked<WalletService>;
 
   const service = new PaymentService(
     paymentRepository,
@@ -183,7 +186,7 @@ describe('PaymentService', () => {
     notifications,
     prisma,
     config,
-    deliveryService,
+    walletService,
   );
 
   const context = { userId: customerId };
@@ -192,9 +195,9 @@ describe('PaymentService', () => {
     jest.clearAllMocks();
     ordersRepository.findByIdForCustomer.mockResolvedValue(sampleOrder);
     ordersRepository.findById.mockResolvedValue(sampleOrder);
-    ordersRepository.markPaid.mockResolvedValue({
+    ordersRepository.transition.mockResolvedValue({
       ...sampleOrder,
-      status: OrderStatus.PAID,
+      status: OrderStatus.CONFIRMED,
       paymentStatus: PaymentStatus.PAID,
     });
     paymentRepository.findSuccessfulByOrderId.mockResolvedValue(null);
@@ -248,7 +251,6 @@ describe('PaymentService', () => {
       id: cartId,
       status: CartStatus.LOCKED,
     } as never);
-    deliveryService.createJobForPaidOrder.mockResolvedValue(undefined as never);
   });
 
   describe('initializePayment', () => {
@@ -342,7 +344,11 @@ describe('PaymentService', () => {
     it('marks order paid, deducts inventory, archives cart on success', async () => {
       const result = await service.verifyPayment(customerId, orderId, {}, context);
       expect(result.success).toBe(true);
-      expect(ordersRepository.markPaid).toHaveBeenCalledWith(orderId);
+      expect(ordersRepository.transition).toHaveBeenCalledWith(orderId, {
+        status: OrderStatus.CONFIRMED,
+        paymentStatus: PaymentStatus.PAID,
+        confirmedAt: expect.any(Date),
+      });
       expect(inventoryDeduction.deductForOrder).toHaveBeenCalled();
       expect(cartRepository.updateStatus).toHaveBeenCalledWith(cartId, CartStatus.CHECKED_OUT);
       expect(auditService.record).toHaveBeenCalledWith(
@@ -351,19 +357,6 @@ describe('PaymentService', () => {
         expect.any(Object),
       );
       expect(notifications.notifyPaymentResult).toHaveBeenCalled();
-    });
-
-    it('creates a delivery job for a paid delivery order', async () => {
-      ordersRepository.findById.mockResolvedValue({
-        ...sampleOrder,
-        status: OrderStatus.PAID,
-        paymentStatus: PaymentStatus.PAID,
-        fulfillmentType: FulfillmentType.DELIVERY,
-      });
-
-      await service.verifyPayment(customerId, orderId, {}, context);
-
-      expect(deliveryService.createJobForPaidOrder).toHaveBeenCalledWith(orderId, context);
     });
 
     it('is idempotent for already successful transactions', async () => {
@@ -436,7 +429,7 @@ describe('PaymentService', () => {
       });
       ordersRepository.findById.mockResolvedValue({
         ...sampleOrder,
-        status: OrderStatus.PAID,
+        status: OrderStatus.CONFIRMED,
         paymentStatus: PaymentStatus.PAID,
       });
 
@@ -461,7 +454,13 @@ describe('PaymentService', () => {
         payload: { event: 'charge.success', data: { reference } },
       });
       expect(provider.verifyPayment).toHaveBeenCalledWith({ reference });
-      expect(ordersRepository.markPaid).toHaveBeenCalled();
+      expect(ordersRepository.transition).toHaveBeenCalledWith(
+        orderId,
+        expect.objectContaining({
+          status: OrderStatus.CONFIRMED,
+          paymentStatus: PaymentStatus.PAID,
+        }),
+      );
     });
   });
 });

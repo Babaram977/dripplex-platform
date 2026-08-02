@@ -2,7 +2,7 @@ import type { RatingSummaryDto } from '../product/index.js';
 
 export type MerchantStatus = 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
 
-export type BusinessStatus = 'DRAFT' | 'SUBMITTED' | 'ACTIVE' | 'SUSPENDED';
+export type BusinessStatus = 'DRAFT' | 'SUBMITTED' | 'ACTIVE' | 'PAUSED' | 'SUSPENDED';
 
 export type BusinessVerificationStatus = 'PENDING' | 'UNDER_REVIEW' | 'VERIFIED' | 'REJECTED';
 
@@ -43,6 +43,8 @@ export interface BusinessDto {
   approvedBy: string | null;
   approvedAt: string | null;
   rejectedReason: string | null;
+  pausedAt: string | null;
+  pauseReason: string | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -10,6 +10,8 @@ export const MERCHANT_AUDIT_ACTIONS = {
   REJECTED: 'merchant.rejected',
   SUSPENDED: 'merchant.suspended',
   REACTIVATED: 'merchant.reactivated',
+  STORE_PAUSED: 'merchant.store_paused',
+  STORE_RESUMED: 'merchant.store_resumed',
 } as const;
 
 export const MERCHANT_PERMISSIONS = {

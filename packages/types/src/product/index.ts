@@ -49,6 +49,7 @@ export interface ProductInventoryDto {
   available: number;
   lowStockAlert: number | null;
   trackInventory: boolean;
+  manuallyDisabled: boolean;
   updatedAt: string;
 }
 

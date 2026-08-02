@@ -1,13 +1,16 @@
-import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Query, Req } from '@nestjs/common';
 
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
 
 import { CheckoutService } from './checkout.service';
-import { AdminOrderListQueryDto } from './dto/order.dto';
+import { AdminOrderListQueryDto, ResolveOrderDisputeDto } from './dto/order.dto';
 import { ORDER_PERMISSIONS } from './order.constants';
 
+import type { AuthenticatedUser } from '../auth/auth.types';
 import type { ApiSuccessResponse } from '../common/dto/api-response.dto';
 import type { OrderDto, PaginatedResult } from '@dripplex/types';
+import type { Request } from 'express';
 
 @Controller('admin/orders')
 export class AdminOrdersController {
@@ -38,5 +41,35 @@ export class AdminOrdersController {
   ): Promise<ApiSuccessResponse<OrderDto>> {
     const data = await this.checkoutService.getAdminOrder(id);
     return { success: true, data };
+  }
+
+  @Patch('disputes/:disputeId/resolve')
+  @RequirePermissions(ORDER_PERMISSIONS.ADMIN_MANAGE)
+  public async resolveDispute(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('disputeId', ParseUUIDPipe) disputeId: string,
+    @Body() dto: ResolveOrderDisputeDto,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<OrderDto>> {
+    const data = await this.checkoutService.resolveDispute(
+      user.id,
+      disputeId,
+      dto.resolution,
+      this.auditContext(request, user.id),
+    );
+    return { success: true, data };
+  }
+
+  private auditContext(
+    request: Request,
+    userId?: string,
+  ): { userId?: string; ipAddress?: string; userAgent?: string } {
+    return {
+      ...(userId !== undefined ? { userId } : {}),
+      ...(request.ip !== undefined ? { ipAddress: request.ip } : {}),
+      ...(typeof request.headers['user-agent'] === 'string'
+        ? { userAgent: request.headers['user-agent'] }
+        : {}),
+    };
   }
 }

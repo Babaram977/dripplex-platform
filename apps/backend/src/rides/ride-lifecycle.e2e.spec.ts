@@ -102,6 +102,7 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
       sendPhoneOtp: jest.fn(),
       notifyMerchantLifecycle: jest.fn(),
       notifyOrderCreated: jest.fn(),
+      notifyOrderLifecycle: jest.fn(),
       notifyPaymentResult: jest.fn(),
       notifyDeliveryLifecycle: jest.fn(),
       notifyDriverLifecycle: jest.fn(),

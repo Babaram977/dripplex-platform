@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { Prisma, ProductStatus } from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../audit/audit.service';
@@ -7,6 +7,8 @@ import {
   NotFoundDomainException,
   ValidationDomainException,
 } from '../common/exceptions/domain.exception';
+import { DomainEventBus } from '../events/domain-event-bus';
+import { DOMAIN_EVENTS } from '../events/domain-events';
 import { PrismaService } from '../prisma/prisma.service';
 
 import { ProductSearchSyncService } from './product-search-sync.service';
@@ -36,6 +38,8 @@ export class MerchantProductsService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly productSearchSync: ProductSearchSyncService,
+    @Optional()
+    private readonly eventBus?: DomainEventBus,
   ) {}
 
   public async createProduct(
@@ -70,11 +74,15 @@ export class MerchantProductsService {
       include: PRODUCT_INCLUDE,
     });
 
-    await this.auditService.record(PRODUCT_AUDIT_ACTIONS.CREATED, { ...context, userId }, {
-      resource: 'product',
-      resourceId: product.id,
-      metadata: { name: product.name },
-    });
+    await this.auditService.record(
+      PRODUCT_AUDIT_ACTIONS.CREATED,
+      { ...context, userId },
+      {
+        resource: 'product',
+        resourceId: product.id,
+        metadata: { name: product.name },
+      },
+    );
     await this.productSearchSync.syncProduct(product);
 
     return toProductDto(product);
@@ -110,16 +118,24 @@ export class MerchantProductsService {
       include: PRODUCT_INCLUDE,
     });
 
-    await this.auditService.record(PRODUCT_AUDIT_ACTIONS.UPDATED, { ...context, userId }, {
-      resource: 'product',
-      resourceId: product.id,
-    });
+    await this.auditService.record(
+      PRODUCT_AUDIT_ACTIONS.UPDATED,
+      { ...context, userId },
+      {
+        resource: 'product',
+        resourceId: product.id,
+      },
+    );
     await this.productSearchSync.syncProduct(product);
 
     return toProductDto(product);
   }
 
-  public async deleteProduct(userId: string, productId: string, context: AuditContext): Promise<void> {
+  public async deleteProduct(
+    userId: string,
+    productId: string,
+    context: AuditContext,
+  ): Promise<void> {
     const owned = await this.requireOwnedProduct(userId, productId);
 
     const product = await this.prisma.product.update({
@@ -128,10 +144,14 @@ export class MerchantProductsService {
       include: PRODUCT_INCLUDE,
     });
 
-    await this.auditService.record(PRODUCT_AUDIT_ACTIONS.DELETED, { ...context, userId }, {
-      resource: 'product',
-      resourceId: owned.id,
-    });
+    await this.auditService.record(
+      PRODUCT_AUDIT_ACTIONS.DELETED,
+      { ...context, userId },
+      {
+        resource: 'product',
+        resourceId: owned.id,
+      },
+    );
     await this.productSearchSync.syncProduct(product);
   }
 
@@ -152,10 +172,14 @@ export class MerchantProductsService {
       include: PRODUCT_INCLUDE,
     });
 
-    await this.auditService.record(PRODUCT_AUDIT_ACTIONS.PUBLISHED, { ...context, userId }, {
-      resource: 'product',
-      resourceId: product.id,
-    });
+    await this.auditService.record(
+      PRODUCT_AUDIT_ACTIONS.PUBLISHED,
+      { ...context, userId },
+      {
+        resource: 'product',
+        resourceId: product.id,
+      },
+    );
     await this.productSearchSync.syncProduct(product);
 
     return toProductDto(product);
@@ -178,10 +202,14 @@ export class MerchantProductsService {
       include: PRODUCT_INCLUDE,
     });
 
-    await this.auditService.record(PRODUCT_AUDIT_ACTIONS.UNPUBLISHED, { ...context, userId }, {
-      resource: 'product',
-      resourceId: product.id,
-    });
+    await this.auditService.record(
+      PRODUCT_AUDIT_ACTIONS.UNPUBLISHED,
+      { ...context, userId },
+      {
+        resource: 'product',
+        resourceId: product.id,
+      },
+    );
     await this.productSearchSync.syncProduct(product);
 
     return toProductDto(product);
@@ -196,7 +224,8 @@ export class MerchantProductsService {
     const owned = await this.requireOwnedProduct(userId, productId);
 
     const position =
-      dto.position ?? (owned.images.length > 0 ? Math.max(...owned.images.map((i) => i.position)) + 1 : 0);
+      dto.position ??
+      (owned.images.length > 0 ? Math.max(...owned.images.map((i) => i.position)) + 1 : 0);
 
     await this.prisma.productImage.create({
       data: {
@@ -207,10 +236,14 @@ export class MerchantProductsService {
       },
     });
 
-    await this.auditService.record(PRODUCT_AUDIT_ACTIONS.IMAGE_ADDED, { ...context, userId }, {
-      resource: 'product',
-      resourceId: owned.id,
-    });
+    await this.auditService.record(
+      PRODUCT_AUDIT_ACTIONS.IMAGE_ADDED,
+      { ...context, userId },
+      {
+        resource: 'product',
+        resourceId: owned.id,
+      },
+    );
 
     return await this.getOwnProduct(userId, productId);
   }
@@ -229,10 +262,14 @@ export class MerchantProductsService {
 
     await this.prisma.productImage.delete({ where: { id: image.id } });
 
-    await this.auditService.record(PRODUCT_AUDIT_ACTIONS.IMAGE_REMOVED, { ...context, userId }, {
-      resource: 'product',
-      resourceId: owned.id,
-    });
+    await this.auditService.record(
+      PRODUCT_AUDIT_ACTIONS.IMAGE_REMOVED,
+      { ...context, userId },
+      {
+        resource: 'product',
+        resourceId: owned.id,
+      },
+    );
 
     return await this.getOwnProduct(userId, productId);
   }
@@ -248,7 +285,9 @@ export class MerchantProductsService {
     const ownedIds = new Set(owned.images.map((image) => image.id));
     const requestedIds = new Set(dto.imageIds);
     if (ownedIds.size !== requestedIds.size || [...ownedIds].some((id) => !requestedIds.has(id))) {
-      throw new ValidationDomainException('imageIds must match the product\'s existing image set exactly');
+      throw new ValidationDomainException(
+        "imageIds must match the product's existing image set exactly",
+      );
     }
 
     await this.prisma.$transaction(
@@ -257,10 +296,14 @@ export class MerchantProductsService {
       ),
     );
 
-    await this.auditService.record(PRODUCT_AUDIT_ACTIONS.IMAGES_REORDERED, { ...context, userId }, {
-      resource: 'product',
-      resourceId: owned.id,
-    });
+    await this.auditService.record(
+      PRODUCT_AUDIT_ACTIONS.IMAGES_REORDERED,
+      { ...context, userId },
+      {
+        resource: 'product',
+        resourceId: owned.id,
+      },
+    );
 
     return await this.getOwnProduct(userId, productId);
   }
@@ -278,14 +321,19 @@ export class MerchantProductsService {
         productId: owned.id,
         name: dto.name.trim(),
         sku: dto.sku?.trim() ?? null,
-        priceOverride: dto.priceOverride !== undefined ? new Prisma.Decimal(dto.priceOverride) : null,
+        priceOverride:
+          dto.priceOverride !== undefined ? new Prisma.Decimal(dto.priceOverride) : null,
       },
     });
 
-    await this.auditService.record(PRODUCT_AUDIT_ACTIONS.VARIANT_CREATED, { ...context, userId }, {
-      resource: 'product',
-      resourceId: owned.id,
-    });
+    await this.auditService.record(
+      PRODUCT_AUDIT_ACTIONS.VARIANT_CREATED,
+      { ...context, userId },
+      {
+        resource: 'product',
+        resourceId: owned.id,
+      },
+    );
 
     return await this.getOwnProduct(userId, productId);
   }
@@ -315,10 +363,14 @@ export class MerchantProductsService {
       },
     });
 
-    await this.auditService.record(PRODUCT_AUDIT_ACTIONS.VARIANT_UPDATED, { ...context, userId }, {
-      resource: 'product',
-      resourceId: owned.id,
-    });
+    await this.auditService.record(
+      PRODUCT_AUDIT_ACTIONS.VARIANT_UPDATED,
+      { ...context, userId },
+      {
+        resource: 'product',
+        resourceId: owned.id,
+      },
+    );
 
     return await this.getOwnProduct(userId, productId);
   }
@@ -337,10 +389,14 @@ export class MerchantProductsService {
 
     await this.prisma.productVariant.delete({ where: { id: variant.id } });
 
-    await this.auditService.record(PRODUCT_AUDIT_ACTIONS.VARIANT_REMOVED, { ...context, userId }, {
-      resource: 'product',
-      resourceId: owned.id,
-    });
+    await this.auditService.record(
+      PRODUCT_AUDIT_ACTIONS.VARIANT_REMOVED,
+      { ...context, userId },
+      {
+        resource: 'product',
+        resourceId: owned.id,
+      },
+    );
 
     return await this.getOwnProduct(userId, productId);
   }
@@ -368,13 +424,55 @@ export class MerchantProductsService {
       },
     });
 
-    await this.auditService.record(PRODUCT_AUDIT_ACTIONS.INVENTORY_UPDATED, { ...context, userId }, {
-      resource: 'product',
-      resourceId: owned.id,
-    });
+    await this.auditService.record(
+      PRODUCT_AUDIT_ACTIONS.INVENTORY_UPDATED,
+      { ...context, userId },
+      {
+        resource: 'product',
+        resourceId: owned.id,
+      },
+    );
 
     const refreshed = await this.requireOwnedProduct(userId, productId);
     await this.productSearchSync.syncInventory(refreshed);
+
+    return toProductDto(refreshed);
+  }
+
+  public async setOutOfStock(
+    userId: string,
+    productId: string,
+    outOfStock: boolean,
+    context: AuditContext,
+  ): Promise<ProductDto> {
+    const owned = await this.requireOwnedProduct(userId, productId);
+
+    await this.prisma.productInventory.upsert({
+      where: { productId: owned.id },
+      create: { productId: owned.id, quantity: 0, manuallyDisabled: outOfStock },
+      update: { manuallyDisabled: outOfStock },
+    });
+
+    await this.auditService.record(
+      PRODUCT_AUDIT_ACTIONS.INVENTORY_UPDATED,
+      { ...context, userId },
+      {
+        resource: 'product',
+        resourceId: owned.id,
+        metadata: { manuallyDisabled: outOfStock },
+      },
+    );
+
+    const refreshed = await this.requireOwnedProduct(userId, productId);
+    await this.productSearchSync.syncInventory(refreshed);
+
+    if (outOfStock) {
+      await this.eventBus?.emit(
+        DOMAIN_EVENTS.PRODUCT_OUT_OF_STOCK,
+        { productId: owned.id, productName: owned.name, merchantId: owned.merchantId },
+        { actorUserId: userId },
+      );
+    }
 
     return toProductDto(refreshed);
   }

@@ -60,11 +60,14 @@ export class ReservationCleanupService implements OnModuleInit, OnModuleDestroy 
       let unlockedCarts = 0;
 
       for (const order of expiredOrders) {
-        if (
-          order.status === OrderStatus.PENDING_PAYMENT &&
-          order.paymentStatus === PaymentStatus.PENDING
-        ) {
-          await this.ordersRepository.markFailed(order.id);
+        if (order.status === OrderStatus.PENDING && order.paymentStatus === PaymentStatus.PENDING) {
+          await this.ordersRepository.transition(order.id, {
+            status: OrderStatus.CANCELLED,
+            paymentStatus: PaymentStatus.FAILED,
+            cancelledAt: new Date(),
+            cancelledBy: 'SYSTEM',
+            cancellationReason: 'Payment window expired',
+          });
           failedOrders += 1;
         }
 

@@ -1,13 +1,25 @@
+/// DPX-CORE-003 — the universal order lifecycle shared by every commerce
+/// vertical. `FAILED` is a legacy value no longer produced; see the
+/// backend's OrderStatus doc comment in schema.prisma.
 export type OrderStatus =
-  | 'PENDING_PAYMENT'
-  | 'PAID'
-  | 'PROCESSING'
-  | 'READY_FOR_PICKUP'
-  | 'OUT_FOR_DELIVERY'
+  | 'DRAFT'
+  | 'PENDING'
+  | 'CONFIRMED'
+  | 'PREPARING'
+  | 'READY'
+  | 'DRIVER_ASSIGNED'
+  | 'PICKED_UP'
+  | 'IN_TRANSIT'
   | 'DELIVERED'
+  | 'COMPLETED'
   | 'CANCELLED'
   | 'REFUNDED'
+  | 'DISPUTED'
   | 'FAILED';
+
+export type OrderCancelledBy = 'CUSTOMER' | 'MERCHANT' | 'ADMIN' | 'SYSTEM';
+
+export type OrderDisputeStatus = 'OPEN' | 'RESOLVED';
 
 export type PaymentStatus = 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED' | 'PARTIAL_REFUND';
 
@@ -39,6 +51,18 @@ export interface InventoryReservationDto {
   createdAt: string;
 }
 
+export interface OrderDisputeDto {
+  id: string;
+  orderId: string;
+  raisedBy: string;
+  reason: string;
+  status: OrderDisputeStatus;
+  resolution: string | null;
+  resolvedBy: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
 export interface OrderDto {
   id: string;
   customerId: string;
@@ -57,8 +81,18 @@ export interface OrderDto {
   deliveryAddressId: string | null;
   notes: string | null;
   currency: string;
+  estimatedReadyAt: string | null;
+  confirmedAt: string | null;
+  readyAt: string | null;
+  deliveredAt: string | null;
+  completedAt: string | null;
+  cancelledAt: string | null;
+  cancelledBy: OrderCancelledBy | null;
+  cancellationReason: string | null;
+  refundedAt: string | null;
   items: OrderItemDto[];
   reservations: InventoryReservationDto[];
+  disputes: OrderDisputeDto[];
   createdAt: string;
   updatedAt: string;
 }
