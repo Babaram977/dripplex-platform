@@ -2,10 +2,10 @@
 
 import * as React from 'react';
 
+import { LiveMap } from '../live-map';
 import {
   ActionButton,
   BackArrow,
-  MapCanvas,
   QuickActionButton,
   RideBottomSheet,
   RideStatusBar,
@@ -53,7 +53,17 @@ export function LiveTrackingScreen({
     >
       <RideStatusBar />
       <div className="absolute inset-0 top-10" style={{ zIndex: 0 }}>
-        <MapCanvas variant="inprogress" progress={progress} />
+        <LiveMap
+          driver={tracking.driverLocation ?? undefined}
+          dropoff={
+            ride.data
+              ? { latitude: ride.data.dropoffLatitude, longitude: ride.data.dropoffLongitude }
+              : undefined
+          }
+          routeBetween="driverDropoff"
+          fallbackVariant="inprogress"
+          fallbackProgress={progress}
+        />
       </div>
       <div className="absolute inset-x-0 top-10 px-4 pt-3" style={{ zIndex: 10 }}>
         <div

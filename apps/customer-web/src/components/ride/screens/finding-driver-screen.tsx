@@ -2,7 +2,8 @@
 
 import * as React from 'react';
 
-import { MapCanvas, RideBottomSheet, RideHeader, StatusBanner } from '../ride-ui';
+import { LiveMap } from '../live-map';
+import { RideBottomSheet, RideHeader, StatusBanner } from '../ride-ui';
 
 import { useCancelRide, useRide, useRideTracking } from '@/hooks/rides';
 
@@ -61,7 +62,14 @@ export function FindingDriverScreen({
       style={{ background: '#060E1C' }}
     >
       <div className="relative flex-shrink-0" style={{ height: 280 }}>
-        <MapCanvas variant="finding" />
+        <LiveMap
+          center={
+            ride.data
+              ? { latitude: ride.data.pickupLatitude, longitude: ride.data.pickupLongitude }
+              : undefined
+          }
+          fallbackVariant="finding"
+        />
         <RideHeader onBack={onBack} floating />
       </div>
       <RideBottomSheet peek>

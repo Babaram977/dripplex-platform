@@ -2,9 +2,10 @@
 
 import * as React from 'react';
 
-import { DriverCard, MapCanvas, RideHeader, StatusBanner } from '../ride-ui';
+import { LiveMap } from '../live-map';
+import { DriverCard, RideHeader, StatusBanner } from '../ride-ui';
 
-import { useCancelRide, useRideStatusTransition } from '@/hooks/rides';
+import { useCancelRide, useRide, useRideStatusTransition, useRideTracking } from '@/hooks/rides';
 
 /**
  * Generated screen — a base "Driver Arrived" was never received (only
@@ -29,6 +30,8 @@ export function DriverArrivedScreen({
   onBack: () => void;
   onStarted: () => void;
 }): React.JSX.Element {
+  const ride = useRide(rideId);
+  const tracking = useRideTracking(rideId);
   const cancelRide = useCancelRide();
   useRideStatusTransition(rideId, ['IN_PROGRESS'], onStarted);
 
@@ -38,7 +41,16 @@ export function DriverArrivedScreen({
       style={{ background: '#0A1628' }}
     >
       <div className="absolute inset-0 top-10" style={{ zIndex: 0 }}>
-        <MapCanvas variant="assigned" />
+        <LiveMap
+          pickup={
+            ride.data
+              ? { latitude: ride.data.pickupLatitude, longitude: ride.data.pickupLongitude }
+              : undefined
+          }
+          driver={tracking.driverLocation ?? undefined}
+          zoom={17}
+          fallbackVariant="assigned"
+        />
       </div>
       <div
         className="absolute inset-0 top-10"

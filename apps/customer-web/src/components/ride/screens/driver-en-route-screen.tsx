@@ -2,9 +2,10 @@
 
 import * as React from 'react';
 
-import { DriverCard, MapCanvas, QuickActionButton, RideBottomSheet, RideHeader } from '../ride-ui';
+import { LiveMap } from '../live-map';
+import { DriverCard, QuickActionButton, RideBottomSheet, RideHeader } from '../ride-ui';
 
-import { useCancelRide, useRideStatusTransition, useRideTracking } from '@/hooks/rides';
+import { useCancelRide, useRide, useRideStatusTransition, useRideTracking } from '@/hooks/rides';
 
 export function DriverEnRouteScreen({
   rideId,
@@ -18,6 +19,7 @@ export function DriverEnRouteScreen({
   /** Safety net: if the driver starts the trip before this screen observes ARRIVED. */
   onStarted: () => void;
 }): React.JSX.Element {
+  const ride = useRide(rideId);
   const tracking = useRideTracking(rideId);
   const cancelRide = useCancelRide();
   useRideStatusTransition(rideId, ['ARRIVED', 'IN_PROGRESS'], (status) => {
@@ -34,7 +36,16 @@ export function DriverEnRouteScreen({
       style={{ background: '#0A1628' }}
     >
       <div className="absolute inset-0 top-10" style={{ zIndex: 0 }}>
-        <MapCanvas variant="assigned" />
+        <LiveMap
+          pickup={
+            ride.data
+              ? { latitude: ride.data.pickupLatitude, longitude: ride.data.pickupLongitude }
+              : undefined
+          }
+          driver={tracking.driverLocation ?? undefined}
+          routeBetween="driverPickup"
+          fallbackVariant="assigned"
+        />
       </div>
       <div
         className="absolute inset-0 top-10"

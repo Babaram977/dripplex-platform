@@ -2,11 +2,11 @@
 
 import * as React from 'react';
 
+import { LiveMap } from '../live-map';
 import {
   ActionButton,
   DriverCard,
   ETAChip,
-  MapCanvas,
   RideBottomSheet,
   SafetyChip,
   StatusBanner,
@@ -72,18 +72,38 @@ export function RideInProgressScreen({
       className="absolute inset-0 flex flex-col overflow-hidden"
       style={{ background: '#060E1C' }}
     >
-      <button
-        type="button"
-        onClick={onViewLiveTracking}
-        className="relative flex-shrink-0 text-left"
-        style={{ height: 300 }}
-        aria-label="View live tracking"
-      >
-        <MapCanvas variant="inprogress" progress={progress} />
+      <div className="relative flex-shrink-0" style={{ height: 300 }}>
+        <LiveMap
+          driver={tracking.driverLocation ?? undefined}
+          dropoff={
+            ride.data
+              ? { latitude: ride.data.dropoffLatitude, longitude: ride.data.dropoffLongitude }
+              : undefined
+          }
+          routeBetween="driverDropoff"
+          fallbackVariant="inprogress"
+          fallbackProgress={progress}
+        />
         <div className="absolute inset-x-0 top-14 flex justify-end px-5">
           <SafetyChip />
         </div>
-      </button>
+        <div className="absolute inset-x-0 bottom-3 flex justify-center px-5">
+          <button
+            type="button"
+            onClick={onViewLiveTracking}
+            className="rounded-full px-4 py-2 text-[12px] font-semibold"
+            style={{
+              fontFamily: "'Inter',sans-serif",
+              color: '#fff',
+              background: 'rgba(6,14,28,.85)',
+              border: '1px solid rgba(255,255,255,.12)',
+              backdropFilter: 'blur(12px)',
+            }}
+          >
+            View live tracking
+          </button>
+        </div>
+      </div>
       <RideBottomSheet peek>
         <div className="flex-1 overflow-y-auto px-5 pb-6 pt-2">
           {ride.isError ? (

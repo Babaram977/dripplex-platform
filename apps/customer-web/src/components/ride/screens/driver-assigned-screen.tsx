@@ -2,11 +2,11 @@
 
 import * as React from 'react';
 
+import { type LiveMapRouteInfo, LiveMap } from '../live-map';
 import {
   ActionButton,
   DriverCard,
   ETAChip,
-  MapCanvas,
   QuickActionButton,
   RideBottomSheet,
   RideHeader,
@@ -32,10 +32,12 @@ export function DriverAssignedScreen({
   const ride = useRide(rideId);
   const tracking = useRideTracking(rideId);
   const cancelRide = useCancelRide();
+  const [route, setRoute] = React.useState<LiveMapRouteInfo | null>(null);
   useRideStatusTransition(rideId, ['ARRIVED'], onArrived);
 
   const distanceLabel =
-    tracking.driverLocation && ride.data
+    route?.distanceText ??
+    (tracking.driverLocation && ride.data
       ? formatDistance(
           haversineMeters(
             tracking.driverLocation.latitude,
@@ -44,7 +46,7 @@ export function DriverAssignedScreen({
             ride.data.pickupLongitude,
           ),
         )
-      : '—';
+      : '—');
 
   return (
     <div
@@ -52,7 +54,17 @@ export function DriverAssignedScreen({
       style={{ background: '#060E1C' }}
     >
       <div className="relative flex-shrink-0" style={{ height: 300 }}>
-        <MapCanvas variant="assigned" />
+        <LiveMap
+          pickup={
+            ride.data
+              ? { latitude: ride.data.pickupLatitude, longitude: ride.data.pickupLongitude }
+              : undefined
+          }
+          driver={tracking.driverLocation ?? undefined}
+          routeBetween="driverPickup"
+          onRouteChange={setRoute}
+          fallbackVariant="assigned"
+        />
         <RideHeader onBack={onBack} floating />
       </div>
       <RideBottomSheet peek>
