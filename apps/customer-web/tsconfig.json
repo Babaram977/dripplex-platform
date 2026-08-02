@@ -6,7 +6,7 @@
     "paths": {
       "@/*": ["./src/*"]
     },
-    "types": ["node", "vitest/globals"],
+    "types": ["node", "vitest/globals", "google.maps"],
     "plugins": [{ "name": "next" }],
     "strictPropertyInitialization": false,
     "exactOptionalPropertyTypes": false

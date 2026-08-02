@@ -3,11 +3,12 @@
 import { useAuth } from '@dripplex/hooks';
 import * as React from 'react';
 
-import { MapCanvas, RideStatusBar, SafetyChip } from '../ride-ui';
+import { LiveMap } from '../live-map';
+import { RideStatusBar, SafetyChip } from '../ride-ui';
 
 import type { CustomerAddressDto } from '@dripplex/types';
 
-import { useSavedPlaces } from '@/hooks/rides';
+import { useCurrentLocation, useNearbyDrivers, useSavedPlaces } from '@/hooks/rides';
 
 export function RideHomeScreen({
   onSearch,
@@ -22,6 +23,15 @@ export function RideHomeScreen({
 }): React.JSX.Element {
   const { user } = useAuth();
   const savedPlaces = useSavedPlaces();
+  const location = useCurrentLocation();
+
+  const canShowNearby =
+    location.status === 'ready' && location.latitude !== null && location.longitude !== null;
+  const nearbyDrivers = useNearbyDrivers(
+    canShowNearby && location.latitude !== null && location.longitude !== null
+      ? { latitude: location.latitude, longitude: location.longitude, rideType: 'ECONOMY' }
+      : undefined,
+  );
 
   const quickPlaces = (savedPlaces.data?.items ?? []).filter(
     (place) => place.label === 'HOME' || place.label === 'WORK',
@@ -33,7 +43,19 @@ export function RideHomeScreen({
       style={{ background: '#060E1C' }}
     >
       <div className="relative flex-shrink-0" style={{ height: 340 }}>
-        <MapCanvas variant="default" />
+        <LiveMap
+          center={
+            location.latitude !== null && location.longitude !== null
+              ? { latitude: location.latitude, longitude: location.longitude }
+              : undefined
+          }
+          nearbyDrivers={(nearbyDrivers.data ?? []).map((driver) => ({
+            latitude: driver.latitude,
+            longitude: driver.longitude,
+          }))}
+          zoom={15}
+          fallbackVariant="default"
+        />
         <div className="absolute inset-0">
           <RideStatusBar />
         </div>

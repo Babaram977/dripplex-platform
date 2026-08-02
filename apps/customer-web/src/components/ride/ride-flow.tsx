@@ -3,6 +3,7 @@
 import { useSearchParams } from 'next/navigation';
 import * as React from 'react';
 
+import { RideMapsProvider } from './ride-maps-provider';
 import { CashPaymentScreen } from './screens/cash-payment-screen';
 import { DestinationSearchScreen } from './screens/destination-search-screen';
 import { DriverArrivedScreen } from './screens/driver-arrived-screen';
@@ -25,6 +26,7 @@ import { TripCompletedScreen } from './screens/trip-completed-screen';
 import { TripReceiptScreen } from './screens/trip-receipt-screen';
 import { WalletPaySuccessScreen } from './screens/wallet-pay-success-screen';
 
+import type { LiveMapPoint } from './live-map';
 import type { CustomerAddressDto, RideType } from '@dripplex/types';
 
 import { useCurrentLocation, useRequestRide } from '@/hooks/rides';
@@ -95,277 +97,294 @@ export function RideFlow(): React.JSX.Element {
   const [screen, setScreen] = React.useState<RideFlowScreen>(resumeScreen ?? { name: 'home' });
   const location = useCurrentLocation();
   const requestRide = useRequestRide();
+  const [pickupOverride, setPickupOverride] = React.useState<LiveMapPoint | null>(null);
+  const effectivePickup: LiveMapPoint | null =
+    pickupOverride ??
+    (location.latitude !== null && location.longitude !== null
+      ? { latitude: location.latitude, longitude: location.longitude }
+      : null);
 
   const goHome = React.useCallback((): void => {
     setScreen({ name: 'home' });
   }, []);
 
-  switch (screen.name) {
-    case 'home':
-      return (
-        <RideHomeScreen
-          onSearch={() => {
-            setScreen({ name: 'search' });
-          }}
-          onSelectPlace={(place) => {
-            setScreen({ name: 'fare', destination: toDestination(place) });
-          }}
-          onHistory={() => {
-            setScreen({ name: 'history' });
-          }}
-          onSavedPlaces={() => {
-            setScreen({ name: 'savedPlaces' });
-          }}
-        />
-      );
+  return <RideMapsProvider>{renderScreen()}</RideMapsProvider>;
 
-    case 'history':
-      return (
-        <RideHistoryScreen
-          onBack={goHome}
-          onDetail={(rideId) => {
-            setScreen({ name: 'receipt', rideId, returnTo: 'history' });
-          }}
-        />
-      );
+  function renderScreen(): React.JSX.Element {
+    switch (screen.name) {
+      case 'home':
+        return (
+          <RideHomeScreen
+            onSearch={() => {
+              setScreen({ name: 'search' });
+            }}
+            onSelectPlace={(place) => {
+              setScreen({ name: 'fare', destination: toDestination(place) });
+            }}
+            onHistory={() => {
+              setScreen({ name: 'history' });
+            }}
+            onSavedPlaces={() => {
+              setScreen({ name: 'savedPlaces' });
+            }}
+          />
+        );
 
-    case 'savedPlaces':
-      return <SavedPlacesScreen onBack={goHome} />;
+      case 'history':
+        return (
+          <RideHistoryScreen
+            onBack={goHome}
+            onDetail={(rideId) => {
+              setScreen({ name: 'receipt', rideId, returnTo: 'history' });
+            }}
+          />
+        );
 
-    case 'search':
-      return (
-        <DestinationSearchScreen
-          onBack={goHome}
-          onSelect={(place) => {
-            setScreen({ name: 'fare', destination: toDestination(place) });
-          }}
-        />
-      );
+      case 'savedPlaces':
+        return <SavedPlacesScreen onBack={goHome} />;
 
-    case 'fare':
-      return (
-        <FareEstimateScreen
-          destination={screen.destination}
-          location={location}
-          onBack={goHome}
-          onBook={(rideType: RideType) => {
-            if (location.latitude === null || location.longitude === null) {
-              return;
-            }
-            requestRide.mutate(
-              {
-                rideType,
-                pickupLatitude: location.latitude,
-                pickupLongitude: location.longitude,
-                dropoffLatitude: screen.destination.latitude,
-                dropoffLongitude: screen.destination.longitude,
-                dropoffAddress: screen.destination.address,
-              },
-              {
-                onSuccess: (ride) => {
-                  setScreen({ name: 'finding', rideId: ride.id });
+      case 'search':
+        return (
+          <DestinationSearchScreen
+            onBack={goHome}
+            onSelect={(destination) => {
+              setScreen({ name: 'fare', destination });
+            }}
+          />
+        );
+
+      case 'fare':
+        return (
+          <FareEstimateScreen
+            destination={screen.destination}
+            location={location}
+            pickupOverride={pickupOverride}
+            onPickupChange={setPickupOverride}
+            onBack={goHome}
+            onBook={(rideType: RideType) => {
+              if (effectivePickup === null) {
+                return;
+              }
+              requestRide.mutate(
+                {
+                  rideType,
+                  pickupLatitude: effectivePickup.latitude,
+                  pickupLongitude: effectivePickup.longitude,
+                  dropoffLatitude: screen.destination.latitude,
+                  dropoffLongitude: screen.destination.longitude,
+                  dropoffAddress: screen.destination.address,
                 },
-              },
-            );
-          }}
-        />
-      );
+                {
+                  onSuccess: (ride) => {
+                    setScreen({ name: 'finding', rideId: ride.id });
+                  },
+                },
+              );
+            }}
+          />
+        );
 
-    case 'finding':
-      return (
-        <FindingDriverScreen
-          rideId={screen.rideId}
-          onBack={goHome}
-          onDriverAssigned={() => {
-            setScreen({ name: 'assigned', rideId: screen.rideId });
-          }}
-        />
-      );
+      case 'finding':
+        return (
+          <FindingDriverScreen
+            rideId={screen.rideId}
+            onBack={goHome}
+            onDriverAssigned={() => {
+              setScreen({ name: 'assigned', rideId: screen.rideId });
+            }}
+          />
+        );
 
-    case 'assigned':
-      return (
-        <DriverAssignedScreen
-          rideId={screen.rideId}
-          onBack={goHome}
-          onViewProfile={() => {
-            setScreen({ name: 'driverProfile', rideId: screen.rideId });
-          }}
-          onTrackDriver={() => {
-            setScreen({ name: 'enroute', rideId: screen.rideId });
-          }}
-          onArrived={() => {
-            setScreen({ name: 'arrived', rideId: screen.rideId });
-          }}
-        />
-      );
+      case 'assigned':
+        return (
+          <DriverAssignedScreen
+            rideId={screen.rideId}
+            onBack={goHome}
+            onViewProfile={() => {
+              setScreen({ name: 'driverProfile', rideId: screen.rideId });
+            }}
+            onTrackDriver={() => {
+              setScreen({ name: 'enroute', rideId: screen.rideId });
+            }}
+            onArrived={() => {
+              setScreen({ name: 'arrived', rideId: screen.rideId });
+            }}
+          />
+        );
 
-    case 'driverProfile':
-      return (
-        <DriverProfileSheet
-          onBack={() => {
-            setScreen({ name: 'assigned', rideId: screen.rideId });
-          }}
-        />
-      );
+      case 'driverProfile':
+        return (
+          <DriverProfileSheet
+            onBack={() => {
+              setScreen({ name: 'assigned', rideId: screen.rideId });
+            }}
+          />
+        );
 
-    case 'enroute':
-      return (
-        <DriverEnRouteScreen
-          rideId={screen.rideId}
-          onBack={goHome}
-          onArrived={() => {
-            setScreen({ name: 'arrived', rideId: screen.rideId });
-          }}
-          onStarted={() => {
-            setScreen({ name: 'inprogress', rideId: screen.rideId });
-          }}
-        />
-      );
+      case 'enroute':
+        return (
+          <DriverEnRouteScreen
+            rideId={screen.rideId}
+            onBack={goHome}
+            onArrived={() => {
+              setScreen({ name: 'arrived', rideId: screen.rideId });
+            }}
+            onStarted={() => {
+              setScreen({ name: 'inprogress', rideId: screen.rideId });
+            }}
+          />
+        );
 
-    case 'arrived':
-      return (
-        <DriverArrivedScreen
-          rideId={screen.rideId}
-          onBack={goHome}
-          onStarted={() => {
-            setScreen({ name: 'inprogress', rideId: screen.rideId });
-          }}
-        />
-      );
+      case 'arrived':
+        return (
+          <DriverArrivedScreen
+            rideId={screen.rideId}
+            onBack={goHome}
+            onStarted={() => {
+              setScreen({ name: 'inprogress', rideId: screen.rideId });
+            }}
+          />
+        );
 
-    case 'inprogress':
-      return (
-        <RideInProgressScreen
-          rideId={screen.rideId}
-          onViewLiveTracking={() => {
-            setScreen({ name: 'liveTracking', rideId: screen.rideId });
-          }}
-          onCompleted={() => {
-            setScreen({ name: 'completed', rideId: screen.rideId });
-          }}
-        />
-      );
+      case 'inprogress':
+        return (
+          <RideInProgressScreen
+            rideId={screen.rideId}
+            onViewLiveTracking={() => {
+              setScreen({ name: 'liveTracking', rideId: screen.rideId });
+            }}
+            onCompleted={() => {
+              setScreen({ name: 'completed', rideId: screen.rideId });
+            }}
+          />
+        );
 
-    case 'liveTracking':
-      return (
-        <LiveTrackingScreen
-          rideId={screen.rideId}
-          onBack={() => {
-            setScreen({ name: 'inprogress', rideId: screen.rideId });
-          }}
-        />
-      );
+      case 'liveTracking':
+        return (
+          <LiveTrackingScreen
+            rideId={screen.rideId}
+            onBack={() => {
+              setScreen({ name: 'inprogress', rideId: screen.rideId });
+            }}
+          />
+        );
 
-    case 'completed':
-      return (
-        <TripCompletedScreen
-          rideId={screen.rideId}
-          onPay={() => {
-            setScreen({ name: 'payment', rideId: screen.rideId });
-          }}
-          onHome={goHome}
-        />
-      );
+      case 'completed':
+        return (
+          <TripCompletedScreen
+            rideId={screen.rideId}
+            onPay={() => {
+              setScreen({ name: 'payment', rideId: screen.rideId });
+            }}
+            onHome={goHome}
+          />
+        );
 
-    case 'payment':
-      return (
-        <PaymentScreen
-          rideId={screen.rideId}
-          onBack={() => {
-            setScreen({ name: 'completed', rideId: screen.rideId });
-          }}
-          onPaid={() => {
-            setScreen({ name: 'paySuccess', rideId: screen.rideId });
-          }}
-          onCashPending={() => {
-            setScreen({ name: 'cashPayment', rideId: screen.rideId });
-          }}
-          onGatewayRedirect={(authorizationUrl) => {
-            setScreen({
-              name: 'gatewayPayment',
-              rideId: screen.rideId,
-              authorizationUrl,
-              verifying: false,
-            });
-          }}
-        />
-      );
+      case 'payment':
+        return (
+          <PaymentScreen
+            rideId={screen.rideId}
+            onBack={() => {
+              setScreen({ name: 'completed', rideId: screen.rideId });
+            }}
+            onPaid={() => {
+              setScreen({ name: 'paySuccess', rideId: screen.rideId });
+            }}
+            onCashPending={() => {
+              setScreen({ name: 'cashPayment', rideId: screen.rideId });
+            }}
+            onGatewayRedirect={(authorizationUrl) => {
+              setScreen({
+                name: 'gatewayPayment',
+                rideId: screen.rideId,
+                authorizationUrl,
+                verifying: false,
+              });
+            }}
+          />
+        );
 
-    case 'gatewayPayment':
-      return (
-        <GatewayPaymentScreen
-          rideId={screen.rideId}
-          authorizationUrl={screen.authorizationUrl}
-          verifying={screen.verifying}
-          onBack={() => {
-            setScreen({ name: 'payment', rideId: screen.rideId });
-          }}
-          onVerified={() => {
-            setScreen({ name: 'paySuccess', rideId: screen.rideId });
-          }}
-        />
-      );
+      case 'gatewayPayment':
+        return (
+          <GatewayPaymentScreen
+            rideId={screen.rideId}
+            authorizationUrl={screen.authorizationUrl}
+            verifying={screen.verifying}
+            onBack={() => {
+              setScreen({ name: 'payment', rideId: screen.rideId });
+            }}
+            onVerified={() => {
+              setScreen({ name: 'paySuccess', rideId: screen.rideId });
+            }}
+          />
+        );
 
-    case 'cashPayment':
-      return (
-        <CashPaymentScreen
-          rideId={screen.rideId}
-          onBack={() => {
-            setScreen({ name: 'payment', rideId: screen.rideId });
-          }}
-          onConfirmed={() => {
-            setScreen({ name: 'paySuccess', rideId: screen.rideId });
-          }}
-        />
-      );
+      case 'cashPayment':
+        return (
+          <CashPaymentScreen
+            rideId={screen.rideId}
+            onBack={() => {
+              setScreen({ name: 'payment', rideId: screen.rideId });
+            }}
+            onConfirmed={() => {
+              setScreen({ name: 'paySuccess', rideId: screen.rideId });
+            }}
+          />
+        );
 
-    case 'paySuccess':
-      return (
-        <WalletPaySuccessScreen
-          rideId={screen.rideId}
-          onReceipt={() => {
-            setScreen({ name: 'receipt', rideId: screen.rideId, returnTo: 'home' });
-          }}
-          onDone={() => {
-            setScreen({ name: 'rate', rideId: screen.rideId });
-          }}
-        />
-      );
+      case 'paySuccess':
+        return (
+          <WalletPaySuccessScreen
+            rideId={screen.rideId}
+            onReceipt={() => {
+              setScreen({ name: 'receipt', rideId: screen.rideId, returnTo: 'home' });
+            }}
+            onDone={() => {
+              setScreen({ name: 'rate', rideId: screen.rideId });
+            }}
+          />
+        );
 
-    case 'rate':
-      return (
-        <RateDriverScreen
-          rideId={screen.rideId}
-          onBack={goHome}
-          onSubmit={() => {
-            setScreen({ name: 'tip', rideId: screen.rideId });
-          }}
-        />
-      );
+      case 'rate':
+        return (
+          <RateDriverScreen
+            rideId={screen.rideId}
+            onBack={goHome}
+            onSubmit={() => {
+              setScreen({ name: 'tip', rideId: screen.rideId });
+            }}
+          />
+        );
 
-    case 'tip':
-      return (
-        <TipDriverScreen rideId={screen.rideId} onBack={goHome} onSubmit={goHome} onSkip={goHome} />
-      );
+      case 'tip':
+        return (
+          <TipDriverScreen
+            rideId={screen.rideId}
+            onBack={goHome}
+            onSubmit={goHome}
+            onSkip={goHome}
+          />
+        );
 
-    case 'receipt':
-      return (
-        <TripReceiptScreen
-          rideId={screen.rideId}
-          onBack={
-            screen.returnTo === 'history'
-              ? () => {
-                  setScreen({ name: 'history' });
-                }
-              : goHome
-          }
-          onReport={() => {
-            setScreen({ name: 'report', rideId: screen.rideId });
-          }}
-        />
-      );
+      case 'receipt':
+        return (
+          <TripReceiptScreen
+            rideId={screen.rideId}
+            onBack={
+              screen.returnTo === 'history'
+                ? () => {
+                    setScreen({ name: 'history' });
+                  }
+                : goHome
+            }
+            onReport={() => {
+              setScreen({ name: 'report', rideId: screen.rideId });
+            }}
+          />
+        );
 
-    case 'report':
-      return <ReportTripScreen rideId={screen.rideId} onBack={goHome} onSubmit={goHome} />;
+      case 'report':
+        return <ReportTripScreen rideId={screen.rideId} onBack={goHome} onSubmit={goHome} />;
+    }
   }
 }

@@ -2,27 +2,42 @@
 
 import * as React from 'react';
 
+import { type PlaceSelection, PlacesAutocompleteInput } from '../places-autocomplete-input';
 import { ActionButton, RideHeader, StatusBanner } from '../ride-ui';
 
 import type { CustomerAddressDto } from '@dripplex/types';
 
 import { useSavedPlaces } from '@/hooks/rides';
 
+export interface SelectedDestination {
+  label: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+}
+
+function fromSavedPlace(place: CustomerAddressDto): SelectedDestination {
+  return {
+    label: place.label === 'HOME' ? 'Home' : place.label === 'WORK' ? 'Work' : place.addressLine1,
+    address: place.addressLine1,
+    latitude: place.latitude,
+    longitude: place.longitude,
+  };
+}
+
 /**
- * Capability gap: the real backend has no place-autocomplete or geocoding
- * endpoint (no /ride/places/autocomplete, no Google Places integration
- * anywhere in this codebase — see docs/RIDE-003-INTEGRATION-MAP.md Section
- * 6). Free-text destination entry can only filter the customer's real
- * saved places client-side; it cannot resolve arbitrary addresses to
- * coordinates. That's a documented gap, not silently faked with mock
- * results.
+ * Free-text destination entry resolves through Google Places Autocomplete
+ * when NEXT_PUBLIC_GOOGLE_MAPS_API_KEY is configured (see
+ * RideMapsProvider/PlacesAutocompleteInput); the saved-places list below
+ * still filters client-side and stays available either way, so a rider can
+ * always fall back to a saved place if Maps credentials aren't set up.
  */
 export function DestinationSearchScreen({
   onBack,
   onSelect,
 }: {
   onBack: () => void;
-  onSelect: (place: CustomerAddressDto) => void;
+  onSelect: (destination: SelectedDestination) => void;
 }): React.JSX.Element {
   const [query, setQuery] = React.useState('');
   const savedPlaces = useSavedPlaces();
@@ -45,12 +60,17 @@ export function DestinationSearchScreen({
           style={{ background: '#112238', border: '1px solid rgba(43,172,82,.4)' }}
         >
           <div className="h-2.5 w-2.5 rounded-full" style={{ background: '#EF4444' }} />
-          <input
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value);
+          <PlacesAutocompleteInput
+            placeholder="Search for an address or saved place..."
+            onQueryChange={setQuery}
+            onSelect={(place: PlaceSelection) => {
+              onSelect({
+                label: place.label,
+                address: place.address,
+                latitude: place.latitude,
+                longitude: place.longitude,
+              });
             }}
-            placeholder="Search your saved places..."
             className="flex-1 bg-transparent outline-none"
             style={{ fontFamily: "'Inter',sans-serif", fontSize: 15, color: '#fff' }}
             autoFocus
@@ -89,8 +109,8 @@ export function DestinationSearchScreen({
             className="py-4 text-[13px]"
             style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
           >
-            No matching saved places. Free-text address search isn&apos;t available yet — add a
-            place from Saved Places first.
+            No matching saved places — keep typing to search addresses, or add a place from Saved
+            Places.
           </p>
         ) : null}
         {filtered.map((place) => (
@@ -98,7 +118,7 @@ export function DestinationSearchScreen({
             key={place.id}
             type="button"
             onClick={() => {
-              onSelect(place);
+              onSelect(fromSavedPlace(place));
             }}
             className="flex w-full items-center gap-3 rounded-xl px-1 py-3.5"
           >

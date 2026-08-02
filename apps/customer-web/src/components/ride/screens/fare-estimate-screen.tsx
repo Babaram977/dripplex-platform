@@ -2,7 +2,8 @@
 
 import * as React from 'react';
 
-import { ActionButton, FareBreakdown, MapCanvas, RideBottomSheet, RideHeader } from '../ride-ui';
+import { type LiveMapPoint, type LiveMapRouteInfo, LiveMap } from '../live-map';
+import { ActionButton, FareBreakdown, RideBottomSheet, RideHeader } from '../ride-ui';
 
 import type { CurrentLocationState } from '@/hooks/rides';
 import type { RideType } from '@dripplex/types';
@@ -24,36 +25,43 @@ interface Destination {
 export function FareEstimateScreen({
   destination,
   location,
+  pickupOverride,
+  onPickupChange,
   onBack,
   onBook,
 }: {
   destination: Destination;
   location: CurrentLocationState;
+  /** Set when the rider dragged the pickup pin — takes precedence over the device's raw location. */
+  pickupOverride?: LiveMapPoint | null;
+  onPickupChange?: (point: LiveMapPoint) => void;
   onBack: () => void;
   onBook: (rideType: RideType, totalFare: number) => void;
 }): React.JSX.Element {
   const [rideType, setRideType] = React.useState<RideType>('ECONOMY');
+  const [route, setRoute] = React.useState<LiveMapRouteInfo | null>(null);
   const estimate = useEstimateFare();
 
-  const canEstimate =
-    location.status === 'ready' && location.latitude !== null && location.longitude !== null;
-  const requestKey = canEstimate
-    ? `${rideType}:${String(location.latitude)}:${String(location.longitude)}`
+  const pickup: LiveMapPoint | null =
+    pickupOverride ??
+    (location.status === 'ready' && location.latitude !== null && location.longitude !== null
+      ? { latitude: location.latitude, longitude: location.longitude }
+      : null);
+
+  const requestKey = pickup
+    ? `${rideType}:${String(pickup.latitude)}:${String(pickup.longitude)}`
     : null;
   const lastRequestedKey = React.useRef<string | null>(null);
 
   React.useEffect(() => {
-    if (requestKey === null || requestKey === lastRequestedKey.current) {
-      return;
-    }
-    if (location.latitude === null || location.longitude === null) {
+    if (requestKey === null || requestKey === lastRequestedKey.current || !pickup) {
       return;
     }
     lastRequestedKey.current = requestKey;
     estimate.mutate({
       rideType,
-      pickupLatitude: location.latitude,
-      pickupLongitude: location.longitude,
+      pickupLatitude: pickup.latitude,
+      pickupLongitude: pickup.longitude,
       dropoffLatitude: destination.latitude,
       dropoffLongitude: destination.longitude,
     });
@@ -68,7 +76,15 @@ export function FareEstimateScreen({
       style={{ background: '#060E1C' }}
     >
       <div className="relative flex-shrink-0" style={{ height: 260 }}>
-        <MapCanvas variant="default" />
+        <LiveMap
+          pickup={pickup ?? undefined}
+          dropoff={{ latitude: destination.latitude, longitude: destination.longitude }}
+          routeBetween="pickupDropoff"
+          draggablePickup
+          onPickupChange={onPickupChange}
+          onRouteChange={setRoute}
+          fallbackVariant="default"
+        />
         <RideHeader onBack={onBack} floating />
       </div>
       <RideBottomSheet peek title="Fare Estimate">
@@ -91,6 +107,7 @@ export function FareEstimateScreen({
             style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.6)' }}
           >
             To {destination.label}
+            {route ? ` · ${route.distanceText} · ${route.durationText}` : ''}
           </p>
           <div className="mb-4 flex gap-2">
             {(Object.keys(RIDE_TYPE_LABELS) as RideType[]).map((type) => {

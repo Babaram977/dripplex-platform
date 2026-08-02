@@ -17,3 +17,5 @@ export {
   useDeleteSavedPlace,
   useSetDefaultSavedPlace,
 } from './use-saved-places';
+export { useNearbyDrivers } from './use-nearby-drivers';
+export { useTrackingHistory } from './use-tracking-history';

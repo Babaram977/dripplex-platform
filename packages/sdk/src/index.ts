@@ -20,7 +20,11 @@ export { DeliveryClient } from './delivery/delivery-client.js';
 export { RiderDeliveryClient } from './delivery/rider-delivery-client.js';
 export { OrderClient } from './order/order-client.js';
 export { PaymentClient } from './payment/payment-client.js';
-export { CustomerRideClient, type ListRidesQuery } from './rides/customer-ride-client.js';
+export {
+  CustomerRideClient,
+  type ListRidesQuery,
+  type NearbyDriversQuery,
+} from './rides/customer-ride-client.js';
 export {
   AdminCmsClient,
   AdminDriverCampaignClient,
