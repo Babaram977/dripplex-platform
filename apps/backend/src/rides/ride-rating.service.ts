@@ -68,6 +68,21 @@ export class RideRatingService {
     );
   }
 
+  /** Both sides' ratings for a ride the driver was actually on — up to 2
+   * entries (their own outbound rating of the customer, and the customer's
+   * rating of them, whichever exist). Backs the Ride History detail view. */
+  public async listRideRatings(driverId: string, rideId: string): Promise<RideRatingDto[]> {
+    const ride = await this.prisma.ride.findFirst({ where: { id: rideId, driverId } });
+    if (!ride) {
+      throw new NotFoundDomainException('Ride not found');
+    }
+    const ratings = await this.prisma.rideRating.findMany({
+      where: { rideId },
+      orderBy: { createdAt: 'asc' },
+    });
+    return ratings.map(toRideRatingDto);
+  }
+
   private async createRating(
     ride: Ride,
     raterRole: RideRatingRole,

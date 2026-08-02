@@ -136,4 +136,11 @@ export class DriverRideClient {
       auth: true,
     });
   }
+
+  public listRideRatings(rideId: string): Promise<RideRatingDto[]> {
+    return this.http.request<RideRatingDto[]>(`/driver/rides/${rideId}/ratings`, {
+      method: 'GET',
+      auth: true,
+    });
+  }
 }

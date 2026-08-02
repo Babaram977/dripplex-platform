@@ -183,4 +183,30 @@ describe('RideRatingService', () => {
       'Ride not found',
     );
   });
+
+  it('lists both sides of a rated ride for the assigned driver', async () => {
+    if (!databaseAvailable) return;
+
+    const ride = await createCompletedRide();
+    await service.rateDriver(customerId, ride.id, { rating: 5 }, {});
+    await service.rateCustomer(driverId, ride.id, { rating: 4 }, {});
+
+    const ratings = await service.listRideRatings(driverId, ride.id);
+    expect(ratings).toHaveLength(2);
+    expect(ratings.map((r) => r.raterRole).sort()).toEqual(['CUSTOMER', 'DRIVER']);
+  });
+
+  it('returns an empty list when a ride has no ratings yet', async () => {
+    if (!databaseAvailable) return;
+
+    const ride = await createCompletedRide();
+    await expect(service.listRideRatings(driverId, ride.id)).resolves.toEqual([]);
+  });
+
+  it('rejects listing ratings for a ride not assigned to the caller', async () => {
+    if (!databaseAvailable) return;
+
+    const ride = await createCompletedRide();
+    await expect(service.listRideRatings(randomUUID(), ride.id)).rejects.toThrow('Ride not found');
+  });
 });

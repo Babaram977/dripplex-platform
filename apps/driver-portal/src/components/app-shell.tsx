@@ -14,11 +14,13 @@ import { sdk } from '@/lib/sdk';
 
 const NAV_LINKS = [
   { href: '/', label: 'Dashboard' },
+  { href: '/history', label: 'History' },
+  { href: '/earnings', label: 'Earnings' },
   { href: '/campaign', label: 'Campaign' },
   { href: '/rewards', label: 'Rewards' },
   { href: '/activity', label: 'Activity' },
   { href: '/leaderboard', label: 'Leaderboard' },
-  { href: '/wallet', label: 'Wallet' },
+  { href: '/profile', label: 'Profile' },
   { href: '/learn', label: 'Learn' },
 ] as const;
 

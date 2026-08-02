@@ -208,6 +208,15 @@ export class DriverRidesController {
     return { success: true, data };
   }
 
+  @Get(':id/ratings')
+  public async listRideRatings(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ApiSuccessResponse<RideRatingDto[]>> {
+    const data = await this.ratingService.listRideRatings(user.id, id);
+    return { success: true, data };
+  }
+
   private auditContext(
     request: Request,
     userId?: string,

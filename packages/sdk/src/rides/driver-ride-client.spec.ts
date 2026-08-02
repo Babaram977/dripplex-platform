@@ -204,4 +204,16 @@ describe('DriverRideClient', () => {
       auth: true,
     });
   });
+
+  it('listRideRatings() gets /driver/rides/:id/ratings with auth', async () => {
+    const { http, request } = createHttpMock();
+    const client = new DriverRideClient(http);
+
+    await client.listRideRatings('ride-1');
+
+    expect(request).toHaveBeenCalledWith('/driver/rides/ride-1/ratings', {
+      method: 'GET',
+      auth: true,
+    });
+  });
 });
