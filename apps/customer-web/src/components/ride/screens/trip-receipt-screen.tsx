@@ -2,9 +2,10 @@
 
 import * as React from 'react';
 
+import { LiveMap } from '../live-map';
 import { ActionButton, FareBreakdown, RideHeader, StatusBanner } from '../ride-ui';
 
-import { useRideReceipt } from '@/hooks/rides';
+import { useRide, useRideReceipt, useTrackingHistory } from '@/hooks/rides';
 
 export function TripReceiptScreen({
   rideId,
@@ -16,6 +17,8 @@ export function TripReceiptScreen({
   onReport: () => void;
 }): React.JSX.Element {
   const receipt = useRideReceipt(rideId);
+  const ride = useRide(rideId);
+  const tracking = useTrackingHistory(rideId);
 
   return (
     <div
@@ -52,6 +55,26 @@ export function TripReceiptScreen({
         ) : null}
         {receipt.data ? (
           <>
+            {ride.data ? (
+              <div
+                className="mb-4 overflow-hidden rounded-2xl"
+                style={{ height: 180, border: '1px solid rgba(255,255,255,.08)' }}
+              >
+                <LiveMap
+                  pickup={{
+                    latitude: ride.data.pickupLatitude,
+                    longitude: ride.data.pickupLongitude,
+                  }}
+                  dropoff={{
+                    latitude: ride.data.dropoffLatitude,
+                    longitude: ride.data.dropoffLongitude,
+                  }}
+                  breadcrumbPath={tracking.data}
+                  fallbackVariant="inprogress"
+                  fallbackProgress={1}
+                />
+              </div>
+            ) : null}
             <div
               className="mb-4 overflow-hidden rounded-2xl"
               style={{ background: '#0D1B2E', border: '1px solid rgba(255,255,255,.08)' }}
