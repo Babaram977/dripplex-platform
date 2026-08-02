@@ -8,10 +8,11 @@ import type { RideDto } from '@dripplex/types';
 
 import { AppShell } from '@/components/app-shell';
 import { CustomerRatingForm } from '@/components/ride/customer-rating-form';
-import { MapCanvas } from '@/components/ride/map-canvas';
+import { LiveMap } from '@/components/ride/live-map';
 import { PassengerCard } from '@/components/ride/passenger-card';
 import { TripFareSummary } from '@/components/ride/trip-fare-summary';
 import { useActiveRide } from '@/hooks/rides/use-active-ride';
+import { useLivePosition } from '@/hooks/rides/use-live-position';
 import {
   useCancelTrip,
   useCompleteTrip,
@@ -48,11 +49,17 @@ function useElapsed(startedAt: string | null): string {
 function AssignedSection({ ride }: { ride: RideDto }): React.JSX.Element {
   const markArrived = useMarkArrived();
   const cancelTrip = useCancelTrip();
+  const self = useLivePosition();
 
   return (
     <div className="flex flex-col gap-4">
       <div className="h-64 overflow-hidden rounded-md">
-        <MapCanvas variant="assigned" />
+        <LiveMap
+          self={self ?? undefined}
+          pickup={{ latitude: ride.pickupLatitude, longitude: ride.pickupLongitude }}
+          routeBetween="selfPickup"
+          fallbackVariant="assigned"
+        />
       </div>
       <PassengerCard />
       <div className="flex flex-col gap-2 text-sm">
@@ -104,11 +111,17 @@ function AssignedSection({ ride }: { ride: RideDto }): React.JSX.Element {
 function ArrivedSection({ ride }: { ride: RideDto }): React.JSX.Element {
   const startTrip = useStartTrip();
   const cancelTrip = useCancelTrip();
+  const self = useLivePosition();
 
   return (
     <div className="flex flex-col gap-4">
       <div className="h-64 overflow-hidden rounded-md">
-        <MapCanvas variant="arrived" />
+        <LiveMap
+          self={self ?? undefined}
+          pickup={{ latitude: ride.pickupLatitude, longitude: ride.pickupLongitude }}
+          zoom={17}
+          fallbackVariant="arrived"
+        />
       </div>
       <PassengerCard />
       <Button
@@ -146,11 +159,17 @@ function ArrivedSection({ ride }: { ride: RideDto }): React.JSX.Element {
 function InProgressSection({ ride }: { ride: RideDto }): React.JSX.Element {
   const completeTrip = useCompleteTrip();
   const elapsed = useElapsed(ride.startedAt);
+  const self = useLivePosition();
 
   return (
     <div className="flex flex-col gap-4">
       <div className="h-64 overflow-hidden rounded-md">
-        <MapCanvas variant="inprogress" />
+        <LiveMap
+          self={self ?? undefined}
+          dropoff={{ latitude: ride.dropoffLatitude, longitude: ride.dropoffLongitude }}
+          routeBetween="selfDropoff"
+          fallbackVariant="inprogress"
+        />
       </div>
       <div className="flex items-center justify-between">
         <Badge variant="success">Trip in progress</Badge>
