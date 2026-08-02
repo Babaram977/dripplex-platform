@@ -22,6 +22,8 @@ import type {
   DriverReferralLeaderboardEntryDto,
   DriverReferralRewardDto,
   FraudListEntryDto,
+  FundWalletRequest,
+  FundWalletResponse,
   FraudListEntryQuery,
   FraudQueueQuery,
   FraudSignalDto,
@@ -74,6 +76,7 @@ import type {
   UpdateWishlistRequest,
   UpsertFraudThresholdRequest,
   ValidatePromotionRequest,
+  VerifyWalletFundingRequest,
   WalletHistoryQuery,
   WalletReconciliationDto,
   WalletReconciliationQuery,
@@ -651,6 +654,20 @@ export class WalletClient {
 
   public transfer(body: WalletTransferRequest): Promise<WalletTransferDto> {
     return this.http.request<WalletTransferDto>('/customer/wallet/transfer', {
+      method: 'POST',
+      body,
+    });
+  }
+
+  public fund(body: FundWalletRequest): Promise<FundWalletResponse> {
+    return this.http.request<FundWalletResponse>('/customer/wallet/fund', {
+      method: 'POST',
+      body,
+    });
+  }
+
+  public verifyFunding(body: VerifyWalletFundingRequest = {}): Promise<WalletDto> {
+    return this.http.request<WalletDto>('/customer/wallet/fund/verify', {
       method: 'POST',
       body,
     });

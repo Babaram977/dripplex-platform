@@ -27,6 +27,7 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
   { code: 'admin:loyalty:manage', description: 'Manage loyalty accounts and achievements' },
   { code: 'customer:wallet:read', description: 'Read own wallet' },
   { code: 'customer:wallet:transfer', description: 'Transfer funds from own wallet' },
+  { code: 'customer:wallet:fund', description: 'Top up own wallet via a payment gateway' },
   { code: 'merchant:wallet:read', description: 'Read merchant wallet' },
   { code: 'rider:wallet:read', description: 'Read rider wallet' },
   { code: 'driver:wallet:read', description: 'Read driver wallet' },

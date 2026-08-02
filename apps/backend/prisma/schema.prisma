@@ -2013,6 +2013,36 @@ model WalletLedgerEntry {
   @@map("wallet_ledger_entries")
 }
 
+/**
+ * A card top-up of a wallet's balance — distinct from RidePaymentTransaction/
+ * PaymentTransaction (which pay for a specific ride/order) because a wallet
+ * top-up has no order/ride to attach to; walletOwnerType/walletOwnerId
+ * mirror Wallet's own polymorphic owner fields rather than a foreign key.
+ */
+model WalletTopUpTransaction {
+  id                    String            @id @default(uuid()) @db.Uuid
+  walletOwnerType       WalletOwnerType   @map("wallet_owner_type")
+  walletOwnerId         String            @map("wallet_owner_id") @db.Uuid
+  provider              PaymentProvider
+  providerReference     String            @unique @map("provider_reference") @db.VarChar(100)
+  providerTransactionId String?           @map("provider_transaction_id") @db.VarChar(100)
+  status                TransactionStatus @default(PENDING)
+  amount                Decimal           @db.Decimal(12, 2)
+  currency              String            @default("NGN") @db.VarChar(3)
+  authorizationUrl      String?           @map("authorization_url") @db.VarChar(2048)
+  accessCode            String?           @map("access_code") @db.VarChar(100)
+  gatewayResponse       Json?             @map("gateway_response")
+  paidAt                DateTime?         @map("paid_at")
+  verifiedAt            DateTime?         @map("verified_at")
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+
+  @@index([walletOwnerType, walletOwnerId])
+  @@index([providerReference])
+  @@index([status])
+  @@map("wallet_topup_transactions")
+}
+
 enum ReferralRedemptionStatus {
   PENDING
   REWARDED
