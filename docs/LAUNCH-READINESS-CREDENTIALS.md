@@ -29,8 +29,8 @@ wired to hardened to verified live.
      was used as-is to unblock development quickly. Before launch: split
      into two properly restricted keys —
      - Browser key: Application restriction = Websites (real prod domains
-       - localhost), API restriction = Maps JavaScript API + Places API
-       * Directions API.
+       and localhost), API restriction = Maps JavaScript API + Places API
+       - Directions API.
      - Server key: Application restriction = IP addresses (backend's
        deploy IP once Coolify is live), API restriction = Geocoding API.
   2. Two other keys already exist in the same GCP project
