@@ -206,4 +206,24 @@ export class AppConfigService {
   public get paymentDefaultProvider(): EnvConfig['PAYMENT_DEFAULT_PROVIDER'] {
     return this.configService.get('PAYMENT_DEFAULT_PROVIDER', { infer: true });
   }
+
+  public get firebaseProjectId(): string {
+    return this.configService.get('FIREBASE_PROJECT_ID', { infer: true });
+  }
+
+  public get firebaseClientEmail(): string {
+    return this.configService.get('FIREBASE_CLIENT_EMAIL', { infer: true });
+  }
+
+  public get firebasePrivateKey(): string {
+    return this.configService.get('FIREBASE_PRIVATE_KEY', { infer: true });
+  }
+
+  public get firebaseConfigured(): boolean {
+    return (
+      this.firebaseProjectId !== '' &&
+      this.firebaseClientEmail !== '' &&
+      this.firebasePrivateKey !== ''
+    );
+  }
 }

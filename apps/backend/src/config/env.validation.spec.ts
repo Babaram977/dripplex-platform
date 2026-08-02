@@ -17,6 +17,7 @@ describe('validateEnv', () => {
     expect(env.BCRYPT_SALT_ROUNDS).toBe(12);
     expect(env.PAYMENT_DEFAULT_PROVIDER).toBe('PAYSTACK');
     expect(env.PAYSTACK_SECRET_KEY).toBe('');
+    expect(env.FIREBASE_PROJECT_ID).toBe('');
   });
 
   it('rejects short JWT secrets', () => {

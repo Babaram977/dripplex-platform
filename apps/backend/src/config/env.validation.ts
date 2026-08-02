@@ -51,6 +51,9 @@ export const envSchema = z.object({
   FLUTTERWAVE_BASE_URL: z.string().url().default('https://api.flutterwave.com'),
   MONIEPOINT_API_KEY: z.string().default(''),
   PAYMENT_DEFAULT_PROVIDER: z.enum(['PAYSTACK', 'FLUTTERWAVE', 'MONIEPOINT']).default('PAYSTACK'),
+  FIREBASE_PROJECT_ID: z.string().default(''),
+  FIREBASE_CLIENT_EMAIL: z.string().default(''),
+  FIREBASE_PRIVATE_KEY: z.string().default(''),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

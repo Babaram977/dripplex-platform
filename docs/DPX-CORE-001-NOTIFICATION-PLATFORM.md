@@ -261,3 +261,76 @@ Next: RIDE-004.1 (Referral backend) and RIDE-004.2 (Promo, likely
 extending the existing `promotions` module to accept ride fares rather
 than building a second promo system — to be confirmed against real code
 before large implementation, same discipline as everything else here).
+
+## Phase D (2026-08-02): real Firebase Cloud Messaging for PUSH
+
+`PUSH_PROVIDER` now binds `FirebasePushProvider` instead of
+`NotConfiguredProvider('fcm')` whenever `FIREBASE_PROJECT_ID`,
+`FIREBASE_CLIENT_EMAIL`, and `FIREBASE_PRIVATE_KEY` are all set (the
+founder supplied the `dripplex-3a92d` service account) — exactly the seam
+the Phase B-1 doc comment called out: "Swapping in a real FCM/APNs...
+adapter later means changing only these three factories." No caller of
+`NotificationCenterService` changed; the seam held.
+
+- **`FirebasePushProvider`** (`notification-center/providers/`) fans a
+  push out to every active `DeviceToken` for the notification's `userId`
+  (`DeviceRegistryService.list()`), via `Messaging.sendEach()` — not the
+  newer `sendEachForMulticast`, which is deprecated in favor of an
+  overload expecting Firebase Installation IDs (fids); `DeviceToken.token`
+  stores classic FCM registration tokens, which `sendEach` (one `Message`
+  per token) still accepts directly.
+- **Zero registered devices is not a failure.** If a user has no active
+  `DeviceToken`, the provider returns `{ configured: true, provider: 'fcm' }`
+  without calling FCM at all — the credentials are valid and reachable,
+  there's just nothing to push to yet. Treating this as `configured: false`
+  would incorrectly dead-letter the notification with "no provider
+  configured," which is a different, false statement.
+- **Stale tokens self-heal.** Any token FCM reports as
+  `registration-token-not-registered` or `invalid-registration-token` is
+  deactivated immediately via `DeviceRegistryService.deactivate()` — it can
+  never succeed on retry, and left active it would get resent on every
+  future push to that user forever. Every other FCM error code (rate
+  limits, transient failures) leaves the token alone.
+- **`getFirebaseMessaging()`** (`firebase-admin.factory.ts`) initializes a
+  _named_ Firebase Admin app (`dripplex-notification-center`, not the
+  SDK's default app) so it can't collide with an app some other module
+  initializes later, and reuses it across calls — `initializeApp()` throws
+  if called twice for the same name, which matters when Nest recreates
+  this module (e.g. across test suites in the same process).
+- **Constructor takes `Messaging`, not `App`.** The module's
+  `PUSH_PROVIDER` factory resolves `Messaging` once via
+  `getFirebaseMessaging(config)` and injects that into
+  `FirebasePushProvider`, rather than the provider resolving it itself —
+  so tests construct the provider with a plain fake `{ sendEach: jest.fn() }`
+  object, no module-level mocking of the `firebase-admin` SDK required.
+
+### Credentials are environment configuration, never committed
+
+`FIREBASE_PROJECT_ID` / `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY`
+were added to `env.validation.ts` (all optional, default `''`, following
+the exact pattern `PAYSTACK_SECRET_KEY` etc. already used) and to
+`AppConfigService` (plus a `firebaseConfigured` getter the module's
+factory checks). The real values live only in whatever secret store the
+deployment target uses (Railway/Coolify env vars) — `.env.example` at the
+repo root got three blank placeholder lines and a comment, nothing more.
+The actual service account JSON the founder shared in chat was read to
+extract these three values and was not written to any file in this repo
+or committed.
+
+### Not in this pass: browser/web push registration
+
+The founder also shared a Web Push certificate (VAPID) key from the
+Firebase Console's Cloud Messaging tab. That key is for a _different_ half
+of FCM — registering a browser for push via `getToken(messaging, { vapidKey })`
+and a service worker — which none of the portal apps do yet (no service
+worker, no `POST /device-tokens` call from any frontend). `FirebasePushProvider`
+only sends to tokens already present in `DeviceToken`; it doesn't create a
+path to get one from a browser. Native apps (once `driver-mobile`/
+`customer-mobile` register real FCM tokens via Capacitor's
+`@capacitor/push-notifications`) don't need the VAPID key at all — it's
+web-only. Flagging this now rather than silently dropping the key: worth
+wiring once a portal actually needs browser push, not before.
+
+Verification: backend `tsc --noEmit` clean, `eslint --max-warnings=0`
+clean, `jest --runInBand` 132/132 suites, 896/896 tests (4 new tests in
+`firebase-push.provider.spec.ts`).
