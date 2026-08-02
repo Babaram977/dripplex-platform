@@ -1,6 +1,9 @@
-import { PromotionStatus, PromotionType } from '@prisma/client';
-import { Transform } from 'class-transformer';
+import 'reflect-metadata';
+
+import { PromotionDomain, PromotionStatus, PromotionType } from '@prisma/client';
+import { Transform, Type } from 'class-transformer';
 import {
+  IsArray,
   IsBoolean,
   IsDateString,
   IsEnum,
@@ -14,7 +17,10 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
+
+import { PromotionRulesDto } from '../promotion-rules';
 
 export class CreatePromotionDto {
   @IsOptional()
@@ -36,6 +42,11 @@ export class CreatePromotionDto {
   public status?: PromotionStatus;
 
   @IsOptional()
+  @IsArray()
+  @IsEnum(PromotionDomain, { each: true })
+  public domains?: PromotionDomain[];
+
+  @IsOptional()
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' || typeof value === 'number' ? Number(value) : value,
   )
@@ -51,6 +62,22 @@ export class CreatePromotionDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0.01)
   public amountOff?: number;
+
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' || typeof value === 'number' ? Number(value) : value,
+  )
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  public creditAmount?: number;
+
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' || typeof value === 'number' ? Number(value) : value,
+  )
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  public maxDiscount?: number;
 
   @IsOptional()
   @IsInt()
@@ -82,12 +109,22 @@ export class CreatePromotionDto {
   public perUserLimit?: number;
 
   @IsOptional()
+  @IsInt()
+  @Min(1)
+  public perDeviceLimit?: number;
+
+  @IsOptional()
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' || typeof value === 'number' ? Number(value) : value,
   )
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0.01)
   public minOrderAmount?: number;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PromotionRulesDto)
+  public rules?: PromotionRulesDto;
 
   @IsOptional()
   @IsDateString()
@@ -128,6 +165,11 @@ export class UpdatePromotionDto {
   public status?: PromotionStatus;
 
   @IsOptional()
+  @IsArray()
+  @IsEnum(PromotionDomain, { each: true })
+  public domains?: PromotionDomain[];
+
+  @IsOptional()
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' || typeof value === 'number' ? Number(value) : value,
   )
@@ -143,6 +185,22 @@ export class UpdatePromotionDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0.01)
   public amountOff?: number;
+
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' || typeof value === 'number' ? Number(value) : value,
+  )
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  public creditAmount?: number;
+
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' || typeof value === 'number' ? Number(value) : value,
+  )
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  public maxDiscount?: number;
 
   @IsOptional()
   @IsInt()
@@ -174,12 +232,22 @@ export class UpdatePromotionDto {
   public perUserLimit?: number;
 
   @IsOptional()
+  @IsInt()
+  @Min(1)
+  public perDeviceLimit?: number;
+
+  @IsOptional()
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' || typeof value === 'number' ? Number(value) : value,
   )
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0.01)
   public minOrderAmount?: number;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PromotionRulesDto)
+  public rules?: PromotionRulesDto;
 
   @IsOptional()
   @IsDateString()
@@ -206,6 +274,10 @@ export class ListPromotionsQueryDto {
   @IsOptional()
   @IsEnum(PromotionStatus)
   public status?: PromotionStatus;
+
+  @IsOptional()
+  @IsEnum(PromotionDomain)
+  public domain?: PromotionDomain;
 }
 
 export class ValidatePromotionDto {
@@ -238,4 +310,33 @@ export class RedeemPromotionDto {
 
   @IsUUID()
   public orderId!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  public deviceId?: string;
+}
+
+export class CloneCampaignDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(150)
+  public name?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(50)
+  public code?: string;
+}
+
+export class CampaignAnalyticsQueryDto {
+  @IsOptional()
+  @IsDateString()
+  public from?: string;
+
+  @IsOptional()
+  @IsDateString()
+  public to?: string;
 }

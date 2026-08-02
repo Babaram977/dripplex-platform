@@ -5,10 +5,13 @@ import type {
   AdminWalletMutationRequest,
   AnalyticsDailyMetricDto,
   AnalyticsQuery,
+  CampaignAnalyticsQuery,
+  CloneCampaignRequest,
   CmsContentDto,
   CmsContentListQuery,
   CreateCmsContentRequest,
   CreateFraudListEntryRequest,
+  CreatePromotionRequest,
   CreateReferralCampaignRequest,
   CreateReviewRequest,
   CreateWishlistRequest,
@@ -35,8 +38,10 @@ import type {
   NotificationPreferenceDto,
   PaginatedResult,
   PopularSearchDto,
+  PromotionAnalyticsDto,
   PromotionDto,
   PromotionEvaluationDto,
+  PromotionLeaderboardEntryDto,
   PromotionListQuery,
   PromotionRedemptionDto,
   RecentSearchDto,
@@ -64,6 +69,7 @@ import type {
   UpdateCmsContentRequest,
   UpdateFraudListEntryRequest,
   UpdateNotificationPreferencesRequest,
+  UpdatePromotionRequest,
   UpdateWishlistItemRequest,
   UpdateWishlistRequest,
   UpsertFraudThresholdRequest,
@@ -350,13 +356,17 @@ export class WishlistClient {
 export class PromotionsClient {
   public constructor(private readonly http: HttpClient) {}
 
-  public active(query: Pick<PromotionListQuery, 'merchantId'> = {}): Promise<PromotionDto[]> {
+  public active(
+    query: Pick<PromotionListQuery, 'merchantId' | 'domain'> = {},
+  ): Promise<PromotionDto[]> {
     return this.http.request<PromotionDto[]>(
-      `/customer/promotions/active${toQuery({ merchantId: query.merchantId })}`,
+      `/customer/promotions/active${toQuery({ merchantId: query.merchantId, domain: query.domain })}`,
     );
   }
 
-  public list(query: Pick<PromotionListQuery, 'merchantId'> = {}): Promise<PromotionDto[]> {
+  public list(
+    query: Pick<PromotionListQuery, 'merchantId' | 'domain'> = {},
+  ): Promise<PromotionDto[]> {
     return this.active(query);
   }
 
@@ -372,6 +382,86 @@ export class PromotionsClient {
       method: 'POST',
       body,
     });
+  }
+}
+
+export class AdminPromotionsClient {
+  public constructor(private readonly http: HttpClient) {}
+
+  public create(body: CreatePromotionRequest): Promise<PromotionDto> {
+    return this.http.request<PromotionDto>('/admin/promotions', { method: 'POST', body });
+  }
+
+  public list(query: PromotionListQuery = {}): Promise<PromotionDto[]> {
+    return this.http.request<PromotionDto[]>(
+      `/admin/promotions${toQuery({
+        merchantId: query.merchantId,
+        status: query.status,
+        domain: query.domain,
+      })}`,
+    );
+  }
+
+  public get(id: string): Promise<PromotionDto> {
+    return this.http.request<PromotionDto>(`/admin/promotions/${enc(id)}`);
+  }
+
+  public update(id: string, body: UpdatePromotionRequest): Promise<PromotionDto> {
+    return this.http.request<PromotionDto>(`/admin/promotions/${enc(id)}`, {
+      method: 'PATCH',
+      body,
+    });
+  }
+
+  public delete(id: string): Promise<PromotionDto> {
+    return this.http.request<PromotionDto>(`/admin/promotions/${enc(id)}`, { method: 'DELETE' });
+  }
+
+  public pause(id: string): Promise<PromotionDto> {
+    return this.http.request<PromotionDto>(`/admin/promotions/${enc(id)}/pause`, {
+      method: 'POST',
+    });
+  }
+
+  public resume(id: string): Promise<PromotionDto> {
+    return this.http.request<PromotionDto>(`/admin/promotions/${enc(id)}/resume`, {
+      method: 'POST',
+    });
+  }
+
+  public archive(id: string): Promise<PromotionDto> {
+    return this.http.request<PromotionDto>(`/admin/promotions/${enc(id)}/archive`, {
+      method: 'POST',
+    });
+  }
+
+  public forceExpire(id: string): Promise<PromotionDto> {
+    return this.http.request<PromotionDto>(`/admin/promotions/${enc(id)}/force-expire`, {
+      method: 'POST',
+    });
+  }
+
+  public clone(id: string, body: CloneCampaignRequest = {}): Promise<PromotionDto> {
+    return this.http.request<PromotionDto>(`/admin/promotions/${enc(id)}/clone`, {
+      method: 'POST',
+      body,
+    });
+  }
+
+  public analytics(id: string, query: CampaignAnalyticsQuery = {}): Promise<PromotionAnalyticsDto> {
+    return this.http.request<PromotionAnalyticsDto>(
+      `/admin/promotions/${enc(id)}/analytics${toQuery({ from: query.from, to: query.to })}`,
+    );
+  }
+
+  public topCampaigns(query: CampaignAnalyticsQuery = {}): Promise<PromotionLeaderboardEntryDto[]> {
+    return this.http.request<PromotionLeaderboardEntryDto[]>(
+      `/admin/promotions/analytics/top${toQuery({ from: query.from, to: query.to })}`,
+    );
+  }
+
+  public exportUrl(id: string): string {
+    return `/admin/promotions/${enc(id)}/export`;
   }
 }
 

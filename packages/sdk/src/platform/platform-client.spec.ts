@@ -237,6 +237,58 @@ describe('platform SDK clients', () => {
     );
   });
 
+  it('drives the admin promotions lifecycle/analytics/export routes', async () => {
+    const client = new DripplexClient({ baseUrl: 'https://api.example.test' });
+
+    await client.adminPromotions.create({ name: 'Flash Sale', type: 'PERCENTAGE', percentOff: 20 });
+    await client.adminPromotions.list({ domain: 'RIDE' });
+    await client.adminPromotions.pause('promo-id');
+    await client.adminPromotions.resume('promo-id');
+    await client.adminPromotions.archive('promo-id');
+    await client.adminPromotions.forceExpire('promo-id');
+    await client.adminPromotions.clone('promo-id', { code: 'CLONE10' });
+    await client.adminPromotions.analytics('promo-id', { from: '2026-01-01' });
+    await client.adminPromotions.topCampaigns();
+
+    const fetchMock = vi.mocked(fetch);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://api.example.test/admin/promotions');
+    expect(fetchMock.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ name: 'Flash Sale', type: 'PERCENTAGE', percentOff: 20 }),
+      }),
+    );
+    expect(fetchMock.mock.calls[1]?.[0]).toBe(
+      'https://api.example.test/admin/promotions?domain=RIDE',
+    );
+    expect(fetchMock.mock.calls[2]?.[0]).toBe(
+      'https://api.example.test/admin/promotions/promo-id/pause',
+    );
+    expect(fetchMock.mock.calls[2]?.[1]?.method).toBe('POST');
+    expect(fetchMock.mock.calls[3]?.[0]).toBe(
+      'https://api.example.test/admin/promotions/promo-id/resume',
+    );
+    expect(fetchMock.mock.calls[4]?.[0]).toBe(
+      'https://api.example.test/admin/promotions/promo-id/archive',
+    );
+    expect(fetchMock.mock.calls[5]?.[0]).toBe(
+      'https://api.example.test/admin/promotions/promo-id/force-expire',
+    );
+    expect(fetchMock.mock.calls[6]?.[0]).toBe(
+      'https://api.example.test/admin/promotions/promo-id/clone',
+    );
+    expect(fetchMock.mock.calls[6]?.[1]).toEqual(
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ code: 'CLONE10' }) }),
+    );
+    expect(fetchMock.mock.calls[7]?.[0]).toBe(
+      'https://api.example.test/admin/promotions/promo-id/analytics?from=2026-01-01',
+    );
+    expect(fetchMock.mock.calls[8]?.[0]).toBe(
+      'https://api.example.test/admin/promotions/analytics/top',
+    );
+    expect(client.adminPromotions.exportUrl('promo-id')).toBe('/admin/promotions/promo-id/export');
+  });
+
   it('matches customer and admin wallet routes', async () => {
     const client = new DripplexClient({ baseUrl: 'https://api.example.test' });
 

@@ -47,6 +47,11 @@ export const RIDE_WALLET_REFERENCE_TYPES = {
   TIP: 'ride_tip',
 } as const;
 
+/** PromotionRedemption.referenceType for a ride fare coupon redemption,
+ * paired with referenceId = ride.id — mirrors the marketplace order flow's
+ * hard-coded 'order' referenceType, just for the Ride domain instead. */
+export const RIDE_PROMOTION_REFERENCE_TYPE = 'ride';
+
 /** How long a driver has to respond to an offer before it's reassigned. */
 export const RIDE_OFFER_TIMEOUT_MS = 15_000;
 

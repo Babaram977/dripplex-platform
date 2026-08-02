@@ -16,6 +16,7 @@ import { OrderClient } from '../order/order-client.js';
 import { PaymentClient } from '../payment/payment-client.js';
 import {
   AdminDriverCampaignClient,
+  AdminPromotionsClient,
   AdminReferralsClient,
   AdminWalletClient,
   AdminCmsClient,
@@ -60,6 +61,7 @@ export class DripplexClient {
   public readonly reviews: ReviewsClient;
   public readonly wishlist: WishlistClient;
   public readonly promotions: PromotionsClient;
+  public readonly adminPromotions: AdminPromotionsClient;
   public readonly referrals: ReferralsClient;
   public readonly adminReferrals: AdminReferralsClient;
   public readonly driverCampaign: DriverCampaignClient;
@@ -97,6 +99,7 @@ export class DripplexClient {
     this.reviews = new ReviewsClient(this.http);
     this.wishlist = new WishlistClient(this.http);
     this.promotions = new PromotionsClient(this.http);
+    this.adminPromotions = new AdminPromotionsClient(this.http);
     this.referrals = new ReferralsClient(this.http);
     this.adminReferrals = new AdminReferralsClient(this.http);
     this.driverCampaign = new DriverCampaignClient(this.http);
@@ -131,6 +134,7 @@ export { PaymentClient } from '../payment/payment-client.js';
 export { CustomerRideClient } from '../rides/customer-ride-client.js';
 export {
   AdminDriverCampaignClient,
+  AdminPromotionsClient,
   AdminReferralsClient,
   AdminWalletClient,
   AdminCmsClient,

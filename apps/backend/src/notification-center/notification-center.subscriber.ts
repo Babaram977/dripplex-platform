@@ -250,6 +250,29 @@ export class NotificationCenterSubscriber implements OnModuleInit {
       priority: NotificationPriority.HIGH,
       userKeys: ['userId'],
     },
+    [DOMAIN_EVENTS.PROMOTION_REDEEMED]: {
+      category: NotificationCategory.MARKETING,
+      type: NotificationType.PROMOTION_REDEEMED,
+      title: 'Promotion applied',
+      body: (payload) =>
+        `${this.text(payload, ['code'], 'Your promotion')} was applied — you saved ₦${this.text(payload, ['discountAmount'], '0')}.`,
+      userKeys: ['userId'],
+    },
+    [DOMAIN_EVENTS.CASHBACK_AWARDED]: {
+      category: NotificationCategory.WALLET,
+      type: NotificationType.CASHBACK_AWARDED,
+      title: 'Cashback awarded',
+      body: (payload) => `You earned ₦${this.text(payload, ['amount'], '0')} cashback.`,
+      userKeys: ['userId'],
+    },
+    [DOMAIN_EVENTS.COUPON_EXPIRED]: {
+      category: NotificationCategory.MARKETING,
+      type: NotificationType.PROMOTION_EXPIRED,
+      title: 'Promotion expired',
+      body: (payload) =>
+        `${this.text(payload, ['code'], 'A promotion')} you tried to use has expired.`,
+      userKeys: ['userId'],
+    },
   };
 
   constructor(

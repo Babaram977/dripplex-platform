@@ -390,8 +390,36 @@ export type PromotionType =
   | 'PLATFORM_CAMPAIGN'
   | 'REFERRAL'
   | 'COUPON'
-  | 'AUTOMATIC';
-export type PromotionStatus = 'DRAFT' | 'SCHEDULED' | 'ACTIVE' | 'PAUSED' | 'EXPIRED' | 'CANCELLED';
+  | 'AUTOMATIC'
+  | 'WALLET_CREDIT'
+  | 'CASHBACK'
+  | 'FREE_DELIVERY'
+  | 'BONUS_REWARD'
+  | 'MULTI_BUY'
+  | 'THRESHOLD_DISCOUNT';
+export type PromotionStatus =
+  'DRAFT' | 'SCHEDULED' | 'ACTIVE' | 'PAUSED' | 'EXPIRED' | 'ARCHIVED' | 'CANCELLED';
+export type PromotionDomain = 'RIDE' | 'MARKETPLACE' | 'DELIVERY' | 'WALLET' | 'MERCHANT';
+
+export interface PromotionRules {
+  eligibleCities?: string[];
+  eligibleStates?: string[];
+  eligibleCountries?: string[];
+  rideTypes?: string[];
+  merchantCategories?: string[];
+  paymentMethods?: string[];
+  weekdays?: number[];
+  startHour?: number;
+  endHour?: number;
+  newUsersOnly?: boolean;
+  returningUsersOnly?: boolean;
+  referralOnly?: boolean;
+  inviteOnly?: boolean;
+  whitelistUserIds?: string[];
+  blacklistUserIds?: string[];
+  eligibleDriverIds?: string[];
+  eligibleCustomerIds?: string[];
+}
 
 export interface PromotionDto {
   id: string;
@@ -399,8 +427,11 @@ export interface PromotionDto {
   name: string;
   type: PromotionType;
   status: PromotionStatus;
+  domains: PromotionDomain[];
   percentOff: number | null;
   amountOff: number | null;
+  creditAmount: number | null;
+  maxDiscount: number | null;
   buyQty: number | null;
   getQty: number | null;
   priority: number;
@@ -408,10 +439,16 @@ export interface PromotionDto {
   usageLimit: number | null;
   usageCount: number;
   perUserLimit: number | null;
+  perDeviceLimit: number | null;
   minOrderAmount: number | null;
+  rules: PromotionRules | null;
   startsAt: string | null;
   endsAt: string | null;
+  pausedAt: string | null;
+  archivedAt: string | null;
   merchantId: string | null;
+  clonedFromId: string | null;
+  createdBy: string | null;
   metadata: unknown;
   createdAt: string;
   updatedAt: string;
@@ -420,6 +457,7 @@ export interface PromotionDto {
 export interface PromotionListQuery {
   merchantId?: string;
   status?: PromotionStatus;
+  domain?: PromotionDomain;
 }
 
 export interface PromotionDiscountDto {
@@ -430,6 +468,7 @@ export interface PromotionDiscountDto {
   priority: number;
   stackable: boolean;
   discountAmount: number;
+  creditAmount: number;
 }
 
 export interface PromotionEvaluationDto {
@@ -450,6 +489,7 @@ export interface RedeemPromotionRequest {
   promotionId?: string;
   couponCode?: string;
   orderId: string;
+  deviceId?: string;
 }
 
 export interface PromotionRedemptionDto {
@@ -457,8 +497,67 @@ export interface PromotionRedemptionDto {
   promotionId: string;
   userId: string;
   orderId: string | null;
+  referenceType: string | null;
+  referenceId: string | null;
+  walletTransactionId: string | null;
   amountSaved: number;
   createdAt: string;
+}
+
+export interface CreatePromotionRequest {
+  code?: string;
+  name: string;
+  type: PromotionType;
+  status?: PromotionStatus;
+  domains?: PromotionDomain[];
+  percentOff?: number;
+  amountOff?: number;
+  creditAmount?: number;
+  maxDiscount?: number;
+  buyQty?: number;
+  getQty?: number;
+  priority?: number;
+  stackable?: boolean;
+  usageLimit?: number;
+  perUserLimit?: number;
+  perDeviceLimit?: number;
+  minOrderAmount?: number;
+  rules?: PromotionRules;
+  startsAt?: string;
+  endsAt?: string;
+  merchantId?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export type UpdatePromotionRequest = Partial<CreatePromotionRequest>;
+
+export interface CloneCampaignRequest {
+  name?: string;
+  code?: string;
+}
+
+export interface CampaignAnalyticsQuery {
+  from?: string;
+  to?: string;
+}
+
+export interface PromotionAnalyticsDto {
+  promotionId: string;
+  totalRedemptions: number;
+  uniqueUsers: number;
+  totalDiscountCost: number;
+  usageLimit: number | null;
+  usageCount: number;
+  redemptionRate: number | null;
+}
+
+export interface PromotionLeaderboardEntryDto {
+  promotionId: string;
+  code: string | null;
+  name: string;
+  type: string;
+  redemptions: number;
+  discountCost: number;
 }
 
 export type ReferralRedemptionStatus = 'PENDING' | 'REWARDED' | 'EXPIRED';

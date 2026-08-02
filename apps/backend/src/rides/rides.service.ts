@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { RideCancelledBy, RideStatus } from '@prisma/client';
+import { PromotionDomain, RideCancelledBy, RideStatus } from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../audit/audit.service';
 import {
@@ -11,17 +11,22 @@ import {
   type NotificationService,
 } from '../notifications/notification.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { PromotionsService } from '../promotions/promotions.service';
 
 import { RideDispatchService } from './ride-dispatch.service';
 import { RIDE_EVENTS_PUBLISHER, type RideEventsPublisher } from './ride-events.publisher';
-import { RideFareService } from './ride-fare.service';
-import { CANCELLABLE_RIDE_STATUSES, RIDE_AUDIT_ACTIONS } from './ride.constants';
+import { type RideFareEstimate, RideFareService } from './ride-fare.service';
+import {
+  CANCELLABLE_RIDE_STATUSES,
+  RIDE_AUDIT_ACTIONS,
+  RIDE_PROMOTION_REFERENCE_TYPE,
+} from './ride.constants';
 import { toDriverAvailabilityDto, toRideDto } from './ride.mapper';
 
 import type { ListRidesQueryDto } from './dto/list-rides-query.dto';
-import type { CancelRideDto, RequestRideDto } from './dto/request-ride.dto';
+import type { CancelRideDto, EstimateRideFareDto, RequestRideDto } from './dto/request-ride.dto';
 import type { UpdateDriverAvailabilityDto } from './dto/update-driver-availability.dto';
-import type { DriverAvailabilityDto, RideDto } from '@dripplex/types';
+import type { DriverAvailabilityDto, EstimateRideFareResponse, RideDto } from '@dripplex/types';
 import type { Ride } from '@prisma/client';
 
 @Injectable()
@@ -35,7 +40,34 @@ export class RidesService {
     private readonly notifications: NotificationService,
     @Inject(RIDE_EVENTS_PUBLISHER)
     private readonly events: RideEventsPublisher,
+    private readonly promotionsService: PromotionsService,
   ) {}
+
+  /** Read-only preview — does not redeem or lock anything. Used by the
+   * `/rides/estimate` endpoint so a customer can see a coupon's discount
+   * before requesting the ride. */
+  public async estimateFare(
+    customerId: string,
+    dto: EstimateRideFareDto,
+  ): Promise<EstimateRideFareResponse> {
+    const estimate = this.fareService.estimate(
+      dto.rideType,
+      { lat: dto.pickupLatitude, lng: dto.pickupLongitude },
+      { lat: dto.dropoffLatitude, lng: dto.dropoffLongitude },
+    );
+    const { promotionId, promoDiscount } = await this.previewCoupon(
+      customerId,
+      dto.rideType,
+      estimate.totalFare,
+      dto.couponCode,
+    );
+    return {
+      ...estimate,
+      promotionId,
+      promoDiscount,
+      finalFare: this.roundFare(Math.max(0, estimate.totalFare - promoDiscount)),
+    };
+  }
 
   public async requestRide(
     customerId: string,
@@ -47,6 +79,13 @@ export class RidesService {
       { lat: dto.pickupLatitude, lng: dto.pickupLongitude },
       { lat: dto.dropoffLatitude, lng: dto.dropoffLongitude },
     );
+    const { promotionId, promoDiscount } = await this.previewCoupon(
+      customerId,
+      dto.rideType,
+      estimate.totalFare,
+      dto.couponCode,
+    );
+    const finalFare = this.roundFare(Math.max(0, estimate.totalFare - promoDiscount));
 
     const ride = await this.prisma.ride.create({
       data: {
@@ -63,9 +102,15 @@ export class RidesService {
         baseFare: estimate.baseFare,
         distanceFare: estimate.distanceFare,
         timeFare: estimate.timeFare,
-        totalFare: estimate.totalFare,
+        totalFare: finalFare,
+        ...(promotionId !== null ? { promotionId } : {}),
+        promoDiscount,
       },
     });
+
+    if (promotionId !== null) {
+      await this.redeemRidePromotion(ride, promotionId, estimate.totalFare, dto.rideType, context);
+    }
 
     await this.auditService.record(
       RIDE_AUDIT_ACTIONS.REQUESTED,
@@ -74,6 +119,73 @@ export class RidesService {
     );
 
     return await this.dispatchService.dispatchRide(ride.id);
+  }
+
+  /** Locks and redeems the promotion previewed in `requestRide`, using the
+   * Ride's own id as `referenceId` (created just before this call). This is
+   * a second, non-atomic step — Ride creation and promotion redemption are
+   * two separate transactions (WalletService.credit/cashback, which the
+   * redemption may call, manages its own internal transaction and can't be
+   * nested — see docs/PROMOTION-PLATFORM.md's "known limitations" section).
+   * If the redemption loses a race (e.g. another request exhausted the
+   * usage limit between preview and this call), the ride degrades
+   * gracefully to its undiscounted fare rather than failing the request. */
+  private async redeemRidePromotion(
+    ride: Ride,
+    promotionId: string,
+    subtotal: RideFareEstimate['totalFare'],
+    rideType: RequestRideDto['rideType'],
+    context: AuditContext,
+  ): Promise<void> {
+    try {
+      await this.promotionsService.redeemForReference(
+        {
+          userId: ride.customerId,
+          domain: PromotionDomain.RIDE,
+          subtotal,
+          promotionId,
+          referenceType: RIDE_PROMOTION_REFERENCE_TYPE,
+          referenceId: ride.id,
+          eligibility: { rideType },
+        },
+        context,
+      );
+    } catch {
+      await this.prisma.ride.update({
+        where: { id: ride.id },
+        data: { promotionId: null, promoDiscount: 0, totalFare: subtotal },
+      });
+    }
+  }
+
+  /** Read-only, unlocked lookup of the discount a coupon code would grant
+   * right now — used by both `estimateFare` (pure preview) and
+   * `requestRide` (preview-then-redeem). Never throws: an invalid/expired/
+   * ineligible code just yields no discount, same as having no code. */
+  private async previewCoupon(
+    customerId: string,
+    rideType: RequestRideDto['rideType'],
+    subtotal: number,
+    couponCode: string | undefined,
+  ): Promise<{ promotionId: string | null; promoDiscount: number }> {
+    if (!couponCode) {
+      return { promotionId: null, promoDiscount: 0 };
+    }
+    const preview = await this.promotionsService.previewSinglePromotion({
+      userId: customerId,
+      domain: PromotionDomain.RIDE,
+      subtotal,
+      couponCode,
+      eligibility: { rideType },
+    });
+    if (!preview || preview.discountAmount <= 0) {
+      return { promotionId: null, promoDiscount: 0 };
+    }
+    return { promotionId: preview.promotion.id, promoDiscount: preview.discountAmount };
+  }
+
+  private roundFare(amount: number): number {
+    return Math.round((amount + Number.EPSILON) * 100) / 100;
   }
 
   public async getOwnRide(customerId: string, rideId: string): Promise<RideDto> {

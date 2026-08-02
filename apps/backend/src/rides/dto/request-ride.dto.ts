@@ -56,6 +56,11 @@ export class RequestRideDto {
   @IsString()
   @MaxLength(500)
   public dropoffAddress?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  public couponCode?: string;
 }
 
 export class EstimateRideFareDto {
@@ -93,6 +98,11 @@ export class EstimateRideFareDto {
   @Min(-180)
   @Max(180)
   public dropoffLongitude!: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  public couponCode?: string;
 }
 
 export class CancelRideDto {

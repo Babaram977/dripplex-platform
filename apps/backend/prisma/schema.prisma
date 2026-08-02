@@ -1009,6 +1009,8 @@ model Ride {
   distanceFare             Decimal                  @default(0) @map("distance_fare") @db.Decimal(12, 2)
   timeFare                 Decimal                  @default(0) @map("time_fare") @db.Decimal(12, 2)
   totalFare                Decimal                  @default(0) @map("total_fare") @db.Decimal(12, 2)
+  promotionId              String?                  @map("promotion_id") @db.Uuid
+  promoDiscount            Decimal                  @default(0) @map("promo_discount") @db.Decimal(12, 2)
   paymentMethod            RidePaymentMethod?       @map("payment_method")
   paymentStatus            RidePaymentStatus        @default(PENDING) @map("payment_status")
   platformCommission       Decimal?                 @map("platform_commission") @db.Decimal(12, 2)
@@ -1240,6 +1242,9 @@ enum NotificationType {
   DRIVER_REFERRAL_TIER_GOLD
   DRIVER_REFERRAL_REWARD_APPROVED
   DRIVER_REFERRAL_REWARD_PAID
+  PROMOTION_REDEEMED
+  PROMOTION_EXPIRED
+  CASHBACK_AWARDED
 }
 
 enum DevicePlatform {
@@ -1305,6 +1310,24 @@ enum PromotionType {
   REFERRAL
   COUPON
   AUTOMATIC
+  WALLET_CREDIT
+  CASHBACK
+  FREE_DELIVERY
+  BONUS_REWARD
+  MULTI_BUY
+  THRESHOLD_DISCOUNT
+}
+
+/// DPX-CORE-002 — which DrippleX vertical(s) a campaign applies to. An
+/// empty `domains` array on Promotion means "every domain" (mirrors the
+/// existing merchantId: null = "every merchant" convention), so this enum
+/// only needs to exist for the domains that opt into being *restricted*.
+enum PromotionDomain {
+  RIDE
+  MARKETPLACE
+  DELIVERY
+  WALLET
+  MERCHANT
 }
 
 enum PromotionStatus {
@@ -1313,6 +1336,7 @@ enum PromotionStatus {
   ACTIVE
   PAUSED
   EXPIRED
+  ARCHIVED
   CANCELLED
 }
 
@@ -1697,14 +1721,29 @@ model WishlistItem {
   @@map("wishlist_items")
 }
 
+/// DPX-CORE-002 — the universal Promotion Platform engine. Originally
+/// built order/marketplace-only (RIDE-004.2 era); generalized in place
+/// rather than duplicated per "extend, don't build a second promo
+/// system." `domains: []` (default) means "applies everywhere," matching
+/// the existing `merchantId: null` = "every merchant" convention — no
+/// PLATFORM/ALL enum value needed. `rules` carries the long-tail
+/// eligibility filters (geo, vehicle/ride type, payment method,
+/// whitelist/blacklist, new-vs-returning, weekday/time-of-day) as a
+/// validated JSON shape (see PromotionRules in promotion-rules.ts) rather
+/// than one column per filter — the handful of filters actually queried
+/// at scale (domains, status, merchant, priority, date range) stay real
+/// indexed columns exactly as they already were.
 model Promotion {
   id             String                @id @default(uuid()) @db.Uuid
   code           String?               @unique @db.VarChar(50)
   name           String                @db.VarChar(150)
   type           PromotionType
   status         PromotionStatus       @default(DRAFT)
+  domains        PromotionDomain[]     @default([])
   percentOff     Decimal?              @map("percent_off") @db.Decimal(5, 2)
   amountOff      Decimal?              @map("amount_off") @db.Decimal(12, 2)
+  creditAmount   Decimal?              @map("credit_amount") @db.Decimal(12, 2)
+  maxDiscount    Decimal?              @map("max_discount") @db.Decimal(12, 2)
   buyQty         Int?                  @map("buy_qty")
   getQty         Int?                  @map("get_qty")
   priority       Int                   @default(0)
@@ -1712,18 +1751,27 @@ model Promotion {
   usageLimit     Int?                  @map("usage_limit")
   usageCount     Int                   @default(0) @map("usage_count")
   perUserLimit   Int?                  @map("per_user_limit")
+  perDeviceLimit Int?                  @map("per_device_limit")
   minOrderAmount Decimal?              @map("min_order_amount") @db.Decimal(12, 2)
+  rules          Json?
   startsAt       DateTime?             @map("starts_at")
   endsAt         DateTime?             @map("ends_at")
+  pausedAt       DateTime?             @map("paused_at")
+  archivedAt     DateTime?             @map("archived_at")
   merchantId     String?               @map("merchant_id") @db.Uuid
+  clonedFromId   String?               @map("cloned_from_id") @db.Uuid
+  createdBy      String?               @map("created_by") @db.Uuid
   metadata       Json?
   createdAt      DateTime              @default(now()) @map("created_at")
   updatedAt      DateTime              @updatedAt @map("updated_at")
   deletedAt      DateTime?             @map("deleted_at")
   redemptions    PromotionRedemption[]
+  clonedFrom     Promotion?            @relation("PromotionClone", fields: [clonedFromId], references: [id], onDelete: SetNull)
+  clones         Promotion[]           @relation("PromotionClone")
 
   @@index([status])
   @@index([type])
+  @@index([domains])
   @@index([merchantId])
   @@index([startsAt, endsAt])
   @@index([priority])
@@ -1732,18 +1780,24 @@ model Promotion {
 }
 
 model PromotionRedemption {
-  id          String    @id @default(uuid()) @db.Uuid
-  promotionId String    @map("promotion_id") @db.Uuid
-  userId      String    @map("user_id") @db.Uuid
-  orderId     String?   @map("order_id") @db.Uuid
-  amountSaved Decimal   @map("amount_saved") @db.Decimal(12, 2)
-  createdAt   DateTime  @default(now()) @map("created_at")
-  promotion   Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                  String    @id @default(uuid()) @db.Uuid
+  promotionId         String    @map("promotion_id") @db.Uuid
+  userId              String    @map("user_id") @db.Uuid
+  orderId             String?   @map("order_id") @db.Uuid
+  referenceType       String?   @map("reference_type") @db.VarChar(50)
+  referenceId         String?   @map("reference_id") @db.Uuid
+  deviceId            String?   @map("device_id") @db.VarChar(255)
+  walletTransactionId String?   @map("wallet_transaction_id") @db.Uuid
+  amountSaved         Decimal   @map("amount_saved") @db.Decimal(12, 2)
+  createdAt           DateTime  @default(now()) @map("created_at")
+  promotion           Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([promotionId])
   @@index([userId])
   @@index([orderId])
+  @@index([referenceType, referenceId])
+  @@index([deviceId])
   @@map("promotion_redemptions")
 }
 
@@ -1881,15 +1935,15 @@ model Referral {
 /// until the referee completes their first ride (see referral-reward
 /// .subscriber.ts) rather than at signup, to reduce free-money fraud.
 model ReferralRedemption {
-  id            String                    @id @default(uuid()) @db.Uuid
-  referralId    String                    @map("referral_id") @db.Uuid
-  refereeUserId String                    @unique @map("referee_user_id") @db.Uuid
-  status        ReferralRedemptionStatus  @default(PENDING)
-  rewardedAt    DateTime?                 @map("rewarded_at")
-  createdAt     DateTime                  @default(now()) @map("created_at")
-  updatedAt     DateTime                  @updatedAt @map("updated_at")
-  referral      Referral                  @relation(fields: [referralId], references: [id], onDelete: Cascade)
-  refereeUser   User                      @relation(fields: [refereeUserId], references: [id], onDelete: Cascade)
+  id            String                   @id @default(uuid()) @db.Uuid
+  referralId    String                   @map("referral_id") @db.Uuid
+  refereeUserId String                   @unique @map("referee_user_id") @db.Uuid
+  status        ReferralRedemptionStatus @default(PENDING)
+  rewardedAt    DateTime?                @map("rewarded_at")
+  createdAt     DateTime                 @default(now()) @map("created_at")
+  updatedAt     DateTime                 @updatedAt @map("updated_at")
+  referral      Referral                 @relation(fields: [referralId], references: [id], onDelete: Cascade)
+  refereeUser   User                     @relation(fields: [refereeUserId], references: [id], onDelete: Cascade)
 
   @@index([referralId])
   @@index([status])
@@ -1937,20 +1991,20 @@ enum ReferralFraudCheckStatus {
 /// distinct from (but living alongside) the generic customer Referral
 /// model above. One campaign row per calendar month.
 model ReferralCampaign {
-  id                        String                  @id @default(uuid()) @db.Uuid
-  name                      String                  @db.VarChar(150)
-  periodStart               DateTime                @map("period_start")
-  periodEnd                 DateTime                @map("period_end")
-  status                    ReferralCampaignStatus  @default(DRAFT)
-  requiredTripsPerPassenger Int                     @default(5) @map("required_trips_per_passenger")
-  silverThreshold           Int                     @default(50) @map("silver_threshold")
-  silverRewardAmount        Decimal                 @default(40000) @map("silver_reward_amount") @db.Decimal(12, 2)
-  goldThreshold             Int                     @default(100) @map("gold_threshold")
-  goldRewardAmount          Decimal                 @default(100000) @map("gold_reward_amount") @db.Decimal(12, 2)
-  goldQualificationRate     Decimal                 @default(0.75) @map("gold_qualification_rate") @db.Decimal(4, 3)
-  createdBy                 String?                 @map("created_by") @db.Uuid
-  createdAt                 DateTime                @default(now()) @map("created_at")
-  updatedAt                 DateTime                @updatedAt @map("updated_at")
+  id                        String                 @id @default(uuid()) @db.Uuid
+  name                      String                 @db.VarChar(150)
+  periodStart               DateTime               @map("period_start")
+  periodEnd                 DateTime               @map("period_end")
+  status                    ReferralCampaignStatus @default(DRAFT)
+  requiredTripsPerPassenger Int                    @default(5) @map("required_trips_per_passenger")
+  silverThreshold           Int                    @default(50) @map("silver_threshold")
+  silverRewardAmount        Decimal                @default(40000) @map("silver_reward_amount") @db.Decimal(12, 2)
+  goldThreshold             Int                    @default(100) @map("gold_threshold")
+  goldRewardAmount          Decimal                @default(100000) @map("gold_reward_amount") @db.Decimal(12, 2)
+  goldQualificationRate     Decimal                @default(0.75) @map("gold_qualification_rate") @db.Decimal(4, 3)
+  createdBy                 String?                @map("created_by") @db.Uuid
+  createdAt                 DateTime               @default(now()) @map("created_at")
+  updatedAt                 DateTime               @updatedAt @map("updated_at")
   driverReferrals           DriverReferral[]
   rewards                   ReferralReward[]
 
@@ -2008,16 +2062,16 @@ model ReferralStatistics {
 /// counted toward one driver, one campaign, ever (mirrors
 /// ReferralRedemption's refereeUserId uniqueness above).
 model PassengerReferral {
-  id               String                   @id @default(uuid()) @db.Uuid
-  driverReferralId String                   @map("driver_referral_id") @db.Uuid
-  refereeUserId    String                   @unique @map("referee_user_id") @db.Uuid
-  status           PassengerReferralStatus  @default(REGISTERED)
-  completedTrips   Int                      @default(0) @map("completed_trips")
-  qualifiedAt      DateTime?                @map("qualified_at")
-  createdAt        DateTime                 @default(now()) @map("created_at")
-  updatedAt        DateTime                 @updatedAt @map("updated_at")
-  driverReferral   DriverReferral           @relation(fields: [driverReferralId], references: [id], onDelete: Cascade)
-  refereeUser      User                     @relation(fields: [refereeUserId], references: [id], onDelete: Cascade)
+  id               String                  @id @default(uuid()) @db.Uuid
+  driverReferralId String                  @map("driver_referral_id") @db.Uuid
+  refereeUserId    String                  @unique @map("referee_user_id") @db.Uuid
+  status           PassengerReferralStatus @default(REGISTERED)
+  completedTrips   Int                     @default(0) @map("completed_trips")
+  qualifiedAt      DateTime?               @map("qualified_at")
+  createdAt        DateTime                @default(now()) @map("created_at")
+  updatedAt        DateTime                @updatedAt @map("updated_at")
+  driverReferral   DriverReferral          @relation(fields: [driverReferralId], references: [id], onDelete: Cascade)
+  refereeUser      User                    @relation(fields: [refereeUserId], references: [id], onDelete: Cascade)
   fraudChecks      ReferralFraudCheck[]
 
   @@index([driverReferralId])
@@ -2031,23 +2085,23 @@ model PassengerReferral {
 /// just application logic. status doubles as the payment-status tracker:
 /// PENDING (accruing, not yet reviewed) -> APPROVED -> PAID, or REJECTED.
 model ReferralReward {
-  id                      String                      @id @default(uuid()) @db.Uuid
-  campaignId              String                      @map("campaign_id") @db.Uuid
-  driverId                String                      @map("driver_id") @db.Uuid
+  id                      String                     @id @default(uuid()) @db.Uuid
+  campaignId              String                     @map("campaign_id") @db.Uuid
+  driverId                String                     @map("driver_id") @db.Uuid
   tier                    ReferralCampaignTier
-  amount                  Decimal                     @db.Decimal(12, 2)
-  qualifiedPassengerCount Int                          @map("qualified_passenger_count")
-  status                  DriverReferralRewardStatus  @default(PENDING)
-  approvedAt              DateTime?                   @map("approved_at")
-  approvedBy              String?                     @map("approved_by") @db.Uuid
-  rejectedAt              DateTime?                   @map("rejected_at")
-  rejectedBy              String?                     @map("rejected_by") @db.Uuid
-  rejectionReason         String?                     @map("rejection_reason") @db.VarChar(500)
-  paidAt                  DateTime?                   @map("paid_at")
-  createdAt               DateTime                    @default(now()) @map("created_at")
-  updatedAt               DateTime                    @updatedAt @map("updated_at")
-  campaign                ReferralCampaign             @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  driver                  User                         @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  amount                  Decimal                    @db.Decimal(12, 2)
+  qualifiedPassengerCount Int                        @map("qualified_passenger_count")
+  status                  DriverReferralRewardStatus @default(PENDING)
+  approvedAt              DateTime?                  @map("approved_at")
+  approvedBy              String?                    @map("approved_by") @db.Uuid
+  rejectedAt              DateTime?                  @map("rejected_at")
+  rejectedBy              String?                    @map("rejected_by") @db.Uuid
+  rejectionReason         String?                    @map("rejection_reason") @db.VarChar(500)
+  paidAt                  DateTime?                  @map("paid_at")
+  createdAt               DateTime                   @default(now()) @map("created_at")
+  updatedAt               DateTime                   @updatedAt @map("updated_at")
+  campaign                ReferralCampaign           @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  driver                  User                       @relation(fields: [driverId], references: [id], onDelete: Cascade)
 
   @@unique([campaignId, driverId])
   @@index([status])
@@ -2060,16 +2114,16 @@ model ReferralReward {
 /// MANUAL_FLAG is how an admin records a judgment call that isn't
 /// mechanically detectable. See design doc for what's real vs. not.
 model ReferralFraudCheck {
-  id                  String                    @id @default(uuid()) @db.Uuid
-  passengerReferralId String?                   @map("passenger_referral_id") @db.Uuid
-  driverReferralId    String?                   @map("driver_referral_id") @db.Uuid
-  checkType           ReferralFraudCheckType    @map("check_type")
-  status              ReferralFraudCheckStatus  @default(CLEARED)
-  details             String?                   @db.VarChar(1000)
-  reviewedAt          DateTime?                 @map("reviewed_at")
-  reviewedBy          String?                   @map("reviewed_by") @db.Uuid
-  createdAt           DateTime                  @default(now()) @map("created_at")
-  passengerReferral   PassengerReferral?        @relation(fields: [passengerReferralId], references: [id], onDelete: Cascade)
+  id                  String                   @id @default(uuid()) @db.Uuid
+  passengerReferralId String?                  @map("passenger_referral_id") @db.Uuid
+  driverReferralId    String?                  @map("driver_referral_id") @db.Uuid
+  checkType           ReferralFraudCheckType   @map("check_type")
+  status              ReferralFraudCheckStatus @default(CLEARED)
+  details             String?                  @db.VarChar(1000)
+  reviewedAt          DateTime?                @map("reviewed_at")
+  reviewedBy          String?                  @map("reviewed_by") @db.Uuid
+  createdAt           DateTime                 @default(now()) @map("created_at")
+  passengerReferral   PassengerReferral?       @relation(fields: [passengerReferralId], references: [id], onDelete: Cascade)
 
   @@index([status])
   @@index([passengerReferralId])

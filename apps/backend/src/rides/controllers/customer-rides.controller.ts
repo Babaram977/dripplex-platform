@@ -19,7 +19,6 @@ import { InitiateRidePaymentDto, VerifyRidePaymentDto } from '../dto/ride-paymen
 import { ReportRideProblemDto } from '../dto/ride-problem-report.dto';
 import { RateRideDto } from '../dto/ride-rating.dto';
 import { TipDriverDto } from '../dto/ride-tip.dto';
-import { RideFareService } from '../ride-fare.service';
 import { RidePaymentService } from '../ride-payment.service';
 import { RideProblemReportService } from '../ride-problem-report.service';
 import { RideRatingService } from '../ride-rating.service';
@@ -48,19 +47,15 @@ export class CustomerRidesController {
     private readonly ratingService: RideRatingService,
     private readonly receiptService: RideReceiptService,
     private readonly problemReportService: RideProblemReportService,
-    private readonly fareService: RideFareService,
   ) {}
 
   @Post('estimate')
   @HttpCode(HttpStatus.OK)
-  public estimateFare(
+  public async estimateFare(
+    @CurrentUser() user: AuthenticatedUser,
     @Body() dto: EstimateRideFareDto,
-  ): ApiSuccessResponse<EstimateRideFareResponse> {
-    const data = this.fareService.estimate(
-      dto.rideType,
-      { lat: dto.pickupLatitude, lng: dto.pickupLongitude },
-      { lat: dto.dropoffLatitude, lng: dto.dropoffLongitude },
-    );
+  ): Promise<ApiSuccessResponse<EstimateRideFareResponse>> {
+    const data = await this.ridesService.estimateFare(user.id, dto);
     return { success: true, data };
   }
 

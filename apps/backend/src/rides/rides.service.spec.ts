@@ -4,6 +4,8 @@ import { PrismaClient } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
 import { DomainEventBus } from '../events/domain-event-bus';
+import { PromotionsService } from '../promotions/promotions.service';
+import { WalletService } from '../wallet/wallet.service';
 
 import { RideDispatchService } from './ride-dispatch.service';
 import { RideFareService } from './ride-fare.service';
@@ -72,6 +74,9 @@ describe('RidesService', () => {
       events,
       new DomainEventBus(),
     );
+    const eventBus = new DomainEventBus();
+    const walletService = new WalletService(prisma, auditService, eventBus);
+    const promotionsService = new PromotionsService(prisma, auditService, eventBus, walletService);
     service = new RidesService(
       prisma,
       new RideFareService(),
@@ -79,6 +84,7 @@ describe('RidesService', () => {
       dispatchService,
       notifications,
       events,
+      promotionsService,
     );
 
     const customer = await prisma.user.create({

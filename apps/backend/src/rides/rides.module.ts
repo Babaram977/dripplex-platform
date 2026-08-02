@@ -5,6 +5,7 @@ import { AuthModule } from '../auth/auth.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { PromotionsModule } from '../promotions/promotions.module';
 import { WalletModule } from '../wallet/wallet.module';
 
 import { AdminRideReportsController } from './controllers/admin-ride-reports.controller';
@@ -30,6 +31,7 @@ import { RidesService } from './rides.service';
     AuthModule,
     WalletModule,
     PaymentsModule,
+    PromotionsModule,
   ],
   controllers: [CustomerRidesController, DriverRidesController, AdminRideReportsController],
   providers: [

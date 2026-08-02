@@ -4,6 +4,7 @@ import { PrismaClient, WalletOwnerType } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
 import { DomainEventBus } from '../events/domain-event-bus';
+import { PromotionsService } from '../promotions/promotions.service';
 import { PLATFORM_WALLET_OWNER_ID } from '../wallet/wallet.constants';
 import { WalletService } from '../wallet/wallet.service';
 
@@ -119,6 +120,12 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
       events,
       new DomainEventBus(),
     );
+    const promotionsService = new PromotionsService(
+      prisma,
+      auditService,
+      new DomainEventBus(),
+      walletService,
+    );
     ridesService = new RidesService(
       prisma,
       fareService,
@@ -126,6 +133,7 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
       dispatchService,
       notifications,
       events,
+      promotionsService,
     );
     tripService = new RideTripService(
       prisma,

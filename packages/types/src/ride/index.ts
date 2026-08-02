@@ -33,6 +33,8 @@ export interface RideDto {
   distanceFare: number;
   timeFare: number;
   totalFare: number;
+  promotionId: string | null;
+  promoDiscount: number;
   paymentMethod: RidePaymentMethod | null;
   paymentStatus: RidePaymentStatus;
   platformCommission: number | null;
@@ -153,6 +155,7 @@ export interface RequestRideRequest {
   dropoffLatitude: number;
   dropoffLongitude: number;
   dropoffAddress?: string;
+  couponCode?: string;
 }
 
 export interface EstimateRideFareRequest {
@@ -161,6 +164,7 @@ export interface EstimateRideFareRequest {
   pickupLongitude: number;
   dropoffLatitude: number;
   dropoffLongitude: number;
+  couponCode?: string;
 }
 
 export interface EstimateRideFareResponse {
@@ -170,6 +174,9 @@ export interface EstimateRideFareResponse {
   distanceFare: number;
   timeFare: number;
   totalFare: number;
+  promotionId: string | null;
+  promoDiscount: number;
+  finalFare: number;
 }
 
 export interface DriverAvailabilityDto {

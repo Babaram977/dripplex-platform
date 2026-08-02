@@ -33,4 +33,19 @@ describe('PROMOTION_PERMISSIONS', () => {
       Reflect.getMetadata(PERMISSIONS_KEY, AdminPromotionsController.prototype.update),
     ).toEqual([PROMOTION_PERMISSIONS.ADMIN_MANAGE]);
   });
+
+  it.each([
+    'pause',
+    'resume',
+    'archive',
+    'forceExpire',
+    'clone',
+    'analytics',
+    'topCampaigns',
+    'exportCsv',
+  ] as const)('protects admin lifecycle/analytics endpoint %s', (method) => {
+    expect(
+      Reflect.getMetadata(PERMISSIONS_KEY, AdminPromotionsController.prototype[method]),
+    ).toEqual([PROMOTION_PERMISSIONS.ADMIN_MANAGE]);
+  });
 });

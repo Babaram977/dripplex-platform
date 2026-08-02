@@ -25,6 +25,7 @@ export {
   AdminCmsClient,
   AdminDriverCampaignClient,
   AdminFraudClient,
+  AdminPromotionsClient,
   AdminReferralsClient,
   AnalyticsClient,
   CmsClient,

@@ -33,6 +33,8 @@ export function toRideDto(ride: Ride): RideDto {
     distanceFare: Number(ride.distanceFare),
     timeFare: Number(ride.timeFare),
     totalFare: Number(ride.totalFare),
+    promotionId: ride.promotionId,
+    promoDiscount: Number(ride.promoDiscount),
     paymentMethod: ride.paymentMethod,
     paymentStatus: ride.paymentStatus,
     platformCommission: ride.platformCommission !== null ? Number(ride.platformCommission) : null,

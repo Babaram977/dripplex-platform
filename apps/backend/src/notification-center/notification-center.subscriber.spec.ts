@@ -162,6 +162,71 @@ describe('NotificationCenterSubscriber', () => {
     );
   });
 
+  it('maps promotion redeemed events to a MARKETING-category notification', async () => {
+    await subscriber.handle({
+      name: DOMAIN_EVENTS.PROMOTION_REDEEMED,
+      payload: { userId: 'user-1', code: 'SAVE10', discountAmount: '100' },
+      occurredAt: new Date().toISOString(),
+    });
+
+    expect(notificationCenter.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'user-1',
+        category: NotificationCategory.MARKETING,
+        type: NotificationType.PROMOTION_REDEEMED,
+        body: 'SAVE10 was applied — you saved ₦100.',
+      }),
+    );
+  });
+
+  it('maps cashback awarded events to a WALLET-category notification', async () => {
+    await subscriber.handle({
+      name: DOMAIN_EVENTS.CASHBACK_AWARDED,
+      payload: { userId: 'user-1', amount: '75' },
+      occurredAt: new Date().toISOString(),
+    });
+
+    expect(notificationCenter.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'user-1',
+        category: NotificationCategory.WALLET,
+        type: NotificationType.CASHBACK_AWARDED,
+        body: 'You earned ₦75 cashback.',
+      }),
+    );
+  });
+
+  it('maps coupon expired events to a promo-expired notification', async () => {
+    await subscriber.handle({
+      name: DOMAIN_EVENTS.COUPON_EXPIRED,
+      payload: { userId: 'user-1', code: 'SAVE10' },
+      occurredAt: new Date().toISOString(),
+    });
+
+    expect(notificationCenter.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'user-1',
+        category: NotificationCategory.MARKETING,
+        type: NotificationType.PROMOTION_EXPIRED,
+        body: 'SAVE10 you tried to use has expired.',
+      }),
+    );
+  });
+
+  it('does not map the generic WalletCredited event (avoids double-notifying flows that already notify)', () => {
+    subscriber.onModuleInit();
+    expect(eventBus.on).not.toHaveBeenCalledWith(
+      DOMAIN_EVENTS.WALLET_CREDITED,
+      expect.any(Function),
+    );
+    expect(eventBus.on).toHaveBeenCalledWith(
+      DOMAIN_EVENTS.PROMOTION_REDEEMED,
+      expect.any(Function),
+    );
+    expect(eventBus.on).toHaveBeenCalledWith(DOMAIN_EVENTS.CASHBACK_AWARDED, expect.any(Function));
+    expect(eventBus.on).toHaveBeenCalledWith(DOMAIN_EVENTS.COUPON_EXPIRED, expect.any(Function));
+  });
+
   it('skips mapped events without a target user id', async () => {
     await subscriber.handle({
       name: DOMAIN_EVENTS.PAYMENT_SUCCEEDED,
