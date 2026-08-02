@@ -2,16 +2,18 @@
 
 import * as React from 'react';
 
-import { BackArrow, BottomSheet, MapCanvas, RideStatusBar } from '../ride-ui';
+import { MapCanvas, RideBottomSheet, RideHeader, StatusBanner } from '../ride-ui';
 
 import { useCancelRide, useRide, useRideTracking } from '@/hooks/rides';
 
 export function FindingDriverScreen({
   rideId,
   onBack,
+  onDriverAssigned,
 }: {
   rideId: string;
   onBack: () => void;
+  onDriverAssigned: () => void;
 }): React.JSX.Element {
   const ride = useRide(rideId);
   useRideTracking(rideId);
@@ -44,6 +46,13 @@ export function FindingDriverScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- re-arm only when status category changes
   }, [ride.data?.status]);
 
+  React.useEffect(() => {
+    if (ride.data?.status === 'DRIVER_ASSIGNED') {
+      onDriverAssigned();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run when the status itself changes
+  }, [ride.data?.status]);
+
   const status = ride.data?.status;
 
   return (
@@ -53,70 +62,22 @@ export function FindingDriverScreen({
     >
       <div className="relative flex-shrink-0" style={{ height: 280 }}>
         <MapCanvas variant="finding" />
-        <div className="absolute inset-0">
-          <RideStatusBar />
-          <div className="mt-3 px-5">
-            <BackArrow onClick={onBack} />
-          </div>
-        </div>
+        <RideHeader onBack={onBack} floating />
       </div>
-      <BottomSheet peek>
+      <RideBottomSheet peek>
         <div className="flex flex-col items-center gap-5 px-5 pb-8 pt-2">
-          {status === 'DRIVER_ASSIGNED' ? (
-            <div className="text-center">
-              <p
-                className="mb-1 text-[20px] font-bold"
-                style={{ fontFamily: "'Poppins',sans-serif", color: '#47CF72' }}
-              >
-                Driver found!
-              </p>
-              <p
-                className="text-[14px]"
-                style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.38)' }}
-              >
-                Full driver tracking arrives in RIDE-003 Slice 2 — this ride is now dispatched for
-                real.
-              </p>
-            </div>
-          ) : status === 'NO_DRIVERS_FOUND' ? (
-            <div className="text-center">
-              <p
-                className="mb-1 text-[20px] font-bold"
-                style={{ fontFamily: "'Poppins',sans-serif", color: '#fff' }}
-              >
-                No drivers available
-              </p>
-              <p
-                className="text-[14px]"
-                style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.38)' }}
-              >
-                No nearby drivers accepted this ride. Please try again shortly.
-              </p>
-            </div>
+          {status === 'NO_DRIVERS_FOUND' ? (
+            <StatusBanner
+              title="No drivers available"
+              subtitle="No nearby drivers accepted this ride. Please try again shortly."
+            />
           ) : status === 'CANCELLED' ? (
-            <div className="text-center">
-              <p
-                className="mb-1 text-[20px] font-bold"
-                style={{ fontFamily: "'Poppins',sans-serif", color: '#fff' }}
-              >
-                Ride cancelled
-              </p>
-            </div>
+            <StatusBanner title="Ride cancelled" />
           ) : (
-            <div className="text-center">
-              <p
-                className="mb-1 text-[20px] font-bold"
-                style={{ fontFamily: "'Poppins',sans-serif", color: '#fff' }}
-              >
-                Finding your driver{'.'.repeat(dots)}
-              </p>
-              <p
-                className="text-[14px]"
-                style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.38)' }}
-              >
-                Matching you with the nearest available driver
-              </p>
-            </div>
+            <StatusBanner
+              title={`Finding your driver${'.'.repeat(dots)}`}
+              subtitle="Matching you with the nearest available driver"
+            />
           )}
           {status !== 'NO_DRIVERS_FOUND' &&
           status !== 'CANCELLED' &&
@@ -132,7 +93,7 @@ export function FindingDriverScreen({
             >
               {cancelRide.isPending ? 'Cancelling…' : 'Cancel ride'}
             </button>
-          ) : (
+          ) : status !== 'DRIVER_ASSIGNED' ? (
             <button
               type="button"
               onClick={onBack}
@@ -141,9 +102,9 @@ export function FindingDriverScreen({
             >
               Back to Home
             </button>
-          )}
+          ) : null}
         </div>
-      </BottomSheet>
+      </RideBottomSheet>
     </div>
   );
 }

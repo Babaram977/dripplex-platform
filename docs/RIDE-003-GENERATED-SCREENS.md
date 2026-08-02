@@ -15,18 +15,11 @@ screen that needs a capability the backend doesn't have shows that gap
 honestly (loading/empty/error state, or an explicit "not yet available"
 message) rather than faking data.
 
-No screens have been generated yet — none of the 7 missing screens
-(`RideHomeExtendedScreen`, `PickupConfirmScreen`, `DriverProfileSheet`,
-`DriverArrivedScreen` base, `OPayPaymentScreen`, `CashPaymentScreen`,
-`RideDetailScreen`) were needed for Slice 1 (Ride Request). Entries below
-are added as each is actually built, in the slice that needs it:
-
-- `DriverProfileSheet`, `DriverArrivedScreen` (base) — Slice 2 (Active Ride)
-- `OPayPaymentScreen`, `CashPaymentScreen` — Slice 3 (Ride Completion)
-- `RideDetailScreen` — Slice 4 (Post Ride)
-- `RideHomeExtendedScreen`, `PickupConfirmScreen` — only if a real slice
-  screen turns out to need them; `RideHomeScreen` and the destination-search
-  flow already cover their apparent purpose using real saved-places data.
+Remaining, not yet needed: `RideHomeExtendedScreen`, `PickupConfirmScreen`
+(`RideHomeScreen` and the destination-search flow already cover their
+apparent purpose using real saved-places data — generate only if a later
+slice screen genuinely needs them), `OPayPaymentScreen`, `CashPaymentScreen`
+(Slice 3), `RideDetailScreen` (Slice 4).
 
 ## Template for each entry
 
@@ -36,3 +29,59 @@ are added as each is actually built, in the slice that needs it:
 **Visual conventions reused** (colors / spacing / typography / component
 shapes) —
 **Assumptions made** —
+
+---
+
+## `DriverProfileSheet` (Slice 2)
+
+**Why generated**: no real `DriverProfileSheet` was received across the 3
+pasted parts.
+
+**Reference screens**: `DriverAssignedScreen` (real, Part 1) for header/card
+treatment; general Ride card/typography conventions from all 24 real
+screens.
+
+**Reused conventions**: `RideHeader` (status bar + back + title), `#112238`
+card background with `rgba(255,255,255,.08)` border, Poppins headings /
+Inter body, `#47CF72`/`rgba(255,255,255,.38)` text-color pairing for
+active/muted states.
+
+**Assumptions**: shows an honest "integration status" list instead of the
+mock's fabricated name/photo/rating/vehicle, because none of that exists
+anywhere in the real backend (see Slice 2 report). No new visual style
+introduced — same card list pattern used elsewhere (e.g. `FareBreakdown`'s
+row layout).
+
+**Backend integration status**: nothing wired yet — genuinely nothing real
+to wire. Every row activates once a customer-facing driver-profile endpoint
+with the corresponding field exists.
+
+## `DriverArrivedScreen` base (Slice 2)
+
+**Why generated**: only `DriverArrivedExtendedScreen` and
+`PassengerWaitingScreen` were received (Part 3), both built around a
+passenger-facing verify code and a waiting-fee timer. Neither concept
+exists in the real backend — `RIDE-002.10` explicitly locked "no mandatory
+passenger OTP/PIN" in favor of a GPS-proximity gate on the driver's own
+`startTrip()` action (`ride-trip.service.ts`), and there's no waiting-fee
+field anywhere in the schema. A verbatim port of either received screen
+would have meant building working UI around a mechanism that doesn't
+exist, or silently faking one that does — so a base variant was generated
+instead, adapting the UI to the backend per the founder's own rule.
+
+**Reference screens**: `DriverArrivedExtendedScreen` / `PassengerWaitingScreen`
+(Part 3, real) for the overall "arrived" moment framing (icon circle,
+anchored bottom sheet, success-tinted headline) — verify-code block and
+waiting-fee timer both dropped, not adapted.
+
+**Reused conventions**: anchored `RideBottomSheet`, `StatusBanner` (success
+tone), `DriverCard`, same map-with-gradient-overlay treatment as
+`DriverEnRouteScreen`.
+
+**Assumptions**: the customer has no action to take while `ARRIVED` besides
+optionally cancelling (still allowed per `CANCELLABLE_RIDE_STATUSES`) —
+starting the trip is entirely driver-initiated, so there's no "Start Ride"
+button on this screen at all.
+
+**Backend integration status**: fully real — status transition, cancel.
+Nothing faked.

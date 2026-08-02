@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 
-import { BackArrow, BottomSheet, GreenButton, MapCanvas, RideStatusBar } from '../ride-ui';
+import { ActionButton, FareBreakdown, MapCanvas, RideBottomSheet, RideHeader } from '../ride-ui';
 
 import type { CurrentLocationState } from '@/hooks/rides';
 import type { RideType } from '@dripplex/types';
@@ -69,14 +69,9 @@ export function FareEstimateScreen({
     >
       <div className="relative flex-shrink-0" style={{ height: 260 }}>
         <MapCanvas variant="default" />
-        <div className="absolute inset-0">
-          <RideStatusBar />
-          <div className="mt-3 px-5">
-            <BackArrow onClick={onBack} />
-          </div>
-        </div>
+        <RideHeader onBack={onBack} floating />
       </div>
-      <BottomSheet peek title="Fare Estimate">
+      <RideBottomSheet peek title="Fare Estimate">
         <div className="flex-1 overflow-y-auto px-5 pb-5">
           {location.status === 'denied' || location.status === 'unavailable' ? (
             <p
@@ -128,74 +123,53 @@ export function FareEstimateScreen({
               );
             })}
           </div>
-          <div
-            className="mb-5 rounded-2xl p-4"
-            style={{ background: '#112238', border: '1px solid rgba(255,255,255,.08)' }}
-          >
+          <div className="mb-5">
             {estimate.isPending || location.status === 'locating' ? (
-              <p
-                className="text-[13px]"
-                style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.6)' }}
+              <div
+                className="rounded-2xl p-4 text-[13px]"
+                style={{
+                  fontFamily: "'Inter',sans-serif",
+                  color: 'rgba(255,255,255,.6)',
+                  background: '#112238',
+                  border: '1px solid rgba(255,255,255,.08)',
+                }}
               >
                 {location.status === 'locating' ? 'Getting your location…' : 'Calculating fare…'}
-              </p>
+              </div>
             ) : estimate.isError ? (
-              <p
-                className="text-[13px]"
-                style={{ fontFamily: "'Inter',sans-serif", color: '#EF4444' }}
+              <div
+                className="rounded-2xl p-4 text-[13px]"
+                style={{
+                  fontFamily: "'Inter',sans-serif",
+                  color: '#EF4444',
+                  background: '#112238',
+                  border: '1px solid rgba(255,255,255,.08)',
+                }}
               >
                 Couldn&apos;t calculate fare. Try again.
-              </p>
+              </div>
             ) : estimate.data ? (
-              <>
-                {(
-                  [
-                    ['Base fare', estimate.data.baseFare],
-                    ['Distance', estimate.data.distanceFare],
-                    ['Time', estimate.data.timeFare],
-                  ] as const
-                ).map(([labelText, amount]) => (
-                  <div key={labelText} className="mb-2 flex justify-between">
-                    <p
-                      className="text-[13px]"
-                      style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.6)' }}
-                    >
-                      {labelText}
-                    </p>
-                    <p
-                      className="text-[13px] font-medium"
-                      style={{ fontFamily: "'Inter',sans-serif", color: '#fff' }}
-                    >
-                      ₦{amount.toLocaleString()}
-                    </p>
-                  </div>
-                ))}
-                <div className="my-2 h-px" style={{ background: 'rgba(255,255,255,.08)' }} />
-                <div className="flex justify-between">
-                  <p
-                    className="text-[14px] font-bold"
-                    style={{ fontFamily: "'Poppins',sans-serif", color: '#fff' }}
-                  >
-                    Total
-                  </p>
-                  <p
-                    className="text-[18px] font-bold"
-                    style={{ fontFamily: "'Poppins',sans-serif", color: '#47CF72' }}
-                  >
-                    ₦{estimate.data.totalFare.toLocaleString()}
-                  </p>
-                </div>
-              </>
+              <FareBreakdown
+                baseFare={estimate.data.baseFare}
+                distanceFare={estimate.data.distanceFare}
+                timeFare={estimate.data.timeFare}
+                totalFare={estimate.data.totalFare}
+              />
             ) : (
-              <p
-                className="text-[13px]"
-                style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.38)' }}
+              <div
+                className="rounded-2xl p-4 text-[13px]"
+                style={{
+                  fontFamily: "'Inter',sans-serif",
+                  color: 'rgba(255,255,255,.38)',
+                  background: '#112238',
+                  border: '1px solid rgba(255,255,255,.08)',
+                }}
               >
                 Waiting for location…
-              </p>
+              </div>
             )}
           </div>
-          <GreenButton
+          <ActionButton
             label={
               totalFare !== undefined
                 ? `Book ${RIDE_TYPE_LABELS[rideType].label} · ₦${totalFare.toLocaleString()}`
@@ -209,7 +183,7 @@ export function FareEstimateScreen({
             }}
           />
         </div>
-      </BottomSheet>
+      </RideBottomSheet>
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 
-import { BackArrow, RideStatusBar } from '../ride-ui';
+import { RideHeader } from '../ride-ui';
 
 import type { CustomerAddressDto } from '@dripplex/types';
 
@@ -38,17 +38,8 @@ export function DestinationSearchScreen({
       className="absolute inset-0 flex flex-col overflow-hidden"
       style={{ background: '#0A1628' }}
     >
-      <RideStatusBar />
+      <RideHeader onBack={onBack} title="Set Destination" />
       <div className="px-5 pb-4 pt-3">
-        <div className="mb-4 flex items-center gap-3">
-          <BackArrow onClick={onBack} />
-          <p
-            className="text-[17px] font-bold"
-            style={{ fontFamily: "'Poppins',sans-serif", color: '#fff' }}
-          >
-            Set Destination
-          </p>
-        </div>
         <div
           className="flex h-14 items-center gap-3 rounded-2xl px-4"
           style={{ background: '#112238', border: '1px solid rgba(43,172,82,.4)' }}

@@ -1,0 +1,117 @@
+'use client';
+
+import * as React from 'react';
+
+import { DriverCard, ETAChip, MapCanvas, RideBottomSheet, SafetyChip } from '../ride-ui';
+
+import { useRide, useRideTracking } from '@/hooks/rides';
+import { formatDistance, haversineMeters } from '@/lib/geo';
+
+export function RideInProgressScreen({
+  rideId,
+  onViewLiveTracking,
+}: {
+  rideId: string;
+  onViewLiveTracking: () => void;
+}): React.JSX.Element {
+  const ride = useRide(rideId);
+  const tracking = useRideTracking(rideId);
+  const [, forceTick] = React.useState(0);
+
+  React.useEffect(() => {
+    const interval = setInterval(() => {
+      forceTick((n) => n + 1);
+    }, 1000);
+    return () => {
+      clearInterval(interval);
+    };
+  }, []);
+
+  const startedAt = ride.data?.startedAt ? new Date(ride.data.startedAt).getTime() : null;
+  const elapsedSeconds =
+    startedAt !== null ? Math.max(0, Math.floor((Date.now() - startedAt) / 1000)) : null;
+  const elapsedLabel =
+    elapsedSeconds !== null
+      ? `${String(Math.floor(elapsedSeconds / 60))}:${String(elapsedSeconds % 60).padStart(2, '0')}`
+      : '—';
+
+  let distanceRemainingLabel = '—';
+  let progress = 0;
+  if (ride.data) {
+    const totalMeters = haversineMeters(
+      ride.data.pickupLatitude,
+      ride.data.pickupLongitude,
+      ride.data.dropoffLatitude,
+      ride.data.dropoffLongitude,
+    );
+    if (tracking.driverLocation) {
+      const remainingMeters = haversineMeters(
+        tracking.driverLocation.latitude,
+        tracking.driverLocation.longitude,
+        ride.data.dropoffLatitude,
+        ride.data.dropoffLongitude,
+      );
+      distanceRemainingLabel = formatDistance(remainingMeters);
+      progress = totalMeters > 0 ? Math.max(0, Math.min(1, 1 - remainingMeters / totalMeters)) : 0;
+    }
+  }
+
+  return (
+    <div
+      className="absolute inset-0 flex flex-col overflow-hidden"
+      style={{ background: '#060E1C' }}
+    >
+      <button
+        type="button"
+        onClick={onViewLiveTracking}
+        className="relative flex-shrink-0 text-left"
+        style={{ height: 300 }}
+        aria-label="View live tracking"
+      >
+        <MapCanvas variant="inprogress" progress={progress} />
+        <div className="absolute inset-x-0 top-14 flex justify-end px-5">
+          <SafetyChip />
+        </div>
+      </button>
+      <RideBottomSheet peek>
+        <div className="flex-1 overflow-y-auto px-5 pb-6 pt-2">
+          <div className="mb-4 flex gap-2">
+            <ETAChip label="elapsed" value={elapsedLabel} />
+            <ETAChip label="remaining" value={distanceRemainingLabel} />
+            <ETAChip
+              label="fare"
+              value={ride.data ? `₦${ride.data.totalFare.toLocaleString()}` : '—'}
+            />
+          </div>
+          <div className="mb-3">
+            <DriverCard />
+          </div>
+          <div
+            className="flex items-center gap-2 rounded-2xl p-3"
+            style={{ background: '#112238', border: '1px solid rgba(255,255,255,.08)' }}
+          >
+            <div className="flex flex-col items-center gap-1">
+              <div className="h-2 w-2 rounded-full" style={{ background: '#2BAC52' }} />
+              <div className="h-8 w-px" style={{ background: 'rgba(255,255,255,.08)' }} />
+              <div className="h-2 w-2 rounded-full" style={{ background: '#EF4444' }} />
+            </div>
+            <div className="flex-1">
+              <p
+                className="mb-2 text-[12px]"
+                style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.6)' }}
+              >
+                {ride.data?.pickupAddress ?? 'Pickup'}
+              </p>
+              <p
+                className="text-[12px]"
+                style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.6)' }}
+              >
+                {ride.data?.dropoffAddress ?? 'Destination'}
+              </p>
+            </div>
+          </div>
+        </div>
+      </RideBottomSheet>
+    </div>
+  );
+}
