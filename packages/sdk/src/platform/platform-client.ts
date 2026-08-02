@@ -1,6 +1,7 @@
 import type { HttpClient } from '../client/http-client.js';
 import type {
   AddWishlistItemRequest,
+  AdminReferralRedemptionsQuery,
   AdminWalletMutationRequest,
   AnalyticsDailyMetricDto,
   AnalyticsQuery,
@@ -32,6 +33,9 @@ import type {
   RecentSearchDto,
   RedeemPromotionRequest,
   RedeemLoyaltyPointsRequest,
+  ReferralDto,
+  ReferralRedemptionDto,
+  ReferralStatsDto,
   RegisterDeviceTokenRequest,
   ReplyToReviewRequest,
   ReviewDto,
@@ -352,6 +356,34 @@ export class PromotionsClient {
       method: 'POST',
       body,
     });
+  }
+}
+
+export class ReferralsClient {
+  public constructor(private readonly http: HttpClient) {}
+
+  public me(): Promise<ReferralDto> {
+    return this.http.request<ReferralDto>('/customer/referrals/me');
+  }
+
+  public stats(): Promise<ReferralStatsDto> {
+    return this.http.request<ReferralStatsDto>('/customer/referrals/stats');
+  }
+}
+
+export class AdminReferralsClient {
+  public constructor(private readonly http: HttpClient) {}
+
+  public redemptions(
+    query: AdminReferralRedemptionsQuery = {},
+  ): Promise<PaginatedResult<ReferralRedemptionDto>> {
+    return this.http.request<PaginatedResult<ReferralRedemptionDto>>(
+      `/admin/referrals/redemptions${toQuery({
+        status: query.status,
+        page: query.page,
+        pageSize: query.pageSize,
+      })}`,
+    );
   }
 }
 

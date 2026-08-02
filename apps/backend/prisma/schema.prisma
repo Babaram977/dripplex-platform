@@ -220,6 +220,8 @@ model User {
   notifications           Notification[]
   notificationPreferences NotificationPreference[]
   deviceTokens            DeviceToken[]
+  referral                Referral?
+  referralRedemption      ReferralRedemption?
   searchQueryLogs         SearchQueryLog[]
   recentSearches          RecentSearch[]
   reviews                 Review[]                 @relation("ReviewAuthor")
@@ -1227,6 +1229,8 @@ enum NotificationType {
   RIDE_DRIVER_ARRIVED
   RIDE_STARTED
   RIDE_COMPLETED
+  REFERRAL_REDEEMED
+  REFERRAL_REWARDED
 }
 
 enum DevicePlatform {
@@ -1840,6 +1844,47 @@ model WalletLedgerEntry {
   @@index([type])
   @@index([referenceType, referenceId])
   @@map("wallet_ledger_entries")
+}
+
+enum ReferralRedemptionStatus {
+  PENDING
+  REWARDED
+  EXPIRED
+}
+
+/// One row per user who has generated a referral code (lazily created on
+/// first request). The code is what the referrer shares.
+model Referral {
+  id          String               @id @default(uuid()) @db.Uuid
+  userId      String               @unique @map("user_id") @db.Uuid
+  code        String               @unique @db.VarChar(16)
+  createdAt   DateTime             @default(now()) @map("created_at")
+  updatedAt   DateTime             @updatedAt @map("updated_at")
+  user        User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  redemptions ReferralRedemption[]
+
+  @@index([code])
+  @@map("referrals")
+}
+
+/// One row per referred user (a referee can only be referred once — see
+/// the unique constraint on refereeUserId). Reward crediting is deferred
+/// until the referee completes their first ride (see referral-reward
+/// .subscriber.ts) rather than at signup, to reduce free-money fraud.
+model ReferralRedemption {
+  id            String                    @id @default(uuid()) @db.Uuid
+  referralId    String                    @map("referral_id") @db.Uuid
+  refereeUserId String                    @unique @map("referee_user_id") @db.Uuid
+  status        ReferralRedemptionStatus  @default(PENDING)
+  rewardedAt    DateTime?                 @map("rewarded_at")
+  createdAt     DateTime                  @default(now()) @map("created_at")
+  updatedAt     DateTime                  @updatedAt @map("updated_at")
+  referral      Referral                  @relation(fields: [referralId], references: [id], onDelete: Cascade)
+  refereeUser   User                      @relation(fields: [refereeUserId], references: [id], onDelete: Cascade)
+
+  @@index([referralId])
+  @@index([status])
+  @@map("referral_redemptions")
 }
 
 model AnalyticsDailyMetric {

@@ -27,6 +27,7 @@ import { PaymentsModule } from './payments/payments.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { PromotionsModule } from './promotions/promotions.module';
 import { RedisModule } from './redis/redis.module';
+import { ReferralsModule } from './referrals/referrals.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { RidesModule } from './rides/rides.module';
 import { SearchModule } from './search/search.module';
@@ -66,6 +67,7 @@ import { WishlistModule } from './wishlist/wishlist.module';
     PromotionsModule,
     LoyaltyModule,
     WalletModule,
+    ReferralsModule,
     AnalyticsModule,
     NotificationCenterModule,
     SearchModule,

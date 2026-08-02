@@ -37,6 +37,8 @@ export const DOMAIN_EVENTS = {
   RIDE_PAYMENT_SUCCEEDED: 'RidePaymentSucceeded',
   RIDE_PAYMENT_FAILED: 'RidePaymentFailed',
   RIDE_REFUNDED: 'RideRefunded',
+  REFERRAL_REDEEMED: 'ReferralRedeemed',
+  REFERRAL_REWARDED: 'ReferralRewarded',
 } as const;
 
 export type DomainEventName = (typeof DOMAIN_EVENTS)[keyof typeof DOMAIN_EVENTS];

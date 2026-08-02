@@ -179,6 +179,20 @@ export class NotificationCenterSubscriber implements OnModuleInit {
       priority: NotificationPriority.HIGH,
       userKeys: ['customerId', 'userId'],
     },
+    [DOMAIN_EVENTS.REFERRAL_REDEEMED]: {
+      category: NotificationCategory.MARKETING,
+      type: NotificationType.REFERRAL_REDEEMED,
+      title: 'Your referral code was used',
+      body: () => 'Someone signed up using your referral code!',
+      userKeys: ['userId'],
+    },
+    [DOMAIN_EVENTS.REFERRAL_REWARDED]: {
+      category: NotificationCategory.WALLET,
+      type: NotificationType.REFERRAL_REWARDED,
+      title: 'Referral reward credited',
+      body: (payload) => `You earned ₦${this.text(payload, ['amount'], '0')} from a referral.`,
+      userKeys: ['userId'],
+    },
   };
 
   constructor(

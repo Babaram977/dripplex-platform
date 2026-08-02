@@ -24,11 +24,13 @@ export { CustomerRideClient, type ListRidesQuery } from './rides/customer-ride-c
 export {
   AdminCmsClient,
   AdminFraudClient,
+  AdminReferralsClient,
   AnalyticsClient,
   CmsClient,
   LoyaltyClient,
   NotificationsClient,
   PromotionsClient,
+  ReferralsClient,
   ReviewsClient,
   SearchClient,
   WalletClient,

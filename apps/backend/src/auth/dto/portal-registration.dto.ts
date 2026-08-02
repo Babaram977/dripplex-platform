@@ -34,6 +34,16 @@ export class PortalRegistrationDto {
   @Matches(/^\+?[0-9]{7,15}$/, { message: 'phone must be a valid E.164-like number' })
   @Transform(({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value))
   public phone?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(4)
+  @MaxLength(16)
+  @Matches(/^[A-Za-z0-9]+$/, { message: 'referralCode must be alphanumeric' })
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim().toUpperCase() : value,
+  )
+  public referralCode?: string;
 }
 
 export class RiderDriverRegistrationDto {

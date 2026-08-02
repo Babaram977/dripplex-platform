@@ -25,6 +25,7 @@ export function createCustomerSdk(config: Partial<SdkConfig> = {}): CustomerSdk 
     reviews: client.reviews,
     wishlist: client.wishlist,
     promotions: client.promotions,
+    referrals: client.referrals,
     loyalty: client.loyalty,
     wallet: client.wallet,
     analytics: client.analytics,
@@ -48,6 +49,7 @@ export interface CustomerSdk {
   reviews: DripplexClient['reviews'];
   wishlist: DripplexClient['wishlist'];
   promotions: DripplexClient['promotions'];
+  referrals: DripplexClient['referrals'];
   loyalty: DripplexClient['loyalty'];
   wallet: DripplexClient['wallet'];
   analytics: DripplexClient['analytics'];

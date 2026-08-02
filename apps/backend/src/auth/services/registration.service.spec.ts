@@ -12,6 +12,7 @@ import { RegistrationService } from './registration.service';
 import type { OtpService } from './otp.service';
 import type { AuditService } from '../../audit/audit.service';
 import type { AppConfigService } from '../../config/app-config.service';
+import type { ReferralsService } from '../../referrals/referrals.service';
 import type { UsersService } from '../../users/users.service';
 import type { RegistrationRepository } from '../repositories/registration.repository';
 
@@ -150,5 +151,43 @@ describe('RegistrationService', () => {
     await expect(service.registerRider(baseDto, {})).rejects.toBeInstanceOf(
       ValidationDomainException,
     );
+  });
+
+  describe('referral code redemption', () => {
+    const referralsService = {
+      tryRedeemAtRegistration: jest.fn().mockResolvedValue(undefined),
+    } as unknown as jest.Mocked<ReferralsService>;
+
+    const serviceWithReferrals = new RegistrationService(
+      registrationRepository,
+      usersService,
+      otpService,
+      auditService,
+      appConfig,
+      undefined,
+      referralsService,
+    );
+
+    it('redeems a referral code for customer registration when present', async () => {
+      await serviceWithReferrals.registerCustomer({ ...baseDto, referralCode: 'FRIEND01' }, {});
+
+      expect(referralsService.tryRedeemAtRegistration).toHaveBeenCalledWith(
+        registrationResult.userId,
+        'FRIEND01',
+        expect.objectContaining({ userId: registrationResult.userId }),
+      );
+    });
+
+    it('does not attempt redemption when no referral code is given', async () => {
+      await serviceWithReferrals.registerCustomer(baseDto, {});
+
+      expect(referralsService.tryRedeemAtRegistration).not.toHaveBeenCalled();
+    });
+
+    it('does not attempt redemption for non-customer portals', async () => {
+      await serviceWithReferrals.registerMerchant({ ...baseDto, referralCode: 'FRIEND01' }, {});
+
+      expect(referralsService.tryRedeemAtRegistration).not.toHaveBeenCalled();
+    });
   });
 });

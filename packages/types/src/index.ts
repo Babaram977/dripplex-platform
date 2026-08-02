@@ -219,6 +219,7 @@ export { DELIVERY_AUDIT_ACTIONS } from './delivery/index.js';
 
 export type {
   AddWishlistItemRequest,
+  AdminReferralRedemptionsQuery,
   AdminWalletMutationRequest,
   AnalyticsDailyMetricDto,
   AnalyticsQuery,
@@ -271,6 +272,10 @@ export type {
   RedeemLoyaltyPointsRequest,
   RedeemPromotionRequest,
   RecentSearchDto,
+  ReferralDto,
+  ReferralRedemptionDto,
+  ReferralRedemptionStatus,
+  ReferralStatsDto,
   RegisterDeviceTokenRequest,
   ReplyToReviewRequest,
   ReviewAggregateDto,

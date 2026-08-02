@@ -42,6 +42,8 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
   { code: 'customer:wishlist:manage', description: 'Manage own wishlists' },
   { code: 'customer:promotions:use', description: 'Use platform promotions' },
   { code: 'admin:promotions:manage', description: 'Manage platform promotions' },
+  { code: 'customer:referrals:use', description: 'Read own referral code and stats' },
+  { code: 'admin:referrals:manage', description: 'View referral redemptions (admin)' },
   { code: 'admin:cms:manage', description: 'Manage CMS content' },
   { code: 'customer:cms:read', description: 'Read published CMS content' },
   { code: 'admin:fraud:manage', description: 'Manage fraud signals and lists' },

@@ -38,7 +38,9 @@ export type NotificationType =
   | 'RIDE_DRIVER_ASSIGNED'
   | 'RIDE_DRIVER_ARRIVED'
   | 'RIDE_STARTED'
-  | 'RIDE_COMPLETED';
+  | 'RIDE_COMPLETED'
+  | 'REFERRAL_REDEEMED'
+  | 'REFERRAL_REWARDED';
 
 /**
  * Event-name mapping for the client's sound abstraction (DPX-CORE-001
@@ -83,6 +85,8 @@ export const NOTIFICATION_SOUND_EVENTS: Record<NotificationType, NotificationSou
   BACK_IN_STOCK: 'notification',
   PRICE_DROP: 'notification',
   GENERIC: 'notification',
+  REFERRAL_REDEEMED: 'promotion',
+  REFERRAL_REWARDED: 'payment_success',
 };
 
 export function getNotificationSoundEvent(type: NotificationType): NotificationSoundEvent {
@@ -443,6 +447,37 @@ export interface PromotionRedemptionDto {
   orderId: string | null;
   amountSaved: number;
   createdAt: string;
+}
+
+export type ReferralRedemptionStatus = 'PENDING' | 'REWARDED' | 'EXPIRED';
+
+export interface ReferralDto {
+  id: string;
+  userId: string;
+  code: string;
+  createdAt: string;
+}
+
+export interface ReferralStatsDto {
+  code: string;
+  totalRedemptions: number;
+  pendingRedemptions: number;
+  rewardedRedemptions: number;
+}
+
+export interface ReferralRedemptionDto {
+  id: string;
+  referralId: string;
+  refereeUserId: string;
+  status: ReferralRedemptionStatus;
+  rewardedAt: string | null;
+  createdAt: string;
+}
+
+export interface AdminReferralRedemptionsQuery {
+  status?: ReferralRedemptionStatus;
+  page?: number;
+  pageSize?: number;
 }
 
 export type LoyaltyTier = 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM' | 'VIP';

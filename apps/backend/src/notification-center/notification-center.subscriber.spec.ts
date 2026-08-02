@@ -117,6 +117,40 @@ describe('NotificationCenterSubscriber', () => {
     );
   });
 
+  it('maps referral redeemed events to a MARKETING-category notification for the referrer', async () => {
+    await subscriber.handle({
+      name: DOMAIN_EVENTS.REFERRAL_REDEEMED,
+      payload: { userId: 'referrer-1', refereeUserId: 'referee-1', code: 'FRIEND01' },
+      occurredAt: new Date().toISOString(),
+    });
+
+    expect(notificationCenter.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'referrer-1',
+        category: NotificationCategory.MARKETING,
+        type: NotificationType.REFERRAL_REDEEMED,
+        payload: expect.objectContaining({ version: 1, refereeUserId: 'referee-1' }),
+      }),
+    );
+  });
+
+  it('maps referral rewarded events to a WALLET-category notification', async () => {
+    await subscriber.handle({
+      name: DOMAIN_EVENTS.REFERRAL_REWARDED,
+      payload: { userId: 'user-1', amount: '500', role: 'referee' },
+      occurredAt: new Date().toISOString(),
+    });
+
+    expect(notificationCenter.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'user-1',
+        category: NotificationCategory.WALLET,
+        type: NotificationType.REFERRAL_REWARDED,
+        body: 'You earned ₦500 from a referral.',
+      }),
+    );
+  });
+
   it('skips mapped events without a target user id', async () => {
     await subscriber.handle({
       name: DOMAIN_EVENTS.PAYMENT_SUCCEEDED,

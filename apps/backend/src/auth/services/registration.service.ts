@@ -11,6 +11,7 @@ import {
 import { AppConfigService } from '../../config/app-config.service';
 import { DomainEventBus } from '../../events/domain-event-bus';
 import { DOMAIN_EVENTS } from '../../events/domain-events';
+import { ReferralsService } from '../../referrals/referrals.service';
 import { UsersService } from '../../users/users.service';
 import {
   REGISTRATION_REPOSITORY,
@@ -28,6 +29,7 @@ export interface PortalRegistrationDto {
   firstName: string;
   lastName: string;
   phone?: string;
+  referralCode?: string;
 }
 
 interface PortalConfig {
@@ -80,6 +82,8 @@ export class RegistrationService {
     private readonly appConfig: AppConfigService,
     @Optional()
     private readonly eventBus?: DomainEventBus,
+    @Optional()
+    private readonly referralsService?: ReferralsService,
   ) {}
 
   public async registerCustomer(
@@ -189,6 +193,13 @@ export class RegistrationService {
       },
       { actorUserId: result.userId },
     );
+
+    if (portal === 'customer' && dto.referralCode) {
+      await this.referralsService?.tryRedeemAtRegistration(result.userId, dto.referralCode, {
+        ...context,
+        userId: result.userId,
+      });
+    }
 
     return {
       userId: result.userId,

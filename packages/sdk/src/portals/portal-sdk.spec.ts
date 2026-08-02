@@ -24,6 +24,7 @@ describe('portal SDK barrels', () => {
         'payments',
         'products',
         'promotions',
+        'referrals',
         'reviews',
         'rides',
         'search',
