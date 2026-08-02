@@ -19,6 +19,7 @@ import { RidePaymentService } from './ride-payment.service';
 import { RideProblemReportService } from './ride-problem-report.service';
 import { RideRatingService } from './ride-rating.service';
 import { RideReceiptService } from './ride-receipt.service';
+import { RideTrackingReadService } from './ride-tracking-read.service';
 import { RideTripService } from './ride-trip.service';
 import { RideGateway } from './ride.gateway';
 import { RidesService } from './rides.service';
@@ -44,6 +45,7 @@ import { RidesService } from './rides.service';
     RideRatingService,
     RideReceiptService,
     RideProblemReportService,
+    RideTrackingReadService,
     RideGateway,
     { provide: RIDE_EVENTS_PUBLISHER, useExisting: RideGateway },
   ],
@@ -56,6 +58,7 @@ import { RidesService } from './rides.service';
     RideRatingService,
     RideReceiptService,
     RideProblemReportService,
+    RideTrackingReadService,
   ],
 })
 export class RidesModule {}

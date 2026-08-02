@@ -14,6 +14,7 @@ import {
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 import { ListRidesQueryDto } from '../dto/list-rides-query.dto';
+import { NearbyDriversQueryDto } from '../dto/nearby-drivers-query.dto';
 import { CancelRideDto, EstimateRideFareDto, RequestRideDto } from '../dto/request-ride.dto';
 import { InitiateRidePaymentDto, VerifyRidePaymentDto } from '../dto/ride-payment.dto';
 import { ReportRideProblemDto } from '../dto/ride-problem-report.dto';
@@ -23,6 +24,7 @@ import { RidePaymentService } from '../ride-payment.service';
 import { RideProblemReportService } from '../ride-problem-report.service';
 import { RideRatingService } from '../ride-rating.service';
 import { RideReceiptService } from '../ride-receipt.service';
+import { RideTrackingReadService } from '../ride-tracking-read.service';
 import { RIDE_PERMISSIONS } from '../ride.constants';
 import { RidesService } from '../rides.service';
 
@@ -31,10 +33,12 @@ import type { ApiSuccessResponse } from '../../common/dto/api-response.dto';
 import type {
   EstimateRideFareResponse,
   InitiateRidePaymentResponse,
+  NearbyDriverDto,
   RideDto,
   RideProblemReportDto,
   RideRatingDto,
   RideReceiptDto,
+  RideTrackingPointDto,
 } from '@dripplex/types';
 import type { Request } from 'express';
 
@@ -47,6 +51,7 @@ export class CustomerRidesController {
     private readonly ratingService: RideRatingService,
     private readonly receiptService: RideReceiptService,
     private readonly problemReportService: RideProblemReportService,
+    private readonly trackingReadService: RideTrackingReadService,
   ) {}
 
   @Post('estimate')
@@ -85,6 +90,16 @@ export class CustomerRidesController {
     }>
   > {
     const data = await this.ridesService.listOwnRides(user.id, query);
+    return { success: true, data };
+  }
+
+  /** Registered before `:id` — otherwise "nearby-drivers" would be captured
+   * as a ride id by that route. */
+  @Get('nearby-drivers')
+  public async getNearbyDrivers(
+    @Query() query: NearbyDriversQueryDto,
+  ): Promise<ApiSuccessResponse<NearbyDriverDto[]>> {
+    const data = await this.trackingReadService.getNearbyDrivers(query);
     return { success: true, data };
   }
 
@@ -141,6 +156,15 @@ export class CustomerRidesController {
     const data = await this.paymentService.verifyPayment(user.id, id, dto.reference, {
       userId: user.id,
     });
+    return { success: true, data };
+  }
+
+  @Get(':id/tracking')
+  public async getTrackingHistory(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ApiSuccessResponse<RideTrackingPointDto[]>> {
+    const data = await this.trackingReadService.getTrackingHistory(user.id, id);
     return { success: true, data };
   }
 

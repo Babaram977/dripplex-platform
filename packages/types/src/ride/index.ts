@@ -231,6 +231,25 @@ export interface RideOfferPreviewDto {
   paymentMethod: RidePaymentMethod | null;
 }
 
+/** Anonymized driver position shown on the pre-booking map — no driverId,
+ * coordinates rounded to ~11m for privacy (see RideTrackingReadService). */
+export interface NearbyDriverDto {
+  latitude: number;
+  longitude: number;
+  vehicleType: RideType;
+}
+
+/** One breadcrumb from the RideTracking trail, written by RideGateway's
+ * `driver:location` handler while a ride is active. Used to seed a map's
+ * route polyline on load/reconnect and to replay a completed trip. */
+export interface RideTrackingPointDto {
+  latitude: number;
+  longitude: number;
+  heading: number | null;
+  speed: number | null;
+  at: string;
+}
+
 export const RIDE_AUDIT_ACTIONS = {
   REQUESTED: 'ride.requested',
   CANCELLED: 'ride.cancelled',

@@ -4,6 +4,7 @@ import type {
   EstimateRideFareResponse,
   InitiateRidePaymentRequest,
   InitiateRidePaymentResponse,
+  NearbyDriverDto,
   PaginatedResult,
   RateRideRequest,
   ReportRideProblemRequest,
@@ -13,6 +14,8 @@ import type {
   RideRatingDto,
   RideReceiptDto,
   RideStatus,
+  RideTrackingPointDto,
+  RideType,
   TipDriverRequest,
 } from '@dripplex/types';
 
@@ -32,6 +35,13 @@ export interface ListRidesQuery {
   page?: number;
   limit?: number;
   status?: RideStatus;
+}
+
+export interface NearbyDriversQuery {
+  latitude: number;
+  longitude: number;
+  rideType: RideType;
+  radiusMeters?: number;
 }
 
 /**
@@ -66,6 +76,25 @@ export class CustomerRideClient {
 
   public getRide(rideId: string): Promise<RideDto> {
     return this.http.request<RideDto>(`/customer/rides/${rideId}`, {
+      method: 'GET',
+      auth: true,
+    });
+  }
+
+  public getNearbyDrivers(query: NearbyDriversQuery): Promise<NearbyDriverDto[]> {
+    return this.http.request<NearbyDriverDto[]>(
+      `/customer/rides/nearby-drivers${toQuery({
+        latitude: query.latitude,
+        longitude: query.longitude,
+        rideType: query.rideType,
+        radiusMeters: query.radiusMeters,
+      })}`,
+      { method: 'GET', auth: true },
+    );
+  }
+
+  public getTrackingHistory(rideId: string): Promise<RideTrackingPointDto[]> {
+    return this.http.request<RideTrackingPointDto[]>(`/customer/rides/${rideId}/tracking`, {
       method: 'GET',
       auth: true,
     });
