@@ -18,8 +18,7 @@ message) rather than faking data.
 Remaining, not yet needed: `RideHomeExtendedScreen`, `PickupConfirmScreen`
 (`RideHomeScreen` and the destination-search flow already cover their
 apparent purpose using real saved-places data — generate only if a later
-slice screen genuinely needs them), `OPayPaymentScreen`, `CashPaymentScreen`
-(Slice 3), `RideDetailScreen` (Slice 4).
+slice screen genuinely needs them), `RideDetailScreen` (Slice 4).
 
 ## Template for each entry
 
@@ -85,3 +84,55 @@ button on this screen at all.
 
 **Backend integration status**: fully real — status transition, cancel.
 Nothing faked.
+
+## `GatewayPaymentScreen` (Slice 3)
+
+**Why generated**: the received `OPayPaymentScreen` was a single-provider
+mock. The real backend's `GATEWAY_METHODS` (`ride-payment.service.ts`)
+treats Paystack, Flutterwave, and OPay identically — one
+`initiatePayment`/`verifyPayment` contract, a real redirect to
+`authorizationUrl`, not an embedded per-provider SDK session (the mock's
+open gap question, "does OPay return a session_token for embedded checkout
+or is it server-side?", resolved: it's a redirect, server-side, and the
+same for all three providers). One screen covers all three rather than
+building `OPayPaymentScreen`/`PaystackPaymentScreen`/
+`FlutterwavePaymentScreen` as three near-identical copies.
+
+**Reference screens**: `PaymentScreen` (real, Part 2) for the overall
+payment-flow visual register; `FindingDriverScreen`'s waiting-state pattern
+for the "confirming…" state.
+
+**Reused conventions**: `RideHeader`, `StatusBanner`, same background/text
+colors as every other screen.
+
+**Assumptions**: none beyond what `ride-payment.service.ts` actually
+returns (`authorizationUrl`, then `verifyPayment` on return).
+
+**Backend integration status**: fully real — `POST /customer/rides/:id/pay`
+and `POST /customer/rides/:id/pay/verify`, no invented endpoints.
+
+## `CashPaymentScreen` (Slice 3)
+
+**Why generated**: no real `CashPaymentScreen` was received.
+
+**Reference screens**: `PaymentScreen` (real) for background/typography;
+`FindingDriverScreen`'s honest-waiting-state pattern, reused here for the
+same underlying reason (waiting on a driver-side action, not a customer
+one).
+
+**Reused conventions**: `RideHeader`, `StatusBanner`, `#0A1628` background,
+same icon-circle treatment as `TripCompletedScreen`'s success icon.
+
+**Assumptions**: none — this screen exists specifically _because_ of a
+verified backend behavior, not despite missing information. Confirmed in
+`ride-payment.service.ts`: selecting Cash (`selectCash()`) only records
+`paymentMethod: CASH`; it does not mark the ride paid. Only the driver's
+`confirmCash()` (never customer-reachable) sets `paymentStatus: PAID`. A
+screen that showed "Cash confirmed!" the moment the customer tapped
+Confirm would be fabricating a backend transition that hasn't happened —
+this screen instead shows a real waiting state, driven by the ride's
+actual `paymentStatus` field (WS `ride:payment` push + poll fallback).
+
+**Backend integration status**: fully real. The one thing it does _not_ do
+is let the customer mark their own cash payment paid — because the real
+backend doesn't let them either.

@@ -4,18 +4,21 @@ import * as React from 'react';
 
 import { DriverCard, ETAChip, MapCanvas, RideBottomSheet, SafetyChip } from '../ride-ui';
 
-import { useRide, useRideTracking } from '@/hooks/rides';
+import { useRide, useRideStatusTransition, useRideTracking } from '@/hooks/rides';
 import { formatDistance, haversineMeters } from '@/lib/geo';
 
 export function RideInProgressScreen({
   rideId,
   onViewLiveTracking,
+  onCompleted,
 }: {
   rideId: string;
   onViewLiveTracking: () => void;
+  onCompleted: () => void;
 }): React.JSX.Element {
   const ride = useRide(rideId);
   const tracking = useRideTracking(rideId);
+  useRideStatusTransition(rideId, ['COMPLETED'], onCompleted);
   const [, forceTick] = React.useState(0);
 
   React.useEffect(() => {
