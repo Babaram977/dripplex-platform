@@ -68,3 +68,13 @@ export function useDeleteSavedPlace(): UseMutationResult<undefined, Error, strin
     },
   });
 }
+
+export function useSetDefaultSavedPlace(): UseMutationResult<CustomerAddressDto, Error, string> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => sdk.addresses.setDefault(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: rideQueryKeys.addresses });
+    },
+  });
+}

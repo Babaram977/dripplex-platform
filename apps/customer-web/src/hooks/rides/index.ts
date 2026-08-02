@@ -15,4 +15,5 @@ export {
   useCreateSavedPlace,
   useUpdateSavedPlace,
   useDeleteSavedPlace,
+  useSetDefaultSavedPlace,
 } from './use-saved-places';

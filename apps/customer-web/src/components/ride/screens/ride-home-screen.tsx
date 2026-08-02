@@ -12,9 +12,13 @@ import { useSavedPlaces } from '@/hooks/rides';
 export function RideHomeScreen({
   onSearch,
   onSelectPlace,
+  onHistory,
+  onSavedPlaces,
 }: {
   onSearch: () => void;
   onSelectPlace: (place: CustomerAddressDto) => void;
+  onHistory: () => void;
+  onSavedPlaces: () => void;
 }): React.JSX.Element {
   const { user } = useAuth();
   const savedPlaces = useSavedPlaces();
@@ -38,6 +42,31 @@ export function RideHomeScreen({
           style={{ marginTop: 16 }}
         >
           <SafetyChip />
+          <button
+            type="button"
+            onClick={onHistory}
+            aria-label="Ride history"
+            className="flex h-10 w-10 items-center justify-center rounded-2xl"
+            style={{
+              background: 'rgba(6,14,28,.85)',
+              border: '1px solid rgba(255,255,255,.08)',
+              backdropFilter: 'blur(12px)',
+            }}
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="rgba(255,255,255,.7)"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 6v6l4 2" />
+            </svg>
+          </button>
         </div>
       </div>
       <div
@@ -131,12 +160,22 @@ export function RideHomeScreen({
               ))}
             </div>
           ) : null}
-          <p
-            className="mb-3 text-[13px] font-semibold"
-            style={{ fontFamily: "'Poppins',sans-serif", color: 'rgba(255,255,255,.38)' }}
-          >
-            SAVED PLACES
-          </p>
+          <div className="mb-3 flex items-center justify-between">
+            <p
+              className="text-[13px] font-semibold"
+              style={{ fontFamily: "'Poppins',sans-serif", color: 'rgba(255,255,255,.38)' }}
+            >
+              SAVED PLACES
+            </p>
+            <button
+              type="button"
+              onClick={onSavedPlaces}
+              className="text-[12px] font-semibold"
+              style={{ color: '#47CF72', fontFamily: "'Poppins',sans-serif" }}
+            >
+              Manage
+            </button>
+          </div>
           {(savedPlaces.data?.items ?? []).length === 0 ? (
             <p
               className="text-[13px]"

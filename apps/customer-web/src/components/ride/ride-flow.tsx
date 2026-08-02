@@ -16,8 +16,10 @@ import { LiveTrackingScreen } from './screens/live-tracking-screen';
 import { PaymentScreen } from './screens/payment-screen';
 import { RateDriverScreen } from './screens/rate-driver-screen';
 import { ReportTripScreen } from './screens/report-trip-screen';
+import { RideHistoryScreen } from './screens/ride-history-screen';
 import { RideHomeScreen } from './screens/ride-home-screen';
 import { RideInProgressScreen } from './screens/ride-in-progress-screen';
+import { SavedPlacesScreen } from './screens/saved-places-screen';
 import { TipDriverScreen } from './screens/tip-driver-screen';
 import { TripCompletedScreen } from './screens/trip-completed-screen';
 import { TripReceiptScreen } from './screens/trip-receipt-screen';
@@ -54,8 +56,10 @@ type RideFlowScreen =
   | { name: 'paySuccess'; rideId: string }
   | { name: 'rate'; rideId: string }
   | { name: 'tip'; rideId: string }
-  | { name: 'receipt'; rideId: string }
-  | { name: 'report'; rideId: string };
+  | { name: 'receipt'; rideId: string; returnTo: 'home' | 'history' }
+  | { name: 'report'; rideId: string }
+  | { name: 'history' }
+  | { name: 'savedPlaces' };
 
 interface SelectedDestination {
   label: string;
@@ -106,8 +110,27 @@ export function RideFlow(): React.JSX.Element {
           onSelectPlace={(place) => {
             setScreen({ name: 'fare', destination: toDestination(place) });
           }}
+          onHistory={() => {
+            setScreen({ name: 'history' });
+          }}
+          onSavedPlaces={() => {
+            setScreen({ name: 'savedPlaces' });
+          }}
         />
       );
+
+    case 'history':
+      return (
+        <RideHistoryScreen
+          onBack={goHome}
+          onDetail={(rideId) => {
+            setScreen({ name: 'receipt', rideId, returnTo: 'history' });
+          }}
+        />
+      );
+
+    case 'savedPlaces':
+      return <SavedPlacesScreen onBack={goHome} />;
 
     case 'search':
       return (
@@ -301,7 +324,7 @@ export function RideFlow(): React.JSX.Element {
         <WalletPaySuccessScreen
           rideId={screen.rideId}
           onReceipt={() => {
-            setScreen({ name: 'receipt', rideId: screen.rideId });
+            setScreen({ name: 'receipt', rideId: screen.rideId, returnTo: 'home' });
           }}
           onDone={() => {
             setScreen({ name: 'rate', rideId: screen.rideId });
@@ -329,7 +352,13 @@ export function RideFlow(): React.JSX.Element {
       return (
         <TripReceiptScreen
           rideId={screen.rideId}
-          onBack={goHome}
+          onBack={
+            screen.returnTo === 'history'
+              ? () => {
+                  setScreen({ name: 'history' });
+                }
+              : goHome
+          }
           onReport={() => {
             setScreen({ name: 'report', rideId: screen.rideId });
           }}

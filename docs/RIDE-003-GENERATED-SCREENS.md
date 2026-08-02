@@ -18,7 +18,13 @@ message) rather than faking data.
 Remaining, not yet needed: `RideHomeExtendedScreen`, `PickupConfirmScreen`
 (`RideHomeScreen` and the destination-search flow already cover their
 apparent purpose using real saved-places data — generate only if a later
-slice screen genuinely needs them), `RideDetailScreen` (Slice 4).
+slice screen genuinely needs them). `RideDetailScreen` (listed as a Slice 4
+candidate) turned out unnecessary too — `RideHistoryScreen`'s `onDetail`
+reuses the already-built `TripReceiptScreen` (Slice 3) instead, since a
+completed ride's receipt endpoint already returns everything a detail view
+would show; building a second, near-duplicate detail screen would have
+violated the "compose from existing primitives/screens, don't invent a new
+one" rule for no real benefit.
 
 ## Template for each entry
 
@@ -136,3 +142,38 @@ actual `paymentStatus` field (WS `ride:payment` push + poll fallback).
 **Backend integration status**: fully real. The one thing it does _not_ do
 is let the customer mark their own cash payment paid — because the real
 backend doesn't let them either.
+
+## `PlaceForm` (add/edit place, Slice 4)
+
+**Why generated**: the real `SavedPlacesScreen`'s `onAdd` is only a
+callback — no destination screen was received for it, and there's no real
+form for editing an existing place either (the mock's "Edit" button had no
+target). Both are genuinely needed: `CreateAddressDto`/`UpdateAddressDto`
+have real required fields (`recipientName`, `phone`, `addressLine1`,
+`city`, `state`, `country`, `latitude`, `longitude`) that a list screen
+alone can't collect.
+
+**Reference screens**: `DestinationSearchScreen` (real, Part 1) for the
+`h-14`/`h-12` rounded-2xl `#112238` input-field visual pattern; the
+segmented-tab pattern already established in `RideHistoryScreen` for the
+HOME/WORK/OTHER label picker; `TipDriverScreen`'s error-text pattern for
+mutation failures.
+
+**Reused conventions**: `RideHeader`, `ActionButton`, `#0A1628` background,
+Poppins/Inter pairing, `rgba(34,197,94,.06/.15)` selection-tint info box
+(same token documented in DDS-002 §1 for "this option is selected"
+surfaces). No new hex/radius/shadow/spacing value introduced.
+
+**Assumptions**: coordinates for a _new_ place come from the device's real
+GPS (`useCurrentLocation`), not typed-address geocoding — confirmed no
+geocoding/autocomplete endpoint exists anywhere in the backend (same gap
+`DestinationSearchScreen` already documents). This means "Add a place" only
+works for the device's current location, which is disclosed to the user in
+an inline note rather than silently limiting the feature. Editing an
+existing place reuses its stored `latitude`/`longitude` unchanged, since
+`UpdateAddressDto` doesn't require them.
+
+**Backend integration status**: fully real —
+`POST /customer/addresses`, `PATCH /customer/addresses/:id`,
+`DELETE /customer/addresses/:id`, `PATCH /customer/addresses/:id/default`,
+all pre-existing endpoints (not Ride-specific, not new).
