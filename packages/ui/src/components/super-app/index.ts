@@ -46,3 +46,17 @@ export {
 } from './AIRecommendationCard';
 export { SuperAppRecentlyViewedCard, type SuperAppRecentlyViewed } from './RecentlyViewedCard';
 export { SuperAppEmptyState } from './EmptyState';
+
+// Store module
+export { SuperAppStoreHeader, type SuperAppStoreMerchant } from './StoreHeader';
+export { SuperAppStoreSearchBar } from './StoreSearchBar';
+export { SuperAppTextChips, type SuperAppTextChip } from './TextChips';
+export { SuperAppStoreProductCard, type SuperAppStoreProduct } from './StoreProductCard';
+export { SuperAppProductGrid } from './ProductGrid';
+export {
+  SuperAppReviewsSection,
+  type SuperAppReview,
+  type SuperAppRatingBreakdown,
+} from './ReviewsSection';
+export { SuperAppAccordionCard, type SuperAppAccordionItem } from './AccordionCard';
+export { SuperAppInfoList, type SuperAppInfoRow } from './InfoList';

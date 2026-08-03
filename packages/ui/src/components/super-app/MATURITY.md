@@ -63,16 +63,15 @@ byte-for-byte unchanged (see `docs/reference/figma-super-app-source/homeScreen.t
 walkthrough, 2026-08-03). Still Locked for Home's own usage; the new
 defaults are what's open for a different module's own future reuse.
 
-## Marketplace module — entry screen Verified (2026-08-03)
+## Marketplace module — entry screen Verified, founder-confirmed (2026-08-03)
 
 Ported from `docs/reference/figma-super-app-source/marketplaceScreen.tsx`
 (`MarketplaceScreen`, the module's home/entry screen only). Typecheck/lint
 clean; Playwright walkthrough (top, mid-scroll, lower, bottom, AI sheet)
-shows zero console errors and matches the source. Not yet Locked — pending
-founder confirmation, per the same per-module gate Home went through.
-Store, Product Detail, Cart, Checkout, and Tracking are separate source
-screens (`storeScreen.tsx`, `productDetailScreen.tsx`, `cartScreen.tsx`,
-`checkoutScreen.tsx`, `trackingScreen.tsx`) not yet ported.
+shows zero console errors and matches the source. Founder reviewed the
+screenshots and confirmed Verified status; not yet Locked (Locking waits
+until the full Marketplace flow — Store, Product Detail, Cart, Checkout,
+Tracking — is complete and verified, per founder direction).
 
 | Component                                                         | Status                                                                                                                            |
 | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
@@ -89,3 +88,28 @@ screens (`storeScreen.tsx`, `productDetailScreen.tsx`, `cartScreen.tsx`,
 | `SuperAppAIRecommendationCard`                                    | Verified                                                                                                                          |
 | `SuperAppRecentlyViewedCard`                                      | Verified                                                                                                                          |
 | `SuperAppEmptyState`                                              | Verified (ported but not wired into the default screen render — matches the source, which defines it but never renders it either) |
+
+## Marketplace module — Store screen Verified (2026-08-03)
+
+Ported from `docs/reference/figma-super-app-source/storeScreen.tsx`
+(`StoreScreen`, second of six Marketplace-module screens). Typecheck/lint
+clean; Playwright walkthrough (top, product grid, reviews, policies/info,
+and an interactive Add-to-Cart round trip confirming the header's cart
+badge updates) shows zero console errors and matches the source. Not yet
+Locked — pending founder confirmation, then remains Implemented for
+Product Detail, Cart, Checkout, and Tracking until each is itself ported
+and verified.
+
+| Component                  | Status   |
+| -------------------------- | -------- |
+| `SuperAppStoreHeader`      | Verified |
+| `SuperAppStoreSearchBar`   | Verified |
+| `SuperAppTextChips`        | Verified |
+| `SuperAppStoreProductCard` | Verified |
+| `SuperAppProductGrid`      | Verified |
+| `SuperAppReviewsSection`   | Verified |
+| `SuperAppAccordionCard`    | Verified |
+| `SuperAppInfoList`         | Verified |
+
+Product Detail, Cart, Checkout, and Tracking screens: not yet started —
+these remain unwritten, not merely "Implemented."
