@@ -1,0 +1,1086 @@
+import React, { useState } from 'react';
+import { GLOBAL_STYLES, NAVY_BASE, COUNTRIES } from './shared';
+import {
+  SplashScreen,
+  WelcomeScreen,
+  RegisterScreen,
+  OTPScreen,
+  ProfileSetupScreen,
+  PermissionsScreen,
+  BiometricScreen,
+  ReturningLoginScreen,
+  RecoveryScreen,
+  SignInScreen,
+} from './screensA';
+import {
+  TwoFactorScreen,
+  TrustedDevicesScreen,
+  SecurityActivityScreen,
+  SecurityCenterScreen,
+  SessionManagementScreen,
+  PrivacyControlsScreen,
+  IdentityVerificationScreen,
+  AccountManagementScreen,
+} from './screensB';
+import {
+  ConsentScreen,
+  NotificationPrefsScreen,
+  LanguageRegionScreen,
+  AccessibilityScreen,
+  WelcomeDrippleXScreen,
+  LinkedAccountsScreen,
+  VerificationStatusScreen,
+  EmergencyProtectionScreen,
+  ActivityDashboardScreen,
+  ConnectedServicesScreen,
+  TrustCenterScreen,
+} from './screensC';
+import {
+  PinSetupScreen,
+  ChangePinScreen,
+  EmailVerificationScreen,
+  ChangePhoneScreen,
+  UsernameManagementScreen,
+  LoginApprovalsScreen,
+  RecoveryCodesScreen,
+  SecurityQuestionsScreen,
+  AccountTransferScreen,
+  AccountSuspensionScreen,
+  AuthSummaryScreen,
+} from './screensD';
+// Feature modules — new screens import via src/features/<MODULE>/index.ts
+import { HomeScreen } from '../features/HOME';
+import { MarketplaceScreen } from '../features/MARKETPLACE';
+import { StoreScreen } from '../features/STORE';
+import { ProductDetailScreen } from '../features/PRODUCT';
+import { CartScreen } from '../features/CART';
+import { CheckoutScreen } from '../features/CHECKOUT';
+import { TrackingScreen } from '../features/ORDERS';
+import {
+  RideHomeScreen,
+  DestinationSearchScreen,
+  PickupConfirmScreen,
+  FareEstimateScreen,
+  FindingDriverScreen,
+  DriverAssignedScreen,
+  DriverArrivedScreen,
+  RideInProgressScreen,
+  TripCompletedScreen,
+  RateDriverScreen,
+  RideHistoryScreen,
+  RideDetailScreen,
+  DriverProfileSheet,
+  PaymentScreen,
+  OPayPaymentScreen,
+  CashPaymentScreen,
+  TipDriverScreen,
+  ReportTripScreen,
+  SavedPlacesScreen,
+  ScheduleRideScreen,
+  PromoCodeScreen,
+  ReferralScreen,
+  EmergencySOSScreen,
+  ShareTripScreen,
+  TripReceiptScreen,
+  RideHomeExtendedScreen,
+  LiveTrackingScreen,
+  DriverEnRouteScreen,
+  PassengerWaitingScreen,
+  DriverArrivedExtendedScreen,
+  WalletPaySuccessScreen,
+} from '../features/RIDE';
+import {
+  DriverSplashScreen,
+  DriverLoginScreen,
+  DriverOTPScreen,
+  DriverKYCStatusScreen,
+  DriverUploadDocsScreen,
+  DriverVehicleRegScreen,
+  DriverDashboardScreen,
+  DriverIncomingRequestScreen,
+  DriverNavToPickupScreen,
+  DriverPassengerVerifyScreen,
+  DriverTripInProgressScreen,
+  DriverTripCompletedScreen,
+  DriverSettingsScreen,
+} from '../features/DRIVER';
+import {
+  WalletHomeScreen,
+  TransactionHistoryScreen,
+  TopUpScreen,
+  WithdrawScreen,
+  TransferScreen,
+  PaymentMethodsScreen,
+  RewardsScreen,
+  WalletStatementScreen,
+  WalletSecurityScreen,
+  WalletSettingsScreen,
+} from '../features/WALLET';
+import {
+  AdminDashboardScreen,
+  AdminLiveMapScreen,
+  AdminTripsScreen,
+  AdminDriversScreen,
+  AdminKYCScreen,
+  AdminVehiclesScreen,
+  AdminCustomersScreen,
+  AdminPricingScreen,
+  AdminIncidentsScreen,
+  AdminSupportScreen,
+  AdminAnalyticsScreen,
+  AdminReportsScreen,
+  AdminSettingsScreen,
+  AdminAuditScreen,
+  AdminProfileScreen,
+} from '../features/ADMIN';
+
+// DESKTOP FRAME — for admin operations console
+// ═══════════════════════════════════════════════════════════════════════════
+function DesktopFrame({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="relative overflow-hidden"
+      style={{
+        width: 1100,
+        height: 700,
+        borderRadius: 16,
+        boxShadow: `0 0 0 1.5px rgba(255,255,255,.09),0 0 0 10px #07080F,0 0 0 11.5px rgba(255,255,255,.05),0 60px 140px rgba(0,0,0,.85),0 0 120px rgba(43,172,82,.07)`,
+      }}
+    >
+      {/* macOS-style window chrome */}
+      <div
+        className="flex items-center gap-2 px-4"
+        style={{
+          height: 36,
+          background: '#040A14',
+          borderBottom: '1px solid rgba(255,255,255,.06)',
+        }}
+      >
+        <div className="h-3 w-3 rounded-full" style={{ background: '#EF4444' }} />
+        <div className="h-3 w-3 rounded-full" style={{ background: '#F59E0B' }} />
+        <div className="h-3 w-3 rounded-full" style={{ background: '#10B981' }} />
+        <div className="flex flex-1 justify-center">
+          <div
+            className="flex items-center gap-1.5 rounded px-3"
+            style={{ background: 'rgba(255,255,255,.04)', height: 20 }}
+          >
+            <span style={{ fontSize: 9, color: 'rgba(255,255,255,.3)' }}>🔒</span>
+            <span
+              style={{
+                fontFamily: "'Inter',sans-serif",
+                fontSize: 9,
+                color: 'rgba(255,255,255,.3)',
+              }}
+            >
+              console.dripplexapp.com
+            </span>
+          </div>
+        </div>
+      </div>
+      <div style={{ height: 664, overflow: 'hidden' }}>{children}</div>
+    </div>
+  );
+}
+
+// PHONE FRAME
+// ═══════════════════════════════════════════════════════════════════════════
+function PhoneFrame({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="relative overflow-hidden"
+      style={{
+        width: 390,
+        height: 844,
+        borderRadius: 52,
+        background: NAVY_BASE,
+        boxShadow: `0 0 0 1.5px rgba(255,255,255,.09),0 0 0 12px #07080F,0 0 0 13.5px rgba(255,255,255,.055),0 60px 140px rgba(0,0,0,.85),0 0 120px rgba(43,172,82,.07)`,
+        maxHeight: '90dvh',
+      }}
+    >
+      <div
+        className="absolute left-1/2 top-3.5 z-50 -translate-x-1/2 rounded-full"
+        style={{
+          width: 120,
+          height: 36,
+          background: '#000',
+          boxShadow: '0 0 0 1px rgba(255,255,255,.05)',
+        }}
+      />
+      {children}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// APP ROOT
+// ═══════════════════════════════════════════════════════════════════════════
+type Screen =
+  | 'splash'
+  | 'welcome'
+  | 'register'
+  | 'otp'
+  | 'profile'
+  | 'permissions'
+  | 'biometric'
+  | 'returning'
+  | 'recovery'
+  | 'signin'
+  | 'twofa'
+  | 'devices'
+  | 'activity'
+  | 'security'
+  | 'sessions'
+  | 'privacy'
+  | 'kyc'
+  | 'account'
+  | 'consent'
+  | 'notifprefs'
+  | 'langregion'
+  | 'accessibility'
+  | 'onboarddone'
+  | 'linked'
+  | 'verifstatus'
+  | 'emergency'
+  | 'activitydash'
+  | 'services'
+  | 'trust'
+  | 'pinsetup'
+  | 'changepin'
+  | 'emailverify'
+  | 'changephone'
+  | 'username'
+  | 'loginapproval'
+  | 'recoverycodes'
+  | 'securityqs'
+  | 'acctransfer'
+  | 'suspension'
+  | 'authsummary'
+  | 'home'
+  | 'marketplace'
+  | 'store'
+  | 'productdetail'
+  | 'cart'
+  | 'checkout'
+  | 'ordertracking'
+  | 'ridehome'
+  | 'ridesearch'
+  | 'ridepickup'
+  | 'ridefare'
+  | 'ridefinding'
+  | 'rideassigned'
+  | 'ridearrived'
+  | 'rideinprogress'
+  | 'ridecomplete'
+  | 'riderating'
+  | 'ridehistory'
+  | 'ridedetail'
+  | 'ridehomeplus'
+  | 'ridelivetrack'
+  | 'rideenroute'
+  | 'ridepaxwait'
+  | 'ridearrivedplus'
+  | 'ridedriver'
+  | 'ridepayment'
+  | 'rideopay'
+  | 'ridecash'
+  | 'ridetip'
+  | 'ridereport'
+  | 'ridesaved'
+  | 'rideschedule'
+  | 'ridepromo'
+  | 'ridereferral'
+  | 'ridesos'
+  | 'rideshare'
+  | 'ridereceipt'
+  | 'ridepaysuccess'
+  | 'drvsplash'
+  | 'drvlogin'
+  | 'drvotp'
+  | 'drvkyc'
+  | 'drvuploaddocs'
+  | 'drvvehicle'
+  | 'drvdash'
+  | 'drvrequest'
+  | 'drvtopickup'
+  | 'drvverify'
+  | 'drvtripactive'
+  | 'drvtripdone'
+  | 'drvsettings'
+  | 'wallethome'
+  | 'wallettx'
+  | 'wallettopup'
+  | 'walletwithdraw'
+  | 'wallettransfer'
+  | 'walletpay'
+  | 'walletrewards'
+  | 'walletstatement'
+  | 'walletsecurity'
+  | 'walletsettings'
+  | 'admindash'
+  | 'adminmap'
+  | 'admintrips'
+  | 'admindrivers'
+  | 'adminkyc'
+  | 'adminvehicles'
+  | 'admincustomers'
+  | 'adminpricing'
+  | 'adminincidents'
+  | 'adminsupport'
+  | 'adminanalytics'
+  | 'adminreports'
+  | 'adminsettings'
+  | 'adminaudit'
+  | 'adminprofile';
+
+export default function App() {
+  const [screen, setScreen] = useState<Screen>('splash');
+  const [rideDetailId, setRideDetailId] = useState<string>('RX-20241205-0012');
+  const [fading, setFading] = useState(false);
+  const [otpData, setOtpData] = useState<{ phone: string; country: (typeof COUNTRIES)[0] }>({
+    phone: '801 234 5678',
+    country: COUNTRIES[0],
+  });
+
+  const go = (to: Screen) => {
+    setFading(true);
+    setTimeout(() => {
+      setScreen(to);
+      setFading(false);
+    }, 220);
+  };
+
+  const screens: Record<Screen, React.ReactNode> = {
+    splash: <SplashScreen onDone={() => go('welcome')} />,
+    welcome: <WelcomeScreen onGetStarted={() => go('register')} onSignIn={() => go('returning')} />,
+    register: (
+      <RegisterScreen
+        onContinue={(phone, country) => {
+          setOtpData({ phone, country });
+          go('otp');
+        }}
+        onSignIn={() => go('returning')}
+        onBack={() => go('welcome')}
+      />
+    ),
+    otp: (
+      <OTPScreen
+        phone={otpData.phone}
+        country={otpData.country}
+        onBack={() => go('register')}
+        onChangeNumber={() => go('register')}
+        onVerified={() => go('profile')}
+      />
+    ),
+    profile: (
+      <ProfileSetupScreen
+        onContinue={() => go('permissions')}
+        onSkip={() => go('permissions')}
+        onBack={() => go('otp')}
+      />
+    ),
+    permissions: (
+      <PermissionsScreen
+        onContinue={() => go('biometric')}
+        onSkip={() => go('biometric')}
+        onBack={() => go('profile')}
+      />
+    ),
+    biometric: (
+      <BiometricScreen
+        onDone={() => go('consent')}
+        onSkip={() => go('consent')}
+        onBack={() => go('permissions')}
+      />
+    ),
+    returning: (
+      <ReturningLoginScreen
+        onUnlocked={() => go('welcome')}
+        onOTP={() => go('otp')}
+        onRecover={() => go('recovery')}
+        onBack={() => go('welcome')}
+        onSecurity={() => go('security')}
+        onAccount={() => go('account')}
+      />
+    ),
+    recovery: <RecoveryScreen onRecovered={() => go('returning')} onBack={() => go('returning')} />,
+    signin: <SignInScreen onBack={() => go('welcome')} />,
+    twofa: <TwoFactorScreen onBack={() => go('security')} onDone={() => go('security')} />,
+    devices: <TrustedDevicesScreen onBack={() => go('security')} />,
+    activity: (
+      <SecurityActivityScreen onBack={() => go('security')} onSecure={() => go('security')} />
+    ),
+    security: (
+      <SecurityCenterScreen onBack={() => go('returning')} onNav={(s) => go(s as Screen)} />
+    ),
+    sessions: <SessionManagementScreen onBack={() => go('security')} />,
+    privacy: <PrivacyControlsScreen onBack={() => go('account')} />,
+    kyc: <IdentityVerificationScreen onBack={() => go('account')} />,
+    account: (
+      <AccountManagementScreen
+        onBack={() => go('returning')}
+        onKYC={() => go('kyc')}
+        onSecurity={() => go('security')}
+        onPrivacy={() => go('privacy')}
+        onSessions={() => go('sessions')}
+        onLinked={() => go('linked')}
+        onVerifStatus={() => go('verifstatus')}
+        onActivity={() => go('activitydash')}
+        onServices={() => go('services')}
+        onTrust={() => go('trust')}
+        onPinSetup={() => go('pinsetup')}
+        onEmailVerify={() => go('emailverify')}
+        onChangePhone={() => go('changephone')}
+        onUsername={() => go('username')}
+        onRecoveryCodes={() => go('recoverycodes')}
+        onSecurityQs={() => go('securityqs')}
+        onAccTransfer={() => go('acctransfer')}
+        onSuspension={() => go('suspension')}
+        onAuthSummary={() => go('authsummary')}
+      />
+    ),
+    consent: <ConsentScreen onAccept={() => go('notifprefs')} onLater={() => go('notifprefs')} />,
+    notifprefs: (
+      <NotificationPrefsScreen onBack={() => go('consent')} onSave={() => go('langregion')} />
+    ),
+    langregion: (
+      <LanguageRegionScreen onBack={() => go('notifprefs')} onSave={() => go('accessibility')} />
+    ),
+    accessibility: (
+      <AccessibilityScreen onBack={() => go('langregion')} onApply={() => go('onboarddone')} />
+    ),
+    onboarddone: <WelcomeDrippleXScreen onHome={() => go('home')} onTour={() => go('home')} />,
+    linked: <LinkedAccountsScreen onBack={() => go('account')} />,
+    verifstatus: (
+      <VerificationStatusScreen onBack={() => go('account')} onContinue={() => go('kyc')} />
+    ),
+    emergency: <EmergencyProtectionScreen onBack={() => go('security')} />,
+    activitydash: <ActivityDashboardScreen onBack={() => go('account')} />,
+    services: <ConnectedServicesScreen onBack={() => go('account')} />,
+    trust: <TrustCenterScreen onBack={() => go('welcome')} onSecurity={() => go('security')} />,
+    pinsetup: <PinSetupScreen onBack={() => go('account')} onDone={() => go('account')} />,
+    changepin: <ChangePinScreen onBack={() => go('account')} onDone={() => go('account')} />,
+    emailverify: (
+      <EmailVerificationScreen onBack={() => go('account')} onDone={() => go('account')} />
+    ),
+    changephone: <ChangePhoneScreen onBack={() => go('account')} onDone={() => go('account')} />,
+    username: (
+      <UsernameManagementScreen onBack={() => go('account')} onSave={() => go('account')} />
+    ),
+    loginapproval: <LoginApprovalsScreen onBack={() => go('security')} />,
+    recoverycodes: <RecoveryCodesScreen onBack={() => go('account')} />,
+    securityqs: (
+      <SecurityQuestionsScreen onBack={() => go('account')} onSave={() => go('account')} />
+    ),
+    acctransfer: <AccountTransferScreen onBack={() => go('account')} />,
+    suspension: <AccountSuspensionScreen onBack={() => go('account')} />,
+    authsummary: <AuthSummaryScreen onBack={() => go('account')} onFinish={() => go('home')} />,
+    home: (
+      <HomeScreen
+        onAccount={() => go('account')}
+        onSecurity={() => go('security')}
+        onNotifications={() => go('activitydash')}
+        onMarketplace={() => go('marketplace')}
+        onRide={() => go('ridehome')}
+        onDriverApp={() => go('drvsplash')}
+      />
+    ),
+    marketplace: (
+      <MarketplaceScreen
+        onBack={() => go('home')}
+        onHome={() => go('home')}
+        onAccount={() => go('account')}
+        onNotifications={() => go('activitydash')}
+        onStore={() => go('store')}
+      />
+    ),
+    store: (
+      <StoreScreen
+        onBack={() => go('marketplace')}
+        onHome={() => go('home')}
+        onAccount={() => go('account')}
+        onNotifications={() => go('activitydash')}
+        onProduct={() => go('productdetail')}
+      />
+    ),
+    productdetail: (
+      <ProductDetailScreen
+        onBack={() => go('store')}
+        onHome={() => go('home')}
+        onAccount={() => go('account')}
+        onNotifications={() => go('activitydash')}
+        onCart={() => go('cart')}
+      />
+    ),
+    cart: (
+      <CartScreen
+        onBack={() => go('productdetail')}
+        onHome={() => go('home')}
+        onAccount={() => go('account')}
+        onNotifications={() => go('activitydash')}
+        onCheckout={() => go('checkout')}
+      />
+    ),
+    checkout: (
+      <CheckoutScreen
+        onBack={() => go('cart')}
+        onHome={() => go('home')}
+        onAccount={() => go('account')}
+        onNotifications={() => go('activitydash')}
+        onOrderTracking={() => go('ordertracking')}
+      />
+    ),
+    ordertracking: (
+      <TrackingScreen
+        onBack={() => go('home')}
+        onHome={() => go('home')}
+        onAccount={() => go('account')}
+        onNotifications={() => go('activitydash')}
+      />
+    ),
+    // ── RIDE module ──────────────────────────────────────────────────────────
+    ridehome: (
+      <RideHomeScreen
+        onBack={() => go('home')}
+        onSearch={() => go('ridesearch')}
+        onHistory={() => go('ridehistory')}
+      />
+    ),
+    ridesearch: (
+      <DestinationSearchScreen onBack={() => go('ridehome')} onSelect={() => go('ridepickup')} />
+    ),
+    ridepickup: (
+      <PickupConfirmScreen onBack={() => go('ridesearch')} onConfirm={() => go('ridefare')} />
+    ),
+    ridefare: (
+      <FareEstimateScreen onBack={() => go('ridepickup')} onBook={() => go('ridefinding')} />
+    ),
+    ridefinding: (
+      <FindingDriverScreen onBack={() => go('ridefare')} onFound={() => go('rideassigned')} />
+    ),
+    rideassigned: (
+      <DriverAssignedScreen onBack={() => go('ridefare')} onArrived={() => go('ridearrived')} />
+    ),
+    ridearrived: (
+      <DriverArrivedScreen onBack={() => go('rideassigned')} onStart={() => go('rideinprogress')} />
+    ),
+    rideinprogress: (
+      <RideInProgressScreen
+        onBack={() => go('ridearrived')}
+        onComplete={() => go('ridecomplete')}
+      />
+    ),
+    ridecomplete: <TripCompletedScreen onRate={() => go('riderating')} onHome={() => go('home')} />,
+    riderating: <RateDriverScreen onBack={() => go('ridecomplete')} onSubmit={() => go('home')} />,
+    ridehistory: (
+      <RideHistoryScreen
+        onBack={() => go('ridehome')}
+        onDetail={(id) => {
+          setRideDetailId(id);
+          go('ridedetail');
+        }}
+      />
+    ),
+    ridedetail: <RideDetailScreen onBack={() => go('ridehistory')} rideId={rideDetailId} />,
+    // ── Extended Ride screens ────────────────────────────────────────────────
+    ridehomeplus: (
+      <RideHomeExtendedScreen
+        onBack={() => go('home')}
+        onSearch={() => go('ridesearch')}
+        onSchedule={() => go('rideschedule')}
+        onHistory={() => go('ridehistory')}
+        onSavedPlaces={() => go('ridesaved')}
+        onPromo={() => go('ridepromo')}
+        onReferral={() => go('ridereferral')}
+        onSOS={() => go('ridesos')}
+      />
+    ),
+    ridelivetrack: (
+      <LiveTrackingScreen
+        onBack={() => go('rideinprogress')}
+        onShare={() => go('rideshare')}
+        onSOS={() => go('ridesos')}
+        onChat={() => go('rideinprogress')}
+      />
+    ),
+    rideenroute: (
+      <DriverEnRouteScreen
+        onBack={() => go('ridefinding')}
+        onContact={() => go('rideassigned')}
+        onCancel={() => go('ridehome')}
+      />
+    ),
+    ridepaxwait: (
+      <PassengerWaitingScreen
+        onBack={() => go('rideassigned')}
+        onContact={() => go('rideassigned')}
+        onBoard={() => go('rideinprogress')}
+      />
+    ),
+    ridearrivedplus: (
+      <DriverArrivedExtendedScreen
+        onBack={() => go('rideassigned')}
+        onStart={() => go('rideinprogress')}
+        onReport={() => go('ridereport')}
+      />
+    ),
+    ridedriver: (
+      <DriverProfileSheet
+        onBack={() => go('rideassigned')}
+        onCall={() => go('rideassigned')}
+        onMessage={() => go('rideassigned')}
+      />
+    ),
+    ridepayment: (
+      <PaymentScreen
+        onBack={() => go('ridefare')}
+        onPay={() => go('ridepaysuccess')}
+        onChangeMethod={() => go('ridepayment')}
+      />
+    ),
+    rideopay: (
+      <OPayPaymentScreen onBack={() => go('ridepayment')} onSuccess={() => go('ridepaysuccess')} />
+    ),
+    ridecash: (
+      <CashPaymentScreen onBack={() => go('ridepayment')} onConfirm={() => go('ridefinding')} />
+    ),
+    ridetip: (
+      <TipDriverScreen onBack={() => go('ridecomplete')} onSubmit={() => go('riderating')} />
+    ),
+    ridereport: (
+      <ReportTripScreen onBack={() => go('ridedetail')} onSubmit={() => go('ridehistory')} />
+    ),
+    ridesaved: <SavedPlacesScreen onBack={() => go('ridehome')} onAdd={() => go('ridesaved')} />,
+    rideschedule: (
+      <ScheduleRideScreen onBack={() => go('ridehome')} onConfirm={() => go('ridefare')} />
+    ),
+    ridepromo: (
+      <PromoCodeScreen onBack={() => go('ridepayment')} onApply={() => go('ridepayment')} />
+    ),
+    ridereferral: <ReferralScreen onBack={() => go('ridehome')} />,
+    ridesos: (
+      <EmergencySOSScreen onBack={() => go('rideinprogress')} onSOS={() => go('rideinprogress')} />
+    ),
+    rideshare: <ShareTripScreen onBack={() => go('rideinprogress')} />,
+    ridereceipt: <TripReceiptScreen onBack={() => go('ridedetail')} rideId={rideDetailId} />,
+    ridepaysuccess: (
+      <WalletPaySuccessScreen onDone={() => go('home')} onReceipt={() => go('ridereceipt')} />
+    ),
+    // ── DRIVER APP module ────────────────────────────────────────────────────
+    drvsplash: <DriverSplashScreen onDone={() => go('drvlogin')} />,
+    drvlogin: <DriverLoginScreen onContinue={() => go('drvotp')} onBack={() => go('home')} />,
+    drvotp: <DriverOTPScreen onVerified={() => go('drvkyc')} onBack={() => go('drvlogin')} />,
+    drvkyc: (
+      <DriverKYCStatusScreen
+        onContinue={() => go('drvdash')}
+        onUpload={() => go('drvuploaddocs')}
+        onBack={() => go('drvotp')}
+      />
+    ),
+    drvuploaddocs: (
+      <DriverUploadDocsScreen onBack={() => go('drvkyc')} onSave={() => go('drvkyc')} />
+    ),
+    drvvehicle: <DriverVehicleRegScreen onBack={() => go('drvkyc')} onSave={() => go('drvkyc')} />,
+    drvdash: (
+      <DriverDashboardScreen
+        onRequest={() => go('drvrequest')}
+        onSettings={() => go('drvsettings')}
+      />
+    ),
+    drvrequest: (
+      <DriverIncomingRequestScreen
+        onAccept={() => go('drvtopickup')}
+        onDecline={() => go('drvdash')}
+      />
+    ),
+    drvtopickup: (
+      <DriverNavToPickupScreen onArrived={() => go('drvverify')} onBack={() => go('drvdash')} />
+    ),
+    drvverify: (
+      <DriverPassengerVerifyScreen
+        onVerified={() => go('drvtripactive')}
+        onBack={() => go('drvtopickup')}
+      />
+    ),
+    drvtripactive: (
+      <DriverTripInProgressScreen
+        onComplete={() => go('drvtripdone')}
+        onBack={() => go('drvverify')}
+      />
+    ),
+    drvtripdone: <DriverTripCompletedScreen onDone={() => go('drvdash')} />,
+    drvsettings: <DriverSettingsScreen onBack={() => go('drvdash')} />,
+    // ── WALLET module ────────────────────────────────────────────────────────
+    wallethome: (
+      <WalletHomeScreen
+        onBack={() => go('home')}
+        onTopUp={() => go('wallettopup')}
+        onWithdraw={() => go('walletwithdraw')}
+        onTransfer={() => go('wallettransfer')}
+        onPay={() => go('walletpay')}
+        onTxHistory={() => go('wallettx')}
+        onRewards={() => go('walletrewards')}
+      />
+    ),
+    wallettx: <TransactionHistoryScreen onBack={() => go('wallethome')} />,
+    wallettopup: <TopUpScreen onBack={() => go('wallethome')} onConfirm={() => go('wallethome')} />,
+    walletwithdraw: (
+      <WithdrawScreen onBack={() => go('wallethome')} onConfirm={() => go('wallethome')} />
+    ),
+    wallettransfer: (
+      <TransferScreen onBack={() => go('wallethome')} onConfirm={() => go('wallethome')} />
+    ),
+    walletpay: <PaymentMethodsScreen onBack={() => go('wallethome')} />,
+    walletrewards: <RewardsScreen onBack={() => go('wallethome')} />,
+    walletstatement: <WalletStatementScreen onBack={() => go('wallethome')} />,
+    walletsecurity: <WalletSecurityScreen onBack={() => go('wallethome')} />,
+    walletsettings: <WalletSettingsScreen onBack={() => go('wallethome')} />,
+    // ── RIDE OPERATIONS CONSOLE (desktop) ───────────────────────────────────
+    admindash: <AdminDashboardScreen />,
+    adminmap: <AdminLiveMapScreen />,
+    admintrips: <AdminTripsScreen />,
+    admindrivers: <AdminDriversScreen />,
+    adminkyc: <AdminKYCScreen />,
+    adminvehicles: <AdminVehiclesScreen />,
+    admincustomers: <AdminCustomersScreen />,
+    adminpricing: <AdminPricingScreen />,
+    adminincidents: <AdminIncidentsScreen />,
+    adminsupport: <AdminSupportScreen />,
+    adminanalytics: <AdminAnalyticsScreen />,
+    adminreports: <AdminReportsScreen />,
+    adminsettings: <AdminSettingsScreen />,
+    adminaudit: <AdminAuditScreen />,
+    adminprofile: <AdminProfileScreen />,
+  };
+
+  // ── Module quick-jump entries ──────────────────────────────────────────────
+  type ModuleGroup = {
+    label: string;
+    color: string;
+    emoji: string;
+    screens: { label: string; key: Screen }[];
+  };
+  const MODULE_GROUPS: ModuleGroup[] = [
+    {
+      label: 'Auth',
+      color: '#8B5CF6',
+      emoji: '🔐',
+      screens: [
+        { label: 'Splash', key: 'splash' },
+        { label: 'Welcome', key: 'welcome' },
+        { label: 'Register', key: 'register' },
+        { label: 'OTP', key: 'otp' },
+        { label: 'Profile Setup', key: 'profile' },
+        { label: 'Biometric', key: 'biometric' },
+        { label: 'Sign In', key: 'returning' },
+        { label: 'Security', key: 'security' },
+        { label: 'KYC', key: 'kyc' },
+        { label: 'Account', key: 'account' },
+        { label: 'Auth Summary', key: 'authsummary' },
+      ],
+    },
+    {
+      label: 'Consumer Home',
+      color: '#2BAC52',
+      emoji: '🏠',
+      screens: [
+        { label: 'Home Dashboard', key: 'home' },
+        { label: 'Notifications', key: 'activitydash' },
+      ],
+    },
+    {
+      label: 'Marketplace',
+      color: '#F97316',
+      emoji: '🛍',
+      screens: [
+        { label: 'Marketplace', key: 'marketplace' },
+        { label: 'Merchant Store', key: 'store' },
+        { label: 'Product Detail', key: 'productdetail' },
+        { label: 'Cart', key: 'cart' },
+        { label: 'Checkout', key: 'checkout' },
+        { label: 'Order Tracking', key: 'ordertracking' },
+      ],
+    },
+    {
+      label: 'Ride — Customer',
+      color: '#3B82F6',
+      emoji: '🚕',
+      screens: [
+        { label: 'Ride Home', key: 'ridehome' },
+        { label: 'Ride Home+', key: 'ridehomeplus' },
+        { label: 'Search Dest.', key: 'ridesearch' },
+        { label: 'Pickup Confirm', key: 'ridepickup' },
+        { label: 'Fare Estimate', key: 'ridefare' },
+        { label: 'Payment', key: 'ridepayment' },
+        { label: 'OPay Payment', key: 'rideopay' },
+        { label: 'Cash Payment', key: 'ridecash' },
+        { label: 'Promo Code', key: 'ridepromo' },
+        { label: 'Finding Driver', key: 'ridefinding' },
+        { label: 'Driver En Route', key: 'rideenroute' },
+        { label: 'Driver Assigned', key: 'rideassigned' },
+        { label: 'Driver Profile', key: 'ridedriver' },
+        { label: 'Driver Arrived', key: 'ridearrived' },
+        { label: 'Arrived Extended', key: 'ridearrivedplus' },
+        { label: 'Pax Waiting', key: 'ridepaxwait' },
+        { label: 'Live Tracking', key: 'ridelivetrack' },
+        { label: 'Ride in Progress', key: 'rideinprogress' },
+        { label: 'Share Trip', key: 'rideshare' },
+        { label: 'Emergency SOS', key: 'ridesos' },
+        { label: 'Trip Completed', key: 'ridecomplete' },
+        { label: 'Tip Driver', key: 'ridetip' },
+        { label: 'Rate Driver', key: 'riderating' },
+        { label: 'Payment Success', key: 'ridepaysuccess' },
+        { label: 'Trip Receipt', key: 'ridereceipt' },
+        { label: 'Report Trip', key: 'ridereport' },
+        { label: 'Ride History', key: 'ridehistory' },
+        { label: 'Ride Detail', key: 'ridedetail' },
+        { label: 'Saved Places', key: 'ridesaved' },
+        { label: 'Schedule Ride', key: 'rideschedule' },
+        { label: 'Refer & Earn', key: 'ridereferral' },
+      ],
+    },
+    {
+      label: 'Driver App',
+      color: '#10B981',
+      emoji: '🚗',
+      screens: [
+        { label: 'Driver Splash', key: 'drvsplash' },
+        { label: 'Driver Login', key: 'drvlogin' },
+        { label: 'Driver OTP', key: 'drvotp' },
+        { label: 'KYC Status', key: 'drvkyc' },
+        { label: 'Upload Docs', key: 'drvuploaddocs' },
+        { label: 'Vehicle Reg.', key: 'drvvehicle' },
+        { label: 'Driver Dashboard', key: 'drvdash' },
+        { label: 'Incoming Request', key: 'drvrequest' },
+        { label: 'Nav to Pickup', key: 'drvtopickup' },
+        { label: 'Verify Passenger', key: 'drvverify' },
+        { label: 'Trip Active', key: 'drvtripactive' },
+        { label: 'Trip Completed', key: 'drvtripdone' },
+        { label: 'Driver Settings', key: 'drvsettings' },
+      ],
+    },
+    {
+      label: 'Wallet',
+      color: '#8B5CF6',
+      emoji: '💜',
+      screens: [
+        { label: 'Wallet Home', key: 'wallethome' },
+        { label: 'Transactions', key: 'wallettx' },
+        { label: 'Top Up', key: 'wallettopup' },
+        { label: 'Withdraw', key: 'walletwithdraw' },
+        { label: 'Transfer', key: 'wallettransfer' },
+        { label: 'Payment Methods', key: 'walletpay' },
+        { label: 'Rewards', key: 'walletrewards' },
+        { label: 'Statement', key: 'walletstatement' },
+        { label: 'Security', key: 'walletsecurity' },
+        { label: 'Settings', key: 'walletsettings' },
+      ],
+    },
+    {
+      label: 'Ops Console',
+      color: '#EF4444',
+      emoji: '🖥',
+      screens: [
+        { label: 'Dashboard', key: 'admindash' },
+        { label: 'Live Map', key: 'adminmap' },
+        { label: 'Trip Monitoring', key: 'admintrips' },
+        { label: 'Drivers', key: 'admindrivers' },
+        { label: 'KYC Review', key: 'adminkyc' },
+        { label: 'Vehicles', key: 'adminvehicles' },
+        { label: 'Customers', key: 'admincustomers' },
+        { label: 'Pricing', key: 'adminpricing' },
+        { label: 'Incidents', key: 'adminincidents' },
+        { label: 'Support', key: 'adminsupport' },
+        { label: 'Analytics', key: 'adminanalytics' },
+        { label: 'Reports', key: 'adminreports' },
+        { label: 'Settings', key: 'adminsettings' },
+        { label: 'Audit Logs', key: 'adminaudit' },
+        { label: 'Admin Profile', key: 'adminprofile' },
+      ],
+    },
+  ];
+
+  const ADMIN_SCREENS: Screen[] = [
+    'admindash',
+    'adminmap',
+    'admintrips',
+    'admindrivers',
+    'adminkyc',
+    'adminvehicles',
+    'admincustomers',
+    'adminpricing',
+    'adminincidents',
+    'adminsupport',
+    'adminanalytics',
+    'adminreports',
+    'adminsettings',
+    'adminaudit',
+    'adminprofile',
+  ];
+  const isDesktop = ADMIN_SCREENS.includes(screen);
+
+  const [openGroup, setOpenGroup] = useState<string | null>('Driver App');
+  const [navOpen, setNavOpen] = useState(true);
+
+  return (
+    <div
+      className="flex min-h-screen gap-0"
+      style={{
+        background: `radial-gradient(ellipse at 50% 0%,#0D1E33 0%,#050A12 65%,#030709 100%)`,
+      }}
+    >
+      <style>{GLOBAL_STYLES}</style>
+
+      {/* ── Module Navigator sidebar ─────────────────────────────────────── */}
+      <div
+        className="flex flex-shrink-0 flex-col"
+        style={{
+          width: navOpen ? 220 : 36,
+          minHeight: '100vh',
+          transition: 'width .25s ease',
+          overflow: 'hidden',
+        }}
+      >
+        {/* collapse toggle */}
+        <div className="flex justify-end px-2 pb-2 pt-4">
+          <button
+            onClick={() => setNavOpen((o) => !o)}
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 8,
+              border: '1px solid rgba(255,255,255,.12)',
+              background: '#0D1B2E',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              flexShrink: 0,
+            }}
+          >
+            <span style={{ color: 'rgba(255,255,255,.6)', fontSize: 13 }}>
+              {navOpen ? '‹' : '›'}
+            </span>
+          </button>
+        </div>
+
+        <div
+          className="flex flex-1 flex-col gap-2 overflow-y-auto pb-8 pl-4 pr-2"
+          style={{ scrollbarWidth: 'none', opacity: navOpen ? 1 : 0, transition: 'opacity .2s' }}
+        >
+          {/* Brand */}
+          <div className="mb-4">
+            <p
+              style={{
+                fontFamily: "'Poppins',sans-serif",
+                fontSize: 16,
+                fontWeight: 700,
+                color: '#fff',
+                letterSpacing: '-0.02em',
+              }}
+            >
+              DrippleX
+            </p>
+            <p
+              style={{
+                fontFamily: "'Inter',sans-serif",
+                fontSize: 11,
+                color: 'rgba(255,255,255,.35)',
+                marginTop: 2,
+              }}
+            >
+              {MODULE_GROUPS.reduce((s, g) => s + g.screens.length, 0)} screens · Design Preview
+            </p>
+          </div>
+
+          {MODULE_GROUPS.map((group) => {
+            const isOpen = openGroup === group.label;
+            return (
+              <div key={group.label}>
+                {/* Group header */}
+                <button
+                  onClick={() => setOpenGroup(isOpen ? null : group.label)}
+                  className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 transition-all"
+                  style={{
+                    background: isOpen ? `${group.color}14` : 'transparent',
+                    border: `1px solid ${isOpen ? `${group.color}30` : 'transparent'}`,
+                  }}
+                >
+                  <span style={{ fontSize: 14 }}>{group.emoji}</span>
+                  <span
+                    style={{
+                      fontFamily: "'Inter',sans-serif",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: isOpen ? group.color : 'rgba(255,255,255,.5)',
+                      flex: 1,
+                      textAlign: 'left',
+                    }}
+                  >
+                    {group.label}
+                  </span>
+                  <span
+                    style={{
+                      fontFamily: "'Inter',sans-serif",
+                      fontSize: 10,
+                      color: 'rgba(255,255,255,.25)',
+                    }}
+                  >
+                    {isOpen ? '▲' : '▼'}
+                  </span>
+                </button>
+
+                {/* Screen list */}
+                {isOpen && (
+                  <div className="ml-2 mt-1 flex flex-col gap-0.5">
+                    {group.screens.map((s) => {
+                      const active = screen === s.key;
+                      return (
+                        <button
+                          key={s.key}
+                          onClick={() => go(s.key)}
+                          className="w-full rounded-lg px-3 py-2 text-left transition-all active:scale-[.97]"
+                          style={{
+                            background: active ? `${group.color}20` : 'transparent',
+                            borderLeft: `2px solid ${active ? group.color : 'transparent'}`,
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontFamily: "'Inter',sans-serif",
+                              fontSize: 12,
+                              color: active ? group.color : 'rgba(255,255,255,.45)',
+                              fontWeight: active ? 600 : 400,
+                            }}
+                          >
+                            {s.label}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── Canvas ───────────────────────────────────────────────────────── */}
+      <div className="flex flex-1 items-center justify-center overflow-auto py-10">
+        <div
+          style={{
+            opacity: fading ? 0 : 1,
+            transform: fading ? 'scale(.97)' : 'scale(1)',
+            transition: 'all .22s ease',
+          }}
+        >
+          {isDesktop ? (
+            <DesktopFrame>{screens[screen]}</DesktopFrame>
+          ) : (
+            <PhoneFrame>{screens[screen]}</PhoneFrame>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
