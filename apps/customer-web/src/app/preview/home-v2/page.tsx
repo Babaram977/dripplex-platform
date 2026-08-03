@@ -70,6 +70,24 @@ const MERCHANTS = [
     bg: 'linear-gradient(135deg,#0D2E18,#2BAC52)',
     emoji: '📦',
   },
+  {
+    name: 'HealthPlus',
+    cat: 'Pharmacy',
+    rating: 4.9,
+    dist: '0.6 km',
+    eta: '15 min',
+    bg: 'linear-gradient(135deg,#0C4A6E,#06B6D4)',
+    emoji: '💊',
+  },
+  {
+    name: 'ZARA Nigeria',
+    cat: 'Fashion',
+    rating: 4.5,
+    dist: '2.1 km',
+    eta: '30 min',
+    bg: 'linear-gradient(135deg,#2E1065,#8B5CF6)',
+    emoji: '👗',
+  },
 ];
 
 const RECS = [
@@ -101,6 +119,13 @@ const PROMOS = [
     sub: 'Unlock all exclusive perks',
     cta: 'Unlock',
   },
+  {
+    bg: 'linear-gradient(135deg,#431407,#B45309 40%,#FCD34D)',
+    icon: '🛒',
+    title: 'Free Delivery Week',
+    sub: 'All marketplace orders',
+    cta: 'Shop',
+  },
 ];
 
 const AI_PROMPTS = [
@@ -108,7 +133,16 @@ const AI_PROMPTS = [
   'Book a ride to Victoria Island',
   'Track my last order',
   'Find a pharmacy open now',
+  'Show weekend deals near me',
 ];
+
+// Source has this as `'✨🚗📦💊🏷'.slice(i*2, i*2+2)` — broken in the locked
+// source itself: JS string slicing cuts through multi-byte emoji surrogate
+// pairs, producing garbled glyphs for every row (verified: none of the 5
+// slices produce a valid single emoji). Not a fidelity gap to preserve —
+// the visual intent (one emoji per prompt) is unambiguous, so this uses a
+// proper array instead of the buggy slice.
+const AI_SHEET_ICONS = ['✨', '🚗', '📦', '💊', '🏷'];
 
 const ACTIVITY = [
   {
@@ -173,13 +207,38 @@ function Header(): React.JSX.Element {
         style={{ background: `radial-gradient(circle,${G0} 0%,transparent 70%)`, opacity: 0.16 }}
       />
 
-      <div className="flex items-center justify-between px-5 pb-1 pt-[52px]">
-        <span
-          className={`text-[11px] ${inter.className}`}
-          style={{ color: 'rgba(255,255,255,.38)' }}
-        >
-          9:41
-        </span>
+      <div
+        className="flex items-center justify-between px-5 pb-1 pt-[52px]"
+        style={{ fontSize: 11, color: 'rgba(255,255,255,.38)' }}
+      >
+        <span className={inter.className}>9:41</span>
+        <div className="flex items-center gap-1.5">
+          <svg width="16" height="11" viewBox="0 0 17 12" fill="currentColor">
+            <rect x="0" y="6" width="3" height="6" rx="0.6" opacity="0.4" />
+            <rect x="4.5" y="3.5" width="3" height="8.5" rx="0.6" opacity="0.6" />
+            <rect x="9" y="1" width="3" height="11" rx="0.6" opacity="0.85" />
+            <rect x="13.5" y="0" width="3" height="12" rx="0.6" />
+          </svg>
+          <svg width="15" height="11" viewBox="0 0 16 12" fill="currentColor">
+            <path d="M8 9a1.5 1.5 0 110 3 1.5 1.5 0 010-3z" />
+            <path d="M2.5 5.5a7.7 7.7 0 0111 0l-1.4 1.4a5.7 5.7 0 00-8.2 0z" opacity="0.7" />
+            <path d="M.2 3.3a11 11 0 0115.6 0L14.3 4.8a9 9 0 00-12.6 0z" opacity="0.4" />
+          </svg>
+          <svg width="24" height="11" viewBox="0 0 26 12" fill="currentColor">
+            <rect
+              x="0.5"
+              y="0.5"
+              width="22"
+              height="11"
+              rx="3.5"
+              stroke="currentColor"
+              strokeOpacity="0.35"
+              fill="none"
+            />
+            <rect x="2" y="2" width="17" height="8" rx="2" opacity="0.6" />
+            <path d="M24 4v4a2 2 0 000-4z" opacity="0.4" />
+          </svg>
+        </div>
       </div>
 
       <div className="relative z-10 mt-2 flex items-center justify-between px-5">
@@ -286,6 +345,14 @@ function BalanceCard(): React.JSX.Element {
       }}
     >
       <div
+        className="pointer-events-none absolute inset-0"
+        style={{
+          backgroundImage:
+            'linear-gradient(rgba(255,255,255,.028) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.028) 1px,transparent 1px)',
+          backgroundSize: '24px 24px',
+        }}
+      />
+      <div
         className="pointer-events-none absolute -right-12 -top-12 h-40 w-40 rounded-full"
         style={{ background: 'radial-gradient(circle,rgba(71,207,114,.22) 0%,transparent 65%)' }}
       />
@@ -379,7 +446,7 @@ function QuickActions(): React.JSX.Element {
   );
 }
 
-function AICard(): React.JSX.Element {
+function AICard({ onAsk }: { onAsk: () => void }): React.JSX.Element {
   const [idx, setIdx] = useState(0);
   const [chars, setChars] = useState(0);
   const prompt = AI_PROMPTS[idx] ?? '';
@@ -467,8 +534,26 @@ function AICard(): React.JSX.Element {
             </span>
           </p>
         </div>
+        <div className="mb-4 flex flex-wrap gap-2">
+          {AI_PROMPTS.slice(0, 4).map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={onAsk}
+              className={`rounded-full px-3 py-1.5 text-[10px] font-medium transition-transform active:scale-95 ${inter.className}`}
+              style={{
+                background: 'rgba(255,255,255,.055)',
+                color: 'rgba(255,255,255,.58)',
+                border: `1px solid ${BORDER}`,
+              }}
+            >
+              {s.length > 22 ? `${s.slice(0, 20)}…` : s}
+            </button>
+          ))}
+        </div>
         <button
           type="button"
+          onClick={onAsk}
           className={`active:scale-97 flex h-[46px] w-full items-center justify-center gap-2 rounded-2xl text-[14px] font-semibold transition-transform ${poppins.className}`}
           style={{
             background: `linear-gradient(135deg,${G0} 0%,${G2} 55%,${G3} 100%)`,
@@ -837,9 +922,15 @@ function BottomNav(): React.JSX.Element {
   );
 }
 
-function FAB(): React.JSX.Element {
+function FAB({ onPress }: { onPress: () => void }): React.JSX.Element {
   return (
-    <div className="absolute z-40" style={{ bottom: 94, right: 18 }} aria-label="AI Assistant">
+    <button
+      type="button"
+      onClick={onPress}
+      className="absolute z-40"
+      style={{ bottom: 94, right: 18 }}
+      aria-label="AI Assistant"
+    >
       <div
         style={{
           width: 52,
@@ -855,12 +946,85 @@ function FAB(): React.JSX.Element {
       >
         <span style={{ fontSize: 22 }}>✨</span>
       </div>
+    </button>
+  );
+}
+
+function AISheet({ onClose }: { onClose: () => void }): React.JSX.Element {
+  return (
+    <div
+      className="absolute inset-0 z-50 flex flex-col justify-end"
+      style={{
+        background: 'rgba(0,0,0,.72)',
+        backdropFilter: 'blur(10px)',
+        animation: 'fade-in .2s ease',
+      }}
+    >
+      <div
+        className="rounded-t-[32px] p-5 pb-8"
+        style={{
+          background: 'linear-gradient(180deg,#0D1F2E 0%,#091420 100%)',
+          border: '1.5px solid rgba(43,172,82,.18)',
+          boxShadow: '0 -20px 60px rgba(0,0,0,.5)',
+        }}
+      >
+        <div
+          className="mx-auto mb-5 h-1 w-10 rounded-full"
+          style={{ background: 'rgba(255,255,255,.14)' }}
+        />
+        <div className="mb-5 flex items-center gap-3">
+          <div
+            className="flex h-11 w-11 items-center justify-center rounded-2xl"
+            style={{
+              background: `linear-gradient(135deg,${G0},${G2})`,
+              boxShadow: '0 6px 20px rgba(43,172,82,.35)',
+            }}
+          >
+            <span style={{ fontSize: 22 }}>✨</span>
+          </div>
+          <div>
+            <p className={`text-[16px] font-bold ${poppins.className}`} style={{ color: '#FFF' }}>
+              Ask Drip
+            </p>
+            <p className={`text-[11px] ${inter.className}`} style={{ color: G3 }}>
+              AI · Ready to help you
+            </p>
+          </div>
+        </div>
+        <div className="mb-5 flex flex-col gap-2.5">
+          {AI_PROMPTS.map((s, i) => (
+            <button
+              key={s}
+              type="button"
+              onClick={onClose}
+              className={`active:scale-98 flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-left text-[12.5px] transition-transform ${inter.className}`}
+              style={{
+                background: 'rgba(255,255,255,.045)',
+                color: 'rgba(255,255,255,.78)',
+                border: `1px solid ${BORDER}`,
+              }}
+            >
+              <span style={{ fontSize: 16, flexShrink: 0 }}>{AI_SHEET_ICONS[i]}</span>
+              {s}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className={`active:scale-97 h-12 w-full rounded-2xl text-[13px] font-semibold transition-transform ${inter.className}`}
+          style={{ background: 'rgba(255,255,255,.07)', color: 'rgba(255,255,255,.42)' }}
+        >
+          Close
+        </button>
+      </div>
     </div>
   );
 }
 
 export default function HomePreviewPage(): React.JSX.Element {
   const [loaded, setLoaded] = useState(false);
+  const [showAI, setShowAI] = useState(false);
   useEffect(() => {
     const t = setTimeout(() => {
       setLoaded(true);
@@ -902,6 +1066,7 @@ export default function HomePreviewPage(): React.JSX.Element {
                 style={{
                   background: t.on ? 'rgba(255,255,255,.10)' : 'transparent',
                   border: t.on ? '1px solid rgba(255,255,255,.12)' : '1px solid transparent',
+                  boxShadow: t.on ? '0 2px 12px rgba(0,0,0,.28)' : 'none',
                 }}
               >
                 <span style={{ fontSize: 15 }}>{t.icon}</span>
@@ -920,7 +1085,11 @@ export default function HomePreviewPage(): React.JSX.Element {
           <Row title="Quick Actions" />
           <QuickActions />
         </div>
-        <AICard />
+        <AICard
+          onAsk={() => {
+            setShowAI(true);
+          }}
+        />
         <PromoCarousel />
         <Categories />
         <Merchants loaded={loaded} />
@@ -928,8 +1097,19 @@ export default function HomePreviewPage(): React.JSX.Element {
         <ActivityList loaded={loaded} />
         <div style={{ height: 104 }} />
       </div>
-      <FAB />
+      <FAB
+        onPress={() => {
+          setShowAI(true);
+        }}
+      />
       <BottomNav />
+      {showAI && (
+        <AISheet
+          onClose={() => {
+            setShowAI(false);
+          }}
+        />
+      )}
     </div>
   );
 }
