@@ -41,3 +41,5 @@ export { Skeleton } from './components/ui/skeleton';
 export { Switch, type SwitchProps } from './components/ui/switch';
 export { Textarea, type TextareaProps } from './components/ui/textarea';
 export { toast, Toaster, useToastStore } from './components/ui/toast';
+
+export * from './components/super-app';

@@ -1,6 +1,21 @@
 'use client';
 
-import { G0, G2, G3, NAVY_DEEP, NAVY_CARD, BORDER, MUTED } from '@dripplex/ui';
+import {
+  G0,
+  G2,
+  G3,
+  NAVY_DEEP,
+  NAVY_CARD,
+  BORDER,
+  MUTED,
+  SuperAppFontProvider,
+  SuperAppSkeleton,
+  SuperAppSectionHeader,
+  SuperAppStatusBarIcons,
+  SuperAppBottomNav,
+  SuperAppAIFab,
+  SuperAppAISheet,
+} from '@dripplex/ui';
 import { Inter, Poppins } from 'next/font/google';
 import * as React from 'react';
 import { useEffect, useState } from 'react';
@@ -136,14 +151,6 @@ const AI_PROMPTS = [
   'Show weekend deals near me',
 ];
 
-// Source has this as `'✨🚗📦💊🏷'.slice(i*2, i*2+2)` — broken in the locked
-// source itself: JS string slicing cuts through multi-byte emoji surrogate
-// pairs, producing garbled glyphs for every row (verified: none of the 5
-// slices produce a valid single emoji). Not a fidelity gap to preserve —
-// the visual intent (one emoji per prompt) is unambiguous, so this uses a
-// proper array instead of the buggy slice.
-const AI_SHEET_ICONS = ['✨', '🚗', '📦', '💊', '🏷'];
-
 const ACTIVITY = [
   {
     icon: '🚗',
@@ -161,33 +168,6 @@ const ACTIVITY = [
   },
   { icon: '↙', label: 'From Yusuf', sub: 'Transfer · 3 hrs ago', amount: '+₦50,000', credit: true },
 ];
-
-function Row({ title }: { title: string }): React.JSX.Element {
-  return (
-    <div className="mb-3 flex items-center justify-between px-5">
-      <p className={`text-[15px] font-bold ${poppins.className}`} style={{ color: '#FFF' }}>
-        {title}
-      </p>
-      <span className={`text-[12px] font-semibold ${inter.className}`} style={{ color: G3 }}>
-        See all →
-      </span>
-    </div>
-  );
-}
-
-function Bone({ w, h, r = 16 }: { w: number | string; h: number; r?: number }): React.JSX.Element {
-  return (
-    <div
-      style={{
-        width: w,
-        height: h,
-        borderRadius: r,
-        background: 'rgba(255,255,255,.055)',
-        flexShrink: 0,
-      }}
-    />
-  );
-}
 
 function Header(): React.JSX.Element {
   return (
@@ -212,33 +192,7 @@ function Header(): React.JSX.Element {
         style={{ fontSize: 11, color: 'rgba(255,255,255,.38)' }}
       >
         <span className={inter.className}>9:41</span>
-        <div className="flex items-center gap-1.5">
-          <svg width="16" height="11" viewBox="0 0 17 12" fill="currentColor">
-            <rect x="0" y="6" width="3" height="6" rx="0.6" opacity="0.4" />
-            <rect x="4.5" y="3.5" width="3" height="8.5" rx="0.6" opacity="0.6" />
-            <rect x="9" y="1" width="3" height="11" rx="0.6" opacity="0.85" />
-            <rect x="13.5" y="0" width="3" height="12" rx="0.6" />
-          </svg>
-          <svg width="15" height="11" viewBox="0 0 16 12" fill="currentColor">
-            <path d="M8 9a1.5 1.5 0 110 3 1.5 1.5 0 010-3z" />
-            <path d="M2.5 5.5a7.7 7.7 0 0111 0l-1.4 1.4a5.7 5.7 0 00-8.2 0z" opacity="0.7" />
-            <path d="M.2 3.3a11 11 0 0115.6 0L14.3 4.8a9 9 0 00-12.6 0z" opacity="0.4" />
-          </svg>
-          <svg width="24" height="11" viewBox="0 0 26 12" fill="currentColor">
-            <rect
-              x="0.5"
-              y="0.5"
-              width="22"
-              height="11"
-              rx="3.5"
-              stroke="currentColor"
-              strokeOpacity="0.35"
-              fill="none"
-            />
-            <rect x="2" y="2" width="17" height="8" rx="2" opacity="0.6" />
-            <path d="M24 4v4a2 2 0 000-4z" opacity="0.4" />
-          </svg>
-        </div>
+        <SuperAppStatusBarIcons />
       </div>
 
       <div className="relative z-10 mt-2 flex items-center justify-between px-5">
@@ -656,7 +610,7 @@ function PromoCarousel(): React.JSX.Element {
 function Categories(): React.JSX.Element {
   return (
     <div className="mb-5">
-      <Row title="Categories" />
+      <SuperAppSectionHeader title="Categories" />
       <div className="flex gap-3 overflow-x-auto px-5" style={{ scrollbarWidth: 'none' }}>
         {CATS.map((c, i) => {
           const on = i === 0;
@@ -689,10 +643,10 @@ function Categories(): React.JSX.Element {
 function Merchants({ loaded }: { loaded: boolean }): React.JSX.Element {
   return (
     <div className="mb-5">
-      <Row title="Nearby Merchants" />
+      <SuperAppSectionHeader title="Nearby Merchants" />
       <div className="flex gap-3 overflow-x-auto px-5" style={{ scrollbarWidth: 'none' }}>
         {!loaded
-          ? [1, 2, 3].map((i) => <Bone key={i} w={155} h={188} />)
+          ? [1, 2, 3].map((i) => <SuperAppSkeleton key={i} w={155} h={188} />)
           : MERCHANTS.map((m) => (
               <div
                 key={m.name}
@@ -756,10 +710,10 @@ function Merchants({ loaded }: { loaded: boolean }): React.JSX.Element {
 function Recs({ loaded }: { loaded: boolean }): React.JSX.Element {
   return (
     <div className="mb-5">
-      <Row title="Recommended for You" />
+      <SuperAppSectionHeader title="Recommended for You" />
       <div className="flex gap-3 overflow-x-auto px-5" style={{ scrollbarWidth: 'none' }}>
         {!loaded
-          ? [1, 2, 3, 4].map((i) => <Bone key={i} w={130} h={148} />)
+          ? [1, 2, 3, 4].map((i) => <SuperAppSkeleton key={i} w={130} h={148} />)
           : RECS.map((r) => (
               <div
                 key={r.name}
@@ -802,11 +756,11 @@ function Recs({ loaded }: { loaded: boolean }): React.JSX.Element {
 function ActivityList({ loaded }: { loaded: boolean }): React.JSX.Element {
   return (
     <div className="mb-4 px-5">
-      <Row title="Recent Activity" />
+      <SuperAppSectionHeader title="Recent Activity" />
       {!loaded ? (
         <div className="flex flex-col gap-2">
           {[1, 2, 3].map((i) => (
-            <Bone key={i} w="100%" h={64} r={20} />
+            <SuperAppSkeleton key={i} w="100%" h={64} r={20} />
           ))}
         </div>
       ) : (
@@ -851,177 +805,6 @@ function ActivityList({ loaded }: { loaded: boolean }): React.JSX.Element {
   );
 }
 
-function BottomNav(): React.JSX.Element {
-  const tabs = [
-    { label: 'Home', d: 'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2zM9 22V12h6v10', on: true },
-    {
-      label: 'Marketplace',
-      d: 'M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0',
-      on: false,
-    },
-    {
-      label: 'Ride',
-      d: 'M5 17H3a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v9a2 2 0 01-2 2h-2M7 17a2 2 0 100 4 2 2 0 000-4zM17 17a2 2 0 100 4 2 2 0 000-4z',
-      on: false,
-    },
-    {
-      label: 'Wallet',
-      d: 'M21 4H3a2 2 0 00-2 2v12a2 2 0 002 2h18a2 2 0 002-2V6a2 2 0 00-2-2zM1 10h22',
-      on: false,
-    },
-    {
-      label: 'Profile',
-      d: 'M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 3a4 4 0 100 8 4 4 0 000-8z',
-      on: false,
-    },
-  ];
-  return (
-    <div
-      className="absolute bottom-0 left-0 right-0 flex items-center justify-around px-1 pb-6 pt-2"
-      style={{
-        background: 'rgba(6,14,28,.95)',
-        borderTop: `1px solid ${BORDER}`,
-        backdropFilter: 'blur(24px)',
-      }}
-    >
-      {tabs.map((t) => (
-        <div
-          key={t.label}
-          className="flex flex-col items-center gap-1 px-2"
-          style={{ minWidth: 52 }}
-        >
-          <div
-            className="flex h-10 w-10 items-center justify-center rounded-xl"
-            style={{
-              background: t.on ? 'rgba(43,172,82,.15)' : 'transparent',
-              border: t.on ? '1px solid rgba(43,172,82,.3)' : '1px solid transparent',
-            }}
-          >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke={t.on ? G3 : 'rgba(255,255,255,.32)'}
-              strokeWidth="1.9"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d={t.d} />
-            </svg>
-          </div>
-          <p
-            className={`text-[9px] font-semibold ${inter.className}`}
-            style={{ color: t.on ? G3 : 'rgba(255,255,255,.28)' }}
-          >
-            {t.label}
-          </p>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function FAB({ onPress }: { onPress: () => void }): React.JSX.Element {
-  return (
-    <button
-      type="button"
-      onClick={onPress}
-      className="absolute z-40"
-      style={{ bottom: 94, right: 18 }}
-      aria-label="AI Assistant"
-    >
-      <div
-        style={{
-          width: 52,
-          height: 52,
-          borderRadius: '50%',
-          background: `linear-gradient(135deg,${G0},${G2})`,
-          boxShadow: '0 6px 28px rgba(43,172,82,.5), 0 0 0 1.5px rgba(43,172,82,.32)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          animation: 'avatar-pulse 3s ease-in-out infinite',
-        }}
-      >
-        <span style={{ fontSize: 22 }}>✨</span>
-      </div>
-    </button>
-  );
-}
-
-function AISheet({ onClose }: { onClose: () => void }): React.JSX.Element {
-  return (
-    <div
-      className="absolute inset-0 z-50 flex flex-col justify-end"
-      style={{
-        background: 'rgba(0,0,0,.72)',
-        backdropFilter: 'blur(10px)',
-        animation: 'fade-in .2s ease',
-      }}
-    >
-      <div
-        className="rounded-t-[32px] p-5 pb-8"
-        style={{
-          background: 'linear-gradient(180deg,#0D1F2E 0%,#091420 100%)',
-          border: '1.5px solid rgba(43,172,82,.18)',
-          boxShadow: '0 -20px 60px rgba(0,0,0,.5)',
-        }}
-      >
-        <div
-          className="mx-auto mb-5 h-1 w-10 rounded-full"
-          style={{ background: 'rgba(255,255,255,.14)' }}
-        />
-        <div className="mb-5 flex items-center gap-3">
-          <div
-            className="flex h-11 w-11 items-center justify-center rounded-2xl"
-            style={{
-              background: `linear-gradient(135deg,${G0},${G2})`,
-              boxShadow: '0 6px 20px rgba(43,172,82,.35)',
-            }}
-          >
-            <span style={{ fontSize: 22 }}>✨</span>
-          </div>
-          <div>
-            <p className={`text-[16px] font-bold ${poppins.className}`} style={{ color: '#FFF' }}>
-              Ask Drip
-            </p>
-            <p className={`text-[11px] ${inter.className}`} style={{ color: G3 }}>
-              AI · Ready to help you
-            </p>
-          </div>
-        </div>
-        <div className="mb-5 flex flex-col gap-2.5">
-          {AI_PROMPTS.map((s, i) => (
-            <button
-              key={s}
-              type="button"
-              onClick={onClose}
-              className={`active:scale-98 flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-left text-[12.5px] transition-transform ${inter.className}`}
-              style={{
-                background: 'rgba(255,255,255,.045)',
-                color: 'rgba(255,255,255,.78)',
-                border: `1px solid ${BORDER}`,
-              }}
-            >
-              <span style={{ fontSize: 16, flexShrink: 0 }}>{AI_SHEET_ICONS[i]}</span>
-              {s}
-            </button>
-          ))}
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className={`active:scale-97 h-12 w-full rounded-2xl text-[13px] font-semibold transition-transform ${inter.className}`}
-          style={{ background: 'rgba(255,255,255,.07)', color: 'rgba(255,255,255,.42)' }}
-        >
-          Close
-        </button>
-      </div>
-    </div>
-  );
-}
-
 export default function HomePreviewPage(): React.JSX.Element {
   const [loaded, setLoaded] = useState(false);
   const [showAI, setShowAI] = useState(false);
@@ -1035,81 +818,84 @@ export default function HomePreviewPage(): React.JSX.Element {
   }, []);
 
   return (
-    <div
-      className={`relative mx-auto flex h-[844px] w-[390px] flex-col overflow-hidden rounded-[32px] ${inter.className}`}
-      style={{ background: NAVY_DEEP }}
-    >
-      <Header />
+    <SuperAppFontProvider heading={poppins.className} body={inter.className}>
       <div
-        className="flex-1 overflow-y-auto"
-        style={{
-          scrollbarWidth: 'none',
-          background: `linear-gradient(180deg,${NAVY_DEEP} 0%,#060E1C 100%)`,
-        }}
+        className={`relative mx-auto flex h-[844px] w-[390px] flex-col overflow-hidden rounded-[32px] ${inter.className}`}
+        style={{ background: NAVY_DEEP }}
       >
-        <div className="mx-5 mb-4 mt-4">
-          <div
-            className="flex gap-1 rounded-2xl p-1"
-            style={{
-              background: 'rgba(255,255,255,.05)',
-              border: '1.5px solid rgba(255,255,255,.07)',
-            }}
-          >
-            {[
-              { icon: '🛍', label: 'Marketplace', on: true },
-              { icon: '🚖', label: 'Ride', on: false },
-              { icon: '💳', label: 'Wallet', on: false },
-            ].map((t) => (
-              <div
-                key={t.label}
-                className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl"
-                style={{
-                  background: t.on ? 'rgba(255,255,255,.10)' : 'transparent',
-                  border: t.on ? '1px solid rgba(255,255,255,.12)' : '1px solid transparent',
-                  boxShadow: t.on ? '0 2px 12px rgba(0,0,0,.28)' : 'none',
-                }}
-              >
-                <span style={{ fontSize: 15 }}>{t.icon}</span>
-                <p
-                  className={`text-[11.5px] font-semibold ${inter.className}`}
-                  style={{ color: t.on ? '#FFF' : 'rgba(255,255,255,.35)' }}
+        <Header />
+        <div
+          className="flex-1 overflow-y-auto"
+          style={{
+            scrollbarWidth: 'none',
+            background: `linear-gradient(180deg,${NAVY_DEEP} 0%,#060E1C 100%)`,
+          }}
+        >
+          <div className="mx-5 mb-4 mt-4">
+            <div
+              className="flex gap-1 rounded-2xl p-1"
+              style={{
+                background: 'rgba(255,255,255,.05)',
+                border: '1.5px solid rgba(255,255,255,.07)',
+              }}
+            >
+              {[
+                { icon: '🛍', label: 'Marketplace', on: true },
+                { icon: '🚖', label: 'Ride', on: false },
+                { icon: '💳', label: 'Wallet', on: false },
+              ].map((t) => (
+                <div
+                  key={t.label}
+                  className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl"
+                  style={{
+                    background: t.on ? 'rgba(255,255,255,.10)' : 'transparent',
+                    border: t.on ? '1px solid rgba(255,255,255,.12)' : '1px solid transparent',
+                    boxShadow: t.on ? '0 2px 12px rgba(0,0,0,.28)' : 'none',
+                  }}
                 >
-                  {t.label}
-                </p>
-              </div>
-            ))}
+                  <span style={{ fontSize: 15 }}>{t.icon}</span>
+                  <p
+                    className={`text-[11.5px] font-semibold ${inter.className}`}
+                    style={{ color: t.on ? '#FFF' : 'rgba(255,255,255,.35)' }}
+                  >
+                    {t.label}
+                  </p>
+                </div>
+              ))}
+            </div>
           </div>
+          <BalanceCard />
+          <div className="mb-1">
+            <SuperAppSectionHeader title="Quick Actions" />
+            <QuickActions />
+          </div>
+          <AICard
+            onAsk={() => {
+              setShowAI(true);
+            }}
+          />
+          <PromoCarousel />
+          <Categories />
+          <Merchants loaded={loaded} />
+          <Recs loaded={loaded} />
+          <ActivityList loaded={loaded} />
+          <div style={{ height: 104 }} />
         </div>
-        <BalanceCard />
-        <div className="mb-1">
-          <Row title="Quick Actions" />
-          <QuickActions />
-        </div>
-        <AICard
-          onAsk={() => {
+        <SuperAppAIFab
+          onPress={() => {
             setShowAI(true);
           }}
         />
-        <PromoCarousel />
-        <Categories />
-        <Merchants loaded={loaded} />
-        <Recs loaded={loaded} />
-        <ActivityList loaded={loaded} />
-        <div style={{ height: 104 }} />
+        <SuperAppBottomNav active="home" />
+        {showAI && (
+          <SuperAppAISheet
+            prompts={AI_PROMPTS}
+            onClose={() => {
+              setShowAI(false);
+            }}
+          />
+        )}
       </div>
-      <FAB
-        onPress={() => {
-          setShowAI(true);
-        }}
-      />
-      <BottomNav />
-      {showAI && (
-        <AISheet
-          onClose={() => {
-            setShowAI(false);
-          }}
-        />
-      )}
-    </div>
+    </SuperAppFontProvider>
   );
 }
