@@ -182,5 +182,63 @@ so Product Detail's fused action-bar-plus-tab-bar footer can render it
 in-flow (`fixed={false}`) instead of as a second competing absolute
 overlay — the Locked component's default behavior is unchanged.
 
-Cart, Checkout, and Tracking screens: not yet started — these remain
-unwritten, not merely "Implemented."
+## Marketplace module — Cart screen Verified (2026-08-03)
+
+Ported from `docs/reference/figma-super-app-source/cartScreen.tsx`
+(fourth of six Marketplace-module screens) and wired live at the real
+route `/marketplace/cart` (new — this screen had no prior real
+implementation to replace). Backed entirely by the real `sdk.cart`
+surface (`get`/`addItem`/`updateItem`/`removeItem`) and real
+`CartDto`/`CartTotalsDto` — subtotal, delivery fee, and tax are all
+figures computed by the real backend pricing engine, not display-only
+math.
+
+The real `Cart` model is single-merchant per customer (adding a product
+from a different merchant throws `CartMerchantConflictDomainException`),
+so unlike the source's multi-merchant mock, the real page only ever
+composes one `SuperAppCartMerchantGroup` — the component itself stays
+general because that's a real backend rule, not a UI shortcut. Fields
+with no real backend equivalent are omitted rather than faked: per-item
+discount badges, the out-of-stock overlay (no live per-item stock
+re-check on the cart response), the "Price updated" notice, per-item
+variant text (no variant name snapshot on `CartItemDto`), merchant
+cashback, the typed promo-code input (the coupon engine has no
+customer-facing "apply code" endpoint — only automatic, non-code
+discounts), the 3-way delivery-mode selector (no mode parameter on the
+real delivery-fee calculator), and the "Ask Drip" AI card. A real `Tax`
+row (present on `CartTotalsDto`, absent from the source's mock) is shown
+instead of hidden.
+
+"Save for Later" is a genuinely real feature, not omitted: it removes
+the item from the cart and adds it to the customer's default wishlist —
+the same list the Marketplace/Product Detail favourite heart writes to
+— and "Saved for Later" lists real wishlist items resolved against the
+product catalog (`WishlistItemDto` has no name/price/image snapshot, so
+each item is resolved via `sdk.products.get`), with a real "Add to Cart"
+action that moves it back and off the wishlist.
+
+Typecheck/lint clean across `@dripplex/ui` and `customer-web`. Playwright
+walkthrough against the same locally seeded product (real Postgres +
+backend) confirmed, end to end, with zero unexpected console errors:
+add-to-cart from Product Detail reflected immediately on `/marketplace/cart`;
+quantity increment/decrement recalculates subtotal/tax/grand total via
+real backend responses; "Save" removes the line item and surfaces it
+under "Saved for Later" with resolved product data; "Add to Cart" from
+Saved for Later moves it back into the cart and off the wishlist; the
+remove (×) button empties the cart and shows the real empty state.
+
+Not yet Locked — pending founder confirmation, then remains Implemented
+for Checkout and Tracking until each is itself ported and verified.
+
+| Component                      | Status   |
+| ------------------------------ | -------- |
+| `SuperAppCartItemRow`          | Verified |
+| `SuperAppCartMerchantGroup`    | Verified |
+| `SuperAppCartOrderSummary`     | Verified |
+| `SuperAppCartEmptyState`       | Verified |
+| `SuperAppCartCheckoutBar`      | Verified |
+| `SuperAppSavedForLaterSection` | Verified |
+| `SuperAppCartSkeleton`         | Verified |
+
+Checkout and Tracking screens: not yet started — these remain unwritten,
+not merely "Implemented."

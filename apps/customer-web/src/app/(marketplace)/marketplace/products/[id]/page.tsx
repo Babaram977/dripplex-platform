@@ -22,13 +22,10 @@ import * as React from 'react';
 
 import type { ProductDetailDto, ReviewWithAggregateDto } from '@dripplex/types';
 
+import { formatPrice } from '@/lib/format';
 import { addProductToCart, addProductToFavourites } from '@/lib/marketplace-actions';
 import { describeSdkError, sdk } from '@/lib/sdk';
 import { siteConfig } from '@/lib/site';
-
-function formatPrice(basePrice: number, currency: string): string {
-  return new Intl.NumberFormat('en-NG', { style: 'currency', currency }).format(basePrice);
-}
 
 function formatReviewDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-NG', {
