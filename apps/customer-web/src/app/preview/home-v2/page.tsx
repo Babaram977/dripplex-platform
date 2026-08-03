@@ -3,6 +3,7 @@
 import { G0, G2, G3, NAVY_DEEP, NAVY_CARD, BORDER, MUTED } from '@dripplex/ui';
 import { Inter, Poppins } from 'next/font/google';
 import * as React from 'react';
+import { useEffect, useState } from 'react';
 
 /**
  * PREVIEW ONLY — not linked from real navigation, not wired to any backend.
@@ -78,6 +79,37 @@ const RECS = [
   { emoji: '🎧', name: 'Wireless Buds', price: '₦45K', badge: 'Hot', bc: '#2BAC52' },
 ];
 
+const PROMOS = [
+  {
+    bg: 'linear-gradient(135deg,#064E3B,#065F46 40%,#10B981)',
+    icon: '🎁',
+    title: '5% Weekend Cashback',
+    sub: 'On all DrippleX spends',
+    cta: 'Claim',
+  },
+  {
+    bg: 'linear-gradient(135deg,#1E3A5F,#1D4ED8 40%,#60A5FA)',
+    icon: '🚗',
+    title: 'Free First Ride',
+    sub: 'New users ride free today',
+    cta: 'Book',
+  },
+  {
+    bg: 'linear-gradient(135deg,#3B0764,#7C3AED 40%,#C084FC)',
+    icon: '💎',
+    title: 'Upgrade to Premium',
+    sub: 'Unlock all exclusive perks',
+    cta: 'Unlock',
+  },
+];
+
+const AI_PROMPTS = [
+  'Find the best shawarma near me',
+  'Book a ride to Victoria Island',
+  'Track my last order',
+  'Find a pharmacy open now',
+];
+
 const ACTIVITY = [
   {
     icon: '🚗',
@@ -106,6 +138,20 @@ function Row({ title }: { title: string }): React.JSX.Element {
         See all →
       </span>
     </div>
+  );
+}
+
+function Bone({ w, h, r = 16 }: { w: number | string; h: number; r?: number }): React.JSX.Element {
+  return (
+    <div
+      style={{
+        width: w,
+        height: h,
+        borderRadius: r,
+        background: 'rgba(255,255,255,.055)',
+        flexShrink: 0,
+      }}
+    />
   );
 }
 
@@ -334,6 +380,30 @@ function QuickActions(): React.JSX.Element {
 }
 
 function AICard(): React.JSX.Element {
+  const [idx, setIdx] = useState(0);
+  const [chars, setChars] = useState(0);
+  const prompt = AI_PROMPTS[idx] ?? '';
+
+  useEffect(() => {
+    const t = setInterval(() => {
+      setIdx((i) => (i + 1) % AI_PROMPTS.length);
+      setChars(0);
+    }, 4000);
+    return () => {
+      clearInterval(t);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (chars >= prompt.length) return;
+    const t = setTimeout(() => {
+      setChars((c) => c + 1);
+    }, 34);
+    return () => {
+      clearTimeout(t);
+    };
+  }, [chars, prompt]);
+
   return (
     <div
       className="mx-5 mb-5 overflow-hidden rounded-3xl"
@@ -351,6 +421,7 @@ function AICard(): React.JSX.Element {
               style={{
                 background: `linear-gradient(135deg,${G0},${G3})`,
                 boxShadow: '0 6px 20px rgba(43,172,82,.38)',
+                animation: 'avatar-pulse 3s ease-in-out infinite',
               }}
             >
               <span style={{ fontSize: 20 }}>✨</span>
@@ -368,7 +439,10 @@ function AICard(): React.JSX.Element {
             </div>
           </div>
           <div className="flex items-center gap-1.5">
-            <div className="h-1.5 w-1.5 rounded-full" style={{ background: G3 }} />
+            <div
+              className="h-1.5 w-1.5 rounded-full"
+              style={{ background: G3, animation: 'pulse-ring 1.8s ease-out infinite' }}
+            />
             <p className={`text-[9px] font-medium ${inter.className}`} style={{ color: G3 }}>
               Online
             </p>
@@ -382,12 +456,20 @@ function AICard(): React.JSX.Element {
             className={`flex-1 text-[12px] ${inter.className}`}
             style={{ color: 'rgba(255,255,255,.72)' }}
           >
-            Find the best shawarma near me
+            {prompt.slice(0, chars)}
+            <span
+              style={{
+                opacity: chars < prompt.length ? 1 : 0,
+                animation: chars < prompt.length ? 'fade-in .4s ease infinite alternate' : 'none',
+              }}
+            >
+              |
+            </span>
           </p>
         </div>
         <button
           type="button"
-          className={`flex h-[46px] w-full items-center justify-center gap-2 rounded-2xl text-[14px] font-semibold ${poppins.className}`}
+          className={`active:scale-97 flex h-[46px] w-full items-center justify-center gap-2 rounded-2xl text-[14px] font-semibold transition-transform ${poppins.className}`}
           style={{
             background: `linear-gradient(135deg,${G0} 0%,${G2} 55%,${G3} 100%)`,
             color: '#FFF',
@@ -396,6 +478,91 @@ function AICard(): React.JSX.Element {
         >
           <span>✨</span>Ask AI
         </button>
+      </div>
+    </div>
+  );
+}
+
+function PromoCarousel(): React.JSX.Element {
+  const [i, setI] = useState(0);
+  const [fade, setFade] = useState(false);
+
+  useEffect(() => {
+    const t = setInterval(() => {
+      setFade(true);
+      setTimeout(() => {
+        setI((n) => (n + 1) % PROMOS.length);
+        setFade(false);
+      }, 200);
+    }, 4800);
+    return () => {
+      clearInterval(t);
+    };
+  }, []);
+
+  const p = PROMOS[i] ?? { bg: '', icon: '', title: '', sub: '', cta: '' };
+  return (
+    <div className="mx-5 mb-5">
+      <div
+        className="relative overflow-hidden rounded-3xl p-5 transition-opacity duration-200"
+        style={{
+          background: p.bg,
+          minHeight: 116,
+          boxShadow: '0 12px 40px rgba(0,0,0,.38)',
+          opacity: fade ? 0 : 1,
+        }}
+      >
+        <div
+          className="absolute right-5 top-1/2 -translate-y-1/2 text-[64px]"
+          style={{ opacity: 0.1 }}
+        >
+          {p.icon}
+        </div>
+        <div className="relative z-10 flex items-center gap-4">
+          <div
+            className="flex h-[52px] w-[52px] flex-shrink-0 items-center justify-center rounded-2xl"
+            style={{ background: 'rgba(255,255,255,.14)', backdropFilter: 'blur(12px)' }}
+          >
+            <span style={{ fontSize: 26 }}>{p.icon}</span>
+          </div>
+          <div className="flex-1">
+            <p
+              className={`mb-0.5 text-[17px] font-bold ${poppins.className}`}
+              style={{ color: '#FFF' }}
+            >
+              {p.title}
+            </p>
+            <p
+              className={`mb-3 text-[11px] ${inter.className}`}
+              style={{ color: 'rgba(255,255,255,.68)' }}
+            >
+              {p.sub}
+            </p>
+            <button
+              type="button"
+              className={`rounded-xl px-4 py-1.5 text-[11px] font-bold ${inter.className}`}
+              style={{
+                background: 'rgba(255,255,255,.2)',
+                color: '#FFF',
+                backdropFilter: 'blur(8px)',
+              }}
+            >
+              {p.cta} →
+            </button>
+          </div>
+        </div>
+        <div className="mt-4 flex gap-1.5">
+          {PROMOS.map((promo, j) => (
+            <div
+              key={promo.title}
+              className="h-1.5 rounded-full transition-all"
+              style={{
+                width: j === i ? 24 : 6,
+                background: j === i ? '#FFF' : 'rgba(255,255,255,.28)',
+              }}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -434,155 +601,167 @@ function Categories(): React.JSX.Element {
   );
 }
 
-function Merchants(): React.JSX.Element {
+function Merchants({ loaded }: { loaded: boolean }): React.JSX.Element {
   return (
     <div className="mb-5">
       <Row title="Nearby Merchants" />
       <div className="flex gap-3 overflow-x-auto px-5" style={{ scrollbarWidth: 'none' }}>
-        {MERCHANTS.map((m) => (
-          <div
-            key={m.name}
-            className="flex-shrink-0 overflow-hidden rounded-3xl"
-            style={{
-              width: 155,
-              background: NAVY_CARD,
-              border: `1.5px solid ${BORDER}`,
-              boxShadow: '0 4px 20px rgba(0,0,0,.3)',
-            }}
-          >
-            <div
-              className="relative flex h-[82px] items-center justify-center"
-              style={{ background: m.bg }}
-            >
-              <span style={{ fontSize: 40 }}>{m.emoji}</span>
+        {!loaded
+          ? [1, 2, 3].map((i) => <Bone key={i} w={155} h={188} />)
+          : MERCHANTS.map((m) => (
               <div
-                className={`absolute right-2.5 top-2.5 rounded-xl px-2 py-1 text-[9px] font-bold ${inter.className}`}
-                style={{ background: 'rgba(0,0,0,.5)', color: '#FFF' }}
-              >
-                ⏱ {m.eta}
-              </div>
-            </div>
-            <div className="p-3">
-              <p
-                className={`mb-0.5 truncate text-[12.5px] font-bold ${poppins.className}`}
-                style={{ color: '#FFF' }}
-              >
-                {m.name}
-              </p>
-              <p className={`mb-2 text-[10px] ${inter.className}`} style={{ color: MUTED }}>
-                {m.cat}
-              </p>
-              <div className="mb-3 flex items-center justify-between">
-                <span className="text-[10px] font-bold" style={{ color: '#FBBF24' }}>
-                  ★ {m.rating}
-                </span>
-                <span className={`text-[10px] ${inter.className}`} style={{ color: MUTED }}>
-                  {m.dist}
-                </span>
-              </div>
-              <button
-                type="button"
-                className={`h-[30px] w-full rounded-xl text-[11px] font-semibold ${inter.className}`}
+                key={m.name}
+                className="flex-shrink-0 overflow-hidden rounded-3xl"
                 style={{
-                  background: `linear-gradient(135deg,${G0},${G2})`,
-                  color: '#FFF',
-                  boxShadow: '0 3px 12px rgba(43,172,82,.25)',
+                  width: 155,
+                  background: NAVY_CARD,
+                  border: `1.5px solid ${BORDER}`,
+                  boxShadow: '0 4px 20px rgba(0,0,0,.3)',
                 }}
               >
-                View Store
-              </button>
-            </div>
-          </div>
-        ))}
+                <div
+                  className="relative flex h-[82px] items-center justify-center"
+                  style={{ background: m.bg }}
+                >
+                  <span style={{ fontSize: 40 }}>{m.emoji}</span>
+                  <div
+                    className={`absolute right-2.5 top-2.5 rounded-xl px-2 py-1 text-[9px] font-bold ${inter.className}`}
+                    style={{ background: 'rgba(0,0,0,.5)', color: '#FFF' }}
+                  >
+                    ⏱ {m.eta}
+                  </div>
+                </div>
+                <div className="p-3">
+                  <p
+                    className={`mb-0.5 truncate text-[12.5px] font-bold ${poppins.className}`}
+                    style={{ color: '#FFF' }}
+                  >
+                    {m.name}
+                  </p>
+                  <p className={`mb-2 text-[10px] ${inter.className}`} style={{ color: MUTED }}>
+                    {m.cat}
+                  </p>
+                  <div className="mb-3 flex items-center justify-between">
+                    <span className="text-[10px] font-bold" style={{ color: '#FBBF24' }}>
+                      ★ {m.rating}
+                    </span>
+                    <span className={`text-[10px] ${inter.className}`} style={{ color: MUTED }}>
+                      {m.dist}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className={`h-[30px] w-full rounded-xl text-[11px] font-semibold ${inter.className}`}
+                    style={{
+                      background: `linear-gradient(135deg,${G0},${G2})`,
+                      color: '#FFF',
+                      boxShadow: '0 3px 12px rgba(43,172,82,.25)',
+                    }}
+                  >
+                    View Store
+                  </button>
+                </div>
+              </div>
+            ))}
       </div>
     </div>
   );
 }
 
-function Recs(): React.JSX.Element {
+function Recs({ loaded }: { loaded: boolean }): React.JSX.Element {
   return (
     <div className="mb-5">
       <Row title="Recommended for You" />
       <div className="flex gap-3 overflow-x-auto px-5" style={{ scrollbarWidth: 'none' }}>
-        {RECS.map((r) => (
-          <div
-            key={r.name}
-            className="flex flex-shrink-0 flex-col items-center gap-2.5 rounded-2xl p-3.5"
-            style={{ width: 130, background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
-          >
-            <div
-              className="flex h-[52px] w-[52px] items-center justify-center rounded-2xl text-[28px]"
-              style={{ background: 'rgba(255,255,255,.06)' }}
-            >
-              {r.emoji}
-            </div>
-            <div className="w-full text-center">
-              <p
-                className={`truncate text-[11.5px] font-bold ${poppins.className}`}
-                style={{ color: '#FFF' }}
+        {!loaded
+          ? [1, 2, 3, 4].map((i) => <Bone key={i} w={130} h={148} />)
+          : RECS.map((r) => (
+              <div
+                key={r.name}
+                className="flex flex-shrink-0 flex-col items-center gap-2.5 rounded-2xl p-3.5"
+                style={{ width: 130, background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
               >
-                {r.name}
-              </p>
-              <p
-                className={`mt-0.5 text-[11px] font-bold ${poppins.className}`}
-                style={{ color: G3 }}
-              >
-                {r.price}
-              </p>
-            </div>
-            <span
-              className="rounded-full px-2.5 py-1 text-[9px] font-bold"
-              style={{ background: `${r.bc}20`, color: r.bc, border: `1px solid ${r.bc}35` }}
-            >
-              {r.badge}
-            </span>
-          </div>
-        ))}
+                <div
+                  className="flex h-[52px] w-[52px] items-center justify-center rounded-2xl text-[28px]"
+                  style={{ background: 'rgba(255,255,255,.06)' }}
+                >
+                  {r.emoji}
+                </div>
+                <div className="w-full text-center">
+                  <p
+                    className={`truncate text-[11.5px] font-bold ${poppins.className}`}
+                    style={{ color: '#FFF' }}
+                  >
+                    {r.name}
+                  </p>
+                  <p
+                    className={`mt-0.5 text-[11px] font-bold ${poppins.className}`}
+                    style={{ color: G3 }}
+                  >
+                    {r.price}
+                  </p>
+                </div>
+                <span
+                  className="rounded-full px-2.5 py-1 text-[9px] font-bold"
+                  style={{ background: `${r.bc}20`, color: r.bc, border: `1px solid ${r.bc}35` }}
+                >
+                  {r.badge}
+                </span>
+              </div>
+            ))}
       </div>
     </div>
   );
 }
 
-function ActivityList(): React.JSX.Element {
+function ActivityList({ loaded }: { loaded: boolean }): React.JSX.Element {
   return (
     <div className="mb-4 px-5">
       <Row title="Recent Activity" />
-      <div
-        className="overflow-hidden rounded-3xl"
-        style={{ background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
-      >
-        {ACTIVITY.map((a, i) => (
-          <div
-            key={a.label}
-            className="flex items-center gap-3.5 px-4 py-3.5"
-            style={{ borderBottom: i < ACTIVITY.length - 1 ? `1px solid ${BORDER}` : 'none' }}
-          >
+      {!loaded ? (
+        <div className="flex flex-col gap-2">
+          {[1, 2, 3].map((i) => (
+            <Bone key={i} w="100%" h={64} r={20} />
+          ))}
+        </div>
+      ) : (
+        <div
+          className="overflow-hidden rounded-3xl"
+          style={{ background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
+        >
+          {ACTIVITY.map((a, i) => (
             <div
-              className="flex h-[42px] w-[42px] flex-shrink-0 items-center justify-center rounded-2xl text-[18px]"
-              style={{ background: a.credit ? 'rgba(43,172,82,.12)' : 'rgba(255,255,255,.06)' }}
+              key={a.label}
+              className="flex items-center gap-3.5 px-4 py-3.5"
+              style={{ borderBottom: i < ACTIVITY.length - 1 ? `1px solid ${BORDER}` : 'none' }}
             >
-              {a.icon}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p
-                className={`truncate text-[13px] font-semibold ${poppins.className}`}
-                style={{ color: '#FFF' }}
+              <div
+                className="flex h-[42px] w-[42px] flex-shrink-0 items-center justify-center rounded-2xl text-[18px]"
+                style={{ background: a.credit ? 'rgba(43,172,82,.12)' : 'rgba(255,255,255,.06)' }}
               >
-                {a.label}
-              </p>
-              <p className={`text-[10px] ${inter.className}`} style={{ color: MUTED }}>
-                {a.sub}
+                {a.icon}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p
+                  className={`truncate text-[13px] font-semibold ${poppins.className}`}
+                  style={{ color: '#FFF' }}
+                >
+                  {a.label}
+                </p>
+                <p className={`text-[10px] ${inter.className}`} style={{ color: MUTED }}>
+                  {a.sub}
+                </p>
+              </div>
+              <p
+                className={`flex-shrink-0 text-[14px] font-bold ${poppins.className}`}
+                style={{ color: a.credit ? G3 : '#FFF' }}
+              >
+                {a.amount}
               </p>
             </div>
-            <p
-              className={`flex-shrink-0 text-[14px] font-bold ${poppins.className}`}
-              style={{ color: a.credit ? G3 : '#FFF' }}
-            >
-              {a.amount}
-            </p>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -671,6 +850,7 @@ function FAB(): React.JSX.Element {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          animation: 'avatar-pulse 3s ease-in-out infinite',
         }}
       >
         <span style={{ fontSize: 22 }}>✨</span>
@@ -680,6 +860,16 @@ function FAB(): React.JSX.Element {
 }
 
 export default function HomePreviewPage(): React.JSX.Element {
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setLoaded(true);
+    }, 1000);
+    return () => {
+      clearTimeout(t);
+    };
+  }, []);
+
   return (
     <div
       className={`relative mx-auto flex h-[844px] w-[390px] flex-col overflow-hidden rounded-[32px] ${inter.className}`}
@@ -731,10 +921,11 @@ export default function HomePreviewPage(): React.JSX.Element {
           <QuickActions />
         </div>
         <AICard />
+        <PromoCarousel />
         <Categories />
-        <Merchants />
-        <Recs />
-        <ActivityList />
+        <Merchants loaded={loaded} />
+        <Recs loaded={loaded} />
+        <ActivityList loaded={loaded} />
         <div style={{ height: 104 }} />
       </div>
       <FAB />

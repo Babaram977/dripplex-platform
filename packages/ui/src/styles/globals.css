@@ -179,3 +179,245 @@
     );
   }
 }
+
+/*
+ * Locked animation keyframes, ported verbatim from the founder's approved
+ * Figma Make export (docs/reference/figma-super-app-source/shared.tsx,
+ * `GLOBAL_STYLES`, from DrippleX_Super_App_Design_Copy.zip) — see
+ * docs/FIGMA-SOURCE-INVENTORY-V2.md. Screens reference these by name
+ * directly in inline `animation:` properties (e.g. `avatar-pulse 3s
+ * ease-in-out infinite`), matching the source exactly, not through the
+ * `ANIM` object in packages/ui/src/tokens/animations.ts.
+ *
+ * Known inconsistency in the locked source itself, not introduced here:
+ * that `ANIM` token object references keyframe names (`scale-in`,
+ * `shimmer`, `slide-pop`, `float-bob`, `spin-slow`) that don't exist
+ * anywhere in this file — the real screens never use `ANIM`, they use
+ * these string literals directly. Not silently reconciled; flagging it
+ * here since it could look like a missing keyframe otherwise.
+ */
+@keyframes orbit-cw {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes orbit-ccw {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(-360deg);
+  }
+}
+@keyframes orbit-once {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes float-a {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+@keyframes float-b {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-11px);
+  }
+}
+@keyframes float-c {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-7px);
+  }
+}
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(22px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes glow-ring {
+  0%,
+  100% {
+    box-shadow:
+      0 0 24px rgba(43, 172, 82, 0.14),
+      0 0 0 1px rgba(43, 172, 82, 0.18);
+  }
+  50% {
+    box-shadow:
+      0 0 52px rgba(43, 172, 82, 0.3),
+      0 0 0 1px rgba(43, 172, 82, 0.28);
+  }
+}
+@keyframes bar-fill {
+  from {
+    width: 0;
+  }
+  to {
+    width: 100%;
+  }
+}
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20%,
+  60% {
+    transform: translateX(-6px);
+  }
+  40%,
+  80% {
+    transform: translateX(6px);
+  }
+}
+@keyframes otp-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.65);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes check-draw {
+  from {
+    stroke-dashoffset: 60;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes circle-draw {
+  from {
+    stroke-dashoffset: 201;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes success-bounce {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.08);
+  }
+  80% {
+    transform: scale(0.96);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@keyframes pulse-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes chip-pop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.18);
+  }
+  70% {
+    transform: scale(0.94);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes avatar-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(43, 172, 82, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 14px rgba(43, 172, 82, 0);
+  }
+}
+@keyframes welcome-rise {
+  from {
+    opacity: 0;
+    transform: translateY(32px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
