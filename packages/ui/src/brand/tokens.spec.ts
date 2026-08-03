@@ -9,10 +9,10 @@ describe('DRIPPLEX_BRAND', () => {
 
   it('exposes the official colour palette', () => {
     expect(DRIPPLEX_BRAND.colors).toEqual({
-      primary: '#0E7A3E',
-      secondary: '#0A2540',
-      accent: '#FFC107',
-      neutral: '#F4F6F8',
+      primary: '#2BAC52',
+      secondary: '#0A1628',
+      accent: '#47CF72',
+      neutral: '#112238',
       white: '#FFFFFF',
     });
   });
