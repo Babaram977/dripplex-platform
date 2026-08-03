@@ -13,7 +13,7 @@ export function SuperAppSkeleton({
 }: {
   w: number | string;
   h: number;
-  r?: number;
+  r?: number | undefined;
 }): React.JSX.Element {
   return (
     <div

@@ -22,8 +22,8 @@ export function SuperAppAISheet({
   onClose,
 }: {
   prompts: string[];
-  icons?: string[];
-  onSelectPrompt?: (prompt: string) => void;
+  icons?: string[] | undefined;
+  onSelectPrompt?: ((prompt: string) => void) | undefined;
   onClose: () => void;
 }): React.JSX.Element {
   const { heading, body } = useSuperAppFonts();

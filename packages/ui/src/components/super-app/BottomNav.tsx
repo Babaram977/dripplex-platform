@@ -39,7 +39,7 @@ export function SuperAppBottomNav({
   onNavigate,
 }: {
   active: SuperAppNavTab;
-  onNavigate?: (tab: SuperAppNavTab) => void;
+  onNavigate?: ((tab: SuperAppNavTab) => void) | undefined;
 }): React.JSX.Element {
   const { body } = useSuperAppFonts();
   return (

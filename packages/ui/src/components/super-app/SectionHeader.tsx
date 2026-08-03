@@ -12,7 +12,7 @@ export function SuperAppSectionHeader({
   onSeeAll,
 }: {
   title: string;
-  onSeeAll?: () => void;
+  onSeeAll?: (() => void) | undefined;
 }): React.JSX.Element {
   const { heading, body } = useSuperAppFonts();
   return (
