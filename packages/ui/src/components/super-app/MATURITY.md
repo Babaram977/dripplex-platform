@@ -242,3 +242,101 @@ for Checkout and Tracking until each is itself ported and verified.
 
 Checkout and Tracking screens: not yet started — these remain unwritten,
 not merely "Implemented."
+
+## Marketplace module — Checkout screen Verified (2026-08-03)
+
+Ported from `docs/reference/figma-super-app-source/checkoutScreen.tsx`
+(fifth of six Marketplace-module screens) and wired live at the real
+route `/marketplace/checkout` (new — no prior implementation). Backed by
+the real `sdk.orders.checkout`/`sdk.orders.payOrder`, `sdk.addresses`,
+and `sdk.promotions.validate` surfaces — every total shown (subtotal,
+delivery fee, tax, discount, final total) is either a real
+`CartTotalsDto` figure or a live server-computed promo preview, not
+display-only math.
+
+Several fields in the source mock have no real backend equivalent and
+were adapted rather than faked:
+
+- **Payment methods.** The real system has no wallet-direct-debit or
+  cash-on-delivery path for marketplace orders — only four real gateway
+  providers (`PAYSTACK`/`FLUTTERWAVE`/`MONIEPOINT`/`OPAY`, per
+  `PaymentProvider`). `SuperAppPaymentMethodSelector` is a generic
+  component; the real page populates it with the four real gateway
+  brands instead of the mock's four abstract categories.
+- **Promo code.** The source mock puts a typed promo-code field on Cart,
+  but the real coupon engine's only customer-facing "apply code"
+  endpoint is `POST /customer/promotions/validate`, consumed at
+  Checkout via `CheckoutDto.couponCode` — so `SuperAppPromoCodeCard`
+  moved from Cart (where it doesn't work) to Checkout (where it does).
+- **Fulfillment type.** Trimmed to the two real
+  `CheckoutFulfillmentType` values (`DELIVERY`/`PICKUP`); the mock's
+  third "Express" tier and its separate "Deliver Now/Schedule" toggle
+  have no backend support and were dropped rather than faked.
+- **Delivery address.** The source mock has no address form at all
+  (just an entry button). `SuperAppAddAddressSheet` is a genuinely new
+  component built for real `CreateAddressDto` requirements — its "Use my
+  current location" button reads real coordinates from the browser's
+  Geolocation API rather than inventing them. `SuperAppCheckoutAddressCard`
+  drops the mock's "Use My Location" quick-action for the same reason
+  (no reverse-geocoding endpoint exists).
+
+`SuperAppCartOrderSummary` was reused rather than duplicated — it grew
+two additive optional props (`title`, `totalLabel`, both defaulting to
+Cart's exact prior text) so Checkout can relabel it "Order Summary" /
+"Final Total" without changing Cart's rendering.
+
+**A real backend bug was found and fixed during verification, not
+routed around:** `Order.merchantId` (and `Cart`/`Product.merchantId`)
+store `MerchantProfile.id`, but `CheckoutService.assertMerchantApproved`,
+`CheckoutService.dispatchOrderCreatedNotifications`,
+`PaymentService`'s merchant-eligibility check and payment-outcome
+notifier, and `DeliveryService.createDeliveryJob`/`notifyOrderAudience`
+all queried or compared it as if it were the merchant's `User.id` — the
+same convention already correctly documented and implemented in
+`CartService.validateMerchant`. This made checkout for any real merchant
+throw "Merchant not found" (404), and would have made payment
+initialization throw "Merchant is suspended" (422) and delivery-job
+creation throw a foreign-key violation. It also silently broke
+`MerchantOrdersService` (merchants could never see their own orders via
+`/merchant/orders`) and dropped merchant order/payment/delivery
+notifications on the floor. Fixed all call sites to resolve
+`MerchantProfile.id` ↔ `User.id` correctly (see
+`apps/backend/src/{orders,payments,delivery}` and their specs); full
+backend suite (1017 tests, excluding two pre-existing DB-seed-dependent
+failures unrelated to this change) passes.
+
+Typecheck/lint clean across `@dripplex/ui` and `customer-web`. Playwright
+walkthrough against the real seeded backend confirmed, end to end: empty
+state without a delivery address prompts "Add a delivery address to
+continue"; the add-address sheet creates a real `CustomerAddress` via
+geolocation and selects it; the fulfillment toggle recalculates the
+delivery fee and final total live (Delivery ₦1,500 → Pickup FREE);
+applying a fake promo code surfaces the real validation error from
+`sdk.promotions.validate`; the terms checkbox gates Place Order; placing
+the order calls the real `sdk.orders.checkout()`, which created an
+actual `Order` row with the correct merchant/totals; the subsequent
+`sdk.orders.payOrder()` call correctly reached the real Paystack adapter
+and failed only with "Paystack is not configured" — an honest
+environmental limitation of this sandbox (no real gateway credentials),
+not a code defect. A repeat checkout attempt against the now-locked cart
+correctly returned "Cart is locked pending payment" rather than silently
+double-charging.
+
+Not yet Locked — pending founder confirmation, then remains Implemented
+for Tracking until it is itself ported and verified.
+
+| Component                       | Status                                                   |
+| ------------------------------- | -------------------------------------------------------- |
+| `SuperAppCheckoutAddressCard`   | Verified                                                 |
+| `SuperAppAddressPickerSheet`    | Verified                                                 |
+| `SuperAppAddAddressSheet`       | Verified                                                 |
+| `SuperAppCheckoutMerchantCard`  | Verified                                                 |
+| `SuperAppPaymentMethodSelector` | Verified                                                 |
+| `SuperAppPromoCodeCard`         | Verified                                                 |
+| `SuperAppCheckoutTermsCheckbox` | Verified                                                 |
+| `SuperAppPlaceOrderBar`         | Verified                                                 |
+| `SuperAppCheckoutSkeleton`      | Verified                                                 |
+| `SuperAppCartOrderSummary`      | Verified (extended, additive `title`/`totalLabel` props) |
+
+Tracking screen: not yet started — this remains unwritten, not merely
+"Implemented."

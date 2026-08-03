@@ -139,8 +139,13 @@ export class DeliveryService {
       throw new NotFoundDomainException('Delivery address not found');
     }
 
+    // order.merchantId is MerchantProfile.id (matching Product/Cart.merchantId
+    // throughout the catalog); Business.merchantId and DeliveryJob.merchantId
+    // reference the merchant's User.id, so resolve it once here.
+    const merchantUserId = await this.resolveMerchantUserId(order.merchantId);
+
     const business = await this.prisma.business.findUnique({
-      where: { merchantId: order.merchantId },
+      where: { merchantId: merchantUserId },
     });
     const pickupLatitude = business ? Number(business.latitude) : DEFAULT_PICKUP_LATITUDE;
     const pickupLongitude = business ? Number(business.longitude) : DEFAULT_PICKUP_LONGITUDE;
@@ -160,7 +165,7 @@ export class DeliveryService {
 
     const job = await this.deliveryRepository.createJob({
       orderId: order.id,
-      merchantId: order.merchantId,
+      merchantId: merchantUserId,
       customerId: order.customerId,
       pickupLatitude,
       pickupLongitude,
@@ -534,7 +539,9 @@ export class DeliveryService {
     const order = await this.requireOrder(job.orderId);
     await this.notifyUser(order.customerId, 'customer', event, order, job);
     if (event === 'delivered') {
-      await this.notifyUser(order.merchantId, 'merchant', event, order, job);
+      // job.merchantId is the merchant's User.id (see createDeliveryJob),
+      // unlike order.merchantId which is MerchantProfile.id.
+      await this.notifyUser(job.merchantId, 'merchant', event, order, job);
     }
   }
 
@@ -566,6 +573,16 @@ export class DeliveryService {
       throw new NotFoundDomainException('Order not found');
     }
     return order;
+  }
+
+  private async resolveMerchantUserId(merchantProfileId: string): Promise<string> {
+    const profile = await this.prisma.merchantProfile.findUnique({
+      where: { id: merchantProfileId },
+    });
+    if (!profile) {
+      throw new NotFoundDomainException('Merchant not found');
+    }
+    return profile.userId;
   }
 
   private async requireJob(jobId: string): Promise<DeliveryJob> {

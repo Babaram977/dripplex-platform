@@ -11,16 +11,20 @@ import { useSuperAppFonts } from './fonts';
  * is added instead, since hiding a real charge would be dishonest.
  */
 export function SuperAppCartOrderSummary({
+  title = 'Order Summary',
   itemsTotalLabel,
   deliveryFeeLabel,
   discountLabel,
   taxLabel,
+  totalLabel = 'Grand Total',
   grandTotalLabel,
 }: {
+  title?: string | undefined;
   itemsTotalLabel: string;
   deliveryFeeLabel: string;
   discountLabel?: string | undefined;
   taxLabel: string;
+  totalLabel?: string | undefined;
   grandTotalLabel: string;
 }): React.JSX.Element {
   const { heading, body } = useSuperAppFonts();
@@ -40,7 +44,7 @@ export function SuperAppCartOrderSummary({
         className={`mb-3 text-[12px] font-semibold uppercase tracking-widest ${body}`}
         style={{ color: MUTED }}
       >
-        Order Summary
+        {title}
       </p>
       <div className="flex flex-col gap-2.5">
         {rows.map((row) => (
@@ -55,7 +59,7 @@ export function SuperAppCartOrderSummary({
         ))}
         <div className="my-1 h-px" style={{ background: BORDER }} />
         <div className="flex items-center justify-between">
-          <span className={`text-[15px] font-semibold text-white ${heading}`}>Grand Total</span>
+          <span className={`text-[15px] font-semibold text-white ${heading}`}>{totalLabel}</span>
           <span className={`text-[18px] font-bold text-white ${heading}`}>{grandTotalLabel}</span>
         </div>
       </div>

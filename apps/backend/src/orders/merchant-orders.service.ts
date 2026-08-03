@@ -47,8 +47,9 @@ export class MerchantOrdersService {
     merchantId: string,
     query: MerchantOrderListQueryDto,
   ): Promise<PaginatedResult<OrderDto>> {
+    const merchantProfileId = await this.resolveMerchantProfileId(merchantId);
     const { items, total } = await this.ordersRepository.list({
-      merchantId,
+      merchantId: merchantProfileId,
       ...(query.status ? { status: query.status } : {}),
       skip: (query.page - 1) * query.pageSize,
       take: query.pageSize,
@@ -281,11 +282,25 @@ export class MerchantOrdersService {
   }
 
   private async requireOrder(merchantId: string, orderId: string): Promise<OrderWithItems> {
-    const order = await this.ordersRepository.findByIdForMerchant(orderId, merchantId);
+    const merchantProfileId = await this.resolveMerchantProfileId(merchantId);
+    const order = await this.ordersRepository.findByIdForMerchant(orderId, merchantProfileId);
     if (!order) {
       throw new NotFoundDomainException('Order not found');
     }
     return order;
+  }
+
+  /** `merchantId` on Order/OrderItem is MerchantProfile.id (matching
+   * Product/Cart.merchantId), not the merchant's User.id — resolve the
+   * authenticated merchant's profile id before filtering/ownership checks.
+   * Audit trail and domain-event actor tracking below intentionally keep
+   * using the raw `merchantId` param (the real User.id) instead. */
+  private async resolveMerchantProfileId(userId: string): Promise<string> {
+    const profile = await this.prisma.merchantProfile.findUnique({ where: { userId } });
+    if (!profile) {
+      throw new NotFoundDomainException('Merchant profile not found');
+    }
+    return profile.id;
   }
 
   private async refreshed(orderId: string): Promise<OrderDto> {

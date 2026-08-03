@@ -17,6 +17,7 @@ import type { WalletService } from '../wallet/wallet.service';
 import type { OrdersRepository, OrderWithItems } from './repositories/orders.repository';
 
 const merchantId = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+const merchantProfileId = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
 const customerId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const orderId = '11111111-1111-1111-1111-111111111111';
 
@@ -24,7 +25,7 @@ function makeOrder(overrides: Partial<OrderWithItems> = {}): OrderWithItems {
   return {
     id: orderId,
     customerId,
-    merchantId,
+    merchantId: merchantProfileId,
     cartId: null,
     orderNumber: 'DPX-20260802-ABC123',
     status: OrderStatus.CONFIRMED,
@@ -80,6 +81,7 @@ describe('MerchantOrdersService', () => {
 
   const prisma = {
     user: { findUnique: jest.fn().mockResolvedValue({ email: 'customer@example.com' }) },
+    merchantProfile: { findUnique: jest.fn().mockResolvedValue({ id: merchantProfileId }) },
   } as unknown as PrismaService;
 
   const eventBus = {
@@ -103,6 +105,7 @@ describe('MerchantOrdersService', () => {
     ordersRepository.findById.mockResolvedValue(makeOrder());
     ordersRepository.transition.mockResolvedValue(makeOrder());
     (prisma.user.findUnique as jest.Mock).mockResolvedValue({ email: 'customer@example.com' });
+    (prisma.merchantProfile.findUnique as jest.Mock).mockResolvedValue({ id: merchantProfileId });
   });
 
   it('rejects actions on orders belonging to another merchant', async () => {
@@ -110,6 +113,21 @@ describe('MerchantOrdersService', () => {
     await expect(service.acceptOrder(merchantId, orderId, context)).rejects.toBeInstanceOf(
       NotFoundDomainException,
     );
+  });
+
+  it('rejects actions when the authenticated user has no merchant profile', async () => {
+    (prisma.merchantProfile.findUnique as jest.Mock).mockResolvedValue(null);
+    await expect(service.acceptOrder(merchantId, orderId, context)).rejects.toBeInstanceOf(
+      NotFoundDomainException,
+    );
+  });
+
+  it("resolves the caller's MerchantProfile.id before checking order ownership", async () => {
+    await service.getOrder(merchantId, orderId);
+    expect(prisma.merchantProfile.findUnique).toHaveBeenCalledWith({
+      where: { userId: merchantId },
+    });
+    expect(ordersRepository.findByIdForMerchant).toHaveBeenCalledWith(orderId, merchantProfileId);
   });
 
   describe('acceptOrder', () => {
@@ -281,7 +299,7 @@ describe('MerchantOrdersService', () => {
       const result = await service.listOrders(merchantId, { page: 1, pageSize: 20 });
 
       expect(ordersRepository.list).toHaveBeenCalledWith(
-        expect.objectContaining({ merchantId, skip: 0, take: 20 }),
+        expect.objectContaining({ merchantId: merchantProfileId, skip: 0, take: 20 }),
       );
       expect(result.items).toHaveLength(1);
     });

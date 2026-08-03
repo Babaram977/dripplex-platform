@@ -227,7 +227,7 @@ export default function CartPage(): React.JSX.Element {
 
   return (
     <div className="absolute inset-0 flex flex-col overflow-hidden">
-      <div className="flex-1 overflow-y-auto px-5 pb-32 pt-6" style={{ scrollbarWidth: 'none' }}>
+      <div className="flex-1 overflow-y-auto px-5 pb-44 pt-6" style={{ scrollbarWidth: 'none' }}>
         <SuperAppCartMerchantGroup
           merchantName={merchantName ?? 'Your Order'}
           items={cartItems}

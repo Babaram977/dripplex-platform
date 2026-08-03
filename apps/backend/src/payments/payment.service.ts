@@ -535,8 +535,11 @@ export class PaymentService {
       throw new ValidationDomainException('Customer is blocked from payments');
     }
 
+    // order.merchantId is MerchantProfile.id (matching Product/Cart.merchantId
+    // throughout the catalog), not the merchant's User.id — see
+    // cart.service.ts's validateMerchant for the same convention.
     const merchant = await this.prisma.merchantProfile.findFirst({
-      where: { userId: order.merchantId, deletedAt: null },
+      where: { id: order.merchantId, deletedAt: null },
     });
     if (!merchant || merchant.status === MerchantStatus.SUSPENDED) {
       throw new ValidationDomainException('Merchant is suspended');
@@ -573,10 +576,14 @@ export class PaymentService {
     transaction: PaymentTransaction,
     success: boolean,
   ): Promise<void> {
-    const [customer, merchant] = await Promise.all([
+    const [customer, merchantProfile] = await Promise.all([
       this.prisma.user.findUnique({ where: { id: order.customerId } }),
-      this.prisma.user.findUnique({ where: { id: order.merchantId } }),
+      this.prisma.merchantProfile.findUnique({
+        where: { id: order.merchantId },
+        include: { user: true },
+      }),
     ]);
+    const merchant = merchantProfile?.user ?? null;
 
     if (customer?.email) {
       await this.notifications.notifyPaymentResult({

@@ -38,6 +38,7 @@ const orderId = '11111111-1111-1111-1111-111111111111';
 const jobId = '22222222-2222-2222-2222-222222222222';
 const customerId = '33333333-3333-3333-3333-333333333333';
 const merchantId = '44444444-4444-4444-4444-444444444444';
+const merchantProfileId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const riderId = '55555555-5555-5555-5555-555555555555';
 const nextRiderId = '66666666-6666-6666-6666-666666666666';
 const addressId = '77777777-7777-7777-7777-777777777777';
@@ -47,7 +48,7 @@ function makeOrder(overrides: Record<string, unknown> = {}): OrderWithItems {
   return {
     id: orderId,
     customerId,
-    merchantId,
+    merchantId: merchantProfileId,
     cartId,
     orderNumber: 'DPX-20260721-ABC123',
     status: OrderStatus.READY,
@@ -255,9 +256,11 @@ describe('DeliveryService', () => {
 
   const businessFindUnique = jest.fn();
   const userFindUnique = jest.fn();
+  const merchantProfileFindUnique = jest.fn();
   const prisma = {
     business: { findUnique: businessFindUnique },
     user: { findUnique: userFindUnique },
+    merchantProfile: { findUnique: merchantProfileFindUnique },
   } as unknown as PrismaService;
 
   const service = new DeliveryService(
@@ -348,6 +351,7 @@ describe('DeliveryService', () => {
       const email = emails[where.id] ?? null;
       return Promise.resolve({ id: where.id, email });
     });
+    merchantProfileFindUnique.mockResolvedValue({ id: merchantProfileId, userId: merchantId });
   });
 
   it('creates a delivery job for a paid order and auto-assigns the nearest rider', async () => {

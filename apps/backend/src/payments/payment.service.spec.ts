@@ -165,7 +165,7 @@ describe('PaymentService', () => {
 
   const prisma = {
     user: { findUnique: jest.fn() },
-    merchantProfile: { findFirst: jest.fn() },
+    merchantProfile: { findFirst: jest.fn(), findUnique: jest.fn() },
   } as unknown as PrismaService;
 
   const config = {
@@ -246,6 +246,11 @@ describe('PaymentService', () => {
       userId: merchantId,
       status: MerchantStatus.APPROVED,
       deletedAt: null,
+    });
+    (prisma.merchantProfile.findUnique as jest.Mock).mockResolvedValue({
+      id: merchantId,
+      userId: merchantId,
+      user: { id: merchantId, email: 'merchant@example.com' },
     });
     cartRepository.findById.mockResolvedValue({
       id: cartId,

@@ -211,6 +211,7 @@ describe('CheckoutService', () => {
     },
     merchantProfile: {
       findFirst: jest.fn(),
+      findUnique: jest.fn(),
     },
   } as unknown as PrismaService;
 
@@ -299,6 +300,17 @@ describe('CheckoutService', () => {
       userId: merchantId,
       status: MerchantStatus.APPROVED,
       deletedAt: null,
+    });
+    (prisma.merchantProfile.findUnique as jest.Mock).mockResolvedValue({
+      id: merchantId,
+      userId: merchantId,
+      user: {
+        id: merchantId,
+        email: 'merchant@example.com',
+        status: UserStatus.ACTIVE,
+        emailVerifiedAt: new Date(),
+        deletedAt: null,
+      },
     });
   });
 

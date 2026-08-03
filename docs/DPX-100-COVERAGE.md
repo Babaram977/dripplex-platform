@@ -25,7 +25,7 @@ overstate progress:
 | Module          |                                                                       Figma Screens | DPX-100 Ported |                                                                                                                                                                           Real Route (backend-connected) |  Verified | Locked |
 | --------------- | ----------------------------------------------------------------------------------: | -------------: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------: | --------: | -----: |
 | Home            |                                                                                   1 |            1/1 |                                                                                                                                                                                    0/1 (`/preview` only) |       1/1 |    1/1 |
-| Marketplace     |                                                                                   6 |            4/6 |                                                                                                                                                                               2/6 (Product Detail, Cart) |       4/6 |    0/6 |
+| Marketplace     |                                                                                   6 |            5/6 |                                                                                                                                                                     3/6 (Product Detail, Cart, Checkout) |       5/6 |    0/6 |
 | Ride            |                                                                                  30 |         0/30 † |                                                                                                                                                                                                 ~20/30 † |  ~20/30 † |      — |
 | Wallet          |                                                                                  10 |           0/10 |                                                                                                                                        0/10 (only `WalletPaySuccessScreen` exists, inside the Ride flow) |      0/10 |      — |
 | Driver          |                                                                                  13 |         0/13 † | partial † (`apps/driver-portal`, different screen set — dashboard/wallet/earnings/trip/history/profile/campaign, not a 1:1 port of `driverScreen.tsx`'s Splash/Login/OTP/KYC/DocsUpload/VehicleReg flow) | partial † |      — |
@@ -52,8 +52,8 @@ starts.
 | Store (`storeScreen.tsx`)                  | ✅             | ❌ (`/preview/store-v2` only)       | ✅       | ❌     |
 | Product Detail (`productDetailScreen.tsx`) | ✅             | ✅ `/marketplace/products/[id]`     | ✅       | ❌     |
 | Cart (`cartScreen.tsx`)                    | ✅             | ✅ `/marketplace/cart`              | ✅       | ❌     |
-| Checkout (`checkoutScreen.tsx`)            | ⏳ next        | —                                   | —        | —      |
-| Tracking (`trackingScreen.tsx`)            | —              | —                                   | —        | —      |
+| Checkout (`checkoutScreen.tsx`)            | ✅             | ✅ `/marketplace/checkout`          | ✅       | ❌     |
+| Tracking (`trackingScreen.tsx`)            | ⏳ next        | —                                   | —        | —      |
 
 Entry and Store still need the same real-route migration Product Detail
 just got (out of `(public)`, into the `(marketplace)` SuperApp shell) —
