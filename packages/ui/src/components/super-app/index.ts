@@ -21,3 +21,28 @@ export { SuperAppRecommendationCard, type SuperAppRecommendation } from './Recom
 export { SuperAppActivityList, type SuperAppActivityItem } from './ActivityList';
 export { SuperAppPromoCarousel, type SuperAppPromo } from './PromoCarousel';
 export { SuperAppAIWidget } from './AIWidget';
+
+// Marketplace module
+export { SuperAppVerifiedBadge } from './VerifiedBadge';
+export { SuperAppMarketplaceHeader } from './MarketplaceHeader';
+export { SuperAppCategoryChips, type SuperAppCategoryChip } from './CategoryChips';
+export { SuperAppAIDiscoveryBanner } from './AIDiscoveryBanner';
+export { SuperAppDealsCarousel, type SuperAppDeal } from './DealsCarousel';
+export {
+  SuperAppFeaturedMerchantCard,
+  type SuperAppFeaturedMerchant,
+} from './FeaturedMerchantCard';
+export { SuperAppFeaturedMerchantsSection } from './FeaturedMerchantsSection';
+export { SuperAppVerticalListCard } from './VerticalSection';
+export {
+  SuperAppNearbyBusinessRow,
+  SuperAppNearbyBusinessSkeletonRow,
+  type SuperAppNearbyBusiness,
+} from './NearbyBusinessRow';
+export { SuperAppProductCard, type SuperAppProduct } from './ProductCard';
+export {
+  SuperAppAIRecommendationCard,
+  type SuperAppAIRecommendation,
+} from './AIRecommendationCard';
+export { SuperAppRecentlyViewedCard, type SuperAppRecentlyViewed } from './RecentlyViewedCard';
+export { SuperAppEmptyState } from './EmptyState';

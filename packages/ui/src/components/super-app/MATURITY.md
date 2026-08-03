@@ -29,35 +29,63 @@ verification, zero console errors, pixel-identical to
 `docs/reference/figma-super-app-source/homeScreen.tsx`) as the reference
 implementation every other module reuses.
 
-| Component                                   | Status |
-| ------------------------------------------- | ------ |
-| `SuperAppFontProvider` / `useSuperAppFonts` | Locked |
-| `SuperAppSkeleton`                          | Locked |
-| `SuperAppSectionHeader`                     | Locked |
-| `SuperAppStatusBarIcons`                    | Locked |
-| `SuperAppBottomNav`                         | Locked |
-| `SuperAppAIFab`                             | Locked |
-| `SuperAppAISheet`                           | Locked |
-| `SuperAppAvatar`                            | Locked |
-| `SuperAppNotificationBell`                  | Locked |
-| `SuperAppGreetingHeader`                    | Locked |
-| `SuperAppSearchBar`                         | Locked |
-| `SuperAppHeader`                            | Locked |
-| `SuperAppServiceTabs`                       | Locked |
-| `SuperAppWalletActions`                     | Locked |
-| `SuperAppBalanceCard`                       | Locked |
-| `SuperAppQuickActionsGrid`                  | Locked |
-| `SuperAppCategoryGrid`                      | Locked |
-| `SuperAppHorizontalSection`                 | Locked |
-| `SuperAppMerchantCard`                      | Locked |
-| `SuperAppRecommendationCard`                | Locked |
-| `SuperAppActivityList`                      | Locked |
-| `SuperAppPromoCarousel`                     | Locked |
-| `SuperAppAIWidget`                          | Locked |
+| Component                                   | Status  |
+| ------------------------------------------- | ------- |
+| `SuperAppFontProvider` / `useSuperAppFonts` | Locked  |
+| `SuperAppSkeleton`                          | Locked  |
+| `SuperAppSectionHeader`                     | Locked¹ |
+| `SuperAppStatusBarIcons`                    | Locked  |
+| `SuperAppBottomNav`                         | Locked  |
+| `SuperAppAIFab`                             | Locked  |
+| `SuperAppAISheet`                           | Locked¹ |
+| `SuperAppAvatar`                            | Locked  |
+| `SuperAppNotificationBell`                  | Locked  |
+| `SuperAppGreetingHeader`                    | Locked  |
+| `SuperAppSearchBar`                         | Locked  |
+| `SuperAppHeader`                            | Locked  |
+| `SuperAppServiceTabs`                       | Locked  |
+| `SuperAppWalletActions`                     | Locked  |
+| `SuperAppBalanceCard`                       | Locked  |
+| `SuperAppQuickActionsGrid`                  | Locked  |
+| `SuperAppCategoryGrid`                      | Locked  |
+| `SuperAppHorizontalSection`                 | Locked  |
+| `SuperAppMerchantCard`                      | Locked  |
+| `SuperAppRecommendationCard`                | Locked  |
+| `SuperAppActivityList`                      | Locked  |
+| `SuperAppPromoCarousel`                     | Locked  |
+| `SuperAppAIWidget`                          | Locked  |
 
-## Marketplace module — In progress
+¹ Extended additively for Marketplace (new optional params: `subtitle`/
+`showSeeAll` on `SectionHeader`, `title`/`subtitle`/`showIcons` on
+`AISheet`). All new params default to Home's exact prior values —
+re-verified via Playwright after the change that Home's rendering is
+byte-for-byte unchanged (see `docs/reference/figma-super-app-source/homeScreen.tsx`
+walkthrough, 2026-08-03). Still Locked for Home's own usage; the new
+defaults are what's open for a different module's own future reuse.
 
-Tracked here as components land; see `docs/reference/figma-super-app-source/marketplaceScreen.tsx`
-(entry screen) and the sibling `storeScreen.tsx` / `productDetailScreen.tsx` /
-`cartScreen.tsx` / `checkoutScreen.tsx` / `trackingScreen.tsx` for the rest
-of the module, ported in slices.
+## Marketplace module — entry screen Verified (2026-08-03)
+
+Ported from `docs/reference/figma-super-app-source/marketplaceScreen.tsx`
+(`MarketplaceScreen`, the module's home/entry screen only). Typecheck/lint
+clean; Playwright walkthrough (top, mid-scroll, lower, bottom, AI sheet)
+shows zero console errors and matches the source. Not yet Locked — pending
+founder confirmation, per the same per-module gate Home went through.
+Store, Product Detail, Cart, Checkout, and Tracking are separate source
+screens (`storeScreen.tsx`, `productDetailScreen.tsx`, `cartScreen.tsx`,
+`checkoutScreen.tsx`, `trackingScreen.tsx`) not yet ported.
+
+| Component                                                         | Status                                                                                                                            |
+| ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `SuperAppVerifiedBadge`                                           | Verified                                                                                                                          |
+| `SuperAppMarketplaceHeader`                                       | Verified                                                                                                                          |
+| `SuperAppCategoryChips`                                           | Verified                                                                                                                          |
+| `SuperAppAIDiscoveryBanner`                                       | Verified                                                                                                                          |
+| `SuperAppDealsCarousel`                                           | Verified                                                                                                                          |
+| `SuperAppFeaturedMerchantCard`                                    | Verified                                                                                                                          |
+| `SuperAppFeaturedMerchantsSection`                                | Verified                                                                                                                          |
+| `SuperAppVerticalListCard`                                        | Verified                                                                                                                          |
+| `SuperAppNearbyBusinessRow` / `SuperAppNearbyBusinessSkeletonRow` | Verified                                                                                                                          |
+| `SuperAppProductCard`                                             | Verified                                                                                                                          |
+| `SuperAppAIRecommendationCard`                                    | Verified                                                                                                                          |
+| `SuperAppRecentlyViewedCard`                                      | Verified                                                                                                                          |
+| `SuperAppEmptyState`                                              | Verified (ported but not wired into the default screen render — matches the source, which defines it but never renders it either) |

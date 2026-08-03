@@ -14,15 +14,27 @@ const DEFAULT_ICONS = ['✨', '🚗', '📦', '💊', '🏷'];
  * which is broken (UTF-16 surrogate-pair misalignment garbles every row) —
  * `DEFAULT_ICONS` uses a plain array instead. See
  * docs/FIGMA-SOURCE-INVENTORY-V2.md.
+ *
+ * `title`/`subtitle`/`showIcons` are additive: Marketplace's own `AISheet`
+ * variant has no per-row icon and a different subtitle ("AI Shopping
+ * Assistant" vs Home's "AI · Ready to help you"). Defaults reproduce
+ * Home's exact current rendering so the already-Locked Home usage is
+ * unaffected.
  */
 export function SuperAppAISheet({
+  title = 'Ask Drip',
+  subtitle = 'AI · Ready to help you',
   prompts,
   icons = DEFAULT_ICONS,
+  showIcons = true,
   onSelectPrompt,
   onClose,
 }: {
+  title?: string | undefined;
+  subtitle?: string | undefined;
   prompts: string[];
   icons?: string[] | undefined;
+  showIcons?: boolean | undefined;
   onSelectPrompt?: ((prompt: string) => void) | undefined;
   onClose: () => void;
 }): React.JSX.Element {
@@ -60,10 +72,10 @@ export function SuperAppAISheet({
           </div>
           <div>
             <p className={`text-[16px] font-bold ${heading}`} style={{ color: '#FFF' }}>
-              Ask Drip
+              {title}
             </p>
             <p className={`text-[11px] ${body}`} style={{ color: G3 }}>
-              AI · Ready to help you
+              {subtitle}
             </p>
           </div>
         </div>
@@ -83,7 +95,9 @@ export function SuperAppAISheet({
                 border: `1px solid ${BORDER}`,
               }}
             >
-              <span style={{ fontSize: 16, flexShrink: 0 }}>{icons[i % icons.length]}</span>
+              {showIcons ? (
+                <span style={{ fontSize: 16, flexShrink: 0 }}>{icons[i % icons.length]}</span>
+              ) : null}
               {s}
             </button>
           ))}
