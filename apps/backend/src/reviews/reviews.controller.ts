@@ -1,5 +1,7 @@
 import { Controller, Get, Query } from '@nestjs/common';
 
+import { Public } from '../common/decorators/permissions.decorator';
+
 import { ListReviewsQueryDto } from './dto/list-reviews-query.dto';
 import { ReviewsService } from './reviews.service';
 
@@ -7,6 +9,7 @@ import type { ReviewWithAggregateDto } from './review.mapper';
 import type { ApiSuccessResponse } from '../common/dto/api-response.dto';
 
 @Controller('reviews')
+@Public()
 export class ReviewsController {
   constructor(private readonly reviewsService: ReviewsService) {}
 

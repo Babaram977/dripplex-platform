@@ -111,5 +111,76 @@ and verified.
 | `SuperAppAccordionCard`    | Verified |
 | `SuperAppInfoList`         | Verified |
 
-Product Detail, Cart, Checkout, and Tracking screens: not yet started —
-these remain unwritten, not merely "Implemented."
+## Marketplace module — Product Detail screen Verified (2026-08-03)
+
+Ported from `docs/reference/figma-super-app-source/productDetailScreen.tsx`
+(third of six Marketplace-module screens) and wired live into the real,
+public production route `/marketplace/products/[id]` — replacing that
+route's previous shadcn-based UI in place per founder direction, while
+preserving all existing business logic: `sdk.products.get`,
+`addProductToCart`/`addProductToFavourites`, `requireAuth` gating, the
+native Web Share API + clipboard fallback, and `describeSdkError` error
+handling. Also newly wires `sdk.reviews.listForTarget('PRODUCT', id)`,
+which the page never called before.
+
+Per founder direction, the route also moved out of the marketing site's
+`(public)` Navbar/Footer shell into a new full-bleed SuperApp shell
+(`apps/customer-web/src/app/(marketplace)/layout.tsx`, modeled on the
+existing `(ride)/ride/layout.tsx` precedent) — DrippleX's app screens use
+the Figma-locked navigation chrome (own back button, bottom tab bar), not
+the website's. Store and Marketplace-entry screens still await this same
+route migration.
+
+Fields the source's mock has no real backend equivalent for — cashback
+badge, sold count, spec-sheet table, delivery ETA/fee/pickup/returns
+block, and the entire "Ask Drip" AI prompt/response card — are omitted
+rather than faked; the floating AI button is likewise omitted until the
+Ask Drip AI module exists. The source's 3-independent-grouped variant
+picker (Meal Size/Spice Level/Drink) is rendered as one flat chip row,
+since the real `ProductVariantDto` is an ungrouped list. "Buy Now" only
+renders when a caller wires `onBuyNow` — there is no real express-checkout
+flow yet, so the composed page omits it.
+
+Typecheck/lint clean across `@dripplex/ui` and `customer-web`. Playwright
+walkthrough against a locally seeded product (real Postgres + backend,
+not mocked) confirmed: gallery/info/description/variants/quantity render
+from real data; the reviews section's rating breakdown and review cards
+render from a real `ReviewAggregateDto` row with zero console errors;
+"You May Also Like" renders real related products; anonymous Add to Cart
+redirects to `/login`; authenticated Add to Cart shows the real
+`SuperAppCartConfirmationSheet`; authenticated favourite toggling shows
+both the success toast and (on a real 409 conflict) the destructive-toast
+error path, matching the preserved `describeSdkError` handling. One real
+backend bug was found and fixed in the process: `ReviewsController`
+(`GET /reviews`) was missing the `@Public()` decorator its own public,
+no-auth-guard intent required, so anonymous review reads were 401ing —
+now fixed to match the pattern used by `CustomerProductsController`.
+
+Not yet Locked — pending founder confirmation, then remains Implemented
+for Cart, Checkout, and Tracking until each is itself ported and
+verified.
+
+| Component                        | Status   |
+| -------------------------------- | -------- |
+| `SuperAppProductGallery`         | Verified |
+| `SuperAppProductInfoHeader`      | Verified |
+| `SuperAppProductDescription`     | Verified |
+| `SuperAppProductVariantSelector` | Verified |
+| `SuperAppQuantityStepper`        | Verified |
+| `SuperAppProductQuantityRow`     | Verified |
+| `SuperAppMerchantMiniCard`       | Verified |
+| `SuperAppProductReviewsSection`  | Verified |
+| `SuperAppRelatedProductCard`     | Verified |
+| `SuperAppRelatedProductsSection` | Verified |
+| `SuperAppProductActionBar`       | Verified |
+| `SuperAppCartConfirmationSheet`  | Verified |
+| `SuperAppProductDetailSkeleton`  | Verified |
+
+`SuperAppBottomNav` (Home, Locked) gained an additive `fixed` prop
+(defaults `true`, reproducing every existing caller's exact prior output)
+so Product Detail's fused action-bar-plus-tab-bar footer can render it
+in-flow (`fixed={false}`) instead of as a second competing absolute
+overlay — the Locked component's default behavior is unchanged.
+
+Cart, Checkout, and Tracking screens: not yet started — these remain
+unwritten, not merely "Implemented."

@@ -33,18 +33,27 @@ const TABS: { key: SuperAppNavTab; label: string; d: string }[] = [
  * locked Figma Make export. The source hardcodes "Home" as the only active
  * tab (each screen file duplicates this component); here `active` is a
  * prop so every screen in the app can reuse one implementation.
+ *
+ * `fixed` (additive, defaults to `true` — every existing caller's exact
+ * prior rendering) controls whether this self-positions via
+ * `absolute bottom-0`. Product Detail's screen fuses its sticky
+ * add-to-cart bar and this nav into one shared bottom-anchored footer (as
+ * in the source), so it passes `fixed={false}` to lay this out in normal
+ * flow beneath that bar instead of two competing absolute overlays.
  */
 export function SuperAppBottomNav({
   active,
   onNavigate,
+  fixed = true,
 }: {
   active: SuperAppNavTab;
   onNavigate?: ((tab: SuperAppNavTab) => void) | undefined;
+  fixed?: boolean | undefined;
 }): React.JSX.Element {
   const { body } = useSuperAppFonts();
   return (
     <div
-      className="absolute bottom-0 left-0 right-0 flex items-center justify-around px-1 pb-6 pt-2"
+      className={`${fixed ? 'absolute bottom-0 left-0 right-0' : ''}flex items-center justify-around px-1 pb-6 pt-2`}
       style={{
         background: 'rgba(6,14,28,.95)',
         borderTop: `1px solid ${BORDER}`,
