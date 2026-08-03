@@ -1,11 +1,22 @@
-# Production infrastructure — Coolify (canonical)
+# Production infrastructure — Coolify (parked, not canonical)
 
-**Status of this document:** Coolify is the current production deployment
-target, chosen 2026-08-02 to replace Railway (see
-`docs/ops/PRODUCTION-RAILWAY.md`, kept as legacy reference — not deleted, not
-revived). Rationale: the founder owns the underlying VPS, so this avoids
-platform lock-in and gives direct control over scaling/networking/costs as
-DrippleX grows into a multi-service platform (Ride, Marketplace, Delivery).
+> **PARKED (2026-08-03):** This was briefly the intended production target
+> (2026-08-02) before the founder confirmed the existing Railway deployment
+> is live and healthy and decided to **continue with Railway until an
+> intentional future migration** — see `docs/ops/PRODUCTION-RAILWAY.md`,
+> which is canonical again. This document is kept, not deleted, since the
+> runbook below is still accurate and directly reusable if/when a real
+> migration to Coolify happens. Do not act on this document unless the
+> founder explicitly says to resume the Coolify migration.
+
+**Status of this document:** Coolify was briefly the intended production
+deployment target (2026-08-02), evaluated as a replacement for Railway (see
+`docs/ops/PRODUCTION-RAILWAY.md`, canonical again as of 2026-08-03).
+Rationale for having considered it: the founder owns a VPS, so it would
+avoid platform lock-in and give direct control over scaling/networking/costs
+as DrippleX grows into a multi-service platform (Ride, Marketplace,
+Delivery). That rationale still holds if a migration is revisited later —
+it just isn't the active plan right now.
 
 This document has **not been executed against a live Coolify instance from
 this session** — the sandbox this was written in has no Coolify CLI/API
