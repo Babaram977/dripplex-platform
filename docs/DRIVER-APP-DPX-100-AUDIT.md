@@ -134,10 +134,10 @@ what's already real:
 2. **Vehicle management** — ✅ Backend real, **Frozen** (Slice 1, 2026-08-04);
    driver-portal UI still pending Figma designs.
 3. **Availability (online/offline)** — ✅ Already real, no work needed.
-4. **Shift management** — ❌ Missing. Not named in the founder's Slice 2
-   recommendation below (2026-08-04) — flagged, not silently dropped from the
-   plan; needs an explicit founder call on whether it's deferred past Slice 2
-   or folded in before Slice 2 starts.
+4. **Shift management** — ❌ Missing. Not named in the founder's initial
+   Slice 2 recommendation (2026-08-04); founder confirmed same day it should
+   be **folded into Slice 2** rather than deferred or dropped — included in
+   Slice 2's scope below.
 5. **Navigation** — ⚠️ Already partial (real Google Directions routing); voice
    guidance/nav-app handoff remains open. Named explicitly in Slice 2 below.
 6. **Earnings dashboard** — ✅ Already real, no work needed.
@@ -157,25 +157,27 @@ what's already real:
    (DPX-DRIVER-003 for the latter). The one open design note from the freeze
    review is `docs/DPX-DRIVER-004-VEHICLE-APPROVAL-LIFECYCLE-POLICY.md`, a
    future milestone, not a reopening.
-2. **Slice 2 — founder-recommended scope (2026-08-04):** Navigation
-   (voice guidance/nav-app handoff), Trip execution, Driver support,
+2. **Slice 2 — founder-approved scope (2026-08-04):** Navigation
+   (voice guidance/nav-app handoff), Trip execution, Shift management
+   (folded in per founder confirmation the same day), Driver support,
    Incident reporting, Driver help centre, Emergency/SOS, Communication
    tools (call/chat), Driver profile enhancements, Operational
    notifications. Supersedes this document's earlier "Slice 2 — Shift
-   management" / "Slice 3 — Support" split — **shift management is not
-   named in this list and needs an explicit founder call before Slice 2
-   research starts** (deferred past Slice 2, folded into it, or a separate
-   future slice — not assumed here). Each item needs its own reality-check
-   pass before a build plan is written, same discipline as Slice 1: several
-   (Trip execution, Communication tools, Incident reporting) likely depend
-   on real-time infrastructure (`RideGateway`-style WebSocket patterns) that
-   exists for Ride but has never been built for Driver-side support/incident
-   flows — a real scoping question, not assumed solved by precedent alone.
+   management" / "Slice 3 — Support" split. Each item needs its own
+   reality-check pass before a build plan is written, same discipline as
+   Slice 1: several (Trip execution, Communication tools, Incident
+   reporting) likely depend on real-time infrastructure (`RideGateway`-style
+   WebSocket patterns) that exists for Ride but has never been built for
+   Driver-side support/incident flows — a real scoping question, not assumed
+   solved by precedent alone. **Reality audit complete:**
+   `docs/DRIVER-SLICE-2-AUDIT.md` — one item (Trip execution) is already
+   real, most of the rest are genuinely new systems with real open
+   decisions the founder needs to resolve before a build plan is written
+   (named in that document, not assumed here).
 3. **Slice 3 — DPX-100 port.** Once the above are real, re-platform the whole
    Driver App (existing screens plus the new pieces) into `packages/ui/super-app`,
    matching the same port discipline Ride/Marketplace/Wallet went through, then
    the same audit + freeze gate.
 
-Slice 1 is frozen. Slice 2 is the founder-recommended next priority
-(2026-08-04) — its research/audit phase has not started as of this writing;
-see the shift-management open question above before that work begins.
+Slice 1 is frozen. Slice 2 (founder-approved scope, including shift
+management) is now in its research/audit phase.
