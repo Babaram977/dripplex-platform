@@ -84,6 +84,7 @@ export class WithdrawalService {
       );
     }
 
+    await this.walletService.assertWithinLimits(WalletOwnerType.CUSTOMER, userId, input.amount);
     await this.walletPinService.verify(userId, input.pin);
     await this.bankAccountsService.assertOwned(userId, input.bankAccountId);
 

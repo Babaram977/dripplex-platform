@@ -46,7 +46,18 @@ export type NotificationType =
   | 'DRIVER_REFERRAL_TIER_SILVER'
   | 'DRIVER_REFERRAL_TIER_GOLD'
   | 'DRIVER_REFERRAL_REWARD_APPROVED'
-  | 'DRIVER_REFERRAL_REWARD_PAID';
+  | 'DRIVER_REFERRAL_REWARD_PAID'
+  | 'PROMOTION_REDEEMED'
+  | 'PROMOTION_EXPIRED'
+  | 'CASHBACK_AWARDED'
+  | 'WITHDRAWAL_REQUESTED'
+  | 'WITHDRAWAL_COMPLETED'
+  | 'WITHDRAWAL_FAILED'
+  | 'ORDER_ACCEPTED'
+  | 'ORDER_REJECTED'
+  | 'ORDER_READY'
+  | 'ORDER_DELAYED'
+  | 'ORDER_COMPLETED';
 
 /**
  * Event-name mapping for the client's sound abstraction (DPX-CORE-001
@@ -99,6 +110,17 @@ export const NOTIFICATION_SOUND_EVENTS: Record<NotificationType, NotificationSou
   DRIVER_REFERRAL_TIER_GOLD: 'promotion',
   DRIVER_REFERRAL_REWARD_APPROVED: 'payment_success',
   DRIVER_REFERRAL_REWARD_PAID: 'payment_success',
+  PROMOTION_REDEEMED: 'promotion',
+  PROMOTION_EXPIRED: 'notification',
+  CASHBACK_AWARDED: 'payment_success',
+  WITHDRAWAL_REQUESTED: 'notification',
+  WITHDRAWAL_COMPLETED: 'payment_success',
+  WITHDRAWAL_FAILED: 'payment_failed',
+  ORDER_ACCEPTED: 'notification',
+  ORDER_REJECTED: 'warning',
+  ORDER_READY: 'notification',
+  ORDER_DELAYED: 'warning',
+  ORDER_COMPLETED: 'notification',
 };
 
 export function getNotificationSoundEvent(type: NotificationType): NotificationSoundEvent {
@@ -804,8 +826,29 @@ export interface WalletDto {
   availableBalance: number;
   pendingBalance: number;
   version: number;
+  dailyLimit: number | null;
+  singleTransactionLimit: number | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface WalletStatementDto {
+  month: number;
+  year: number;
+  totalIn: number;
+  totalOut: number;
+  net: number;
+  transactions: WalletLedgerEntryDto[];
+}
+
+export interface SetWalletLimitsRequest {
+  dailyLimit?: number | null;
+  singleTransactionLimit?: number | null;
+}
+
+export interface ChangeWalletPinRequest {
+  currentPin: string;
+  newPin: string;
 }
 
 export interface WalletLedgerEntryDto {

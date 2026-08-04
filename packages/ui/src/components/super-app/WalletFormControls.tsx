@@ -98,6 +98,49 @@ export function SuperAppWalletFilterPills<T extends string>({
   );
 }
 
+/** On/off switch (Wallet Security's biometric/2FA rows, Wallet Settings'
+ * notification/auto-top-up/privacy toggles) — matches the Figma source's
+ * `Toggle()` exactly (48×28 track, green gradient + glow when on). */
+export function SuperAppWalletToggle({
+  on,
+  onToggle,
+  disabled,
+}: {
+  on: boolean;
+  onToggle: () => void;
+  disabled?: boolean | undefined;
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      disabled={disabled}
+      aria-pressed={on}
+      className="relative shrink-0 rounded-full transition-colors"
+      style={{
+        width: 48,
+        height: 28,
+        background: on ? 'linear-gradient(135deg,#176B30,#2BAC52)' : 'rgba(255,255,255,.1)',
+        border: 'none',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.5 : 1,
+        boxShadow: on ? '0 2px 12px rgba(43,172,82,.4)' : 'none',
+      }}
+    >
+      <div
+        className="absolute rounded-full bg-white transition-all"
+        style={{
+          top: 3,
+          left: on ? 22 : 3,
+          width: 22,
+          height: 22,
+          boxShadow: '0 1px 4px rgba(0,0,0,.3)',
+        }}
+      />
+    </button>
+  );
+}
+
 /**
  * Full-width primary CTA. Visually near-identical to `SuperAppRideActionButton`
  * (same green-gradient design token) but Wallet's own Figma spec uses a 14px

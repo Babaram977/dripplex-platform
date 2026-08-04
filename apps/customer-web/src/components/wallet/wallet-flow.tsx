@@ -13,6 +13,9 @@ import { TransactionHistoryScreen } from './screens/transaction-history-screen';
 import { TransferScreen } from './screens/transfer-screen';
 import { WalletGatewayPaymentScreen } from './screens/wallet-gateway-payment-screen';
 import { WalletHomeScreen } from './screens/wallet-home-screen';
+import { WalletSecurityScreen } from './screens/wallet-security-screen';
+import { WalletSettingsScreen } from './screens/wallet-settings-screen';
+import { WalletStatementScreen } from './screens/wallet-statement-screen';
 import { WithdrawScreen } from './screens/withdraw-screen';
 
 type WalletFlowScreen =
@@ -25,7 +28,10 @@ type WalletFlowScreen =
   | { name: 'paymentMethods' }
   | { name: 'withdraw' }
   | { name: 'addBankAccount' }
-  | { name: 'setPin' };
+  | { name: 'setPin' }
+  | { name: 'statement' }
+  | { name: 'security' }
+  | { name: 'settings' };
 
 /** Resumes a gateway top-up redirect: /wallet?topupVerify=1 lands here after Paystack/Flutterwave/OPay checkout. */
 function useResumeScreen(): WalletFlowScreen | null {
@@ -68,6 +74,15 @@ export function WalletFlow(): React.JSX.Element {
           }}
           onWithdraw={() => {
             setScreen({ name: 'withdraw' });
+          }}
+          onStatement={() => {
+            setScreen({ name: 'statement' });
+          }}
+          onSecurity={() => {
+            setScreen({ name: 'security' });
+          }}
+          onSettings={() => {
+            setScreen({ name: 'settings' });
           }}
         />
       );
@@ -155,5 +170,11 @@ export function WalletFlow(): React.JSX.Element {
           }}
         />
       );
+    case 'statement':
+      return <WalletStatementScreen onBack={goHome} />;
+    case 'security':
+      return <WalletSecurityScreen onBack={goHome} />;
+    case 'settings':
+      return <WalletSettingsScreen onBack={goHome} />;
   }
 }

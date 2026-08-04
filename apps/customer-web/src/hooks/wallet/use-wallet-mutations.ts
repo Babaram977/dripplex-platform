@@ -9,6 +9,7 @@ import { walletQueryKeys } from './query-keys';
 import type {
   FundWalletRequest,
   FundWalletResponse,
+  SetWalletLimitsRequest,
   WalletDto,
   WalletRecipientDto,
   WalletTransferDto,
@@ -57,6 +58,16 @@ export function useVerifyWalletFunding(): UseMutationResult<WalletDto, Error, vo
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => sdk.wallet.verifyFunding(),
+    onSuccess: (wallet) => {
+      queryClient.setQueryData(walletQueryKeys.balance, wallet);
+    },
+  });
+}
+
+export function useSetWalletLimits(): UseMutationResult<WalletDto, Error, SetWalletLimitsRequest> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: SetWalletLimitsRequest) => sdk.wallet.setLimits(body),
     onSuccess: (wallet) => {
       queryClient.setQueryData(walletQueryKeys.balance, wallet);
     },

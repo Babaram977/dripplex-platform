@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, Header, Post, Put, Query, Req, Res } from '@nestjs/common';
 import { WalletOwnerType } from '@prisma/client';
 
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -6,17 +6,24 @@ import { RequirePermissions } from '../common/decorators/permissions.decorator';
 
 import {
   LookupRecipientQueryDto,
+  SetWalletLimitsDto,
   TransferWalletDto,
   WalletHistoryQueryDto,
+  WalletStatementQueryDto,
 } from './dto/wallet.dto';
 import { WalletRecipientsService, type WalletRecipientDto } from './wallet-recipients.service';
 import { WALLET_PERMISSIONS } from './wallet.constants';
-import { WalletService, type WalletDto, type WalletLedgerEntryDto } from './wallet.service';
+import {
+  WalletService,
+  type WalletDto,
+  type WalletLedgerEntryDto,
+  type WalletStatementDto,
+} from './wallet.service';
 
 import type { AuthenticatedUser } from '../auth/auth.types';
 import type { ApiSuccessResponse } from '../common/dto/api-response.dto';
 import type { PaginatedResult } from '@dripplex/types';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 
 @Controller('customer/wallet')
 export class CustomerWalletController {
@@ -77,6 +84,12 @@ export class CustomerWalletController {
     @Body() dto: TransferWalletDto,
     @Req() request: Request,
   ): Promise<ApiSuccessResponse<{ source: WalletDto; destination: WalletDto }>> {
+    await this.walletService.assertWithinLimits(
+      WalletOwnerType.CUSTOMER,
+      user.id,
+      dto.amount,
+      dto.currency,
+    );
     const data = await this.walletService.transfer({
       fromOwnerType: WalletOwnerType.CUSTOMER,
       fromOwnerId: user.id,
@@ -88,6 +101,73 @@ export class CustomerWalletController {
       context: this.auditContext(request, user.id),
     });
     return { success: true, data };
+  }
+
+  @Put('limits')
+  @RequirePermissions(WALLET_PERMISSIONS.CUSTOMER_READ)
+  public async setLimits(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: SetWalletLimitsDto,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<WalletDto>> {
+    const data = await this.walletService.setLimits(
+      WalletOwnerType.CUSTOMER,
+      user.id,
+      {
+        dailyLimit: dto.dailyLimit ?? null,
+        singleTransactionLimit: dto.singleTransactionLimit ?? null,
+      },
+      this.auditContext(request, user.id),
+    );
+    return { success: true, data };
+  }
+
+  @Get('statement')
+  @RequirePermissions(WALLET_PERMISSIONS.CUSTOMER_READ)
+  public async statement(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: WalletStatementQueryDto,
+  ): Promise<ApiSuccessResponse<WalletStatementDto>> {
+    const data = await this.walletService.getStatement(
+      WalletOwnerType.CUSTOMER,
+      user.id,
+      query.month,
+      query.year,
+    );
+    return { success: true, data };
+  }
+
+  @Get('statement/export')
+  @RequirePermissions(WALLET_PERMISSIONS.CUSTOMER_READ)
+  @Header('Content-Type', 'text/csv')
+  public async exportStatement(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: WalletStatementQueryDto,
+    @Res() response: Response,
+  ): Promise<void> {
+    const statement = await this.walletService.getStatement(
+      WalletOwnerType.CUSTOMER,
+      user.id,
+      query.month,
+      query.year,
+    );
+    const rows = [
+      ['Date', 'Type', 'Description', 'Direction', 'Amount', 'Balance After'],
+      ...statement.transactions.map((tx) => [
+        tx.createdAt,
+        tx.type,
+        (tx.description ?? '').replace(/"/g, '""'),
+        tx.direction,
+        tx.amount.toFixed(2),
+        tx.balanceAfter.toFixed(2),
+      ]),
+    ];
+    const csv = rows.map((row) => row.map((cell) => `"${cell}"`).join(',')).join('\n');
+    response.setHeader(
+      'Content-Disposition',
+      `attachment; filename="wallet-statement-${String(query.year)}-${String(query.month).padStart(2, '0')}.csv"`,
+    );
+    response.send(csv);
   }
 
   private auditContext(

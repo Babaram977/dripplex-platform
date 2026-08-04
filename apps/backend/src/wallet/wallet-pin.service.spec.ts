@@ -17,6 +17,7 @@ interface WalletPinPrismaMock {
   walletPin: {
     findUnique: jest.Mock;
     create: jest.Mock;
+    update: jest.Mock;
   };
 }
 
@@ -28,7 +29,7 @@ describe('WalletPinService', () => {
 
   beforeEach(() => {
     prisma = {
-      walletPin: { findUnique: jest.fn(), create: jest.fn() },
+      walletPin: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
     };
     appConfig = { bcryptSaltRounds: 4 };
     auditService = { record: jest.fn().mockResolvedValue(undefined) };
@@ -101,6 +102,38 @@ describe('WalletPinService', () => {
       prisma.walletPin.findUnique.mockResolvedValue({ userId, pinHash });
 
       await expect(service.verify(userId, '1234')).resolves.toBeUndefined();
+    });
+  });
+
+  describe('change', () => {
+    it('rejects an invalid new PIN', async () => {
+      await expect(service.change(userId, '1234', '12')).rejects.toThrow(ValidationDomainException);
+      expect(prisma.walletPin.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects when the current PIN is wrong', async () => {
+      const pinHash = await bcrypt.hash('1234', 4);
+      prisma.walletPin.findUnique.mockResolvedValue({ userId, pinHash });
+
+      await expect(service.change(userId, '9999', '5678')).rejects.toThrow(
+        ValidationDomainException,
+      );
+      expect(prisma.walletPin.update).not.toHaveBeenCalled();
+    });
+
+    it('replaces the PIN hash when the current PIN verifies', async () => {
+      const pinHash = await bcrypt.hash('1234', 4);
+      prisma.walletPin.findUnique.mockResolvedValue({ userId, pinHash });
+      prisma.walletPin.update.mockResolvedValue({ userId, pinHash: 'new-hash' });
+
+      await service.change(userId, '1234', '5678');
+
+      const updateCall = prisma.walletPin.update.mock.calls[0] as [
+        { where: { userId: string }; data: { pinHash: string } },
+      ];
+      expect(updateCall[0].where).toEqual({ userId });
+      expect(updateCall[0].data.pinHash).not.toBe('5678');
+      expect(auditService.record).toHaveBeenCalled();
     });
   });
 });

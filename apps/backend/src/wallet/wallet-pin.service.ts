@@ -64,4 +64,29 @@ export class WalletPinService {
       throw new ValidationDomainException('Incorrect PIN');
     }
   }
+
+  /** Wallet Security's "Change PIN" — requires the current PIN, same
+   * verify-then-replace discipline as a password change. */
+  public async change(
+    userId: string,
+    currentPin: string,
+    newPin: string,
+    context?: AuditContext,
+  ): Promise<void> {
+    if (newPin.length !== WALLET_PIN_LENGTH || !/^[0-9]+$/.test(newPin)) {
+      throw new ValidationDomainException(
+        `PIN must be exactly ${String(WALLET_PIN_LENGTH)} digits`,
+      );
+    }
+    await this.verify(userId, currentPin);
+
+    const pinHash = await bcrypt.hash(newPin, this.appConfig.bcryptSaltRounds);
+    await this.prisma.walletPin.update({ where: { userId }, data: { pinHash } });
+
+    await this.auditService.record(
+      WALLET_AUDIT_ACTIONS.PIN_CHANGED,
+      { ...(context ?? {}), userId },
+      { resource: 'wallet_pin', resourceId: userId },
+    );
+  }
 }

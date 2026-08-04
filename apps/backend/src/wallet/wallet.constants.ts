@@ -24,6 +24,8 @@ export const WALLET_AUDIT_ACTIONS = {
   BANK_ACCOUNT_ADDED: 'wallet.bank_account_added',
   BANK_ACCOUNT_REMOVED: 'wallet.bank_account_removed',
   PIN_SET: 'wallet.pin_set',
+  PIN_CHANGED: 'wallet.pin_changed',
+  LIMITS_UPDATED: 'wallet.limits_updated',
 } as const;
 
 export const WALLET_DEFAULT_CURRENCY = 'NGN';

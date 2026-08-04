@@ -185,6 +185,7 @@ export {
   SuperAppWalletSearchInput,
   SuperAppWalletFilterPills,
   SuperAppWalletButton,
+  SuperAppWalletToggle,
 } from './WalletFormControls';
 export { SuperAppWalletAmountCard, SuperAppWalletPresetChips } from './WalletAmountInput';
 export { SuperAppWalletSelectableRow, SuperAppWalletRecipientRow } from './WalletSelectableRow';

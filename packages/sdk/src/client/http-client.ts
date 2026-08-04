@@ -98,6 +98,26 @@ export class HttpClient {
     }
   }
 
+  /** For endpoints that return a non-JSON download (e.g. CSV export)
+   * instead of the standard `{success, data}` envelope every other
+   * endpoint uses — same auth header, no refresh-retry (a rare,
+   * user-initiated download failing on an expired token is fine to just
+   * surface as an error; the next click after any other action refreshes
+   * the token normally). */
+  public async requestBlob(path: string): Promise<Blob> {
+    const url = `${this.config.baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
+    const headers: Record<string, string> = {};
+    const token = this.config.getAccessToken?.();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    const response = await fetch(url, { headers });
+    if (!response.ok) {
+      throw new DripplexNetworkError('NETWORK', 'Failed to download file.');
+    }
+    return await response.blob();
+  }
+
   private async tryRefresh(): Promise<boolean> {
     if (!this.config.getRefreshToken || !this.config.onTokensUpdated) {
       return false;

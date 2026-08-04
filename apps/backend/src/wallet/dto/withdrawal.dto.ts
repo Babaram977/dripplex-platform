@@ -42,6 +42,16 @@ export class SetWalletPinDto {
   public pin!: string;
 }
 
+export class ChangeWalletPinDto {
+  @IsString()
+  @Matches(/^[0-9]{4}$/, { message: 'currentPin must be exactly 4 digits' })
+  public currentPin!: string;
+
+  @IsString()
+  @Matches(/^[0-9]{4}$/, { message: 'newPin must be exactly 4 digits' })
+  public newPin!: string;
+}
+
 export class VerifyWalletPinDto {
   @IsString()
   @MinLength(4)

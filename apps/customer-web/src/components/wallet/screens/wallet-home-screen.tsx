@@ -75,6 +75,9 @@ export function WalletHomeScreen({
   onTransfer,
   onRewards,
   onWithdraw,
+  onStatement,
+  onSecurity,
+  onSettings,
 }: {
   onBack: () => void;
   onSeeAllTransactions: () => void;
@@ -82,6 +85,9 @@ export function WalletHomeScreen({
   onTransfer: () => void;
   onRewards: () => void;
   onWithdraw: () => void;
+  onStatement: () => void;
+  onSecurity: () => void;
+  onSettings: () => void;
 }): React.JSX.Element {
   const { user } = useAuth();
   const wallet = useWallet();
@@ -154,6 +160,29 @@ export function WalletHomeScreen({
           { key: 'pay', icon: '₦', label: 'Pay', color: '#8B5CF6' },
         ]}
       />
+
+      <div className="flex gap-2 px-5" style={{ marginTop: 12, marginBottom: 4 }}>
+        {[
+          { key: 'statement', icon: '🧾', label: 'Statement', onClick: onStatement },
+          { key: 'security', icon: '🔒', label: 'Security', onClick: onSecurity },
+          { key: 'settings', icon: '⚙️', label: 'Settings', onClick: onSettings },
+        ].map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            onClick={item.onClick}
+            className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-[12px] font-medium ${body}`}
+            style={{
+              background: '#112238',
+              border: '1px solid rgba(255,255,255,.08)',
+              color: 'rgba(255,255,255,.6)',
+            }}
+          >
+            <span>{item.icon}</span>
+            {item.label}
+          </button>
+        ))}
+      </div>
 
       {recentCashback > 0 ? (
         <SuperAppWalletRewardsStrip

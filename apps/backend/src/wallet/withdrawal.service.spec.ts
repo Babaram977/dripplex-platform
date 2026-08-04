@@ -52,7 +52,12 @@ function request(overrides: Partial<Record<string, unknown>> = {}): Record<strin
 
 describe('WithdrawalService', () => {
   let prisma: WithdrawalPrismaMock;
-  let walletService: { getWallet: jest.Mock; withdrawal: jest.Mock; credit: jest.Mock };
+  let walletService: {
+    getWallet: jest.Mock;
+    withdrawal: jest.Mock;
+    credit: jest.Mock;
+    assertWithinLimits: jest.Mock;
+  };
   let bankAccountsService: { assertOwned: jest.Mock };
   let walletPinService: { verify: jest.Mock };
   let auditService: { record: jest.Mock };
@@ -75,6 +80,7 @@ describe('WithdrawalService', () => {
         .mockResolvedValue({ id: walletId, currency: 'NGN', availableBalance: 10000 }),
       withdrawal: jest.fn(),
       credit: jest.fn(),
+      assertWithinLimits: jest.fn().mockResolvedValue(undefined),
     };
     bankAccountsService = { assertOwned: jest.fn().mockResolvedValue({ id: bankAccountId }) };
     walletPinService = { verify: jest.fn().mockResolvedValue(undefined) };

@@ -6,7 +6,7 @@ import { sdk } from '../../lib/sdk';
 
 import { walletQueryKeys } from './query-keys';
 
-import type { WalletPinStatusDto } from '@dripplex/types';
+import type { ChangeWalletPinRequest, WalletPinStatusDto } from '@dripplex/types';
 import type { UseMutationResult, UseQueryResult } from '@tanstack/react-query';
 
 export function useWalletPinStatus(): UseQueryResult<WalletPinStatusDto> {
@@ -29,5 +29,15 @@ export function useSetWalletPin(): UseMutationResult<WalletPinStatusDto, Error, 
 export function useVerifyWalletPin(): UseMutationResult<{ valid: boolean }, Error, string> {
   return useMutation({
     mutationFn: (pin: string) => sdk.wallet.verifyPin(pin),
+  });
+}
+
+export function useChangeWalletPin(): UseMutationResult<
+  WalletPinStatusDto,
+  Error,
+  ChangeWalletPinRequest
+> {
+  return useMutation({
+    mutationFn: (body: ChangeWalletPinRequest) => sdk.wallet.changePin(body),
   });
 }

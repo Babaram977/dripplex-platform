@@ -1,8 +1,8 @@
-import { Body, Controller, Get, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, Post, Put, Req } from '@nestjs/common';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
-import { SetWalletPinDto, VerifyWalletPinDto } from '../dto/withdrawal.dto';
+import { ChangeWalletPinDto, SetWalletPinDto, VerifyWalletPinDto } from '../dto/withdrawal.dto';
 import { WalletPinService } from '../wallet-pin.service';
 import { WALLET_PERMISSIONS } from '../wallet.constants';
 
@@ -45,5 +45,19 @@ export class CustomerWalletPinController {
   ): Promise<ApiSuccessResponse<{ valid: boolean }>> {
     await this.walletPinService.verify(user.id, dto.pin);
     return { success: true, data: { valid: true } };
+  }
+
+  @Put()
+  @RequirePermissions(WALLET_PERMISSIONS.CUSTOMER_WITHDRAW)
+  public async change(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ChangeWalletPinDto,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<{ hasPin: boolean }>> {
+    await this.walletPinService.change(user.id, dto.currentPin, dto.newPin, {
+      userId: user.id,
+      ...(request.ip !== undefined ? { ipAddress: request.ip } : {}),
+    });
+    return { success: true, data: { hasPin: true } };
   }
 }

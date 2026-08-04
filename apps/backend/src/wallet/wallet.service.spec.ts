@@ -20,6 +20,7 @@ const destinationWalletId = '44444444-4444-4444-8444-444444444444';
 interface WalletPrismaMock {
   wallet: {
     upsert: jest.Mock;
+    update: jest.Mock;
     updateMany: jest.Mock;
     findUniqueOrThrow: jest.Mock;
   };
@@ -42,6 +43,8 @@ function wallet(overrides: Partial<Record<string, unknown>> = {}): Record<string
     availableBalance: new Prisma.Decimal(0),
     pendingBalance: new Prisma.Decimal(0),
     version: 0,
+    dailyLimit: null,
+    singleTransactionLimit: null,
     createdAt: now,
     updatedAt: now,
     deletedAt: null,
@@ -76,6 +79,7 @@ describe('WalletService', () => {
     prisma = {
       wallet: {
         upsert: jest.fn(),
+        update: jest.fn(),
         updateMany: jest.fn(),
         findUniqueOrThrow: jest.fn(),
       },
@@ -399,5 +403,104 @@ describe('WalletService', () => {
     await expect(
       service.credit({ ownerType: WalletOwnerType.CUSTOMER, ownerId, amount: 0 }),
     ).rejects.toBeInstanceOf(ValidationDomainException);
+  });
+
+  describe('setLimits', () => {
+    it('persists daily and single transaction limits', async () => {
+      prisma.wallet.upsert.mockResolvedValue(wallet());
+      prisma.wallet.update.mockResolvedValue(
+        wallet({
+          dailyLimit: new Prisma.Decimal(50000),
+          singleTransactionLimit: new Prisma.Decimal(20000),
+        }),
+      );
+
+      const result = await service.setLimits(WalletOwnerType.CUSTOMER, ownerId, {
+        dailyLimit: 50000,
+        singleTransactionLimit: 20000,
+      });
+
+      expect(prisma.wallet.update).toHaveBeenCalledWith({
+        where: { id: walletId },
+        data: { dailyLimit: 50000, singleTransactionLimit: 20000 },
+      });
+      expect(result.dailyLimit).toBe(50000);
+      expect(result.singleTransactionLimit).toBe(20000);
+    });
+
+    it('clears limits when set to null', async () => {
+      prisma.wallet.upsert.mockResolvedValue(wallet({ dailyLimit: new Prisma.Decimal(50000) }));
+      prisma.wallet.update.mockResolvedValue(wallet());
+
+      await service.setLimits(WalletOwnerType.CUSTOMER, ownerId, {
+        dailyLimit: null,
+        singleTransactionLimit: null,
+      });
+
+      expect(prisma.wallet.update).toHaveBeenCalledWith({
+        where: { id: walletId },
+        data: { dailyLimit: null, singleTransactionLimit: null },
+      });
+    });
+
+    it('rejects a zero or negative limit', async () => {
+      prisma.wallet.upsert.mockResolvedValue(wallet());
+      await expect(
+        service.setLimits(WalletOwnerType.CUSTOMER, ownerId, {
+          dailyLimit: 0,
+          singleTransactionLimit: null,
+        }),
+      ).rejects.toBeInstanceOf(ValidationDomainException);
+    });
+  });
+
+  describe('assertWithinLimits', () => {
+    it('passes when no limits are configured', async () => {
+      prisma.wallet.upsert.mockResolvedValue(wallet());
+      await expect(
+        service.assertWithinLimits(WalletOwnerType.CUSTOMER, ownerId, 1_000_000),
+      ).resolves.toBeUndefined();
+    });
+
+    it('rejects an amount over the single transaction limit', async () => {
+      prisma.wallet.upsert.mockResolvedValue(
+        wallet({ singleTransactionLimit: new Prisma.Decimal(5000) }),
+      );
+      await expect(
+        service.assertWithinLimits(WalletOwnerType.CUSTOMER, ownerId, 5001),
+      ).rejects.toBeInstanceOf(ValidationDomainException);
+    });
+
+    it('rejects an amount that would exceed the daily limit given prior spend today', async () => {
+      prisma.wallet.upsert.mockResolvedValue(wallet({ dailyLimit: new Prisma.Decimal(10000) }));
+      prisma.walletLedgerEntry.aggregate.mockResolvedValue({
+        _sum: { amount: new Prisma.Decimal(8000) },
+      });
+
+      await expect(
+        service.assertWithinLimits(WalletOwnerType.CUSTOMER, ownerId, 2001),
+      ).rejects.toBeInstanceOf(ValidationDomainException);
+      await expect(
+        service.assertWithinLimits(WalletOwnerType.CUSTOMER, ownerId, 2000),
+      ).resolves.toBeUndefined();
+    });
+  });
+
+  describe('getStatement', () => {
+    it('aggregates money in/out/net for the given month', async () => {
+      prisma.wallet.upsert.mockResolvedValue(wallet());
+      prisma.walletLedgerEntry.findMany.mockResolvedValue([
+        ledger({ direction: WalletDirection.CREDIT, amount: new Prisma.Decimal(5000) }),
+        ledger({ direction: WalletDirection.DEBIT, amount: new Prisma.Decimal(1500) }),
+        ledger({ direction: WalletDirection.DEBIT, amount: new Prisma.Decimal(390) }),
+      ]);
+
+      const result = await service.getStatement(WalletOwnerType.CUSTOMER, ownerId, 8, 2026);
+
+      expect(result.totalIn).toBe(5000);
+      expect(result.totalOut).toBe(1890);
+      expect(result.net).toBe(3110);
+      expect(result.transactions).toHaveLength(3);
+    });
   });
 });

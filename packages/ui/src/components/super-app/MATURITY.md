@@ -1281,3 +1281,97 @@ exactly ₦11,180 (balance ₦50,000 → ₦38,820); Cash on Delivery on a
 ₦5,262.50 order (DELIVERY) confirmed with `paymentStatus: PENDING` and
 `total: 5262.50` — the exact amount to collect matches what was
 displayed, for both payment methods and both fulfillment types.
+
+## Wallet module — Slice 5: Statement + Security + Settings (2026-08-04)
+
+The final Wallet screen slice. Written from a design note first
+(`docs/WALLET-005-STATEMENT-SECURITY-SETTINGS-DESIGN.md`), same discipline
+as Slice 4. One new `packages/ui` primitive —
+`SuperAppWalletToggle` (48×28 on/off switch, green gradient + glow when on,
+matching the Figma source's `Toggle()` exactly) — everything else reuses
+Slice 2-4 primitives (`SuperAppWalletScreenHeader`,
+`SuperAppWalletSectionLabel`, `SuperAppWalletFilterPills`,
+`SuperAppWalletTransactionRow`/`List`).
+
+**Statement is real, built directly on the existing `WalletLedgerEntry`
+table from Slice 2** — no new model. Month picker defaults to the real
+current month (Figma hardcoded "2024"); money-in/out/net are a real
+aggregation over the selected month's entries; CSV export
+(`GET /customer/wallet/statement/export`) streams a real `text/csv`
+response via a new `HttpClient.requestBlob()` path (the SDK's first
+non-JSON-envelope endpoint).
+
+**Security's "trusted devices" needed zero new backend** — it's the
+platform's existing, portal-agnostic `AuthSession` list/revoke system
+(`GET/DELETE /auth/sessions`), reused as-is; this screen is its first
+wallet-facing UI. PIN change (`WalletPinService.change()`) fills the seam
+Slice 4's code explicitly reserved for this slice — verifies the current
+PIN via the existing `verify()` before replacing the hash. Face ID and
+2FA are shown as real, honest disabled toggles with explanatory subtext
+(WebAuthn and Transfer/Withdraw-specific OTP enforcement are both real
+follow-up work, not something to fake here) — the same
+known-gap-documented-not-hidden pattern as Slice 4's bank-account
+self-attestation.
+
+**Settings' notification preferences reuse the platform's real
+`NotificationPreference` system** at the `IN_APP` channel, collapsed from
+Figma's 3 toggles to 2: the backend's (channel, type) granularity can't
+isolate "wallet activity" from Ride/Marketplace `PAYMENT_SUCCESS`/
+`PAYMENT_FAILED` (shared types, see the design note), so only unambiguous
+wallet-money-movement types are wired — a stated scope boundary, not a
+silently dropped toggle. **Spending limits are new and real**: nullable
+`dailyLimit`/`singleTransactionLimit` on `Wallet`, enforced via
+`WalletService.assertWithinLimits()` on `transfer()` and withdrawal-request
+creation only — customer-initiated outflow, deliberately not the generic
+`debit()` used for ride/marketplace wallet payments. Auto Top-Up is a
+documented gap (needs a saved auto-charge payment method, per Slice 3).
+Currency display is genuinely static (NGN-only platform). Privacy Mode is
+a real, client-only `localStorage` toggle — no server-side meaning to
+persist.
+
+Typecheck/lint clean across `@dripplex/backend`, `@dripplex/types`,
+`@dripplex/sdk`, `@dripplex/ui`, and `customer-web`. Fixed a real,
+pre-existing type-drift bug found along the way: `packages/types`'
+`NotificationType` union (and the exhaustive `NOTIFICATION_SOUND_EVENTS`
+Record keyed on it) had fallen out of sync with the Prisma schema enum,
+missing `WITHDRAWAL_*`/`PROMOTION_*`/`CASHBACK_AWARDED`/`ORDER_*` values —
+synced both. New unit tests for `setLimits`/`assertWithinLimits`/
+`getStatement` on `WalletService` and `change()` on `WalletPinService`.
+Full backend suite: 1073/1075 passing (same 2 pre-existing, unrelated
+`customer-products.service.spec.ts` DB-pollution failures as every prior
+slice).
+
+Verified end-to-end against the real backend: spending-limit enforcement
+checked at both boundaries (a 600 transfer against a 500 single-limit
+correctly rejected; three transfers totalling exactly the 1000 daily
+limit succeeded, a fourth that would exceed it correctly rejected with the
+already-used amount in the message); Statement's aggregation and CSV
+export matched the real ledger; the PIN set → wrong-current-PIN-rejected →
+change → verify round-trip all matched real bcrypt state; session
+revocation removed the target session from a follow-up `GET
+/auth/sessions` while leaving the current session untouched. Playwright
+walkthrough of all three screens against the real backend: Statement
+showed the real month's transactions and triggered a real CSV download;
+Security's PIN-change form completed successfully end-to-end and the
+trusted-devices list showed real parsed device/browser data with a
+correctly-flagged current session; Settings' spending-limit save
+persisted (confirmed via a follow-up screenshot showing "Saved") and
+Privacy Mode's toggle-and-banner worked. Zero console errors across all
+three screens after clearing a stale dev-server webpack cache that had
+been missing the new `SuperAppWalletToggle` export (a full restart, not a
+code fix, resolved it).
+
+| Component               | Status   |
+| ----------------------- | -------- |
+| `WalletStatementScreen` | Verified |
+| `WalletSecurityScreen`  | Verified |
+| `WalletSettingsScreen`  | Verified |
+
+This completes all five Wallet slices. Every screen in the module —
+Home, Transaction History, Transfer, Top Up, Payment Methods, Rewards,
+Withdraw, Statement, Security, Settings — is now backed by real,
+verified functionality, with every capability gap (Auto Top-Up, Face ID,
+Wallet 2FA, PDF export, automated payout, bank-account verification)
+explicitly documented rather than hidden. The production-readiness audit
+and freeze of the full module (the second half of this task) is tracked
+separately.

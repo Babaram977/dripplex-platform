@@ -35,6 +35,32 @@ export class WalletHistoryQueryDto {
   public type?: WalletTransactionType;
 }
 
+export class WalletStatementQueryDto {
+  @Transform(({ value }: { value: unknown }) => toNumber(value))
+  @IsNumber()
+  @Min(1)
+  @Max(12)
+  public month!: number;
+
+  @Transform(({ value }: { value: unknown }) => toNumber(value))
+  @IsNumber()
+  @Min(2020)
+  @Max(2100)
+  public year!: number;
+}
+
+export class SetWalletLimitsDto {
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => (value === null ? null : toNumber(value)))
+  @IsNumber()
+  public dailyLimit?: number | null;
+
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => (value === null ? null : toNumber(value)))
+  @IsNumber()
+  public singleTransactionLimit?: number | null;
+}
+
 export class LookupRecipientQueryDto {
   @IsString()
   @Matches(/^\+?[0-9]{7,15}$/, { message: 'phone must be a valid E.164-like number' })

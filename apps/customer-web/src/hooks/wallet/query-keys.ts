@@ -8,4 +8,5 @@ export const walletQueryKeys = {
   bankAccounts: ['wallet', 'bank-accounts'] as const,
   pinStatus: ['wallet', 'pin', 'status'] as const,
   withdrawals: (query: WithdrawalHistoryQuery) => ['wallet', 'withdrawals', query] as const,
+  statement: (month: number, year: number) => ['wallet', 'statement', month, year] as const,
 };

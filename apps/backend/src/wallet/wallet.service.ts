@@ -30,8 +30,19 @@ export interface WalletDto {
   availableBalance: number;
   pendingBalance: number;
   version: number;
+  dailyLimit: number | null;
+  singleTransactionLimit: number | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface WalletStatementDto {
+  month: number;
+  year: number;
+  totalIn: number;
+  totalOut: number;
+  net: number;
+  transactions: WalletLedgerEntryDto[];
 }
 
 export interface WalletLedgerEntryDto {
@@ -239,6 +250,130 @@ export class WalletService {
         total,
         totalPages: Math.max(1, Math.ceil(total / pageSize) || 1),
       },
+    };
+  }
+
+  /** Real, persisted spending limits (Wallet Settings). Null clears a
+   * limit. Only meaningful bounds are enforced here — actual enforcement
+   * happens in `assertWithinLimits`, called from Transfer and Withdrawal
+   * request-creation, the two customer-initiated outflow paths; the
+   * generic `debit()` used for ride/marketplace wallet payments is
+   * deliberately not gated by these limits (see
+   * docs/WALLET-005-STATEMENT-SECURITY-SETTINGS-DESIGN.md). */
+  public async setLimits(
+    ownerType: WalletOwnerType,
+    ownerId: string,
+    limits: { dailyLimit: number | null; singleTransactionLimit: number | null },
+    context?: AuditContext,
+  ): Promise<WalletDto> {
+    if (limits.dailyLimit !== null && limits.dailyLimit <= 0) {
+      throw new ValidationDomainException('Daily limit must be greater than zero');
+    }
+    if (limits.singleTransactionLimit !== null && limits.singleTransactionLimit <= 0) {
+      throw new ValidationDomainException('Single transaction limit must be greater than zero');
+    }
+
+    const wallet = await this.getOrCreateWalletRecord(ownerType, ownerId);
+    const updated = await this.prisma.wallet.update({
+      where: { id: wallet.id },
+      data: {
+        dailyLimit: limits.dailyLimit,
+        singleTransactionLimit: limits.singleTransactionLimit,
+      },
+    });
+
+    await this.auditService.record(
+      WALLET_AUDIT_ACTIONS.LIMITS_UPDATED,
+      { ...(context ?? {}), userId: ownerId },
+      {
+        resource: 'wallet',
+        resourceId: wallet.id,
+        metadata: limits,
+      },
+    );
+
+    return toWalletDto(updated);
+  }
+
+  /** Throws ValidationDomainException when `amount` would exceed either
+   * configured limit. Daily usage sums today's WITHDRAWAL + TRANSFER debit
+   * ledger entries only — the same customer-initiated-outflow scope the
+   * limits are set for, excluding ride/marketplace wallet payment debits
+   * (type DEBIT), which are system-initiated at checkout, not a customer
+   * "spend" the settings screen is describing. */
+  public async assertWithinLimits(
+    ownerType: WalletOwnerType,
+    ownerId: string,
+    amount: number,
+    currency = WALLET_DEFAULT_CURRENCY,
+  ): Promise<void> {
+    const wallet = await this.getOrCreateWalletRecord(ownerType, ownerId, currency);
+
+    if (wallet.singleTransactionLimit !== null) {
+      const singleLimit = Number(wallet.singleTransactionLimit);
+      if (amount > singleLimit) {
+        throw new ValidationDomainException(
+          `Amount exceeds your single transaction limit of ${String(singleLimit)}`,
+        );
+      }
+    }
+
+    if (wallet.dailyLimit !== null) {
+      const dailyLimit = Number(wallet.dailyLimit);
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
+      const spentToday = await this.prisma.walletLedgerEntry.aggregate({
+        where: {
+          walletId: wallet.id,
+          direction: WalletDirection.DEBIT,
+          type: { in: [WalletTransactionType.WITHDRAWAL, WalletTransactionType.TRANSFER] },
+          createdAt: { gte: startOfToday },
+        },
+        _sum: { amount: true },
+      });
+      const alreadySpent = Number(spentToday._sum.amount ?? 0);
+      if (alreadySpent + amount > dailyLimit) {
+        throw new ValidationDomainException(
+          `Amount would exceed your daily limit of ${String(dailyLimit)} (${String(alreadySpent)} already used today)`,
+        );
+      }
+    }
+  }
+
+  /** Real aggregation over existing ledger entries — Money In/Out/Net and
+   * the transaction list for one calendar month, in the owner's timezone-
+   * naive server time (matches the rest of the platform's date handling,
+   * no per-user timezone stored anywhere yet). */
+  public async getStatement(
+    ownerType: WalletOwnerType,
+    ownerId: string,
+    month: number,
+    year: number,
+    currency = WALLET_DEFAULT_CURRENCY,
+  ): Promise<WalletStatementDto> {
+    const wallet = await this.getOrCreateWalletRecord(ownerType, ownerId, currency);
+    const start = new Date(year, month - 1, 1);
+    const end = new Date(year, month, 1);
+
+    const transactions = await this.prisma.walletLedgerEntry.findMany({
+      where: { walletId: wallet.id, createdAt: { gte: start, lt: end } },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const totalIn = transactions
+      .filter((tx) => tx.direction === WalletDirection.CREDIT)
+      .reduce((sum, tx) => sum + Number(tx.amount), 0);
+    const totalOut = transactions
+      .filter((tx) => tx.direction === WalletDirection.DEBIT)
+      .reduce((sum, tx) => sum + Number(tx.amount), 0);
+
+    return {
+      month,
+      year,
+      totalIn: roundMoney(totalIn),
+      totalOut: roundMoney(totalOut),
+      net: roundMoney(totalIn - totalOut),
+      transactions: transactions.map(toWalletLedgerEntryDto),
     };
   }
 
@@ -508,9 +643,16 @@ export function toWalletDto(wallet: Wallet): WalletDto {
     availableBalance: Number(wallet.availableBalance),
     pendingBalance: Number(wallet.pendingBalance),
     version: wallet.version,
+    dailyLimit: wallet.dailyLimit !== null ? Number(wallet.dailyLimit) : null,
+    singleTransactionLimit:
+      wallet.singleTransactionLimit !== null ? Number(wallet.singleTransactionLimit) : null,
     createdAt: wallet.createdAt.toISOString(),
     updatedAt: wallet.updatedAt.toISOString(),
   };
+}
+
+function roundMoney(amount: number): number {
+  return Math.round((amount + Number.EPSILON) * 100) / 100;
 }
 
 export function toWalletLedgerEntryDto(entry: WalletLedgerEntry): WalletLedgerEntryDto {

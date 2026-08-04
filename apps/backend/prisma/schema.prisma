@@ -1993,17 +1993,23 @@ model UserAchievement {
 }
 
 model Wallet {
-  id               String              @id @default(uuid()) @db.Uuid
-  ownerType        WalletOwnerType     @map("owner_type")
-  ownerId          String              @map("owner_id") @db.Uuid
-  currency         String              @default("NGN") @db.VarChar(3)
-  availableBalance Decimal             @default(0) @map("available_balance") @db.Decimal(14, 2)
-  pendingBalance   Decimal             @default(0) @map("pending_balance") @db.Decimal(14, 2)
-  version          Int                 @default(0)
-  createdAt        DateTime            @default(now()) @map("created_at")
-  updatedAt        DateTime            @updatedAt @map("updated_at")
-  deletedAt        DateTime?           @map("deleted_at")
-  ledgerEntries    WalletLedgerEntry[]
+  id                     String              @id @default(uuid()) @db.Uuid
+  ownerType              WalletOwnerType     @map("owner_type")
+  ownerId                String              @map("owner_id") @db.Uuid
+  currency               String              @default("NGN") @db.VarChar(3)
+  availableBalance       Decimal             @default(0) @map("available_balance") @db.Decimal(14, 2)
+  pendingBalance         Decimal             @default(0) @map("pending_balance") @db.Decimal(14, 2)
+  version                Int                 @default(0)
+  /// Customer-configurable spending limits (Wallet Settings). Null = no
+  /// limit. Enforced only against customer-initiated outflow — Transfer
+  /// and Withdrawal — not the generic debit() used for ride/marketplace
+  /// wallet payments; see docs/WALLET-005-STATEMENT-SECURITY-SETTINGS-DESIGN.md.
+  dailyLimit             Decimal?            @map("daily_limit") @db.Decimal(14, 2)
+  singleTransactionLimit Decimal?            @map("single_transaction_limit") @db.Decimal(14, 2)
+  createdAt              DateTime            @default(now()) @map("created_at")
+  updatedAt              DateTime            @updatedAt @map("updated_at")
+  deletedAt              DateTime?           @map("deleted_at")
+  ledgerEntries          WalletLedgerEntry[]
 
   @@unique([ownerType, ownerId, currency])
   @@index([ownerId])

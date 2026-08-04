@@ -7,6 +7,7 @@ import type {
   AnalyticsDailyMetricDto,
   AnalyticsQuery,
   CampaignAnalyticsQuery,
+  ChangeWalletPinRequest,
   CloneCampaignRequest,
   CmsContentDto,
   CmsContentListQuery,
@@ -71,6 +72,7 @@ import type {
   SearchQuery,
   SearchResultDto,
   SearchSuggestionQuery,
+  SetWalletLimitsRequest,
   UpdateCampaignRewardsRequest,
   UpdateCmsContentRequest,
   UpdateFraudListEntryRequest,
@@ -88,6 +90,7 @@ import type {
   WalletDto,
   WalletLedgerEntryDto,
   WalletRecipientDto,
+  WalletStatementDto,
   WalletTransferDto,
   WalletTransferRequest,
   WishlistDto,
@@ -740,6 +743,32 @@ export class WalletClient {
       method: 'POST',
       body: { pin },
     });
+  }
+
+  public changePin(body: ChangeWalletPinRequest): Promise<WalletPinStatusDto> {
+    return this.http.request<WalletPinStatusDto>('/customer/wallet/pin', {
+      method: 'PUT',
+      body,
+    });
+  }
+
+  public setLimits(body: SetWalletLimitsRequest): Promise<WalletDto> {
+    return this.http.request<WalletDto>('/customer/wallet/limits', {
+      method: 'PUT',
+      body,
+    });
+  }
+
+  public statement(month: number, year: number): Promise<WalletStatementDto> {
+    return this.http.request<WalletStatementDto>(
+      `/customer/wallet/statement${toQuery({ month, year })}`,
+    );
+  }
+
+  public async exportStatement(month: number, year: number): Promise<Blob> {
+    return await this.http.requestBlob(
+      `/customer/wallet/statement/export${toQuery({ month, year })}`,
+    );
   }
 
   public createWithdrawal(body: CreateWithdrawalRequest): Promise<WithdrawalRequestDto> {

@@ -219,27 +219,35 @@ The backend (`apps/backend/src/wallet/`), SDK (`WalletClient`), and shared
 types already existed in full for balance + transactions, so each slice is
 real backend integration from the start.
 
-| Screen              | DPX-100 Ported | Real Route      | Verified |
-| ------------------- | -------------- | --------------- | -------- |
-| Wallet Home         | ✅             | ✅ `/wallet`    | ✅       |
-| Transaction History | ✅             | ✅ `/wallet`    | ✅       |
-| Top Up              | ✅             | ✅ `/wallet`    | ✅ ‡     |
-| Withdraw            | ✅ §           | ✅ `/wallet`    | ✅       |
-| Transfer            | ✅             | ✅ `/wallet`    | ✅       |
-| Payment Methods     | ✅ †           | ✅ `/wallet`    | ✅       |
-| Rewards             | ✅ †           | ✅ `/wallet`    | ✅       |
-| Wallet Statement    | ❌             | ❌ (no backend) | ❌       |
-| Wallet Security     | ❌             | ❌ (no backend) | ❌       |
-| Wallet Settings     | ❌             | ❌ (no backend) | ❌       |
+| Screen              | DPX-100 Ported | Real Route   | Verified |
+| ------------------- | -------------- | ------------ | -------- |
+| Wallet Home         | ✅             | ✅ `/wallet` | ✅       |
+| Transaction History | ✅             | ✅ `/wallet` | ✅       |
+| Top Up              | ✅             | ✅ `/wallet` | ✅ ‡     |
+| Withdraw            | ✅ §           | ✅ `/wallet` | ✅       |
+| Transfer            | ✅             | ✅ `/wallet` | ✅       |
+| Payment Methods     | ✅ †           | ✅ `/wallet` | ✅       |
+| Rewards             | ✅ †           | ✅ `/wallet` | ✅       |
+| Wallet Statement    | ✅             | ✅ `/wallet` | ✅       |
+| Wallet Security     | ✅ ¶           | ✅ `/wallet` | ✅       |
+| Wallet Settings     | ✅ ¶           | ✅ `/wallet` | ✅       |
 
-All seven ported screens share one route (`/wallet`) driven by a flat
+All ten ported screens share one route (`/wallet`) driven by a flat
 `wallet-flow.tsx` state machine, the same pattern as Ride's `/ride`.
 
-Wallet Statement/Security/Settings still have no backend (no PDF export,
-no full 2FA, no settings persistence) and will be built for real in
-Slice 5 per founder direction (not documented as capability gaps — see
-MATURITY.md's Slice 2 note and the founder's "build it properly"
-instruction for the whole Wallet module).
+¶ Statement, Security, and Settings (Slice 5, see
+`docs/WALLET-005-STATEMENT-SECURITY-SETTINGS-DESIGN.md`) are real: Statement's
+month aggregation and CSV export run directly on the existing ledger table;
+Security's trusted-devices list reuses the platform's existing
+portal-agnostic `AuthSession` system as-is and PIN change is a real
+bcrypt-verified flow; Settings' spending limits are real and enforced on
+Transfer/Withdraw, notification preferences reuse the real
+`NotificationPreference` system (collapsed to 2 toggles from Figma's 3 — a
+documented backend-granularity constraint, not a missing feature), and
+Privacy Mode is a real client-only preference. Face ID, Wallet 2FA, and
+Auto Top-Up remain honest, documented gaps (shown as disabled controls
+with explanatory text, not fake toggles) — see the design note and
+MATURITY.md's Slice 5 section for the full reasoning.
 
 § Withdraw is a real production module (Slice 4, see
 `docs/WALLET-004-WITHDRAW-DESIGN.md`): real `CustomerBankAccount`,
@@ -302,8 +310,8 @@ and could disagree with what was actually charged. They now share one
 Wallet and Cash on Delivery, both fulfillment types. Checkout stays ✅
 Verified, now offering five real payment methods (Paystack/Flutterwave/
 OPay/Wallet/Cash) instead of three, with displayed and charged totals
-guaranteed identical. Wallet is at 7/10 real screens ported and
-Playwright-verified (Slice 4: Withdraw, a real production module, Phase 1
-
-- Phase 2). Only Statement/Security/Settings remain (Slice 5), then the
-  module production audit and freeze._
+guaranteed identical. Wallet is now at 10/10 real screens ported and
+Playwright-verified (Slice 5: Statement/Security/Settings, see
+`docs/WALLET-005-STATEMENT-SECURITY-SETTINGS-DESIGN.md` and MATURITY.md).
+All five Wallet slices are complete; the module's production readiness
+audit and freeze is the remaining item._
