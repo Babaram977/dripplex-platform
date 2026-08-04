@@ -745,3 +745,17 @@ removed a place — all via real API calls, zero console errors throughout.
 | `SuperAppRideTextField`       | Verified |
 | `SuperAppRidePlaceCard`       | Verified |
 | `SuperAppRideDashedAddButton` | Verified |
+
+## Ride module — Frozen (2026-08-04)
+
+Per founder direction after reviewing `docs/RIDE-DPX-100-PRODUCTION-AUDIT.md`:
+the Ride module (all 22 real screens, Slices 1-5, and every `SuperAppRide*`
+component listed above) is now **frozen** — bug fixes for verified defects
+only. No new Ride features, no UI redesigns, no component refactors,
+until the founder explicitly reopens it. This is a stronger commitment
+than "Verified": it's not yet formally "Locked" per this document's own
+maturity ladder (that still requires an explicit founder pixel-final
+sign-off screen by screen), but no further Ride work should happen
+without that sign-off or a defect report. See
+`docs/DPX-100-MODULE-COMPLETION-GATE.md` for the standard this module met
+and that every subsequent module (starting with Wallet) is held to.
