@@ -1008,7 +1008,14 @@ export type CmsContentType =
   | 'STATIC_PAGE'
   | 'ANNOUNCEMENT'
   | 'PROMO_BANNER'
-  | 'MARKETING_BLOCK';
+  | 'MARKETING_BLOCK'
+  /** Driver Slice 2 item 7 — Help Centre: reuses the Cms module, same
+   * authoring flow (AdminCmsController), just driver-scoped types.
+   * DRIVER_FAQ's `body` is `{ question, answer, category? }`;
+   * DRIVER_STATIC_PAGE's `body` is a full article, same shape as
+   * STATIC_PAGE. */
+  | 'DRIVER_FAQ'
+  | 'DRIVER_STATIC_PAGE';
 
 export interface CmsContentVersionDto {
   id: string;

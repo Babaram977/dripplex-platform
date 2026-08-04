@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { AuditModule } from '../audit/audit.module';
+import { CmsModule } from '../cms/cms.module';
 import { NotificationCenterModule } from '../notification-center/notification-center.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PrismaModule } from '../prisma/prisma.module';
@@ -16,6 +17,7 @@ import { AdminDriversController } from './controllers/admin-drivers.controller';
 import { AdminIncidentReportsController } from './controllers/admin-incident-reports.controller';
 import { AdminInspectionCentresController } from './controllers/admin-inspection-centres.controller';
 import { AdminSosAlertsController } from './controllers/admin-sos-alerts.controller';
+import { DriverHelpController } from './controllers/driver-help.controller';
 import { DriverIdentityVerificationController } from './controllers/driver-identity-verification.controller';
 import { DriverIncidentReportsController } from './controllers/driver-incident-reports.controller';
 import { DriverInspectionsController } from './controllers/driver-inspections.controller';
@@ -47,9 +49,10 @@ import { DriverSupportService } from './support/driver-support.service';
 import { VehiclesService } from './vehicles/vehicles.service';
 
 @Module({
-  imports: [PrismaModule, AuditModule, NotificationsModule, NotificationCenterModule],
+  imports: [PrismaModule, AuditModule, NotificationsModule, NotificationCenterModule, CmsModule],
   controllers: [
     DriverController,
+    DriverHelpController,
     AdminDriversController,
     DriverIdentityVerificationController,
     AdminDriverIdentityVerificationController,

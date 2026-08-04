@@ -158,6 +158,10 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
     code: 'admin:drivers:shifts:manage',
     description: 'View driver shift/planned-availability queues and force-end abandoned shifts',
   },
+  {
+    code: 'driver:help:read',
+    description: 'Browse the driver Help Centre (FAQ/articles) — authoring uses admin:cms:manage',
+  },
   { code: 'admin:rides:support', description: 'Review and resolve ride problem reports' },
   { code: 'users:read', description: 'Read user records' },
   { code: 'users:write', description: 'Update user records' },

@@ -1,0 +1,3 @@
+-- AlterEnum
+ALTER TYPE "CmsContentType" ADD VALUE 'DRIVER_FAQ';
+ALTER TYPE "CmsContentType" ADD VALUE 'DRIVER_STATIC_PAGE';

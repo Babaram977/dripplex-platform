@@ -94,6 +94,10 @@ export const DRIVER_PERMISSIONS = {
   /// further for v1)
   SHIFT_MANAGE: 'driver:shift:manage',
   ADMIN_SHIFT_MANAGE: 'admin:drivers:shifts:manage',
+  /// Driver Slice 2 item 7 — Help Centre. Read-only; authoring goes
+  /// through the existing admin:cms:manage permission (AdminCmsController)
+  /// — no new admin permission needed.
+  HELP_READ: 'driver:help:read',
 } as const;
 
 /** DriverSecuritySettings is a singleton row (enforced at the service

@@ -10,6 +10,7 @@ import { AdminDriverSecuritySettingsClient } from '../drivers/admin-driver-secur
 import { AdminDriverVehiclesClient } from '../drivers/admin-driver-vehicles-client.js';
 import { AdminDriversClient } from '../drivers/admin-drivers-client.js';
 import { AdminInspectionCentresClient } from '../drivers/admin-inspection-centres-client.js';
+import { DriverHelpClient } from '../drivers/driver-help-client.js';
 import { DriverIdentityVerificationClient } from '../drivers/driver-identity-verification-client.js';
 import { DriverIncidentReportClient } from '../drivers/driver-incident-report-client.js';
 import { DriverInspectionsClient } from '../drivers/driver-inspections-client.js';
@@ -79,6 +80,7 @@ export class DripplexClient {
   public readonly driverSosAlerts: DriverSosAlertClient;
   public readonly driverShifts: DriverShiftClient;
   public readonly driverPlannedAvailability: DriverPlannedAvailabilityClient;
+  public readonly driverHelp: DriverHelpClient;
   public readonly driverIdentityVerification: DriverIdentityVerificationClient;
   public readonly adminDriverSecuritySettings: AdminDriverSecuritySettingsClient;
   public readonly adminDrivers: AdminDriversClient;
@@ -134,6 +136,7 @@ export class DripplexClient {
     this.driverSosAlerts = new DriverSosAlertClient(this.http);
     this.driverShifts = new DriverShiftClient(this.http);
     this.driverPlannedAvailability = new DriverPlannedAvailabilityClient(this.http);
+    this.driverHelp = new DriverHelpClient(this.http);
     this.driverIdentityVerification = new DriverIdentityVerificationClient(this.http);
     this.adminDriverSecuritySettings = new AdminDriverSecuritySettingsClient(this.http);
     this.adminDrivers = new AdminDriversClient(this.http);

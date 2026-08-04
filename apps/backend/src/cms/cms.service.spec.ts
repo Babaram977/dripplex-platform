@@ -1,6 +1,9 @@
 import { CmsContentStatus, CmsContentType } from '@prisma/client';
 
-import { NotFoundDomainException, ValidationDomainException } from '../common/exceptions/domain.exception';
+import {
+  NotFoundDomainException,
+  ValidationDomainException,
+} from '../common/exceptions/domain.exception';
 
 import { CMS_AUDIT_ACTIONS, CMS_PERMISSIONS } from './cms.constants';
 import { toCmsContentDto } from './cms.mapper';
@@ -69,8 +72,8 @@ describe('CmsService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    (prisma.$transaction as jest.Mock).mockImplementation((callback: (tx: PrismaService) => unknown) =>
-      callback(prisma),
+    (prisma.$transaction as jest.Mock).mockImplementation(
+      (callback: (tx: PrismaService) => unknown) => callback(prisma),
     );
   });
 
@@ -161,7 +164,9 @@ describe('CmsService', () => {
 
   it('updates content, increments version, and snapshots the update', async () => {
     (prisma.cmsContent.findFirst as jest.Mock).mockResolvedValue(cmsContent());
-    (prisma.cmsContent.update as jest.Mock).mockResolvedValue(cmsContent({ title: 'Updated', version: 2 }));
+    (prisma.cmsContent.update as jest.Mock).mockResolvedValue(
+      cmsContent({ title: 'Updated', version: 2 }),
+    );
     (prisma.cmsContentVersion.create as jest.Mock).mockResolvedValue(cmsVersion({ version: 2 }));
 
     const result = await service.updateContent(contentId, { title: 'Updated' }, context);
@@ -177,8 +182,12 @@ describe('CmsService', () => {
 
   it('allows update body to be cleared', async () => {
     (prisma.cmsContent.findFirst as jest.Mock).mockResolvedValue(cmsContent());
-    (prisma.cmsContent.update as jest.Mock).mockResolvedValue(cmsContent({ body: null, version: 2 }));
-    (prisma.cmsContentVersion.create as jest.Mock).mockResolvedValue(cmsVersion({ body: null, version: 2 }));
+    (prisma.cmsContent.update as jest.Mock).mockResolvedValue(
+      cmsContent({ body: null, version: 2 }),
+    );
+    (prisma.cmsContentVersion.create as jest.Mock).mockResolvedValue(
+      cmsVersion({ body: null, version: 2 }),
+    );
 
     await service.updateContent(contentId, { body: null }, context);
 
@@ -190,9 +199,9 @@ describe('CmsService', () => {
   it('rejects updates to missing content', async () => {
     (prisma.cmsContent.findFirst as jest.Mock).mockResolvedValue(null);
 
-    await expect(service.updateContent(contentId, { title: 'Nope' }, context)).rejects.toBeInstanceOf(
-      NotFoundDomainException,
-    );
+    await expect(
+      service.updateContent(contentId, { title: 'Nope' }, context),
+    ).rejects.toBeInstanceOf(NotFoundDomainException);
   });
 
   it('publishes content and creates a publish version', async () => {
@@ -323,7 +332,60 @@ describe('CmsService', () => {
         where: expect.objectContaining({
           status: CmsContentStatus.PUBLISHED,
           type: expect.objectContaining({
-            in: expect.arrayContaining([CmsContentType.HOMEPAGE_BANNER, CmsContentType.PROMO_BANNER]),
+            in: expect.arrayContaining([
+              CmsContentType.HOMEPAGE_BANNER,
+              CmsContentType.PROMO_BANNER,
+            ]),
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('lists only published driver-help content', async () => {
+    (prisma.cmsContent.findMany as jest.Mock).mockResolvedValue([
+      cmsContent({ type: CmsContentType.DRIVER_FAQ, status: CmsContentStatus.PUBLISHED }),
+      cmsContent({ type: CmsContentType.DRIVER_STATIC_PAGE, status: CmsContentStatus.PUBLISHED }),
+    ]);
+
+    const result = await service.getPublishedDriverHelp();
+
+    expect(result).toHaveLength(2);
+    expect(prisma.cmsContent.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: CmsContentStatus.PUBLISHED,
+          type: expect.objectContaining({
+            in: expect.arrayContaining([
+              CmsContentType.DRIVER_FAQ,
+              CmsContentType.DRIVER_STATIC_PAGE,
+            ]),
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('resolves driver-help types by slug via the same published-page lookup', async () => {
+    (prisma.cmsContent.findFirst as jest.Mock).mockResolvedValue(
+      cmsContent({
+        type: CmsContentType.DRIVER_FAQ,
+        slug: 'how-do-payouts-work',
+        status: CmsContentStatus.PUBLISHED,
+      }),
+    );
+
+    const result = await service.getPublishedPageBySlug('how-do-payouts-work');
+
+    expect(result.type).toBe(CmsContentType.DRIVER_FAQ);
+    expect(prisma.cmsContent.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          type: expect.objectContaining({
+            in: expect.arrayContaining([
+              CmsContentType.DRIVER_FAQ,
+              CmsContentType.DRIVER_STATIC_PAGE,
+            ]),
           }),
         }),
       }),

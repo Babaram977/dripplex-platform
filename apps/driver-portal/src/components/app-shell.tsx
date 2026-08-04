@@ -21,6 +21,7 @@ const NAV_LINKS = [
   { href: '/rewards', label: 'Rewards' },
   { href: '/activity', label: 'Activity' },
   { href: '/leaderboard', label: 'Leaderboard' },
+  { href: '/help', label: 'Help' },
   { href: '/support', label: 'Support' },
   { href: '/incident', label: 'Report Incident' },
   { href: '/sos', label: 'SOS' },

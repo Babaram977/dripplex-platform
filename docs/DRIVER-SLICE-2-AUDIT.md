@@ -188,7 +188,30 @@ relevant to `docs/DPX-DRIVER-004-VEHICLE-APPROVAL-LIFECYCLE-POLICY.md`'s
 "vehicle-changed" and "safety complaint" re-inspection triggers, which that
 document already flagged as needing this same capability to exist first.
 
-### 6. Driver help centre — ❌ Zero capability
+### 6. Driver help centre — ✅ Shipped (2026-08-04)
+
+**Built:** exactly the reuse path this section itself suggested, confirmed
+by the founder when this item's scope was resolved (it was the one item
+outside the founder's original five decisions — see the founder-decisions
+section below). No new content system: two new `CmsContentType` values,
+`DRIVER_FAQ` (`body: { question, answer, category? }`) and
+`DRIVER_STATIC_PAGE` (`body: { text }`), on the existing `CmsContent`
+model. Authoring uses the existing `AdminCmsController`
+(`admin:cms:manage`) unchanged — no new admin controller, no new admin
+permission. `CmsService` gained `getPublishedDriverHelp()` (lists
+published driver-scoped content) and had `getPublishedPageBySlug()`'s
+allowed-types list extended to include the two new types, so a single
+FAQ/article can also be fetched by slug. New driver-facing
+`DriverHelpController` (`GET /driver/help`, `GET /driver/help/:slug`),
+gated by a new read-only `driver:help:read` permission (seeded for the
+driver role only — no admin-role change needed). Driver-portal `/help`
+page: FAQ entries grouped by category as an expandable list (native
+`<details>`, no new dependency), full articles as plain-text cards;
+content the page doesn't recognize (a malformed `body`) is skipped
+silently rather than crashing — an honest gap, not a guess at rendering
+arbitrary JSON. Nav link added.
+
+Original audit finding, kept for context:
 
 `apps/driver-portal/src/app/learn/page.tsx` exists but is Driver Growth
 Campaign educational/earnings content (`components/campaign`), not a

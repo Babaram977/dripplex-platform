@@ -1982,6 +1982,14 @@ enum CmsContentType {
   ANNOUNCEMENT
   PROMO_BANNER
   MARKETING_BLOCK
+  /// Driver Slice 2 item 7 — Help Centre (founder-scoped 2026-08-04):
+  /// reuses the existing Cms module rather than a new content system —
+  /// same authoring flow (AdminCmsController, admin:cms:manage), just two
+  /// driver-scoped content types. DRIVER_FAQ stores { question, answer }
+  /// (optionally { category }) in `body`; DRIVER_STATIC_PAGE is a full
+  /// article, same shape as STATIC_PAGE.
+  DRIVER_FAQ
+  DRIVER_STATIC_PAGE
 }
 
 enum FraudRiskLevel {

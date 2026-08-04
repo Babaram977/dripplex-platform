@@ -275,7 +275,13 @@ export class CmsService {
         deletedAt: null,
         status: CmsContentStatus.PUBLISHED,
         type: {
-          in: [CmsContentType.STATIC_PAGE, CmsContentType.LANDING_PAGE, CmsContentType.FAQ],
+          in: [
+            CmsContentType.STATIC_PAGE,
+            CmsContentType.LANDING_PAGE,
+            CmsContentType.FAQ,
+            CmsContentType.DRIVER_STATIC_PAGE,
+            CmsContentType.DRIVER_FAQ,
+          ],
         },
       },
     });
@@ -283,6 +289,21 @@ export class CmsService {
       throw new NotFoundDomainException('CMS page not found');
     }
     return toCmsContentDto(content);
+  }
+
+  /** Driver Slice 2 item 7 — Help Centre: all published driver-scoped
+   * content (FAQ entries + full articles), for the driver-portal browse
+   * list. FAQs first (title, then most-recently-published), then pages. */
+  public async getPublishedDriverHelp(): Promise<CmsContentDto[]> {
+    const contents = await this.prisma.cmsContent.findMany({
+      where: {
+        deletedAt: null,
+        status: CmsContentStatus.PUBLISHED,
+        type: { in: [CmsContentType.DRIVER_FAQ, CmsContentType.DRIVER_STATIC_PAGE] },
+      },
+      orderBy: [{ type: 'asc' }, { title: 'asc' }],
+    });
+    return contents.map((content) => toCmsContentDto(content));
   }
 
   public async getPublishedBanners(): Promise<CmsContentDto[]> {
