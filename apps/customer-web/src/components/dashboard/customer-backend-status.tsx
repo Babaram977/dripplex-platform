@@ -92,8 +92,8 @@ export function CustomerBackendStatus(): React.JSX.Element {
     });
 
     await run('loyalty', async () => {
-      const account = await sdk.loyalty.account();
-      return { detail: `Points ${String(account.pointsBalance)}` };
+      const overview = await sdk.loyalty.account();
+      return { detail: `Points ${String(overview.account.pointsBalance)}` };
     });
 
     await run('promotions', async () => {

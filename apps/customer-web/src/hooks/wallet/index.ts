@@ -7,3 +7,4 @@ export {
   useFundWallet,
   useVerifyWalletFunding,
 } from './use-wallet-mutations';
+export { useLoyaltyAccount, useReferralCode, useReferralStats } from './use-loyalty';

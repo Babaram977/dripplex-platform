@@ -969,3 +969,92 @@ base) and a real "Book DX Comfort · ₦3,186" button label; Ride History
 showed "DX Ride" (previously "economy Ride", lowercase, from the old
 `.toLowerCase()` hack) on every existing ride row. Zero console errors.
 Ride's frozen visual spec is otherwise untouched.
+
+## Wallet module — Slice 3: Payment Methods + Rewards (2026-08-04)
+
+Figma's Payment Methods and Rewards screens both assume backend concepts
+that don't exist (saved/tokenized cards, linked bank accounts, a fixed
+reward-category taxonomy) — but researching the real backend for this
+slice found it already supports almost everything else these screens
+need for real: a full loyalty tier system and a full customer referral
+system, neither previously wired to any customer-web UI. Built to
+maximize real data rather than defaulting to a stripped-down adaptation,
+adapting only the parts genuinely missing.
+
+**Real backend/SDK defect found and fixed:** `LoyaltyClient.account()`
+in `@dripplex/sdk` was typed and parsed as if `GET /customer/loyalty`
+returned a `LoyaltyAccountDto` directly. It doesn't — the real controller
+returns a wrapper, `{ account, nextTier, achievements }`. This was a
+genuinely broken, already-shipped bug: the one existing caller
+(`customer-backend-status.tsx`'s debug widget) was reading
+`account.pointsBalance` directly off the wrapper, which is always
+`undefined` at runtime. Fixed across `packages/types`
+(`LoyaltyAccountOverviewDto` + supporting types), `packages/sdk`
+(`account()`/`redeem()` now return the correct wrapper type; added
+`history()` for the ledger endpoint), and the one real caller.
+
+**New components this slice:** `SuperAppWalletRewardsHero` — a
+green-gradient hero distinct from `SuperAppWalletBalanceHero` (different
+gradient stops, single top-right glow, an optional nested tier-progress
+subcomponent) rather than a forced reuse, since the two cards' content
+shapes genuinely differ (total cashback + tier progress vs. spendable
+balance). `SuperAppWalletReferralCard` — gold-accented code display with
+a Copy Code button. Reused as-is: `SuperAppWalletTransactionList/Row`
+for the cashback ledger, `SuperAppWalletSelectableRow`/`SectionLabel`/
+`ScreenHeader` across both new screens.
+
+**Rewards screen:** real loyalty tier (`GET /customer/loyalty`, BRONZE
+through VIP), a real flat list of CASHBACK ledger entries (Figma's three
+fixed categories — Ride Cashback/Referral Bonus/Welcome Bonus with
+hardcoded amounts — have no backend counterpart; cashback carries no
+source taxonomy beyond its real description text, so the breakdown is
+the real ledger, not invented buckets), and a real referral code
+(`GET /customer/referrals/me`, get-or-create) with copy-to-clipboard and
+real stats (`GET /customer/referrals/stats`, including a new
+`refereeRewardAmount` field added to the DTO this slice so the "your
+friend earns ₦X" copy reads from `REFERRAL_REWARD_AMOUNTS` instead of
+being hardcoded in the frontend). Tier-progress percentage is a
+documented, defensible derived ratio (`lifetimePoints / (lifetimePoints +
+nextTier.pointsRequired) * 100`) rather than a hardcoded copy of
+`LOYALTY_TIER_THRESHOLDS` on the frontend — the backend only exposes the
+delta to the next tier, not the current tier's own lower bound, so an
+exact "% within this tier's band" isn't computable from the real API
+surface without duplicating backend-owned constants client-side. The
+exact real "X points more to reach Y" figure is always shown alongside
+the percentage so the honest number is never hidden behind an
+approximation.
+
+**Payment Methods screen:** the three real wallet-funding gateways
+(Paystack/Flutterwave/Moniepoint — the same three Top Up already uses)
+shown as reference info, plus an honest "No linked bank accounts yet.
+You'll be able to add one when withdrawing from your wallet." empty
+state — no fake "add card" flow, since no card tokenization exists
+anywhere in the platform and bank-account linking becomes real in
+Slice 4 (Withdraw). Reached via a new "Manage" link on Top Up's payment
+provider section, per DPX-UX-001 (a related action surfaced in place
+rather than requiring separate navigation).
+
+**Wiring:** Wallet Home's rewards strip (previously non-interactive) now
+navigates to Rewards; it stays hidden when the fetched recent-transactions
+batch has no CASHBACK entries, rather than showing a misleading ₦0 strip.
+
+Typecheck/lint clean across `@dripplex/types`, `@dripplex/sdk`,
+`@dripplex/ui`, `customer-web`, and the backend. Backend `loyalty`/
+`referrals`/`wallet` suites green (114 tests, including the
+`refereeRewardAmount` addition and the referrals stats test update).
+Verified end-to-end with Playwright against the real backend: seeded two
+real cashback credits via the actual `WalletService.cashback()` code
+path (not fabricated rows) to exercise the non-empty states, then
+confirmed the Rewards screen showed the real ₦225 total, real "Bronze →
+Silver, 13%, 875 points more to reach Silver" tier progress, the real
+two-entry cashback ledger, and a real referral code with a working
+Copy Code → "Copied!" state; confirmed Wallet Home's rewards strip
+appeared with the correct real sum and navigated to Rewards; confirmed
+Top Up's Manage link opened Payment Methods showing the three real
+gateways and the honest empty bank-account state. Zero console errors
+throughout.
+
+| Component                    | Status   |
+| ---------------------------- | -------- |
+| `SuperAppWalletRewardsHero`  | Verified |
+| `SuperAppWalletReferralCard` | Verified |

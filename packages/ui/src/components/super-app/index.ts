@@ -188,3 +188,5 @@ export {
 } from './WalletFormControls';
 export { SuperAppWalletAmountCard, SuperAppWalletPresetChips } from './WalletAmountInput';
 export { SuperAppWalletSelectableRow, SuperAppWalletRecipientRow } from './WalletSelectableRow';
+export { SuperAppWalletRewardsHero, type SuperAppWalletTierProgress } from './WalletRewardsHero';
+export { SuperAppWalletReferralCard } from './WalletReferralCard';

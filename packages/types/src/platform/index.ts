@@ -574,6 +574,7 @@ export interface ReferralStatsDto {
   totalRedemptions: number;
   pendingRedemptions: number;
   rewardedRedemptions: number;
+  refereeRewardAmount: number;
 }
 
 export interface ReferralRedemptionDto {
@@ -745,6 +746,42 @@ export interface LoyaltyLedgerEntryDto {
   referenceId: string | null;
   expiresAt: string | null;
   createdAt: string;
+}
+
+export interface LoyaltyAchievementDto {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  pointsReward: number;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UserAchievementDto {
+  id: string;
+  earnedAt: string;
+  achievement: LoyaltyAchievementDto;
+}
+
+export interface LoyaltyNextTierDto {
+  tier: LoyaltyTier;
+  pointsRequired: number;
+}
+
+/**
+ * The real shape of `GET /customer/loyalty` — a wrapper around the account,
+ * not the account itself. `sdk.loyalty.account()` previously typed its
+ * response as `LoyaltyAccountDto` directly, a real mismatch with what the
+ * backend controller (`CustomerLoyaltyController.getLoyalty`) actually
+ * returns (`LoyaltyAccountOverview`); fixed alongside adding the Rewards
+ * screen, which is the first real caller of this endpoint.
+ */
+export interface LoyaltyAccountOverviewDto {
+  account: LoyaltyAccountDto;
+  nextTier: LoyaltyNextTierDto | null;
+  achievements: UserAchievementDto[];
 }
 
 export interface RedeemLoyaltyPointsRequest {

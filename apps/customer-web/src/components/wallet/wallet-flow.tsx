@@ -4,6 +4,8 @@ import { toast } from '@dripplex/ui';
 import { useRouter, useSearchParams } from 'next/navigation';
 import * as React from 'react';
 
+import { PaymentMethodsScreen } from './screens/payment-methods-screen';
+import { RewardsScreen } from './screens/rewards-screen';
 import { TopUpScreen } from './screens/top-up-screen';
 import { TransactionHistoryScreen } from './screens/transaction-history-screen';
 import { TransferScreen } from './screens/transfer-screen';
@@ -15,7 +17,9 @@ type WalletFlowScreen =
   | { name: 'history' }
   | { name: 'transfer' }
   | { name: 'topup' }
-  | { name: 'topupGateway'; authorizationUrl: string; verifying: boolean };
+  | { name: 'topupGateway'; authorizationUrl: string; verifying: boolean }
+  | { name: 'rewards' }
+  | { name: 'paymentMethods' };
 
 /** Resumes a gateway top-up redirect: /wallet?topupVerify=1 lands here after Paystack/Flutterwave/Moniepoint checkout. */
 function useResumeScreen(): WalletFlowScreen | null {
@@ -53,10 +57,17 @@ export function WalletFlow(): React.JSX.Element {
           onTransfer={() => {
             setScreen({ name: 'transfer' });
           }}
+          onRewards={() => {
+            setScreen({ name: 'rewards' });
+          }}
         />
       );
     case 'history':
       return <TransactionHistoryScreen onBack={goHome} />;
+    case 'rewards':
+      return <RewardsScreen onBack={goHome} />;
+    case 'paymentMethods':
+      return <PaymentMethodsScreen onBack={goHome} />;
     case 'transfer':
       return (
         <TransferScreen
@@ -73,6 +84,9 @@ export function WalletFlow(): React.JSX.Element {
           onBack={goHome}
           onGatewayRedirect={(authorizationUrl) => {
             setScreen({ name: 'topupGateway', authorizationUrl, verifying: false });
+          }}
+          onManagePaymentMethods={() => {
+            setScreen({ name: 'paymentMethods' });
           }}
         />
       );

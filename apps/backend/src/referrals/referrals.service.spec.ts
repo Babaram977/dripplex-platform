@@ -134,6 +134,7 @@ describe('ReferralsService', () => {
         totalRedemptions: 5,
         pendingRedemptions: 2,
         rewardedRedemptions: 3,
+        refereeRewardAmount: 500,
       });
     });
   });

@@ -21,6 +21,9 @@ export interface ReferralStatsDto {
   totalRedemptions: number;
   pendingRedemptions: number;
   rewardedRedemptions: number;
+  /** What a referred friend earns for signing up with this code — read
+   * from REFERRAL_REWARD_AMOUNTS so the frontend never hardcodes it. */
+  refereeRewardAmount: number;
 }
 
 export function toReferralDto(referral: Referral): ReferralDto {

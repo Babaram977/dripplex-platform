@@ -27,7 +27,7 @@ overstate progress:
 | Home            |                                                                                   1 |            1/1 |                                                                                                                                                                                    0/1 (`/preview` only) |       1/1 |    1/1 |
 | Marketplace     |                                                                                   6 |            6/6 |                                                                                                                                                           4/6 (Product Detail, Cart, Checkout, Tracking) |       6/6 |    0/6 |
 | Ride            |                                                                                  30 |          22/30 |                                                                                                                                                                                          22/30 (`/ride`) |     22/30 |      — |
-| Wallet          |                                                                                  10 |           4/10 |                                                                                                                                                       4/10 (`/wallet` — Home, History, Top Up, Transfer) |      4/10 |      — |
+| Wallet          |                                                                                  10 |           6/10 |                                                                                                                             6/10 (`/wallet` — Home, History, Top Up, Transfer, Payment Methods, Rewards) |      6/10 |      — |
 | Driver          |                                                                                  13 |         0/13 † | partial † (`apps/driver-portal`, different screen set — dashboard/wallet/earnings/trip/history/profile/campaign, not a 1:1 port of `driverScreen.tsx`'s Splash/Login/OTP/KYC/DocsUpload/VehicleReg flow) | partial † |      — |
 | Merchant        |               — (`adminConsoleScreen.tsx`-style single file, not screen-enumerated) |              0 |                                                                                       partial † (`apps/merchant-portal` — dashboard, product CRUD, publish/images/variants/inventory, built pre-DPX-100) | partial † |      — |
 | Admin           |                                                             1 (single-file console) |            0/1 |                                                                                                              0/1 (`apps/admin-portal` exists; not audited against `adminConsoleScreen.tsx` in this pass) |         — |      — |
@@ -225,8 +225,8 @@ real backend integration from the start.
 | Top Up              | ✅             | ✅ `/wallet`    | ✅ ‡     |
 | Withdraw            | ❌             | ❌ (no backend) | ❌       |
 | Transfer            | ✅             | ✅ `/wallet`    | ✅       |
-| Payment Methods     | ❌             | ❌              | ❌       |
-| Rewards             | ❌             | ❌              | ❌       |
+| Payment Methods     | ✅ †           | ✅ `/wallet`    | ✅       |
+| Rewards             | ✅ †           | ✅ `/wallet`    | ✅       |
 | Wallet Statement    | ❌             | ❌ (no backend) | ❌       |
 | Wallet Security     | ❌             | ❌ (no backend) | ❌       |
 | Wallet Settings     | ❌             | ❌ (no backend) | ❌       |
@@ -255,6 +255,19 @@ verify screen itself (`WalletGatewayPaymentScreen`) is typecheck/lint
 clean and composed of already-Verified primitives, mirroring Ride's own
 `GatewayPaymentScreen` pattern exactly.
 
+† Payment Methods and Rewards are adapted, not 1:1 ports: Figma's saved
+cards/linked bank accounts (Payment Methods) and fixed reward
+categories/percent-exact tier bar (Rewards) have no backend counterpart.
+Rewards runs on real data the backend already fully supports — loyalty
+tier (`GET /customer/loyalty`, a real SDK type-mismatch bug fixed this
+slice) and referrals (`GET /customer/referrals/me` + `/stats`) — adapted
+only where genuinely necessary (a flat real cashback list instead of
+invented categories; a documented derived-ratio tier percentage instead
+of hardcoding tier thresholds client-side). Payment Methods shows the
+three real funding gateways plus an honest empty bank-account state
+(real linking arrives in Slice 4/Withdraw). See MATURITY.md's Slice 3
+section for full detail.
+
 See `packages/ui/src/components/super-app/MATURITY.md`'s "Wallet module"
 section for the slice-by-slice port log.
 
@@ -268,6 +281,6 @@ seed rows for live production data requires no presentation-layer code
 change. Phase 2, once a module is fully live, its seed block is simply
 dropped from `seed.ts`.
 
-_Last updated: 2026-08-04, after Ride Slice 5 (Ride History, Saved
-Places) — the Ride module's DPX-100 port is now complete (22/22 real
-screens ported and Playwright-verified)._
+_Last updated: 2026-08-04, after the Ride DX rebrand (DX Ride/DX
+Comfort/DX XL) and Wallet Slice 3 (Payment Methods, Rewards) — Wallet is
+now 6/10 real screens ported and Playwright-verified._

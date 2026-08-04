@@ -40,9 +40,11 @@ function parseAmount(value: string): number {
 export function TopUpScreen({
   onBack,
   onGatewayRedirect,
+  onManagePaymentMethods,
 }: {
   onBack: () => void;
   onGatewayRedirect: (authorizationUrl: string) => void;
+  onManagePaymentMethods: () => void;
 }): React.JSX.Element {
   const [amount, setAmount] = React.useState('5,000');
   const [provider, setProvider] = React.useState<WalletFundingProvider>('PAYSTACK');
@@ -76,8 +78,18 @@ export function TopUpScreen({
         </div>
 
         <div className="px-4 pb-5">
-          <SuperAppWalletSectionLabel>Payment provider</SuperAppWalletSectionLabel>
-          <div className="mt-2.5 flex flex-col gap-2">
+          <div className="mb-2.5 flex items-center justify-between">
+            <SuperAppWalletSectionLabel>Payment provider</SuperAppWalletSectionLabel>
+            <button
+              type="button"
+              onClick={onManagePaymentMethods}
+              className={`text-[12px] font-medium ${body}`}
+              style={{ color: '#47CF72' }}
+            >
+              Manage
+            </button>
+          </div>
+          <div className="flex flex-col gap-2">
             {PROVIDERS.map((option) => (
               <SuperAppWalletSelectableRow
                 key={option.id}

@@ -59,26 +59,28 @@ function formatEntryDate(iso: string): string {
 }
 
 /**
- * DPX-100 Wallet Slice 1-2. Top Up, Transfer, and "See all" now navigate to
- * their real screens (Slice 2). Withdraw and Pay still have no destination
- * (Withdraw needs a real backend build — Slice 4; Pay has no standalone
- * concept in the real backend at all — merchant/ride payments happen
- * in-flow, not from Wallet Home) so they stay disabled rather than
- * navigating nowhere. The rewards strip shows a real sum of CASHBACK
- * entries from the fetched recent-transactions batch (not a lifetime total
- * — no aggregate endpoint exists — worded honestly) and stays
- * non-interactive until Rewards exists in Slice 3.
+ * DPX-100 Wallet Slice 1-3. Top Up, Transfer, "See all", and the rewards
+ * strip now all navigate to their real screens. Withdraw and Pay still
+ * have no destination (Withdraw needs a real backend build — Slice 4; Pay
+ * has no standalone concept in the real backend at all — merchant/ride
+ * payments happen in-flow, not from Wallet Home) so they stay disabled
+ * rather than navigating nowhere. The rewards strip shows a real sum of
+ * CASHBACK entries from the fetched recent-transactions batch (not a
+ * lifetime total — that lives on the Rewards screen itself, worded
+ * honestly here as recent activity).
  */
 export function WalletHomeScreen({
   onBack,
   onSeeAllTransactions,
   onTopUp,
   onTransfer,
+  onRewards,
 }: {
   onBack: () => void;
   onSeeAllTransactions: () => void;
   onTopUp: () => void;
   onTransfer: () => void;
+  onRewards: () => void;
 }): React.JSX.Element {
   const { user } = useAuth();
   const wallet = useWallet();
@@ -156,6 +158,7 @@ export function WalletHomeScreen({
         <SuperAppWalletRewardsStrip
           title={`₦${recentCashback.toLocaleString()} cashback in recent activity`}
           subtitle="View your rewards & referral code"
+          onClick={onRewards}
         />
       ) : null}
 

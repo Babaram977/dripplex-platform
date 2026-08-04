@@ -31,7 +31,8 @@ import type {
   ListDriverRewardsQuery,
   ListReferralCampaignsQuery,
   ListReferralFraudChecksQuery,
-  LoyaltyAccountDto,
+  LoyaltyAccountOverviewDto,
+  LoyaltyLedgerEntryDto,
   MoveWishlistToCartRequest,
   MoveWishlistToCartResultDto,
   NotificationListDto,
@@ -623,12 +624,20 @@ export class AdminDriverCampaignClient {
 export class LoyaltyClient {
   public constructor(private readonly http: HttpClient) {}
 
-  public account(): Promise<LoyaltyAccountDto> {
-    return this.http.request<LoyaltyAccountDto>('/customer/loyalty');
+  public account(): Promise<LoyaltyAccountOverviewDto> {
+    return this.http.request<LoyaltyAccountOverviewDto>('/customer/loyalty');
   }
 
-  public redeem(body: RedeemLoyaltyPointsRequest): Promise<LoyaltyAccountDto> {
-    return this.http.request<LoyaltyAccountDto>('/customer/loyalty/redeem', {
+  public history(
+    query: { page?: number; pageSize?: number } = {},
+  ): Promise<PaginatedResult<LoyaltyLedgerEntryDto>> {
+    return this.http.request<PaginatedResult<LoyaltyLedgerEntryDto>>(
+      `/customer/loyalty/history${toQuery({ page: query.page, pageSize: query.pageSize })}`,
+    );
+  }
+
+  public redeem(body: RedeemLoyaltyPointsRequest): Promise<LoyaltyAccountOverviewDto> {
+    return this.http.request<LoyaltyAccountOverviewDto>('/customer/loyalty/redeem', {
       method: 'POST',
       body,
     });
