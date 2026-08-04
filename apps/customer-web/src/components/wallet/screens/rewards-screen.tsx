@@ -41,6 +41,12 @@ const TIER_LABEL: Record<LoyaltyTier, string> = {
  * fixed reward "categories" exist (cashback has no source taxonomy beyond
  * its real description text), so the breakdown is a real flat list of
  * CASHBACK ledger entries instead of three invented buckets.
+ *
+ * Updated in the Slice 5 production audit: all three queries now check
+ * `.isError`, not just `.isLoading` — a failed fetch used to render as
+ * "No cashback yet" (actively wrong) or an infinite "Loading your
+ * referral code…" (stuck, not just unhelpful). See
+ * docs/WALLET-PRODUCTION-AUDIT.md §2.3.
  */
 export function RewardsScreen({ onBack }: { onBack: () => void }): React.JSX.Element {
   const [copied, setCopied] = React.useState(false);
@@ -91,6 +97,11 @@ export function RewardsScreen({ onBack }: { onBack: () => void }): React.JSX.Ele
           }
           tier={tier}
         />
+        {loyalty.isError ? (
+          <p className={`px-4 pb-2 text-[12px] ${body}`} style={{ color: 'rgba(239,68,68,.7)' }}>
+            Couldn&apos;t load your loyalty tier right now.
+          </p>
+        ) : null}
 
         <div className="px-4 pb-5">
           <SuperAppWalletSectionLabel>Cashback history</SuperAppWalletSectionLabel>
@@ -100,7 +111,23 @@ export function RewardsScreen({ onBack }: { onBack: () => void }): React.JSX.Ele
                 Loading…
               </p>
             ) : null}
-            {!cashback.isLoading && (cashback.data?.items.length ?? 0) === 0 ? (
+            {cashback.isError ? (
+              <p className={`text-[13px] ${body}`} style={{ color: '#EF4444' }}>
+                Couldn&apos;t load your cashback history.{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    void cashback.refetch();
+                  }}
+                  className="font-semibold underline"
+                >
+                  Retry
+                </button>
+              </p>
+            ) : null}
+            {!cashback.isLoading &&
+            !cashback.isError &&
+            (cashback.data?.items.length ?? 0) === 0 ? (
               <p className={`text-[13px] ${body}`} style={{ color: 'rgba(255,255,255,.5)' }}>
                 No cashback yet — it lands here automatically from eligible rides and promotions.
               </p>
@@ -147,6 +174,19 @@ export function RewardsScreen({ onBack }: { onBack: () => void }): React.JSX.Ele
                   });
                 }}
               />
+            ) : referral.isError ? (
+              <p className={`text-[13px] ${body}`} style={{ color: '#EF4444' }}>
+                Couldn&apos;t load your referral code.{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    void referral.refetch();
+                  }}
+                  className="font-semibold underline"
+                >
+                  Retry
+                </button>
+              </p>
             ) : (
               <p className={`text-[13px] ${body}`} style={{ color: 'rgba(255,255,255,.5)' }}>
                 Loading your referral code…

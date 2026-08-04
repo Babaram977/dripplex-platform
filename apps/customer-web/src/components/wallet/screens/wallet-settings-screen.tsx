@@ -135,7 +135,7 @@ export function WalletSettingsScreen({ onBack }: { onBack: () => void }): React.
                 </div>
                 <div
                   className={`mt-0.5 text-[11px] ${body}`}
-                  style={{ color: 'rgba(255,255,255,.4)' }}
+                  style={{ color: 'rgba(255,255,255,.5)' }}
                 >
                   Needs a saved card to auto-charge — not available yet
                 </div>
@@ -172,7 +172,7 @@ export function WalletSettingsScreen({ onBack }: { onBack: () => void }): React.
                     </div>
                     <div
                       className={`mt-0.5 text-[11px] ${body}`}
-                      style={{ color: 'rgba(255,255,255,.4)' }}
+                      style={{ color: 'rgba(255,255,255,.5)' }}
                     >
                       {row.sub}
                     </div>
@@ -200,7 +200,7 @@ export function WalletSettingsScreen({ onBack }: { onBack: () => void }): React.
               <div className={`text-[14px] font-semibold text-white ${body}`}>
                 Nigerian Naira (NGN)
               </div>
-              <div className={`text-[12px] ${body}`} style={{ color: 'rgba(255,255,255,.4)' }}>
+              <div className={`text-[12px] ${body}`} style={{ color: 'rgba(255,255,255,.5)' }}>
                 All amounts displayed in ₦
               </div>
             </div>
@@ -230,7 +230,7 @@ export function WalletSettingsScreen({ onBack }: { onBack: () => void }): React.
                 <div className="px-4 py-3.5">
                   <div
                     className={`mb-1.5 text-[11px] uppercase tracking-wider ${body}`}
-                    style={{ color: 'rgba(255,255,255,.4)' }}
+                    style={{ color: 'rgba(255,255,255,.5)' }}
                   >
                     {item.label}
                   </div>
@@ -305,7 +305,7 @@ export function WalletSettingsScreen({ onBack }: { onBack: () => void }): React.
                 <div className={`text-[14px] font-semibold text-white ${body}`}>Privacy Mode</div>
                 <div
                   className={`mt-0.5 text-[11px] ${body}`}
-                  style={{ color: 'rgba(255,255,255,.4)' }}
+                  style={{ color: 'rgba(255,255,255,.5)' }}
                 >
                   Hide balance and amounts on this device
                 </div>

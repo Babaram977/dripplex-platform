@@ -17,6 +17,7 @@ import {
   useWallet,
   useWalletPinStatus,
 } from '@/hooks/wallet';
+import { describeSdkError } from '@/lib/sdk';
 
 /**
  * DPX-100 Wallet Slice 4. Real production module — no fake success paths.
@@ -179,7 +180,7 @@ export function WithdrawScreen({
 
             {createWithdrawal.isError ? (
               <p className={`px-4 pb-2 text-[13px] ${body}`} style={{ color: '#EF4444' }}>
-                Couldn&apos;t submit your withdrawal. Check your PIN and try again.
+                {describeSdkError(createWithdrawal.error).description}
               </p>
             ) : null}
           </>

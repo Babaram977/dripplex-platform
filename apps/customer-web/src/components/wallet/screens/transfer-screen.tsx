@@ -20,6 +20,7 @@ import {
   useTransferWallet,
   useWallet,
 } from '@/hooks/wallet';
+import { describeSdkError } from '@/lib/sdk';
 
 const PHONE_PATTERN = /^\+?[0-9]{7,15}$/;
 
@@ -211,7 +212,7 @@ export function TransferScreen({
 
             {transferWallet.isError ? (
               <p className={`px-4 pt-2 text-[13px] ${body}`} style={{ color: '#EF4444' }}>
-                Transfer failed. Try again.
+                {describeSdkError(transferWallet.error).description}
               </p>
             ) : null}
           </>

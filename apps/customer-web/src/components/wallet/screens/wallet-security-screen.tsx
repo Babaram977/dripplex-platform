@@ -111,7 +111,7 @@ export function WalletSecurityScreen({ onBack }: { onBack: () => void }): React.
                   className="flex w-full items-center justify-between px-4 py-3.5"
                 >
                   <span className={`text-[14px] font-semibold text-white ${body}`}>Change PIN</span>
-                  <span style={{ color: 'rgba(255,255,255,.4)' }}>{changingPin ? '︿' : '﹀'}</span>
+                  <span style={{ color: 'rgba(255,255,255,.5)' }}>{changingPin ? '︿' : '﹀'}</span>
                 </button>
                 {changingPin ? (
                   <div className="px-4 pb-4">
@@ -228,7 +228,7 @@ export function WalletSecurityScreen({ onBack }: { onBack: () => void }): React.
                       </div>
                       <div
                         className={`mt-0.5 text-[11px] ${body}`}
-                        style={{ color: 'rgba(255,255,255,.4)' }}
+                        style={{ color: 'rgba(255,255,255,.5)' }}
                       >
                         {row.sub}
                       </div>
@@ -289,7 +289,7 @@ export function WalletSecurityScreen({ onBack }: { onBack: () => void }): React.
                       </div>
                       <div
                         className={`mt-0.5 text-[11px] ${body}`}
-                        style={{ color: 'rgba(255,255,255,.4)' }}
+                        style={{ color: 'rgba(255,255,255,.5)' }}
                       >
                         {formatLastActive(session.lastActiveAt)}
                         {session.location ? ` · ${session.location}` : ''}
@@ -313,7 +313,7 @@ export function WalletSecurityScreen({ onBack }: { onBack: () => void }): React.
               </div>
             ))}
             {!sessions.isLoading && others.length === 0 && items.length > 0 ? (
-              <p className={`text-[12px] ${body}`} style={{ color: 'rgba(255,255,255,.4)' }}>
+              <p className={`text-[12px] ${body}`} style={{ color: 'rgba(255,255,255,.5)' }}>
                 No other devices are signed in.
               </p>
             ) : null}
@@ -326,7 +326,7 @@ export function WalletSecurityScreen({ onBack }: { onBack: () => void }): React.
               className="rounded-2xl px-4 py-3.5"
               style={{ background: '#112238', border: '1px solid rgba(255,255,255,.08)' }}
             >
-              <div className={`mb-1 text-[12px] ${body}`} style={{ color: 'rgba(255,255,255,.4)' }}>
+              <div className={`mb-1 text-[12px] ${body}`} style={{ color: 'rgba(255,255,255,.5)' }}>
                 Last successful login
               </div>
               <div className={`text-[14px] font-semibold text-white ${body}`}>
@@ -339,7 +339,7 @@ export function WalletSecurityScreen({ onBack }: { onBack: () => void }): React.
               </div>
               <div
                 className={`mt-0.5 text-[12px] ${body}`}
-                style={{ color: 'rgba(255,255,255,.4)' }}
+                style={{ color: 'rgba(255,255,255,.5)' }}
               >
                 {current.device} · {current.browser}
                 {current.location ? ` · ${current.location}` : ''}

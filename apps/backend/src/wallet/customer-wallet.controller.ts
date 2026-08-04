@@ -104,7 +104,7 @@ export class CustomerWalletController {
   }
 
   @Put('limits')
-  @RequirePermissions(WALLET_PERMISSIONS.CUSTOMER_READ)
+  @RequirePermissions(WALLET_PERMISSIONS.CUSTOMER_TRANSFER)
   public async setLimits(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: SetWalletLimitsDto,
@@ -162,7 +162,16 @@ export class CustomerWalletController {
         tx.balanceAfter.toFixed(2),
       ]),
     ];
-    const csv = rows.map((row) => row.map((cell) => `"${cell}"`).join(',')).join('\n');
+    // CSV/formula-injection mitigation (OWASP): a cell beginning with =, +, -, @, tab,
+    // or CR is interpreted as a formula by Excel/Sheets/Calc on open. description is
+    // free text a customer controls (transfer notes), and a transfer writes the same
+    // entry to both wallets, so this is exploitable against the recipient, not just
+    // self. Prefixing with a single quote neutralizes it while staying human-readable.
+    const sanitizeCsvCell = (value: string): string =>
+      /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+    const csv = rows
+      .map((row) => row.map((cell) => `"${sanitizeCsvCell(cell)}"`).join(','))
+      .join('\n');
     response.setHeader(
       'Content-Disposition',
       `attachment; filename="wallet-statement-${String(query.year)}-${String(query.month).padStart(2, '0')}.csv"`,

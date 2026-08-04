@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Post, Put, Req } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
@@ -39,6 +40,10 @@ export class CustomerWalletPinController {
 
   @Post('verify')
   @RequirePermissions(WALLET_PERMISSIONS.CUSTOMER_WITHDRAW)
+  // A 4-digit PIN has only 10,000 combinations — tighter than the app-wide
+  // default (100/60s) so a brute-force guesser can't exhaust the keyspace
+  // inside one throttle window.
+  @Throttle({ default: { limit: 5, ttl: 300_000 } })
   public async verify(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: VerifyWalletPinDto,
@@ -49,6 +54,7 @@ export class CustomerWalletPinController {
 
   @Put()
   @RequirePermissions(WALLET_PERMISSIONS.CUSTOMER_WITHDRAW)
+  @Throttle({ default: { limit: 5, ttl: 300_000 } })
   public async change(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: ChangeWalletPinDto,

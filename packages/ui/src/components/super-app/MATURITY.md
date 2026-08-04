@@ -1375,3 +1375,55 @@ Wallet 2FA, PDF export, automated payout, bank-account verification)
 explicitly documented rather than hidden. The production-readiness audit
 and freeze of the full module (the second half of this task) is tracked
 separately.
+
+## Wallet module — DPX-100 production audit (2026-08-04)
+
+Item 9 of `docs/DPX-100-MODULE-COMPLETION-GATE.md`, run the same day
+Slice 5 shipped. Full detail: `docs/WALLET-DPX-100-PRODUCTION-AUDIT.md`
+(backend-coverage table, missing-capabilities table, readiness
+scorecard) and `docs/WALLET-PRODUCTION-AUDIT.md` (the bug-hunt: findings
+and fix log). Same live-backend methodology as
+`docs/RIDE-DPX-100-PRODUCTION-AUDIT.md` — every claim was exercised
+against the real dev backend/Postgres/Redis this session, not inferred
+from source.
+
+Six real issues were found by a live, adversarial-minded pass (not just
+a happy-path re-check) and five fixed in the same pass: a CSV
+formula-injection vulnerability in Statement export (user-controlled
+transfer descriptions were not sanitized against `=`/`+`/`-`/`@`-prefixed
+cells — fixed with the standard OWASP mitigation, verified live with a
+real `=HYPERLINK(...)` payload); no brute-force protection on the 4-digit
+Wallet PIN beyond the generic app-wide throttle (fixed — a scoped
+`@Throttle` of 5 attempts/5min on the two PIN-guessing endpoints,
+verified live: 5×422 then a 429 on the 6th rapid attempt); a
+self-introduced WCAG AA contrast failure in two of the three Slice 5
+screens (`.4` opacity vs. the already-established `.5` token — mechanical
+fix, 11 occurrences); Payment Methods still showing a hardcoded "no bank
+accounts" message after Slice 4 made bank-account linking real (fixed —
+now reads the real `useBankAccounts()` list, verified live and by
+screenshot with a real linked GTBank account); Rewards' three data
+queries not distinguishing a failed fetch from an empty or loading state
+(fixed, same bug class the Ride static audit found); and `setLimits`
+gated behind a read-only-named permission (fixed — swapped to
+`CUSTOMER_TRANSFER`, no live exploit existed but the assignment was
+wrong). A seventh, smaller UX gap — Transfer/Withdraw discarding the
+backend's specific, actionable error message in favor of a generic "try
+again" — was also fixed for those two screens (verified live: hitting a
+configured spending limit now shows "Amount exceeds your single
+transaction limit of 5" directly in the confirm sheet, not a dead-end
+generic message). One finding — a check-then-act race in daily-limit
+enforcement — was deliberately left as documented technical debt: it can
+only let a customer race past their own self-configured convenience
+limit, not threaten actual wallet-balance integrity (still correctly
+protected by `mutateAndEmit`'s optimistic locking, unaffected).
+
+Backend suite: 1075/1075 passing (no wallet-specific shared-DB isolation
+issue found, unlike Ride's audit). Typecheck/lint clean across backend,
+types, sdk, ui, and customer-web after all fixes.
+
+**Wallet has met gate items 1-9.** Per item 10, freezing is the
+founder's decision, not self-declared here — this audit and its fixes
+are ready for that review. Two items flagged for a deliberate decision
+alongside or before that sign-off: Top Up's gateway funding path remains
+environment-blocked (no sandbox credentials, same limitation already
+accepted for Ride/Marketplace), and the daily-limit race noted above.
