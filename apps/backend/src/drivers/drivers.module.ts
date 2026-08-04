@@ -43,6 +43,7 @@ import { InspectionsService } from './inspections/inspections.service';
 import { OnboardingService } from './onboarding/onboarding.service';
 import { DriverRideContactService } from './ride-contact/driver-ride-contact.service';
 import { DriverPlannedAvailabilityService } from './shifts/driver-planned-availability.service';
+import { DriverShiftReminderSweepService } from './shifts/driver-shift-reminder-sweep.service';
 import { DriverShiftService } from './shifts/driver-shift.service';
 import { SosAlertService } from './sos/sos-alert.service';
 import { DriverSupportService } from './support/driver-support.service';
@@ -89,6 +90,7 @@ import { VehiclesService } from './vehicles/vehicles.service';
     SosAlertService,
     DriverShiftService,
     DriverPlannedAvailabilityService,
+    DriverShiftReminderSweepService,
     AccountRecoverySubscriber,
     CredentialChangeSubscriber,
     FailedLoginLockoutSubscriber,

@@ -323,7 +323,34 @@ preferences UI, vehicle-switching for multi-vehicle drivers) before this
 can be estimated or built; assumed to mean driver-portal UI for viewing/
 editing what already exists in the backend, at minimum.
 
-### 10. Operational notifications — ⚠️ Partial, real taxonomy exists, driver-specific events don't
+### 10. Operational notifications — ✅ Shipped (2026-08-04)
+
+**Built:** confirms this section's own framing — it wasn't independently
+buildable, and shipped incrementally with each item as predicted.
+Support-ticket status updates (`DRIVER_SUPPORT_TICKET_UPDATED`,
+item 4/originally numbered 3) and incident-report acknowledgement
+(`INCIDENT_REPORT_UPDATED`, item 3/originally numbered 4 — see those
+items' own shipped blocks) fire from inside their services on every admin
+status change. SOS-alert confirmations (`SOS_ALERT_TRIGGERED` broadcast to
+Operations, `SOS_ALERT_CUSTOMER_NOTICE` to the ride's customer,
+`SOS_ALERT_UPDATED` to the driver on ack/resolve) shipped with item 5. The
+one piece genuinely gated on this item existing on its own — shift
+reminders — is the new `DriverShiftReminderSweepService`
+(`apps/backend/src/drivers/shifts/`): a plain-`setInterval` sweep (same
+pattern as `RideOfferSweepService`/`PromotionSweepService`, no
+`@nestjs/schedule` dependency in this codebase) polling open shifts every
+5 minutes against `DriverShiftService.getSummary()` — the exact same
+advisory computation the driver-portal `/shift` page already polls — and
+firing `SHIFT_BREAK_REMINDER`/`SHIFT_FATIGUE_WARNING`/
+`SHIFT_DAILY_LIMIT_EXCEEDED` push notifications once per threshold
+crossing (tracked via new `breakReminderSentAt`/`fatigueWarningSentAt`/
+`dailyLimitNotifiedAt` fields on `DriverShift`, cleared when a break ends
+so a fresh continuous stretch can earn its own reminder). Purely
+advisory — this sweep only sends notifications, exactly like the
+`getSummary()` flags it's built on, it never blocks a shift, a break, or
+a ride.
+
+Original audit finding, kept for context:
 
 Real, working infra: `NotificationCategory`/`NotificationType`/
 `NotificationChannel`/`NotificationPriority` (DPX-CORE-001/DPX-CORE-001

@@ -1718,22 +1718,30 @@ enum DriverShiftStatus {
 /// constraint — same level of enforcement as other single-active-record
 /// patterns in this codebase).
 model DriverShift {
-  id                String            @id @default(uuid()) @db.Uuid
-  driverId          String            @map("driver_id") @db.Uuid
-  status            DriverShiftStatus @default(ACTIVE)
-  startedAt         DateTime          @default(now()) @map("started_at")
-  endedAt           DateTime?         @map("ended_at")
-  breakStartedAt    DateTime?         @map("break_started_at")
-  continuousSince   DateTime          @default(now()) @map("continuous_since")
-  totalBreakSeconds Int               @default(0) @map("total_break_seconds")
+  id                   String            @id @default(uuid()) @db.Uuid
+  driverId             String            @map("driver_id") @db.Uuid
+  status               DriverShiftStatus @default(ACTIVE)
+  startedAt            DateTime          @default(now()) @map("started_at")
+  endedAt              DateTime?         @map("ended_at")
+  breakStartedAt       DateTime?         @map("break_started_at")
+  continuousSince      DateTime          @default(now()) @map("continuous_since")
+  totalBreakSeconds    Int               @default(0) @map("total_break_seconds")
   /// Set when Operations force-ends an abandoned/stuck shift instead of the
   /// driver ending it themselves.
-  forceEndedBy      String?           @map("force_ended_by") @db.Uuid
-  adminNotes        String?           @map("admin_notes") @db.VarChar(1000)
-  createdAt         DateTime          @default(now()) @map("created_at")
-  updatedAt         DateTime          @updatedAt @map("updated_at")
-  driver            User              @relation("DriverShiftDriver", fields: [driverId], references: [id], onDelete: Cascade)
-  forceEnder        User?             @relation("DriverShiftForceEnder", fields: [forceEndedBy], references: [id], onDelete: SetNull)
+  forceEndedBy         String?           @map("force_ended_by") @db.Uuid
+  adminNotes           String?           @map("admin_notes") @db.VarChar(1000)
+  /// Driver Slice 2 item 8 — set once a push notification has fired for
+  /// this threshold, so DriverShiftReminderSweepService doesn't re-notify
+  /// every sweep. The two "continuous" ones are cleared whenever
+  /// `continuousSince` resets (a break ends) — a fresh continuous stretch
+  /// can trigger its own reminder/warning again.
+  breakReminderSentAt  DateTime?         @map("break_reminder_sent_at")
+  fatigueWarningSentAt DateTime?         @map("fatigue_warning_sent_at")
+  dailyLimitNotifiedAt DateTime?         @map("daily_limit_notified_at")
+  createdAt            DateTime          @default(now()) @map("created_at")
+  updatedAt            DateTime          @updatedAt @map("updated_at")
+  driver               User              @relation("DriverShiftDriver", fields: [driverId], references: [id], onDelete: Cascade)
+  forceEnder           User?             @relation("DriverShiftForceEnder", fields: [forceEndedBy], references: [id], onDelete: SetNull)
 
   @@index([driverId, status])
   @@index([driverId, startedAt])
@@ -1834,6 +1842,12 @@ enum NotificationType {
   SOS_ALERT_TRIGGERED
   SOS_ALERT_UPDATED
   SOS_ALERT_CUSTOMER_NOTICE
+  /// Driver Slice 2 item 8 — Operational notifications: push versions of
+  /// the advisory-only shift safety flags computed by
+  /// DriverShiftService.getSummary() (see DriverShiftReminderSweepService).
+  SHIFT_BREAK_REMINDER
+  SHIFT_FATIGUE_WARNING
+  SHIFT_DAILY_LIMIT_EXCEEDED
 }
 
 enum DevicePlatform {

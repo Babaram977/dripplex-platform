@@ -94,6 +94,10 @@ export class DriverShiftService {
         breakStartedAt: null,
         continuousSince: now,
         totalBreakSeconds: shift.totalBreakSeconds + elapsedBreakSeconds,
+        // A fresh continuous stretch starts — let it earn its own reminder/
+        // fatigue notification rather than staying suppressed from before.
+        breakReminderSentAt: null,
+        fatigueWarningSentAt: null,
       },
     });
 

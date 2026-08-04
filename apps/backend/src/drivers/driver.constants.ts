@@ -142,3 +142,11 @@ export const DEFAULT_SHIFT_FATIGUE_WARNING_MINUTES = 300;
 /** Recommended maximum total minutes worked (across all shifts) per
  * calendar day before `dailyLimitExceeded` is raised. */
 export const DEFAULT_SHIFT_MAX_DAILY_MINUTES = 720;
+
+/** Driver Slice 2 item 8 — Operational notifications: how often
+ * DriverShiftReminderSweepService checks open shifts against the safety
+ * thresholds above. Minutes-scale thresholds don't need second-level
+ * precision — mirrors the plain-setInterval sweep pattern already used
+ * by RideOfferSweepService/PromotionSweepService (no @nestjs/schedule
+ * dependency in this codebase). */
+export const SHIFT_REMINDER_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
