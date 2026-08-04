@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { DriverStatus, KycDocumentType, KycVerificationStatus } from '@prisma/client';
+import { DriverStatus, KycVerificationStatus } from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../audit/audit.service';
 import {
@@ -13,6 +13,7 @@ import {
 } from '../notifications/notification.service';
 import { PrismaService } from '../prisma/prisma.service';
 
+import { DriverActivationService } from './activation/driver-activation.service';
 import { DRIVER_AUDIT_ACTIONS } from './driver.constants';
 import { toDriverApprovalDto, toDriverKycDto, toDriverProfileDto } from './driver.mapper';
 
@@ -21,13 +22,6 @@ import type { SubmitDriverKycDto } from './dto/submit-driver-kyc.dto';
 import type { DriverApprovalDto, DriverKycDto, DriverProfileDto } from '@dripplex/types';
 import type { DriverKyc, DriverProfile, User } from '@prisma/client';
 
-/** A driver must have a VERIFIED document of each of these types before approval. */
-export const REQUIRED_DRIVER_KYC_DOCUMENT_TYPES: readonly KycDocumentType[] = [
-  KycDocumentType.DRIVER_LICENSE,
-  KycDocumentType.VEHICLE_REGISTRATION,
-  KycDocumentType.GUARANTOR_ID,
-];
-
 @Injectable()
 export class DriversService {
   constructor(
@@ -35,6 +29,7 @@ export class DriversService {
     private readonly auditService: AuditService,
     @Inject(NOTIFICATION_SERVICE)
     private readonly notifications: NotificationService,
+    private readonly activationService: DriverActivationService,
   ) {}
 
   public async submitKyc(
@@ -193,19 +188,7 @@ export class DriversService {
       throw new ConflictDomainException('Driver is already approved');
     }
 
-    const kyc = await this.prisma.driverKyc.findMany({ where: { driverId: driverUserId } });
-    const missing = REQUIRED_DRIVER_KYC_DOCUMENT_TYPES.filter(
-      (type) =>
-        !kyc.some(
-          (doc) =>
-            doc.documentType === type && doc.verificationStatus === KycVerificationStatus.VERIFIED,
-        ),
-    );
-    if (missing.length > 0) {
-      throw new ValidationDomainException(
-        `All required documents must be verified before approval (missing: ${missing.join(', ')})`,
-      );
-    }
+    await this.activationService.assertEligible(driverUserId);
 
     const now = new Date();
     const updated = await this.prisma.driverProfile.update({
@@ -316,6 +299,8 @@ export class DriversService {
     if (profile.status !== DriverStatus.SUSPENDED) {
       throw new ValidationDomainException('Only suspended drivers can be reactivated');
     }
+
+    await this.activationService.assertEligible(driverUserId);
 
     const now = new Date();
     const updated = await this.prisma.driverProfile.update({

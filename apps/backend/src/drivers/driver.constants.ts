@@ -1,3 +1,14 @@
+import { KycDocumentType } from '@prisma/client';
+
+/** DPX-DRIVER-002 Phase 4 — a driver must have a VERIFIED document of each of
+ * these types before activation. Single source of truth, read by
+ * DriverActivationService — not duplicated anywhere else. */
+export const REQUIRED_DRIVER_KYC_DOCUMENT_TYPES: readonly KycDocumentType[] = [
+  KycDocumentType.DRIVER_LICENSE,
+  KycDocumentType.VEHICLE_REGISTRATION,
+  KycDocumentType.GUARANTOR_ID,
+];
+
 export const DRIVER_AUDIT_ACTIONS = {
   KYC_SUBMITTED: 'driver.kyc.submitted',
   KYC_VERIFIED: 'driver.kyc.verified',

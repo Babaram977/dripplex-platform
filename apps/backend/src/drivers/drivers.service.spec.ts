@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
 
+import { DriverActivationService } from './activation/driver-activation.service';
 import { DriversService } from './drivers.service';
 
 import type { AuditLogRepository } from '../audit/repositories/audit-log.repository';
@@ -20,6 +21,7 @@ describe('DriversService', () => {
   let service: DriversService;
   let driverId: string;
   let adminId: string;
+  let centreId: string;
   const context = {};
 
   beforeAll(async () => {
@@ -53,7 +55,8 @@ describe('DriversService', () => {
       notifyRideLifecycle: jest.fn(),
       notifyRideEarning: jest.fn(),
     };
-    service = new DriversService(prisma, auditService, notifications);
+    const activationService = new DriverActivationService(prisma);
+    service = new DriversService(prisma, auditService, notifications, activationService);
 
     const driver = await prisma.user.create({
       data: {
@@ -75,15 +78,66 @@ describe('DriversService', () => {
       },
     });
     adminId = admin.id;
+
+    const centre = await prisma.inspectionCentre.create({
+      data: {
+        name: `Drivers Service Test Centre ${randomUUID().slice(0, 6)}`,
+        address: '1 Road',
+        city: 'Lagos',
+      },
+    });
+    centreId = centre.id;
   });
 
   afterAll(async () => {
     if (databaseAvailable) {
+      await prisma.inspection.deleteMany({ where: { driverId } }).catch(() => undefined);
+      await prisma.vehicle.deleteMany({ where: { driverId } }).catch(() => undefined);
+      await prisma.inspectionCentre.delete({ where: { id: centreId } }).catch(() => undefined);
       await prisma.user.delete({ where: { id: driverId } }).catch(() => undefined);
       await prisma.user.delete({ where: { id: adminId } }).catch(() => undefined);
     }
     await prisma.$disconnect();
   });
+
+  /** Satisfies the four DPX-DRIVER-002 Phase 4 activation conditions that
+   * `DriversService` itself has no API surface for (identity verification,
+   * vehicle+inspection, agreement) — written directly, the same way this
+   * suite already seeds KYC/profile rows, so `approveDriver()`/
+   * `reactivateDriver()` can be exercised without depending on
+   * VehiclesService/InspectionsService/OnboardingService as collaborators. */
+  async function satisfyNonKycActivationRequirements(): Promise<void> {
+    await prisma.driverProfile.update({
+      where: { userId: driverId },
+      data: {
+        lastIdentityVerifiedAt: new Date(),
+        agreementAcceptedAt: new Date(),
+        agreementVersion: 'v1',
+      },
+    });
+    const vehicle = await prisma.vehicle.create({
+      data: {
+        driverId,
+        plateNumber: `dsv-${randomUUID().slice(0, 6)}`.toUpperCase(),
+        make: 'Toyota',
+        model: 'Camry',
+        color: 'Black',
+        year: 2021,
+        rideCategory: 'ECONOMY',
+        approvalStatus: 'APPROVED',
+      },
+    });
+    await prisma.inspection.create({
+      data: {
+        driverId,
+        vehicleId: vehicle.id,
+        centreId,
+        status: 'PASSED',
+        scheduledAt: new Date(Date.now() - 3_600_000),
+        completedAt: new Date(),
+      },
+    });
+  }
 
   it('submits a KYC document for a driver with an existing profile', async () => {
     if (!databaseAvailable) return;
@@ -102,15 +156,15 @@ describe('DriversService', () => {
     expect(kyc.verificationStatus).toBe('PENDING');
   });
 
-  it('rejects approval until all three required document types are verified', async () => {
+  it('rejects approval until all activation requirements (documents, identity, vehicle, inspection, agreement) are met', async () => {
     if (!databaseAvailable) return;
 
     await expect(service.approveDriver(driverId, adminId, context)).rejects.toThrow(
-      'All required documents must be verified before approval',
+      'Driver does not meet activation requirements',
     );
   });
 
-  it('approves a driver once license, vehicle registration, and guarantor ID are all verified', async () => {
+  it('rejects approval when only the KYC documents are satisfied — the unified gate also requires identity/vehicle/inspection/agreement', async () => {
     if (!databaseAvailable) return;
 
     const licenseKyc = await service.submitKyc(
@@ -140,6 +194,16 @@ describe('DriversService', () => {
     await service.verifyKyc(licenseKyc.id, adminId, undefined, context);
     await service.verifyKyc(vehicleKyc.id, adminId, undefined, context);
     await service.verifyKyc(guarantorKyc.id, adminId, undefined, context);
+
+    await expect(service.approveDriver(driverId, adminId, context)).rejects.toThrow(
+      'Driver does not meet activation requirements',
+    );
+  });
+
+  it('approves a driver once every DPX-DRIVER-002 Phase 4 activation condition is met', async () => {
+    if (!databaseAvailable) return;
+
+    await satisfyNonKycActivationRequirements();
 
     const approval = await service.approveDriver(driverId, adminId, context);
 

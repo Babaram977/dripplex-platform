@@ -103,6 +103,8 @@ export type {
   CreateInspectionCentreRequest,
   CreateVehicleRequest,
   DecideInspectionRequest,
+  DriverActivationChecks,
+  DriverActivationEligibilityDto,
   DriverApprovalDto,
   DriverAuditAction,
   DriverIdentityVerificationDto,

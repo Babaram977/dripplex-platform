@@ -2,6 +2,7 @@ import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req } from '@nestjs/
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
+import { DriverActivationService } from '../activation/driver-activation.service';
 import { DRIVER_PERMISSIONS } from '../driver.constants';
 import { DriversService } from '../drivers.service';
 import { AcceptDriverAgreementDto } from '../dto/accept-driver-agreement.dto';
@@ -11,7 +12,12 @@ import { OnboardingService } from '../onboarding/onboarding.service';
 
 import type { AuthenticatedUser } from '../../auth/auth.types';
 import type { ApiSuccessResponse } from '../../common/dto/api-response.dto';
-import type { DriverKycDto, DriverOnboardingDto, DriverProfileDto } from '@dripplex/types';
+import type {
+  DriverActivationEligibilityDto,
+  DriverKycDto,
+  DriverOnboardingDto,
+  DriverProfileDto,
+} from '@dripplex/types';
 import type { Request } from 'express';
 
 @Controller('driver')
@@ -19,6 +25,7 @@ export class DriverController {
   constructor(
     private readonly driversService: DriversService,
     private readonly onboardingService: OnboardingService,
+    private readonly activationService: DriverActivationService,
   ) {}
 
   @Get('profile')
@@ -98,6 +105,15 @@ export class DriverController {
       user.id,
       this.auditContext(request, user.id),
     );
+    return { success: true, data };
+  }
+
+  @Get('activation-eligibility')
+  @RequirePermissions(DRIVER_PERMISSIONS.ONBOARDING_MANAGE)
+  public async getOwnActivationEligibility(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ApiSuccessResponse<DriverActivationEligibilityDto>> {
+    const data = await this.activationService.checkEligibility(user.id);
     return { success: true, data };
   }
 

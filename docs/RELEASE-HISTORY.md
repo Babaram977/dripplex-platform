@@ -149,20 +149,64 @@ anything this slice touched).
 
 **Deliberately not done this pass, named honestly:** `DriversService.approveDriver()`'s
 existing KYC-document gate was not extended to also require an approved
-vehicle or a passed inspection — the three systems work independently today;
-combining them into DPX-DRIVER-002 Phase 4's single activation gate is a
-real, scoped follow-up. Both the driver-portal onboarding/vehicle UI and the
-Operations Portal's Inspection UI (queue, checklist, photo capture,
-approve/reject, re-inspection scheduling, reporting) are backend-only for
-this pass, per the standing Figma-first rule — the endpoints are ready for a
-UI once designs are provided. See `docs/DRIVER-APP-DPX-100-AUDIT.md`'s Slice
-1 status note for the full detail.
+vehicle or a passed inspection — the three systems worked independently at
+this point; **this gap was closed the same day, see the entry immediately
+below.** Both the driver-portal onboarding/vehicle UI and the Operations
+Portal's Inspection UI (queue, checklist, photo capture, approve/reject,
+re-inspection scheduling, reporting) remain backend-only, per the standing
+Figma-first rule — the endpoints are ready for a UI once designs are
+provided. See `docs/DRIVER-APP-DPX-100-AUDIT.md`'s Slice 1 status note for
+the full detail.
+
+## 2026-08-04 — DPX-DRIVER-002 Phase 4: the unified driver activation gate
+
+The founder reviewed the Slice 1 summary above and correctly declined to
+freeze it: shipping KYC/vehicle/inspection/agreement as four independently
+working systems without a combined activation rule left a real hole — a
+driver could reach `DriverStatus.APPROVED` having satisfied only the
+pre-existing KYC-document check, with no platform-level guarantee their
+vehicle was approved, their physical inspection had passed, their agreement
+was accepted, or that they'd ever passed identity verification. Per the
+founder's explicit direction — _"the activation gate is not a nice-to-have,
+it's the rule that enforces the inspection standard you've just
+designed"_ — `DriverActivationService` now closes that gap as the single
+source of truth for all six conditions: identity verified, required
+documents approved, vehicle approved, latest inspection passed (checked
+against `Inspection` directly, not inferred from `Vehicle.approvalStatus`,
+so a vehicle whose approval predates or outlives a failed re-inspection
+can't slip through), agreement accepted, account not locked.
+`DriversService.approveDriver()` and `reactivateDriver()` both call
+`assertEligible()` — the one call site every activation path uses now,
+replacing the duplicated inline KYC-only check — and the full result is
+exposed read-only via `driver/activation-eligibility` (driver self-check)
+and `admin/driver/:id/activation-eligibility` (admin/operations), so a
+driver or reviewer can see exactly what's blocking activation before
+attempting it. See `docs/DPX-DRIVER-002-INSPECTION-STANDARD.md` Phase 4 for
+the full design, including the one known asymmetry (a later failed
+inspection doesn't auto-revert an already-approved vehicle's status —
+handled correctly by the gate, flagged as a real follow-up question for
+`VehiclesService` itself).
+
+Verified: `tsc`/`eslint` clean across `apps/backend`, `packages/types`, and
+`packages/sdk`; 6 new `DriverActivationService` tests covering each
+condition individually plus the "latest inspection, not just any past
+pass" and "locked blocks even when everything else is satisfied" edge
+cases; `drivers.service.spec.ts` updated so its approve/reactivate tests
+satisfy the full gate and a new negative-path test confirms KYC-only
+completion is no longer sufficient on its own. Full backend suite: 152/152
+suites, 1143/1143 tests passing — clean, including the Marketplace ratings
+test that had shown pre-existing, unrelated DB-seed-pollution failures
+earlier the same day.
+
+Now genuinely ready for the Slice 1 audit → founder review → freeze
+sequence, with the activation gate as part of what's being frozen, not a
+follow-up reopening it afterward.
 
 ---
 
 ## What's next
 
-The R1.7/R1.8 commerce-completion plan below was superseded by the DPX-100 initiative above — Marketplace's commerce loop (cart/checkout/order/payment UI) shipped as part of that port, not as R1.7/R1.8 specifically. What's actually still open, per each module's own audit doc: the Driver module's Figma-ported UI (including onboarding/vehicle/inspection, all backend-real as of DPX-DRIVER-002 Slice 1 above), the `approveDriver()` combined activation gate, shift management, and support (`docs/DRIVER-APP-DPX-100-AUDIT.md`); reconciling the Railway-vs-Coolify production-infrastructure question above; and Orders/AI/Merchant/Admin, next in the founder's module ordering per `docs/DPX-100-MODULE-COMPLETION-GATE.md`.
+The R1.7/R1.8 commerce-completion plan below was superseded by the DPX-100 initiative above — Marketplace's commerce loop (cart/checkout/order/payment UI) shipped as part of that port, not as R1.7/R1.8 specifically. What's actually still open, per each module's own audit doc: the Driver module's Figma-ported UI (including onboarding/vehicle/inspection — all backend-real as of DPX-DRIVER-002 Slice 1 and its unified activation gate above), shift management, and support (`docs/DRIVER-APP-DPX-100-AUDIT.md`); reconciling the Railway-vs-Coolify production-infrastructure question above; and Orders/AI/Merchant/Admin, next in the founder's module ordering per `docs/DPX-100-MODULE-COMPLETION-GATE.md`.
 
 <details>
 <summary>Original 2026-07-28 "what's next" (superseded, kept for the record)</summary>

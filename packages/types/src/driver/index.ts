@@ -213,6 +213,30 @@ export interface DriverApprovalDto {
   rejectedReason?: string;
 }
 
+/** DPX-DRIVER-002 Phase 4 — the single unified activation gate. Every place
+ * that activates a driver (approve, reactivate) evaluates this same check;
+ * it is also exposed directly so a driver or admin can see exactly what's
+ * blocking activation before attempting it. See DriverActivationService. */
+export interface DriverActivationChecks {
+  identityVerified: boolean;
+  requiredDocumentsApproved: boolean;
+  vehicleApproved: boolean;
+  inspectionPassed: boolean;
+  agreementAccepted: boolean;
+  accountNotLocked: boolean;
+}
+
+export interface DriverActivationEligibilityDto {
+  driverId: string;
+  eligible: boolean;
+  checks: DriverActivationChecks;
+  /** Human-readable reasons for each unmet check, in the same order as
+   * `checks`'s keys — empty when `eligible` is true. */
+  missingReasons: string[];
+  /** The vehicle that satisfied `vehicleApproved`/`inspectionPassed`, if any. */
+  qualifyingVehicleId: string | null;
+}
+
 export const DRIVER_AUDIT_ACTIONS = {
   KYC_SUBMITTED: 'driver.kyc.submitted',
   KYC_VERIFIED: 'driver.kyc.verified',

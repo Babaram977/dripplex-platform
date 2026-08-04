@@ -13,6 +13,7 @@ import {
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
+import { DriverActivationService } from '../activation/driver-activation.service';
 import { DRIVER_PERMISSIONS } from '../driver.constants';
 import { DriversService } from '../drivers.service';
 import {
@@ -25,12 +26,20 @@ import { ListDriversQueryDto } from '../dto/list-drivers-query.dto';
 
 import type { AuthenticatedUser } from '../../auth/auth.types';
 import type { ApiSuccessResponse } from '../../common/dto/api-response.dto';
-import type { DriverApprovalDto, DriverKycDto, DriverProfileDto } from '@dripplex/types';
+import type {
+  DriverActivationEligibilityDto,
+  DriverApprovalDto,
+  DriverKycDto,
+  DriverProfileDto,
+} from '@dripplex/types';
 import type { Request } from 'express';
 
 @Controller('admin')
 export class AdminDriversController {
-  constructor(private readonly driversService: DriversService) {}
+  constructor(
+    private readonly driversService: DriversService,
+    private readonly activationService: DriverActivationService,
+  ) {}
 
   @Get('drivers')
   @RequirePermissions(DRIVER_PERMISSIONS.REVIEW)
@@ -86,6 +95,15 @@ export class AdminDriversController {
       dto.remarks,
       this.auditContext(request, admin.id),
     );
+    return { success: true, data };
+  }
+
+  @Get('driver/:id/activation-eligibility')
+  @RequirePermissions(DRIVER_PERMISSIONS.REVIEW)
+  public async getActivationEligibility(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ApiSuccessResponse<DriverActivationEligibilityDto>> {
+    const data = await this.activationService.checkEligibility(id);
     return { success: true, data };
   }
 

@@ -1,5 +1,10 @@
 import type { HttpClient } from '../client/http-client.js';
-import type { DriverKycDto, DriverProfileDto, SubmitDriverKycRequest } from '@dripplex/types';
+import type {
+  DriverActivationEligibilityDto,
+  DriverKycDto,
+  DriverProfileDto,
+  SubmitDriverKycRequest,
+} from '@dripplex/types';
 
 /**
  * Driver-side profile/KYC HTTP surface — mirrors DriverController exactly
@@ -19,6 +24,14 @@ export class DriverProfileClient {
     return this.http.request<DriverKycDto>('/driver/kyc', {
       method: 'POST',
       body,
+      auth: true,
+    });
+  }
+
+  /** DPX-DRIVER-002 Phase 4 — the unified activation gate, driver-facing. */
+  public getActivationEligibility(): Promise<DriverActivationEligibilityDto> {
+    return this.http.request<DriverActivationEligibilityDto>('/driver/activation-eligibility', {
+      method: 'GET',
       auth: true,
     });
   }

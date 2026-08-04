@@ -4,6 +4,7 @@ import { AuditModule } from '../audit/audit.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PrismaModule } from '../prisma/prisma.module';
 
+import { DriverActivationService } from './activation/driver-activation.service';
 import { AdminDriverIdentityVerificationController } from './controllers/admin-driver-identity-verification.controller';
 import { AdminDriverSecuritySettingsController } from './controllers/admin-driver-security-settings.controller';
 import { AdminDriverVehiclesController } from './controllers/admin-driver-vehicles.controller';
@@ -43,6 +44,7 @@ import { VehiclesService } from './vehicles/vehicles.service';
   ],
   providers: [
     DriversService,
+    DriverActivationService,
     DriverIdentityVerificationService,
     DriverSecuritySettingsService,
     VehiclesService,
@@ -56,6 +58,7 @@ import { VehiclesService } from './vehicles/vehicles.service';
   ],
   exports: [
     DriversService,
+    DriverActivationService,
     DriverIdentityVerificationService,
     DriverSecuritySettingsService,
     VehiclesService,

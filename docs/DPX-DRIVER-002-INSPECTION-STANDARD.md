@@ -1,21 +1,25 @@
 # DPX-DRIVER-002 — Driver & Vehicle Inspection Standard
 
 **Status: Design — Approved & Founder-Locked (2026-08-04); Slice 1 backend
-complete (2026-08-04), UI pending Figma designs.** Written before
-implementation, per the same "design note before code" discipline as
-`DRIVER-001-IDENTITY-VERIFICATION-DESIGN.md` and every other `*-DESIGN.md` in
-this repo — locks the founder's requirements into concrete decisions, and is
-honest about what's genuinely new work versus what already exists, before any
-schema or service code gets written. This document's two open decisions
-(background-check provider, inspector-portal scope) were resolved by the
-founder the same day — see §"What this standard deliberately does not
-claim" — and Slice 1 (onboarding, vehicle management, inspection engine) was
-built immediately per that approval: real, tested backend capability across
-`VehiclesService`, `OnboardingService`, `InspectionCentresService`, and
-`InspectionsService`, with SDK clients for driver-portal and
-operations-console. See `docs/DRIVER-APP-DPX-100-AUDIT.md`'s Slice 1 status
-note for what shipped and what's honestly still open (the combined
-`approveDriver()` activation gate, and both portals' UI).
+complete including the unified activation gate (2026-08-04), UI pending
+Figma designs.** Written before implementation, per the same "design note
+before code" discipline as `DRIVER-001-IDENTITY-VERIFICATION-DESIGN.md` and
+every other `*-DESIGN.md` in this repo — locks the founder's requirements
+into concrete decisions, and is honest about what's genuinely new work
+versus what already exists, before any schema or service code gets written.
+This document's two open decisions (background-check provider,
+inspector-portal scope) were resolved by the founder the same day — see
+§"What this standard deliberately does not claim" — and Slice 1 (onboarding,
+vehicle management, inspection engine) was built immediately per that
+approval: real, tested backend capability across `VehiclesService`,
+`OnboardingService`, `InspectionCentresService`, and `InspectionsService`,
+with SDK clients for driver-portal and operations-console. The founder then
+correctly flagged that shipping those four systems independently, without a
+combined activation rule, left a real gap — a driver could reach `APPROVED`
+without having satisfied all of Phase 4's conditions. `DriverActivationService`
+closes that gap: see Phase 4 below and `docs/DRIVER-APP-DPX-100-AUDIT.md`'s
+Slice 1 status note for what shipped and what's honestly still open (both
+portals' UI).
 
 Complements `docs/DPX-DRIVER-001-SECURITY-STANDARD.md`: DPX-DRIVER-001 governs
 an _already-onboarded_ driver's ongoing identity/session security (risk-based
@@ -125,13 +129,56 @@ exists today:
 
 Status: **`Active`**
 
-Gate: identity verified (Phase 1) **and** documents approved (Phase 2) **and**
-physical inspection passed (Phase 3) **and** driver agreement signed. Only
-then does `DriverProfile.status` become the platform's existing `APPROVED`
-status (or a new explicit status if `APPROVED` already carries different
-semantics elsewhere — a real check against current `DriverStatus` enum usage
-before reusing or extending it, not assumed here) and the driver can go
-online — at which point DPX-DRIVER-001's risk engine takes over.
+**Real, enforced, single source of truth (2026-08-04): `DriverActivationService`.**
+The founder flagged, correctly, that shipping Vehicle/Inspection/Onboarding
+as three independently-working systems without a combined gate left a real
+hole — a driver could reach `DriverStatus.APPROVED` having satisfied only
+the pre-existing KYC-document check, with no requirement that their vehicle
+was approved, their inspection had passed, their agreement was accepted, or
+even that they'd passed identity verification at all. `DriverActivationService.checkEligibility()`
+is now the one place that defines "eligible to be Active" for the whole
+platform — six conditions, all independently checked against live data, not
+inferred from each other:
+
+1. **`identityVerified`** — `DriverProfile.lastIdentityVerifiedAt` is set
+   (a real Smile ID pass has occurred, per DPX-DRIVER-001 §2).
+2. **`requiredDocumentsApproved`** — every type in
+   `REQUIRED_DRIVER_KYC_DOCUMENT_TYPES` (driver's licence, vehicle
+   registration, guarantor ID) has a `VERIFIED` `DriverKyc` row.
+3. **`vehicleApproved`** — at least one `Vehicle` with
+   `approvalStatus: APPROVED` and `isActive: true`.
+4. **`inspectionPassed`** — that same vehicle's most recently _decided_
+   `Inspection` (latest `PASSED`/`FAILED` by `completedAt`, not just any
+   past pass) is `PASSED`. Vehicle approval alone isn't proof — an admin can
+   approve a vehicle manually without an inspection ever running, and a
+   vehicle whose most recent inspection later failed doesn't automatically
+   lose its `APPROVED` flag (a known, deliberate asymmetry — see the note
+   below), so this check reads `Inspection` directly rather than trusting
+   `Vehicle.approvalStatus` as a proxy.
+5. **`agreementAccepted`** — `DriverProfile.agreementAcceptedAt` is set.
+6. **`accountNotLocked`** — `DriverProfile.identityVerificationLockedAt` is
+   null (not under a DPX-DS-001 support-review lock).
+
+`DriversService.approveDriver()` and `reactivateDriver()` both call
+`DriverActivationService.assertEligible()` — the single call site every
+activation path uses, replacing the old KYC-only check duplicated inline.
+The full result (which of the six passed, human-readable reasons for any
+that didn't, and which vehicle qualified) is also exposed read-only via
+`GET driver/activation-eligibility` (driver self-check) and
+`GET admin/driver/:id/activation-eligibility` (admin/operations), so a
+driver or reviewer can see exactly what's blocking activation before
+attempting it — not just get a rejected mutation.
+
+**Known asymmetry, named honestly, not silently accepted:** a _later_
+failed inspection does not revert an already-`APPROVED` vehicle's
+`approvalStatus` back to `PENDING`/`REJECTED` — `VehiclesService` never
+flips it downward, only `InspectionsService.decide()`'s pass path flips it
+upward. This is why `inspectionPassed` reads `Inspection` directly instead
+of trusting `Vehicle.approvalStatus`: the activation gate stays correct even
+though the vehicle record's own status can go briefly stale after a failed
+re-inspection. Whether `Vehicle.approvalStatus` should itself be
+auto-reverted on a failed re-inspection is a real follow-up design
+question, not resolved here.
 
 **Driver agreement signed** — not built. No e-signature/agreement-acceptance
 concept exists anywhere in this platform for any user type. New: an

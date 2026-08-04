@@ -82,16 +82,28 @@ live under `driver/vehicles`, `driver/onboarding`, `driver/inspections`
 `admin/inspections` (operations-console-facing, gated by the new
 `inspection_officer`/`inspection_supervisor` roles plus the existing
 `operations_staff`/`administrator`/`super_administrator`). SDK clients exist
-for all of it. Two things this pass deliberately did **not** do, named
-honestly rather than silently skipped:
+for all of it.
 
-- **`DriversService.approveDriver()`'s existing KYC-document gate was not
-  extended** to also require an approved `Vehicle` or a `PASSED` inspection.
-  The three systems (KYC, vehicle approval, inspection pass/fail) exist and
-  work independently today; wiring them into one combined activation gate —
-  matching DPX-DRIVER-002 Phase 4's "identity verified AND documents
-  approved AND inspection passed AND agreement signed" activation rule — is
-  a real, scoped follow-up, not bundled into an already-large change.
+**Unified activation gate — also real (2026-08-04).** The founder correctly
+flagged that shipping KYC/vehicle/inspection/agreement as four independently
+working systems without a combined activation rule left a real gap: a
+driver could reach `APPROVED` having satisfied only the pre-existing
+KYC-document check. `DriverActivationService.checkEligibility()` /
+`assertEligible()` is now the single source of truth for all six activation
+conditions (identity verified, required documents approved, vehicle
+approved, latest inspection passed, agreement accepted, account not
+locked); `DriversService.approveDriver()` and `reactivateDriver()` both call
+it instead of duplicating any check inline, and the full result is exposed
+read-only via `driver/activation-eligibility` and
+`admin/driver/:id/activation-eligibility`. See DPX-DRIVER-002 Phase 4 for
+the full detail, including the one known asymmetry (a later failed
+inspection doesn't auto-revert an already-approved vehicle's status —
+`inspectionPassed` reads `Inspection` directly rather than trusting
+`Vehicle.approvalStatus` as a proxy, so the gate stays correct regardless).
+
+One thing this pass deliberately did **not** do, named honestly rather than
+silently skipped:
+
 - **The Operations Portal's Inspection UI (queue, checklist form, photo
   capture, approve/reject, re-inspection scheduling, report printing,
   history) is backend-only for this pass.** Per the standing Figma-first
@@ -120,11 +132,11 @@ what's already real:
 ## Proposed slice plan
 
 1. **Slice 1 — Driver onboarding, KYC & vehicle management (DPX-DRIVER-002).**
-   **Backend complete (2026-08-04)** — see the status note above for exactly
-   what shipped and the two honestly-scoped-out gaps (the `approveDriver()`
-   combined gate, and UI for both driver-portal and Operations Portal, both
-   deferred, not silently skipped). NIN/BVN and criminal/watchlist checks stay
-   explicitly out of scope until their provider decisions land (DPX-DRIVER-003
+   **Backend complete, including the unified activation gate (2026-08-04)** —
+   see the status note above for exactly what shipped. UI for both
+   driver-portal and Operations Portal remains deferred, not silently skipped
+   — Figma-first. NIN/BVN and criminal/watchlist checks stay explicitly out
+   of scope until their provider decisions land (DPX-DRIVER-003
    for the latter).
 2. **Slice 2 — Shift management.** New model (planned availability windows,
    optionally shift-based incentive targets if the founder wants them tied to
