@@ -273,6 +273,9 @@ model User {
   incidentReportsAcknowledged IncidentReport[]             @relation("IncidentReportAcknowledger")
   sosAlerts                   SosAlert[]                   @relation("SosAlertDriver")
   sosAlertsAcknowledged       SosAlert[]                   @relation("SosAlertAcknowledger")
+  driverShifts                DriverShift[]                @relation("DriverShiftDriver")
+  driverShiftsForceEnded      DriverShift[]                @relation("DriverShiftForceEnder")
+  driverPlannedAvailability   DriverPlannedAvailability[]  @relation("DriverPlannedAvailabilityDriver")
   rideOffers                  RideOffer[]
   notifications               Notification[]
   notificationPreferences     NotificationPreference[]
@@ -1572,19 +1575,19 @@ enum DriverSupportTicketStatus {
 }
 
 model DriverSupportTicket {
-  id            String                     @id @default(uuid()) @db.Uuid
-  driverId      String                     @map("driver_id") @db.Uuid
+  id            String                    @id @default(uuid()) @db.Uuid
+  driverId      String                    @map("driver_id") @db.Uuid
   category      DriverSupportCategory
-  subject       String                     @db.VarChar(200)
-  description   String                     @db.VarChar(2000)
-  status        DriverSupportTicketStatus  @default(OPEN)
-  adminResponse String?                    @map("admin_response") @db.VarChar(2000)
-  resolvedBy    String?                    @map("resolved_by") @db.Uuid
-  resolvedAt    DateTime?                  @map("resolved_at")
-  createdAt     DateTime                   @default(now()) @map("created_at")
-  updatedAt     DateTime                   @updatedAt @map("updated_at")
-  driver        User                       @relation("DriverSupportTicketDriver", fields: [driverId], references: [id], onDelete: Cascade)
-  resolver      User?                      @relation("DriverSupportTicketResolver", fields: [resolvedBy], references: [id], onDelete: SetNull)
+  subject       String                    @db.VarChar(200)
+  description   String                    @db.VarChar(2000)
+  status        DriverSupportTicketStatus @default(OPEN)
+  adminResponse String?                   @map("admin_response") @db.VarChar(2000)
+  resolvedBy    String?                   @map("resolved_by") @db.Uuid
+  resolvedAt    DateTime?                 @map("resolved_at")
+  createdAt     DateTime                  @default(now()) @map("created_at")
+  updatedAt     DateTime                  @updatedAt @map("updated_at")
+  driver        User                      @relation("DriverSupportTicketDriver", fields: [driverId], references: [id], onDelete: Cascade)
+  resolver      User?                     @relation("DriverSupportTicketResolver", fields: [resolvedBy], references: [id], onDelete: SetNull)
 
   @@index([driverId])
   @@index([status])
@@ -1620,8 +1623,8 @@ enum IncidentReportStatus {
 }
 
 model IncidentReport {
-  id             String                @id @default(uuid()) @db.Uuid
-  driverId       String                @map("driver_id") @db.Uuid
+  id             String               @id @default(uuid()) @db.Uuid
+  driverId       String               @map("driver_id") @db.Uuid
   /// Optional — an incident can happen mid-trip (accident, passenger
   /// altercation) or while simply online/off-trip (vehicle breakdown).
   /// Deliberately a plain id, not a Prisma relation to `Ride` — the Ride
@@ -1629,21 +1632,21 @@ model IncidentReport {
   /// back-relation array field on the `Ride` model itself. Any lookup
   /// against the ride reads `Ride` directly via Prisma by this id, the
   /// same cross-module read pattern as `DriverRideContactService`.
-  rideId         String?               @map("ride_id") @db.Uuid
+  rideId         String?              @map("ride_id") @db.Uuid
   category       IncidentCategory
   severity       IncidentSeverity
-  description    String                @db.VarChar(2000)
-  latitude       Decimal?              @db.Decimal(10, 7)
-  longitude      Decimal?              @db.Decimal(10, 7)
-  status         IncidentReportStatus  @default(OPEN)
-  adminNotes     String?               @map("admin_notes") @db.VarChar(2000)
-  acknowledgedBy String?               @map("acknowledged_by") @db.Uuid
-  acknowledgedAt DateTime?             @map("acknowledged_at")
-  resolvedAt     DateTime?             @map("resolved_at")
-  createdAt      DateTime              @default(now()) @map("created_at")
-  updatedAt      DateTime              @updatedAt @map("updated_at")
-  driver         User                  @relation("IncidentReportDriver", fields: [driverId], references: [id], onDelete: Cascade)
-  acknowledger   User?                 @relation("IncidentReportAcknowledger", fields: [acknowledgedBy], references: [id], onDelete: SetNull)
+  description    String               @db.VarChar(2000)
+  latitude       Decimal?             @db.Decimal(10, 7)
+  longitude      Decimal?             @db.Decimal(10, 7)
+  status         IncidentReportStatus @default(OPEN)
+  adminNotes     String?              @map("admin_notes") @db.VarChar(2000)
+  acknowledgedBy String?              @map("acknowledged_by") @db.Uuid
+  acknowledgedAt DateTime?            @map("acknowledged_at")
+  resolvedAt     DateTime?            @map("resolved_at")
+  createdAt      DateTime             @default(now()) @map("created_at")
+  updatedAt      DateTime             @updatedAt @map("updated_at")
+  driver         User                 @relation("IncidentReportDriver", fields: [driverId], references: [id], onDelete: Cascade)
+  acknowledger   User?                @relation("IncidentReportAcknowledger", fields: [acknowledgedBy], references: [id], onDelete: SetNull)
 
   @@index([driverId])
   @@index([rideId])
@@ -1668,33 +1671,98 @@ enum SosAlertStatus {
 }
 
 model SosAlert {
-  id                String         @id @default(uuid()) @db.Uuid
-  driverId          String         @map("driver_id") @db.Uuid
-  rideId            String?        @map("ride_id") @db.Uuid
-  vehicleId         String?        @map("vehicle_id") @db.Uuid
-  latitude          Decimal?       @db.Decimal(10, 7)
-  longitude         Decimal?       @db.Decimal(10, 7)
+  id                 String         @id @default(uuid()) @db.Uuid
+  driverId           String         @map("driver_id") @db.Uuid
+  rideId             String?        @map("ride_id") @db.Uuid
+  vehicleId          String?        @map("vehicle_id") @db.Uuid
+  latitude           Decimal?       @db.Decimal(10, 7)
+  longitude          Decimal?       @db.Decimal(10, 7)
   /// 0-100, only when the browser's Battery Status API is available —
   /// deprecated/unsupported in most browsers today, honestly nullable.
-  batteryLevel      Int?           @map("battery_level")
-  status            SosAlertStatus @default(OPEN)
-  adminNotes        String?        @map("admin_notes") @db.VarChar(2000)
-  acknowledgedBy    String?        @map("acknowledged_by") @db.Uuid
-  acknowledgedAt    DateTime?      @map("acknowledged_at")
-  resolvedAt        DateTime?      @map("resolved_at")
+  batteryLevel       Int?           @map("battery_level")
+  status             SosAlertStatus @default(OPEN)
+  adminNotes         String?        @map("admin_notes") @db.VarChar(2000)
+  acknowledgedBy     String?        @map("acknowledged_by") @db.Uuid
+  acknowledgedAt     DateTime?      @map("acknowledged_at")
+  resolvedAt         DateTime?      @map("resolved_at")
   /// Set once the ride's customer (if any) has been sent the "assistance
   /// requested" notice.
-  customerNotifiedAt DateTime?     @map("customer_notified_at")
-  createdAt         DateTime       @default(now()) @map("created_at")
-  updatedAt         DateTime       @updatedAt @map("updated_at")
-  driver            User           @relation("SosAlertDriver", fields: [driverId], references: [id], onDelete: Cascade)
-  acknowledger      User?          @relation("SosAlertAcknowledger", fields: [acknowledgedBy], references: [id], onDelete: SetNull)
-  vehicle           Vehicle?       @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  customerNotifiedAt DateTime?      @map("customer_notified_at")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+  driver             User           @relation("SosAlertDriver", fields: [driverId], references: [id], onDelete: Cascade)
+  acknowledger       User?          @relation("SosAlertAcknowledger", fields: [acknowledgedBy], references: [id], onDelete: SetNull)
+  vehicle            Vehicle?       @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
 
   @@index([driverId])
   @@index([rideId])
   @@index([status])
   @@map("sos_alerts")
+}
+
+enum DriverShiftStatus {
+  ACTIVE
+  ON_BREAK
+  ENDED
+}
+
+/// Driver Slice 2 item 6 — Shift Management (founder-approved 2026-08-04):
+/// a driver-initiated work session, distinct from `DriverAvailability.online`
+/// (the real-time ride-dispatch flag, owned by the frozen Ride module — a
+/// shift does not toggle it; the two are independent by design for v1).
+/// `continuousSince` resets every time a break ends (or the shift starts),
+/// so `now - continuousSince` while ACTIVE is the driver's current
+/// continuous-driving duration — the basis for the advisory break-reminder/
+/// fatigue-warning computation in `DriverShiftService`. At most one
+/// ACTIVE/ON_BREAK shift per driver is enforced at the service layer (no DB
+/// constraint — same level of enforcement as other single-active-record
+/// patterns in this codebase).
+model DriverShift {
+  id                String            @id @default(uuid()) @db.Uuid
+  driverId          String            @map("driver_id") @db.Uuid
+  status            DriverShiftStatus @default(ACTIVE)
+  startedAt         DateTime          @default(now()) @map("started_at")
+  endedAt           DateTime?         @map("ended_at")
+  breakStartedAt    DateTime?         @map("break_started_at")
+  continuousSince   DateTime          @default(now()) @map("continuous_since")
+  totalBreakSeconds Int               @default(0) @map("total_break_seconds")
+  /// Set when Operations force-ends an abandoned/stuck shift instead of the
+  /// driver ending it themselves.
+  forceEndedBy      String?           @map("force_ended_by") @db.Uuid
+  adminNotes        String?           @map("admin_notes") @db.VarChar(1000)
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+  driver            User              @relation("DriverShiftDriver", fields: [driverId], references: [id], onDelete: Cascade)
+  forceEnder        User?             @relation("DriverShiftForceEnder", fields: [forceEndedBy], references: [id], onDelete: SetNull)
+
+  @@index([driverId, status])
+  @@index([driverId, startedAt])
+  @@index([status])
+  @@map("driver_shifts")
+}
+
+/// A driver's recurring weekly intent to be online — informational for
+/// Operations staffing visibility only; it does NOT automatically toggle
+/// `DriverAvailability.online` (that would mean writing into the frozen
+/// Ride module's dispatch flag from a sweep job — a real automation
+/// decision deliberately not made here; see DRIVER-SLICE-2-AUDIT.md).
+/// `startMinute`/`endMinute` are minutes-since-midnight (0-1439) in the
+/// driver's local day, timezone-naive by design (matches how the rest of
+/// this module treats driver-local times — no per-driver timezone field
+/// exists yet).
+model DriverPlannedAvailability {
+  id          String   @id @default(uuid()) @db.Uuid
+  driverId    String   @map("driver_id") @db.Uuid
+  /// 0 = Sunday .. 6 = Saturday.
+  dayOfWeek   Int      @map("day_of_week")
+  startMinute Int      @map("start_minute")
+  endMinute   Int      @map("end_minute")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  driver      User     @relation("DriverPlannedAvailabilityDriver", fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([driverId])
+  @@map("driver_planned_availability")
 }
 
 enum NotificationStatus {

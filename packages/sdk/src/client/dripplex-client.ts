@@ -14,8 +14,10 @@ import { DriverIdentityVerificationClient } from '../drivers/driver-identity-ver
 import { DriverIncidentReportClient } from '../drivers/driver-incident-report-client.js';
 import { DriverInspectionsClient } from '../drivers/driver-inspections-client.js';
 import { DriverOnboardingClient } from '../drivers/driver-onboarding-client.js';
+import { DriverPlannedAvailabilityClient } from '../drivers/driver-planned-availability-client.js';
 import { DriverProfileClient } from '../drivers/driver-profile-client.js';
 import { DriverRideContactClient } from '../drivers/driver-ride-contact-client.js';
+import { DriverShiftClient } from '../drivers/driver-shift-client.js';
 import { DriverSosAlertClient } from '../drivers/driver-sos-alert-client.js';
 import { DriverSupportClient } from '../drivers/driver-support-client.js';
 import { DriverVehiclesClient } from '../drivers/driver-vehicles-client.js';
@@ -75,6 +77,8 @@ export class DripplexClient {
   public readonly driverSupport: DriverSupportClient;
   public readonly driverIncidentReports: DriverIncidentReportClient;
   public readonly driverSosAlerts: DriverSosAlertClient;
+  public readonly driverShifts: DriverShiftClient;
+  public readonly driverPlannedAvailability: DriverPlannedAvailabilityClient;
   public readonly driverIdentityVerification: DriverIdentityVerificationClient;
   public readonly adminDriverSecuritySettings: AdminDriverSecuritySettingsClient;
   public readonly adminDrivers: AdminDriversClient;
@@ -128,6 +132,8 @@ export class DripplexClient {
     this.driverSupport = new DriverSupportClient(this.http);
     this.driverIncidentReports = new DriverIncidentReportClient(this.http);
     this.driverSosAlerts = new DriverSosAlertClient(this.http);
+    this.driverShifts = new DriverShiftClient(this.http);
+    this.driverPlannedAvailability = new DriverPlannedAvailabilityClient(this.http);
     this.driverIdentityVerification = new DriverIdentityVerificationClient(this.http);
     this.adminDriverSecuritySettings = new AdminDriverSecuritySettingsClient(this.http);
     this.adminDrivers = new AdminDriversClient(this.http);

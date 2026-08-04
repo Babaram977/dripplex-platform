@@ -20,6 +20,8 @@ export function createDriverSdk(config: Partial<SdkConfig> = {}): DriverSdk {
     support: client.driverSupport,
     incidentReports: client.driverIncidentReports,
     sosAlerts: client.driverSosAlerts,
+    shifts: client.driverShifts,
+    plannedAvailability: client.driverPlannedAvailability,
     identityVerification: client.driverIdentityVerification,
     vehicles: client.driverVehicles,
     onboarding: client.driverOnboarding,
@@ -38,6 +40,8 @@ export interface DriverSdk {
   support: DripplexClient['driverSupport'];
   incidentReports: DripplexClient['driverIncidentReports'];
   sosAlerts: DripplexClient['driverSosAlerts'];
+  shifts: DripplexClient['driverShifts'];
+  plannedAvailability: DripplexClient['driverPlannedAvailability'];
   identityVerification: DripplexClient['driverIdentityVerification'];
   vehicles: DripplexClient['driverVehicles'];
   onboarding: DripplexClient['driverOnboarding'];

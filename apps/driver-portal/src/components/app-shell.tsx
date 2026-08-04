@@ -14,6 +14,7 @@ import { sdk } from '@/lib/sdk';
 
 const NAV_LINKS = [
   { href: '/', label: 'Dashboard' },
+  { href: '/shift', label: 'Shift' },
   { href: '/history', label: 'History' },
   { href: '/earnings', label: 'Earnings' },
   { href: '/campaign', label: 'Campaign' },

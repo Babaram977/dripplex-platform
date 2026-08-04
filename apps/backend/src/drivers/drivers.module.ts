@@ -7,7 +7,9 @@ import { PrismaModule } from '../prisma/prisma.module';
 
 import { DriverActivationService } from './activation/driver-activation.service';
 import { AdminDriverIdentityVerificationController } from './controllers/admin-driver-identity-verification.controller';
+import { AdminDriverPlannedAvailabilityController } from './controllers/admin-driver-planned-availability.controller';
 import { AdminDriverSecuritySettingsController } from './controllers/admin-driver-security-settings.controller';
+import { AdminDriverShiftsController } from './controllers/admin-driver-shifts.controller';
 import { AdminDriverSupportController } from './controllers/admin-driver-support.controller';
 import { AdminDriverVehiclesController } from './controllers/admin-driver-vehicles.controller';
 import { AdminDriversController } from './controllers/admin-drivers.controller';
@@ -17,7 +19,9 @@ import { AdminSosAlertsController } from './controllers/admin-sos-alerts.control
 import { DriverIdentityVerificationController } from './controllers/driver-identity-verification.controller';
 import { DriverIncidentReportsController } from './controllers/driver-incident-reports.controller';
 import { DriverInspectionsController } from './controllers/driver-inspections.controller';
+import { DriverPlannedAvailabilityController } from './controllers/driver-planned-availability.controller';
 import { DriverRideContactController } from './controllers/driver-ride-contact.controller';
+import { DriverShiftsController } from './controllers/driver-shifts.controller';
 import { DriverSosAlertsController } from './controllers/driver-sos-alerts.controller';
 import { DriverSupportController } from './controllers/driver-support.controller';
 import { DriverVehiclesController } from './controllers/driver-vehicles.controller';
@@ -36,6 +40,8 @@ import { InspectionCentresService } from './inspections/inspection-centres.servi
 import { InspectionsService } from './inspections/inspections.service';
 import { OnboardingService } from './onboarding/onboarding.service';
 import { DriverRideContactService } from './ride-contact/driver-ride-contact.service';
+import { DriverPlannedAvailabilityService } from './shifts/driver-planned-availability.service';
+import { DriverShiftService } from './shifts/driver-shift.service';
 import { SosAlertService } from './sos/sos-alert.service';
 import { DriverSupportService } from './support/driver-support.service';
 import { VehiclesService } from './vehicles/vehicles.service';
@@ -60,6 +66,10 @@ import { VehiclesService } from './vehicles/vehicles.service';
     AdminIncidentReportsController,
     DriverSosAlertsController,
     AdminSosAlertsController,
+    DriverShiftsController,
+    DriverPlannedAvailabilityController,
+    AdminDriverShiftsController,
+    AdminDriverPlannedAvailabilityController,
   ],
   providers: [
     DriversService,
@@ -74,6 +84,8 @@ import { VehiclesService } from './vehicles/vehicles.service';
     DriverSupportService,
     IncidentReportService,
     SosAlertService,
+    DriverShiftService,
+    DriverPlannedAvailabilityService,
     AccountRecoverySubscriber,
     CredentialChangeSubscriber,
     FailedLoginLockoutSubscriber,
@@ -92,6 +104,8 @@ import { VehiclesService } from './vehicles/vehicles.service';
     DriverSupportService,
     IncidentReportService,
     SosAlertService,
+    DriverShiftService,
+    DriverPlannedAvailabilityService,
   ],
 })
 export class DriversModule {}

@@ -46,6 +46,14 @@ export const DRIVER_AUDIT_ACTIONS = {
   /// Driver Slice 2 item 5
   SOS_ALERT_TRIGGERED: 'driver.sos_alert.triggered',
   SOS_ALERT_UPDATED: 'driver.sos_alert.updated',
+  /// Driver Slice 2 item 6
+  SHIFT_STARTED: 'driver.shift.started',
+  SHIFT_BREAK_STARTED: 'driver.shift.break_started',
+  SHIFT_BREAK_ENDED: 'driver.shift.break_ended',
+  SHIFT_ENDED: 'driver.shift.ended',
+  SHIFT_FORCE_ENDED: 'driver.shift.force_ended',
+  PLANNED_AVAILABILITY_SET: 'driver.planned_availability.set',
+  PLANNED_AVAILABILITY_DELETED: 'driver.planned_availability.deleted',
 } as const;
 
 export const DRIVER_PERMISSIONS = {
@@ -81,6 +89,11 @@ export const DRIVER_PERMISSIONS = {
   /// Driver Slice 2 item 5 — SOS/Emergency
   SOS_ALERT_MANAGE: 'driver:sos-alert:manage',
   ADMIN_SOS_ALERT_MANAGE: 'admin:drivers:sos-alert:manage',
+  /// Driver Slice 2 item 6 — Shift Management (covers shift lifecycle +
+  /// planned availability; one flat permission per side, no need to split
+  /// further for v1)
+  SHIFT_MANAGE: 'driver:shift:manage',
+  ADMIN_SHIFT_MANAGE: 'admin:drivers:shifts:manage',
 } as const;
 
 /** DriverSecuritySettings is a singleton row (enforced at the service
@@ -108,3 +121,20 @@ export const DEFAULT_RANDOM_SPOT_CHECK_DENOMINATOR = 20;
  * Not a security threshold the founder specified — a false-positive guard,
  * left as a constant, not part of DriverSecuritySettings. */
 export const GPS_ANOMALY_MIN_INTERVAL_MS = 5 * 60 * 1000;
+
+/** Driver Slice 2 item 6 — Shift Management safety tracking (founder-added
+ * scope, 2026-08-04): advisory-only figures surfaced to the driver and
+ * Operations — `DriverShiftService` never blocks a shift/break/trip action
+ * on these. Plain constants for v1 (not admin-configurable like
+ * `DriverSecuritySettings` — no request for that here); revisit if the
+ * founder wants per-market tuning later. */
+/** Continuous driving time (minutes, since shift start or the last break
+ * ended) after which a break reminder becomes due. */
+export const DEFAULT_SHIFT_BREAK_REMINDER_MINUTES = 240;
+/** Continuous driving time (minutes) after which the (separate, more
+ * urgent) fatigue warning is raised — intentionally higher than the break
+ * reminder threshold. */
+export const DEFAULT_SHIFT_FATIGUE_WARNING_MINUTES = 300;
+/** Recommended maximum total minutes worked (across all shifts) per
+ * calendar day before `dailyLimitExceeded` is raised. */
+export const DEFAULT_SHIFT_MAX_DAILY_MINUTES = 720;

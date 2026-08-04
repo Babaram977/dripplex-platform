@@ -55,7 +55,55 @@ Slices 2-3), fare/earnings display, customer rating capture. This is not a
 gap — Slice 2 doesn't need new backend work here. What's still open is only
 the DPX-100 UI port (Slice 3 below), not new capability.
 
-### 3. Shift management — ❌ Zero backend presence
+### 3. Shift management — ✅ Shipped (2026-08-04)
+
+**Built:** exactly the founder's scope, plus the safety-tracking addition
+made when approving item 5 (SOS). Two new models
+(`apps/backend/src/drivers/shifts/`): `DriverShift` (status —
+ACTIVE/ON_BREAK/ENDED — startedAt/endedAt, breakStartedAt,
+`continuousSince` — reset every time a break ends or the shift starts, the
+basis for the continuous-driving figure below — totalBreakSeconds,
+forceEndedBy/adminNotes for Operations cleanup) and
+`DriverPlannedAvailability` (dayOfWeek + startMinute/endMinute — a
+recurring weekly window, informational for Operations staffing visibility
+only). Deliberately independent of `DriverAvailability.online` (the frozen
+Ride module's real-time dispatch flag) — a shift is a separate
+driver-initiated work-session concept for v1, not wired to it; likewise
+`DriverPlannedAvailability` does **not** automatically toggle that flag
+(an automation decision deliberately not made here).
+
+`DriverShiftService` enforces at most one open (ACTIVE/ON_BREAK) shift per
+driver at a time (service-layer check, no DB constraint) and exposes
+`getSummary()` — advisory-only safety figures, nothing here blocks a
+shift/break transition or a ride: continuous driving minutes, total
+minutes worked today, and three boolean flags (`breakReminderDue` at 240
+continuous minutes, `fatigueWarning` at 300, `dailyLimitExceeded` at 720
+minutes/day — plain constants in `driver.constants.ts`, not yet
+admin-configurable like `DriverSecuritySettings`). The fatigue warning is
+surfaced via this summary endpoint only — it is **not** enforced at the
+Ride module's offer-accept step, since that would mean touching frozen
+`rides/` files; the driver-portal surfaces it to the driver, nothing
+blocks automatically, per the founder's explicit "doesn't have to block a
+driver automatically" guidance.
+
+Driver endpoints: `POST /driver/shifts/{start,end}`,
+`POST /driver/shifts/break/{start,end}`, `GET /driver/shifts/summary`,
+`GET /driver/shifts` (own history); `GET/POST /driver/planned-availability`,
+`DELETE /driver/planned-availability/:id`. Admin (operations visibility):
+`GET /admin/driver-shifts` (filter by status/driverId),
+`PATCH /admin/driver-shifts/:id/end` (force-end an abandoned/stuck shift),
+`GET /admin/driver-planned-availability?driverId=`. Admin queues are
+backend-only for now — no operations-console page yet, same scope choice
+as items 3-5. New permissions `driver:shift:manage` /
+`admin:drivers:shifts:manage`. Driver-portal `/shift` page: Start/End
+Shift and break-mode controls, live continuous-driving/today's-total
+figures (polled), non-blocking safety banners, a simple weekly
+planned-availability editor, and shift history. Extension points
+preserved so the Driver Growth Campaign can consume shift data later
+without a redesign — deliberately not wired to campaign tiers now, per
+the founder's decision.
+
+Original audit finding, kept for context:
 
 No `shift` concept anywhere in the schema, services, or driver-portal.
 `DriverAvailability` (real, Ride module) is a live online/offline toggle,

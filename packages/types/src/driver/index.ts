@@ -493,3 +493,79 @@ export interface SosAlertListDto {
   items: SosAlertDto[];
   meta: { page: number; limit: number; total: number; totalPages: number };
 }
+
+/** Driver Slice 2 item 6 — Shift Management (founder-approved 2026-08-04,
+ * safety scope added on approval of item 5): a driver-initiated work
+ * session, distinct from the real-time ride-dispatch online/offline flag
+ * (owned by the frozen Ride module — a shift does not toggle it). Start
+ * Shift/End Shift/break mode/daily hours/operations visibility, plus
+ * advisory safety tracking (continuous driving duration, total hours
+ * worked today, break reminders, a fatigue warning) — none of it blocks
+ * a driver automatically; it's surfaced for the driver and Operations to
+ * act on. Extension points are preserved so the Driver Growth Campaign
+ * can consume shift data later without a redesign — not wired to
+ * campaign tiers now, per the founder's decision. */
+export type DriverShiftStatus = 'ACTIVE' | 'ON_BREAK' | 'ENDED';
+
+export interface DriverShiftDto {
+  id: string;
+  driverId: string;
+  status: DriverShiftStatus;
+  startedAt: string;
+  endedAt: string | null;
+  breakStartedAt: string | null;
+  continuousSince: string;
+  totalBreakSeconds: number;
+  forceEndedBy: string | null;
+  adminNotes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Advisory safety figures computed from the driver's shift history —
+ * none of these block a new trip or force an offline transition; the
+ * driver-portal surfaces them, Operations sees them, nothing more in v1. */
+export interface DriverShiftSummaryDto {
+  activeShift: DriverShiftDto | null;
+  continuousDrivingMinutes: number;
+  totalMinutesToday: number;
+  breakReminderDue: boolean;
+  dailyLimitExceeded: boolean;
+  fatigueWarning: boolean;
+}
+
+export interface ListDriverShiftsQuery {
+  page?: number;
+  limit?: number;
+  status?: DriverShiftStatus;
+  driverId?: string;
+}
+
+export interface DriverShiftListDto {
+  items: DriverShiftDto[];
+  meta: { page: number; limit: number; total: number; totalPages: number };
+}
+
+export interface ForceEndDriverShiftRequest {
+  adminNotes?: string;
+}
+
+/** A driver's recurring weekly intent to be online, for Operations
+ * staffing visibility only — it does not automatically toggle the
+ * driver's real online/offline dispatch flag (see schema comment on
+ * `DriverPlannedAvailability`). */
+export interface DriverPlannedAvailabilityDto {
+  id: string;
+  driverId: string;
+  dayOfWeek: number;
+  startMinute: number;
+  endMinute: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SetDriverPlannedAvailabilityRequest {
+  dayOfWeek: number;
+  startMinute: number;
+  endMinute: number;
+}

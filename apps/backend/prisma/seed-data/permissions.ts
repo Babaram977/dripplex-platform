@@ -150,6 +150,14 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
     code: 'admin:drivers:sos-alert:manage',
     description: 'View and acknowledge/resolve the driver SOS/emergency alert queue',
   },
+  {
+    code: 'driver:shift:manage',
+    description: 'Start/end own shifts, manage own break mode and planned availability',
+  },
+  {
+    code: 'admin:drivers:shifts:manage',
+    description: 'View driver shift/planned-availability queues and force-end abandoned shifts',
+  },
   { code: 'admin:rides:support', description: 'Review and resolve ride problem reports' },
   { code: 'users:read', description: 'Read user records' },
   { code: 'users:write', description: 'Update user records' },
