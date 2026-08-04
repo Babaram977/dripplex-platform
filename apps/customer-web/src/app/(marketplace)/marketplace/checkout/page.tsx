@@ -161,6 +161,8 @@ export default function CheckoutPage(): React.JSX.Element {
       return;
     }
     setPlacing(true);
+
+    let orderId: string;
     try {
       const checkoutResult = await sdk.orders.checkout({
         cartId: cart.id,
@@ -171,15 +173,31 @@ export default function CheckoutPage(): React.JSX.Element {
         ...(promoCode ? { couponCode: promoCode } : {}),
         ...(note.trim() ? { notes: note.trim() } : {}),
       });
-
-      const payment = await sdk.orders.payOrder(checkoutResult.order.id, {
-        provider: paymentProvider as 'PAYSTACK' | 'FLUTTERWAVE' | 'MONIEPOINT' | 'OPAY',
-      });
-      window.location.href = payment.authorizationUrl;
+      orderId = checkoutResult.order.id;
     } catch (checkoutError) {
       const described = describeSdkError(checkoutError);
       toast({ title: described.title, description: described.description, variant: 'destructive' });
       setPlacing(false);
+      return;
+    }
+
+    try {
+      const payment = await sdk.orders.payOrder(orderId, {
+        provider: paymentProvider as 'PAYSTACK' | 'FLUTTERWAVE' | 'MONIEPOINT' | 'OPAY',
+      });
+      window.location.href = payment.authorizationUrl;
+    } catch (paymentError) {
+      // The order already exists (and its cart is now locked) even though
+      // payment initialization failed — send the customer to the order
+      // screen so they can retry or cancel, instead of stranding them here
+      // with a cart that can no longer be modified.
+      const described = describeSdkError(paymentError);
+      toast({
+        title: described.title,
+        description: `${described.description} Your order was saved — cancel it from the order screen to free up your cart.`,
+        variant: 'destructive',
+      });
+      router.push(`/marketplace/tracking/${orderId}`);
     }
   };
 

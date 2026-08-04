@@ -59,6 +59,98 @@ Entry and Store still need the same real-route migration Product Detail
 just got (out of `(public)`, into the `(marketplace)` SuperApp shell) —
 noted as outstanding, not forgotten.
 
+## Marketplace stabilization pass — Production Candidate (2026-08-04)
+
+Per the founder's request, a full end-to-end walkthrough was run against
+the real backend (not per-screen isolation) to verify Marketplace as a
+complete product: register a new customer → browse Marketplace → open a
+store → view a product → add to cart → save an item for later → checkout
+→ create an order → attempt payment → track the order → review order
+history → verify the merchant sees the order → verify the rider/driver
+receives the delivery job → confirm notifications, loading, empty, and
+error states throughout.
+
+**Result: PASS. Marketplace is a Production Candidate.**
+
+Every step above was exercised against the real backend (fresh customer
+registration + OTP, real cart/checkout/order/delivery state machines, a
+freshly-registered-and-approved test rider, and the seeded KFC Nigeria
+merchant) and confirmed correct. Key confirmations:
+
+- Full order lifecycle verified end-to-end through real API calls: PENDING
+  → CONFIRMED → PREPARING → READY (merchant `accept`/`ready`) → auto-dispatch
+  to the nearest online rider → DRIVER_ASSIGNED → PICKED_UP → DELIVERED
+  (rider `accept`/`pickup`/`arrived`/`deliver`), with `Order.status`
+  correctly auto-syncing to each `DeliveryJob.status` transition throughout.
+- Merchant order visibility confirmed via the real `GET /merchant/orders`
+  API — the merchant sees exactly the orders placed against their store,
+  with correct data.
+- Rider delivery-job visibility confirmed via the real `GET /rider/jobs`
+  API — the auto-dispatch algorithm (`AssignmentService.findNearestRider`)
+  correctly assigned the job to the nearest online, accepting rider.
+- Order History confirmed at the API level (`GET /customer/orders`) —
+  correct data and ordering. No dedicated Order History _screen_ exists
+  yet in customer-web; that's tracked under the "Orders" module in the
+  founder's own module ordering (Marketplace → Ride → Wallet → **Orders**
+  → ...), not a Marketplace gap.
+- Notifications confirmed firing correctly through the real lifecycle
+  (`WELCOME`, `ORDER_ACCEPTED`, `ORDER_READY`, `DELIVERY_COMPLETED`).
+- Empty/error states confirmed genuine and correct, not fabricated: an
+  unconfigured Paystack gateway correctly surfaces a real 422 error to the
+  customer (no local sandbox payment credentials exist in this dev
+  environment); an unassigned delivery job correctly reflects "no rider
+  available" until one comes online; a nonexistent merchant ID correctly
+  renders "Merchant not found" rather than crashing.
+
+**One real bug found and fixed during the pass:** `apps/customer-web/src/app/(marketplace)/marketplace/checkout/page.tsx`'s
+`onPlaceOrder` wrapped `sdk.orders.checkout()` and `sdk.orders.payOrder()`
+in a single try/catch. When checkout succeeded but payment initialization
+failed (the expected case in this environment — no gateway credentials —
+but also a real-world case: gateway downtime, network failure), the order
+was created and its cart was locked (`CartService` correctly refuses to
+modify a cart mid-checkout — `cart.service.ts:374`), but the customer was
+left stranded on the checkout page with a toast and a cart that could no
+longer be modified (add/remove/save-for-later all 422'd with "Cart is
+locked pending payment"), and no visible path to recover — the only
+unlock path (`CheckoutService.cancelCustomerOrder` sets the cart back to
+`ACTIVE`) requires navigating to the order's Tracking screen, which
+nothing routed the customer to. Fixed by splitting the two calls into
+separate try/catch blocks; on a payment-initialization failure the
+customer is now redirected to `/marketplace/tracking/[orderId]`, where
+the real, already-existing "Cancel Order" action (valid for `PENDING`
+orders) unlocks their cart again.
+
+**Two smaller gaps found and documented, not fixed (out of Marketplace's
+scope):**
+
+1. `DeliveryService` only notifies the customer at the rider's
+   `picked_up`/`arriving`/`delivered` transitions (`delivery.service.ts`
+   lines 260/294/337) — there is no notification when a rider is first
+   _assigned_. The customer only learns a rider exists once pickup
+   happens. Minor UX gap in the Delivery/Notification domain, not
+   Marketplace-specific; worth picking up alongside the Driver module.
+2. Rider `RiderAvailability` records (`listAvailableRiders` in
+   `prisma-delivery.repository.ts:231`) are eligible for auto-dispatch
+   based only on `online`/`acceptingOrders`/active-job-count — not
+   `RiderProfile.isApproved`. There is also no admin rider-approval
+   endpoint yet (`RiderProfile.isApproved` currently has no real path to
+   `true` outside direct DB access). Both belong to the future Driver
+   module's approval workflow, not Marketplace.
+3. **Auth, cross-cutting, not Marketplace-specific:** `AuthService.login`
+   and `AuthService.verifyOtp` (`auth.service.ts`) both issue tokens via
+   `issueScaffoldTokens`, which omits `sid`/`role`/`portal` from the JWT
+   payload. `JwtStrategy.validate` (`jwt.strategy.ts:34`) requires all
+   three and rejects the token outright ("Invalid access token payload")
+   on any permission-gated route. The real, working login path is the
+   portal-specific `LoginService` (`POST /auth/login/:portal`), which
+   customer-web already uses correctly (`RegisterForm`/`VerifyOtpForm`
+   redirect to `/login` rather than using the verify-response tokens
+   directly) — so this doesn't affect the Marketplace customer flow. It
+   would affect any client that trusts `/auth/otp/verify` or the generic
+   `/auth/login` to return directly-usable tokens. Flagged here rather
+   than fixed in this pass since it's shared auth infrastructure touching
+   all four portals, not scoped to Marketplace.
+
 ## Seed data policy (Phase 1 / Phase 2)
 
 Per founder direction: seed data (`apps/backend/prisma/seed-data/`,
@@ -69,4 +161,4 @@ seed rows for live production data requires no presentation-layer code
 change. Phase 2, once a module is fully live, its seed block is simply
 dropped from `seed.ts`.
 
-_Last updated: 2026-08-03, after Product Detail._
+_Last updated: 2026-08-04, after the Marketplace stabilization pass._
