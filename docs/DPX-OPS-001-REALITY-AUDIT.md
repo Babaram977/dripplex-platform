@@ -1,0 +1,235 @@
+# DPX-OPS-001 — Operations Command Centre: Reality Audit & Phase 1 Build Plan
+
+Founder-approved to open (2026-08-04), immediately after the Driver Slice 2 freeze.
+Same discipline as every prior module: audit what's real before planning what to
+build — no plan gets written against an assumed gap that turns out to already
+exist, or an assumed capability that turns out not to. Founder's own instruction
+for this module names an 11-step process; this document covers steps 1-4
+(reality audit, Figma audit, backend capability audit, gap analysis) and
+proposes a plan for step 5 (**founder review of the plan** — required before any
+implementation begins). Nothing in this document has been built yet.
+
+**Scope**: Phase 1 (Core Operations) only, per the founder's own phasing —
+Fleet Operations, Emergency Operations, Support Centre, Incident Management,
+Dispatch Oversight. Phase 2 (analytics, KPIs, heat maps, demand forecasting,
+Marketplace/Wallet monitoring, fraud alerts, platform health) is named but
+explicitly out of scope for this audit and this build.
+
+## 1. App placement — `operations-console`, not `admin-portal`
+
+Both apps exist today as identical login-only shells (`PortalAuthGate` +
+`BackendStatusPanel`, nothing else — confirmed by reading both `app/page.tsx`
+files directly). Neither has been meaningfully built out yet, so this is a
+real decision, not a formality. Recommending `operations-console` based on
+existing platform precedent, not a guess:
+
+- `docs/DPX-013.md`'s own architecture note: "Ops reviewer opens case in
+  `operations-console`" (merchant onboarding approval workflow).
+- `OperationsInspectionsController` (`admin/inspections`, DPX-DRIVER-002
+  Phase 3) is explicitly documented as living "within the existing
+  Operations/Admin Portal, per the founder's decision not to build a
+  separate Inspector app" — and the `operations_staff`/`inspection_officer`/
+  `inspection_supervisor` roles that gate it are operational roles, not
+  platform-administration roles.
+- The `operations_staff` role (distinct from `administrator`/
+  `super_administrator`) already holds every permission this module's Phase
+  1 scope needs (§3) — it's the role this app is named for.
+
+`admin-portal` is left as the home for platform-administration concerns
+(user/role management, system configuration) — a different persona, not
+touched by this module. **Flagging for explicit confirmation in founder
+review, not assuming silently** — the precedent is strong but this is the
+first module to actually build into either app, so it's worth a deliberate
+yes rather than an inferred one.
+
+## 2. Figma audit — N/A, confirmed
+
+`docs/FIGMA-SOURCE-INVENTORY.md`: "Merchant/Admin/Ops — **Placeholder, no
+screens**... `admin-portal`/`operations-console` are login-only" — no Figma
+export exists for either app. Same status Driver Slice 1 and Slice 2 shipped
+under. This module builds functionally, using `@dripplex/ui` primitives
+directly, same as `apps/driver-portal` — re-platformed at a future DPX-100
+pass, not blocked on one now.
+
+## 3. Backend capability audit, per Phase 1 sub-area
+
+Every row below was checked directly against `apps/backend/prisma/schema.prisma`,
+the relevant service/controller files, and `role-permissions.ts` — not assumed.
+
+### 3.1 Fleet Operations
+
+| Capability                   | Status                                   | Evidence                                                                                                                                                                                                                                                                                                                                    |
+| ---------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Driver online/offline status | ✅ Real                                  | `DriverAvailability.online`/`acceptingRides`, updated live by the driver-portal online toggle                                                                                                                                                                                                                                               |
+| Live driver locations        | ⚠️ Data real, no ops-facing endpoint     | `DriverAvailability.latitude`/`longitude` updated live; the only existing consumer is `RideTrackingReadService.getNearbyDrivers()` — customer-facing, privacy-fuzzed to ~11m, capped at 20 results, filtered to one ride type near one point. **Not suitable for a fleet-wide ops view as-is; a new read-only endpoint is needed** (see §4) |
+| Current trips                | ⚠️ Data real, no general ops-facing list | `Ride` table has everything; only consumer today is `AdminRideReportsController` (problem reports only, not a general active-rides list)                                                                                                                                                                                                    |
+| Vehicle status               | ✅ Real                                  | `Vehicle`/`VehicleApprovalStatus`, `AdminDriverVehiclesController` (Slice 1)                                                                                                                                                                                                                                                                |
+| Shift status                 | ✅ Real                                  | `DriverShift`, `AdminDriverShiftsController` (Slice 2) — list + force-end already built                                                                                                                                                                                                                                                     |
+| Inspection status            | ✅ Real                                  | `Inspection`, `OperationsInspectionsController` (`admin/inspections`, DPX-DRIVER-002 Phase 3) — already the one existing example of an operations-console-intended endpoint                                                                                                                                                                 |
+
+### 3.2 Emergency Operations
+
+| Capability                 | Status          | Evidence                                                                                                                         |
+| -------------------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Live SOS queue             | ✅ Real         | `SosAlertService`, `AdminSosAlertsController` (`admin/sos-alerts`, Slice 2) — list + acknowledge/resolve                         |
+| Active emergency incidents | ✅ Real         | Same — `SosAlertStatus: OPEN → ACKNOWLEDGED → RESOLVED`                                                                          |
+| Escalation workflow        | ❌ Missing      | Explicitly deferred — `docs/DPX-DRIVER-005-EMERGENCY-RESPONSE-WORKFLOW.md`, not built                                            |
+| Incident timeline          | ❌ Missing      | Same document — `SosAlert.adminNotes` is a single free-text field, not an append-only timeline                                   |
+| Dispatcher assignment      | ❌ Missing      | Same document — no `assignedTo` concept exists on `SosAlert`                                                                     |
+| Resolution tracking        | ✅ Real (basic) | `resolvedAt`/`acknowledgedBy`/`acknowledgedAt` exist; no structured outcome taxonomy (e.g. `FALSE_ALARM` vs. genuinely resolved) |
+
+### 3.3 Support Centre
+
+| Capability               | Status     | Evidence                                                                                                                                                                                                                                                                    |
+| ------------------------ | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Driver support tickets   | ✅ Real    | `DriverSupportTicket`, `AdminDriverSupportController` (Slice 2)                                                                                                                                                                                                             |
+| Customer support tickets | ❌ Missing | **No general-purpose customer support ticket model exists anywhere in the schema.** `RideProblemReport` is ride-scoped only (a problem tied to one specific ride, reportable by either party via `reporterId`) — real, but not "a customer contacts support about anything" |
+| Merchant support tickets | ❌ Missing | **No merchant support/complaint model exists anywhere.** Merchant-side operational concerns today route through KYC review (`admin:merchants:review`) or review moderation (`admin:reviews:moderate`) — neither is a support-ticket system                                  |
+| Internal notes           | ⚠️ Partial | `DriverSupportTicket`/`IncidentReport`/`SosAlert` each have a single free-text notes-style field (not append-only, not per-note-authored) — same limitation named in §3.2                                                                                                   |
+| Ticket assignment        | ❌ Missing | No `assignedTo` on any support/incident/SOS model                                                                                                                                                                                                                           |
+| SLA monitoring           | ❌ Missing | No due-by/SLA-timer field on any model; would need to be computed client-side from `createdAt` + a policy constant, or added as a real field                                                                                                                                |
+
+**This is the single largest gap in Phase 1** — a real, general-purpose
+support-ticket system spanning customer and merchant (driver's already
+exists) doesn't exist today. Scoping it is real, non-trivial backend work,
+not a UI-only exercise like Fleet Operations mostly is.
+
+### 3.4 Incident Management
+
+| Capability             | Status                  | Evidence                                                                                                                                                                                                                       |
+| ---------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Accident reports       | ✅ Real (as a category) | `IncidentReport` with `IncidentCategory.ACCIDENT`, `AdminIncidentReportsController` (Slice 2)                                                                                                                                  |
+| Customer complaints    | ⚠️ Partial              | `RideProblemReport` (`RideProblemCategory.DRIVER_BEHAVIOUR`/`UNSAFE_DRIVING`) covers ride-scoped complaints; no general (non-ride-tied) customer complaint path exists                                                         |
+| Driver misconduct      | ⚠️ Partial              | No dedicated category on either `IncidentCategory` or `RideProblemCategory` maps cleanly to "driver misconduct" reported by a customer — `RideProblemCategory.DRIVER_BEHAVIOUR` is the closest fit                             |
+| Lost & found           | ⚠️ Partial              | `RideProblemCategory.LOST_ITEM` exists as a category on `RideProblemReport` — real, but no dedicated lost-and-found workflow (item description, matching, handoff/return tracking) beyond a single free-text description field |
+| Vehicle issues         | ✅ Real (two paths)     | `RideProblemCategory.VEHICLE_ISSUE` (customer-reported, ride-scoped) and `IncidentCategory.VEHICLE_BREAKDOWN` (driver-reported) both exist                                                                                     |
+| Investigation workflow | ❌ Missing              | No status beyond `OPEN`/`ACKNOWLEDGED`/`RESOLVED`-style enums on any of these models — no "under investigation," no evidence/attachment trail beyond photos already captured at creation                                       |
+
+### 3.5 Dispatch Oversight
+
+| Capability              | Status                    | Evidence                                                                                                                                                                                                  |
+| ----------------------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Live ride queue         | ❌ Missing                | No admin/ops endpoint lists active/in-progress rides at all — only `AdminRideReportsController` (problem reports, a different concern)                                                                    |
+| Driver allocation       | ⚠️ Internal only          | `RideDispatchService.findNearestEligibleDriver` (`apps/backend/src/rides/`) does real matching — but it's an internal dispatch-flow method, not exposed as an ops-facing view of current allocation state |
+| Manual reassignment     | ❌ Missing                | No endpoint exists to move an in-progress ride from one driver to another. **This is a write action into the frozen `rides/` domain** — see §4 for how this affects the plan                              |
+| Trip monitoring         | ❌ Missing                | Same as "live ride queue" — the data (`Ride`, `RideTracking`) is real and complete, no ops-facing read endpoint exists                                                                                    |
+| Cancellation monitoring | ⚠️ Data real, no ops view | `Ride.status = CANCELLED`, `RideCancelledBy` (`CUSTOMER`/`DRIVER`/`SYSTEM`) — real, queryable, no admin-facing list/filter exists                                                                         |
+
+### 3.6 Permissions — mostly already seeded
+
+`operations_staff` already holds every permission Phase 1's _existing_
+backend capability needs: `admin:drivers:support-ticket:manage`,
+`admin:drivers:incident-report:manage`, `admin:drivers:sos-alert:manage`,
+`admin:drivers:shifts:manage`, `admin:drivers:vehicles:manage`,
+`admin:inspection-centres:manage`, `inspection:checklist:manage`/
+`inspection:approve`, `admin:rides:support`, `admin:drivers:review`. **No
+new permission wiring is needed to consume what already exists** — the gap
+is entirely UI (for what's real) and new backend capability (for what
+isn't), not authorization.
+
+## 4. Gap analysis — what Phase 1 actually requires to build
+
+Grouped by how much new backend work each sub-area needs, since that's the
+real driver of sequencing risk, not the UI itself:
+
+1. **UI-only, real backend already complete**: Fleet Operations' shift/
+   vehicle/inspection status, Emergency Operations' SOS queue, Support
+   Centre's driver tickets, Incident Management's accident/vehicle-issue
+   reports. This is the safest, fastest slice — no new Prisma models, no
+   new migrations, no new permissions, purely consuming what Slice 1/2
+   already shipped.
+2. **New read-only backend work, no frozen-file changes needed**: Fleet
+   Operations' live driver locations and current-trips list, Dispatch
+   Oversight's live ride queue/trip/cancellation monitoring. All buildable
+   as a new `apps/backend/src/operations/` module reading `DriverAvailability`/
+   `Ride`/`RideOffer`/`RideTracking` directly via Prisma — the same
+   established cross-module-read pattern `SosAlertService`/
+   `DriverRideContactService`/`DriversService.getOwnPerformanceStats`
+   already use. `rides/` itself is never modified.
+3. **New backend models, real design work**: Support Centre's customer/
+   merchant ticket systems (§3.3 — the single largest gap), Emergency
+   Operations' escalation/dispatcher-assignment/timeline (already scoped in
+   `DPX-DRIVER-005`, not yet built), Incident Management's investigation
+   workflow and structured internal notes/SLA tracking. These need their
+   own design pass, not a mechanical UI-wiring exercise.
+4. **The one item that may need to touch frozen `rides/`**: Dispatch
+   Oversight's manual reassignment is a _write_ into ride-lifecycle state —
+   unlike every read-only case above, there's no way to reassign an active
+   ride's driver without either calling into `RideDispatchService`/
+   `RidesService` logic that lives in the frozen module, or duplicating
+   that logic outside it (worse — two sources of truth for ride-lifecycle
+   rules). Per the freeze policy, "explicit founder-approved enhancement"
+   is one of the carve-outs that permits touching a frozen module — but
+   this needs the founder's explicit call, not an assumption, before any
+   code touches `apps/backend/src/rides/`.
+
+## 5. Proposed Phase 1 build plan (for founder review — not yet approved)
+
+Sequenced by the gap analysis above — real-backend-first, biggest design
+questions surfaced early rather than late:
+
+**Slice 1 — Fleet Operations + Emergency Operations + existing Support/
+Incident queues** (UI-only + one new read-only backend module):
+
+- New `apps/backend/src/operations/` module: `GET /operations/fleet` (live
+  driver roster — online status, location, current trip if any, vehicle,
+  active shift) and `GET /operations/rides` (live ride queue — active/
+  in-progress rides with driver/customer/status), both read-only, both
+  reading `DriverAvailability`/`Ride`/`RideShift`/`Vehicle`/`Inspection`
+  directly.
+- `operations-console` UI: a fleet map/list view, and list views for the
+  three queues that already have real backend + admin permission (SOS,
+  driver support tickets, incident reports) — the "what needs attention
+  right now" screens the founder's guiding principle names directly.
+- Shift/vehicle/inspection status folded into the fleet view rather than
+  as separate screens, per "operational visibility" being about one
+  driver's whole state at a glance.
+
+**Slice 2 — Dispatch Oversight (read side)**:
+
+- Trip monitoring, cancellation monitoring, live ride queue detail —
+  extending Slice 1's `GET /operations/rides` with the filtering/detail
+  the founder's list asks for.
+- **Manual reassignment explicitly deferred to its own founder decision**
+  (§4 point 4) — not silently built, not silently dropped.
+
+**Slice 3 — Support Centre (new backend models)**:
+
+- A real design pass for customer + merchant support tickets (its own
+  reality-check of whether to generalize `DriverSupportTicket` into one
+  polymorphic model or build siblings — a genuine design decision, not
+  assumed here) before any schema work.
+
+**Slice 4 — Incident Management workflow depth**:
+
+- Investigation status, structured internal notes (moving off the
+  single-free-text-field pattern), SLA fields — informed by whatever
+  Slice 3's ticket-system design settles on, since these are the same
+  underlying problem (structured status/notes/assignment) applied to a
+  second set of models.
+
+**Emergency Operations' escalation/dispatcher/timeline work
+(`DPX-DRIVER-005`)** is not in this Phase 1 plan — it's already its own
+named future document; folding it into DPX-OPS-001's Slice 1 SOS queue UI
+only as much as the _existing_ `OPEN`/`ACKNOWLEDGED`/`RESOLVED` states
+support, not pretending the fuller workflow exists.
+
+Each slice gets the full discipline: implement → verify → document,
+following the same per-item pattern Driver Slice 2 used, before moving to
+the next. Production audit and founder approval happen once _Phase 1 in
+full_ is complete, matching the founder's own step ordering (not per-slice
+freezes the way Slice 2's items were — this module's "item" is Phase 1
+itself).
+
+## What this document is asking for
+
+Per the founder's own step 5 ("Founder review of the plan"), no
+implementation has started. This document is the plan for that review —
+specifically:
+
+1. Confirm `operations-console` as the target app (§1).
+2. Confirm or adjust the Slice 1-4 sequencing above (§5).
+3. **A decision on manual reassignment** (§4 point 4, §5 Slice 2) — build
+   it as a founder-approved enhancement touching `rides/`, or defer it
+   alongside the rest of Dispatch Oversight's harder pieces.
+4. Any adjustment to scope before Slice 1 begins.

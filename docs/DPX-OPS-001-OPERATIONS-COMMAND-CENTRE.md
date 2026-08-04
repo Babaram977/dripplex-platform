@@ -1,6 +1,12 @@
 # DPX-OPS-001 — Operations Command Centre (Future Module)
 
-**Status: Deferred, not yet started.** Founder-recorded (2026-08-04), alongside
+**Status: Approved to open (2026-08-04); reality audit complete, awaiting
+founder review of the Phase 1 build plan before implementation begins.** See
+`docs/DPX-OPS-001-REALITY-AUDIT.md` for the full backend-capability audit,
+gap analysis, and proposed Phase 1 slice plan — this document stays the
+scope record, that one is the audit/plan.
+
+Founder-recorded (2026-08-04), alongside
 approval of the Driver Slice 2 freeze: the production audit's one outstanding
 observation — real, permission-gated admin-side SOS/incident/support/shift
 endpoints exist with no operations-console or admin-portal screen consuming
@@ -12,24 +18,43 @@ foundation for its own future response-workflow module.
 
 ## Founder's scope for this module
 
-Recorded verbatim from the freeze-approval message, as the actual requirement
-list this module needs to satisfy once scoped — not assumed or expanded here:
+Recorded verbatim from the founder's messages, as the actual requirement list
+this module needs to satisfy — not assumed or expanded here. Original framing
+(freeze-approval message): consolidate driver monitoring, live fleet overview,
+SOS response, incident management, support ticket management, shift
+supervision, driver status, escalation workflows, dispatch oversight, and
+operations dashboards into one Operations Command Centre — the platform's
+mission control centre, not "another admin dashboard" — rather than scattering
+them across separate admin screens.
 
-- Driver monitoring
-- Live fleet overview
-- SOS response
-- Incident management
-- Support ticket management
-- Shift supervision
-- Driver status
-- Escalation workflows
-- Dispatch oversight
-- Operations dashboards
+**Detailed phasing (module-open approval message, 2026-08-04):**
 
-The founder's explicit framing: consolidate these into one Operations Command
-Centre rather than scattering them across separate admin screens — a single
-operational surface, not four unrelated admin pages bolted onto
-`admin-portal`/`operations-console` independently.
+**Phase 1 — Core Operations:**
+
+- **Fleet Operations**: live driver locations, driver online/offline status,
+  current trips, vehicle status, shift status, inspection status.
+- **Emergency Operations**: live SOS queue, active emergency incidents,
+  escalation workflow, incident timeline, dispatcher assignment, resolution
+  tracking.
+- **Support Centre**: driver support tickets, customer support tickets,
+  merchant support tickets, internal notes, ticket assignment, SLA
+  monitoring.
+- **Incident Management**: accident reports, customer complaints, driver
+  misconduct, lost & found, vehicle issues, investigation workflow.
+- **Dispatch Oversight**: live ride queue, driver allocation, manual
+  reassignment, trip monitoring, cancellation monitoring.
+
+**Phase 2 (once Phase 1 is stable)**: operations analytics, live KPIs, heat
+maps, demand forecasting, driver utilization, Marketplace monitoring, Wallet
+monitoring, fraud alerts, platform health dashboard.
+
+**Guiding principle**: every screen should answer "what is happening right
+now / what requires attention right now / what needs escalation right now" —
+helping Operations staff make decisions quickly, not just displaying data.
+
+**Reality audit and Phase 1 build plan**: `docs/DPX-OPS-001-REALITY-AUDIT.md`
+— per-sub-area backend capability audit, gap analysis, and a proposed slice
+sequence, submitted for founder review before implementation begins.
 
 ## What already exists (real, not this module's job to rebuild)
 
@@ -89,13 +114,12 @@ composing the above rather than needing new domain models.
   pure consumption-side module, not a backend-and-frontend module the way
   Slice 2 itself was.
 
-## Why this is safe to defer
+## Why this was safe to defer until now
 
 Driver Slice 2 was explicitly scoped as driver-facing capability — a driver
 being able to report an incident, request help, manage their shift, and
-trigger SOS. Whether Operations has a dedicated console to respond is a
-distinct, real question that doesn't block any of those driver-facing
-capabilities from being correct, real, and frozen on their own terms. Today,
-the queues are reachable via direct API access; that's a genuine operational
-gap for scale, not a defect in what Slice 2 was asked to build — the same
-distinction the production audit itself drew.
+trigger SOS. Whether Operations has a dedicated console to respond was a
+distinct, real question that didn't block any of those driver-facing
+capabilities from being correct, real, and frozen on their own terms. That
+question is now this module's entire reason for existing — see
+`docs/DPX-OPS-001-REALITY-AUDIT.md` for what's actually next.
