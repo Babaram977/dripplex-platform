@@ -37,6 +37,9 @@ export const DRIVER_AUDIT_ACTIONS = {
   INSPECTION_PASSED: 'driver.inspection.passed',
   INSPECTION_FAILED: 'driver.inspection.failed',
   INSPECTION_CANCELLED: 'driver.inspection.cancelled',
+  /// Driver Slice 2 item 3
+  SUPPORT_TICKET_SUBMITTED: 'driver.support_ticket.submitted',
+  SUPPORT_TICKET_UPDATED: 'driver.support_ticket.updated',
 } as const;
 
 export const DRIVER_PERMISSIONS = {
@@ -63,6 +66,9 @@ export const DRIVER_PERMISSIONS = {
   /// Inspection Supervisor — final pass/fail decision, re-inspection
   /// scheduling, full inspection history/reporting.
   INSPECTION_APPROVE: 'inspection:approve',
+  /// Driver Slice 2 item 3 — Driver Support
+  SUPPORT_TICKET_MANAGE: 'driver:support-ticket:manage',
+  ADMIN_SUPPORT_TICKET_MANAGE: 'admin:drivers:support-ticket:manage',
 } as const;
 
 /** DriverSecuritySettings is a singleton row (enforced at the service

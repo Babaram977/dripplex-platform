@@ -126,6 +126,14 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
     description:
       'Approve/reject inspections, schedule re-inspections, view full inspection history (Inspection Supervisor)',
   },
+  {
+    code: 'driver:support-ticket:manage',
+    description: 'Submit and view own driver support tickets',
+  },
+  {
+    code: 'admin:drivers:support-ticket:manage',
+    description: 'View and resolve the driver support ticket queue',
+  },
   { code: 'admin:rides:support', description: 'Review and resolve ride problem reports' },
   { code: 'users:read', description: 'Read user records' },
   { code: 'users:write', description: 'Update user records' },

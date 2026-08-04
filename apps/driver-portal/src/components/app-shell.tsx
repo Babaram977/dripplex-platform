@@ -20,6 +20,7 @@ const NAV_LINKS = [
   { href: '/rewards', label: 'Rewards' },
   { href: '/activity', label: 'Activity' },
   { href: '/leaderboard', label: 'Leaderboard' },
+  { href: '/support', label: 'Support' },
   { href: '/profile', label: 'Profile' },
   { href: '/learn', label: 'Learn' },
 ] as const;

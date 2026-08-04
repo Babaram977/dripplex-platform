@@ -341,3 +341,47 @@ export interface RidePassengerContactDto {
   name: string;
   phone: string | null;
 }
+
+/** Driver Slice 2 item 3 — Driver Support (founder-approved 2026-08-04): "a
+ * basic 'submit an issue, admin sees a queue' loop." Deliberately general
+ * (payout/account/app/KYC), not ride-scoped (`RideProblemReport` already
+ * covers that) and not the safety-relevant Incident Reporting item. */
+export type DriverSupportCategory = 'PAYOUT' | 'ACCOUNT' | 'APP_BUG' | 'KYC' | 'OTHER';
+
+export type DriverSupportTicketStatus = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
+
+export interface DriverSupportTicketDto {
+  id: string;
+  driverId: string;
+  category: DriverSupportCategory;
+  subject: string;
+  description: string;
+  status: DriverSupportTicketStatus;
+  adminResponse: string | null;
+  resolvedBy: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateDriverSupportTicketRequest {
+  category: DriverSupportCategory;
+  subject: string;
+  description: string;
+}
+
+export interface UpdateDriverSupportTicketRequest {
+  status?: DriverSupportTicketStatus;
+  adminResponse?: string;
+}
+
+export interface ListDriverSupportTicketsQuery {
+  page?: number;
+  limit?: number;
+  status?: DriverSupportTicketStatus;
+}
+
+export interface DriverSupportTicketListDto {
+  items: DriverSupportTicketDto[];
+  meta: { page: number; limit: number; total: number; totalPages: number };
+}

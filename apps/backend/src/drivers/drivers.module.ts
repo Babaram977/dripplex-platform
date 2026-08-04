@@ -1,18 +1,21 @@
 import { Module } from '@nestjs/common';
 
 import { AuditModule } from '../audit/audit.module';
+import { NotificationCenterModule } from '../notification-center/notification-center.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PrismaModule } from '../prisma/prisma.module';
 
 import { DriverActivationService } from './activation/driver-activation.service';
 import { AdminDriverIdentityVerificationController } from './controllers/admin-driver-identity-verification.controller';
 import { AdminDriverSecuritySettingsController } from './controllers/admin-driver-security-settings.controller';
+import { AdminDriverSupportController } from './controllers/admin-driver-support.controller';
 import { AdminDriverVehiclesController } from './controllers/admin-driver-vehicles.controller';
 import { AdminDriversController } from './controllers/admin-drivers.controller';
 import { AdminInspectionCentresController } from './controllers/admin-inspection-centres.controller';
 import { DriverIdentityVerificationController } from './controllers/driver-identity-verification.controller';
 import { DriverInspectionsController } from './controllers/driver-inspections.controller';
 import { DriverRideContactController } from './controllers/driver-ride-contact.controller';
+import { DriverSupportController } from './controllers/driver-support.controller';
 import { DriverVehiclesController } from './controllers/driver-vehicles.controller';
 import { DriverController } from './controllers/driver.controller';
 import { OperationsInspectionsController } from './controllers/operations-inspections.controller';
@@ -28,10 +31,11 @@ import { InspectionCentresService } from './inspections/inspection-centres.servi
 import { InspectionsService } from './inspections/inspections.service';
 import { OnboardingService } from './onboarding/onboarding.service';
 import { DriverRideContactService } from './ride-contact/driver-ride-contact.service';
+import { DriverSupportService } from './support/driver-support.service';
 import { VehiclesService } from './vehicles/vehicles.service';
 
 @Module({
-  imports: [PrismaModule, AuditModule, NotificationsModule],
+  imports: [PrismaModule, AuditModule, NotificationsModule, NotificationCenterModule],
   controllers: [
     DriverController,
     AdminDriversController,
@@ -44,6 +48,8 @@ import { VehiclesService } from './vehicles/vehicles.service';
     AdminInspectionCentresController,
     OperationsInspectionsController,
     DriverRideContactController,
+    DriverSupportController,
+    AdminDriverSupportController,
   ],
   providers: [
     DriversService,
@@ -55,6 +61,7 @@ import { VehiclesService } from './vehicles/vehicles.service';
     InspectionCentresService,
     InspectionsService,
     DriverRideContactService,
+    DriverSupportService,
     AccountRecoverySubscriber,
     CredentialChangeSubscriber,
     FailedLoginLockoutSubscriber,
@@ -70,6 +77,7 @@ import { VehiclesService } from './vehicles/vehicles.service';
     InspectionCentresService,
     InspectionsService,
     DriverRideContactService,
+    DriverSupportService,
   ],
 })
 export class DriversModule {}

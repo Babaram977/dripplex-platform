@@ -267,6 +267,8 @@ model User {
   /// DPX-DRIVER-002
   driverVehicles              Vehicle[]
   driverInspections           Inspection[]
+  driverSupportTickets        DriverSupportTicket[]        @relation("DriverSupportTicketDriver")
+  driverSupportTicketsHandled DriverSupportTicket[]        @relation("DriverSupportTicketResolver")
   rideOffers                  RideOffer[]
   notifications               Notification[]
   notificationPreferences     NotificationPreference[]
@@ -1543,6 +1545,47 @@ model Inspection {
   @@map("inspections")
 }
 
+/// Driver Slice 2 item 3 (founder-approved 2026-08-04): "a basic 'submit an
+/// issue, admin sees a queue' loop" — deliberately not ride-scoped (that's
+/// `RideProblemReport`) and deliberately not the safety-relevant Incident
+/// Reporting item (item 4) — this is general account/payout/app/KYC
+/// support, the same class of thing a driver would otherwise email support
+/// about.
+enum DriverSupportCategory {
+  PAYOUT
+  ACCOUNT
+  APP_BUG
+  KYC
+  OTHER
+}
+
+enum DriverSupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+model DriverSupportTicket {
+  id            String                     @id @default(uuid()) @db.Uuid
+  driverId      String                     @map("driver_id") @db.Uuid
+  category      DriverSupportCategory
+  subject       String                     @db.VarChar(200)
+  description   String                     @db.VarChar(2000)
+  status        DriverSupportTicketStatus  @default(OPEN)
+  adminResponse String?                    @map("admin_response") @db.VarChar(2000)
+  resolvedBy    String?                    @map("resolved_by") @db.Uuid
+  resolvedAt    DateTime?                  @map("resolved_at")
+  createdAt     DateTime                   @default(now()) @map("created_at")
+  updatedAt     DateTime                   @updatedAt @map("updated_at")
+  driver        User                       @relation("DriverSupportTicketDriver", fields: [driverId], references: [id], onDelete: Cascade)
+  resolver      User?                      @relation("DriverSupportTicketResolver", fields: [resolvedBy], references: [id], onDelete: SetNull)
+
+  @@index([driverId])
+  @@index([status])
+  @@map("driver_support_tickets")
+}
+
 enum NotificationStatus {
   PENDING
   QUEUED
@@ -1607,6 +1650,7 @@ enum NotificationType {
   ORDER_READY
   ORDER_DELAYED
   ORDER_COMPLETED
+  DRIVER_SUPPORT_TICKET_UPDATED
 }
 
 enum DevicePlatform {

@@ -74,7 +74,24 @@ to say "I plan to work Tuesday 6am-2pm" in advance. Needs, from scratch:
   qualification/tier logic that this would need to integrate with
   deliberately, not bolt on.
 
-### 4. Driver support — ❌ Zero general-purpose capability
+### 4. Driver support — ✅ Ticket queue shipped (2026-08-04)
+
+**Built:** `DriverSupportTicket` (schema: category — PAYOUT/ACCOUNT/APP_BUG/
+KYC/OTHER — subject, description, status — OPEN/IN_PROGRESS/RESOLVED/
+CLOSED — adminResponse, resolvedBy/resolvedAt) plus `DriverSupportService`
+(`apps/backend/src/drivers/support/`), driver-facing
+`DriverSupportController` (`POST`/`GET /driver/support-tickets`) and admin
+`AdminDriverSupportController` (`GET`/`PATCH /admin/driver-support-tickets`)
+— exactly the scoped "submit an issue, admin sees a queue" v1 the audit
+called for, not a full helpdesk platform. Any admin status/response change
+notifies the driver in-app via `NotificationCenterService` (new
+`DRIVER_SUPPORT_TICKET_UPDATED` type, `SUPPORT` category). Driver-portal
+`/support` page: create-ticket form + own-ticket list showing admin
+responses. Permissions: `driver:support-ticket:manage` (driver role),
+`admin:drivers:support-ticket:manage` (operations_staff/administrator/
+super_administrator).
+
+Original audit finding, kept for context:
 
 **Real today:** `RideProblemReport` (`ride-problem-report.service.ts`,
 RIDE-002.8) — but this is strictly ride-scoped ("Report an Issue" on a
