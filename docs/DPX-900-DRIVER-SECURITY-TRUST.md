@@ -6,6 +6,11 @@ and its addendum) lands. Updated honestly as work ships — an unchecked box
 here means the capability genuinely doesn't exist yet, not that it's assumed
 or deferred without saying so.
 
+**This checklist's authoritative, locked successor is
+`docs/DPX-DRIVER-001-SECURITY-STANDARD.md`** — check that document for the
+current policy; this one remains as the founder's original item-by-item
+checklist, kept in sync but not the primary reference going forward.
+
 ## Checklist
 
 - [x] **Device binding implemented** — `DriverVerifiedDevice` (SHA-256 device

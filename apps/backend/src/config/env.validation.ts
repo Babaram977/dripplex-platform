@@ -58,7 +58,9 @@ export const envSchema = z.object({
   SMILE_ID_PARTNER_ID: z.string().default(''),
   SMILE_ID_API_KEY: z.string().default(''),
   SMILE_ID_BASE_URL: z.string().url().default('https://api.smileidentity.com/v1'),
-  IDENTITY_VERIFICATION_IDLE_HOURS: z.coerce.number().int().min(1).max(48).default(8),
+  // Driver-001 Security Standard: reconfirmed default 2h (was 8h), only used
+  // to seed DriverSecuritySettings on first creation — see driver.constants.ts.
+  IDENTITY_VERIFICATION_IDLE_HOURS: z.coerce.number().int().min(1).max(48).default(2),
   // DPX-DS-001 — driver facial-verification risk engine, extensible/configurable
   // per the founder's standard, not hard-coded.
   DRIVER_IDV_LOCKOUT_THRESHOLD: z.coerce.number().int().min(1).max(20).default(5),

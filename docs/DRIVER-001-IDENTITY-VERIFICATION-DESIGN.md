@@ -4,6 +4,11 @@ Written before implementation, per the same "design note before code" discipline
 `RIDE-002.7-WALLET-PAYMENT-DESIGN.md` and `WALLET-004-WITHDRAW-DESIGN.md`. Locks the
 founder's requirements into concrete decisions before touching schema or service code.
 
+**This is the implementation history.** For the authoritative, founder-locked
+policy reference, see `docs/DPX-DRIVER-001-SECURITY-STANDARD.md` — this
+document remains the detailed design/decision record and stays in sync with
+it, but the standard doc is what a future change should be checked against.
+
 ## Founder's requirements (verbatim scope)
 
 - Smile ID as the initial provider, chosen for DrippleX's launch market (Nigeria/Africa).

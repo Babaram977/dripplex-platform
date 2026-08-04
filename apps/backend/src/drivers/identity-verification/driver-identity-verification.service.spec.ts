@@ -24,16 +24,36 @@ jest.mock('node:crypto', () => ({
   randomInt: jest.fn(),
 }));
 
+import type { DriverSecuritySettingsService } from './driver-security-settings.service';
 import type { IdentityVerificationProvider } from './identity-verification-provider.adapter';
 import type { AuditLogRepository } from '../../audit/repositories/audit-log.repository';
-import type { AppConfigService } from '../../config/app-config.service';
 import type { PrismaService } from '../../prisma/prisma.service';
+import type { DriverSecuritySettings } from '@prisma/client';
 
 const databaseUrl =
   process.env['DATABASE_URL'] ??
   'postgresql://dripplex:dripplex@localhost:5432/dripplex?schema=public';
 
 const IDLE_HOURS = 8;
+
+function makeSecuritySettings(
+  overrides: Partial<DriverSecuritySettings> = {},
+): jest.Mocked<Pick<DriverSecuritySettingsService, 'getEffective'>> {
+  const settings: DriverSecuritySettings = {
+    id: 'settings-fixture',
+    idleHours: IDLE_HOURS,
+    gpsAnomalySpeedKmh: DEFAULT_GPS_ANOMALY_SPEED_KMH_THRESHOLD,
+    lockoutThreshold: DEFAULT_IDENTITY_VERIFICATION_LOCKOUT_THRESHOLD,
+    spotCheckDenominator: DEFAULT_RANDOM_SPOT_CHECK_DENOMINATOR,
+    newDeviceVerificationEnabled: true,
+    adminForceVerificationEnabled: true,
+    updatedBy: null,
+    updatedAt: new Date(),
+    createdAt: new Date(),
+    ...overrides,
+  };
+  return { getEffective: jest.fn().mockResolvedValue(settings) };
+}
 
 describe('DriverIdentityVerificationService', () => {
   let databaseAvailable = false;
@@ -79,18 +99,18 @@ describe('DriverIdentityVerificationService', () => {
     };
     const auditService = new AuditService(auditLogRepository);
     auditRecord = jest.spyOn(auditService, 'record') as unknown as jest.Mock;
-    const appConfig = {
-      identityVerificationIdleHours: IDLE_HOURS,
-      driverIdvLockoutThreshold: DEFAULT_IDENTITY_VERIFICATION_LOCKOUT_THRESHOLD,
-      driverIdvGpsAnomalySpeedKmh: DEFAULT_GPS_ANOMALY_SPEED_KMH_THRESHOLD,
-      driverIdvSpotCheckDenominator: DEFAULT_RANDOM_SPOT_CHECK_DENOMINATOR,
-    } as unknown as AppConfigService;
+    const securitySettings = makeSecuritySettings() as unknown as DriverSecuritySettingsService;
     provider = {
       provider: 'SMILE_ID',
       enroll: jest.fn(),
       verify: jest.fn(),
     };
-    service = new DriverIdentityVerificationService(prisma, auditService, appConfig, provider);
+    service = new DriverIdentityVerificationService(
+      prisma,
+      auditService,
+      securitySettings,
+      provider,
+    );
     // Never-zero by default so the 1-in-20 random spot-check never
     // interferes with unrelated tests that call assertNotRequired (which
     // always rolls it) — individual spot-check tests override this.
@@ -191,10 +211,13 @@ describe('DriverIdentityVerificationService', () => {
     // below from ever risking a same-day-vs-yesterday (FIRST_LOGIN_OF_DAY)
     // ambiguity around the Lagos midnight boundary.
     const tinyIdleHours = 1 / 1800; // 2 seconds
+    const tinySecuritySettings = makeSecuritySettings({
+      idleHours: tinyIdleHours,
+    }) as unknown as DriverSecuritySettingsService;
     const tinyIdleService = new DriverIdentityVerificationService(
       prisma,
       new AuditService({ create: jest.fn().mockResolvedValue(undefined) }),
-      { identityVerificationIdleHours: tinyIdleHours } as unknown as AppConfigService,
+      tinySecuritySettings,
       provider,
     );
     const idleMs = tinyIdleHours * 60 * 60 * 1000;
@@ -251,6 +274,24 @@ describe('DriverIdentityVerificationService', () => {
     });
 
     const check = await service.checkRequired(driverId, { deviceId: 'device-known' });
+
+    expect(check.required).toBe(false);
+  });
+
+  it('skips NEW_DEVICE entirely when newDeviceVerificationEnabled is disabled', async () => {
+    if (!databaseAvailable) return;
+    const disabledSettings = makeSecuritySettings({
+      newDeviceVerificationEnabled: false,
+    }) as unknown as DriverSecuritySettingsService;
+    const disabledService = new DriverIdentityVerificationService(
+      prisma,
+      new AuditService({ create: jest.fn().mockResolvedValue(undefined) }),
+      disabledSettings,
+      provider,
+    );
+    const driverId = await createDriver();
+
+    const check = await disabledService.checkRequired(driverId, { deviceId: 'device-unknown' });
 
     expect(check.required).toBe(false);
   });
@@ -598,6 +639,27 @@ describe('DriverIdentityVerificationService', () => {
 
     const check = await service.checkRequired(driverId, undefined);
     expect(check.locked).toBe(false);
+  });
+
+  it('requireVerification(MANUAL_ADMIN) throws when adminForceVerificationEnabled is disabled', async () => {
+    if (!databaseAvailable) return;
+    const disabledSettings = makeSecuritySettings({
+      adminForceVerificationEnabled: false,
+    }) as unknown as DriverSecuritySettingsService;
+    const disabledService = new DriverIdentityVerificationService(
+      prisma,
+      new AuditService({ create: jest.fn().mockResolvedValue(undefined) }),
+      disabledSettings,
+      provider,
+    );
+    const driverId = await createDriver();
+
+    await expect(disabledService.requireVerification(driverId, 'MANUAL_ADMIN', {})).rejects.toThrow(
+      ForbiddenDomainException,
+    );
+
+    const profile = await prisma.driverProfile.findUniqueOrThrow({ where: { userId: driverId } });
+    expect(profile.identityVerificationRequiredReason).toBeNull();
   });
 
   it('unlock() throws NotFoundDomainException for a user with no driver profile', async () => {

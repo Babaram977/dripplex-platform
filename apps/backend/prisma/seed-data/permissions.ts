@@ -97,6 +97,10 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
     code: 'admin:drivers:identity-verification:manage',
     description: 'Manually require or unlock a driver identity verification',
   },
+  {
+    code: 'admin:drivers:security-settings:manage',
+    description: 'View and edit the Driver-001 Security Standard risk-engine settings',
+  },
   { code: 'admin:rides:support', description: 'Review and resolve ride problem reports' },
   { code: 'users:read', description: 'Read user records' },
   { code: 'users:write', description: 'Update user records' },

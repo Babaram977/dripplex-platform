@@ -13,10 +13,10 @@ import {
   ForbiddenDomainException,
   NotFoundDomainException,
 } from '../../common/exceptions/domain.exception';
-import { AppConfigService } from '../../config/app-config.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DRIVER_AUDIT_ACTIONS, GPS_ANOMALY_MIN_INTERVAL_MS } from '../driver.constants';
 
+import { DriverSecuritySettingsService } from './driver-security-settings.service';
 import { impliedSpeedKmh, lagosDateKey } from './geo.util';
 import {
   IDENTITY_VERIFICATION_PROVIDER,
@@ -67,7 +67,7 @@ export class DriverIdentityVerificationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
-    private readonly appConfig: AppConfigService,
+    private readonly securitySettings: DriverSecuritySettingsService,
     @Inject(IDENTITY_VERIFICATION_PROVIDER)
     private readonly provider: IdentityVerificationProvider,
   ) {}
@@ -99,6 +99,7 @@ export class DriverIdentityVerificationService {
     if (!profile) {
       throw new NotFoundDomainException('Driver profile not found');
     }
+    const settings = await this.securitySettings.getEffective();
 
     if (profile.identityVerificationLockedAt) {
       return {
@@ -138,7 +139,7 @@ export class DriverIdentityVerificationService {
       };
     }
 
-    const idleMs = this.appConfig.identityVerificationIdleHours * 60 * 60 * 1000;
+    const idleMs = settings.idleHours * 60 * 60 * 1000;
     if (now.getTime() - profile.lastIdentityVerifiedAt.getTime() > idleMs) {
       return {
         required: true,
@@ -148,7 +149,7 @@ export class DriverIdentityVerificationService {
       };
     }
 
-    if (options.deviceId) {
+    if (settings.newDeviceVerificationEnabled && options.deviceId) {
       const known = await this.prisma.driverVerifiedDevice.findUnique({
         where: {
           driverId_deviceFingerprint: {
@@ -183,7 +184,7 @@ export class DriverIdentityVerificationService {
             },
             { latitude: options.latitude, longitude: options.longitude, at: now },
           );
-          if (speedKmh > this.appConfig.driverIdvGpsAnomalySpeedKmh) {
+          if (speedKmh > settings.gpsAnomalySpeedKmh) {
             return {
               required: true,
               reason: DriverVerificationTrigger.GPS_ANOMALY,
@@ -212,7 +213,7 @@ export class DriverIdentityVerificationService {
       };
     }
 
-    if (options.rollSpotCheck && randomInt(this.appConfig.driverIdvSpotCheckDenominator) === 0) {
+    if (options.rollSpotCheck && randomInt(settings.spotCheckDenominator) === 0) {
       return {
         required: true,
         reason: DriverVerificationTrigger.RANDOM_SPOT_CHECK,
@@ -255,6 +256,15 @@ export class DriverIdentityVerificationService {
     trigger: DriverVerificationTrigger,
     context: AuditContext,
   ): Promise<void> {
+    if (trigger === DriverVerificationTrigger.MANUAL_ADMIN) {
+      const settings = await this.securitySettings.getEffective();
+      if (!settings.adminForceVerificationEnabled) {
+        throw new ForbiddenDomainException(
+          'Manually requiring verification is disabled by the current Driver Security Standard settings',
+        );
+      }
+    }
+
     const profile = await this.prisma.driverProfile.findUnique({ where: { userId: driverId } });
     if (!profile) return;
 
@@ -442,9 +452,10 @@ export class DriverIdentityVerificationService {
         }),
       ]);
 
+      const settings = await this.securitySettings.getEffective();
       let locked = false;
       if (
-        profileUpdate.failedVerificationAttempts >= this.appConfig.driverIdvLockoutThreshold &&
+        profileUpdate.failedVerificationAttempts >= settings.lockoutThreshold &&
         !profileUpdate.identityVerificationLockedAt
       ) {
         await this.prisma.driverProfile.update({

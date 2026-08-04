@@ -108,6 +108,29 @@ export interface IdentityVerificationStatusDto {
   locked: boolean;
 }
 
+/** Driver-001 Security Standard — admin-configurable risk-engine policy.
+ * Editable without a redeploy; see docs/DPX-DRIVER-001-SECURITY-STANDARD.md. */
+export interface DriverSecuritySettingsDto {
+  id: string;
+  idleHours: number;
+  gpsAnomalySpeedKmh: number;
+  lockoutThreshold: number;
+  spotCheckDenominator: number;
+  newDeviceVerificationEnabled: boolean;
+  adminForceVerificationEnabled: boolean;
+  updatedBy: string | null;
+  updatedAt: string;
+}
+
+export interface UpdateDriverSecuritySettingsRequest {
+  idleHours?: number;
+  gpsAnomalySpeedKmh?: number;
+  lockoutThreshold?: number;
+  spotCheckDenominator?: number;
+  newDeviceVerificationEnabled?: boolean;
+  adminForceVerificationEnabled?: boolean;
+}
+
 export interface SubmitIdentityVerificationRequest {
   selfieImageBase64: string;
   idDocumentImageBase64?: string;

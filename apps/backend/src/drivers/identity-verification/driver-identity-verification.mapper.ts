@@ -1,6 +1,10 @@
 import type { VerificationRequiredCheck } from './driver-identity-verification.service';
-import type { DriverIdentityVerificationDto, IdentityVerificationStatusDto } from '@dripplex/types';
-import type { DriverIdentityVerification } from '@prisma/client';
+import type {
+  DriverIdentityVerificationDto,
+  DriverSecuritySettingsDto,
+  IdentityVerificationStatusDto,
+} from '@dripplex/types';
+import type { DriverIdentityVerification, DriverSecuritySettings } from '@prisma/client';
 
 export function toDriverIdentityVerificationDto(
   record: DriverIdentityVerification,
@@ -27,5 +31,21 @@ export function toIdentityVerificationStatusDto(
     reason: check.reason,
     lastVerifiedAt: check.lastVerifiedAt ? check.lastVerifiedAt.toISOString() : null,
     locked: check.locked,
+  };
+}
+
+export function toDriverSecuritySettingsDto(
+  settings: DriverSecuritySettings,
+): DriverSecuritySettingsDto {
+  return {
+    id: settings.id,
+    idleHours: settings.idleHours,
+    gpsAnomalySpeedKmh: settings.gpsAnomalySpeedKmh,
+    lockoutThreshold: settings.lockoutThreshold,
+    spotCheckDenominator: settings.spotCheckDenominator,
+    newDeviceVerificationEnabled: settings.newDeviceVerificationEnabled,
+    adminForceVerificationEnabled: settings.adminForceVerificationEnabled,
+    updatedBy: settings.updatedBy,
+    updatedAt: settings.updatedAt.toISOString(),
   };
 }

@@ -104,6 +104,7 @@ export type {
   DriverIdentityVerificationDto,
   DriverKycDto,
   DriverProfileDto,
+  DriverSecuritySettingsDto,
   DriverStatus,
   DriverVerificationStatus,
   DriverVerificationTrigger,
@@ -111,6 +112,7 @@ export type {
   IdentityVerificationStatusDto,
   SubmitDriverKycRequest,
   SubmitIdentityVerificationRequest,
+  UpdateDriverSecuritySettingsRequest,
 } from './driver/index.js';
 
 export { DRIVER_AUDIT_ACTIONS } from './driver/index.js';

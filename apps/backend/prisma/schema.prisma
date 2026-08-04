@@ -672,6 +672,26 @@ model DriverIdentityVerification {
   @@map("driver_identity_verifications")
 }
 
+/// Admin-configurable Driver-001 Security Standard policy. Single row
+/// (fixed well-known id, enforced at the service layer) — the effective
+/// values every "go online" risk-engine check reads, editable without a
+/// redeploy. AppConfigService/env vars only seed this row's initial
+/// values the first time it's created.
+model DriverSecuritySettings {
+  id                             String   @id @db.Uuid
+  idleHours                      Int      @map("idle_hours")
+  gpsAnomalySpeedKmh             Float    @map("gps_anomaly_speed_kmh")
+  lockoutThreshold                Int      @map("lockout_threshold")
+  spotCheckDenominator           Int      @map("spot_check_denominator")
+  newDeviceVerificationEnabled   Boolean  @default(true) @map("new_device_verification_enabled")
+  adminForceVerificationEnabled  Boolean  @default(true) @map("admin_force_verification_enabled")
+  updatedBy                      String?  @map("updated_by") @db.Uuid
+  updatedAt                      DateTime @updatedAt @map("updated_at")
+  createdAt                      DateTime @default(now()) @map("created_at")
+
+  @@map("driver_security_settings")
+}
+
 /// A device fingerprint this driver has previously completed a PASSED
 /// verification from. "New device" = no row here for the fingerprint
 /// presented at go-online time.
