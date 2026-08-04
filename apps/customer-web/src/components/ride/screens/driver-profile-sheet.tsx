@@ -1,8 +1,7 @@
 'use client';
 
+import { SuperAppRideHeader, useSuperAppFonts } from '@dripplex/ui';
 import * as React from 'react';
-
-import { RideHeader } from '../ride-ui';
 
 /**
  * Generated screen — no real DriverProfileSheet was received. Extends the
@@ -19,12 +18,13 @@ import { RideHeader } from '../ride-ui';
  * exposes it, without any further redesign.
  */
 export function DriverProfileSheet({ onBack }: { onBack: () => void }): React.JSX.Element {
+  const { heading, body } = useSuperAppFonts();
   return (
     <div
       className="absolute inset-0 flex flex-col overflow-hidden"
       style={{ background: '#0A1628' }}
     >
-      <RideHeader onBack={onBack} title="Driver Profile" />
+      <SuperAppRideHeader onBack={onBack} title="Driver Profile" />
       <div className="flex-1 overflow-y-auto px-5 pb-6 pt-4">
         <div className="mb-4 flex flex-col items-center gap-3">
           <div
@@ -33,20 +33,15 @@ export function DriverProfileSheet({ onBack }: { onBack: () => void }): React.JS
           >
             🚗
           </div>
-          <p
-            className="text-[18px] font-bold"
-            style={{ fontFamily: "'Poppins',sans-serif", color: '#fff' }}
-          >
-            Your driver
-          </p>
+          <p className={`text-[18px] font-bold text-white ${heading}`}>Your driver</p>
         </div>
         <div
           className="rounded-2xl p-4"
           style={{ background: '#112238', border: '1px solid rgba(255,255,255,.08)' }}
         >
           <p
-            className="mb-3 text-[11px] font-semibold uppercase tracking-wide"
-            style={{ fontFamily: "'Poppins',sans-serif", color: 'rgba(255,255,255,.5)' }}
+            className={`mb-3 text-[11px] font-semibold uppercase tracking-wide ${heading}`}
+            style={{ color: 'rgba(255,255,255,.5)' }}
           >
             Integration status
           </p>
@@ -60,15 +55,12 @@ export function DriverProfileSheet({ onBack }: { onBack: () => void }): React.JS
             ] as const
           ).map(([field, status]) => (
             <div key={field} className="mb-2.5 flex items-start justify-between gap-3">
-              <p
-                className="text-[13px]"
-                style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.6)' }}
-              >
+              <p className={`text-[13px] ${body}`} style={{ color: 'rgba(255,255,255,.6)' }}>
                 {field}
               </p>
               <p
-                className="text-right text-[12px]"
-                style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
+                className={`text-right text-[12px] ${body}`}
+                style={{ color: 'rgba(255,255,255,.5)' }}
               >
                 {status}
               </p>
@@ -76,8 +68,8 @@ export function DriverProfileSheet({ onBack }: { onBack: () => void }): React.JS
           ))}
         </div>
         <p
-          className="mt-4 text-center text-[12px]"
-          style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.3)' }}
+          className={`mt-4 text-center text-[12px] ${body}`}
+          style={{ color: 'rgba(255,255,255,.3)' }}
         >
           See docs/RIDE-003-SLICE-2.md for the proposed backend addition that would fill this in.
         </p>

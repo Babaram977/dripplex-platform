@@ -1,9 +1,14 @@
 'use client';
 
+import {
+  SuperAppRideBottomSheet,
+  SuperAppRideHeader,
+  SuperAppRideStatusBanner,
+  SuperAppRideTextButton,
+} from '@dripplex/ui';
 import * as React from 'react';
 
 import { LiveMap } from '../live-map';
-import { RideBottomSheet, RideHeader, StatusBanner } from '../ride-ui';
 
 import { useCancelRide, useRide, useRideTracking } from '@/hooks/rides';
 
@@ -70,19 +75,19 @@ export function FindingDriverScreen({
           }
           fallbackVariant="finding"
         />
-        <RideHeader onBack={onBack} floating />
+        <SuperAppRideHeader onBack={onBack} floating />
       </div>
-      <RideBottomSheet peek>
+      <SuperAppRideBottomSheet peek>
         <div className="flex flex-col items-center gap-5 px-5 pb-8 pt-2">
           {status === 'NO_DRIVERS_FOUND' ? (
-            <StatusBanner
+            <SuperAppRideStatusBanner
               title="No drivers available"
               subtitle="No nearby drivers accepted this ride. Please try again shortly."
             />
           ) : status === 'CANCELLED' ? (
-            <StatusBanner title="Ride cancelled" />
+            <SuperAppRideStatusBanner title="Ride cancelled" />
           ) : (
-            <StatusBanner
+            <SuperAppRideStatusBanner
               title={`Finding your driver${'.'.repeat(dots)}`}
               subtitle="Matching you with the nearest available driver"
             />
@@ -90,29 +95,18 @@ export function FindingDriverScreen({
           {status !== 'NO_DRIVERS_FOUND' &&
           status !== 'CANCELLED' &&
           status !== 'DRIVER_ASSIGNED' ? (
-            <button
-              type="button"
+            <SuperAppRideTextButton
+              label={cancelRide.isPending ? 'Cancelling…' : 'Cancel ride'}
+              disabled={cancelRide.isPending}
               onClick={() => {
                 cancelRide.mutate({ rideId });
               }}
-              disabled={cancelRide.isPending}
-              className="text-[14px] font-medium"
-              style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
-            >
-              {cancelRide.isPending ? 'Cancelling…' : 'Cancel ride'}
-            </button>
+            />
           ) : status !== 'DRIVER_ASSIGNED' ? (
-            <button
-              type="button"
-              onClick={onBack}
-              className="text-[14px] font-medium"
-              style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
-            >
-              Back to Home
-            </button>
+            <SuperAppRideTextButton label="Back to Home" onClick={onBack} />
           ) : null}
         </div>
-      </RideBottomSheet>
+      </SuperAppRideBottomSheet>
     </div>
   );
 }

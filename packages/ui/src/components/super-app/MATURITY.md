@@ -531,3 +531,52 @@ source for the 21 screens not yet ported in this slice.
 | `SuperAppRideDestinationTrigger` | Verified |
 | `SuperAppRideQuickPlaces`        | Verified |
 | `SuperAppRideSavedPlacesList`    | Verified |
+
+## Ride module — Slice 2: Search + Fare + Finding + Assigned (2026-08-04)
+
+Continues the Slice 1 re-platform: presentational markup only, no new
+backend work, no behavior change. Ported `DestinationSearchScreen`,
+`FareEstimateScreen`, `FindingDriverScreen`, `DriverAssignedScreen`, and
+`DriverProfileSheet` off `ride-ui.tsx` onto `packages/ui`.
+
+**New components this slice:**
+
+- `RideSearchInputRow` — rounded pill wrapper with the pickup dot; the
+  real `PlacesAutocompleteInput` (Maps-SDK dependent) stays in
+  `customer-web` and renders inside it as `children`.
+- `RidePlaceRow` — single place-list row, reused for both the saved-place
+  suggestions on Destination Search and (in a later slice) Saved Places.
+- `RideTypeSelector` — the Economy/Tricycle chip row on Fare Estimate.
+- `RideInfoBox` — small rounded neutral/error message box, reused for
+  loading, error, waiting, and the location-denied warning states.
+- `RideTextButton` — muted inline text link ("Cancel ride", "Back to
+  Home").
+- `RideLiveBadge` — the LIVE/CONNECTING pill on Driver Assigned.
+
+`DriverAssignedScreen` and `DriverProfileSheet` compose these plus the
+Slice 1 primitives (`RideHeader`, `RideBottomSheet`, `RideDriverCard`,
+`RideETAChip`, `RideActionButton`, `RideQuickActionButton`,
+`RideStatusBanner`); the real `LiveMap` (Google Maps SDK) still renders
+directly in the screen component, per the established map-handling
+pattern. `DriverProfileSheet`'s honest "Integration status" copy (no
+customer-facing driver-profile endpoint or vehicle fields in the backend)
+is kept inline in the screen rather than extracted, since it's one-off
+explanatory content tied to this single generated screen.
+
+Typecheck/lint clean across `@dripplex/ui` and `customer-web`. Verified
+with Playwright against the real backend: a full booking round trip
+(destination select → ride-type toggle re-triggering the real fare
+estimate → book → a real driver, driven via direct API calls, receives
+and accepts the dispatch offer → the customer's existing 4s poll-fallback
+picks up the `DRIVER_ASSIGNED` transition → Driver Assigned screen renders
+live map/ETA/driver card/live badge → Driver Profile sheet opens from the
+driver card) completed end to end with zero console errors.
+
+| Component                    | Status   |
+| ---------------------------- | -------- |
+| `SuperAppRideSearchInputRow` | Verified |
+| `SuperAppRidePlaceRow`       | Verified |
+| `SuperAppRideTypeSelector`   | Verified |
+| `SuperAppRideInfoBox`        | Verified |
+| `SuperAppRideTextButton`     | Verified |
+| `SuperAppRideLiveBadge`      | Verified |
