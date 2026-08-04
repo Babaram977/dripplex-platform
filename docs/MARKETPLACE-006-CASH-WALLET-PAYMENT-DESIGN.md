@@ -129,7 +129,7 @@ workaround. Documented here rather than silently gated.
   `disabled` per-option flag (mirrors `SuperAppRidePaymentMethodRow`),
   needed for the insufficient-wallet-balance case.
 
-## Real defect discovered during verification (not fixed here)
+## Real defect discovered during verification — fixed 2026-08-04
 
 Verifying the WALLET flow end-to-end surfaced a pre-existing pricing
 inconsistency: the Cart's totals shown at checkout use a real, non-zero
@@ -139,9 +139,13 @@ stubs — "no delivery fee / tax until rules are configured"). A checkout
 showing "Final Total ₦7,090" (₦5,200 subtotal + ₦1,500 delivery + ₦390
 tax) actually creates and charges an order for ₦5,200. This affects every
 payment method — gateway, wallet, and cash alike — and predates this
-change; it is not specific to Cash/Wallet. Flagged to the founder rather
-than fixed here, since reconciling the two pricing paths is a separate,
-non-trivial change outside this task's scope.
+change; it is not specific to Cash/Wallet.
+
+Flagged to the founder rather than fixed in this commit; the founder's
+explicit instruction was to fix it immediately rather than hold it —
+see `docs/PRICING-ENGINE.md` for the fix (a single `PricingService`
+shared by Cart preview and Checkout order creation, closing this gap and
+a related one: checkout silently zeroed coupon discounts too).
 
 ## What stays unchanged
 

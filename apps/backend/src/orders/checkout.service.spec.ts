@@ -12,6 +12,7 @@ import {
   NotFoundDomainException,
   ValidationDomainException,
 } from '../common/exceptions/domain.exception';
+import { DOMAIN_EVENTS } from '../events/domain-events';
 
 import { CheckoutService } from './checkout.service';
 import { CheckoutFulfillmentType } from './dto/order.dto';
@@ -21,14 +22,13 @@ import { ReservationCleanupService } from './reservation-cleanup.service';
 import type { AddressRepository } from '../addresses/repositories/address.repository';
 import type { AuditService } from '../audit/audit.service';
 import type { CartRepository, CartWithItems } from '../cart/repositories/cart.repository';
+import type { DomainEventBus } from '../events/domain-event-bus';
 import type { NotificationService } from '../notifications/notification.service';
+import type { PricingService } from '../pricing/pricing.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { CheckoutInventoryValidator } from './inventory/checkout-inventory.validator';
 import type { InventoryReservationService } from './inventory/inventory-reservation.service';
 import type { CheckoutProductValidator } from './pricing/checkout-product.validator';
-import type { CouponCalculator } from './pricing/coupon-calculator';
-import type { DeliveryCalculator } from './pricing/delivery-calculator';
-import type { TaxCalculator } from './pricing/tax-calculator';
 import type { OrdersRepository, OrderWithItems } from './repositories/orders.repository';
 import type { CartItem } from '@prisma/client';
 
@@ -179,17 +179,13 @@ describe('CheckoutService', () => {
     assertAvailable: jest.fn(),
   };
 
-  const taxCalculator: jest.Mocked<TaxCalculator> = {
-    calculate: jest.fn().mockResolvedValue(0),
-  };
+  const pricingService = {
+    computeTotals: jest.fn(),
+  } as unknown as jest.Mocked<PricingService>;
 
-  const deliveryCalculator: jest.Mocked<DeliveryCalculator> = {
-    calculate: jest.fn().mockResolvedValue(0),
-  };
-
-  const couponCalculator: jest.Mocked<CouponCalculator> = {
-    calculate: jest.fn().mockResolvedValue({ discount: 0, couponCode: null }),
-  };
+  const eventBus = {
+    emit: jest.fn().mockResolvedValue(undefined),
+  } as unknown as jest.Mocked<DomainEventBus>;
 
   const reservationService = {
     reserve: jest.fn().mockResolvedValue(undefined),
@@ -221,13 +217,12 @@ describe('CheckoutService', () => {
     addressRepository,
     productValidator,
     inventoryValidator,
-    taxCalculator,
-    deliveryCalculator,
-    couponCalculator,
+    pricingService,
     reservationService,
     auditService,
     notifications,
     prisma,
+    eventBus,
   );
 
   const context = { userId: customerId, ipAddress: '127.0.0.1' };
@@ -265,9 +260,14 @@ describe('CheckoutService', () => {
       },
     ]);
     inventoryValidator.assertAvailable.mockResolvedValue(undefined);
-    taxCalculator.calculate.mockResolvedValue(0);
-    deliveryCalculator.calculate.mockResolvedValue(0);
-    couponCalculator.calculate.mockResolvedValue({ discount: 0, couponCode: null });
+    pricingService.computeTotals.mockResolvedValue({
+      subtotal: 5000,
+      discount: 0,
+      tax: 0,
+      deliveryFee: 0,
+      total: 5000,
+      couponCode: null,
+    });
     ordersRepository.create.mockResolvedValue(sampleOrder);
     ordersRepository.findById.mockResolvedValue(sampleOrder);
     ordersRepository.findByIdForCustomer.mockResolvedValue(sampleOrder);
@@ -454,13 +454,70 @@ describe('CheckoutService', () => {
       );
     });
 
-    it('computes zero default tax/discount/delivery totals', async () => {
-      await service.checkout(customerId, { couponCode: 'SAVE10' }, context);
-      expect(couponCalculator.calculate).toHaveBeenCalled();
-      expect(taxCalculator.calculate).toHaveBeenCalled();
-      expect(deliveryCalculator.calculate).toHaveBeenCalled();
+    it('delegates pricing to the shared PricingService with the resolved fulfillmentType and couponCode', async () => {
+      await service.checkout(
+        customerId,
+        { fulfillmentType: CheckoutFulfillmentType.DELIVERY, couponCode: 'SAVE10' },
+        context,
+      );
+      expect(pricingService.computeTotals).toHaveBeenCalledWith({
+        subtotal: 5000,
+        customerId,
+        merchantId,
+        fulfillmentType: 'DELIVERY',
+        couponCode: 'SAVE10',
+      });
+    });
+
+    it('creates the order using PricingService totals verbatim — the displayed-vs-charged consistency guarantee', async () => {
+      pricingService.computeTotals.mockResolvedValue({
+        subtotal: 5000,
+        discount: 500,
+        tax: 337.5,
+        deliveryFee: 1500,
+        total: 6337.5,
+        couponCode: 'SAVE500',
+      });
+
+      await service.checkout(
+        customerId,
+        { fulfillmentType: CheckoutFulfillmentType.DELIVERY, couponCode: 'SAVE500' },
+        context,
+      );
+
       expect(ordersRepository.create).toHaveBeenCalledWith(
-        expect.objectContaining({ tax: 0, discount: 0, deliveryFee: 0, total: 5000 }),
+        expect.objectContaining({
+          subtotal: 5000,
+          discount: 500,
+          tax: 337.5,
+          deliveryFee: 1500,
+          total: 6337.5,
+          couponCode: 'SAVE500',
+        }),
+      );
+      expect(eventBus.emit).toHaveBeenCalledWith(
+        DOMAIN_EVENTS.COUPON_REDEEMED,
+        expect.objectContaining({ couponCode: 'SAVE500', discount: 500 }),
+        expect.any(Object),
+      );
+    });
+
+    it('does not emit COUPON_REDEEMED when PricingService found no valid coupon', async () => {
+      pricingService.computeTotals.mockResolvedValue({
+        subtotal: 5000,
+        discount: 0,
+        tax: 0,
+        deliveryFee: 0,
+        total: 5000,
+        couponCode: null,
+      });
+
+      await service.checkout(customerId, { couponCode: 'GARBAGE' }, context);
+
+      expect(eventBus.emit).not.toHaveBeenCalledWith(
+        DOMAIN_EVENTS.COUPON_REDEEMED,
+        expect.anything(),
+        expect.anything(),
       );
     });
 

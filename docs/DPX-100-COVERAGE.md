@@ -293,9 +293,17 @@ dropped from `seed.ts`.
 
 _Last updated: 2026-08-04, after Marketplace Checkout gained real
 Cash-on-Delivery and Dx Wallet payment (see
-docs/MARKETPLACE-006-CASH-WALLET-PAYMENT-DESIGN.md and MATURITY.md) —
-Checkout stays ✅ Verified, now offering five real payment methods
-(Paystack/Flutterwave/OPay/Wallet/Cash) instead of three. Wallet is at
-7/10 real screens ported and Playwright-verified (Slice 4: Withdraw, a
-real production module, Phase 1 + Phase 2). Only Statement/Security/
-Settings remain (Slice 5), then the module production audit and freeze._
+docs/MARKETPLACE-006-CASH-WALLET-PAYMENT-DESIGN.md and MATURITY.md), and
+then a founder-flagged pricing-integrity defect that surfaced during that
+work was fixed the same day (see docs/PRICING-ENGINE.md): Cart preview and
+Order creation previously computed tax/delivery fee/discount independently
+and could disagree with what was actually charged. They now share one
+`PricingService`, verified end-to-end against the real backend across
+Wallet and Cash on Delivery, both fulfillment types. Checkout stays ✅
+Verified, now offering five real payment methods (Paystack/Flutterwave/
+OPay/Wallet/Cash) instead of three, with displayed and charged totals
+guaranteed identical. Wallet is at 7/10 real screens ported and
+Playwright-verified (Slice 4: Withdraw, a real production module, Phase 1
+
+- Phase 2). Only Statement/Security/Settings remain (Slice 5), then the
+  module production audit and freeze._

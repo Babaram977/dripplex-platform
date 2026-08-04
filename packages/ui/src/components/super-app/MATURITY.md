@@ -1229,3 +1229,55 @@ affect every payment method, including the existing gateway flows — and
 isn't specific to Cash/Wallet. Flagged to the founder rather than fixed
 here, since reconciling the two pricing paths is a separate, non-trivial
 change outside a payment-methods task's scope.
+
+## 2026-08-04 — Marketplace pricing pipeline: single source of truth (fix)
+
+The founder's explicit instruction, on reading the defect above: fix it
+before Marketplace freezes, not after. Full writeup:
+`docs/PRICING-ENGINE.md`.
+
+Root cause: `CartService` (Cart preview) and `CheckoutService` (Order
+creation) each independently recomputed tax/discount/delivery fee from
+`cart.items` using two disconnected sets of calculators — Cart's were
+real (7.5% VAT, ₦1,500 flat delivery), Checkout's were permanent
+zero-stubs. A second instance of the same bug, found while fixing the
+first: the checkout page already lets a customer apply a promo code and
+shows the resulting discount, and already sends `couponCode` through to
+`POST /customer/checkout` — but the zero-stub coupon calculator dropped
+it, so an applied discount was never actually charged either.
+
+Fix: one `PricingService.computeTotals()` (new `apps/backend/src/
+pricing/` module) is now the only place this arithmetic exists. Both
+`CartService.recalculateInternal` and `CheckoutService.checkout` call it
+directly — the six old calculator files
+(`cart/pricing/*`, `orders/pricing/{coupon,tax,delivery}-calculator.ts`)
+are deleted, not just bypassed. Discount is now real
+(`PromotionsService.evaluateForCart` — the same function the checkout
+page's promo-validate call already used, so preview and charge can never
+diverge), tax is `(subtotal − discount) × 7.5%`, delivery fee is ₦1,500
+for DELIVERY / ₦0 for PICKUP. `PaymentService` (Wallet/Paystack/
+Flutterwave/OPay/Cash) needed no changes — it already uniformly reads
+`order.total`, so a correct `Order.total` at creation time is sufficient
+for every payment method to stay consistent with it.
+
+Real coupon **redemption locking** (usage-limit enforcement via
+`PromotionsService.redeem`) is explicitly out of scope for this pass —
+flagged in `docs/PRICING-ENGINE.md`, not silently skipped. There are
+currently zero active `Promotion` rows in the database, so this has no
+practical effect today.
+
+New `pricing/pricing.service.spec.ts` reproduces the exact numbers from
+the original bug report (₦5,200 subtotal → ₦390 tax, ₦1,500 delivery,
+₦7,090 total) plus PICKUP/coupon-valid/coupon-invalid/discount-capped
+cases. `cart.service.spec.ts` and `checkout.service.spec.ts` updated to
+assert both services delegate to the one shared service. Full backend
+suite: 1063/1065 passing (same 2 pre-existing, unrelated
+`customer-products.service.spec.ts` DB-pollution failures as before).
+
+Verified end-to-end against the real backend, reproducing the exact
+₦5,200/DELIVERY scenario from the bug report: Cart preview showed
+₦7,090; Wallet payment on a ₦11,180 order (2× item, PICKUP) debited
+exactly ₦11,180 (balance ₦50,000 → ₦38,820); Cash on Delivery on a
+₦5,262.50 order (DELIVERY) confirmed with `paymentStatus: PENDING` and
+`total: 5262.50` — the exact amount to collect matches what was
+displayed, for both payment methods and both fulfillment types.

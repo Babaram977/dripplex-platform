@@ -4,6 +4,7 @@ import { AddressesModule } from '../addresses/addresses.module';
 import { AuditModule } from '../audit/audit.module';
 import { CartModule } from '../cart/cart.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { PricingModule } from '../pricing/pricing.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { ProductsModule } from '../products/products.module';
 import { WalletModule } from '../wallet/wallet.module';
@@ -19,9 +20,6 @@ import { MerchantOrdersService } from './merchant-orders.service';
 import { OrderCompletionSweepService } from './order-completion-sweep.service';
 import { CatalogCheckoutProductValidator } from './pricing/catalog-checkout-product.validator';
 import { CHECKOUT_PRODUCT_VALIDATOR } from './pricing/checkout-product.validator';
-import { CouponCalculator, ZeroCouponCalculator } from './pricing/coupon-calculator';
-import { DeliveryCalculator, ZeroDeliveryCalculator } from './pricing/delivery-calculator';
-import { TaxCalculator, ZeroTaxCalculator } from './pricing/tax-calculator';
 import { ORDERS_REPOSITORY } from './repositories/orders.repository';
 import { PrismaOrdersRepository } from './repositories/prisma-orders.repository';
 import { ReservationCleanupService } from './reservation-cleanup.service';
@@ -35,6 +33,7 @@ import { ReservationCleanupService } from './reservation-cleanup.service';
     AddressesModule,
     ProductsModule,
     WalletModule,
+    PricingModule,
   ],
   controllers: [CustomerOrdersController, AdminOrdersController, MerchantOrdersController],
   providers: [
@@ -44,9 +43,6 @@ import { ReservationCleanupService } from './reservation-cleanup.service';
     ReservationCleanupService,
     OrderCompletionSweepService,
     { provide: ORDERS_REPOSITORY, useClass: PrismaOrdersRepository },
-    { provide: TaxCalculator, useClass: ZeroTaxCalculator },
-    { provide: DeliveryCalculator, useClass: ZeroDeliveryCalculator },
-    { provide: CouponCalculator, useClass: ZeroCouponCalculator },
     { provide: CHECKOUT_PRODUCT_VALIDATOR, useClass: CatalogCheckoutProductValidator },
     {
       provide: CHECKOUT_INVENTORY_VALIDATOR,

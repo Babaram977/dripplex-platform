@@ -7,17 +7,12 @@ import {
   NotFoundDomainException,
   ValidationDomainException,
 } from '../common/exceptions/domain.exception';
+import { PricingService } from '../pricing/pricing.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 import { CART_AUDIT_ACTIONS, CART_CURRENCY_DEFAULT } from './cart.constants';
 import { roundMoney, toCartDto } from './cart.mapper';
 import { INVENTORY_VALIDATOR, type InventoryValidator } from './inventory/inventory-validator';
-import { COUPON_ENGINE, type CouponEngine } from './pricing/coupon-engine';
-import {
-  DELIVERY_FEE_CALCULATOR,
-  type DeliveryFeeCalculator,
-} from './pricing/delivery-fee-calculator';
-import { TAX_CALCULATOR, type TaxCalculator } from './pricing/tax-calculator';
 import {
   CART_REPOSITORY,
   type CartRepository,
@@ -34,14 +29,9 @@ export class CartService {
   constructor(
     @Inject(CART_REPOSITORY)
     private readonly cartRepository: CartRepository,
-    @Inject(COUPON_ENGINE)
-    private readonly couponEngine: CouponEngine,
-    @Inject(TAX_CALCULATOR)
-    private readonly taxCalculator: TaxCalculator,
-    @Inject(DELIVERY_FEE_CALCULATOR)
-    private readonly deliveryFeeCalculator: DeliveryFeeCalculator,
     @Inject(INVENTORY_VALIDATOR)
     private readonly inventoryValidator: InventoryValidator,
+    private readonly pricingService: PricingService,
     private readonly auditService: AuditService,
     private readonly prisma: PrismaService,
   ) {}
@@ -300,37 +290,13 @@ export class CartService {
 
     const subtotal = roundMoney(cart.items.reduce((sum, item) => sum + Number(item.subtotal), 0));
 
-    const discount = roundMoney(
-      await this.couponEngine.applyDiscount({
-        customerId,
-        merchantId: cart.merchantId,
-        subtotal,
-        currency: cart.currency,
-      }),
-    );
+    const pricing = await this.pricingService.computeTotals({
+      subtotal,
+      customerId,
+      merchantId: cart.merchantId,
+    });
 
-    const tax = roundMoney(
-      await this.taxCalculator.calculateTax({
-        subtotal,
-        discount,
-        currency: cart.currency,
-        country: 'NG',
-      }),
-    );
-
-    const deliveryFee =
-      cart.items.length === 0
-        ? 0
-        : roundMoney(
-            await this.deliveryFeeCalculator.calculateFee({
-              merchantId: cart.merchantId,
-              customerId,
-              subtotal,
-              currency: cart.currency,
-            }),
-          );
-
-    const total = roundMoney(Math.max(0, subtotal - discount + tax + deliveryFee));
+    const { discount, tax, deliveryFee, total } = pricing;
 
     await this.cartRepository.updateTotals(cartId, {
       subtotal,

@@ -10,10 +10,8 @@ import { CART_AUDIT_ACTIONS } from './cart.constants';
 import { CartService } from './cart.service';
 
 import type { AuditService } from '../audit/audit.service';
+import type { PricingService } from '../pricing/pricing.service';
 import type { InventoryValidator } from './inventory/inventory-validator';
-import type { CouponEngine } from './pricing/coupon-engine';
-import type { DeliveryFeeCalculator } from './pricing/delivery-fee-calculator';
-import type { TaxCalculator } from './pricing/tax-calculator';
 import type { CartRepository, CartWithItems } from './repositories/cart.repository';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { CartItem } from '@prisma/client';
@@ -84,17 +82,9 @@ describe('CartService', () => {
     abandonActiveCarts: jest.fn(),
   };
 
-  const couponEngine: jest.Mocked<CouponEngine> = {
-    applyDiscount: jest.fn().mockResolvedValue(0),
-  };
-
-  const taxCalculator: jest.Mocked<TaxCalculator> = {
-    calculateTax: jest.fn().mockResolvedValue(375),
-  };
-
-  const deliveryFeeCalculator: jest.Mocked<DeliveryFeeCalculator> = {
-    calculateFee: jest.fn().mockResolvedValue(1500),
-  };
+  const pricingService = {
+    computeTotals: jest.fn(),
+  } as unknown as jest.Mocked<PricingService>;
 
   const inventoryValidator: jest.Mocked<InventoryValidator> = {
     validateAvailability: jest.fn().mockResolvedValue({ available: true }),
@@ -116,10 +106,8 @@ describe('CartService', () => {
 
   const service = new CartService(
     repository,
-    couponEngine,
-    taxCalculator,
-    deliveryFeeCalculator,
     inventoryValidator,
+    pricingService,
     auditService,
     prisma,
   );
@@ -136,9 +124,14 @@ describe('CartService', () => {
       deletedAt: null,
     });
     inventoryValidator.validateAvailability.mockResolvedValue({ available: true });
-    couponEngine.applyDiscount.mockResolvedValue(0);
-    taxCalculator.calculateTax.mockResolvedValue(375);
-    deliveryFeeCalculator.calculateFee.mockResolvedValue(1500);
+    pricingService.computeTotals.mockResolvedValue({
+      subtotal: 5000,
+      discount: 0,
+      tax: 375,
+      deliveryFee: 1500,
+      total: 6875,
+      couponCode: null,
+    });
   });
 
   describe('create / add item', () => {
@@ -272,18 +265,18 @@ describe('CartService', () => {
   });
 
   describe('totals and eligibility', () => {
-    it('recalculates totals via pricing hooks', async () => {
+    it('recalculates totals via the shared PricingService', async () => {
       repository.findActiveByCustomerId.mockResolvedValue(sampleCart);
       repository.findById.mockResolvedValue(sampleCart);
       repository.updateTotals.mockResolvedValue(sampleCart);
 
       const result = await service.recalculate(customerId, context);
 
-      expect(couponEngine.applyDiscount).toHaveBeenCalled();
-      expect(taxCalculator.calculateTax).toHaveBeenCalledWith(
-        expect.objectContaining({ subtotal: 5000, discount: 0 }),
-      );
-      expect(deliveryFeeCalculator.calculateFee).toHaveBeenCalled();
+      expect(pricingService.computeTotals).toHaveBeenCalledWith({
+        subtotal: 5000,
+        customerId,
+        merchantId,
+      });
       expect(repository.updateTotals).toHaveBeenCalledWith(
         cartId,
         expect.objectContaining({

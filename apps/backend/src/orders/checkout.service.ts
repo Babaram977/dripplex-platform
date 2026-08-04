@@ -29,6 +29,7 @@ import {
   NOTIFICATION_SERVICE,
   type NotificationService,
 } from '../notifications/notification.service';
+import { PricingService } from '../pricing/pricing.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 import { CheckoutFulfillmentType } from './dto/order.dto';
@@ -37,9 +38,6 @@ import { InventoryReservationService } from './inventory/inventory-reservation.s
 import { ORDER_AUDIT_ACTIONS } from './order.constants';
 import { generateOrderNumber, roundMoney, toCheckoutResponseDto, toOrderDto } from './order.mapper';
 import { CHECKOUT_PRODUCT_VALIDATOR } from './pricing/checkout-product.validator';
-import { CouponCalculator } from './pricing/coupon-calculator';
-import { DeliveryCalculator } from './pricing/delivery-calculator';
-import { TaxCalculator } from './pricing/tax-calculator';
 import {
   ORDERS_REPOSITORY,
   type OrdersRepository,
@@ -64,9 +62,7 @@ export class CheckoutService {
     private readonly productValidator: CheckoutProductValidator,
     @Inject(CHECKOUT_INVENTORY_VALIDATOR)
     private readonly inventoryValidator: CheckoutInventoryValidator,
-    private readonly taxCalculator: TaxCalculator,
-    private readonly deliveryCalculator: DeliveryCalculator,
-    private readonly couponCalculator: CouponCalculator,
+    private readonly pricingService: PricingService,
     private readonly reservationService: InventoryReservationService,
     private readonly auditService: AuditService,
     @Inject(NOTIFICATION_SERVICE)
@@ -124,30 +120,14 @@ export class CheckoutService {
 
     const subtotal = roundMoney(cart.items.reduce((sum, item) => sum + Number(item.subtotal), 0));
 
-    const couponResult = await this.couponCalculator.calculate({
+    const pricing = await this.pricingService.computeTotals({
       subtotal,
-      currency: cart.currency,
+      customerId,
+      merchantId: cart.merchantId,
+      fulfillmentType: fulfillmentType === FulfillmentType.PICKUP ? 'PICKUP' : 'DELIVERY',
       ...(dto.couponCode !== undefined ? { couponCode: dto.couponCode } : {}),
     });
-    const discount = roundMoney(couponResult.discount);
-
-    const tax = roundMoney(
-      await this.taxCalculator.calculate({
-        subtotal,
-        discount,
-        currency: cart.currency,
-      }),
-    );
-
-    const deliveryFee = roundMoney(
-      await this.deliveryCalculator.calculate({
-        subtotal,
-        fulfillmentType,
-        currency: cart.currency,
-      }),
-    );
-
-    const total = roundMoney(Math.max(0, subtotal - discount + tax + deliveryFee));
+    const { discount, tax, deliveryFee, total } = pricing;
 
     const order = await this.ordersRepository.create({
       customerId,
@@ -161,7 +141,7 @@ export class CheckoutService {
       deliveryFee,
       total,
       currency: cart.currency,
-      couponCode: couponResult.couponCode,
+      couponCode: pricing.couponCode,
       deliveryAddressId,
       notes: (() => {
         const trimmed = dto.notes?.trim();
@@ -214,14 +194,14 @@ export class CheckoutService {
       },
     );
 
-    if (couponResult.couponCode) {
+    if (pricing.couponCode) {
       await this.eventBus?.emit(
         DOMAIN_EVENTS.COUPON_REDEEMED,
         {
           orderId: order.id,
           customerId,
           merchantId: cart.merchantId,
-          couponCode: couponResult.couponCode,
+          couponCode: pricing.couponCode,
           discount,
         },
         { actorUserId: customerId },
