@@ -338,5 +338,118 @@ for Tracking until it is itself ported and verified.
 | `SuperAppCheckoutSkeleton`      | Verified                                                 |
 | `SuperAppCartOrderSummary`      | Verified (extended, additive `title`/`totalLabel` props) |
 
-Tracking screen: not yet started — this remains unwritten, not merely
-"Implemented."
+## Marketplace module — Tracking screen Verified (2026-08-04)
+
+Ported from `docs/reference/figma-super-app-source/trackingScreen.tsx`
+(sixth and final Marketplace-module screen) and wired live at the real
+route `/marketplace/tracking/[orderId]`, backed by `sdk.orders.getOrder`,
+`sdk.delivery.getDelivery/getTracking/getEta`, `sdk.orders.cancelOrder`,
+and a newly-added `sdk.orders.raiseDispute`. Real `OrderDto`/`DeliveryJobDto`
+have two independent state machines (`Order.status`, `DeliveryJob.status`)
+where the source has one hardcoded union — the page composes the step
+list from real ranked thresholds instead of porting the mock's status
+type, and builds a genuinely different (shorter, no delivery steps)
+timeline for `PICKUP` orders, which have no `DeliveryJob` at all.
+
+Adaptations from the source, each tied to a real capability gap:
+
+- **Live map.** The source draws a fully fake animated SVG map. Reused
+  the real Google-Maps-backed `LiveMap` component already built for the
+  Ride module (`apps/customer-web/src/components/ride/live-map.tsx`)
+  instead of porting a duplicate into `packages/ui` — it's an app-level
+  integration (API key, `@vis.gl/react-google-maps`), consistent with
+  how Ride already keeps it out of the shared design-system package.
+  Pickup/dropoff coordinates come straight off the real
+  `CustomerDeliveryDto` (set from the real `Business`/`CustomerAddress`
+  rows at delivery-job creation); only renders once a `DeliveryJob`
+  genuinely exists and isn't yet delivered/cancelled.
+- **Rider identity.** Real `DeliveryJobDto` only exposes `riderId`, no
+  name — found no customer-safe rider-lookup endpoint anywhere in the
+  backend. Added one, following the exact precedent already used for
+  ride receipts (`ride-receipt.service.ts` resolving
+  `{id, name, phone}`): a new `CustomerDeliveryDto` (extends
+  `DeliveryJobDto` with `riderName`/`riderPhone`, resolved server-side in
+  `DeliveryService.getCustomerDelivery`) rather than fabricating a name
+  or omitting the rider card. Rating, delivery count, vehicle model, and
+  plate number have no real backend field (`RiderProfile` tracks none of
+  these) and are dropped — a real "rating and vehicle details aren't
+  tracked yet" note is shown instead of hiding the gap silently.
+- **Call / Message.** Matches the exact pattern already established on
+  the Ride module's driver-assigned screens: shown but disabled, with an
+  honest note, since no telephony/chat capability exists anywhere in the
+  backend.
+- **Report an Issue.** The source's version just returns canned AI text.
+  Built a real reason-entry sheet wired to a real
+  `POST /customer/orders/:id/dispute` — and added the missing SDK method
+  (`OrderClient.raiseDispute`) and shared `RaiseOrderDisputeDto` type, the
+  same way earlier screens closed SDK gaps. Critically, the real backend
+  only allows raising a dispute once `Order.status === 'DELIVERED'`
+  ("Only delivered orders can be disputed") — verification caught the
+  action bar offering it at every status and returning a real 422 at
+  anything else, so `SuperAppTrackingActionBar`'s Report button is now
+  optional (only rendered when the caller passes a handler), and only
+  the DELIVERED-vs-COMPLETED distinction (DELIVERED auto-completes to
+  COMPLETED via `order-completion-sweep.service.ts` unless disputed —
+  "disputing an order is the customer's way to stop the sweep") offers
+  it, via a new optional `onReportIssue` prop on the completed-celebration
+  screen.
+- **Completion state.** Ported the source's `DeliveredScreen` structure
+  (checkmark draw, order number, action row) but dropped the per-frame
+  emoji-confetti field for a single CSS checkmark animation, and dropped
+  "Rate" (no real order/rider rating capability — `Review` is
+  product-scoped, not order-scoped) and "Download Receipt" (no PDF
+  generation exists anywhere in the backend).
+- **Cancelled state.** Not in the source at all. Added a real banner
+  (with the real `cancellationReason` when present) rather than letting
+  a cancelled order silently render as if every future step were still
+  pending.
+
+**A real, previously-undiscovered bug in the Locked `SuperAppBottomNav`
+was found and fixed during verification:** its className template,
+`` `${fixed ? 'absolute bottom-0 left-0 right-0' : ''}flex ...` ``, had no
+space before `flex`, so whenever `fixed` (the default) was `true` the
+resulting string contained the invalid token `right-0flex` — Tailwind
+silently dropped it, meaning the nav was never actually `display:flex`.
+Every previous real usage happened to pass `fixed={false}` (fused inside
+`CartCheckoutBar`/`PlaceOrderBar`/`ProductActionBar`), so this never
+surfaced; Tracking is the first screen to render the standalone nav, and
+it appeared as five buttons stacked full-width down the page instead of
+a row. Fixed the missing space; re-verified the preview Marketplace page
+(which also uses the standalone default) renders correctly now too.
+
+Also found, during Playwright verification against a real order, a
+sub-label bug of its own: the "Order Confirmed" step read "Payment
+received" for orders that were cancelled before ever being paid
+(`confirmedAt` still `null`). Fixed to key off `confirmedAt` directly
+rather than special-casing `PENDING`.
+
+Typecheck/lint clean across `@dripplex/types`, `@dripplex/sdk`,
+`@dripplex/ui`, `customer-web`, and the backend; full backend suite:
+1018/1020 passing (2 pre-existing DB-seed-dependent failures, unrelated).
+Playwright walkthrough against the real seeded backend covered every
+real status this screen can render: `PENDING` (honest "awaiting payment",
+no step live), `CANCELLED` (banner, no cancel/report actions),
+`IN_TRANSIT`/`ON_THE_WAY` with a real assigned rider (live map, rider
+card with real name, single correctly-highlighted LIVE step), `DELIVERED`
+(celebration screen, a real dispute submitted via
+`sdk.orders.raiseDispute` that genuinely moved the order to `DISPUTED`
+in the database), and `PICKUP` fulfillment (shorter timeline, no
+map/rider card, matching the real absence of a `DeliveryJob`) — zero
+unexpected console errors throughout.
+
+Not yet Locked — pending founder confirmation. This completes all six
+Marketplace-module screens (Entry, Store, Product Detail, Cart, Checkout,
+Tracking).
+
+| Component                           | Status                                                      |
+| ----------------------------------- | ----------------------------------------------------------- |
+| `SuperAppOrderTimeline`             | Verified                                                    |
+| `SuperAppTrackingRiderCard`         | Verified                                                    |
+| `SuperAppTrackingMerchantCard`      | Verified                                                    |
+| `SuperAppTrackingItemsAccordion`    | Verified                                                    |
+| `SuperAppTrackingActionBar`         | Verified                                                    |
+| `SuperAppCancelOrderSheet`          | Verified                                                    |
+| `SuperAppReportIssueSheet`          | Verified                                                    |
+| `SuperAppOrderCompletedCelebration` | Verified                                                    |
+| `SuperAppTrackingSkeleton`          | Verified                                                    |
+| `SuperAppBottomNav`                 | Locked — real defect fixed (missing-space `flex` class bug) |

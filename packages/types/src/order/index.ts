@@ -113,6 +113,10 @@ export interface CancelOrderDto {
   reason?: string;
 }
 
+export interface RaiseOrderDisputeDto {
+  reason: string;
+}
+
 export interface ListOrdersQuery {
   page?: number;
   pageSize?: number;

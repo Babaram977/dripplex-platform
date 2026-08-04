@@ -927,6 +927,29 @@ describe('DeliveryService', () => {
 
     expect(result.id).toBe(jobId);
     expect(deliveryRepository.findJobByOrderForCustomer).toHaveBeenCalledWith(orderId, customerId);
+    expect(result.riderName).toBeNull();
+    expect(result.riderPhone).toBeNull();
+  });
+
+  it('enriches a customer delivery with the assigned rider name and phone', async () => {
+    deliveryRepository.findJobByOrderForCustomer.mockResolvedValue(makeJob({ riderId }));
+    userFindUnique.mockImplementation(({ where }: { where: { id: string } }) => {
+      if (where.id === riderId) {
+        return Promise.resolve({
+          id: riderId,
+          firstName: 'Emeka',
+          lastName: 'Okafor',
+          phone: '+2348011112222',
+          email: 'rider@example.com',
+        });
+      }
+      return Promise.resolve(null);
+    });
+
+    const result = await service.getCustomerDelivery(customerId, orderId);
+
+    expect(result.riderName).toBe('Emeka Okafor');
+    expect(result.riderPhone).toBe('+2348011112222');
   });
 
   it('rejects missing customer delivery', async () => {

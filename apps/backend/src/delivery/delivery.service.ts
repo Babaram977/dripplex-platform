@@ -41,6 +41,7 @@ import {
   toProofDto,
   toRiderLocationDto,
   toTrackingDto,
+  type CustomerDeliveryDto,
   type DeliveryJobDto,
   type EtaDto,
   type ProofDto,
@@ -400,12 +401,22 @@ export class DeliveryService {
     return toDeliveryJobDto(updated);
   }
 
-  public async getCustomerDelivery(customerId: string, orderId: string): Promise<DeliveryJobDto> {
+  public async getCustomerDelivery(
+    customerId: string,
+    orderId: string,
+  ): Promise<CustomerDeliveryDto> {
     const job = await this.deliveryRepository.findJobByOrderForCustomer(orderId, customerId);
     if (!job) {
       throw new NotFoundDomainException('Delivery job not found');
     }
-    return toDeliveryJobDto(job);
+    const rider = job.riderId
+      ? await this.prisma.user.findUnique({ where: { id: job.riderId } })
+      : null;
+    return {
+      ...toDeliveryJobDto(job),
+      riderName: rider ? `${rider.firstName} ${rider.lastName}`.trim() : null,
+      riderPhone: rider?.phone ?? null,
+    };
   }
 
   public async getCustomerTracking(customerId: string, orderId: string): Promise<TrackingDto[]> {

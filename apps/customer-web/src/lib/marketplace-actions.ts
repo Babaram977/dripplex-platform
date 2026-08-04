@@ -1,4 +1,4 @@
-import type { ProductDetailDto, ProductSummaryDto } from '@dripplex/types';
+import type { OrderItemDto, ProductDetailDto, ProductSummaryDto } from '@dripplex/types';
 
 import { sdk } from '@/lib/sdk';
 
@@ -22,6 +22,22 @@ export async function addProductToCart(
     quantity,
     ...(product.primaryImageUrl ? { imageUrl: product.primaryImageUrl } : {}),
   });
+}
+
+/** Re-adds a delivered/completed order's items to the cart, one at a time
+ * (the cart is single-merchant, and a past order's items always share one
+ * merchant, so this never hits `CartMerchantConflictDomainException`). */
+export async function reorderItems(items: OrderItemDto[]): Promise<void> {
+  for (const item of items) {
+    await sdk.cart.addItem({
+      merchantId: item.merchantId,
+      productId: item.productId,
+      productName: item.snapshotName,
+      unitPrice: item.unitPrice,
+      quantity: item.quantity,
+      ...(item.snapshotImage ? { imageUrl: item.snapshotImage } : {}),
+    });
+  }
 }
 
 /**

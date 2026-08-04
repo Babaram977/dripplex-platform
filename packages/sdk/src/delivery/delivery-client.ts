@@ -1,11 +1,11 @@
 import type { HttpClient } from '../client/http-client.js';
-import type { DeliveryEtaDto, DeliveryJobDto, DeliveryTrackingDto } from '@dripplex/types';
+import type { CustomerDeliveryDto, DeliveryEtaDto, DeliveryTrackingDto } from '@dripplex/types';
 
 export class DeliveryClient {
   public constructor(private readonly http: HttpClient) {}
 
-  public getDelivery(orderId: string): Promise<DeliveryJobDto> {
-    return this.http.request<DeliveryJobDto>(`/customer/orders/${orderId}/delivery`, {
+  public getDelivery(orderId: string): Promise<CustomerDeliveryDto> {
+    return this.http.request<CustomerDeliveryDto>(`/customer/orders/${orderId}/delivery`, {
       method: 'GET',
       auth: true,
     });

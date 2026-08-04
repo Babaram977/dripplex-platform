@@ -11,6 +11,7 @@ import type {
   PaginatedResult,
   PaymentStatusDto,
   PaymentVerificationDto,
+  RaiseOrderDisputeDto,
 } from '@dripplex/types';
 
 function toQuery(params?: Record<string, string | number | undefined>): string {
@@ -60,6 +61,14 @@ export class OrderClient {
 
   public cancelOrder(id: string, body: CancelOrderDto = {}): Promise<OrderDto> {
     return this.http.request<OrderDto>(`/customer/orders/${id}/cancel`, {
+      method: 'POST',
+      body,
+      auth: true,
+    });
+  }
+
+  public raiseDispute(id: string, body: RaiseOrderDisputeDto): Promise<OrderDto> {
+    return this.http.request<OrderDto>(`/customer/orders/${id}/dispute`, {
       method: 'POST',
       body,
       auth: true,

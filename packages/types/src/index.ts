@@ -188,6 +188,7 @@ export type {
   OrderItemDto,
   OrderStatus,
   PaymentStatus,
+  RaiseOrderDisputeDto,
 } from './order/index.js';
 
 export { ORDER_AUDIT_ACTIONS } from './order/index.js';
@@ -209,6 +210,7 @@ export type {
   AdminDeliveryJobQuery,
   AssignDeliveryRiderDto,
   AssignmentMethod,
+  CustomerDeliveryDto,
   DeliverOrderDto,
   DeliveryAuditAction,
   DeliveryEtaDto,

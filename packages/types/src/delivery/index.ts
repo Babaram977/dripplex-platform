@@ -42,6 +42,15 @@ export interface DeliveryJobDto {
   updatedAt: string;
 }
 
+/** Customer-facing delivery detail, enriched with the assigned rider's
+ * public name/phone (resolved server-side — DeliveryJobDto only carries
+ * riderId) so the customer-web tracking UI can show who's delivering
+ * without a separate rider-lookup endpoint. */
+export interface CustomerDeliveryDto extends DeliveryJobDto {
+  riderName: string | null;
+  riderPhone: string | null;
+}
+
 export interface DeliveryTrackingDto {
   id: string;
   deliveryJobId: string;

@@ -6,7 +6,7 @@ import { RequirePermissions } from '../common/decorators/permissions.decorator';
 import { DELIVERY_PERMISSIONS } from './delivery.constants';
 import { DeliveryService } from './delivery.service';
 
-import type { DeliveryJobDto, EtaDto, TrackingDto } from './delivery.mapper';
+import type { CustomerDeliveryDto, EtaDto, TrackingDto } from './delivery.mapper';
 import type { AuthenticatedUser } from '../auth/auth.types';
 import type { ApiSuccessResponse } from '../common/dto/api-response.dto';
 
@@ -19,7 +19,7 @@ export class CustomerDeliveryController {
   public async getDelivery(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<ApiSuccessResponse<DeliveryJobDto>> {
+  ): Promise<ApiSuccessResponse<CustomerDeliveryDto>> {
     const data = await this.deliveryService.getCustomerDelivery(user.id, id);
     return { success: true, data };
   }
