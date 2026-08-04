@@ -1167,3 +1167,65 @@ at the time and is left as-is rather than rewritten; this note records the
 correction. Re-verified with Playwright: Top Up and Payment Methods show
 OPay in place of Moniepoint, and Marketplace Checkout offers exactly three
 gateways (Paystack/Flutterwave/OPay) with zero console errors.
+
+## Marketplace module — Checkout: Cash-on-Delivery + Dx Wallet payment (2026-08-04)
+
+Founder asked why Checkout didn't offer Cash and Dx Wallet the way Ride
+already does. It's a real, buildable feature — `WalletService.debit()` is
+the same primitive Ride's wallet-pay path already calls, and
+Cash-on-Delivery needed the same driver-confirmation pattern
+`RidePaymentService.confirmCash()` already proved, adapted to a delivery
+rider collecting cash at handoff instead of a driver. See
+docs/MARKETPLACE-006-CASH-WALLET-PAYMENT-DESIGN.md for the full design.
+
+New `OrderPaymentMethod` Prisma enum (mirrors `RidePaymentMethod`,
+deliberately kept separate from the gateway-only `PaymentProvider` enum)
+plus `Order.paymentMethod`. `PaymentService.initializePayment()` branches
+on it exactly like Ride: WALLET debits the wallet and confirms the order
+immediately (`paymentStatus: PAID`); CASH (delivery orders only — no
+merchant-side "confirm handoff" action exists for pickup orders, a real,
+documented product constraint, not a workaround) confirms the order for
+the merchant to prepare but leaves `paymentStatus: PENDING` until the
+delivery rider completes the handoff. Settlement is wired through a new
+`CashSettlementSubscriber` listening for `DELIVERY_COMPLETED` — avoids a
+circular module dependency the same way `delivery/order-ready.subscriber.ts`
+already does in the other direction. Checkout's payment selector gains a
+balance-aware, disable-when-insufficient Dx Wallet row (mirroring Ride's
+`payment-screen.tsx`) and a Cash on Delivery row shown only for delivery
+orders; the tracking screen gains a "Cash on Delivery — have ₦X ready"
+banner for pending-cash orders.
+
+**Known gap, documented not hidden:** cash settlement is real and
+callable (verified directly, same as every other backend capability that
+ships ahead of its UI in this program), but no rider-facing frontend
+exists anywhere in the platform yet (`rider-portal` is an empty app
+shell) — a pre-existing gap this task doesn't attempt to backfill.
+
+Typecheck/lint clean across `@dripplex/backend`, `@dripplex/types`,
+`@dripplex/sdk`, `@dripplex/ui`, and `customer-web`. New unit tests for
+the WALLET/CASH branches of `PaymentService` and for
+`CashSettlementSubscriber` (11 tests). Full backend suite: 1061/1063
+passing (the 2 failures are the same pre-existing shared-dev-DB
+`customer-products.service.spec.ts` pollution documented in earlier
+slices, unrelated to this change). Verified end-to-end with Playwright
+against the real backend: a real ₦10,000 wallet-funded customer selected
+Dx Wallet at checkout, saw their real balance, placed a real order that
+came back `CONFIRMED`/`PAID`/`paymentMethod: WALLET`, and the wallet's
+real balance dropped by the exact debited amount; a second order with
+Cash on Delivery came back `CONFIRMED`/`PENDING`/`paymentMethod: CASH`
+and the tracking screen showed the cash-due banner; switching fulfillment
+to Pickup correctly hid the Cash option while keeping Dx Wallet. Zero
+console errors across all three flows.
+
+**Real defect discovered during verification, out of scope for this
+task:** the wallet-debited/order-charged total didn't match the
+Final Total shown at checkout (e.g. displayed ₦7,090 including ₦1,500
+delivery fee + ₦390 tax; actually charged ₦5,200) — `checkout.service.ts`
+uses `ZeroDeliveryCalculator`/`ZeroTaxCalculator` (both permanent stubs,
+"no delivery fee / tax until rules are configured") when creating the
+order, while the Cart's totals shown at checkout use a _different_,
+non-zero `DeliveryFeeCalculator`. This predates this change — it would
+affect every payment method, including the existing gateway flows — and
+isn't specific to Cash/Wallet. Flagged to the founder rather than fixed
+here, since reconciling the two pricing paths is a separate, non-trivial
+change outside a payment-methods task's scope.

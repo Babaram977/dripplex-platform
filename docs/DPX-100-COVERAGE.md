@@ -291,7 +291,11 @@ seed rows for live production data requires no presentation-layer code
 change. Phase 2, once a module is fully live, its seed block is simply
 dropped from `seed.ts`.
 
-_Last updated: 2026-08-04, after Wallet Slice 4 (Withdraw — a real
-production module, Phase 1 + Phase 2) — Wallet is now 7/10 real screens
-ported and Playwright-verified. Only Statement/Security/Settings remain
-(Slice 5), then the module production audit and freeze._
+_Last updated: 2026-08-04, after Marketplace Checkout gained real
+Cash-on-Delivery and Dx Wallet payment (see
+docs/MARKETPLACE-006-CASH-WALLET-PAYMENT-DESIGN.md and MATURITY.md) —
+Checkout stays ✅ Verified, now offering five real payment methods
+(Paystack/Flutterwave/OPay/Wallet/Cash) instead of three. Wallet is at
+7/10 real screens ported and Playwright-verified (Slice 4: Withdraw, a
+real production module, Phase 1 + Phase 2). Only Statement/Security/
+Settings remain (Slice 5), then the module production audit and freeze._

@@ -166,6 +166,17 @@ enum PaymentProvider {
   OPAY
 }
 
+/// How a customer chose to pay for a marketplace order — distinct from
+/// PaymentProvider (external gateways only). WALLET and CASH never create
+/// a PaymentTransaction row; mirrors RidePaymentMethod's separation.
+enum OrderPaymentMethod {
+  PAYSTACK
+  FLUTTERWAVE
+  OPAY
+  WALLET
+  CASH
+}
+
 enum TransactionStatus {
   PENDING
   SUCCESS
@@ -838,6 +849,7 @@ model Order {
   orderNumber         String                 @unique @map("order_number") @db.VarChar(40)
   status              OrderStatus            @default(PENDING)
   paymentStatus       PaymentStatus          @default(PENDING) @map("payment_status")
+  paymentMethod       OrderPaymentMethod?    @map("payment_method")
   fulfillmentType     FulfillmentType        @map("fulfillment_type")
   subtotal            Decimal                @db.Decimal(12, 2)
   discount            Decimal                @default(0) @db.Decimal(12, 2)

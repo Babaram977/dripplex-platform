@@ -20,13 +20,14 @@ import {
 import { useRouter } from 'next/navigation';
 import * as React from 'react';
 
-import type { CartDto, CustomerAddressDto } from '@dripplex/types';
+import type { CartDto, CustomerAddressDto, OrderPaymentMethod } from '@dripplex/types';
 
+import { useCustomerWallet } from '@/hooks/rides';
 import { formatPrice } from '@/lib/format';
 import { describeSdkError, sdk } from '@/lib/sdk';
 import { siteConfig } from '@/lib/site';
 
-const PAYMENT_OPTIONS = [
+const GATEWAY_OPTIONS = [
   { key: 'PAYSTACK', icon: '💳', label: 'Paystack', sublabel: 'Card, bank transfer & USSD' },
   { key: 'FLUTTERWAVE', icon: '💳', label: 'Flutterwave', sublabel: 'Card, bank transfer & USSD' },
   { key: 'OPAY', icon: '📱', label: 'OPay', sublabel: 'Wallet & bank transfer' },
@@ -49,9 +50,10 @@ export default function CheckoutPage(): React.JSX.Element {
 
   const [fulfillmentType, setFulfillmentType] = React.useState<SuperAppFulfillmentType>('DELIVERY');
   const [note, setNote] = React.useState('');
-  const [paymentProvider, setPaymentProvider] = React.useState<string>(PAYMENT_OPTIONS[0].key);
+  const [paymentProvider, setPaymentProvider] = React.useState<string>(GATEWAY_OPTIONS[0].key);
   const [termsChecked, setTermsChecked] = React.useState(false);
   const [placing, setPlacing] = React.useState(false);
+  const wallet = useCustomerWallet();
 
   const [promoCode, setPromoCode] = React.useState<string | null>(null);
   const [promoDiscount, setPromoDiscount] = React.useState(0);
@@ -150,6 +152,48 @@ export default function CheckoutPage(): React.JSX.Element {
     }
   };
 
+  const grandTotalForOptions = cart
+    ? Math.max(
+        0,
+        cart.totals.subtotal -
+          cart.totals.discount -
+          promoDiscount +
+          cart.totals.tax +
+          (fulfillmentType === 'PICKUP' ? 0 : cart.totals.deliveryFee),
+      )
+    : 0;
+  const insufficientWallet =
+    wallet.data !== undefined ? wallet.data.availableBalance < grandTotalForOptions : false;
+
+  const paymentOptions = React.useMemo(() => {
+    const walletOption = {
+      key: 'WALLET',
+      icon: '💰',
+      label: 'Dx Wallet',
+      sublabel: wallet.isLoading
+        ? 'Loading balance…'
+        : wallet.data
+          ? `Balance: ${formatPrice(wallet.data.availableBalance, cart?.currency ?? 'NGN')}${insufficientWallet ? ' — insufficient' : ''}`
+          : '—',
+      disabled: insufficientWallet,
+    };
+    const cashOption = {
+      key: 'CASH',
+      icon: '💵',
+      label: 'Cash on Delivery',
+      sublabel: 'Pay the rider when your order arrives',
+    };
+    return fulfillmentType === 'DELIVERY'
+      ? [...GATEWAY_OPTIONS, walletOption, cashOption]
+      : [...GATEWAY_OPTIONS, walletOption];
+  }, [fulfillmentType, wallet.isLoading, wallet.data, insufficientWallet, cart?.currency]);
+
+  React.useEffect(() => {
+    if (!paymentOptions.some((option) => option.key === paymentProvider)) {
+      setPaymentProvider(GATEWAY_OPTIONS[0].key);
+    }
+  }, [paymentOptions, paymentProvider]);
+
   const onPlaceOrder = async (): Promise<void> => {
     if (!cart || placing) return;
     if (fulfillmentType === 'DELIVERY' && !selectedAddressId) {
@@ -182,9 +226,16 @@ export default function CheckoutPage(): React.JSX.Element {
 
     try {
       const payment = await sdk.orders.payOrder(orderId, {
-        provider: paymentProvider as 'PAYSTACK' | 'FLUTTERWAVE' | 'OPAY',
+        provider: paymentProvider as OrderPaymentMethod,
       });
-      window.location.href = payment.authorizationUrl;
+      if (payment.authorizationUrl) {
+        window.location.href = payment.authorizationUrl;
+        return;
+      }
+      if (payment.order.paymentStatus === 'PAID') {
+        toast({ title: 'Order paid', description: 'Paid with your Dx Wallet balance.' });
+      }
+      router.push(`/marketplace/tracking/${orderId}`);
     } catch (paymentError) {
       // The order already exists (and its cart is now locked) even though
       // payment initialization failed — send the customer to the order
@@ -246,10 +297,7 @@ export default function CheckoutPage(): React.JSX.Element {
 
   const selectedAddress = addresses.find((a) => a.id === selectedAddressId) ?? null;
   const deliveryFee = fulfillmentType === 'PICKUP' ? 0 : cart.totals.deliveryFee;
-  const grandTotal = Math.max(
-    0,
-    cart.totals.subtotal - cart.totals.discount - promoDiscount + cart.totals.tax + deliveryFee,
-  );
+  const grandTotal = grandTotalForOptions;
 
   return (
     <div className="absolute inset-0 flex flex-col overflow-hidden">
@@ -301,7 +349,7 @@ export default function CheckoutPage(): React.JSX.Element {
             Payment Method
           </p>
           <SuperAppPaymentMethodSelector
-            options={[...PAYMENT_OPTIONS]}
+            options={paymentOptions}
             selectedKey={paymentProvider}
             onSelect={setPaymentProvider}
           />

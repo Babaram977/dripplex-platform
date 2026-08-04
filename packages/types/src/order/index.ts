@@ -25,6 +25,11 @@ export type PaymentStatus = 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED' | 'PARTIA
 
 export type FulfillmentType = 'DELIVERY' | 'PICKUP';
 
+/// How the customer chose to pay — distinct from the gateway-only
+/// PaymentProvider type. WALLET and CASH never produce a
+/// PaymentTransactionDto; mirrors RidePaymentMethod's separation.
+export type OrderPaymentMethod = 'PAYSTACK' | 'FLUTTERWAVE' | 'OPAY' | 'WALLET' | 'CASH';
+
 export interface OrderItemDto {
   id: string;
   orderId: string;
@@ -71,6 +76,7 @@ export interface OrderDto {
   orderNumber: string;
   status: OrderStatus;
   paymentStatus: PaymentStatus;
+  paymentMethod: OrderPaymentMethod | null;
   fulfillmentType: FulfillmentType;
   subtotal: number;
   discount: number;

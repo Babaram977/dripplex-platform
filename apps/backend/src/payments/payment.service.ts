@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
   CartStatus,
   MerchantStatus,
+  OrderPaymentMethod,
   OrderStatus,
   PaymentProvider,
   PaymentStatus,
@@ -24,7 +25,11 @@ import {
   NOTIFICATION_SERVICE,
   type NotificationService,
 } from '../notifications/notification.service';
-import { ORDER_WALLET_REFERENCE_TYPE } from '../orders/order.constants';
+import {
+  ORDER_WALLET_PAYMENT_REFERENCE_TYPE,
+  ORDER_WALLET_REFERENCE_TYPE,
+} from '../orders/order.constants';
+import { toOrderDto } from '../orders/order.mapper';
 import {
   ORDERS_REPOSITORY,
   type OrdersRepository,
@@ -54,7 +59,16 @@ import type {
   PaymentStatusDto,
   PaymentVerificationDto,
 } from '@dripplex/types';
-import type { PaymentTransaction } from '@prisma/client';
+import type { Order, PaymentTransaction } from '@prisma/client';
+
+/** Only these three OrderPaymentMethod values reach a PaymentProviderAdapter
+ * — WALLET and CASH are handled entirely inside this service, exactly like
+ * RidePaymentService's GATEWAY_METHODS / RIDE_PAYMENT_METHOD_TO_PROVIDER. */
+const ORDER_PAYMENT_METHOD_TO_PROVIDER: Partial<Record<OrderPaymentMethod, PaymentProvider>> = {
+  [OrderPaymentMethod.PAYSTACK]: 'PAYSTACK',
+  [OrderPaymentMethod.FLUTTERWAVE]: 'FLUTTERWAVE',
+  [OrderPaymentMethod.OPAY]: 'OPAY',
+};
 
 @Injectable()
 export class PaymentService {
@@ -88,7 +102,28 @@ export class PaymentService {
     context: AuditContext,
   ): Promise<InitializePaymentResponseDto> {
     const order = await this.requirePayableOrder(customerId, orderId);
-    const provider = this.resolveProvider(dto.provider);
+    const method = this.resolveMethod(dto.provider);
+
+    if (method === OrderPaymentMethod.WALLET) {
+      return await this.payOrderWithWallet(order, customerId, context);
+    }
+    if (method === OrderPaymentMethod.CASH) {
+      return await this.selectCashOnDelivery(order, customerId, context);
+    }
+    return await this.initiateGatewayPayment(order, customerId, method, dto, context);
+  }
+
+  private async initiateGatewayPayment(
+    order: OrderWithItems,
+    customerId: string,
+    method: OrderPaymentMethod,
+    dto: InitializePaymentDto,
+    context: AuditContext,
+  ): Promise<InitializePaymentResponseDto> {
+    const provider = ORDER_PAYMENT_METHOD_TO_PROVIDER[method];
+    if (!provider) {
+      throw new ValidationDomainException(`Unsupported payment method: ${method}`);
+    }
     const adapter = this.getAdapter(provider);
 
     const existingSuccess = await this.paymentRepository.findSuccessfulByOrderId(order.id);
@@ -99,6 +134,7 @@ export class PaymentService {
     const pending = await this.paymentRepository.findPendingByOrderAndProvider(order.id, provider);
     if (pending?.authorizationUrl) {
       return {
+        order: toOrderDto(order),
         authorizationUrl: pending.authorizationUrl,
         reference: pending.providerReference,
         provider: pending.provider,
@@ -139,6 +175,11 @@ export class PaymentService {
       },
     });
 
+    const updatedOrder = await this.ordersRepository.transition(order.id, {
+      status: order.status,
+      paymentMethod: method,
+    });
+
     await this.auditService.record(
       PAYMENT_AUDIT_ACTIONS.INITIALIZED,
       { ...context, userId: customerId },
@@ -155,11 +196,162 @@ export class PaymentService {
     );
 
     return {
+      order: toOrderDto({ ...order, ...updatedOrder }),
       authorizationUrl: transaction.authorizationUrl ?? init.authorizationUrl,
       reference: transaction.providerReference,
       provider: transaction.provider,
       transaction: toPaymentTransactionDto(transaction),
     };
+  }
+
+  /**
+   * Pays an order with Dx Wallet balance — reuses WalletService.debit(),
+   * the same primitive RidePaymentService.payWithWallet() already relies
+   * on. Debit-then-finalize, no PaymentTransaction row (mirrors Ride: cash
+   * and wallet fares never create a RidePaymentTransaction either).
+   */
+  private async payOrderWithWallet(
+    order: OrderWithItems,
+    customerId: string,
+    context: AuditContext,
+  ): Promise<InitializePaymentResponseDto> {
+    await this.walletService.debit({
+      ownerType: WalletOwnerType.CUSTOMER,
+      ownerId: customerId,
+      amount: Number(order.total),
+      referenceType: ORDER_WALLET_PAYMENT_REFERENCE_TYPE,
+      referenceId: order.id,
+      description: `Order payment (${order.orderNumber})`,
+      context,
+    });
+
+    const finalized = await this.finalizeOrderConfirmation(order, {
+      paymentMethod: OrderPaymentMethod.WALLET,
+      paymentStatus: PaymentStatus.PAID,
+      context: { ...context, userId: customerId },
+    });
+
+    await this.auditService.record(
+      PAYMENT_AUDIT_ACTIONS.INITIALIZED,
+      { ...context, userId: customerId },
+      {
+        resource: 'order',
+        resourceId: order.id,
+        metadata: { method: 'WALLET', amount: Number(order.total) },
+      },
+    );
+
+    const reference = `WALLET-${order.id.slice(0, 8)}`;
+    await this.notifyPaymentOutcome(
+      order,
+      { amount: Number(order.total), currency: order.currency, reference },
+      true,
+    );
+    await this.eventBus?.emit(
+      DOMAIN_EVENTS.ORDER_PAID,
+      {
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        customerId: order.customerId,
+        merchantId: order.merchantId,
+        amount: Number(order.total),
+        currency: order.currency,
+        method: 'WALLET',
+      },
+      { actorUserId: customerId },
+    );
+
+    return { order: toOrderDto({ ...order, ...finalized }) };
+  }
+
+  /**
+   * Records the customer's choice to pay cash at delivery. Only valid for
+   * DELIVERY-fulfillment orders — see docs/MARKETPLACE-006-CASH-WALLET-PAYMENT-DESIGN.md
+   * for why pickup orders don't offer this. paymentStatus stays PENDING;
+   * the order is otherwise confirmed immediately (merchant starts
+   * preparing) — standard cash-on-delivery behavior. Settlement happens
+   * when the delivery rider completes the handoff (DeliveryService.deliver()).
+   */
+  private async selectCashOnDelivery(
+    order: OrderWithItems,
+    customerId: string,
+    context: AuditContext,
+  ): Promise<InitializePaymentResponseDto> {
+    if (order.fulfillmentType !== 'DELIVERY') {
+      throw new ValidationDomainException('Cash on delivery is only available for delivery orders');
+    }
+
+    const finalized = await this.finalizeOrderConfirmation(order, {
+      paymentMethod: OrderPaymentMethod.CASH,
+      paymentStatus: PaymentStatus.PENDING,
+      context: { ...context, userId: customerId },
+    });
+
+    await this.auditService.record(
+      PAYMENT_AUDIT_ACTIONS.INITIALIZED,
+      { ...context, userId: customerId },
+      { resource: 'order', resourceId: order.id, metadata: { method: 'CASH' } },
+    );
+
+    return { order: toOrderDto({ ...order, ...finalized }) };
+  }
+
+  /**
+   * Settles a cash-on-delivery order once the rider physically collects
+   * payment. Triggered by DELIVERY_COMPLETED (see
+   * CashSettlementSubscriber) rather than a direct call from
+   * DeliveryService, to avoid a circular module dependency — the rider's
+   * `deliver()` action is still the real-world moment this fires from,
+   * mirroring RidePaymentService.confirmCash() being driver-only, never
+   * customer-callable. The order is already CONFIRMED
+   * (finalizeOrderConfirmation ran at selection time); this only flips
+   * paymentStatus, no inventory/cart re-processing. Returns null (a
+   * deliberate no-op, not an error) for the common case where the
+   * delivered order wasn't paid by cash — every DELIVERY_COMPLETED event
+   * reaches here regardless of payment method. Idempotent: a second call
+   * on an already-PAID order is a no-op too.
+   */
+  public async markCashPaymentReceived(
+    orderId: string,
+    context: AuditContext,
+  ): Promise<Order | null> {
+    const order = await this.ordersRepository.findById(orderId);
+    if (!order) {
+      throw new NotFoundDomainException('Order not found');
+    }
+    if (order.paymentMethod !== OrderPaymentMethod.CASH) {
+      return null;
+    }
+    if (order.paymentStatus === PaymentStatus.PAID) {
+      return order;
+    }
+
+    const updated = await this.ordersRepository.transition(order.id, {
+      status: order.status,
+      paymentStatus: PaymentStatus.PAID,
+    });
+
+    await this.auditService.record(PAYMENT_AUDIT_ACTIONS.VERIFIED, context, {
+      resource: 'order',
+      resourceId: order.id,
+      metadata: { method: 'CASH', amount: Number(order.total) },
+    });
+
+    await this.eventBus?.emit(
+      DOMAIN_EVENTS.ORDER_PAID,
+      {
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        customerId: order.customerId,
+        merchantId: order.merchantId,
+        amount: Number(order.total),
+        currency: order.currency,
+        method: 'CASH',
+      },
+      { actorUserId: context.userId ?? null },
+    );
+
+    return updated;
   }
 
   public async verifyPayment(
@@ -212,7 +404,15 @@ export class PaymentService {
         },
       );
 
-      await this.notifyPaymentOutcome(order, failed, false);
+      await this.notifyPaymentOutcome(
+        order,
+        {
+          amount: Number(failed.amount),
+          currency: failed.currency,
+          reference: failed.providerReference,
+        },
+        false,
+      );
       await this.emitPaymentFailed(order, failed);
 
       return {
@@ -361,7 +561,15 @@ export class PaymentService {
           metadata: { source: 'webhook', reference: transaction.providerReference },
         },
       );
-      await this.notifyPaymentOutcome(order, transaction, false);
+      await this.notifyPaymentOutcome(
+        order,
+        {
+          amount: Number(transaction.amount),
+          currency: transaction.currency,
+          reference: transaction.providerReference,
+        },
+        false,
+      );
       await this.emitPaymentFailed(order, transaction);
     }
 
@@ -405,25 +613,12 @@ export class PaymentService {
 
     const alreadyProcessed = false;
 
-    if (input.order.status !== OrderStatus.CONFIRMED) {
-      await this.ordersRepository.transition(input.order.id, {
-        status: OrderStatus.CONFIRMED,
-        paymentStatus: PaymentStatus.PAID,
-        confirmedAt: new Date(),
-      });
-    }
-
-    await this.inventoryDeduction.deductForOrder({
-      orderId: input.order.id,
+    // Gateway path: paymentMethod was already set at initiate time
+    // (initiateGatewayPayment), so this only needs to flip status/paymentStatus.
+    await this.finalizeOrderConfirmation(input.order, {
+      paymentStatus: PaymentStatus.PAID,
       context: input.context,
     });
-
-    if (input.order.cartId) {
-      const cart = await this.cartRepository.findById(input.order.cartId);
-      if (cart && cart.status !== CartStatus.CHECKED_OUT) {
-        await this.cartRepository.updateStatus(input.order.cartId, CartStatus.CHECKED_OUT);
-      }
-    }
 
     await this.auditService.record(PAYMENT_AUDIT_ACTIONS.VERIFIED, input.context, {
       resource: 'payment_transaction',
@@ -436,10 +631,53 @@ export class PaymentService {
       },
     });
 
-    await this.notifyPaymentOutcome(input.order, updated, true);
+    await this.notifyPaymentOutcome(
+      input.order,
+      {
+        amount: Number(updated.amount),
+        currency: updated.currency,
+        reference: updated.providerReference,
+      },
+      true,
+    );
     await this.emitPaymentSucceeded(input.order, updated, input.source);
 
     return { transaction: updated, alreadyProcessed };
+  }
+
+  /**
+   * Shared order-side effects for a successful payment (gateway, wallet, or
+   * cash-on-delivery selection): status → CONFIRMED, inventory deducted,
+   * cart marked checked-out. Safe to call unconditionally — every caller
+   * reaches this only after requirePayableOrder()/assertOrderStillPayable()
+   * has confirmed the order is still PENDING, so this never re-runs on an
+   * already-confirmed order (inventory deduction is not safe to double-run).
+   */
+  private async finalizeOrderConfirmation(
+    order: OrderWithItems,
+    input: {
+      paymentMethod?: OrderPaymentMethod;
+      paymentStatus: PaymentStatus;
+      context: AuditContext;
+    },
+  ): Promise<Order> {
+    const updated = await this.ordersRepository.transition(order.id, {
+      status: OrderStatus.CONFIRMED,
+      paymentStatus: input.paymentStatus,
+      ...(input.paymentMethod !== undefined ? { paymentMethod: input.paymentMethod } : {}),
+      confirmedAt: new Date(),
+    });
+
+    await this.inventoryDeduction.deductForOrder({ orderId: order.id, context: input.context });
+
+    if (order.cartId) {
+      const cart = await this.cartRepository.findById(order.cartId);
+      if (cart && cart.status !== CartStatus.CHECKED_OUT) {
+        await this.cartRepository.updateStatus(order.cartId, CartStatus.CHECKED_OUT);
+      }
+    }
+
+    return updated;
   }
 
   private async emitPaymentSucceeded(
@@ -549,18 +787,12 @@ export class PaymentService {
     }
   }
 
-  private resolveProvider(requested?: string): PaymentProvider {
+  private resolveMethod(requested?: string): OrderPaymentMethod {
     const value = (requested ?? this.config.paymentDefaultProvider).toUpperCase();
-    if (value === PaymentProvider.PAYSTACK) {
-      return PaymentProvider.PAYSTACK;
+    if (value in OrderPaymentMethod) {
+      return OrderPaymentMethod[value as keyof typeof OrderPaymentMethod];
     }
-    if (value === PaymentProvider.FLUTTERWAVE) {
-      return PaymentProvider.FLUTTERWAVE;
-    }
-    if (value === PaymentProvider.OPAY) {
-      return PaymentProvider.OPAY;
-    }
-    throw new ValidationDomainException(`Unsupported payment provider: ${value}`);
+    throw new ValidationDomainException(`Unsupported payment method: ${value}`);
   }
 
   private getAdapter(provider: PaymentProvider): PaymentProviderAdapter {
@@ -573,7 +805,7 @@ export class PaymentService {
 
   private async notifyPaymentOutcome(
     order: OrderWithItems,
-    transaction: PaymentTransaction,
+    info: { amount: number; currency: string; reference: string },
     success: boolean,
   ): Promise<void> {
     const [customer, merchantProfile] = await Promise.all([
@@ -592,9 +824,9 @@ export class PaymentService {
         success,
         orderId: order.id,
         orderNumber: order.orderNumber,
-        amount: Number(transaction.amount),
-        currency: transaction.currency,
-        reference: transaction.providerReference,
+        amount: info.amount,
+        currency: info.currency,
+        reference: info.reference,
       });
     }
 
@@ -605,9 +837,9 @@ export class PaymentService {
         success: true,
         orderId: order.id,
         orderNumber: order.orderNumber,
-        amount: Number(transaction.amount),
-        currency: transaction.currency,
-        reference: transaction.providerReference,
+        amount: info.amount,
+        currency: info.currency,
+        reference: info.reference,
       });
     }
   }

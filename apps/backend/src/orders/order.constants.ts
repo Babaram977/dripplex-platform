@@ -34,3 +34,10 @@ export const ORDER_COMPLETION_SWEEP_INTERVAL_MS = 15 * 60 * 1000;
  * referenceId = order.id — same idempotency pattern as
  * RIDE_WALLET_REFERENCE_TYPES / PROMOTION_WALLET_REFERENCE_TYPE. */
 export const ORDER_WALLET_REFERENCE_TYPE = 'order_refund';
+
+/** WalletLedgerEntry.referenceType for paying an order with Dx Wallet
+ * balance, paired with referenceId = order.id. Deliberately distinct from
+ * ORDER_WALLET_REFERENCE_TYPE (refunds) so the composite
+ * (walletId, referenceType, referenceId) uniqueness constraint keeps a
+ * payment and its later refund as separate ledger entries. */
+export const ORDER_WALLET_PAYMENT_REFERENCE_TYPE = 'order_payment';

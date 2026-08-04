@@ -5,6 +5,7 @@ import {
   CartStatus,
   FulfillmentType,
   MerchantStatus,
+  OrderPaymentMethod,
   OrderStatus,
   PaymentProvider,
   PaymentStatus,
@@ -17,8 +18,9 @@ import {
   NotFoundDomainException,
   ValidationDomainException,
 } from '../common/exceptions/domain.exception';
+import { ORDER_WALLET_PAYMENT_REFERENCE_TYPE } from '../orders/order.constants';
 
-import { PaymentProviderDtoEnum } from './dto/payment.dto';
+import { OrderPaymentMethodDtoEnum } from './dto/payment.dto';
 import { PAYMENT_AUDIT_ACTIONS } from './payment.constants';
 import { PaymentService } from './payment.service';
 import { FlutterwaveProvider } from './providers/flutterwave.provider';
@@ -57,6 +59,23 @@ const sampleOrder = {
   fulfillmentType: FulfillmentType.PICKUP,
   deliveryAddressId: null,
   deliveryFee: 0,
+  discount: 0,
+  tax: 0,
+  subtotal: 5000,
+  couponCode: null,
+  notes: null,
+  estimatedReadyAt: null,
+  confirmedAt: null,
+  readyAt: null,
+  deliveredAt: null,
+  completedAt: null,
+  cancelledAt: null,
+  cancelledBy: null,
+  cancellationReason: null,
+  refundedAt: null,
+  paymentMethod: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
   reservations: [
     {
       id: '66666666-6666-6666-6666-666666666666',
@@ -173,6 +192,7 @@ describe('PaymentService', () => {
   } as unknown as AppConfigService;
 
   const walletService = {
+    debit: jest.fn().mockResolvedValue(undefined),
     refund: jest.fn().mockResolvedValue(undefined),
   } as unknown as jest.Mocked<WalletService>;
 
@@ -276,7 +296,7 @@ describe('PaymentService', () => {
       const result = await service.initializePayment(
         customerId,
         orderId,
-        { provider: PaymentProviderDtoEnum.PAYSTACK },
+        { provider: OrderPaymentMethodDtoEnum.PAYSTACK },
         context,
       );
       expect(result.reference).toBe(reference);
@@ -342,6 +362,130 @@ describe('PaymentService', () => {
       await expect(
         service.initializePayment(customerId, orderId, {}, context),
       ).rejects.toBeInstanceOf(ValidationDomainException);
+    });
+  });
+
+  describe('WALLET payment', () => {
+    it('debits the wallet and confirms the order immediately', async () => {
+      const result = await service.initializePayment(
+        customerId,
+        orderId,
+        { provider: OrderPaymentMethodDtoEnum.WALLET },
+        context,
+      );
+
+      expect(walletService.debit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ownerId: customerId,
+          amount: 5000,
+          referenceType: ORDER_WALLET_PAYMENT_REFERENCE_TYPE,
+          referenceId: orderId,
+        }),
+      );
+      expect(ordersRepository.transition).toHaveBeenCalledWith(orderId, {
+        status: OrderStatus.CONFIRMED,
+        paymentStatus: PaymentStatus.PAID,
+        paymentMethod: OrderPaymentMethod.WALLET,
+        confirmedAt: expect.any(Date),
+      });
+      expect(inventoryDeduction.deductForOrder).toHaveBeenCalled();
+      expect(cartRepository.updateStatus).toHaveBeenCalledWith(cartId, CartStatus.CHECKED_OUT);
+      expect(result.authorizationUrl).toBeUndefined();
+      expect(result.order.paymentStatus).toBe(PaymentStatus.PAID);
+      expect(provider.initializePayment).not.toHaveBeenCalled();
+    });
+
+    it('leaves the order unpaid when the wallet debit fails', async () => {
+      walletService.debit.mockRejectedValue(new ValidationDomainException('Insufficient balance'));
+      await expect(
+        service.initializePayment(
+          customerId,
+          orderId,
+          { provider: OrderPaymentMethodDtoEnum.WALLET },
+          context,
+        ),
+      ).rejects.toBeInstanceOf(ValidationDomainException);
+      expect(ordersRepository.transition).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('CASH payment', () => {
+    const deliveryOrder = { ...sampleOrder, fulfillmentType: FulfillmentType.DELIVERY };
+
+    it('confirms the order but leaves paymentStatus pending', async () => {
+      ordersRepository.findByIdForCustomer.mockResolvedValue(deliveryOrder);
+      ordersRepository.transition.mockResolvedValue({
+        ...deliveryOrder,
+        status: OrderStatus.CONFIRMED,
+        paymentStatus: PaymentStatus.PENDING,
+        paymentMethod: OrderPaymentMethod.CASH,
+      });
+      const result = await service.initializePayment(
+        customerId,
+        orderId,
+        { provider: OrderPaymentMethodDtoEnum.CASH },
+        context,
+      );
+
+      expect(ordersRepository.transition).toHaveBeenCalledWith(orderId, {
+        status: OrderStatus.CONFIRMED,
+        paymentStatus: PaymentStatus.PENDING,
+        paymentMethod: OrderPaymentMethod.CASH,
+        confirmedAt: expect.any(Date),
+      });
+      expect(inventoryDeduction.deductForOrder).toHaveBeenCalled();
+      expect(walletService.debit).not.toHaveBeenCalled();
+      expect(result.order.paymentStatus).toBe(PaymentStatus.PENDING);
+    });
+
+    it('rejects cash for pickup orders', async () => {
+      ordersRepository.findByIdForCustomer.mockResolvedValue(sampleOrder);
+      await expect(
+        service.initializePayment(
+          customerId,
+          orderId,
+          { provider: OrderPaymentMethodDtoEnum.CASH },
+          context,
+        ),
+      ).rejects.toBeInstanceOf(ValidationDomainException);
+    });
+  });
+
+  describe('markCashPaymentReceived', () => {
+    it('settles a pending cash order', async () => {
+      ordersRepository.findById.mockResolvedValue({
+        ...sampleOrder,
+        fulfillmentType: FulfillmentType.DELIVERY,
+        paymentMethod: OrderPaymentMethod.CASH,
+        paymentStatus: PaymentStatus.PENDING,
+      });
+      await service.markCashPaymentReceived(orderId, {});
+      expect(ordersRepository.transition).toHaveBeenCalledWith(orderId, {
+        status: OrderStatus.PENDING,
+        paymentStatus: PaymentStatus.PAID,
+      });
+    });
+
+    it('is a no-op for orders not paid by cash', async () => {
+      ordersRepository.findById.mockResolvedValue({
+        ...sampleOrder,
+        paymentMethod: OrderPaymentMethod.WALLET,
+      });
+      const result = await service.markCashPaymentReceived(orderId, {});
+      expect(result).toBeNull();
+      expect(ordersRepository.transition).not.toHaveBeenCalled();
+    });
+
+    it('is idempotent for an already-paid cash order', async () => {
+      const paid = {
+        ...sampleOrder,
+        paymentMethod: OrderPaymentMethod.CASH,
+        paymentStatus: PaymentStatus.PAID,
+      };
+      ordersRepository.findById.mockResolvedValue(paid);
+      const result = await service.markCashPaymentReceived(orderId, {});
+      expect(result).toBe(paid);
+      expect(ordersRepository.transition).not.toHaveBeenCalled();
     });
   });
 

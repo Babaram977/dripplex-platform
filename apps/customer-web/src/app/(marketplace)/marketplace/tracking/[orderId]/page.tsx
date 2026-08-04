@@ -414,6 +414,24 @@ export default function TrackingPage(): React.JSX.Element {
           </div>
         ) : null}
 
+        {order.paymentMethod === 'CASH' && order.paymentStatus === 'PENDING' ? (
+          <div
+            className="mb-4 rounded-2xl p-4"
+            style={{
+              background: 'rgba(250,204,21,.08)',
+              border: '1px solid rgba(250,204,21,.22)',
+            }}
+          >
+            <p className="text-[13px] font-semibold" style={{ color: '#FACC15' }}>
+              Cash on Delivery
+            </p>
+            <p className="mt-1 text-[12px] text-white/50">
+              Have {formatPrice(order.total, order.currency)} ready for your rider when your order
+              arrives.
+            </p>
+          </div>
+        ) : null}
+
         {showMap ? (
           <div className="mb-4">
             <LiveMap

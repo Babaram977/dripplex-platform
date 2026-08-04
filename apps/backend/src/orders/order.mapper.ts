@@ -73,6 +73,7 @@ export function toOrderDto(order: OrderWithRelations): OrderDto {
     orderNumber: order.orderNumber,
     status: order.status,
     paymentStatus: order.paymentStatus,
+    paymentMethod: order.paymentMethod,
     fulfillmentType: order.fulfillmentType,
     subtotal: Number(order.subtotal),
     discount: Number(order.discount),

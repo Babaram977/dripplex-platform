@@ -117,6 +117,7 @@ export class PrismaOrdersRepository implements OrdersRepository {
       data: {
         status: input.status,
         ...(input.paymentStatus !== undefined ? { paymentStatus: input.paymentStatus } : {}),
+        ...(input.paymentMethod !== undefined ? { paymentMethod: input.paymentMethod } : {}),
         ...(input.estimatedReadyAt !== undefined
           ? { estimatedReadyAt: input.estimatedReadyAt }
           : {}),

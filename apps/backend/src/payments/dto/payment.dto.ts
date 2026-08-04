@@ -7,10 +7,22 @@ export enum PaymentProviderDtoEnum {
   OPAY = 'OPAY',
 }
 
+/** How the customer chose to pay — the three gateways plus WALLET/CASH,
+ * mirroring the Prisma OrderPaymentMethod enum. Kept distinct from
+ * PaymentProviderDtoEnum (see PaymentService.resolveMethod()) since
+ * WALLET/CASH never reach a PaymentProviderAdapter. */
+export enum OrderPaymentMethodDtoEnum {
+  PAYSTACK = 'PAYSTACK',
+  FLUTTERWAVE = 'FLUTTERWAVE',
+  OPAY = 'OPAY',
+  WALLET = 'WALLET',
+  CASH = 'CASH',
+}
+
 export class InitializePaymentDto {
   @IsOptional()
-  @IsEnum(PaymentProviderDtoEnum)
-  public provider?: PaymentProviderDtoEnum;
+  @IsEnum(OrderPaymentMethodDtoEnum)
+  public provider?: OrderPaymentMethodDtoEnum;
 
   @IsOptional()
   @IsUrl({ require_tld: false })

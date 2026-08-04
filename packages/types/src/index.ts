@@ -187,6 +187,7 @@ export type {
   OrderDisputeStatus,
   OrderDto,
   OrderItemDto,
+  OrderPaymentMethod,
   OrderStatus,
   PaymentStatus,
   RaiseOrderDisputeDto,

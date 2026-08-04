@@ -1,3 +1,5 @@
+import type { OrderDto, OrderPaymentMethod } from '../order/index.js';
+
 export type PaymentProvider = 'PAYSTACK' | 'FLUTTERWAVE' | 'MONIEPOINT' | 'OPAY';
 
 export type TransactionStatus =
@@ -23,15 +25,24 @@ export interface PaymentTransactionDto {
 }
 
 export interface InitializePaymentDto {
-  provider?: PaymentProvider;
+  provider?: OrderPaymentMethod;
   callbackUrl?: string;
 }
 
+/**
+ * Mirrors InitiateRidePaymentResponse's shape: only the gateway path
+ * (PAYSTACK/FLUTTERWAVE/OPAY) populates authorizationUrl/reference/
+ * transaction — WALLET completes immediately (check
+ * `order.paymentStatus === 'PAID'`) and CASH leaves the order pending
+ * (payment collected at delivery). `order` lets the frontend branch on
+ * outcome without a fake transaction for the non-gateway paths.
+ */
 export interface InitializePaymentResponseDto {
-  authorizationUrl: string;
-  reference: string;
-  provider: PaymentProvider;
-  transaction: PaymentTransactionDto;
+  order: OrderDto;
+  authorizationUrl?: string;
+  reference?: string;
+  provider?: PaymentProvider;
+  transaction?: PaymentTransactionDto;
 }
 
 export interface PaymentVerificationDto {

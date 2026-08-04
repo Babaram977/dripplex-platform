@@ -6,6 +6,7 @@ import type {
   OrderDispute,
   OrderDisputeStatus,
   OrderItem,
+  OrderPaymentMethod,
   OrderStatus,
   PaymentStatus,
   Prisma,
@@ -24,6 +25,7 @@ export type OrderWithItems = Order & {
 export interface OrderTransitionInput {
   status: OrderStatus;
   paymentStatus?: PaymentStatus;
+  paymentMethod?: OrderPaymentMethod;
   estimatedReadyAt?: Date | null;
   confirmedAt?: Date;
   readyAt?: Date;

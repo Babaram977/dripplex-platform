@@ -10,6 +10,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { WalletModule } from '../wallet/wallet.module';
 
 import { AdminPaymentsController } from './admin-payments.controller';
+import { CashSettlementSubscriber } from './cash-settlement.subscriber';
 import { CustomerPaymentsController } from './customer-payments.controller';
 import {
   INVENTORY_DEDUCTION_SERVICE,
@@ -39,6 +40,7 @@ import { PrismaPaymentTransactionRepository } from './repositories/prisma-paymen
   controllers: [CustomerPaymentsController, PaymentWebhooksController, AdminPaymentsController],
   providers: [
     PaymentService,
+    CashSettlementSubscriber,
     PaystackProvider,
     FlutterwaveProvider,
     MoniepointProvider,

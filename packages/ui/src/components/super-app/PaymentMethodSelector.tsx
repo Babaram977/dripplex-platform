@@ -7,16 +7,17 @@ export interface SuperAppPaymentMethodOption {
   icon: string;
   label: string;
   sublabel: string;
+  disabled?: boolean;
 }
 
 /**
  * Payment method list, ported from the Checkout screen's "Payment
- * Method" section. The source lists DrippleX Wallet / Card / Cash on
- * Delivery / Bank Transfer as four abstract categories; the real backend
- * only supports redirect-based gateway checkout (Paystack, Flutterwave,
- * OPay — the platform's three real gateway partners) — no wallet-direct-debit
- * and no cash-on-delivery path exist for marketplace orders — so the real
- * page populates this with the actual gateway list instead.
+ * Method" section. Populated with the platform's real methods — the three
+ * gateways (Paystack, Flutterwave, OPay), Dx Wallet balance, and Cash on
+ * Delivery (delivery orders only) — matching the source's four abstract
+ * categories one-for-one rather than the earlier three-gateway-only cut.
+ * `disabled` (e.g. insufficient wallet balance) dims a row and blocks
+ * selection without removing it from the list, so the reason stays visible.
  */
 export function SuperAppPaymentMethodSelector({
   options,
@@ -35,18 +36,20 @@ export function SuperAppPaymentMethodSelector({
     >
       {options.map((opt, i) => {
         const selected = selectedKey === opt.key;
+        const disabled = opt.disabled === true;
         return (
           <button
             key={opt.key}
             type="button"
+            disabled={disabled}
             onClick={
-              onSelect
+              onSelect && !disabled
                 ? () => {
                     onSelect(opt.key);
                   }
                 : undefined
             }
-            className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-all"
+            className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-all disabled:opacity-40"
             style={{
               background: selected ? 'rgba(43,172,82,.08)' : 'transparent',
               borderBottom: i < options.length - 1 ? `1px solid ${BORDER}` : 'none',
