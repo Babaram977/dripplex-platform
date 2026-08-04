@@ -1,9 +1,8 @@
 'use client';
 
+import { SuperAppRideMapCanvas } from '@dripplex/ui';
 import { Map, Marker, Polyline, useMap, useMapsLibrary } from '@vis.gl/react-google-maps';
 import * as React from 'react';
-
-import { MapCanvas } from './ride-ui';
 
 import { resolveGoogleMapsApiKey } from '@/lib/google-maps-config';
 
@@ -199,12 +198,12 @@ function RouteRenderer({
 }
 
 /**
- * Real Google Maps JavaScript API map — replaces the decorative MapCanvas
- * SVG (apps/customer-web/src/components/ride/ride-ui.tsx) wherever a screen
- * needs to show real pickup/dropoff/driver positions. Falls back to
- * MapCanvas itself when NEXT_PUBLIC_GOOGLE_MAPS_API_KEY isn't configured,
- * so every call site keeps working in any environment that hasn't set up
- * Maps credentials yet (see docs/LAUNCH-READINESS-CREDENTIALS.md).
+ * Real Google Maps JavaScript API map — replaces the decorative
+ * `SuperAppRideMapCanvas` SVG (`@dripplex/ui`) wherever a screen needs to
+ * show real pickup/dropoff/driver positions. Falls back to that same SVG
+ * when NEXT_PUBLIC_GOOGLE_MAPS_API_KEY isn't configured, so every call site
+ * keeps working in any environment that hasn't set up Maps credentials yet
+ * (see docs/LAUNCH-READINESS-CREDENTIALS.md).
  */
 export function LiveMap({
   pickup,
@@ -225,7 +224,7 @@ export function LiveMap({
   const apiKey = resolveGoogleMapsApiKey();
 
   if (!apiKey) {
-    return <MapCanvas variant={fallbackVariant} progress={fallbackProgress} />;
+    return <SuperAppRideMapCanvas variant={fallbackVariant} progress={fallbackProgress} />;
   }
 
   const cameraPoints = [pickup, dropoff, driver].filter((point): point is LiveMapPoint => !!point);

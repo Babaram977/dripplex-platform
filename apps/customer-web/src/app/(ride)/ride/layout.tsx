@@ -1,6 +1,13 @@
+'use client';
+
+import { NAVY_DEEP, SuperAppFontProvider } from '@dripplex/ui';
+import { Inter, Poppins } from 'next/font/google';
 import * as React from 'react';
 
 import { DashboardAuthGate } from '@/components/auth/dashboard-auth-gate';
+
+const poppins = Poppins({ subsets: ['latin'], weight: ['500', '600', '700', '800'] });
+const inter = Inter({ subsets: ['latin'], weight: ['400', '500', '600', '700'] });
 
 /**
  * Full-screen Ride shell — deliberately has no Sidebar/DashboardHeader/
@@ -10,13 +17,15 @@ import { DashboardAuthGate } from '@/components/auth/dashboard-auth-gate';
  * docs/RIDE-003-READINESS.md's "Customer Web routing" section, now resolved
  * by that real visual evidence).
  *
- * Loads Poppins/Inter here, scoped to Ride only — the rest of the app uses
- * Sora/Manrope (see the root layout). Every Ride component references
- * these two literal family names in inline styles, copied verbatim from
- * the real Figma Make source; without an actual font load they silently
- * fall back to the browser default sans-serif, which is a real visual
- * defect (wrong letterforms/weights/spacing vs. the locked design), caught
- * and fixed here rather than left in place.
+ * Loads Poppins/Inter via `next/font/google` + `SuperAppFontProvider`,
+ * matching the DPX-100 `packages/ui/super-app` font-loading convention
+ * (see `(marketplace)/layout.tsx`) — replaces the earlier raw `<link>`-tag
+ * CSS load as each Ride screen migrates onto
+ * `packages/ui/src/components/super-app/Ride*` components, which read
+ * these classNames through `useSuperAppFonts()` instead of hardcoding
+ * `fontFamily` inline. Screens not yet migrated still reference the
+ * literal family names inline and keep rendering correctly since the same
+ * two font families are loaded either way.
  */
 export default function RideLayout({
   children,
@@ -24,15 +33,13 @@ export default function RideLayout({
   children: React.ReactNode;
 }>): React.JSX.Element {
   return (
-    <div className="relative mx-auto min-h-dvh max-w-[480px]" style={{ background: '#060E1C' }}>
-      <link rel="preconnect" href="https://fonts.googleapis.com" />
-      <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-      {/* eslint-disable-next-line @next/next/no-page-custom-font -- App Router hoists <link> from any layout/page into <head>; this rule predates App Router and assumes Pages Router's _document.js, which doesn't exist here. Scoping the load to this layout (not the root) is intentional: Ride is the only route using Poppins/Inter. */}
-      <link
-        rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap"
-      />
-      <DashboardAuthGate>{children}</DashboardAuthGate>
+    <div
+      className={`relative mx-auto min-h-dvh max-w-[480px] ${inter.className}`}
+      style={{ background: NAVY_DEEP }}
+    >
+      <SuperAppFontProvider heading={poppins.className} body={inter.className}>
+        <DashboardAuthGate>{children}</DashboardAuthGate>
+      </SuperAppFontProvider>
     </div>
   );
 }

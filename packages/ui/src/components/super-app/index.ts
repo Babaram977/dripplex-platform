@@ -122,3 +122,21 @@ export { SuperAppCancelOrderSheet } from './CancelOrderSheet';
 export { SuperAppReportIssueSheet } from './ReportIssueSheet';
 export { SuperAppOrderCompletedCelebration } from './OrderCompletedCelebration';
 export { SuperAppTrackingSkeleton } from './TrackingSkeleton';
+
+// Ride module
+export {
+  SuperAppRideStatusBar,
+  SuperAppRideBackArrow,
+  SuperAppRideSafetyChip,
+  SuperAppRideHeader,
+} from './RideChrome';
+export { SuperAppRideActionButton, SuperAppRideQuickActionButton } from './RideActionButton';
+export { SuperAppRideBottomSheet } from './RideBottomSheet';
+export { SuperAppRideStatusBanner } from './RideStatusBanner';
+export { SuperAppRideETAChip } from './RideETAChip';
+export { SuperAppRideFareBreakdown } from './RideFareBreakdown';
+export { SuperAppRideDriverCard } from './RideDriverCard';
+export { SuperAppRideMapCanvas } from './RideMapCanvas';
+export { SuperAppRideDestinationTrigger } from './RideDestinationTrigger';
+export { SuperAppRideQuickPlaces, type SuperAppRideQuickPlace } from './RideQuickPlaces';
+export { SuperAppRideSavedPlacesList, type SuperAppRideSavedPlace } from './RideSavedPlacesList';

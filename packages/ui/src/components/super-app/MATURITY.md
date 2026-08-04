@@ -453,3 +453,81 @@ Tracking).
 | `SuperAppOrderCompletedCelebration` | Verified                                                    |
 | `SuperAppTrackingSkeleton`          | Verified                                                    |
 | `SuperAppBottomNav`                 | Locked — real defect fixed (missing-space `flex` class bug) |
+
+## Ride module — Slice 1: shared UI kit + Home screen (2026-08-04)
+
+Unlike Marketplace, Ride already had a complete, real, backend-connected
+implementation before DPX-100 — 22 screens built and Playwright-verified
+across RIDE-003 Slices 1-4, living in
+`apps/customer-web/src/components/ride/` with their own shared primitive
+library (`ride-ui.tsx`) rather than `packages/ui`. This slice is the
+first of several bringing that already-working module onto the
+`packages/ui/super-app` design system, the same way Marketplace was
+built: **no new backend work, no new hooks, no behavior change** — only
+moving presentational markup into `packages/ui` and having the
+already-wired screen component (which stays in `customer-web`, since it
+owns the real hooks/backend calls) compose it instead of hand-rolling
+markup inline.
+
+**Ported this slice:**
+
+- `ride-ui.tsx`'s shared primitives → `RideStatusBar`, `RideBackArrow`,
+  `RideSafetyChip`, `RideHeader` (`RideChrome.tsx`); `RideActionButton`,
+  `RideQuickActionButton` (`RideActionButton.tsx`); `RideBottomSheet`;
+  `RideStatusBanner`; `RideETAChip`; `RideFareBreakdown`; `RideDriverCard`
+  (kept the source's honest capability-gap copy — no customer-facing
+  driver-profile endpoint or vehicle fields exist in the backend);
+  `RideMapCanvas` (the decorative SVG fallback map).
+- `RideHomeScreen`'s own markup decomposed into three new focused
+  components rather than one monolith, matching the granularity already
+  established for the Tracking screen: `RideDestinationTrigger` (the
+  "Where are you going?" button), `RideQuickPlaces` (Home/Work chips),
+  `RideSavedPlacesList` (the saved-places section with loading/error/empty
+  states).
+- Updated `LiveMap` (`apps/customer-web/src/components/ride/live-map.tsx`)
+  to import its fallback from `SuperAppRideMapCanvas` (`@dripplex/ui`)
+  instead of the local `ride-ui.tsx` copy — the first concrete step
+  toward retiring `ride-ui.tsx` once every screen that depends on it is
+  migrated.
+- Migrated `(ride)/ride/layout.tsx` off its raw `<link>`-tag Google Fonts
+  CSS load onto `next/font/google` + `SuperAppFontProvider`, matching the
+  convention every other DPX-100 module layout already uses — required
+  so the new components' `useSuperAppFonts()` calls resolve real
+  classNames instead of the context default (`''`). Same two font
+  families (Poppins/Inter), same weights — no visual change, just how
+  they load.
+- `ride-home-screen.tsx` itself now composes the above instead of
+  duplicating their markup inline. All existing hooks
+  (`useAuth`, `useSavedPlaces`, `useCurrentLocation`, `useNearbyDrivers`)
+  and the `LiveMap` real-map integration are untouched.
+
+Typecheck/lint clean across `@dripplex/ui` and `customer-web`. Verified
+with Playwright against the real backend (real seeded customer, real
+`useSavedPlaces`/`useCurrentLocation` data): the ported Home screen
+renders pixel-equivalent to the pre-port version (fallback map SVG since
+no Google Maps key is configured locally, safety chip, history button,
+search trigger, quick places, saved places list, all real data), zero
+console errors; clicking through to the still-unported Destination
+Search and Ride History screens confirms the `ride-flow.tsx` state
+machine transitions are unaffected by the swap.
+
+Not yet Locked. `ride-ui.tsx` stays in place — it's still the primitive
+source for the 21 screens not yet ported in this slice.
+
+| Component                        | Status   |
+| -------------------------------- | -------- |
+| `SuperAppRideStatusBar`          | Verified |
+| `SuperAppRideBackArrow`          | Verified |
+| `SuperAppRideSafetyChip`         | Verified |
+| `SuperAppRideHeader`             | Verified |
+| `SuperAppRideActionButton`       | Verified |
+| `SuperAppRideQuickActionButton`  | Verified |
+| `SuperAppRideBottomSheet`        | Verified |
+| `SuperAppRideStatusBanner`       | Verified |
+| `SuperAppRideETAChip`            | Verified |
+| `SuperAppRideFareBreakdown`      | Verified |
+| `SuperAppRideDriverCard`         | Verified |
+| `SuperAppRideMapCanvas`          | Verified |
+| `SuperAppRideDestinationTrigger` | Verified |
+| `SuperAppRideQuickPlaces`        | Verified |
+| `SuperAppRideSavedPlacesList`    | Verified |
