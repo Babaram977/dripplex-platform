@@ -13,7 +13,7 @@ import * as React from 'react';
 
 import type { RideStatus } from '@dripplex/types';
 
-import { useRideList } from '@/hooks/rides';
+import { useRideList, useRideTypeCatalog } from '@/hooks/rides';
 
 const TABS = ['all', 'completed', 'cancelled'] as const;
 type HistoryTab = (typeof TABS)[number];
@@ -51,7 +51,11 @@ export function RideHistoryScreen({
   const [tab, setTab] = React.useState<HistoryTab>('all');
   const [page, setPage] = React.useState(1);
   const rides = useRideList({ page, limit: 20, status: TAB_STATUS[tab] });
+  const rideTypeCatalog = useRideTypeCatalog();
   const { body } = useSuperAppFonts();
+
+  const rideTypeLabel = (type: string): string =>
+    rideTypeCatalog.data?.find((entry) => entry.type === type)?.displayName ?? type;
 
   return (
     <div
@@ -105,7 +109,7 @@ export function RideHistoryScreen({
               key={ride.id}
               icon={completed ? '🚗' : '❌'}
               tone={completed ? 'success' : 'error'}
-              title={`${ride.rideType.toLowerCase()} Ride`}
+              title={rideTypeLabel(ride.rideType)}
               dateLabel={formatDate(ride.requestedAt)}
               fare={`₦${ride.totalFare.toLocaleString()}`}
               pickupAddress={ride.pickupAddress ?? 'Pickup location'}

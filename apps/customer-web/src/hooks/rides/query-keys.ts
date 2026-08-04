@@ -10,4 +10,5 @@ export const rideQueryKeys = {
   receipt: (rideId: string) => [...rideQueryKeys.all, 'receipt', rideId] as const,
   wallet: ['wallet', 'customer'] as const,
   addresses: ['addresses', 'customer'] as const,
+  types: ['rides', 'types'] as const,
 };

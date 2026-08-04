@@ -196,6 +196,12 @@ section for the slice-by-slice port log.
 Not yet Locked — pending founder confirmation, per the same discipline
 applied to Marketplace.
 
+**2026-08-04 update:** ride-type display names are now backend-driven
+(`GET /customer/rides/types`) instead of hardcoded per-screen — a
+founder-granted bug-fix exception to the freeze, not a redesign. Three
+launch categories (DX Ride, DX Comfort, DX XL) plus the existing Tricycle
+vehicle class. See MATURITY.md's "Ride module — DX rebrand" section.
+
 ‡ Wallet and Cash payment methods were verified end-to-end against the
 real backend (real wallet balance, real driver `cash-confirm`). The
 gateway path (Paystack/Flutterwave/OPay) is typecheck/lint clean and

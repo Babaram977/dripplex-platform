@@ -16,6 +16,7 @@ import type {
   RideStatus,
   RideTrackingPointDto,
   RideType,
+  RideTypeCatalogEntryDto,
   TipDriverRequest,
 } from '@dripplex/types';
 
@@ -50,6 +51,10 @@ export interface NearbyDriversQuery {
  */
 export class CustomerRideClient {
   public constructor(private readonly http: HttpClient) {}
+
+  public listRideTypes(): Promise<RideTypeCatalogEntryDto[]> {
+    return this.http.request<RideTypeCatalogEntryDto[]>('/customer/rides/types', { auth: true });
+  }
 
   public estimateFare(body: EstimateRideFareRequest): Promise<EstimateRideFareResponse> {
     return this.http.request<EstimateRideFareResponse>('/customer/rides/estimate', {

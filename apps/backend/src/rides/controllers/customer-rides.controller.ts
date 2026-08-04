@@ -39,6 +39,7 @@ import type {
   RideRatingDto,
   RideReceiptDto,
   RideTrackingPointDto,
+  RideTypeCatalogEntryDto,
 } from '@dripplex/types';
 import type { Request } from 'express';
 
@@ -53,6 +54,13 @@ export class CustomerRidesController {
     private readonly problemReportService: RideProblemReportService,
     private readonly trackingReadService: RideTrackingReadService,
   ) {}
+
+  /** Registered before `:id` — otherwise "types" would be captured as a
+   * ride id by that route. */
+  @Get('types')
+  public listRideTypes(): ApiSuccessResponse<RideTypeCatalogEntryDto[]> {
+    return { success: true, data: this.ridesService.listRideTypes() };
+  }
 
   @Post('estimate')
   @HttpCode(HttpStatus.OK)

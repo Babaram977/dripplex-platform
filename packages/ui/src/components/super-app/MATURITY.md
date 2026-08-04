@@ -926,3 +926,46 @@ throughout.
 | `SuperAppWalletPresetChips`   | Verified |
 | `SuperAppWalletSelectableRow` | Verified |
 | `SuperAppWalletRecipientRow`  | Verified |
+
+## Ride module — DX rebrand (frozen-module bug fix, 2026-08-04)
+
+Founder-granted exception to the Ride freeze: not a redesign, a real
+defect fix. Ride-type display names were hardcoded per-screen
+(`Record<string,string>` label maps duplicated in the Fare Estimate,
+History, and Trip Completed screens, e.g. `ECONOMY: 'Economy'`) instead
+of backend-driven — the same class of defect the founder's instruction
+named directly. Fixed by adding a real backend catalog
+(`RIDE_TYPE_CATALOG` in `apps/backend/src/rides/ride.constants.ts`,
+exposed via `GET /customer/rides/types`) and having all three screens
+fetch it (`useRideTypeCatalog()`) instead of hardcoding labels. No visual
+redesign — `SuperAppRideTypeSelector` (used by the Fare Estimate chip
+row) was already a fully generic, options-driven component requiring no
+changes; it now just receives real data instead of a hardcoded array.
+
+Per founder direction, three customer-facing categories now launch
+alongside the pre-existing Tricycle vehicle class: **DX Ride** (the
+renamed Economy default), **DX Comfort**, **DX XL** — added as new
+`RideType` Prisma enum values (`ALTER TYPE ... ADD VALUE`, additive and
+backward-compatible) with placeholder fare rates in `RIDE_FARE_RATES`
+(same "not founder-approved economics" caveat already on the existing
+Economy/Tricycle rates). Driver-portal's own local vehicle-type label
+maps (online toggle, incoming-ride modal, profile page) were extended
+with the two new options too — without this, no driver could ever
+register as Comfort/XL and the categories would be unbookable in
+practice; this stays a local label map, not backend-driven, since
+driver-portal wasn't named in the founder's instruction and a driver-facing
+catalog endpoint is a larger scope than this fix.
+
+Typecheck/lint clean across `@dripplex/backend`, `@dripplex/types`,
+`@dripplex/sdk`, `customer-web`, and `driver-portal`. Backend `rides` and
+`promotions` suites green (one `ride-payment.service.spec.ts` failure seen
+only when run as part of the full `rides` suite, not in isolation —
+pre-existing shared-dev-DB cross-file state pollution, not caused by this
+change; passes standalone). Verified with Playwright against the real
+backend: Fare Estimate's chip row now shows real "DX Ride / DX Comfort /
+DX XL / DX Tricycle" with real emoji from the catalog; selecting DX
+Comfort produced a real fare estimate using the new COMFORT rate (₦450
+base) and a real "Book DX Comfort · ₦3,186" button label; Ride History
+showed "DX Ride" (previously "economy Ride", lowercase, from the old
+`.toLowerCase()` hack) on every existing ride row. Zero console errors.
+Ride's frozen visual spec is otherwise untouched.

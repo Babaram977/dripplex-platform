@@ -12,8 +12,10 @@ import {
 } from '@/hooks/rides/use-driver-availability';
 
 const VEHICLE_TYPE_OPTIONS: { value: RideType; label: string }[] = [
-  { value: 'ECONOMY', label: 'Economy (car)' },
-  { value: 'TRICYCLE', label: 'Tricycle (Keke)' },
+  { value: 'ECONOMY', label: 'DX Ride (car)' },
+  { value: 'COMFORT', label: 'DX Comfort (car)' },
+  { value: 'XL', label: 'DX XL (car)' },
+  { value: 'TRICYCLE', label: 'DX Tricycle (Keke)' },
 ];
 
 export function OnlineToggleCard(): React.JSX.Element {

@@ -138,6 +138,7 @@ export type {
   RideStatus,
   RideTrackingPointDto,
   RideType,
+  RideTypeCatalogEntryDto,
   TipDriverRequest,
   UpdateDriverAvailabilityRequest,
 } from './ride/index.js';

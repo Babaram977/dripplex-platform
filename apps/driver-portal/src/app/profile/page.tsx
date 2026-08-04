@@ -32,8 +32,10 @@ const KYC_STATUS_BADGE: Record<string, StatusBadgeProps> = {
 };
 
 const VEHICLE_TYPE_LABEL: Record<string, string> = {
-  ECONOMY: 'Economy (car)',
-  TRICYCLE: 'Tricycle (Keke)',
+  ECONOMY: 'DX Ride (car)',
+  COMFORT: 'DX Comfort (car)',
+  XL: 'DX XL (car)',
+  TRICYCLE: 'DX Tricycle (Keke)',
 };
 
 export default function ProfilePage(): React.JSX.Element {

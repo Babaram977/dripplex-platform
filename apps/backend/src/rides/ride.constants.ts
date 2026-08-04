@@ -103,5 +103,41 @@ export const RIDE_FARE_RATES: Record<
   { baseFare: number; perKmRate: number; perMinuteRate: number }
 > = {
   [RideType.ECONOMY]: { baseFare: 300, perKmRate: 120, perMinuteRate: 20 },
+  [RideType.COMFORT]: { baseFare: 450, perKmRate: 160, perMinuteRate: 25 },
+  [RideType.XL]: { baseFare: 600, perKmRate: 200, perMinuteRate: 30 },
   [RideType.TRICYCLE]: { baseFare: 150, perKmRate: 80, perMinuteRate: 10 },
+};
+
+/**
+ * Single source of truth for ride-type display copy — founder direction
+ * (launch with exactly three customer-facing categories: DX Ride/DX
+ * Comfort/DX XL) plus the existing TRICYCLE vehicle class, unchanged.
+ * The backend owns this so the frontend never hardcodes a service name
+ * (the defect this replaces: `Record<string,string>` label maps duplicated
+ * across the Fare Estimate, History, and Trip Completed screens).
+ */
+export const RIDE_TYPE_CATALOG: Record<
+  RideType,
+  { displayName: string; description: string; emoji: string }
+> = {
+  [RideType.ECONOMY]: {
+    displayName: 'DX Ride',
+    description: 'Everyday affordable rides',
+    emoji: '🚗',
+  },
+  [RideType.COMFORT]: {
+    displayName: 'DX Comfort',
+    description: 'Newer vehicles, more legroom, better-rated drivers',
+    emoji: '🚙',
+  },
+  [RideType.XL]: {
+    displayName: 'DX XL',
+    description: 'Larger vehicle for families and groups (5-7 seats)',
+    emoji: '🚐',
+  },
+  [RideType.TRICYCLE]: {
+    displayName: 'DX Tricycle',
+    description: 'Quick, affordable short trips',
+    emoji: '🛺',
+  },
 };

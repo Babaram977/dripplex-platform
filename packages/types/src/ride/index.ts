@@ -1,4 +1,11 @@
-export type RideType = 'ECONOMY' | 'TRICYCLE';
+export type RideType = 'ECONOMY' | 'COMFORT' | 'XL' | 'TRICYCLE';
+
+export interface RideTypeCatalogEntryDto {
+  type: RideType;
+  displayName: string;
+  description: string;
+  emoji: string;
+}
 
 export type RideStatus =
   | 'REQUESTED'

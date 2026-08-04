@@ -16,18 +16,7 @@ import { type LiveMapPoint, type LiveMapRouteInfo, LiveMap } from '../live-map';
 import type { CurrentLocationState } from '@/hooks/rides';
 import type { RideType } from '@dripplex/types';
 
-import { useEstimateFare } from '@/hooks/rides';
-
-const RIDE_TYPE_LABELS: Record<RideType, { label: string; emoji: string; description: string }> = {
-  ECONOMY: { label: 'Economy', emoji: '🚗', description: 'Affordable everyday rides' },
-  TRICYCLE: { label: 'Tricycle', emoji: '🛺', description: 'Quick short trips' },
-};
-
-const RIDE_TYPE_OPTIONS = (Object.keys(RIDE_TYPE_LABELS) as RideType[]).map((key) => ({
-  key,
-  label: RIDE_TYPE_LABELS[key].label,
-  emoji: RIDE_TYPE_LABELS[key].emoji,
-}));
+import { useEstimateFare, useRideTypeCatalog } from '@/hooks/rides';
 
 interface Destination {
   label: string;
@@ -55,6 +44,15 @@ export function FareEstimateScreen({
   const [rideType, setRideType] = React.useState<RideType>('ECONOMY');
   const [route, setRoute] = React.useState<LiveMapRouteInfo | null>(null);
   const estimate = useEstimateFare();
+  const rideTypeCatalog = useRideTypeCatalog();
+  const catalogEntries = rideTypeCatalog.data ?? [];
+  const rideTypeOptions = catalogEntries.map((entry) => ({
+    key: entry.type,
+    label: entry.displayName,
+    emoji: entry.emoji,
+  }));
+  const selectedRideTypeLabel =
+    catalogEntries.find((entry) => entry.type === rideType)?.displayName ?? rideType;
 
   const pickup: LiveMapPoint | null =
     pickupOverride ??
@@ -116,15 +114,17 @@ export function FareEstimateScreen({
             To {destination.label}
             {route ? ` · ${route.distanceText} · ${route.durationText}` : ''}
           </p>
-          <div className="mb-4">
-            <SuperAppRideTypeSelector
-              options={RIDE_TYPE_OPTIONS}
-              selectedKey={rideType}
-              onSelect={(key) => {
-                setRideType(key as RideType);
-              }}
-            />
-          </div>
+          {rideTypeOptions.length > 0 ? (
+            <div className="mb-4">
+              <SuperAppRideTypeSelector
+                options={rideTypeOptions}
+                selectedKey={rideType}
+                onSelect={(key) => {
+                  setRideType(key as RideType);
+                }}
+              />
+            </div>
+          ) : null}
           <div className="mb-5">
             {estimate.isPending || location.status === 'locating' ? (
               <SuperAppRideInfoBox>
@@ -148,7 +148,7 @@ export function FareEstimateScreen({
           <SuperAppRideActionButton
             label={
               totalFare !== undefined
-                ? `Book ${RIDE_TYPE_LABELS[rideType].label} · ₦${totalFare.toLocaleString()}`
+                ? `Book ${selectedRideTypeLabel} · ₦${totalFare.toLocaleString()}`
                 : 'Book ride'
             }
             disabled={totalFare === undefined}

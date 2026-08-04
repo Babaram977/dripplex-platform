@@ -23,14 +23,20 @@ import {
   CANCELLABLE_RIDE_STATUSES,
   RIDE_AUDIT_ACTIONS,
   RIDE_PROMOTION_REFERENCE_TYPE,
+  RIDE_TYPE_CATALOG,
 } from './ride.constants';
 import { toDriverAvailabilityDto, toRideDto } from './ride.mapper';
 
 import type { ListRidesQueryDto } from './dto/list-rides-query.dto';
 import type { CancelRideDto, EstimateRideFareDto, RequestRideDto } from './dto/request-ride.dto';
 import type { UpdateDriverAvailabilityDto } from './dto/update-driver-availability.dto';
-import type { DriverAvailabilityDto, EstimateRideFareResponse, RideDto } from '@dripplex/types';
-import type { Ride } from '@prisma/client';
+import type {
+  DriverAvailabilityDto,
+  EstimateRideFareResponse,
+  RideDto,
+  RideTypeCatalogEntryDto,
+} from '@dripplex/types';
+import type { Ride, RideType } from '@prisma/client';
 
 @Injectable()
 export class RidesService {
@@ -46,6 +52,17 @@ export class RidesService {
     private readonly promotionsService: PromotionsService,
     private readonly eventBus: DomainEventBus,
   ) {}
+
+  /** Real service-type catalog (display name + description) so the
+   * frontend never hardcodes ride-type labels — the founder-directed fix
+   * for DX Ride/DX Comfort/DX XL replacing the previous per-screen
+   * hardcoded "Economy"/"Tricycle" label maps. Deterministic, no DB call. */
+  public listRideTypes(): RideTypeCatalogEntryDto[] {
+    return (Object.keys(RIDE_TYPE_CATALOG) as RideType[]).map((type) => ({
+      type,
+      ...RIDE_TYPE_CATALOG[type],
+    }));
+  }
 
   /** Read-only preview — does not redeem or lock anything. Used by the
    * `/rides/estimate` endpoint so a customer can see a coupon's discount

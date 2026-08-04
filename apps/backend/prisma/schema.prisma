@@ -1055,6 +1055,8 @@ model RiderAvailability {
 
 enum RideType {
   ECONOMY
+  COMFORT
+  XL
   TRICYCLE
 }
 

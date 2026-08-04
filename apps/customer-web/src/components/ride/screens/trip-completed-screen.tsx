@@ -8,10 +8,8 @@ import {
 } from '@dripplex/ui';
 import * as React from 'react';
 
-import { useRide } from '@/hooks/rides';
+import { useRide, useRideTypeCatalog } from '@/hooks/rides';
 import { haversineMeters } from '@/lib/geo';
-
-const RIDE_TYPE_LABEL: Record<string, string> = { ECONOMY: 'Economy', TRICYCLE: 'Tricycle' };
 
 /**
  * Real source (`TripCompletedScreen`) only had onRate/onHome — it implicitly
@@ -30,7 +28,13 @@ export function TripCompletedScreen({
   onHome: () => void;
 }): React.JSX.Element {
   const ride = useRide(rideId);
+  const rideTypeCatalog = useRideTypeCatalog();
   const { heading, body } = useSuperAppFonts();
+
+  const rideType = ride.data?.rideType;
+  const rideTypeLabel = rideType
+    ? (rideTypeCatalog.data?.find((entry) => entry.type === rideType)?.displayName ?? rideType)
+    : '—';
 
   const durationLabel = React.useMemo(() => {
     if (!ride.data?.startedAt || !ride.data.completedAt) return '—';
@@ -87,10 +91,7 @@ export function TripCompletedScreen({
           rows={[
             ['Duration', durationLabel],
             ['Distance', distanceLabel],
-            [
-              'Ride type',
-              ride.data ? (RIDE_TYPE_LABEL[ride.data.rideType] ?? ride.data.rideType) : '—',
-            ],
+            ['Ride type', rideTypeLabel],
           ]}
           footerLabel="Total fare"
           footerValue={ride.data ? `₦${ride.data.totalFare.toLocaleString()}` : '—'}
