@@ -120,9 +120,12 @@ A module is not "done" until all ten are true:
   `docs/DRIVER-SLICE-2-PRODUCTION-AUDIT.md` (item 9's audit, no
   launch-blocking issues found, Figma fidelity N/A per that doc's §1 —
   same Figma-first scope note as Slice 1, since no locked Figma export
-  exists for this module's screens yet). **Awaiting founder review; not
-  yet frozen**, per the founder's explicit instruction to review before
-  any freeze decision.
+  exists for this module's screens yet); **frozen** per founder direction
+  (2026-08-04, see `docs/RELEASE-HISTORY.md`). The audit's one
+  operational-readiness observation (no operations-console UI for the
+  SOS/incident/support/shift queues this slice built) was accepted as
+  correctly out of scope and recorded as a new future module,
+  `docs/DPX-OPS-001-OPERATIONS-COMMAND-CENTRE.md`, not a reopening.
 
 ## Notes for whoever runs the next module through this gate
 

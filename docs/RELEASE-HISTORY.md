@@ -302,11 +302,79 @@ production audit passed, founder review is the next step, freeze follows
 only after that sign-off, the same discipline every prior module (Ride,
 Marketplace, Wallet, Driver Slice 1) was held to.
 
+## 2026-08-04 — Driver Slice 2: 🔒 Frozen (Founder Approved)
+
+The founder reviewed the production audit against the same standard applied
+to Ride, Marketplace, Wallet, and Driver Slice 1, and approved the freeze in
+full, confirming each item against the audit's own findings:
+
+- **Navigation** — real backend integration verified, no fabricated
+  navigation layer.
+- **Shift Management** — Start Shift, End Shift, planned availability,
+  scheduled online/offline, break mode, daily working hours, operational
+  visibility, and Driver Growth Campaign extension points all confirmed
+  present, matching the founder's original operational model.
+- **Support** — a real backend capability, not a placeholder interface.
+- **Incident Reporting** — establishes a permanent operational record
+  distinct from support tickets, the founder's stated reason for wanting it
+  separate.
+- **SOS** — the founder specifically called out server-side ride/vehicle
+  detection, a durable database write before any notification,
+  permission-gated Operations alerts, customer notification when
+  applicable, and accidental-trigger protection as good safety engineering
+  practice.
+- **Help Centre** — reusing the platform CMS instead of a parallel content
+  system confirmed as the correct architectural call: one CMS, one
+  publishing workflow, one permission model, one search architecture for
+  the whole platform.
+- **Profile Enhancements** — the chosen scope confirmed appropriate,
+  including not allowing direct driver edits to regulated identity fields.
+- **Operational Notifications** — real notification events, not scheduled
+  polling or placeholder reminders, confirmed as the right design.
+- **Production Audit** — the founder confirmed the audit followed the same
+  platform-wide discipline (real verification, API/SDK/database/permissions
+  verification, updated documentation, a completed Feature Completeness
+  Matrix, passing tests), and noted that finding and fixing two genuine
+  issues during the audit itself is evidence the audit process is working
+  as intended, not a red flag.
+
+**Outstanding observation, accepted and not a Slice 2 defect**: the backend
+is operationally ready, but Operations/Admin Portal still needs management
+interfaces for the SOS queue, incident queue, support queue, and shift
+monitoring this slice built. The founder recorded this as a new future
+module rather than a Slice 2 gap: **`docs/DPX-OPS-001-OPERATIONS-COMMAND-CENTRE.md`**
+— Operations Command Centre, to consolidate driver monitoring, live fleet
+overview, SOS response, incident management, support ticket management,
+shift supervision, driver status, escalation workflows, dispatch oversight,
+and operations dashboards into one operational surface rather than
+scattering them across separate admin screens.
+
+**Freeze rule, effective now**: Driver Slice 2 accepts only critical
+security fixes, critical defects, performance improvements, compliance
+updates, and explicitly founder-approved enhancements — no routine feature
+additions, the same discipline every other frozen module is held to.
+
+**Project status at this milestone:** Ride — 🔒 Frozen. Marketplace —
+🔒 Frozen. Wallet — 🔒 Frozen. Driver Slice 1 — 🔒 Frozen. Driver Slice 2 —
+🔒 Frozen. Driver Security Standard (DPX-DRIVER-001) — 🔒 Locked. Driver
+Inspection Standard (DPX-DRIVER-002) — 🔒 Locked. Pricing Engine — unified
+single source of truth across Ride/Marketplace. Five production modules
+now stand on the same implement → verify → audit → document → approve →
+freeze discipline — the founder's core customer-facing mobility platform
+and the full driver-facing operations surface (support, incidents, SOS,
+shift management, help, profile) are both now governed by it.
+
+**Founder-recommended next focus**: shift away from the driver app itself
+toward the operational ecosystem that supports it — `DPX-OPS-001`
+(Operations Command Centre) and other platform-wide administration
+capabilities that consume the backend services already built, rather than
+new driver-facing feature work.
+
 ---
 
 ## What's next
 
-The R1.7/R1.8 commerce-completion plan below was superseded by the DPX-100 initiative above — Marketplace's commerce loop (cart/checkout/order/payment UI) shipped as part of that port, not as R1.7/R1.8 specifically. What's actually still open, per each module's own audit doc: the Driver module's Figma-ported UI (including onboarding/vehicle/inspection/Slice 2 — all backend-real, Slice 1 frozen, Slice 2 production-audited and awaiting founder review, see above) (`docs/DRIVER-APP-DPX-100-AUDIT.md`); an operations-console/admin-portal UI for the SOS/incident/support/shift queues Driver Slice 2 built (real API, no operator screen yet); reconciling the Railway-vs-Coolify production-infrastructure question above; and Orders/AI/Merchant/Admin, next in the founder's module ordering per `docs/DPX-100-MODULE-COMPLETION-GATE.md`.
+The R1.7/R1.8 commerce-completion plan below was superseded by the DPX-100 initiative above — Marketplace's commerce loop (cart/checkout/order/payment UI) shipped as part of that port, not as R1.7/R1.8 specifically. What's actually still open, per each module's own audit doc: the Driver module's Figma-ported UI (including onboarding/vehicle/inspection/Slice 2 — all backend-real, Slice 1 and Slice 2 both frozen, see above) (`docs/DRIVER-APP-DPX-100-AUDIT.md`); `docs/DPX-OPS-001-OPERATIONS-COMMAND-CENTRE.md` — the founder's named next focus, an operations-console/admin-portal UI consolidating the SOS/incident/support/shift queues Driver Slice 2 built (real API, no operator screen yet) into one operational surface; reconciling the Railway-vs-Coolify production-infrastructure question above; and Orders/AI/Merchant/Admin, next in the founder's module ordering per `docs/DPX-100-MODULE-COMPLETION-GATE.md`.
 
 <details>
 <summary>Original 2026-07-28 "what's next" (superseded, kept for the record)</summary>

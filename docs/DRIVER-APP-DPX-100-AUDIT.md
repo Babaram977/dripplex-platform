@@ -174,16 +174,19 @@ what's already real:
    real, most of the rest are genuinely new systems with real open
    decisions the founder needs to resolve before a build plan is written
    (named in that document, not assumed here). **All nine founder-scoped
-   items now shipped and production-audited (2026-08-04)** — see
-   `docs/DRIVER-SLICE-2-AUDIT.md`'s per-item "✅ Shipped" blocks and
-   `docs/DRIVER-SLICE-2-PRODUCTION-AUDIT.md` for the full audit. Awaiting
-   founder review; not yet frozen.
+   items shipped, production-audited, and 🔒 Frozen, founder-approved
+   (2026-08-04)** — see `docs/DRIVER-SLICE-2-AUDIT.md`'s per-item
+   "✅ Shipped" blocks, `docs/DRIVER-SLICE-2-PRODUCTION-AUDIT.md` for the
+   full audit, and `docs/RELEASE-HISTORY.md`'s freeze entry for the
+   founder's approval record. The one outstanding operational-readiness
+   observation (no operations-console UI for the SOS/incident/support/shift
+   queues) is tracked as a new future module,
+   `docs/DPX-OPS-001-OPERATIONS-COMMAND-CENTRE.md`, not a Slice 2 reopening.
 3. **Slice 3 — DPX-100 port.** Once the above are real, re-platform the whole
    Driver App (existing screens plus the new pieces) into `packages/ui/super-app`,
    matching the same port discipline Ride/Marketplace/Wallet went through, then
    the same audit + freeze gate.
 
-Slice 1 is frozen. Slice 2 (founder-approved scope, including shift
-management) is now feature-complete and production-audited — see
-`docs/DRIVER-SLICE-2-PRODUCTION-AUDIT.md` — awaiting founder review before
-freeze. Slice 3 (DPX-100 port) has not started.
+Slice 1 and Slice 2 are both 🔒 Frozen, founder-approved — see
+`docs/DRIVER-SLICE-2-PRODUCTION-AUDIT.md` and `docs/RELEASE-HISTORY.md`'s
+freeze entry. Slice 3 (DPX-100 port) has not started.

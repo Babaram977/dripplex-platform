@@ -1,5 +1,13 @@
 # Driver Slice 2 — Reality Audit
 
+**Status: 🔒 Frozen (Founder Approved, 2026-08-04).** All nine items shipped,
+production-audited (`docs/DRIVER-SLICE-2-PRODUCTION-AUDIT.md`), and approved
+for freeze by the founder — see item 11/12 below and
+`docs/RELEASE-HISTORY.md`'s "Driver Slice 2: 🔒 Frozen" entry for the full
+approval record. From this point, Slice 2 accepts only critical security
+fixes, critical defects, performance improvements, compliance updates, and
+explicitly founder-approved enhancements — no routine feature additions.
+
 Same discipline as `RIDE-001A` and the original `DRIVER-APP-DPX-100-AUDIT.md`:
 check what's real before planning what to build. Founder-approved scope
 (2026-08-04, with shift management folded in the same day): Navigation, Trip
