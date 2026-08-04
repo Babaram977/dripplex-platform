@@ -29,11 +29,15 @@ export const DRIVER_PERMISSIONS = {
  * Configurable via IDENTITY_VERIFICATION_IDLE_HOURS, not hardcoded. */
 export const DEFAULT_IDENTITY_VERIFICATION_IDLE_HOURS = 8;
 
-/** DPX-DS-001 */
-export const IDENTITY_VERIFICATION_LOCKOUT_THRESHOLD = 5;
-export const GPS_ANOMALY_SPEED_KMH_THRESHOLD = 150;
+/** DPX-DS-001 risk-engine thresholds — extensible/configurable per the
+ * founder's standard, not hard-coded. Real defaults live here; the
+ * effective values are read from AppConfigService (DRIVER_IDV_* env vars),
+ * which fall back to these exact numbers. */
+export const DEFAULT_IDENTITY_VERIFICATION_LOCKOUT_THRESHOLD = 5;
+export const DEFAULT_GPS_ANOMALY_SPEED_KMH_THRESHOLD = 150;
+export const DEFAULT_RANDOM_SPOT_CHECK_DENOMINATOR = 20;
 /** Below this elapsed gap, skip the GPS-anomaly check entirely — normal GPS
- * jitter over a short window can imply an absurd speed with no real signal. */
+ * jitter over a short window can imply an absurd speed with no real signal.
+ * Not a security threshold the founder specified — a false-positive guard,
+ * left as a constant. */
 export const GPS_ANOMALY_MIN_INTERVAL_MS = 5 * 60 * 1000;
-/** 1-in-20 chance of a random spot-check on any real "go online" attempt. */
-export const RANDOM_SPOT_CHECK_DENOMINATOR = 20;

@@ -293,3 +293,53 @@ While locked:
 - Account-sharing detection beyond what the triggers above already catch indirectly
   (new-device, GPS-anomaly, random spot-check are the actual mechanism; there's no
   separate "account-sharing" model).
+
+## Addendum 2: "Driver-001 Security Standard (Approved)" — reconciliation
+
+A later founder message restated the standard with two numeric/behavioral values that
+differ from what's already live (implemented and shipped under Addendum 1 above), plus a
+few new trigger asks not covered by the original scope. Rather than silently pick one
+version, the two direct conflicts were confirmed with the founder before touching any
+code; both were reconfirmed as "what's live now" — no code changes were needed for them:
+
+| Item                        | Addendum 1 (live)          | Later message               | Founder's call            |
+| --------------------------- | -------------------------- | --------------------------- | ------------------------- |
+| GPS-anomaly threshold       | 150 km/h                   | >900 km/h                   | **150 km/h** (unchanged)  |
+| Failed-login → verification | Immediate on first lockout | After 3 lockouts within 24h | **Immediate** (unchanged) |
+
+The remaining new items from that message were investigated, not guessed at:
+
+- **Email change requiring re-verification** — not built. No self-service "change my
+  email" flow exists anywhere in the platform for an authenticated user (grepped for a
+  `changeEmail`-style method; none exists). Nothing to hook a trigger onto.
+- **BVN/NIN update requiring re-verification** — not built. BVN/NIN doesn't exist as a
+  concept anywhere in the schema (Smile ID's `idNumber` field on submission is an opaque
+  string passed through to the provider, not a stored, updatable driver attribute). There
+  is no "BVN/NIN on file" to detect a change against.
+- **Driver-licence update requiring re-verification** — not built. `DRIVER_LICENSE` exists
+  only as a `KycDocumentType` enum value for the initial KYC document upload; there is no
+  distinct "update my licence" event separate from that one-time submission to fire a
+  trigger from.
+- **Rooted/jailbroken device detection** — not built, and not feasible in the current
+  architecture. Detecting root/jailbreak status (Play Integrity API, iOS DeviceCheck)
+  requires a native mobile app with platform-level attestation APIs; `driver-portal` is a
+  Next.js web app with no access to device integrity signals. This would need a native
+  Driver app before it could exist at all — out of scope for this backend-capability pass.
+
+These follow the same discipline as the SIM-card-change and phone-number-change gaps in
+Addendum 1: documented honestly as gaps with a stated reason, not wired to a fabricated
+hook that would silently do nothing.
+
+Two items from the same message were real, actionable asks and are now built:
+
+- **Session ID in the audit trail** — `DriverIdentityVerification.sessionId` (migration
+  `20260804170000_add_driver_idv_session_id`), populated from `AuthenticatedUser.sid` (the
+  real `AuthSession.id` behind the caller's access token) at `submit()` time. Exposed on
+  `DriverIdentityVerificationDto.sessionId`.
+- **Configurable risk-engine thresholds** — the three DPX-DS-001 thresholds
+  (lockout-attempt count, GPS-anomaly speed, spot-check denominator) moved from hard-coded
+  constants to `AppConfigService` getters backed by `DRIVER_IDV_LOCKOUT_THRESHOLD`,
+  `DRIVER_IDV_GPS_ANOMALY_SPEED_KMH`, and `DRIVER_IDV_SPOT_CHECK_DENOMINATOR` env vars
+  (validated via `env.validation.ts`, defaulting to the same 5 / 150 / 20 values already
+  live). `driver.constants.ts` keeps the old numbers as `DEFAULT_*` fallbacks for
+  documentation and test fixtures, not as the values the running service reads.

@@ -46,10 +46,14 @@ or deferred without saying so.
       `RANDOM_SPOT_CHECK` firing when an account is actually being shared.
 - [x] **Biometric verification audit logs** — `DriverIdentityVerification`
       (append-only): timestamp, device ID, IP address, latitude/longitude (when
-      permitted), confidence score, provider, trigger, and result for every
-      verification attempt.
+      permitted), confidence score, provider, trigger, session ID, and result
+      for every verification attempt.
 - [ ] **Driver trust score** — not started. No scoring model exists anywhere
       in the platform.
+- [x] **Extensible/configurable design** — the three DPX-DS-001 risk-engine
+      thresholds (lockout-attempt count, GPS-anomaly speed, spot-check
+      denominator) are read from `AppConfigService` getters backed by
+      `DRIVER_IDV_*` env vars, not hard-coded constants.
 
 ## Known gaps not on the founder's original list
 
@@ -61,11 +65,22 @@ or deferred without saying so.
   there's no self-service "change my phone number" flow for an _existing
   verified_ account anywhere in the platform (the only phone-mutation code
   path is the one-time OTP verification during onboarding).
-- **Lockout threshold and GPS-anomaly speed threshold are not admin-configurable**
-  — both are fixed constants (`IDENTITY_VERIFICATION_LOCKOUT_THRESHOLD = 5`,
-  `GPS_ANOMALY_SPEED_KMH_THRESHOLD = 150`) in `driver.constants.ts`, not env
-  vars or a database-backed setting. A future admin control panel is a
-  reasonable follow-up, not invented here.
+- **Lockout threshold and GPS-anomaly speed threshold are env-configurable, not
+  admin-panel-configurable** — `DRIVER_IDV_LOCKOUT_THRESHOLD`,
+  `DRIVER_IDV_GPS_ANOMALY_SPEED_KMH`, and `DRIVER_IDV_SPOT_CHECK_DENOMINATOR`
+  are real env vars (`env.validation.ts` → `AppConfigService`), changeable at
+  deploy time without a code change. A live in-app admin control panel
+  (database-backed, editable without a redeploy) is a reasonable future
+  follow-up, not invented here.
+- **Email-change, BVN/NIN-update, and driver-licence-update re-verification
+  triggers** — not built. None of these flows exist anywhere in the platform
+  to hook a trigger onto: no self-service email-change endpoint, no BVN/NIN
+  concept in the schema, no distinct "update my licence" event separate from
+  the one-time KYC document upload. See Addendum 2 in
+  docs/DRIVER-001-IDENTITY-VERIFICATION-DESIGN.md for the full reasoning.
+- **Rooted/jailbroken device detection** — not built, not feasible from
+  `driver-portal` (a Next.js web app). Requires native-app platform attestation
+  APIs (Play Integrity / DeviceCheck) that don't exist in this architecture.
 
 See docs/DRIVER-001-IDENTITY-VERIFICATION-DESIGN.md for the full technical
-design, including the addendum documenting every DPX-DS-001 decision.
+design, including the addenda documenting every DPX-DS-001 decision.

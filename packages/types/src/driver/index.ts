@@ -94,6 +94,7 @@ export interface DriverIdentityVerificationDto {
   status: DriverVerificationStatus;
   confidenceScore: number | null;
   failureReason: string | null;
+  sessionId: string | null;
   requestedAt: string;
   completedAt: string | null;
 }

@@ -13,6 +13,7 @@ export function toDriverIdentityVerificationDto(
     status: record.status,
     confidenceScore: record.confidenceScore !== null ? Number(record.confidenceScore) : null,
     failureReason: record.failureReason,
+    sessionId: record.sessionId,
     requestedAt: record.requestedAt.toISOString(),
     completedAt: record.completedAt ? record.completedAt.toISOString() : null,
   };

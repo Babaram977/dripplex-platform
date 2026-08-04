@@ -51,6 +51,7 @@ export class DriverIdentityVerificationController {
         ...(dto.idNumber !== undefined ? { idNumber: dto.idNumber } : {}),
         ...(dto.deviceId !== undefined ? { deviceId: dto.deviceId } : {}),
         ...(request.ip !== undefined ? { ipAddress: request.ip } : {}),
+        sessionId: user.sid,
         ...(dto.latitude !== undefined ? { latitude: dto.latitude } : {}),
         ...(dto.longitude !== undefined ? { longitude: dto.longitude } : {}),
       },

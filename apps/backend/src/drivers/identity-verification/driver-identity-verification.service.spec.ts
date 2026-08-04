@@ -7,7 +7,12 @@ import {
   ForbiddenDomainException,
   NotFoundDomainException,
 } from '../../common/exceptions/domain.exception';
-import { DRIVER_AUDIT_ACTIONS, IDENTITY_VERIFICATION_LOCKOUT_THRESHOLD } from '../driver.constants';
+import {
+  DEFAULT_GPS_ANOMALY_SPEED_KMH_THRESHOLD,
+  DEFAULT_IDENTITY_VERIFICATION_LOCKOUT_THRESHOLD,
+  DEFAULT_RANDOM_SPOT_CHECK_DENOMINATOR,
+  DRIVER_AUDIT_ACTIONS,
+} from '../driver.constants';
 
 import { DriverIdentityVerificationService } from './driver-identity-verification.service';
 
@@ -74,7 +79,12 @@ describe('DriverIdentityVerificationService', () => {
     };
     const auditService = new AuditService(auditLogRepository);
     auditRecord = jest.spyOn(auditService, 'record') as unknown as jest.Mock;
-    const appConfig = { identityVerificationIdleHours: IDLE_HOURS } as unknown as AppConfigService;
+    const appConfig = {
+      identityVerificationIdleHours: IDLE_HOURS,
+      driverIdvLockoutThreshold: DEFAULT_IDENTITY_VERIFICATION_LOCKOUT_THRESHOLD,
+      driverIdvGpsAnomalySpeedKmh: DEFAULT_GPS_ANOMALY_SPEED_KMH_THRESHOLD,
+      driverIdvSpotCheckDenominator: DEFAULT_RANDOM_SPOT_CHECK_DENOMINATOR,
+    } as unknown as AppConfigService;
     provider = {
       provider: 'SMILE_ID',
       enroll: jest.fn(),
@@ -521,12 +531,18 @@ describe('DriverIdentityVerificationService', () => {
     const driverId = await createDriver();
     provider.verify.mockResolvedValue({ status: 'FAILED', failureReason: 'no match' });
 
-    for (let attempt = 1; attempt <= IDENTITY_VERIFICATION_LOCKOUT_THRESHOLD; attempt += 1) {
+    for (
+      let attempt = 1;
+      attempt <= DEFAULT_IDENTITY_VERIFICATION_LOCKOUT_THRESHOLD;
+      attempt += 1
+    ) {
       await service.submit({ driverId, selfieImageBase64: 'x'.repeat(200) }, { userId: driverId });
     }
 
     const profile = await prisma.driverProfile.findUniqueOrThrow({ where: { userId: driverId } });
-    expect(profile.failedVerificationAttempts).toBe(IDENTITY_VERIFICATION_LOCKOUT_THRESHOLD);
+    expect(profile.failedVerificationAttempts).toBe(
+      DEFAULT_IDENTITY_VERIFICATION_LOCKOUT_THRESHOLD,
+    );
     expect(profile.identityVerificationLockedAt).not.toBeNull();
     expect(auditRecord).toHaveBeenCalledWith(
       DRIVER_AUDIT_ACTIONS.IDENTITY_VERIFICATION_LOCKED,
@@ -561,7 +577,11 @@ describe('DriverIdentityVerificationService', () => {
     if (!databaseAvailable) return;
     const driverId = await createDriver();
     provider.verify.mockResolvedValue({ status: 'FAILED', failureReason: 'no match' });
-    for (let attempt = 1; attempt <= IDENTITY_VERIFICATION_LOCKOUT_THRESHOLD; attempt += 1) {
+    for (
+      let attempt = 1;
+      attempt <= DEFAULT_IDENTITY_VERIFICATION_LOCKOUT_THRESHOLD;
+      attempt += 1
+    ) {
       await service.submit({ driverId, selfieImageBase64: 'x'.repeat(200) }, { userId: driverId });
     }
 

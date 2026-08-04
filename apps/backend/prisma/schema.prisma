@@ -658,6 +658,7 @@ model DriverIdentityVerification {
   providerReference String?                      @map("provider_reference") @db.VarChar(255)
   deviceId          String?                      @map("device_id") @db.VarChar(255)
   ipAddress         String?                      @map("ip_address") @db.VarChar(45)
+  sessionId         String?                      @map("session_id") @db.Uuid
   latitude          Decimal?                     @db.Decimal(10, 7)
   longitude         Decimal?                     @db.Decimal(10, 7)
   failureReason     String?                      @map("failure_reason") @db.VarChar(1000)

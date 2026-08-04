@@ -15,13 +15,7 @@ import {
 } from '../../common/exceptions/domain.exception';
 import { AppConfigService } from '../../config/app-config.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import {
-  DRIVER_AUDIT_ACTIONS,
-  GPS_ANOMALY_MIN_INTERVAL_MS,
-  GPS_ANOMALY_SPEED_KMH_THRESHOLD,
-  IDENTITY_VERIFICATION_LOCKOUT_THRESHOLD,
-  RANDOM_SPOT_CHECK_DENOMINATOR,
-} from '../driver.constants';
+import { DRIVER_AUDIT_ACTIONS, GPS_ANOMALY_MIN_INTERVAL_MS } from '../driver.constants';
 
 import { impliedSpeedKmh, lagosDateKey } from './geo.util';
 import {
@@ -54,6 +48,10 @@ export interface SubmitVerificationInput {
   idNumber?: string;
   deviceId?: string;
   ipAddress?: string;
+  /** Driver-001 Security Standard audit field #9 (session ID) — the
+   * `AuthSession.id` behind the caller's access token, sourced from
+   * `AuthenticatedUser.sid`. */
+  sessionId?: string;
   latitude?: number;
   longitude?: number;
 }
@@ -185,7 +183,7 @@ export class DriverIdentityVerificationService {
             },
             { latitude: options.latitude, longitude: options.longitude, at: now },
           );
-          if (speedKmh > GPS_ANOMALY_SPEED_KMH_THRESHOLD) {
+          if (speedKmh > this.appConfig.driverIdvGpsAnomalySpeedKmh) {
             return {
               required: true,
               reason: DriverVerificationTrigger.GPS_ANOMALY,
@@ -214,7 +212,7 @@ export class DriverIdentityVerificationService {
       };
     }
 
-    if (options.rollSpotCheck && randomInt(RANDOM_SPOT_CHECK_DENOMINATOR) === 0) {
+    if (options.rollSpotCheck && randomInt(this.appConfig.driverIdvSpotCheckDenominator) === 0) {
       return {
         required: true,
         reason: DriverVerificationTrigger.RANDOM_SPOT_CHECK,
@@ -323,6 +321,7 @@ export class DriverIdentityVerificationService {
         status: DriverVerificationStatus.PENDING,
         ...(input.deviceId !== undefined ? { deviceId: input.deviceId } : {}),
         ...(input.ipAddress !== undefined ? { ipAddress: input.ipAddress } : {}),
+        ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
         ...(input.latitude !== undefined ? { latitude: input.latitude } : {}),
         ...(input.longitude !== undefined ? { longitude: input.longitude } : {}),
       },
@@ -445,7 +444,7 @@ export class DriverIdentityVerificationService {
 
       let locked = false;
       if (
-        profileUpdate.failedVerificationAttempts >= IDENTITY_VERIFICATION_LOCKOUT_THRESHOLD &&
+        profileUpdate.failedVerificationAttempts >= this.appConfig.driverIdvLockoutThreshold &&
         !profileUpdate.identityVerificationLockedAt
       ) {
         await this.prisma.driverProfile.update({

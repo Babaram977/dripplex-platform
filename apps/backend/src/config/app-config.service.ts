@@ -254,4 +254,16 @@ export class AppConfigService {
   public get identityVerificationIdleHours(): number {
     return this.configService.get('IDENTITY_VERIFICATION_IDLE_HOURS', { infer: true });
   }
+
+  public get driverIdvLockoutThreshold(): number {
+    return this.configService.get('DRIVER_IDV_LOCKOUT_THRESHOLD', { infer: true });
+  }
+
+  public get driverIdvGpsAnomalySpeedKmh(): number {
+    return this.configService.get('DRIVER_IDV_GPS_ANOMALY_SPEED_KMH', { infer: true });
+  }
+
+  public get driverIdvSpotCheckDenominator(): number {
+    return this.configService.get('DRIVER_IDV_SPOT_CHECK_DENOMINATOR', { infer: true });
+  }
 }
