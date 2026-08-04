@@ -9,6 +9,7 @@ import type { RideDto } from '@dripplex/types';
 import { AppShell } from '@/components/app-shell';
 import { CustomerRatingForm } from '@/components/ride/customer-rating-form';
 import { LiveMap } from '@/components/ride/live-map';
+import { NavigateButton } from '@/components/ride/navigate-button';
 import { PassengerCard } from '@/components/ride/passenger-card';
 import { TripFareSummary } from '@/components/ride/trip-fare-summary';
 import { useActiveRide } from '@/hooks/rides/use-active-ride';
@@ -19,7 +20,6 @@ import {
   useMarkArrived,
   useStartTrip,
 } from '@/hooks/rides/use-trip-actions';
-import { buildDirectionsUrl } from '@/lib/maps';
 
 function formatElapsed(startedAt: string): string {
   const seconds = Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000));
@@ -68,18 +68,10 @@ function AssignedSection({ ride }: { ride: RideDto }): React.JSX.Element {
           <span>{ride.pickupAddress ?? 'Pickup location on the map'}</span>
         </div>
       </div>
-      <a
-        href={buildDirectionsUrl({
-          latitude: ride.pickupLatitude,
-          longitude: ride.pickupLongitude,
-        })}
-        target="_blank"
-        rel="noreferrer"
-      >
-        <Button type="button" variant="outline" className="w-full">
-          Navigate to pickup
-        </Button>
-      </a>
+      <NavigateButton
+        destination={{ latitude: ride.pickupLatitude, longitude: ride.pickupLongitude }}
+        label="Navigate to pickup"
+      />
       <Button
         type="button"
         className="w-full"
@@ -181,18 +173,10 @@ function InProgressSection({ ride }: { ride: RideDto }): React.JSX.Element {
           <span>{ride.dropoffAddress ?? 'Dropoff location on the map'}</span>
         </div>
       </div>
-      <a
-        href={buildDirectionsUrl({
-          latitude: ride.dropoffLatitude,
-          longitude: ride.dropoffLongitude,
-        })}
-        target="_blank"
-        rel="noreferrer"
-      >
-        <Button type="button" variant="outline" className="w-full">
-          Navigate to dropoff
-        </Button>
-      </a>
+      <NavigateButton
+        destination={{ latitude: ride.dropoffLatitude, longitude: ride.dropoffLongitude }}
+        label="Navigate to dropoff"
+      />
       <Button
         type="button"
         className="w-full"

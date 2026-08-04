@@ -14,7 +14,19 @@ domains, and the existing driver Growth Campaign UI (`components/campaign`,
 
 ## Per-item reality check
 
-### 1. Navigation — ⚠️ Partial, real gap is narrow
+### 1. Navigation — ✅ Nav-app handoff shipped (2026-08-04)
+
+**Built:** `apps/driver-portal/src/lib/maps.ts` (`buildGoogleMapsUrl` /
+`buildAppleMapsUrl` / `buildWazeUrl` / `buildNavAppOptions`) plus a new
+`NavigateButton` component (`components/ride/navigate-button.tsx`) — a
+`DropdownMenu`-based 3-option picker (Google Maps / Apple Maps / Waze),
+each a zero-setup universal link opened in a new tab. Wired into
+`app/trip/page.tsx` in both `AssignedSection` (navigate to pickup) and
+`InProgressSection` (navigate to dropoff), replacing the single hardcoded
+Google Maps anchor. In-app voice guidance remains deferred per the
+founder's decision below — nav-app handoff only for v1.
+
+Original audit finding, kept for context:
 
 **Real today:** `apps/driver-portal/src/components/ride/live-map.tsx` +
 `map-canvas.tsx` (MAPS-UI Slice 3) render a real Google-Maps-backed route
@@ -196,21 +208,68 @@ disconnected features in an arbitrary order:
 8. Operational notifications — wired incrementally alongside 3-6, not a
    separate phase.
 
-**Open decisions the founder needs to resolve before implementation
-starts**, named honestly rather than assumed:
+## Founder decisions (2026-08-04)
 
-- Navigation: nav-app handoff only, or also build in-app voice guidance
-  (a paid third-party SDK decision)?
-- Shift management: does adherence tie into Driver Growth Campaign's tier
-  system, or stay a standalone scheduling feature for now?
-- Communication tools: `tel:` link only for v1, or commit to masked
-  calling/chat (its own provider decision) as part of this slice?
-- Emergency/SOS: does triggering it also auto-notify the driver's emergency
-  contact and/or attempt to alert local authorities, or is v1 scoped to
-  "alerts DrippleX operations" only?
-- Driver profile enhancements: what's the concrete feature list?
+All five open decisions resolved the same day, explicitly not blocking the
+items that don't need them:
 
-This document deliberately stops at the audit + open-decisions stage — no
-schema or service code has been written for Slice 2 yet, per the same
-"design/audit before implementation" discipline applied to every other
-slice in this project.
+1. **Navigation — nav-app handoff only.** Google Maps, Apple Maps, Waze (if
+   installed). In-app voice guidance explicitly deferred — SDK
+   cost/licensing/maintenance not justified pre-launch; professional
+   drivers already carry a preferred nav app.
+2. **Shift management — standalone first, integrate later.** Start Shift,
+   End Shift, planned availability, scheduled online/offline, break mode,
+   daily working hours, operations visibility. Extension points preserved
+   so Driver Growth Campaign can consume shift data later without a
+   redesign — not wired to campaign tiers now.
+3. **Communication — plain phone calling (`tel:`) for v1 only.** One-tap
+   call. No masked calling — real telecom-provider/call-routing/
+   recording/privacy/cost implications, deferred to a later milestone. An
+   in-app messaging _placeholder_ is only wired if the messaging backend
+   already exists (it doesn't, per the audit above — so v1 ships call-only,
+   no placeholder UI for a backend that isn't there).
+4. **SOS — DrippleX Operations only, v1.** Pressing SOS sends an immediate
+   alert to Operations with driver ID, current GPS, active trip, timestamp,
+   vehicle, and battery level (if available); the customer (if on an active
+   trip) is notified that assistance has been requested. **Explicitly not
+   built in v1:** automatic contact to emergency services or the driver's
+   emergency contact — those require country-specific legal/operational
+   policy the founder is deliberately not deciding here.
+5. **Profile enhancements — scoped now**, to the field list below.
+   Regulated fields require a review workflow, never direct driver edit.
+
+**Viewable/editable directly by the driver:** personal information, profile
+photo, emergency contact, languages spoken, preferred service areas,
+driving experience, vehicle information (display; edits go through the
+existing `VehiclesService` approval workflow, not a raw field edit),
+documents overview, inspection history, performance statistics, ratings
+summary, earnings summary, security status, account status.
+
+**Regulated — view-only, review-workflow required to change, never a
+direct driver edit:** NIN, BVN (neither exists in the schema yet — no
+regression here, just confirming they'd land behind this same rule once
+DPX-DRIVER-002's NIN/BVN follow-up ships), driver licence (routes through
+the existing `DriversService.submitKyc`/admin-verify flow, not a
+self-service field), vehicle approval status, inspection status.
+
+## Execution order (founder-directed, 2026-08-04)
+
+1. Navigation handoff
+2. One-tap phone calling
+3. Driver Support
+4. Incident Reporting
+5. SOS
+6. Shift Management
+7. Help Centre
+8. Operational Notifications
+9. Profile Enhancements
+10. Slice 2 production audit
+11. Founder review
+12. Freeze
+
+This supersedes this document's own earlier "recommended build order"
+above where the two differ (the founder's order runs Support/Incident/SOS
+before Shift Management; the earlier recommendation had Shift Management
+running in parallel) — the founder's explicit order is authoritative.
+Implementation proceeds item by item below, each verified (typecheck/lint/
+test) before moving to the next, per this project's standing discipline.
