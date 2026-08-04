@@ -11,6 +11,31 @@ Two standing principles apply on top of this gate, platform-wide, not
 scoped to one module: [DPX-UX-001 — Simplicity First](./DPX-UX-001-SIMPLICITY-FIRST.md)
 and [DPX-901 — Configuration-Driven Security Policy](./DPX-901-CONFIG-DRIVEN-SECURITY-POLICY.md).
 
+## The module lifecycle
+
+Founder-formalized (2026-08-04) as the named sequence every module goes
+through, mapping onto the ten-item gate below rather than replacing it:
+
+1. **Figma implementation** — gate item 1-2.
+2. **Backend integration** — gate item 3-4.
+3. **End-to-end verification** — gate items 5-8 (typecheck/lint/console/
+   Playwright).
+4. **Security review** — a named, explicit step, not folded silently
+   into the production audit. For a module with real security-relevant
+   surface (auth, payments, identity, anything DPX-901 governs), this is
+   its own pass with its own findings, the way Driver-001/DPX-DS-001/
+   DPX-DRIVER-001 was for Driver — not every module needs one (Home's
+   port didn't), but when a module has one, it gets documented as its
+   own thing, not buried in prose inside item 9's audit.
+5. **Production audit** — gate item 9.
+6. **Documentation update** — every doc this module touches (this gate's
+   "Applying it retroactively" section, `MATURITY.md`, `RELEASE-HISTORY.md`,
+   the module's own audit/design docs) gets brought current as part of
+   closing the module, not left stale for the next module's audit to
+   trip over.
+7. **Founder approval** — the actual sign-off gate item 10 requires.
+8. **Module freeze** — gate item 10.
+
 ## The gate
 
 A module is not "done" until all ten are true:
@@ -62,11 +87,24 @@ A module is not "done" until all ten are true:
   features). Locking happens per-module after explicit founder pixel-
   final approval; freezing per this gate can happen without that.
 - **Marketplace**: met 1-9 during its stabilization pass
-  (`DPX-100-COVERAGE.md`'s "Production Candidate" section); not yet
-  formally frozen or locked pending founder review of that pass.
+  (`DPX-100-COVERAGE.md`'s "Production Candidate" section), then a
+  founder-flagged pricing-integrity defect was found and fixed
+  (`docs/PRICING-ENGINE.md`) before the freeze; **frozen** per founder
+  direction (`docs/DPX-100-COVERAGE.md`).
 - **Ride**: met 1-9 across Slices 1-5 and
   `docs/RIDE-DPX-100-PRODUCTION-AUDIT.md`; **frozen** per founder
   direction (see `MATURITY.md`'s "Ride module — Frozen" section).
+- **Wallet**: met 1-9 across Slices 1-5 and
+  `docs/WALLET-DPX-100-PRODUCTION-AUDIT.md` (which found and fixed six
+  real issues); **frozen** per founder direction.
+- **Driver (facial verification only, not the whole module)**: backend-only
+  pass (items 3-4, 5-6, no Figma/Playwright items since no UI was built —
+  see the Figma-first correction in `docs/DPX-DRIVER-001-SECURITY-STANDARD.md`
+  §9), with an explicit security-review step (item "4" above) producing
+  `docs/DPX-DRIVER-001-SECURITY-STANDARD.md`; **locked** per founder
+  direction. The rest of the Driver module (vehicle management, shift
+  management, support, and the DPX-100 UI port itself) remains open —
+  see `docs/DRIVER-APP-DPX-100-AUDIT.md`.
 
 ## Notes for whoever runs the next module through this gate
 

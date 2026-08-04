@@ -39,54 +39,75 @@ Backend-side, per priority item:
 | Shift management              | ❌ Missing entirely — no scheduling/shift-target model or endpoint anywhere                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | Support                       | ❌ Missing entirely — no ticket/help-request model or endpoint anywhere in the platform, for any portal                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
-## The one blocking decision: facial verification provider
+## Facial verification provider — resolved
 
-This is flagged separately because, per the founder's direction, it's a **production
-standard for this module, not an optional enhancement** — so it can't be scoped as "build
-the UI, leave the backend as a documented gap" the way, say, Wallet's Face ID/WebAuthn
-gap was. A real driver-onboarding facial/liveness check needs a real third-party identity
-provider (this is a specialized capability — face-match-to-ID-document plus
-liveness-anti-spoofing — not something to build from scratch). This is the same class of
-decision as picking Paystack/Flutterwave/OPay for payments: it has real cost and
-data-residency/compliance implications, so it needs the founder's call before any backend
-work starts, not an autonomous choice.
+**Was the one blocking decision; now closed.** Smile ID was chosen (the founder's
+direction, matching this doc's earlier recommendation of it as the dominant
+Nigeria-specific identity-verification vendor). Built as DRIVER-001 / DPX-DS-001 /
+DPX-DRIVER-001 — see the table above and `docs/DPX-DRIVER-001-SECURITY-STANDARD.md`
+(authoritative, founder-locked).
 
-Three real options, for context (not a recommendation to silently act on):
+## The current blocking decisions: DPX-DRIVER-002's open items
 
-- **Smile ID** — the dominant identity-verification vendor across Africa/Nigeria
-  specifically, with NIN/BVN/driver's-license database checks plus liveness, which most
-  Nigerian ride-hailing/delivery platforms already use for driver KYC.
-- **AWS Rekognition Face Liveness** — cloud-native, integrates cleanly if AWS is (or
-  becomes) part of the infra stack, no Nigeria-specific document-database checks though.
-- **Onfido / Persona / Veriff** — global identity-verification vendors, strong liveness,
-  less Nigeria-specific document coverage than Smile ID.
+Per `docs/DPX-DRIVER-002-INSPECTION-STANDARD.md` (founder-approved design, not yet
+implemented), driver onboarding is being upgraded from digital-KYC-only to a
+four-phase flow that includes mandatory physical vehicle/driver inspection. That
+document names its own open, founder-decision-blocked items — repeated here so
+this audit's slice plan stays honest about what can start immediately versus what's
+still waiting on a call:
 
-Whichever is chosen, the build pattern already exists in this codebase to follow: a real
-`DriverFacialVerificationProvider` interface + adapter (mirroring
-`PaymentProviderAdapter`/`PayoutProvider`), wired into the onboarding flow for real once
-credentials exist, throwing `NotImplementedException` until they do — never a fake
-"verified" state.
+- **Criminal/watchlist-check provider** — no background-check vendor is integrated
+  or chosen. The single largest open item; needs its own decision before related
+  code ships, same weight as the facial-verification provider choice was.
+- **Inspector portal/app** — whether inspectors get their own app (mirroring
+  `driver-portal`) or work inside `operations-console` is undecided.
+- **NIN/BVN provider** — Smile ID's Nigeria-specific NIN/BVN products are the likely
+  candidate given it's already integrated for facial verification, but that's a
+  recommendation, not a decision made here.
 
-## Proposed slice plan (pending the decision above)
+None of these block the rest of the module — see the slice plan below.
 
-1. **Slice 1 — Vehicle management + structured onboarding.** New `Vehicle` model
-   (plate, make, model, color, year, one-or-more-per-driver, `isActive`), real CRUD
-   endpoints, and a real multi-step onboarding flow on top of the existing
-   `DriverProfile`/`DriverKyc` models (currently a single flat document-upload form).
-   No provider decision needed — can start immediately.
-2. **Slice 2 — Facial verification.** ✅ Done (DPX-DS-001) — see
-   `docs/DRIVER-001-IDENTITY-VERIFICATION-DESIGN.md` and
-   `docs/DPX-900-DRIVER-SECURITY-TRUST.md`.
-3. **Slice 3 — Shift management.** New model (planned availability windows, optionally
-   shift-based incentive targets if the founder wants them tied to Driver Growth
-   Campaign's existing tier system) + driver-portal UI.
-4. **Slice 4 — Support.** A real ticket/help-request model + submission flow, scoped
-   deliberately (a basic "submit an issue, admin sees a queue" loop is a defensible v1,
-   not a full helpdesk platform) unless the founder wants more.
-5. **Slice 5 — DPX-100 port.** Once the above are real, re-platform the whole Driver App
-   (existing screens plus the four new pieces) into `packages/ui/super-app`, matching
-   the same port discipline Ride/Marketplace/Wallet went through, then the same audit +
-   freeze gate.
+## Founder-reordered priority (2026-08-04)
 
-Slices 1, 3, and 4 don't depend on the facial-verification decision and can proceed in
-parallel with that conversation. Slice 2 is the one genuinely blocked item.
+Supersedes this document's original priority list. Per-item status, incorporating
+what's already real:
+
+1. **Driver onboarding & KYC** (incl. inspection) — ⚠️ Partial, this is the current
+   focus. See Slice 1 below.
+2. **Vehicle management** — ❌ Missing, absorbed into Slice 1 (DPX-DRIVER-002 Phase
+   1/3 needs the `Vehicle` model as a prerequisite — not a separate later effort).
+3. **Availability (online/offline)** — ✅ Already real, no work needed.
+4. **Shift management** — ❌ Missing, Slice 2 below.
+5. **Navigation** — ⚠️ Already partial (real Google Directions routing); voice
+   guidance/nav-app handoff remains open, not reprioritized ahead of the above.
+6. **Earnings dashboard** — ✅ Already real, no work needed.
+7. **Driver wallet & payouts** — ✅ Already real, no work needed.
+8. **Ratings & reviews** — ✅ Already real, no work needed.
+9. **Support** — ❌ Missing, Slice 3 below.
+
+## Proposed slice plan
+
+1. **Slice 1 — Driver onboarding, KYC & vehicle management (DPX-DRIVER-002).** The
+   `Vehicle` model (plate, make, model, color, year, one-or-more-per-driver,
+   `isActive`), the structured multi-step onboarding flow (replacing the current
+   single flat document-upload form), the new document/field additions (insurance,
+   emergency contact — see DPX-DRIVER-002 Phase 1's table), and — pending the
+   inspector-portal decision above — the `InspectionCentre`/`Inspection` models,
+   appointment booking, and structured checklist from DPX-DRIVER-002 Phase 3.
+   NIN/BVN and criminal/watchlist checks stay explicitly out of scope for this
+   slice until their provider decisions land; the rest of the slice does not
+   depend on them and can proceed now.
+2. **Slice 2 — Shift management.** New model (planned availability windows,
+   optionally shift-based incentive targets if the founder wants them tied to
+   Driver Growth Campaign's existing tier system) + driver-portal UI.
+3. **Slice 3 — Support.** A real ticket/help-request model + submission flow,
+   scoped deliberately (a basic "submit an issue, admin sees a queue" loop is a
+   defensible v1, not a full helpdesk platform) unless the founder wants more.
+4. **Slice 4 — DPX-100 port.** Once the above are real, re-platform the whole
+   Driver App (existing screens plus the new pieces) into `packages/ui/super-app`,
+   matching the same port discipline Ride/Marketplace/Wallet went through, then
+   the same audit + freeze gate.
+
+Slices 2 and 3 don't depend on DPX-DRIVER-002's open provider decisions and could
+proceed in parallel, but per the founder's reordering, Slice 1 (onboarding/KYC) is
+the current priority.

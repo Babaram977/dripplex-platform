@@ -2,7 +2,7 @@
 
 **This is the canonical release timeline.** It reflects what's actually in git history and what was actually verified — not what any individual milestone doc claimed at the time. Where an earlier document's claims didn't hold up, that's noted here and the original document was corrected or archived (`docs/archive/`) rather than silently rewritten.
 
-**No `v1.0.0` tag exists yet.** Per the founder's explicit instruction (2026-07-28): that specific tag gets created when there's a real, deployed, end-to-end-verified product behind it — not before, regardless of what any release-notes document says. The one tag that does exist, `v1.0-baseline` (2026-08-04, see "Baseline" below), marks a git-history consolidation point — `main` catching up to already-built, already-frozen module work — not a production launch claim.
+**No `v1.0.0` tag exists yet.** Per the founder's explicit instruction (2026-07-28): that specific tag gets created when there's a real, deployed, end-to-end-verified product behind it — not before, regardless of what any release-notes document says. A `v1.0-baseline` tag (2026-08-04, see "Baseline" below) exists locally, marking a git-history consolidation point — `main` catching up to already-built, already-frozen module work, not a production launch claim — but is not yet pushed to the remote (deferred, GitHub-side policy).
 
 ---
 
@@ -111,7 +111,7 @@ PR #44 (`claude/dripplex-coolify-deploy-fatig4` → `main`) opened, reviewed, an
 
 Per founder direction, given the above was all real, tested, and (per the module audits) already the intended production state — just never merged — `main` was fast-forwarded directly to this branch's tip rather than opened as a single ~55-commit/350-file PR against a `main` that was six weeks stale relative to what the branch already contained. Preceded by a full monorepo verification: `turbo run typecheck`/`lint` clean across all 18 packages/apps; backend test suite 146/146 suites, 1106/1106 tests passing (an authoritative sequential run — a parallel `turbo run test` pass showed 2 spurious failures from concurrent workers racing the shared dev Postgres/Prisma client, confirmed non-reproducing in isolation); `turbo run build` clean for every package plus `backend` and `driver-portal` (the apps this pass actually touched) — five other Next.js apps failed only on `next/font`'s Google Fonts fetch hitting this sandbox's outbound-HTTPS proxy's self-signed cert, a pre-existing environment constraint unrelated to any code here, not reproducible in a normal build environment.
 
-Tagged `v1.0-baseline` at the fast-forwarded commit.
+**Tag `v1.0-baseline` created locally at the fast-forwarded commit. Remote tag push deferred due to repository policy (HTTP 403) — branch pushes to both this branch and `main` succeeded, so this is a GitHub-side tag-ref restriction, not a network/proxy failure, and per this session's egress-policy guidance was not retried.** Baseline remains fully established without it: `main` is at commit `4b80290` and this document records the milestone — an administrator can push the local tag later if wanted, but nothing about the baseline's validity depends on the tag existing on the remote.
 
 From this point forward: branch new work from `main`, and return to normal per-module PRs — this consolidation exists to close the gap, not to establish direct-to-main pushes as the ongoing pattern.
 
