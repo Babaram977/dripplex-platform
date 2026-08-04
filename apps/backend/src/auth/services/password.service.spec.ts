@@ -14,6 +14,7 @@ import type { OtpService } from './otp.service';
 import type { PasswordPolicyService } from './password-policy.service';
 import type { AuditService } from '../../audit/audit.service';
 import type { AppConfigService } from '../../config/app-config.service';
+import type { DomainEventBus } from '../../events/domain-event-bus';
 import type { NotificationService } from '../../notifications/notification.service';
 import type { RedisService } from '../../redis/redis.service';
 import type { UsersService } from '../../users/users.service';
@@ -73,6 +74,10 @@ describe('PasswordService', () => {
     sendPasswordChanged: jest.fn(),
   } as unknown as jest.Mocked<NotificationService>;
 
+  const eventBus = {
+    emit: jest.fn().mockResolvedValue(undefined),
+  } as unknown as jest.Mocked<DomainEventBus>;
+
   const service = new PasswordService(
     usersService,
     otpService,
@@ -83,6 +88,7 @@ describe('PasswordService', () => {
     passwordResetTokenRepository,
     authSessionRepository,
     notificationService,
+    eventBus,
   );
 
   const activeUser = {

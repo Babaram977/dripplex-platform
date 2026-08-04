@@ -203,6 +203,8 @@ export interface UpdateDriverAvailabilityRequest {
   vehicleType: RideType;
   latitude?: number;
   longitude?: number;
+  /** Driver-001: used for the "new device" identity-verification risk check. */
+  deviceId?: string;
 }
 
 export type RideOfferStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'EXPIRED';

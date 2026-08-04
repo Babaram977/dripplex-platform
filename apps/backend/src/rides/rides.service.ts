@@ -6,6 +6,7 @@ import {
   NotFoundDomainException,
   ValidationDomainException,
 } from '../common/exceptions/domain.exception';
+import { DriverIdentityVerificationService } from '../drivers/identity-verification/driver-identity-verification.service';
 import { DomainEventBus } from '../events/domain-event-bus';
 import { DOMAIN_EVENTS } from '../events/domain-events';
 import {
@@ -51,6 +52,7 @@ export class RidesService {
     private readonly events: RideEventsPublisher,
     private readonly promotionsService: PromotionsService,
     private readonly eventBus: DomainEventBus,
+    private readonly identityVerificationService: DriverIdentityVerificationService,
   ) {}
 
   /** Real service-type catalog (display name + description) so the
@@ -348,6 +350,20 @@ export class RidesService {
     driverId: string,
     dto: UpdateDriverAvailabilityDto,
   ): Promise<DriverAvailabilityDto> {
+    // Driver-001 / DPX-DS-001: going online is gated on identity
+    // verification when the risk engine requires it (onboarding / idle
+    // timeout / first login of day / new device / GPS anomaly / suspicious
+    // activity / random spot-check / a prior failed attempt / admin or
+    // event-driven flags). Going offline is never blocked. See
+    // docs/DRIVER-001-IDENTITY-VERIFICATION-DESIGN.md.
+    if (dto.online) {
+      await this.identityVerificationService.assertNotRequired(driverId, {
+        ...(dto.deviceId !== undefined ? { deviceId: dto.deviceId } : {}),
+        ...(dto.latitude !== undefined ? { latitude: dto.latitude } : {}),
+        ...(dto.longitude !== undefined ? { longitude: dto.longitude } : {}),
+      });
+    }
+
     const availability = await this.prisma.driverAvailability.upsert({
       where: { driverId },
       create: {

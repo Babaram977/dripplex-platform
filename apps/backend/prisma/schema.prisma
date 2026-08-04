@@ -218,73 +218,75 @@ enum ProductStatus {
 }
 
 model User {
-  id                      String                   @id @default(uuid()) @db.Uuid
-  email                   String                   @unique @db.Citext
-  phone                   String?                  @unique @db.VarChar(32)
-  passwordHash            String                   @map("password_hash")
-  firstName               String                   @map("first_name") @db.VarChar(100)
-  lastName                String                   @map("last_name") @db.VarChar(100)
-  status                  UserStatus               @default(PENDING_VERIFICATION)
-  registrationChannel     RegistrationChannel?     @map("registration_channel")
-  emailVerifiedAt         DateTime?                @map("email_verified_at")
-  phoneVerifiedAt         DateTime?                @map("phone_verified_at")
-  lastLoginAt             DateTime?                @map("last_login_at")
-  lastActiveAt            DateTime?                @map("last_active_at")
-  passwordChangedAt       DateTime?                @map("password_changed_at")
-  blockedAt               DateTime?                @map("blocked_at")
-  blockedReason           String?                  @map("blocked_reason") @db.VarChar(500)
-  roles                   UserRole[]
-  authSessions            AuthSession[]
-  passwordResetTokens     PasswordResetToken[]
-  identityVerifications   IdentityVerification[]
-  customerProfile         CustomerProfile?
-  merchantProfile         MerchantProfile?
-  riderProfile            RiderProfile?
-  driverProfile           DriverProfile?
-  businesses              Business[]
-  merchantKycs            MerchantKyc[]
-  bankAccounts            BankAccount[]
-  customerBankAccounts    CustomerBankAccount[]
-  walletPin               WalletPin?
-  withdrawalRequests      WithdrawalRequest[]      @relation("WithdrawalRequestUser")
-  withdrawalsProcessed    WithdrawalRequest[]      @relation("WithdrawalRequestProcessedBy")
-  customerAddresses       CustomerAddress[]
-  carts                   Cart[]
-  orders                  Order[]
-  paymentTransactions     PaymentTransaction[]
-  deliveryJobsAsCustomer  DeliveryJob[]            @relation("DeliveryCustomer")
-  deliveryJobsAsMerchant  DeliveryJob[]            @relation("DeliveryMerchant")
-  deliveryJobsAsRider     DeliveryJob[]            @relation("DeliveryRider")
-  riderAvailability       RiderAvailability?
-  ridesAsCustomer         Ride[]                   @relation("RideCustomer")
-  ridesAsDriver           Ride[]                   @relation("RideDriver")
-  driverAvailability      DriverAvailability?
-  driverKycDocuments      DriverKyc[]
-  rideOffers              RideOffer[]
-  notifications           Notification[]
-  notificationPreferences NotificationPreference[]
-  deviceTokens            DeviceToken[]
-  referral                Referral?
-  referralRedemption      ReferralRedemption?
-  driverReferrals         DriverReferral[]
-  passengerReferral       PassengerReferral?
-  referralRewards         ReferralReward[]
-  searchQueryLogs         SearchQueryLog[]
-  recentSearches          RecentSearch[]
-  reviews                 Review[]                 @relation("ReviewAuthor")
-  reviewVotes             ReviewVote[]
-  reviewReports           ReviewReport[]           @relation("ReviewReporter")
-  wishlists               Wishlist[]               @relation("WishlistCustomer")
-  promotionRedemptions    PromotionRedemption[]
-  loyaltyAccount          LoyaltyAccount?
-  userAchievements        UserAchievement[]
-  cmsContentVersions      CmsContentVersion[]      @relation("CmsContentVersionCreator")
-  fraudSignals            FraudSignal[]            @relation("FraudSignalUser")
-  fraudReviews            FraudSignal[]            @relation("FraudSignalReviewer")
-  auditLogs               AuditLog[]
-  createdAt               DateTime                 @default(now()) @map("created_at")
-  updatedAt               DateTime                 @updatedAt @map("updated_at")
-  deletedAt               DateTime?                @map("deleted_at")
+  id                          String                       @id @default(uuid()) @db.Uuid
+  email                       String                       @unique @db.Citext
+  phone                       String?                      @unique @db.VarChar(32)
+  passwordHash                String                       @map("password_hash")
+  firstName                   String                       @map("first_name") @db.VarChar(100)
+  lastName                    String                       @map("last_name") @db.VarChar(100)
+  status                      UserStatus                   @default(PENDING_VERIFICATION)
+  registrationChannel         RegistrationChannel?         @map("registration_channel")
+  emailVerifiedAt             DateTime?                    @map("email_verified_at")
+  phoneVerifiedAt             DateTime?                    @map("phone_verified_at")
+  lastLoginAt                 DateTime?                    @map("last_login_at")
+  lastActiveAt                DateTime?                    @map("last_active_at")
+  passwordChangedAt           DateTime?                    @map("password_changed_at")
+  blockedAt                   DateTime?                    @map("blocked_at")
+  blockedReason               String?                      @map("blocked_reason") @db.VarChar(500)
+  roles                       UserRole[]
+  authSessions                AuthSession[]
+  passwordResetTokens         PasswordResetToken[]
+  identityVerifications       IdentityVerification[]
+  customerProfile             CustomerProfile?
+  merchantProfile             MerchantProfile?
+  riderProfile                RiderProfile?
+  driverProfile               DriverProfile?
+  businesses                  Business[]
+  merchantKycs                MerchantKyc[]
+  bankAccounts                BankAccount[]
+  customerBankAccounts        CustomerBankAccount[]
+  walletPin                   WalletPin?
+  withdrawalRequests          WithdrawalRequest[]          @relation("WithdrawalRequestUser")
+  withdrawalsProcessed        WithdrawalRequest[]          @relation("WithdrawalRequestProcessedBy")
+  customerAddresses           CustomerAddress[]
+  carts                       Cart[]
+  orders                      Order[]
+  paymentTransactions         PaymentTransaction[]
+  deliveryJobsAsCustomer      DeliveryJob[]                @relation("DeliveryCustomer")
+  deliveryJobsAsMerchant      DeliveryJob[]                @relation("DeliveryMerchant")
+  deliveryJobsAsRider         DeliveryJob[]                @relation("DeliveryRider")
+  riderAvailability           RiderAvailability?
+  ridesAsCustomer             Ride[]                       @relation("RideCustomer")
+  ridesAsDriver               Ride[]                       @relation("RideDriver")
+  driverAvailability          DriverAvailability?
+  driverKycDocuments          DriverKyc[]
+  driverIdentityVerifications DriverIdentityVerification[]
+  driverVerifiedDevices       DriverVerifiedDevice[]
+  rideOffers                  RideOffer[]
+  notifications               Notification[]
+  notificationPreferences     NotificationPreference[]
+  deviceTokens                DeviceToken[]
+  referral                    Referral?
+  referralRedemption          ReferralRedemption?
+  driverReferrals             DriverReferral[]
+  passengerReferral           PassengerReferral?
+  referralRewards             ReferralReward[]
+  searchQueryLogs             SearchQueryLog[]
+  recentSearches              RecentSearch[]
+  reviews                     Review[]                     @relation("ReviewAuthor")
+  reviewVotes                 ReviewVote[]
+  reviewReports               ReviewReport[]               @relation("ReviewReporter")
+  wishlists                   Wishlist[]                   @relation("WishlistCustomer")
+  promotionRedemptions        PromotionRedemption[]
+  loyaltyAccount              LoyaltyAccount?
+  userAchievements            UserAchievement[]
+  cmsContentVersions          CmsContentVersion[]          @relation("CmsContentVersionCreator")
+  fraudSignals                FraudSignal[]                @relation("FraudSignalUser")
+  fraudReviews                FraudSignal[]                @relation("FraudSignalReviewer")
+  auditLogs                   AuditLog[]
+  createdAt                   DateTime                     @default(now()) @map("created_at")
+  updatedAt                   DateTime                     @updatedAt @map("updated_at")
+  deletedAt                   DateTime?                    @map("deleted_at")
 
   @@index([status])
   @@index([deletedAt])
@@ -573,24 +575,114 @@ model RiderProfile {
 }
 
 model DriverProfile {
-  id             String            @id @default(uuid()) @db.Uuid
-  userId         String            @unique @map("user_id") @db.Uuid
-  status         DriverStatus      @default(PENDING)
-  isApproved     Boolean           @default(false) @map("is_approved")
-  approvedAt     DateTime?         @map("approved_at")
-  approvedBy     String?           @map("approved_by") @db.Uuid
-  rejectedReason String?           @map("rejected_reason") @db.VarChar(1000)
-  suspendedAt    DateTime?         @map("suspended_at")
-  createdAt      DateTime          @default(now()) @map("created_at")
-  updatedAt      DateTime          @updatedAt @map("updated_at")
-  deletedAt      DateTime?         @map("deleted_at")
-  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  onboarding     DriverOnboarding?
+  id                                 String                     @id @default(uuid()) @db.Uuid
+  userId                             String                     @unique @map("user_id") @db.Uuid
+  status                             DriverStatus               @default(PENDING)
+  isApproved                         Boolean                    @default(false) @map("is_approved")
+  approvedAt                         DateTime?                  @map("approved_at")
+  approvedBy                         String?                    @map("approved_by") @db.Uuid
+  rejectedReason                     String?                    @map("rejected_reason") @db.VarChar(1000)
+  suspendedAt                        DateTime?                  @map("suspended_at")
+  /// Last time this driver passed a real identity/facial verification
+  /// (Smile ID). Null = never verified. Backfilled to `now()` for every
+  /// pre-existing driver at migration time so the new gate applies only to
+  /// trigger conditions occurring after it ships, not retroactively to
+  /// drivers approved before this feature existed. See
+  /// docs/DRIVER-001-IDENTITY-VERIFICATION-DESIGN.md.
+  lastIdentityVerifiedAt             DateTime?                  @map("last_identity_verified_at")
+  /// Non-null = this driver cannot go online until they pass a new
+  /// verification. Set by the risk engine (idle timeout / new device /
+  /// suspicious activity / account recovery) or a failed verification
+  /// attempt; cleared only by a PASSED verification.
+  identityVerificationRequiredReason DriverVerificationTrigger? @map("identity_verification_required_reason")
+  /// DPX-DS-001: consecutive failed/error verification attempts. Reset to 0
+  /// on any PASSED result; hitting the platform's lockout threshold sets
+  /// `identityVerificationLockedAt`.
+  failedVerificationAttempts         Int                        @default(0) @map("failed_verification_attempts")
+  /// DPX-DS-001: non-null = this driver cannot attempt verification at all
+  /// until an admin clears it (support-review lock after repeated
+  /// failures). Distinct from `identityVerificationRequiredReason`, which
+  /// still allows retries.
+  identityVerificationLockedAt       DateTime?                  @map("identity_verification_locked_at")
+  createdAt                          DateTime                   @default(now()) @map("created_at")
+  updatedAt                          DateTime                   @updatedAt @map("updated_at")
+  deletedAt                          DateTime?                  @map("deleted_at")
+  user                               User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  onboarding                         DriverOnboarding?
 
   @@index([status])
   @@index([isApproved])
   @@index([deletedAt])
   @@map("driver_profiles")
+}
+
+enum IdentityVerificationProvider {
+  SMILE_ID
+}
+
+enum DriverVerificationTrigger {
+  ONBOARDING
+  IDLE_TIMEOUT
+  NEW_DEVICE
+  SUSPICIOUS_ACTIVITY
+  ACCOUNT_RECOVERY
+  MANUAL_ADMIN
+  /// DPX-DS-001
+  CREDENTIAL_CHANGE
+  FAILED_LOGIN_LOCKOUT
+  FIRST_LOGIN_OF_DAY
+  GPS_ANOMALY
+  RANDOM_SPOT_CHECK
+  /// DPX-DS-001 — reserved, not yet wired (no phone-change flow exists; see design doc addendum)
+  PHONE_NUMBER_CHANGED
+}
+
+enum DriverVerificationStatus {
+  PENDING
+  PASSED
+  FAILED
+  ERROR
+}
+
+/// Append-only audit trail of every identity/facial verification attempt —
+/// onboarding enrollment and every risk-triggered re-verification. Never
+/// updated after completion; DriverProfile's two fields above are the live
+/// enforcement state. See docs/DRIVER-001-IDENTITY-VERIFICATION-DESIGN.md.
+model DriverIdentityVerification {
+  id                String                       @id @default(uuid()) @db.Uuid
+  driverId          String                       @map("driver_id") @db.Uuid
+  provider          IdentityVerificationProvider
+  trigger           DriverVerificationTrigger
+  status            DriverVerificationStatus     @default(PENDING)
+  confidenceScore   Decimal?                     @map("confidence_score") @db.Decimal(5, 2)
+  providerReference String?                      @map("provider_reference") @db.VarChar(255)
+  deviceId          String?                      @map("device_id") @db.VarChar(255)
+  ipAddress         String?                      @map("ip_address") @db.VarChar(45)
+  latitude          Decimal?                     @db.Decimal(10, 7)
+  longitude         Decimal?                     @db.Decimal(10, 7)
+  failureReason     String?                      @map("failure_reason") @db.VarChar(1000)
+  requestedAt       DateTime                     @default(now()) @map("requested_at")
+  completedAt       DateTime?                    @map("completed_at")
+  createdAt         DateTime                     @default(now()) @map("created_at")
+  driver            User                         @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([driverId, createdAt(sort: Desc)])
+  @@index([status])
+  @@map("driver_identity_verifications")
+}
+
+/// A device fingerprint this driver has previously completed a PASSED
+/// verification from. "New device" = no row here for the fingerprint
+/// presented at go-online time.
+model DriverVerifiedDevice {
+  driverId          String   @map("driver_id") @db.Uuid
+  deviceFingerprint String   @map("device_fingerprint") @db.VarChar(64)
+  firstVerifiedAt   DateTime @default(now()) @map("first_verified_at")
+  lastSeenAt        DateTime @updatedAt @map("last_seen_at")
+  driver            User     @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@id([driverId, deviceFingerprint])
+  @@map("driver_verified_devices")
 }
 
 model AuditLog {

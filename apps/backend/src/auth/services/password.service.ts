@@ -12,6 +12,8 @@ import {
   ValidationDomainException,
 } from '../../common/exceptions/domain.exception';
 import { AppConfigService } from '../../config/app-config.service';
+import { DomainEventBus } from '../../events/domain-event-bus';
+import { DOMAIN_EVENTS } from '../../events/domain-events';
 import {
   NOTIFICATION_SERVICE,
   type NotificationService,
@@ -47,6 +49,7 @@ export class PasswordService {
     private readonly authSessionRepository: AuthSessionRepository,
     @Inject(NOTIFICATION_SERVICE)
     private readonly notificationService: NotificationService,
+    private readonly eventBus: DomainEventBus,
   ) {}
 
   public async forgotPassword(email: string, context: AuditContext): Promise<{ submitted: true }> {
@@ -170,6 +173,8 @@ export class PasswordService {
         { resource: 'user', resourceId: user.id },
       );
 
+      await this.eventBus.emit(DOMAIN_EVENTS.PASSWORD_RESET, { userId: user.id });
+
       return { reset: true };
     } catch (error) {
       if (error instanceof ValidationDomainException) {
@@ -237,6 +242,7 @@ export class PasswordService {
         { ...context, userId },
         { resource: 'user', resourceId: userId },
       );
+      await this.eventBus.emit(DOMAIN_EVENTS.PASSWORD_CHANGED, { userId });
 
       return { changed: true };
     } catch (error) {

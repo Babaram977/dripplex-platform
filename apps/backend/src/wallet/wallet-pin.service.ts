@@ -7,6 +7,8 @@ import {
   ValidationDomainException,
 } from '../common/exceptions/domain.exception';
 import { AppConfigService } from '../config/app-config.service';
+import { DomainEventBus } from '../events/domain-event-bus';
+import { DOMAIN_EVENTS } from '../events/domain-events';
 import { PrismaService } from '../prisma/prisma.service';
 
 import { WALLET_AUDIT_ACTIONS, WALLET_PIN_LENGTH } from './wallet.constants';
@@ -24,6 +26,7 @@ export class WalletPinService {
     private readonly prisma: PrismaService,
     private readonly appConfig: AppConfigService,
     private readonly auditService: AuditService,
+    private readonly eventBus: DomainEventBus,
   ) {}
 
   public async hasPin(userId: string): Promise<boolean> {
@@ -88,5 +91,9 @@ export class WalletPinService {
       { ...(context ?? {}), userId },
       { resource: 'wallet_pin', resourceId: userId },
     );
+    // DPX-DS-001: a credential change is a driver identity-verification
+    // risk signal — minimal, single-line touch to this frozen module under
+    // the Freeze Rule's critical-security-patch exception.
+    await this.eventBus.emit(DOMAIN_EVENTS.WALLET_PIN_CHANGED, { userId });
   }
 }

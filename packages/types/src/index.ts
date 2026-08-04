@@ -101,10 +101,16 @@ export { MERCHANT_AUDIT_ACTIONS, MERCHANT_SORTS } from './merchant/index.js';
 export type {
   DriverApprovalDto,
   DriverAuditAction,
+  DriverIdentityVerificationDto,
   DriverKycDto,
   DriverProfileDto,
   DriverStatus,
+  DriverVerificationStatus,
+  DriverVerificationTrigger,
+  IdentityVerificationProviderName,
+  IdentityVerificationStatusDto,
   SubmitDriverKycRequest,
+  SubmitIdentityVerificationRequest,
 } from './driver/index.js';
 
 export { DRIVER_AUDIT_ACTIONS } from './driver/index.js';

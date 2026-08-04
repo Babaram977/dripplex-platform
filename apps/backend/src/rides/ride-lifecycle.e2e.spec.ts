@@ -20,6 +20,7 @@ import { RidesService } from './rides.service';
 
 import type { RideEventsPublisher } from './ride-events.publisher';
 import type { AuditLogRepository } from '../audit/repositories/audit-log.repository';
+import type { DriverIdentityVerificationService } from '../drivers/identity-verification/driver-identity-verification.service';
 import type { NotificationService } from '../notifications/notification.service';
 import type { PaymentProviderAdapter } from '../payments/providers/payment-provider.adapter';
 import type { PrismaService } from '../prisma/prisma.service';
@@ -127,6 +128,9 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
       new DomainEventBus(),
       walletService,
     );
+    const identityVerificationService: jest.Mocked<DriverIdentityVerificationService> = {
+      assertNotRequired: jest.fn().mockResolvedValue(undefined),
+    } as unknown as jest.Mocked<DriverIdentityVerificationService>;
     ridesService = new RidesService(
       prisma,
       fareService,
@@ -136,6 +140,7 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
       events,
       promotionsService,
       new DomainEventBus(),
+      identityVerificationService,
     );
     tripService = new RideTripService(
       prisma,

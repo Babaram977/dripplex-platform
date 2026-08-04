@@ -9,6 +9,7 @@ import { WalletPinService } from './wallet-pin.service';
 
 import type { AuditService } from '../audit/audit.service';
 import type { AppConfigService } from '../config/app-config.service';
+import type { DomainEventBus } from '../events/domain-event-bus';
 import type { PrismaService } from '../prisma/prisma.service';
 
 const userId = '11111111-1111-4111-8111-111111111111';
@@ -25,6 +26,7 @@ describe('WalletPinService', () => {
   let prisma: WalletPinPrismaMock;
   let appConfig: { bcryptSaltRounds: number };
   let auditService: { record: jest.Mock };
+  let eventBus: { emit: jest.Mock };
   let service: WalletPinService;
 
   beforeEach(() => {
@@ -33,10 +35,12 @@ describe('WalletPinService', () => {
     };
     appConfig = { bcryptSaltRounds: 4 };
     auditService = { record: jest.fn().mockResolvedValue(undefined) };
+    eventBus = { emit: jest.fn().mockResolvedValue(undefined) };
     service = new WalletPinService(
       prisma as unknown as PrismaService,
       appConfig as unknown as AppConfigService,
       auditService as unknown as AuditService,
+      eventBus as unknown as DomainEventBus,
     );
   });
 
@@ -134,6 +138,7 @@ describe('WalletPinService', () => {
       expect(updateCall[0].where).toEqual({ userId });
       expect(updateCall[0].data.pinHash).not.toBe('5678');
       expect(auditService.record).toHaveBeenCalled();
+      expect(eventBus.emit).toHaveBeenCalledWith('WalletPinChanged', { userId });
     });
   });
 });

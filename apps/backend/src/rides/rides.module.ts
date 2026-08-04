@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { AuditModule } from '../audit/audit.module';
 import { AuthModule } from '../auth/auth.module';
+import { DriversModule } from '../drivers/drivers.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { PrismaModule } from '../prisma/prisma.module';
@@ -33,6 +34,7 @@ import { RidesService } from './rides.service';
     WalletModule,
     PaymentsModule,
     PromotionsModule,
+    DriversModule,
   ],
   controllers: [CustomerRidesController, DriverRidesController, AdminRideReportsController],
   providers: [

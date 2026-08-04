@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 
 import { LoginAttemptsExceededDomainException } from '../../common/exceptions/domain.exception';
 import { AppConfigService } from '../../config/app-config.service';
+import { DomainEventBus } from '../../events/domain-event-bus';
+import { DOMAIN_EVENTS } from '../../events/domain-events';
 import { RedisService } from '../../redis/redis.service';
 
 @Injectable()
@@ -9,6 +11,7 @@ export class LoginAttemptService {
   constructor(
     private readonly redis: RedisService,
     private readonly appConfig: AppConfigService,
+    private readonly eventBus: DomainEventBus,
   ) {}
 
   public async assertNotLocked(email: string, ipAddress?: string): Promise<void> {
@@ -36,11 +39,17 @@ export class LoginAttemptService {
   }
 
   public async recordFailure(email: string, ipAddress?: string): Promise<void> {
-    await this.incrementCounter(
+    const emailJustLocked = await this.incrementCounter(
       this.emailFailKey(email),
       this.appConfig.loginMaxAttemptsPerEmail,
       this.emailLockKey(email),
     );
+    if (emailJustLocked) {
+      // DPX-DS-001: a lockout episode is a driver identity-verification
+      // risk signal. Scoped to the per-email lock only — the per-IP lock
+      // below isn't tied to a single account.
+      await this.eventBus.emit(DOMAIN_EVENTS.LOGIN_LOCKED, { email: email.toLowerCase() });
+    }
 
     if (ipAddress) {
       await this.incrementCounter(
@@ -61,11 +70,13 @@ export class LoginAttemptService {
     }
   }
 
+  /** Returns true the moment this call causes the lock to be set (not on
+   * subsequent calls once already locked). */
   private async incrementCounter(
     counterKey: string,
     maxAttempts: number,
     lockKey: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const attempts = await this.redis.incr(counterKey);
     if (attempts === 1) {
       await this.redis.expire(counterKey, this.appConfig.loginLockoutSeconds);
@@ -73,7 +84,9 @@ export class LoginAttemptService {
 
     if (attempts >= maxAttempts) {
       await this.redis.set(lockKey, '1', this.appConfig.loginLockoutSeconds);
+      return attempts === maxAttempts;
     }
+    return false;
   }
 
   private emailFailKey(email: string): string {

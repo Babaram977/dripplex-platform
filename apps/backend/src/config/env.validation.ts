@@ -55,6 +55,10 @@ export const envSchema = z.object({
   FIREBASE_CLIENT_EMAIL: z.string().default(''),
   FIREBASE_PRIVATE_KEY: z.string().default(''),
   GOOGLE_MAPS_SERVER_API_KEY: z.string().default(''),
+  SMILE_ID_PARTNER_ID: z.string().default(''),
+  SMILE_ID_API_KEY: z.string().default(''),
+  SMILE_ID_BASE_URL: z.string().url().default('https://api.smileidentity.com/v1'),
+  IDENTITY_VERIFICATION_IDLE_HOURS: z.coerce.number().int().min(1).max(48).default(8),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

@@ -234,4 +234,24 @@ export class AppConfigService {
   public get googleMapsConfigured(): boolean {
     return this.googleMapsServerApiKey !== '';
   }
+
+  public get smileIdPartnerId(): string {
+    return this.configService.get('SMILE_ID_PARTNER_ID', { infer: true });
+  }
+
+  public get smileIdApiKey(): string {
+    return this.configService.get('SMILE_ID_API_KEY', { infer: true });
+  }
+
+  public get smileIdBaseUrl(): string {
+    return this.configService.get('SMILE_ID_BASE_URL', { infer: true });
+  }
+
+  public get smileIdConfigured(): boolean {
+    return this.smileIdPartnerId !== '' && this.smileIdApiKey !== '';
+  }
+
+  public get identityVerificationIdleHours(): number {
+    return this.configService.get('IDENTITY_VERIFICATION_IDLE_HOURS', { infer: true });
+  }
 }

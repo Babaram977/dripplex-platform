@@ -14,6 +14,7 @@ import { RidesService } from './rides.service';
 
 import type { RideEventsPublisher } from './ride-events.publisher';
 import type { AuditLogRepository } from '../audit/repositories/audit-log.repository';
+import type { DriverIdentityVerificationService } from '../drivers/identity-verification/driver-identity-verification.service';
 import type { NotificationService } from '../notifications/notification.service';
 import type { PrismaService } from '../prisma/prisma.service';
 
@@ -80,6 +81,9 @@ describe('RidesService', () => {
     eventBus = new DomainEventBus();
     const walletService = new WalletService(prisma, auditService, eventBus);
     const promotionsService = new PromotionsService(prisma, auditService, eventBus, walletService);
+    const identityVerificationService: jest.Mocked<DriverIdentityVerificationService> = {
+      assertNotRequired: jest.fn().mockResolvedValue(undefined),
+    } as unknown as jest.Mocked<DriverIdentityVerificationService>;
     service = new RidesService(
       prisma,
       new RideFareService(),
@@ -89,6 +93,7 @@ describe('RidesService', () => {
       events,
       promotionsService,
       eventBus,
+      identityVerificationService,
     );
 
     const customer = await prisma.user.create({
@@ -290,6 +295,18 @@ describe('RidesService', () => {
       },
     });
 
+    // Driver-001 gates "online" on identity verification, so this driver
+    // needs a profile that's already verified — this test exercises
+    // availability CRUD, not the verification gate.
+    await prisma.driverProfile.create({
+      data: {
+        userId: other.id,
+        status: 'APPROVED',
+        isApproved: true,
+        lastIdentityVerifiedAt: new Date(),
+      },
+    });
+
     try {
       const created = await service.updateDriverAvailability(other.id, {
         online: true,
@@ -313,6 +330,7 @@ describe('RidesService', () => {
       await prisma.driverAvailability
         .delete({ where: { driverId: other.id } })
         .catch(() => undefined);
+      await prisma.driverProfile.delete({ where: { userId: other.id } }).catch(() => undefined);
       await prisma.user.delete({ where: { id: other.id } }).catch(() => undefined);
     }
   });

@@ -3,6 +3,7 @@ import { LoginAttemptsExceededDomainException } from '../../common/exceptions/do
 import { LoginAttemptService } from './login-attempt.service';
 
 import type { AppConfigService } from '../../config/app-config.service';
+import type { DomainEventBus } from '../../events/domain-event-bus';
 import type { RedisService } from '../../redis/redis.service';
 
 describe('LoginAttemptService', () => {
@@ -21,7 +22,11 @@ describe('LoginAttemptService', () => {
     loginLockoutSeconds: 900,
   } as unknown as AppConfigService;
 
-  const service = new LoginAttemptService(redis, appConfig);
+  const eventBus = {
+    emit: jest.fn().mockResolvedValue(undefined),
+  } as unknown as jest.Mocked<DomainEventBus>;
+
+  const service = new LoginAttemptService(redis, appConfig, eventBus);
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -33,12 +38,21 @@ describe('LoginAttemptService', () => {
     (redis.ttl as jest.Mock).mockResolvedValue(120);
   });
 
-  it('locks out after repeated failures', async () => {
+  it('locks out after repeated failures and emits LOGIN_LOCKED', async () => {
     (redis.incr as jest.Mock).mockResolvedValue(10);
 
     await service.recordFailure('ada@example.com', '127.0.0.1');
 
     expect(redis.set).toHaveBeenCalledWith('auth:login:lock:ada@example.com', '1', 900);
+    expect(eventBus.emit).toHaveBeenCalledWith('LoginLocked', { email: 'ada@example.com' });
+  });
+
+  it('does not emit LOGIN_LOCKED for attempts below the threshold', async () => {
+    (redis.incr as jest.Mock).mockResolvedValue(3);
+
+    await service.recordFailure('ada@example.com', '127.0.0.1');
+
+    expect(eventBus.emit).not.toHaveBeenCalled();
   });
 
   it('throws when account is locked', async () => {

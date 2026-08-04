@@ -57,6 +57,61 @@ export const DRIVER_AUDIT_ACTIONS = {
   REJECTED: 'driver.rejected',
   SUSPENDED: 'driver.suspended',
   REACTIVATED: 'driver.reactivated',
+  IDENTITY_VERIFICATION_REQUESTED: 'driver.identity_verification.requested',
+  IDENTITY_VERIFICATION_PASSED: 'driver.identity_verification.passed',
+  IDENTITY_VERIFICATION_FAILED: 'driver.identity_verification.failed',
+  IDENTITY_VERIFICATION_LOCKED: 'driver.identity_verification.locked',
+  IDENTITY_VERIFICATION_UNLOCKED: 'driver.identity_verification.unlocked',
 } as const;
 
 export type DriverAuditAction = (typeof DRIVER_AUDIT_ACTIONS)[keyof typeof DRIVER_AUDIT_ACTIONS];
+
+/** Driver-001: risk-based facial/identity verification (Smile ID). See
+ * docs/DRIVER-001-IDENTITY-VERIFICATION-DESIGN.md. */
+export type IdentityVerificationProviderName = 'SMILE_ID';
+
+export type DriverVerificationTrigger =
+  | 'ONBOARDING'
+  | 'IDLE_TIMEOUT'
+  | 'NEW_DEVICE'
+  | 'SUSPICIOUS_ACTIVITY'
+  | 'ACCOUNT_RECOVERY'
+  | 'MANUAL_ADMIN'
+  | 'CREDENTIAL_CHANGE'
+  | 'FAILED_LOGIN_LOCKOUT'
+  | 'FIRST_LOGIN_OF_DAY'
+  | 'GPS_ANOMALY'
+  | 'RANDOM_SPOT_CHECK'
+  | 'PHONE_NUMBER_CHANGED';
+
+export type DriverVerificationStatus = 'PENDING' | 'PASSED' | 'FAILED' | 'ERROR';
+
+export interface DriverIdentityVerificationDto {
+  id: string;
+  driverId: string;
+  provider: IdentityVerificationProviderName;
+  trigger: DriverVerificationTrigger;
+  status: DriverVerificationStatus;
+  confidenceScore: number | null;
+  failureReason: string | null;
+  requestedAt: string;
+  completedAt: string | null;
+}
+
+export interface IdentityVerificationStatusDto {
+  required: boolean;
+  reason: DriverVerificationTrigger | null;
+  lastVerifiedAt: string | null;
+  /** DPX-DS-001: true = a support-review lock, not a normal retry-able
+   * requirement — the client must not offer the capture flow. */
+  locked: boolean;
+}
+
+export interface SubmitIdentityVerificationRequest {
+  selfieImageBase64: string;
+  idDocumentImageBase64?: string;
+  idNumber?: string;
+  deviceId?: string;
+  latitude?: number;
+  longitude?: number;
+}

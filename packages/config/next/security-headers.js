@@ -39,8 +39,10 @@ export function dripplexSecurityHeaders(options = {}) {
     { key: 'X-Frame-Options', value: 'DENY' },
     { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
     {
+      // camera=(self): Driver-001 facial verification (driver-portal) needs
+      // getUserMedia for selfie capture. Still blocked for cross-origin embeds.
       key: 'Permissions-Policy',
-      value: 'camera=(), microphone=(), geolocation=(self), payment=()',
+      value: 'camera=(self), microphone=(), geolocation=(self), payment=()',
     },
     {
       key: 'Content-Security-Policy',
