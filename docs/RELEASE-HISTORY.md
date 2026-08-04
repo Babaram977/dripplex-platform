@@ -86,6 +86,44 @@ PR #44 (`claude/dripplex-coolify-deploy-fatig4` → `main`) opened, reviewed, an
 
 ---
 
+## 2026-07-28 to 2026-08-04 — DPX-100: Figma-first port, module freezes, Driver security (superseded the R1.7/R1.8 plan below)
+
+**The R1.7/R1.8 roadmap this document originally pointed to next did not happen as planned.** Instead, the founder redirected the platform toward a different, more foundational initiative: porting every screen to match the locked Figma export pixel-for-pixel (`docs/DPX-100-MODULE-COMPLETION-GATE.md`), module by module, with a ten-item completion gate and a formal freeze once each module clears it. That work — 50+ commits — happened entirely on `claude/dripplex-coolify-deploy-fatig4` and was never merged back to `main` via a PR; this section (and the baseline event below) is that reconciliation, in the same spirit as Gate R1.6.1 above.
+
+**Brand foundation.** Locked design tokens (color/typography/spacing/radius/animation) and a real logo mark ported from the founder's Figma Make export into `packages/ui`, replacing placeholder styling platform-wide.
+
+**Two standing engineering principles adopted**, alongside the Module Completion Gate itself:
+
+- **DPX-UX-001 — Simplicity First** (`docs/DPX-UX-001-SIMPLICITY-FIRST.md`): fewer taps, smart defaults, no redundant re-collection of known data.
+- **DPX-901 — Configuration-Driven Security Policy** (`docs/DPX-901-CONFIG-DRIVEN-SECURITY-POLICY.md`, adopted 2026-08-04 alongside the Driver Security Standard below): security thresholds/intervals/toggles live in configuration or a database-backed admin setting, never hard-coded.
+
+**Ride module — Frozen.** Five slices (Home/Search/Fare/Finding/Assigned → full trip lifecycle → payment → history/saved places), each Playwright-verified against a live backend. `docs/RIDE-DPX-100-PRODUCTION-AUDIT.md` cleared all ten gate items; founder approved the freeze (`packages/ui/src/components/super-app/MATURITY.md`'s "Ride module — Frozen" section). A same-day rebrand fix (DX naming/casing) landed as an approved frozen-module bug fix, not a reopening.
+
+**Marketplace module — Frozen.** Entry/Store/Product Detail/Cart/Checkout/Tracking ported into `packages/ui`, stabilized, then a founder-flagged pricing-integrity defect was found and fixed: Cart preview and Order creation computed tax/delivery-fee/discount independently and could disagree with what was actually charged. A single shared `PricingService` (`docs/PRICING-ENGINE.md`) now backs both, verified end-to-end. Checkout also gained real Cash-on-Delivery and Dx Wallet payment methods (`docs/MARKETPLACE-006-CASH-WALLET-PAYMENT-DESIGN.md`), for five real payment methods total alongside Paystack/Flutterwave/OPay.
+
+**Wallet module — Frozen.** Five slices (Home → Transaction History/Transfer/Top-up → Payment Methods/Rewards → Withdraw, a full production module in two phases → Statement/Security/Settings). `docs/WALLET-DPX-100-PRODUCTION-AUDIT.md` found and fixed six real issues before the founder approved the freeze.
+
+**Driver module — in progress, security capability now locked.** `docs/DRIVER-APP-DPX-100-AUDIT.md` audited the module (driver-portal already has real, working, pre-DPX-100 screens for most of the priority list — availability, earnings, ratings, wallet, onboarding-partial; vehicle management and shift management and support are genuinely missing) and flagged facial/identity verification as the one founder-decision-blocked item. Built as **DRIVER-001 / DPX-DS-001 / DPX-DRIVER-001**: a provider-agnostic risk-based verification service (`SmileIdProvider` as the real first implementation), a nine-trigger priority-ordered risk engine, lockout with admin unlock, a full audit trail, and — after a founder correction that Claude had started inventing UI ahead of the Driver Figma port — backend-only scope for this pass, with the security _policy_ itself made admin-configurable (`DriverSecuritySettings`, no redeploy needed to change a threshold) rather than hard-coded. Consolidated into `docs/DPX-DRIVER-001-SECURITY-STANDARD.md`, founder-approved and locked (2026-08-04). Driver's Figma-ported UI, vehicle management, shift management, and support remain open — see that module's slice plan.
+
+**Production infrastructure:** a Coolify self-hosted runbook was built (`docs/ops/PRODUCTION-COOLIFY.md`) as an alternative to Railway, but `docs/ops/PRODUCTION-RAILWAY.md` records the founder reinstating Railway as canonical on 2026-08-03 after confirming it live and healthy. **This document does not independently re-verify, as of this baseline, which target is actually receiving traffic today, or from which branch** — the two ops docs describe different states at different times and weren't reconciled against each other as part of this pass. Treat that as an open follow-up, not settled by anything written here.
+
+## 2026-08-04 — Baseline: `main` fast-forwarded to match the real production history
+
+Per founder direction, given the above was all real, tested, and (per the module audits) already the intended production state — just never merged — `main` was fast-forwarded directly to this branch's tip rather than opened as a single ~55-commit/350-file PR against a `main` that was six weeks stale relative to what the branch already contained. Preceded by a full monorepo verification: `turbo run typecheck`/`lint` clean across all 18 packages/apps; backend test suite 146/146 suites, 1106/1106 tests passing (an authoritative sequential run — a parallel `turbo run test` pass showed 2 spurious failures from concurrent workers racing the shared dev Postgres/Prisma client, confirmed non-reproducing in isolation); `turbo run build` clean for every package plus `backend` and `driver-portal` (the apps this pass actually touched) — five other Next.js apps failed only on `next/font`'s Google Fonts fetch hitting this sandbox's outbound-HTTPS proxy's self-signed cert, a pre-existing environment constraint unrelated to any code here, not reproducible in a normal build environment.
+
+Tagged `v1.0-baseline` at the fast-forwarded commit.
+
+From this point forward: branch new work from `main`, and return to normal per-module PRs — this consolidation exists to close the gap, not to establish direct-to-main pushes as the ongoing pattern.
+
+---
+
 ## What's next
 
+The R1.7/R1.8 commerce-completion plan below was superseded by the DPX-100 initiative above — Marketplace's commerce loop (cart/checkout/order/payment UI) shipped as part of that port, not as R1.7/R1.8 specifically. What's actually still open, per each module's own audit doc: the Driver module's Figma-ported UI, vehicle management, shift management, and support (`docs/DRIVER-APP-DPX-100-AUDIT.md`); reconciling the Railway-vs-Coolify production-infrastructure question above; and Orders/AI/Merchant/Admin, next in the founder's module ordering per `docs/DPX-100-MODULE-COMPLETION-GATE.md`.
+
+<details>
+<summary>Original 2026-07-28 "what's next" (superseded, kept for the record)</summary>
+
 The commerce loop is still open — there is no cart/checkout/order/payment UI anywhere in `customer-web`, and no merchant-onboarding UI in `merchant-portal`, despite the backend supporting both. That's R1.7 (Customer Commerce Completion) and R1.8 (Merchant Operations) on the roadmap. A `v1.0.0` tag gets created when there's a real, deployed, end-to-end-verified product behind it — not before.
+
+</details>
