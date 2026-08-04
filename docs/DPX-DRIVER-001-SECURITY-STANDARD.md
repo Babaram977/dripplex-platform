@@ -76,7 +76,10 @@ Per the founder's explicit requirement — "these values should come from
 configuration... not hard-coded values" — the risk engine's numeric
 thresholds and two feature toggles are **not compiled into the
 application**. They live in `DriverSecuritySettings`, a single admin-editable
-database row, changeable without a redeploy.
+database row, changeable without a redeploy. This is the reference
+implementation for [DPX-901 — Configuration-Driven Security Policy](./DPX-901-CONFIG-DRIVEN-SECURITY-POLICY.md),
+the standing platform-wide principle this module's build prompted the
+founder to adopt.
 
 ### 3.1 Settings
 

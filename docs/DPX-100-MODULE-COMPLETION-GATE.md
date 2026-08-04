@@ -7,6 +7,10 @@ module in the founder's ordering — Wallet, Marketplace (already met this
 bar retroactively), Orders, AI, Merchant, Driver, Admin — is held to the
 same ten items before it's declared complete and frozen.
 
+Two standing principles apply on top of this gate, platform-wide, not
+scoped to one module: [DPX-UX-001 — Simplicity First](./DPX-UX-001-SIMPLICITY-FIRST.md)
+and [DPX-901 — Configuration-Driven Security Policy](./DPX-901-CONFIG-DRIVEN-SECURITY-POLICY.md).
+
 ## The gate
 
 A module is not "done" until all ten are true:
