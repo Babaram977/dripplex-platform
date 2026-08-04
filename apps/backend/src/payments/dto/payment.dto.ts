@@ -4,7 +4,7 @@ import { IsEnum, IsOptional, IsString, IsUrl, MaxLength } from 'class-validator'
 export enum PaymentProviderDtoEnum {
   PAYSTACK = 'PAYSTACK',
   FLUTTERWAVE = 'FLUTTERWAVE',
-  MONIEPOINT = 'MONIEPOINT',
+  OPAY = 'OPAY',
 }
 
 export class InitializePaymentDto {

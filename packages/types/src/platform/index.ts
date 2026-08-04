@@ -869,9 +869,9 @@ export interface WalletReconciliationDto {
   reconciled: boolean;
 }
 
-/** PAYSTACK | FLUTTERWAVE | MONIEPOINT — same restricted gateway set as
- * order/ride card payments; OPAY has no initializePayment support today. */
-export type WalletFundingProvider = 'PAYSTACK' | 'FLUTTERWAVE' | 'MONIEPOINT';
+/** PAYSTACK | FLUTTERWAVE | OPAY — same gateway set as order/ride card
+ * payments. Moniepoint is not a real gateway partner for this platform. */
+export type WalletFundingProvider = 'PAYSTACK' | 'FLUTTERWAVE' | 'OPAY';
 
 export interface FundWalletRequest {
   amount: number;

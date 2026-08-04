@@ -21,7 +21,7 @@ const AMOUNT_PRESETS = ['500', '1,000', '2,000', '5,000', '10,000', '20,000'];
 const PROVIDERS: { id: WalletFundingProvider; icon: string; label: string }[] = [
   { id: 'PAYSTACK', icon: '🟦', label: 'Paystack' },
   { id: 'FLUTTERWAVE', icon: '🟧', label: 'Flutterwave' },
-  { id: 'MONIEPOINT', icon: '🟣', label: 'Moniepoint' },
+  { id: 'OPAY', icon: '📱', label: 'OPay' },
 ];
 
 function parseAmount(value: string): number {
@@ -31,11 +31,11 @@ function parseAmount(value: string): number {
 /**
  * DPX-100 Wallet Slice 2. The Figma source's Top Up offers Card/Bank
  * Transfer/USSD methods with saved cards — the real backend only supports
- * initiating a gateway checkout session (Paystack/Flutterwave/Moniepoint,
- * no OPAY for wallet funding), so the provider list is adapted to the
- * three real gateways and no saved-card UI is shown (no card tokenization
- * exists anywhere in the platform, same gap already documented for Ride
- * payments).
+ * initiating a gateway checkout session (Paystack/Flutterwave/OPay, the
+ * platform's three real gateway partners — Moniepoint is not integrated),
+ * so the provider list is adapted to the three real gateways and no
+ * saved-card UI is shown (no card tokenization exists anywhere in the
+ * platform, same gap already documented for Ride payments).
  */
 export function TopUpScreen({
   onBack,

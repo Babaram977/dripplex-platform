@@ -29,7 +29,6 @@ import { siteConfig } from '@/lib/site';
 const PAYMENT_OPTIONS = [
   { key: 'PAYSTACK', icon: '💳', label: 'Paystack', sublabel: 'Card, bank transfer & USSD' },
   { key: 'FLUTTERWAVE', icon: '💳', label: 'Flutterwave', sublabel: 'Card, bank transfer & USSD' },
-  { key: 'MONIEPOINT', icon: '🏦', label: 'Moniepoint', sublabel: 'Bank transfer' },
   { key: 'OPAY', icon: '📱', label: 'OPay', sublabel: 'Wallet & bank transfer' },
 ] as const;
 
@@ -183,7 +182,7 @@ export default function CheckoutPage(): React.JSX.Element {
 
     try {
       const payment = await sdk.orders.payOrder(orderId, {
-        provider: paymentProvider as 'PAYSTACK' | 'FLUTTERWAVE' | 'MONIEPOINT' | 'OPAY',
+        provider: paymentProvider as 'PAYSTACK' | 'FLUTTERWAVE' | 'OPAY',
       });
       window.location.href = payment.authorizationUrl;
     } catch (paymentError) {

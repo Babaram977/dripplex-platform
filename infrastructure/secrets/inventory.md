@@ -8,7 +8,7 @@
 | `POSTGRES_USER` / `POSTGRES_PASSWORD`                         | postgres, pgbouncer      | 90d                        |
 | `REDIS_URL` / `REDIS_PASSWORD`                                | backend, worker, redis   | 90d                        |
 | `CORS_ORIGINS`                                                | backend                  | on domain change           |
-| `PAYSTACK_*` / `FLUTTERWAVE_*` / `MONIEPOINT_*`               | backend                  | provider                   |
+| `PAYSTACK_*` / `FLUTTERWAVE_*` / `OPAY_*`                     | backend                  | provider                   |
 | `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | backend (uploads)        | 180d                       |
 | `B2_KEY_ID` / `B2_APPLICATION_KEY`                            | backup scripts           | 180d                       |
 | `AGE_RECIPIENT` / `AGE_IDENTITY`                              | backup encrypt/decrypt   | break-glass                |

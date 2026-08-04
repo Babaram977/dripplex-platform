@@ -14,9 +14,9 @@ export interface SuperAppPaymentMethodOption {
  * Method" section. The source lists DrippleX Wallet / Card / Cash on
  * Delivery / Bank Transfer as four abstract categories; the real backend
  * only supports redirect-based gateway checkout (Paystack, Flutterwave,
- * Moniepoint, Opay) — no wallet-direct-debit and no cash-on-delivery
- * path exist for marketplace orders — so the real page populates this
- * with the actual gateway list instead.
+ * OPay — the platform's three real gateway partners) — no wallet-direct-debit
+ * and no cash-on-delivery path exist for marketplace orders — so the real
+ * page populates this with the actual gateway list instead.
  */
 export function SuperAppPaymentMethodSelector({
   options,

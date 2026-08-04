@@ -11,7 +11,7 @@ import * as React from 'react';
 const FUNDING_METHODS = [
   { icon: '🟦', label: 'Paystack', sub: 'Card, bank transfer, USSD' },
   { icon: '🟧', label: 'Flutterwave', sub: 'Card, bank transfer, USSD' },
-  { icon: '🟣', label: 'Moniepoint', sub: 'Card, bank transfer, USSD' },
+  { icon: '📱', label: 'OPay', sub: 'Card, bank transfer, USSD' },
 ];
 
 /**

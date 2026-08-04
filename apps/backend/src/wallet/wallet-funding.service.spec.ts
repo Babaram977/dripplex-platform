@@ -58,12 +58,12 @@ describe('WalletFundingService', () => {
 
     paystackAdapter = fakeAdapter('PAYSTACK');
     const flutterwaveAdapter = fakeAdapter('FLUTTERWAVE');
-    const moniepointAdapter = fakeAdapter('MONIEPOINT');
+    const opayAdapter = fakeAdapter('OPAY');
 
     service = new WalletFundingService(prisma, walletService, auditService, config, [
       paystackAdapter,
       flutterwaveAdapter,
-      moniepointAdapter,
+      opayAdapter,
     ]);
 
     const customer = await prisma.user.create({

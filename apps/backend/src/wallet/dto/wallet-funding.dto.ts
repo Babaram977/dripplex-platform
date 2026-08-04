@@ -13,7 +13,7 @@ import {
 export enum WalletFundingProviderDto {
   PAYSTACK = 'PAYSTACK',
   FLUTTERWAVE = 'FLUTTERWAVE',
-  MONIEPOINT = 'MONIEPOINT',
+  OPAY = 'OPAY',
 }
 
 export class FundWalletDto {

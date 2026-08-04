@@ -27,7 +27,7 @@ type WalletFlowScreen =
   | { name: 'addBankAccount' }
   | { name: 'setPin' };
 
-/** Resumes a gateway top-up redirect: /wallet?topupVerify=1 lands here after Paystack/Flutterwave/Moniepoint checkout. */
+/** Resumes a gateway top-up redirect: /wallet?topupVerify=1 lands here after Paystack/Flutterwave/OPay checkout. */
 function useResumeScreen(): WalletFlowScreen | null {
   const searchParams = useSearchParams();
   return React.useMemo(() => {

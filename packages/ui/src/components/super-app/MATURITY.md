@@ -1141,3 +1141,29 @@ untouched (money already moved at request time); a second withdrawal's
 | `WithdrawScreen`       | Verified |
 | `AddBankAccountScreen` | Verified |
 | `SetWalletPinScreen`   | Verified |
+
+**Gateway-partner correction (2026-08-04, same day):** founder corrected
+the platform's real third payment-gateway partner — it's **OPay**, not
+Moniepoint, which is not a real gateway partner for this platform.
+Moniepoint had been listed as a selectable option in Top Up
+(`top-up-screen.tsx`) and Payment Methods (`payment-methods-screen.tsx`),
+carried forward from Slice 2/3's provider list, which predated the
+founder's OPay-vs-Moniepoint clarification (already applied correctly to
+Ride payments earlier in the program). Both screens now list
+Paystack/Flutterwave/OPay. Fixing this also surfaced a real pre-existing
+backend defect: Marketplace Checkout's frontend already offered OPay as a
+selectable option, but `PaymentProviderDtoEnum` and
+`PaymentService.resolveProvider()` only accepted
+`PAYSTACK | FLUTTERWAVE | MONIEPOINT`, so selecting OPay at checkout would
+have thrown "Unsupported payment provider: OPAY" — now fixed alongside the
+UI correction. `WalletFundingProviderDto` / `WalletFundingService` /
+`WalletFundingProvider` (the wallet top-up provider type) received the
+same swap. The Prisma `PaymentProvider` enum keeps all four values
+(`PAYSTACK`/`FLUTTERWAVE`/`MONIEPOINT`/`OPAY`) — no destructive migration —
+and the `MoniepointProvider` stub class is left in place, unreachable,
+mirroring the precedent `OpayProvider` set before this fix. The historical
+narrative above (Slice 2/3 sections) describes what was actually shipped
+at the time and is left as-is rather than rewritten; this note records the
+correction. Re-verified with Playwright: Top Up and Payment Methods show
+OPay in place of Moniepoint, and Marketplace Checkout offers exactly three
+gateways (Paystack/Flutterwave/OPay) with zero console errors.

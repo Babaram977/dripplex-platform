@@ -181,8 +181,8 @@ export class WalletFundingService {
     if (value === PaymentProvider.FLUTTERWAVE) {
       return PaymentProvider.FLUTTERWAVE;
     }
-    if (value === PaymentProvider.MONIEPOINT) {
-      return PaymentProvider.MONIEPOINT;
+    if (value === PaymentProvider.OPAY) {
+      return PaymentProvider.OPAY;
     }
     throw new ValidationDomainException(`Unsupported payment provider: ${value}`);
   }

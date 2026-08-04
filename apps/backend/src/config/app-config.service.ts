@@ -199,8 +199,8 @@ export class AppConfigService {
     return this.configService.get('FLUTTERWAVE_BASE_URL', { infer: true });
   }
 
-  public get moniepointApiKey(): string {
-    return this.configService.get('MONIEPOINT_API_KEY', { infer: true });
+  public get opayApiKey(): string {
+    return this.configService.get('OPAY_API_KEY', { infer: true });
   }
 
   public get paymentDefaultProvider(): EnvConfig['PAYMENT_DEFAULT_PROVIDER'] {
