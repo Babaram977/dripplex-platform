@@ -1,8 +1,7 @@
 'use client';
 
+import { SuperAppRideHeader, SuperAppRideStatusBanner, useSuperAppFonts } from '@dripplex/ui';
 import * as React from 'react';
-
-import { RideHeader, StatusBanner } from '../ride-ui';
 
 import { useVerifyRidePayment } from '@/hooks/rides';
 
@@ -32,6 +31,7 @@ export function GatewayPaymentScreen({
 }): React.JSX.Element {
   const verifyPayment = useVerifyRidePayment();
   const attempted = React.useRef(false);
+  const { body } = useSuperAppFonts();
 
   React.useEffect(() => {
     if (verifying) return;
@@ -65,16 +65,19 @@ export function GatewayPaymentScreen({
         className="absolute inset-0 flex flex-col overflow-hidden"
         style={{ background: '#0A1628' }}
       >
-        <RideHeader onBack={onBack} title="Confirming Payment" />
+        <SuperAppRideHeader onBack={onBack} title="Confirming Payment" />
         <div className="flex flex-1 flex-col items-center justify-center gap-4 px-5">
           {verifyPayment.isError ? (
-            <StatusBanner
+            <SuperAppRideStatusBanner
               tone="error"
               title="Couldn't confirm payment"
               subtitle="The gateway didn't confirm this payment. You can go back and try again."
             />
           ) : (
-            <StatusBanner title="Confirming your payment…" subtitle="This only takes a moment." />
+            <SuperAppRideStatusBanner
+              title="Confirming your payment…"
+              subtitle="This only takes a moment."
+            />
           )}
         </div>
       </div>
@@ -86,16 +89,16 @@ export function GatewayPaymentScreen({
       className="absolute inset-0 flex flex-col overflow-hidden"
       style={{ background: '#0A1628' }}
     >
-      <RideHeader onBack={onBack} title="Redirecting" />
+      <SuperAppRideHeader onBack={onBack} title="Redirecting" />
       <div className="flex flex-1 flex-col items-center justify-center gap-4 px-5">
-        <StatusBanner
+        <SuperAppRideStatusBanner
           title="Taking you to the payment page…"
           subtitle="You'll come back here automatically once it's done."
         />
         <a
           href={authorizationUrl}
-          className="text-[13px] underline"
-          style={{ fontFamily: "'Inter',sans-serif", color: '#47CF72' }}
+          className={`text-[13px] underline ${body}`}
+          style={{ color: '#47CF72' }}
         >
           Continue to payment
         </a>

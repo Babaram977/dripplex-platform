@@ -1,8 +1,7 @@
 'use client';
 
+import { SuperAppRideHeader, SuperAppRideStatusBanner } from '@dripplex/ui';
 import * as React from 'react';
-
-import { RideHeader, StatusBanner } from '../ride-ui';
 
 import { useRide, useRideTracking } from '@/hooks/rides';
 
@@ -56,7 +55,7 @@ export function CashPaymentScreen({
       className="absolute inset-0 flex flex-col overflow-hidden"
       style={{ background: '#0A1628' }}
     >
-      <RideHeader onBack={onBack} title="Cash Payment" />
+      <SuperAppRideHeader onBack={onBack} title="Cash Payment" />
       <div className="flex flex-1 flex-col items-center justify-center gap-6 px-5">
         <div
           className="flex h-20 w-20 items-center justify-center rounded-full text-3xl"
@@ -64,7 +63,7 @@ export function CashPaymentScreen({
         >
           💵
         </div>
-        <StatusBanner
+        <SuperAppRideStatusBanner
           title={ride.data ? `Pay ₦${ride.data.totalFare.toLocaleString()} in cash` : 'Pay in cash'}
           subtitle="Hand the fare to your driver. This screen updates automatically once they confirm receiving it."
         />

@@ -620,3 +620,76 @@ errors throughout.
 | -------------------------- | -------- |
 | `SuperAppRideProgressBar`  | Verified |
 | `SuperAppRideRouteSummary` | Verified |
+
+## Ride module — Slice 4: Trip completion + payment screens (2026-08-04)
+
+Continues the re-platform: presentational markup only, no new backend
+work, no behavior change. Ported all nine post-trip screens —
+`TripCompletedScreen`, `PaymentScreen`, `GatewayPaymentScreen`,
+`CashPaymentScreen`, `WalletPaySuccessScreen`, `TipDriverScreen`,
+`RateDriverScreen`, `TripReceiptScreen`, `ReportTripScreen` — off
+`ride-ui.tsx` onto `packages/ui`.
+
+**New components this slice:**
+
+- `RideDetailCard` — label/value row list with a bold highlighted footer
+  row (fare total), used on Trip Completed.
+- `RideReceiptCard` — receipt header (ID + status pill) plus a row list,
+  used on Trip Receipt.
+- `RidePaymentSummary` — route label + large fare-amount hero block, used
+  on Payment.
+- `RidePaymentMethodRow` — selectable payment-method row with a radio
+  indicator and optional balance subtitle, used on Payment.
+- `RideOptionRow` — selectable icon+label row (no radio), used for the
+  issue-category picker on Report Trip.
+- `RideTextarea` — styled multiline input, used on Rate Driver and Report
+  Trip.
+- `RideAmountChips` — preset ₦ amount chip row, used on Tip Driver.
+- `RideDriverIdentity` — gradient-initial avatar + name, with `row`
+  (Tip Driver) and `column` (Rate Driver) layout variants matching the
+  source's two distinct treatments exactly.
+- `RideStarRating` — 5-star tap-to-rate picker, used on Rate Driver.
+
+`RideInfoBox` (Slice 2) gained an additive `success` tone (green,
+matching Tip Driver's "100% goes directly to your driver" banner exactly)
+alongside its existing `neutral`/`error` tones — the default behavior for
+existing callers is unchanged.
+
+WalletPaySuccessScreen's small 2-row detail card and Tip Driver's "Skip,
+no tip" link were kept inline rather than folded into `RideDetailCard`/
+`RideTextButton`: each has a genuinely distinct radius/font-size/weight
+from the closest shared component, and reusing would have silently
+changed either screen's actual pixels — same discipline applied to Live
+Tracking's badge in Slice 3.
+
+Typecheck/lint clean across `@dripplex/ui` and `customer-web`. Verified
+with Playwright against the real backend across three independent
+booking→trip→payment round trips: Trip Completed → Payment (wallet,
+showing the real ₦5,000 balance) → Wallet Pay Success → Rate Driver
+(showing the real driver name "Chidi Eze" from the receipt endpoint) →
+Tip Driver; a second run through Trip Completed → Payment → Pay Success →
+Trip Receipt (real fare breakdown + driver name) → Report Trip; and a
+third through Payment (Cash) → Cash Payment's real waiting state →
+a real driver `cash-confirm` API call → Wallet Pay Success. Zero console
+errors across all three runs. `GatewayPaymentScreen` (Paystack/
+Flutterwave/OPay) was not exercised end-to-end — no real gateway
+credentials exist in this sandbox, the same environmental limitation
+documented during the Marketplace checkout stabilization pass — but it
+composes only already-Verified primitives (`RideHeader`,
+`RideStatusBanner`) and is typecheck/lint clean.
+
+This completes all 22 real Ride screens' DPX-100 port except History and
+Saved Places (Slice 5).
+
+| Component                      | Status                                       |
+| ------------------------------ | -------------------------------------------- |
+| `SuperAppRideDetailCard`       | Verified                                     |
+| `SuperAppRideReceiptCard`      | Verified                                     |
+| `SuperAppRidePaymentSummary`   | Verified                                     |
+| `SuperAppRidePaymentMethodRow` | Verified                                     |
+| `SuperAppRideOptionRow`        | Verified                                     |
+| `SuperAppRideTextarea`         | Verified                                     |
+| `SuperAppRideAmountChips`      | Verified                                     |
+| `SuperAppRideDriverIdentity`   | Verified                                     |
+| `SuperAppRideStarRating`       | Verified                                     |
+| `SuperAppRideInfoBox`          | Verified (extended, additive `success` tone) |

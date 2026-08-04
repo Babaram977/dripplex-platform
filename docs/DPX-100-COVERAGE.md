@@ -26,7 +26,7 @@ overstate progress:
 | --------------- | ----------------------------------------------------------------------------------: | -------------: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------: | --------: | -----: |
 | Home            |                                                                                   1 |            1/1 |                                                                                                                                                                                    0/1 (`/preview` only) |       1/1 |    1/1 |
 | Marketplace     |                                                                                   6 |            6/6 |                                                                                                                                                           4/6 (Product Detail, Cart, Checkout, Tracking) |       6/6 |    0/6 |
-| Ride            |                                                                                  30 |        10/30 † |                                                                                                                                                                                                 ~20/30 † |  ~20/30 † |      — |
+| Ride            |                                                                                  30 |        19/30 † |                                                                                                                                                                                                 ~20/30 † |  ~20/30 † |      — |
 | Wallet          |                                                                                  10 |           0/10 |                                                                                                                                        0/10 (only `WalletPaySuccessScreen` exists, inside the Ride flow) |      0/10 |      — |
 | Driver          |                                                                                  13 |         0/13 † | partial † (`apps/driver-portal`, different screen set — dashboard/wallet/earnings/trip/history/profile/campaign, not a 1:1 port of `driverScreen.tsx`'s Splash/Login/OTP/KYC/DocsUpload/VehicleReg flow) | partial † |      — |
 | Merchant        |               — (`adminConsoleScreen.tsx`-style single file, not screen-enumerated) |              0 |                                                                                       partial † (`apps/merchant-portal` — dashboard, product CRUD, publish/images/variants/inventory, built pre-DPX-100) | partial † |      — |
@@ -176,13 +176,13 @@ the same real API this module has used since RIDE-003.
 | Driver Arrived                  | ✅ `/ride`             | ✅             | ✅       |
 | Ride In Progress                | ✅ `/ride`             | ✅             | ✅       |
 | Live Tracking                   | ✅ `/ride`             | ✅             | ✅       |
-| Trip Completed                  | ✅ `/ride`             | ❌             | ✅ †     |
-| Payment / Gateway / Cash        | ✅ `/ride`             | ❌             | ✅ †     |
-| Wallet Pay Success              | ✅ `/ride`             | ❌             | ✅ †     |
-| Tip Driver                      | ✅ `/ride`             | ❌             | ✅ †     |
-| Rate Driver                     | ✅ `/ride`             | ❌             | ✅ †     |
-| Trip Receipt                    | ✅ `/ride`             | ❌             | ✅ †     |
-| Report Trip                     | ✅ `/ride`             | ❌             | ✅ †     |
+| Trip Completed                  | ✅ `/ride`             | ✅             | ✅       |
+| Payment / Gateway / Cash        | ✅ `/ride`             | ✅             | ✅ ‡     |
+| Wallet Pay Success              | ✅ `/ride`             | ✅             | ✅       |
+| Tip Driver                      | ✅ `/ride`             | ✅             | ✅       |
+| Rate Driver                     | ✅ `/ride`             | ✅             | ✅       |
+| Trip Receipt                    | ✅ `/ride`             | ✅             | ✅       |
+| Report Trip                     | ✅ `/ride`             | ✅             | ✅       |
 | Ride History                    | ✅ `/ride`             | ❌             | ✅ †     |
 | Saved Places                    | ✅ `/ride`             | ❌             | ✅ †     |
 
@@ -194,6 +194,14 @@ the "Real Route" column reflects that shared route, not per-screen URLs.
 See `packages/ui/src/components/super-app/MATURITY.md`'s "Ride module"
 section for the slice-by-slice port log.
 
+‡ Wallet and Cash payment methods were verified end-to-end against the
+real backend (real wallet balance, real driver `cash-confirm`). The
+gateway path (Paystack/Flutterwave/OPay) is typecheck/lint clean and
+composed only of already-Verified primitives, but wasn't exercised
+end-to-end — no real gateway credentials exist in this sandbox, the same
+environmental limitation documented during the Marketplace checkout
+stabilization pass.
+
 ## Seed data policy (Phase 1 / Phase 2)
 
 Per founder direction: seed data (`apps/backend/prisma/seed-data/`,
@@ -204,5 +212,6 @@ seed rows for live production data requires no presentation-layer code
 change. Phase 2, once a module is fully live, its seed block is simply
 dropped from `seed.ts`.
 
-_Last updated: 2026-08-04, after Ride Slice 3 (Driver En Route, Driver
-Arrived, Ride In Progress, Live Tracking)._
+_Last updated: 2026-08-04, after Ride Slice 4 (Trip Completed, Payment,
+Gateway Payment, Cash Payment, Wallet Pay Success, Tip Driver, Rate
+Driver, Trip Receipt, Report Trip)._

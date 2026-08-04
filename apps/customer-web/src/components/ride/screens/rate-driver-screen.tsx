@@ -1,8 +1,14 @@
 'use client';
 
+import {
+  SuperAppRideActionButton,
+  SuperAppRideDriverIdentity,
+  SuperAppRideHeader,
+  SuperAppRideStarRating,
+  SuperAppRideTextarea,
+  useSuperAppFonts,
+} from '@dripplex/ui';
 import * as React from 'react';
-
-import { ActionButton, RideHeader } from '../ride-ui';
 
 import { useRateDriver, useRideReceipt } from '@/hooks/rides';
 
@@ -30,73 +36,31 @@ export function RateDriverScreen({
   const [stars, setStars] = React.useState(5);
   const [comment, setComment] = React.useState('');
   const rateDriver = useRateDriver();
+  const { body } = useSuperAppFonts();
 
   return (
     <div
       className="absolute inset-0 flex flex-col overflow-hidden"
       style={{ background: '#0A1628' }}
     >
-      <RideHeader onBack={onBack} title="Rate Your Ride" />
+      <SuperAppRideHeader onBack={onBack} title="Rate Your Ride" />
       <div className="flex-1 overflow-y-auto px-5 pb-6">
-        <div className="mb-6 flex flex-col items-center">
-          <div
-            className="mb-3 flex h-20 w-20 items-center justify-center rounded-3xl text-2xl font-bold"
-            style={{
-              background: 'linear-gradient(135deg,#176B30,#2BAC52)',
-              color: '#fff',
-              fontFamily: "'Poppins',sans-serif",
-            }}
-          >
-            {receipt.data?.driver ? receipt.data.driver.name.slice(0, 1).toUpperCase() : '🚗'}
-          </div>
-          <p
-            className="text-[18px] font-bold"
-            style={{ fontFamily: "'Poppins',sans-serif", color: '#fff' }}
-          >
-            {receipt.data?.driver?.name ?? 'Your driver'}
-          </p>
-        </div>
-        <div className="mb-6 flex justify-center gap-3">
-          {[1, 2, 3, 4, 5].map((n) => (
-            <button
-              key={n}
-              type="button"
-              onClick={() => {
-                setStars(n);
-              }}
-              style={{ fontSize: 36, filter: n <= stars ? 'none' : 'grayscale(1) opacity(.3)' }}
-            >
-              ⭐
-            </button>
-          ))}
-        </div>
-        <textarea
+        <SuperAppRideDriverIdentity driverName={receipt.data?.driver?.name} layout="column" />
+        <SuperAppRideStarRating value={stars} onChange={setStars} />
+        <SuperAppRideTextarea
           value={comment}
-          onChange={(event) => {
-            setComment(event.target.value);
-          }}
+          onChange={setComment}
           placeholder="Tell us about your experience..."
           rows={3}
-          className="w-full resize-none rounded-2xl px-4 py-3 outline-none"
-          style={{
-            background: '#112238',
-            border: '1px solid rgba(255,255,255,.08)',
-            fontFamily: "'Inter',sans-serif",
-            fontSize: 14,
-            color: '#fff',
-          }}
         />
         {rateDriver.isError ? (
-          <p
-            className="mt-3 text-[13px]"
-            style={{ fontFamily: "'Inter',sans-serif", color: '#EF4444' }}
-          >
+          <p className={`mt-3 text-[13px] ${body}`} style={{ color: '#EF4444' }}>
             Couldn&apos;t submit your rating. Try again.
           </p>
         ) : null}
       </div>
       <div className="px-5 pb-8">
-        <ActionButton
+        <SuperAppRideActionButton
           label="Submit Rating"
           loading={rateDriver.isPending}
           onClick={() => {

@@ -1,8 +1,7 @@
 'use client';
 
+import { SuperAppRideActionButton, useSuperAppFonts } from '@dripplex/ui';
 import * as React from 'react';
-
-import { ActionButton } from '../ride-ui';
 
 import { useRide } from '@/hooks/rides';
 
@@ -22,6 +21,7 @@ export function WalletPaySuccessScreen({
   onReceipt: () => void;
 }): React.JSX.Element {
   const ride = useRide(rideId);
+  const { heading, body } = useSuperAppFonts();
 
   return (
     <div
@@ -42,16 +42,10 @@ export function WalletPaySuccessScreen({
         </svg>
       </div>
       <div className="text-center">
-        <p
-          className="mb-1 text-[36px] font-black"
-          style={{ fontFamily: "'Poppins',sans-serif", color: '#fff' }}
-        >
+        <p className={`mb-1 text-[36px] font-black text-white ${heading}`}>
           {ride.data ? `₦${ride.data.totalFare.toLocaleString()} paid!` : 'Paid!'}
         </p>
-        <p
-          className="mb-8 text-[16px]"
-          style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.6)' }}
-        >
+        <p className={`mb-8 text-[16px] ${body}`} style={{ color: 'rgba(255,255,255,.6)' }}>
           Payment successful
         </p>
       </div>
@@ -68,22 +62,17 @@ export function WalletPaySuccessScreen({
             ],
           ] as const
         ).map(([labelText, value]) => (
-          <div key={labelText} className="mb-2 flex justify-between">
-            <p
-              className="text-[12px]"
-              style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
-            >
+          <div key={labelText} className="mb-2 flex justify-between last:mb-0">
+            <p className={`text-[12px] ${body}`} style={{ color: 'rgba(255,255,255,.5)' }}>
               {labelText}
             </p>
-            <p className="text-[12px]" style={{ fontFamily: "'Inter',sans-serif", color: '#fff' }}>
-              {value}
-            </p>
+            <p className={`text-[12px] text-white ${body}`}>{value}</p>
           </div>
         ))}
       </div>
       <div className="flex w-full flex-col gap-3">
-        <ActionButton label="View Receipt" variant="secondary" onClick={onReceipt} />
-        <ActionButton label="Rate Your Ride" onClick={onDone} />
+        <SuperAppRideActionButton label="View Receipt" variant="secondary" onClick={onReceipt} />
+        <SuperAppRideActionButton label="Rate Your Ride" onClick={onDone} />
       </div>
     </div>
   );
