@@ -1,8 +1,15 @@
 'use client';
 
+import {
+  SuperAppRideActionButton,
+  SuperAppRideHeader,
+  SuperAppRideHistoryCard,
+  SuperAppRidePagination,
+  SuperAppRideSegmentedTabs,
+  SuperAppRideStatusBanner,
+  useSuperAppFonts,
+} from '@dripplex/ui';
 import * as React from 'react';
-
-import { ActionButton, RideHeader, StatusBanner } from '../ride-ui';
 
 import type { RideStatus } from '@dripplex/types';
 
@@ -44,53 +51,39 @@ export function RideHistoryScreen({
   const [tab, setTab] = React.useState<HistoryTab>('all');
   const [page, setPage] = React.useState(1);
   const rides = useRideList({ page, limit: 20, status: TAB_STATUS[tab] });
+  const { body } = useSuperAppFonts();
 
   return (
     <div
       className="absolute inset-0 flex flex-col overflow-hidden"
       style={{ background: '#0A1628' }}
     >
-      <RideHeader onBack={onBack} title="Ride History" />
+      <SuperAppRideHeader onBack={onBack} title="Ride History" />
       <div className="flex-shrink-0 px-5 pb-4 pt-3">
-        <div className="flex gap-2">
-          {TABS.map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => {
-                setTab(t);
-                setPage(1);
-              }}
-              className="h-9 flex-1 rounded-xl text-[12px] font-semibold capitalize"
-              style={{
-                background: tab === t ? '#2BAC52' : '#112238',
-                color: tab === t ? '#fff' : 'rgba(255,255,255,.5)',
-                fontFamily: "'Inter',sans-serif",
-              }}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
+        <SuperAppRideSegmentedTabs
+          tabs={TABS.map((t) => ({ key: t, label: t }))}
+          selectedKey={tab}
+          onSelect={(t) => {
+            setTab(t);
+            setPage(1);
+          }}
+        />
       </div>
       <div className="flex flex-1 flex-col gap-3 overflow-y-auto px-5 pb-4">
         {rides.isLoading ? (
-          <p
-            className="py-4 text-[13px]"
-            style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
-          >
+          <p className={`py-4 text-[13px] ${body}`} style={{ color: 'rgba(255,255,255,.5)' }}>
             Loading your rides…
           </p>
         ) : null}
         {rides.isError ? (
           <div className="flex flex-col items-center gap-4 py-8">
-            <StatusBanner
+            <SuperAppRideStatusBanner
               tone="error"
               title="Couldn't load your rides"
               subtitle="Check your connection and try again."
             />
             <div className="w-full max-w-[200px]">
-              <ActionButton
+              <SuperAppRideActionButton
                 label="Retry"
                 variant="secondary"
                 onClick={() => {
@@ -101,141 +94,44 @@ export function RideHistoryScreen({
           </div>
         ) : null}
         {!rides.isLoading && !rides.isError && (rides.data?.items.length ?? 0) === 0 ? (
-          <p
-            className="py-4 text-[13px]"
-            style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
-          >
+          <p className={`py-4 text-[13px] ${body}`} style={{ color: 'rgba(255,255,255,.5)' }}>
             No rides here yet.
           </p>
         ) : null}
         {(rides.data?.items ?? []).map((ride) => {
           const completed = ride.status === 'COMPLETED';
-          const content = (
-            <>
-              <div className="mb-3 flex items-start justify-between">
-                <div className="flex items-center gap-2">
-                  <div
-                    className="flex h-8 w-8 items-center justify-center rounded-xl text-base"
-                    style={{
-                      background: completed ? 'rgba(43,172,82,.12)' : 'rgba(239,68,68,.1)',
-                    }}
-                  >
-                    {completed ? '🚗' : '❌'}
-                  </div>
-                  <div>
-                    <p
-                      className="text-[13px] font-semibold capitalize"
-                      style={{ fontFamily: "'Poppins',sans-serif", color: '#fff' }}
-                    >
-                      {ride.rideType.toLowerCase()} Ride
-                    </p>
-                    <p
-                      className="text-[11px]"
-                      style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
-                    >
-                      {formatDate(ride.requestedAt)}
-                    </p>
-                  </div>
-                </div>
-                <p
-                  className="text-[15px] font-bold"
-                  style={{ fontFamily: "'Poppins',sans-serif", color: '#fff' }}
-                >
-                  ₦{ride.totalFare.toLocaleString()}
-                </p>
-              </div>
-              <div className="mb-1 flex items-center gap-2">
-                <div className="h-1.5 w-1.5 rounded-full" style={{ background: '#2BAC52' }} />
-                <p
-                  className="text-[12px]"
-                  style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.6)' }}
-                >
-                  {ride.pickupAddress ?? 'Pickup location'}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="h-1.5 w-1.5 rounded-full" style={{ background: '#EF4444' }} />
-                <p
-                  className="text-[12px]"
-                  style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.6)' }}
-                >
-                  {ride.dropoffAddress ?? 'Drop-off location'}
-                </p>
-              </div>
-              {!completed && ride.cancellationReason ? (
-                <p
-                  className="mt-2 text-[11px]"
-                  style={{ fontFamily: "'Inter',sans-serif", color: '#EF4444' }}
-                >
-                  {ride.cancellationReason}
-                </p>
-              ) : null}
-            </>
-          );
-          if (completed) {
-            return (
-              <button
-                key={ride.id}
-                type="button"
-                onClick={() => {
-                  onDetail(ride.id);
-                }}
-                className="w-full rounded-2xl p-4 text-left"
-                style={{ background: '#112238', border: '1px solid rgba(255,255,255,.08)' }}
-              >
-                {content}
-              </button>
-            );
-          }
           return (
-            <div
+            <SuperAppRideHistoryCard
               key={ride.id}
-              className="w-full rounded-2xl p-4"
-              style={{ background: '#112238', border: '1px solid rgba(255,255,255,.08)' }}
-            >
-              {content}
-            </div>
+              icon={completed ? '🚗' : '❌'}
+              tone={completed ? 'success' : 'error'}
+              title={`${ride.rideType.toLowerCase()} Ride`}
+              dateLabel={formatDate(ride.requestedAt)}
+              fare={`₦${ride.totalFare.toLocaleString()}`}
+              pickupAddress={ride.pickupAddress ?? 'Pickup location'}
+              dropoffAddress={ride.dropoffAddress ?? 'Drop-off location'}
+              note={!completed && ride.cancellationReason ? ride.cancellationReason : undefined}
+              onClick={
+                completed
+                  ? () => {
+                      onDetail(ride.id);
+                    }
+                  : undefined
+              }
+            />
           );
         })}
         {rides.data && rides.data.meta.totalPages > 1 ? (
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <button
-              type="button"
-              disabled={page <= 1}
-              onClick={() => {
-                setPage((p) => p - 1);
-              }}
-              className="h-10 flex-1 rounded-xl text-[13px] font-semibold disabled:opacity-30"
-              style={{
-                background: '#112238',
-                color: 'rgba(255,255,255,.6)',
-                fontFamily: "'Inter',sans-serif",
-              }}
-            >
-              Previous
-            </button>
-            <p
-              className="text-[12px]"
-              style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
-            >
-              Page {page} of {rides.data.meta.totalPages}
-            </p>
-            <button
-              type="button"
-              disabled={page >= rides.data.meta.totalPages}
-              onClick={() => {
-                setPage((p) => p + 1);
-              }}
-              className="h-10 flex-1 rounded-xl text-[13px] font-semibold disabled:opacity-30"
-              style={{
-                background: '#112238',
-                color: 'rgba(255,255,255,.6)',
-                fontFamily: "'Inter',sans-serif",
-              }}
-            >
-              Next
-            </button>
-          </div>
+          <SuperAppRidePagination
+            page={page}
+            totalPages={rides.data.meta.totalPages}
+            onPrevious={() => {
+              setPage((p) => p - 1);
+            }}
+            onNext={() => {
+              setPage((p) => p + 1);
+            }}
+          />
         ) : null}
       </div>
     </div>

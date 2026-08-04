@@ -26,7 +26,7 @@ overstate progress:
 | --------------- | ----------------------------------------------------------------------------------: | -------------: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------: | --------: | -----: |
 | Home            |                                                                                   1 |            1/1 |                                                                                                                                                                                    0/1 (`/preview` only) |       1/1 |    1/1 |
 | Marketplace     |                                                                                   6 |            6/6 |                                                                                                                                                           4/6 (Product Detail, Cart, Checkout, Tracking) |       6/6 |    0/6 |
-| Ride            |                                                                                  30 |        19/30 † |                                                                                                                                                                                                 ~20/30 † |  ~20/30 † |      — |
+| Ride            |                                                                                  30 |          22/30 |                                                                                                                                                                                          22/30 (`/ride`) |     22/30 |      — |
 | Wallet          |                                                                                  10 |           0/10 |                                                                                                                                        0/10 (only `WalletPaySuccessScreen` exists, inside the Ride flow) |      0/10 |      — |
 | Driver          |                                                                                  13 |         0/13 † | partial † (`apps/driver-portal`, different screen set — dashboard/wallet/earnings/trip/history/profile/campaign, not a 1:1 port of `driverScreen.tsx`'s Splash/Login/OTP/KYC/DocsUpload/VehicleReg flow) | partial † |      — |
 | Merchant        |               — (`adminConsoleScreen.tsx`-style single file, not screen-enumerated) |              0 |                                                                                       partial † (`apps/merchant-portal` — dashboard, product CRUD, publish/images/variants/inventory, built pre-DPX-100) | partial † |      — |
@@ -151,19 +151,20 @@ scope):**
    than fixed in this pass since it's shared auth infrastructure touching
    all four portals, not scoped to Marketplace.
 
-## Ride detail (module currently in progress — DPX-100 port of an already-real module)
+## Ride detail — DPX-100 port complete (2026-08-04)
 
 Ride is architecturally different from every other module in this
-tracker: it already has a complete, real, backend-connected, previously
+tracker: it already had a complete, real, backend-connected, previously
 Playwright-verified implementation (RIDE-003 Slices 1-4), built _before_
 DPX-100 existed, using its own component library
 (`apps/customer-web/src/components/ride/`) instead of `packages/ui`. The
-DPX-100 pass here is a re-platform, not new construction: move each
-screen's presentational markup into `packages/ui/src/components/super-app/`
-and have the already-wired screen component (which stays in
-`customer-web`, since it owns the real hooks/backend calls) compose the
-new pieces — no new backend work, no behavior change, verified against
-the same real API this module has used since RIDE-003.
+DPX-100 pass here was a re-platform across five slices, not new
+construction: move each screen's presentational markup into
+`packages/ui/src/components/super-app/` and have the already-wired
+screen component (which stays in `customer-web`, since it owns the real
+hooks/backend calls) compose the new pieces — no new backend work, no
+behavior change, verified against the same real API this module has used
+since RIDE-003. All 22 real Ride screens are now ported and Playwright-verified.
 
 | Screen                          | Pre-DPX-100 Real Route | DPX-100 Ported | Verified |
 | ------------------------------- | ---------------------- | -------------- | -------- |
@@ -183,16 +184,17 @@ the same real API this module has used since RIDE-003.
 | Rate Driver                     | ✅ `/ride`             | ✅             | ✅       |
 | Trip Receipt                    | ✅ `/ride`             | ✅             | ✅       |
 | Report Trip                     | ✅ `/ride`             | ✅             | ✅       |
-| Ride History                    | ✅ `/ride`             | ❌             | ✅ †     |
-| Saved Places                    | ✅ `/ride`             | ❌             | ✅ †     |
+| Ride History                    | ✅ `/ride`             | ✅             | ✅       |
+| Saved Places                    | ✅ `/ride`             | ✅             | ✅       |
 
-† Verified during RIDE-003 (pre-DPX-100), not yet re-verified post-port
-since these screens haven't been touched by the DPX-100 pass yet. All 22
-real Ride screens share one route (`/ride`) driven by a flat
+All 22 real Ride screens share one route (`/ride`) driven by a flat
 `ride-flow.tsx` state machine rather than one Next.js page per screen —
 the "Real Route" column reflects that shared route, not per-screen URLs.
 See `packages/ui/src/components/super-app/MATURITY.md`'s "Ride module"
 section for the slice-by-slice port log.
+
+Not yet Locked — pending founder confirmation, per the same discipline
+applied to Marketplace.
 
 ‡ Wallet and Cash payment methods were verified end-to-end against the
 real backend (real wallet balance, real driver `cash-confirm`). The
@@ -212,6 +214,6 @@ seed rows for live production data requires no presentation-layer code
 change. Phase 2, once a module is fully live, its seed block is simply
 dropped from `seed.ts`.
 
-_Last updated: 2026-08-04, after Ride Slice 4 (Trip Completed, Payment,
-Gateway Payment, Cash Payment, Wallet Pay Success, Tip Driver, Rate
-Driver, Trip Receipt, Report Trip)._
+_Last updated: 2026-08-04, after Ride Slice 5 (Ride History, Saved
+Places) — the Ride module's DPX-100 port is now complete (22/22 real
+screens ported and Playwright-verified)._

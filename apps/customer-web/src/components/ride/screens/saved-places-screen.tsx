@@ -1,8 +1,16 @@
 'use client';
 
+import {
+  SuperAppRideActionButton,
+  SuperAppRideDashedAddButton,
+  SuperAppRideHeader,
+  SuperAppRidePlaceCard,
+  SuperAppRideSegmentedTabs,
+  SuperAppRideStatusBanner,
+  SuperAppRideTextField,
+  useSuperAppFonts,
+} from '@dripplex/ui';
 import * as React from 'react';
-
-import { ActionButton, RideHeader, StatusBanner } from '../ride-ui';
 
 import type { AddressLabel, CustomerAddressDto } from '@dripplex/types';
 
@@ -49,42 +57,6 @@ const EMPTY_FORM: FormState = {
   postalCode: '',
 };
 
-function fieldStyle(): React.CSSProperties {
-  return { background: '#112238', border: '1px solid rgba(255,255,255,.08)' };
-}
-
-function TextField({
-  label,
-  value,
-  onChange,
-  required,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  required?: boolean;
-}): React.JSX.Element {
-  return (
-    <div className="mb-3">
-      <p
-        className="mb-1.5 text-[11px] font-semibold"
-        style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
-      >
-        {label}
-        {required ? ' *' : ''}
-      </p>
-      <input
-        value={value}
-        onChange={(event) => {
-          onChange(event.target.value);
-        }}
-        className="h-12 w-full rounded-2xl px-4 outline-none"
-        style={{ ...fieldStyle(), fontFamily: "'Inter',sans-serif", fontSize: 14, color: '#fff' }}
-      />
-    </div>
-  );
-}
-
 /**
  * Generated form — the real Figma Make source's SavedPlacesScreen only
  * defines `onAdd` as a callback with no destination screen. Built here
@@ -113,6 +85,7 @@ function PlaceForm({
   const location = useCurrentLocation();
   const createPlace = useCreateSavedPlace();
   const updatePlace = useUpdateSavedPlace();
+  const { body } = useSuperAppFonts();
 
   const pending = createPlace.isPending || updatePlace.isPending;
   const canUseLocation = location.status === 'ready';
@@ -130,28 +103,21 @@ function PlaceForm({
       className="absolute inset-0 flex flex-col overflow-hidden"
       style={{ background: '#0A1628' }}
     >
-      <RideHeader onBack={onCancel} title={editingId ? 'Edit Place' : 'Add a Place'} />
+      <SuperAppRideHeader onBack={onCancel} title={editingId ? 'Edit Place' : 'Add a Place'} />
       <div className="flex-1 overflow-y-auto px-5 pt-3">
-        <div className="mb-4 flex gap-2">
-          {LABELS.map((label) => (
-            <button
-              key={label}
-              type="button"
-              onClick={() => {
-                setForm((f) => ({ ...f, label }));
-              }}
-              className="h-9 flex-1 rounded-xl text-[12px] font-semibold capitalize"
-              style={{
-                background: form.label === label ? '#2BAC52' : '#112238',
-                color: form.label === label ? '#fff' : 'rgba(255,255,255,.5)',
-                fontFamily: "'Inter',sans-serif",
-              }}
-            >
-              {labelIcon(label)} {label.toLowerCase()}
-            </button>
-          ))}
+        <div className="mb-4">
+          <SuperAppRideSegmentedTabs
+            tabs={LABELS.map((label) => ({
+              key: label,
+              label: `${labelIcon(label)} ${label.toLowerCase()}`,
+            }))}
+            selectedKey={form.label}
+            onSelect={(label) => {
+              setForm((f) => ({ ...f, label }));
+            }}
+          />
         </div>
-        <TextField
+        <SuperAppRideTextField
           label="Recipient name"
           value={form.recipientName}
           onChange={(v) => {
@@ -159,7 +125,7 @@ function PlaceForm({
           }}
           required
         />
-        <TextField
+        <SuperAppRideTextField
           label="Phone"
           value={form.phone}
           onChange={(v) => {
@@ -167,7 +133,7 @@ function PlaceForm({
           }}
           required
         />
-        <TextField
+        <SuperAppRideTextField
           label="Address"
           value={form.addressLine1}
           onChange={(v) => {
@@ -175,21 +141,21 @@ function PlaceForm({
           }}
           required
         />
-        <TextField
+        <SuperAppRideTextField
           label="Address line 2"
           value={form.addressLine2}
           onChange={(v) => {
             setForm((f) => ({ ...f, addressLine2: v }));
           }}
         />
-        <TextField
+        <SuperAppRideTextField
           label="Landmark"
           value={form.landmark}
           onChange={(v) => {
             setForm((f) => ({ ...f, landmark: v }));
           }}
         />
-        <TextField
+        <SuperAppRideTextField
           label="City"
           value={form.city}
           onChange={(v) => {
@@ -197,7 +163,7 @@ function PlaceForm({
           }}
           required
         />
-        <TextField
+        <SuperAppRideTextField
           label="State"
           value={form.state}
           onChange={(v) => {
@@ -205,7 +171,7 @@ function PlaceForm({
           }}
           required
         />
-        <TextField
+        <SuperAppRideTextField
           label="Postal code"
           value={form.postalCode}
           onChange={(v) => {
@@ -217,10 +183,7 @@ function PlaceForm({
             className="mb-4 rounded-xl p-3.5"
             style={{ background: 'rgba(34,197,94,.06)', border: '1px solid rgba(34,197,94,.15)' }}
           >
-            <p
-              className="text-[12px]"
-              style={{ fontFamily: "'Inter',sans-serif", color: '#47CF72' }}
-            >
+            <p className={`text-[12px] ${body}`} style={{ color: '#47CF72' }}>
               {canUseLocation
                 ? '📍 Using your current device location for this place — no address search exists yet, so this is the only way to set coordinates.'
                 : location.status === 'denied'
@@ -230,21 +193,18 @@ function PlaceForm({
           </div>
         ) : null}
         {createPlace.isError || updatePlace.isError ? (
-          <p
-            className="mb-3 text-[13px]"
-            style={{ fontFamily: "'Inter',sans-serif", color: '#EF4444' }}
-          >
+          <p className={`mb-3 text-[13px] ${body}`} style={{ color: '#EF4444' }}>
             Couldn&apos;t save this place. Try again.
           </p>
         ) : null}
       </div>
       <div className="px-5 pb-8 pt-3">
-        <ActionButton
+        <SuperAppRideActionButton
           label={editingId ? 'Save Changes' : 'Save Place'}
           disabled={!canSubmit}
           loading={pending}
           onClick={() => {
-            const body = {
+            const requestBody = {
               label: form.label,
               recipientName: form.recipientName.trim(),
               phone: form.phone.trim(),
@@ -257,14 +217,14 @@ function PlaceForm({
               postalCode: form.postalCode.trim() || undefined,
             };
             if (editingId) {
-              updatePlace.mutate({ id: editingId, body }, { onSuccess: onSaved });
+              updatePlace.mutate({ id: editingId, body: requestBody }, { onSuccess: onSaved });
               return;
             }
             if (location.latitude === null || location.longitude === null) {
               return;
             }
             createPlace.mutate(
-              { ...body, latitude: location.latitude, longitude: location.longitude },
+              { ...requestBody, latitude: location.latitude, longitude: location.longitude },
               { onSuccess: onSaved },
             );
           }}
@@ -293,6 +253,7 @@ export function SavedPlacesScreen({ onBack }: { onBack: () => void }): React.JSX
   const savedPlaces = useSavedPlaces();
   const deletePlace = useDeleteSavedPlace();
   const setDefault = useSetDefaultSavedPlace();
+  const { heading, body } = useSuperAppFonts();
   const [mode, setMode] = React.useState<
     { kind: 'list' } | { kind: 'add' } | { kind: 'edit'; place: CustomerAddressDto }
   >({ kind: 'list' });
@@ -331,30 +292,54 @@ export function SavedPlacesScreen({ onBack }: { onBack: () => void }): React.JSX
   );
   const other = (savedPlaces.data?.items ?? []).filter((p) => p.label === 'OTHER');
 
+  function placeTitle(place: CustomerAddressDto): string {
+    if (place.label === 'HOME') return 'Home';
+    if (place.label === 'WORK') return 'Work';
+    return place.addressLine1;
+  }
+
+  function placeCard(place: CustomerAddressDto): React.JSX.Element {
+    return (
+      <SuperAppRidePlaceCard
+        key={place.id}
+        icon={labelIcon(place.label)}
+        title={placeTitle(place)}
+        subtitle={`${place.addressLine1}, ${place.city}`}
+        isDefault={place.isDefault}
+        onEdit={() => {
+          setMode({ kind: 'edit', place });
+        }}
+        onDelete={() => {
+          deletePlace.mutate(place.id);
+        }}
+        onSetDefault={() => {
+          setDefault.mutate(place.id);
+        }}
+      />
+    );
+  }
+
   return (
     <div
       className="absolute inset-0 flex flex-col overflow-hidden"
       style={{ background: '#0A1628' }}
     >
-      <RideHeader onBack={onBack} title="Saved Places" />
+      <SuperAppRideHeader onBack={onBack} title="Saved Places" />
       <div className="flex-1 overflow-y-auto px-5 pt-3">
         {savedPlaces.isLoading ? (
-          <p
-            className="py-4 text-[13px]"
-            style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
-          >
+          <p className={`py-4 text-[13px] ${body}`} style={{ color: 'rgba(255,255,255,.5)' }}>
             Loading saved places…
           </p>
         ) : null}
         {savedPlaces.isError ? (
           <div className="flex flex-col items-center gap-4 py-8">
-            <StatusBanner
+            <SuperAppRideStatusBanner
               tone="error"
               title="Couldn't load your saved places"
               subtitle="Check your connection and try again."
             />
             <div className="w-full max-w-[200px]">
-              <ActionButton
+              <SuperAppRideActionButton
                 label="Retry"
                 variant="secondary"
                 onClick={() => {
@@ -367,174 +352,39 @@ export function SavedPlacesScreen({ onBack }: { onBack: () => void }): React.JSX
         {!savedPlaces.isError && homeWork.length > 0 ? (
           <>
             <p
-              className="mb-3 text-[11px] font-semibold"
-              style={{ fontFamily: "'Poppins',sans-serif", color: 'rgba(255,255,255,.5)' }}
+              className={`mb-3 text-[11px] font-semibold ${heading}`}
+              style={{ color: 'rgba(255,255,255,.5)' }}
             >
               HOME &amp; WORK
             </p>
-            {homeWork.map((place) => (
-              <PlaceRow
-                key={place.id}
-                place={place}
-                onEdit={() => {
-                  setMode({ kind: 'edit', place });
-                }}
-                onDelete={() => {
-                  deletePlace.mutate(place.id);
-                }}
-                onSetDefault={() => {
-                  setDefault.mutate(place.id);
-                }}
-              />
-            ))}
+            {homeWork.map((place) => placeCard(place))}
           </>
         ) : null}
         {!savedPlaces.isError && other.length > 0 ? (
           <>
             <p
-              className="mb-3 mt-4 text-[11px] font-semibold"
-              style={{ fontFamily: "'Poppins',sans-serif", color: 'rgba(255,255,255,.5)' }}
+              className={`mb-3 mt-4 text-[11px] font-semibold ${heading}`}
+              style={{ color: 'rgba(255,255,255,.5)' }}
             >
               OTHER PLACES
             </p>
-            {other.map((place) => (
-              <PlaceRow
-                key={place.id}
-                place={place}
-                onEdit={() => {
-                  setMode({ kind: 'edit', place });
-                }}
-                onDelete={() => {
-                  deletePlace.mutate(place.id);
-                }}
-                onSetDefault={() => {
-                  setDefault.mutate(place.id);
-                }}
-              />
-            ))}
+            {other.map((place) => placeCard(place))}
           </>
         ) : null}
         {!savedPlaces.isLoading &&
         !savedPlaces.isError &&
         homeWork.length === 0 &&
         other.length === 0 ? (
-          <p
-            className="py-4 text-[13px]"
-            style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
-          >
+          <p className={`py-4 text-[13px] ${body}`} style={{ color: 'rgba(255,255,255,.5)' }}>
             No saved places yet.
           </p>
         ) : null}
-        <button
-          type="button"
-          className="mb-6 mt-4 flex h-14 w-full items-center justify-center gap-2 rounded-2xl"
-          style={{ border: '1.5px dashed rgba(34,197,94,.4)', background: 'transparent' }}
+        <SuperAppRideDashedAddButton
+          label="Add a place"
           onClick={() => {
             setMode({ kind: 'add' });
           }}
-        >
-          <span style={{ fontSize: 20, color: '#47CF72' }}>+</span>
-          <p
-            style={{
-              fontSize: 14,
-              color: '#47CF72',
-              fontFamily: "'Poppins',sans-serif",
-              fontWeight: 600,
-            }}
-          >
-            Add a place
-          </p>
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function PlaceRow({
-  place,
-  onEdit,
-  onDelete,
-  onSetDefault,
-}: {
-  place: CustomerAddressDto;
-  onEdit: () => void;
-  onDelete: () => void;
-  onSetDefault: () => void;
-}): React.JSX.Element {
-  return (
-    <div
-      className="mb-3 overflow-hidden rounded-2xl"
-      style={{
-        background: '#0D1B2E',
-        border: '1px solid rgba(255,255,255,.08)',
-        borderLeft: place.isDefault ? '3px solid #47CF72' : '1px solid rgba(255,255,255,.08)',
-      }}
-    >
-      <div className="flex items-center gap-3 p-4">
-        <span style={{ fontSize: 22 }}>{labelIcon(place.label)}</span>
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <p
-              style={{
-                fontFamily: "'Poppins',sans-serif",
-                fontSize: 14,
-                fontWeight: 600,
-                color: '#fff',
-              }}
-            >
-              {place.label === 'HOME'
-                ? 'Home'
-                : place.label === 'WORK'
-                  ? 'Work'
-                  : place.addressLine1}
-            </p>
-            {place.isDefault ? (
-              <span
-                className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                style={{ background: 'rgba(43,172,82,.12)', color: '#47CF72' }}
-              >
-                Default
-              </span>
-            ) : null}
-          </div>
-          <p
-            style={{
-              fontSize: 12,
-              color: 'rgba(255,255,255,.6)',
-              fontFamily: "'Inter',sans-serif",
-            }}
-          >
-            {place.addressLine1}, {place.city}
-          </p>
-        </div>
-      </div>
-      <div className="flex gap-2 px-4 pb-3">
-        <button
-          type="button"
-          onClick={onEdit}
-          className="text-[12px] font-semibold"
-          style={{ color: '#47CF72', fontFamily: "'Poppins',sans-serif" }}
-        >
-          Edit
-        </button>
-        {!place.isDefault ? (
-          <button
-            type="button"
-            onClick={onSetDefault}
-            className="text-[12px] font-semibold"
-            style={{ color: 'rgba(255,255,255,.6)', fontFamily: "'Poppins',sans-serif" }}
-          >
-            Set as default
-          </button>
-        ) : null}
-        <button
-          type="button"
-          onClick={onDelete}
-          className="ml-auto text-[12px] font-semibold"
-          style={{ color: '#EF4444', fontFamily: "'Poppins',sans-serif" }}
-        >
-          Delete
-        </button>
+        />
       </div>
     </div>
   );

@@ -693,3 +693,55 @@ Saved Places (Slice 5).
 | `SuperAppRideDriverIdentity`   | Verified                                     |
 | `SuperAppRideStarRating`       | Verified                                     |
 | `SuperAppRideInfoBox`          | Verified (extended, additive `success` tone) |
+
+## Ride module — Slice 5: History + Saved Places (2026-08-04)
+
+Final slice of the Ride re-platform: presentational markup only, no new
+backend work, no behavior change. Ported `RideHistoryScreen` and
+`SavedPlacesScreen` (list + add + edit + delete + set-default) off
+`ride-ui.tsx` onto `packages/ui`. This completes the DPX-100 port of all
+22 real Ride screens.
+
+**New components this slice:**
+
+- `RideSegmentedTabs` — equal-width segmented tab row, generic over the
+  tab key type; reused for both History's All/Completed/Cancelled filter
+  and Saved Places' Home/Work/Other label picker (identical visual
+  pattern in the source, previously duplicated inline in two screens).
+- `RideHistoryCard` — a ride-history row (icon, type/date, fare,
+  pickup/dropoff dots, optional cancellation note); renders as a button
+  when `onClick` is passed (COMPLETED rides only — the receipt endpoint
+  404s for any other status) or a static div otherwise, matching the
+  source's tappable-vs-static distinction exactly.
+- `RidePagination` — the Previous/Page X of Y/Next pager on History.
+- `RideTextField` — labeled single-line input, used by the Saved Places
+  add/edit form.
+- `RidePlaceCard` — a saved-place card (icon, name, default badge,
+  address, edit/set-default/delete actions).
+- `RideDashedAddButton` — the dashed-border "Add a place" affordance.
+
+The location-status info banner in the add/edit form (radius `xl`/`p-3.5`
+vs `RideInfoBox`'s `2xl`/`p-4`) was kept inline rather than force-fit
+onto `RideInfoBox`'s `success` tone, since it's a genuinely distinct spec
+— same discipline as Slice 3/4.
+
+Typecheck/lint clean across `@dripplex/ui` and `customer-web`. Verified
+with Playwright against the real backend: History's All/Completed/
+Cancelled tabs correctly filtered real ride rows (including a real
+cancellation-reason note on cancelled rides); tapping a completed ride
+opened the real Trip Receipt, and its Back button correctly returned to
+History rather than Home, confirming the `returnTo: 'history'` wiring;
+Saved Places' list showed the real default Home address; Add a Place
+created a real `CustomerAddress` (using real device GPS coordinates, no
+geocoding endpoint exists); Edit loaded the real record into the form;
+Set as default correctly flipped which place carried the badge; Delete
+removed a place — all via real API calls, zero console errors throughout.
+
+| Component                     | Status   |
+| ----------------------------- | -------- |
+| `SuperAppRideSegmentedTabs`   | Verified |
+| `SuperAppRideHistoryCard`     | Verified |
+| `SuperAppRidePagination`      | Verified |
+| `SuperAppRideTextField`       | Verified |
+| `SuperAppRidePlaceCard`       | Verified |
+| `SuperAppRideDashedAddButton` | Verified |
