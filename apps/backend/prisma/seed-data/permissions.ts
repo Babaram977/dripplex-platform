@@ -101,6 +101,31 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
     code: 'admin:drivers:security-settings:manage',
     description: 'View and edit the Driver-001 Security Standard risk-engine settings',
   },
+  {
+    code: 'driver:vehicle:manage',
+    description: 'Manage own registered vehicles',
+  },
+  {
+    code: 'admin:drivers:vehicles:manage',
+    description: 'Approve or reject driver-submitted vehicles',
+  },
+  {
+    code: 'driver:inspection:manage',
+    description: 'Book and view own vehicle/driver inspection appointments',
+  },
+  {
+    code: 'admin:inspection-centres:manage',
+    description: 'Create and manage DrippleX inspection centres',
+  },
+  {
+    code: 'inspection:checklist:manage',
+    description: 'Record an inspection checklist, photos, and defects (Inspection Officer)',
+  },
+  {
+    code: 'inspection:approve',
+    description:
+      'Approve/reject inspections, schedule re-inspections, view full inspection history (Inspection Supervisor)',
+  },
   { code: 'admin:rides:support', description: 'Review and resolve ride problem reports' },
   { code: 'users:read', description: 'Read user records' },
   { code: 'users:write', description: 'Update user records' },

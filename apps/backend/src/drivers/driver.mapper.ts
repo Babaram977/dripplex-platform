@@ -9,6 +9,7 @@ export function toDriverKycDto(kyc: DriverKyc): DriverKycDto {
     documentNumber: kyc.documentNumber,
     frontImage: kyc.frontImage,
     backImage: kyc.backImage,
+    expiresAt: kyc.expiresAt ? kyc.expiresAt.toISOString() : null,
     verificationStatus: kyc.verificationStatus,
     reviewedBy: kyc.reviewedBy,
     reviewedAt: kyc.reviewedAt ? kyc.reviewedAt.toISOString() : null,
@@ -35,6 +36,12 @@ export function toDriverProfileDto(input: {
     approvedBy: input.profile.approvedBy,
     rejectedReason: input.profile.rejectedReason,
     suspendedAt: input.profile.suspendedAt ? input.profile.suspendedAt.toISOString() : null,
+    emergencyContactName: input.profile.emergencyContactName,
+    emergencyContactPhone: input.profile.emergencyContactPhone,
+    agreementAcceptedAt: input.profile.agreementAcceptedAt
+      ? input.profile.agreementAcceptedAt.toISOString()
+      : null,
+    agreementVersion: input.profile.agreementVersion,
     createdAt: input.profile.createdAt.toISOString(),
     updatedAt: input.profile.updatedAt.toISOString(),
     kyc: input.kyc.map(toDriverKycDto),

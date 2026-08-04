@@ -115,11 +115,54 @@ Per founder direction, given the above was all real, tested, and (per the module
 
 From this point forward: branch new work from `main`, and return to normal per-module PRs — this consolidation exists to close the gap, not to establish direct-to-main pushes as the ongoing pattern.
 
+## 2026-08-04 — DPX-DRIVER-002 Slice 1: Driver onboarding, vehicle management, and inspection engine (backend)
+
+Per the founder's reordered Driver module priority and the newly-adopted
+8-step module lifecycle (`docs/DPX-100-MODULE-COMPLETION-GATE.md`'s "module
+lifecycle" section), Slice 1 of the Driver module shipped as real backend
+capability, before any UI: **Driver Onboarding** (`OnboardingService`
+repurposes the previously vestigial `DriverOnboarding` model — emergency
+contact, agreement acceptance, a validated submit-for-review step),
+**Vehicle Management** (`VehiclesService` — driver CRUD on own vehicles,
+plate-number uniqueness, admin approve/reject, automatic re-review when a
+vehicle's identifying details change), and the **Driver & Vehicle Inspection
+Standard** (`docs/DPX-DRIVER-002-INSPECTION-STANDARD.md` — new
+`InspectionCentre`/`Inspection` models, `InspectionCentresService`,
+`InspectionsService` covering appointment booking, an officer-records/
+supervisor-decides checklist workflow, re-inspection scheduling, and a
+passed inspection auto-approving its vehicle). Two new roles
+(`inspection_officer`, `inspection_supervisor`) plus the existing
+`operations_staff`/`administrator`/`super_administrator` gate the
+operations-console side — no separate Inspector app was built, per the
+founder's explicit decision. Criminal/watchlist background checks were
+deliberately deferred to a future `DPX-DRIVER-003`, with extension points
+preserved but nothing built yet.
+
+Verified: `tsc`/`eslint` clean across `apps/backend`, `packages/types`, and
+`packages/sdk`; 19 new service-level tests plus DTO-validation and
+permission-constant tests, all passing against the real dev database;
+full backend suite 1134/1136 tests passing (the 2 failures are pre-existing,
+unrelated DB-seed pollution in an unrelated Marketplace ratings test —
+confirmed by isolating the run and tracing the colliding row to a
+`prisma/seed-data/marketplace.ts` fixture seeded in an earlier session, not
+anything this slice touched).
+
+**Deliberately not done this pass, named honestly:** `DriversService.approveDriver()`'s
+existing KYC-document gate was not extended to also require an approved
+vehicle or a passed inspection — the three systems work independently today;
+combining them into DPX-DRIVER-002 Phase 4's single activation gate is a
+real, scoped follow-up. Both the driver-portal onboarding/vehicle UI and the
+Operations Portal's Inspection UI (queue, checklist, photo capture,
+approve/reject, re-inspection scheduling, reporting) are backend-only for
+this pass, per the standing Figma-first rule — the endpoints are ready for a
+UI once designs are provided. See `docs/DRIVER-APP-DPX-100-AUDIT.md`'s Slice
+1 status note for the full detail.
+
 ---
 
 ## What's next
 
-The R1.7/R1.8 commerce-completion plan below was superseded by the DPX-100 initiative above — Marketplace's commerce loop (cart/checkout/order/payment UI) shipped as part of that port, not as R1.7/R1.8 specifically. What's actually still open, per each module's own audit doc: the Driver module's Figma-ported UI, vehicle management, shift management, and support (`docs/DRIVER-APP-DPX-100-AUDIT.md`); reconciling the Railway-vs-Coolify production-infrastructure question above; and Orders/AI/Merchant/Admin, next in the founder's module ordering per `docs/DPX-100-MODULE-COMPLETION-GATE.md`.
+The R1.7/R1.8 commerce-completion plan below was superseded by the DPX-100 initiative above — Marketplace's commerce loop (cart/checkout/order/payment UI) shipped as part of that port, not as R1.7/R1.8 specifically. What's actually still open, per each module's own audit doc: the Driver module's Figma-ported UI (including onboarding/vehicle/inspection, all backend-real as of DPX-DRIVER-002 Slice 1 above), the `approveDriver()` combined activation gate, shift management, and support (`docs/DRIVER-APP-DPX-100-AUDIT.md`); reconciling the Railway-vs-Coolify production-infrastructure question above; and Orders/AI/Merchant/Admin, next in the founder's module ordering per `docs/DPX-100-MODULE-COMPLETION-GATE.md`.
 
 <details>
 <summary>Original 2026-07-28 "what's next" (superseded, kept for the record)</summary>

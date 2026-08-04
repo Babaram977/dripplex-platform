@@ -87,6 +87,8 @@ enum KycDocumentType {
   BUSINESS_REGISTRATION
   VEHICLE_REGISTRATION
   GUARANTOR_ID
+  /// DPX-DRIVER-002
+  INSURANCE
 }
 
 enum KycVerificationStatus {
@@ -262,6 +264,9 @@ model User {
   driverKycDocuments          DriverKyc[]
   driverIdentityVerifications DriverIdentityVerification[]
   driverVerifiedDevices       DriverVerifiedDevice[]
+  /// DPX-DRIVER-002
+  driverVehicles              Vehicle[]
+  driverInspections           Inspection[]
   rideOffers                  RideOffer[]
   notifications               Notification[]
   notificationPreferences     NotificationPreference[]
@@ -604,6 +609,14 @@ model DriverProfile {
   /// failures). Distinct from `identityVerificationRequiredReason`, which
   /// still allows retries.
   identityVerificationLockedAt       DateTime?                  @map("identity_verification_locked_at")
+  /// DPX-DRIVER-002 Phase 1
+  emergencyContactName               String?                    @map("emergency_contact_name") @db.VarChar(150)
+  emergencyContactPhone              String?                    @map("emergency_contact_phone") @db.VarChar(20)
+  /// DPX-DRIVER-002 Phase 4 — non-null = driver has accepted the driver
+  /// agreement. `agreementVersion` records which version, so a future
+  /// agreement update can require re-acceptance without ambiguity.
+  agreementAcceptedAt                DateTime?                  @map("agreement_accepted_at")
+  agreementVersion                   String?                    @map("agreement_version") @db.VarChar(20)
   createdAt                          DateTime                   @default(now()) @map("created_at")
   updatedAt                          DateTime                   @updatedAt @map("updated_at")
   deletedAt                          DateTime?                  @map("deleted_at")
@@ -678,16 +691,16 @@ model DriverIdentityVerification {
 /// redeploy. AppConfigService/env vars only seed this row's initial
 /// values the first time it's created.
 model DriverSecuritySettings {
-  id                             String   @id @db.Uuid
-  idleHours                      Int      @map("idle_hours")
-  gpsAnomalySpeedKmh             Float    @map("gps_anomaly_speed_kmh")
-  lockoutThreshold                Int      @map("lockout_threshold")
-  spotCheckDenominator           Int      @map("spot_check_denominator")
-  newDeviceVerificationEnabled   Boolean  @default(true) @map("new_device_verification_enabled")
-  adminForceVerificationEnabled  Boolean  @default(true) @map("admin_force_verification_enabled")
-  updatedBy                      String?  @map("updated_by") @db.Uuid
-  updatedAt                      DateTime @updatedAt @map("updated_at")
-  createdAt                      DateTime @default(now()) @map("created_at")
+  id                            String   @id @db.Uuid
+  idleHours                     Int      @map("idle_hours")
+  gpsAnomalySpeedKmh            Float    @map("gps_anomaly_speed_kmh")
+  lockoutThreshold              Int      @map("lockout_threshold")
+  spotCheckDenominator          Int      @map("spot_check_denominator")
+  newDeviceVerificationEnabled  Boolean  @default(true) @map("new_device_verification_enabled")
+  adminForceVerificationEnabled Boolean  @default(true) @map("admin_force_verification_enabled")
+  updatedBy                     String?  @map("updated_by") @db.Uuid
+  updatedAt                     DateTime @updatedAt @map("updated_at")
+  createdAt                     DateTime @default(now()) @map("created_at")
 
   @@map("driver_security_settings")
 }
@@ -1407,6 +1420,9 @@ model DriverKyc {
   documentNumber     String                @map("document_number") @db.VarChar(100)
   frontImage         String                @map("front_image") @db.VarChar(2048)
   backImage          String?               @map("back_image") @db.VarChar(2048)
+  /// DPX-DRIVER-002 — insurance/licence expiry tracking. Null for document
+  /// types with no meaningful expiry (e.g. GUARANTOR_ID).
+  expiresAt          DateTime?             @map("expires_at")
   verificationStatus KycVerificationStatus @default(PENDING) @map("verification_status")
   reviewedBy         String?               @map("reviewed_by") @db.Uuid
   reviewedAt         DateTime?             @map("reviewed_at")
@@ -1417,6 +1433,114 @@ model DriverKyc {
   @@index([driverId])
   @@index([verificationStatus])
   @@map("driver_kyc")
+}
+
+/// DPX-DRIVER-002 — structured vehicle record. Replaces the pre-existing
+/// pattern of a vehicle being nothing but an uploaded `VEHICLE_REGISTRATION`
+/// document (`DriverKyc`) and `DriverAvailability.vehicleType`'s single
+/// ride-category enum. A driver's registered `Vehicle.rideCategory`
+/// determines which ride categories they're eligible to serve.
+enum VehicleApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Vehicle {
+  id             String                @id @default(uuid()) @db.Uuid
+  driverId       String                @map("driver_id") @db.Uuid
+  plateNumber    String                @map("plate_number") @db.VarChar(20)
+  make           String                @db.VarChar(50)
+  model          String                @db.VarChar(50)
+  color          String                @db.VarChar(30)
+  year           Int
+  rideCategory   RideType              @map("ride_category")
+  isActive       Boolean               @default(true) @map("is_active")
+  approvalStatus VehicleApprovalStatus @default(PENDING) @map("approval_status")
+  approvedAt     DateTime?             @map("approved_at")
+  approvedBy     String?               @map("approved_by") @db.Uuid
+  rejectedReason String?               @map("rejected_reason") @db.VarChar(1000)
+  photos         String[]              @default([])
+  createdAt      DateTime              @default(now()) @map("created_at")
+  updatedAt      DateTime              @updatedAt @map("updated_at")
+  driver         User                  @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  inspections    Inspection[]
+
+  @@unique([plateNumber])
+  @@index([driverId])
+  @@index([approvalStatus])
+  @@map("vehicles")
+}
+
+/// DPX-DRIVER-002 Phase 3 — a physical location a driver books a mandatory
+/// inspection appointment at.
+model InspectionCentre {
+  id          String       @id @default(uuid()) @db.Uuid
+  name        String       @db.VarChar(150)
+  address     String       @db.VarChar(500)
+  city        String       @db.VarChar(100)
+  latitude    Decimal?     @db.Decimal(10, 7)
+  longitude   Decimal?     @db.Decimal(10, 7)
+  isActive    Boolean      @default(true) @map("is_active")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+  inspections Inspection[]
+
+  @@index([isActive])
+  @@index([city])
+  @@map("inspection_centres")
+}
+
+enum InspectionStatus {
+  SCHEDULED
+  PASSED
+  FAILED
+  CANCELLED
+}
+
+/// DPX-DRIVER-002 Phase 3 — one mandatory physical inspection appointment
+/// (driver + vehicle + centre), its structured checklist result, and any
+/// periodic re-inspection this record triggers. `checklist` is a JSON array
+/// of `{ item: string, category: 'DRIVER' | 'VEHICLE', passed: boolean,
+/// note?: string }` — structured, not free-text-only, so "which check fails
+/// most often" stays reportable. See
+/// docs/DPX-DRIVER-002-INSPECTION-STANDARD.md Phase 3.
+model Inspection {
+  id               String           @id @default(uuid()) @db.Uuid
+  driverId         String           @map("driver_id") @db.Uuid
+  vehicleId        String           @map("vehicle_id") @db.Uuid
+  centreId         String           @map("centre_id") @db.Uuid
+  /// The officer who conducted the walkthrough and recorded the checklist.
+  inspectorId      String?          @map("inspector_id") @db.Uuid
+  /// The supervisor who made the final pass/fail call. Distinct from
+  /// `inspectorId` — officers record, supervisors decide (per
+  /// docs/DPX-DRIVER-002-INSPECTION-STANDARD.md's role split).
+  decidedBy        String?          @map("decided_by") @db.Uuid
+  status           InspectionStatus @default(SCHEDULED)
+  scheduledAt      DateTime         @map("scheduled_at")
+  completedAt      DateTime?        @map("completed_at")
+  checklist        Json?
+  notes            String?          @db.VarChar(2000)
+  photos           String[]         @default([])
+  /// Non-null = this inspection was scheduled as a re-inspection of an
+  /// earlier one (accident/complaint/vehicle-change/admin-requested/
+  /// periodic-renewal). Self-referencing, not an enum reason code — the
+  /// reason lives in `notes` at scheduling time.
+  reinspectionOfId String?          @map("reinspection_of_id") @db.Uuid
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  driver           User             @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  vehicle          Vehicle          @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  centre           InspectionCentre @relation(fields: [centreId], references: [id], onDelete: Restrict)
+  reinspectionOf   Inspection?      @relation("Reinspection", fields: [reinspectionOfId], references: [id], onDelete: SetNull)
+  reinspections    Inspection[]     @relation("Reinspection")
+
+  @@index([driverId])
+  @@index([vehicleId])
+  @@index([centreId])
+  @@index([status])
+  @@index([scheduledAt])
+  @@map("inspections")
 }
 
 enum NotificationStatus {

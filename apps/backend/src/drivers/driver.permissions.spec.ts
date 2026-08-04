@@ -12,4 +12,16 @@ describe('DRIVER_PERMISSIONS', () => {
     expect(DRIVER_PERMISSIONS.SUSPEND).toBe('admin:drivers:suspend');
     expect(DRIVER_PERMISSIONS.REACTIVATE).toBe('admin:drivers:reactivate');
   });
+
+  it('defines DPX-DRIVER-002 vehicle/onboarding/inspection permissions', () => {
+    expect(DRIVER_PERMISSIONS.ONBOARDING_MANAGE).toBe('driver:onboarding:submit');
+    expect(DRIVER_PERMISSIONS.VEHICLE_MANAGE).toBe('driver:vehicle:manage');
+    expect(DRIVER_PERMISSIONS.ADMIN_VEHICLE_MANAGE).toBe('admin:drivers:vehicles:manage');
+    expect(DRIVER_PERMISSIONS.INSPECTION_BOOK).toBe('driver:inspection:manage');
+    expect(DRIVER_PERMISSIONS.ADMIN_INSPECTION_CENTRES_MANAGE).toBe(
+      'admin:inspection-centres:manage',
+    );
+    expect(DRIVER_PERMISSIONS.INSPECTION_CHECKLIST_MANAGE).toBe('inspection:checklist:manage');
+    expect(DRIVER_PERMISSIONS.INSPECTION_APPROVE).toBe('inspection:approve');
+  });
 });

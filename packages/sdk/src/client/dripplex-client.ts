@@ -7,8 +7,14 @@ import { AdminDeliveryClient } from '../delivery/admin-delivery-client.js';
 import { DeliveryClient } from '../delivery/delivery-client.js';
 import { RiderDeliveryClient } from '../delivery/rider-delivery-client.js';
 import { AdminDriverSecuritySettingsClient } from '../drivers/admin-driver-security-settings-client.js';
+import { AdminDriverVehiclesClient } from '../drivers/admin-driver-vehicles-client.js';
+import { AdminInspectionCentresClient } from '../drivers/admin-inspection-centres-client.js';
 import { DriverIdentityVerificationClient } from '../drivers/driver-identity-verification-client.js';
+import { DriverInspectionsClient } from '../drivers/driver-inspections-client.js';
+import { DriverOnboardingClient } from '../drivers/driver-onboarding-client.js';
 import { DriverProfileClient } from '../drivers/driver-profile-client.js';
+import { DriverVehiclesClient } from '../drivers/driver-vehicles-client.js';
+import { OperationsInspectionsClient } from '../drivers/operations-inspections-client.js';
 import {
   AdminMerchantsApi,
   CustomerMerchantsApi,
@@ -62,6 +68,12 @@ export class DripplexClient {
   public readonly driverProfile: DriverProfileClient;
   public readonly driverIdentityVerification: DriverIdentityVerificationClient;
   public readonly adminDriverSecuritySettings: AdminDriverSecuritySettingsClient;
+  public readonly driverVehicles: DriverVehiclesClient;
+  public readonly adminDriverVehicles: AdminDriverVehiclesClient;
+  public readonly driverOnboarding: DriverOnboardingClient;
+  public readonly driverInspections: DriverInspectionsClient;
+  public readonly adminInspectionCentres: AdminInspectionCentresClient;
+  public readonly operationsInspections: OperationsInspectionsClient;
   public readonly notifications: NotificationsClient;
   public readonly driverNotifications: NotificationsClient;
   public readonly devices: DevicesClient;
@@ -104,6 +116,12 @@ export class DripplexClient {
     this.driverProfile = new DriverProfileClient(this.http);
     this.driverIdentityVerification = new DriverIdentityVerificationClient(this.http);
     this.adminDriverSecuritySettings = new AdminDriverSecuritySettingsClient(this.http);
+    this.driverVehicles = new DriverVehiclesClient(this.http);
+    this.adminDriverVehicles = new AdminDriverVehiclesClient(this.http);
+    this.driverOnboarding = new DriverOnboardingClient(this.http);
+    this.driverInspections = new DriverInspectionsClient(this.http);
+    this.adminInspectionCentres = new AdminInspectionCentresClient(this.http);
+    this.operationsInspections = new OperationsInspectionsClient(this.http);
     this.notifications = new NotificationsClient(this.http);
     this.driverNotifications = new NotificationsClient(this.http, '/driver/notifications');
     this.devices = new DevicesClient(this.http);

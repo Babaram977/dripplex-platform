@@ -16,7 +16,9 @@ export type KycDocumentType =
   | 'CAC_CERTIFICATE'
   | 'BUSINESS_REGISTRATION'
   | 'VEHICLE_REGISTRATION'
-  | 'GUARANTOR_ID';
+  | 'GUARANTOR_ID'
+  /** DPX-DRIVER-002 */
+  | 'INSURANCE';
 
 export type KycVerificationStatus = 'PENDING' | 'VERIFIED' | 'REJECTED';
 

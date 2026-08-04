@@ -99,10 +99,15 @@ export type {
 export { MERCHANT_AUDIT_ACTIONS, MERCHANT_SORTS } from './merchant/index.js';
 
 export type {
+  AcceptDriverAgreementRequest,
+  CreateInspectionCentreRequest,
+  CreateVehicleRequest,
+  DecideInspectionRequest,
   DriverApprovalDto,
   DriverAuditAction,
   DriverIdentityVerificationDto,
   DriverKycDto,
+  DriverOnboardingDto,
   DriverProfileDto,
   DriverSecuritySettingsDto,
   DriverStatus,
@@ -110,9 +115,21 @@ export type {
   DriverVerificationTrigger,
   IdentityVerificationProviderName,
   IdentityVerificationStatusDto,
+  InspectionChecklistItem,
+  InspectionCentreDto,
+  InspectionDto,
+  InspectionStatus,
+  RecordInspectionChecklistRequest,
+  RejectVehicleRequest,
+  ScheduleInspectionRequest,
   SubmitDriverKycRequest,
+  SubmitEmergencyContactRequest,
   SubmitIdentityVerificationRequest,
   UpdateDriverSecuritySettingsRequest,
+  UpdateInspectionCentreRequest,
+  UpdateVehicleRequest,
+  VehicleApprovalStatus,
+  VehicleDto,
 } from './driver/index.js';
 
 export { DRIVER_AUDIT_ACTIONS } from './driver/index.js';

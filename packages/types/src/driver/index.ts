@@ -1,4 +1,139 @@
+import type { OnboardingStatus } from '../auth/index.js';
 import type { KycDocumentType, KycVerificationStatus } from '../merchant/index.js';
+import type { RideType } from '../ride/index.js';
+
+export type { OnboardingStatus };
+
+// --- DPX-DRIVER-002: Vehicle Management ---
+
+export type VehicleApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export interface VehicleDto {
+  id: string;
+  driverId: string;
+  plateNumber: string;
+  make: string;
+  model: string;
+  color: string;
+  year: number;
+  rideCategory: RideType;
+  isActive: boolean;
+  approvalStatus: VehicleApprovalStatus;
+  approvedAt: string | null;
+  approvedBy: string | null;
+  rejectedReason: string | null;
+  photos: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateVehicleRequest {
+  plateNumber: string;
+  make: string;
+  model: string;
+  color: string;
+  year: number;
+  rideCategory: RideType;
+  photos?: string[];
+}
+
+export interface UpdateVehicleRequest {
+  make?: string;
+  model?: string;
+  color?: string;
+  year?: number;
+  rideCategory?: RideType;
+  isActive?: boolean;
+  photos?: string[];
+}
+
+export interface RejectVehicleRequest {
+  rejectedReason: string;
+}
+
+// --- DPX-DRIVER-002: Inspection Engine ---
+
+export interface InspectionCentreDto {
+  id: string;
+  name: string;
+  address: string;
+  city: string;
+  latitude: number | null;
+  longitude: number | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateInspectionCentreRequest {
+  name: string;
+  address: string;
+  city: string;
+  latitude?: number;
+  longitude?: number;
+}
+
+export interface UpdateInspectionCentreRequest {
+  name?: string;
+  address?: string;
+  city?: string;
+  latitude?: number;
+  longitude?: number;
+  isActive?: boolean;
+}
+
+export type InspectionStatus = 'SCHEDULED' | 'PASSED' | 'FAILED' | 'CANCELLED';
+
+/** Free-form checklist item recorded by an Inspection Officer. The item set
+ * itself is not enum-modeled here — see DPX-DRIVER-002 Phase 3 for the
+ * baseline checklist categories (tyres/brakes/lights/etc.). */
+export interface InspectionChecklistItem {
+  key: string;
+  label: string;
+  passed: boolean;
+  notes?: string;
+}
+
+export interface InspectionDto {
+  id: string;
+  driverId: string;
+  vehicleId: string;
+  centreId: string;
+  /** Officer who conducted the walkthrough and recorded the checklist. */
+  inspectorId: string | null;
+  /** Supervisor who made the final pass/fail call — distinct from `inspectorId`. */
+  decidedBy: string | null;
+  status: InspectionStatus;
+  scheduledAt: string;
+  completedAt: string | null;
+  checklist: InspectionChecklistItem[] | null;
+  notes: string | null;
+  photos: string[];
+  /** Non-null when this inspection was scheduled as a re-inspection of an earlier one. */
+  reinspectionOfId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ScheduleInspectionRequest {
+  vehicleId: string;
+  centreId: string;
+  scheduledAt: string;
+  /** Set when scheduling a re-inspection of a failed inspection. */
+  reinspectionOfId?: string;
+  notes?: string;
+}
+
+export interface RecordInspectionChecklistRequest {
+  checklist: InspectionChecklistItem[];
+  photos?: string[];
+  notes?: string;
+}
+
+export interface DecideInspectionRequest {
+  passed: boolean;
+  notes?: string;
+}
 
 export type DriverStatus = 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
 
@@ -9,6 +144,8 @@ export interface DriverKycDto {
   documentNumber: string;
   frontImage: string;
   backImage: string | null;
+  /** DPX-DRIVER-002 — insurance/licence expiry tracking. */
+  expiresAt: string | null;
   verificationStatus: KycVerificationStatus;
   reviewedBy: string | null;
   reviewedAt: string | null;
@@ -29,6 +166,12 @@ export interface DriverProfileDto {
   approvedBy: string | null;
   rejectedReason: string | null;
   suspendedAt: string | null;
+  /** DPX-DRIVER-002 Phase 1 */
+  emergencyContactName: string | null;
+  emergencyContactPhone: string | null;
+  /** DPX-DRIVER-002 Phase 4 */
+  agreementAcceptedAt: string | null;
+  agreementVersion: string | null;
   createdAt: string;
   updatedAt: string;
   kyc: DriverKycDto[];
@@ -39,6 +182,27 @@ export interface SubmitDriverKycRequest {
   documentNumber: string;
   frontImage: string;
   backImage?: string;
+  expiresAt?: string;
+}
+
+/** DPX-DRIVER-002 Phase 1 — structured onboarding submission (emergency
+ * contact + agreement acceptance). Replaces the flat single-document-upload
+ * flow this pairs with `SubmitDriverKycRequest` for. */
+export interface SubmitEmergencyContactRequest {
+  emergencyContactName: string;
+  emergencyContactPhone: string;
+}
+
+export interface AcceptDriverAgreementRequest {
+  agreementVersion: string;
+}
+
+export interface DriverOnboardingDto {
+  id: string;
+  driverId: string;
+  status: OnboardingStatus;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface DriverApprovalDto {

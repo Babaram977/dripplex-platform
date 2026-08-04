@@ -1,11 +1,21 @@
 # DPX-DRIVER-002 — Driver & Vehicle Inspection Standard
 
-**Status: Design — Approved & Founder-Locked (2026-08-04), not yet implemented.**
-Written before implementation, per the same "design note before code" discipline
-as `DRIVER-001-IDENTITY-VERIFICATION-DESIGN.md` and every other `*-DESIGN.md` in
+**Status: Design — Approved & Founder-Locked (2026-08-04); Slice 1 backend
+complete (2026-08-04), UI pending Figma designs.** Written before
+implementation, per the same "design note before code" discipline as
+`DRIVER-001-IDENTITY-VERIFICATION-DESIGN.md` and every other `*-DESIGN.md` in
 this repo — locks the founder's requirements into concrete decisions, and is
 honest about what's genuinely new work versus what already exists, before any
-schema or service code gets written.
+schema or service code gets written. This document's two open decisions
+(background-check provider, inspector-portal scope) were resolved by the
+founder the same day — see §"What this standard deliberately does not
+claim" — and Slice 1 (onboarding, vehicle management, inspection engine) was
+built immediately per that approval: real, tested backend capability across
+`VehiclesService`, `OnboardingService`, `InspectionCentresService`, and
+`InspectionsService`, with SDK clients for driver-portal and
+operations-console. See `docs/DRIVER-APP-DPX-100-AUDIT.md`'s Slice 1 status
+note for what shipped and what's honestly still open (the combined
+`approveDriver()` activation gate, and both portals' UI).
 
 Complements `docs/DPX-DRIVER-001-SECURITY-STANDARD.md`: DPX-DRIVER-001 governs
 an _already-onboarded_ driver's ongoing identity/session security (risk-based
@@ -49,13 +59,13 @@ Driver submits, through the (not-yet-built) structured onboarding flow:
 
 Status: **`Pending Inspection`**
 
-| Check                         | Backend reality today                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Identity                      | Real — Smile ID `ONBOARDING` verification from Phase 1.                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| Driver's licence validity     | **Not built** — `DriverKyc` records a licence document exists and an admin can manually mark it `VERIFIED`/`REJECTED`, but there's no automated licence-authority lookup. Nigeria has no universal public API for this; stays admin-reviewed unless/until a specific data provider is chosen — a provider decision, same class as Smile ID/BVN-NIN, not something to fake as "automatically verified."                                                                                 |
-| Vehicle registration validity | Same as above — admin-reviewed against the uploaded document, not automated, until a provider decision is made.                                                                                                                                                                                                                                                                                                                                                                        |
-| Insurance validity            | Same — admin-reviewed against the uploaded document plus the expiry date field from Phase 1.                                                                                                                                                                                                                                                                                                                                                                                           |
-| Criminal/watchlist checks     | **Not built, no provider integrated, genuinely infeasible today.** No background-check API exists anywhere in this codebase. This is not a small gap to close alongside the others — it needs its own provider decision (a real background-check vendor, likely with its own compliance/data-residency implications, the same weight as the Smile ID decision was) before any code gets written. Documented here as an explicit, real gap, not silently skipped or faked as "checked." |
+| Check                         | Backend reality today                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Identity                      | Real — Smile ID `ONBOARDING` verification from Phase 1.                                                                                                                                                                                                                                                                                                                                                                |
+| Driver's licence validity     | **Not built** — `DriverKyc` records a licence document exists and an admin can manually mark it `VERIFIED`/`REJECTED`, but there's no automated licence-authority lookup. Nigeria has no universal public API for this; stays admin-reviewed unless/until a specific data provider is chosen — a provider decision, same class as Smile ID/BVN-NIN, not something to fake as "automatically verified."                 |
+| Vehicle registration validity | Same as above — admin-reviewed against the uploaded document, not automated, until a provider decision is made.                                                                                                                                                                                                                                                                                                        |
+| Insurance validity            | Same — admin-reviewed against the uploaded document plus the expiry date field from Phase 1.                                                                                                                                                                                                                                                                                                                           |
+| Criminal/watchlist checks     | **Deferred to `docs/DPX-DRIVER-003-BACKGROUND-SCREENING.md` (founder decision, 2026-08-04).** Not built in Slice 1, and deliberately not blocking driver activation — identity verification, document review, and mandatory physical inspection already provide a strong baseline. DPX-DRIVER-003 defines the extension points Slice 1 preserves so this can be added later without restructuring the onboarding flow. |
 
 ### Phase 3 — Physical inspection (mandatory)
 
@@ -75,14 +85,29 @@ exists today:
   scheduling logic; no existing "book an appointment" concept anywhere in
   this platform to reuse (Ride's dispatch is a different problem — real-time
   matching, not calendar slots).
-- **Inspector role** — a new user role (`inspector`, alongside the existing
-  `customer`/`merchant`/`rider`/`driver`/`operations_staff`/`administrator`/
-  `super_administrator`), scoped to: viewing their assigned appointments,
-  recording a checklist result, uploading photos, and nothing else. Whether
-  this needs its own portal (an `inspector-app`, mirroring `driver-portal`'s
-  existing pattern) or can be folded into `operations-console` is a real
-  product decision, not assumed here — flagged for the founder, not silently
-  decided.
+- **Inspection management lives in `operations-console` (founder decision,
+  2026-08-04) — no separate inspector app.** Two new roles, alongside the
+  existing `customer`/`merchant`/`rider`/`driver`/`operations_staff`/
+  `administrator`/`super_administrator`:
+  - **`inspection_officer`** — view assigned appointments, open a driver's
+    inspection checklist, record pass/fail per item, capture/upload vehicle
+    photos, record defects. Cannot approve/reject or see other officers'
+    queues.
+  - **`inspection_supervisor`** — everything an officer can do, plus:
+    view all inspections (not just assigned ones), approve/reject the final
+    result, schedule re-inspection, print the inspection report, view full
+    inspection history.
+    The "Operations Manager" tier the founder described maps onto the existing
+    `operations_staff` role (already "Internal operations console user" in
+    `ROLE_SEEDS`) gaining the new inspection permissions, rather than a fourth
+    near-duplicate role — `administrator`/`super_administrator` already have
+    that level of access platform-wide. The Inspection section itself
+    (queue, checklist UI, photo capture, defect recording, approve/reject,
+    re-inspection scheduling, report printing, history) is **real backend
+    capability for this pass — the UI ships when it goes through the same
+    Figma-first process as the rest of this platform**, per the standing rule
+    from `docs/DPX-DRIVER-001-SECURITY-STANDARD.md` §9. Building the
+    endpoints without inventing the screens.
 - **Structured checklist**, driver side: physical identity match, facial
   verification (re-run or cross-check against the Phase 1 Smile ID result —
   a design decision for the implementation pass, not assumed here),
@@ -141,23 +166,25 @@ today):
 ## What this standard deliberately does not claim
 
 Matching the same discipline as DPX-DRIVER-001 §7's decision log — real gaps,
-named honestly, not silently invented or skipped:
+named honestly, not silently invented or skipped. Two of the original four
+open items here were resolved by the founder on 2026-08-04 (background
+screening deferred to DPX-DRIVER-003; inspection management placed in
+`operations-console`, no separate app) — the remaining two stay open:
 
 - **No automated document-authenticity verification** (licence, vehicle
   registration, insurance) exists or is assumed here. Everything in Phase 2
   beyond identity is admin-reviewed against an uploaded document until a
   specific data-provider decision is made.
-- **No criminal/watchlist-check provider** is chosen or assumed. This is the
-  single largest open item in this standard — flagged for an explicit
-  founder decision before any related code is written, the same way the
-  facial-verification provider decision was made before DPX-DRIVER-001's
-  implementation began.
-- **No inspector portal/app is scoped or built.** Whether inspectors get
-  their own app or use `operations-console` is an open question for the
-  implementation pass, not decided by this document.
 - **No NIN/BVN provider integration** exists yet; Smile ID's Nigeria-specific
   products are the likely candidate given it's already the chosen identity
   provider, but that's a recommendation here, not a decision already made.
+- ~~No criminal/watchlist-check provider is chosen~~ — resolved: deferred to
+  `docs/DPX-DRIVER-003-BACKGROUND-SCREENING.md`, not blocking Slice 1.
+- ~~No inspector portal/app is scoped~~ — resolved: inspection management
+  lives in `operations-console` via `inspection_officer`/`inspection_supervisor`
+  roles plus the existing `operations_staff`/`administrator`/
+  `super_administrator` roles, backend-only for this pass (UI is Figma-first,
+  same as the rest of Driver).
 
 ## Relationship to the existing Driver App slice plan
 

@@ -4,16 +4,22 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 import { DRIVER_PERMISSIONS } from '../driver.constants';
 import { DriversService } from '../drivers.service';
+import { AcceptDriverAgreementDto } from '../dto/accept-driver-agreement.dto';
 import { SubmitDriverKycDto } from '../dto/submit-driver-kyc.dto';
+import { SubmitEmergencyContactDto } from '../dto/submit-emergency-contact.dto';
+import { OnboardingService } from '../onboarding/onboarding.service';
 
 import type { AuthenticatedUser } from '../../auth/auth.types';
 import type { ApiSuccessResponse } from '../../common/dto/api-response.dto';
-import type { DriverKycDto, DriverProfileDto } from '@dripplex/types';
+import type { DriverKycDto, DriverOnboardingDto, DriverProfileDto } from '@dripplex/types';
 import type { Request } from 'express';
 
 @Controller('driver')
 export class DriverController {
-  constructor(private readonly driversService: DriversService) {}
+  constructor(
+    private readonly driversService: DriversService,
+    private readonly onboardingService: OnboardingService,
+  ) {}
 
   @Get('profile')
   @RequirePermissions(DRIVER_PERMISSIONS.KYC_MANAGE)
@@ -35,6 +41,61 @@ export class DriverController {
     const data = await this.driversService.submitKyc(
       user.id,
       dto,
+      this.auditContext(request, user.id),
+    );
+    return { success: true, data };
+  }
+
+  @Get('onboarding')
+  @RequirePermissions(DRIVER_PERMISSIONS.ONBOARDING_MANAGE)
+  public async getOwnOnboarding(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ApiSuccessResponse<DriverOnboardingDto>> {
+    const data = await this.onboardingService.getOwnOnboarding(user.id);
+    return { success: true, data };
+  }
+
+  @Post('onboarding/emergency-contact')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(DRIVER_PERMISSIONS.ONBOARDING_MANAGE)
+  public async submitEmergencyContact(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: SubmitEmergencyContactDto,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<DriverOnboardingDto>> {
+    const data = await this.onboardingService.submitEmergencyContact(
+      user.id,
+      dto,
+      this.auditContext(request, user.id),
+    );
+    return { success: true, data };
+  }
+
+  @Post('onboarding/agreement')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(DRIVER_PERMISSIONS.ONBOARDING_MANAGE)
+  public async acceptAgreement(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: AcceptDriverAgreementDto,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<DriverOnboardingDto>> {
+    const data = await this.onboardingService.acceptAgreement(
+      user.id,
+      dto,
+      this.auditContext(request, user.id),
+    );
+    return { success: true, data };
+  }
+
+  @Post('onboarding/submit')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(DRIVER_PERMISSIONS.ONBOARDING_MANAGE)
+  public async submitOnboarding(
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<DriverOnboardingDto>> {
+    const data = await this.onboardingService.submitForReview(
+      user.id,
       this.auditContext(request, user.id),
     );
     return { success: true, data };

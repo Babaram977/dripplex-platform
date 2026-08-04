@@ -12,6 +12,20 @@ export const DRIVER_AUDIT_ACTIONS = {
   IDENTITY_VERIFICATION_LOCKED: 'driver.identity_verification.locked',
   IDENTITY_VERIFICATION_UNLOCKED: 'driver.identity_verification.unlocked',
   SECURITY_SETTINGS_UPDATED: 'driver.security_settings.updated',
+  /// DPX-DRIVER-002
+  VEHICLE_SUBMITTED: 'driver.vehicle.submitted',
+  VEHICLE_APPROVED: 'driver.vehicle.approved',
+  VEHICLE_REJECTED: 'driver.vehicle.rejected',
+  EMERGENCY_CONTACT_UPDATED: 'driver.emergency_contact.updated',
+  AGREEMENT_ACCEPTED: 'driver.agreement.accepted',
+  ONBOARDING_SUBMITTED: 'driver.onboarding.submitted',
+  INSPECTION_CENTRE_CREATED: 'driver.inspection_centre.created',
+  INSPECTION_CENTRE_UPDATED: 'driver.inspection_centre.updated',
+  INSPECTION_SCHEDULED: 'driver.inspection.scheduled',
+  INSPECTION_CHECKLIST_RECORDED: 'driver.inspection.checklist_recorded',
+  INSPECTION_PASSED: 'driver.inspection.passed',
+  INSPECTION_FAILED: 'driver.inspection.failed',
+  INSPECTION_CANCELLED: 'driver.inspection.cancelled',
 } as const;
 
 export const DRIVER_PERMISSIONS = {
@@ -24,6 +38,20 @@ export const DRIVER_PERMISSIONS = {
   REACTIVATE: 'admin:drivers:reactivate',
   ADMIN_IDENTITY_VERIFICATION_MANAGE: 'admin:drivers:identity-verification:manage',
   ADMIN_SECURITY_SETTINGS_MANAGE: 'admin:drivers:security-settings:manage',
+  /// DPX-DRIVER-002 — reuses the pre-existing 'driver:onboarding:submit'
+  /// seed permission (previously unwired to any endpoint; DriverOnboarding
+  /// itself was a vestigial, unused model before this).
+  ONBOARDING_MANAGE: 'driver:onboarding:submit',
+  VEHICLE_MANAGE: 'driver:vehicle:manage',
+  ADMIN_VEHICLE_MANAGE: 'admin:drivers:vehicles:manage',
+  INSPECTION_BOOK: 'driver:inspection:manage',
+  ADMIN_INSPECTION_CENTRES_MANAGE: 'admin:inspection-centres:manage',
+  /// Inspection Officer — records the checklist/photos on an assigned
+  /// inspection. Distinct from the supervisor's approve/reject authority.
+  INSPECTION_CHECKLIST_MANAGE: 'inspection:checklist:manage',
+  /// Inspection Supervisor — final pass/fail decision, re-inspection
+  /// scheduling, full inspection history/reporting.
+  INSPECTION_APPROVE: 'inspection:approve',
 } as const;
 
 /** DriverSecuritySettings is a singleton row (enforced at the service

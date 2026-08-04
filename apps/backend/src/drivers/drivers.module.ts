@@ -6,9 +6,14 @@ import { PrismaModule } from '../prisma/prisma.module';
 
 import { AdminDriverIdentityVerificationController } from './controllers/admin-driver-identity-verification.controller';
 import { AdminDriverSecuritySettingsController } from './controllers/admin-driver-security-settings.controller';
+import { AdminDriverVehiclesController } from './controllers/admin-driver-vehicles.controller';
 import { AdminDriversController } from './controllers/admin-drivers.controller';
+import { AdminInspectionCentresController } from './controllers/admin-inspection-centres.controller';
 import { DriverIdentityVerificationController } from './controllers/driver-identity-verification.controller';
+import { DriverInspectionsController } from './controllers/driver-inspections.controller';
+import { DriverVehiclesController } from './controllers/driver-vehicles.controller';
 import { DriverController } from './controllers/driver.controller';
+import { OperationsInspectionsController } from './controllers/operations-inspections.controller';
 import { DriversService } from './drivers.service';
 import { AccountRecoverySubscriber } from './identity-verification/account-recovery.subscriber';
 import { CredentialChangeSubscriber } from './identity-verification/credential-change.subscriber';
@@ -17,6 +22,10 @@ import { DriverSecuritySettingsService } from './identity-verification/driver-se
 import { FailedLoginLockoutSubscriber } from './identity-verification/failed-login-lockout.subscriber';
 import { IDENTITY_VERIFICATION_PROVIDER } from './identity-verification/identity-verification-provider.adapter';
 import { SmileIdProvider } from './identity-verification/smile-id.provider';
+import { InspectionCentresService } from './inspections/inspection-centres.service';
+import { InspectionsService } from './inspections/inspections.service';
+import { OnboardingService } from './onboarding/onboarding.service';
+import { VehiclesService } from './vehicles/vehicles.service';
 
 @Module({
   imports: [PrismaModule, AuditModule, NotificationsModule],
@@ -26,16 +35,33 @@ import { SmileIdProvider } from './identity-verification/smile-id.provider';
     DriverIdentityVerificationController,
     AdminDriverIdentityVerificationController,
     AdminDriverSecuritySettingsController,
+    DriverVehiclesController,
+    AdminDriverVehiclesController,
+    DriverInspectionsController,
+    AdminInspectionCentresController,
+    OperationsInspectionsController,
   ],
   providers: [
     DriversService,
     DriverIdentityVerificationService,
     DriverSecuritySettingsService,
+    VehiclesService,
+    OnboardingService,
+    InspectionCentresService,
+    InspectionsService,
     AccountRecoverySubscriber,
     CredentialChangeSubscriber,
     FailedLoginLockoutSubscriber,
     { provide: IDENTITY_VERIFICATION_PROVIDER, useClass: SmileIdProvider },
   ],
-  exports: [DriversService, DriverIdentityVerificationService, DriverSecuritySettingsService],
+  exports: [
+    DriversService,
+    DriverIdentityVerificationService,
+    DriverSecuritySettingsService,
+    VehiclesService,
+    OnboardingService,
+    InspectionCentresService,
+    InspectionsService,
+  ],
 })
 export class DriversModule {}

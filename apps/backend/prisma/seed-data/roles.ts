@@ -32,4 +32,14 @@ export const ROLE_SEEDS: RoleSeed[] = [
     name: 'super_administrator',
     description: 'Full platform control including role and settings management',
   },
+  {
+    name: 'inspection_officer',
+    description:
+      'DPX-DRIVER-002 — records driver/vehicle inspection checklists in operations-console',
+  },
+  {
+    name: 'inspection_supervisor',
+    description:
+      'DPX-DRIVER-002 — approves/rejects inspections and manages inspection centres in operations-console',
+  },
 ];

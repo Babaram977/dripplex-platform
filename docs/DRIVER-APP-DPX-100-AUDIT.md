@@ -47,35 +47,67 @@ Nigeria-specific identity-verification vendor). Built as DRIVER-001 / DPX-DS-001
 DPX-DRIVER-001 — see the table above and `docs/DPX-DRIVER-001-SECURITY-STANDARD.md`
 (authoritative, founder-locked).
 
-## The current blocking decisions: DPX-DRIVER-002's open items
+## DPX-DRIVER-002's open items — resolved (2026-08-04)
 
-Per `docs/DPX-DRIVER-002-INSPECTION-STANDARD.md` (founder-approved design, not yet
-implemented), driver onboarding is being upgraded from digital-KYC-only to a
-four-phase flow that includes mandatory physical vehicle/driver inspection. That
-document names its own open, founder-decision-blocked items — repeated here so
-this audit's slice plan stays honest about what can start immediately versus what's
-still waiting on a call:
+Per `docs/DPX-DRIVER-002-INSPECTION-STANDARD.md` (founder-approved design), driver
+onboarding is being upgraded from digital-KYC-only to a four-phase flow that
+includes mandatory physical vehicle/driver inspection. Its two blocking decisions
+were resolved the same day it was approved:
 
-- **Criminal/watchlist-check provider** — no background-check vendor is integrated
-  or chosen. The single largest open item; needs its own decision before related
-  code ships, same weight as the facial-verification provider choice was.
-- **Inspector portal/app** — whether inspectors get their own app (mirroring
-  `driver-portal`) or work inside `operations-console` is undecided.
-- **NIN/BVN provider** — Smile ID's Nigeria-specific NIN/BVN products are the likely
-  candidate given it's already integrated for facial verification, but that's a
-  recommendation, not a decision made here.
+- **Criminal/watchlist-check provider** — deferred to
+  `docs/DPX-DRIVER-003-BACKGROUND-SCREENING.md` (future milestone). Not blocking
+  Slice 1; extension points are preserved so it can be added later without
+  restructuring onboarding.
+- **Inspection management** — lives in `operations-console` (no separate inspector
+  app), via new `inspection_officer`/`inspection_supervisor` roles plus the
+  existing `operations_staff` role for the "Operations Manager" tier. Backend
+  capability only for this pass — the actual Inspection section UI is Figma-first,
+  same as the rest of Driver.
 
-None of these block the rest of the module — see the slice plan below.
+Still genuinely open, not blocking Slice 1: **NIN/BVN provider** — Smile ID's
+Nigeria-specific products are the likely candidate given it's already integrated,
+but that's a recommendation, not a decision made here.
+
+**Slice 1 (onboarding, vehicle management, inspection engine) — backend complete
+(2026-08-04).** All three pieces are real, tested, DB-backed capability:
+`VehiclesService` (driver CRUD + admin approve/reject, plate uniqueness,
+re-review-on-material-change), `OnboardingService` (repurposes the previously
+vestigial `DriverOnboarding` model for emergency contact, agreement
+acceptance, and a validated submit-for-review step), and the inspection
+engine (`InspectionCentresService`, `InspectionsService` — appointment
+booking, officer-records/supervisor-decides checklist workflow, re-inspection
+scheduling, and a passed inspection auto-approving its vehicle). Endpoints
+live under `driver/vehicles`, `driver/onboarding`, `driver/inspections`
+(driver-facing) and `admin/vehicles`, `admin/inspection-centres`,
+`admin/inspections` (operations-console-facing, gated by the new
+`inspection_officer`/`inspection_supervisor` roles plus the existing
+`operations_staff`/`administrator`/`super_administrator`). SDK clients exist
+for all of it. Two things this pass deliberately did **not** do, named
+honestly rather than silently skipped:
+
+- **`DriversService.approveDriver()`'s existing KYC-document gate was not
+  extended** to also require an approved `Vehicle` or a `PASSED` inspection.
+  The three systems (KYC, vehicle approval, inspection pass/fail) exist and
+  work independently today; wiring them into one combined activation gate —
+  matching DPX-DRIVER-002 Phase 4's "identity verified AND documents
+  approved AND inspection passed AND agreement signed" activation rule — is
+  a real, scoped follow-up, not bundled into an already-large change.
+- **The Operations Portal's Inspection UI (queue, checklist form, photo
+  capture, approve/reject, re-inspection scheduling, report printing,
+  history) is backend-only for this pass.** Per the standing Figma-first
+  rule, no screens were invented — the endpoints exist and are ready for a
+  UI once designs are provided.
 
 ## Founder-reordered priority (2026-08-04)
 
 Supersedes this document's original priority list. Per-item status, incorporating
 what's already real:
 
-1. **Driver onboarding & KYC** (incl. inspection) — ⚠️ Partial, this is the current
-   focus. See Slice 1 below.
-2. **Vehicle management** — ❌ Missing, absorbed into Slice 1 (DPX-DRIVER-002 Phase
-   1/3 needs the `Vehicle` model as a prerequisite — not a separate later effort).
+1. **Driver onboarding & KYC** (incl. inspection) — ✅ Backend real (Slice 1,
+   2026-08-04); Operations Portal Inspection UI and driver-portal onboarding UI
+   still pending Figma designs.
+2. **Vehicle management** — ✅ Backend real (Slice 1, 2026-08-04); driver-portal
+   UI still pending Figma designs.
 3. **Availability (online/offline)** — ✅ Already real, no work needed.
 4. **Shift management** — ❌ Missing, Slice 2 below.
 5. **Navigation** — ⚠️ Already partial (real Google Directions routing); voice
@@ -87,16 +119,13 @@ what's already real:
 
 ## Proposed slice plan
 
-1. **Slice 1 — Driver onboarding, KYC & vehicle management (DPX-DRIVER-002).** The
-   `Vehicle` model (plate, make, model, color, year, one-or-more-per-driver,
-   `isActive`), the structured multi-step onboarding flow (replacing the current
-   single flat document-upload form), the new document/field additions (insurance,
-   emergency contact — see DPX-DRIVER-002 Phase 1's table), and — pending the
-   inspector-portal decision above — the `InspectionCentre`/`Inspection` models,
-   appointment booking, and structured checklist from DPX-DRIVER-002 Phase 3.
-   NIN/BVN and criminal/watchlist checks stay explicitly out of scope for this
-   slice until their provider decisions land; the rest of the slice does not
-   depend on them and can proceed now.
+1. **Slice 1 — Driver onboarding, KYC & vehicle management (DPX-DRIVER-002).**
+   **Backend complete (2026-08-04)** — see the status note above for exactly
+   what shipped and the two honestly-scoped-out gaps (the `approveDriver()`
+   combined gate, and UI for both driver-portal and Operations Portal, both
+   deferred, not silently skipped). NIN/BVN and criminal/watchlist checks stay
+   explicitly out of scope until their provider decisions land (DPX-DRIVER-003
+   for the latter).
 2. **Slice 2 — Shift management.** New model (planned availability windows,
    optionally shift-based incentive targets if the founder wants them tied to
    Driver Growth Campaign's existing tier system) + driver-portal UI.
