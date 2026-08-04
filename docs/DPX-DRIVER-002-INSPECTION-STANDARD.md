@@ -1,8 +1,8 @@
 # DPX-DRIVER-002 — Driver & Vehicle Inspection Standard
 
-**Status: Design — Approved & Founder-Locked (2026-08-04); Slice 1 backend
-complete including the unified activation gate (2026-08-04), UI pending
-Figma designs.** Written before implementation, per the same "design note
+**Status: Design — Approved & Founder-Locked (2026-08-04); Slice 1 🔒 Frozen,
+founder-approved (2026-08-04), including the unified activation gate. UI
+pending Figma designs.** Written before implementation, per the same "design note
 before code" discipline as `DRIVER-001-IDENTITY-VERIFICATION-DESIGN.md` and
 every other `*-DESIGN.md` in this repo — locks the founder's requirements
 into concrete decisions, and is honest about what's genuinely new work
@@ -178,7 +178,9 @@ of trusting `Vehicle.approvalStatus`: the activation gate stays correct even
 though the vehicle record's own status can go briefly stale after a failed
 re-inspection. Whether `Vehicle.approvalStatus` should itself be
 auto-reverted on a failed re-inspection is a real follow-up design
-question, not resolved here.
+question, not resolved here — the founder agreed this is a future product
+policy decision, not a Slice 1 blocker, and it's now recorded as
+`docs/DPX-DRIVER-004-VEHICLE-APPROVAL-LIFECYCLE-POLICY.md`.
 
 **Driver agreement signed** — not built. No e-signature/agreement-acceptance
 concept exists anywhere in this platform for any user type. New: an

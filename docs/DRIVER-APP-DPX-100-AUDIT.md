@@ -68,8 +68,9 @@ Still genuinely open, not blocking Slice 1: **NIN/BVN provider** — Smile ID's
 Nigeria-specific products are the likely candidate given it's already integrated,
 but that's a recommendation, not a decision made here.
 
-**Slice 1 (onboarding, vehicle management, inspection engine) — backend complete
-(2026-08-04).** All three pieces are real, tested, DB-backed capability:
+**Slice 1 (onboarding, vehicle management, inspection engine) — 🔒 Frozen,
+founder-approved (2026-08-04).** All three pieces are real, tested, DB-backed
+capability:
 `VehiclesService` (driver CRUD + admin approve/reject, plate uniqueness,
 re-review-on-material-change), `OnboardingService` (repurposes the previously
 vestigial `DriverOnboarding` model for emergency contact, agreement
@@ -110,45 +111,71 @@ silently skipped:
   rule, no screens were invented — the endpoints exist and are ready for a
   UI once designs are provided.
 
+**Freeze approved (2026-08-04).** Per founder review against exactly the
+production requirements above — identity/security, vehicle management, and
+the inspection system, with the unified activation gate as the resolved
+final blocker — Driver Slice 1 is now frozen: bug fixes for verified
+defects, security patches, performance improvements, regulatory changes, and
+explicitly-approved enhancements only. No functional expansion without
+opening a new slice, the same rule Ride/Marketplace/Wallet are held to (see
+`docs/DPX-100-MODULE-COMPLETION-GATE.md`). The one open design note from the
+freeze review — whether a failed re-inspection should auto-revert an
+already-approved vehicle's status — is recorded as a future milestone, not a
+reopening: `docs/DPX-DRIVER-004-VEHICLE-APPROVAL-LIFECYCLE-POLICY.md`.
+
 ## Founder-reordered priority (2026-08-04)
 
 Supersedes this document's original priority list. Per-item status, incorporating
 what's already real:
 
-1. **Driver onboarding & KYC** (incl. inspection) — ✅ Backend real (Slice 1,
-   2026-08-04); Operations Portal Inspection UI and driver-portal onboarding UI
-   still pending Figma designs.
-2. **Vehicle management** — ✅ Backend real (Slice 1, 2026-08-04); driver-portal
-   UI still pending Figma designs.
+1. **Driver onboarding & KYC** (incl. inspection) — ✅ Backend real, **Frozen**
+   (Slice 1, 2026-08-04); Operations Portal Inspection UI and driver-portal
+   onboarding UI still pending Figma designs.
+2. **Vehicle management** — ✅ Backend real, **Frozen** (Slice 1, 2026-08-04);
+   driver-portal UI still pending Figma designs.
 3. **Availability (online/offline)** — ✅ Already real, no work needed.
-4. **Shift management** — ❌ Missing, Slice 2 below.
+4. **Shift management** — ❌ Missing. Not named in the founder's Slice 2
+   recommendation below (2026-08-04) — flagged, not silently dropped from the
+   plan; needs an explicit founder call on whether it's deferred past Slice 2
+   or folded in before Slice 2 starts.
 5. **Navigation** — ⚠️ Already partial (real Google Directions routing); voice
-   guidance/nav-app handoff remains open, not reprioritized ahead of the above.
+   guidance/nav-app handoff remains open. Named explicitly in Slice 2 below.
 6. **Earnings dashboard** — ✅ Already real, no work needed.
 7. **Driver wallet & payouts** — ✅ Already real, no work needed.
 8. **Ratings & reviews** — ✅ Already real, no work needed.
-9. **Support** — ❌ Missing, Slice 3 below.
+9. **Support** — ❌ Missing. Named explicitly in Slice 2 below (superseding
+   this document's earlier "Slice 3 — Support" split).
 
 ## Proposed slice plan
 
 1. **Slice 1 — Driver onboarding, KYC & vehicle management (DPX-DRIVER-002).**
-   **Backend complete, including the unified activation gate (2026-08-04)** —
-   see the status note above for exactly what shipped. UI for both
-   driver-portal and Operations Portal remains deferred, not silently skipped
-   — Figma-first. NIN/BVN and criminal/watchlist checks stay explicitly out
-   of scope until their provider decisions land (DPX-DRIVER-003
-   for the latter).
-2. **Slice 2 — Shift management.** New model (planned availability windows,
-   optionally shift-based incentive targets if the founder wants them tied to
-   Driver Growth Campaign's existing tier system) + driver-portal UI.
-3. **Slice 3 — Support.** A real ticket/help-request model + submission flow,
-   scoped deliberately (a basic "submit an issue, admin sees a queue" loop is a
-   defensible v1, not a full helpdesk platform) unless the founder wants more.
-4. **Slice 4 — DPX-100 port.** Once the above are real, re-platform the whole
+   **🔒 Frozen, founder-approved (2026-08-04)** — including the unified
+   activation gate; see the status note above for exactly what shipped. UI
+   for both driver-portal and Operations Portal remains deferred, not
+   silently skipped — Figma-first. NIN/BVN and criminal/watchlist checks
+   stay explicitly out of scope until their provider decisions land
+   (DPX-DRIVER-003 for the latter). The one open design note from the freeze
+   review is `docs/DPX-DRIVER-004-VEHICLE-APPROVAL-LIFECYCLE-POLICY.md`, a
+   future milestone, not a reopening.
+2. **Slice 2 — founder-recommended scope (2026-08-04):** Navigation
+   (voice guidance/nav-app handoff), Trip execution, Driver support,
+   Incident reporting, Driver help centre, Emergency/SOS, Communication
+   tools (call/chat), Driver profile enhancements, Operational
+   notifications. Supersedes this document's earlier "Slice 2 — Shift
+   management" / "Slice 3 — Support" split — **shift management is not
+   named in this list and needs an explicit founder call before Slice 2
+   research starts** (deferred past Slice 2, folded into it, or a separate
+   future slice — not assumed here). Each item needs its own reality-check
+   pass before a build plan is written, same discipline as Slice 1: several
+   (Trip execution, Communication tools, Incident reporting) likely depend
+   on real-time infrastructure (`RideGateway`-style WebSocket patterns) that
+   exists for Ride but has never been built for Driver-side support/incident
+   flows — a real scoping question, not assumed solved by precedent alone.
+3. **Slice 3 — DPX-100 port.** Once the above are real, re-platform the whole
    Driver App (existing screens plus the new pieces) into `packages/ui/super-app`,
    matching the same port discipline Ride/Marketplace/Wallet went through, then
    the same audit + freeze gate.
 
-Slices 2 and 3 don't depend on DPX-DRIVER-002's open provider decisions and could
-proceed in parallel, but per the founder's reordering, Slice 1 (onboarding/KYC) is
-the current priority.
+Slice 1 is frozen. Slice 2 is the founder-recommended next priority
+(2026-08-04) — its research/audit phase has not started as of this writing;
+see the shift-management open question above before that work begins.

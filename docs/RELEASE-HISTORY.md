@@ -202,11 +202,61 @@ Now genuinely ready for the Slice 1 audit → founder review → freeze
 sequence, with the activation gate as part of what's being frozen, not a
 follow-up reopening it afterward.
 
+## 2026-08-04 — Driver Slice 1: 🔒 Frozen (Founder Approved)
+
+The founder reviewed Slice 1 against the same production standard applied
+to Ride, Marketplace, and Wallet, and approved the freeze in full — identity
+& security (identity verification, KYC validation, agreement acceptance,
+locked-account enforcement), vehicle management (registration, approval
+workflow, insurance support, documentation, photos), the inspection system
+(Inspection Centre model, structured checklist, officer assessment,
+supervisor approval, re-inspection workflow, inspection history), and the
+unified activation gate — all confirmed present and correctly architected.
+The founder specifically called out `DriverActivationService` as the single
+source of truth, `approveDriver()`/`reactivateDriver()` both using the same
+eligibility check, the driver/admin eligibility endpoints surfacing reasons
+instead of failing silently, and eligibility being determined from the
+latest `Inspection` record rather than a cached vehicle status, as reducing
+the risk of inconsistent activation logic platform-wide.
+
+**Open design note, recorded not deferred silently:** whether a failed
+re-inspection should automatically change `Vehicle.approvalStatus` away
+from `APPROVED` is a future product-policy decision — it touches
+operations, customer safety, and regulatory compliance, the founder's own
+reasoning for not hardcoding it now. Recorded as
+`docs/DPX-DRIVER-004-VEHICLE-APPROVAL-LIFECYCLE-POLICY.md` (future
+milestone, scenarios sketched: minor/major/dangerous defect, temporary
+suspension, immediate removal from service, re-inspection required — none
+decided here).
+
+**Freeze rule, effective now:** Slice 1 accepts only critical bug fixes,
+security patches, performance improvements, regulatory changes, and
+explicitly founder-approved enhancements. No functional expansion without
+opening a new slice — the same discipline Ride, Marketplace, and Wallet are
+held to.
+
+**Founder-recommended next priority: Driver Slice 2** — Navigation
+(voice guidance/nav-app handoff), Trip execution, Driver support, Incident
+reporting, Driver help centre, Emergency/SOS, Communication tools
+(call/chat), Driver profile enhancements, Operational notifications. This
+list supersedes the audit doc's earlier "Slice 2 — Shift management" /
+"Slice 3 — Support" split; shift management is not named in the founder's
+new list and is flagged in `docs/DRIVER-APP-DPX-100-AUDIT.md` as needing an
+explicit founder call before Slice 2's research phase begins, not silently
+dropped or silently carried forward.
+
+**Project status at this milestone:** Ride — 🔒 Frozen. Marketplace —
+🔒 Frozen. Wallet — 🔒 Frozen. Driver Slice 1 — 🔒 Frozen. Driver Security
+Standard (DPX-DRIVER-001) — 🔒 Locked. Driver Inspection Standard
+(DPX-DRIVER-002) — 🔒 Locked. Pricing Engine — unified single source of
+truth across Ride/Marketplace. Four production modules now stand on the
+same implement → verify → audit → document → approve → freeze discipline.
+
 ---
 
 ## What's next
 
-The R1.7/R1.8 commerce-completion plan below was superseded by the DPX-100 initiative above — Marketplace's commerce loop (cart/checkout/order/payment UI) shipped as part of that port, not as R1.7/R1.8 specifically. What's actually still open, per each module's own audit doc: the Driver module's Figma-ported UI (including onboarding/vehicle/inspection — all backend-real as of DPX-DRIVER-002 Slice 1 and its unified activation gate above), shift management, and support (`docs/DRIVER-APP-DPX-100-AUDIT.md`); reconciling the Railway-vs-Coolify production-infrastructure question above; and Orders/AI/Merchant/Admin, next in the founder's module ordering per `docs/DPX-100-MODULE-COMPLETION-GATE.md`.
+The R1.7/R1.8 commerce-completion plan below was superseded by the DPX-100 initiative above — Marketplace's commerce loop (cart/checkout/order/payment UI) shipped as part of that port, not as R1.7/R1.8 specifically. What's actually still open, per each module's own audit doc: the Driver module's Figma-ported UI (including onboarding/vehicle/inspection — all backend-real and frozen as of Driver Slice 1 above), Slice 2's founder-recommended scope (Navigation/Trip execution/Support/Incident reporting/Help centre/SOS/Communication/Profile/Notifications, with shift management's placement still an open question) (`docs/DRIVER-APP-DPX-100-AUDIT.md`); reconciling the Railway-vs-Coolify production-infrastructure question above; and Orders/AI/Merchant/Admin, next in the founder's module ordering per `docs/DPX-100-MODULE-COMPLETION-GATE.md`.
 
 <details>
 <summary>Original 2026-07-28 "what's next" (superseded, kept for the record)</summary>

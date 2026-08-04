@@ -97,14 +97,23 @@ A module is not "done" until all ten are true:
 - **Wallet**: met 1-9 across Slices 1-5 and
   `docs/WALLET-DPX-100-PRODUCTION-AUDIT.md` (which found and fixed six
   real issues); **frozen** per founder direction.
-- **Driver (facial verification only, not the whole module)**: backend-only
-  pass (items 3-4, 5-6, no Figma/Playwright items since no UI was built —
-  see the Figma-first correction in `docs/DPX-DRIVER-001-SECURITY-STANDARD.md`
-  §9), with an explicit security-review step (item "4" above) producing
+- **Driver security (facial verification)**: backend-only pass (items 3-4,
+  5-6, no Figma/Playwright items since no UI was built — see the
+  Figma-first correction in `docs/DPX-DRIVER-001-SECURITY-STANDARD.md` §9),
+  with an explicit security-review step (item "4" above) producing
   `docs/DPX-DRIVER-001-SECURITY-STANDARD.md`; **locked** per founder
-  direction. The rest of the Driver module (vehicle management, shift
-  management, support, and the DPX-100 UI port itself) remains open —
-  see `docs/DRIVER-APP-DPX-100-AUDIT.md`.
+  direction.
+- **Driver Slice 1 (onboarding, KYC, vehicle management, inspection engine,
+  unified activation gate)**: backend-only pass, same Figma-first scope
+  note as above — see `docs/DPX-DRIVER-002-INSPECTION-STANDARD.md` and
+  `docs/DRIVER-APP-DPX-100-AUDIT.md`'s Slice 1 status note for what shipped
+  and was verified; **frozen** per founder direction (2026-08-04). The one
+  open design note from the freeze review (whether a failed re-inspection
+  should auto-revert an already-approved vehicle's status) is recorded as
+  a future milestone, not a reopening —
+  `docs/DPX-DRIVER-004-VEHICLE-APPROVAL-LIFECYCLE-POLICY.md`. The rest of
+  the Driver module (Slice 2's founder-recommended scope, and the DPX-100
+  UI port itself) remains open — see `docs/DRIVER-APP-DPX-100-AUDIT.md`.
 
 ## Notes for whoever runs the next module through this gate
 
