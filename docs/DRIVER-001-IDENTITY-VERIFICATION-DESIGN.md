@@ -176,8 +176,11 @@ when one of the five conditions is actually true.
 ## Enforcement
 
 - `checkRequired` returning non-null **blocks** `updateDriverAvailability` when
-  `dto.online === true`— throws a domain exception the driver-portal surfaces as "Verify
-  your identity to go online," never a silent no-op. Going offline is never blocked.
+  `dto.online === true` — throws a domain exception (never a silent no-op). Going offline
+  is never blocked. Driver-portal sends `deviceId`/`latitude`/`longitude` on every
+  go-online attempt so the risk engine has what it needs, but deliberately does not
+  render any custom UI around a blocked attempt (see "UI correction" below) — a blocked
+  attempt currently falls through to the existing generic "couldn't update status" error.
 - `submitVerification(driverId, selfie, context)` calls the bound provider's `verify()` (or
   `enroll()` for a first-time `ONBOARDING` trigger), writes the `DriverIdentityVerification`
   row with every required audit field, and:
@@ -209,9 +212,16 @@ endpoint needed there.
 - A configurable per-driver or per-admin override of the idle-timeout window — one
   platform-wide env var is the v1; a future admin control panel setting is a reasonable
   follow-up, not invented here.
-- Driver-portal DPX-100 port — this ships as a real, functional (not yet
-  `packages/ui`-ported) screen addition, matching how the rest of `driver-portal` is built
-  today.
+- **Any driver-facing UI.** DrippleX's process is Figma → Shared UI → Backend →
+  Verification, never Backend → Invent UI → Verify. This slice ships the backend
+  capability only (API, SDK client, risk engine, provider integration, audit logging,
+  permissions) — no login page, capture screen, or "verification required" screen was
+  built, and none should be until the Driver module's Figma designs exist and are ported.
+  An earlier pass of this work briefly shipped a hand-built selfie-capture drawer; it was
+  removed on founder correction (2026-08-04) for violating this process. The backend gate
+  is fully functional today via `curl`/the SDK; the driver-portal only sends the signals
+  (`deviceId`, `latitude`/`longitude`) the risk engine needs and otherwise falls through to
+  its existing generic error state when blocked.
 
 ---
 

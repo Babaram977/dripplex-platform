@@ -3,16 +3,14 @@
 import { Badge, Card, CardContent, CardHeader, CardTitle, Select, Switch } from '@dripplex/ui';
 import * as React from 'react';
 
-import type { DriverVerificationTrigger, RideType } from '@dripplex/types';
+import type { RideType } from '@dripplex/types';
 
-import { IdentityVerificationDrawer } from '@/components/driver/identity-verification-drawer';
 import { useCurrentLocation } from '@/hooks/rides/use-current-location';
 import {
   useDriverAvailability,
   useSetDriverAvailability,
 } from '@/hooks/rides/use-driver-availability';
 import { getDeviceFingerprint } from '@/lib/device-fingerprint';
-import { DripplexApiError } from '@/lib/sdk';
 
 const VEHICLE_TYPE_OPTIONS: { value: RideType; label: string }[] = [
   { value: 'ECONOMY', label: 'Dx Ride (car)' },
@@ -27,10 +25,6 @@ export function OnlineToggleCard(): React.JSX.Element {
   const location = useCurrentLocation();
   const [vehicleType, setVehicleType] = React.useState<RideType>('ECONOMY');
   const [deviceId, setDeviceId] = React.useState<string | undefined>(undefined);
-  const [verificationTrigger, setVerificationTrigger] =
-    React.useState<DriverVerificationTrigger | null>(null);
-  const [verificationLocked, setVerificationLocked] = React.useState(false);
-  const [verificationOpen, setVerificationOpen] = React.useState(false);
 
   React.useEffect(() => {
     setDeviceId(getDeviceFingerprint());
@@ -45,32 +39,23 @@ export function OnlineToggleCard(): React.JSX.Element {
   const online = availability.data?.online ?? false;
 
   const onToggle = (checked: boolean): void => {
-    setAvailability.mutate(
-      {
-        online: checked,
-        acceptingRides: checked,
-        vehicleType,
-        ...(deviceId !== undefined ? { deviceId } : {}),
-        ...(location.latitude !== null && location.longitude !== null
-          ? { latitude: location.latitude, longitude: location.longitude }
-          : {}),
-      },
-      {
-        onError: (error) => {
-          if (checked && error instanceof DripplexApiError && error.statusCode === 403) {
-            const details = error.details as
-              { reason?: DriverVerificationTrigger; locked?: boolean } | undefined;
-            setVerificationTrigger(details?.reason ?? 'ONBOARDING');
-            setVerificationLocked(details?.locked ?? false);
-            setVerificationOpen(true);
-          }
-        },
-      },
-    );
+    setAvailability.mutate({
+      online: checked,
+      acceptingRides: checked,
+      vehicleType,
+      // Driver-001 / DPX-DS-001: sent so the backend risk engine can
+      // evaluate NEW_DEVICE / GPS_ANOMALY on this go-online attempt. No
+      // UI is built around the verification result here — see
+      // docs/DRIVER-001-IDENTITY-VERIFICATION-DESIGN.md. The Figma-ported
+      // Driver UI will surface a proper "verification required" screen
+      // when it lands; until then a blocked go-online just falls through
+      // to the generic error state below.
+      ...(deviceId !== undefined ? { deviceId } : {}),
+      ...(location.latitude !== null && location.longitude !== null
+        ? { latitude: location.latitude, longitude: location.longitude }
+        : {}),
+    });
   };
-
-  const isIdentityVerificationError =
-    setAvailability.error instanceof DripplexApiError && setAvailability.error.statusCode === 403;
 
   return (
     <Card>
@@ -123,21 +108,10 @@ export function OnlineToggleCard(): React.JSX.Element {
           </p>
         ) : null}
 
-        {setAvailability.isError && !isIdentityVerificationError ? (
+        {setAvailability.isError ? (
           <p className="text-destructive text-xs">Couldn&apos;t update your status. Try again.</p>
         ) : null}
       </CardContent>
-
-      <IdentityVerificationDrawer
-        open={verificationOpen}
-        onOpenChange={setVerificationOpen}
-        trigger={verificationTrigger}
-        locked={verificationLocked}
-        deviceId={deviceId}
-        onVerified={() => {
-          onToggle(true);
-        }}
-      />
     </Card>
   );
 }
