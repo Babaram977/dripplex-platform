@@ -165,7 +165,11 @@ export { SuperAppRidePlaceCard } from './RidePlaceCard';
 export { SuperAppRideDashedAddButton } from './RideDashedAddButton';
 
 // Wallet module
-export { SuperAppWalletStatusBar, SuperAppWalletBackButton } from './WalletChrome';
+export {
+  SuperAppWalletStatusBar,
+  SuperAppWalletBackButton,
+  SuperAppWalletScreenHeader,
+} from './WalletChrome';
 export { SuperAppWalletBalanceHero, type SuperAppWalletBadge } from './WalletBalanceHero';
 export {
   SuperAppWalletQuickActionsGrid,
@@ -176,3 +180,11 @@ export {
   SuperAppWalletTransactionRow,
   SuperAppWalletTransactionList,
 } from './WalletTransactionRow';
+export {
+  SuperAppWalletSectionLabel,
+  SuperAppWalletSearchInput,
+  SuperAppWalletFilterPills,
+  SuperAppWalletButton,
+} from './WalletFormControls';
+export { SuperAppWalletAmountCard, SuperAppWalletPresetChips } from './WalletAmountInput';
+export { SuperAppWalletSelectableRow, SuperAppWalletRecipientRow } from './WalletSelectableRow';

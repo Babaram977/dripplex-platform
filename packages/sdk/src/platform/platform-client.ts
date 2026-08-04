@@ -82,6 +82,7 @@ import type {
   WalletReconciliationQuery,
   WalletDto,
   WalletLedgerEntryDto,
+  WalletRecipientDto,
   WalletTransferDto,
   WalletTransferRequest,
   WishlistDto,
@@ -648,8 +649,19 @@ export class WalletClient {
       `/customer/wallet/transactions${toQuery({
         page: query.page,
         pageSize: query.pageSize,
+        type: query.type,
       })}`,
     );
+  }
+
+  public lookupTransferRecipient(phone: string): Promise<WalletRecipientDto[]> {
+    return this.http.request<WalletRecipientDto[]>(
+      `/customer/wallet/transfer/recipients${toQuery({ phone })}`,
+    );
+  }
+
+  public recentTransferRecipients(): Promise<WalletRecipientDto[]> {
+    return this.http.request<WalletRecipientDto[]>('/customer/wallet/transfer/recipients/recent');
   }
 
   public transfer(body: WalletTransferRequest): Promise<WalletTransferDto> {

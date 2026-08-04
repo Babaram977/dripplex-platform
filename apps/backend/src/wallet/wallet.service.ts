@@ -214,16 +214,21 @@ export class WalletService {
     page: number,
     pageSize: number,
     currency = WALLET_DEFAULT_CURRENCY,
+    type?: WalletTransactionType,
   ): Promise<PaginatedResult<WalletLedgerEntryDto>> {
     const wallet = await this.getOrCreateWalletRecord(ownerType, ownerId, currency);
+    const where: Prisma.WalletLedgerEntryWhereInput = {
+      walletId: wallet.id,
+      ...(type !== undefined ? { type } : {}),
+    };
     const [items, total] = await Promise.all([
       this.prisma.walletLedgerEntry.findMany({
-        where: { walletId: wallet.id },
+        where,
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
-      this.prisma.walletLedgerEntry.count({ where: { walletId: wallet.id } }),
+      this.prisma.walletLedgerEntry.count({ where }),
     ]);
 
     return {

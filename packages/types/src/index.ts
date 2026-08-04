@@ -350,6 +350,7 @@ export type {
   WalletOwnerType,
   WalletReconciliationDto,
   WalletReconciliationQuery,
+  WalletRecipientDto,
   WalletTransactionType,
   WalletTransferDto,
   WalletTransferRequest,

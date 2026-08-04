@@ -4,7 +4,12 @@ import { WalletOwnerType } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
 
-import { TransferWalletDto, WalletHistoryQueryDto } from './dto/wallet.dto';
+import {
+  LookupRecipientQueryDto,
+  TransferWalletDto,
+  WalletHistoryQueryDto,
+} from './dto/wallet.dto';
+import { WalletRecipientsService, type WalletRecipientDto } from './wallet-recipients.service';
 import { WALLET_PERMISSIONS } from './wallet.constants';
 import { WalletService, type WalletDto, type WalletLedgerEntryDto } from './wallet.service';
 
@@ -15,7 +20,10 @@ import type { Request } from 'express';
 
 @Controller('customer/wallet')
 export class CustomerWalletController {
-  constructor(private readonly walletService: WalletService) {}
+  constructor(
+    private readonly walletService: WalletService,
+    private readonly walletRecipientsService: WalletRecipientsService,
+  ) {}
 
   @Get()
   @RequirePermissions(WALLET_PERMISSIONS.CUSTOMER_READ)
@@ -37,7 +45,28 @@ export class CustomerWalletController {
       user.id,
       query.page,
       query.pageSize,
+      undefined,
+      query.type,
     );
+    return { success: true, data };
+  }
+
+  @Get('transfer/recipients')
+  @RequirePermissions(WALLET_PERMISSIONS.CUSTOMER_TRANSFER)
+  public async lookupRecipient(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: LookupRecipientQueryDto,
+  ): Promise<ApiSuccessResponse<WalletRecipientDto[]>> {
+    const recipient = await this.walletRecipientsService.findByPhone(user.id, query.phone);
+    return { success: true, data: recipient ? [recipient] : [] };
+  }
+
+  @Get('transfer/recipients/recent')
+  @RequirePermissions(WALLET_PERMISSIONS.CUSTOMER_TRANSFER)
+  public async recentRecipients(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ApiSuccessResponse<WalletRecipientDto[]>> {
+    const data = await this.walletRecipientsService.listRecent(user.id);
     return { success: true, data };
   }
 

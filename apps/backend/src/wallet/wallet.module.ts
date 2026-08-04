@@ -9,6 +9,7 @@ import { DriverWalletController } from './driver-wallet.controller';
 import { MerchantWalletController } from './merchant-wallet.controller';
 import { RiderWalletController } from './rider-wallet.controller';
 import { WalletEventsSubscriber } from './wallet-events.subscriber';
+import { WalletRecipientsService } from './wallet-recipients.service';
 import { WalletService } from './wallet.service';
 
 @Module({
@@ -20,7 +21,7 @@ import { WalletService } from './wallet.service';
     DriverWalletController,
     AdminWalletController,
   ],
-  providers: [WalletService, WalletEventsSubscriber],
+  providers: [WalletService, WalletEventsSubscriber, WalletRecipientsService],
   exports: [WalletService],
 })
 export class WalletModule {}

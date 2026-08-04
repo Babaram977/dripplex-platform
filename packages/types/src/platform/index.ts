@@ -788,6 +788,7 @@ export interface WalletLedgerEntryDto {
 export interface WalletHistoryQuery {
   page?: number;
   pageSize?: number;
+  type?: WalletTransactionType;
 }
 
 export interface WalletTransferRequest {
@@ -795,6 +796,13 @@ export interface WalletTransferRequest {
   amount: number;
   currency?: string;
   description?: string;
+}
+
+export interface WalletRecipientDto {
+  id: string;
+  firstName: string;
+  lastName: string;
+  maskedPhone: string;
 }
 
 export interface WalletTransferDto {

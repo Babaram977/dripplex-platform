@@ -1,4 +1,4 @@
-import { WalletOwnerType } from '@prisma/client';
+import { WalletOwnerType, WalletTransactionType } from '@prisma/client';
 import { Transform } from 'class-transformer';
 import {
   IsEnum,
@@ -6,6 +6,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -28,6 +29,16 @@ export class WalletHistoryQueryDto {
   @Min(1)
   @Max(100)
   public pageSize = 20;
+
+  @IsOptional()
+  @IsEnum(WalletTransactionType)
+  public type?: WalletTransactionType;
+}
+
+export class LookupRecipientQueryDto {
+  @IsString()
+  @Matches(/^\+?[0-9]{7,15}$/, { message: 'phone must be a valid E.164-like number' })
+  public phone!: string;
 }
 
 export class TransferWalletDto {

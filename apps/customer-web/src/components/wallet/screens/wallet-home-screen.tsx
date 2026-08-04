@@ -59,16 +59,27 @@ function formatEntryDate(iso: string): string {
 }
 
 /**
- * DPX-100 Wallet Slice 1. Top Up/Withdraw/Transfer/Pay quick actions and
- * "See all" have no destination screen yet — Slices 2-4 build them — so
- * they render disabled (`SuperAppWalletQuickActionsGrid` already dims an
- * action with no `onClick`) rather than navigating nowhere. The rewards
- * strip shows a real sum of CASHBACK entries from the fetched recent-
- * transactions batch (not a lifetime total — no aggregate endpoint exists
- * — worded honestly) and is only shown, and only non-interactive, until
- * Rewards exists in Slice 5.
+ * DPX-100 Wallet Slice 1-2. Top Up, Transfer, and "See all" now navigate to
+ * their real screens (Slice 2). Withdraw and Pay still have no destination
+ * (Withdraw needs a real backend build — Slice 4; Pay has no standalone
+ * concept in the real backend at all — merchant/ride payments happen
+ * in-flow, not from Wallet Home) so they stay disabled rather than
+ * navigating nowhere. The rewards strip shows a real sum of CASHBACK
+ * entries from the fetched recent-transactions batch (not a lifetime total
+ * — no aggregate endpoint exists — worded honestly) and stays
+ * non-interactive until Rewards exists in Slice 3.
  */
-export function WalletHomeScreen({ onBack }: { onBack: () => void }): React.JSX.Element {
+export function WalletHomeScreen({
+  onBack,
+  onSeeAllTransactions,
+  onTopUp,
+  onTransfer,
+}: {
+  onBack: () => void;
+  onSeeAllTransactions: () => void;
+  onTopUp: () => void;
+  onTransfer: () => void;
+}): React.JSX.Element {
   const { user } = useAuth();
   const wallet = useWallet();
   const transactions = useWalletTransactions({ page: 1, pageSize: 5 });
@@ -134,9 +145,9 @@ export function WalletHomeScreen({ onBack }: { onBack: () => void }): React.JSX.
 
       <SuperAppWalletQuickActionsGrid
         actions={[
-          { key: 'topup', icon: '↓', label: 'Top Up', color: '#10B981' },
+          { key: 'topup', icon: '↓', label: 'Top Up', color: '#10B981', onClick: onTopUp },
           { key: 'withdraw', icon: '↑', label: 'Withdraw', color: '#F59E0B' },
-          { key: 'transfer', icon: '→', label: 'Transfer', color: '#3B82F6' },
+          { key: 'transfer', icon: '→', label: 'Transfer', color: '#3B82F6', onClick: onTransfer },
           { key: 'pay', icon: '₦', label: 'Pay', color: '#8B5CF6' },
         ]}
       />
@@ -151,6 +162,14 @@ export function WalletHomeScreen({ onBack }: { onBack: () => void }): React.JSX.
       <div className="mt-4 flex flex-1 flex-col overflow-hidden">
         <div className="flex items-center justify-between px-5" style={{ marginBottom: 12 }}>
           <span className={`text-[15px] font-bold text-white ${heading}`}>Recent Transactions</span>
+          <button
+            type="button"
+            onClick={onSeeAllTransactions}
+            className={`text-[13px] font-medium ${body}`}
+            style={{ color: '#47CF72' }}
+          >
+            See all
+          </button>
         </div>
         <div className="flex-1 overflow-y-auto pb-6">
           {transactions.isLoading ? (

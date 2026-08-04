@@ -113,3 +113,20 @@ export function SuperAppWalletBackButton({
     </button>
   );
 }
+
+/** Back-chevron + bold title header used at the top of every Wallet sub-screen. */
+export function SuperAppWalletScreenHeader({
+  title,
+  onBack,
+}: {
+  title: string;
+  onBack: () => void;
+}): React.JSX.Element {
+  const { heading } = useSuperAppFonts();
+  return (
+    <div className="flex items-center gap-2 px-2" style={{ paddingBottom: 8 }}>
+      <SuperAppWalletBackButton onBack={onBack} />
+      <span className={`text-[18px] font-bold text-white ${heading}`}>{title}</span>
+    </div>
+  );
+}

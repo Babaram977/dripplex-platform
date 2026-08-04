@@ -836,3 +836,93 @@ button correctly navigated to `/dashboard`. Zero console errors.
 | `SuperAppWalletRewardsStrip`     | Verified |
 | `SuperAppWalletTransactionRow`   | Verified |
 | `SuperAppWalletTransactionList`  | Verified |
+
+## Wallet module — Slice 2: Transaction History + Transfer + Top Up (2026-08-04)
+
+Per founder direction to build Wallet as a production financial subsystem
+(not a demo), this slice connects the three screens the real backend
+already substantially supports, closing two small genuine backend gaps
+found along the way rather than faking around them, and applies the
+newly-adopted DPX-UX-001 (Simplicity First) principle — money-movement
+actions get an explicit confirm step, everything else stays low-friction.
+
+**New components this slice:**
+
+- `SuperAppWalletScreenHeader` — back-chevron + bold title header shared
+  by every Wallet sub-screen.
+- `SuperAppWalletSectionLabel`, `SuperAppWalletSearchInput`,
+  `SuperAppWalletFilterPills`, `SuperAppWalletButton` — the wallet source's
+  `SectionLabel`/search box/`Pill`/`GreenButton` primitives. `WalletButton`
+  is its own component rather than reusing Ride's `SuperAppRideActionButton`
+  — visually near-identical (same green-gradient token) but Wallet's own
+  spec uses a 14px radius vs Ride's 16px, and Ride is frozen so its button
+  can't be generalized without touching frozen code.
+- `SuperAppWalletAmountCard`, `SuperAppWalletPresetChips` — the large
+  ₦-prefixed amount input and quick-amount chip row (Top Up, Transfer).
+- `SuperAppWalletSelectableRow`, `SuperAppWalletRecipientRow` — a
+  radio-style row (Top Up's provider list) and an avatar-initials row
+  (Transfer's recipient list).
+- Reused as-is (genuinely generic, no adaptation needed):
+  `SuperAppRidePagination` (Transaction History's pager) and
+  `SuperAppRideStatusBanner` (the wallet gateway redirect/verify screen).
+
+**Screens:** `TransactionHistoryScreen` (real paginated ledger with a
+server-side `type` filter — added this slice to `WalletHistoryQueryDto` —
+mapped to honest tab labels drawn from the real `WalletTransactionType`
+enum: All/Top-up/Spending/Transfers/Withdrawals/Refunds/Cashback, not the
+Figma source's `Ride`/`Refund`/`Top-up` labels, since the real ledger has
+no distinct "ride" transaction type to filter by). `TopUpScreen` (real
+`sdk.wallet.fund`/`verifyFunding`, reusing the Ride `GatewayPaymentScreen`
+redirect pattern via a new `WalletGatewayPaymentScreen`; provider list
+adapted to the three real gateways — Paystack/Flutterwave/Moniepoint — no
+saved cards, since no card tokenization exists anywhere in the platform).
+`TransferScreen` (real `sdk.wallet.transfer`).
+
+**Real backend gaps found and closed (not faked):** Wallet-to-wallet
+Transfer had no way for a customer to resolve a recipient — the Figma
+source's "Phone number or @username" search assumes a user directory that
+doesn't exist (`UsersController` is `users:read`-gated, admin-only) and
+there's no username concept at all. Added the minimum real capability
+instead of fabricating a directory search or a fake recents list: a new
+`WalletRecipientsService` + two endpoints
+(`GET /customer/wallet/transfer/recipients` — exact phone match only,
+never a listing/enumeration of users; `GET .../recipients/recent` — real
+recent recipients derived from the caller's own past `TRANSFER` ledger
+entries' `metadata.toOwnerId`, not stored separately). Both gated by the
+existing `customer:wallet:transfer` permission. Full test coverage in
+`wallet-recipients.service.spec.ts`.
+
+**DPX-UX-001 applied:** Transfer's Send button doesn't fire immediately —
+tapping it flips the CTA into an explicit "Send ₦X to Name?" Confirm/
+Cancel step first (money movement always confirms, per the principle's
+rule 7), verified via Playwright: Cancel left the balance untouched,
+Confirm executed the real transfer. Recipient lookup runs automatically
+on a debounced valid-phone-format input rather than requiring a separate
+search-button tap (rule 2, reduce taps).
+
+Typecheck/lint clean across `@dripplex/ui`, `customer-web`, and the
+backend; backend `wallet`/`wallet-recipients` test suites green (29
+tests). Verified end-to-end with Playwright against the real backend
+(not mocked): Transaction History showed real grouped-by-date ledger rows
+and correctly server-filtered by type; Top Up's confirm correctly
+surfaced a real 422 from the payment gateway (no sandbox credentials
+configured in this environment — the same documented limitation as
+Ride's and Marketplace's gateway paths, not a bug); a full real transfer
+was executed twice (via lookup and via recent-recipients) with the
+sender's and recipient's real wallet balances confirmed correct via direct
+DB query before/after, real ledger entries appearing in both accounts'
+Transaction History with the real note text as the entry title; Ride Home
+re-verified with no regression (frozen module). Zero console errors
+throughout.
+
+| Component                     | Status   |
+| ----------------------------- | -------- |
+| `SuperAppWalletScreenHeader`  | Verified |
+| `SuperAppWalletSectionLabel`  | Verified |
+| `SuperAppWalletSearchInput`   | Verified |
+| `SuperAppWalletFilterPills`   | Verified |
+| `SuperAppWalletButton`        | Verified |
+| `SuperAppWalletAmountCard`    | Verified |
+| `SuperAppWalletPresetChips`   | Verified |
+| `SuperAppWalletSelectableRow` | Verified |
+| `SuperAppWalletRecipientRow`  | Verified |

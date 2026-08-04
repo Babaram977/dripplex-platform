@@ -27,7 +27,7 @@ overstate progress:
 | Home            |                                                                                   1 |            1/1 |                                                                                                                                                                                    0/1 (`/preview` only) |       1/1 |    1/1 |
 | Marketplace     |                                                                                   6 |            6/6 |                                                                                                                                                           4/6 (Product Detail, Cart, Checkout, Tracking) |       6/6 |    0/6 |
 | Ride            |                                                                                  30 |          22/30 |                                                                                                                                                                                          22/30 (`/ride`) |     22/30 |      — |
-| Wallet          |                                                                                  10 |           1/10 |                                                                                                                                                                             1/10 (`/wallet` — Home only) |      1/10 |      — |
+| Wallet          |                                                                                  10 |           4/10 |                                                                                                                                                       4/10 (`/wallet` — Home, History, Top Up, Transfer) |      4/10 |      — |
 | Driver          |                                                                                  13 |         0/13 † | partial † (`apps/driver-portal`, different screen set — dashboard/wallet/earnings/trip/history/profile/campaign, not a 1:1 port of `driverScreen.tsx`'s Splash/Login/OTP/KYC/DocsUpload/VehicleReg flow) | partial † |      — |
 | Merchant        |               — (`adminConsoleScreen.tsx`-style single file, not screen-enumerated) |              0 |                                                                                       partial † (`apps/merchant-portal` — dashboard, product CRUD, publish/images/variants/inventory, built pre-DPX-100) | partial † |      — |
 | Admin           |                                                             1 (single-file console) |            0/1 |                                                                                                              0/1 (`apps/admin-portal` exists; not audited against `adminConsoleScreen.tsx` in this pass) |         — |      — |
@@ -215,15 +215,18 @@ real backend integration from the start.
 | Screen              | DPX-100 Ported | Real Route      | Verified |
 | ------------------- | -------------- | --------------- | -------- |
 | Wallet Home         | ✅             | ✅ `/wallet`    | ✅       |
-| Transaction History | ❌             | ❌              | ❌       |
-| Top Up              | ❌             | ❌              | ❌       |
+| Transaction History | ✅             | ✅ `/wallet`    | ✅       |
+| Top Up              | ✅             | ✅ `/wallet`    | ✅ ‡     |
 | Withdraw            | ❌             | ❌ (no backend) | ❌       |
-| Transfer            | ❌             | ❌              | ❌       |
+| Transfer            | ✅             | ✅ `/wallet`    | ✅       |
 | Payment Methods     | ❌             | ❌              | ❌       |
 | Rewards             | ❌             | ❌              | ❌       |
 | Wallet Statement    | ❌             | ❌ (no backend) | ❌       |
 | Wallet Security     | ❌             | ❌ (no backend) | ❌       |
 | Wallet Settings     | ❌             | ❌ (no backend) | ❌       |
+
+All four ported screens share one route (`/wallet`) driven by a flat
+`wallet-flow.tsx` state machine, the same pattern as Ride's `/ride`.
 
 Withdraw has zero customer-facing backend today: no `CUSTOMER_WITHDRAW`
 permission, no controller endpoint, no customer-linked bank-account model,
@@ -233,8 +236,18 @@ founder direction, Slice 4 will build this for real (bank-account linking,
 a payout provider call, permission/controller/DTOs/service) rather than
 fake it or skip it. Wallet Statement/Security/Settings similarly have no
 backend (no PDF export, no PIN/2FA, no settings persistence) and will be
-documented as honest capability gaps in the module's production audit
-rather than built with fake data.
+built for real in Slice 5 per updated founder direction (not documented
+as capability gaps — see MATURITY.md's Slice 2 note and the founder's
+"build it properly" instruction for the whole Wallet module).
+
+‡ Top Up's confirm step correctly reached the real
+`POST /customer/wallet/fund` endpoint and surfaced a real 422 (no gateway
+sandbox credentials configured in this environment) rather than a fake
+success — the same documented, environmental-only limitation already
+noted for Ride's and Marketplace's gateway payment paths. The redirect/
+verify screen itself (`WalletGatewayPaymentScreen`) is typecheck/lint
+clean and composed of already-Verified primitives, mirroring Ride's own
+`GatewayPaymentScreen` pattern exactly.
 
 See `packages/ui/src/components/super-app/MATURITY.md`'s "Wallet module"
 section for the slice-by-slice port log.
