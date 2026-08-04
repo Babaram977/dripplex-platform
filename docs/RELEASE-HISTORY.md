@@ -2,7 +2,7 @@
 
 **This is the canonical release timeline.** It reflects what's actually in git history and what was actually verified — not what any individual milestone doc claimed at the time. Where an earlier document's claims didn't hold up, that's noted here and the original document was corrected or archived (`docs/archive/`) rather than silently rewritten.
 
-**No `v1.0.0` (or any other) git tag exists yet.** Per the founder's explicit instruction (2026-07-28): a tag gets created when the repository actually reaches that point, not before, regardless of what any release-notes document says.
+**No `v1.0.0` tag exists yet.** Per the founder's explicit instruction (2026-07-28): that specific tag gets created when there's a real, deployed, end-to-end-verified product behind it — not before, regardless of what any release-notes document says. The one tag that does exist, `v1.0-baseline` (2026-08-04, see "Baseline" below), marks a git-history consolidation point — `main` catching up to already-built, already-frozen module work — not a production launch claim.
 
 ---
 
