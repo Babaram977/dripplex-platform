@@ -1065,3 +1065,79 @@ throughout.
 | ---------------------------- | -------- |
 | `SuperAppWalletRewardsHero`  | Verified |
 | `SuperAppWalletReferralCard` | Verified |
+
+## Wallet module — Slice 4: Withdraw (2026-08-04)
+
+A real production module, not a demo — written from a design note first
+(`docs/WALLET-004-WITHDRAW-DESIGN.md`), same "design note before code"
+discipline as RIDE-002.7. No new packages/ui components needed — the whole
+flow (Withdraw, Add Bank Account, Set PIN) is built entirely from Slice 2/3
+primitives (`SuperAppWalletAmountCard`, `SuperAppWalletSelectableRow`,
+`SuperAppWalletScreenHeader`, `SuperAppWalletSectionLabel`,
+`SuperAppWalletButton`), confirming they were already generic enough to
+cover a fourth money-movement flow without modification.
+
+**What's real:** three new backend models (`CustomerBankAccount`,
+`WalletPin`, `WithdrawalRequest` + `WithdrawalRequestStatus`), a real
+bcrypt-hashed 4-digit PIN gate (no PIN infrastructure existed anywhere in
+the platform before this), and a real debit-at-request-creation flow using
+`WalletService.withdrawal()` — the wallet is debited the moment a
+withdrawal is submitted, not when it's fulfilled, matching real bank-
+transfer UX and preventing double-spend while a request is pending. No
+automated payout provider exists yet (confirmed in the original RIDE-002.7
+audit and re-confirmed here), so Phase 1 ships a **real admin
+manual-completion queue** (`AdminWithdrawalController`: list pending,
+complete with a note, or fail with a reason that reverses the debit via a
+real `WalletService.credit()` call) — the same way early-stage Nigerian
+fintechs actually operate before payout-API automation goes live. This is
+a real, usable feature end-to-end in this environment, not a stub that
+silently does nothing.
+
+**Phase 2** adds the `PayoutProvider` interface
+(`wallet/payout/payout-provider.adapter.ts`) and a `PaystackTransferProvider`
+stub, following the exact `MoniepointProvider`/`OpayProvider` precedent
+from the payments module: a real class, real DI wiring, real method
+signatures, throwing `NotImplementedException` until real transfer-API
+credentials are configured. `WithdrawalService` does not call it yet —
+Phase 1's admin queue remains the real fulfillment path.
+
+**Bank accounts are self-attested** (no bank-account-verification API is
+integrated anywhere in the platform — the same trust level merchant
+`BankAccount` already operates at in production), documented as a known
+limitation rather than hidden.
+
+**Screens:** `WithdrawScreen` (balance hint, amount card, bank-account
+selector, gated on two real prerequisites — a linked bank account and a
+set PIN — surfaced as inline CTAs rather than silently disabling the
+screen). `AddBankAccountScreen` and `SetWalletPinScreen` (per DPX-UX-001,
+setting a PIN for the first time is the one step that gets its own short
+screen rather than folding into the confirm step, since a PIN is being
+created, not just checked). Per DPX-UX-001, entering an amount and
+picking a bank account doesn't withdraw anything until an explicit
+"Confirm withdrawal" step, with PIN entry folded into that same confirm
+surface — one confirmation step, not two, matching Transfer's established
+confirm-step pattern from Slice 2.
+
+Typecheck/lint clean across `@dripplex/backend`, `@dripplex/types`,
+`@dripplex/sdk`, and `customer-web`. New unit tests for
+`BankAccountsService`, `WalletPinService`, and `WithdrawalService` (26
+tests, covering default-account reassignment on removal, PIN-set
+conflict/validation, insufficient-balance failure marking the request
+FAILED, and the admin complete/fail paths). Full backend suite: 1050/1052
+passing (the 2 failures are the same pre-existing shared-dev-DB
+`customer-products.service.spec.ts` pollution documented in earlier
+slices, unrelated to this change). Verified end-to-end with Playwright
+against the real backend: the full first-time flow (no bank account → Add
+Bank Account → no PIN → Set PIN → enter amount → select account → Confirm
+with PIN) completed with zero console errors, and the wallet's real balance
+moved from ₦4,350.00 to ₦3,850.00 on confirm — an exact real debit, not a
+simulated one. The admin fulfillment path was verified directly against
+the real database (not mocked): `adminComplete` left the balance
+untouched (money already moved at request time); a second withdrawal's
+`adminFail` correctly reversed the debit, restoring the exact amount.
+
+| Component              | Status   |
+| ---------------------- | -------- |
+| `WithdrawScreen`       | Verified |
+| `AddBankAccountScreen` | Verified |
+| `SetWalletPinScreen`   | Verified |

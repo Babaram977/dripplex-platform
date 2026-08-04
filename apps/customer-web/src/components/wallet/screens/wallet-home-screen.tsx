@@ -59,14 +59,13 @@ function formatEntryDate(iso: string): string {
 }
 
 /**
- * DPX-100 Wallet Slice 1-3. Top Up, Transfer, "See all", and the rewards
- * strip now all navigate to their real screens. Withdraw and Pay still
- * have no destination (Withdraw needs a real backend build — Slice 4; Pay
- * has no standalone concept in the real backend at all — merchant/ride
- * payments happen in-flow, not from Wallet Home) so they stay disabled
- * rather than navigating nowhere. The rewards strip shows a real sum of
- * CASHBACK entries from the fetched recent-transactions batch (not a
- * lifetime total — that lives on the Rewards screen itself, worded
+ * DPX-100 Wallet Slice 1-4. Top Up, Transfer, Withdraw, "See all", and the
+ * rewards strip all navigate to their real screens. Pay still has no
+ * destination — it has no standalone concept in the real backend at all
+ * (merchant/ride payments happen in-flow, not from Wallet Home) — so it
+ * stays disabled rather than navigating nowhere. The rewards strip shows a
+ * real sum of CASHBACK entries from the fetched recent-transactions batch
+ * (not a lifetime total — that lives on the Rewards screen itself, worded
  * honestly here as recent activity).
  */
 export function WalletHomeScreen({
@@ -75,12 +74,14 @@ export function WalletHomeScreen({
   onTopUp,
   onTransfer,
   onRewards,
+  onWithdraw,
 }: {
   onBack: () => void;
   onSeeAllTransactions: () => void;
   onTopUp: () => void;
   onTransfer: () => void;
   onRewards: () => void;
+  onWithdraw: () => void;
 }): React.JSX.Element {
   const { user } = useAuth();
   const wallet = useWallet();
@@ -148,7 +149,7 @@ export function WalletHomeScreen({
       <SuperAppWalletQuickActionsGrid
         actions={[
           { key: 'topup', icon: '↓', label: 'Top Up', color: '#10B981', onClick: onTopUp },
-          { key: 'withdraw', icon: '↑', label: 'Withdraw', color: '#F59E0B' },
+          { key: 'withdraw', icon: '↑', label: 'Withdraw', color: '#F59E0B', onClick: onWithdraw },
           { key: 'transfer', icon: '→', label: 'Transfer', color: '#3B82F6', onClick: onTransfer },
           { key: 'pay', icon: '₦', label: 'Pay', color: '#8B5CF6' },
         ]}

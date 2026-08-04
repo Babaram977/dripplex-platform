@@ -1,5 +1,6 @@
 import type { HttpClient } from '../client/http-client.js';
 import type {
+  AddBankAccountRequest,
   AddWishlistItemRequest,
   AdminReferralRedemptionsQuery,
   AdminWalletMutationRequest,
@@ -15,6 +16,8 @@ import type {
   CreateReferralCampaignRequest,
   CreateReviewRequest,
   CreateWishlistRequest,
+  CreateWithdrawalRequest,
+  CustomerBankAccountDto,
   DeviceTokenDto,
   DriverCampaignDashboardDto,
   DriverCampaignLeaderboardEntryDto,
@@ -79,6 +82,7 @@ import type {
   ValidatePromotionRequest,
   VerifyWalletFundingRequest,
   WalletHistoryQuery,
+  WalletPinStatusDto,
   WalletReconciliationDto,
   WalletReconciliationQuery,
   WalletDto,
@@ -88,6 +92,8 @@ import type {
   WalletTransferRequest,
   WishlistDto,
   WishlistItemDto,
+  WithdrawalHistoryQuery,
+  WithdrawalRequestDto,
 } from '@dripplex/types';
 
 function toQuery(params?: Record<string, boolean | number | string | undefined>): string {
@@ -694,6 +700,71 @@ export class WalletClient {
     });
   }
 
+  public listBankAccounts(): Promise<CustomerBankAccountDto[]> {
+    return this.http.request<CustomerBankAccountDto[]>('/customer/wallet/bank-accounts');
+  }
+
+  public addBankAccount(body: AddBankAccountRequest): Promise<CustomerBankAccountDto> {
+    return this.http.request<CustomerBankAccountDto>('/customer/wallet/bank-accounts', {
+      method: 'POST',
+      body,
+    });
+  }
+
+  public setDefaultBankAccount(id: string): Promise<CustomerBankAccountDto> {
+    return this.http.request<CustomerBankAccountDto>(
+      `/customer/wallet/bank-accounts/${enc(id)}/default`,
+      { method: 'PATCH' },
+    );
+  }
+
+  public removeBankAccount(id: string): Promise<{ removed: boolean }> {
+    return this.http.request<{ removed: boolean }>(`/customer/wallet/bank-accounts/${enc(id)}`, {
+      method: 'DELETE',
+    });
+  }
+
+  public pinStatus(): Promise<WalletPinStatusDto> {
+    return this.http.request<WalletPinStatusDto>('/customer/wallet/pin/status');
+  }
+
+  public setPin(pin: string): Promise<WalletPinStatusDto> {
+    return this.http.request<WalletPinStatusDto>('/customer/wallet/pin', {
+      method: 'POST',
+      body: { pin },
+    });
+  }
+
+  public verifyPin(pin: string): Promise<{ valid: boolean }> {
+    return this.http.request<{ valid: boolean }>('/customer/wallet/pin/verify', {
+      method: 'POST',
+      body: { pin },
+    });
+  }
+
+  public createWithdrawal(body: CreateWithdrawalRequest): Promise<WithdrawalRequestDto> {
+    return this.http.request<WithdrawalRequestDto>('/customer/wallet/withdrawals', {
+      method: 'POST',
+      body,
+    });
+  }
+
+  public listWithdrawals(
+    query: WithdrawalHistoryQuery = {},
+  ): Promise<PaginatedResult<WithdrawalRequestDto>> {
+    return this.http.request<PaginatedResult<WithdrawalRequestDto>>(
+      `/customer/wallet/withdrawals${toQuery({
+        page: query.page,
+        pageSize: query.pageSize,
+        status: query.status,
+      })}`,
+    );
+  }
+
+  public getWithdrawal(id: string): Promise<WithdrawalRequestDto> {
+    return this.http.request<WithdrawalRequestDto>(`/customer/wallet/withdrawals/${enc(id)}`);
+  }
+
   public merchantWallet(): Promise<WalletDto> {
     return this.http.request<WalletDto>('/merchant/wallet');
   }
@@ -750,6 +821,35 @@ export class AdminWalletClient {
     return this.http.request<WalletDto>(`/admin/wallets/${enc(ownerType)}/${enc(ownerId)}/debit`, {
       method: 'POST',
       body,
+    });
+  }
+
+  public listWithdrawals(
+    query: WithdrawalHistoryQuery = {},
+  ): Promise<PaginatedResult<WithdrawalRequestDto>> {
+    return this.http.request<PaginatedResult<WithdrawalRequestDto>>(
+      `/admin/wallet/withdrawals${toQuery({
+        page: query.page,
+        pageSize: query.pageSize,
+        status: query.status,
+      })}`,
+    );
+  }
+
+  public completeWithdrawal(id: string, adminNote?: string): Promise<WithdrawalRequestDto> {
+    return this.http.request<WithdrawalRequestDto>(
+      `/admin/wallet/withdrawals/${enc(id)}/complete`,
+      {
+        method: 'POST',
+        body: { adminNote },
+      },
+    );
+  }
+
+  public failWithdrawal(id: string, reason: string): Promise<WithdrawalRequestDto> {
+    return this.http.request<WithdrawalRequestDto>(`/admin/wallet/withdrawals/${enc(id)}/fail`, {
+      method: 'POST',
+      body: { reason },
     });
   }
 }

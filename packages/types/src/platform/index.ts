@@ -888,6 +888,53 @@ export interface VerifyWalletFundingRequest {
   reference?: string;
 }
 
+export interface CustomerBankAccountDto {
+  id: string;
+  bankName: string;
+  bankCode: string | null;
+  accountName: string;
+  accountNumber: string;
+  isDefault: boolean;
+  createdAt: string;
+}
+
+export interface AddBankAccountRequest {
+  bankName: string;
+  bankCode?: string;
+  accountName: string;
+  accountNumber: string;
+}
+
+export interface WalletPinStatusDto {
+  hasPin: boolean;
+}
+
+export type WithdrawalRequestStatus = 'PENDING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+
+export interface WithdrawalRequestDto {
+  id: string;
+  amount: number;
+  currency: string;
+  status: WithdrawalRequestStatus;
+  bankAccountId: string;
+  failureReason: string | null;
+  adminNote: string | null;
+  processedAt: string | null;
+  createdAt: string;
+}
+
+export interface CreateWithdrawalRequest {
+  amount: number;
+  bankAccountId: string;
+  pin: string;
+}
+
+export interface WithdrawalHistoryQuery {
+  page?: number;
+  pageSize?: number;
+  status?: WithdrawalRequestStatus;
+}
+
 export type AnalyticsScopeType = 'PLATFORM' | 'MERCHANT' | 'RIDER';
 
 export interface AnalyticsDailyMetricDto {

@@ -4,13 +4,16 @@ import { toast } from '@dripplex/ui';
 import { useRouter, useSearchParams } from 'next/navigation';
 import * as React from 'react';
 
+import { AddBankAccountScreen } from './screens/add-bank-account-screen';
 import { PaymentMethodsScreen } from './screens/payment-methods-screen';
 import { RewardsScreen } from './screens/rewards-screen';
+import { SetWalletPinScreen } from './screens/set-wallet-pin-screen';
 import { TopUpScreen } from './screens/top-up-screen';
 import { TransactionHistoryScreen } from './screens/transaction-history-screen';
 import { TransferScreen } from './screens/transfer-screen';
 import { WalletGatewayPaymentScreen } from './screens/wallet-gateway-payment-screen';
 import { WalletHomeScreen } from './screens/wallet-home-screen';
+import { WithdrawScreen } from './screens/withdraw-screen';
 
 type WalletFlowScreen =
   | { name: 'home' }
@@ -19,7 +22,10 @@ type WalletFlowScreen =
   | { name: 'topup' }
   | { name: 'topupGateway'; authorizationUrl: string; verifying: boolean }
   | { name: 'rewards' }
-  | { name: 'paymentMethods' };
+  | { name: 'paymentMethods' }
+  | { name: 'withdraw' }
+  | { name: 'addBankAccount' }
+  | { name: 'setPin' };
 
 /** Resumes a gateway top-up redirect: /wallet?topupVerify=1 lands here after Paystack/Flutterwave/Moniepoint checkout. */
 function useResumeScreen(): WalletFlowScreen | null {
@@ -60,6 +66,9 @@ export function WalletFlow(): React.JSX.Element {
           onRewards={() => {
             setScreen({ name: 'rewards' });
           }}
+          onWithdraw={() => {
+            setScreen({ name: 'withdraw' });
+          }}
         />
       );
     case 'history':
@@ -68,6 +77,47 @@ export function WalletFlow(): React.JSX.Element {
       return <RewardsScreen onBack={goHome} />;
     case 'paymentMethods':
       return <PaymentMethodsScreen onBack={goHome} />;
+    case 'withdraw':
+      return (
+        <WithdrawScreen
+          onBack={goHome}
+          onManageBankAccounts={() => {
+            setScreen({ name: 'addBankAccount' });
+          }}
+          onSetPin={() => {
+            setScreen({ name: 'setPin' });
+          }}
+          onWithdrawn={() => {
+            toast({
+              title: 'Withdrawal submitted',
+              description: 'Your withdrawal is being processed.',
+            });
+            goHome();
+          }}
+        />
+      );
+    case 'addBankAccount':
+      return (
+        <AddBankAccountScreen
+          onBack={() => {
+            setScreen({ name: 'withdraw' });
+          }}
+          onAdded={() => {
+            setScreen({ name: 'withdraw' });
+          }}
+        />
+      );
+    case 'setPin':
+      return (
+        <SetWalletPinScreen
+          onBack={() => {
+            setScreen({ name: 'withdraw' });
+          }}
+          onSet={() => {
+            setScreen({ name: 'withdraw' });
+          }}
+        />
+      );
     case 'transfer':
       return (
         <TransferScreen

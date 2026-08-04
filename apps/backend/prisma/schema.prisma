@@ -233,6 +233,10 @@ model User {
   businesses              Business[]
   merchantKycs            MerchantKyc[]
   bankAccounts            BankAccount[]
+  customerBankAccounts    CustomerBankAccount[]
+  walletPin               WalletPin?
+  withdrawalRequests      WithdrawalRequest[]      @relation("WithdrawalRequestUser")
+  withdrawalsProcessed    WithdrawalRequest[]      @relation("WithdrawalRequestProcessedBy")
   customerAddresses       CustomerAddress[]
   carts                   Cart[]
   orders                  Order[]
@@ -1346,6 +1350,9 @@ enum NotificationType {
   PROMOTION_REDEEMED
   PROMOTION_EXPIRED
   CASHBACK_AWARDED
+  WITHDRAWAL_REQUESTED
+  WITHDRAWAL_COMPLETED
+  WITHDRAWAL_FAILED
   ORDER_ACCEPTED
   ORDER_REJECTED
   ORDER_READY
@@ -2043,6 +2050,86 @@ model WalletTopUpTransaction {
   @@index([providerReference])
   @@index([status])
   @@map("wallet_topup_transactions")
+}
+
+/**
+ * A customer's own withdrawal destination — distinct from the merchant-only
+ * `BankAccount` model (different ownership semantics, kept as separate
+ * tables rather than generalizing one to serve both). Self-attested, like
+ * `BankAccount`: no bank-account-verification API is integrated anywhere in
+ * the platform yet (see docs/WALLET-004-WITHDRAW-DESIGN.md).
+ */
+model CustomerBankAccount {
+  id            String              @id @default(uuid()) @db.Uuid
+  userId        String              @map("user_id") @db.Uuid
+  bankName      String              @map("bank_name") @db.VarChar(150)
+  bankCode      String?             @map("bank_code") @db.VarChar(20)
+  accountName   String              @map("account_name") @db.VarChar(150)
+  accountNumber String              @map("account_number") @db.VarChar(20)
+  isDefault     Boolean             @default(false) @map("is_default")
+  createdAt     DateTime            @default(now()) @map("created_at")
+  deletedAt     DateTime?           @map("deleted_at")
+  user          User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  withdrawals   WithdrawalRequest[]
+
+  @@unique([userId, accountNumber])
+  @@index([userId])
+  @@index([userId, isDefault])
+  @@map("customer_bank_accounts")
+}
+
+/**
+ * A hashed PIN gating withdrawal requests. bcrypt, same salt-rounds config
+ * as password hashing (`AppConfigService.bcryptSaltRounds`) — no new hashing
+ * scheme introduced.
+ */
+model WalletPin {
+  userId    String   @id @map("user_id") @db.Uuid
+  pinHash   String   @map("pin_hash")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("wallet_pins")
+}
+
+enum WithdrawalRequestStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+/**
+ * The wallet is debited at request creation (PENDING), not at completion —
+ * see docs/WALLET-004-WITHDRAW-DESIGN.md for the reasoning. A FAILED outcome
+ * reverses the debit via a real WalletService.credit() call referencing this
+ * row's id, so the reversal is idempotent under the same
+ * (walletId, referenceType, referenceId) uniqueness WalletLedgerEntry already
+ * enforces for every other mutation.
+ */
+model WithdrawalRequest {
+  id                String                  @id @default(uuid()) @db.Uuid
+  userId            String                  @map("user_id") @db.Uuid
+  walletId          String                  @map("wallet_id") @db.Uuid
+  bankAccountId     String                  @map("bank_account_id") @db.Uuid
+  amount            Decimal                 @db.Decimal(14, 2)
+  currency          String                  @default("NGN") @db.VarChar(3)
+  status            WithdrawalRequestStatus @default(PENDING)
+  failureReason     String?                 @map("failure_reason") @db.VarChar(500)
+  adminNote         String?                 @map("admin_note") @db.VarChar(500)
+  processedByUserId String?                 @map("processed_by_user_id") @db.Uuid
+  processedAt       DateTime?               @map("processed_at")
+  createdAt         DateTime                @default(now()) @map("created_at")
+  updatedAt         DateTime                @updatedAt @map("updated_at")
+  user              User                    @relation("WithdrawalRequestUser", fields: [userId], references: [id], onDelete: Cascade)
+  bankAccount       CustomerBankAccount     @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+  processedBy       User?                   @relation("WithdrawalRequestProcessedBy", fields: [processedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([userId, createdAt])
+  @@index([status])
+  @@map("withdrawal_requests")
 }
 
 enum ReferralRedemptionStatus {

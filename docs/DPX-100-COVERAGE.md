@@ -27,7 +27,7 @@ overstate progress:
 | Home            |                                                                                   1 |            1/1 |                                                                                                                                                                                    0/1 (`/preview` only) |       1/1 |    1/1 |
 | Marketplace     |                                                                                   6 |            6/6 |                                                                                                                                                           4/6 (Product Detail, Cart, Checkout, Tracking) |       6/6 |    0/6 |
 | Ride            |                                                                                  30 |          22/30 |                                                                                                                                                                                          22/30 (`/ride`) |     22/30 |      — |
-| Wallet          |                                                                                  10 |           6/10 |                                                                                                                             6/10 (`/wallet` — Home, History, Top Up, Transfer, Payment Methods, Rewards) |      6/10 |      — |
+| Wallet          |                                                                                  10 |           7/10 |                                                                                                                   7/10 (`/wallet` — Home, History, Top Up, Withdraw, Transfer, Payment Methods, Rewards) |      7/10 |      — |
 | Driver          |                                                                                  13 |         0/13 † | partial † (`apps/driver-portal`, different screen set — dashboard/wallet/earnings/trip/history/profile/campaign, not a 1:1 port of `driverScreen.tsx`'s Splash/Login/OTP/KYC/DocsUpload/VehicleReg flow) | partial † |      — |
 | Merchant        |               — (`adminConsoleScreen.tsx`-style single file, not screen-enumerated) |              0 |                                                                                       partial † (`apps/merchant-portal` — dashboard, product CRUD, publish/images/variants/inventory, built pre-DPX-100) | partial † |      — |
 | Admin           |                                                             1 (single-file console) |            0/1 |                                                                                                              0/1 (`apps/admin-portal` exists; not audited against `adminConsoleScreen.tsx` in this pass) |         — |      — |
@@ -224,7 +224,7 @@ real backend integration from the start.
 | Wallet Home         | ✅             | ✅ `/wallet`    | ✅       |
 | Transaction History | ✅             | ✅ `/wallet`    | ✅       |
 | Top Up              | ✅             | ✅ `/wallet`    | ✅ ‡     |
-| Withdraw            | ❌             | ❌ (no backend) | ❌       |
+| Withdraw            | ✅ §           | ✅ `/wallet`    | ✅       |
 | Transfer            | ✅             | ✅ `/wallet`    | ✅       |
 | Payment Methods     | ✅ †           | ✅ `/wallet`    | ✅       |
 | Rewards             | ✅ †           | ✅ `/wallet`    | ✅       |
@@ -232,20 +232,29 @@ real backend integration from the start.
 | Wallet Security     | ❌             | ❌ (no backend) | ❌       |
 | Wallet Settings     | ❌             | ❌ (no backend) | ❌       |
 
-All four ported screens share one route (`/wallet`) driven by a flat
+All seven ported screens share one route (`/wallet`) driven by a flat
 `wallet-flow.tsx` state machine, the same pattern as Ride's `/ride`.
 
-Withdraw has zero customer-facing backend today: no `CUSTOMER_WITHDRAW`
-permission, no controller endpoint, no customer-linked bank-account model,
-and no payout-provider capability (the Paystack/Flutterwave/Moniepoint
-adapters only support charge collection, not transfers/payouts). Per
-founder direction, Slice 4 will build this for real (bank-account linking,
-a payout provider call, permission/controller/DTOs/service) rather than
-fake it or skip it. Wallet Statement/Security/Settings similarly have no
-backend (no PDF export, no PIN/2FA, no settings persistence) and will be
-built for real in Slice 5 per updated founder direction (not documented
-as capability gaps — see MATURITY.md's Slice 2 note and the founder's
-"build it properly" instruction for the whole Wallet module).
+Wallet Statement/Security/Settings still have no backend (no PDF export,
+no full 2FA, no settings persistence) and will be built for real in
+Slice 5 per founder direction (not documented as capability gaps — see
+MATURITY.md's Slice 2 note and the founder's "build it properly"
+instruction for the whole Wallet module).
+
+§ Withdraw is a real production module (Slice 4, see
+`docs/WALLET-004-WITHDRAW-DESIGN.md`): real `CustomerBankAccount`,
+`WalletPin` (bcrypt-hashed, new PIN infrastructure), and
+`WithdrawalRequest` models; a real debit-at-request-creation flow via
+`WalletService.withdrawal()`; and a real admin manual-completion queue
+(`AdminWithdrawalController`) since no automated payout-provider API is
+configured in this environment yet — Phase 2 adds the `PayoutProvider`
+interface + a `PaystackTransferProvider` stub (same
+`NotImplementedException`-until-credentials pattern as
+`MoniepointProvider`/`OpayProvider`), not wired into the request flow.
+Verified end-to-end: a real ₦500 withdrawal moved the wallet's real
+balance from ₦4,350.00 to ₦3,850.00 on confirm, and the admin
+complete/fail paths (including the fail-path reversal credit) were
+verified directly against the database.
 
 ‡ Top Up's confirm step correctly reached the real
 `POST /customer/wallet/fund` endpoint and surfaced a real 422 (no gateway
@@ -282,6 +291,7 @@ seed rows for live production data requires no presentation-layer code
 change. Phase 2, once a module is fully live, its seed block is simply
 dropped from `seed.ts`.
 
-_Last updated: 2026-08-04, after the Ride DX rebrand (Dx Ride/Dx
-Comfort/Dx XL) and Wallet Slice 3 (Payment Methods, Rewards) — Wallet is
-now 6/10 real screens ported and Playwright-verified._
+_Last updated: 2026-08-04, after Wallet Slice 4 (Withdraw — a real
+production module, Phase 1 + Phase 2) — Wallet is now 7/10 real screens
+ported and Playwright-verified. Only Statement/Security/Settings remain
+(Slice 5), then the module production audit and freeze._

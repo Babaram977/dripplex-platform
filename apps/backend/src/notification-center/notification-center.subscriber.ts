@@ -324,6 +324,30 @@ export class NotificationCenterSubscriber implements OnModuleInit {
       body: (payload) => `You earned ₦${this.text(payload, ['amount'], '0')} cashback.`,
       userKeys: ['userId'],
     },
+    [DOMAIN_EVENTS.WITHDRAWAL_REQUESTED]: {
+      category: NotificationCategory.WALLET,
+      type: NotificationType.WITHDRAWAL_REQUESTED,
+      title: 'Withdrawal requested',
+      body: (payload) =>
+        `Your withdrawal of ₦${this.text(payload, ['amount'], '0')} is being processed.`,
+      userKeys: ['userId'],
+    },
+    [DOMAIN_EVENTS.WITHDRAWAL_COMPLETED]: {
+      category: NotificationCategory.WALLET,
+      type: NotificationType.WITHDRAWAL_COMPLETED,
+      title: 'Withdrawal completed',
+      body: (payload) =>
+        `₦${this.text(payload, ['amount'], '0')} has been sent to your bank account.`,
+      userKeys: ['userId'],
+    },
+    [DOMAIN_EVENTS.WITHDRAWAL_FAILED]: {
+      category: NotificationCategory.WALLET,
+      type: NotificationType.WITHDRAWAL_FAILED,
+      title: 'Withdrawal failed',
+      body: (payload) =>
+        `Your withdrawal of ₦${this.text(payload, ['amount'], '0')} failed and was refunded to your wallet.`,
+      userKeys: ['userId'],
+    },
     [DOMAIN_EVENTS.COUPON_EXPIRED]: {
       category: NotificationCategory.MARKETING,
       type: NotificationType.PROMOTION_EXPIRED,

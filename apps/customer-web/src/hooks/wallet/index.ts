@@ -8,3 +8,11 @@ export {
   useVerifyWalletFunding,
 } from './use-wallet-mutations';
 export { useLoyaltyAccount, useReferralCode, useReferralStats } from './use-loyalty';
+export {
+  useBankAccounts,
+  useAddBankAccount,
+  useSetDefaultBankAccount,
+  useRemoveBankAccount,
+} from './use-bank-accounts';
+export { useWalletPinStatus, useSetWalletPin, useVerifyWalletPin } from './use-wallet-pin';
+export { useWithdrawals, useCreateWithdrawal } from './use-withdrawal';
