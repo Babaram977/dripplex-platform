@@ -146,3 +146,5 @@ export { SuperAppRideTypeSelector, type SuperAppRideTypeOption } from './RideTyp
 export { SuperAppRideInfoBox } from './RideInfoBox';
 export { SuperAppRideTextButton } from './RideTextButton';
 export { SuperAppRideLiveBadge } from './RideLiveBadge';
+export { SuperAppRideProgressBar } from './RideProgressBar';
+export { SuperAppRideRouteSummary } from './RideRouteSummary';

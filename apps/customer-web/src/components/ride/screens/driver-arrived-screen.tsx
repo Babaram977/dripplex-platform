@@ -1,9 +1,14 @@
 'use client';
 
+import {
+  SuperAppRideDriverCard,
+  SuperAppRideHeader,
+  SuperAppRideStatusBanner,
+  SuperAppRideTextButton,
+} from '@dripplex/ui';
 import * as React from 'react';
 
 import { LiveMap } from '../live-map';
-import { DriverCard, RideHeader, StatusBanner } from '../ride-ui';
 
 import { useCancelRide, useRide, useRideStatusTransition, useRideTracking } from '@/hooks/rides';
 
@@ -60,7 +65,7 @@ export function DriverArrivedScreen({
         }}
       />
       <div style={{ zIndex: 10 }}>
-        <RideHeader onBack={onBack} floating />
+        <SuperAppRideHeader onBack={onBack} floating />
       </div>
       <div
         className="absolute inset-x-0 bottom-0 rounded-t-3xl px-5 pb-8 pt-5"
@@ -78,25 +83,21 @@ export function DriverArrivedScreen({
             <span style={{ fontSize: 28 }}>🚗</span>
           </div>
         </div>
-        <StatusBanner
+        <SuperAppRideStatusBanner
           tone="success"
           title="Your driver has arrived"
           subtitle="Head to the pickup point — your driver will start the trip once you're both there."
         />
         <div className="my-4">
-          <DriverCard />
+          <SuperAppRideDriverCard />
         </div>
-        <button
-          type="button"
+        <SuperAppRideTextButton
+          label={cancelRide.isPending ? 'Cancelling…' : 'Cancel ride'}
+          disabled={cancelRide.isPending}
           onClick={() => {
             cancelRide.mutate({ rideId });
           }}
-          disabled={cancelRide.isPending}
-          className="w-full text-center text-[14px] font-medium"
-          style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
-        >
-          {cancelRide.isPending ? 'Cancelling…' : 'Cancel ride'}
-        </button>
+        />
       </div>
     </div>
   );

@@ -1,16 +1,17 @@
 'use client';
 
+import {
+  SuperAppRideActionButton,
+  SuperAppRideDriverCard,
+  SuperAppRideETAChip,
+  SuperAppRideRouteSummary,
+  SuperAppRideSafetyChip,
+  SuperAppRideBottomSheet,
+  SuperAppRideStatusBanner,
+} from '@dripplex/ui';
 import * as React from 'react';
 
 import { LiveMap } from '../live-map';
-import {
-  ActionButton,
-  DriverCard,
-  ETAChip,
-  RideBottomSheet,
-  SafetyChip,
-  StatusBanner,
-} from '../ride-ui';
 
 import { useRide, useRideStatusTransition, useRideTracking } from '@/hooks/rides';
 import { formatDistance, haversineMeters } from '@/lib/geo';
@@ -85,7 +86,7 @@ export function RideInProgressScreen({
           fallbackProgress={progress}
         />
         <div className="absolute inset-x-0 top-14 flex justify-end px-5">
-          <SafetyChip />
+          <SuperAppRideSafetyChip />
         </div>
         <div className="absolute inset-x-0 bottom-3 flex justify-center px-5">
           <button
@@ -104,17 +105,17 @@ export function RideInProgressScreen({
           </button>
         </div>
       </div>
-      <RideBottomSheet peek>
+      <SuperAppRideBottomSheet peek>
         <div className="flex-1 overflow-y-auto px-5 pb-6 pt-2">
           {ride.isError ? (
             <div className="flex flex-col items-center gap-4 py-6">
-              <StatusBanner
+              <SuperAppRideStatusBanner
                 tone="error"
                 title="Couldn't load this ride"
                 subtitle="Check your connection and try again."
               />
               <div className="w-full max-w-[200px]">
-                <ActionButton
+                <SuperAppRideActionButton
                   label="Retry"
                   variant="secondary"
                   onClick={() => {
@@ -126,44 +127,24 @@ export function RideInProgressScreen({
           ) : (
             <>
               <div className="mb-4 flex gap-2">
-                <ETAChip label="elapsed" value={elapsedLabel} />
-                <ETAChip label="remaining" value={distanceRemainingLabel} />
-                <ETAChip
+                <SuperAppRideETAChip label="elapsed" value={elapsedLabel} />
+                <SuperAppRideETAChip label="remaining" value={distanceRemainingLabel} />
+                <SuperAppRideETAChip
                   label="fare"
                   value={ride.data ? `₦${ride.data.totalFare.toLocaleString()}` : '—'}
                 />
               </div>
               <div className="mb-3">
-                <DriverCard />
+                <SuperAppRideDriverCard />
               </div>
-              <div
-                className="flex items-center gap-2 rounded-2xl p-3"
-                style={{ background: '#112238', border: '1px solid rgba(255,255,255,.08)' }}
-              >
-                <div className="flex flex-col items-center gap-1">
-                  <div className="h-2 w-2 rounded-full" style={{ background: '#2BAC52' }} />
-                  <div className="h-8 w-px" style={{ background: 'rgba(255,255,255,.08)' }} />
-                  <div className="h-2 w-2 rounded-full" style={{ background: '#EF4444' }} />
-                </div>
-                <div className="flex-1">
-                  <p
-                    className="mb-2 text-[12px]"
-                    style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.6)' }}
-                  >
-                    {ride.data?.pickupAddress ?? 'Pickup'}
-                  </p>
-                  <p
-                    className="text-[12px]"
-                    style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.6)' }}
-                  >
-                    {ride.data?.dropoffAddress ?? 'Destination'}
-                  </p>
-                </div>
-              </div>
+              <SuperAppRideRouteSummary
+                pickupAddress={ride.data?.pickupAddress ?? 'Pickup'}
+                dropoffAddress={ride.data?.dropoffAddress ?? 'Destination'}
+              />
             </>
           )}
         </div>
-      </RideBottomSheet>
+      </SuperAppRideBottomSheet>
     </div>
   );
 }

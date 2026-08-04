@@ -1,9 +1,16 @@
 'use client';
 
+import {
+  SuperAppRideBottomSheet,
+  SuperAppRideDriverCard,
+  SuperAppRideHeader,
+  SuperAppRideLiveBadge,
+  SuperAppRideQuickActionButton,
+  useSuperAppFonts,
+} from '@dripplex/ui';
 import * as React from 'react';
 
 import { LiveMap } from '../live-map';
-import { DriverCard, QuickActionButton, RideBottomSheet, RideHeader } from '../ride-ui';
 
 import { useCancelRide, useRide, useRideStatusTransition, useRideTracking } from '@/hooks/rides';
 
@@ -30,6 +37,8 @@ export function DriverEnRouteScreen({
     }
   });
 
+  const { heading, body } = useSuperAppFonts();
+
   return (
     <div
       className="absolute inset-0 flex flex-col overflow-hidden"
@@ -55,35 +64,21 @@ export function DriverEnRouteScreen({
         }}
       />
       <div style={{ zIndex: 10 }}>
-        <RideHeader onBack={onBack} floating />
+        <SuperAppRideHeader onBack={onBack} floating />
       </div>
-      <RideBottomSheet peek anchored>
+      <SuperAppRideBottomSheet peek anchored>
         <div className="px-5 pb-8 pt-2">
           <div className="mb-3 flex items-center gap-2">
-            <p
-              className="text-[17px] font-bold"
-              style={{ fontFamily: "'Poppins',sans-serif", color: '#fff' }}
-            >
-              Driver is on the way
-            </p>
-            <span
-              className="rounded-full px-2 py-0.5 text-[10px] font-bold"
-              style={{
-                background: tracking.connected ? 'rgba(43,172,82,.15)' : 'rgba(255,255,255,.06)',
-                color: tracking.connected ? '#47CF72' : 'rgba(255,255,255,.5)',
-                fontFamily: "'Inter',sans-serif",
-              }}
-            >
-              {tracking.connected ? 'LIVE' : 'CONNECTING'}
-            </span>
+            <p className={`text-[17px] font-bold text-white ${heading}`}>Driver is on the way</p>
+            <SuperAppRideLiveBadge live={tracking.connected} />
           </div>
           <div className="mb-4">
-            <DriverCard />
+            <SuperAppRideDriverCard />
           </div>
           <div className="mb-3 flex gap-3">
-            <QuickActionButton icon="📞" label="Call" disabled />
-            <QuickActionButton icon="💬" label="Chat" disabled />
-            <QuickActionButton
+            <SuperAppRideQuickActionButton icon="📞" label="Call" disabled />
+            <SuperAppRideQuickActionButton icon="💬" label="Chat" disabled />
+            <SuperAppRideQuickActionButton
               icon="❌"
               label="Cancel"
               tone="danger"
@@ -93,14 +88,11 @@ export function DriverEnRouteScreen({
               }}
             />
           </div>
-          <p
-            className="text-center text-[11px]"
-            style={{ fontFamily: "'Inter',sans-serif", color: '#F59E0B' }}
-          >
+          <p className={`text-center text-[11px] ${body}`} style={{ color: '#F59E0B' }}>
             Free cancellation until the driver arrives
           </p>
         </div>
-      </RideBottomSheet>
+      </SuperAppRideBottomSheet>
     </div>
   );
 }

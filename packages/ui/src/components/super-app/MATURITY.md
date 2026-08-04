@@ -580,3 +580,43 @@ driver card) completed end to end with zero console errors.
 | `SuperAppRideInfoBox`        | Verified |
 | `SuperAppRideTextButton`     | Verified |
 | `SuperAppRideLiveBadge`      | Verified |
+
+## Ride module — Slice 3: En route + Arrived + In-progress + Live tracking (2026-08-04)
+
+Continues the re-platform: presentational markup only, no new backend
+work, no behavior change. Ported `DriverEnRouteScreen`,
+`DriverArrivedScreen`, `RideInProgressScreen`, and `LiveTrackingScreen`
+off `ride-ui.tsx` onto `packages/ui`.
+
+**New components this slice:**
+
+- `RideProgressBar` — the trip-progress track (0-1) shown on Live
+  Tracking.
+- `RideRouteSummary` — the pickup/dropoff address pair with connecting
+  dots, shown on Ride In Progress.
+
+All four screens compose these plus Slice 1/2 primitives (`RideHeader`,
+`RideBottomSheet`, `RideDriverCard`, `RideStatusBanner`, `RideETAChip`,
+`RideActionButton`, `RideQuickActionButton`, `RideSafetyChip`,
+`RideBackArrow`, `RideStatusBar`, `RideTextButton`); the real `LiveMap`
+still renders directly in each screen component. Live Tracking's
+LIVE/CONNECTING badge uses a distinct dot+pill treatment from the
+plain-pill `RideLiveBadge` used on Driver Assigned/En Route — this
+matches the real source markup for that screen exactly (different
+background shade, has a dot indicator) and was kept inline rather than
+force-fit onto `RideLiveBadge`, to avoid silently changing either
+screen's actual appearance.
+
+Typecheck/lint clean across `@dripplex/ui` and `customer-web`. Verified
+with Playwright against the real backend: booked a fresh ride, drove the
+full trip lifecycle via direct driver API calls (accept offer → arrive →
+start), and confirmed each real status transition
+(`DRIVER_ASSIGNED`→`ARRIVED`→`IN_PROGRESS`) correctly advanced the
+customer's screen (Assigned → En Route → Arrived → In Progress → Live
+Tracking, the last two reached via in-app navigation) with zero console
+errors throughout.
+
+| Component                  | Status   |
+| -------------------------- | -------- |
+| `SuperAppRideProgressBar`  | Verified |
+| `SuperAppRideRouteSummary` | Verified |

@@ -1,16 +1,18 @@
 'use client';
 
+import {
+  SuperAppRideActionButton,
+  SuperAppRideBackArrow,
+  SuperAppRideBottomSheet,
+  SuperAppRideProgressBar,
+  SuperAppRideQuickActionButton,
+  SuperAppRideStatusBanner,
+  SuperAppRideStatusBar,
+  useSuperAppFonts,
+} from '@dripplex/ui';
 import * as React from 'react';
 
 import { LiveMap } from '../live-map';
-import {
-  ActionButton,
-  BackArrow,
-  QuickActionButton,
-  RideBottomSheet,
-  RideStatusBar,
-  StatusBanner,
-} from '../ride-ui';
 
 import { useRide, useRideTracking } from '@/hooks/rides';
 import { formatDistance, haversineMeters } from '@/lib/geo';
@@ -24,6 +26,7 @@ export function LiveTrackingScreen({
 }): React.JSX.Element {
   const ride = useRide(rideId);
   const tracking = useRideTracking(rideId);
+  const { heading, body } = useSuperAppFonts();
 
   let distanceRemainingLabel = '—';
   let progress = 0;
@@ -51,7 +54,7 @@ export function LiveTrackingScreen({
       className="absolute inset-0 flex flex-col overflow-hidden"
       style={{ background: '#0A1628' }}
     >
-      <RideStatusBar />
+      <SuperAppRideStatusBar />
       <div className="absolute inset-0 top-10" style={{ zIndex: 0 }}>
         <LiveMap
           driver={tracking.driverLocation ?? undefined}
@@ -74,11 +77,8 @@ export function LiveTrackingScreen({
             border: '1px solid rgba(255,255,255,.08)',
           }}
         >
-          <BackArrow onClick={onBack} />
-          <p
-            className="flex-1 text-[13px]"
-            style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.6)' }}
-          >
+          <SuperAppRideBackArrow onClick={onBack} />
+          <p className={`flex-1 text-[13px] ${body}`} style={{ color: 'rgba(255,255,255,.6)' }}>
             Live trip tracking
           </p>
           <div
@@ -90,28 +90,25 @@ export function LiveTrackingScreen({
               style={{ background: tracking.connected ? '#47CF72' : 'rgba(255,255,255,.3)' }}
             />
             <p
-              className="text-[10px] font-bold"
-              style={{
-                fontFamily: "'Poppins',sans-serif",
-                color: tracking.connected ? '#47CF72' : 'rgba(255,255,255,.5)',
-              }}
+              className={`text-[10px] font-bold ${heading}`}
+              style={{ color: tracking.connected ? '#47CF72' : 'rgba(255,255,255,.5)' }}
             >
               {tracking.connected ? 'LIVE' : 'CONNECTING'}
             </p>
           </div>
         </div>
       </div>
-      <RideBottomSheet peek anchored>
+      <SuperAppRideBottomSheet peek anchored>
         <div className="px-5 pb-8 pt-5">
           {ride.isError ? (
             <div className="flex flex-col items-center gap-4 py-2">
-              <StatusBanner
+              <SuperAppRideStatusBanner
                 tone="error"
                 title="Couldn't load this ride"
                 subtitle="Check your connection and try again."
               />
               <div className="w-full max-w-[200px]">
-                <ActionButton
+                <SuperAppRideActionButton
                   label="Retry"
                   variant="secondary"
                   onClick={() => {
@@ -122,35 +119,23 @@ export function LiveTrackingScreen({
             </div>
           ) : (
             <>
-              <p
-                className="mb-1 text-[16px] font-bold"
-                style={{ fontFamily: "'Poppins',sans-serif", color: '#fff' }}
-              >
+              <p className={`mb-1 text-[16px] font-bold text-white ${heading}`}>
                 On the way to {ride.data?.dropoffAddress ?? 'destination'}
               </p>
-              <p
-                className="mb-3 text-[13px]"
-                style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.6)' }}
-              >
+              <p className={`mb-3 text-[13px] ${body}`} style={{ color: 'rgba(255,255,255,.6)' }}>
                 {distanceRemainingLabel}
               </p>
-              <div className="mb-4 h-2 rounded-full" style={{ background: '#112238' }}>
-                <div
-                  className="h-2 rounded-full transition-all"
-                  style={{
-                    background: '#47CF72',
-                    width: `${String(Math.round(progress * 100))}%`,
-                  }}
-                />
+              <div className="mb-4">
+                <SuperAppRideProgressBar progress={progress} />
               </div>
               <div className="mb-2 flex gap-2">
-                <QuickActionButton icon="📍" label="Share Trip" disabled />
-                <QuickActionButton icon="🚨" label="SOS" disabled />
-                <QuickActionButton icon="📞" label="Call" disabled />
+                <SuperAppRideQuickActionButton icon="📍" label="Share Trip" disabled />
+                <SuperAppRideQuickActionButton icon="🚨" label="SOS" disabled />
+                <SuperAppRideQuickActionButton icon="📞" label="Call" disabled />
               </div>
               <p
-                className="text-center text-[11px]"
-                style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.3)' }}
+                className={`text-center text-[11px] ${body}`}
+                style={{ color: 'rgba(255,255,255,.3)' }}
               >
                 Share Trip, SOS, and Call aren&apos;t available yet — no trip-sharing, emergency, or
                 telephony capability exists in the backend today.
@@ -158,7 +143,7 @@ export function LiveTrackingScreen({
             </>
           )}
         </div>
-      </RideBottomSheet>
+      </SuperAppRideBottomSheet>
     </div>
   );
 }

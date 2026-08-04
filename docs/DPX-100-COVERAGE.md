@@ -26,7 +26,7 @@ overstate progress:
 | --------------- | ----------------------------------------------------------------------------------: | -------------: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------: | --------: | -----: |
 | Home            |                                                                                   1 |            1/1 |                                                                                                                                                                                    0/1 (`/preview` only) |       1/1 |    1/1 |
 | Marketplace     |                                                                                   6 |            6/6 |                                                                                                                                                           4/6 (Product Detail, Cart, Checkout, Tracking) |       6/6 |    0/6 |
-| Ride            |                                                                                  30 |         6/30 † |                                                                                                                                                                                                 ~20/30 † |  ~20/30 † |      — |
+| Ride            |                                                                                  30 |        10/30 † |                                                                                                                                                                                                 ~20/30 † |  ~20/30 † |      — |
 | Wallet          |                                                                                  10 |           0/10 |                                                                                                                                        0/10 (only `WalletPaySuccessScreen` exists, inside the Ride flow) |      0/10 |      — |
 | Driver          |                                                                                  13 |         0/13 † | partial † (`apps/driver-portal`, different screen set — dashboard/wallet/earnings/trip/history/profile/campaign, not a 1:1 port of `driverScreen.tsx`'s Splash/Login/OTP/KYC/DocsUpload/VehicleReg flow) | partial † |      — |
 | Merchant        |               — (`adminConsoleScreen.tsx`-style single file, not screen-enumerated) |              0 |                                                                                       partial † (`apps/merchant-portal` — dashboard, product CRUD, publish/images/variants/inventory, built pre-DPX-100) | partial † |      — |
@@ -172,10 +172,10 @@ the same real API this module has used since RIDE-003.
 | Fare Estimate                   | ✅ `/ride`             | ✅             | ✅       |
 | Finding Driver                  | ✅ `/ride`             | ✅             | ✅       |
 | Driver Assigned + Profile Sheet | ✅ `/ride`             | ✅             | ✅       |
-| Driver En Route                 | ✅ `/ride`             | ❌             | ✅ †     |
-| Driver Arrived                  | ✅ `/ride`             | ❌             | ✅ †     |
-| Ride In Progress                | ✅ `/ride`             | ❌             | ✅ †     |
-| Live Tracking                   | ✅ `/ride`             | ❌             | ✅ †     |
+| Driver En Route                 | ✅ `/ride`             | ✅             | ✅       |
+| Driver Arrived                  | ✅ `/ride`             | ✅             | ✅       |
+| Ride In Progress                | ✅ `/ride`             | ✅             | ✅       |
+| Live Tracking                   | ✅ `/ride`             | ✅             | ✅       |
 | Trip Completed                  | ✅ `/ride`             | ❌             | ✅ †     |
 | Payment / Gateway / Cash        | ✅ `/ride`             | ❌             | ✅ †     |
 | Wallet Pay Success              | ✅ `/ride`             | ❌             | ✅ †     |
@@ -204,5 +204,5 @@ seed rows for live production data requires no presentation-layer code
 change. Phase 2, once a module is fully live, its seed block is simply
 dropped from `seed.ts`.
 
-_Last updated: 2026-08-04, after Ride Slice 2 (Destination Search, Fare
-Estimate, Finding Driver, Driver Assigned + Profile Sheet)._
+_Last updated: 2026-08-04, after Ride Slice 3 (Driver En Route, Driver
+Arrived, Ride In Progress, Live Tracking)._
