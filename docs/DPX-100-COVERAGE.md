@@ -199,8 +199,9 @@ applied to Marketplace.
 **2026-08-04 update:** ride-type display names are now backend-driven
 (`GET /customer/rides/types`) instead of hardcoded per-screen — a
 founder-granted bug-fix exception to the freeze, not a redesign. Three
-launch categories (DX Ride, DX Comfort, DX XL) plus the existing Tricycle
-vehicle class. See MATURITY.md's "Ride module — DX rebrand" section.
+launch categories (Dx Ride, Dx Comfort, Dx XL — capital D, lowercase x)
+plus the existing Tricycle vehicle class, not Dx-branded. See
+MATURITY.md's "Ride module — DX rebrand" section.
 
 ‡ Wallet and Cash payment methods were verified end-to-end against the
 real backend (real wallet balance, real driver `cash-confirm`). The
@@ -281,6 +282,6 @@ seed rows for live production data requires no presentation-layer code
 change. Phase 2, once a module is fully live, its seed block is simply
 dropped from `seed.ts`.
 
-_Last updated: 2026-08-04, after the Ride DX rebrand (DX Ride/DX
-Comfort/DX XL) and Wallet Slice 3 (Payment Methods, Rewards) — Wallet is
+_Last updated: 2026-08-04, after the Ride DX rebrand (Dx Ride/Dx
+Comfort/Dx XL) and Wallet Slice 3 (Payment Methods, Rewards) — Wallet is
 now 6/10 real screens ported and Playwright-verified._

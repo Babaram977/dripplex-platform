@@ -943,18 +943,19 @@ row) was already a fully generic, options-driven component requiring no
 changes; it now just receives real data instead of a hardcoded array.
 
 Per founder direction, three customer-facing categories now launch
-alongside the pre-existing Tricycle vehicle class: **DX Ride** (the
-renamed Economy default), **DX Comfort**, **DX XL** — added as new
+alongside the pre-existing Tricycle vehicle class: **Dx Ride** (the
+renamed Economy default), **Dx Comfort**, **Dx XL** — added as new
 `RideType` Prisma enum values (`ALTER TYPE ... ADD VALUE`, additive and
 backward-compatible) with placeholder fare rates in `RIDE_FARE_RATES`
 (same "not founder-approved economics" caveat already on the existing
-Economy/Tricycle rates). Driver-portal's own local vehicle-type label
-maps (online toggle, incoming-ride modal, profile page) were extended
-with the two new options too — without this, no driver could ever
-register as Comfort/XL and the categories would be unbookable in
-practice; this stays a local label map, not backend-driven, since
-driver-portal wasn't named in the founder's instruction and a driver-facing
-catalog endpoint is a larger scope than this fix.
+Economy/Tricycle rates). Brand casing is "Dx" (capital D, lowercase x);
+Tricycle is not Dx-branded and stays plain "Tricycle". Driver-portal's
+own local vehicle-type label maps (online toggle, incoming-ride modal,
+profile page) were extended with the two new options too — without this,
+no driver could ever register as Comfort/XL and the categories would be
+unbookable in practice; this stays a local label map, not backend-driven,
+since driver-portal wasn't named in the founder's instruction and a
+driver-facing catalog endpoint is a larger scope than this fix.
 
 Typecheck/lint clean across `@dripplex/backend`, `@dripplex/types`,
 `@dripplex/sdk`, `customer-web`, and `driver-portal`. Backend `rides` and
@@ -962,13 +963,19 @@ Typecheck/lint clean across `@dripplex/backend`, `@dripplex/types`,
 only when run as part of the full `rides` suite, not in isolation —
 pre-existing shared-dev-DB cross-file state pollution, not caused by this
 change; passes standalone). Verified with Playwright against the real
-backend: Fare Estimate's chip row now shows real "DX Ride / DX Comfort /
-DX XL / DX Tricycle" with real emoji from the catalog; selecting DX
+backend: Fare Estimate's chip row shows real "Dx Ride / Dx Comfort /
+Dx XL / Tricycle" with real emoji from the catalog; selecting Dx
 Comfort produced a real fare estimate using the new COMFORT rate (₦450
-base) and a real "Book DX Comfort · ₦3,186" button label; Ride History
-showed "DX Ride" (previously "economy Ride", lowercase, from the old
+base) and a real "Book Dx Comfort · ₦3,186" button label; Ride History
+showed "Dx Ride" (previously "economy Ride", lowercase, from the old
 `.toLowerCase()` hack) on every existing ride row. Zero console errors.
 Ride's frozen visual spec is otherwise untouched.
+
+**Casing correction (2026-08-04, same day):** founder corrected the brand
+casing to "Dx" (capital D, lowercase x, not "DX") and clarified Tricycle
+should not carry the Dx prefix at all. Both fixed across
+`RIDE_TYPE_CATALOG` and the three driver-portal label maps; re-verified
+with Playwright, zero console errors, no other behavior changed.
 
 ## Wallet module — Slice 3: Payment Methods + Rewards (2026-08-04)
 

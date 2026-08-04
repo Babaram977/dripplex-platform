@@ -47,10 +47,10 @@ function useCountdown(expiresAt: string | undefined): number {
 }
 
 const VEHICLE_TYPE_LABEL: Record<string, string> = {
-  ECONOMY: 'DX Ride (car)',
-  COMFORT: 'DX Comfort (car)',
-  XL: 'DX XL (car)',
-  TRICYCLE: 'DX Tricycle (Keke)',
+  ECONOMY: 'Dx Ride (car)',
+  COMFORT: 'Dx Comfort (car)',
+  XL: 'Dx XL (car)',
+  TRICYCLE: 'Tricycle (Keke)',
 };
 
 /**

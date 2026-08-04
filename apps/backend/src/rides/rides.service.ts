@@ -55,7 +55,7 @@ export class RidesService {
 
   /** Real service-type catalog (display name + description) so the
    * frontend never hardcodes ride-type labels — the founder-directed fix
-   * for DX Ride/DX Comfort/DX XL replacing the previous per-screen
+   * for Dx Ride/Dx Comfort/Dx XL replacing the previous per-screen
    * hardcoded "Economy"/"Tricycle" label maps. Deterministic, no DB call. */
   public listRideTypes(): RideTypeCatalogEntryDto[] {
     return (Object.keys(RIDE_TYPE_CATALOG) as RideType[]).map((type) => ({

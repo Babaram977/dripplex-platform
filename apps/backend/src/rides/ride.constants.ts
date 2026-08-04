@@ -110,8 +110,10 @@ export const RIDE_FARE_RATES: Record<
 
 /**
  * Single source of truth for ride-type display copy — founder direction
- * (launch with exactly three customer-facing categories: DX Ride/DX
- * Comfort/DX XL) plus the existing TRICYCLE vehicle class, unchanged.
+ * (launch with exactly three customer-facing categories: Dx Ride/Dx
+ * Comfort/Dx XL) plus the existing TRICYCLE vehicle class, unchanged.
+ * Brand casing is "Dx" (capital D, lowercase x), not "DX". Tricycle is
+ * not Dx-branded — it stays "Tricycle".
  * The backend owns this so the frontend never hardcodes a service name
  * (the defect this replaces: `Record<string,string>` label maps duplicated
  * across the Fare Estimate, History, and Trip Completed screens).
@@ -121,22 +123,22 @@ export const RIDE_TYPE_CATALOG: Record<
   { displayName: string; description: string; emoji: string }
 > = {
   [RideType.ECONOMY]: {
-    displayName: 'DX Ride',
+    displayName: 'Dx Ride',
     description: 'Everyday affordable rides',
     emoji: '🚗',
   },
   [RideType.COMFORT]: {
-    displayName: 'DX Comfort',
+    displayName: 'Dx Comfort',
     description: 'Newer vehicles, more legroom, better-rated drivers',
     emoji: '🚙',
   },
   [RideType.XL]: {
-    displayName: 'DX XL',
+    displayName: 'Dx XL',
     description: 'Larger vehicle for families and groups (5-7 seats)',
     emoji: '🚐',
   },
   [RideType.TRICYCLE]: {
-    displayName: 'DX Tricycle',
+    displayName: 'Tricycle',
     description: 'Quick, affordable short trips',
     emoji: '🛺',
   },
