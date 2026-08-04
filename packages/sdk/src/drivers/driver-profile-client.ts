@@ -2,8 +2,10 @@ import type { HttpClient } from '../client/http-client.js';
 import type {
   DriverActivationEligibilityDto,
   DriverKycDto,
+  DriverPerformanceStatsDto,
   DriverProfileDto,
   SubmitDriverKycRequest,
+  UpdateDriverProfileRequest,
 } from '@dripplex/types';
 
 /**
@@ -15,6 +17,24 @@ export class DriverProfileClient {
 
   public getOwnProfile(): Promise<DriverProfileDto> {
     return this.http.request<DriverProfileDto>('/driver/profile', {
+      method: 'GET',
+      auth: true,
+    });
+  }
+
+  /** Driver Slice 2 item 9 — self-service edit of the founder-scoped
+   * driver-editable profile fields. */
+  public updateOwnProfile(body: UpdateDriverProfileRequest): Promise<DriverProfileDto> {
+    return this.http.request<DriverProfileDto>('/driver/profile', {
+      method: 'PATCH',
+      body,
+      auth: true,
+    });
+  }
+
+  /** Driver Slice 2 item 9 — read-only performance/ratings summary. */
+  public getPerformanceStats(): Promise<DriverPerformanceStatsDto> {
+    return this.http.request<DriverPerformanceStatsDto>('/driver/profile/performance', {
       method: 'GET',
       auth: true,
     });

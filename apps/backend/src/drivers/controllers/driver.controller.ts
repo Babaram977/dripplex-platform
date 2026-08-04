@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Patch, Post, Req } from '@nestjs/common';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
@@ -8,6 +8,7 @@ import { DriversService } from '../drivers.service';
 import { AcceptDriverAgreementDto } from '../dto/accept-driver-agreement.dto';
 import { SubmitDriverKycDto } from '../dto/submit-driver-kyc.dto';
 import { SubmitEmergencyContactDto } from '../dto/submit-emergency-contact.dto';
+import { UpdateDriverProfileDto } from '../dto/update-driver-profile.dto';
 import { OnboardingService } from '../onboarding/onboarding.service';
 
 import type { AuthenticatedUser } from '../../auth/auth.types';
@@ -16,6 +17,7 @@ import type {
   DriverActivationEligibilityDto,
   DriverKycDto,
   DriverOnboardingDto,
+  DriverPerformanceStatsDto,
   DriverProfileDto,
 } from '@dripplex/types';
 import type { Request } from 'express';
@@ -34,6 +36,30 @@ export class DriverController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<ApiSuccessResponse<DriverProfileDto>> {
     const data = await this.driversService.getOwnProfile(user.id);
+    return { success: true, data };
+  }
+
+  @Patch('profile')
+  @RequirePermissions(DRIVER_PERMISSIONS.PROFILE_MANAGE)
+  public async updateOwnProfile(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateDriverProfileDto,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<DriverProfileDto>> {
+    const data = await this.driversService.updateOwnProfile(
+      user.id,
+      dto,
+      this.auditContext(request, user.id),
+    );
+    return { success: true, data };
+  }
+
+  @Get('profile/performance')
+  @RequirePermissions(DRIVER_PERMISSIONS.PROFILE_MANAGE)
+  public async getOwnPerformanceStats(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ApiSuccessResponse<DriverPerformanceStatsDto>> {
+    const data = await this.driversService.getOwnPerformanceStats(user.id);
     return { success: true, data };
   }
 

@@ -162,6 +162,11 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
     code: 'driver:help:read',
     description: 'Browse the driver Help Centre (FAQ/articles) — authoring uses admin:cms:manage',
   },
+  {
+    code: 'driver:profile:manage',
+    description:
+      'Update own profile (name, photo, languages, service areas, driving experience) and view own performance stats',
+  },
   { code: 'admin:rides:support', description: 'Review and resolve ride problem reports' },
   { code: 'users:read', description: 'Read user records' },
   { code: 'users:write', description: 'Update user records' },

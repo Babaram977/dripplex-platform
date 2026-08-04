@@ -172,9 +172,50 @@ export interface DriverProfileDto {
   /** DPX-DRIVER-002 Phase 4 */
   agreementAcceptedAt: string | null;
   agreementVersion: string | null;
+  /** Driver Slice 2 item 9 — Profile enhancements. Self-editable by the
+   * driver via UpdateDriverProfileRequest. avatarUrl is a hosted-URL
+   * string, same convention as DriverKycDto.frontImage — no file-upload
+   * backend exists anywhere in this codebase. preferredServiceAreas is
+   * free-text city/area names — no geo-boundary/zone model exists to
+   * constrain it against. */
+  avatarUrl: string | null;
+  languagesSpoken: string[];
+  preferredServiceAreas: string[];
+  drivingExperienceYears: number | null;
   createdAt: string;
   updatedAt: string;
   kyc: DriverKycDto[];
+}
+
+/** Driver Slice 2 item 9 — self-service edit of the fields the founder
+ * scoped as driver-editable. Personal info here is deliberately narrow:
+ * firstName/lastName only. Email/phone changes go through no dedicated
+ * flow anywhere in this codebase for any user type (customer, merchant,
+ * rider, driver) — that's a separate, cross-cutting feature, not part of
+ * this item's scope. Emergency contact keeps using the existing
+ * SubmitEmergencyContactRequest (driver/onboarding/emergency-contact) —
+ * it was already freely re-callable post-onboarding, just never wired
+ * into a driver-portal profile-edit UI until now. */
+export interface UpdateDriverProfileRequest {
+  firstName?: string;
+  lastName?: string;
+  avatarUrl?: string;
+  languagesSpoken?: string[];
+  preferredServiceAreas?: string[];
+  drivingExperienceYears?: number;
+}
+
+/** Driver Slice 2 item 9 — read-only performance/ratings summary, derived
+ * from the frozen Ride/RideRating tables via a read-only cross-module
+ * Prisma query (same established pattern as SosAlertService/
+ * DriverRideContactService reading `prisma.ride.findFirst` directly) —
+ * apps/backend/src/rides/ files themselves are never touched. */
+export interface DriverPerformanceStatsDto {
+  completedTrips: number;
+  /** Average of customer→driver RideRating.rating, rounded to 2dp; null
+   * when the driver has no ratings yet (never a fabricated 0/5). */
+  averageRating: number | null;
+  ratingCount: number;
 }
 
 export interface SubmitDriverKycRequest {

@@ -36,4 +36,30 @@ describe('DriverProfileClient', () => {
       auth: true,
     });
   });
+
+  it('updateOwnProfile() patches /driver/profile with auth', async () => {
+    const { http, request } = createHttpMock();
+    const client = new DriverProfileClient(http);
+
+    const body = { firstName: 'Ada', languagesSpoken: ['English', 'Yoruba'] };
+    await client.updateOwnProfile(body);
+
+    expect(request).toHaveBeenCalledWith('/driver/profile', {
+      method: 'PATCH',
+      body,
+      auth: true,
+    });
+  });
+
+  it('getPerformanceStats() gets /driver/profile/performance with auth', async () => {
+    const { http, request } = createHttpMock();
+    const client = new DriverProfileClient(http);
+
+    await client.getPerformanceStats();
+
+    expect(request).toHaveBeenCalledWith('/driver/profile/performance', {
+      method: 'GET',
+      auth: true,
+    });
+  });
 });

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, RideRatingRole, RideStatus, RideType } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
 
@@ -22,6 +22,8 @@ describe('DriversService', () => {
   let driverId: string;
   let adminId: string;
   let centreId: string;
+  let customerId: string;
+  const rideIds: string[] = [];
   const context = {};
 
   beforeAll(async () => {
@@ -87,15 +89,32 @@ describe('DriversService', () => {
       },
     });
     centreId = centre.id;
+
+    const customer = await prisma.user.create({
+      data: {
+        email: `driver-service-customer-${randomUUID()}@dripplex.test`,
+        passwordHash: 'not-a-real-hash',
+        firstName: 'Test',
+        lastName: 'Customer',
+      },
+    });
+    customerId = customer.id;
   });
 
   afterAll(async () => {
     if (databaseAvailable) {
+      if (rideIds.length > 0) {
+        await prisma.rideRating
+          .deleteMany({ where: { rideId: { in: rideIds } } })
+          .catch(() => undefined);
+        await prisma.ride.deleteMany({ where: { id: { in: rideIds } } }).catch(() => undefined);
+      }
       await prisma.inspection.deleteMany({ where: { driverId } }).catch(() => undefined);
       await prisma.vehicle.deleteMany({ where: { driverId } }).catch(() => undefined);
       await prisma.inspectionCentre.delete({ where: { id: centreId } }).catch(() => undefined);
       await prisma.user.delete({ where: { id: driverId } }).catch(() => undefined);
       await prisma.user.delete({ where: { id: adminId } }).catch(() => undefined);
+      await prisma.user.delete({ where: { id: customerId } }).catch(() => undefined);
     }
     await prisma.$disconnect();
   });
@@ -266,5 +285,130 @@ describe('DriversService', () => {
     await expect(service.getDriverProfile(randomUUID())).rejects.toThrow(
       'Driver profile not found',
     );
+  });
+
+  describe('updateOwnProfile', () => {
+    it('updates name and the new Slice 2 item 9 profile fields together', async () => {
+      if (!databaseAvailable) return;
+
+      const updated = await service.updateOwnProfile(
+        driverId,
+        {
+          firstName: 'Ada',
+          lastName: 'Lovelace',
+          avatarUrl: 'https://example.com/avatar.jpg',
+          languagesSpoken: ['English', 'Yoruba'],
+          preferredServiceAreas: ['Lekki', 'Ikeja'],
+          drivingExperienceYears: 5,
+        },
+        context,
+      );
+
+      expect(updated.firstName).toBe('Ada');
+      expect(updated.lastName).toBe('Lovelace');
+      expect(updated.avatarUrl).toBe('https://example.com/avatar.jpg');
+      expect(updated.languagesSpoken).toEqual(['English', 'Yoruba']);
+      expect(updated.preferredServiceAreas).toEqual(['Lekki', 'Ikeja']);
+      expect(updated.drivingExperienceYears).toBe(5);
+    });
+
+    it('leaves fields untouched when a partial update omits them', async () => {
+      if (!databaseAvailable) return;
+
+      const updated = await service.updateOwnProfile(
+        driverId,
+        { drivingExperienceYears: 7 },
+        context,
+      );
+
+      // firstName/lastName from the previous test are untouched.
+      expect(updated.firstName).toBe('Ada');
+      expect(updated.lastName).toBe('Lovelace');
+      expect(updated.avatarUrl).toBe('https://example.com/avatar.jpg');
+      expect(updated.drivingExperienceYears).toBe(7);
+    });
+
+    it('rejects updating an unknown driver profile', async () => {
+      if (!databaseAvailable) return;
+
+      await expect(
+        service.updateOwnProfile(randomUUID(), { firstName: 'Ghost' }, context),
+      ).rejects.toThrow('Driver profile not found');
+    });
+  });
+
+  describe('getOwnPerformanceStats', () => {
+    it('returns zero trips and no rating for a driver with no completed rides', async () => {
+      if (!databaseAvailable) return;
+
+      const stats = await service.getOwnPerformanceStats(driverId);
+
+      expect(stats.completedTrips).toBe(0);
+      expect(stats.averageRating).toBeNull();
+      expect(stats.ratingCount).toBe(0);
+    });
+
+    it('computes completed-trip count and average customer rating from Ride/RideRating', async () => {
+      if (!databaseAvailable) return;
+
+      function baseRideData(status: RideStatus): Parameters<typeof prisma.ride.create>[0]['data'] {
+        return {
+          customerId,
+          driverId,
+          rideType: RideType.ECONOMY,
+          status,
+          pickupLatitude: 6.5244,
+          pickupLongitude: 3.3792,
+          dropoffLatitude: 6.601,
+          dropoffLongitude: 3.3489,
+        };
+      }
+
+      const completedRideOne = await prisma.ride.create({
+        data: baseRideData(RideStatus.COMPLETED),
+      });
+      const completedRideTwo = await prisma.ride.create({
+        data: baseRideData(RideStatus.COMPLETED),
+      });
+      const ongoingRide = await prisma.ride.create({
+        data: baseRideData(RideStatus.IN_PROGRESS),
+      });
+      rideIds.push(completedRideOne.id, completedRideTwo.id, ongoingRide.id);
+
+      await prisma.rideRating.create({
+        data: {
+          rideId: completedRideOne.id,
+          raterId: customerId,
+          rateeId: driverId,
+          raterRole: RideRatingRole.CUSTOMER,
+          rating: 5,
+        },
+      });
+      await prisma.rideRating.create({
+        data: {
+          rideId: completedRideTwo.id,
+          raterId: customerId,
+          rateeId: driverId,
+          raterRole: RideRatingRole.CUSTOMER,
+          rating: 4,
+        },
+      });
+      // A driver->customer rating must not count toward the driver's own average.
+      await prisma.rideRating.create({
+        data: {
+          rideId: completedRideOne.id,
+          raterId: driverId,
+          rateeId: customerId,
+          raterRole: RideRatingRole.DRIVER,
+          rating: 1,
+        },
+      });
+
+      const stats = await service.getOwnPerformanceStats(driverId);
+
+      expect(stats.completedTrips).toBe(2);
+      expect(stats.averageRating).toBe(4.5);
+      expect(stats.ratingCount).toBe(2);
+    });
   });
 });

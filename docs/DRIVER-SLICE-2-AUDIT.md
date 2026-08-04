@@ -312,7 +312,69 @@ an explicit decision before build starts:
   provider decision (same class as Smile ID/background-check choices), and
   ongoing cost.
 
-### 9. Driver profile enhancements — ⚠️ Undefined scope
+### 9. Driver profile enhancements — ✅ Shipped (2026-08-04)
+
+**Built:** scoped by the founder's 2026-08-04 field-level decision (see
+"Founder decisions" below) into driver-editable vs. regulated/view-only
+fields. Two genuinely new backend capabilities, plus UI wiring for
+capability that already existed but had never been surfaced in
+driver-portal:
+
+- **Self-service profile edit** — new `PATCH /driver/profile`
+  (`DriversService.updateOwnProfile`, gated by new `driver:profile:manage`
+  permission) covers exactly the founder's driver-editable field list:
+  first/last name, plus four new `DriverProfile` columns —
+  `avatarUrl` (hosted-URL string, same convention as
+  `DriverKyc.frontImage` — no file-upload backend exists anywhere in this
+  codebase), `languagesSpoken`/`preferredServiceAreas` (string arrays;
+  the latter is free-text city/area names — no geo-boundary/zone model
+  exists to constrain it against), and `drivingExperienceYears`. Email/
+  phone changes are explicitly out of scope: no change-of-email/phone
+  flow exists anywhere in this backend for any user type, not just
+  drivers — an honest gap, not a guess at building one here.
+- **Performance/ratings summary** — new `GET /driver/profile/performance`
+  (`DriversService.getOwnPerformanceStats`) reads the frozen Ride/
+  RideRating tables directly and read-only — `completedTrips` via
+  `prisma.ride.count`, `averageRating`/`ratingCount` via
+  `prisma.rideRating.aggregate` filtered to `raterRole: CUSTOMER` (a
+  customer's rating of the driver, not the driver's own outbound rating
+  of the customer) — the same established cross-module-read pattern as
+  `SosAlertService`/`DriverRideContactService`'s `prisma.ride.findFirst`;
+  `apps/backend/src/rides/` files themselves are never touched.
+- **Emergency contact edit UI** — `DriverController`'s
+  `POST /driver/onboarding/emergency-contact` (DPX-DRIVER-002 Phase 1) was
+  always freely re-callable post-onboarding but had no driver-portal edit
+  form until now; wired into the profile page.
+- **Vehicle management UI** — `VehiclesService`/`DriverVehiclesController`
+  and the SDK's `sdk.vehicles` client have existed since Driver Slice 1
+  but were never consumed by any driver-portal screen (the profile page
+  only showed the broad `DriverAvailability.vehicleType` category). New
+  `VehicleManager` component provides list/add/edit, reusing the existing
+  backend/SDK surface as-is.
+- **Inspection history UI** — same story: `InspectionsService`/
+  `DriverInspectionsController`/`sdk.inspections` existed, never
+  consumed. New read-only `InspectionHistory` list. Booking a new
+  inspection (centre picker + scheduling) stays unbuilt in
+  driver-portal — the founder's field list said "inspection history"
+  (viewable), not "book inspection"; a documented, deliberate scope line.
+- **Security status UI** — the already-existing (but until now unused)
+  `useIdentityVerificationStatus` hook/SDK client is now surfaced as a
+  read-only card on the profile page. Building the selfie-capture/
+  re-verification flow itself is Driver-001 scope, not this item.
+- **Account status, documents overview, earnings summary** — already
+  shown on the profile page (status badge, KYC list) or in the existing
+  Earnings screen; the profile page now links to Earnings rather than
+  duplicating its computation.
+
+All five verification layers pass: backend tsc/eslint/jest (14 new tests
+in `drivers.service.spec.ts` covering `updateOwnProfile` — full update,
+partial update, unknown-driver rejection — and `getOwnPerformanceStats` —
+zero-state, and a real Ride+RideRating fixture asserting the customer→
+driver average excludes the driver's own outbound rating of the
+customer), SDK tsc/eslint/vitest (2 new `driver-profile-client.spec.ts`
+cases), driver-portal tsc/eslint/next-build.
+
+Original audit finding, kept for context:
 
 `DriverProfile`/`User` already carry real fields (name, phone, email,
 emergency contact — DPX-DRIVER-002 — KYC documents, vehicle records).

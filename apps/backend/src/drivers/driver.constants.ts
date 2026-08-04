@@ -54,6 +54,8 @@ export const DRIVER_AUDIT_ACTIONS = {
   SHIFT_FORCE_ENDED: 'driver.shift.force_ended',
   PLANNED_AVAILABILITY_SET: 'driver.planned_availability.set',
   PLANNED_AVAILABILITY_DELETED: 'driver.planned_availability.deleted',
+  /// Driver Slice 2 item 9
+  PROFILE_UPDATED: 'driver.profile.updated',
 } as const;
 
 export const DRIVER_PERMISSIONS = {
@@ -98,6 +100,12 @@ export const DRIVER_PERMISSIONS = {
   /// through the existing admin:cms:manage permission (AdminCmsController)
   /// — no new admin permission needed.
   HELP_READ: 'driver:help:read',
+  /// Driver Slice 2 item 9 — Profile enhancements (self-service edit +
+  /// read-only performance stats). No admin counterpart needed: admins
+  /// already view driver profiles via the existing admin:drivers:review
+  /// permission (AdminDriversController) — this item added no new
+  /// admin-facing capability.
+  PROFILE_MANAGE: 'driver:profile:manage',
 } as const;
 
 /** DriverSecuritySettings is a singleton row (enforced at the service

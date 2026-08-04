@@ -67,6 +67,7 @@ export const ROLE_PERMISSION_GRANTS: Record<string, string[]> = {
     'driver:sos-alert:manage',
     'driver:shift:manage',
     'driver:help:read',
+    'driver:profile:manage',
     'driver:wallet:read',
     'driver:referral_campaign:use',
     'customer:notifications:read',

@@ -626,6 +626,18 @@ model DriverProfile {
   /// agreement update can require re-acceptance without ambiguity.
   agreementAcceptedAt                DateTime?                  @map("agreement_accepted_at")
   agreementVersion                   String?                    @map("agreement_version") @db.VarChar(20)
+  /// Driver Slice 2 item 9 — Profile enhancements (founder-scoped
+  /// 2026-08-04). Self-editable by the driver via DriversService.
+  /// updateOwnProfile; no file-upload backend exists anywhere in this
+  /// codebase (see KycDocumentForm), so avatarUrl follows the same
+  /// hosted-URL-string convention as DriverKyc.frontImage rather than a
+  /// file picker.
+  avatarUrl                          String?                    @map("avatar_url") @db.VarChar(2048)
+  languagesSpoken                    String[]                   @default([]) @map("languages_spoken")
+  /// Free-text area/city names — there is no formal geo-boundary/zone
+  /// model anywhere in this codebase to constrain this against.
+  preferredServiceAreas              String[]                   @default([]) @map("preferred_service_areas")
+  drivingExperienceYears             Int?                       @map("driving_experience_years")
   createdAt                          DateTime                   @default(now()) @map("created_at")
   updatedAt                          DateTime                   @updatedAt @map("updated_at")
   deletedAt                          DateTime?                  @map("deleted_at")

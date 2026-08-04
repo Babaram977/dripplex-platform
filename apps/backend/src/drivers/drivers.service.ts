@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { DriverStatus, KycVerificationStatus } from '@prisma/client';
+import { DriverStatus, KycVerificationStatus, RideRatingRole, RideStatus } from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../audit/audit.service';
 import {
@@ -19,7 +19,13 @@ import { toDriverApprovalDto, toDriverKycDto, toDriverProfileDto } from './drive
 
 import type { ListDriversQueryDto } from './dto/list-drivers-query.dto';
 import type { SubmitDriverKycDto } from './dto/submit-driver-kyc.dto';
-import type { DriverApprovalDto, DriverKycDto, DriverProfileDto } from '@dripplex/types';
+import type { UpdateDriverProfileDto } from './dto/update-driver-profile.dto';
+import type {
+  DriverApprovalDto,
+  DriverKycDto,
+  DriverPerformanceStatsDto,
+  DriverProfileDto,
+} from '@dripplex/types';
 import type { DriverKyc, DriverProfile, User } from '@prisma/client';
 
 @Injectable()
@@ -72,6 +78,89 @@ export class DriversService {
       orderBy: { createdAt: 'desc' },
     });
     return toDriverProfileDto({ profile: profile.profile, user: profile.user, kyc });
+  }
+
+  /** Driver Slice 2 item 9 — self-service edit of the fields the founder
+   * scoped as driver-editable. Touches both User (firstName/lastName) and
+   * DriverProfile (the new fields) in one transaction since they're two
+   * tables under a single logical "profile" concept. */
+  public async updateOwnProfile(
+    driverUserId: string,
+    dto: UpdateDriverProfileDto,
+    context: AuditContext,
+  ): Promise<DriverProfileDto> {
+    await this.requireDriverProfile(driverUserId);
+
+    const userData: { firstName?: string; lastName?: string } = {};
+    if (dto.firstName !== undefined) userData.firstName = dto.firstName.trim();
+    if (dto.lastName !== undefined) userData.lastName = dto.lastName.trim();
+
+    const profileData: {
+      avatarUrl?: string;
+      languagesSpoken?: string[];
+      preferredServiceAreas?: string[];
+      drivingExperienceYears?: number;
+    } = {};
+    if (dto.avatarUrl !== undefined) profileData.avatarUrl = dto.avatarUrl;
+    if (dto.languagesSpoken !== undefined) {
+      profileData.languagesSpoken = dto.languagesSpoken.map((l) => l.trim()).filter(Boolean);
+    }
+    if (dto.preferredServiceAreas !== undefined) {
+      profileData.preferredServiceAreas = dto.preferredServiceAreas
+        .map((a) => a.trim())
+        .filter(Boolean);
+    }
+    if (dto.drivingExperienceYears !== undefined) {
+      profileData.drivingExperienceYears = dto.drivingExperienceYears;
+    }
+
+    const [updatedUser, updatedProfile] = await this.prisma.$transaction([
+      this.prisma.user.update({ where: { id: driverUserId }, data: userData }),
+      this.prisma.driverProfile.update({
+        where: { userId: driverUserId },
+        data: profileData,
+      }),
+    ]);
+
+    await this.auditService.record(
+      DRIVER_AUDIT_ACTIONS.PROFILE_UPDATED,
+      { ...context, userId: driverUserId },
+      { resource: 'driver_profile', resourceId: updatedProfile.id },
+    );
+
+    const kyc = await this.prisma.driverKyc.findMany({
+      where: { driverId: driverUserId },
+      orderBy: { createdAt: 'desc' },
+    });
+    return toDriverProfileDto({ profile: updatedProfile, user: updatedUser, kyc });
+  }
+
+  /** Driver Slice 2 item 9 — read-only performance/ratings summary. Reads
+   * the frozen Ride/RideRating tables directly (same established pattern
+   * as SosAlertService/DriverRideContactService's `prisma.ride.findFirst`)
+   * — apps/backend/src/rides/ files are never modified. `rateeId` +
+   * `raterRole: CUSTOMER` on RideRating means "a customer rated this
+   * driver" (see RideRatingService.rateDriver). */
+  public async getOwnPerformanceStats(driverUserId: string): Promise<DriverPerformanceStatsDto> {
+    const [completedTrips, ratingAggregate] = await Promise.all([
+      this.prisma.ride.count({
+        where: { driverId: driverUserId, status: RideStatus.COMPLETED },
+      }),
+      this.prisma.rideRating.aggregate({
+        where: { rateeId: driverUserId, raterRole: RideRatingRole.CUSTOMER },
+        _avg: { rating: true },
+        _count: { rating: true },
+      }),
+    ]);
+
+    return {
+      completedTrips,
+      averageRating:
+        ratingAggregate._avg.rating !== null
+          ? Math.round(ratingAggregate._avg.rating * 100) / 100
+          : null,
+      ratingCount: ratingAggregate._count.rating,
+    };
   }
 
   public async listDrivers(query: ListDriversQueryDto): Promise<{

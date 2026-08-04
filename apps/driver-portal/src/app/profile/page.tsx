@@ -1,11 +1,18 @@
 'use client';
 
 import { Badge, Card, CardContent, CardHeader, CardTitle, Skeleton } from '@dripplex/ui';
+import Link from 'next/link';
 import * as React from 'react';
 
 import { AppShell } from '@/components/app-shell';
 import { ChangePasswordForm } from '@/components/driver/change-password-form';
+import { EditPersonalInfoForm } from '@/components/driver/edit-personal-info-form';
+import { EmergencyContactForm } from '@/components/driver/emergency-contact-form';
+import { InspectionHistory } from '@/components/driver/inspection-history';
 import { KycDocumentForm } from '@/components/driver/kyc-document-form';
+import { PerformanceSummary } from '@/components/driver/performance-summary';
+import { SecurityStatus } from '@/components/driver/security-status';
+import { VehicleManager } from '@/components/driver/vehicle-manager';
 import { useDriverAvailability } from '@/hooks/rides/use-driver-availability';
 import { useDriverProfile } from '@/hooks/use-driver-profile';
 import { formatDate } from '@/lib/format';
@@ -61,55 +68,96 @@ export default function ProfilePage(): React.JSX.Element {
               </Badge>
             ) : null}
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex flex-col gap-4">
             {profile.isLoading ? <Skeleton className="h-24 w-full" /> : null}
             {profile.data ? (
-              <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
-                <div>
-                  <p className="text-muted-foreground text-xs">Name</p>
-                  <p>
-                    {profile.data.firstName} {profile.data.lastName}
-                  </p>
+              <>
+                <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                  <div>
+                    <p className="text-muted-foreground text-xs">Email</p>
+                    <p>{profile.data.email}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground text-xs">Phone</p>
+                    <p>{profile.data.phone ?? 'Not provided'}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground text-xs">Driver since</p>
+                    <p>{formatDate(profile.data.createdAt)}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-muted-foreground text-xs">Email</p>
-                  <p>{profile.data.email}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground text-xs">Phone</p>
-                  <p>{profile.data.phone ?? 'Not provided'}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground text-xs">Driver since</p>
-                  <p>{formatDate(profile.data.createdAt)}</p>
-                </div>
-              </div>
+                <p className="text-muted-foreground text-xs">
+                  Email and phone changes aren&apos;t available yet — there&apos;s no
+                  change-of-email/phone flow for any account type in this backend.
+                </p>
+                <EditPersonalInfoForm profile={profile.data} />
+              </>
             ) : null}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Emergency contact</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {profile.data ? <EmergencyContactForm profile={profile.data} /> : null}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Performance</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <PerformanceSummary />
             <p className="text-muted-foreground mt-3 text-xs">
-              Editing personal information isn&apos;t available yet — there&apos;s no update-profile
-              endpoint for drivers in the backend.
+              Want the full breakdown?{' '}
+              <Link href="/earnings" className="text-primary underline-offset-4 hover:underline">
+                View earnings
+              </Link>
+              .
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Vehicle details</CardTitle>
+            <CardTitle>Security</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-sm">
-              <p className="text-muted-foreground text-xs">Vehicle type</p>
+            <SecurityStatus />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Vehicles</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <VehicleManager />
+            <div className="border-border/70 border-t pt-3 text-sm">
+              <p className="text-muted-foreground text-xs">Online category (from availability)</p>
               <p>
                 {availability.data?.vehicleType
                   ? (VEHICLE_TYPE_LABEL[availability.data.vehicleType] ??
                     availability.data.vehicleType)
                   : 'Set from the dashboard when you go online'}
               </p>
+              <p className="text-muted-foreground mt-1 text-xs">
+                This is set independently each time you go online — it isn&apos;t linked to the
+                vehicles listed above.
+              </p>
             </div>
-            <p className="text-muted-foreground mt-3 text-xs">
-              Make, model, plate number, and colour aren&apos;t captured anywhere in the
-              backend&apos;s schema — only this broad vehicle-type category exists.
-            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Inspection history</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <InspectionHistory />
           </CardContent>
         </Card>
 

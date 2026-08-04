@@ -42,6 +42,10 @@ export function toDriverProfileDto(input: {
       ? input.profile.agreementAcceptedAt.toISOString()
       : null,
     agreementVersion: input.profile.agreementVersion,
+    avatarUrl: input.profile.avatarUrl,
+    languagesSpoken: input.profile.languagesSpoken,
+    preferredServiceAreas: input.profile.preferredServiceAreas,
+    drivingExperienceYears: input.profile.drivingExperienceYears,
     createdAt: input.profile.createdAt.toISOString(),
     updatedAt: input.profile.updatedAt.toISOString(),
     kyc: input.kyc.map(toDriverKycDto),
