@@ -56,6 +56,9 @@ apps/backend/prisma/*.db-journal
 # Docker
 *.pid
 
+# Redis local persistence
+dump.rdb
+
 # Misc
 *.pem
 .cache
