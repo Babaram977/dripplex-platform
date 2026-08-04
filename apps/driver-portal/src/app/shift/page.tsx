@@ -120,6 +120,11 @@ export default function ShiftPage(): React.JSX.Element {
               <div className="flex justify-center py-4">
                 <LoadingSpinner />
               </div>
+            ) : summary.isError ? (
+              <p className="text-destructive text-sm">
+                Couldn&apos;t load your shift status. Safety reminders may not show until this loads
+                — check your connection and try again.
+              </p>
             ) : (
               <>
                 <div className="flex items-center gap-2">

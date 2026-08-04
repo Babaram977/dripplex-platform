@@ -111,9 +111,18 @@ A module is not "done" until all ten are true:
   open design note from the freeze review (whether a failed re-inspection
   should auto-revert an already-approved vehicle's status) is recorded as
   a future milestone, not a reopening —
-  `docs/DPX-DRIVER-004-VEHICLE-APPROVAL-LIFECYCLE-POLICY.md`. The rest of
-  the Driver module (Slice 2's founder-recommended scope, and the DPX-100
-  UI port itself) remains open — see `docs/DRIVER-APP-DPX-100-AUDIT.md`.
+  `docs/DPX-DRIVER-004-VEHICLE-APPROVAL-LIFECYCLE-POLICY.md`. The DPX-100
+  UI port itself remains open — see `docs/DRIVER-APP-DPX-100-AUDIT.md`.
+- **Driver Slice 2** (Navigation handoff, one-tap phone calling, Driver
+  Support, Incident Reporting, SOS/Emergency, Shift Management, Help
+  Centre, Operational Notifications, Profile Enhancements): met items 1-9
+  — see `docs/DRIVER-SLICE-2-AUDIT.md` (per-item shipped log) and
+  `docs/DRIVER-SLICE-2-PRODUCTION-AUDIT.md` (item 9's audit, no
+  launch-blocking issues found, Figma fidelity N/A per that doc's §1 —
+  same Figma-first scope note as Slice 1, since no locked Figma export
+  exists for this module's screens yet). **Awaiting founder review; not
+  yet frozen**, per the founder's explicit instruction to review before
+  any freeze decision.
 
 ## Notes for whoever runs the next module through this gate
 

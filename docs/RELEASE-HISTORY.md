@@ -252,11 +252,61 @@ Standard (DPX-DRIVER-001) — 🔒 Locked. Driver Inspection Standard
 truth across Ride/Marketplace. Four production modules now stand on the
 same implement → verify → audit → document → approve → freeze discipline.
 
+## 2026-08-04 — Driver Slice 2: Feature-complete, Production Audit passed (awaiting freeze)
+
+All nine founder-scoped items shipped, item by item, each independently
+verified before moving to the next: Navigation handoff (nav-app deep
+links), one-tap phone calling, Driver Support (ticket system), Incident
+Reporting, SOS/Emergency (two-step-confirm trigger, durable-record-first,
+role-based alerting), Shift Management (start/break/end lifecycle, planned
+availability, founder-added safety tracking — continuous-driving/daily-
+total computation, advisory-only break/fatigue/daily-limit flags), Help
+Centre (reused the existing Cms module rather than a parallel content
+system), Operational Notifications (a `DriverShiftReminderSweepService`
+sweep closing the one notification gap items 3-5 hadn't already wired),
+and Profile Enhancements (self-service edit of founder-scoped fields, a
+read-only performance/ratings summary, and driver-portal UI wiring four
+backend/SDK surfaces — vehicle management, inspection history, security
+status, emergency contact — that existed since Driver Slice 1 but had
+never been surfaced in any screen until now).
+
+`docs/DRIVER-SLICE-2-PRODUCTION-AUDIT.md`: full production audit, same
+DPX-100 methodology as Ride/Marketplace/Wallet/Driver Slice 1 — Figma
+fidelity, real backend integration, database integrity, API completeness,
+permissions/authorization, security, SDK integration, driver-portal
+implementation, notifications/events, performance, error handling, and
+audit logging, plus a Feature Completeness Matrix (all nine items ✅
+Shipped). Figma fidelity is explicitly N/A for this module — no locked
+Figma export exists for Driver Slice 2's screens, the same status Driver
+Slice 1 shipped under; deferred to the future DPX-100 driver-portal
+re-platform. Two real issues found and fixed in the same audit pass (a
+migration applied to the wrong local database, caught by the resulting
+test failure before commit; a missing error state on the Shift page's
+safety-relevant summary query), plus one test-coverage gap closed
+(`lib/maps.ts` had no spec). **No launch-blocking issues found.** One
+operational-readiness item named explicitly for the founder: no
+operations-console/admin-portal UI yet consumes the real, permission-gated
+admin-side SOS/incident/support/shift queues this slice built — tracked
+alongside `docs/DPX-DRIVER-005-EMERGENCY-RESPONSE-WORKFLOW.md`, not a
+Slice 2 scope gap (the founder already named it a future milestone after
+SOS shipped).
+
+Verified: backend `tsc`/`eslint` clean, full `jest --runInBand` passing
+(only the pre-existing, already-documented `customer-products.service.spec.ts`
+cross-suite pollution from Marketplace's `merchant-products.service.spec.ts`
+cleanup bug, unrelated to Driver Slice 2); SDK `tsc`/`eslint`/`vitest`
+clean; driver-portal `tsc`/`eslint`/`next build` clean, 20 static routes.
+
+**Per the founder's explicit instruction, Slice 2 is not frozen yet** —
+production audit passed, founder review is the next step, freeze follows
+only after that sign-off, the same discipline every prior module (Ride,
+Marketplace, Wallet, Driver Slice 1) was held to.
+
 ---
 
 ## What's next
 
-The R1.7/R1.8 commerce-completion plan below was superseded by the DPX-100 initiative above — Marketplace's commerce loop (cart/checkout/order/payment UI) shipped as part of that port, not as R1.7/R1.8 specifically. What's actually still open, per each module's own audit doc: the Driver module's Figma-ported UI (including onboarding/vehicle/inspection — all backend-real and frozen as of Driver Slice 1 above), Slice 2's founder-recommended scope (Navigation/Trip execution/Support/Incident reporting/Help centre/SOS/Communication/Profile/Notifications, with shift management's placement still an open question) (`docs/DRIVER-APP-DPX-100-AUDIT.md`); reconciling the Railway-vs-Coolify production-infrastructure question above; and Orders/AI/Merchant/Admin, next in the founder's module ordering per `docs/DPX-100-MODULE-COMPLETION-GATE.md`.
+The R1.7/R1.8 commerce-completion plan below was superseded by the DPX-100 initiative above — Marketplace's commerce loop (cart/checkout/order/payment UI) shipped as part of that port, not as R1.7/R1.8 specifically. What's actually still open, per each module's own audit doc: the Driver module's Figma-ported UI (including onboarding/vehicle/inspection/Slice 2 — all backend-real, Slice 1 frozen, Slice 2 production-audited and awaiting founder review, see above) (`docs/DRIVER-APP-DPX-100-AUDIT.md`); an operations-console/admin-portal UI for the SOS/incident/support/shift queues Driver Slice 2 built (real API, no operator screen yet); reconciling the Railway-vs-Coolify production-infrastructure question above; and Orders/AI/Merchant/Admin, next in the founder's module ordering per `docs/DPX-100-MODULE-COMPLETION-GATE.md`.
 
 <details>
 <summary>Original 2026-07-28 "what's next" (superseded, kept for the record)</summary>

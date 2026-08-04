@@ -173,11 +173,17 @@ what's already real:
    `docs/DRIVER-SLICE-2-AUDIT.md` — one item (Trip execution) is already
    real, most of the rest are genuinely new systems with real open
    decisions the founder needs to resolve before a build plan is written
-   (named in that document, not assumed here).
+   (named in that document, not assumed here). **All nine founder-scoped
+   items now shipped and production-audited (2026-08-04)** — see
+   `docs/DRIVER-SLICE-2-AUDIT.md`'s per-item "✅ Shipped" blocks and
+   `docs/DRIVER-SLICE-2-PRODUCTION-AUDIT.md` for the full audit. Awaiting
+   founder review; not yet frozen.
 3. **Slice 3 — DPX-100 port.** Once the above are real, re-platform the whole
    Driver App (existing screens plus the new pieces) into `packages/ui/super-app`,
    matching the same port discipline Ride/Marketplace/Wallet went through, then
    the same audit + freeze gate.
 
 Slice 1 is frozen. Slice 2 (founder-approved scope, including shift
-management) is now in its research/audit phase.
+management) is now feature-complete and production-audited — see
+`docs/DRIVER-SLICE-2-PRODUCTION-AUDIT.md` — awaiting founder review before
+freeze. Slice 3 (DPX-100 port) has not started.
