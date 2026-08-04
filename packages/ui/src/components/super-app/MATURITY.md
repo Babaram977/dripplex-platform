@@ -759,3 +759,80 @@ sign-off screen by screen), but no further Ride work should happen
 without that sign-off or a defect report. See
 `docs/DPX-100-MODULE-COMPLETION-GATE.md` for the standard this module met
 and that every subsequent module (starting with Wallet) is held to.
+
+## Wallet module — Slice 1: route scaffold + WalletHomeScreen (2026-08-04)
+
+First slice of the Wallet module — a true from-scratch DPX-100 build (no
+pre-existing customer-web route, unlike Ride's re-platform). The backend
+(`apps/backend/src/wallet/`), SDK (`WalletClient` in
+`platform-client.ts`), and shared types (`packages/types`) already existed
+in full for balance + transactions, so this slice is real backend
+integration from the start, no seed/mock data.
+
+**New components this slice:**
+
+- `SuperAppWalletStatusBar` / `SuperAppWalletBackButton` — Wallet's own
+  status bar (full iOS-style icon set, matching `walletScreen.tsx`'s own
+  `StatusBar()`) and chevron back button, kept distinct from Ride's and
+  Home's own chrome components since the source SVGs differ — same
+  no-force-fit discipline as Ride Slice 3.
+- `SuperAppWalletBalanceHero` — the hero gradient balance card. `badges`
+  is an optional, empty-by-default prop: the Figma source hardcodes
+  "PIN Protected" / "Gold Tier" badges, but no PIN or tier system exists
+  in the real backend, so no badges render rather than claiming a fake
+  capability.
+- `SuperAppWalletQuickActionsGrid` — Top Up/Withdraw/Transfer/Pay grid;
+  renders an action disabled whenever no `onClick` is supplied.
+- `SuperAppWalletRewardsStrip` — cashback summary banner; `onClick` is
+  optional and the strip renders non-interactive (no chevron) until the
+  Rewards screen exists in Slice 5.
+- `SuperAppWalletTransactionRow` / `SuperAppWalletTransactionList` — a
+  ledger row and its list wrapper.
+
+**Screen:** `WalletHomeScreen` (`apps/customer-web/src/components/wallet/screens/wallet-home-screen.tsx`),
+routed at `/wallet` via `(wallet)/wallet/layout.tsx` + `page.tsx`, mirroring
+`(ride)/ride/`'s structure exactly. Wired to real
+`sdk.wallet.customerWallet()` (balance) and
+`sdk.wallet.customerTransactions({page,pageSize})` (recent ledger, real
+`WalletLedgerEntryDto[]` mapped by `.type`/`.direction` via a local
+`txVisual()` helper, preferring the real `.description` field — confirmed
+rich real descriptions exist, e.g. "Ride fare (rideId)", "Ride tip
+(rideId)"). Quick actions all render disabled (Top Up/Withdraw/Transfer/Pay
+destinations don't exist until Slices 2-4). The rewards strip only renders
+when real CASHBACK entries sum > 0 in the fetched batch, worded as
+"cashback in recent activity" (not a lifetime total, since no aggregate
+endpoint exists).
+
+**Cross-cutting defect found and fixed:** `DashboardAuthGate`
+(`apps/customer-web/src/components/auth/dashboard-auth-gate.tsx`) never
+rehydrated `user` after a fresh full-page load. The auth store
+deliberately excludes `user` from localStorage persistence (PII), and its
+own comment promises rehydration "via /auth/me after login/probe" — but
+nothing in the codebase actually called `/auth/me` outside of the login
+flow. This meant `user` stayed `null` after any reload of any
+dashboard-shell route, silently breaking every screen reading
+`user.firstName` (confirmed in both Ride Home and the new Wallet Home,
+which fell back to generic greetings instead of the real name). Fixed by
+adding an `sdk.auth.me()` rehydration effect to `DashboardAuthGate` — the
+one real gate every dashboard-shell route already passes through — scoped
+to `customer-web` only (not the shared `@dripplex/hooks` package, which
+other portals depend on and weren't audited this session). Verified fix
+with Playwright on both Wallet Home (real name now shows) and, as an
+explicit regression check since Ride is frozen, Ride Home (still renders
+correctly, now also benefiting from the fix).
+
+Typecheck/lint clean across `@dripplex/ui` and `customer-web`. Verified
+with Playwright against the real backend: Wallet Home showed the real
+balance, real "Last updated" timestamp, real recent transactions with
+real descriptions, all four quick actions visibly disabled, and the close
+button correctly navigated to `/dashboard`. Zero console errors.
+
+| Component                        | Status   |
+| -------------------------------- | -------- |
+| `SuperAppWalletStatusBar`        | Verified |
+| `SuperAppWalletBackButton`       | Verified |
+| `SuperAppWalletBalanceHero`      | Verified |
+| `SuperAppWalletQuickActionsGrid` | Verified |
+| `SuperAppWalletRewardsStrip`     | Verified |
+| `SuperAppWalletTransactionRow`   | Verified |
+| `SuperAppWalletTransactionList`  | Verified |

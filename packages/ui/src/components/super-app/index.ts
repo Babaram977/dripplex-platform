@@ -163,3 +163,16 @@ export { SuperAppRidePagination } from './RidePagination';
 export { SuperAppRideTextField } from './RideTextField';
 export { SuperAppRidePlaceCard } from './RidePlaceCard';
 export { SuperAppRideDashedAddButton } from './RideDashedAddButton';
+
+// Wallet module
+export { SuperAppWalletStatusBar, SuperAppWalletBackButton } from './WalletChrome';
+export { SuperAppWalletBalanceHero, type SuperAppWalletBadge } from './WalletBalanceHero';
+export {
+  SuperAppWalletQuickActionsGrid,
+  type SuperAppWalletQuickAction,
+} from './WalletQuickActionsGrid';
+export { SuperAppWalletRewardsStrip } from './WalletRewardsStrip';
+export {
+  SuperAppWalletTransactionRow,
+  SuperAppWalletTransactionList,
+} from './WalletTransactionRow';
