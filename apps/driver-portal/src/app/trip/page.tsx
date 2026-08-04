@@ -61,7 +61,7 @@ function AssignedSection({ ride }: { ride: RideDto }): React.JSX.Element {
           fallbackVariant="assigned"
         />
       </div>
-      <PassengerCard />
+      <PassengerCard rideId={ride.id} />
       <div className="flex flex-col gap-2 text-sm">
         <div className="flex items-start gap-2">
           <span className="bg-primary mt-1.5 h-2 w-2 flex-shrink-0 rounded-full" />
@@ -115,7 +115,7 @@ function ArrivedSection({ ride }: { ride: RideDto }): React.JSX.Element {
           fallbackVariant="arrived"
         />
       </div>
-      <PassengerCard />
+      <PassengerCard rideId={ride.id} />
       <Button
         type="button"
         className="w-full"

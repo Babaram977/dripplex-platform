@@ -14,6 +14,7 @@ import { DriverIdentityVerificationClient } from '../drivers/driver-identity-ver
 import { DriverInspectionsClient } from '../drivers/driver-inspections-client.js';
 import { DriverOnboardingClient } from '../drivers/driver-onboarding-client.js';
 import { DriverProfileClient } from '../drivers/driver-profile-client.js';
+import { DriverRideContactClient } from '../drivers/driver-ride-contact-client.js';
 import { DriverVehiclesClient } from '../drivers/driver-vehicles-client.js';
 import { OperationsInspectionsClient } from '../drivers/operations-inspections-client.js';
 import {
@@ -67,6 +68,7 @@ export class DripplexClient {
   public readonly rides: CustomerRideClient;
   public readonly driverRides: DriverRideClient;
   public readonly driverProfile: DriverProfileClient;
+  public readonly driverRideContact: DriverRideContactClient;
   public readonly driverIdentityVerification: DriverIdentityVerificationClient;
   public readonly adminDriverSecuritySettings: AdminDriverSecuritySettingsClient;
   public readonly adminDrivers: AdminDriversClient;
@@ -116,6 +118,7 @@ export class DripplexClient {
     this.rides = new CustomerRideClient(this.http);
     this.driverRides = new DriverRideClient(this.http);
     this.driverProfile = new DriverProfileClient(this.http);
+    this.driverRideContact = new DriverRideContactClient(this.http);
     this.driverIdentityVerification = new DriverIdentityVerificationClient(this.http);
     this.adminDriverSecuritySettings = new AdminDriverSecuritySettingsClient(this.http);
     this.adminDrivers = new AdminDriversClient(this.http);

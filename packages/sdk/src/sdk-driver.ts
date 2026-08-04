@@ -16,6 +16,7 @@ export function createDriverSdk(config: Partial<SdkConfig> = {}): DriverSdk {
     wallet: client.wallet,
     rides: client.driverRides,
     profile: client.driverProfile,
+    rideContact: client.driverRideContact,
     identityVerification: client.driverIdentityVerification,
     vehicles: client.driverVehicles,
     onboarding: client.driverOnboarding,
@@ -30,6 +31,7 @@ export interface DriverSdk {
   wallet: DripplexClient['wallet'];
   rides: DripplexClient['driverRides'];
   profile: DripplexClient['driverProfile'];
+  rideContact: DripplexClient['driverRideContact'];
   identityVerification: DripplexClient['driverIdentityVerification'];
   vehicles: DripplexClient['driverVehicles'];
   onboarding: DripplexClient['driverOnboarding'];

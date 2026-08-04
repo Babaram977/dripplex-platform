@@ -123,6 +123,7 @@ export type {
   InspectionStatus,
   RecordInspectionChecklistRequest,
   RejectVehicleRequest,
+  RidePassengerContactDto,
   ScheduleInspectionRequest,
   SubmitDriverKycRequest,
   SubmitEmergencyContactRequest,

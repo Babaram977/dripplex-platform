@@ -127,7 +127,24 @@ whether it also auto-notifies the emergency contact and/or local
 authorities — the last of which is a real policy question, not a technical
 one, and shouldn't be assumed silently either way.
 
-### 8. Communication tools (call/chat) — ❌ Zero capability, cheapest real win identified
+### 8. Communication tools (call/chat) — ✅ One-tap calling shipped (2026-08-04)
+
+**Built:** plain `tel:` calling only, per the founder's decision — no masked
+calling, no chat. Correction to this section's original finding below: the
+phone number was **not** already on `RideDto` (`RideDto` never carried
+customer contact info to the driver at all — see `PassengerCard`'s honest
+gap notice, which predates this fix). Closed via a new, read-only
+`DriverRideContactService` (`apps/backend/src/drivers/ride-contact/`) that
+resolves the customer's name/phone for whichever ride is currently
+`DRIVER_ASSIGNED`/`ARRIVED`/`IN_PROGRESS` for the calling driver, reading
+`Ride`/`User` directly via Prisma — deliberately placed under `drivers/`,
+not `rides/`, since the Ride module is frozen; this is the same
+cross-module read pattern wallet/notifications already use. Exposed via
+`GET /driver/ride-contact/active` (reuses `RIDE_PERMISSIONS.DRIVER_MANAGE`)
+and wired into `PassengerCard` as a call button when a phone number is on
+file, with an honest "no phone on file" state when it isn't.
+
+Original audit finding, kept for context:
 
 No telephony/masked-calling integration exists anywhere in the platform
 (Twilio is wired for SMS only, not voice) and no `tel:` deep link exists

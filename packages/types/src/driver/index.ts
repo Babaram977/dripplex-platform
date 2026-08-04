@@ -327,3 +327,17 @@ export interface SubmitIdentityVerificationRequest {
   latitude?: number;
   longitude?: number;
 }
+
+/** Driver Slice 2 item 2 — one-tap phone calling (founder-approved
+ * 2026-08-04): plain `tel:` calling only, no masked calling. Resolved from
+ * the Ride module's own tables (read-only, cross-module — see
+ * `DriverRideContactService`) for whichever ride is currently active for
+ * the calling driver (`DRIVER_ASSIGNED`/`ARRIVED`/`IN_PROGRESS`). `phone` is
+ * `null` when the customer has no phone on file — the UI must handle that
+ * honestly rather than assume a number always exists. */
+export interface RidePassengerContactDto {
+  rideId: string;
+  customerId: string;
+  name: string;
+  phone: string | null;
+}
