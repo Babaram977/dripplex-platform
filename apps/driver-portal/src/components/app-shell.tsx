@@ -21,6 +21,7 @@ const NAV_LINKS = [
   { href: '/activity', label: 'Activity' },
   { href: '/leaderboard', label: 'Leaderboard' },
   { href: '/support', label: 'Support' },
+  { href: '/incident', label: 'Report Incident' },
   { href: '/profile', label: 'Profile' },
   { href: '/learn', label: 'Learn' },
 ] as const;

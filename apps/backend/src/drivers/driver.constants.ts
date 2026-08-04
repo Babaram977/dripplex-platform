@@ -40,6 +40,9 @@ export const DRIVER_AUDIT_ACTIONS = {
   /// Driver Slice 2 item 3
   SUPPORT_TICKET_SUBMITTED: 'driver.support_ticket.submitted',
   SUPPORT_TICKET_UPDATED: 'driver.support_ticket.updated',
+  /// Driver Slice 2 item 4
+  INCIDENT_REPORT_SUBMITTED: 'driver.incident_report.submitted',
+  INCIDENT_REPORT_UPDATED: 'driver.incident_report.updated',
 } as const;
 
 export const DRIVER_PERMISSIONS = {
@@ -69,6 +72,9 @@ export const DRIVER_PERMISSIONS = {
   /// Driver Slice 2 item 3 — Driver Support
   SUPPORT_TICKET_MANAGE: 'driver:support-ticket:manage',
   ADMIN_SUPPORT_TICKET_MANAGE: 'admin:drivers:support-ticket:manage',
+  /// Driver Slice 2 item 4 — Incident Reporting
+  INCIDENT_REPORT_MANAGE: 'driver:incident-report:manage',
+  ADMIN_INCIDENT_REPORT_MANAGE: 'admin:drivers:incident-report:manage',
 } as const;
 
 /** DriverSecuritySettings is a singleton row (enforced at the service

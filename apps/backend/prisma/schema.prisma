@@ -269,6 +269,8 @@ model User {
   driverInspections           Inspection[]
   driverSupportTickets        DriverSupportTicket[]        @relation("DriverSupportTicketDriver")
   driverSupportTicketsHandled DriverSupportTicket[]        @relation("DriverSupportTicketResolver")
+  incidentReports             IncidentReport[]             @relation("IncidentReportDriver")
+  incidentReportsAcknowledged IncidentReport[]             @relation("IncidentReportAcknowledger")
   rideOffers                  RideOffer[]
   notifications               Notification[]
   notificationPreferences     NotificationPreference[]
@@ -1586,6 +1588,67 @@ model DriverSupportTicket {
   @@map("driver_support_tickets")
 }
 
+/// Driver Slice 2 item 4 — Incident Reporting (founder-approved 2026-08-04):
+/// safety-relevant (accident, passenger altercation, vehicle breakdown),
+/// distinct from the general-purpose Driver Support ticket above and from
+/// the ride-scoped `RideProblemReport`. Also the capability
+/// `docs/DPX-DRIVER-004-VEHICLE-APPROVAL-LIFECYCLE-POLICY.md` already
+/// flagged as needed for its own "vehicle-changed"/"safety complaint"
+/// re-inspection triggers — this is that capability existing now.
+enum IncidentCategory {
+  ACCIDENT
+  PASSENGER_ALTERCATION
+  VEHICLE_BREAKDOWN
+  SAFETY_CONCERN
+  OTHER
+}
+
+enum IncidentSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IncidentReportStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+model IncidentReport {
+  id             String                @id @default(uuid()) @db.Uuid
+  driverId       String                @map("driver_id") @db.Uuid
+  /// Optional — an incident can happen mid-trip (accident, passenger
+  /// altercation) or while simply online/off-trip (vehicle breakdown).
+  /// Deliberately a plain id, not a Prisma relation to `Ride` — the Ride
+  /// module is frozen and a declared relation would require a matching
+  /// back-relation array field on the `Ride` model itself. Any lookup
+  /// against the ride reads `Ride` directly via Prisma by this id, the
+  /// same cross-module read pattern as `DriverRideContactService`.
+  rideId         String?               @map("ride_id") @db.Uuid
+  category       IncidentCategory
+  severity       IncidentSeverity
+  description    String                @db.VarChar(2000)
+  latitude       Decimal?              @db.Decimal(10, 7)
+  longitude      Decimal?              @db.Decimal(10, 7)
+  status         IncidentReportStatus  @default(OPEN)
+  adminNotes     String?               @map("admin_notes") @db.VarChar(2000)
+  acknowledgedBy String?               @map("acknowledged_by") @db.Uuid
+  acknowledgedAt DateTime?             @map("acknowledged_at")
+  resolvedAt     DateTime?             @map("resolved_at")
+  createdAt      DateTime              @default(now()) @map("created_at")
+  updatedAt      DateTime              @updatedAt @map("updated_at")
+  driver         User                  @relation("IncidentReportDriver", fields: [driverId], references: [id], onDelete: Cascade)
+  acknowledger   User?                 @relation("IncidentReportAcknowledger", fields: [acknowledgedBy], references: [id], onDelete: SetNull)
+
+  @@index([driverId])
+  @@index([rideId])
+  @@index([status])
+  @@index([severity])
+  @@map("incident_reports")
+}
+
 enum NotificationStatus {
   PENDING
   QUEUED
@@ -1651,6 +1714,7 @@ enum NotificationType {
   ORDER_DELAYED
   ORDER_COMPLETED
   DRIVER_SUPPORT_TICKET_UPDATED
+  INCIDENT_REPORT_UPDATED
 }
 
 enum DevicePlatform {

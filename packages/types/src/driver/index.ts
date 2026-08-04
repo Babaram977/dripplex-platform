@@ -385,3 +385,59 @@ export interface DriverSupportTicketListDto {
   items: DriverSupportTicketDto[];
   meta: { page: number; limit: number; total: number; totalPages: number };
 }
+
+/** Driver Slice 2 item 4 — Incident Reporting (founder-approved
+ * 2026-08-04): safety-relevant (accident, passenger altercation, vehicle
+ * breakdown) — distinct from Driver Support (general/non-safety) and from
+ * the ride-scoped `RideProblemReport`. `rideId` is optional: an incident
+ * can happen mid-trip or while simply online/off-trip. */
+export type IncidentCategory =
+  'ACCIDENT' | 'PASSENGER_ALTERCATION' | 'VEHICLE_BREAKDOWN' | 'SAFETY_CONCERN' | 'OTHER';
+
+export type IncidentSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+
+export type IncidentReportStatus = 'OPEN' | 'ACKNOWLEDGED' | 'RESOLVED';
+
+export interface IncidentReportDto {
+  id: string;
+  driverId: string;
+  rideId: string | null;
+  category: IncidentCategory;
+  severity: IncidentSeverity;
+  description: string;
+  latitude: number | null;
+  longitude: number | null;
+  status: IncidentReportStatus;
+  adminNotes: string | null;
+  acknowledgedBy: string | null;
+  acknowledgedAt: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateIncidentReportRequest {
+  category: IncidentCategory;
+  severity: IncidentSeverity;
+  description: string;
+  rideId?: string;
+  latitude?: number;
+  longitude?: number;
+}
+
+export interface UpdateIncidentReportRequest {
+  status?: IncidentReportStatus;
+  adminNotes?: string;
+}
+
+export interface ListIncidentReportsQuery {
+  page?: number;
+  limit?: number;
+  status?: IncidentReportStatus;
+  severity?: IncidentSeverity;
+}
+
+export interface IncidentReportListDto {
+  items: IncidentReportDto[];
+  meta: { page: number; limit: number; total: number; totalPages: number };
+}

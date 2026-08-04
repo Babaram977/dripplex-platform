@@ -105,7 +105,29 @@ queue. The original audit doc's earlier note still holds: "a basic 'submit
 an issue, admin sees a queue' loop is a defensible v1, not a full helpdesk
 platform" — a real, deliberately-scoped-down v1, not a gap to over-build.
 
-### 5. Incident reporting — ❌ Zero capability, but real infra to build on
+### 5. Incident reporting — ✅ Shipped (2026-08-04)
+
+**Built:** `IncidentReport` (schema: category — ACCIDENT/
+PASSENGER_ALTERCATION/VEHICLE_BREAKDOWN/SAFETY_CONCERN/OTHER — severity —
+LOW/MEDIUM/HIGH/CRITICAL — description, optional latitude/longitude,
+optional `rideId`, status — OPEN/ACKNOWLEDGED/RESOLVED — adminNotes,
+acknowledgedBy/acknowledgedAt, resolvedAt) plus `IncidentReportService`
+(`apps/backend/src/drivers/incidents/`), driver-facing
+`DriverIncidentReportsController` and admin `AdminIncidentReportsController`
+(queue sorted severity-then-recency). Now fires into the
+`NotificationCategory.EMERGENCY` taxonomy this section's original finding
+noted was modeled but unused — new `INCIDENT_REPORT_UPDATED` type, driver
+notified on acknowledge/resolve. `rideId` is deliberately a plain id with no
+Prisma relation to `Ride` (see the schema doc comment) — respects the
+frozen Ride module without needing a back-relation field on it.
+Driver-portal `/incident` page auto-attaches the driver's active ride (if
+any) and current GPS location. Also now provides the capability
+`docs/DPX-DRIVER-004-VEHICLE-APPROVAL-LIFECYCLE-POLICY.md` flagged as a
+prerequisite for its own "vehicle-changed"/"safety complaint" re-inspection
+triggers — that document's own follow-through is still deferred, unchanged
+here.
+
+Original audit finding, kept for context:
 
 Distinct from "Driver support" above — this is safety-relevant (an
 accident, a passenger altercation, a vehicle breakdown mid-trip), not a

@@ -134,6 +134,14 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
     code: 'admin:drivers:support-ticket:manage',
     description: 'View and resolve the driver support ticket queue',
   },
+  {
+    code: 'driver:incident-report:manage',
+    description: 'Submit and view own driver incident reports',
+  },
+  {
+    code: 'admin:drivers:incident-report:manage',
+    description: 'View and acknowledge/resolve the driver incident report queue',
+  },
   { code: 'admin:rides:support', description: 'Review and resolve ride problem reports' },
   { code: 'users:read', description: 'Read user records' },
   { code: 'users:write', description: 'Update user records' },

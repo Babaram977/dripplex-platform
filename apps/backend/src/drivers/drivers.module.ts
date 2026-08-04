@@ -11,8 +11,10 @@ import { AdminDriverSecuritySettingsController } from './controllers/admin-drive
 import { AdminDriverSupportController } from './controllers/admin-driver-support.controller';
 import { AdminDriverVehiclesController } from './controllers/admin-driver-vehicles.controller';
 import { AdminDriversController } from './controllers/admin-drivers.controller';
+import { AdminIncidentReportsController } from './controllers/admin-incident-reports.controller';
 import { AdminInspectionCentresController } from './controllers/admin-inspection-centres.controller';
 import { DriverIdentityVerificationController } from './controllers/driver-identity-verification.controller';
+import { DriverIncidentReportsController } from './controllers/driver-incident-reports.controller';
 import { DriverInspectionsController } from './controllers/driver-inspections.controller';
 import { DriverRideContactController } from './controllers/driver-ride-contact.controller';
 import { DriverSupportController } from './controllers/driver-support.controller';
@@ -27,6 +29,7 @@ import { DriverSecuritySettingsService } from './identity-verification/driver-se
 import { FailedLoginLockoutSubscriber } from './identity-verification/failed-login-lockout.subscriber';
 import { IDENTITY_VERIFICATION_PROVIDER } from './identity-verification/identity-verification-provider.adapter';
 import { SmileIdProvider } from './identity-verification/smile-id.provider';
+import { IncidentReportService } from './incidents/incident-report.service';
 import { InspectionCentresService } from './inspections/inspection-centres.service';
 import { InspectionsService } from './inspections/inspections.service';
 import { OnboardingService } from './onboarding/onboarding.service';
@@ -50,6 +53,8 @@ import { VehiclesService } from './vehicles/vehicles.service';
     DriverRideContactController,
     DriverSupportController,
     AdminDriverSupportController,
+    DriverIncidentReportsController,
+    AdminIncidentReportsController,
   ],
   providers: [
     DriversService,
@@ -62,6 +67,7 @@ import { VehiclesService } from './vehicles/vehicles.service';
     InspectionsService,
     DriverRideContactService,
     DriverSupportService,
+    IncidentReportService,
     AccountRecoverySubscriber,
     CredentialChangeSubscriber,
     FailedLoginLockoutSubscriber,
@@ -78,6 +84,7 @@ import { VehiclesService } from './vehicles/vehicles.service';
     InspectionsService,
     DriverRideContactService,
     DriverSupportService,
+    IncidentReportService,
   ],
 })
 export class DriversModule {}
