@@ -22,6 +22,7 @@ import { AppLoggerModule } from './logger/logger.module';
 import { LoyaltyModule } from './loyalty/loyalty.module';
 import { MerchantsModule } from './merchants/merchants.module';
 import { NotificationCenterModule } from './notification-center/notification-center.module';
+import { OperationsModule } from './operations/operations.module';
 import { OrdersModule } from './orders/orders.module';
 import { PaymentsModule } from './payments/payments.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -76,6 +77,7 @@ import { WishlistModule } from './wishlist/wishlist.module';
     CmsModule,
     FraudModule,
     HealthModule,
+    OperationsModule,
   ],
   providers: [
     {

@@ -7,7 +7,16 @@ exist, or an assumed capability that turns out not to. Founder's own instruction
 for this module names an 11-step process; this document covers steps 1-4
 (reality audit, Figma audit, backend capability audit, gap analysis) and
 proposes a plan for step 5 (**founder review of the plan** — required before any
-implementation begins). Nothing in this document has been built yet.
+implementation begins).
+
+**Update (2026-08-04): Slice 1 (Live Operations Dashboard) is now shipped** —
+step 6 (implementation) and step 7 (verification) are complete for Slice 1.
+See `docs/DPX-OPS-001-OPERATIONS-COMMAND-CENTRE.md`'s "Slice 1 — Live
+Operations Dashboard" section for what was built. Steps 8-11 (documentation,
+production audit, founder approval, freeze) for the whole Phase 1 module
+happen once all four slices are built, per the founder's own discipline —
+Slice 1 alone isn't ready for a module-level production audit yet. Slices
+2-4 (Work Queues, Dispatch Management, Analytics) are not yet started.
 
 **Scope**: Phase 1 (Core Operations) only, per the founder's own phasing —
 Fleet Operations, Emergency Operations, Support Centre, Incident Management,
@@ -233,3 +242,56 @@ specifically:
    it as a founder-approved enhancement touching `rides/`, or defer it
    alongside the rest of Dispatch Oversight's harder pieces.
 4. Any adjustment to scope before Slice 1 begins.
+
+## Founder review — approved (2026-08-04)
+
+The founder reviewed this plan and locked in the following decisions,
+refining rather than simply accepting §1/§5 as originally proposed:
+
+1. **App placement — approved as proposed**: `operations-console` is the
+   permanent home for live operations (fleet monitoring, dispatch,
+   incidents, SOS, support, shift monitoring, driver monitoring, real-time
+   decisions). `admin-portal` is explicitly reserved for platform
+   configuration (users & permissions, KYC approvals, pricing, CMS,
+   promotions, system configuration, reports, audit logs) — a clean split
+   the founder stated directly, not left to inference.
+2. **Slice sequencing — refined**:
+   - **Slice 1 — Live Operations Dashboard** (read-only): live drivers,
+     driver status, vehicle status, inspection status, shift status, live
+     ride queue, active trips, live KPIs — plus a **Live Fleet Map** as the
+     first screen operators see (the founder's own framing: "the air
+     traffic control screen for DrippleX"), showing driver locations
+     categorized as available/busy/offline/SOS (highest priority)/needs
+     inspection/suspended, plus current rides and unassigned ride requests.
+   - **Slice 2 — Operations Work Queues**: SOS queue, Driver Support queue,
+     Incident queue, accident reports, vehicle issue reports — answering
+     "who needs help?"
+   - **Slice 3 — Dispatch Management**: dispatch oversight, ride
+     monitoring, driver allocation visibility, manual intervention tools —
+     **with the "Reassign Driver" action itself deferred**, see point 3.
+   - **Slice 4 — Analytics**: fleet performance, operations KPIs, heat
+     maps, utilization, response times, shift analytics (this is Phase 1's
+     own analytics slice, distinct from the broader Phase 2 named in the
+     original module-open scope).
+3. **Manual ride reassignment — visibility built now, action deferred**:
+   Slice 3 ships a real "Reassign Driver" control showing eligible nearby
+   drivers, availability, ETA, and ratings — but no reassignment action
+   executes. Recorded as `docs/DPX-RIDE-201-OPERATIONS-MANUAL-DISPATCH.md`,
+   a founder-approved-enhancement-in-principle that reopens the frozen Ride
+   module later, once specifically scoped and re-approved.
+4. **Support Centre — architecture only, no invented systems**: do not
+   build customer/merchant support ticket systems inside DPX-OPS-001.
+   Driver Support (already real) is the only live queue in Phase 1;
+   support is expected to evolve into a shared platform ticket engine
+   (Driver/Customer/Merchant/Vendor/Courier Support, audience-specific
+   workflows on one common engine) — Phase 1's job is to keep
+   `DriverSupportTicket`'s architecture pluggable into that later, not to
+   build the other audiences' systems now.
+
+**Founder's operations philosophy, recorded as the standing design test for
+every screen this module ships**: every screen must answer one of —
+"What is happening now?", "What needs attention now?", "What action should
+Operations take now?" If a screen can't answer one of those three, it
+belongs in `admin-portal`, not here.
+
+Implementation (step 6) begins with Slice 1.

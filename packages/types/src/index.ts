@@ -205,6 +205,17 @@ export type {
 export { RIDE_AUDIT_ACTIONS } from './ride/index.js';
 
 export type {
+  FleetDriverDto,
+  FleetDriverStatus,
+  FleetSummaryDto,
+  LiveRideDto,
+  LiveRideStatus,
+  OperationsFleetSnapshotDto,
+  OperationsRideQueueDto,
+  RideQueueSummaryDto,
+} from './operations/index.js';
+
+export type {
   AddressLabel,
   AddressListResponse,
   CoordinatesDto,

@@ -370,6 +370,57 @@ toward the operational ecosystem that supports it — `DPX-OPS-001`
 capabilities that consume the backend services already built, rather than
 new driver-facing feature work.
 
+## 2026-08-04 — DPX-OPS-001 opened: Operations Command Centre
+
+Founder approved opening the next module immediately after the Driver
+Slice 2 freeze, framed explicitly as "the mission control centre of
+DrippleX," not another admin dashboard. Scoped into Phase 1 (Core
+Operations: Fleet Operations, Emergency Operations, Support Centre,
+Incident Management, Dispatch Oversight) and Phase 2 (deferred: analytics,
+KPIs, heat maps, Marketplace/Wallet monitoring, fraud alerts, platform
+health), governed by an explicit 11-step discipline (reality audit → Figma
+audit → backend capability audit → gap analysis → founder review of the
+plan → implementation → verification → documentation → production audit →
+founder approval → freeze).
+
+`docs/DPX-OPS-001-REALITY-AUDIT.md` (steps 1-4) found every scope item
+except "live fleet overview" and "operations dashboards" already had real,
+permission-gated backend capability (SOS, incidents, support tickets,
+shifts, driver status) built during Driver Slice 2 — this module is a
+consumption-side UI, not new backend-and-frontend work the way Slice 2
+itself was. The founder then reviewed and locked in a refined plan (step
+5): `operations-console` (not `admin-portal`) as the permanent home for
+live operations; a four-slice Phase 1 sequence (Slice 1 Live Operations
+Dashboard, Slice 2 Operations Work Queues, Slice 3 Dispatch Management,
+Slice 4 Analytics); manual ride reassignment built as visibility-only in
+Slice 3 with the actual reassignment action deferred to a separately
+founder-approved reopening of the frozen Ride module
+(`docs/DPX-RIDE-201-OPERATIONS-MANUAL-DISPATCH.md`); Support Centre kept
+to Driver Support only in Phase 1, architected for a future shared ticket
+engine rather than inventing Customer/Merchant support systems now; and a
+Live Fleet Map — "the air traffic control screen for DrippleX" — as the
+first screen operators see.
+
+**Slice 1 (Live Operations Dashboard) shipped same day.** New
+`apps/backend/src/operations/` module (`operations:live:read`-gated,
+read-only, `rides/` never imported — the same cross-module-read pattern
+`SosAlertService` established): a composite, priority-ordered
+`FleetDriverStatus` (SOS > SUSPENDED > NEEDS_INSPECTION > BUSY > AVAILABLE
+
+> OFFLINE) computed per driver for the fleet snapshot, and a live ride
+> queue read directly from `Ride`. New SDK clients (`OperationsFleetClient`,
+> `OperationsRidesClient`). `operations-console` got its first real screens:
+> the Live Fleet Map home page (Google Maps when configured, a full list
+> fallback otherwise) with fleet KPI tiles and a driver roster, and a Ride
+> Queue page — both polling every 15s. 14 new backend tests, 2 new SDK
+> tests; `tsc`/`eslint --max-warnings=0`/`jest`/`vitest`/`next build` all
+> clean across backend, SDK, and operations-console.
+
+Slices 2-4 are not yet started; the module-level production audit and
+freeze happen once all four Phase 1 slices are built, not after Slice 1
+alone. See `docs/DPX-OPS-001-OPERATIONS-COMMAND-CENTRE.md` for the running
+scope/status record.
+
 ---
 
 ## What's next

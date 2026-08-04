@@ -168,6 +168,11 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
       'Update own profile (name, photo, languages, service areas, driving experience) and view own performance stats',
   },
   { code: 'admin:rides:support', description: 'Review and resolve ride problem reports' },
+  {
+    code: 'operations:live:read',
+    description:
+      'View the Operations Console Live Operations Dashboard — fleet snapshot and live ride queue',
+  },
   { code: 'users:read', description: 'Read user records' },
   { code: 'users:write', description: 'Update user records' },
   { code: 'users:delete', description: 'Soft-delete user records' },

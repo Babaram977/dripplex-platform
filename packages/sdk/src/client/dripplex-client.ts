@@ -29,6 +29,8 @@ import {
   MerchantApi,
   MerchantProductsApi,
 } from '../merchant/merchant-api.js';
+import { OperationsFleetClient } from '../operations/operations-fleet-client.js';
+import { OperationsRidesClient } from '../operations/operations-rides-client.js';
 import { OrderClient } from '../order/order-client.js';
 import { PaymentClient } from '../payment/payment-client.js';
 import {
@@ -90,6 +92,8 @@ export class DripplexClient {
   public readonly driverInspections: DriverInspectionsClient;
   public readonly adminInspectionCentres: AdminInspectionCentresClient;
   public readonly operationsInspections: OperationsInspectionsClient;
+  public readonly operationsFleet: OperationsFleetClient;
+  public readonly operationsRides: OperationsRidesClient;
   public readonly notifications: NotificationsClient;
   public readonly driverNotifications: NotificationsClient;
   public readonly devices: DevicesClient;
@@ -146,6 +150,8 @@ export class DripplexClient {
     this.driverInspections = new DriverInspectionsClient(this.http);
     this.adminInspectionCentres = new AdminInspectionCentresClient(this.http);
     this.operationsInspections = new OperationsInspectionsClient(this.http);
+    this.operationsFleet = new OperationsFleetClient(this.http);
+    this.operationsRides = new OperationsRidesClient(this.http);
     this.notifications = new NotificationsClient(this.http);
     this.driverNotifications = new NotificationsClient(this.http, '/driver/notifications');
     this.devices = new DevicesClient(this.http);

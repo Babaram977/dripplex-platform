@@ -1,10 +1,44 @@
 # DPX-OPS-001 — Operations Command Centre (Future Module)
 
-**Status: Approved to open (2026-08-04); reality audit complete, awaiting
-founder review of the Phase 1 build plan before implementation begins.** See
+**Status: Slice 1 (Live Operations Dashboard) shipped (2026-08-04). Slice 2
+(Operations Work Queues) not yet started.** See
 `docs/DPX-OPS-001-REALITY-AUDIT.md` for the full backend-capability audit,
-gap analysis, and proposed Phase 1 slice plan — this document stays the
-scope record, that one is the audit/plan.
+gap analysis, proposed Phase 1 slice plan, and the founder's locked-in
+refinements — this document stays the scope record, that one is the
+audit/plan/approval record. Manual ride reassignment is tracked separately:
+`docs/DPX-RIDE-201-OPERATIONS-MANUAL-DISPATCH.md`.
+
+## Slice 1 — Live Operations Dashboard (shipped 2026-08-04)
+
+Read-only, per the founder's slice sequencing. Built end-to-end without
+touching `rides/` (the founder's cross-module-read pattern, established by
+`SosAlertService`/`DriverRideContactService`):
+
+- **Backend** — `apps/backend/src/operations/` (new module):
+  `OperationsFleetService.getFleetSnapshot()` composes a live
+  `FleetDriverStatus` (SOS > SUSPENDED > NEEDS_INSPECTION > BUSY > AVAILABLE
+  > OFFLINE, priority-ordered per the founder's own list) for every
+  > approved/suspended driver from `DriverProfile`/`DriverAvailability`/
+  > `SosAlert`/`DriverShift`/`Vehicle`/`Inspection`/`Ride` — all read-only.
+  > `OperationsRideQueueService.getRideQueue()` reads live `Ride` rows
+  > (requested through in-progress) the same way. Both gated by one new
+  > permission, `operations:live:read` (granted to `operations_staff`,
+  > `administrator`, `super_administrator`).
+- **SDK** — `packages/sdk/src/operations/`: `OperationsFleetClient`,
+  `OperationsRidesClient`, wired into `createAdminSdk()`.
+- **operations-console** — `AppShell` (top nav: Live Fleet Map, Ride Queue),
+  the Live Fleet Map home screen (`FleetMap` with a Google Maps view when
+  `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` is configured, a full-fidelity sorted
+  list fallback when it isn't — the founder's required "first screen
+  operators see," framed as "the air traffic control screen for
+  DrippleX"), fleet summary KPI tiles, and a driver roster below the map.
+  The Ride Queue screen mirrors the same pattern for live rides. Both poll
+  every 15s.
+- **Tests** — 14 new backend tests (`operations-fleet.service.spec.ts`,
+  `operations-ride-queue.service.spec.ts`, unit + live-DB), 2 new SDK
+  client tests. `prisma-foundation.spec.ts` bumped to 103 permission seeds.
+- **Verification** — backend/SDK/operations-console `tsc`, `eslint
+--max-warnings=0`, `jest`/`vitest`, and `next build` all clean.
 
 Founder-recorded (2026-08-04), alongside
 approval of the Driver Slice 2 freeze: the production audit's one outstanding

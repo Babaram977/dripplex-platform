@@ -23,6 +23,8 @@ export function createAdminSdk(config: Partial<SdkConfig> = {}): AdminSdk {
     adminDriverVehicles: client.adminDriverVehicles,
     adminInspectionCentres: client.adminInspectionCentres,
     operationsInspections: client.operationsInspections,
+    operationsFleet: client.operationsFleet,
+    operationsRides: client.operationsRides,
     adminPromotions: client.adminPromotions,
     analytics: client.analytics,
     notifications: client.notifications,
@@ -48,6 +50,8 @@ export interface AdminSdk {
   adminDriverVehicles: DripplexClient['adminDriverVehicles'];
   adminInspectionCentres: DripplexClient['adminInspectionCentres'];
   operationsInspections: DripplexClient['operationsInspections'];
+  operationsFleet: DripplexClient['operationsFleet'];
+  operationsRides: DripplexClient['operationsRides'];
   adminPromotions: DripplexClient['adminPromotions'];
   analytics: DripplexClient['analytics'];
   notifications: DripplexClient['notifications'];
