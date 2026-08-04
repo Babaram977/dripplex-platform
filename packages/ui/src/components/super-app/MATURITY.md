@@ -1427,3 +1427,31 @@ are ready for that review. Two items flagged for a deliberate decision
 alongside or before that sign-off: Top Up's gateway funding path remains
 environment-blocked (no sandbox credentials, same limitation already
 accepted for Ride/Marketplace), and the daily-limit race noted above.
+
+## Wallet module — Frozen (2026-08-04)
+
+Per founder direction after reviewing `docs/WALLET-DPX-100-PRODUCTION-AUDIT.md`
+and `docs/WALLET-PRODUCTION-AUDIT.md`: the Wallet module (all 10 real
+screens, Slices 1-5, and every `SuperAppWallet*` component listed above)
+is now **frozen** — critical security patches, critical bug fixes,
+performance improvements, regulatory/compliance updates, and features
+explicitly approved for a future milestone only. No casual feature
+additions reopen this module. Same commitment level as Ride's freeze
+(see `docs/DPX-100-MODULE-COMPLETION-GATE.md` for the standard both
+modules met); not yet formally "Locked" per this document's own maturity
+ladder, which still requires an explicit founder pixel-final sign-off
+screen by screen.
+
+Wallet's two open items from the audit — Top Up's gateway funding path
+(environment-blocked, no sandbox credentials) and the daily-limit
+check-then-act race (`docs/WALLET-PRODUCTION-AUDIT.md` §3.1, low-impact,
+self-limit-only) — remain accepted, documented gaps under the freeze,
+not blockers to it.
+
+With Ride, Marketplace, and Wallet all frozen, the founder's next module
+in the ordering is the Driver App — see
+`packages/driver-portal` sections below and
+`docs/DRIVER-APP-DPX-100-AUDIT.md` for the reality audit that starts
+that work, including the facial-verification requirement the founder
+has set as a production standard for this module, not an optional
+enhancement.

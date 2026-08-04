@@ -211,7 +211,7 @@ end-to-end — no real gateway credentials exist in this sandbox, the same
 environmental limitation documented during the Marketplace checkout
 stabilization pass.
 
-## Wallet detail (the module currently in progress)
+## Wallet detail (Frozen, 2026-08-04 — per founder approval, see MATURITY.md's "Wallet module — Frozen" section and `docs/WALLET-DPX-100-PRODUCTION-AUDIT.md`)
 
 Unlike Ride, Wallet has no pre-existing customer-web route to re-platform
 — this is a true from-scratch DPX-100 build (like Marketplace's approach).
@@ -312,6 +312,11 @@ Verified, now offering five real payment methods (Paystack/Flutterwave/
 OPay/Wallet/Cash) instead of three, with displayed and charged totals
 guaranteed identical. Wallet is now at 10/10 real screens ported and
 Playwright-verified (Slice 5: Statement/Security/Settings, see
-`docs/WALLET-005-STATEMENT-SECURITY-SETTINGS-DESIGN.md` and MATURITY.md).
-All five Wallet slices are complete; the module's production readiness
-audit and freeze is the remaining item._
+`docs/WALLET-005-STATEMENT-SECURITY-SETTINGS-DESIGN.md` and MATURITY.md),
+its DPX-100 production audit found and fixed six real issues (see
+`docs/WALLET-DPX-100-PRODUCTION-AUDIT.md` and
+`docs/WALLET-PRODUCTION-AUDIT.md`), and the founder has approved
+**freezing** the module (see MATURITY.md's "Wallet module — Frozen"
+section) — Ride, Marketplace, and Wallet are now all frozen. Driver App
+is next in the founder's ordering; see
+`docs/DRIVER-APP-DPX-100-AUDIT.md`._
