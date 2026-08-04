@@ -150,7 +150,44 @@ could plausibly be reused (same content-management need, different
 audience/category), rather than building a second CMS from scratch — a real
 architecture question for whoever scopes this, not decided here.
 
-### 7. Emergency/SOS — ❌ Zero capability
+### 7. Emergency/SOS — ✅ DrippleX Operations SOS shipped (2026-08-04)
+
+**Built:** exactly the founder's decision above, no more. A new `SosAlert`
+model (`apps/backend/src/drivers/sos/`) with a plain `rideId`/`vehicleId`
+(no Prisma relation to `Ride`/`Vehicle` back into the frozen modules —
+`vehicleId` does carry a real FK to `Vehicle` since Slice 1 is a sibling,
+non-Ride-frozen model, but `rideId` stays a scalar id per the same
+pattern already used for `IncidentReport`). `SosAlertService.trigger()` is
+zero-friction by design: the driver's request never carries `rideId` or
+`vehicleId` — the backend auto-resolves the driver's active ride
+(`DRIVER_ASSIGNED`/`ARRIVED`/`IN_PROGRESS`, same query as
+`DriverRideContactService`) and their approved+active `Vehicle` server-side,
+so a single tap can't be spoofed to a ride/vehicle that isn't genuinely
+theirs. On trigger: a durable `SosAlert` row is created first (so the alert
+exists even if no one is listening for the push), then every user holding
+`admin:drivers:sos-alert:manage` is broadcast a `CRITICAL`-priority
+in-app/push notification via `NotificationCenterService.broadcast()` (the
+real Firebase push wiring from DPX-CORE-001 Phase D — chosen over building
+a new WebSocket gateway with no operations-console consumer to test
+against), and — only if the driver has an active ride — the ride's
+customer is separately sent a `HIGH`-priority notice that assistance was
+requested (`customerNotifiedAt` recorded). Admin `PATCH` acknowledges/
+resolves and notifies the driver back, same shape as Incident Reporting's
+admin queue. Exposed as `GET/POST /driver/sos-alerts`,
+`GET /driver/sos-alerts/:id`, and `GET/PATCH /admin/sos-alerts` (admin
+queue is backend-only for now — no operations-console page exists yet, per
+the same scope choice made for items 3-4). Driver-portal ships a dedicated
+`/sos` page: a large red button armed by a first tap and sent by a second
+tap within 5 seconds (guards against an accidental single tap while
+staying a true one-hand, no-typing action), a live battery-level reading
+via the browser's Battery Status API when available (honestly `null`
+otherwise — that API is deprecated/unsupported in most browsers today),
+and a history list of the driver's own past alerts with any ops notes.
+**Explicitly not built, per the founder's decision:** automatic contact to
+emergency services or the driver's emergency contact — deferred pending
+country-specific legal/operational policy.
+
+Original audit finding, kept for context:
 
 The only "emergency" hits anywhere in the backend are
 `DriverProfile.emergencyContactName`/`emergencyContactPhone`

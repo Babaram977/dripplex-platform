@@ -271,6 +271,8 @@ model User {
   driverSupportTicketsHandled DriverSupportTicket[]        @relation("DriverSupportTicketResolver")
   incidentReports             IncidentReport[]             @relation("IncidentReportDriver")
   incidentReportsAcknowledged IncidentReport[]             @relation("IncidentReportAcknowledger")
+  sosAlerts                   SosAlert[]                   @relation("SosAlertDriver")
+  sosAlertsAcknowledged       SosAlert[]                   @relation("SosAlertAcknowledger")
   rideOffers                  RideOffer[]
   notifications               Notification[]
   notificationPreferences     NotificationPreference[]
@@ -1469,6 +1471,7 @@ model Vehicle {
   updatedAt      DateTime              @updatedAt @map("updated_at")
   driver         User                  @relation(fields: [driverId], references: [id], onDelete: Cascade)
   inspections    Inspection[]
+  sosAlerts      SosAlert[]
 
   @@unique([plateNumber])
   @@index([driverId])
@@ -1649,6 +1652,51 @@ model IncidentReport {
   @@map("incident_reports")
 }
 
+/// Driver Slice 2 item 5 — SOS/Emergency (founder-approved 2026-08-04):
+/// DrippleX Operations first — immediate alert to ops with driver id,
+/// GPS, active trip, timestamp, vehicle, battery level (if available);
+/// the customer (if on an active ride) is notified assistance was
+/// requested. Explicitly NOT auto-contacting emergency services or the
+/// driver's emergency contact in v1 — that needs country-specific legal/
+/// operational policy the founder deferred. `rideId` mirrors
+/// `IncidentReport.rideId` — a plain id, no Prisma relation to the frozen
+/// `Ride` model.
+enum SosAlertStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+model SosAlert {
+  id                String         @id @default(uuid()) @db.Uuid
+  driverId          String         @map("driver_id") @db.Uuid
+  rideId            String?        @map("ride_id") @db.Uuid
+  vehicleId         String?        @map("vehicle_id") @db.Uuid
+  latitude          Decimal?       @db.Decimal(10, 7)
+  longitude         Decimal?       @db.Decimal(10, 7)
+  /// 0-100, only when the browser's Battery Status API is available —
+  /// deprecated/unsupported in most browsers today, honestly nullable.
+  batteryLevel      Int?           @map("battery_level")
+  status            SosAlertStatus @default(OPEN)
+  adminNotes        String?        @map("admin_notes") @db.VarChar(2000)
+  acknowledgedBy    String?        @map("acknowledged_by") @db.Uuid
+  acknowledgedAt    DateTime?      @map("acknowledged_at")
+  resolvedAt        DateTime?      @map("resolved_at")
+  /// Set once the ride's customer (if any) has been sent the "assistance
+  /// requested" notice.
+  customerNotifiedAt DateTime?     @map("customer_notified_at")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+  driver            User           @relation("SosAlertDriver", fields: [driverId], references: [id], onDelete: Cascade)
+  acknowledger      User?          @relation("SosAlertAcknowledger", fields: [acknowledgedBy], references: [id], onDelete: SetNull)
+  vehicle           Vehicle?       @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+
+  @@index([driverId])
+  @@index([rideId])
+  @@index([status])
+  @@map("sos_alerts")
+}
+
 enum NotificationStatus {
   PENDING
   QUEUED
@@ -1715,6 +1763,9 @@ enum NotificationType {
   ORDER_COMPLETED
   DRIVER_SUPPORT_TICKET_UPDATED
   INCIDENT_REPORT_UPDATED
+  SOS_ALERT_TRIGGERED
+  SOS_ALERT_UPDATED
+  SOS_ALERT_CUSTOMER_NOTICE
 }
 
 enum DevicePlatform {

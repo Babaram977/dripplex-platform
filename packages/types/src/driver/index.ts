@@ -441,3 +441,55 @@ export interface IncidentReportListDto {
   items: IncidentReportDto[];
   meta: { page: number; limit: number; total: number; totalPages: number };
 }
+
+/** Driver Slice 2 item 5 — SOS/Emergency (founder-approved 2026-08-04):
+ * DrippleX Operations first. Pressing SOS sends an immediate alert to
+ * ops with driver id, GPS, active trip, timestamp, vehicle, and battery
+ * level (if available); the ride's customer (if any) is separately
+ * notified assistance was requested. Deliberately NOT auto-contacting
+ * emergency services or the driver's emergency contact in v1 — deferred
+ * pending country-specific legal/operational policy. The driver never
+ * supplies `rideId`/`vehicleId` directly — the backend resolves both
+ * (active ride, approved active vehicle) so pressing SOS is zero-friction
+ * and can't be spoofed to a ride/vehicle that isn't actually theirs. */
+export type SosAlertStatus = 'OPEN' | 'ACKNOWLEDGED' | 'RESOLVED';
+
+export interface SosAlertDto {
+  id: string;
+  driverId: string;
+  rideId: string | null;
+  vehicleId: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  batteryLevel: number | null;
+  status: SosAlertStatus;
+  adminNotes: string | null;
+  acknowledgedBy: string | null;
+  acknowledgedAt: string | null;
+  resolvedAt: string | null;
+  customerNotifiedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TriggerSosAlertRequest {
+  latitude?: number;
+  longitude?: number;
+  batteryLevel?: number;
+}
+
+export interface UpdateSosAlertRequest {
+  status?: SosAlertStatus;
+  adminNotes?: string;
+}
+
+export interface ListSosAlertsQuery {
+  page?: number;
+  limit?: number;
+  status?: SosAlertStatus;
+}
+
+export interface SosAlertListDto {
+  items: SosAlertDto[];
+  meta: { page: number; limit: number; total: number; totalPages: number };
+}

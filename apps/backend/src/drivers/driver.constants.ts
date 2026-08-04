@@ -43,6 +43,9 @@ export const DRIVER_AUDIT_ACTIONS = {
   /// Driver Slice 2 item 4
   INCIDENT_REPORT_SUBMITTED: 'driver.incident_report.submitted',
   INCIDENT_REPORT_UPDATED: 'driver.incident_report.updated',
+  /// Driver Slice 2 item 5
+  SOS_ALERT_TRIGGERED: 'driver.sos_alert.triggered',
+  SOS_ALERT_UPDATED: 'driver.sos_alert.updated',
 } as const;
 
 export const DRIVER_PERMISSIONS = {
@@ -75,6 +78,9 @@ export const DRIVER_PERMISSIONS = {
   /// Driver Slice 2 item 4 — Incident Reporting
   INCIDENT_REPORT_MANAGE: 'driver:incident-report:manage',
   ADMIN_INCIDENT_REPORT_MANAGE: 'admin:drivers:incident-report:manage',
+  /// Driver Slice 2 item 5 — SOS/Emergency
+  SOS_ALERT_MANAGE: 'driver:sos-alert:manage',
+  ADMIN_SOS_ALERT_MANAGE: 'admin:drivers:sos-alert:manage',
 } as const;
 
 /** DriverSecuritySettings is a singleton row (enforced at the service

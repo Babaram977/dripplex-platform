@@ -22,6 +22,7 @@ const NAV_LINKS = [
   { href: '/leaderboard', label: 'Leaderboard' },
   { href: '/support', label: 'Support' },
   { href: '/incident', label: 'Report Incident' },
+  { href: '/sos', label: 'SOS' },
   { href: '/profile', label: 'Profile' },
   { href: '/learn', label: 'Learn' },
 ] as const;
@@ -53,9 +54,11 @@ function AppNav(): React.JSX.Element {
                 key={link.href}
                 href={link.href}
                 className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                  pathname === link.href
-                    ? 'bg-secondary text-secondary-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
+                  link.href === '/sos'
+                    ? 'text-destructive hover:text-destructive'
+                    : pathname === link.href
+                      ? 'bg-secondary text-secondary-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
                 {link.label}
@@ -79,9 +82,11 @@ function AppNav(): React.JSX.Element {
             key={link.href}
             href={link.href}
             className={`flex-shrink-0 rounded-md px-3 py-1.5 text-sm font-medium ${
-              pathname === link.href
-                ? 'bg-secondary text-secondary-foreground'
-                : 'text-muted-foreground'
+              link.href === '/sos'
+                ? 'text-destructive'
+                : pathname === link.href
+                  ? 'bg-secondary text-secondary-foreground'
+                  : 'text-muted-foreground'
             }`}
           >
             {link.label}
