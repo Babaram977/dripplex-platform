@@ -152,8 +152,23 @@ Real-database (same methodology as Slice 3):
   still deferred pending its own founder-scoped decision, unrelated to
   Ride.
 
-## 11. Next step
+## 11. ✅ Founder Review — Approved (2026-08-05)
 
-Return for Founder Review of Slice 4, alongside this Cash Flow
-Verification document, before proceeding to Slice 5 (frontend
-surfacing) per the policy doc's §6 plan.
+> DPX-COMMERCIAL-001 Slice 4. Status: ✅ Approved. This slice achieved
+> exactly what I wanted: it completed the commercial accounting without
+> redesigning the Ride platform... [accrual, CommissionAccount reuse,
+> preserved confirmCash() flow, credit-limit enforcement, ledger/audit,
+> concurrency — each individually approved]... I actually like that this
+> slice didn't discover another bug. Instead, it proved that the retry
+> strategy introduced earlier generalizes correctly. That increases
+> confidence in the commercial engine... [on the pre-existing
+> confirmCash() race] That is not a DPX-COMMERCIAL-001 issue. It belongs
+> to Ride's payment implementation. Documenting it rather than quietly
+> redesigning Ride was the correct decision... Like Slice 3, this
+> becomes permanent commercial documentation. Those cash-flow narratives
+> will be valuable later during finance, audit and compliance reviews.
+
+## 12. Next step
+
+Slice 5 (Commercial Visibility) is founder-authorized — see
+`docs/DPX-COMMERCIAL-001-SLICE-5-COMMERCIAL-VISIBILITY.md`.

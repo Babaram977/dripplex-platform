@@ -509,5 +509,50 @@ pattern Slice 3 discovered was needed was applied proactively here and
 verified (not rediscovered) by a passing concurrency test on the first
 try.
 
-Slices 5-6 remain as planned in §6: frontend surfacing and full
-E2E/freeze.
+**Slice 5 authorized (2026-08-05)** — founder sign-off for Slice 4.
+Founder-locked Slice 5 scope, verbatim:
+
+> DPX-COMMERCIAL-001 Slice 5 — Commercial Visibility. The scope should
+> remain focused on surfacing the commercial engine that now exists,
+> not changing its behavior. Merchant: outstanding commission, credit
+> limit, available credit, commercial ledger/history, commission
+> status, blocked warning (where applicable). Driver: outstanding
+> commission, credit limit, available credit, commercial ledger/
+> history, blocked warning, settlement history. Admin: commercial
+> dashboard, merchant commission accounts, driver commission accounts,
+> outstanding balances, manual payment recording, credit-limit
+> monitoring. Rules: no redesign of Merchant Portal, Driver Portal, or
+> Admin Portal. Continue using the approved DDS and do not modify
+> Figma-locked shared components. Compose the new views using existing
+> design patterns. Reuse existing backend and SDK surfaces wherever
+> possible. Only add backend APIs if the current commercial engine
+> genuinely lacks read endpoints.
+
+Additional founder-required artifact before Slice 5 review: a
+**Commercial Reconciliation Verification** document, showing for
+representative Merchant and Driver scenarios that commission accrued,
+commission paid, outstanding balance, available credit, and current
+blocked/unblocked status all reconcile exactly with the Commission
+Ledger and Commission Account — the founder named this as "the final
+proof that the commercial engine is internally consistent before we
+consider freezing DPX-COMMERCIAL-001."
+
+**Slice 5 shipped (2026-08-05)** — implemented per the locked scope
+above. Two genuinely-missing backend self-read endpoints added
+(`MerchantCommercialController`, `DriverCommercialController`, mirroring
+`MerchantWalletController`/`DriverWalletController` exactly); the Admin
+Portal's commercial dashboard reuses the Slice-1 admin endpoints
+unchanged, composed with the pre-existing merchant/driver list
+endpoints for the account picker. Merchant Portal and Driver Portal
+gained commercial-visibility cards on their existing Wallet/Earnings
+pages; Admin Portal gained its first real nav shell and a `/commercial`
+page. No accrual, blocking, or payment logic changed. Full detail:
+`docs/DPX-COMMERCIAL-001-SLICE-5-COMMERCIAL-VISIBILITY.md`. The
+required Commercial Reconciliation Verification:
+`docs/DPX-COMMERCIAL-001-SLICE-5-COMMERCIAL-RECONCILIATION.md` —
+real-Postgres proof that, for representative Merchant and Driver
+scenarios, commission accrued/paid, outstanding balance, available
+credit, and blocked/unblocked status all reconcile exactly against the
+Commission Ledger and Commission Account.
+
+Slice 6 remains as planned in §6: full E2E/freeze.

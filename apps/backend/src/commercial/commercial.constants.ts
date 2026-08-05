@@ -14,6 +14,11 @@ export const COMMERCIAL_PERMISSIONS = {
   /// admin financial-reconciliation actions); can be split later if a
   /// read-only admin role is ever needed.
   ADMIN_ACCOUNT_MANAGE: 'admin:commercial:account:manage',
+  /// Slice 5 — a merchant/driver reading their own CommissionAccount and
+  /// ledger. Mirrors WALLET_PERMISSIONS.MERCHANT_READ/DRIVER_READ exactly
+  /// (self-only read, no write, no cross-owner access).
+  MERCHANT_READ: 'merchant:commercial:read',
+  DRIVER_READ: 'driver:commercial:read',
 } as const;
 
 export const COMMERCIAL_AUDIT_ACTIONS = {

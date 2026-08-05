@@ -113,6 +113,8 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
     code: 'admin:commercial:account:manage',
     description: 'View a commission account/ledger and record manual external payments against it',
   },
+  { code: 'merchant:commercial:read', description: 'Read own commission account and ledger' },
+  { code: 'driver:commercial:read', description: 'Read own commission account and ledger' },
   {
     code: 'driver:vehicle:manage',
     description: 'Manage own registered vehicles',

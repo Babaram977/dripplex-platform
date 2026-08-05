@@ -5,6 +5,7 @@ import Link from 'next/link';
 import * as React from 'react';
 
 import { AppShell } from '@/components/app-shell';
+import { CommercialPanel } from '@/components/campaign/commercial-panel';
 import { WalletPanel } from '@/components/campaign/wallet-panel';
 import { useDriverRideStats } from '@/hooks/rides/use-driver-ride-stats';
 import { formatNaira } from '@/lib/format';
@@ -86,6 +87,7 @@ export default function EarningsPage(): React.JSX.Element {
 
         <EarningsBreakdownCard />
         <WalletPanel />
+        <CommercialPanel />
 
         <Card>
           <CardHeader>

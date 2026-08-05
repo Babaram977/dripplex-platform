@@ -38,6 +38,8 @@ export function createAdminSdk(config: Partial<SdkConfig> = {}): AdminSdk {
     search: client.search,
     cms: client.cms,
     wallet: client.wallet,
+    adminCommercialCreditSettings: client.adminCommercialCreditSettings,
+    adminCommissionAccounts: client.adminCommissionAccounts,
   };
 }
 
@@ -70,6 +72,10 @@ export interface AdminSdk {
   search: DripplexClient['search'];
   cms: DripplexClient['cms'];
   wallet: DripplexClient['wallet'];
+  /** DPX-COMMERCIAL-001 Slice 1/5 — commission credit-limit policy (admin-configurable). */
+  adminCommercialCreditSettings: DripplexClient['adminCommercialCreditSettings'];
+  /** DPX-COMMERCIAL-001 Slice 1/5 — any owner's commission account/ledger + manual payment recording. */
+  adminCommissionAccounts: DripplexClient['adminCommissionAccounts'];
 }
 
 export function resolveAdminSdkConfig(config: Partial<SdkConfig> = {}): SdkConfig {

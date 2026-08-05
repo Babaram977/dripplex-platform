@@ -27,6 +27,7 @@ export function createDriverSdk(config: Partial<SdkConfig> = {}): DriverSdk {
     vehicles: client.driverVehicles,
     onboarding: client.driverOnboarding,
     inspections: client.driverInspections,
+    commercial: client.driverCommercial,
   };
 }
 
@@ -48,6 +49,8 @@ export interface DriverSdk {
   vehicles: DripplexClient['driverVehicles'];
   onboarding: DripplexClient['driverOnboarding'];
   inspections: DripplexClient['driverInspections'];
+  /** DPX-COMMERCIAL-001 Slice 5 — the driver's own commission account/ledger. */
+  commercial: DripplexClient['driverCommercial'];
 }
 
 export function resolveDriverSdkConfig(config: Partial<SdkConfig> = {}): SdkConfig {

@@ -16,6 +16,8 @@ import * as React from 'react';
 
 import type {
   BankAccountDto,
+  CommissionAccountDto,
+  CommissionLedgerEntryDto,
   OrderSettlementDto,
   OrderSettlementStatus,
   WalletDto,
@@ -26,6 +28,13 @@ import { describeSdkError, sdk } from '@/lib/sdk';
 
 const SETTLEMENTS_PAGE_SIZE = 10;
 const LEDGER_PAGE_SIZE = 10;
+const COMMERCIAL_LEDGER_PAGE_SIZE = 10;
+
+const COMMISSION_ENTRY_TYPE_LABEL: Record<CommissionLedgerEntryDto['type'], string> = {
+  ACCRUAL: 'Commission accrued',
+  PAYMENT: 'Payment recorded',
+  ADJUSTMENT: 'Adjustment',
+};
 
 // The backend's OrderSettlementStatus has exactly four values. PENDING
 // only exists transiently between wallet credit and the audit write —
@@ -117,8 +126,10 @@ export default function WalletPage(): React.JSX.Element {
       ) : (
         <>
           <BalanceCard wallet={wallet} />
+          <CommercialCard currency={wallet?.currency ?? 'NGN'} />
           <SettlementsCard />
           <LedgerCard currency={wallet?.currency ?? 'NGN'} />
+          <CommercialLedgerCard currency={wallet?.currency ?? 'NGN'} />
           <BankAccountsCard />
         </>
       )}
@@ -153,6 +164,104 @@ function BalanceCard({ wallet }: { wallet: WalletDto | null }): React.JSX.Elemen
         ) : (
           <p className="text-muted-foreground text-sm">
             No wallet yet — it is created automatically once your first order settles.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * DPX-COMMERCIAL-001 Slice 5 — surfaces the commission credit engine
+ * (Slices 1-4) that already governs mode-B/mode-C settlements: outstanding
+ * commission, credit limit, available credit, status, and the blocked
+ * warning. Pure read — no new commercial behavior, matches
+ * `MerchantCommercialController`'s `GET /merchant/commercial/account` 1:1.
+ */
+function CommercialCard({ currency }: { currency: string }): React.JSX.Element | null {
+  const [account, setAccount] = React.useState<CommissionAccountDto | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const load = React.useCallback(async () => {
+    try {
+      const data = await sdk.commercial.getAccount();
+      setAccount(data);
+      setError(null);
+    } catch (loadError) {
+      setError(describeSdkError(loadError).description);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    void load();
+  }, [load]);
+
+  if (loading) {
+    return null;
+  }
+
+  const availableCredit = account
+    ? Math.max(0, account.creditLimit - account.outstandingBalance)
+    : 0;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Commission owed</CardTitle>
+        <p className="text-muted-foreground text-sm">
+          Commission owed on Pay-to-Merchant and Cash-on-Delivery orders — settled directly with you
+          rather than deducted before payout, so it accrues here instead.
+        </p>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        {error ? (
+          <p className="text-destructive text-sm" role="alert">
+            {error}
+          </p>
+        ) : null}
+
+        {account ? (
+          <>
+            {account.blocked ? (
+              <p className="border-destructive/40 bg-destructive/5 text-destructive rounded-lg border px-3 py-2 text-sm">
+                Your outstanding commission has exceeded your credit limit. New orders may be
+                affected until this is paid down.
+              </p>
+            ) : null}
+            <div className="flex flex-wrap items-baseline gap-x-8 gap-y-3">
+              <div>
+                <p className="text-muted-foreground text-xs">Outstanding commission</p>
+                <p className="font-display text-2xl font-semibold tracking-tight">
+                  {formatMoney(account.outstandingBalance, currency)}
+                </p>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs">Credit limit</p>
+                <p className="text-lg font-medium">{formatMoney(account.creditLimit, currency)}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs">Available credit</p>
+                <p className="text-lg font-medium">{formatMoney(availableCredit, currency)}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs">Status</p>
+                <Badge variant={account.blocked ? 'outline' : 'success'}>
+                  {account.blocked
+                    ? 'Blocked'
+                    : account.outstandingBalance > 0
+                      ? 'Outstanding'
+                      : 'Clear'}
+                </Badge>
+              </div>
+            </div>
+          </>
+        ) : (
+          <p className="text-muted-foreground text-sm">
+            No commission owed yet — nothing accrues until a Pay-to-Merchant or Cash-on-Delivery
+            order settles.
           </p>
         )}
       </CardContent>
@@ -334,6 +443,98 @@ function LedgerCard({ currency }: { currency: string }): React.JSX.Element {
                 <div className="shrink-0 text-right">
                   <p className={entry.direction === 'CREDIT' ? 'text-success' : 'text-destructive'}>
                     {entry.direction === 'CREDIT' ? '+' : '-'}
+                    {formatMoney(entry.amount, currency)}
+                  </p>
+                  <p className="text-muted-foreground text-xs">
+                    Balance {formatMoney(entry.balanceAfter, currency)}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <Pagination page={page} totalPages={totalPages} onChange={setPage} />
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * DPX-COMMERCIAL-001 Slice 5 — commercial ledger/history, mirrors
+ * `LedgerCard` above exactly, backed by
+ * `GET /merchant/commercial/ledger` instead of the Wallet ledger.
+ */
+function CommercialLedgerCard({ currency }: { currency: string }): React.JSX.Element {
+  const [items, setItems] = React.useState<CommissionLedgerEntryDto[]>([]);
+  const [page, setPage] = React.useState(1);
+  const [totalPages, setTotalPages] = React.useState(1);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await sdk.commercial.listLedger({
+        page,
+        pageSize: COMMERCIAL_LEDGER_PAGE_SIZE,
+      });
+      setItems(result.items);
+      setTotalPages(result.meta.totalPages);
+    } catch (loadError) {
+      setError(describeSdkError(loadError).description);
+    } finally {
+      setLoading(false);
+    }
+  }, [page]);
+
+  React.useEffect(() => {
+    void load();
+  }, [load]);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Commission ledger</CardTitle>
+        <p className="text-muted-foreground text-sm">
+          Every commission accrual and payment recorded against your commercial account.
+        </p>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        {error ? (
+          <p className="text-destructive text-sm" role="alert">
+            {error}
+          </p>
+        ) : null}
+
+        {loading && items.length === 0 ? (
+          <div className="flex justify-center py-8">
+            <LoadingSpinner />
+          </div>
+        ) : items.length === 0 ? (
+          <EmptyState
+            title="No commission activity yet"
+            description="Accruals and payments against your commission account will appear here."
+          />
+        ) : (
+          <div className="border-border/70 divide-border/70 divide-y overflow-hidden rounded-lg border">
+            {items.map((entry) => (
+              <div
+                key={entry.id}
+                className="flex items-center justify-between gap-4 px-4 py-3 text-sm"
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-medium">
+                    {entry.description ?? COMMISSION_ENTRY_TYPE_LABEL[entry.type]}
+                  </p>
+                  <p className="text-muted-foreground mt-0.5 text-xs">
+                    {formatDate(entry.createdAt)}
+                  </p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className={entry.type === 'ACCRUAL' ? 'text-destructive' : 'text-success'}>
+                    {entry.type === 'ACCRUAL' ? '+' : '-'}
                     {formatMoney(entry.amount, currency)}
                   </p>
                   <p className="text-muted-foreground text-xs">
