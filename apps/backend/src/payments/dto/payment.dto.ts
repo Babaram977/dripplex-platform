@@ -7,16 +7,17 @@ export enum PaymentProviderDtoEnum {
   OPAY = 'OPAY',
 }
 
-/** How the customer chose to pay — the three gateways plus WALLET/CASH,
- * mirroring the Prisma OrderPaymentMethod enum. Kept distinct from
- * PaymentProviderDtoEnum (see PaymentService.resolveMethod()) since
- * WALLET/CASH never reach a PaymentProviderAdapter. */
+/** How the customer chose to pay — the three gateways plus WALLET/CASH/
+ * MERCHANT_DIRECT, mirroring the Prisma OrderPaymentMethod enum. Kept
+ * distinct from PaymentProviderDtoEnum (see PaymentService.resolveMethod())
+ * since WALLET/CASH/MERCHANT_DIRECT never reach a PaymentProviderAdapter. */
 export enum OrderPaymentMethodDtoEnum {
   PAYSTACK = 'PAYSTACK',
   FLUTTERWAVE = 'FLUTTERWAVE',
   OPAY = 'OPAY',
   WALLET = 'WALLET',
   CASH = 'CASH',
+  MERCHANT_DIRECT = 'MERCHANT_DIRECT',
 }
 
 export class InitializePaymentDto {

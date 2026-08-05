@@ -177,6 +177,13 @@ enum OrderPaymentMethod {
   OPAY
   WALLET
   CASH
+  /// DPX-COMMERCIAL-001 Slice 2 — Marketplace mode B ("Pay to Merchant").
+  /// The customer pays the merchant directly (bank transfer/POS); DrippleX
+  /// never handles or verifies the payment, so paymentStatus stays PENDING
+  /// for the order's entire lifecycle — settlement accrues the commission
+  /// owed to the merchant's CommissionAccount instead of crediting Wallet.
+  /// See docs/DPX-COMMERCIAL-001-REVENUE-SETTLEMENT-CREDIT-POLICY.md §3.3.
+  MERCHANT_DIRECT
 }
 
 enum TransactionStatus {

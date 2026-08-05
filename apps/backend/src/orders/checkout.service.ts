@@ -1,6 +1,7 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
   CartStatus,
+  CommissionOwnerType,
   FulfillmentType,
   MerchantStatus,
   OrderDisputeStatus,
@@ -18,6 +19,7 @@ import {
   type CartRepository,
   type CartWithItems,
 } from '../cart/repositories/cart.repository';
+import { CommissionAccountService } from '../commercial/commission-account.service';
 import {
   ConflictDomainException,
   NotFoundDomainException,
@@ -65,6 +67,7 @@ export class CheckoutService {
     private readonly pricingService: PricingService,
     private readonly reservationService: InventoryReservationService,
     private readonly auditService: AuditService,
+    private readonly commissionAccounts: CommissionAccountService,
     @Inject(NOTIFICATION_SERVICE)
     private readonly notifications: NotificationService,
     private readonly prisma: PrismaService,
@@ -521,6 +524,22 @@ export class CheckoutService {
     }
     if (profile.status !== MerchantStatus.APPROVED) {
       throw new ValidationDomainException('Merchant is not approved for orders');
+    }
+
+    // DPX-COMMERCIAL-001 Slice 2 §3.6 — a merchant whose outstanding
+    // commission balance exceeds their credit limit cannot receive new
+    // orders (already-in-flight orders are untouched, same as an
+    // unapproved/suspended merchant is rejected only at creation time,
+    // never retroactively). CommissionAccount.ownerId is the merchant's
+    // User.id (matching Wallet's convention), not MerchantProfile.id.
+    const commissionAccount = await this.commissionAccounts.getOrCreateAccount(
+      CommissionOwnerType.MERCHANT,
+      profile.userId,
+    );
+    if (commissionAccount.blocked) {
+      throw new ValidationDomainException(
+        'Merchant is currently blocked from receiving new orders due to an outstanding commission balance',
+      );
     }
   }
 

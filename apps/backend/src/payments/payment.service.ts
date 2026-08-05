@@ -110,6 +110,9 @@ export class PaymentService {
     if (method === OrderPaymentMethod.CASH) {
       return await this.selectCashOnDelivery(order, customerId, context);
     }
+    if (method === OrderPaymentMethod.MERCHANT_DIRECT) {
+      return await this.selectMerchantDirect(order, customerId, context);
+    }
     return await this.initiateGatewayPayment(order, customerId, method, dto, context);
   }
 
@@ -291,6 +294,38 @@ export class PaymentService {
       PAYMENT_AUDIT_ACTIONS.INITIALIZED,
       { ...context, userId: customerId },
       { resource: 'order', resourceId: order.id, metadata: { method: 'CASH' } },
+    );
+
+    return { order: toOrderDto({ ...order, ...finalized }) };
+  }
+
+  /**
+   * DPX-COMMERCIAL-001 Slice 2 — Marketplace mode B ("Pay to Merchant").
+   * The customer pays the merchant directly (bank transfer/POS); DrippleX
+   * never handles or digitally verifies that payment, so — unlike CASH —
+   * paymentStatus stays PENDING for the order's entire lifecycle, there is
+   * no rider/delivery collection step, and no fulfilment-type restriction
+   * (works for pickup or delivery). The order is otherwise confirmed
+   * immediately, same as CASH. Settlement (MerchantSettlementService)
+   * accrues the commission owed onto the merchant's CommissionAccount
+   * instead of crediting Wallet — see
+   * docs/DPX-COMMERCIAL-001-REVENUE-SETTLEMENT-CREDIT-POLICY.md §3.3.
+   */
+  private async selectMerchantDirect(
+    order: OrderWithItems,
+    customerId: string,
+    context: AuditContext,
+  ): Promise<InitializePaymentResponseDto> {
+    const finalized = await this.finalizeOrderConfirmation(order, {
+      paymentMethod: OrderPaymentMethod.MERCHANT_DIRECT,
+      paymentStatus: PaymentStatus.PENDING,
+      context: { ...context, userId: customerId },
+    });
+
+    await this.auditService.record(
+      PAYMENT_AUDIT_ACTIONS.INITIALIZED,
+      { ...context, userId: customerId },
+      { resource: 'order', resourceId: order.id, metadata: { method: 'MERCHANT_DIRECT' } },
     );
 
     return { order: toOrderDto({ ...order, ...finalized }) };

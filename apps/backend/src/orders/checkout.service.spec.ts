@@ -22,6 +22,7 @@ import { ReservationCleanupService } from './reservation-cleanup.service';
 import type { AddressRepository } from '../addresses/repositories/address.repository';
 import type { AuditService } from '../audit/audit.service';
 import type { CartRepository, CartWithItems } from '../cart/repositories/cart.repository';
+import type { CommissionAccountService } from '../commercial/commission-account.service';
 import type { DomainEventBus } from '../events/domain-event-bus';
 import type { NotificationService } from '../notifications/notification.service';
 import type { PricingService } from '../pricing/pricing.service';
@@ -201,6 +202,10 @@ describe('CheckoutService', () => {
     notifyOrderCreated: jest.fn().mockResolvedValue(undefined),
   } as unknown as jest.Mocked<NotificationService>;
 
+  const commissionAccounts = {
+    getOrCreateAccount: jest.fn().mockResolvedValue({ blocked: false }),
+  } as unknown as jest.Mocked<CommissionAccountService>;
+
   const prisma = {
     user: {
       findUnique: jest.fn(),
@@ -220,6 +225,7 @@ describe('CheckoutService', () => {
     pricingService,
     reservationService,
     auditService,
+    commissionAccounts,
     notifications,
     prisma,
     eventBus,
@@ -380,6 +386,15 @@ describe('CheckoutService', () => {
         userId: merchantId,
         status: MerchantStatus.UNDER_REVIEW,
         deletedAt: null,
+      });
+      await expect(service.checkout(customerId, {}, context)).rejects.toBeInstanceOf(
+        ValidationDomainException,
+      );
+    });
+
+    it('rejects a merchant whose CommissionAccount is blocked (DPX-COMMERCIAL-001 §3.6)', async () => {
+      (commissionAccounts.getOrCreateAccount as jest.Mock).mockResolvedValueOnce({
+        blocked: true,
       });
       await expect(service.checkout(customerId, {}, context)).rejects.toBeInstanceOf(
         ValidationDomainException,

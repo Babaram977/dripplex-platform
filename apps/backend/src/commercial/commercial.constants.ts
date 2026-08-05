@@ -39,3 +39,19 @@ export const COMMISSION_REFERENCE_TYPES = {
   RIDE: 'ride',
   DELIVERY_JOB: 'delivery_job',
 } as const;
+
+/// Slice 2 — distinct referenceType for reversing a mode-B order's
+/// accrual on refund, paired with referenceId = order.id. Kept separate
+/// from COMMISSION_REFERENCE_TYPES.ORDER so the (accountId, referenceType,
+/// referenceId) uniqueness constraint keeps the original accrual and its
+/// reversal as two distinct ledger entries — same pattern as
+/// ORDER_SETTLEMENT_REVERSAL_WALLET_REFERENCE_TYPE.
+export const COMMISSION_ORDER_REVERSAL_REFERENCE_TYPE = 'order_commission_reversal';
+
+/// Slice 2 — referenceType for the automatic deduction a mode-A
+/// settlement applies against a merchant's outstanding commission
+/// balance, paired with referenceId = order.id. Distinct from
+/// ORDER_SETTLEMENT_WALLET_REFERENCE_TYPE (the Wallet-side reference for
+/// the same order) so the two ledgers' entries are independently
+/// idempotent.
+export const COMMISSION_AUTOMATIC_DEDUCTION_REFERENCE_TYPE = 'order_settlement_deduction';

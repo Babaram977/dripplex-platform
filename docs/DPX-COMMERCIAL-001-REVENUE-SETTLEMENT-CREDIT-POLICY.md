@@ -418,7 +418,23 @@ SDK + shared types, 15/15 real-database tests, full backend verification
 clean. Purely additive per §6 — no existing behavior changed, no real
 accrual call site wired yet.
 
-Slices 2-6 remain as planned in §6: Marketplace mode B ("Pay to
-Merchant"), fixing Marketplace Cash on Delivery's settlement direction
-(flagged for separate founder sign-off — a behavior change to shipped
-code), Ride cash, frontend surfacing, and full E2E/freeze.
+**Slice 2 shipped (2026-08-05)** — Marketplace mode B ("Pay to
+Merchant"), founder-approved with an explicitly tight scope (commission
+accrual wired into the approved settlement flow only, through the three
+named integration points: `CheckoutService`, `PaymentService`,
+`MerchantSettlementService` — no other frozen-module file touched). See
+`docs/DPX-COMMERCIAL-001-SLICE-2-MODE-B.md` for the full record: new
+`MERCHANT_DIRECT` payment method; merchant blocking enforced at checkout;
+mode B accrues to `CommissionAccount` instead of crediting Wallet;
+automatic deduction from mode-A (online) settlements before crediting
+Wallet, explicitly excluding CASH (Slice 3's own separately-tracked
+defect); mode B reversal on refund; a real concurrency bug found and
+fixed by this slice's own concurrency test (two settlements racing on
+the same `CommissionAccount` now retry with bounded backoff instead of
+failing outright); 11 new real-database tests, full backend verification
+clean (1285/1288, same 3 pre-existing unrelated failures as Slice 1).
+
+Slices 3-6 remain as planned in §6: fixing Marketplace Cash on Delivery's
+settlement direction (flagged for separate founder sign-off — a behavior
+change to shipped code), Ride cash, frontend surfacing, and full
+E2E/freeze.

@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { OrderSettlementStatus, PrismaClient, WalletOwnerType } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
+import { CommercialCreditSettingsService } from '../commercial/commercial-credit-settings.service';
+import { CommissionAccountService } from '../commercial/commission-account.service';
 import { DomainEventBus } from '../events/domain-event-bus';
 import { WalletService } from '../wallet/wallet.service';
 
@@ -30,6 +32,7 @@ describe('MerchantSettlementService', () => {
   let prisma: PrismaService;
   let service: MerchantSettlementService;
   let commissionSettings: MerchantCommissionSettingsService;
+  let commissionAccounts: CommissionAccountService;
   let walletService: WalletService;
   let customerId: string;
   let merchantUserId: string;
@@ -40,7 +43,7 @@ describe('MerchantSettlementService', () => {
     total: number;
     status?: 'COMPLETED' | 'PENDING';
     paymentStatus?: 'PAID' | 'PENDING';
-    paymentMethod?: 'CASH' | 'WALLET';
+    paymentMethod?: 'CASH' | 'WALLET' | 'MERCHANT_DIRECT';
   }): Promise<{ id: string }> {
     return await prisma.order.create({
       data: {
@@ -79,11 +82,18 @@ describe('MerchantSettlementService', () => {
     const eventBus = new DomainEventBus();
     walletService = new WalletService(prisma, auditService, eventBus);
     commissionSettings = new MerchantCommissionSettingsService(prisma, auditService);
+    const commercialCreditSettings = new CommercialCreditSettingsService(prisma, auditService);
+    commissionAccounts = new CommissionAccountService(
+      prisma,
+      auditService,
+      commercialCreditSettings,
+    );
     service = new MerchantSettlementService(
       prisma,
       walletService,
       auditService,
       commissionSettings,
+      commissionAccounts,
     );
 
     // Reset the singleton commission setting to a known 10% before every
@@ -339,5 +349,254 @@ describe('MerchantSettlementService', () => {
     await expect(service.listSettlements(customerId, 1, 20)).rejects.toThrow(
       'Merchant profile not found',
     );
+  });
+
+  describe('DPX-COMMERCIAL-001 Slice 2 — Marketplace mode B ("Pay to Merchant")', () => {
+    afterEach(async () => {
+      if (!databaseAvailable) return;
+      await prisma.commissionLedgerEntry.deleteMany({
+        where: { account: { ownerType: 'MERCHANT', ownerId: merchantUserId } },
+      });
+      await prisma.commissionAccount.deleteMany({
+        where: { ownerType: 'MERCHANT', ownerId: merchantUserId },
+      });
+    });
+
+    it('accrues the commission owed to the CommissionAccount instead of crediting Wallet', async () => {
+      if (!databaseAvailable) return;
+      const order = await createOrder({
+        subtotal: 10000,
+        total: 10000,
+        paymentMethod: 'MERCHANT_DIRECT',
+        paymentStatus: 'PENDING',
+        status: 'COMPLETED',
+      });
+      const walletBefore = await walletService.getWallet(WalletOwnerType.MERCHANT, merchantUserId);
+
+      const settlement = await service.settleOrder(order.id);
+
+      expect(settlement?.status).toBe(OrderSettlementStatus.COMPLETED);
+      expect(Number(settlement?.commissionAmount)).toBe(1000);
+      expect(settlement?.walletLedgerEntryId).toBeNull();
+
+      const walletAfter = await walletService.getWallet(WalletOwnerType.MERCHANT, merchantUserId);
+      expect(walletAfter.availableBalance).toBe(walletBefore.availableBalance);
+
+      const account = await commissionAccounts.getOrCreateAccount('MERCHANT', merchantUserId);
+      expect(Number(account.outstandingBalance)).toBe(1000);
+    });
+
+    it('replayed mode-B settlement on the same order stays exactly-once', async () => {
+      if (!databaseAvailable) return;
+      const order = await createOrder({
+        subtotal: 4000,
+        total: 4000,
+        paymentMethod: 'MERCHANT_DIRECT',
+        paymentStatus: 'PENDING',
+        status: 'COMPLETED',
+      });
+
+      await service.settleOrder(order.id);
+      await service.settleOrder(order.id);
+
+      const account = await commissionAccounts.getOrCreateAccount('MERCHANT', merchantUserId);
+      expect(Number(account.outstandingBalance)).toBe(400);
+    });
+
+    it('reversing a mode-B settlement reverses the commission accrual, not a Wallet debit', async () => {
+      if (!databaseAvailable) return;
+      const order = await createOrder({
+        subtotal: 5000,
+        total: 5000,
+        paymentMethod: 'MERCHANT_DIRECT',
+        paymentStatus: 'PENDING',
+        status: 'COMPLETED',
+      });
+      await service.settleOrder(order.id);
+      const accountBefore = await commissionAccounts.getOrCreateAccount('MERCHANT', merchantUserId);
+      expect(Number(accountBefore.outstandingBalance)).toBe(500);
+      const walletBefore = await walletService.getWallet(WalletOwnerType.MERCHANT, merchantUserId);
+
+      const reversed = await service.reverseSettlement(order.id, 'Order refunded');
+
+      expect(reversed?.status).toBe(OrderSettlementStatus.REVERSED);
+      const accountAfter = await commissionAccounts.getOrCreateAccount('MERCHANT', merchantUserId);
+      expect(Number(accountAfter.outstandingBalance)).toBe(0);
+      const walletAfter = await walletService.getWallet(WalletOwnerType.MERCHANT, merchantUserId);
+      expect(walletAfter.availableBalance).toBe(walletBefore.availableBalance);
+    });
+
+    it('does not settle a mode-B order that is not COMPLETED, even though paymentStatus is always PENDING', async () => {
+      if (!databaseAvailable) return;
+      const order = await createOrder({
+        subtotal: 1000,
+        total: 1000,
+        paymentMethod: 'MERCHANT_DIRECT',
+        paymentStatus: 'PENDING',
+        status: 'PENDING',
+      });
+
+      const settlement = await service.settleOrder(order.id);
+
+      expect(settlement).toBeNull();
+    });
+
+    it('automatic deduction: a mode-A settlement pays down an outstanding commission balance before crediting Wallet', async () => {
+      if (!databaseAvailable) return;
+      // Seed an outstanding balance the way it would really arise: a prior
+      // mode-B order's accrual.
+      const modeB = await createOrder({
+        subtotal: 3000,
+        total: 3000,
+        paymentMethod: 'MERCHANT_DIRECT',
+        paymentStatus: 'PENDING',
+        status: 'COMPLETED',
+      });
+      await service.settleOrder(modeB.id);
+      const accountBefore = await commissionAccounts.getOrCreateAccount('MERCHANT', merchantUserId);
+      expect(Number(accountBefore.outstandingBalance)).toBe(300);
+
+      const modeA = await createOrder({ subtotal: 10000, total: 11500, paymentMethod: 'WALLET' });
+      const walletBefore = await walletService.getWallet(WalletOwnerType.MERCHANT, merchantUserId);
+
+      const settlement = await service.settleOrder(modeA.id);
+
+      // grossAmount 10000, commission 1000, theoretical merchantAmount 9000;
+      // 300 outstanding deducted -> net 8700 actually credited.
+      expect(Number(settlement?.merchantAmount)).toBe(8700);
+      const walletAfter = await walletService.getWallet(WalletOwnerType.MERCHANT, merchantUserId);
+      expect(walletAfter.availableBalance).toBe(walletBefore.availableBalance + 8700);
+
+      const accountAfter = await commissionAccounts.getOrCreateAccount('MERCHANT', merchantUserId);
+      expect(Number(accountAfter.outstandingBalance)).toBe(0);
+
+      const deductionLedgerCount = await prisma.commissionLedgerEntry.count({
+        where: {
+          account: { ownerType: 'MERCHANT', ownerId: merchantUserId },
+          referenceType: 'order_settlement_deduction',
+          referenceId: modeA.id,
+        },
+      });
+      expect(deductionLedgerCount).toBe(1);
+    });
+
+    it('automatic deduction is capped at the theoretical merchantAmount, never credits negative', async () => {
+      if (!databaseAvailable) return;
+      const modeB = await createOrder({
+        subtotal: 20000,
+        total: 20000,
+        paymentMethod: 'MERCHANT_DIRECT',
+        paymentStatus: 'PENDING',
+        status: 'COMPLETED',
+      });
+      await service.settleOrder(modeB.id);
+      const accountBefore = await commissionAccounts.getOrCreateAccount('MERCHANT', merchantUserId);
+      expect(Number(accountBefore.outstandingBalance)).toBe(2000);
+
+      const modeA = await createOrder({ subtotal: 1000, total: 1150, paymentMethod: 'WALLET' });
+      const walletBefore = await walletService.getWallet(WalletOwnerType.MERCHANT, merchantUserId);
+
+      const settlement = await service.settleOrder(modeA.id);
+
+      // theoretical merchantAmount = 900; entire 900 is deducted, nothing
+      // reaches Wallet, and 1100 of the 2000 debt remains outstanding.
+      expect(Number(settlement?.merchantAmount)).toBe(0);
+      const walletAfter = await walletService.getWallet(WalletOwnerType.MERCHANT, merchantUserId);
+      expect(walletAfter.availableBalance).toBe(walletBefore.availableBalance);
+
+      const accountAfter = await commissionAccounts.getOrCreateAccount('MERCHANT', merchantUserId);
+      expect(Number(accountAfter.outstandingBalance)).toBe(1100);
+    });
+
+    it('concurrent mode-B settlement calls on the same order still produce exactly one accrual', async () => {
+      if (!databaseAvailable) return;
+      const order = await createOrder({
+        subtotal: 8000,
+        total: 8000,
+        paymentMethod: 'MERCHANT_DIRECT',
+        paymentStatus: 'PENDING',
+        status: 'COMPLETED',
+      });
+
+      const [a, b] = await Promise.all([
+        service.settleOrder(order.id),
+        service.settleOrder(order.id),
+      ]);
+
+      expect(a?.id).toBe(b?.id);
+      const rowCount = await prisma.orderSettlement.count({ where: { orderId: order.id } });
+      expect(rowCount).toBe(1);
+
+      const account = await commissionAccounts.getOrCreateAccount('MERCHANT', merchantUserId);
+      expect(Number(account.outstandingBalance)).toBe(800);
+    });
+
+    it('concurrent mode-A settlements deducting against the same outstanding balance never lose an update', async () => {
+      if (!databaseAvailable) return;
+      const modeB = await createOrder({
+        subtotal: 20000,
+        total: 20000,
+        paymentMethod: 'MERCHANT_DIRECT',
+        paymentStatus: 'PENDING',
+        status: 'COMPLETED',
+      });
+      await service.settleOrder(modeB.id);
+      const accountBefore = await commissionAccounts.getOrCreateAccount('MERCHANT', merchantUserId);
+      expect(Number(accountBefore.outstandingBalance)).toBe(2000);
+
+      const orderA = await createOrder({ subtotal: 5000, total: 5750, paymentMethod: 'WALLET' });
+      const orderB = await createOrder({ subtotal: 5000, total: 5750, paymentMethod: 'WALLET' });
+
+      const [settledA, settledB] = await Promise.all([
+        service.settleOrder(orderA.id),
+        service.settleOrder(orderB.id),
+      ]);
+
+      // Each order's theoretical merchantAmount is 4500; two concurrent
+      // 2000-cap-shared deductions must sum to exactly the 2000 that was
+      // outstanding, never double-counted and never lost to a race —
+      // optimistic concurrency (CommissionAccount.version) forces the
+      // loser of the race to retry-read the updated balance.
+      const totalCredited = Number(settledA?.merchantAmount) + Number(settledB?.merchantAmount);
+      expect(totalCredited).toBe(9000 - 2000);
+
+      const accountAfter = await commissionAccounts.getOrCreateAccount('MERCHANT', merchantUserId);
+      expect(Number(accountAfter.outstandingBalance)).toBe(0);
+    });
+
+    it('CASH settlements are never touched by automatic deduction (Slice 3 boundary respected)', async () => {
+      if (!databaseAvailable) return;
+      const modeB = await createOrder({
+        subtotal: 5000,
+        total: 5000,
+        paymentMethod: 'MERCHANT_DIRECT',
+        paymentStatus: 'PENDING',
+        status: 'COMPLETED',
+      });
+      await service.settleOrder(modeB.id);
+      const accountBefore = await commissionAccounts.getOrCreateAccount('MERCHANT', merchantUserId);
+      expect(Number(accountBefore.outstandingBalance)).toBe(500);
+
+      const cashOrder = await createOrder({
+        subtotal: 2000,
+        total: 2300,
+        paymentMethod: 'CASH',
+        paymentStatus: 'PAID',
+        status: 'COMPLETED',
+      });
+      const walletBefore = await walletService.getWallet(WalletOwnerType.MERCHANT, merchantUserId);
+
+      const settlement = await service.settleOrder(cashOrder.id);
+
+      // Full theoretical merchantAmount (1800) reaches Wallet — no
+      // deduction applied to CASH, and the outstanding balance is
+      // unchanged by this settlement.
+      expect(Number(settlement?.merchantAmount)).toBe(1800);
+      const walletAfter = await walletService.getWallet(WalletOwnerType.MERCHANT, merchantUserId);
+      expect(walletAfter.availableBalance).toBe(walletBefore.availableBalance + 1800);
+
+      const accountAfter = await commissionAccounts.getOrCreateAccount('MERCHANT', merchantUserId);
+      expect(Number(accountAfter.outstandingBalance)).toBe(500);
+    });
   });
 });

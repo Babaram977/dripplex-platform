@@ -125,9 +125,13 @@ export class CommissionAccountService {
 
   /** Reduces the owner's outstanding balance — either mechanism from
    * §0.2: automatic deduction from a mode-A settlement (referenceType/Id
-   * set), or admin-manual recording of an external payment (no
-   * reference). Unblocks the account the moment the balance drops back to
-   * or below the credit limit. */
+   * set, `recordedBy` omitted — see Slice 2's `MerchantSettlementService`
+   * integration), or admin-manual recording of an external payment
+   * (`recordedBy` the acting admin's id). Unblocks the account the moment
+   * the balance drops back to or below the credit limit. Cannot reduce the
+   * balance below zero — see `reverseAccrual()` for the one case (a
+   * refunded mode-B order) where a reduction legitimately isn't capped by
+   * the current balance. */
   public async recordPayment(input: {
     ownerType: CommissionOwnerType;
     ownerId: string;
@@ -135,7 +139,7 @@ export class CommissionAccountService {
     referenceType?: string;
     referenceId?: string;
     description?: string;
-    recordedBy: string;
+    recordedBy?: string;
     context?: AuditContext;
   }): Promise<CommissionAccount> {
     const amount = this.toPositiveDecimal(input.amount);
@@ -155,7 +159,10 @@ export class CommissionAccountService {
     if (result.applied) {
       await this.auditService.record(
         COMMERCIAL_AUDIT_ACTIONS.PAYMENT_RECORDED,
-        { ...(input.context ?? {}), userId: input.recordedBy },
+        {
+          ...(input.context ?? {}),
+          ...(input.recordedBy !== undefined ? { userId: input.recordedBy } : {}),
+        },
         {
           resource: 'commission_account',
           resourceId: result.account.id,
@@ -165,10 +172,51 @@ export class CommissionAccountService {
             amount: amount.toNumber(),
             referenceType: input.referenceType ?? null,
             referenceId: input.referenceId ?? null,
-            recordedBy: input.recordedBy,
+            recordedBy: input.recordedBy ?? 'system:automatic-deduction',
           },
         },
       );
+      await this.recomputeAndPersistBlockState(result.account, input.context);
+    }
+
+    return await this.currentAccount(result.account.id);
+  }
+
+  /** Reverses a previously-accrued amount (a refunded mode-B order — the
+   * sale that produced the accrual no longer happened, so the commission
+   * owed on it shouldn't either). Deliberately not routed through
+   * `recordPayment()`: a reversal is not "the owner paid down their debt,"
+   * it's "the debt itself was reduced/never should have existed," so it
+   * is not capped at the current outstandingBalance — if the owner already
+   * paid down past this order's contribution, the balance legitimately
+   * goes negative (a credit DrippleX now owes back), same as a Wallet
+   * refund can leave a customer with a top-up they're owed. Recorded as
+   * type ADJUSTMENT, never PAYMENT, so the ledger is honest about why the
+   * balance moved. */
+  public async reverseAccrual(input: {
+    ownerType: CommissionOwnerType;
+    ownerId: string;
+    amount: number | string | Prisma.Decimal;
+    referenceType: string;
+    referenceId: string;
+    description?: string;
+    context?: AuditContext;
+  }): Promise<CommissionAccount> {
+    const amount = this.toPositiveDecimal(input.amount);
+    const result = await this.prisma.$transaction(async (tx) => {
+      return await this.applyMutation(tx, {
+        ownerType: input.ownerType,
+        ownerId: input.ownerId,
+        amount,
+        entryType: CommissionEntryType.ADJUSTMENT,
+        direction: 'DECREASE',
+        referenceType: input.referenceType,
+        referenceId: input.referenceId,
+        description: input.description ?? 'Commission accrual reversed',
+      });
+    });
+
+    if (result.applied) {
       await this.recomputeAndPersistBlockState(result.account, input.context);
     }
 
@@ -221,7 +269,15 @@ export class CommissionAccountService {
     }
 
     const currentBalance = new Prisma.Decimal(account.outstandingBalance);
-    if (input.direction === 'DECREASE' && currentBalance.lessThan(input.amount)) {
+    // Only a PAYMENT (someone paying down real debt) is capped at the
+    // current balance. An ADJUSTMENT (reversing an accrual that never
+    // should have counted) is allowed to push the balance negative — see
+    // reverseAccrual()'s doc comment.
+    if (
+      input.direction === 'DECREASE' &&
+      input.entryType === CommissionEntryType.PAYMENT &&
+      currentBalance.lessThan(input.amount)
+    ) {
       throw new ValidationDomainException('Payment amount exceeds outstanding commission balance');
     }
 

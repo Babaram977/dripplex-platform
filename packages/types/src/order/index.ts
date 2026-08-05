@@ -28,7 +28,8 @@ export type FulfillmentType = 'DELIVERY' | 'PICKUP';
 /// How the customer chose to pay — distinct from the gateway-only
 /// PaymentProvider type. WALLET and CASH never produce a
 /// PaymentTransactionDto; mirrors RidePaymentMethod's separation.
-export type OrderPaymentMethod = 'PAYSTACK' | 'FLUTTERWAVE' | 'OPAY' | 'WALLET' | 'CASH';
+export type OrderPaymentMethod =
+  'PAYSTACK' | 'FLUTTERWAVE' | 'OPAY' | 'WALLET' | 'CASH' | 'MERCHANT_DIRECT';
 
 export interface OrderItemDto {
   id: string;
