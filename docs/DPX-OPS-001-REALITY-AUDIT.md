@@ -81,8 +81,35 @@ Management" section for what was built and
 `docs/DPX-OPS-001-SLICE-3-PRODUCTION-AUDIT.md` for the production audit.
 `apps/backend/src/rides/` remains untouched; the "Reassign Driver" panel
 ships with zero assignment action, exactly as `docs/DPX-RIDE-201-
-OPERATIONS-MANUAL-DISPATCH.md` specifies. Slice 4 (Analytics) is next,
-not yet started.
+OPERATIONS-MANUAL-DISPATCH.md` specifies.
+
+**Update (2026-08-05, same day): DPX-OPS-001-FIGMA-PROTECTION-RULE.md
+locked in** — a standing instruction, not scoped to any one slice: no
+DPX-OPS-001 work may change the appearance of an existing Figma-derived
+Ride/Marketplace/Wallet/Driver screen, and no Locked `packages/ui`
+component may have its existing rendering changed to satisfy an
+Operations Console need — new Operations-specific components, or
+strictly additive/backward-compatible shared-component extensions, only.
+Applies to Slice 4 and everything after it.
+
+**Update (2026-08-05, same day): Slice 3 🔒 Founder Approved / Frozen** —
+see `docs/DPX-OPS-001-OPERATIONS-COMMAND-CENTRE.md`'s "🔒 Slice 3 —
+Founder Approved / Frozen" subsection for the full freeze record. Same
+slice-level discipline as Slice 2: from this point Slice 3 accepts only
+critical security/defect fixes, performance/compliance work, or
+explicitly Founder-approved enhancements. Manual reassignment stays the
+deferred DPX-RIDE-201 action half. This is still a **slice-level** freeze
+— steps 9-11's module-level production audit + founder approval + freeze
+still wait on Slice 4. Slice 4 (Operations Analytics) reality audit
+begins now, per the founder's own instruction to audit before
+implementing — see `docs/DPX-OPS-001-SLICE-4-REALITY-AUDIT.md` once it
+exists. The founder's direction: keep analytics operational, not a
+generic executive BI dashboard — audit what real data already exists for
+fleet availability, driver utilization, shifts, ride demand/completion/
+cancellation, dispatch performance, SOS/support/incident response times,
+and geographic activity; don't invent metrics whose underlying timestamps
+or events don't exist. The Figma Protection Rule applies to Slice 4 in
+full.
 
 **Scope**: Phase 1 (Core Operations) only, per the founder's own phasing —
 Fleet Operations, Emergency Operations, Support Centre, Incident Management,

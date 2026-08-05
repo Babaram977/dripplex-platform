@@ -152,3 +152,35 @@ Per the founder's own governance, this audit does **not** authorize a
 freeze — Slice 3 stays open pending Founder Review, and the module-level
 freeze for all four Phase 1 slices happens once Slice 4 is built and
 audited too.
+
+## 🔒 Founder Review — Approved for freeze (2026-08-05)
+
+The founder reviewed this audit and approved Slice 3 for freeze in full:
+"the important parts are all satisfied" — Ride Detail, allocation history,
+15-second live trip monitoring, truthful cancellation handling, and
+DPX-RIDE-201 decision support are implemented and verified, and "more
+importantly, the frozen Ride boundary is structurally protected — no
+`rides/` changes, no Ride-module imports, GET-only Operations endpoints,
+and no reassignment mutation."
+
+The founder explicitly approved, as correct decisions rather than merely
+acceptable trade-offs, both scoping choices this audit recorded: the
+text/coordinate-first trip-monitoring approach ("we don't need to
+duplicate MAPS-UI merely to claim a map exists"), and the `isEstimate:
+true` treatment of dispatch-candidate ETA ("operators must not mistake a
+straight-line constant-speed estimate for traffic-aware navigation").
+
+**Freeze boundary**: same rule as Slice 2 — from this point Slice 3
+accepts only critical security/defect fixes, performance/compliance work,
+or explicitly Founder-approved enhancements. See
+`docs/DPX-OPS-001-OPERATIONS-COMMAND-CENTRE.md`'s "🔒 Slice 3 — Founder
+Approved / Frozen" subsection for the full record.
+
+This remains a **slice-level** freeze. The module-level production audit
+across all four Phase 1 slices — and the decision whether to freeze the
+entire Operations Command Centre — happens once Slice 4 (Operations
+Analytics) is implemented and audited too. Slice 4 begins with its own
+reality audit, per the founder's own instruction, grounded in what
+timestamped/event data genuinely already exists rather than inventing
+metrics — and remains bound by the Figma Protection Rule
+(`docs/DPX-OPS-001-FIGMA-PROTECTION-RULE.md`) in full.

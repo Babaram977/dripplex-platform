@@ -2,8 +2,8 @@
 
 **Status: Slice 1 (Live Operations Dashboard) shipped (2026-08-04). Slice 2
 (Operations Work Queues) 🔒 Founder Approved / Frozen (2026-08-05). Slice 3
-(Dispatch Management) shipped (2026-08-05), founder-approved implementation
-following the reality audit. Slice 4 (Analytics) not yet started.** See
+(Dispatch Management) 🔒 Founder Approved / Frozen (2026-08-05). Slice 4
+(Operations Analytics) not yet started — reality audit in progress.** See
 `docs/DPX-OPS-001-REALITY-AUDIT.md` for the full backend-capability audit,
 gap analysis, proposed Phase 1 slice plan, and the founder's locked-in
 refinements — this document stays the scope record, that one is the
@@ -195,7 +195,7 @@ Lost & Found/Complaint Escalation belong to a future shared platform
 support/incident architecture, not a reopening of the frozen Driver
 incident model.
 
-## Slice 3 — Dispatch Management (shipped 2026-08-05)
+## Slice 3 — Dispatch Management (🔒 Founder Approved / Frozen, 2026-08-05)
 
 Founder-approved to implement, verbatim, after reviewing
 `docs/DPX-OPS-001-SLICE-3-REALITY-AUDIT.md`'s five-item visibility-only
@@ -252,6 +252,35 @@ untouched: **no manual reassignment action exists anywhere in Slice 3.**
   `RideTracking` data on a map for the ride's own customer/driver, and
   duplicating that map just for this internal view wasn't part of what the
   founder approved. A map view remains a reasonable future enhancement.
+
+### 🔒 Slice 3 — Founder Approved / Frozen (2026-08-05)
+
+Founder reviewed `docs/DPX-OPS-001-SLICE-3-PRODUCTION-AUDIT.md`'s findings
+(zero launch-blocking) and approved freeze in full: Ride Detail, Driver
+Allocation History, 15-second live trip monitoring, truthful cancellation/
+`NO_DRIVERS_FOUND` handling, and DPX-RIDE-201 decision support are all
+implemented and verified — and, "more importantly," the frozen Ride
+boundary is structurally protected: no `rides/` changes, no Ride-module
+imports, GET-only Operations endpoints, no reassignment mutation anywhere
+in the new code.
+
+The founder specifically approved two scoping decisions as correct, not
+merely acceptable:
+
+- **Text/coordinate-first trip monitoring.** "We don't need to duplicate
+  MAPS-UI merely to claim a map exists; the Operations layer can consume
+  the real tracking data now, and richer command-centre mapping can evolve
+  deliberately."
+- **`isEstimate: true` on dispatch-candidate ETA.** "Operators must not
+  mistake a straight-line constant-speed estimate for traffic-aware
+  navigation."
+
+**Freeze boundary, same rule as Slice 2**: from this point, Slice 3 accepts
+only critical security/defect fixes, performance/compliance work, or
+explicitly Founder-approved enhancements. Manual reassignment stays the
+deferred DPX-RIDE-201 action half — a Ride-module mutation design brought
+back for its own separate founder approval, never a quiet reopening of
+this frozen slice.
 
 Founder-recorded (2026-08-04), alongside
 approval of the Driver Slice 2 freeze: the production audit's one outstanding

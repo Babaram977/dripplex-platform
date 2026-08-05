@@ -613,6 +613,42 @@ true for Slices 1-3: every new component so far lives under
 `apps/operations-console/src/components/`, zero `packages/ui` files
 modified. No code changes — documentation only.
 
+## 2026-08-05 (same day) — DPX-OPS-001 Slice 3 🔒 Founder Approved / Frozen
+
+Founder reviewed `docs/DPX-OPS-001-SLICE-3-PRODUCTION-AUDIT.md` and
+approved freeze in full: Ride Detail, allocation history, 15-second live
+trip monitoring, truthful cancellation/`NO_DRIVERS_FOUND` handling, and
+DPX-RIDE-201 decision support all verified — and, "more importantly," the
+frozen Ride boundary confirmed structurally protected, not just a UI
+convention: no `rides/` changes, no Ride-module imports, GET-only
+Operations endpoints, no reassignment mutation anywhere in the code.
+
+The founder specifically endorsed two scoping calls as correct: skipping a
+second map implementation in favor of text/coordinate-first trip
+monitoring ("we don't need to duplicate MAPS-UI merely to claim a map
+exists"), and the `isEstimate: true` literal type on dispatch-candidate
+ETA ("operators must not mistake a straight-line constant-speed estimate
+for traffic-aware navigation").
+
+**Freeze boundary**: same discipline as Slice 2 — critical security/defect
+fixes, performance/compliance work, or explicitly Founder-approved
+enhancements only from here. Still a **slice-level** freeze; the
+module-level production audit across all four Phase 1 slices, and the
+decision whether to freeze the whole Operations Command Centre, waits for
+Slice 4.
+
+**Slice 4 (Operations Analytics) begins now, with a reality audit before
+implementation** — per the founder's explicit instruction to keep
+analytics operational rather than a generic executive BI dashboard: audit
+what real data already exists for fleet availability, driver utilization,
+shifts, ride demand/completion/cancellation, dispatch performance,
+SOS/support/incident response times, and geographic activity, and don't
+invent metrics whose underlying timestamps or events don't exist. The
+Figma Protection Rule (`docs/DPX-OPS-001-FIGMA-PROTECTION-RULE.md`)
+applies to Slice 4 in full — Operations-specific UI stays isolated in
+`operations-console`, shared-component changes additive/backward-compatible
+only.
+
 ---
 
 ## What's next
