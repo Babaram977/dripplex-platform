@@ -7,6 +7,13 @@ not restructure anything, does not move any existing doc, and does not
 block RIDE-003 Slice 4. Nothing under `docs/design/` or `docs/DDS-002-*`
 changes as a result of this file.
 
+**🔒 See also `docs/DPX-OPS-001-FIGMA-PROTECTION-RULE.md`** (founder,
+2026-08-05): every Figma-derived screen this document's design language
+governs — Ride, Marketplace, Wallet, Driver — is visually frozen against
+the Operations Command Centre (DPX-OPS-001) initiative. Figma remains the
+visual source of truth wherever an approved Figma source exists; a
+backend-read integration is never grounds to change what's rendered here.
+
 ## Why this exists now, but only as a stub
 
 After RIDE-003A (the Ride-scoped design lock, `DDS-002-RIDE-DESIGN-SYSTEM.md`

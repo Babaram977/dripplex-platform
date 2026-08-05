@@ -11,6 +11,16 @@ audit/plan/approval record. Manual ride reassignment is tracked separately:
 `docs/DPX-RIDE-201-OPERATIONS-MANUAL-DISPATCH.md` — Slice 3 shipped that
 document's visibility half only; the action half stays deferred.
 
+**🔒 Standing instruction — read before touching `packages/ui`:**
+`docs/DPX-OPS-001-FIGMA-PROTECTION-RULE.md` (founder, 2026-08-05). All
+Figma-derived Ride/Marketplace/Wallet/Driver screens are visually frozen.
+DPX-OPS-001 may read platform data freely, but must never modify the
+appearance of an existing Figma-derived screen, and must never change a
+Locked `packages/ui` component's existing rendering to fit an Operations
+Console need — new Operations-specific components, or strictly additive/
+backward-compatible shared-component extensions, only. Every slice's
+Production Audit must include the regression check that doc specifies.
+
 ## Slice 1 — Live Operations Dashboard (shipped 2026-08-04)
 
 Read-only, per the founder's slice sequencing. Built end-to-end without

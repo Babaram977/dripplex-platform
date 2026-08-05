@@ -21,6 +21,7 @@ Each ADR file: `NNNN-title.md`
 
 ## Index
 
-| ADR                                     | Title                            | Status   |
-| --------------------------------------- | -------------------------------- | -------- |
-| [0001](0001-monorepo-turborepo-pnpm.md) | Monorepo with Turborepo and pnpm | Accepted |
+| ADR                                       | Title                                     | Status   |
+| ----------------------------------------- | ----------------------------------------- | -------- |
+| [0001](0001-monorepo-turborepo-pnpm.md)   | Monorepo with Turborepo and pnpm          | Accepted |
+| [0002](0002-figma-protection-boundary.md) | Figma Protection Boundary for DPX-OPS-001 | Accepted |

@@ -583,6 +583,36 @@ own governance, this audit does not authorize a freeze — Slice 3 stays
 open pending Founder Review, and the module-level freeze still waits for
 Slice 4.
 
+## 2026-08-05 (same day) — Figma Protection Rule locked in as a standing instruction
+
+While reviewing Slice 3, the founder confirmed DPX-OPS-001's read-only
+architecture was already protecting the Figma-derived apps correctly
+(frozen Ride UI untouched, Operations Console a genuinely separate app,
+DPX-RIDE-201 still read-only, Marketplace/Wallet out of scope, backend
+reads not affecting rendering elsewhere) — but flagged one real risk
+worth locking down explicitly before it could ever drift: shared
+`packages/ui` components. If a future slice ever edited a Locked shared
+component's existing rendering to fit an Operations Console need, that
+could visually affect a Figma-implemented screen anywhere else that
+shares the same component.
+
+The founder issued a standing **Figma Protection Rule** for DPX-OPS-001,
+locked into `docs/DPX-OPS-001-FIGMA-PROTECTION-RULE.md` (full verbatim
+text there) — no visual changes to existing Figma-derived Ride/
+Marketplace/Wallet/Driver screens; no rendering changes to a Locked
+`packages/ui` component to satisfy Operations Console; new
+Operations-specific components or strictly additive/backward-compatible
+shared-component extensions only; an explicit regression check before
+each OPS slice is considered complete; Figma remains the visual source of
+truth wherever an approved Figma source exists. Cross-linked from
+`docs/DPX-OPS-001-OPERATIONS-COMMAND-CENTRE.md`,
+`docs/design/DPX-001-DRIPPLEX-DESIGN-LANGUAGE.md`, and recorded as
+`docs/adr/0002-figma-protection-boundary.md` so a future Claude/Codex
+session hits it before touching `packages/ui`. Retroactively verified
+true for Slices 1-3: every new component so far lives under
+`apps/operations-console/src/components/`, zero `packages/ui` files
+modified. No code changes — documentation only.
+
 ---
 
 ## What's next
