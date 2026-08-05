@@ -1104,11 +1104,72 @@ turn. Per the founder's explicit instruction, Slice 6 does **not**
 freeze DPX-COMMERCIAL-001 automatically — returned for final founder
 review before the module is considered for freeze.
 
+## 2026-08-05 (same day) — 🔒 DPX-COMMERCIAL-001 — Commercial Engine — Founder Approved & Frozen
+
+The founder reviewed the Slice 6 completion report (E2E lifecycle
+verification, security review, production audit, Platform Commercial
+Readiness Matrix) and issued **Founder Review — DPX-COMMERCIAL-001
+(Module-Level)**, outcome **Approved**, confirming the module is
+"functionally complete and consistent with the commercial policy that
+was approved before implementation began" and that all ten-plus
+capabilities built across Slices 1-6 (Commission Accounts, immutable
+ledger, admin-configurable credit limits, Merchant/Driver commercial
+accounting, automatic deduction, manual settlement, credit-limit
+enforcement, Merchant/Driver blocking, cross-portal visibility, real
+reconciliation, and E2E lifecycle verification) "is exactly the
+architecture we intended when DPX-COMMERCIAL-001 was first drafted."
+
+All three production-audit findings (manual-payment idempotency, no
+per-account credit override, no blocking-transition alerting) were
+individually reviewed and confirmed non-blocking — candidates for a
+future, explicitly-scoped enhancement, not a reason to hold the freeze.
+The Platform Commercial Readiness Matrix was singled out to "remain part
+of the permanent commercial documentation" for correctly distinguishing
+Mode A's direct-net-credit capture mechanism from Mode B/Cash/Ride
+Cash's tracked-liability accrual rather than presenting all four payment
+paths as identical.
+
+> 🔒 DPX-COMMERCIAL-001 — Revenue, Settlement & Credit Policy
+>
+> Status: Founder Approved & Frozen
+>
+> Apply the standard freeze policy: Critical security fixes only,
+> Critical defect fixes only, Performance improvements, Compliance and
+> regulatory updates, Explicit Founder-approved enhancements. No routine
+> feature additions.
+
+**Project status at this milestone**: Wallet, Marketplace, Ride, Driver,
+Operations, Merchant, and now **Commercial Engine (DPX-COMMERCIAL-001)**
+are all 🔒 Founder Approved & Frozen — completing the platform's core
+commerce and mobility foundation. Per the founder's explicit direction,
+**no further feature modules open next.** The platform moves into
+**Launch Mode**, focused on getting Ride to production: Railway
+production deployment and environment readiness (Railway as the
+canonical deployment platform), platform-wide launch verification across
+the frozen modules, App Store/Google Play launch readiness, end-to-end
+production validation, security hardening/performance tuning/monitoring/
+operational readiness, and Beta/UAT and launch execution.
+
 ---
 
 ## What's next
 
-The R1.7/R1.8 commerce-completion plan below was superseded by the DPX-100 initiative above — Marketplace's commerce loop (cart/checkout/order/payment UI) shipped as part of that port, not as R1.7/R1.8 specifically. What's actually still open, per each module's own audit doc: the Driver module's Figma-ported UI (including onboarding/vehicle/inspection/Slice 2 — all backend-real, Slice 1 and Slice 2 both frozen, see above) (`docs/DRIVER-APP-DPX-100-AUDIT.md`); the Railway-specific pre-Ride-launch production readiness checklist locked in `docs/ops/PRODUCTION-RAILWAY.md` (backend, customer-web, driver-portal, merchant-portal, operations-console, env vars/secrets, Postgres/Redis connectivity, health/readiness endpoints, domain/SSL, monitoring/logging, build/start verification, rollback procedure — not yet started); and DPX-COMMERCIAL-001 — Slices 1-6 now shipped (see above), returned for founder review, not yet frozen — followed by Orders/Admin/AI in the founder's module ordering per `docs/DPX-100-MODULE-COMPLETION-GATE.md`. `docs/DPX-OPS-001-OPERATIONS-COMMAND-CENTRE.md` and `docs/DPX-MERCHANT-001-REALITY-AUDIT.md` — previously listed here as open work — are now both 🔒 Founder Approved & Frozen (see above).
+With Wallet, Marketplace, Ride, Driver, Operations, Merchant, and now
+Commercial Engine (DPX-COMMERCIAL-001) all 🔒 Founder Approved & Frozen
+(see above), the platform's core commerce and mobility foundation is
+complete. Per the founder's explicit direction (2026-08-05), no further
+feature modules open next — the platform moves into **Launch Mode**,
+focused on getting Ride to production: Railway production deployment and
+environment readiness (Railway as the canonical deployment platform —
+the pre-Ride-launch checklist locked in `docs/ops/PRODUCTION-RAILWAY.md`
+covering backend, customer-web, driver-portal, merchant-portal,
+operations-console, env vars/secrets, Postgres/Redis connectivity,
+health/readiness endpoints, domain/SSL, monitoring/logging, build/start
+verification, rollback procedure — not yet started), platform-wide
+launch verification across the frozen modules, App Store/Google Play
+launch readiness, end-to-end production validation, security hardening/
+performance tuning/monitoring/operational readiness, and Beta/UAT and
+launch execution.
 
 <details>
 <summary>Original 2026-07-28 "what's next" (superseded, kept for the record)</summary>

@@ -167,10 +167,19 @@ A module is not "done" until all ten are true:
   (`docs/DPX-COMMERCIAL-001-SLICE-6-COMPLETION.md`,
   `docs/DPX-COMMERCIAL-001-PRODUCTION-AUDIT.md`). Full policy record:
   `docs/DPX-COMMERCIAL-001-REVENUE-SETTLEMENT-CREDIT-POLICY.md`.
-  **Not yet frozen** — per the founder's explicit Slice 6 instruction,
-  the completion slice returns for founder review rather than freezing
-  automatically; status pending that review (see
-  `docs/RELEASE-HISTORY.md`).
+  **Frozen** per founder direction (2026-08-05, module-level Founder
+  Review — see `docs/RELEASE-HISTORY.md`). All three production-audit
+  findings (manual-payment idempotency, no per-account credit override,
+  no blocking-transition alerting) were confirmed non-blocking and
+  carried forward as candidates for a future, explicitly-scoped
+  enhancement rather than a reason to reopen the module. The Platform
+  Commercial Readiness Matrix (`docs/DPX-COMMERCIAL-001-SLICE-6-COMPLETION.md`
+  §5) was designated by the founder as permanent commercial
+  documentation. This freeze completes the platform's core commerce and
+  mobility foundation — Wallet, Marketplace, Ride, Driver, Operations,
+  Merchant, and Commercial Engine are now all frozen; per founder
+  direction the platform moves into Launch Mode next, not another
+  feature module.
 
 ## Notes for whoever runs the next module through this gate
 

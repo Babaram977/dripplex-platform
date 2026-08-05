@@ -1,5 +1,13 @@
 # DPX-COMMERCIAL-001 — Production Audit
 
+**Status: 🔒 Founder Approved & Frozen (2026-08-05).** The founder
+reviewed this audit's three findings (§5) and confirmed all three
+non-blocking: manual-payment idempotency, no per-account credit override,
+no blocking-transition alerting. None require closure before freeze; all
+are carried forward as candidates for a future, explicitly-scoped
+enhancement. See `docs/DPX-COMMERCIAL-001-REVENUE-SETTLEMENT-CREDIT-POLICY.md`
+§7 for the full founder decision record.
+
 Founder-required deliverable for Slice 6 (the completion slice), matching
 the same production-grade audit format used for Wallet
 (`docs/WALLET-DPX-100-PRODUCTION-AUDIT.md`), Driver
@@ -152,3 +160,11 @@ elsewhere (Wallet, Merchant) — not defects introduced by this module,
 and not required to close before founder freeze consideration. Both are
 candidates for a future, explicitly-scoped slice if the founder wants
 them closed, not a reason to reopen DPX-COMMERCIAL-001 now.
+
+**Founder decision (2026-08-05): Approved & Frozen.** The founder
+reviewed all three findings in this audit (§5, including the per-account
+credit override item restated here) and confirmed each is correctly
+classified as non-blocking, matching this recommendation exactly.
+DPX-COMMERCIAL-001 is frozen under the platform's standard freeze policy
+— critical security/defect fixes, performance improvements, compliance
+updates, and explicit founder-approved enhancements only.

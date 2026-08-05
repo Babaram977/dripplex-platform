@@ -1,11 +1,14 @@
-# 🔒 DPX-COMMERCIAL-001 — Platform Revenue, Settlement & Credit Policy (Founder Approved)
+# 🔒 DPX-COMMERCIAL-001 — Platform Revenue, Settlement & Credit Policy (Founder Approved & Frozen)
 
-Status: **✅ Approved and locked as the platform's single commercial
-policy — merchant commission, driver commission, credit limits,
-blocking/unblocking, automatic deduction, manual settlement recording, and
-the commission ledger all derive from this document. Implementation is
-deliberately deferred — see §0.1 for the founder-locked sequencing. No
-schema, service, or controller for this policy exists yet.**
+Status: **🔒 Founder Approved & Frozen (2026-08-05).** Slices 1-6 are
+implemented, verified, and shipped — merchant commission, driver
+commission, credit limits, blocking/unblocking, automatic deduction,
+manual settlement recording, and the commission ledger all derive from
+this document, as built. The module now carries the platform's standard
+freeze policy: critical security fixes, critical defect fixes,
+performance improvements, compliance/regulatory updates, and explicit
+founder-approved enhancements only — no routine feature additions. See
+§7 for the full founder decision record.
 
 ## 0. Founder decisions (locked)
 
@@ -595,3 +598,39 @@ explicit instruction, this does **not** freeze DPX-COMMERCIAL-001
 automatically — returned for founder review.
 
 Slice 6 is the last planned slice — see §6.
+
+**Founder Approved & Frozen (2026-08-05).** Founder review of the Slice 6
+completion report, verbatim decision:
+
+> Founder Review — DPX-COMMERCIAL-001 (Module-Level). Decision: ✅
+> Approved. After reviewing the completion report, I consider
+> DPX-COMMERCIAL-001 functionally complete and consistent with the
+> commercial policy that was approved before implementation began... The
+> three remaining findings are correctly classified [manual-payment
+> idempotency, per-account credit overrides, blocking-transition alerts —
+> all non-blocking]... The module has completed the same lifecycle as the
+> other production modules: Reality/Policy definition, Implementation,
+> Verification, Concurrency testing, Security review, Production audit,
+> Founder review. That satisfies the DPX-100 governance process. Founder
+> Decision: 🔒 DPX-COMMERCIAL-001 — Revenue, Settlement & Credit Policy.
+> Status: Founder Approved & Frozen.
+
+DPX-COMMERCIAL-001 now carries the platform's standard freeze policy:
+critical security fixes, critical defect fixes, performance improvements,
+compliance/regulatory updates, and explicit founder-approved enhancements
+only — no routine feature additions. The three §5 production-audit
+findings (manual-payment idempotency, no per-account credit override, no
+blocking-transition alerting) are confirmed non-blocking and carried
+forward as candidates for a future, explicitly-scoped enhancement rather
+than a reason to reopen this module. The Platform Commercial Readiness
+Matrix (`docs/DPX-COMMERCIAL-001-SLICE-6-COMPLETION.md` §5) is designated
+by the founder as permanent commercial documentation.
+
+With this freeze, the platform's frozen core modules are: Wallet,
+Marketplace, Ride, Driver, Operations, Merchant, and Commercial Engine
+(DPX-COMMERCIAL-001) — completing the platform's core commerce and
+mobility foundation. Per founder direction, no further feature modules
+open next; the platform moves into Launch Mode (Railway production
+deployment, platform-wide launch verification, App Store/Google Play
+readiness, end-to-end production validation, security/performance/
+monitoring hardening, Beta/UAT and launch execution).
