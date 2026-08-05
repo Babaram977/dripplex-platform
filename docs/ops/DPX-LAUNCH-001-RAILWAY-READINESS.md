@@ -2,7 +2,7 @@
 
 Founder-authorized (2026-08-05) as the first Launch Track following the
 freeze of DPX-COMMERCIAL-001 and the platform's core commerce/mobility
-foundation. Scope, verbatim:
+foundation. Original scope, verbatim:
 
 > Launch Track 1 — Railway Production Readiness (Highest Priority):
 > Railway infrastructure; production environment variables and secrets;
@@ -11,313 +11,201 @@ foundation. Scope, verbatim:
 > verification for Backend, Customer Web, Driver Portal, Merchant
 > Portal, Operations Console.
 
-Founder direction on sequencing and secrets, recorded verbatim:
+## Founder Review of the first pass (2026-08-05)
 
-> Hold off on updating main for now. Complete the remaining Railway
-> production readiness work first: verify all required Railway services
-> are correctly configured; audit and document every required
-> production environment variable and secret; confirm database
-> migrations are ready to apply; verify health/readiness endpoints;
-> verify build and start commands for every deployed service; produce a
-> deployment checklist with no unresolved launch-blocking items. Only
-> after that checklist is complete should you return for Founder
-> approval to fast-forward main.
+Approved the first pass's findings and fixes in full. Locked the
+structure this document now follows, verbatim:
+
+> Before main is advanced, I want the launch checklist to clearly
+> distinguish three categories: (1) Ready — everything fully verified
+> and deployable without further input. (2) Pending Founder — anything
+> that requires me to supply credentials or make a product/business
+> decision. Each should state the exact Railway variable names, which
+> service consumes them, what functionality they enable, and whether
+> they are launch-critical. (3) Blocking main — the items that must be
+> completed before advancing main. I expect this list to become very
+> small and explicit.
 >
-> Document every missing production secret as a launch blocker, but
-> continue all work that doesn't require them. For each integration,
-> verify exactly which environment variables are required, document
-> them, mark their status as Configured / Pending Founder / Not
-> Required, and continue every deployment/readiness task that can be
-> completed without the actual credentials.
+> Continue with Launch Track 1 until only two categories of blockers
+> remain: (1) Founder-supplied production credentials, (2) Founder
+> approval to fast-forward main. Everything else that can be completed
+> without those should be completed first.
 
-This document is the deliverable for that instruction. Everything below
-was verified by querying live Railway state directly (not assumed from
-prior docs, several of which were found stale — see §2) and by reading
-the actual backend config-validation code and each app's Dockerfile,
-not by trusting `.env.example` files as authoritative.
+This pass closes that instruction: **§A/B/C below is the three-category
+checklist**, and — worked through item by item — **category C
+(Blocking main) contains nothing left except the founder's own approval
+decision.** Nothing else stands between here and requesting that
+approval.
 
-**This document does not conclude the track.** Per the founder's
-sequencing, main is not yet fast-forwarded — §11 lays out exactly what
-remains before that approval is requested.
+---
 
-## 1. The one blocking finding: `main` is 65 commits behind
+## A. Ready — verified and deployable, no further input needed
 
-Railway's four live app services (backend, customer-web, admin-portal,
-driver-portal) all deploy from `main`. `main` is **65 commits behind**
-`claude/dripplex-coolify-deploy-fatig4` — the gap covers everything
-since Driver Slice 1: all of Driver Slice 2, the entire Operations
-Command Centre (4 slices), the entire Merchant module, and the entire
-Commercial Engine (6 slices, just frozen). **None of that is live in
-production today.** This also explains why `merchant-portal` and
-`operations-console` have no Railway service at all — `operations-console`
-doesn't exist on `main` yet; `merchant-portal` exists on `main` but as
-its much earlier R1.4 shell, not the frozen Phase 2 build.
+| Item                                                      | Detail                                                                                                                                                                                                                                                                                                                                                                                              |
+| --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Backend service config                                    | Dockerfile builder, `node dist/main.js` start command, `/api/v1/health` healthcheck (30s timeout, 3 retries), `preDeployCommand` runs `prisma migrate deploy`. Verified live.                                                                                                                                                                                                                       |
+| Backend core secrets                                      | `DATABASE_URL`, `REDIS_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` — the only 4 vars the backend cannot boot without — all already set on Railway.                                                                                                                                                                                                                                              |
+| `customer-web` service config                             | Dockerfile builder, healthcheck `/` (added this pass).                                                                                                                                                                                                                                                                                                                                              |
+| `customer-web` Dockerfile bug                             | Was missing build `ARG`/`ENV` for `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` and all six `NEXT_PUBLIC_FIREBASE_*` vars — fixed. Values themselves are §B items; the plumbing is now correct so they'll actually reach the app once supplied.                                                                                                                                                                 |
+| `admin-portal` service config                             | Dockerfile builder, healthcheck `/` (already correct), vars already correct (only needs `NEXT_PUBLIC_API_BASE_URL`/`NEXT_PUBLIC_APP_URL`, both set).                                                                                                                                                                                                                                                |
+| `driver-portal` service config                            | Was live with **zero** vars, no domain, no healthcheck — all three fixed this pass (domain generated, vars set to real values, healthcheck `/` added).                                                                                                                                                                                                                                              |
+| `driver-portal` Dockerfile bug                            | Was missing build `ARG`/`ENV` for `NEXT_PUBLIC_CUSTOMER_APP_URL` and `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` — fixed.                                                                                                                                                                                                                                                                                     |
+| `rider-portal`/`merchant-portal` Dockerfiles              | Checked — no gap, both only need `NEXT_PUBLIC_API_BASE_URL`/`NEXT_PUBLIC_APP_URL`, already correctly plumbed.                                                                                                                                                                                                                                                                                       |
+| Postgres                                                  | Railway-managed (`postgres-ssl:18`), volume-backed, connected.                                                                                                                                                                                                                                                                                                                                      |
+| Redis                                                     | Railway-managed (`redis:8.2.1`), volume-backed, password-protected, AOF+RDB persistence.                                                                                                                                                                                                                                                                                                            |
+| Migrations                                                | 55 migrations, `prisma` correctly in `dependencies` (the historical crash-loop gotcha stays fixed), `migrate deploy` wired into every backend deploy automatically. Will apply on the first post-merge deploy with no manual step.                                                                                                                                                                  |
+| Deploy recipes for `merchant-portal`/`operations-console` | Fully documented (`docs/ops/PRODUCTION-RAILWAY.md`) — service creation is mechanical once their code is on `main` (§C).                                                                                                                                                                                                                                                                             |
+| Rollback procedure                                        | Railway retains full per-service deployment history; rolling back means redeploying a prior successful deployment from the Railway dashboard. (Documented caveat: this session's Railway tools can redeploy the _current_ latest deployment but not a specific past one — that action is dashboard-only today.)                                                                                     |
+| Merge mechanics                                           | `main` fast-forwards cleanly from the feature branch (`git fetch` confirms no divergent history on `main` beyond what's already ancestor to the feature branch) — this exact fast-forward-and-push mechanism has been used twice before in this repo (the `v1.0-baseline` tag and an earlier consolidation), so the _how_ of the merge itself is proven, not something to figure out at merge time. |
+| `customer-mobile` stray service                           | Confirmed as a Capacitor native-app shell mistakenly deployed as a Railway web service, building from `customer-web`'s Dockerfile. No functional harm (duplicates customer-web under an unlinked domain). Deliberately **not** touched — the founder asked for this to be reviewed deliberately, not fixed reflexively, and it blocks nothing.                                                      |
 
-Per founder direction (§0), this is **not** being fixed in this pass.
-It is the single gating item for Launch Track 1's completion — see §11.
+## B. Pending Founder — credentials and business decisions
 
-## 2. Live Railway service inventory (verified 2026-08-05)
+Every row: exact Railway variable name(s), which service consumes it,
+what it enables, and whether it's launch-critical (blocks a real Ride
+launch) versus important-but-deferrable (a Kano closed beta can run
+without it).
+
+| Variable(s)                                                                                                                       | Service                                                                    | Enables                                                                                                                        | Launch-critical?                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| --------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PAYSTACK_SECRET_KEY`, `PAYSTACK_PUBLIC_KEY` (`PAYSTACK_BASE_URL` has a working default)                                          | backend                                                                    | Real online payment capture (Marketplace Mode A/B, Ride gateway payment) via the default provider                              | **Yes** — without one of Paystack/Flutterwave/OPay, no online payment can process at all; cash/manual flows still work via the Commercial Engine                                                                                                                                                                                                                                                                                             |
+| `FLUTTERWAVE_SECRET_KEY`, `FLUTTERWAVE_PUBLIC_KEY`, `FLUTTERWAVE_WEBHOOK_HASH`                                                    | backend                                                                    | Same, if Flutterwave is chosen as the (or an additional) payment provider                                                      | Only if selected as launch provider                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `OPAY_API_KEY`                                                                                                                    | backend                                                                    | Same, for OPay                                                                                                                 | Only if selected as launch provider                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `GOOGLE_MAPS_SERVER_API_KEY`                                                                                                      | backend                                                                    | Server-side geocoding/reverse-geocoding/directions                                                                             | **Yes for Ride** — fare estimation and address resolution depend on this; falls back to a `NotConfigured` adapter that returns no result rather than crashing, so the app stays up but Ride's core flow degrades                                                                                                                                                                                                                             |
+| `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`                                                                                                 | `customer-web`, `driver-portal`, `operations-console` (same key, 3 places) | Live map rendering in the browser (ride tracking, destination search, Live Fleet Map)                                          | **Yes for Ride** — Ride's UI is map-centric; `operations-console` specifically degrades to a list-only view without it (confirmed non-crashing)                                                                                                                                                                                                                                                                                              |
+| `SMILE_ID_PARTNER_ID`, `SMILE_ID_API_KEY`                                                                                         | backend                                                                    | Real driver KYC/identity verification (enrollment + selfie-match verification)                                                 | **Yes for Driver onboarding** — confirmed by reading the provider: unlike the notification/geocoding fallbacks, this one **throws a clear error on every call** rather than silently degrading, so no driver can complete identity verification without it                                                                                                                                                                                   |
+| `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`                                                            | backend                                                                    | Server-side push notification delivery (FCM)                                                                                   | Important, not strictly launch-blocking — falls back to a confirmed `NotConfigured` no-op provider; ride-status UI has non-push fallbacks (polling) from earlier Ride work                                                                                                                                                                                                                                                                   |
+| `NEXT_PUBLIC_FIREBASE_API_KEY`, `_AUTH_DOMAIN`, `_PROJECT_ID`, `_MESSAGING_SENDER_ID`, `_APP_ID`, `_VAPID_KEY`                    | `customer-web`                                                             | Browser push registration                                                                                                      | Same as above — important, not launch-blocking                                                                                                                                                                                                                                                                                                                                                                                               |
+| `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE`, `SENTRY_TRACES_SAMPLE_RATE` (backend); `NEXT_PUBLIC_SENTRY_DSN` (frontends) | backend + all portals                                                      | Error monitoring/APM                                                                                                           | Not launch-critical — genuinely recommended before a real public launch, not before a closed Kano beta                                                                                                                                                                                                                                                                                                                                       |
+| Railway managed-backup plan tier decision                                                                                         | Postgres                                                                   | Automated backup/restore for production data                                                                                   | **Yes** in spirit (data-loss risk), but not literally a "variable" — it's a Railway dashboard/plan decision, not resolvable from this session's tools                                                                                                                                                                                                                                                                                        |
+| Current `CORS_ORIGINS` value (backend)                                                                                            | backend                                                                    | Safely **appending** `driver-portal`'s newly-generated domain to the existing allowlist without dropping what's already there  | Not launch-blocking today (driver-portal isn't publicly used yet) but needed before driver-portal goes live for real; flagged specifically because this session's Railway connection returns variable values redacted — appending blind risks the exact "lost `REDIS_URL`" incident already documented in `PRODUCTION-RAILWAY.md`. Resolve by either the founder pasting the current value, or setting it directly in the Railway dashboard. |
+| Custom production domains (`www.dripplex.com`, `api.dripplex.com`, etc.)                                                          | all app services                                                           | Branded URLs instead of `*.up.railway.app`; required before app-store submission (store listings need a stable production URL) | Not launch-blocking for a closed beta on Railway's generated domains; needed before public launch — requires the founder owning/controlling the DNS                                                                                                                                                                                                                                                                                          |
+
+## C. Blocking main
+
+**Nothing beyond the founder's own approval.** Every technical
+prerequisite that could be verified or fixed without a secret or a
+business decision has been (§A). Every remaining open item is either a
+credential/decision only the founder can supply (§B) or downstream of
+the merge itself (creating the `merchant-portal`/`operations-console`
+Railway services, which needs their code to exist on `main` first — not
+something to do before the merge).
+
+The only item in this category is:
+
+> **Founder approval to fast-forward `main`** (65 commits, all of
+> Driver Slice 2 / Operations Command Centre / Merchant / Commercial
+> Engine) onto Railway's deploy source.
+
+Once given: fast-forward, watch all four live services redeploy, verify
+each health endpoint, verify migrations applied cleanly, then create
+the two missing services and report full results.
+
+---
+
+## Supporting detail
+
+The sections below are the first pass's full findings, kept as
+reference for the _why_ behind each §A/§B/§C entry above.
+
+### D.1 Live Railway service inventory (verified 2026-08-05)
 
 Project: `overflowing-unity` (`f09361bd-3cda-4f0f-a22a-2ea464e47ab2`),
 environment `production`. (A second, empty project — `zonal-freedom` —
-exists on the account with no services; not in use, not referenced
-further here.)
+exists on the account with no services; not in use.)
 
-| Service                     | Status                                                | Domain                                                                      | Builder                                                      | Notes                                                                                                                                                                                                                                                                                                            |
-| --------------------------- | ----------------------------------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@dripplex/backend`         | ✅ SUCCESS                                            | `dripplexbackend-production.up.railway.app`                                 | Dockerfile (`apps/backend/Dockerfile`)                       | Healthcheck `/api/v1/health`, 30s timeout, 3 retries. Deploys from `main`.                                                                                                                                                                                                                                       |
-| `@dripplex/customer-web`    | ✅ SUCCESS                                            | `dripplexcustomer-web-production.up.railway.app`                            | Dockerfile                                                   | Healthcheck now `/` (was unset — fixed this pass, §5). Deploys from `main`.                                                                                                                                                                                                                                      |
-| `@dripplex/admin-portal`    | ✅ SUCCESS                                            | `dripplexadmin-portal-production.up.railway.app`                            | Dockerfile                                                   | Healthcheck `/` (already set). Deploys from `main`.                                                                                                                                                                                                                                                              |
-| `@dripplex/driver-portal`   | ✅ SUCCESS (but effectively unverifiable — see below) | `dripplexdriver-portal-production.up.railway.app` (generated this pass, §5) | Dockerfile                                                   | **Found with zero environment variables and no healthcheck configured** — the prior "Not deployed" claim in `PRODUCTION-RAILWAY.md` was stale; it deploys, but nothing was checking whether it actually worked. Fixed this pass, §5. Deploys from `main` (an early, pre-Launch-Mode build of this app — see §1). |
-| Postgres                    | ✅ SUCCESS                                            | private only                                                                | Railway managed image (`postgres-ssl:18`)                    | Volume-backed.                                                                                                                                                                                                                                                                                                   |
-| Redis                       | ✅ SUCCESS                                            | private only                                                                | Railway managed image (`redis:8.2.1`)                        | Volume-backed, password-protected, AOF+RDB (`--save 60 1`).                                                                                                                                                                                                                                                      |
-| `@dripplex/customer-mobile` | ✅ SUCCESS                                            | `dripplexcustomer-mobile-production.up.railway.app`                         | Dockerfile (**`apps/customer-web/Dockerfile`**, not its own) | **Misconfigured, flagged not fixed** — see §3.                                                                                                                                                                                                                                                                   |
-| `merchant-portal`           | Not deployed                                          | —                                                                           | —                                                            | Dockerfile exists on `main` (an early R1.4 shell); needs a Railway service created once `main` reflects the frozen Phase 2 build.                                                                                                                                                                                |
-| `operations-console`        | Not deployed                                          | —                                                                           | —                                                            | Dockerfile does not exist on `main` at all yet (only on the feature branch); blocked entirely on §1.                                                                                                                                                                                                             |
-| `rider-portal`              | Not deployed                                          | —                                                                           | —                                                            | Dockerfile exists on `main`; no founder-scoped rider-portal work has shipped yet, so this is not urgent for Ride launch.                                                                                                                                                                                         |
+| Service                     | Status       | Domain                                                                  | Builder                                                  | Notes                                                   |
+| --------------------------- | ------------ | ----------------------------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------- |
+| `@dripplex/backend`         | ✅ SUCCESS   | `dripplexbackend-production.up.railway.app`                             | Dockerfile                                               | Deploys from `main`                                     |
+| `@dripplex/customer-web`    | ✅ SUCCESS   | `dripplexcustomer-web-production.up.railway.app`                        | Dockerfile                                               | Deploys from `main`                                     |
+| `@dripplex/admin-portal`    | ✅ SUCCESS   | `dripplexadmin-portal-production.up.railway.app`                        | Dockerfile                                               | Deploys from `main`                                     |
+| `@dripplex/driver-portal`   | ✅ SUCCESS   | `dripplexdriver-portal-production.up.railway.app` (generated this pass) | Dockerfile                                               | Deploys from `main` (a pre-Launch-Mode build — see D.2) |
+| Postgres                    | ✅ SUCCESS   | private only                                                            | Managed image                                            | Volume-backed                                           |
+| Redis                       | ✅ SUCCESS   | private only                                                            | Managed image                                            | Volume-backed                                           |
+| `@dripplex/customer-mobile` | ✅ SUCCESS   | `dripplexcustomer-mobile-production.up.railway.app`                     | Dockerfile (`apps/customer-web/Dockerfile`, not its own) | Misconfigured — see §A                                  |
+| `merchant-portal`           | Not deployed | —                                                                       | —                                                        | Exists on `main` as the early R1.4 shell                |
+| `operations-console`        | Not deployed | —                                                                       | —                                                        | Doesn't exist on `main` at all yet                      |
+| `rider-portal`              | Not deployed | —                                                                       | —                                                        | Not urgent for Ride launch                              |
 
-## 3. Real finding: `customer-mobile`'s Railway service is misconfigured
+### D.2 The `main` gap in full
 
-`apps/customer-mobile` is a **Capacitor 7 native-app shell** (confirmed
-by reading `apps/customer-mobile/README.md` and its `capacitor.config.ts`)
-— it wraps `customer-web` for Android/iOS store distribution by loading
-a URL at runtime (`CAPACITOR_SERVER_URL`). It is not a servable web app
-and was never meant to run standalone. Its build artifact is an
-Android AAB/APK or an iOS archive, produced by
-`scripts/mobile/build-android.sh` / `cap open ios`, not a Docker image.
+Railway's live app services all deploy from `main`. `main` is **65
+commits behind** `claude/dripplex-coolify-deploy-fatig4` — the gap
+covers everything since Driver Slice 1: all of Driver Slice 2, the
+entire Operations Command Centre (4 slices), the entire Merchant module,
+and the entire Commercial Engine (6 slices, just frozen). None of that
+is live in production today.
 
-Yet a Railway service named `@dripplex/customer-mobile` exists, live,
-with its own public domain, building from **`apps/customer-web/Dockerfile`**
-while watching `apps/customer-mobile/**` for changes — it is, in effect,
-a second copy of `customer-web` running under the wrong name. This
-appears to be a leftover from early Railway setup rather than anything
-intentional.
+### D.3 Backend environment variable matrix — full detail
 
-**Not deleted in this pass** — deleting live infrastructure is exactly
-the kind of hard-to-reverse action this platform's discipline holds
-back for explicit confirmation. Recommendation: delete this service (or
-repurpose it, if there's a reason to keep a redundant customer-web
-mirror) once reviewed. No functional harm today — it duplicates
-customer-web's content under a domain nobody links to — but it's dead
-weight in the service inventory and would confuse a future audit.
-
-## 4. Backend environment variable / secrets matrix
-
-Built from the **authoritative source** — `apps/backend/src/config/env.validation.ts`
-(the Zod schema every env var is validated against on boot) — not from
-`.env.example` files, several of which (`infrastructure/secrets/.env.production.example`)
-list vars (`SMTP_*`, `TERMII_*`, `SENTRY_*` partially, `R2_*`, `B2_*`,
-`CLOUDFLARE_*`) that **no backend code actually reads**. Those are
-speculative/aspirational from the pre-Railway infrastructure design and
-are called out below as Not Required — implementing them is future
-scope, not a documentation gap in this pass.
+Built from `apps/backend/src/config/env.validation.ts` (the Zod schema
+every var is validated against on boot), not from `.env.example` files
+— several of which (`infrastructure/secrets/.env.production.example`)
+list vars (`SMTP_*`, `TERMII_*`, `R2_*`, `B2_*`, `CLOUDFLARE_*`) that
+**no backend code reads at all**. Confirmed by grep, not assumed —
+these are speculative holdovers from the pre-Railway infrastructure
+design, real missing capability for a future track, not a gap in this
+one.
 
 Only 4 variables have no default and are hard-required to boot:
 `DATABASE_URL`, `REDIS_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`.
-Everything else defaults to a safe value (usually `''`), and the
-corresponding integration no-ops cleanly when unset — confirmed by
-reading the provider code, not assumed:
+Every other integration (payments, Firebase, Maps, Smile ID, Sentry)
+defaults to an empty string and is read by a real, wired provider class
+— confirmed by reading each one, not assumed. Two distinct failure
+modes exist and matter for launch-criticality (§B):
 
-| Variable(s)                                                                       | Purpose                          | Status                                     | Behavior when unset                                                                                                                                                                                                                                 |
-| --------------------------------------------------------------------------------- | -------------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`, `REDIS_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`            | Core boot requirements           | ✅ Configured (Railway-managed refs / set) | App fails to boot — correctly required                                                                                                                                                                                                              |
-| `NODE_ENV`, `PORT`, `CORS_ORIGINS`                                                | Runtime config                   | ✅ Configured                              | Sane defaults exist even if unset                                                                                                                                                                                                                   |
-| `PAYSTACK_SECRET_KEY`, `PAYSTACK_PUBLIC_KEY`, `PAYSTACK_BASE_URL`                 | Default payment provider         | ⚠️ Pending Founder                         | Provider calls fail — needed before any real online payment can process                                                                                                                                                                             |
-| `FLUTTERWAVE_SECRET_KEY`, `FLUTTERWAVE_PUBLIC_KEY`, `FLUTTERWAVE_WEBHOOK_HASH`    | Alt. payment provider            | ⚠️ Pending Founder                         | Same — only needed if Flutterwave is the launch provider                                                                                                                                                                                            |
-| `OPAY_API_KEY`                                                                    | Alt. payment provider            | ⚠️ Pending Founder                         | Same                                                                                                                                                                                                                                                |
-| `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`            | Server-side push (FCM)           | ⚠️ Pending Founder                         | `NotConfigured` provider used — push silently no-ops, confirmed real code path (`notification-center/providers/not-configured.provider.ts`)                                                                                                         |
-| `GOOGLE_MAPS_SERVER_API_KEY`                                                      | Server-side geocoding/directions | ⚠️ Pending Founder                         | `NotConfigured` reverse-geocoder used — confirmed real fallback, not a crash                                                                                                                                                                        |
-| `SMILE_ID_PARTNER_ID`, `SMILE_ID_API_KEY`                                         | KYC/identity verification        | ⚠️ Pending Founder                         | Needed for real driver identity verification in production                                                                                                                                                                                          |
-| `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE`, `SENTRY_TRACES_SAMPLE_RATE` | Error monitoring                 | ⚠️ Pending Founder                         | Confirmed real, wired code (`src/observability/sentry.ts`, called from `main.ts`) — no-ops with no DSN, doesn't crash                                                                                                                               |
-| `SMTP_*`, `TERMII_*`, `R2_*`, `B2_*`, `CLOUDFLARE_*`                              | Email/SMS/object storage         | **Not Required**                           | No backend code references these at all — not a gap in this pass, a real missing capability for a future track (email/SMS notifications currently have no delivery provider beyond the `NotConfigured` adapters already documented in DPX-CORE-001) |
+- **Silent no-op** (push notifications via `NotConfigured` provider,
+  server-side geocoding via `NotConfigured` reverse-geocoder) — the app
+  stays up, the feature just doesn't do anything.
+- **Loud failure** (Smile ID, and by the same documented pattern,
+  Paystack) — the provider class explicitly throws a clear
+  configuration error on every call rather than silently succeeding or
+  failing. This is the correct, safer behavior for payments/identity —
+  documented here so it's understood as intentional fail-closed design,
+  not treated as a bug when it's hit in testing before the real keys
+  are supplied.
 
-## 5. Frontend environment variables — real bugs found and fixed
+### D.4 Health/readiness endpoints
 
-Reading each portal's actual source (not just `.env.example`) surfaced
-two genuine Dockerfile bugs: two apps read `NEXT_PUBLIC_*` variables in
-their code that their own **Dockerfile never declared as a build
-`ARG`**. Next.js inlines `NEXT_PUBLIC_*` values at build time — setting
-them as a Railway runtime variable does nothing if the Dockerfile
-doesn't plumb them through as `ARG`/`ENV` during the build stage. This
-means, as deployed today, these values would silently be `undefined` in
-the shipped bundle no matter what was set on Railway.
+| Service                                                 | Path             | Checks                                      |
+| ------------------------------------------------------- | ---------------- | ------------------------------------------- |
+| `backend`                                               | `/api/v1/health` | Database (`up`/`down`), Redis (`up`/`down`) |
+| `customer-web`                                          | `/`              | Fixed this pass                             |
+| `admin-portal`                                          | `/`              | Already configured                          |
+| `driver-portal`                                         | `/`              | Fixed this pass                             |
+| `merchant-portal`, `operations-console`, `rider-portal` | —                | N/A — not yet deployed                      |
 
-**Fixed this pass** (code changes on the feature branch, not yet on
-`main` — will take effect on the next build after §1 closes):
+### D.5 Monitoring & logging
 
-- **`apps/customer-web/Dockerfile`** — was missing `ARG`/`ENV` for
-  `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` and all six
-  `NEXT_PUBLIC_FIREBASE_*` variables, despite `src/lib/google-maps-config.ts`
-  and `src/lib/firebase-push-config.ts` both reading them directly.
-  Maps and push notifications were silently non-functional in the
-  deployed build regardless of Railway configuration. Added, matching
-  the working pattern already used in `apps/operations-console/Dockerfile`.
-- **`apps/driver-portal/Dockerfile`** — was missing `ARG`/`ENV` for
-  `NEXT_PUBLIC_CUSTOMER_APP_URL` and `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`,
-  despite `src/lib/google-maps-config.ts`/`src/lib/share.ts` reading
-  them. Added.
-- **`apps/rider-portal/Dockerfile`**, **`apps/admin-portal/Dockerfile`**,
-  **`apps/merchant-portal/Dockerfile`** — checked, no gap; none of
-  these apps read anything beyond `NEXT_PUBLIC_API_BASE_URL`/
-  `NEXT_PUBLIC_APP_URL`, both already correctly plumbed.
+Railway-native logs (`get-logs`: deploy/build/http streams) and metrics
+(`get-service-metrics`: CPU/memory/disk/network) are usable today, no
+setup needed. Sentry's backend bootstrap (`initBackendSentry()`) is
+real and unconditionally wired into `main.ts` — confirmed by reading
+the code, not assumed — and needs only the DSN (§B). No alerting beyond
+Railway's own dashboard exists (no Slack/PagerDuty/email hook on deploy
+or health-check failure) — consistent with every other module's
+production audit accepting the equivalent gap as non-blocking,
+operational-maturity work. The pre-Railway generic runbooks in
+`docs/ops/runbooks/` and `docs/ops/sla/SLA-SLO.md` predate this
+infrastructure in places — not rewritten this pass, flagged as
+follow-up.
 
-**Also fixed this pass (live Railway config, no code/secret needed):**
+### D.6 Backup & restore
 
-- `driver-portal` had **zero environment variables and no public
-  domain** — confirmed via direct Railway query, not assumed from the
-  (stale) doc claiming it wasn't deployed at all. Generated a Railway
-  domain (`dripplexdriver-portal-production.up.railway.app`, target
-  port 3005 matching the Dockerfile's `EXPOSE`), set
-  `NEXT_PUBLIC_API_BASE_URL`, `NEXT_PUBLIC_APP_URL`, and
-  `NEXT_PUBLIC_CUSTOMER_APP_URL` to their real values, and added a `/`
-  healthcheck. Deploy was **not** re-triggered — the currently-deployed
-  code is a pre-Launch-Mode build from before `main` was last updated,
-  so a real verification pass only makes sense after §1 closes and a
-  fresh build picks up the Dockerfile fix above.
-- `customer-web` had no healthcheck path configured at all (meaning
-  Railway wasn't actually verifying it before marking deploys
-  successful). Set to `/`, matching `admin-portal`'s existing config.
+No Railway-native backup schedule confirmed enabled — that's a
+dashboard/plan-tier setting outside this session's tool access (§B).
+`docs/ops/BACKUPS.md`'s generic `pg_dump`/`pg_restore` procedure is
+still mechanically valid but has never been drilled against this
+project's actual database; not run in this pass — a restore drill
+against the live production database isn't something to do
+unilaterally without sign-off.
 
-**Still pending — genuine secrets, not configuration:**
+### D.7 Verification run
 
-| App                                  | Variable                                                                                                       | Status                                                                               |
-| ------------------------------------ | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `customer-web`                       | `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`                                                                              | ⚠️ Pending Founder                                                                   |
-| `customer-web`                       | `NEXT_PUBLIC_FIREBASE_API_KEY`, `_AUTH_DOMAIN`, `_PROJECT_ID`, `_MESSAGING_SENDER_ID`, `_APP_ID`, `_VAPID_KEY` | ⚠️ Pending Founder                                                                   |
-| `driver-portal`                      | `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`                                                                              | ⚠️ Pending Founder                                                                   |
-| `operations-console` (once deployed) | `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`                                                                              | ⚠️ Pending Founder (falls back to list-only view without it, confirmed non-crashing) |
-
-Note: whatever real key is supplied for `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`
-is almost certainly the same browser Maps key across customer-web,
-driver-portal, and operations-console — one key, three places to set it
-— and is a **separate** credential from the backend's
-`GOOGLE_MAPS_SERVER_API_KEY` (§4), which is a server-side key with
-different Google Cloud API restrictions.
-
-## 6. Migration readiness
-
-55 migration directories in `apps/backend/prisma/migrations/`, most
-recent four all from today's Commercial Engine slices. `prisma` is
-correctly listed in `dependencies` (not `devDependencies`) in
-`package.json` — the documented historical gotcha (a prior production
-crash loop from `pnpm prune --prod` silently dropping the Prisma CLI,
-making `migrate deploy` a silent no-op) remains fixed. The backend's
-`preDeployCommand` (`node_modules/.bin/prisma migrate deploy`) runs
-before every deploy, so once `main` is fast-forwarded, Railway will
-apply all pending migrations automatically on the next backend deploy.
-
-This was not re-tested against the live production database in this
-pass — doing so would mean either deploying against it (gated behind
-§1) or running `prisma migrate deploy` directly against production
-outside of a real deploy, which was not authorized. Confidence instead
-comes from: every one of these 55 migrations has already been applied
-and exercised against a real Postgres instance as part of each slice's
-own test suite (most recently, the full backend suite — 171/171 suites,
-1307/1307 tests — passing today after the Commercial Engine freeze).
-
-## 7. Health/readiness endpoints
-
-| Service                                                 | Path             | Checks                                                                                     |
-| ------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------ |
-| `backend`                                               | `/api/v1/health` | Database (`up`/`down`), Redis (`up`/`down`) — confirmed via `src/health/health.service.ts` |
-| `customer-web`                                          | `/`              | Fixed this pass (§5)                                                                       |
-| `admin-portal`                                          | `/`              | Already configured                                                                         |
-| `driver-portal`                                         | `/`              | Fixed this pass (§5)                                                                       |
-| `merchant-portal`, `operations-console`, `rider-portal` | —                | N/A — not yet deployed (§1, §2)                                                            |
-
-## 8. Monitoring & logging
-
-- **Railway-native logs/metrics** are the current baseline — this
-  session used `get-logs` (deploy/build/http streams) and
-  `get-service-metrics` (CPU/memory/disk/network) directly against live
-  services; both work today with no additional setup.
-- **Sentry integration is real and already wired** (`initBackendSentry()`,
-  called unconditionally from `main.ts`, no-ops cleanly with no
-  `SENTRY_DSN` set) — this is not a build task, only a
-  ⚠️ Pending Founder secret (§4) away from being live.
-- **No alerting** beyond Railway's own dashboard exists — no Slack/
-  PagerDuty/email hook on deploy failure or health-check failure. Not
-  fixed in this pass; a genuine gap, consistent with every other
-  module's production audit accepting the equivalent gap as
-  non-blocking, operational-maturity work rather than a launch
-  blocker.
-- The pre-Railway generic runbooks in `docs/ops/runbooks/` (database-down,
-  redis-down, api-errors, etc.) and `docs/ops/sla/SLA-SLO.md` predate
-  this infrastructure and reference a different (Cloudflare/Hetzner)
-  design in places. Not rewritten in this pass — flagged as follow-up,
-  not blocking.
-
-## 9. Backup & restore
-
-- **No Railway-native backup schedule has been confirmed enabled** —
-  Railway's managed-Postgres backup/snapshot feature is a dashboard/
-  plan-level setting not visible or controllable through the tools
-  available in this session. This needs a founder decision (which plan
-  tier, what retention) rather than something resolvable from here.
-- `docs/ops/BACKUPS.md`'s `pg_dump`/`pg_restore` procedure is generic
-  and pre-Railway (its "verify migration table matches expected RC1
-  head" step references `20260721220000_s1_c14_c23_stabilization` — the
-  very first migration, 54 migrations out of date). The procedure
-  itself (`pg_dump "$DATABASE_URL" --format=custom` /
-  `pg_restore --clean --if-exists`) is still mechanically valid against
-  Railway's Postgres (it's just a connection string), but **has never
-  been drilled** against this project's actual database. Not run in
-  this pass — running a restore drill against the live production
-  database without explicit sign-off isn't something to do
-  unilaterally.
-- **Recommendation for founder decision**: enable Railway's managed
-  backup feature if the current plan tier supports it (fastest, no
-  custom tooling), and/or schedule a periodic `pg_dump` job as a
-  second, provider-independent copy. Either requires a founder call on
-  cost/tier before it can be implemented.
-
-## 10. Rollback procedure
-
-Confirmed via live `list-deployments` query: Railway retains full
-deployment history per service, and each deployment's outcome
-(`SUCCESS`/`FAILED`/`CRASHED`/`REMOVED`/etc.) and source commit are
-queryable. **Caveat, stated precisely rather than overclaimed**: the
-Railway tooling available in this session only exposes `redeploy`
-(re-run the _current_ latest deployment) — there is no tool here to
-redeploy a specific _past_ deployment ID. That specific action (pick an
-older deployment, click "Redeploy") exists in the Railway dashboard UI
-but not through this session's API surface. Documented so a future
-on-call session knows the real rollback path is the dashboard, not this
-toolset, until/unless a deployment-specific redeploy tool is added.
-
-## 11. What remains before this track can close
-
-In the order the founder's sequencing implies:
-
-1. **Founder review of this document** — confirm the findings and fixes
-   above are acceptable, and confirm the Pending-Founder secrets in §4/§5
-   are being deferred correctly (per the founder's own hybrid
-   instruction) or provide any that are ready now.
-2. **Founder approval to fast-forward `main`** (§1) — the actual gate.
-   Once approved: fast-forward, watch all four live services redeploy,
-   verify each health endpoint, verify migrations applied cleanly, and
-   report results before doing anything else.
-3. **After `main` is current**: create Railway services for
-   `merchant-portal` and `operations-console` (recipes already
-   documented in `docs/ops/PRODUCTION-RAILWAY.md`), attach domains,
-   verify.
-4. **Custom domain & SSL** — nothing beyond Railway's automatic
-   `*.up.railway.app` SSL exists today; pointing real domains
-   (`www.dripplex.com`, `api.dripplex.com`, etc.) at these services
-   requires the founder owning/controlling that DNS — not resolvable
-   from this session.
-5. **Backup plan decision** (§9) and **secrets** (§4/§5) — as they
-   arrive.
-6. **`customer-mobile` service** (§3) — founder call on delete vs. keep.
-
-## 12. Recommendation
-
-No launch-blocking item in this document is unresolved _within the
-scope this pass could act on_. Every item still open is either (a)
-gated on the founder's own explicit main-merge hold, (b) a genuine
-secret only the founder can supply, or (c) a platform/cost decision
-(backup tier, custom domain). Everything actionable without those —
-service configuration audit, the two real Dockerfile bugs, driver-portal's
-missing config, health endpoints, migration-readiness verification, and
-the rollback/backup procedures being honestly documented rather than
-assumed — is done.
+No application source was touched this pass (Dockerfile and docs only)
+— the full backend suite's last run (pre-freeze, same day) was
+171/171 suites, 1307/1307 tests, and nothing since has touched backend
+or frontend source, so that result still holds. The Dockerfile edits
+were reviewed line-by-line against the already-working
+`operations-console`/`customer-web` `ARG`/`ENV` pattern rather than
+build-tested (no Docker daemon available in this session's sandbox).
