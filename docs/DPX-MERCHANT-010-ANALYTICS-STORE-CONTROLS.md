@@ -183,3 +183,9 @@ module-level pass: full E2E verification of the order lifecycle workflow
 (#389), security review (#390), then production audit + docs + commit/push
 (#391) before Merchant Phase 2 is frozen and DPX-COMMERCIAL-001
 implementation resumes per the founder's locked sequencing.
+
+**Correction (DPX-MERCHANT-013 §2.1):** the claim above was inaccurate —
+task #381 (Home/Overview screen) was overlooked and never actually
+completed; the dashboard's root page is still a Phase 1 product-stats
+view, not a real Phase 2 screen. See `docs/DPX-MERCHANT-013-PRODUCTION-
+AUDIT.md` §2.1 for the correction and recommendation.
