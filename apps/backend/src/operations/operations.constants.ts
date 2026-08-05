@@ -14,6 +14,12 @@ export const OPERATIONS_PERMISSIONS = {
    * gets both this and QUEUES_READ; administrator/super_administrator get
    * both too, matching Slice 1's grant. */
   QUEUES_MANAGE: 'operations:queues:manage',
+  /** DPX-OPS-001 Slice 4 — view-only access to the Operations Analytics
+   * dashboard (driver utilization, shift, ride, dispatch, response-time,
+   * and geographic-demand analytics). Read-only, same grant set as every
+   * other Operations permission — no separate manage tier, there is
+   * nothing to mutate here. */
+  ANALYTICS_READ: 'operations:analytics:read',
 } as const;
 
 /** DPX-OPS-001 Slice 2 — audit trail actions for `OperationsCasesService`

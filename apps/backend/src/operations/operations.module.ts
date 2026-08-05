@@ -4,12 +4,14 @@ import { AuditModule } from '../audit/audit.module';
 import { DriversModule } from '../drivers/drivers.module';
 import { PrismaModule } from '../prisma/prisma.module';
 
+import { OperationsAnalyticsController } from './controllers/operations-analytics.controller';
 import { OperationsCasesController } from './controllers/operations-cases.controller';
 import { OperationsDashboardController } from './controllers/operations-dashboard.controller';
 import { OperationsFleetController } from './controllers/operations-fleet.controller';
 import { OperationsQueuesController } from './controllers/operations-queues.controller';
 import { OperationsRidesController } from './controllers/operations-rides.controller';
 import { OperationsStaffController } from './controllers/operations-staff.controller';
+import { OperationsAnalyticsService } from './operations-analytics.service';
 import { OperationsCasesService } from './operations-cases.service';
 import { OperationsDashboardService } from './operations-dashboard.service';
 import { OperationsDispatchSupportService } from './operations-dispatch-support.service';
@@ -41,6 +43,14 @@ import { OperationsRideQueueService } from './operations-ride-queue.service';
  * composed inside `operations/`. No manual-reassignment action exists;
  * that stays deferred to DPX-RIDE-201's own future founder-approved pass.
  *
+ * Slice 4 (Operations Analytics, founder-approved 2026-08-05,
+ * reality-audited first — see docs/DPX-OPS-001-SLICE-4-REALITY-AUDIT.md):
+ * live-query aggregation over `Ride`/`RideOffer`/`DriverShift`/
+ * `OperationsCase` for driver utilization, shift, ride, dispatch,
+ * response-time, and geographic-demand analytics. No pre-aggregation
+ * table, no reuse of the dormant Marketplace-scoped `analytics/` module —
+ * its own permission (`operations:analytics:read`).
+ *
  * `apps/backend/src/rides/` is a frozen module and is never imported or
  * modified here; `Ride` and its related tables are read directly via
  * `PrismaService`, the same cross-module-read pattern established
@@ -54,6 +64,7 @@ import { OperationsRideQueueService } from './operations-ride-queue.service';
     OperationsCasesController,
     OperationsDashboardController,
     OperationsStaffController,
+    OperationsAnalyticsController,
   ],
   providers: [
     OperationsFleetService,
@@ -62,6 +73,7 @@ import { OperationsRideQueueService } from './operations-ride-queue.service';
     OperationsDispatchSupportService,
     OperationsCasesService,
     OperationsDashboardService,
+    OperationsAnalyticsService,
   ],
   exports: [
     OperationsFleetService,
@@ -70,6 +82,7 @@ import { OperationsRideQueueService } from './operations-ride-queue.service';
     OperationsDispatchSupportService,
     OperationsCasesService,
     OperationsDashboardService,
+    OperationsAnalyticsService,
   ],
 })
 export class OperationsModule {}

@@ -11,9 +11,9 @@ import { sdk } from '@/lib/sdk';
 
 /** DPX-OPS-001 — nav grows one slice at a time, per the founder's approved
  * sequencing (Slice 1: Live Operations Dashboard; Slice 2: Work Queues;
- * Slice 3: Dispatch Management; Slice 4: Analytics). Only Slice 1 and
- * Slice 2's routes exist so far — adding a nav entry ahead of its screen
- * would be exactly the kind of disabled-link placeholder this platform's
+ * Slice 3: Dispatch Management; Slice 4: Analytics). All four slices'
+ * routes exist now — adding a nav entry ahead of its screen would be
+ * exactly the kind of disabled-link placeholder this platform's
  * discipline avoids. */
 const NAV_LINKS = [
   { href: '/', label: 'Live Fleet Map' },
@@ -21,6 +21,7 @@ const NAV_LINKS = [
   { href: '/queues/sos', label: 'SOS Queue' },
   { href: '/queues/incidents', label: 'Incidents' },
   { href: '/queues/support', label: 'Driver Support' },
+  { href: '/analytics', label: 'Analytics' },
 ] as const;
 
 function AppNav(): React.JSX.Element {

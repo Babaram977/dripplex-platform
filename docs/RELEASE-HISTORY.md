@@ -649,6 +649,51 @@ applies to Slice 4 in full — Operations-specific UI stays isolated in
 `operations-console`, shared-component changes additive/backward-compatible
 only.
 
+## 2026-08-05 (same day) — DPX-OPS-001 Slice 4 shipped: Operations Analytics
+
+Founder approved the Slice 4 reality audit's six-area scope in full:
+Driver Utilization, Shift Analytics, Ride Operations, Dispatch
+Performance, Operations Response, and Geographic Activity — every metric
+derived from real operational records (`Ride`/`RideOffer`/`DriverShift`/
+`OperationsCase`), fleet-availability and driver-position _trends_
+explicitly excluded rather than reconstructed from point-in-time
+snapshots. Built entirely inside `operations/`: `OperationsAnalyticsService`
+does live-query aggregation over the authoritative tables, no
+pre-aggregation table, no reuse of the dormant Marketplace-scoped
+`analytics/` module, a new read-only `operations:analytics:read`
+permission. A new `/analytics` operations-console screen follows the
+founder's own six-question framing (how busy → are rides fulfilled → are
+drivers utilized → is dispatch performing → is Operations responding →
+where is demand) with six KPI tiles doorway-linking into six drill-down
+pages, all sharing one time-range picker (Today/Last 7 days/Last 30
+days/Custom) — time-range filtering is fundamental, never defaulted
+server-side.
+
+**A demand heatmap was investigated and deliberately not shipped.**
+`google.maps.visualization.HeatmapLayer` was actually attempted, then
+caught by a real ESLint deprecation failure: Heatmap Layer functionality
+was removed from the Maps JavaScript API as of v3.65. Per the founder's
+own instruction not to build a "visually impressive but misleading
+approximation," the geography page ships an accurate grid-cell demand
+list instead — real coordinates, real pickup/dropoff counts. 8 new
+backend tests (each pinned to an isolated slice of a fixed multi-year
+timeline, not "now," so shared-DB aggregation queries can't be polluted
+by other suites), 8 new SDK tests; full backend/SDK/operations-console
+`tsc`/`eslint --max-warnings=0`/`jest`/`vitest`/`next build` clean.
+
+**Slice 4 Production Audit run the same day** — see
+`docs/DPX-OPS-001-SLICE-4-PRODUCTION-AUDIT.md`. Confirmed all six areas
+real, the Ride boundary untouched, the dormant `analytics/` module
+correctly left alone, permissions correctly scoped, the Figma Protection
+Rule holds with zero violations (nothing touched under `packages/ui`,
+`apps/customer-web`, or `apps/driver-portal`), and the heatmap decision
+grounded in a verified constraint rather than convenience. Zero
+launch-blocking findings. Per the founder's own governance, this audit
+does not authorize a freeze — Slice 4 stays open pending Founder Review,
+and the founder's own named next step is a module-level production audit
+across all four Phase 1 slices together before any decision on freezing
+DPX-OPS-001 as a whole.
+
 ---
 
 ## What's next

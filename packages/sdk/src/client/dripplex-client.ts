@@ -29,6 +29,7 @@ import {
   MerchantApi,
   MerchantProductsApi,
 } from '../merchant/merchant-api.js';
+import { OperationsAnalyticsClient } from '../operations/operations-analytics-client.js';
 import { OperationsCasesClient } from '../operations/operations-cases-client.js';
 import { OperationsDashboardClient } from '../operations/operations-dashboard-client.js';
 import { OperationsFleetClient } from '../operations/operations-fleet-client.js';
@@ -102,6 +103,7 @@ export class DripplexClient {
   public readonly operationsCases: OperationsCasesClient;
   public readonly operationsDashboard: OperationsDashboardClient;
   public readonly operationsStaff: OperationsStaffClient;
+  public readonly operationsAnalytics: OperationsAnalyticsClient;
   public readonly notifications: NotificationsClient;
   public readonly driverNotifications: NotificationsClient;
   public readonly devices: DevicesClient;
@@ -164,6 +166,7 @@ export class DripplexClient {
     this.operationsCases = new OperationsCasesClient(this.http);
     this.operationsDashboard = new OperationsDashboardClient(this.http);
     this.operationsStaff = new OperationsStaffClient(this.http);
+    this.operationsAnalytics = new OperationsAnalyticsClient(this.http);
     this.notifications = new NotificationsClient(this.http);
     this.driverNotifications = new NotificationsClient(this.http, '/driver/notifications');
     this.devices = new DevicesClient(this.http);

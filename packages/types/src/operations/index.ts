@@ -400,3 +400,212 @@ export interface OperationsStaffMemberDto {
   lastName: string;
   role: OperationsAssigneeRole;
 }
+
+/**
+ * DPX-OPS-001 Slice 4 — Operations Analytics (founder-approved 2026-08-05,
+ * reality-audited first — see docs/DPX-OPS-001-SLICE-4-REALITY-AUDIT.md).
+ * Every metric below is a live-query aggregation over real, permanent
+ * records (`Ride`, `RideOffer`, `DriverShift`, `OperationsCase`) — there is
+ * no pre-aggregation table and nothing here is derived from a snapshot
+ * pretending to be a history. Time-range filtering is fundamental, per the
+ * founder's explicit instruction: every query takes a `from`/`to` range,
+ * always caller-supplied (the console computes "Today"/"Last 7 days"/
+ * "Last 30 days"/custom into concrete timestamps before calling).
+ */
+export interface AnalyticsTimeRangeDto {
+  from: string;
+  to: string;
+}
+
+/**
+ * The founder's own six-question framing for the first screen: how busy →
+ * are rides fulfilled → are drivers utilized → is dispatch performing → is
+ * Operations responding → where is demand. A small, fixed set of KPIs, not
+ * a growing pile of cards — each one is a doorway into its own drill-down
+ * endpoint below, not the full detail itself. Rates are 0-1 fractions, not
+ * percentages, so the console controls the display format in one place.
+ */
+export interface OperationsAnalyticsOverviewDto {
+  range: AnalyticsTimeRangeDto;
+  /** How busy are we? */
+  ridesRequested: number;
+  /** Are rides being fulfilled? */
+  ridesCompleted: number;
+  completionRate: number;
+  cancellationRate: number;
+  noDriversFoundRate: number;
+  /** Are drivers being utilized effectively? `onlineDriversNow` is a live
+   * snapshot (current moment only — see the reality audit's fleet
+   * -availability-trend gap), everything else is range-scoped. */
+  onlineDriversNow: number;
+  activeDriversInRange: number;
+  averageUtilizationRate: number | null;
+  /** Is dispatch performing? */
+  averageTimeToAcceptSeconds: number | null;
+  repeatedOfferRideRate: number;
+  /** Is Operations responding quickly enough? `openCasesCount` is a live
+   * snapshot (cases not yet RESOLVED/CLOSED, regardless of range);
+   * `averageTimeToFirstResponseSeconds` is scoped to cases created within
+   * the range. */
+  openCasesCount: number;
+  averageTimeToFirstResponseSeconds: number | null;
+}
+
+/** One driver's utilization row in the drill-down's ranked list —
+ * `onlineSeconds` sums that driver's `DriverShift` durations in range (the
+ * closest real proxy for "time available to drive"; a shift and
+ * `DriverAvailability.online` are intentionally independent per
+ * `DriverShift`'s own doc comment, so this is shift time, not raw online
+ * time), `onTripSeconds` sums `Ride.startedAt`→`completedAt` for that
+ * driver's completed rides in range. */
+export interface DriverUtilizationRowDto {
+  driverId: string;
+  driverName: string;
+  tripsCompleted: number;
+  earnings: number;
+  onlineSeconds: number;
+  onTripSeconds: number;
+  /** `onTripSeconds / onlineSeconds`, `null` when `onlineSeconds` is 0 (no
+   * shift recorded in range — dividing by zero would fabricate a number,
+   * not report one). */
+  utilizationRate: number | null;
+}
+
+export interface DriverUtilizationAnalyticsDto {
+  range: AnalyticsTimeRangeDto;
+  /** Drivers with at least one shift or completed ride in range. */
+  driverCount: number;
+  totalOnlineSeconds: number;
+  totalOnTripSeconds: number;
+  averageUtilizationRate: number | null;
+  totalTripsCompleted: number;
+  totalEarnings: number;
+  /** Ranked by trips completed, capped — see `MAX_UTILIZATION_ROWS` in the
+   * backend service. A drill-down list, not a full driver export. */
+  topDrivers: DriverUtilizationRowDto[];
+}
+
+export interface ShiftAnalyticsDto {
+  range: AnalyticsTimeRangeDto;
+  shiftsStarted: number;
+  shiftsEnded: number;
+  /** Live snapshot, not range-scoped — how many drivers are mid-shift
+   * right now. */
+  activeShiftsNow: number;
+  onBreakShiftsNow: number;
+  forceEndedCount: number;
+  averageShiftDurationSeconds: number | null;
+  averageBreakSeconds: number | null;
+  breakReminderCount: number;
+  fatigueWarningCount: number;
+  dailyLimitNotifiedCount: number;
+}
+
+export interface RideTypeBreakdownDto {
+  rideType: RideType;
+  requested: number;
+  completed: number;
+  cancelled: number;
+}
+
+/** One point on the demand-over-time series — `bucketStart` is a UTC day
+ * boundary (`YYYY-MM-DD`), `count` is rides requested that day within the
+ * overall range. */
+export interface DemandSeriesPointDto {
+  bucketStart: string;
+  count: number;
+}
+
+export interface CancellationReasonCountDto {
+  reason: string;
+  count: number;
+}
+
+export interface RideOperationsAnalyticsDto {
+  range: AnalyticsTimeRangeDto;
+  requested: number;
+  completed: number;
+  cancelled: number;
+  /** Kept structurally separate from `cancelled` throughout — a ride that
+   * exhausted dispatch retries with no driver ever accepting is a
+   * different real outcome, never folded into the cancellation count. */
+  noDriversFound: number;
+  completionRate: number;
+  cancellationRate: number;
+  noDriversFoundRate: number;
+  cancelledByCustomer: number;
+  cancelledByDriver: number;
+  /** Real platform behaviour, not a display bug: `RideCancelledBy.SYSTEM`
+   * has zero real call sites anywhere in the codebase (confirmed in both
+   * the Slice 3 and Slice 4 reality audits), so this is always 0 today. */
+  cancelledBySystem: number;
+  byRideType: RideTypeBreakdownDto[];
+  demandSeries: DemandSeriesPointDto[];
+  /** Raw `Ride.cancellationReason` text, grouped and counted, capped — see
+   * `MAX_CANCELLATION_REASONS`. There is no structured reason-code
+   * taxonomy on `Ride`, so this is "top raw reasons," not a clean fixed
+   * category breakdown. */
+  topCancellationReasons: CancellationReasonCountDto[];
+}
+
+export interface DispatchPerformanceAnalyticsDto {
+  range: AnalyticsTimeRangeDto;
+  totalOffers: number;
+  acceptedOffers: number;
+  declinedOffers: number;
+  expiredOffers: number;
+  acceptanceRate: number;
+  averageTimeToAcceptSeconds: number | null;
+  ridesWithOffers: number;
+  /** Rides that needed more than one `RideOffer` — the same underlying
+   * data Slice 3's per-ride `computeDispatchExceptions()` repeated-offer
+   * -failure category reads, aggregated here across the whole range
+   * instead of shown one ride at a time. */
+  ridesNeedingRepeatedOffers: number;
+  repeatedOfferRate: number;
+  averageOffersPerRide: number | null;
+}
+
+export interface OperationsResponseByTypeDto {
+  caseType: OperationsCaseType;
+  totalCases: number;
+  averageTimeToFirstResponseSeconds: number | null;
+  averageTimeToResolutionSeconds: number | null;
+  averageTimeToClosureSeconds: number | null;
+}
+
+/** SLA analytics across SOS/Incident/Support, uniformly — the same
+ * `OperationsCase.createdAt`/`firstRespondedAt`/`resolvedAt`/`closedAt`
+ * fields Slice 2 built as first-class SLA tracking, one query shape
+ * across all three case types rather than three separate ones. */
+export interface OperationsResponseAnalyticsDto {
+  range: AnalyticsTimeRangeDto;
+  totalCases: number;
+  byType: OperationsResponseByTypeDto[];
+  averageTimeToFirstResponseSeconds: number | null;
+  averageTimeToResolutionSeconds: number | null;
+  averageTimeToClosureSeconds: number | null;
+  /** Live snapshot — cases not yet RESOLVED/CLOSED right now, regardless
+   * of when they were created. */
+  openCasesCount: number;
+}
+
+/** One grid cell of the geographic demand aggregation. Coordinates are
+ * rounded to `cellSizeDegrees` (an accurate, if coarse, spatial bucket —
+ * not a named zone; see the reality audit's standing decision not to
+ * invent a region model) — `latitude`/`longitude` are that cell's
+ * lower-left corner. */
+export interface GeographicDemandCellDto {
+  latitude: number;
+  longitude: number;
+  pickupCount: number;
+  dropoffCount: number;
+}
+
+export interface GeographicDemandAnalyticsDto {
+  range: AnalyticsTimeRangeDto;
+  cellSizeDegrees: number;
+  cells: GeographicDemandCellDto[];
+  totalPickups: number;
+  totalDropoffs: number;
+}

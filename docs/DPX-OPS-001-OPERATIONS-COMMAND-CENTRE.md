@@ -3,8 +3,9 @@
 **Status: Slice 1 (Live Operations Dashboard) shipped (2026-08-04). Slice 2
 (Operations Work Queues) 🔒 Founder Approved / Frozen (2026-08-05). Slice 3
 (Dispatch Management) 🔒 Founder Approved / Frozen (2026-08-05). Slice 4
-(Operations Analytics) reality audit complete, submitted for founder review
-— see `docs/DPX-OPS-001-SLICE-4-REALITY-AUDIT.md`.** See
+(Operations Analytics) shipped (2026-08-05), founder-approved implementation
+following the reality audit — production audit complete, submitted for
+founder review. See `docs/DPX-OPS-001-SLICE-4-PRODUCTION-AUDIT.md`.** See
 `docs/DPX-OPS-001-REALITY-AUDIT.md` for the full backend-capability audit,
 gap analysis, proposed Phase 1 slice plan, and the founder's locked-in
 refinements — this document stays the scope record, that one is the
@@ -292,6 +293,81 @@ document exists so that whoever scopes it starts from what's actually already
 built (real backend, real permissions, real notification wiring) rather than
 re-discovering it, the same way `DPX-DRIVER-005` preserves Slice 2's SOS
 foundation for its own future response-workflow module.
+
+## Slice 4 — Operations Analytics (shipped 2026-08-05)
+
+Founder-approved to implement, verbatim, after reviewing
+`docs/DPX-OPS-001-SLICE-4-REALITY-AUDIT.md`'s six-area scope — the founder's
+own framing: "analytics derived from real operational records, with
+unavailable historical data explicitly excluded rather than reconstructed or
+invented." Ships the six genuinely-supported areas exactly, all live-query
+aggregation inside `operations/`, no pre-aggregation table, no reuse of the
+dormant Marketplace-scoped `analytics/` module.
+
+- **Backend** — `apps/backend/src/operations/operations-analytics.service.ts`:
+  `getOverview()` (the six-KPI framing question composite) plus one method
+  per drill-down — `getDriverUtilization()` (shift time from `DriverShift`,
+  on-trip time and earnings from completed `Ride` rows, `utilizationRate`
+  honestly `null` when a driver has no shift in range rather than a
+  divide-by-zero fabrication), `getShiftAnalytics()`, `getRideOperations()`
+  (demand/completion/cancellation, `NO_DRIVERS_FOUND` kept structurally
+  separate, `cancelledBySystem` reported honestly as always 0),
+  `getDispatchPerformance()` (time-to-accept, repeated-offer rate — the
+  same `RideOffer` data Slice 3's per-ride exception detection already
+  reads, aggregated here across the range), `getOperationsResponse()`
+  (SOS/Incident/Support SLA timestamps, uniformly, from the one
+  `OperationsCase` table Slice 2 built with SLA tracking as a first-class
+  concern), and `getGeographicDemand()` (grid-cell binning over real
+  `Ride` pickup/dropoff coordinates — no named zones). Every method takes
+  a caller-supplied `{ from, to }` range; time-range filtering is
+  fundamental per the founder's own instruction, never defaulted
+  server-side. Gated by a new permission, `operations:analytics:read`
+  (granted to `operations_staff`/`administrator`/`super_administrator`,
+  the same grant set as every other Operations permission). `apps/backend/
+src/rides/` was never touched.
+- **SDK** — `packages/sdk/src/operations/operations-analytics-client.ts`
+  (`OperationsAnalyticsClient`, exposed as `operationsAnalytics` — kept
+  distinct from the existing Marketplace-scoped `analytics` client).
+- **operations-console** — a new `/analytics` overview screen following
+  the founder's own six-question framing (how busy → are rides fulfilled →
+  are drivers utilized → is dispatch performing → is Operations responding
+  → where is demand), a small fixed set of KPI tiles each linking to its
+  own drill-down page (`/analytics/drivers`, `/shifts`, `/rides`,
+  `/dispatch`, `/response`, `/geography`), and a shared
+  `AnalyticsRangePicker` (Today/Last 7 days/Last 30 days/Custom) every
+  screen reads from — not a live-polled board like Slices 1-3, since
+  analytics is a decision-support view over a selected historical range,
+  not "what's happening right now."
+- **A heatmap was investigated for the geography drill-down and
+  deliberately not built.** `google.maps.visualization.HeatmapLayer` was
+  checked directly — an ESLint `@typescript-eslint/no-deprecated` failure
+  on the real call caught that Heatmap Layer functionality was removed
+  from the Maps JavaScript API as of v3.65, confirmed by the installed
+  `@types/google.maps` package's now-empty stub for that class. Per the
+  founder's own instruction — "if a proper heat-map visualization is
+  feasible ... use it; otherwise start with an accurate geographic
+  aggregation rather than a visually impressive but misleading
+  approximation" — the geography page ships the accurate grid-cell list
+  instead (real coordinates, real pickup/dropoff counts, sorted by
+  activity), not a build against a removed API that could stop rendering
+  at any time.
+- **Tests** — 8 new backend tests (`operations-analytics.service.spec.ts`,
+  live-DB, each test pinned to its own isolated slice of a fixed
+  multi-year timeline rather than "now" — the same discipline as Slice
+  3's Abuja-vs-Lagos geographic isolation, applied to time instead of
+  space, so shared-DB pollution across suites can't affect an aggregate
+  count), 8 new SDK client tests.
+- **Verification** — backend/SDK/operations-console `tsc`, `eslint
+--max-warnings=0`, `jest`/`vitest`, and `next build` all clean; zero files
+  touched under `packages/ui`, `apps/customer-web`, or `apps/driver-portal`
+  — the Figma Protection Rule regression check this slice's Production
+  Audit records explicitly.
+
+Per the founder's own governance, this audit does **not** authorize a
+freeze — see `docs/DPX-OPS-001-SLICE-4-PRODUCTION-AUDIT.md`. Slice 4 stays
+open pending Founder Review, and once approved, the founder's own
+next step is the module-level production audit across all four Phase 1
+slices together, before any decision on freezing DPX-OPS-001 as a whole.
 
 ## Founder's scope for this module
 

@@ -244,6 +244,20 @@ export type {
   OperationsRideTrackingDto,
   DispatchCandidateDto,
   DispatchSupportDto,
+  AnalyticsTimeRangeDto,
+  OperationsAnalyticsOverviewDto,
+  DriverUtilizationRowDto,
+  DriverUtilizationAnalyticsDto,
+  ShiftAnalyticsDto,
+  RideTypeBreakdownDto,
+  DemandSeriesPointDto,
+  CancellationReasonCountDto,
+  RideOperationsAnalyticsDto,
+  DispatchPerformanceAnalyticsDto,
+  OperationsResponseByTypeDto,
+  OperationsResponseAnalyticsDto,
+  GeographicDemandCellDto,
+  GeographicDemandAnalyticsDto,
 } from './operations/index.js';
 
 export type {

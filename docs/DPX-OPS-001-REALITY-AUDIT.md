@@ -132,6 +132,24 @@ infrastructure; Slice 4 builds its own live-query aggregation the same
 way every prior slice has. Submitted for founder review before
 implementation begins.
 
+**Update (2026-08-05, same day): Slice 4 shipped** — founder approved the
+audit's six-area scope in full; see
+`docs/DPX-OPS-001-OPERATIONS-COMMAND-CENTRE.md`'s "Slice 4 — Operations
+Analytics" section for what was built and
+`docs/DPX-OPS-001-SLICE-4-PRODUCTION-AUDIT.md` for the production audit.
+`apps/backend/src/rides/` remains untouched; the new
+`operations:analytics:read` permission is read-only, no manage tier. One
+real finding during implementation: a demand heatmap was investigated for
+the geography drill-down and found genuinely infeasible —
+`google.maps.visualization.HeatmapLayer` was removed from the Maps
+JavaScript API as of v3.65 (caught by a real ESLint deprecation failure,
+not assumed) — so the geography page ships the accurate grid-cell
+aggregation instead, per the founder's own instruction not to build a
+"visually impressive but misleading approximation." Per the founder's own
+governance, this does not authorize a freeze — Slice 4 stays open pending
+Founder Review, and the founder's own next step after approval is the
+module-level production audit across all four Phase 1 slices together.
+
 **Scope**: Phase 1 (Core Operations) only, per the founder's own phasing —
 Fleet Operations, Emergency Operations, Support Centre, Incident Management,
 Dispatch Oversight. Phase 2 (analytics, KPIs, heat maps, demand forecasting,
