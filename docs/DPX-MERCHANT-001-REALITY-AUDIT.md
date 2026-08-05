@@ -212,3 +212,75 @@ be stale for the onboarding/business/KYC/bank-account/catalog surface (real
 SDK coverage exists there now) while still accurate for the order-lifecycle
 surface — this audit re-verified rather than carrying either claim forward
 unchecked.
+
+## 8. Founder Scope Decision (2026-08-05)
+
+Recorded verbatim from the founder's review of this audit:
+
+> **Phase 1 — Approved.** Fix the existing integration defects first.
+> Claude should: correct `AnalyticsClient.merchant()` to the real
+> `/merchant/analytics/overview` endpoint; add SDK coverage for the
+> existing `MerchantOrdersController` capabilities (list orders, accept,
+> reject, ready, delay, cancel); add SDK coverage for store pause/resume;
+> add proper SDK tests for every corrected/new contract. Do not change
+> backend behavior merely to make the SDK easier. These are
+> contract/integration repairs, not new product features.
+>
+> **Phase 2 — Approved.** Expose the real capabilities that already exist
+> through merchant-portal. Priority should be operational usefulness
+> rather than trying to manufacture a large portal: Merchant Home/Overview
+> → Incoming Orders → Products/Catalog → Business Profile →
+> Onboarding/KYC → Wallet/Bank → Reviews → Notifications → Analytics/Store
+> controls. The critical workflow is: order received → merchant
+> accepts/rejects → prepares → marks ready → fulfilment proceeds. That
+> needs full E2E verification against the real Marketplace order
+> lifecycle.
+>
+> **Important UI ruling.** The audit establishes that there is no
+> recovered Merchant Figma source. Therefore Claude must stop referring to
+> Merchant work as "Figma parity" — there is nothing to port 1:1. For
+> Merchant only, use the established DrippleX Design System / DDS,
+> existing approved brand tokens, shared primitives and interaction
+> conventions to create a coherent operational portal. This does not
+> authorize modifying locked shared components in ways that visually
+> change Ride, Marketplace, Wallet or Driver. New Merchant-specific
+> components are preferable where necessary. Maintain the usability rule:
+> merchant tasks should be simple, precise and require as few steps as
+> possible.
+>
+> **Phase 3 — Hold for individual approval.** I don't want Claude
+> automatically building branches, promotions, staff/roles and support
+> just because they're listed as missing — they have different business
+> implications. Preliminary direction: **multi-branch** — defer initially,
+> a single-location merchant should not have to understand branch
+> management merely to start selling, but architecture should not prevent
+> branches later; **promotions** — likely valuable, but rules are needed
+> around what merchants may discount themselves versus
+> platform-funded/admin campaigns; **staff/roles** — important for larger
+> merchants but unnecessary complexity for small restaurants/shops at
+> launch, a later merchant-business capability; **merchant support** —
+> likely worth implementing sooner since real merchants need a path to
+> resolve order/payment/account problems, but scope it deliberately rather
+> than copying Driver Support blindly. Phase 3 remains unapproved new
+> capability until reviewed individually.
+>
+> **One additional requirement.** Since onboarding/KYC and bank accounts
+> already exist, Phase 2 should audit the merchant's activation gate
+> before exposing onboarding as merely a collection of forms. We need to
+> know exactly what must be true before a merchant can become ACTIVE and
+> receive real customer orders — identity/business verification, required
+> documents, bank/payment information, store readiness, and whatever the
+> backend genuinely enforces should be examined. Do not invent conditions.
+> If no unified activation gate exists, report that as a production gap
+> before deciding how to fix it.
+>
+> **Approved execution sequence.** Phase 1 contract repairs →
+> verification → Phase 2 portal implementation → real E2E merchant/order
+> testing → security review → production audit → Founder Review. Do not
+> freeze DPX-MERCHANT-001 and do not begin Phase 3 without coming back for
+> approval.
+
+This decision supersedes §6's Phase 3 framing above only insofar as Phase 3
+is now explicitly on hold pending individual review of each item, not a
+single approvable package. §6 is left as originally written (the audit's
+own proposal) with this section recording what was actually approved.
