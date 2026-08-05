@@ -370,3 +370,73 @@ support) — it's a hole in a capability (settlements/earnings) already
 classified "Partial" and put in Phase 2. Flagging it here rather than
 silently building around it, per the standing "don't fabricate backend
 capabilities" instruction.
+
+## 10. Founder Decision on the settlement finding (2026-08-05)
+
+Recorded verbatim, in response to §9's settlement-crediting finding:
+
+> I would not allow the zero-balance limitation to slide into Phase 2.
+> This is a core commercial gap, not a cosmetic Wallet-screen limitation.
+> A marketplace where the customer can pay, the merchant can fulfil the
+> order, but the merchant never receives an accounting credit is not
+> financially complete.
+>
+> **Founder decision — Settlement gap must be closed.** Add a focused
+> **DPX-MERCHANT-002 — Marketplace Merchant Settlement** workstream before
+> presenting Merchant Wallet/Earnings as production-ready. This is an
+> explicitly approved addition to Phase 2, but keep the scope narrow — no
+> withdrawals/payouts, accounting software, or complex settlement
+> platform yet.
+>
+> The minimum production requirement: Customer payment → Order →
+> successful fulfilment → merchant settlement calculation → merchant
+> wallet credit → immutable ledger entry. For Cash on Delivery, don't
+> credit the merchant simply because the order was created — settlement
+> must follow the authoritative completion/payment state appropriate to
+> the existing COD lifecycle. For Wallet/Paystack/Flutterwave/OPay,
+> likewise use the existing verified payment/order state as the source of
+> truth. Never infer payment from the UI.
+>
+> **Critical financial requirements**: exactly-once settlement (replayed
+> events, retries, or concurrent handlers must never double-credit a
+> merchant); settlement tied to a specific `orderId`; store both the gross
+> order amount and the merchant amount actually credited; if an
+> authoritative platform commission/fee rule already exists, use it — if
+> not, **do not invent a commission percentage, bring that commercial
+> decision back to the founder**; discounts/tax/delivery fee/other
+> pricing components must use the frozen unified Pricing Engine, never be
+> independently recalculated; the merchant wallet credit must use the
+> existing Wallet/Ledger architecture, not a new balance system;
+> settlement records and ledger entries must be auditable; failed
+> settlement must be detectable/retryable, never silently lose merchant
+> money; cancellation/refund/reversal implications must be audited before
+> calling settlement production-ready. Real database E2E tests must cover
+> at least: paid order → fulfilment → one credit; duplicate/replayed
+> completion → still one credit; COD completion/payment semantics.
+>
+> **Merchant activation gate.** Preserve the actual existing requirements
+> found in §9 — Business profile + latest KYC VERIFIED → admin approval →
+> Merchant APPROVED/ACTIVE exposure. Don't silently add bank account or
+> minimum-product requirements just because they sound reasonable.
+> However, the Phase 2 UI should make readiness very clear: Business
+> details → Verification → Approval → Add products → Start selling. Bank
+> setup can be presented as financial setup without falsely claiming it
+> is an activation prerequisite. Later, if the founder decides merchants
+> cannot activate without a settlement destination, that gate changes
+> deliberately, not silently.
+>
+> **Continue Incoming Orders now** — Claude does not need to stop all
+> Phase 2 work while DPX-MERCHANT-002 is built. Proceed with Incoming
+> Orders first, since its backend lifecycle is already real and Phase 1
+> repaired the SDK contract, then continue the other backend-real portal
+> surfaces. But do not mark Merchant Wallet/Earnings production-complete
+> and do not freeze DPX-MERCHANT-001 until DPX-MERCHANT-002 settlement has
+> been implemented, financially audited, and E2E verified. The Wallet
+> screen should eventually show real money movement — not a polished ₦0
+> screen hiding the fact that merchants aren't being paid.
+
+This governs all remaining Phase 2 work: Incoming Orders and the other
+backend-real portal screens proceed now; DPX-MERCHANT-002 (settlement) is
+tracked and built as a parallel, explicitly-scoped workstream; the Wallet/
+Earnings screen and the overall DPX-MERCHANT-001 freeze are both blocked
+on DPX-MERCHANT-002's completion, not on each other.
