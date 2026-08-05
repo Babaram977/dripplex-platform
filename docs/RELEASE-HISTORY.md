@@ -529,6 +529,19 @@ frozen Ride lifecycle is not — a genuine minimal-interface need, if the
 audit finds one, comes back for its own founder approval rather than
 quietly modifying Ride.
 
+**Slice 3 reality audit complete the same day** — see
+`docs/DPX-OPS-001-SLICE-3-REALITY-AUDIT.md`. Re-verified every DPX-RIDE-201
+technical claim against the current codebase (all real; the ETA estimate
+is a constant-speed straight-line formula, not routing/traffic-aware —
+stated precisely, not a correction). Confirmed Slice 1's ride queue already
+covers "live ride queue"; driver allocation (`RideOffer`), trip monitoring
+(`RideTracking`), and cancellation detail (`Ride`'s own cancellation
+columns, with `NO_DRIVERS_FOUND` correctly kept distinct from `CANCELLED`)
+are all real, readable data with zero `apps/backend/src/rides/` changes
+needed. Manual reassignment itself is untouched — no activation. Proposed
+five-item visibility-only Slice 3 scope submitted for founder review before
+any implementation begins.
+
 ---
 
 ## What's next

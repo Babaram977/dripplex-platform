@@ -62,6 +62,18 @@ assignment/nearby-drivers/ETA is in scope, mutating the frozen Ride
 lifecycle is not, unless the audit identifies a genuinely minimal
 interface need and that comes back for its own founder approval.
 
+**Update (2026-08-05, same day): Slice 3 reality audit complete** — see
+`docs/DPX-OPS-001-SLICE-3-REALITY-AUDIT.md`. Re-verified every technical
+claim DPX-RIDE-201 made against the current codebase (all held up, one
+ETA-precision nuance worth stating plainly), confirmed Slice 1's ride queue
+already covers "live ride queue" from the Dispatch Oversight list, and
+found every remaining item (driver allocation via `RideOffer`, trip
+monitoring via `RideTracking`, cancellation detail via `Ride`'s own
+cancellation columns, the DPX-RIDE-201 decision-support panel) readable
+today with zero changes to `apps/backend/src/rides/`. Manual reassignment
+itself stays exactly where DPX-RIDE-201 left it — no activation, no
+mutation. Submitted for founder review before implementation begins.
+
 **Scope**: Phase 1 (Core Operations) only, per the founder's own phasing —
 Fleet Operations, Emergency Operations, Support Centre, Incident Management,
 Dispatch Oversight. Phase 2 (analytics, KPIs, heat maps, demand forecasting,

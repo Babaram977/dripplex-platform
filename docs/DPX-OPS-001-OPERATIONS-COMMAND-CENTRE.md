@@ -1,13 +1,14 @@
 # DPX-OPS-001 — Operations Command Centre (Future Module)
 
 **Status: Slice 1 (Live Operations Dashboard) shipped (2026-08-04). Slice 2
-(Operations Work Queues) 🔒 Founder Approved / Frozen (2026-08-05). Slices
-3-4 (Dispatch Management, Analytics) not yet started — Slice 3 reality
-audit in progress.** See `docs/DPX-OPS-001-REALITY-AUDIT.md` for the full
-backend-capability audit, gap analysis, proposed Phase 1 slice plan, and
-the founder's locked-in refinements — this document stays the scope
-record, that one is the audit/plan/approval record. Manual ride
-reassignment is tracked separately:
+(Operations Work Queues) 🔒 Founder Approved / Frozen (2026-08-05). Slice 3
+(Dispatch Management) reality audit complete
+(`docs/DPX-OPS-001-SLICE-3-REALITY-AUDIT.md`), awaiting founder review
+before implementation. Slice 4 (Analytics) not yet started.** See
+`docs/DPX-OPS-001-REALITY-AUDIT.md` for the full backend-capability audit,
+gap analysis, proposed Phase 1 slice plan, and the founder's locked-in
+refinements — this document stays the scope record, that one is the
+audit/plan/approval record. Manual ride reassignment is tracked separately:
 `docs/DPX-RIDE-201-OPERATIONS-MANUAL-DISPATCH.md`.
 
 ## Slice 1 — Live Operations Dashboard (shipped 2026-08-04)
