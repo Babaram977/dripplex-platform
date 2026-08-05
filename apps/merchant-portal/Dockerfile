@@ -1,6 +1,4 @@
 # syntax=docker/dockerfile:1.7
-# DPX-LAUNCH-001.5 rollback drill marker (2026-08-05) -- harmless comment,
-# deployed then reverted to prove the git-revert-and-redeploy path works.
 FROM node:22-bookworm-slim AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
