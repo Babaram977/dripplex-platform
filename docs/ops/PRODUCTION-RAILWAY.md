@@ -24,29 +24,35 @@
 >
 > The founder also locked the following as the required scope for a
 > **Railway-specific production readiness checklist, to be completed
-> before Ride launch** (not yet started as of this update — recorded here
-> so the scope isn't lost, to be picked up as its own dedicated pass):
-> backend deployment; customer-web; driver-portal; merchant-portal;
-> operations-console; environment variables and secrets; PostgreSQL and
-> Redis connectivity; health/readiness endpoints; domain and SSL
-> configuration; monitoring and logging; production build/start
-> verification; rollback procedure.
+> before Ride launch**: backend deployment; customer-web; driver-portal;
+> merchant-portal; operations-console; environment variables and
+> secrets; PostgreSQL and Redis connectivity; health/readiness
+> endpoints; domain and SSL configuration; monitoring and logging;
+> production build/start verification; rollback procedure.
+>
+> **Launch Track 1 opened (2026-08-05):** this checklist is now underway
+> — see `docs/ops/DPX-LAUNCH-001-RAILWAY-READINESS.md` for the live
+> findings, the table below's corrections (several entries here were
+> found stale — `driver-portal` in particular _is_ deployed, just
+> unconfigured and unverified), and the current blocking item (`main`
+> is 65 commits behind the frozen modules; deployment is on hold for
+> founder approval before fast-forwarding).
 
-**Status of this document:** Railway was chosen as the single production infrastructure target on 2026-07-28, following `docs/AUDIT-PRODUCTION-READINESS.md`, replacing the Cloudflare Workers / Hetzner / GHCR design in `docs/archive/pre-railway-infrastructure/`. Everything below marked **Verified** was confirmed hands-on in an earlier working session (live `curl` against the deployed API, not assumption) or via the founder's own browser screenshots (2026-08-03: backend `/api/v1/health` returned healthy with database and redis both `up`; customer-web and admin-portal loaded correctly). Everything marked **Not yet verified this session** needs a fresh check — Railway state can drift independently of this repo.
+**Status of this document:** Railway was chosen as the single production infrastructure target on 2026-07-28, following `docs/AUDIT-PRODUCTION-READINESS.md`, replacing the Cloudflare Workers / Hetzner / GHCR design in `docs/archive/pre-railway-infrastructure/`. The table below was **re-verified live against the Railway API on 2026-08-05** as part of Launch Track 1 — see `docs/ops/DPX-LAUNCH-001-RAILWAY-READINESS.md` for full detail; that document, not this one, is now the current source of truth for live service state. This table is kept only as a quick-reference summary.
 
-## What's actually running (Verified, as of last confirmed check)
+## What's actually running (re-verified 2026-08-05, see DPX-LAUNCH-001-RAILWAY-READINESS.md)
 
-| Service                               | Platform                | Status                                                                                                                                                                                                                                                                                                                                                        |
-| ------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Backend (`@dripplex/backend`, NestJS) | Railway                 | Verified live 2026-08-03 — `/api/v1/health` returned `{"status":"ok","checks":{"database":{"status":"up"},"redis":{"status":"up"}}}`                                                                                                                                                                                                                          |
-| PostgreSQL                            | Railway (managed addon) | Verified — connected, backend health check confirms it                                                                                                                                                                                                                                                                                                        |
-| Redis                                 | Railway (managed addon) | Verified — connected, backend health check confirms it                                                                                                                                                                                                                                                                                                        |
-| `customer-web`                        | Railway                 | Verified live 2026-08-03 — homepage loads at `dripplexcustomer-web-production.up.railway.app`                                                                                                                                                                                                                                                                 |
-| `admin-portal`                        | Railway                 | Verified live 2026-08-03 — login page loads at `dripplexadmin-portal-production.up.railway.app`                                                                                                                                                                                                                                                               |
-| `driver-portal`                       | Railway                 | **Not deployed** — no Railway service/domain exists for it yet (confirmed 2026-08-03: hitting its expected URL returns Railway's "no deployment" page, not an app error). A Dockerfile now exists (`apps/driver-portal/Dockerfile`, added for the Coolify pass but equally usable here) — deploying it follows the exact same recipe as `admin-portal` below. |
-| `operations-console`                  | Railway                 | **Not deployed** — same situation as `driver-portal`. A Dockerfile now exists (`apps/operations-console/Dockerfile`, added for the DPX-OPS-001 module-closure audit, 2026-08-05) — deploying it follows the exact same recipe as `admin-portal` below, see "Deploying `operations-console` to Railway" further down.                                          |
-| `merchant-portal`, `rider-portal`     | —                       | Not deployed anywhere. No blocker to deploying them the same way as `customer-web`/`admin-portal` once needed.                                                                                                                                                                                                                                                |
-| `customer-mobile`                     | —                       | Not applicable to Railway — it's a Capacitor shell that loads `customer-web`, not an independently deployable service. Store submission is separately gated (see `docs/AUDIT-PRODUCTION-READINESS.md` §5).                                                                                                                                                    |
+| Service                               | Platform                | Status                                                                                                                                                                                                                                                       |
+| ------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Backend (`@dripplex/backend`, NestJS) | Railway                 | Deployed, healthcheck configured (`/api/v1/health`), deploys from `main` — but `main` is 65 commits behind (see readiness doc §1)                                                                                                                            |
+| PostgreSQL                            | Railway (managed addon) | Deployed, volume-backed                                                                                                                                                                                                                                      |
+| Redis                                 | Railway (managed addon) | Deployed, volume-backed, password-protected                                                                                                                                                                                                                  |
+| `customer-web`                        | Railway                 | Deployed, healthcheck added this pass                                                                                                                                                                                                                        |
+| `admin-portal`                        | Railway                 | Deployed, healthcheck already configured                                                                                                                                                                                                                     |
+| `driver-portal`                       | Railway                 | **Correction: this WAS already deployed** (the "Not deployed" claim below was stale) — but had zero environment variables, no domain, and no healthcheck until this pass fixed all three. Its Dockerfile was also missing two required build `ARG`s (fixed). |
+| `operations-console`                  | Railway                 | Still not deployed — its Dockerfile doesn't exist on `main` yet at all (blocked on the `main` merge, not on the deploy recipe below).                                                                                                                        |
+| `merchant-portal`, `rider-portal`     | —                       | Still not deployed. `merchant-portal`'s Dockerfile exists on `main` but is the early R1.4 shell, not the frozen Phase 2 build.                                                                                                                               |
+| `customer-mobile`                     | Railway (misconfigured) | **Correction:** a live Railway service _does_ exist for this name, but it incorrectly builds from `apps/customer-web/Dockerfile` — effectively a stray duplicate of customer-web. Flagged, not deleted, in the readiness doc §3.                             |
 
 ### Deploying `driver-portal` to Railway (next step)
 

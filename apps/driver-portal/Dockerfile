@@ -27,8 +27,12 @@ ENV NODE_ENV=production
 ENV DOCKER_BUILD=1
 ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:3000/api/v1
 ARG NEXT_PUBLIC_APP_URL=http://localhost:3005
+ARG NEXT_PUBLIC_CUSTOMER_APP_URL=http://localhost:3001
+ARG NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=""
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
+ENV NEXT_PUBLIC_CUSTOMER_APP_URL=$NEXT_PUBLIC_CUSTOMER_APP_URL
+ENV NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=$NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
 RUN pnpm --filter @dripplex/types build && pnpm --filter @dripplex/utils build && pnpm --filter @dripplex/sdk build
 RUN pnpm --filter @dripplex/driver-portal build
 
