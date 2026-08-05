@@ -1,17 +1,45 @@
-# 🔒 DPX-COMMERCIAL-001 — Platform Revenue, Settlement & Credit Policy
+# 🔒 DPX-COMMERCIAL-001 — Platform Revenue, Settlement & Credit Policy (Founder Approved)
 
-Status: **Draft — Reality Audit complete, pay-down policy locked by the
-founder (§0). Implementation is explicitly paused: the founder asked to
-review this document before any Slice 1 code is written. No schema, no
-service, no controller for this policy exists yet — this document only.**
+Status: **✅ Approved and locked as the platform's single commercial
+policy — merchant commission, driver commission, credit limits,
+blocking/unblocking, automatic deduction, manual settlement recording, and
+the commission ledger all derive from this document. Implementation is
+deliberately deferred — see §0.1 for the founder-locked sequencing. No
+schema, service, or controller for this policy exists yet.**
 
-## 0. Founder decision (locked)
+## 0. Founder decisions (locked)
+
+### 0.1 Sequencing (locked)
+
+The founder approved this document as the platform's commercial policy of
+record, and separately locked the implementation order:
+
+1. **This document is locked** as the single source of truth for merchant
+   commissions, driver commissions, credit limits, blocking/unblocking,
+   automatic deductions, manual settlement recording, and the commission
+   ledger — superseding any earlier, less-formal framing of the same
+   ideas (e.g. the original DPX-MERCHANT-007 founder message).
+2. **Slice 1 does not start yet.** Implementation touches financial
+   workflows spanning both Marketplace and Ride; the founder wants the
+   policy locked and the Merchant Portal's UI stable _before_ wiring the
+   commercial engine into it, to avoid redesigning mid-build.
+3. **Merchant Phase 2 continues first** — Reviews (done), Notifications,
+   Analytics, and any remaining merchant screens. These don't touch
+   financial behavior and move the Merchant Portal toward launch
+   readiness independently.
+4. **After Merchant Phase 2 reaches its production audit and freeze**,
+   return to this document and implement the full Slice 1–6 plan (§6) as
+   one coordinated package, against a now-stable Merchant Portal UI.
+
+Locked order: Merchant Portal completion → Merchant module audit + freeze
+→ Commercial Engine (this document) → Launch preparation.
+
+### 0.2 Pay-down mechanism (locked)
 
 On sequencing, the founder chose to pause all implementation and review
 this document first, reasoning that changing how cash flows changes the
 business model, not just the code — Founder Review before Implement, not
-after, for this one. No slice work starts until the founder explicitly
-approves this document.
+after, for this one.
 
 On the pay-down mechanism, the founder locked the following policy
 verbatim:
@@ -227,7 +255,7 @@ Ride/Delivery cash trip is confirmed — instead of (B/C) or in addition to
 (C, for the rider/driver split) crediting an asset wallet, `commissionAmount`
 is added to `outstandingBalance`.
 
-**Payment** happens via either of the two founder-locked mechanisms in §0:
+**Payment** happens via either of the two founder-locked mechanisms in §0.2:
 automatic deduction from a mode-A settlement, or admin-manual recording of
 an external payment. Both reduce `outstandingBalance` and write a
 `CommissionLedgerEntry` of type `PAYMENT`.
@@ -335,7 +363,7 @@ financially-sensitive mutation in this codebase (`MerchantSettlementService`,
 ## 5. Honest gaps this document does NOT resolve yet
 
 1. **~~How does a merchant/driver actually pay down an outstanding
-   commission balance?~~ Resolved — see §0.** Both automatic deduction
+   commission balance?~~ Resolved — see §0.2.** Both automatic deduction
    (mode A) and admin-manual recording are in scope from Slice 1.
 2. **Exact commission split formula for Marketplace delivery earnings**
    (rider's cut of the delivery fee vs. platform's cut) does not appear to
@@ -347,12 +375,13 @@ financially-sensitive mutation in this codebase (`MerchantSettlementService`,
 3. **Payment method name.** `MERCHANT_DIRECT` above is a placeholder — any
    clear name works, this is not a decision that needs founder time.
 
-## 6. Proposed slice plan (not started — awaiting Founder Review)
+## 6. Slice plan (approved; execution deferred per §0.1)
 
 This spans two major backend domains (Marketplace + Ride) and changes the
 settlement direction of code that is already live (Marketplace COD, tagged
-in `v1.0-baseline`). Given the size and financial sensitivity, the proposed
-plan, to begin only after the founder approves this document:
+in `v1.0-baseline`). Given the size and financial sensitivity, the plan
+below is locked, but per §0.1 does **not** start until Merchant Phase 2
+reaches its production audit and freeze:
 
 - **Slice 1** (additive, no behavior change): `CommissionAccount` +
   `CommissionLedgerEntry` schema, `CommercialCreditSettingsService`
@@ -377,6 +406,8 @@ plan, to begin only after the founder approves this document:
 
 ## 7. Status
 
-Awaiting explicit founder approval of this document before Slice 1 begins.
-No code, schema, or migration for this policy exists anywhere in the
-repository as of this draft.
+✅ **Approved and locked** as the platform's commercial policy (§0.1, §0.2).
+Slice 1 is intentionally not started — resumes after Merchant Phase 2's
+production audit and freeze, per the founder-locked sequencing. No code,
+schema, or migration for this policy exists anywhere in the repository as
+of this revision.
