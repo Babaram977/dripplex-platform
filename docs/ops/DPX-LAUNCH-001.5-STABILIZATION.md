@@ -219,6 +219,44 @@ and resource trends are §6 above; this is the log/error half:
   a null result — the absence of both errors and traffic is itself the
   honest finding for this point in the window.
 
+## 6b. CI status: real finding and fix (2026-08-05, ~21:22-21:46 UTC)
+
+Founder's second review round explicitly asked to continue watching
+"CI status" alongside logs/errors/resource trends. Checking it (via
+GitHub Actions, not assumed) surfaced a real, live finding: `Security
+scan` had been failing on every push to `main` since `4b80290c`
+(2026-08-04, a docs-only commit) — a full two days before this
+stabilization window even opened, and unrelated to any change made
+during it. Full root-cause, fix, and verification detail is in
+`docs/SECURITY-VULNERABILITY-TRIAGE.md`'s new addendum; summarized
+here:
+
+- **Root cause**: `pnpm audit --prod --audit-level=high` failing on 4
+  live high-severity findings (`undici`, `fast-uri`, and a new
+  `brace-expansion` CVE distinct from the one already accepted-risk in
+  the existing triage doc) — all reachable through either the parked
+  Cloudflare Workers fallback deploy tooling or Sentry's build-time
+  webpack plugin, none through actual runtime request paths.
+- **Fix**: targeted `pnpm.overrides` patches, including one path-scoped
+  override for `brace-expansion` after a first flat-override attempt
+  reproduced a break already documented in the original July triage
+  (confirmed by actually running the failing command, not guessed).
+  `@opennextjs/cloudflare`/`wrangler` themselves were deliberately kept
+  — a live, intentionally-gated workflow still depends on them as a
+  parked fallback, same pattern as the parked Coolify docs.
+- **Verified locally** before push: audit clean, full monorepo
+  lint/typecheck, full backend test suite (1307 tests), and a full
+  production build of all 5 affected frontend apps — all pass.
+- **Verified live on CI** after push (commit `b8c9bf7`): `Security
+scan` job — including the exact `Dependency audit (prod, high+)`
+  step that was failing — reached `SUCCESS`.
+
+This is exactly the kind of thing a stabilization window is supposed
+to catch: not a new bug introduced by this window's work, but an
+existing, silent gap in operational hygiene (nobody was watching CI on
+`main` after the Launch Track 1 merge) that direct observation
+surfaced and closed.
+
 ## 7. Founder decisions recorded (2026-08-05, second review round)
 
 Following review of the rollback drill, backup feasibility finding,
