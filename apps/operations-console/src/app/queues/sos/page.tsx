@@ -5,19 +5,26 @@ import { formatRelativeTime } from '@dripplex/utils';
 import Link from 'next/link';
 import * as React from 'react';
 
+import type { QueueFilters } from '@/hooks/use-operations-queues';
+
 import { AppShell } from '@/components/app-shell';
 import { LifecycleStatusBadge } from '@/components/lifecycle-status-badge';
 import { PriorityBadge } from '@/components/priority-badge';
+import { QueueFilterBar } from '@/components/queue-filter-bar';
 import { useSosQueue } from '@/hooks/use-operations-queues';
 
 /**
  * DPX-OPS-001 Slice 2 — SOS Queue. Answers "who needs help right now?" —
  * the founder's first Slice 2 question. Sorted by the backend's own
  * priority-then-recency ordering (SOS cases always default CRITICAL).
+ * `SosAlert` stores both `rideId` and `vehicleId`, so this is the one
+ * queue that supports every filter the founder approved (2026-08-05).
  */
 export default function SosQueuePage(): React.JSX.Element {
-  const queue = useSosQueue();
+  const [filters, setFilters] = React.useState<QueueFilters>({});
+  const queue = useSosQueue(filters);
   const data = queue.data;
+  const hasActiveFilter = Object.keys(filters).length > 0;
 
   return (
     <AppShell>
@@ -28,6 +35,12 @@ export default function SosQueuePage(): React.JSX.Element {
             Active SOS alerts, highest priority first.
           </p>
         </div>
+
+        <QueueFilterBar
+          fields={{ ride: true, vehicle: true }}
+          value={filters}
+          onChange={setFilters}
+        />
 
         {queue.isLoading ? (
           <div className="flex justify-center py-12">
@@ -54,7 +67,14 @@ export default function SosQueuePage(): React.JSX.Element {
         ) : null}
 
         {data?.items.length === 0 ? (
-          <EmptyState title="No SOS alerts" description="Nothing needs attention right now." />
+          <EmptyState
+            title="No SOS alerts"
+            description={
+              hasActiveFilter
+                ? 'No alerts match the current filters.'
+                : 'Nothing needs attention right now.'
+            }
+          />
         ) : null}
 
         {data && data.items.length > 0 ? (

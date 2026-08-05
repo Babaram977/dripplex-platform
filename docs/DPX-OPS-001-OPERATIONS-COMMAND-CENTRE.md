@@ -104,16 +104,58 @@ incidents`, and `drivers/support` modules were **not modified**.
   `prisma-foundation.spec.ts` bumped to 105 permission seeds.
 - **Verification** — backend/SDK/operations-console `tsc`, `eslint
 --max-warnings=0`, `jest`/`vitest`, and `next build` all clean.
-- **Known, documented gaps** (not silently dropped): the founder's
-  Search & Filters list includes Date/Ride/Vehicle/Region — only
-  Status/Priority/Operator/search-text are modeled today, since Date/Ride/
-  Vehicle/Region filtering isn't present on the underlying source-table
-  query methods yet. The founder's Incident Queue categories list includes
-  "Lost & found" and generic "Complaint escalation" — `IncidentCategory`
-  (frozen, from Driver Slice 2) doesn't have those values, so incidents
-  route through the existing five categories only. Both gaps are candidates
-  for either a Slice 2 refinement or an eventual `drivers/incidents` schema
-  change, founder's call.
+
+**Refinement (2026-08-05) — Date/Ride/Vehicle filters, founder-approved
+before the Slice 2 Production Audit.** The founder resolved both of the
+gaps recorded above at Slice 2's initial ship:
+
+- **Date/Ride/Vehicle filtering added; Region deliberately deferred.**
+  `OperationsQueueFilter` (`operations-cases.service.ts`) now accepts
+  `dateFrom`/`dateTo` (an inclusive `createdAt` range, pushed down into
+  each source table's own `where` clause — every source row has
+  `createdAt`) and `rideId`/`vehicleId`. Coverage follows what the frozen
+  source tables actually store, not an invented uniform shape: `SosAlert`
+  has both `rideId` and `vehicleId`, so the SOS queue supports every
+  filter; `IncidentReport` has `rideId` only, so the Incident queue
+  supports Date + Ride; `DriverSupportTicket` has neither, so the Support
+  queue supports Date only. A `rideId`/`vehicleId` filter passed to a
+  queue that structurally can't satisfy it returns an empty result rather
+  than being silently ignored (`getIncidentQueue`/`getSupportQueue` short
+  -circuit before querying). `operations-console`'s three queue screens
+  each show only the filter controls their queue can actually honor
+  (`QueueFilterBar`). Region stays out of scope — deferred until DrippleX
+  has a canonical operational geography/zone model, per the founder's
+  explicit instruction not to invent one just to satisfy this filter.
+- **`IncidentCategory` stays frozen.** "Lost & found" and "Complaint
+  escalation" are not added to it. Per the founder's decision, those
+  become future shared platform support/incident capabilities (a
+  cross-module ticket/incident taxonomy, not an Operations-Console-only
+  addition) rather than a one-off enum change to satisfy this console.
+  Phase 1 faithfully exposes the five incident categories that actually
+  exist — `ACCIDENT`/`PASSENGER_ALTERCATION`/`VEHICLE_BREAKDOWN`/
+  `SAFETY_CONCERN`/`OTHER`.
+- **Concurrency hardening — idempotent lazy case creation.** The founder
+  flagged `OperationsCase`'s get-or-create as important platform
+  infrastructure worth stress-testing for multi-operator races, not just
+  UI-level testing. The original `ensureCases()` batched a `createMany({
+skipDuplicates: true })` with a follow-up re-read to log each case's
+  CREATED timeline event — under a genuine race (two operators, or one
+  operator's UI double-firing, polling the same queue before either has a
+  case for a brand-new SOS/incident/support row), every racing caller's
+  re-read could see the same winner's row and each log its own duplicate
+  "Case created" event. Fixed: `ensureCases()` now inserts each missing
+  case individually via `create()`; a unique-constraint violation
+  (`@@unique([caseType, sourceId])`) means another concurrent call won the
+  race, and that caller re-reads the winner's row without logging its own
+  event. Verified with two new live-DB tests firing concurrent (2-way and
+  5-way) requests against the same new SOS alert and asserting exactly one
+  `OperationsCase` row and exactly one CREATED event — see
+  `operations-cases.service.spec.ts`'s "concurrent lazy case creation"
+  block.
+- **Tests** — 4 new filter tests + 2 new concurrency tests (16 total in
+  `operations-cases.service.spec.ts`, up from 10); full backend/SDK/
+  operations-console `tsc`/`eslint --max-warnings=0`/`jest`/`vitest`/
+  `next build` re-verified clean.
 
 Founder-recorded (2026-08-04), alongside
 approval of the Driver Slice 2 freeze: the production audit's one outstanding

@@ -24,6 +24,29 @@ four slices are built, per the founder's own discipline — Slice 1+2 together
 still aren't ready for a module-level production audit. Slices 3-4 (Dispatch
 Management, Analytics) are not yet started.
 
+**Update (2026-08-05, same day): Slice 2 refinement approved before the
+Production Audit.** The founder resolved Slice 2's two initial capability
+gaps: Date/Ride/Vehicle filters were added (Region deliberately deferred
+until a canonical operational geography/zone model exists — not invented
+here); the frozen `IncidentCategory` enum was explicitly left untouched
+("Lost & found"/"Complaint escalation" become a future shared platform
+support/incident capability, not a one-off addition for this console). The
+founder also asked for the `OperationsCase` lazy get-or-create to be
+stress-tested for multi-operator concurrency specifically — a real race
+condition (duplicate CREATED timeline events under concurrent case
+creation) was found and fixed as part of that request. See
+`docs/DPX-OPS-001-OPERATIONS-COMMAND-CENTRE.md`'s "Refinement (2026-08-05)"
+subsection for the full detail.
+
+**Update (2026-08-05, same day): Slice 2 Production Audit complete** — see
+`docs/DPX-OPS-001-SLICE-2-PRODUCTION-AUDIT.md`. Found and fixed one real
+defect (duplicate `CREATED` timeline events under concurrent lazy case
+creation), verified filters/permissions/SLA/timeline/source-sync/frozen-
+module-boundaries all real, and confirmed zero launch-blocking issues. Per
+the founder's own instruction, this audit does **not** authorize a freeze —
+the module-level production audit + freeze (steps 9-11) happen once Slices
+3-4 are built too.
+
 **Scope**: Phase 1 (Core Operations) only, per the founder's own phasing —
 Fleet Operations, Emergency Operations, Support Centre, Incident Management,
 Dispatch Oversight. Phase 2 (analytics, KPIs, heat maps, demand forecasting,

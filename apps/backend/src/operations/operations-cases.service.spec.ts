@@ -405,4 +405,155 @@ describe('OperationsCasesService', () => {
       await prisma.sosAlert.delete({ where: { id: alert.id } }).catch(() => undefined);
     }
   });
+
+  describe('Date/Ride/Vehicle filters (founder-approved 2026-08-05)', () => {
+    it('filters the SOS queue by rideId and vehicleId — both real columns on SosAlert', async () => {
+      if (!databaseAvailable) return;
+
+      const rideId = randomUUID();
+      const vehicleId = randomUUID();
+      const matching = await prisma.sosAlert.create({
+        data: { driverId, status: SosAlertStatus.OPEN, rideId, vehicleId },
+      });
+      const nonMatching = await prisma.sosAlert.create({
+        data: { driverId, status: SosAlertStatus.OPEN },
+      });
+
+      const byRide = await service.getSosQueue({ driverId, rideId });
+      expect(byRide.items.map((i) => i.sourceId)).toContain(matching.id);
+      expect(byRide.items.map((i) => i.sourceId)).not.toContain(nonMatching.id);
+
+      const byVehicle = await service.getSosQueue({ driverId, vehicleId });
+      expect(byVehicle.items.map((i) => i.sourceId)).toContain(matching.id);
+      expect(byVehicle.items.map((i) => i.sourceId)).not.toContain(nonMatching.id);
+    });
+
+    it('filters the SOS queue by an inclusive createdAt date range', async () => {
+      if (!databaseAvailable) return;
+
+      const alert = await prisma.sosAlert.create({
+        data: { driverId, status: SosAlertStatus.OPEN },
+      });
+
+      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      const inRange = await service.getSosQueue({
+        driverId,
+        dateFrom: yesterday,
+        dateTo: tomorrow,
+      });
+      expect(inRange.items.map((i) => i.sourceId)).toContain(alert.id);
+
+      const lastWeek = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const outOfRange = await service.getSosQueue({
+        driverId,
+        dateFrom: new Date(lastWeek.getTime() - 24 * 60 * 60 * 1000),
+        dateTo: lastWeek,
+      });
+      expect(outOfRange.items.map((i) => i.sourceId)).not.toContain(alert.id);
+    });
+
+    it('filters the Incident queue by rideId (real column) and always empties on a vehicleId filter (no such column)', async () => {
+      if (!databaseAvailable) return;
+
+      const rideId = randomUUID();
+      const matching = await prisma.incidentReport.create({
+        data: {
+          driverId,
+          category: IncidentCategory.ACCIDENT,
+          severity: IncidentSeverity.LOW,
+          description: 'Fender bender.',
+          rideId,
+        },
+      });
+
+      const byRide = await service.getIncidentQueue({ driverId, rideId });
+      expect(byRide.items.map((i) => i.sourceId)).toContain(matching.id);
+
+      const byVehicle = await service.getIncidentQueue({ driverId, vehicleId: randomUUID() });
+      expect(byVehicle.items).toHaveLength(0);
+    });
+
+    it('always empties the Support queue on a rideId or vehicleId filter — DriverSupportTicket has neither column', async () => {
+      if (!databaseAvailable) return;
+
+      await prisma.driverSupportTicket.create({
+        data: {
+          driverId,
+          category: DriverSupportCategory.OTHER,
+          subject: 'Filter test',
+          description: 'Should never match a ride/vehicle filter.',
+        },
+      });
+
+      const byRide = await service.getSupportQueue({ driverId, rideId: randomUUID() });
+      expect(byRide.items).toHaveLength(0);
+
+      const byVehicle = await service.getSupportQueue({ driverId, vehicleId: randomUUID() });
+      expect(byVehicle.items).toHaveLength(0);
+    });
+  });
+
+  describe('concurrent lazy case creation (Slice 2 Production Audit)', () => {
+    it('creates exactly one OperationsCase and logs exactly one CREATED event when two requests race on the same new SOS alert', async () => {
+      if (!databaseAvailable) return;
+
+      const alert = await prisma.sosAlert.create({
+        data: { driverId, status: SosAlertStatus.OPEN },
+      });
+
+      // Simulates two operators (or one operator's UI double-firing) polling
+      // the same queue at the same instant, before either has a case row
+      // for this brand-new alert yet.
+      const [queueA, queueB] = await Promise.all([
+        service.getSosQueue({ driverId }),
+        service.getSosQueue({ driverId }),
+      ]);
+
+      const caseIdA = queueA.items.find((i) => i.sourceId === alert.id)?.caseId;
+      const caseIdB = queueB.items.find((i) => i.sourceId === alert.id)?.caseId;
+      expect(caseIdA).toBeDefined();
+      expect(caseIdA).toBe(caseIdB);
+
+      const cases = await prisma.operationsCase.findMany({
+        where: { caseType: 'SOS', sourceId: alert.id },
+      });
+      expect(cases).toHaveLength(1);
+      const soleCase = cases[0];
+      if (!soleCase) throw new Error('expected exactly one case to have been created');
+
+      const events = await prisma.operationsCaseEvent.findMany({
+        where: { caseId: soleCase.id, eventType: 'CREATED' },
+      });
+      expect(events).toHaveLength(1);
+    });
+
+    it('handles a higher-fan-out race (5 concurrent requests) without duplicate cases or CREATED events', async () => {
+      if (!databaseAvailable) return;
+
+      const alert = await prisma.sosAlert.create({
+        data: { driverId, status: SosAlertStatus.OPEN },
+      });
+
+      const results = await Promise.all(
+        Array.from({ length: 5 }, () => service.getSosQueue({ driverId })),
+      );
+      const caseIds = new Set(
+        results.map((queue) => queue.items.find((i) => i.sourceId === alert.id)?.caseId),
+      );
+      expect(caseIds.size).toBe(1);
+
+      const cases = await prisma.operationsCase.findMany({
+        where: { caseType: 'SOS', sourceId: alert.id },
+      });
+      expect(cases).toHaveLength(1);
+      const soleCase = cases[0];
+      if (!soleCase) throw new Error('expected exactly one case to have been created');
+
+      const events = await prisma.operationsCaseEvent.findMany({
+        where: { caseId: soleCase.id, eventType: 'CREATED' },
+      });
+      expect(events).toHaveLength(1);
+    });
+  });
 });

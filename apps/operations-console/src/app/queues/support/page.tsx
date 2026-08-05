@@ -5,9 +5,12 @@ import { formatRelativeTime } from '@dripplex/utils';
 import Link from 'next/link';
 import * as React from 'react';
 
+import type { QueueFilters } from '@/hooks/use-operations-queues';
+
 import { AppShell } from '@/components/app-shell';
 import { LifecycleStatusBadge } from '@/components/lifecycle-status-badge';
 import { PriorityBadge } from '@/components/priority-badge';
+import { QueueFilterBar } from '@/components/queue-filter-bar';
 import { useSupportQueue } from '@/hooks/use-operations-queues';
 
 /**
@@ -15,10 +18,14 @@ import { useSupportQueue } from '@/hooks/use-operations-queues';
  * constraint, this is the only live support queue in Phase 1 — Customer
  * and Merchant support are architecture-only for now, see
  * docs/DPX-OPS-001-REALITY-AUDIT.md's "Founder review — approved" section.
+ * No Ride/Vehicle filter here — `DriverSupportTicket` has neither column
+ * (per the founder's 2026-08-05 decision not to modify the frozen table).
  */
 export default function SupportQueuePage(): React.JSX.Element {
-  const queue = useSupportQueue();
+  const [filters, setFilters] = React.useState<QueueFilters>({});
+  const queue = useSupportQueue(filters);
   const data = queue.data;
+  const hasActiveFilter = Object.keys(filters).length > 0;
 
   return (
     <AppShell>
@@ -31,6 +38,8 @@ export default function SupportQueuePage(): React.JSX.Element {
             Driver support tickets awaiting a response.
           </p>
         </div>
+
+        <QueueFilterBar value={filters} onChange={setFilters} />
 
         {queue.isLoading ? (
           <div className="flex justify-center py-12">
@@ -57,7 +66,14 @@ export default function SupportQueuePage(): React.JSX.Element {
         ) : null}
 
         {data?.items.length === 0 ? (
-          <EmptyState title="No support tickets" description="Nothing needs attention right now." />
+          <EmptyState
+            title="No support tickets"
+            description={
+              hasActiveFilter
+                ? 'No tickets match the current filters.'
+                : 'Nothing needs attention right now.'
+            }
+          />
         ) : null}
 
         {data && data.items.length > 0 ? (

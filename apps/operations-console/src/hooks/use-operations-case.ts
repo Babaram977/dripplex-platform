@@ -39,9 +39,9 @@ function useCaseMutation<TBody>(
     mutationFn,
     onSuccess: (data) => {
       queryClient.setQueryData(caseKey(caseId), data);
-      void queryClient.invalidateQueries({ queryKey: operationsQueueKeys.sos });
-      void queryClient.invalidateQueries({ queryKey: operationsQueueKeys.incidents });
-      void queryClient.invalidateQueries({ queryKey: operationsQueueKeys.support });
+      void queryClient.invalidateQueries({ queryKey: operationsQueueKeys.sosPrefix });
+      void queryClient.invalidateQueries({ queryKey: operationsQueueKeys.incidentsPrefix });
+      void queryClient.invalidateQueries({ queryKey: operationsQueueKeys.supportPrefix });
     },
   });
 }

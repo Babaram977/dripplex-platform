@@ -451,6 +451,50 @@ freeze happen once all four Phase 1 slices are built, not after Slice 1 or
 Slice 2 alone. See `docs/DPX-OPS-001-OPERATIONS-COMMAND-CENTRE.md` for the
 running scope/status record.
 
+## 2026-08-05 (same day) — Slice 2 refinement: filters + concurrency fix
+
+Before greenlighting the Slice 2 Production Audit, the founder resolved
+both capability gaps recorded at initial ship and asked for one additional
+hardening pass:
+
+- **Date/Ride/Vehicle filters added to the three work queues** —
+  `OperationsQueueFilter` now supports an inclusive `createdAt` range plus
+  `rideId`/`vehicleId`, applied against whichever columns each frozen
+  source table actually has (`SosAlert`: both; `IncidentReport`: ride
+  only; `DriverSupportTicket`: neither — a filter a queue can't satisfy
+  returns empty rather than being silently ignored). **Region stays
+  deferred** until DrippleX has a canonical operational geography/zone
+  model, per the founder's explicit instruction not to invent one.
+- **`IncidentCategory` stays frozen** — "Lost & found" and "Complaint
+  escalation" are recorded as a future shared platform support/incident
+  capability, not added as a one-off enum change for this console.
+- **Concurrency fix in `OperationsCase`'s lazy get-or-create.** Founder
+  flagged the wrapper-table's get-or-create as important platform
+  infrastructure worth testing for multi-operator races specifically.
+  Testing found a real bug: under concurrent queue reads racing to create
+  a case for the same brand-new SOS/incident/support row, every racing
+  caller could log its own duplicate "Case created" timeline event (the
+  case row itself stayed unique via `@@unique([caseType, sourceId])`, but
+  the CREATED event did not). Fixed by inserting each missing case
+  individually and having a unique-constraint-violation loser re-read the
+  winner's row without logging its own event. Verified with two new
+  live-DB tests firing 2-way and 5-way concurrent requests at the same new
+  SOS alert.
+
+16 tests total in `operations-cases.service.spec.ts` (up from 10); full
+backend/SDK/operations-console `tsc`/`eslint --max-warnings=0`/`jest`/
+`vitest`/`next build` re-verified clean.
+
+**Slice 2 Production Audit run the same day** — see
+`docs/DPX-OPS-001-SLICE-2-PRODUCTION-AUDIT.md`. Confirmed real: unified
+lifecycle, assignment/ownership, SLA timestamps, immutable timeline,
+one-directional source sync, permissions, queue counters, activity feed,
+the new filters, SDK, Operations Console, error states, database integrity,
+and frozen-module boundaries. Zero launch-blocking findings. Per the
+founder's own governance ("Do not freeze automatically"), this audit ends
+with a report back to the founder for review, not a freeze — the
+module-level freeze happens once Slices 3-4 are built and audited too.
+
 ---
 
 ## What's next

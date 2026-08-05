@@ -26,6 +26,14 @@ export interface OperationsQueueQuery {
   priority?: OperationsPriority;
   assignedToId?: string;
   driverId?: string;
+  /** ISO date (`YYYY-MM-DD`) or full ISO instant. */
+  dateFrom?: string;
+  dateTo?: string;
+  /** Only matches SOS/Incident cases — `DriverSupportTicket` has no ride
+   * association, so this always yields an empty Support queue. */
+  rideId?: string;
+  /** Only matches SOS cases — only `SosAlert` stores a vehicle id. */
+  vehicleId?: string;
 }
 
 /**

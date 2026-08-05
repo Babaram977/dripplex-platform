@@ -5,9 +5,12 @@ import { formatRelativeTime } from '@dripplex/utils';
 import Link from 'next/link';
 import * as React from 'react';
 
+import type { QueueFilters } from '@/hooks/use-operations-queues';
+
 import { AppShell } from '@/components/app-shell';
 import { LifecycleStatusBadge } from '@/components/lifecycle-status-badge';
 import { PriorityBadge } from '@/components/priority-badge';
+import { QueueFilterBar } from '@/components/queue-filter-bar';
 import { useIncidentQueue } from '@/hooks/use-operations-queues';
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -23,12 +26,17 @@ const CATEGORY_LABEL: Record<string, string> = {
  * reports. Founder's requirement — "Lost & found" and "Complaint
  * escalation" aren't modeled in the existing `IncidentReport` taxonomy
  * (`IncidentCategory` is ACCIDENT/PASSENGER_ALTERCATION/
- * VEHICLE_BREAKDOWN/SAFETY_CONCERN/OTHER) — that's a real, documented gap,
- * not silently dropped, see docs/DPX-OPS-001-REALITY-AUDIT.md.
+ * VEHICLE_BREAKDOWN/SAFETY_CONCERN/OTHER). Per the founder's decision
+ * (2026-08-05), that stays a documented gap rather than modifying the
+ * frozen enum — see docs/DPX-OPS-001-OPERATIONS-COMMAND-CENTRE.md. No
+ * vehicle filter here either: `IncidentReport` has no `vehicleId` column
+ * (only `SosAlert` does).
  */
 export default function IncidentQueuePage(): React.JSX.Element {
-  const queue = useIncidentQueue();
+  const [filters, setFilters] = React.useState<QueueFilters>({});
+  const queue = useIncidentQueue(filters);
   const data = queue.data;
+  const hasActiveFilter = Object.keys(filters).length > 0;
 
   return (
     <AppShell>
@@ -39,6 +47,8 @@ export default function IncidentQueuePage(): React.JSX.Element {
             Accidents, vehicle issues, and safety reports.
           </p>
         </div>
+
+        <QueueFilterBar fields={{ ride: true }} value={filters} onChange={setFilters} />
 
         {queue.isLoading ? (
           <div className="flex justify-center py-12">
@@ -65,7 +75,14 @@ export default function IncidentQueuePage(): React.JSX.Element {
         ) : null}
 
         {data?.items.length === 0 ? (
-          <EmptyState title="No incidents" description="Nothing needs attention right now." />
+          <EmptyState
+            title="No incidents"
+            description={
+              hasActiveFilter
+                ? 'No incidents match the current filters.'
+                : 'Nothing needs attention right now.'
+            }
+          />
         ) : null}
 
         {data && data.items.length > 0 ? (

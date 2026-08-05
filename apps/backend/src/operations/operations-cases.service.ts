@@ -56,6 +56,21 @@ export interface OperationsQueueFilter {
   priority?: OperationsPriority;
   assignedToId?: string;
   driverId?: string;
+  /** Inclusive `createdAt` range, applied at the source-table query for
+   * all three queues (every source row has `createdAt`). */
+  dateFrom?: Date;
+  dateTo?: Date;
+  /** Only `SosAlert`/`IncidentReport` store a `rideId` — the frozen
+   * `DriverSupportTicket` table doesn't, so this filter always yields an
+   * empty Support queue rather than being silently ignored. See the
+   * founder's decision (2026-08-05) not to modify frozen Driver Slice 2
+   * schema to add one. */
+  rideId?: string;
+  /** Only `SosAlert` stores a `vehicleId` — `IncidentReport` and
+   * `DriverSupportTicket` don't, so this filter always yields an empty
+   * Incident/Support queue rather than being silently ignored. Same
+   * founder decision as `rideId` above. */
+  vehicleId?: string;
 }
 
 function emptyCounters(): OperationsQueueCountersByStatus {
@@ -128,7 +143,12 @@ export class OperationsCasesService {
 
   public async getSosQueue(filter: OperationsQueueFilter = {}): Promise<SosQueueDto> {
     const alerts = await this.prisma.sosAlert.findMany({
-      where: filter.driverId ? { driverId: filter.driverId } : {},
+      where: {
+        ...(filter.driverId ? { driverId: filter.driverId } : {}),
+        ...(filter.rideId ? { rideId: filter.rideId } : {}),
+        ...(filter.vehicleId ? { vehicleId: filter.vehicleId } : {}),
+        ...this.dateRangeWhere(filter),
+      },
       include: { driver: true },
       orderBy: { createdAt: 'desc' },
     });
@@ -149,8 +169,19 @@ export class OperationsCasesService {
   }
 
   public async getIncidentQueue(filter: OperationsQueueFilter = {}): Promise<IncidentQueueDto> {
+    // IncidentReport (frozen) has no vehicleId column — no incident can
+    // ever match a vehicle filter, so return empty rather than querying
+    // and silently ignoring it.
+    if (filter.vehicleId) {
+      return { items: [], summary: emptyCounters() };
+    }
+
     const reports = await this.prisma.incidentReport.findMany({
-      where: filter.driverId ? { driverId: filter.driverId } : {},
+      where: {
+        ...(filter.driverId ? { driverId: filter.driverId } : {}),
+        ...(filter.rideId ? { rideId: filter.rideId } : {}),
+        ...this.dateRangeWhere(filter),
+      },
       include: { driver: true },
       orderBy: [{ severity: 'desc' }, { createdAt: 'desc' }],
     });
@@ -174,8 +205,17 @@ export class OperationsCasesService {
   }
 
   public async getSupportQueue(filter: OperationsQueueFilter = {}): Promise<SupportQueueDto> {
+    // DriverSupportTicket (frozen) has neither a rideId nor a vehicleId
+    // column — no support ticket can ever match either filter.
+    if (filter.rideId || filter.vehicleId) {
+      return { items: [], summary: emptyCounters() };
+    }
+
     const tickets = await this.prisma.driverSupportTicket.findMany({
-      where: filter.driverId ? { driverId: filter.driverId } : {},
+      where: {
+        ...(filter.driverId ? { driverId: filter.driverId } : {}),
+        ...this.dateRangeWhere(filter),
+      },
       include: { driver: true },
       orderBy: { createdAt: 'desc' },
     });
@@ -444,10 +484,24 @@ export class OperationsCasesService {
   }
 
   /** Idempotent get-or-create, batched: one `findMany` to see what already
-   * has a case, one `createMany` (only for the missing ones) plus the
-   * follow-up reads needed to log a CREATED event for each. Keeps this
-   * cheap enough to run on every queue-list request regardless of queue
-   * size, without an N+1 per source row. */
+   * has a case, then one insert attempt per still-missing source row.
+   * Keeps this cheap enough to run on every queue-list request regardless
+   * of queue size — the per-row insert only happens once, ever, per
+   * source row (a new SOS/incident/support row), not on every poll.
+   *
+   * Concurrency: two operators polling the same queue at once (or one
+   * operator's UI double-firing a request) can both see the same source
+   * row as "missing" before either has inserted a case for it. Each then
+   * races to `create()` it — `@@unique([caseType, sourceId])` lets exactly
+   * one succeed; the loser's `create()` throws a unique-constraint
+   * violation, which is treated as "someone else just created this," not
+   * an error: it re-reads the row the winner created and does NOT log its
+   * own CREATED event. Without this, a naive `createMany({ skipDuplicates:
+   * true })` followed by a `findMany` re-read (the prior implementation)
+   * would let every racing caller see the winner's row in that re-read and
+   * each log its own duplicate "Case created" timeline entry — a real bug
+   * in a multi-operator command centre, caught during the Slice 2
+   * Production Audit's concurrency test, not by ordinary UI testing. */
   private async ensureCases(
     caseType: OperationsCaseType,
     sources: { id: string; defaultPriority: OperationsPriority }[],
@@ -463,28 +517,74 @@ export class OperationsCasesService {
 
     const missing = sources.filter((source) => !map.has(source.id));
     if (missing.length > 0) {
-      await this.prisma.operationsCase.createMany({
-        data: missing.map((source) => ({
-          caseType,
-          sourceId: source.id,
-          priority: source.defaultPriority,
-        })),
-        skipDuplicates: true,
-      });
-      const created = await this.prisma.operationsCase.findMany({
-        where: { caseType, sourceId: { in: missing.map((source) => source.id) } },
-      });
-      await this.prisma.operationsCaseEvent.createMany({
-        data: created.map((kase) => ({
-          caseId: kase.id,
-          eventType: OperationsCaseEventType.CREATED,
-          description: `Case created (${kase.priority} priority).`,
-        })),
-      });
-      for (const kase of created) map.set(kase.sourceId, kase);
+      const results = await Promise.all(
+        missing.map((source) => this.createCaseIfAbsent(caseType, source)),
+      );
+
+      const newlyCreated = results.filter((result) => result.created).map((result) => result.kase);
+      if (newlyCreated.length > 0) {
+        await this.prisma.operationsCaseEvent.createMany({
+          data: newlyCreated.map((kase) => ({
+            caseId: kase.id,
+            eventType: OperationsCaseEventType.CREATED,
+            description: `Case created (${kase.priority} priority).`,
+          })),
+        });
+      }
+
+      for (const result of results) map.set(result.kase.sourceId, result.kase);
     }
 
     return map;
+  }
+
+  /** Attempts to insert exactly one `OperationsCase`. On a unique-constraint
+   * race loss (another concurrent call already inserted it), re-reads the
+   * winner's row instead of erroring — see `ensureCases`' doc comment for
+   * why this is the concurrency-safe primitive it's built on. */
+  private async createCaseIfAbsent(
+    caseType: OperationsCaseType,
+    source: { id: string; defaultPriority: OperationsPriority },
+  ): Promise<{ kase: OperationsCase; created: boolean }> {
+    try {
+      const kase = await this.prisma.operationsCase.create({
+        data: { caseType, sourceId: source.id, priority: source.defaultPriority },
+      });
+      return { kase, created: true };
+    } catch (error) {
+      if (this.isUniqueConstraintViolation(error)) {
+        const kase = await this.prisma.operationsCase.findUniqueOrThrow({
+          where: { caseType_sourceId: { caseType, sourceId: source.id } },
+        });
+        return { kase, created: false };
+      }
+      throw error;
+    }
+  }
+
+  private isUniqueConstraintViolation(error: unknown): boolean {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      (error as { code?: string }).code === 'P2002'
+    );
+  }
+
+  /** Inclusive `createdAt` range shared by all three queues' `where`
+   * clauses — `dateTo` is treated as the end of that calendar day so a
+   * caller passing a bare date (no time component) still includes cases
+   * created any time on that day. */
+  private dateRangeWhere(filter: OperationsQueueFilter): {
+    createdAt?: { gte?: Date; lte?: Date };
+  } {
+    if (!filter.dateFrom && !filter.dateTo) return {};
+    return {
+      createdAt: {
+        ...(filter.dateFrom ? { gte: filter.dateFrom } : {}),
+        ...(filter.dateTo ? { lte: filter.dateTo } : {}),
+      },
+    };
   }
 
   private async requireCase(caseId: string): Promise<OperationsCase> {
