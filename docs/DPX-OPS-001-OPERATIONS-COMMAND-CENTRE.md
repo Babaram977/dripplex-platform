@@ -1,23 +1,26 @@
-# DPX-OPS-001 — Operations Command Centre (Future Module)
+# DPX-OPS-001 — Operations Command Centre
 
-**Status: All four Phase 1 slices individually 🔒 Founder Approved /
-Frozen — Slice 1 (Live Operations Dashboard, 2026-08-04), Slice 2
-(Operations Work Queues, 2026-08-05), Slice 3 (Dispatch Management,
-2026-08-05), Slice 4 (Operations Analytics, 2026-08-05). The
-module-level production audit across all four together is complete —
-see `docs/DPX-OPS-001-MODULE-PRODUCTION-AUDIT.md`. The founder ruled its
-2 findings (case-update concurrency, `operations-console` deployment
-path) Must-fix before freeze; both are now closed (optimistic
-concurrency + real-Postgres concurrent test; Dockerfile + Railway/
-Coolify runbook) and the audit is back for a final Founder decision on
-🔒 DPX-OPS-001 — Operations Command Centre, Phase 1 as a whole, per the
-founder's own instruction not to auto-freeze.** See
-`docs/DPX-OPS-001-REALITY-AUDIT.md` for the full backend-capability audit,
-gap analysis, proposed Phase 1 slice plan, and the founder's locked-in
-refinements — this document stays the scope record, that one is the
-audit/plan/approval record. Manual ride reassignment is tracked separately:
-`docs/DPX-RIDE-201-OPERATIONS-MANUAL-DISPATCH.md` — Slice 3 shipped that
-document's visibility half only; the action half stays deferred.
+**Status: 🔒 DPX-OPS-001 — Operations Command Centre, Phase 1 — Founder
+Approved & Frozen (2026-08-05).** All four Phase 1 slices — Slice 1 (Live
+Operations Dashboard, 2026-08-04), Slice 2 (Operations Work Queues,
+2026-08-05), Slice 3 (Dispatch Management, 2026-08-05), Slice 4
+(Operations Analytics, 2026-08-05) — plus the module-level production
+audit across all four together (`docs/DPX-OPS-001-MODULE-PRODUCTION-AUDIT.md`)
+are complete. That audit's 2 findings (case-update concurrency,
+`operations-console` deployment path) were ruled Must-fix before freeze,
+closed (optimistic concurrency + real-Postgres concurrent test; Dockerfile
+
+- Railway/Coolify runbook), and the founder issued final approval — see
+  that document's "🔒 Founder Approved & Frozen" section for the verbatim
+  decision. From here, DPX-OPS-001 accepts only critical security/defect
+  fixes, performance/compliance work, or explicitly Founder-approved
+  enhancements. See
+  `docs/DPX-OPS-001-REALITY-AUDIT.md` for the full backend-capability audit,
+  gap analysis, proposed Phase 1 slice plan, and the founder's locked-in
+  refinements — this document stays the scope record, that one is the
+  audit/plan/approval record. Manual ride reassignment is tracked separately:
+  `docs/DPX-RIDE-201-OPERATIONS-MANUAL-DISPATCH.md` — Slice 3 shipped that
+  document's visibility half only; the action half stays deferred.
 
 **🔒 Standing instruction — read before touching `packages/ui`:**
 `docs/DPX-OPS-001-FIGMA-PROTECTION-RULE.md` (founder, 2026-08-05). All
@@ -395,14 +398,17 @@ unprompted.
 Slice 4 accepts only critical security/defect fixes, performance/
 compliance work, or explicitly Founder-approved enhancements.
 
-This is still a **slice-level** freeze. All four Phase 1 slices are now
-individually frozen; the module-level production audit across all four
-together is complete — see `docs/DPX-OPS-001-MODULE-PRODUCTION-AUDIT.md`.
-The founder ruled its 2 findings (case-update concurrency, `operations-
-console`'s missing production deployment path) Must-fix before freeze; both
-are now closed (see that document's "Closure round" section) and the audit
-is back for Founder Review before any decision on 🔒 DPX-OPS-001 —
-Operations Command Centre, Phase 1 as a whole.
+This was, at the time, still a **slice-level** freeze — Slice 4's own. All
+four Phase 1 slices went on to be individually frozen, the module-level
+production audit across all four together found and closed 2 Must-fix
+findings (case-update concurrency, `operations-console`'s production
+deployment path — see `docs/DPX-OPS-001-MODULE-PRODUCTION-AUDIT.md`'s
+"Closure round"), and the founder subsequently issued final approval:
+🔒 **DPX-OPS-001 — Operations Command Centre, Phase 1 — Founder Approved &
+Frozen (2026-08-05)** — see that document's "🔒 Founder Approved & Frozen"
+section for the verbatim decision. The module-level freeze now supersedes
+this section's slice-level framing; kept here for the historical record of
+how Slice 4 itself was approved.
 
 ## Founder's scope for this module
 

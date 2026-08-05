@@ -861,11 +861,36 @@ auto-freeze the module either.** Both Must-fix findings are closed and
 verified; this is back for a final Founder decision on 🔒 DPX-OPS-001 —
 Operations Command Centre, Phase 1 as a whole.
 
+## 2026-08-05 (same day) — 🔒 DPX-OPS-001 — Operations Command Centre, Phase 1 — Founder Approved & Frozen
+
+Founder Review decision, recorded verbatim in
+`docs/DPX-OPS-001-MODULE-PRODUCTION-AUDIT.md`'s "🔒 Founder Approved &
+Frozen" section: the founder confirmed the closure round's two Must-fix
+findings — case-update concurrency (optimistic `version` column,
+transaction-guarded write, real-Postgres concurrent test) and
+`operations-console`'s production deployment path (Dockerfile + Railway/
+Coolify runbook) — were closed with no new functionality added, no screen
+redesigned, no Locked Figma implementation touched, and no broadening of
+Operations scope, and issued final approval:
+
+> "🔒 DPX-OPS-001 — Operations Command Centre Phase 1 — Founder Approved &
+> Frozen. Then we can move to the next DrippleX module from a clean
+> baseline rather than carrying unresolved production debt forward."
+
+DPX-OPS-001 Phase 1 is now complete: all four slices (Live Operations
+Dashboard, Operations Work Queues, Dispatch Management, Operations
+Analytics) plus the module-level concurrency and deployment-readiness
+closures, evaluated as one governed production system — live visibility →
+operational response → dispatch oversight → operational intelligence.
+From this point, DPX-OPS-001 accepts only critical security/defect fixes,
+performance/compliance work, or explicitly Founder-approved enhancements,
+the same freeze discipline every individual slice held to.
+
 ---
 
 ## What's next
 
-The R1.7/R1.8 commerce-completion plan below was superseded by the DPX-100 initiative above — Marketplace's commerce loop (cart/checkout/order/payment UI) shipped as part of that port, not as R1.7/R1.8 specifically. What's actually still open, per each module's own audit doc: the Driver module's Figma-ported UI (including onboarding/vehicle/inspection/Slice 2 — all backend-real, Slice 1 and Slice 2 both frozen, see above) (`docs/DRIVER-APP-DPX-100-AUDIT.md`); `docs/DPX-OPS-001-OPERATIONS-COMMAND-CENTRE.md` — the founder's named next focus, an operations-console/admin-portal UI consolidating the SOS/incident/support/shift queues Driver Slice 2 built (real API, no operator screen yet) into one operational surface; reconciling the Railway-vs-Coolify production-infrastructure question above; and Orders/AI/Merchant/Admin, next in the founder's module ordering per `docs/DPX-100-MODULE-COMPLETION-GATE.md`.
+The R1.7/R1.8 commerce-completion plan below was superseded by the DPX-100 initiative above — Marketplace's commerce loop (cart/checkout/order/payment UI) shipped as part of that port, not as R1.7/R1.8 specifically. What's actually still open, per each module's own audit doc: the Driver module's Figma-ported UI (including onboarding/vehicle/inspection/Slice 2 — all backend-real, Slice 1 and Slice 2 both frozen, see above) (`docs/DRIVER-APP-DPX-100-AUDIT.md`); reconciling the Railway-vs-Coolify production-infrastructure question above (`operations-console` now has a documented deploy recipe on both, but no live service on either yet — see `docs/ops/PRODUCTION-RAILWAY.md`); and Orders/AI/Merchant/Admin, next in the founder's module ordering per `docs/DPX-100-MODULE-COMPLETION-GATE.md`. `docs/DPX-OPS-001-OPERATIONS-COMMAND-CENTRE.md` — previously listed here as the founder's named next focus — is now 🔒 Founder Approved & Frozen (see above), no longer open work.
 
 <details>
 <summary>Original 2026-07-28 "what's next" (superseded, kept for the record)</summary>
