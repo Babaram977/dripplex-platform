@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
+import { CommercialCreditSettingsService } from '../commercial/commercial-credit-settings.service';
+import { CommissionAccountService } from '../commercial/commission-account.service';
 import { DomainEventBus } from '../events/domain-event-bus';
 import { DOMAIN_EVENTS } from '../events/domain-events';
 import { PromotionsService } from '../promotions/promotions.service';
@@ -28,6 +30,7 @@ describe('RidesService', () => {
   let service: RidesService;
   let dispatchService: RideDispatchService;
   let eventBus: DomainEventBus;
+  let commissionAccounts: CommissionAccountService;
   let customerId: string;
   let otherCustomerId: string;
   let driverId: string;
@@ -84,6 +87,12 @@ describe('RidesService', () => {
     const identityVerificationService: jest.Mocked<DriverIdentityVerificationService> = {
       assertNotRequired: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<DriverIdentityVerificationService>;
+    const commercialCreditSettings = new CommercialCreditSettingsService(prisma, auditService);
+    commissionAccounts = new CommissionAccountService(
+      prisma,
+      auditService,
+      commercialCreditSettings,
+    );
     service = new RidesService(
       prisma,
       new RideFareService(),
@@ -94,6 +103,7 @@ describe('RidesService', () => {
       promotionsService,
       eventBus,
       identityVerificationService,
+      commissionAccounts,
     );
 
     const customer = await prisma.user.create({
@@ -333,6 +343,73 @@ describe('RidesService', () => {
       await prisma.driverProfile.delete({ where: { userId: other.id } }).catch(() => undefined);
       await prisma.user.delete({ where: { id: other.id } }).catch(() => undefined);
     }
+  });
+
+  describe('DPX-COMMERCIAL-001 Slice 4 — driver blocking on go-online', () => {
+    it('rejects going online for a driver whose CommissionAccount is blocked, but never blocks going offline', async () => {
+      if (!databaseAvailable) return;
+
+      const other = await prisma.user.create({
+        data: {
+          email: `ride-service-blocked-driver-${randomUUID()}@dripplex.test`,
+          passwordHash: 'not-a-real-hash',
+          firstName: 'Blocked',
+          lastName: 'Driver',
+        },
+      });
+      await prisma.driverProfile.create({
+        data: {
+          userId: other.id,
+          status: 'APPROVED',
+          isApproved: true,
+          lastIdentityVerifiedAt: new Date(),
+        },
+      });
+
+      try {
+        // Push the driver's outstanding balance past the default ₦10,000
+        // credit limit — recordPayment()/accrue() both recompute
+        // `blocked` after every mutation.
+        await commissionAccounts.accrue({
+          ownerType: 'DRIVER',
+          ownerId: other.id,
+          amount: 15000,
+          referenceType: 'ride',
+          referenceId: randomUUID(),
+        });
+        const account = await commissionAccounts.getOrCreateAccount('DRIVER', other.id);
+        expect(account.blocked).toBe(true);
+
+        await expect(
+          service.updateDriverAvailability(other.id, {
+            online: true,
+            acceptingRides: true,
+            vehicleType: 'TRICYCLE',
+          }),
+        ).rejects.toThrow('Driver is currently blocked from going online');
+
+        // Going offline is never blocked — same shape as the identity
+        // verification gate right above it.
+        const offline = await service.updateDriverAvailability(other.id, {
+          online: false,
+          acceptingRides: false,
+          vehicleType: 'TRICYCLE',
+        });
+        expect(offline.online).toBe(false);
+      } finally {
+        await prisma.commissionLedgerEntry
+          .deleteMany({ where: { account: { ownerType: 'DRIVER', ownerId: other.id } } })
+          .catch(() => undefined);
+        await prisma.commissionAccount
+          .deleteMany({ where: { ownerType: 'DRIVER', ownerId: other.id } })
+          .catch(() => undefined);
+        await prisma.driverAvailability
+          .delete({ where: { driverId: other.id } })
+          .catch(() => undefined);
+        await prisma.driverProfile.delete({ where: { userId: other.id } }).catch(() => undefined);
+        await prisma.user.delete({ where: { id: other.id } }).catch(() => undefined);
+      }
+    });
   });
 
   it('returns null from getOwnAvailability when the driver has no availability row', async () => {

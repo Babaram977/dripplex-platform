@@ -479,5 +479,35 @@ for Marketplace delivery jobs remain deliberately unbuilt — no split
 formula exists yet (§5 item 2 below), and building one would mean
 inventing policy outside this slice's named scope.
 
-Slices 4-6 remain as planned in §6: Ride cash, frontend surfacing, and
-full E2E/freeze.
+**Slice 4 authorized (2026-08-05)** — founder sign-off for Slice 3.
+Founder-locked Slice 4 scope, verbatim:
+
+> Claude should only address the Ride-side commercial behavior that
+> mirrors what Slice 3 corrected for Marketplace. Specifically: Ride
+> cash commission accrual; Driver CommissionAccount integration; Cash
+> confirmation commercial flow; Automatic credit-limit enforcement;
+> Commercial ledger; Exactly-once guarantees; Concurrency testing; Real
+> Postgres verification; Cash Flow Verification document. No Ride
+> redesign. No Driver redesign. No pricing redesign. No UI redesign
+> beyond what is strictly necessary for the approved commercial
+> workflow.
+
+**Slice 4 shipped (2026-08-05)** — Ride Cash Commercial Correction. See
+`docs/DPX-COMMERCIAL-001-SLICE-4-RIDE-CASH.md` for the full record and
+`docs/DPX-COMMERCIAL-001-SLICE-4-CASH-FLOW-VERIFICATION.md` for the
+end-to-end narrative. Unlike Marketplace COD, Ride's cash-confirmation
+flow (`RidePaymentService.confirmCash()`) already existed in full from
+RIDE-002.7 — the only gap, flagged honestly in that slice's own design
+doc, was that the computed platform commission was audit-only. Slice 4
+closes exactly that gap: the commission now accrues onto the driver's
+`CommissionAccount` (no schema change needed — `CommissionOwnerType.
+DRIVER` and the `'ride'` reference type were already defined in Slice
+1); going online is now blocked for a driver whose account exceeds the
+credit limit (`RidesService.updateDriverAvailability()`, mirroring the
+existing identity-verification gate beside it); the bounded-retry
+pattern Slice 3 discovered was needed was applied proactively here and
+verified (not rediscovered) by a passing concurrency test on the first
+try.
+
+Slices 5-6 remain as planned in §6: frontend surfacing and full
+E2E/freeze.

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { AuditModule } from '../audit/audit.module';
 import { AuthModule } from '../auth/auth.module';
+import { CommercialModule } from '../commercial/commercial.module';
 import { DriversModule } from '../drivers/drivers.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PaymentsModule } from '../payments/payments.module';
@@ -35,6 +36,7 @@ import { RidesService } from './rides.service';
     PaymentsModule,
     PromotionsModule,
     DriversModule,
+    CommercialModule,
   ],
   controllers: [CustomerRidesController, DriverRidesController, AdminRideReportsController],
   providers: [

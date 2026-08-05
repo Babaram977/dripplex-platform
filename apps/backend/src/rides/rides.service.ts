@@ -1,7 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { PromotionDomain, RideCancelledBy, RideStatus } from '@prisma/client';
+import { CommissionOwnerType, PromotionDomain, RideCancelledBy, RideStatus } from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../audit/audit.service';
+import { CommissionAccountService } from '../commercial/commission-account.service';
 import {
   NotFoundDomainException,
   ValidationDomainException,
@@ -53,6 +54,7 @@ export class RidesService {
     private readonly promotionsService: PromotionsService,
     private readonly eventBus: DomainEventBus,
     private readonly identityVerificationService: DriverIdentityVerificationService,
+    private readonly commissionAccounts: CommissionAccountService,
   ) {}
 
   /** Real service-type catalog (display name + description) so the
@@ -362,6 +364,21 @@ export class RidesService {
         ...(dto.latitude !== undefined ? { latitude: dto.latitude } : {}),
         ...(dto.longitude !== undefined ? { longitude: dto.longitude } : {}),
       });
+
+      // DPX-COMMERCIAL-001 Slice 4 — a driver whose outstanding cash
+      // commission balance exceeds their credit limit cannot go online
+      // for new work (an already-accepted trip always finishes; this is
+      // a new-work gate only, same shape as the identity-verification
+      // check right above and Slice 2's merchant checkout-blocking gate).
+      const commissionAccount = await this.commissionAccounts.getOrCreateAccount(
+        CommissionOwnerType.DRIVER,
+        driverId,
+      );
+      if (commissionAccount.blocked) {
+        throw new ValidationDomainException(
+          'Driver is currently blocked from going online due to an outstanding commission balance',
+        );
+      }
     }
 
     const availability = await this.prisma.driverAvailability.upsert({

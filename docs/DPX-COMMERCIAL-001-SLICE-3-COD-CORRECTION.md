@@ -218,8 +218,33 @@ build`: clean (new `ConfirmCashDto` type + `confirmCash()` client
   — the founder explicitly approved leaving that open pending a separate
   decision.
 
-## 12. Next step
+## 12. ✅ Founder Review — Approved (2026-08-05)
 
-Return for Founder Review of Slice 3, alongside the required
-`docs/DPX-COMMERCIAL-001-SLICE-3-CASH-FLOW-VERIFICATION.md` narrative,
-before proceeding to Slice 4 (Ride cash).
+> DPX-COMMERCIAL-001 Slice 3. Status: ✅ Approved. This is the correct
+> implementation of the policy we approved. The most important outcome
+> is that the original commercial flaw has now been removed: DrippleX
+> no longer behaves as though it collected cash that it never actually
+> received... [Marketplace COD correction, merchant commission accrual,
+> rider cash confirmation, ledger, credit limits, concurrency — each
+> individually approved]... A new traffic pattern exposed a genuine
+> optimistic-concurrency race. Instead of documenting it, it was fixed
+> and verified. That strengthens both Slice 2 and Slice 3... Cash Flow
+> Verification — this was worth requiring. Having an end-to-end
+> narrative proving every monetary movement is much more valuable than
+> only relying on unit tests. That document should remain part of the
+> permanent commercial documentation... I specifically approve this
+> decision [not inventing rider earnings]. Marketplace rider earnings
+> are a separate commercial policy. Nothing in DPX-COMMERCIAL-001 Slice
+> 3 required inventing: delivery-fee allocation, rider earnings, fee
+> splits, payout timing. Leaving that untouched was the correct
+> engineering decision.
+
+`docs/DPX-COMMERCIAL-001-SLICE-3-CASH-FLOW-VERIFICATION.md` is
+confirmed as permanent commercial documentation, not a one-off review
+artifact — future slices' own Cash Flow Verification docs join it as a
+standing record, not something to be superseded or deleted.
+
+## 13. Next step
+
+Slice 4 (Ride Cash Commercial Correction) is founder-authorized — see
+`docs/DPX-COMMERCIAL-001-SLICE-4-RIDE-CASH.md`.

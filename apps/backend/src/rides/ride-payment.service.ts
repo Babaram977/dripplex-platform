@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
+  CommissionOwnerType,
   RidePaymentMethod,
   RidePaymentStatus,
   RideStatus,
@@ -8,6 +9,8 @@ import {
 } from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../audit/audit.service';
+import { COMMISSION_REFERENCE_TYPES } from '../commercial/commercial.constants';
+import { CommissionAccountService } from '../commercial/commission-account.service';
 import {
   ConflictDomainException,
   NotFoundDomainException,
@@ -77,6 +80,7 @@ export class RidePaymentService {
     @Inject(PAYMENT_PROVIDER_ADAPTERS)
     private readonly providers: PaymentProviderAdapter[],
     private readonly eventBus: DomainEventBus,
+    private readonly commissionAccounts: CommissionAccountService,
   ) {}
 
   public async initiatePayment(
@@ -164,10 +168,21 @@ export class RidePaymentService {
     const ride = await this.requireCashConfirmableRide(driverId, rideId);
     const split = this.computeSplit(ride);
 
-    // Cash never enters the digital ledger — the driver already holds it
-    // physically. Commission is recorded for accounting/audit only; actual
-    // collection from the driver is a separate, not-yet-built reconciliation
-    // process (see design doc).
+    // DPX-COMMERCIAL-001 Slice 4 — cash never enters the digital ledger,
+    // the driver already holds it physically, so there is nothing to
+    // credit to Wallet. What DrippleX is owed is the platform commission,
+    // which now accrues onto the driver's CommissionAccount instead of
+    // being audit-only (the gap RIDE-002.7's design doc flagged and
+    // deferred — see docs/DPX-COMMERCIAL-001-SLICE-4-RIDE-CASH.md).
+    await this.accrueDriverCommissionWithRetry({
+      ownerType: CommissionOwnerType.DRIVER,
+      ownerId: driverId,
+      amount: split.platformCommission,
+      referenceType: COMMISSION_REFERENCE_TYPES.RIDE,
+      referenceId: ride.id,
+      description: `Commission owed for ride ${ride.id} (cash)`,
+    });
+
     await this.auditService.record(
       RIDE_AUDIT_ACTIONS.CASH_CONFIRMED,
       { ...context, userId: driverId },
@@ -178,6 +193,7 @@ export class RidePaymentService {
           totalFare: Number(ride.totalFare),
           driverEarning: split.driverEarning,
           platformCommission: split.platformCommission,
+          creditedVia: 'commission_account',
         },
       },
     );
@@ -378,6 +394,30 @@ export class RidePaymentService {
     const platformCommission = this.roundCurrency(total * RIDE_PLATFORM_COMMISSION_RATE);
     const driverEarning = this.roundCurrency(total - platformCommission);
     return { platformCommission, driverEarning };
+  }
+
+  /** DPX-COMMERCIAL-001 Slice 4 — bounded retry on ConflictDomainException,
+   * the same pattern Slice 3 established for MerchantSettlementService's
+   * accrueCommissionWithRetry(): two cash rides for the same driver
+   * completing close together can race on the same CommissionAccount's
+   * optimistic-concurrency version. The accrual amount never depends on
+   * the current balance, so a retry is simply "try again" — safe because
+   * accrue()'s own exactly-once guard (referenceType/referenceId) makes a
+   * retried call idempotent even if an earlier attempt partially raced. */
+  private async accrueDriverCommissionWithRetry(
+    input: Parameters<CommissionAccountService['accrue']>[0],
+  ): Promise<void> {
+    const maxAttempts = 5;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        await this.commissionAccounts.accrue(input);
+        return;
+      } catch (error) {
+        if (!(error instanceof ConflictDomainException) || attempt === maxAttempts) {
+          throw error;
+        }
+      }
+    }
   }
 
   private async captureIntoPlatformWallet(ride: Ride, context: AuditContext): Promise<void> {

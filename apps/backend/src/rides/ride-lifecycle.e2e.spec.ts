@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { PrismaClient, WalletOwnerType } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
+import { CommercialCreditSettingsService } from '../commercial/commercial-credit-settings.service';
+import { CommissionAccountService } from '../commercial/commission-account.service';
 import { DomainEventBus } from '../events/domain-event-bus';
 import { PromotionsService } from '../promotions/promotions.service';
 import { PLATFORM_WALLET_OWNER_ID } from '../wallet/wallet.constants';
@@ -131,6 +133,12 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
     const identityVerificationService: jest.Mocked<DriverIdentityVerificationService> = {
       assertNotRequired: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<DriverIdentityVerificationService>;
+    const commercialCreditSettings = new CommercialCreditSettingsService(prisma, auditService);
+    const commissionAccounts = new CommissionAccountService(
+      prisma,
+      auditService,
+      commercialCreditSettings,
+    );
     ridesService = new RidesService(
       prisma,
       fareService,
@@ -141,6 +149,7 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
       promotionsService,
       new DomainEventBus(),
       identityVerificationService,
+      commissionAccounts,
     );
     tripService = new RideTripService(
       prisma,
@@ -157,6 +166,7 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
       events,
       providers,
       new DomainEventBus(),
+      commissionAccounts,
     );
     ratingService = new RideRatingService(prisma, auditService);
     receiptService = new RideReceiptService(prisma);
