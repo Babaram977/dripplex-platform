@@ -730,6 +730,68 @@ does not auto-freeze the whole module — it comes back for Founder Review
 before any decision on 🔒 DPX-OPS-001 — Operations Command Centre, Phase 1
 as a whole.
 
+## 2026-08-05 (same day) — DPX-OPS-001 module-level production audit complete, back for Founder Review
+
+`docs/DPX-OPS-001-MODULE-PRODUCTION-AUDIT.md`: the founder's own 14-point
+audit run across all four frozen Phase 1 slices together, evaluating the
+Operations Command Centre as one system rather than four independent
+slices.
+
+**Clean:** cross-slice navigation (one `AppShell` nav, confirmed
+click-through wiring Fleet → Ride → Dispatch and Queues → Case detail),
+RBAC (exactly 3 roles hold any `operations:*` permission, all three hold
+an identical set, no escalation path, single mutation surface confirmed —
+`OperationsCasesController` only), data consistency (every slice reads the
+same tables directly, no derived copies), N+1 (every polled/aggregation
+service method read in full — none loops a query per row), error/degraded
+states (every page has an explicit `isError` state, Maps-unavailable
+fallback verified in source), SOS priority (outranks every other fleet
+status computationally and is the only status with a pulse animation),
+auditability (every mutation writes both an `OperationsCaseEvent` and a
+platform `AuditService` record), frozen-module boundaries (`git diff
+--stat` across the full DPX-OPS-001 range touches exactly one file outside
+`operations/` — `app.module.ts`, +2 lines), Figma protection (same diff
+against `packages/ui`/`customer-web`/`driver-portal` — zero files), and
+security/privacy (no DTO exposes payment/bank/ID/password data; what is
+exposed matches legitimate operational need).
+
+**Found and fixed in the audit itself:** 9 missing indexes on timestamp
+columns the Live Activity Feed (15s-polled) and `OperationsAnalyticsService`
+query with no supporting index — added migration
+`20260805030622_ops_module_audit_indexes`, purely additive, verified via
+`prisma-foundation.spec.ts` and a full clean backend jest run.
+
+**Found, not fixed — flagged for Founder Review:**
+
+1. `OperationsCasesService.updateCase()` has no transaction/optimistic-lock
+   guard against two operators racing a PATCH on the same case — narrow,
+   low-frequency, no data loss, but could produce a wrong SLA timestamp or
+   a slightly inconsistent audit-timeline order.
+2. `apps/operations-console` has no Dockerfile and no
+   `docs/ops/PRODUCTION-COOLIFY.md` section — it currently ships Cloudflare
+   Workers tooling (`wrangler.jsonc`), not a Coolify/Docker path, so the
+   finished module has no working route to production today. The app is
+   already Docker-ready in principle (same `output: 'standalone'`
+   convention as `driver-portal`/`customer-web`) and the fix is the same
+   mechanical recipe already used three times in this repo — just not done
+   yet.
+
+**Full regression, this session:** backend `tsc`/`eslint` clean, backend
+`jest --runInBand` 1240/1244 (4 pre-existing failures, all independently
+confirmed unrelated to Operations — a Slice 2 test-fixture FK bug, a stale
+Driver-001 assertion, two Marketplace R1.3 fixture-drift assertions), SDK
+`tsc`/`eslint`/`vitest` fully clean (138/138), operations-console
+`tsc`/`eslint`/`vitest` fully clean and `next build` succeeds across all 17
+routes. Run serially, the previously-documented Slice 1/3 "Ada" coordinate
+parallel-worker test race did not reproduce — further corroborating that
+it's a test-runner scheduling artifact, not a defect, per the founder's own
+ruling that it stays documented technical debt.
+
+**Per the founder's explicit instruction, this audit does not auto-freeze
+the module.** It's back for Founder Review with 2 items needing a
+decision before any verdict on 🔒 DPX-OPS-001 — Operations Command Centre,
+Phase 1 as a whole.
+
 ---
 
 ## What's next

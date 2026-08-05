@@ -1306,6 +1306,13 @@ model Ride {
   @@index([driverId])
   @@index([status])
   @@index([requestedAt])
+  // DPX-OPS-001 module-level audit (2026-08-05): the Live Activity Feed
+  // (`OperationsDashboardService.getActivityFeed()`, polled every 15s) sorts
+  // cancelled rides by cancelledAt, and OperationsAnalyticsService
+  // .getDriverUtilization() range-filters completed rides by completedAt —
+  // neither had a supporting index.
+  @@index([cancelledAt])
+  @@index([completedAt])
   @@map("rides")
 }
 
@@ -1406,6 +1413,10 @@ model RideOffer {
   @@index([rideId])
   @@index([driverId, status])
   @@index([status, expiresAt])
+  // DPX-OPS-001 module-level audit (2026-08-05): OperationsAnalyticsService
+  // .getDispatchPerformance() range-filters on offeredAt with no driverId in
+  // the predicate — none of the existing indexes cover that scan.
+  @@index([offeredAt])
   @@map("ride_offers")
 }
 
@@ -1566,6 +1577,10 @@ model Inspection {
   @@index([centreId])
   @@index([status])
   @@index([scheduledAt])
+  // DPX-OPS-001 module-level audit (2026-08-05): the Live Activity Feed
+  // sorts decided inspections by completedAt (polled every 15s) — no
+  // existing index covers that.
+  @@index([completedAt])
   @@map("inspections")
 }
 
@@ -1668,6 +1683,8 @@ model IncidentReport {
   @@index([rideId])
   @@index([status])
   @@index([severity])
+  // DPX-OPS-001 module-level audit (2026-08-05): Live Activity Feed sort.
+  @@index([createdAt])
   @@map("incident_reports")
 }
 
@@ -1713,6 +1730,8 @@ model SosAlert {
   @@index([driverId])
   @@index([rideId])
   @@index([status])
+  // DPX-OPS-001 module-level audit (2026-08-05): Live Activity Feed sort.
+  @@index([createdAt])
   @@map("sos_alerts")
 }
 
@@ -1762,6 +1781,13 @@ model DriverShift {
   @@index([driverId, status])
   @@index([driverId, startedAt])
   @@index([status])
+  // DPX-OPS-001 module-level audit (2026-08-05): the Live Activity Feed
+  // (polled every 15s) and OperationsAnalyticsService both query across all
+  // drivers' shifts ordered/filtered by startedAt or endedAt with no
+  // driverId predicate — the existing composite indexes above lead with
+  // driverId and can't serve those scans.
+  @@index([startedAt])
+  @@index([endedAt])
   @@map("driver_shifts")
 }
 
@@ -3073,6 +3099,10 @@ model OperationsCase {
   @@index([caseType, status])
   @@index([priority])
   @@index([assignedToId])
+  // DPX-OPS-001 module-level audit (2026-08-05):
+  // OperationsAnalyticsService.getOperationsResponse() range-filters on
+  // createdAt with no other predicate.
+  @@index([createdAt])
   @@map("operations_cases")
 }
 

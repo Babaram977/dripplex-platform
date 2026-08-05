@@ -4,10 +4,13 @@
 Frozen — Slice 1 (Live Operations Dashboard, 2026-08-04), Slice 2
 (Operations Work Queues, 2026-08-05), Slice 3 (Dispatch Management,
 2026-08-05), Slice 4 (Operations Analytics, 2026-08-05). The
-module-level production audit across all four together is next, before
-any decision on 🔒 DPX-OPS-001 — Operations Command Centre, Phase 1 as a
-whole. See `docs/DPX-OPS-001-MODULE-PRODUCTION-AUDIT.md` once it
-exists.** See
+module-level production audit across all four together is complete —
+see `docs/DPX-OPS-001-MODULE-PRODUCTION-AUDIT.md`. It found 2 items
+(a case-update concurrency gap and a missing production deployment
+path for `operations-console`) worth a founder decision before
+🔒 DPX-OPS-001 — Operations Command Centre, Phase 1 as a whole is
+declared frozen; that decision is pending Founder Review, per the
+founder's own instruction not to auto-freeze after the audit.** See
 `docs/DPX-OPS-001-REALITY-AUDIT.md` for the full backend-capability audit,
 gap analysis, proposed Phase 1 slice plan, and the founder's locked-in
 refinements — this document stays the scope record, that one is the
@@ -393,9 +396,12 @@ compliance work, or explicitly Founder-approved enhancements.
 
 This is still a **slice-level** freeze. All four Phase 1 slices are now
 individually frozen; the module-level production audit across all four
-together — the founder's own next-named step — happens next, before any
-decision on 🔒 DPX-OPS-001 — Operations Command Centre, Phase 1 as a whole.
-See `docs/DPX-OPS-001-MODULE-PRODUCTION-AUDIT.md` once it exists.
+together is complete — see `docs/DPX-OPS-001-MODULE-PRODUCTION-AUDIT.md`.
+Per the founder's explicit instruction, that audit did not auto-freeze the
+module — it found 2 items worth a founder decision (a narrow case-update
+concurrency gap, and `operations-console` having no production deployment
+path yet) and is back for Founder Review before any decision on
+🔒 DPX-OPS-001 — Operations Command Centre, Phase 1 as a whole.
 
 ## Founder's scope for this module
 
