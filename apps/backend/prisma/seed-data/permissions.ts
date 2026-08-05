@@ -106,6 +106,14 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
     description: 'View and edit the DPX-MERCHANT-002 Marketplace merchant commission rate',
   },
   {
+    code: 'admin:commercial:credit-settings:manage',
+    description: 'View and edit the DPX-COMMERCIAL-001 commission credit-limit policy',
+  },
+  {
+    code: 'admin:commercial:account:manage',
+    description: 'View a commission account/ledger and record manual external payments against it',
+  },
+  {
     code: 'driver:vehicle:manage',
     description: 'Manage own registered vehicles',
   },

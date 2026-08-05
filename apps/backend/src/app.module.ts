@@ -9,6 +9,7 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from './auth/guards/permissions.guard';
 import { CartModule } from './cart/cart.module';
 import { CmsModule } from './cms/cms.module';
+import { CommercialModule } from './commercial/commercial.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { AppConfigService } from './config/app-config.service';
@@ -78,6 +79,7 @@ import { WishlistModule } from './wishlist/wishlist.module';
     FraudModule,
     HealthModule,
     OperationsModule,
+    CommercialModule,
   ],
   providers: [
     {

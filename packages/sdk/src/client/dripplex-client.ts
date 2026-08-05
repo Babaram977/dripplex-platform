@@ -2,6 +2,8 @@ import { AddressClient } from '../address/address-client.js';
 import { AuthApi } from '../auth/auth-api.js';
 import { CartClient } from '../cart/cart-client.js';
 import { HttpClient } from '../client/http-client.js';
+import { AdminCommercialCreditSettingsClient } from '../commercial/admin-commercial-credit-settings-client.js';
+import { AdminCommissionAccountsClient } from '../commercial/admin-commission-accounts-client.js';
 import { resolveSdkConfig } from '../config/sdk-config.js';
 import { AdminDeliveryClient } from '../delivery/admin-delivery-client.js';
 import { DeliveryClient } from '../delivery/delivery-client.js';
@@ -98,6 +100,8 @@ export class DripplexClient {
   public readonly adminInspectionCentres: AdminInspectionCentresClient;
   public readonly operationsInspections: OperationsInspectionsClient;
   public readonly operationsFleet: OperationsFleetClient;
+  public readonly adminCommercialCreditSettings: AdminCommercialCreditSettingsClient;
+  public readonly adminCommissionAccounts: AdminCommissionAccountsClient;
   public readonly operationsRides: OperationsRidesClient;
   public readonly operationsQueues: OperationsQueuesClient;
   public readonly operationsCases: OperationsCasesClient;
@@ -162,6 +166,8 @@ export class DripplexClient {
     this.adminInspectionCentres = new AdminInspectionCentresClient(this.http);
     this.operationsInspections = new OperationsInspectionsClient(this.http);
     this.operationsFleet = new OperationsFleetClient(this.http);
+    this.adminCommercialCreditSettings = new AdminCommercialCreditSettingsClient(this.http);
+    this.adminCommissionAccounts = new AdminCommissionAccountsClient(this.http);
     this.operationsRides = new OperationsRidesClient(this.http);
     this.operationsQueues = new OperationsQueuesClient(this.http);
     this.operationsCases = new OperationsCasesClient(this.http);

@@ -407,7 +407,18 @@ reaches its production audit and freeze:
 ## 7. Status
 
 ✅ **Approved and locked** as the platform's commercial policy (§0.1, §0.2).
-Slice 1 is intentionally not started — resumes after Merchant Phase 2's
-production audit and freeze, per the founder-locked sequencing. No code,
-schema, or migration for this policy exists anywhere in the repository as
-of this revision.
+
+**Slice 1 shipped (2026-08-05)** — the founder confirmed the locked
+sequence resumes now that DPX-MERCHANT-001 is 🔒 Approved & Frozen. See
+`docs/DPX-COMMERCIAL-001-SLICE-1-FOUNDATION.md` for the full record:
+`CommissionAccount`/`CommissionLedgerEntry`/`CommercialCreditSetting`
+schema, `CommercialCreditSettingsService`, `CommissionAccountService`
+(accrue/recordPayment/blocking primitives), admin endpoints + permissions,
+SDK + shared types, 15/15 real-database tests, full backend verification
+clean. Purely additive per §6 — no existing behavior changed, no real
+accrual call site wired yet.
+
+Slices 2-6 remain as planned in §6: Marketplace mode B ("Pay to
+Merchant"), fixing Marketplace Cash on Delivery's settlement direction
+(flagged for separate founder sign-off — a behavior change to shipped
+code), Ride cash, frontend surfacing, and full E2E/freeze.

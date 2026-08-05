@@ -277,9 +277,9 @@ model User {
   driverShiftsForceEnded      DriverShift[]                @relation("DriverShiftForceEnder")
   driverPlannedAvailability   DriverPlannedAvailability[]  @relation("DriverPlannedAvailabilityDriver")
   /// DPX-OPS-001 Slice 2
-  operationsCasesAssigned     OperationsCase[]              @relation("OperationsCaseAssignedTo")
-  operationsCasesAssignedByMe OperationsCase[]              @relation("OperationsCaseAssignedBy")
-  operationsCaseEvents        OperationsCaseEvent[]         @relation("OperationsCaseEventActor")
+  operationsCasesAssigned     OperationsCase[]             @relation("OperationsCaseAssignedTo")
+  operationsCasesAssignedByMe OperationsCase[]             @relation("OperationsCaseAssignedBy")
+  operationsCaseEvents        OperationsCaseEvent[]        @relation("OperationsCaseEventActor")
   rideOffers                  RideOffer[]
   notifications               Notification[]
   notificationPreferences     NotificationPreference[]
@@ -1179,6 +1179,102 @@ model OrderSettlement {
   @@index([merchantId])
   @@index([status])
   @@map("order_settlements")
+}
+
+/// DPX-COMMERCIAL-001 — which real owner a CommissionAccount/
+/// CommercialCreditSetting belongs to. Mirrors WalletOwnerType's existing
+/// MERCHANT/RIDER/DRIVER split (Rider = Marketplace delivery courier,
+/// Driver = Ride-hailing driver — already separate identities/wallets in
+/// this codebase) rather than inventing a new taxonomy.
+enum CommissionOwnerType {
+  MERCHANT
+  DRIVER
+  RIDER
+}
+
+enum CommissionEntryType {
+  ACCRUAL
+  PAYMENT
+  ADJUSTMENT
+}
+
+/// DPX-COMMERCIAL-001 — the liability side of the commercial engine,
+/// deliberately separate from Wallet (an asset-only ledger that hard-blocks
+/// going negative). One row per real owner: outstandingBalance is what they
+/// owe DrippleX for offline-settled commission (Marketplace "Pay to
+/// Merchant" / Cash on Delivery, Ride cash) that hasn't been paid down yet.
+/// creditLimit is snapshotted from CommercialCreditSetting at
+/// account-creation time and re-synced whenever accrue()/recordPayment()
+/// runs, so a global limit change is prospective — it takes effect on the
+/// next event that touches the account, not retroactively (same principle
+/// as MerchantCommissionSetting.commissionRate snapshotting into each
+/// OrderSettlement). See docs/DPX-COMMERCIAL-001-REVENUE-SETTLEMENT-CREDIT-POLICY.md.
+model CommissionAccount {
+  id                 String                  @id @default(uuid()) @db.Uuid
+  ownerType          CommissionOwnerType     @map("owner_type")
+  ownerId            String                  @map("owner_id") @db.Uuid
+  outstandingBalance Decimal                 @default(0) @map("outstanding_balance") @db.Decimal(14, 2)
+  creditLimit        Decimal                 @map("credit_limit") @db.Decimal(14, 2)
+  blocked            Boolean                 @default(false)
+  blockedAt          DateTime?               @map("blocked_at")
+  /// Optimistic-concurrency guard on outstandingBalance updates, same
+  /// pattern as Wallet.version — a conditional updateMany() keyed on both
+  /// id and version, incremented on every accrue()/recordPayment() write.
+  version            Int                     @default(0)
+  createdAt          DateTime                @default(now()) @map("created_at")
+  updatedAt          DateTime                @updatedAt @map("updated_at")
+  ledgerEntries      CommissionLedgerEntry[]
+
+  @@unique([ownerType, ownerId])
+  @@index([ownerType])
+  @@index([blocked])
+  @@map("commission_accounts")
+}
+
+/// Mirrors WalletLedgerEntry's shape deliberately (same pattern the
+/// codebase already trusts) including the (accountId, referenceType,
+/// referenceId) uniqueness constraint that gives ACCRUAL entries an
+/// exactly-once guard when tied to a real order/ride/delivery-job
+/// reference; manual PAYMENT entries with no reference are unconstrained
+/// (Postgres treats NULL as distinct in a unique index, so multiple
+/// no-reference rows are allowed, same as WalletLedgerEntry).
+model CommissionLedgerEntry {
+  id            String              @id @default(uuid()) @db.Uuid
+  accountId     String              @map("account_id") @db.Uuid
+  type          CommissionEntryType
+  amount        Decimal             @db.Decimal(14, 2)
+  balanceAfter  Decimal             @map("balance_after") @db.Decimal(14, 2)
+  referenceType String?             @map("reference_type") @db.VarChar(100)
+  referenceId   String?             @map("reference_id") @db.Uuid
+  description   String?             @db.VarChar(500)
+  createdAt     DateTime            @default(now()) @map("created_at")
+  account       CommissionAccount   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, referenceType, referenceId], map: "commission_ledger_entries_account_reference_key")
+  @@index([accountId])
+  @@index([accountId, createdAt])
+  @@index([type])
+  @@index([referenceType, referenceId])
+  @@map("commission_ledger_entries")
+}
+
+/// DPX-COMMERCIAL-001 — the admin-configurable commission credit limit,
+/// one row per owner type (not per individual merchant/driver — an
+/// admin can widen this later to a per-account override, not built here).
+/// Same get-or-create-singleton + audit-logged-update pattern as
+/// MerchantCommissionSetting/DriverSecuritySettings; DEFAULT_MERCHANT_
+/// CREDIT_LIMIT/DEFAULT_DRIVER_CREDIT_LIMIT are seed-only constants, never
+/// hardcoded in service logic — the DB row is the source of truth from
+/// first creation onward.
+model CommercialCreditSetting {
+  id          String              @id @default(uuid()) @db.Uuid
+  ownerType   CommissionOwnerType @unique @map("owner_type")
+  creditLimit Decimal             @map("credit_limit") @db.Decimal(14, 2)
+  updatedBy   String?             @map("updated_by") @db.Uuid
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+  createdAt   DateTime            @default(now()) @map("created_at")
+
+  @@map("commercial_credit_settings")
 }
 
 model DeliveryJob {
