@@ -288,6 +288,19 @@ export class ReviewsClient {
       body,
     });
   }
+
+  /**
+   * DPX-MERCHANT-008 — every review targeting the authenticated merchant's
+   * store or one of their products, resolved server-side (unlike `list()`,
+   * the merchant-portal never needs to know its own MerchantProfile.id).
+   */
+  public listMerchant(
+    query: Pick<ReviewListQuery, 'page' | 'pageSize'> = {},
+  ): Promise<ReviewWithAggregateDto> {
+    return this.http.request<ReviewWithAggregateDto>(
+      `/merchant/reviews${toQuery({ page: query.page, pageSize: query.pageSize })}`,
+    );
+  }
 }
 
 export class WishlistClient {

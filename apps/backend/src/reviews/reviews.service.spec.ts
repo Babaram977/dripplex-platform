@@ -16,6 +16,11 @@ const userId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const reviewId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const targetId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const orderId = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+// Deliberately distinct from userId — Review.targetId (MERCHANT-type) and
+// Order.merchantId are both MerchantProfile.id, never User.id. Using a
+// different value here is what proves replyAsMerchant/listMerchantReviews
+// actually resolve the profile instead of comparing user.id directly.
+const merchantProfileId = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
 
 const now = new Date('2026-01-01T00:00:00.000Z');
 
@@ -64,6 +69,12 @@ describe('ReviewsService', () => {
     order: {
       count: jest.fn(),
       findFirst: jest.fn(),
+    },
+    merchantProfile: {
+      findUnique: jest.fn(),
+    },
+    product: {
+      findMany: jest.fn(),
     },
   };
 
@@ -254,15 +265,108 @@ describe('ReviewsService', () => {
     });
   });
 
-  it('allows a merchant to reply to merchant target reviews', async () => {
+  it('allows a merchant to reply to merchant target reviews, resolving User.id to MerchantProfile.id first', async () => {
+    prisma.merchantProfile.findUnique.mockResolvedValue({ id: merchantProfileId });
     prisma.review.findFirst.mockResolvedValue(
-      review({ targetType: ReviewTargetType.MERCHANT, targetId: userId }),
+      review({ targetType: ReviewTargetType.MERCHANT, targetId: merchantProfileId }),
     );
     prisma.review.update.mockResolvedValue(review({ merchantReply: 'Thanks' }));
 
     const result = await service.replyAsMerchant(userId, reviewId, { reply: 'Thanks' }, context);
 
+    expect(prisma.merchantProfile.findUnique).toHaveBeenCalledWith({
+      where: { userId },
+      select: { id: true },
+    });
     expect(result.merchantReply).toBe('Thanks');
+  });
+
+  it('allows a merchant to reply to a PRODUCT review linked to an order they fulfilled', async () => {
+    prisma.merchantProfile.findUnique.mockResolvedValue({ id: merchantProfileId });
+    prisma.review.findFirst.mockResolvedValue(
+      review({ targetType: ReviewTargetType.PRODUCT, targetId, orderId }),
+    );
+    prisma.order.findFirst.mockResolvedValue({ id: orderId });
+    prisma.review.update.mockResolvedValue(review({ merchantReply: 'Thanks for the order!' }));
+
+    const result = await service.replyAsMerchant(
+      userId,
+      reviewId,
+      { reply: 'Thanks for the order!' },
+      context,
+    );
+
+    expect(prisma.order.findFirst).toHaveBeenCalledWith({
+      where: { id: orderId, merchantId: merchantProfileId },
+      select: { id: true },
+    });
+    expect(result.merchantReply).toBe('Thanks for the order!');
+  });
+
+  it('rejects a reply to a review that does not belong to this merchant', async () => {
+    prisma.merchantProfile.findUnique.mockResolvedValue({ id: merchantProfileId });
+    prisma.review.findFirst.mockResolvedValue(
+      review({ targetType: ReviewTargetType.MERCHANT, targetId: 'some-other-merchant-profile' }),
+    );
+    prisma.order.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.replyAsMerchant(userId, reviewId, { reply: 'Thanks' }, context),
+    ).rejects.toThrow('Merchant cannot reply to this review');
+  });
+
+  it('rejects replyAsMerchant for a user with no merchant profile', async () => {
+    prisma.merchantProfile.findUnique.mockResolvedValue(null);
+
+    await expect(
+      service.replyAsMerchant(userId, reviewId, { reply: 'Thanks' }, context),
+    ).rejects.toBeInstanceOf(NotFoundDomainException);
+  });
+
+  it('listMerchantReviews returns store + product reviews, paginated, with the store aggregate', async () => {
+    prisma.merchantProfile.findUnique.mockResolvedValue({ id: merchantProfileId });
+    prisma.product.findMany.mockResolvedValue([{ id: 'product-1' }, { id: 'product-2' }]);
+    prisma.review.findMany.mockResolvedValue([review({ targetType: ReviewTargetType.MERCHANT })]);
+    prisma.review.count.mockResolvedValue(1);
+    prisma.reviewAggregate.findUnique.mockResolvedValue({
+      id: 'agg-1',
+      targetType: ReviewTargetType.MERCHANT,
+      targetId: merchantProfileId,
+      averageRating: 4.5,
+      reviewCount: 1,
+      rating1: 0,
+      rating2: 0,
+      rating3: 0,
+      rating4: 1,
+      rating5: 0,
+      updatedAt: now,
+    });
+
+    const result = await service.listMerchantReviews(userId, { page: 1, pageSize: 20 });
+
+    expect(prisma.review.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          deletedAt: null,
+          status: ReviewStatus.APPROVED,
+          OR: [
+            { targetType: ReviewTargetType.MERCHANT, targetId: merchantProfileId },
+            { targetType: ReviewTargetType.PRODUCT, targetId: { in: ['product-1', 'product-2'] } },
+          ],
+        },
+      }),
+    );
+    expect(result.items).toHaveLength(1);
+    expect(result.aggregate?.averageRating).toBe(4.5);
+    expect(result.meta.total).toBe(1);
+  });
+
+  it('listMerchantReviews rejects for a user with no merchant profile', async () => {
+    prisma.merchantProfile.findUnique.mockResolvedValue(null);
+
+    await expect(service.listMerchantReviews(userId, {})).rejects.toBeInstanceOf(
+      NotFoundDomainException,
+    );
   });
 
   it('moderates reviews and recalculates aggregate', async () => {

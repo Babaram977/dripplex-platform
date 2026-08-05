@@ -286,14 +286,26 @@ export class ReviewsService {
     return toReviewDto(review);
   }
 
+  /**
+   * DPX-MERCHANT-008 — `merchantUserId` is the authenticated User.id, but
+   * `Review.targetId` (for MERCHANT-type reviews) and `Order.merchantId`
+   * are both `MerchantProfile.id` — the same ID-space split already
+   * documented for Orders/Settlement (see
+   * docs/DPX-MERCHANT-002-SETTLEMENT-DESIGN.md §3). Resolving the profile
+   * here, rather than comparing `merchantUserId` directly against those
+   * fields, is a bug fix: the previous comparison could never match a
+   * real merchant, since `merchantId` was passed straight from `user.id`
+   * with no resolution step.
+   */
   public async replyAsMerchant(
-    merchantId: string,
+    merchantUserId: string,
     reviewId: string,
     dto: ReplyReviewDto,
     context: AuditContext,
   ): Promise<ReviewDto> {
+    const profile = await this.requireMerchantProfile(merchantUserId);
     const review = await this.requireReview(reviewId);
-    await this.assertMerchantCanReply(merchantId, review);
+    await this.assertMerchantCanReply(profile.id, review);
 
     const updated = await this.prisma.review.update({
       where: { id: reviewId },
@@ -304,13 +316,80 @@ export class ReviewsService {
     });
     await this.auditService.record(
       REVIEW_AUDIT_ACTIONS.MERCHANT_REPLIED,
-      { ...context, userId: merchantId },
+      { ...context, userId: merchantUserId },
       {
         resource: 'review',
         resourceId: reviewId,
       },
     );
     return toReviewDto(updated);
+  }
+
+  /**
+   * DPX-MERCHANT-008 — merchant-facing review list: every review that
+   * targets this merchant's store directly, plus every review of a
+   * product this merchant sells. Read-only; reuses the same
+   * `ReviewDto`/pagination shape `listTargetReviews` already returns.
+   * Scoped to APPROVED reviews only — the same visibility a customer
+   * browsing the store sees, so the merchant is looking at exactly what's
+   * public rather than a moderation queue (PENDING/REJECTED/HIDDEN are
+   * intentionally out of scope here; see review.constants.ts's
+   * `ADMIN_MODERATE` permission for that).
+   */
+  public async listMerchantReviews(
+    merchantUserId: string,
+    query: { page?: number; pageSize?: number },
+  ): Promise<ReviewWithAggregateDto> {
+    const profile = await this.requireMerchantProfile(merchantUserId);
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+
+    const productIds = await this.prisma.product.findMany({
+      where: { merchantId: profile.id },
+      select: { id: true },
+    });
+
+    const where: Prisma.ReviewWhereInput = {
+      deletedAt: null,
+      status: ReviewStatus.APPROVED,
+      OR: [
+        { targetType: ReviewTargetType.MERCHANT, targetId: profile.id },
+        ...(productIds.length > 0
+          ? [
+              {
+                targetType: ReviewTargetType.PRODUCT,
+                targetId: { in: productIds.map((product) => product.id) },
+              },
+            ]
+          : []),
+      ],
+    };
+
+    const [items, total, aggregate] = await Promise.all([
+      this.prisma.review.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.review.count({ where }),
+      this.prisma.reviewAggregate.findUnique({
+        where: {
+          targetType_targetId: { targetType: ReviewTargetType.MERCHANT, targetId: profile.id },
+        },
+      }),
+    ]);
+
+    return {
+      items: items.map(toReviewDto),
+      aggregate: aggregate ? toReviewAggregateDto(aggregate) : null,
+      meta: {
+        page,
+        pageSize,
+        total,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    };
   }
 
   public async moderateReview(
@@ -439,13 +518,16 @@ export class ReviewsService {
     return (await this.prisma.order.count({ where })) > 0;
   }
 
-  private async assertMerchantCanReply(merchantId: string, review: Review): Promise<void> {
-    if (review.targetType === ReviewTargetType.MERCHANT && review.targetId === merchantId) {
+  /** `merchantProfileId` — see the `replyAsMerchant` doc comment above for
+   * why this must already be a resolved `MerchantProfile.id`, not the
+   * authenticated `User.id`. */
+  private async assertMerchantCanReply(merchantProfileId: string, review: Review): Promise<void> {
+    if (review.targetType === ReviewTargetType.MERCHANT && review.targetId === merchantProfileId) {
       return;
     }
     if (review.orderId) {
       const order = await this.prisma.order.findFirst({
-        where: { id: review.orderId, merchantId },
+        where: { id: review.orderId, merchantId: merchantProfileId },
         select: { id: true },
       });
       if (order) {
@@ -453,6 +535,17 @@ export class ReviewsService {
       }
     }
     throw new ForbiddenDomainException('Merchant cannot reply to this review');
+  }
+
+  private async requireMerchantProfile(userId: string): Promise<{ id: string }> {
+    const profile = await this.prisma.merchantProfile.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+    if (!profile) {
+      throw new NotFoundDomainException('Merchant profile not found');
+    }
+    return profile;
   }
 
   private optionalTrimmed(value: string | undefined): string | null {

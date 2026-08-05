@@ -24,10 +24,14 @@ describe('REVIEW_PERMISSIONS', () => {
     ).toEqual([REVIEW_PERMISSIONS.CUSTOMER_MANAGE]);
   });
 
-  it('protects merchant replies', () => {
-    expect(Reflect.getMetadata(PERMISSIONS_KEY, MerchantReviewsController.prototype.reply)).toEqual(
-      [REVIEW_PERMISSIONS.MERCHANT_REPLY],
-    );
+  it('protects merchant reviews (list + reply) at the controller level', () => {
+    // Both endpoints share one permission, so the decorator lives on the
+    // controller class rather than each method — PermissionsGuard reads
+    // via getAllAndOverride([handler, class]), so a class-level decorator
+    // with no method-level override still protects every route.
+    expect(Reflect.getMetadata(PERMISSIONS_KEY, MerchantReviewsController)).toEqual([
+      REVIEW_PERMISSIONS.MERCHANT_REPLY,
+    ]);
   });
 
   it('protects admin moderation', () => {
