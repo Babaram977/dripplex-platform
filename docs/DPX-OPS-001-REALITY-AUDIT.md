@@ -12,11 +12,17 @@ implementation begins).
 **Update (2026-08-04): Slice 1 (Live Operations Dashboard) is now shipped** —
 step 6 (implementation) and step 7 (verification) are complete for Slice 1.
 See `docs/DPX-OPS-001-OPERATIONS-COMMAND-CENTRE.md`'s "Slice 1 — Live
-Operations Dashboard" section for what was built. Steps 8-11 (documentation,
-production audit, founder approval, freeze) for the whole Phase 1 module
-happen once all four slices are built, per the founder's own discipline —
-Slice 1 alone isn't ready for a module-level production audit yet. Slices
-2-4 (Work Queues, Dispatch Management, Analytics) are not yet started.
+Operations Dashboard" section for what was built.
+
+**Update (2026-08-05): Slice 2 (Operations Work Queues) is now shipped** —
+step 6 and step 7 are complete for Slice 2 too, under the founder's explicit
+Slice 2 approval message. See
+`docs/DPX-OPS-001-OPERATIONS-COMMAND-CENTRE.md`'s "Slice 2 — Operations Work
+Queues" section for what was built. Steps 8-11 (documentation, production
+audit, founder approval, freeze) for the whole Phase 1 module happen once all
+four slices are built, per the founder's own discipline — Slice 1+2 together
+still aren't ready for a module-level production audit. Slices 3-4 (Dispatch
+Management, Analytics) are not yet started.
 
 **Scope**: Phase 1 (Core Operations) only, per the founder's own phasing —
 Fleet Operations, Emergency Operations, Support Centre, Incident Management,

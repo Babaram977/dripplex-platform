@@ -1,7 +1,8 @@
 # DPX-OPS-001 — Operations Command Centre (Future Module)
 
 **Status: Slice 1 (Live Operations Dashboard) shipped (2026-08-04). Slice 2
-(Operations Work Queues) not yet started.** See
+(Operations Work Queues) shipped (2026-08-05). Slices 3-4 (Dispatch
+Management, Analytics) not yet started.** See
 `docs/DPX-OPS-001-REALITY-AUDIT.md` for the full backend-capability audit,
 gap analysis, proposed Phase 1 slice plan, and the founder's locked-in
 refinements — this document stays the scope record, that one is the
@@ -39,6 +40,80 @@ touching `rides/` (the founder's cross-module-read pattern, established by
   client tests. `prisma-foundation.spec.ts` bumped to 103 permission seeds.
 - **Verification** — backend/SDK/operations-console `tsc`, `eslint
 --max-warnings=0`, `jest`/`vitest`, and `next build` all clean.
+
+## Slice 2 — Operations Work Queues (shipped 2026-08-05)
+
+Founder-approved in full, verbatim, per the founder's structured Slice 2
+approval message (2026-08-05) — see that message for the exact scope,
+Operations Philosophy, Standard Workflow, Assignment model, unified Priority
+system, SLA tracking, timeline format, search/filter list, dashboard
+counters, and the "one addition" (Live Activity Feed) it specifies. Built
+under the same architecture discipline as Slice 1: shared models, shared
+SDK, shared permissions, no duplicate business logic, and — per the
+founder's explicit instruction — the frozen `drivers/sos`, `drivers/
+incidents`, and `drivers/support` modules were **not modified**.
+
+- **Schema** — new `OperationsCase`/`OperationsCaseEvent` wrapper-table
+  layer (`apps/backend/prisma/schema.prisma`), one case row per
+  SOS/Incident/Support source row (`@@unique([caseType, sourceId])`), an
+  immutable event-timeline table. This is intentionally a layer _on top of_
+  the frozen source tables, not a replacement — priority, lifecycle status
+  (`NEW → ASSIGNED → IN_PROGRESS → WAITING → RESOLVED → CLOSED`),
+  assignment (unassigned/operator/supervisor), and SLA timestamps
+  (`firstRespondedAt`/`resolvedAt`/`closedAt`) all live on the case, while
+  the source tables stay the system of record for the domain data itself
+  and get their own status kept in sync one-directionally
+  (`OperationsCasesService.syncSourceStatus()` calls straight through to
+  `SosAlertService`/`IncidentReportService`/`DriverSupportService`'s
+  existing update methods — never a direct write to the source table).
+- **Backend** — `apps/backend/src/operations/operations-cases.service.ts`:
+  lazily get-or-creates case rows in batch (`ensureCases`, 2-3 queries
+  regardless of queue size — same anti-N+1 discipline as Slice 1's polled
+  endpoints), lists each of the three queues with status/priority/operator/
+  search filtering, assigns/reassigns, transitions lifecycle status
+  (stamping SLA timestamps), and appends notes to the event timeline. SOS
+  cases default to `CRITICAL` priority always, per the founder's explicit
+  instruction; Incident priority derives from `IncidentSeverity`; Support
+  defaults to `MEDIUM`. `operations-dashboard.service.ts` adds
+  `getQueueCounters()` (Active SOS / Open Incidents / Open Support Tickets /
+  Waiting Reviews — delegates straight to the cases service, no duplicated
+  logic, per the founder's explicit instruction) and `getActivityFeed()`
+  (the founder's "one addition": a read-only, non-persisted feed composed
+  by merging six parallel queries over existing timestamped rows —
+  SOS/Incident/Inspection/Shift-start/Shift-end/Ride-cancellation — sorted
+  by `occurredAt` desc. Driver online/offline transitions are deliberately
+  **not** included: there is no history table for that state without
+  touching frozen availability-update code, documented as an honest gap
+  rather than dropped silently). Two new controllers-worth of endpoints
+  gated by two new permissions, `operations:queues:read` (view) and
+  `operations:queues:manage` (assign/transition/note), both granted to
+  `operations_staff`/`administrator`/`super_administrator`.
+- **SDK** — `packages/sdk/src/operations/`: `OperationsQueuesClient`,
+  `OperationsCasesClient`, `OperationsDashboardClient`,
+  `OperationsStaffClient` (assignable-operator/supervisor lookup), all
+  wired into `createAdminSdk()`.
+- **operations-console** — three queue-list screens (SOS Queue, Driver
+  Support Queue, Incident Queue) with status/priority/operator/search
+  filters; three case-detail screens with priority + lifecycle badges, the
+  immutable event timeline, assignment/status controls, and a note form;
+  the home dashboard now also shows the four queue-counter tiles and a
+  "Live activity" panel alongside the Slice 1 fleet map.
+- **Tests** — 10 new `operations-cases.service.spec.ts` tests + 2 new
+  `operations-dashboard.service.spec.ts` tests (unit + live-DB, same
+  pattern as Slice 1), 4 new SDK client test files.
+  `prisma-foundation.spec.ts` bumped to 105 permission seeds.
+- **Verification** — backend/SDK/operations-console `tsc`, `eslint
+--max-warnings=0`, `jest`/`vitest`, and `next build` all clean.
+- **Known, documented gaps** (not silently dropped): the founder's
+  Search & Filters list includes Date/Ride/Vehicle/Region — only
+  Status/Priority/Operator/search-text are modeled today, since Date/Ride/
+  Vehicle/Region filtering isn't present on the underlying source-table
+  query methods yet. The founder's Incident Queue categories list includes
+  "Lost & found" and generic "Complaint escalation" — `IncidentCategory`
+  (frozen, from Driver Slice 2) doesn't have those values, so incidents
+  route through the existing five categories only. Both gaps are candidates
+  for either a Slice 2 refinement or an eventual `drivers/incidents` schema
+  change, founder's call.
 
 Founder-recorded (2026-08-04), alongside
 approval of the Driver Slice 2 freeze: the production audit's one outstanding

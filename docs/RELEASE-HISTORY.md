@@ -416,10 +416,40 @@ read-only, `rides/` never imported — the same cross-module-read pattern
 > tests; `tsc`/`eslint --max-warnings=0`/`jest`/`vitest`/`next build` all
 > clean across backend, SDK, and operations-console.
 
-Slices 2-4 are not yet started; the module-level production audit and
-freeze happen once all four Phase 1 slices are built, not after Slice 1
-alone. See `docs/DPX-OPS-001-OPERATIONS-COMMAND-CENTRE.md` for the running
-scope/status record.
+## 2026-08-05 — DPX-OPS-001 Slice 2 shipped: Operations Work Queues
+
+Founder approved Slice 2 in full detail: a unified SOS/Driver Support/
+Incident work-queue layer with a standard lifecycle (New → Assigned → In
+Progress → Waiting → Resolved → Closed), operator/supervisor assignment, a
+four-tier priority system (🔴 Critical/🟠 High/🟡 Medium/🟢 Low, SOS always
+Critical), SLA timestamp tracking, an immutable per-case event timeline,
+search/filters, dashboard counters reusing Slice 1's dashboard without
+duplicating backend logic, and one addition of the founder's own: a Live
+Activity Feed on the dashboard for situational awareness without switching
+screens.
+
+Built as a wrapper layer (`OperationsCase`/`OperationsCaseEvent`) over the
+frozen `SosAlert`/`IncidentReport`/`DriverSupportTicket` tables from Driver
+Slice 2 — composing their existing service methods, never modifying the
+frozen modules and never duplicating their business logic, per the
+founder's explicit architecture instruction. New `operations:queues:read`/
+`operations:queues:manage` permissions; three new operations-console queue
+screens (SOS, Driver Support, Incidents) and three case-detail screens with
+timeline/assignment/note controls; the dashboard home page gained queue
+counter tiles and the Live Activity Feed panel. 12 new backend tests, 4 new
+SDK client test files; `prisma-foundation.spec.ts` bumped to 105 permission
+seeds; `tsc`/`eslint --max-warnings=0`/`jest`/`vitest`/`next build` all
+clean across backend, SDK, and operations-console. Two capability gaps
+documented honestly rather than silently dropped (Date/Ride/Vehicle/Region
+filters not yet modeled; "Lost & found"/"Complaint escalation" incident
+categories don't exist in the frozen `IncidentCategory` enum) — see
+`docs/DPX-OPS-001-OPERATIONS-COMMAND-CENTRE.md`'s Slice 2 section for the
+full breakdown.
+
+Slices 3-4 are not yet started; the module-level production audit and
+freeze happen once all four Phase 1 slices are built, not after Slice 1 or
+Slice 2 alone. See `docs/DPX-OPS-001-OPERATIONS-COMMAND-CENTRE.md` for the
+running scope/status record.
 
 ---
 

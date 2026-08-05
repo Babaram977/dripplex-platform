@@ -276,6 +276,10 @@ model User {
   driverShifts                DriverShift[]                @relation("DriverShiftDriver")
   driverShiftsForceEnded      DriverShift[]                @relation("DriverShiftForceEnder")
   driverPlannedAvailability   DriverPlannedAvailability[]  @relation("DriverPlannedAvailabilityDriver")
+  /// DPX-OPS-001 Slice 2
+  operationsCasesAssigned     OperationsCase[]              @relation("OperationsCaseAssignedTo")
+  operationsCasesAssignedByMe OperationsCase[]              @relation("OperationsCaseAssignedBy")
+  operationsCaseEvents        OperationsCaseEvent[]         @relation("OperationsCaseEventActor")
   rideOffers                  RideOffer[]
   notifications               Notification[]
   notificationPreferences     NotificationPreference[]
@@ -2983,4 +2987,109 @@ model FraudThreshold {
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   @@map("fraud_thresholds")
+}
+
+/// DPX-OPS-001 Slice 2 — Operations Work Queues (founder-approved
+/// 2026-08-04). `OperationsCase` is a wrapper layer over the three
+/// existing Driver Slice 2 source tables (`SosAlert`, `IncidentReport`,
+/// `DriverSupportTicket`) — it does not replace their own status fields,
+/// which stay the driver-facing source of truth. It adds the operational
+/// concepts those frozen tables don't have: a unified priority, a unified
+/// six-stage lifecycle, operator/supervisor assignment, and SLA
+/// timestamps. One row per (caseType, sourceId), created lazily
+/// (get-or-create) the first time a source row is surfaced to Operations
+/// — `drivers/sos`, `drivers/incidents`, `drivers/support` are never
+/// modified, only composed via their existing public service methods.
+enum OperationsCaseType {
+  SOS
+  INCIDENT
+  SUPPORT
+}
+
+/// Unified priority across all three queues, per the founder's own scale.
+/// SOS cases always default to CRITICAL.
+enum OperationsPriority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+/// The founder's standard workflow: New -> Assigned -> In Progress ->
+/// Waiting -> Resolved -> Closed. Not a strict linear state machine —
+/// operators can move a case back to WAITING (e.g. "waiting on driver")
+/// from IN_PROGRESS, and RESOLVED cases can be reopened to IN_PROGRESS
+/// before being CLOSED.
+enum OperationsLifecycleStatus {
+  NEW
+  ASSIGNED
+  IN_PROGRESS
+  WAITING
+  RESOLVED
+  CLOSED
+}
+
+enum OperationsAssigneeRole {
+  OPERATOR
+  SUPERVISOR
+}
+
+enum OperationsCaseEventType {
+  CREATED
+  PRIORITY_CHANGED
+  ASSIGNED
+  UNASSIGNED
+  STATUS_CHANGED
+  NOTE_ADDED
+}
+
+model OperationsCase {
+  id               String                    @id @default(uuid()) @db.Uuid
+  caseType         OperationsCaseType        @map("case_type")
+  /// Id of the SosAlert/IncidentReport/DriverSupportTicket row this case
+  /// wraps. Deliberately a plain scalar, not a Prisma relation — those
+  /// three models belong to the frozen Driver Slice 2 module and adding a
+  /// relation would require back-relation fields on each of them.
+  sourceId         String                    @map("source_id") @db.Uuid
+  priority         OperationsPriority        @default(MEDIUM)
+  status           OperationsLifecycleStatus @default(NEW)
+  assignedToId     String?                   @map("assigned_to_id") @db.Uuid
+  assignedToRole   OperationsAssigneeRole?   @map("assigned_to_role")
+  assignedById     String?                   @map("assigned_by_id") @db.Uuid
+  assignedAt       DateTime?                 @map("assigned_at")
+  /// SLA tracking, per the founder's requirement: created (createdAt
+  /// below) / first response / assignment (assignedAt above) / resolution
+  /// / closure.
+  firstRespondedAt DateTime?                 @map("first_responded_at")
+  resolvedAt       DateTime?                 @map("resolved_at")
+  closedAt         DateTime?                 @map("closed_at")
+  createdAt        DateTime                  @default(now()) @map("created_at")
+  updatedAt        DateTime                  @updatedAt @map("updated_at")
+  assignedTo       User?                     @relation("OperationsCaseAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+  assignedBy       User?                     @relation("OperationsCaseAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
+  events           OperationsCaseEvent[]
+
+  @@unique([caseType, sourceId])
+  @@index([caseType, status])
+  @@index([priority])
+  @@index([assignedToId])
+  @@map("operations_cases")
+}
+
+/// Immutable event timeline — the operational audit log for a case. Rows
+/// are only ever inserted, never updated or deleted.
+model OperationsCaseEvent {
+  id          String                  @id @default(uuid()) @db.Uuid
+  caseId      String                  @map("case_id") @db.Uuid
+  eventType   OperationsCaseEventType @map("event_type")
+  /// Null for system-generated events (e.g. the CREATED event logged by
+  /// the lazy get-or-create, which has no human actor).
+  actorId     String?                 @map("actor_id") @db.Uuid
+  description String                  @db.VarChar(1000)
+  createdAt   DateTime                @default(now()) @map("created_at")
+  case        OperationsCase          @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  actor       User?                   @relation("OperationsCaseEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([caseId, createdAt])
+  @@map("operations_case_events")
 }

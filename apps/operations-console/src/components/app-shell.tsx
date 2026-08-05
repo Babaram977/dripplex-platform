@@ -11,12 +11,16 @@ import { sdk } from '@/lib/sdk';
 
 /** DPX-OPS-001 — nav grows one slice at a time, per the founder's approved
  * sequencing (Slice 1: Live Operations Dashboard; Slice 2: Work Queues;
- * Slice 3: Dispatch Management; Slice 4: Analytics). Only Slice 1's routes
- * exist so far — adding a nav entry ahead of its screen would be exactly
- * the kind of disabled-link placeholder this platform's discipline avoids. */
+ * Slice 3: Dispatch Management; Slice 4: Analytics). Only Slice 1 and
+ * Slice 2's routes exist so far — adding a nav entry ahead of its screen
+ * would be exactly the kind of disabled-link placeholder this platform's
+ * discipline avoids. */
 const NAV_LINKS = [
   { href: '/', label: 'Live Fleet Map' },
   { href: '/rides', label: 'Ride Queue' },
+  { href: '/queues/sos', label: 'SOS Queue' },
+  { href: '/queues/incidents', label: 'Incidents' },
+  { href: '/queues/support', label: 'Driver Support' },
 ] as const;
 
 function AppNav(): React.JSX.Element {
@@ -43,19 +47,23 @@ function AppNav(): React.JSX.Element {
             DrippleX Operations
           </span>
           <nav className="flex gap-1">
-            {NAV_LINKS.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                  pathname === link.href
-                    ? 'bg-secondary text-secondary-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {link.label}
-              </Link>
-            ))}
+            {NAV_LINKS.map((link) => {
+              const isActive =
+                link.href === '/' ? pathname === '/' : pathname.startsWith(link.href);
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                    isActive
+                      ? 'bg-secondary text-secondary-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              );
+            })}
           </nav>
         </div>
         <div className="flex items-center gap-2">

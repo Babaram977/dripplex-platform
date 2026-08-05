@@ -173,6 +173,16 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
     description:
       'View the Operations Console Live Operations Dashboard — fleet snapshot and live ride queue',
   },
+  {
+    code: 'operations:queues:read',
+    description:
+      'View the Operations Console work queues (SOS, Incidents, Support) and dashboard counters/activity feed',
+  },
+  {
+    code: 'operations:queues:manage',
+    description:
+      'Assign, prioritize, change status, and add notes on Operations Console work-queue cases',
+  },
   { code: 'users:read', description: 'Read user records' },
   { code: 'users:write', description: 'Update user records' },
   { code: 'users:delete', description: 'Soft-delete user records' },
