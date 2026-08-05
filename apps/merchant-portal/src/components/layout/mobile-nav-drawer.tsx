@@ -11,6 +11,7 @@ import {
   Package,
   ShieldCheck,
   Star,
+  TrendingUp,
   Wallet,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -26,6 +27,7 @@ const navItems = [
   { href: '/wallet', label: 'Wallet & Bank', icon: Wallet },
   { href: '/reviews', label: 'Reviews', icon: Star },
   { href: '/notifications', label: 'Notifications', icon: Bell },
+  { href: '/analytics', label: 'Analytics', icon: TrendingUp },
   { href: '/business', label: 'Business', icon: Building2 },
   { href: '/kyc', label: 'Verification', icon: ShieldCheck },
 ] as const;

@@ -8,6 +8,7 @@ import {
   TransactionStatus,
 } from '@prisma/client';
 
+import { NotFoundDomainException } from '../common/exceptions/domain.exception';
 import { PrismaService } from '../prisma/prisma.service';
 
 import { ANALYTICS_METRIC_KEYS } from './analytics.constants';
@@ -105,11 +106,30 @@ export class AnalyticsService {
   }
 
   public async getMerchantOverview(
-    merchantId: string,
+    merchantUserId: string,
     input: { from?: string; to?: string; period?: AnalyticsPeriod },
   ): Promise<AnalyticsOverview> {
+    const profile = await this.requireMerchantProfile(merchantUserId);
     const range = this.resolveRange(input);
-    return await this.buildOverview(range, merchantId);
+    return await this.buildOverview(range, profile.id);
+  }
+
+  /**
+   * `Order.merchantId` (and the analytics scope built from it) is
+   * `MerchantProfile.id`, never the merchant's `User.id` — same split
+   * established across Orders/Reviews/Merchants. `getMerchantOverview` is
+   * always called with the authenticated user's `User.id`, so it must be
+   * resolved here before being used as an `Order.merchantId` filter.
+   */
+  private async requireMerchantProfile(userId: string): Promise<{ id: string }> {
+    const profile = await this.prisma.merchantProfile.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+    if (!profile) {
+      throw new NotFoundDomainException('Merchant profile not found');
+    }
+    return profile;
   }
 
   public async getAdminOverview(input: {

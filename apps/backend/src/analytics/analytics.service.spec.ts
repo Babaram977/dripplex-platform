@@ -14,6 +14,10 @@ import type { PrismaService } from '../prisma/prisma.service';
 const from = '2026-07-01';
 const to = '2026-07-03';
 const merchantId = '11111111-1111-4111-8111-111111111111';
+// Deliberately distinct from `merchantId` above — `Order.merchantId` is
+// `MerchantProfile.id`, never the merchant's `User.id`, so tests must not
+// use the same value for both or they mask an unresolved profile lookup.
+const merchantUserId = '22222222-2222-4222-8222-222222222222';
 
 describe('AnalyticsService', () => {
   let prisma: {
@@ -27,6 +31,7 @@ describe('AnalyticsService', () => {
     paymentTransaction: { count: jest.Mock };
     deliveryJob: { aggregate: jest.Mock; groupBy: jest.Mock };
     orderItem: { groupBy: jest.Mock };
+    merchantProfile: { findUnique: jest.Mock };
   };
   let service: AnalyticsService;
 
@@ -52,6 +57,9 @@ describe('AnalyticsService', () => {
       },
       orderItem: {
         groupBy: jest.fn(),
+      },
+      merchantProfile: {
+        findUnique: jest.fn(),
       },
     };
     service = new AnalyticsService(prisma as unknown as PrismaService);
@@ -148,7 +156,8 @@ describe('AnalyticsService', () => {
     ]);
   });
 
-  it('adds merchant filters for merchant overview', async () => {
+  it('resolves the merchant profile and adds MerchantProfile.id filters for merchant overview', async () => {
+    prisma.merchantProfile.findUnique.mockResolvedValue({ id: merchantId });
     prisma.order.count.mockResolvedValue(0);
     prisma.order.aggregate.mockResolvedValue({ _sum: { total: null }, _count: { _all: 0 } });
     prisma.order.groupBy.mockResolvedValue([]);
@@ -156,14 +165,29 @@ describe('AnalyticsService', () => {
     prisma.paymentTransaction.count.mockResolvedValue(0);
     prisma.analyticsDailyMetric.findMany.mockResolvedValue([]);
 
-    await service.getMerchantOverview(merchantId, { from, to });
+    await service.getMerchantOverview(merchantUserId, { from, to });
 
+    expect(prisma.merchantProfile.findUnique).toHaveBeenCalledWith({
+      where: { userId: merchantUserId },
+      select: { id: true },
+    });
+    // Order.merchantId is MerchantProfile.id, never the merchant's User.id —
+    // the filter must use the resolved profile id, not the raw userId param.
     expect(prisma.order.count).toHaveBeenCalledWith({
       where: expect.objectContaining({ merchantId }),
     });
     expect(prisma.paymentTransaction.count).toHaveBeenCalledWith({
       where: expect.objectContaining({ merchantId, status: TransactionStatus.FAILED }),
     });
+  });
+
+  it('rejects merchant overview when the user has no merchant profile', async () => {
+    prisma.merchantProfile.findUnique.mockResolvedValue(null);
+
+    await expect(service.getMerchantOverview(merchantUserId, { from, to })).rejects.toThrow(
+      'Merchant profile not found',
+    );
+    expect(prisma.order.count).not.toHaveBeenCalled();
   });
 
   it('returns top products from grouped order items', async () => {

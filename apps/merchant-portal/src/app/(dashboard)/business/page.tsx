@@ -159,6 +159,8 @@ export default function BusinessProfilePage(): React.JSX.Element {
 
       <ReadinessCard business={business} />
 
+      <StoreControlsCard business={business} onChanged={setBusiness} />
+
       <BusinessForm business={business} onSaved={setBusiness} />
     </div>
   );
@@ -252,6 +254,115 @@ function ReadinessStep({
       <span className={done || current ? 'font-medium' : 'text-muted-foreground'}>{label}</span>
       {hint ? <span className="text-muted-foreground text-xs">· {hint}</span> : null}
     </li>
+  );
+}
+
+function StoreControlsCard({
+  business,
+  onChanged,
+}: {
+  business: BusinessDto | null;
+  onChanged: (business: BusinessDto) => void;
+}): React.JSX.Element | null {
+  const [reason, setReason] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  // Store controls only make sense once the store has actually launched —
+  // matches the same status gate the backend enforces (pauseStore requires
+  // ACTIVE, resumeStore requires PAUSED).
+  if (!business || (business.status !== 'ACTIVE' && business.status !== 'PAUSED')) {
+    return null;
+  }
+
+  const pause = (): void => {
+    if (busy) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    void sdk.merchant
+      .pauseStore(reason.trim() ? { reason: reason.trim() } : {})
+      .then((updated) => {
+        onChanged(updated);
+        setReason('');
+      })
+      .catch((pauseError: unknown) => {
+        setError(describeSdkError(pauseError).description);
+      })
+      .finally(() => {
+        setBusy(false);
+      });
+  };
+
+  const resume = (): void => {
+    if (busy) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    void sdk.merchant
+      .resumeStore()
+      .then(onChanged)
+      .catch((resumeError: unknown) => {
+        setError(describeSdkError(resumeError).description);
+      })
+      .finally(() => {
+        setBusy(false);
+      });
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Store controls</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        {business.status === 'ACTIVE' ? (
+          <>
+            <p className="text-muted-foreground text-sm">
+              Pausing hides your store from customers and blocks new orders. Existing orders are not
+              affected.
+            </p>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="pauseReason">Reason (optional)</Label>
+              <Input
+                id="pauseReason"
+                maxLength={500}
+                placeholder="e.g. Restocking, out for the week"
+                disabled={busy}
+                value={reason}
+                onChange={(event) => {
+                  setReason(event.target.value);
+                }}
+              />
+            </div>
+            <div className="flex justify-end">
+              <Button type="button" variant="outline" disabled={busy} onClick={pause}>
+                {busy ? 'Pausing…' : 'Pause store'}
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-muted-foreground text-sm">
+              Your store is paused and hidden from customers.
+              {business.pauseReason ? ` Reason: ${business.pauseReason}` : ''}
+            </p>
+            <div className="flex justify-end">
+              <Button type="button" disabled={busy} onClick={resume}>
+                {busy ? 'Resuming…' : 'Resume store'}
+              </Button>
+            </div>
+          </>
+        )}
+        {error ? (
+          <p className="text-destructive text-sm" role="alert">
+            {error}
+          </p>
+        ) : null}
+      </CardContent>
+    </Card>
   );
 }
 
