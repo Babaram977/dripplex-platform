@@ -71,6 +71,7 @@ describe('TrackingService', () => {
     listJobs: jest.fn(),
     listRiderJobs: jest.fn(),
     updateJobStatus: jest.fn(),
+    confirmCash: jest.fn(),
     assignRider: jest.fn(),
     clearRider: jest.fn(),
     createTracking: jest.fn(),

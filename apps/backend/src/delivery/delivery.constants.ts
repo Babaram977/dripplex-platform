@@ -9,6 +9,8 @@ export const DELIVERY_AUDIT_ACTIONS = {
   FAILED: 'delivery.failed',
   LOCATION_UPDATED: 'delivery.location_updated',
   REJECTED: 'delivery.rejected',
+  /// DPX-COMMERCIAL-001 Slice 3 — the rider's cash-collection confirmation.
+  CASH_CONFIRMED: 'delivery.cash_confirmed',
 } as const;
 
 export const DELIVERY_PERMISSIONS = {

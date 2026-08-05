@@ -1,5 +1,6 @@
 import type { HttpClient } from '../client/http-client.js';
 import type {
+  ConfirmCashDto,
   DeliverOrderDto,
   DeliveryJobDto,
   DeliveryLocationUpdateDto,
@@ -64,6 +65,14 @@ export class RiderDeliveryClient {
 
   public location(jobId: string, body: DeliveryLocationUpdateDto): Promise<DeliveryTrackingDto> {
     return this.http.request<DeliveryTrackingDto>(`/rider/jobs/${jobId}/location`, {
+      method: 'POST',
+      body,
+      auth: true,
+    });
+  }
+
+  public confirmCash(jobId: string, body: ConfirmCashDto): Promise<DeliveryJobDto> {
+    return this.http.request<DeliveryJobDto>(`/rider/jobs/${jobId}/confirm-cash`, {
       method: 'POST',
       body,
       auth: true,

@@ -37,10 +37,9 @@ import type { Order, OrderSettlement } from '@prisma/client';
 
 /// DPX-COMMERCIAL-001 Slice 2 §0.2 — the online/digitally-verified payment
 /// methods automatic deduction applies to. CASH is deliberately excluded
-/// (its settlement direction is already known-buggy per DPX-COMMERCIAL-001
-/// §2.1, fixed in Slice 3 with separate founder sign-off — not touched
-/// here) and MERCHANT_DIRECT never reaches this path at all (mode B is
-/// its own branch below, accrual not wallet-crediting).
+/// — since Slice 3, it accrues commission the same way MERCHANT_DIRECT
+/// does (see accruesCommission()), so it never reaches the wallet-credit
+/// path this set gates at all.
 const ONLINE_PAYMENT_METHODS: ReadonlySet<OrderPaymentMethod> = new Set([
   OrderPaymentMethod.WALLET,
   OrderPaymentMethod.PAYSTACK,
@@ -48,14 +47,32 @@ const ONLINE_PAYMENT_METHODS: ReadonlySet<OrderPaymentMethod> = new Set([
   OrderPaymentMethod.OPAY,
 ]);
 
+/// DPX-COMMERCIAL-001 Slice 2/3 — the two payment methods where DrippleX
+/// never held the sale proceeds (the merchant was paid directly, or paid
+/// in cash by the customer at the door) and so settles by accruing the
+/// commission owed onto the merchant's CommissionAccount instead of
+/// crediting Wallet. See policy doc §3.3 (mode B) and §3.4 (mode C).
+function accruesCommission(paymentMethod: OrderPaymentMethod | null): boolean {
+  return (
+    paymentMethod === OrderPaymentMethod.MERCHANT_DIRECT ||
+    paymentMethod === OrderPaymentMethod.CASH
+  );
+}
+
 /**
  * DPX-MERCHANT-002 — Marketplace Merchant Settlement. Subscribes to
  * ORDER_COMPLETED (the sole "successful fulfilment" signal, fired by
- * `OrderCompletionSweepService`) and credits the merchant's wallet via the
- * existing Wallet/Ledger architecture, exactly once per order. Also
+ * `OrderCompletionSweepService`), exactly once per order via
+ * `OrderSettlement.orderId`'s unique constraint. For mode A (online
+ * payment) settles by crediting the merchant's Wallet via the existing
+ * Wallet/Ledger architecture; for mode B (Pay to Merchant) and mode C
+ * (Cash on Delivery, since DPX-COMMERCIAL-001 Slice 3) DrippleX never
+ * held the money, so it settles by accruing the commission owed onto the
+ * merchant's CommissionAccount instead — see `accruesCommission()`. Also
  * subscribes to ORDER_REFUNDED to reverse an already-completed settlement.
- * See docs/DPX-MERCHANT-002-SETTLEMENT-DESIGN.md for the full design and
- * the reasoning behind every decision below.
+ * See docs/DPX-MERCHANT-002-SETTLEMENT-DESIGN.md for the original design
+ * and docs/DPX-COMMERCIAL-001-SLICE-3-COD-CORRECTION.md for the mode-C
+ * settlement-direction fix.
  */
 @Injectable()
 export class MerchantSettlementService implements OnModuleInit {
@@ -176,19 +193,23 @@ export class MerchantSettlementService implements OnModuleInit {
     try {
       const merchantUserId = await this.resolveMerchantUserId(order.merchantId);
 
-      if (isMerchantDirect) {
-        // Mode B — DrippleX never held this money; there is nothing to
-        // credit to Wallet. The commission owed on the sale accrues onto
-        // the merchant's CommissionAccount instead. Exactly-once via the
-        // same (accountId, referenceType, referenceId) guard every other
+      if (accruesCommission(order.paymentMethod)) {
+        // Mode B (MERCHANT_DIRECT) or mode C (CASH, since Slice 3) —
+        // DrippleX never held this money; there is nothing to credit to
+        // Wallet. The commission owed on the sale accrues onto the
+        // merchant's CommissionAccount instead. Exactly-once via the same
+        // (accountId, referenceType, referenceId) guard every other
         // commission mutation uses.
-        await this.commissionAccounts.accrue({
+        const isCash = order.paymentMethod === OrderPaymentMethod.CASH;
+        await this.accrueCommissionWithRetry({
           ownerType: CommissionOwnerType.MERCHANT,
           ownerId: merchantUserId,
           amount: commissionAmount,
           referenceType: COMMISSION_REFERENCE_TYPES.ORDER,
           referenceId: order.id,
-          description: `Commission owed for order ${order.orderNumber} (Pay to Merchant)`,
+          description: isCash
+            ? `Commission owed for order ${order.orderNumber} (Cash on Delivery)`
+            : `Commission owed for order ${order.orderNumber} (Pay to Merchant)`,
         });
 
         const completed = await this.prisma.orderSettlement.update({
@@ -209,7 +230,7 @@ export class MerchantSettlementService implements OnModuleInit {
               commissionRate: rate,
               commissionAmount,
               merchantAmount,
-              paymentMethod: OrderPaymentMethod.MERCHANT_DIRECT,
+              paymentMethod: order.paymentMethod,
               creditedVia: 'commission_account',
             },
           },
@@ -218,10 +239,10 @@ export class MerchantSettlementService implements OnModuleInit {
         return completed;
       }
 
-      // Mode A (online) or CASH — the existing wallet-crediting path.
+      // Mode A (online) only — the wallet-crediting path. CASH no longer
+      // reaches here as of Slice 3 (it accrues above, same as mode B).
       // DPX-COMMERCIAL-001 §0.2 automatic deduction applies only to the
-      // digitally-verified online methods; CASH's settlement direction is
-      // its own known, deliberately-untouched-here defect (Slice 3).
+      // digitally-verified online methods in ONLINE_PAYMENT_METHODS.
       const netMerchantAmount =
         order.paymentMethod !== null && ONLINE_PAYMENT_METHODS.has(order.paymentMethod)
           ? await this.applyAutomaticDeduction(merchantUserId, merchantAmount, order)
@@ -339,13 +360,14 @@ export class MerchantSettlementService implements OnModuleInit {
     const order = await this.prisma.order.findUnique({ where: { id: orderId } });
     const merchantUserId = await this.resolveMerchantUserId(settlement.merchantId);
 
-    if (order?.paymentMethod === OrderPaymentMethod.MERCHANT_DIRECT) {
-      // Mode B — no Wallet credit ever happened, so there's nothing to
-      // debit back. Reverse the commission accrual instead: the sale that
-      // produced it no longer stands, so the commission owed on it
-      // shouldn't either. Not capped at the current balance — see
+    if (accruesCommission(order?.paymentMethod ?? null)) {
+      // Mode B (MERCHANT_DIRECT) or mode C (CASH, since Slice 3) — no
+      // Wallet credit ever happened, so there's nothing to debit back.
+      // Reverse the commission accrual instead: the sale that produced it
+      // no longer stands, so the commission owed on it shouldn't either.
+      // Not capped at the current balance — see
       // CommissionAccountService.reverseAccrual()'s doc comment.
-      await this.commissionAccounts.reverseAccrual({
+      await this.reverseAccrualWithRetry({
         ownerType: CommissionOwnerType.MERCHANT,
         ownerId: merchantUserId,
         amount: Number(settlement.commissionAmount),
@@ -373,7 +395,7 @@ export class MerchantSettlementService implements OnModuleInit {
             orderId,
             merchantId: settlement.merchantId,
             commissionAmount: Number(settlement.commissionAmount),
-            paymentMethod: OrderPaymentMethod.MERCHANT_DIRECT,
+            paymentMethod: order?.paymentMethod ?? null,
             reversedVia: 'commission_account',
             reason,
           },
@@ -531,6 +553,57 @@ export class MerchantSettlementService implements OnModuleInit {
     // Unreachable (the loop always returns or throws), but keeps the
     // return type honest for TypeScript's control-flow analysis.
     return merchantAmount;
+  }
+
+  /** DPX-COMMERCIAL-001 Slice 3 — bounded retry on ConflictDomainException
+   * for a plain accrual, same reasoning as applyAutomaticDeduction(): two
+   * orders for the same merchant (mode B and/or mode C, now both routed
+   * through this same accrual path) can complete close enough together
+   * that their accrue() calls race on the same CommissionAccount's
+   * optimistic-concurrency version. Found by this slice's own concurrency
+   * test — the original single-attempt call let ConflictDomainException
+   * propagate up through settleOrder()'s try/catch, marking the whole
+   * settlement FAILED instead of retrying an ordinary same-merchant race.
+   * Unlike a deduction, the accrual amount never depends on the current
+   * balance, so a retry is simply "try again," no recomputation needed. */
+  private async accrueCommissionWithRetry(
+    input: Parameters<CommissionAccountService['accrue']>[0],
+  ): Promise<void> {
+    const maxAttempts = 5;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        await this.commissionAccounts.accrue(input);
+        return;
+      } catch (error) {
+        if (!(error instanceof ConflictDomainException) || attempt === maxAttempts) {
+          throw error;
+        }
+        // Someone else's settlement won the race on this account's
+        // version — loop and retry; accrue()'s own exactly-once guard
+        // (referenceType/referenceId) makes a retried call safe even if
+        // some earlier attempt's transaction partially raced.
+      }
+    }
+  }
+
+  /** Same bounded-retry reasoning as accrueCommissionWithRetry(), applied
+   * to reverseAccrual() — a refund reversing a mode-B/mode-C settlement
+   * can race against another order's accrual/deduction/reversal on the
+   * same shared CommissionAccount just as easily as two accruals can. */
+  private async reverseAccrualWithRetry(
+    input: Parameters<CommissionAccountService['reverseAccrual']>[0],
+  ): Promise<void> {
+    const maxAttempts = 5;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        await this.commissionAccounts.reverseAccrual(input);
+        return;
+      } catch (error) {
+        if (!(error instanceof ConflictDomainException) || attempt === maxAttempts) {
+          throw error;
+        }
+      }
+    }
   }
 
   /** `Order.merchantId` is `MerchantProfile.id`, but merchant `Wallet`

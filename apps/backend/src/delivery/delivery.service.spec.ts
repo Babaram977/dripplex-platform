@@ -3,6 +3,7 @@ import {
   AssignmentMethod,
   DeliveryStatus,
   FulfillmentType,
+  OrderPaymentMethod,
   OrderStatus,
   PaymentStatus,
   ProofType,
@@ -182,6 +183,7 @@ describe('DeliveryService', () => {
     listJobs: jest.fn(),
     listRiderJobs: jest.fn(),
     updateJobStatus: jest.fn(),
+    confirmCash: jest.fn(),
     assignRider: jest.fn(),
     clearRider: jest.fn(),
     createTracking: jest.fn(),
@@ -831,6 +833,92 @@ describe('DeliveryService', () => {
         {},
       ),
     ).rejects.toBeInstanceOf(ValidationDomainException);
+  });
+
+  describe('DPX-COMMERCIAL-001 Slice 3 — confirmCash()', () => {
+    it('confirms cash collection on a delivered CASH order', async () => {
+      deliveryRepository.findJobById.mockResolvedValue(
+        makeJob({ riderId, status: DeliveryStatus.DELIVERED }),
+      );
+      ordersRepository.findById.mockResolvedValue(
+        makeOrder({ paymentMethod: OrderPaymentMethod.CASH, total: 5000 }),
+      );
+      const confirmed = makeJob({
+        riderId,
+        status: DeliveryStatus.DELIVERED,
+        cashCollectedAmount: 5000,
+        cashConfirmedAt: now,
+      });
+      deliveryRepository.confirmCash.mockResolvedValue(confirmed);
+
+      const result = await service.confirmCash(riderId, jobId, 5000, { userId: riderId });
+
+      expect(deliveryRepository.confirmCash).toHaveBeenCalledWith(jobId, 5000);
+      expect(result.cashCollectedAmount).toBe(5000);
+      expect(auditService.record).toHaveBeenCalledWith(
+        DELIVERY_AUDIT_ACTIONS.CASH_CONFIRMED,
+        { userId: riderId },
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            amountCollected: 5000,
+            orderTotal: 5000,
+            matchesOrderTotal: true,
+          }),
+        }),
+      );
+    });
+
+    it('rejects confirming cash before the job is DELIVERED', async () => {
+      deliveryRepository.findJobById.mockResolvedValue(
+        makeJob({ riderId, status: DeliveryStatus.ON_THE_WAY }),
+      );
+
+      await expect(service.confirmCash(riderId, jobId, 5000, {})).rejects.toBeInstanceOf(
+        ValidationDomainException,
+      );
+      expect(deliveryRepository.confirmCash).not.toHaveBeenCalled();
+    });
+
+    it('rejects a non-positive amount collected', async () => {
+      deliveryRepository.findJobById.mockResolvedValue(
+        makeJob({ riderId, status: DeliveryStatus.DELIVERED }),
+      );
+
+      await expect(service.confirmCash(riderId, jobId, 0, {})).rejects.toBeInstanceOf(
+        ValidationDomainException,
+      );
+      expect(deliveryRepository.confirmCash).not.toHaveBeenCalled();
+    });
+
+    it('rejects cash confirmation on a non-CASH order', async () => {
+      deliveryRepository.findJobById.mockResolvedValue(
+        makeJob({ riderId, status: DeliveryStatus.DELIVERED }),
+      );
+      ordersRepository.findById.mockResolvedValue(
+        makeOrder({ paymentMethod: OrderPaymentMethod.WALLET }),
+      );
+
+      await expect(service.confirmCash(riderId, jobId, 5000, {})).rejects.toBeInstanceOf(
+        ValidationDomainException,
+      );
+      expect(deliveryRepository.confirmCash).not.toHaveBeenCalled();
+    });
+
+    it('is idempotent — a second confirmation on an already-confirmed job is a no-op', async () => {
+      const alreadyConfirmed = makeJob({
+        riderId,
+        status: DeliveryStatus.DELIVERED,
+        cashCollectedAmount: 5000,
+        cashConfirmedAt: now,
+      });
+      deliveryRepository.findJobById.mockResolvedValue(alreadyConfirmed);
+
+      const result = await service.confirmCash(riderId, jobId, 5000, {});
+
+      expect(result.cashCollectedAmount).toBe(5000);
+      expect(deliveryRepository.confirmCash).not.toHaveBeenCalled();
+      expect(auditService.record).not.toHaveBeenCalled();
+    });
   });
 
   it('fails an active job with a reason and releases rider capacity', async () => {

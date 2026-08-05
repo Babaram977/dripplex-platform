@@ -38,6 +38,12 @@ export interface DeliveryJobDto {
   cancelledAt: string | null;
   returnedAt: string | null;
   cancellationReason: string | null;
+  /// DPX-COMMERCIAL-001 Slice 3 — the rider's confirmation of cash
+  /// physically collected (paymentMethod=CASH orders only). Independent
+  /// of the merchant commission accrual, which is always derived from
+  /// order.subtotal — see docs/DPX-COMMERCIAL-001-SLICE-3-COD-CORRECTION.md.
+  cashCollectedAmount: number | null;
+  cashConfirmedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -126,6 +132,11 @@ export interface DeliveryReasonDto {
   reason?: string;
 }
 
+/// DPX-COMMERCIAL-001 Slice 3 — the rider's cash-collection confirmation.
+export interface ConfirmCashDto {
+  amountCollected: number;
+}
+
 export interface AdminDeliveryJobQuery {
   status?: DeliveryStatus;
   riderId?: string;
@@ -146,6 +157,7 @@ export const DELIVERY_AUDIT_ACTIONS = {
   FAILED: 'delivery.failed',
   LOCATION_UPDATED: 'delivery.location_updated',
   REJECTED: 'delivery.rejected',
+  CASH_CONFIRMED: 'delivery.cash_confirmed',
 } as const;
 
 export type DeliveryAuditAction =

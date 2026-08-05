@@ -434,7 +434,50 @@ the same `CommissionAccount` now retry with bounded backoff instead of
 failing outright); 11 new real-database tests, full backend verification
 clean (1285/1288, same 3 pre-existing unrelated failures as Slice 1).
 
-Slices 3-6 remain as planned in §6: fixing Marketplace Cash on Delivery's
-settlement direction (flagged for separate founder sign-off — a behavior
-change to shipped code), Ride cash, frontend surfacing, and full
-E2E/freeze.
+**Slice 3 authorized (2026-08-05)** — founder sign-off for Slice 2 and a
+separate, explicit authorization for Slice 3, held to "a higher bar"
+because it changes already-shipped Marketplace behavior. Founder-locked
+Slice 3 scope, verbatim:
+
+> Slice 3 scope is limited to: Marketplace Cash on Delivery commercial
+> correction; merchant commission accrual for COD; rider cash
+> confirmation flow; correct commercial ledger entries; credit-limit
+> interaction; exactly-once guarantees; audit trail; real Postgres
+> verification; concurrency testing. Nothing else. Do not redesign
+> checkout. Do not redesign Rider. Do not redesign Marketplace. Do not
+> introduce new payment methods.
+
+The founder additionally required one extra artifact before Slice 3 can
+be brought back for review — a **Cash Flow Verification** document,
+narrating a complete COD order end-to-end (Customer Order → Merchant
+Accepts → Rider Picks Up → Customer Pays Cash → Rider Confirms
+Collection → Merchant Commission Accrual → CommissionAccount Update →
+Blocking/Unblocking Logic → Commercial Ledger → Audit Trail →
+Exactly-once Verification), proving every monetary movement is correct.
+
+The mode-A-deduction-refund reconciliation gap (§5.6 of the Slice 2 doc)
+remains **explicitly out of scope** for Slice 3 and every future slice
+until the founder scopes it in by name — the founder approved leaving it
+undone rather than inventing refund-compensation policy.
+
+**Slice 3 shipped (2026-08-05)** — Marketplace Cash on Delivery
+commercial correction, founder-authorized with the same tight,
+integration-point-scoped discipline as Slice 2. See
+`docs/DPX-COMMERCIAL-001-SLICE-3-COD-CORRECTION.md` for the full record
+and `docs/DPX-COMMERCIAL-001-SLICE-3-CASH-FLOW-VERIFICATION.md` for the
+founder-required end-to-end narrative: a new rider cash-confirmation
+step (`DeliveryService.confirmCash()`) replaces the old automatic
+fire-on-`DELIVERY_COMPLETED` settlement; CASH now accrues commission
+onto the merchant's `CommissionAccount` instead of crediting Wallet
+(the exact bug §2.1 described, now fixed); credit-limit blocking was
+already covered uniformly by Slice 2's checkout-time gate, no new
+wiring needed; a real concurrency bug (two different orders for the
+same merchant racing on the shared `CommissionAccount`) was found and
+fixed by this slice's own concurrency test, via a bounded-retry wrapper
+applied to both the accrual and reversal paths. Driver/rider earnings
+for Marketplace delivery jobs remain deliberately unbuilt — no split
+formula exists yet (§5 item 2 below), and building one would mean
+inventing policy outside this slice's named scope.
+
+Slices 4-6 remain as planned in §6: Ride cash, frontend surfacing, and
+full E2E/freeze.

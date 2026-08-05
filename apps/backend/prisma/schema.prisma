@@ -1308,6 +1308,16 @@ model DeliveryJob {
   cancelledAt              DateTime?          @map("cancelled_at")
   returnedAt               DateTime?          @map("returned_at")
   cancellationReason       String?            @map("cancellation_reason") @db.VarChar(500)
+  /// DPX-COMMERCIAL-001 Slice 3 — the rider's own confirmation of cash
+  /// physically collected from the customer (only ever set for
+  /// paymentMethod=CASH orders). Independent of, and not used to compute,
+  /// the merchant's commission accrual (still derived from order.subtotal,
+  /// the same deterministic source every other settlement path uses) — a
+  /// mismatch between this figure and the order total is a reconciliation
+  /// signal for ops, not a live commercial-math input. See
+  /// docs/DPX-COMMERCIAL-001-SLICE-3-COD-CORRECTION.md §5.6.
+  cashCollectedAmount      Decimal?           @map("cash_collected_amount") @db.Decimal(12, 2)
+  cashConfirmedAt          DateTime?          @map("cash_confirmed_at")
   createdAt                DateTime           @default(now()) @map("created_at")
   updatedAt                DateTime           @updatedAt @map("updated_at")
   order                    Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)

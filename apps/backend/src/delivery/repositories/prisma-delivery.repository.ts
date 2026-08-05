@@ -126,6 +126,16 @@ export class PrismaDeliveryRepository implements DeliveryRepository {
     });
   }
 
+  public async confirmCash(id: string, amountCollected: number): Promise<DeliveryJob> {
+    return await this.prisma.deliveryJob.update({
+      where: { id },
+      data: {
+        cashCollectedAmount: amountCollected,
+        cashConfirmedAt: new Date(),
+      },
+    });
+  }
+
   public async assignRider(
     id: string,
     riderId: string,

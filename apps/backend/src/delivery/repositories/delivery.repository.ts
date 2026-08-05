@@ -74,6 +74,10 @@ export interface DeliveryRepository {
     status: DeliveryStatus,
     input?: UpdateDeliveryJobStatusInput,
   ): Promise<DeliveryJob>;
+  /// DPX-COMMERCIAL-001 Slice 3 — records the rider's cash-collection
+  /// confirmation. Idempotent at the service layer (DeliveryService checks
+  /// `cashConfirmedAt` before calling this).
+  confirmCash(id: string, amountCollected: number): Promise<DeliveryJob>;
   assignRider(
     id: string,
     riderId: string,

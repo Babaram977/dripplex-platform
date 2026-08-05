@@ -30,6 +30,7 @@ export const DOMAIN_EVENTS = {
   DELIVERY_ARRIVED: 'DeliveryArrived',
   DELIVERY_COMPLETED: 'DeliveryCompleted',
   DELIVERY_FAILED: 'DeliveryFailed',
+  DELIVERY_CASH_CONFIRMED: 'DeliveryCashConfirmed',
   REVIEW_SUBMITTED: 'ReviewSubmitted',
   WALLET_CREDITED: 'WalletCredited',
   WALLET_DEBITED: 'WalletDebited',

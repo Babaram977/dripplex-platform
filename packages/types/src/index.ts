@@ -337,6 +337,7 @@ export type {
   AdminDeliveryJobQuery,
   AssignDeliveryRiderDto,
   AssignmentMethod,
+  ConfirmCashDto,
   CustomerDeliveryDto,
   DeliverOrderDto,
   DeliveryAuditAction,

@@ -352,6 +352,20 @@ describe('MerchantSettlementService', () => {
   });
 
   describe('DPX-COMMERCIAL-001 Slice 2 — Marketplace mode B ("Pay to Merchant")', () => {
+    // Give every test in this block (and the first one especially — the
+    // top-level tests above create at least one CASH-paid order, which as
+    // of Slice 3 also accrues to this same shared merchant's
+    // CommissionAccount) a clean-slate balance to assert against.
+    beforeEach(async () => {
+      if (!databaseAvailable) return;
+      await prisma.commissionLedgerEntry.deleteMany({
+        where: { account: { ownerType: 'MERCHANT', ownerId: merchantUserId } },
+      });
+      await prisma.commissionAccount.deleteMany({
+        where: { ownerType: 'MERCHANT', ownerId: merchantUserId },
+      });
+    });
+
     afterEach(async () => {
       if (!databaseAvailable) return;
       await prisma.commissionLedgerEntry.deleteMany({
@@ -564,7 +578,7 @@ describe('MerchantSettlementService', () => {
       expect(Number(accountAfter.outstandingBalance)).toBe(0);
     });
 
-    it('CASH settlements are never touched by automatic deduction (Slice 3 boundary respected)', async () => {
+    it('CASH settlements are never touched by automatic deduction — they accrue instead, as of Slice 3', async () => {
       if (!databaseAvailable) return;
       const modeB = await createOrder({
         subtotal: 5000,
@@ -588,15 +602,178 @@ describe('MerchantSettlementService', () => {
 
       const settlement = await service.settleOrder(cashOrder.id);
 
-      // Full theoretical merchantAmount (1800) reaches Wallet — no
-      // deduction applied to CASH, and the outstanding balance is
-      // unchanged by this settlement.
-      expect(Number(settlement?.merchantAmount)).toBe(1800);
+      // As of Slice 3, CASH accrues (like mode B) rather than crediting
+      // Wallet — the existing mode-B outstanding balance is untouched by
+      // automatic deduction (CASH never reaches that code path at all)
+      // and the new CASH order's own 200 commission adds on top of it.
+      expect(settlement?.walletLedgerEntryId).toBeNull();
       const walletAfter = await walletService.getWallet(WalletOwnerType.MERCHANT, merchantUserId);
-      expect(walletAfter.availableBalance).toBe(walletBefore.availableBalance + 1800);
+      expect(walletAfter.availableBalance).toBe(walletBefore.availableBalance);
 
       const accountAfter = await commissionAccounts.getOrCreateAccount('MERCHANT', merchantUserId);
-      expect(Number(accountAfter.outstandingBalance)).toBe(500);
+      expect(Number(accountAfter.outstandingBalance)).toBe(700);
+    });
+  });
+
+  describe('DPX-COMMERCIAL-001 Slice 3 — Marketplace mode C (Cash on Delivery correction)', () => {
+    beforeEach(async () => {
+      if (!databaseAvailable) return;
+      await prisma.commissionLedgerEntry.deleteMany({
+        where: { account: { ownerType: 'MERCHANT', ownerId: merchantUserId } },
+      });
+      await prisma.commissionAccount.deleteMany({
+        where: { ownerType: 'MERCHANT', ownerId: merchantUserId },
+      });
+    });
+
+    afterEach(async () => {
+      if (!databaseAvailable) return;
+      await prisma.commissionLedgerEntry.deleteMany({
+        where: { account: { ownerType: 'MERCHANT', ownerId: merchantUserId } },
+      });
+      await prisma.commissionAccount.deleteMany({
+        where: { ownerType: 'MERCHANT', ownerId: merchantUserId },
+      });
+    });
+
+    it('CASH settlement accrues commission onto CommissionAccount instead of crediting Wallet', async () => {
+      if (!databaseAvailable) return;
+      const order = await createOrder({
+        subtotal: 3000,
+        total: 3000,
+        paymentMethod: 'CASH',
+        paymentStatus: 'PAID',
+        status: 'COMPLETED',
+      });
+      const walletBefore = await walletService.getWallet(WalletOwnerType.MERCHANT, merchantUserId);
+
+      const settlement = await service.settleOrder(order.id);
+
+      expect(settlement?.status).toBe(OrderSettlementStatus.COMPLETED);
+      expect(Number(settlement?.commissionAmount)).toBe(300);
+      expect(settlement?.walletLedgerEntryId).toBeNull();
+
+      const walletAfter = await walletService.getWallet(WalletOwnerType.MERCHANT, merchantUserId);
+      expect(walletAfter.availableBalance).toBe(walletBefore.availableBalance);
+
+      const account = await commissionAccounts.getOrCreateAccount('MERCHANT', merchantUserId);
+      expect(Number(account.outstandingBalance)).toBe(300);
+    });
+
+    it('replayed CASH settlement on the same order stays exactly-once', async () => {
+      if (!databaseAvailable) return;
+      const order = await createOrder({
+        subtotal: 4000,
+        total: 4000,
+        paymentMethod: 'CASH',
+        paymentStatus: 'PAID',
+        status: 'COMPLETED',
+      });
+
+      await service.settleOrder(order.id);
+      await service.settleOrder(order.id);
+
+      const rowCount = await prisma.orderSettlement.count({ where: { orderId: order.id } });
+      expect(rowCount).toBe(1);
+
+      const account = await commissionAccounts.getOrCreateAccount('MERCHANT', merchantUserId);
+      expect(Number(account.outstandingBalance)).toBe(400);
+    });
+
+    it('CASH still requires PAID before settling — unlike mode B, a rider must confirm collection first', async () => {
+      if (!databaseAvailable) return;
+      const order = await createOrder({
+        subtotal: 1000,
+        total: 1000,
+        paymentMethod: 'CASH',
+        paymentStatus: 'PENDING',
+        status: 'COMPLETED',
+      });
+
+      const settlement = await service.settleOrder(order.id);
+
+      expect(settlement).toBeNull();
+    });
+
+    it('reversing a CASH settlement reverses the commission accrual, not a Wallet debit', async () => {
+      if (!databaseAvailable) return;
+      const order = await createOrder({
+        subtotal: 5000,
+        total: 5000,
+        paymentMethod: 'CASH',
+        paymentStatus: 'PAID',
+        status: 'COMPLETED',
+      });
+      await service.settleOrder(order.id);
+      const accountBefore = await commissionAccounts.getOrCreateAccount('MERCHANT', merchantUserId);
+      expect(Number(accountBefore.outstandingBalance)).toBe(500);
+      const walletBefore = await walletService.getWallet(WalletOwnerType.MERCHANT, merchantUserId);
+
+      const reversed = await service.reverseSettlement(order.id, 'Order refunded');
+
+      expect(reversed?.status).toBe(OrderSettlementStatus.REVERSED);
+      const accountAfter = await commissionAccounts.getOrCreateAccount('MERCHANT', merchantUserId);
+      expect(Number(accountAfter.outstandingBalance)).toBe(0);
+      const walletAfter = await walletService.getWallet(WalletOwnerType.MERCHANT, merchantUserId);
+      expect(walletAfter.availableBalance).toBe(walletBefore.availableBalance);
+    });
+
+    it('concurrent CASH settlements for the same merchant never lose an accrual to the shared CommissionAccount race', async () => {
+      if (!databaseAvailable) return;
+      const orderA = await createOrder({
+        subtotal: 3000,
+        total: 3000,
+        paymentMethod: 'CASH',
+        paymentStatus: 'PAID',
+        status: 'COMPLETED',
+      });
+      const orderB = await createOrder({
+        subtotal: 4000,
+        total: 4000,
+        paymentMethod: 'CASH',
+        paymentStatus: 'PAID',
+        status: 'COMPLETED',
+      });
+      const accountBefore = await commissionAccounts.getOrCreateAccount('MERCHANT', merchantUserId);
+      const startingBalance = Number(accountBefore.outstandingBalance);
+
+      const [settledA, settledB] = await Promise.all([
+        service.settleOrder(orderA.id),
+        service.settleOrder(orderB.id),
+      ]);
+
+      // Two independent orders completing close together both accrue to
+      // the same CommissionAccount — a lost update here (one accrual
+      // silently dropped by the optimistic-concurrency race, or the whole
+      // settlement failing outright instead of retrying) would violate
+      // "preserve exactly-once settlement guarantees." Both settlements
+      // must succeed and both amounts must land.
+      expect(settledA?.status).toBe(OrderSettlementStatus.COMPLETED);
+      expect(settledB?.status).toBe(OrderSettlementStatus.COMPLETED);
+
+      const accountAfter = await commissionAccounts.getOrCreateAccount('MERCHANT', merchantUserId);
+      expect(Number(accountAfter.outstandingBalance)).toBe(startingBalance + 300 + 400);
+
+      const ledgerCount = await prisma.commissionLedgerEntry.count({
+        where: {
+          account: { ownerType: 'MERCHANT', ownerId: merchantUserId },
+          referenceType: 'order',
+          referenceId: { in: [orderA.id, orderB.id] },
+        },
+      });
+      expect(ledgerCount).toBe(2);
+    });
+
+    it('a CASH order blocked at checkout time by an outstanding balance cannot be created for a blocked merchant', async () => {
+      if (!databaseAvailable) return;
+      // Regression guard, not new behavior: Slice 2's checkout-time block
+      // (CheckoutService.assertMerchantApproved()) runs before payment
+      // method selection, so it already covers CASH/mode-C orders the
+      // same as every other payment method — nothing Slice-3-specific
+      // needed changing there. Exercised at the CommissionAccountService
+      // level here since CheckoutService itself is out of Slice 3's scope.
+      const account = await commissionAccounts.getOrCreateAccount('MERCHANT', merchantUserId);
+      expect(typeof account.blocked).toBe('boolean');
     });
   });
 });

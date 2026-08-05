@@ -238,3 +238,28 @@ Return for Founder Review of Slice 2 before proceeding to Slice 3
 (fixing Marketplace Cash on Delivery's settlement direction — a
 behavior change to shipped code, flagged for separate sign-off per the
 policy doc's own §6 plan).
+
+## 11. ✅ Founder Review — Approved (2026-08-05)
+
+> DPX-COMMERCIAL-001 — Slice 2 (Marketplace Mode B). Status: ✅ Approved.
+> The seven approved objectives have all been addressed... The two bugs
+> found during concurrency testing are exactly why I insisted on real
+> database verification before review. Fixing them now is far preferable
+> to discovering them after merchants begin trading... I agree with your
+> decision not to invent refund behavior... Automatic deduction + later
+> refund... becomes a commercial accounting problem involving
+> CommissionAccount, Merchant Wallet, Merchant payment history, Previous
+> manual settlements, Automatic deductions, Refund timing. There isn't
+> one universally correct answer. So I approve your decision to
+> document it, leave it open, require explicit Founder approval before
+> implementation. Do not silently implement refund compensation logic.
+
+The §5.6 mode-A-deduction-refund reconciliation gap therefore remains
+**intentionally deferred**, pending a separate, explicit commercial
+policy decision — not a Slice 3 (or any future slice's) task unless the
+founder scopes it in by name.
+
+Founder decision recorded: ✅ Slice 2 Approved · ▶️ Slice 3 Authorized ·
+⛔ Refund compensation intentionally deferred.
+
+See `docs/DPX-COMMERCIAL-001-SLICE-3-COD-CORRECTION.md` for Slice 3.

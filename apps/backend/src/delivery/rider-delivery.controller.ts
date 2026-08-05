@@ -6,6 +6,7 @@ import { RequirePermissions } from '../common/decorators/permissions.decorator';
 import { DELIVERY_PERMISSIONS } from './delivery.constants';
 import { DeliveryService } from './delivery.service';
 import {
+  ConfirmCashDto,
   DeliverProofDto,
   FailDeliveryDto,
   LocationUpdateDto,
@@ -145,6 +146,24 @@ export class RiderDeliveryController {
         ...(dto.signatureUrl !== undefined ? { signatureUrl: dto.signatureUrl } : {}),
         ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
       },
+      this.auditContext(request, user.id),
+    );
+    return { success: true, data };
+  }
+
+  /// DPX-COMMERCIAL-001 Slice 3 — the rider's cash-collection confirmation.
+  @Post('jobs/:id/confirm-cash')
+  @RequirePermissions(DELIVERY_PERMISSIONS.RIDER_MANAGE)
+  public async confirmCash(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ConfirmCashDto,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<DeliveryJobDto>> {
+    const data = await this.deliveryService.confirmCash(
+      user.id,
+      id,
+      dto.amountCollected,
       this.auditContext(request, user.id),
     );
     return { success: true, data };

@@ -3,6 +3,7 @@ import {
   AssignmentMethod,
   DeliveryStatus,
   FulfillmentType,
+  OrderPaymentMethod,
   OrderStatus,
   PaymentStatus,
   ProofType,
@@ -335,6 +336,66 @@ export class DeliveryService {
       { actorUserId: riderId },
     );
     await this.notifyOrderAudience(updated, 'delivered');
+    return toDeliveryJobDto(updated);
+  }
+
+  /**
+   * DPX-COMMERCIAL-001 Slice 3 — the missing rider cash-collection
+   * confirmation step (policy doc §3.4 item 1). Replaces the old
+   * automatic-fire-on-DELIVERY_COMPLETED settlement: cash orders now only
+   * settle once the rider explicitly confirms collecting it, emitting
+   * DELIVERY_CASH_CONFIRMED (see CashSettlementSubscriber) rather than
+   * relying on the physical handoff (deliver()) alone. Idempotent — a
+   * second confirmation on an already-confirmed job is a no-op, matching
+   * PaymentService.markCashPaymentReceived()'s existing idempotency.
+   *
+   * amountCollected is recorded for audit/reconciliation only — it is
+   * deliberately NOT used to compute the merchant's commission accrual,
+   * which stays derived from order.subtotal (the same deterministic
+   * source every other settlement path uses). A mismatch between what the
+   * rider reports and the order total is a known, out-of-scope
+   * reconciliation gap — see
+   * docs/DPX-COMMERCIAL-001-SLICE-3-COD-CORRECTION.md §5.6.
+   */
+  public async confirmCash(
+    riderId: string,
+    jobId: string,
+    amountCollected: number,
+    context: AuditContext,
+  ): Promise<DeliveryJobDto> {
+    const job = await this.requireRiderJob(riderId, jobId);
+    this.requireStatus(job, DeliveryStatus.DELIVERED);
+    if (amountCollected <= 0) {
+      throw new ValidationDomainException('Amount collected must be greater than zero');
+    }
+    if (job.cashConfirmedAt) {
+      return toDeliveryJobDto(job);
+    }
+
+    const order = await this.requireOrder(job.orderId);
+    if (order.paymentMethod !== OrderPaymentMethod.CASH) {
+      throw new ValidationDomainException(
+        'Cash confirmation only applies to cash-on-delivery orders',
+      );
+    }
+
+    const updated = await this.deliveryRepository.confirmCash(job.id, amountCollected);
+    await this.auditLifecycle(DELIVERY_AUDIT_ACTIONS.CASH_CONFIRMED, updated, context, {
+      riderId,
+      amountCollected,
+      orderTotal: Number(order.total),
+      matchesOrderTotal: amountCollected === Number(order.total),
+    });
+    await this.eventBus?.emit(
+      DOMAIN_EVENTS.DELIVERY_CASH_CONFIRMED,
+      {
+        deliveryJobId: updated.id,
+        orderId: updated.orderId,
+        riderId,
+        amountCollected,
+      },
+      { actorUserId: riderId },
+    );
     return toDeliveryJobDto(updated);
   }
 

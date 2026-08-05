@@ -51,6 +51,8 @@ export function toDeliveryJobDto(job: DeliveryJob): DeliveryJobDto {
     cancelledAt: nullableDate(job.cancelledAt),
     returnedAt: nullableDate(job.returnedAt),
     cancellationReason: job.cancellationReason,
+    cashCollectedAmount: job.cashCollectedAmount === null ? null : Number(job.cashCollectedAmount),
+    cashConfirmedAt: nullableDate(job.cashConfirmedAt),
     createdAt: job.createdAt.toISOString(),
     updatedAt: job.updatedAt.toISOString(),
   };

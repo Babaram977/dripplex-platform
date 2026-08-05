@@ -119,6 +119,14 @@ export class FailDeliveryDto {
   public reason?: string;
 }
 
+/// DPX-COMMERCIAL-001 Slice 3 — the rider's cash-collection confirmation.
+export class ConfirmCashDto {
+  @Transform(({ value }: { value: unknown }) => toNumber(value))
+  @IsNumber()
+  @Min(0.01)
+  public amountCollected!: number;
+}
+
 export class RiderAvailabilityDto {
   @IsBoolean()
   public online!: boolean;
