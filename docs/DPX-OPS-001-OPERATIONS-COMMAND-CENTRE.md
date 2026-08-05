@@ -1,12 +1,13 @@
 # DPX-OPS-001 — Operations Command Centre (Future Module)
 
 **Status: Slice 1 (Live Operations Dashboard) shipped (2026-08-04). Slice 2
-(Operations Work Queues) shipped (2026-08-05). Slices 3-4 (Dispatch
-Management, Analytics) not yet started.** See
-`docs/DPX-OPS-001-REALITY-AUDIT.md` for the full backend-capability audit,
-gap analysis, proposed Phase 1 slice plan, and the founder's locked-in
-refinements — this document stays the scope record, that one is the
-audit/plan/approval record. Manual ride reassignment is tracked separately:
+(Operations Work Queues) 🔒 Founder Approved / Frozen (2026-08-05). Slices
+3-4 (Dispatch Management, Analytics) not yet started — Slice 3 reality
+audit in progress.** See `docs/DPX-OPS-001-REALITY-AUDIT.md` for the full
+backend-capability audit, gap analysis, proposed Phase 1 slice plan, and
+the founder's locked-in refinements — this document stays the scope
+record, that one is the audit/plan/approval record. Manual ride
+reassignment is tracked separately:
 `docs/DPX-RIDE-201-OPERATIONS-MANUAL-DISPATCH.md`.
 
 ## Slice 1 — Live Operations Dashboard (shipped 2026-08-04)
@@ -156,6 +157,32 @@ skipDuplicates: true })` with a follow-up re-read to log each case's
   `operations-cases.service.spec.ts`, up from 10); full backend/SDK/
   operations-console `tsc`/`eslint --max-warnings=0`/`jest`/`vitest`/
   `next build` re-verified clean.
+
+### 🔒 Slice 2 — Founder Approved / Frozen (2026-08-05)
+
+Founder reviewed `docs/DPX-OPS-001-SLICE-2-PRODUCTION-AUDIT.md`'s findings
+(zero launch-blocking, one concurrency defect found and fixed in the same
+pass) and approved freeze in full, verbatim quote: "the final refinement
+closed the important operational gap" — unified `OperationsCase` lifecycle/
+assignment/SLA/timeline across all three queues, Date/Ride/Vehicle
+filtering scoped to what the data genuinely supports, Region deliberately
+deferred rather than fabricated, `IncidentCategory` preserved frozen, queue
+counters + Live Activity Feed, SDK + Console integration, permission
+boundaries, and frozen Ride/Driver boundaries all verified. The founder
+specifically called out the concurrency finding as valuable: "The unique
+case constraint protected the case record, but the duplicate `CREATED`
+timeline-event race could have damaged the integrity of the operational
+audit trail" — exactly what the production audit's concurrency test was
+for.
+
+**Freeze boundary, founder's own words**: "From this point, Slice 2 should
+accept only critical defects/security fixes, performance improvements,
+compliance changes, or explicitly Founder-approved enhancements." The two
+deferred items stay deferred on their own terms, not as an oversight:
+Region filtering waits for a canonical operational geography/zone model;
+Lost & Found/Complaint Escalation belong to a future shared platform
+support/incident architecture, not a reopening of the frozen Driver
+incident model.
 
 Founder-recorded (2026-08-04), alongside
 approval of the Driver Slice 2 freeze: the production audit's one outstanding

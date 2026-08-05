@@ -320,3 +320,19 @@ frozen Driver Slice 2 modules remain completely untouched (§14).
 Per the founder's own governance, this audit does **not** authorize a
 freeze — Slice 2 stays open pending Founder Review, and the module-level
 freeze happens only once Slices 3-4 are built and audited alongside it.
+
+## 🔒 Founder Review — Approved for freeze (2026-08-05)
+
+The founder reviewed this audit's findings and approved Slice 2 for freeze
+in full, specifically calling out the concurrency finding (§15): "The
+unique case constraint protected the case record, but the duplicate
+`CREATED` timeline-event race could have damaged the integrity of the
+operational audit trail. Fixing it and testing both 2-way and 5-way
+concurrent creation against real Postgres is exactly what I wanted from the
+production audit." Freeze boundary from this point: only critical defects/
+security fixes, performance improvements, compliance changes, or explicitly
+founder-approved enhancements land on Slice 2. This is a **slice-level**
+freeze — the module-level freeze for all four Phase 1 slices together still
+awaits Slices 3-4. See `docs/DPX-OPS-001-OPERATIONS-COMMAND-CENTRE.md`'s
+"🔒 Slice 2 — Founder Approved / Frozen" subsection for the full freeze
+record.

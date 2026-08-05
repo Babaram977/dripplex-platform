@@ -42,10 +42,25 @@ subsection for the full detail.
 `docs/DPX-OPS-001-SLICE-2-PRODUCTION-AUDIT.md`. Found and fixed one real
 defect (duplicate `CREATED` timeline events under concurrent lazy case
 creation), verified filters/permissions/SLA/timeline/source-sync/frozen-
-module-boundaries all real, and confirmed zero launch-blocking issues. Per
-the founder's own instruction, this audit does **not** authorize a freeze —
-the module-level production audit + freeze (steps 9-11) happen once Slices
-3-4 are built too.
+module-boundaries all real, and confirmed zero launch-blocking issues.
+
+**Update (2026-08-05, same day): Slice 2 🔒 Founder Approved / Frozen.**
+The founder reviewed the Production Audit and approved Slice 2 for freeze
+— from this point Slice 2 accepts only critical defects/security fixes,
+performance improvements, or explicitly founder-approved enhancements. See
+`docs/DPX-OPS-001-OPERATIONS-COMMAND-CENTRE.md`'s "🔒 Slice 2 — Founder
+Approved / Frozen" subsection for the full freeze record. This is a
+**slice-level** freeze, not the module-level one — steps 9-11's
+module-level production audit + founder approval + freeze still happen
+once all four Phase 1 slices are built, per the founder's own discipline.
+Slice 3 (Dispatch Management) reality audit begins now, per the founder's
+explicit instruction to audit before implementing — see
+`docs/DPX-OPS-001-SLICE-3-REALITY-AUDIT.md` once it exists. The founder's
+standing boundary from `docs/DPX-RIDE-201-OPERATIONS-MANUAL-DISPATCH.md`
+carries forward unchanged into that audit: visibility into live rides/
+assignment/nearby-drivers/ETA is in scope, mutating the frozen Ride
+lifecycle is not, unless the audit identifies a genuinely minimal
+interface need and that comes back for its own founder approval.
 
 **Scope**: Phase 1 (Core Operations) only, per the founder's own phasing —
 Fleet Operations, Emergency Operations, Support Centre, Incident Management,

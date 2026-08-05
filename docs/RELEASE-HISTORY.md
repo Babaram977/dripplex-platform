@@ -495,6 +495,40 @@ founder's own governance ("Do not freeze automatically"), this audit ends
 with a report back to the founder for review, not a freeze — the
 module-level freeze happens once Slices 3-4 are built and audited too.
 
+## 2026-08-05 (same day) — DPX-OPS-001 Slice 2 🔒 Founder Approved / Frozen
+
+Founder reviewed the Production Audit and approved Slice 2 (Operations Work
+Queues) for freeze, verbatim: "the final refinement closed the important
+operational gap" — unified `OperationsCase` lifecycle/assignment/SLA/
+timeline across SOS/Incident/Support, Date/Ride/Vehicle filtering scoped to
+what the underlying data genuinely supports, Region deliberately deferred,
+`IncidentCategory` preserved frozen, queue counters + Live Activity Feed,
+SDK + Console integration, permission boundaries, and frozen Ride/Driver
+boundaries all verified. Full suite at freeze time: 1222 backend tests, 126
+SDK tests, operations-console tests/build all clean, zero launch-blocking
+production-audit findings. The founder specifically named the concurrency
+finding (§15 of the Production Audit — a duplicate `CREATED` timeline-event
+race under concurrent lazy case creation, found and fixed in the same audit
+pass) as "exactly what I wanted from the production audit."
+
+**Freeze boundary** (founder's own words): "From this point, Slice 2 should
+accept only critical defects/security fixes, performance improvements,
+compliance changes, or explicitly Founder-approved enhancements." The
+deferred items stay deferred on their own terms: Region filtering waits for
+a canonical operational geography/zone model; Lost & Found/Complaint
+Escalation belong to a future shared platform support/incident
+architecture, not a reopening of the frozen Driver incident model. This is
+a **slice-level** freeze — the module-level freeze for all four Phase 1
+slices happens once Slices 3-4 are built and audited too.
+
+**Proceeding to Slice 3 — Dispatch Management**, reality-audit-first per
+the founder's own instruction, with the standing `docs/DPX-RIDE-201-
+OPERATIONS-MANUAL-DISPATCH.md` boundary carried forward unchanged: live
+ride/assignment/nearby-driver/ETA visibility is in scope, mutating the
+frozen Ride lifecycle is not — a genuine minimal-interface need, if the
+audit finds one, comes back for its own founder approval rather than
+quietly modifying Ride.
+
 ---
 
 ## What's next
