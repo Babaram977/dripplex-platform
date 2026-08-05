@@ -284,3 +284,89 @@ This decision supersedes §6's Phase 3 framing above only insofar as Phase 3
 is now explicitly on hold pending individual review of each item, not a
 single approvable package. §6 is left as originally written (the audit's
 own proposal) with this section recording what was actually approved.
+
+## 9. Phase 2 pre-work: the merchant activation gate, read directly
+
+Founder's requirement: know exactly what must be true before a merchant
+becomes ACTIVE and can receive real customer orders — do not invent
+conditions, and report honestly if no unified gate exists. It doesn't.
+Unlike Driver (`DriverActivationService`, a single named service
+`DPX-DRIVER-*` docs point to), Merchant's gate is inline logic split
+across three independent files with no single source of truth:
+
+1. **`MerchantsService.approveMerchant()`** (`apps/backend/src/merchants/
+merchants.service.ts:538`) — the admin-side approval check. Reads
+   exactly two conditions, nothing else:
+   - A `Business` profile must exist (`ValidationDomainException` if not).
+   - The merchant's latest `MerchantKyc` document must have
+     `verificationStatus === VERIFIED` (`ValidationDomainException` if
+     not, checked against `detail.kycDocuments[0]` — the newest one only).
+
+   On pass, it sets `MerchantProfile.status = APPROVED`,
+   `Business.status = ACTIVE`, `Business.verificationStatus = VERIFIED`,
+   `MerchantOnboarding.status = APPROVED` — all in one transaction. There
+   is no check here for a bank account, a minimum published-product count,
+   business-address completeness, or anything else — those are simply not
+   part of the gate.
+
+2. **`CheckoutService.assertMerchantApproved()`** (`apps/backend/src/
+orders/checkout.service.ts:512`) — the actual "can receive a real
+   order" enforcement point, checked per-merchant at checkout time (not
+   any earlier). Blocks with `ValidationDomainException` unless
+   `MerchantProfile.status === APPROVED`. This is where "ACTIVE and
+   receiving real customer orders" is genuinely enforced — everything
+   upstream of it (product creation, publishing) has no such check.
+
+3. **`CustomerMerchantsService`**'s browse/search/detail queries
+   (`apps/backend/src/merchants/customer/customer-merchants.service.ts`)
+   filter to `Business.status === ACTIVE AND MerchantProfile.isApproved
+=== true`. An unapproved merchant's storefront is simply invisible to
+   customers — they'd never reach checkout for it in the first place.
+
+**What is genuinely not required, confirmed by absence, not assumption:**
+
+- **Bank account**: `createBankAccount`/`listBankAccounts` are entirely
+  optional self-service actions with no caller anywhere checking their
+  existence before approval or before checkout. A merchant can be
+  APPROVED and fulfilling paid orders with zero bank accounts on file.
+- **Minimum catalog**: nothing requires at least one published product
+  before approval — an approved merchant with an empty catalog is valid
+  state, just commercially inert until they publish something.
+- **Identity verification** (`assertIdentityVerified` —
+  `user.emailVerifiedAt`/`phoneVerifiedAt`) is checked once, at
+  `createBusiness`/`submitKyc` time (i.e., before a `Business` row can
+  even exist), not re-checked at `approveMerchant` time. In practice this
+  makes it a precondition to reaching step 1's gate rather than part of
+  the gate itself.
+
+**A materially more important finding, found while tracing this path**:
+grepping `apps/backend/src/orders`, `apps/backend/src/payments`, and
+`apps/backend/src/wallet` for any merchant-wallet-crediting call
+(`WalletOwnerType.MERCHANT` used as a credit target, or any
+`OrderSettlement`/`MerchantSettlement` model in `schema.prisma`) returns
+**zero results**. Ride has a real settlement service
+(`RideSettlementService`, DPX-CORE-003 predecessor work) that splits fare
+into a commission split and credits the driver's wallet through a
+clearing-house pattern. **No equivalent exists for Marketplace orders.**
+`GET /merchant/wallet` (§3's "settlements/earnings" row) is a real,
+correctly-wired read endpoint — but nothing in the codebase ever deposits
+money into a merchant's wallet from a paid order. A fully approved
+merchant, fulfilling paid orders end-to-end through the real
+`MerchantOrdersController` lifecycle Phase 1 just wired into the SDK,
+would see their wallet balance stay at zero throughout. This corrects
+§3's "settlements/earnings: Partial (balance real; no earnings breakdown
+view)" row — the gap is not the missing breakdown view, it's that the
+underlying revenue-crediting mechanism does not exist at all. Building a
+merchant-facing Wallet/Earnings screen in Phase 2 would therefore show a
+technically-real but permanently-empty number; the screen should say so
+honestly (a documented capability gap per the DPX-100 gate's "missing
+backend capabilities are documented, never faked" rule) rather than imply
+earnings are being tracked.
+
+This is a new finding, not raised in the original Phase 3 proposal (§6),
+and not one of the four items the founder's scope decision (§8) already
+addressed. It is not itself a Phase 3 item (branches/promotions/staff/
+support) — it's a hole in a capability (settlements/earnings) already
+classified "Partial" and put in Phase 2. Flagging it here rather than
+silently building around it, per the standing "don't fabricate backend
+capabilities" instruction.
