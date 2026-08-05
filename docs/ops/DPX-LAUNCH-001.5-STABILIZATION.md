@@ -194,7 +194,119 @@ tracks samples taken across the stabilization window.
 
 _(Appended to as further samples are taken across the window.)_
 
-## 7. Still queued for the founder
+## 6a. Log & error review (2026-08-05, ~21:30 UTC)
+
+Founder's follow-up review asked to continue "log review, error
+review, resource trends, deployment confidence." Deployment confidence
+and resource trends are §6 above; this is the log/error half:
+
+- **Deployment confidence**: `get-status` across all 9 services in
+  `production` — every one (`customer-web`, `backend`,
+  `customer-mobile`, `admin-portal`, `driver-portal`, `Postgres`,
+  `Redis`, `merchant-portal`, `operations-console`) shows its latest
+  deployment as `SUCCESS`. No service in a degraded or crashed state.
+- **Backend deploy logs, filtered for `error`**: zero matching lines
+  on the current live deployment (`adb2a2c5`). Not "errors were
+  suppressed" — genuinely nothing matched.
+- **Backend HTTP (proxy request) logs**: zero entries in the queried
+  window. Read plainly, not spun: this isn't "clean under load," it's
+  "no load yet" — consistent with §1/§6's "no real user traffic"
+  baseline. A log/error review with no traffic can only prove the
+  platform is quiet, not that it's resilient; that second claim still
+  needs real traffic (or a deliberate synthetic load) to test, which is
+  out of scope for a no-credential stabilization pass.
+- **Conclusion**: nothing anomalous found. This is a clean result, not
+  a null result — the absence of both errors and traffic is itself the
+  honest finding for this point in the window.
+
+## 7. Founder decisions recorded (2026-08-05, second review round)
+
+Following review of the rollback drill, backup feasibility finding,
+and observation samples above, the founder made the following calls
+verbatim:
+
+> Backup strategy — Short term: Railway's managed backup and restore
+> process. Medium term: Build an automated `pg_dump` service that runs
+> inside Railway and stores encrypted backups in external object
+> storage.
+>
+> CORS_ORIGINS — Before enabling additional integrations, define the
+> production origins explicitly. Avoid wildcard configurations in
+> production. List each application domain intentionally.
+>
+> Production credentials — introduce in this order: 1. Payment
+> gateway. 2. Maps. 3. Firebase notifications. 4. Sentry. 5. Smile ID.
+> That order aligns with customer-facing impact.
+>
+> Custom domains — don't rush this if Railway's generated domains are
+> stable. Complete the stabilization window first, then move production
+> traffic to custom domains after you're satisfied with operational
+> behavior.
+>
+> What I would not do — interrupt this stabilization period to start
+> large new feature work immediately... Current: Launch Track 1.5.
+> Continue: Daily observations, Log review, Error review, Resource
+> trends, Deployment confidence. When the stabilization window
+> completes: move into DPX-RIDE-001 — Ride Reality Audit, only after
+> confirming the current platform remains stable over the observation
+> period.
+
+**What this settles:**
+
+- The backup approach is decided in principle (Railway-managed first,
+  in-project `pg_dump` + encrypted offsite storage second). Execution
+  of either still needs something this session doesn't have: Railway
+  dashboard access for the short-term option, or external object-storage
+  credentials (and an encryption-key decision) for the medium-term
+  one — so both stay in §8 below as founder-dependent, now with a
+  decided shape instead of an open question.
+- The credential rollout order (payment → maps → Firebase → Sentry →
+  Smile ID) is recorded for when the founder supplies each one — no
+  code change needed to act on this, it's a sequencing decision for
+  founder handoff, not an engineering task.
+- Custom domains: confirmed non-blocking, deferred until after
+  stabilization, consistent with Launch Track 1's original framing.
+- Ride Reality Audit: confirmed still gated on stabilization
+  completing — not started, not scheduled to start from this decision
+  alone.
+
+## 7a. CORS_ORIGINS — proposed value (drafted, NOT applied)
+
+The founder's guidance ("list each application domain intentionally,
+avoid wildcards") is actionable right now using data this session
+already has — the live Railway-generated domains for every currently
+deployed frontend, pulled directly via `list-domains` (not guessed):
+
+| Service              | Domain                                                                                                               | In proposal?                                                            |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `customer-web`       | `dripplexcustomer-web-production.up.railway.app`                                                                     | Yes                                                                     |
+| `admin-portal`       | `dripplexadmin-portal-production.up.railway.app`                                                                     | Yes                                                                     |
+| `driver-portal`      | `dripplexdriver-portal-production.up.railway.app`                                                                    | Yes                                                                     |
+| `merchant-portal`    | `dripplexmerchant-portal-production.up.railway.app`                                                                  | Yes                                                                     |
+| `operations-console` | `dripplexoperations-console-production.up.railway.app`                                                               | Yes                                                                     |
+| `rider-portal`       | not deployed yet                                                                                                     | No — nothing to allow yet                                               |
+| `customer-mobile`    | live, but a misconfigured stray duplicate of `customer-web` (flagged in Launch Track 1 §D.3, never fixed or deleted) | No — would just extend an already-flagged problem into the CORS surface |
+
+Proposed value (HTTPS, five origins, no wildcard):
+
+```
+https://dripplexcustomer-web-production.up.railway.app,https://dripplexadmin-portal-production.up.railway.app,https://dripplexdriver-portal-production.up.railway.app,https://dripplexmerchant-portal-production.up.railway.app,https://dripplexoperations-console-production.up.railway.app
+```
+
+**This is a draft, not applied.** The founder's earlier explicit
+instruction stands: "Since Railway redacts the current value, do not
+overwrite it. Leave it unchanged until I provide the existing value or
+update it directly in Railway." This proposal exists so that whenever
+the founder does share the current value (or authorizes an overwrite),
+the actual comparison/merge work is already done instead of starting
+from scratch — and separately flags that `customer-mobile`'s stray
+config should probably be resolved (fixed or deleted) before or
+alongside any CORS change, since leaving it as-is means either
+excluding a live service from CORS (fine, it's not meant to be
+customer-facing) or having to explain its presence if it's ever
+included by mistake.
+
+## 8. Still queued for the founder
 
 - `CORS_ORIGINS` current value — needed to safely append driver-portal's
   domain without dropping what's already there; this session's Railway
