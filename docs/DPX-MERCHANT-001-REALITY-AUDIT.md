@@ -509,3 +509,60 @@ validated update, audit log — the same pattern already established for
 at settlement-calculation time and snapshotted permanently into the
 `OrderSettlement` row it produces, never re-read for an already-created
 settlement.
+
+## 13. Founder Review and Freeze (2026-08-05)
+
+Phase 2 completed in full: Incoming Orders, Business Profile, Onboarding/
+KYC, Wallet & Bank, Reviews, Notifications, Analytics + Store Controls
+(DPX-MERCHANT-007 through -010), and the Home/Overview dashboard
+(DPX-MERCHANT-014, closing task #381 — the one gap DPX-MERCHANT-013 found
+in module completeness). The founder's locked module-completion sequence
+then ran to its end: full E2E verification of the order lifecycle
+(DPX-MERCHANT-011, 65/65 assertions, four genuine findings documented, none
+blocking), a security review (DPX-MERCHANT-012, live cross-merchant attack
+simulation, 28/28 assertions, zero findings), and a production audit
+(DPX-MERCHANT-013, three findings — one closed by building Home/Overview,
+two carried forward as non-blocking).
+
+The founder then issued **Founder Review — DPX-MERCHANT-001 Phase 2**,
+outcome **Approved**, recorded verbatim:
+
+> Founder Decision
+> 🔒 DPX-MERCHANT-001 — Merchant Module — Approved & Frozen
+>
+> The final Home/Overview implementation closes the one remaining
+> functional gap that prevented the Merchant Portal from feeling like a
+> complete merchant operating system. The implementation respected the
+> constraints I consider non-negotiable: no backend changes, no SDK
+> changes, no schema changes, no modification of Figma-locked/shared DDS
+> components, existing APIs reused only, existing design language
+> maintained, existing permissions reused, no scope expansion. That
+> satisfies the project's Figma Protection Rule — no redesign has
+> occurred. From the complete Merchant work so far — Reality Audit, SDK
+> corrections, Incoming Orders, Business Profile, KYC, Wallet & Bank,
+> Reviews, Notifications, Analytics, Store Controls, Home Dashboard, E2E
+> Verification, Security Review, Production Audit — the module now
+> follows the same governance standard used for Driver and Operations.
+>
+> Apply the standard freeze policy: Critical security fixes only,
+> Critical defect fixes only, Performance improvements, Compliance
+> updates, Explicit Founder-approved enhancements. No routine feature
+> additions.
+
+**Remaining items**, explicitly classified by the founder as non-blocking
+and carried forward rather than holding the freeze:
+
+- The `stock-status` SDK/UI gap (DPX-MERCHANT-013 §9 finding #2, low
+  severity — an indirect workaround already exists).
+- The merchant-portal entry in `docs/ops/PRODUCTION-RAILWAY.md`
+  (DPX-MERCHANT-013 §9 finding #3) — to be completed as part of
+  platform-wide production deployment work before Ride launch, not as
+  Merchant-module-specific work.
+
+With this, **DPX-MERCHANT-001 is 🔒 Approved & Frozen**, joining Wallet,
+Marketplace, Ride, Driver, and Operations as a frozen production module.
+Per the founder's roadmap, remaining work now continues under
+DPX-COMMERCIAL-001 and Ride launch readiness. See `docs/RELEASE-HISTORY.md`
+for the consolidated freeze entry and `docs/DPX-100-MODULE-COMPLETION-
+GATE.md`'s "Applying it retroactively" section for how this module maps to
+the gate.

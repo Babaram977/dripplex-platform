@@ -983,9 +983,84 @@ UI, not just the service layer.
 
 ---
 
+## 2026-08-05 (same day) — 🔒 DPX-MERCHANT-001 — Merchant Module — Founder Approved & Frozen
+
+Phase 2 finished with the Home/Overview dashboard (task #381,
+`docs/DPX-MERCHANT-014-HOME-OVERVIEW-SCREEN.md`) — the founder approved
+replacing the stale Phase 1 product-counter page with a real merchant
+daily dashboard (today's orders by status, revenue, wallet balance, unread
+notifications, store status, recent reviews, quick actions), composed
+entirely from existing backend/SDK capability under two locked constraint
+passes: no new backend APIs/schema/SDK/business logic, and full DDS
+compliance (no Figma-locked/shared component or layout changes — no
+recovered Merchant Figma export exists, confirmed three independent ways
+in `docs/DPX-MERCHANT-001-REALITY-AUDIT.md` §1, so the module is
+DDS-composed like Driver Slice 1/2 under the same condition). Only one
+file changed (`apps/merchant-portal/src/app/(dashboard)/page.tsx`),
+confirmed via `git diff --stat`.
+
+The founder's locked module-completion sequence then ran to close:
+
+- **E2E verification** (`docs/DPX-MERCHANT-011-ORDER-LIFECYCLE-E2E.md`):
+  full order lifecycle across 9 phases, 65/65 assertions, four genuine
+  findings documented (fire-and-forget domain events needing explicit
+  `drain()`; merchants receive no in-app order-lifecycle notifications,
+  email-only; no rider-facing notifications route exists at all; review
+  moderation gate is correct but has no admin-console login route to
+  drive it via real HTTP) — none blocking.
+- **Security review** (`docs/DPX-MERCHANT-012-SECURITY-REVIEW.md`): a
+  live two-merchant cross-attack simulation — no-auth, wrong-role,
+  cross-merchant IDOR against products/orders/bank-accounts, list
+  scoping, input validation — 28/28 assertions passed, **zero findings**.
+- **Production audit** (`docs/DPX-MERCHANT-013-PRODUCTION-AUDIT.md`):
+  module completeness, SDK coverage, portal coverage, documentation,
+  performance, error handling, production readiness. Corrected an
+  inaccurate "Phase 2 build complete" claim in DPX-MERCHANT-010 (Home/
+  Overview was actually still the stale Phase 1 page — the gap this
+  freeze round closed) and its own mistaken citation of the parked
+  Coolify doc instead of the canonical `docs/ops/PRODUCTION-RAILWAY.md`
+  (caught and corrected in the same session the founder reaffirmed
+  Railway as canonical). Three findings total: Home/Overview (closed
+  pre-freeze), `stock-status` SDK/UI gap (low severity, non-blocking),
+  merchant-portal missing from `PRODUCTION-RAILWAY.md` (non-blocking,
+  deferred to platform-wide Railway production-readiness work before
+  Ride launch).
+- **Home/Overview addendum**
+  (`docs/DPX-MERCHANT-014-HOME-OVERVIEW-SCREEN.md`): folded the new
+  screen into the trilogy above rather than reopening it — 26/26
+  additional E2E assertions against the exact endpoints/params the
+  screen calls (simultaneous status counts, single-day analytics range,
+  `unreadOnly` filter, both Business branches), zero new security
+  surface (every data source already covered by DPX-MERCHANT-012).
+
+The founder then issued **Founder Review — DPX-MERCHANT-001 Phase 2**,
+outcome **Approved**, confirming the constraints held (no backend/SDK/
+schema changes, no Figma-locked/shared DDS component changes, existing
+APIs/permissions/design language reused only, no scope expansion — "only
+one portal page changed is exactly what I wanted to see") and issuing:
+
+> 🔒 DPX-MERCHANT-001 — Merchant Module — Approved & Frozen
+>
+> Apply the standard freeze policy: Critical security fixes only, Critical
+> defect fixes only, Performance improvements, Compliance updates,
+> Explicit Founder-approved enhancements. No routine feature additions.
+
+The `stock-status` SDK/UI gap and the merchant-portal `PRODUCTION-RAILWAY.md`
+entry were both explicitly classified non-blocking and carried forward
+rather than holding the freeze — the latter to be completed as part of
+platform-wide Railway production-readiness work before Ride launch (scope
+already locked in `docs/ops/PRODUCTION-RAILWAY.md`).
+
+**Project status at this milestone**: Wallet, Marketplace, Ride, Driver,
+Operations, and now **Merchant** are all 🔒 Founder Approved & Frozen.
+Per the founder's roadmap, remaining work continues under
+DPX-COMMERCIAL-001 and Ride launch readiness.
+
+---
+
 ## What's next
 
-The R1.7/R1.8 commerce-completion plan below was superseded by the DPX-100 initiative above — Marketplace's commerce loop (cart/checkout/order/payment UI) shipped as part of that port, not as R1.7/R1.8 specifically. What's actually still open, per each module's own audit doc: the Driver module's Figma-ported UI (including onboarding/vehicle/inspection/Slice 2 — all backend-real, Slice 1 and Slice 2 both frozen, see above) (`docs/DRIVER-APP-DPX-100-AUDIT.md`); reconciling the Railway-vs-Coolify production-infrastructure question above (`operations-console` now has a documented deploy recipe on both, but no live service on either yet — see `docs/ops/PRODUCTION-RAILWAY.md`); and Merchant, currently in progress (Phase 1 SDK repairs and DPX-MERCHANT-002 settlement shipped, Phase 2 portal UI still open — see `docs/DPX-MERCHANT-001-REALITY-AUDIT.md`), followed by Orders/Admin/AI in the founder's module ordering per `docs/DPX-100-MODULE-COMPLETION-GATE.md`. `docs/DPX-OPS-001-OPERATIONS-COMMAND-CENTRE.md` — previously listed here as the founder's named next focus — is now 🔒 Founder Approved & Frozen (see above), no longer open work.
+The R1.7/R1.8 commerce-completion plan below was superseded by the DPX-100 initiative above — Marketplace's commerce loop (cart/checkout/order/payment UI) shipped as part of that port, not as R1.7/R1.8 specifically. What's actually still open, per each module's own audit doc: the Driver module's Figma-ported UI (including onboarding/vehicle/inspection/Slice 2 — all backend-real, Slice 1 and Slice 2 both frozen, see above) (`docs/DRIVER-APP-DPX-100-AUDIT.md`); the Railway-specific pre-Ride-launch production readiness checklist locked in `docs/ops/PRODUCTION-RAILWAY.md` (backend, customer-web, driver-portal, merchant-portal, operations-console, env vars/secrets, Postgres/Redis connectivity, health/readiness endpoints, domain/SSL, monitoring/logging, build/start verification, rollback procedure — not yet started); and DPX-COMMERCIAL-001, the commercial system work now resuming per the founder's locked sequencing now that Merchant is frozen (see above and `docs/DPX-MERCHANT-001-REALITY-AUDIT.md`), followed by Orders/Admin/AI in the founder's module ordering per `docs/DPX-100-MODULE-COMPLETION-GATE.md`. `docs/DPX-OPS-001-OPERATIONS-COMMAND-CENTRE.md` and `docs/DPX-MERCHANT-001-REALITY-AUDIT.md` — previously listed here as open work — are now both 🔒 Founder Approved & Frozen (see above).
 
 <details>
 <summary>Original 2026-07-28 "what's next" (superseded, kept for the record)</summary>

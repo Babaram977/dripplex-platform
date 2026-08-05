@@ -126,6 +126,25 @@ A module is not "done" until all ten are true:
   SOS/incident/support/shift queues this slice built) was accepted as
   correctly out of scope and recorded as a new future module,
   `docs/DPX-OPS-001-OPERATIONS-COMMAND-CENTRE.md`, not a reopening.
+- **Merchant** (Reality Audit, Phase 1 SDK repairs, DPX-MERCHANT-002
+  Settlement, Phase 2 portal screens including Home/Overview): same
+  Figma-first scope note as Driver Slice 1/2 — no Merchant module exists
+  in the recovered Figma Make export (confirmed three independent ways,
+  `docs/DPX-MERCHANT-001-REALITY-AUDIT.md` §1), so items 1-2/7-8 are
+  satisfied via DDS composition rather than Figma port, per the founder's
+  explicit "stop referring to Merchant work as Figma parity" ruling. Items
+  3-6 and 9 met across `docs/DPX-MERCHANT-011-ORDER-LIFECYCLE-E2E.md`
+  (65/65 assertions), `docs/DPX-MERCHANT-012-SECURITY-REVIEW.md` (live
+  cross-merchant attack simulation, 28/28 assertions, zero findings), and
+  `docs/DPX-MERCHANT-013-PRODUCTION-AUDIT.md` (production audit, three
+  findings, one closed pre-freeze, two carried forward non-blocking); the
+  Home/Overview screen specifically verified in
+  `docs/DPX-MERCHANT-014-HOME-OVERVIEW-SCREEN.md`; **frozen** per founder
+  direction (2026-08-05, see `docs/RELEASE-HISTORY.md`). Two non-blocking
+  items were explicitly carried forward rather than reopening the module:
+  the `stock-status` SDK/UI gap (low severity), and the merchant-portal
+  entry in `docs/ops/PRODUCTION-RAILWAY.md` (deferred to platform-wide
+  Railway production-readiness work before Ride launch).
 
 ## Notes for whoever runs the next module through this gate
 

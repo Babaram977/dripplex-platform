@@ -208,3 +208,33 @@ Present this audit, DPX-MERCHANT-011 (E2E), and DPX-MERCHANT-012
 (security review) for **Founder Review**. Pending that review and a
 decision on §9's three items, freeze the Merchant module and resume
 DPX-COMMERCIAL-001 per the founder's locked sequencing.
+
+## 11. 🔒 Founder Approved & Frozen (2026-08-05)
+
+§9's finding #1 (Home/Overview stale) was closed before Founder Review —
+the founder approved building the real screen (task #381), locked design
+constraints (DDS-composed, no Figma-locked/shared component changes) and
+implementation constraints (no new backend/SDK/schema, existing endpoints
+only), and the result was folded into this module's E2E/security/audit
+trilogy as `docs/DPX-MERCHANT-014-HOME-OVERVIEW-SCREEN.md`. Findings #2
+(`stock-status` SDK/UI gap) and #3 (merchant-portal not yet in
+`PRODUCTION-RAILWAY.md`) were reviewed and explicitly classified
+non-blocking by the founder — #3 deferred to platform-wide Railway
+production-readiness work before Ride launch (tracked, see
+`docs/ops/PRODUCTION-RAILWAY.md`), #2 deferred as a low-severity,
+non-urgent enhancement.
+
+The founder then issued Founder Review — DPX-MERCHANT-001 Phase 2, outcome
+**Approved**, and:
+
+> 🔒 DPX-MERCHANT-001 — Merchant Module — Approved & Frozen
+>
+> Apply the standard freeze policy: Critical security fixes only, Critical
+> defect fixes only, Performance improvements, Compliance updates,
+> Explicit Founder-approved enhancements. No routine feature additions.
+
+This production audit, together with DPX-MERCHANT-011 (E2E),
+DPX-MERCHANT-012 (security review), and DPX-MERCHANT-014 (Home/Overview
+addendum), is the closing record of Merchant Phase 2. No further findings
+in this document are open. See `docs/DPX-MERCHANT-001-REALITY-AUDIT.md`
+§13 and `docs/RELEASE-HISTORY.md` for the consolidated freeze record.
