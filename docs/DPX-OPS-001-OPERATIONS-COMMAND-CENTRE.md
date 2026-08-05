@@ -8,19 +8,18 @@ Operations Dashboard, 2026-08-04), Slice 2 (Operations Work Queues,
 audit across all four together (`docs/DPX-OPS-001-MODULE-PRODUCTION-AUDIT.md`)
 are complete. That audit's 2 findings (case-update concurrency,
 `operations-console` deployment path) were ruled Must-fix before freeze,
-closed (optimistic concurrency + real-Postgres concurrent test; Dockerfile
-
-- Railway/Coolify runbook), and the founder issued final approval — see
-  that document's "🔒 Founder Approved & Frozen" section for the verbatim
-  decision. From here, DPX-OPS-001 accepts only critical security/defect
-  fixes, performance/compliance work, or explicitly Founder-approved
-  enhancements. See
-  `docs/DPX-OPS-001-REALITY-AUDIT.md` for the full backend-capability audit,
-  gap analysis, proposed Phase 1 slice plan, and the founder's locked-in
-  refinements — this document stays the scope record, that one is the
-  audit/plan/approval record. Manual ride reassignment is tracked separately:
-  `docs/DPX-RIDE-201-OPERATIONS-MANUAL-DISPATCH.md` — Slice 3 shipped that
-  document's visibility half only; the action half stays deferred.
+closed (optimistic concurrency plus a real-Postgres concurrent test, and a
+new Dockerfile plus Railway/Coolify runbook), and the founder issued final
+approval — see that document's "🔒 Founder Approved & Frozen" section for
+the verbatim decision. From here, DPX-OPS-001 accepts only critical
+security/defect fixes, performance/compliance work, or explicitly
+Founder-approved enhancements. See
+`docs/DPX-OPS-001-REALITY-AUDIT.md` for the full backend-capability audit,
+gap analysis, proposed Phase 1 slice plan, and the founder's locked-in
+refinements — this document stays the scope record, that one is the
+audit/plan/approval record. Manual ride reassignment is tracked separately:
+`docs/DPX-RIDE-201-OPERATIONS-MANUAL-DISPATCH.md` — Slice 3 shipped that
+document's visibility half only; the action half stays deferred.
 
 **🔒 Standing instruction — read before touching `packages/ui`:**
 `docs/DPX-OPS-001-FIGMA-PROTECTION-RULE.md` (founder, 2026-08-05). All
