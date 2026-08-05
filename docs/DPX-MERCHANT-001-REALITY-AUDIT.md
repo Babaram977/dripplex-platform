@@ -440,3 +440,72 @@ backend-real portal screens proceed now; DPX-MERCHANT-002 (settlement) is
 tracked and built as a parallel, explicitly-scoped workstream; the Wallet/
 Earnings screen and the overall DPX-MERCHANT-001 freeze are both blocked
 on DPX-MERCHANT-002's completion, not on each other.
+
+## 11. DPX-MERCHANT-002 commission-base data-model gap — found, resolved
+
+Tracing the founder's settlement formula against real code hit exactly the
+kind of gap the founder pre-empted: `Order.discount` is a single flat
+number with **no stored link back to which `Promotion`(s) produced it**.
+Worse — `CheckoutService.checkout()` emits a `COUPON_REDEEMED` domain event
+on order creation, but the handler meant to record it,
+`PromotionsService.handleCouponRedeemed()` (`apps/backend/src/promotions/
+promotions.service.ts:1341`), is a **dead no-op stub** — `return undefined`
+and nothing else. No `PromotionRedemption` row, no `Promotion.usageCount`
+increment, nothing traceable to a `promotionId` is ever created from a real
+Marketplace checkout. (A real, working `redeem()`/`redeemForReference()`
+path exists in the same service, but checkout never calls it — this is a
+genuine pre-existing defect in frozen Marketplace code, flagged here
+honestly but **not fixed** under DPX-MERCHANT-002, which does not touch
+Checkout/Promotions.)
+
+Reported to the founder per the "stop and report" instruction, along with
+the reasoning that resolves it without a schema change: merchant
+self-service promotions don't exist yet (Phase 3, on hold), so every
+`Order.discount` that exists today is definitionally platform-funded —
+there is no other kind. The founder's own rule ("platform-funded
+promotions must not reduce merchant earnings") therefore makes
+`order.subtotal` (unreduced by discount) the correct commission base
+today, with no risk of shortchanging a merchant. Founder confirmed this
+(2026-08-05) and additionally amended the commission rate itself from a
+fixed 10% to an **admin-configurable commercial setting**, recorded in
+full in §12.
+
+## 12. Founder Amendment: configurable merchant commission (2026-08-05)
+
+Recorded verbatim:
+
+> The approved 10% merchant commission is the launch/default rate, not a
+> permanently hard-coded rate. Implement merchant commission as an
+> admin-configurable platform setting.
+>
+> Requirements: default merchant commission 10%; an authorized
+> Admin/Super Admin can change the commission rate; changing the rate must
+> not require a code deployment; every commission-rate change must be
+> audit logged with previous rate, new rate, changed by, timestamp; each
+> `OrderSettlement` must store the actual commission rate applied to that
+> specific order so historical settlements never change when the platform
+> rate is changed later; a commission change applies only according to a
+> clearly defined effective-time rule and must never retroactively
+> recalculate already-created/finalized settlements; settlement records
+> should retain at minimum commission base, commission rate applied,
+> platform commission amount, merchant settlement amount, and settlement
+> status; continue using `order.subtotal` as the current commission base
+> since current promotions are platform-funded; keep the mandatory future
+> policy revisit for merchant-funded promotions; protect commission-setting
+> changes with appropriate RBAC and audit logging.
+>
+> Do not use Ride's hard-coded 15% constant as the architecture for
+> Merchant. DPX-MERCHANT-002 should establish the configurable pattern so
+> the merchant commercial rate can evolve without changing settlement
+> history. The initial production configuration is 10%. Do not expand this
+> into dynamic/category/merchant-specific commissions unless separately
+> Founder-approved — later, different rates by merchant, category, city,
+> promotional period, or merchant tier can be separately approved, but
+> DPX-MERCHANT-002 shouldn't introduce that complexity yet.
+
+Design consequence: a `MerchantCommissionSetting` singleton (get-or-create,
+validated update, audit log — the same pattern already established for
+`DriverSecuritySettings`, `docs/DPX-DRIVER-001-SECURITY-STANDARD.md`), read
+at settlement-calculation time and snapshotted permanently into the
+`OrderSettlement` row it produces, never re-read for an already-created
+settlement.
