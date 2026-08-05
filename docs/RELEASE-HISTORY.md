@@ -1056,11 +1056,59 @@ Operations, and now **Merchant** are all 🔒 Founder Approved & Frozen.
 Per the founder's roadmap, remaining work continues under
 DPX-COMMERCIAL-001 and Ride launch readiness.
 
+## 2026-08-05 (same day) — DPX-COMMERCIAL-001 Slices 1-6 shipped: the shared commercial engine
+
+The shared commission credit engine spanning Marketplace merchants and
+Ride drivers, built slice-by-slice against real Postgres with founder
+review at every gate (`docs/DPX-COMMERCIAL-001-REVENUE-SETTLEMENT-CREDIT-POLICY.md`):
+
+- **Slice 1 — Foundation**: `CommissionAccount`/`CommissionLedgerEntry`
+  schema, `CommercialCreditSettingsService`, `CommissionAccountService`
+  (accrual/payment/blocking primitives), admin-manual payment recording.
+  `docs/DPX-COMMERCIAL-001-SLICE-1-FOUNDATION.md`.
+- **Slice 2 — Marketplace Mode B**: real accrual wiring for "Pay to
+  Merchant" settlements plus automatic deduction from Mode A
+  settlements. `docs/DPX-COMMERCIAL-001-SLICE-2-MODE-B.md`.
+- **Slice 3 — Marketplace Cash on Delivery correction**: rider
+  cash-confirmation endpoint, corrected COD settlement direction and
+  commission accrual. `docs/DPX-COMMERCIAL-001-SLICE-3-COD-CORRECTION.md`,
+  `docs/DPX-COMMERCIAL-001-SLICE-3-CASH-FLOW-VERIFICATION.md`.
+- **Slice 4 — Ride Cash correction**: driver commission accrual on cash
+  confirmation, automatic "cannot go Online while blocked" enforcement.
+  `docs/DPX-COMMERCIAL-001-SLICE-4-RIDE-CASH.md`,
+  `docs/DPX-COMMERCIAL-001-SLICE-4-CASH-FLOW-VERIFICATION.md`.
+- **Slice 5 — Commercial Visibility**: read-only commercial-visibility
+  cards on the existing Merchant Portal (Wallet & Bank page) and Driver
+  Portal (Earnings page), plus the Admin Portal's first real nav shell
+  and a `/commercial` dashboard (credit-limit monitoring,
+  merchant/driver account picker, ledger, manual-payment recording). No
+  accrual/blocking/payment behavior changed.
+  `docs/DPX-COMMERCIAL-001-SLICE-5-COMMERCIAL-VISIBILITY.md`,
+  `docs/DPX-COMMERCIAL-001-SLICE-5-COMMERCIAL-RECONCILIATION.md` (real-
+  Postgres proof that commission accrued/paid, outstanding balance,
+  available credit, and blocked/unblocked status reconcile exactly
+  against the ledger and account, for representative Merchant and
+  Driver scenarios).
+- **Slice 6 — Completion**: end-to-end lifecycle verification (new
+  `commercial-lifecycle.e2e.spec.ts`, cumulative cross-payment-method
+  scenarios for both a Merchant and a Driver account), a full security
+  review (no authorization bypass, data-isolation failure, or unaudited
+  write path found), a production audit (three honest, non-blocking
+  operational-maturity findings), and the Platform Commercial Readiness
+  Matrix. `docs/DPX-COMMERCIAL-001-SLICE-6-COMPLETION.md`,
+  `docs/DPX-COMMERCIAL-001-PRODUCTION-AUDIT.md`.
+
+Every slice landed with founder review at the gate; the founder
+approved Slices 1-5 individually and authorized each next slice in
+turn. Per the founder's explicit instruction, Slice 6 does **not**
+freeze DPX-COMMERCIAL-001 automatically — returned for final founder
+review before the module is considered for freeze.
+
 ---
 
 ## What's next
 
-The R1.7/R1.8 commerce-completion plan below was superseded by the DPX-100 initiative above — Marketplace's commerce loop (cart/checkout/order/payment UI) shipped as part of that port, not as R1.7/R1.8 specifically. What's actually still open, per each module's own audit doc: the Driver module's Figma-ported UI (including onboarding/vehicle/inspection/Slice 2 — all backend-real, Slice 1 and Slice 2 both frozen, see above) (`docs/DRIVER-APP-DPX-100-AUDIT.md`); the Railway-specific pre-Ride-launch production readiness checklist locked in `docs/ops/PRODUCTION-RAILWAY.md` (backend, customer-web, driver-portal, merchant-portal, operations-console, env vars/secrets, Postgres/Redis connectivity, health/readiness endpoints, domain/SSL, monitoring/logging, build/start verification, rollback procedure — not yet started); and DPX-COMMERCIAL-001, the commercial system work now resuming per the founder's locked sequencing now that Merchant is frozen (see above and `docs/DPX-MERCHANT-001-REALITY-AUDIT.md`), followed by Orders/Admin/AI in the founder's module ordering per `docs/DPX-100-MODULE-COMPLETION-GATE.md`. `docs/DPX-OPS-001-OPERATIONS-COMMAND-CENTRE.md` and `docs/DPX-MERCHANT-001-REALITY-AUDIT.md` — previously listed here as open work — are now both 🔒 Founder Approved & Frozen (see above).
+The R1.7/R1.8 commerce-completion plan below was superseded by the DPX-100 initiative above — Marketplace's commerce loop (cart/checkout/order/payment UI) shipped as part of that port, not as R1.7/R1.8 specifically. What's actually still open, per each module's own audit doc: the Driver module's Figma-ported UI (including onboarding/vehicle/inspection/Slice 2 — all backend-real, Slice 1 and Slice 2 both frozen, see above) (`docs/DRIVER-APP-DPX-100-AUDIT.md`); the Railway-specific pre-Ride-launch production readiness checklist locked in `docs/ops/PRODUCTION-RAILWAY.md` (backend, customer-web, driver-portal, merchant-portal, operations-console, env vars/secrets, Postgres/Redis connectivity, health/readiness endpoints, domain/SSL, monitoring/logging, build/start verification, rollback procedure — not yet started); and DPX-COMMERCIAL-001 — Slices 1-6 now shipped (see above), returned for founder review, not yet frozen — followed by Orders/Admin/AI in the founder's module ordering per `docs/DPX-100-MODULE-COMPLETION-GATE.md`. `docs/DPX-OPS-001-OPERATIONS-COMMAND-CENTRE.md` and `docs/DPX-MERCHANT-001-REALITY-AUDIT.md` — previously listed here as open work — are now both 🔒 Founder Approved & Frozen (see above).
 
 <details>
 <summary>Original 2026-07-28 "what's next" (superseded, kept for the record)</summary>

@@ -555,4 +555,43 @@ scenarios, commission accrued/paid, outstanding balance, available
 credit, and blocked/unblocked status all reconcile exactly against the
 Commission Ledger and Commission Account.
 
-Slice 6 remains as planned in §6: full E2E/freeze.
+**Slice 6 authorized (2026-08-05)** — founder sign-off for Slice 5.
+Founder-locked Slice 6 scope, verbatim:
+
+> DPX-COMMERCIAL-001 Slice 6. This is not another feature slice. It is
+> the completion slice. Its scope should be limited to: End-to-End
+> Verification — validate the entire commercial lifecycle for
+> Marketplace Mode A, Marketplace Mode B, Marketplace Cash on Delivery,
+> Ride Cash, Merchant blocking/unblocking, Driver blocking/unblocking,
+> Manual payment recording, Automatic deduction, Ledger integrity,
+> Credit-limit behavior. Security Review — authorization, permission
+> boundaries, commercial data isolation, commercial endpoints, audit
+> logging, replay/idempotency risks. Production Audit — the same
+> production-grade audit used for Wallet, Driver, Operations, and
+> Merchant. Documentation — update DPX-COMMERCIAL-001, Production
+> Audit, Reality Audit, Release History, Module Completion Gate.
+> Founder Review — return for final approval. Do not freeze
+> automatically. One final requirement: include a Platform Commercial
+> Readiness Matrix summarizing every supported payment path and its
+> commercial outcome (commission accrual, auto deduction, manual
+> settlement, credit limit, ledger, verified) — the definitive
+> launch-readiness reference for the commercial engine.
+
+**Slice 6 shipped (2026-08-05)** — implemented per the locked scope
+above. New end-to-end lifecycle spec
+(`apps/backend/src/commercial/commercial-lifecycle.e2e.spec.ts`, 2/2
+passing against real Postgres) proving the cumulative, cross-payment-
+method behavior of a real merchant/driver account over time (Mode B →
+Cash → blocked → manual payment → unblocked → Mode A auto-deduction, and
+the driver equivalent). Security review found no authorization bypass,
+data-isolation failure, or unaudited write path. Production audit found
+three honest, non-blocking operational-maturity gaps (manual-payment
+idempotency, no per-account credit override, no blocking-transition
+alerting), none launch-blocking. Full detail, the Platform Commercial
+Readiness Matrix, and documentation-update summary:
+`docs/DPX-COMMERCIAL-001-SLICE-6-COMPLETION.md`. Production audit:
+`docs/DPX-COMMERCIAL-001-PRODUCTION-AUDIT.md`. Per the founder's
+explicit instruction, this does **not** freeze DPX-COMMERCIAL-001
+automatically — returned for founder review.
+
+Slice 6 is the last planned slice — see §6.

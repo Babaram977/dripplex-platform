@@ -146,6 +146,32 @@ A module is not "done" until all ten are true:
   entry in `docs/ops/PRODUCTION-RAILWAY.md` (deferred to platform-wide
   Railway production-readiness work before Ride launch).
 
+- **DPX-COMMERCIAL-001** (the shared commission credit engine spanning
+  Marketplace merchants and Ride drivers): same Figma-first scope note
+  as Merchant/Driver Slice 1/2/Operations — this is a backend commercial
+  engine plus read-only visibility surfaces on existing portal pages,
+  not a Figma-parity module; no dedicated Figma export exists or was
+  expected. Items 3-6 and 9 met across six founder-reviewed slices —
+  schema/primitives (`docs/DPX-COMMERCIAL-001-SLICE-1-FOUNDATION.md`),
+  Marketplace mode B accrual
+  (`docs/DPX-COMMERCIAL-001-SLICE-2-MODE-B.md`), Marketplace Cash on
+  Delivery correction
+  (`docs/DPX-COMMERCIAL-001-SLICE-3-COD-CORRECTION.md`), Ride Cash
+  correction (`docs/DPX-COMMERCIAL-001-SLICE-4-RIDE-CASH.md`),
+  commercial visibility across Merchant/Driver/Admin portals
+  (`docs/DPX-COMMERCIAL-001-SLICE-5-COMMERCIAL-VISIBILITY.md`, with a
+  founder-required real-Postgres reconciliation proof in
+  `docs/DPX-COMMERCIAL-001-SLICE-5-COMMERCIAL-RECONCILIATION.md`), and
+  the completion slice — end-to-end lifecycle verification, security
+  review, and production audit
+  (`docs/DPX-COMMERCIAL-001-SLICE-6-COMPLETION.md`,
+  `docs/DPX-COMMERCIAL-001-PRODUCTION-AUDIT.md`). Full policy record:
+  `docs/DPX-COMMERCIAL-001-REVENUE-SETTLEMENT-CREDIT-POLICY.md`.
+  **Not yet frozen** — per the founder's explicit Slice 6 instruction,
+  the completion slice returns for founder review rather than freezing
+  automatically; status pending that review (see
+  `docs/RELEASE-HISTORY.md`).
+
 ## Notes for whoever runs the next module through this gate
 
 - Item 9's audit doc should name what it could and couldn't verify live

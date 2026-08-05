@@ -275,3 +275,39 @@ Commission Account.
   are unrelated to commercial visibility (the rest of
   `AdminDriversController`'s approve/reject/suspend/reactivate
   endpoints) — flagged honestly, not silently expanded into scope.
+
+## 13. ✅ Founder Review — Approved (2026-08-05)
+
+> DPX-COMMERCIAL-001 Slice 5. Status: ✅ Approved. This is exactly the
+> slice I expected after the commercial engine was completed. Rather
+> than introducing new financial behavior, it exposes the existing
+> commercial state to the right users in a consistent, auditable way...
+> [Merchant Commercial Visibility, Driver Commercial Visibility, Admin
+> Commercial Console, Backend & SDK — each individually approved]...
+> Commercial Reconciliation Verification — this is the most important
+> deliverable in this slice... That should remain a permanent
+> verification artifact... Figma/DDS Compliance — that satisfies the
+> project's Figma Protection Rule.
+
+## 14. Next step — Slice 6 (the completion slice)
+
+Founder-authorized, not another feature slice — full detail and locked
+scope recorded in
+`docs/DPX-COMMERCIAL-001-REVENUE-SETTLEMENT-CREDIT-POLICY.md` §7 and
+tracked in `docs/DPX-COMMERCIAL-001-SLICE-6-COMPLETION.md`:
+
+- End-to-end verification of every commercial payment path (Marketplace
+  Mode A/B/Cash, Ride Cash), merchant/driver blocking-unblocking,
+  manual payment recording, automatic deduction, ledger integrity,
+  credit-limit behavior.
+- Security review (authorization, permission boundaries, commercial
+  data isolation, commercial endpoints, audit logging,
+  replay/idempotency).
+- Production audit, matching the Wallet/Driver/Operations/Merchant
+  audits' format.
+- Documentation updates (this policy doc, Production Audit, Reality
+  Audit, Release History, Module Completion Gate).
+- A **Platform Commercial Readiness Matrix** — the definitive
+  launch-readiness reference for the commercial engine.
+- Return for founder review — Slice 6 does not freeze
+  DPX-COMMERCIAL-001 automatically.
