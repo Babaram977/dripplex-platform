@@ -160,6 +160,13 @@ export interface UpdateBusinessRequest {
   coverPhotoUrl?: string;
 }
 
+/// DPX-MERCHANT-001 Phase 1 — mirrors `MerchantController`'s
+/// `POST /merchant/business/pause` (`apps/backend/src/merchants/
+/// controllers/merchant.controller.ts`); `resumeStore` takes no body.
+export interface PauseStoreRequest {
+  reason?: string;
+}
+
 export interface SubmitKycRequest {
   documentType: KycDocumentType;
   documentNumber: string;

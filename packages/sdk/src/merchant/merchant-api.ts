@@ -19,6 +19,7 @@ import type {
   MerchantSummaryDto,
   PaginatedMerchantsResult,
   PaginatedResult,
+  PauseStoreRequest,
   ProductDto,
   ReorderProductImagesRequest,
   SmartSearchResult,
@@ -110,6 +111,26 @@ export class MerchantApi {
   public setDefaultBankAccount(id: string): Promise<BankAccountDto> {
     return this.http.request<BankAccountDto>(`/merchant/bank-account/${id}/default`, {
       method: 'PATCH',
+      auth: true,
+    });
+  }
+
+  /**
+   * Storefront-level availability — matches `MerchantController`'s
+   * `POST /merchant/business/pause|resume` 1:1. Real backend capability
+   * with zero prior SDK coverage; see DPX-MERCHANT-001-REALITY-AUDIT.md.
+   */
+  public pauseStore(body: PauseStoreRequest = {}): Promise<BusinessDto> {
+    return this.http.request<BusinessDto>('/merchant/business/pause', {
+      method: 'POST',
+      body,
+      auth: true,
+    });
+  }
+
+  public resumeStore(): Promise<BusinessDto> {
+    return this.http.request<BusinessDto>('/merchant/business/resume', {
+      method: 'POST',
       auth: true,
     });
   }

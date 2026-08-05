@@ -37,6 +37,8 @@ import type {
   ListReferralFraudChecksQuery,
   LoyaltyAccountOverviewDto,
   LoyaltyLedgerEntryDto,
+  MerchantAnalyticsOverviewDto,
+  MerchantAnalyticsOverviewQuery,
   MoveWishlistToCartRequest,
   MoveWishlistToCartResultDto,
   NotificationListDto,
@@ -886,13 +888,20 @@ export class AdminWalletClient {
 export class AnalyticsClient {
   public constructor(private readonly http: HttpClient) {}
 
-  public merchant(query: AnalyticsQuery = {}): Promise<AnalyticsDailyMetricDto[]> {
-    return this.http.request<AnalyticsDailyMetricDto[]>(
-      `/merchant/analytics${toQuery({
-        scopeId: query.scopeId,
-        metricKey: query.metricKey,
+  /**
+   * Merchant analytics overview — matches the real
+   * `GET /merchant/analytics/overview` route on `MerchantAnalyticsController`
+   * 1:1 (path and response shape). Previously called a bare `/merchant/analytics`
+   * path that route never served; see DPX-MERCHANT-001-REALITY-AUDIT.md.
+   */
+  public merchant(
+    query: MerchantAnalyticsOverviewQuery = {},
+  ): Promise<MerchantAnalyticsOverviewDto> {
+    return this.http.request<MerchantAnalyticsOverviewDto>(
+      `/merchant/analytics/overview${toQuery({
         from: query.from,
         to: query.to,
+        period: query.period,
       })}`,
     );
   }

@@ -137,6 +137,31 @@ export interface AdminListOrdersQuery extends ListOrdersQuery {
   createdTo?: string;
 }
 
+/// DPX-MERCHANT-001 Phase 1 — mirrors `MerchantOrdersController`
+/// (`apps/backend/src/orders/merchant-orders.controller.ts`) 1:1. These
+/// requests act on the same Universal Order State Machine as the customer
+/// and admin surfaces above; only the merchant-scoped actions differ.
+export interface MerchantOrderListQuery extends ListOrdersQuery {
+  status?: OrderStatus;
+}
+
+export interface AcceptOrderRequest {
+  estimatedReadyAt?: string;
+}
+
+export interface RejectOrderRequest {
+  reason: string;
+}
+
+export interface DelayOrderRequest {
+  estimatedReadyAt: string;
+  reason?: string;
+}
+
+export interface MerchantCancelOrderRequest {
+  reason?: string;
+}
+
 export const ORDER_AUDIT_ACTIONS = {
   CREATED: 'order.created',
   CANCELLED: 'order.cancelled',

@@ -319,4 +319,21 @@ describe('platform SDK clients', () => {
       'https://api.example.test/admin/wallets/CUSTOMER/owner-id/credit',
     );
   });
+
+  it('calls the real merchant analytics overview route (DPX-MERCHANT-001 Phase 1 fix)', async () => {
+    const client = new DripplexClient({
+      baseUrl: 'https://api.example.test',
+      getAccessToken: () => 'token',
+    });
+
+    await client.analytics.merchant({ from: '2026-08-01', to: '2026-08-05', period: 'daily' });
+
+    // MerchantAnalyticsController only ever exposed GET /merchant/analytics/overview
+    // (apps/backend/src/analytics/merchant-analytics.controller.ts) — the prior
+    // SDK method called a bare /merchant/analytics path that route never served.
+    expect(fetch).toHaveBeenCalledWith(
+      'https://api.example.test/merchant/analytics/overview?from=2026-08-01&to=2026-08-05&period=daily',
+      expect.objectContaining({ method: 'GET' }),
+    );
+  });
 });

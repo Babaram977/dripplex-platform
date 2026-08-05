@@ -92,6 +92,7 @@ export type {
   OperatingHoursDayKey,
   OperatingHoursDto,
   PaginatedMerchantsResult,
+  PauseStoreRequest,
   SubmitKycRequest,
   UpdateBusinessRequest,
 } from './merchant/index.js';
@@ -289,13 +290,17 @@ export type {
 export { CART_AUDIT_ACTIONS } from './cart/index.js';
 
 export type {
+  AcceptOrderRequest,
   AdminListOrdersQuery,
   CancelOrderDto,
   CheckoutDto,
   CheckoutResponseDto,
+  DelayOrderRequest,
   FulfillmentType,
   InventoryReservationDto,
   ListOrdersQuery,
+  MerchantCancelOrderRequest,
+  MerchantOrderListQuery,
   OrderAuditAction,
   OrderCancelledBy,
   OrderDisputeDto,
@@ -306,6 +311,7 @@ export type {
   OrderStatus,
   PaymentStatus,
   RaiseOrderDisputeDto,
+  RejectOrderRequest,
 } from './order/index.js';
 
 export { ORDER_AUDIT_ACTIONS } from './order/index.js';
@@ -351,6 +357,9 @@ export type {
   AnalyticsDailyMetricDto,
   AnalyticsQuery,
   AnalyticsScopeType,
+  MerchantAnalyticsOverviewDto,
+  MerchantAnalyticsOverviewQuery,
+  MerchantAnalyticsPeriod,
   CampaignAnalyticsQuery,
   CloneCampaignRequest,
   CmsContentDto,

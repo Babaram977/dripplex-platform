@@ -90,18 +90,32 @@ describe('C2 Merchant flow (SDK contract E2E)', () => {
       'GET /merchant/business',
       'GET /merchant/kyc',
       'GET /merchant/wallet',
-      'GET /merchant/analytics',
+      'GET /merchant/analytics/overview',
       'POST /auth/logout',
     ]);
   });
 
-  it('documents Backend Core gap: no merchant order accept/prepare/ready endpoints on SDK', () => {
+  it('exposes the merchant order lifecycle on sdk.orders (DPX-MERCHANT-001 Phase 1)', () => {
+    // Previously documented as a Backend Core gap ("no merchant order
+    // accept/prepare/ready endpoints on SDK") — MerchantOrdersController
+    // was always real; only the SDK coverage was missing. Closed as
+    // Phase 1 of DPX-MERCHANT-001-REALITY-AUDIT.md's approved plan. The
+    // methods live on OrderClient (sdk.orders), not MerchantApi
+    // (sdk.merchant), mirroring where the backend controller sits.
     const sdk = createMerchantSdk({ baseUrl: 'https://api.test/api/v1' });
     expect(sdk.orders).toBeDefined();
     expect(sdk.merchant).toBeDefined();
-    // Merchant order lifecycle verbs are not exposed by Backend Core / SDK.
-    expect(Object.getOwnPropertyNames(Object.getPrototypeOf(sdk.merchant))).not.toEqual(
-      expect.arrayContaining(['acceptOrder', 'prepareOrder', 'markReady']),
+    const orderMethods = Object.getOwnPropertyNames(Object.getPrototypeOf(sdk.orders));
+    expect(orderMethods).toEqual(
+      expect.arrayContaining([
+        'merchantGetOrders',
+        'merchantGetOrder',
+        'merchantAcceptOrder',
+        'merchantRejectOrder',
+        'merchantMarkOrderReady',
+        'merchantDelayOrder',
+        'merchantCancelOrder',
+      ]),
     );
   });
 

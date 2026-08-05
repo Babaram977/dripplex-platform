@@ -999,6 +999,44 @@ export interface AnalyticsQuery {
   to?: string;
 }
 
+/**
+ * Shape of `AnalyticsService.getMerchantOverview()`/`getAdminOverview()`
+ * (`apps/backend/src/analytics/analytics.service.ts`) — the real response
+ * `GET /merchant/analytics/overview` returns. Distinct from
+ * `AnalyticsDailyMetricDto[]`/`AnalyticsQuery` above, which correspond to a
+ * different, raw-metric-row shape that no merchant-facing endpoint actually
+ * serves (see DPX-MERCHANT-001-REALITY-AUDIT.md's contract-defect finding).
+ */
+export type MerchantAnalyticsPeriod = 'daily' | 'weekly' | 'monthly' | 'yearly';
+
+export interface MerchantAnalyticsOverviewQuery {
+  from?: string;
+  to?: string;
+  period?: MerchantAnalyticsPeriod;
+}
+
+export interface MerchantAnalyticsOverviewDto {
+  range: { from: string; to: string; period: MerchantAnalyticsPeriod };
+  kpis: {
+    orders: number;
+    revenue: number;
+    aov: number;
+    repeatCustomers: number;
+    deliveryTimeAvgSeconds: number;
+    failedPayments: number;
+    cancelledOrders: number;
+    refunds: number;
+  };
+  series: { period: string; orders: number; revenue: number }[];
+  preAggregated: {
+    date: string;
+    key: string;
+    value: number;
+    scopeType: AnalyticsScopeType;
+    scopeId: string | null;
+  }[];
+}
+
 export type CmsContentStatus = 'DRAFT' | 'SCHEDULED' | 'PUBLISHED' | 'ARCHIVED';
 export type CmsContentType =
   | 'HOMEPAGE_BANNER'
