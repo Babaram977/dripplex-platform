@@ -2,7 +2,14 @@
 
 import { DripplexLogo } from '@dripplex/ui';
 import { cn } from '@dripplex/utils';
-import { Building2, ClipboardList, Home, LayoutDashboard, Package } from 'lucide-react';
+import {
+  Building2,
+  ClipboardList,
+  Home,
+  LayoutDashboard,
+  Package,
+  ShieldCheck,
+} from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import * as React from 'react';
@@ -14,6 +21,7 @@ const navItems = [
   { href: '/orders', label: 'Orders', icon: ClipboardList },
   { href: '/products', label: 'Products', icon: Package },
   { href: '/business', label: 'Business', icon: Building2 },
+  { href: '/kyc', label: 'Verification', icon: ShieldCheck },
 ] as const;
 
 function isActive(pathname: string, href: string): boolean {
