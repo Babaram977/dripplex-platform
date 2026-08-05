@@ -150,6 +150,26 @@ governance, this does not authorize a freeze — Slice 4 stays open pending
 Founder Review, and the founder's own next step after approval is the
 module-level production audit across all four Phase 1 slices together.
 
+**Update (2026-08-05, same day): Slice 4 🔒 Founder Approved / Frozen** —
+see `docs/DPX-OPS-001-OPERATIONS-COMMAND-CENTRE.md`'s "🔒 Slice 4 —
+Founder Approved / Frozen" subsection. All four Phase 1 slices are now
+individually frozen. The founder specifically endorsed `utilizationRate:
+null` over a misleading `0%`, and the accurate-grid-cell-over-deprecated-
+heatmap decision, as correct — not merely acceptable. The pre-existing
+Slice 1/3 test race this slice's audit root-caused stays documented
+technical debt per the founder's explicit instruction, unless the
+module-level audit finds it undermines reliable production verification.
+The module-level production audit across all four slices together begins
+now — see `docs/DPX-OPS-001-MODULE-PRODUCTION-AUDIT.md` once it exists —
+evaluating the Operations Command Centre as one system: cross-slice
+navigation/workflows, RBAC against every endpoint, data consistency,
+polling/query load, database/index readiness, concurrency/idempotency,
+error/degraded states, SOS priority, auditability, frozen-module
+boundaries, Figma protection, security/privacy scope, and production
+configuration — plus a Phase 1 completeness matrix. Per the founder's
+explicit instruction, this audit does not auto-freeze the whole module;
+it comes back for Founder Review first.
+
 **Scope**: Phase 1 (Core Operations) only, per the founder's own phasing —
 Fleet Operations, Emergency Operations, Support Centre, Incident Management,
 Dispatch Oversight. Phase 2 (analytics, KPIs, heat maps, demand forecasting,

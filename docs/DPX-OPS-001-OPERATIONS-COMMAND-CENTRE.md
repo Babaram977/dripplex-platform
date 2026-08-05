@@ -1,11 +1,13 @@
 # DPX-OPS-001 — Operations Command Centre (Future Module)
 
-**Status: Slice 1 (Live Operations Dashboard) shipped (2026-08-04). Slice 2
-(Operations Work Queues) 🔒 Founder Approved / Frozen (2026-08-05). Slice 3
-(Dispatch Management) 🔒 Founder Approved / Frozen (2026-08-05). Slice 4
-(Operations Analytics) shipped (2026-08-05), founder-approved implementation
-following the reality audit — production audit complete, submitted for
-founder review. See `docs/DPX-OPS-001-SLICE-4-PRODUCTION-AUDIT.md`.** See
+**Status: All four Phase 1 slices individually 🔒 Founder Approved /
+Frozen — Slice 1 (Live Operations Dashboard, 2026-08-04), Slice 2
+(Operations Work Queues, 2026-08-05), Slice 3 (Dispatch Management,
+2026-08-05), Slice 4 (Operations Analytics, 2026-08-05). The
+module-level production audit across all four together is next, before
+any decision on 🔒 DPX-OPS-001 — Operations Command Centre, Phase 1 as a
+whole. See `docs/DPX-OPS-001-MODULE-PRODUCTION-AUDIT.md` once it
+exists.** See
 `docs/DPX-OPS-001-REALITY-AUDIT.md` for the full backend-capability audit,
 gap analysis, proposed Phase 1 slice plan, and the founder's locked-in
 refinements — this document stays the scope record, that one is the
@@ -294,7 +296,7 @@ built (real backend, real permissions, real notification wiring) rather than
 re-discovering it, the same way `DPX-DRIVER-005` preserves Slice 2's SOS
 foundation for its own future response-workflow module.
 
-## Slice 4 — Operations Analytics (shipped 2026-08-05)
+## Slice 4 — Operations Analytics (🔒 Founder Approved / Frozen, 2026-08-05)
 
 Founder-approved to implement, verbatim, after reviewing
 `docs/DPX-OPS-001-SLICE-4-REALITY-AUDIT.md`'s six-area scope — the founder's
@@ -363,11 +365,37 @@ src/rides/` was never touched.
   — the Figma Protection Rule regression check this slice's Production
   Audit records explicitly.
 
-Per the founder's own governance, this audit does **not** authorize a
-freeze — see `docs/DPX-OPS-001-SLICE-4-PRODUCTION-AUDIT.md`. Slice 4 stays
-open pending Founder Review, and once approved, the founder's own
-next step is the module-level production audit across all four Phase 1
-slices together, before any decision on freezing DPX-OPS-001 as a whole.
+### 🔒 Slice 4 — Founder Approved / Frozen (2026-08-05)
+
+Founder reviewed `docs/DPX-OPS-001-SLICE-4-PRODUCTION-AUDIT.md`'s findings
+(zero launch-blocking) and approved freeze in full: all six analytics
+areas verified against real data, `Today`/`Last 7 days`/`Last 30
+days`/`Custom` filtering, the dedicated `operations:analytics:read`
+permission, the read-only architecture, the frozen Ride boundary, and the
+Figma protection boundary all confirmed. The founder specifically called
+out `utilizationRate: null` as the correct choice — "that's much better
+than turning missing information into a misleading 0%" — and endorsed the
+heatmap decision as correct: "don't replace a deprecated capability with
+something visually attractive but analytically inaccurate. The grid-cell
+representation can remain until we deliberately choose a supported
+visualization approach."
+
+**On the pre-existing Slice 1/3 test race this slice's audit
+root-caused**: the founder's explicit instruction is that it "should
+remain documented as technical debt unless the module-level audit
+determines it can undermine reliable production verification" — not
+something Slice 4 (or any slice) should expand its own scope to fix
+unprompted.
+
+**Freeze boundary, same rule as every prior slice**: from this point,
+Slice 4 accepts only critical security/defect fixes, performance/
+compliance work, or explicitly Founder-approved enhancements.
+
+This is still a **slice-level** freeze. All four Phase 1 slices are now
+individually frozen; the module-level production audit across all four
+together — the founder's own next-named step — happens next, before any
+decision on 🔒 DPX-OPS-001 — Operations Command Centre, Phase 1 as a whole.
+See `docs/DPX-OPS-001-MODULE-PRODUCTION-AUDIT.md` once it exists.
 
 ## Founder's scope for this module
 
