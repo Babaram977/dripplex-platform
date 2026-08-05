@@ -300,6 +300,7 @@ export type {
   InventoryReservationDto,
   ListOrdersQuery,
   MerchantCancelOrderRequest,
+  MerchantCommissionSettingDto,
   MerchantOrderListQuery,
   OrderAuditAction,
   OrderCancelledBy,
@@ -308,10 +309,13 @@ export type {
   OrderDto,
   OrderItemDto,
   OrderPaymentMethod,
+  OrderSettlementDto,
+  OrderSettlementStatus,
   OrderStatus,
   PaymentStatus,
   RaiseOrderDisputeDto,
   RejectOrderRequest,
+  UpdateMerchantCommissionSettingsRequest,
 } from './order/index.js';
 
 export { ORDER_AUDIT_ACTIONS } from './order/index.js';

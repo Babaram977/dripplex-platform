@@ -888,9 +888,104 @@ the same freeze discipline every individual slice held to.
 
 ---
 
+## 2026-08-05 (same day) — DPX-MERCHANT-001 Reality Audit + Phase 1 SDK repairs + DPX-MERCHANT-002 Settlement
+
+Founder-directed next module after DPX-OPS-001's freeze, per the founder's
+explicit reordering: **Merchant → Orders → Admin → AI** (Merchant moved
+ahead of Orders specifically to avoid duplicating Marketplace's order
+infrastructure before knowing what Merchant already covers).
+
+**Reality audit** (`docs/DPX-MERCHANT-001-REALITY-AUDIT.md`): confirmed,
+three independent ways, that the recovered Figma Make export contains no
+Merchant module — the founder's own instruction ruled this "no Figma
+parity" case out from the start, so Merchant proceeds DDS-composed like
+Driver Slice 1/2 did under the same condition. Audited every founder-named
+capability (onboarding/KYC, business profile, branches, catalog,
+inventory, orders, fulfilment, settlements, promotions, analytics, staff,
+support, notifications) against real backend/SDK/portal code. Catalog
+management is the only capability real end-to-end; several backend
+capabilities (onboarding, KYC, bank accounts, wallet, analytics, reviews,
+store pause/resume, the full merchant order lifecycle) had zero portal UI
+and, in two cases, zero SDK coverage at all — `merchant-flow.e2e.spec.ts`
+had already self-documented one of these gaps. The audit also found
+`AnalyticsClient.merchant()` called a route (`/merchant/analytics`) that
+never existed; the real route is `/merchant/analytics/overview`.
+
+**Founder Scope Decision** approved Phase 1 (SDK contract repairs) and
+Phase 2 (portal UI for backend-real capabilities) immediately, with Phase
+3 (branches/promotions/staff/support — genuinely missing capabilities)
+explicitly held for individual review rather than blanket-approved.
+
+**Phase 1 (shipped)**: fixed the analytics path/shape mismatch; added SDK
+coverage for all six `MerchantOrdersController` actions and store pause/
+resume (`OrderClient`/`MerchantApi`, `packages/sdk`); 16 new tests; full
+verification clean (types/SDK build+typecheck+lint, 152/152 SDK tests,
+166/166 backend suites).
+
+**Activation-gate audit** (§9 of the reality audit doc): found no unified
+gate exists (unlike Driver's `DriverActivationService`) — the real
+requirements are a `Business` profile plus `VERIFIED` KYC, checked inline
+across `MerchantsService.approveMerchant()`, `CheckoutService`, and
+`CustomerMerchantsService`. Bank account and minimum-catalog are
+confirmed not required anywhere. Founder decision: preserve the gate
+exactly as found, present the real readiness sequence honestly in the
+Phase 2 UI, don't add requirements "because they sound reasonable."
+
+**A more consequential finding surfaced in the same trace**: no
+Marketplace order has ever credited a merchant's wallet — no
+`OrderSettlement`-equivalent model, no `WalletOwnerType.MERCHANT` credit
+call anywhere in `orders`/`payments`/`wallet`. Ride has a real settlement
+service; Marketplace never did. Founder ruled this a core commercial gap,
+not a cosmetic Wallet-screen limitation, and approved **DPX-MERCHANT-002 —
+Marketplace Merchant Settlement** as a narrowly-scoped addition to Phase 2
+(no withdrawals/payouts/accounting platform yet) with explicit financial-
+correctness requirements: exactly-once, `orderId`-tied, gross+commission+
+merchant amounts stored, frozen Pricing Engine reused (not
+recalculated), existing Wallet/Ledger architecture reused (not a new
+balance system), auditable, retryable-on-failure, refund/reversal
+audited. The commission base/rate question hit exactly the data-model gap
+the founder pre-empted (`Order.discount` has no traceable link to which
+`Promotion` produced it, and `PromotionsService.handleCouponRedeemed()`
+turned out to be a dead no-op — flagged, not fixed, out of scope) —
+resolved without a schema change since merchant self-service promotions
+don't exist yet, making `order.subtotal` the correct commission base
+today. Founder then amended the rate itself from a fixed 10% to an
+admin-configurable setting (`MerchantCommissionSetting`, same pattern as
+`DriverSecuritySettings`), snapshotted per-settlement so rate changes
+never retroactively alter history.
+
+**DPX-MERCHANT-002 (shipped)**: `OrderSettlement`/`MerchantCommissionSetting`
+schema + migration; `MerchantSettlementService` subscribing to
+`ORDER_COMPLETED` (the sole "successful fulfilment" signal for both
+gateway/wallet and COD payment methods) and `ORDER_REFUNDED` (reversal
+path); exactly-once via a unique `orderId` constraint plus a two-phase
+`PENDING → COMPLETED/FAILED` status model; a real ID-space mismatch found
+and handled (`Order.merchantId` is `MerchantProfile.id`, merchant
+`Wallet` rows are keyed by `User.id`); admin commission-rate endpoint
+with full audit trail. 8 real-database E2E tests, including a genuine
+concurrent-race exactly-once test and a commission-rate-snapshot test,
+all passing. Full regression: backend `tsc`/`eslint` clean, `jest
+--runInBand` 1250/1254 (the same 4 pre-existing, module-unrelated
+failures already diagnosed in the reality audit's own research — two
+`customer-products.service.spec.ts` fixture-count assertions against a
+pre-existing extra seeded product row from an earlier session, and one
+`driver-identity-verification.service.spec.ts` trigger-precedence
+assertion, neither touching Orders/Wallet/Merchant code).
+
+**Per the standing discipline, this does not freeze DPX-MERCHANT-001.**
+Phase 2's remaining portal screens (Home/Overview, Incoming Orders,
+Business Profile, Onboarding/KYC, Wallet/Bank, Reviews, Notifications,
+Analytics/store controls), E2E verification of the full order lifecycle,
+a security review, and a production audit are still open — the Wallet/
+Earnings screen specifically may not be presented as production-complete
+until this settlement work is live and verified end-to-end through the
+UI, not just the service layer.
+
+---
+
 ## What's next
 
-The R1.7/R1.8 commerce-completion plan below was superseded by the DPX-100 initiative above — Marketplace's commerce loop (cart/checkout/order/payment UI) shipped as part of that port, not as R1.7/R1.8 specifically. What's actually still open, per each module's own audit doc: the Driver module's Figma-ported UI (including onboarding/vehicle/inspection/Slice 2 — all backend-real, Slice 1 and Slice 2 both frozen, see above) (`docs/DRIVER-APP-DPX-100-AUDIT.md`); reconciling the Railway-vs-Coolify production-infrastructure question above (`operations-console` now has a documented deploy recipe on both, but no live service on either yet — see `docs/ops/PRODUCTION-RAILWAY.md`); and Orders/AI/Merchant/Admin, next in the founder's module ordering per `docs/DPX-100-MODULE-COMPLETION-GATE.md`. `docs/DPX-OPS-001-OPERATIONS-COMMAND-CENTRE.md` — previously listed here as the founder's named next focus — is now 🔒 Founder Approved & Frozen (see above), no longer open work.
+The R1.7/R1.8 commerce-completion plan below was superseded by the DPX-100 initiative above — Marketplace's commerce loop (cart/checkout/order/payment UI) shipped as part of that port, not as R1.7/R1.8 specifically. What's actually still open, per each module's own audit doc: the Driver module's Figma-ported UI (including onboarding/vehicle/inspection/Slice 2 — all backend-real, Slice 1 and Slice 2 both frozen, see above) (`docs/DRIVER-APP-DPX-100-AUDIT.md`); reconciling the Railway-vs-Coolify production-infrastructure question above (`operations-console` now has a documented deploy recipe on both, but no live service on either yet — see `docs/ops/PRODUCTION-RAILWAY.md`); and Merchant, currently in progress (Phase 1 SDK repairs and DPX-MERCHANT-002 settlement shipped, Phase 2 portal UI still open — see `docs/DPX-MERCHANT-001-REALITY-AUDIT.md`), followed by Orders/Admin/AI in the founder's module ordering per `docs/DPX-100-MODULE-COMPLETION-GATE.md`. `docs/DPX-OPS-001-OPERATIONS-COMMAND-CENTRE.md` — previously listed here as the founder's named next focus — is now 🔒 Founder Approved & Frozen (see above), no longer open work.
 
 <details>
 <summary>Original 2026-07-28 "what's next" (superseded, kept for the record)</summary>

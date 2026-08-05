@@ -11,12 +11,15 @@ import { WalletModule } from '../wallet/wallet.module';
 
 import { AdminOrdersController } from './admin-orders.controller';
 import { CheckoutService } from './checkout.service';
+import { AdminMerchantCommissionSettingsController } from './controllers/admin-merchant-commission-settings.controller';
 import { CustomerOrdersController } from './customer-orders.controller';
 import { CatalogCheckoutInventoryValidator } from './inventory/catalog-checkout-inventory.validator';
 import { CHECKOUT_INVENTORY_VALIDATOR } from './inventory/checkout-inventory.validator';
 import { InventoryReservationService } from './inventory/inventory-reservation.service';
+import { MerchantCommissionSettingsService } from './merchant-commission-settings.service';
 import { MerchantOrdersController } from './merchant-orders.controller';
 import { MerchantOrdersService } from './merchant-orders.service';
+import { MerchantSettlementService } from './merchant-settlement.service';
 import { OrderCompletionSweepService } from './order-completion-sweep.service';
 import { CatalogCheckoutProductValidator } from './pricing/catalog-checkout-product.validator';
 import { CHECKOUT_PRODUCT_VALIDATOR } from './pricing/checkout-product.validator';
@@ -35,13 +38,20 @@ import { ReservationCleanupService } from './reservation-cleanup.service';
     WalletModule,
     PricingModule,
   ],
-  controllers: [CustomerOrdersController, AdminOrdersController, MerchantOrdersController],
+  controllers: [
+    CustomerOrdersController,
+    AdminOrdersController,
+    MerchantOrdersController,
+    AdminMerchantCommissionSettingsController,
+  ],
   providers: [
     CheckoutService,
     MerchantOrdersService,
     InventoryReservationService,
     ReservationCleanupService,
     OrderCompletionSweepService,
+    MerchantCommissionSettingsService,
+    MerchantSettlementService,
     { provide: ORDERS_REPOSITORY, useClass: PrismaOrdersRepository },
     { provide: CHECKOUT_PRODUCT_VALIDATOR, useClass: CatalogCheckoutProductValidator },
     {

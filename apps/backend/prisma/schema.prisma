@@ -1028,6 +1028,7 @@ model Order {
   paymentTransactions PaymentTransaction[]
   deliveryJobs        DeliveryJob[]
   disputes            OrderDispute[]
+  settlement          OrderSettlement?
 
   @@index([customerId])
   @@index([merchantId])
@@ -1128,6 +1129,56 @@ model PaymentTransaction {
   @@index([customerId])
   @@index([merchantId])
   @@map("payment_transactions")
+}
+
+/// DPX-MERCHANT-002 — the platform-wide merchant commission rate,
+/// admin-configurable rather than hardcoded (unlike Ride's
+/// RIDE_PLATFORM_COMMISSION_RATE constant). Singleton row, read once per
+/// settlement and snapshotted into OrderSettlement.commissionRate — a
+/// later change here never touches an already-created settlement.
+model MerchantCommissionSetting {
+  id             String   @id @default(uuid()) @db.Uuid
+  commissionRate Decimal  @default(0.10) @map("commission_rate") @db.Decimal(5, 4)
+  updatedBy      String?  @map("updated_by") @db.Uuid
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@map("merchant_commission_settings")
+}
+
+enum OrderSettlementStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REVERSED
+}
+
+/// DPX-MERCHANT-002 — one row per settled Order, created once
+/// (orderId is the exactly-once guard) on ORDER_COMPLETED and credited to
+/// the merchant's wallet via the existing Wallet/Ledger architecture. See
+/// docs/DPX-MERCHANT-002-SETTLEMENT-DESIGN.md.
+model OrderSettlement {
+  id                    String                @id @default(uuid()) @db.Uuid
+  orderId               String                @unique @map("order_id") @db.Uuid
+  merchantId            String                @map("merchant_id") @db.Uuid
+  status                OrderSettlementStatus @default(PENDING)
+  grossAmount           Decimal               @map("gross_amount") @db.Decimal(12, 2)
+  commissionRate        Decimal               @map("commission_rate") @db.Decimal(5, 4)
+  commissionAmount      Decimal               @map("commission_amount") @db.Decimal(12, 2)
+  merchantAmount        Decimal               @map("merchant_amount") @db.Decimal(12, 2)
+  currency              String                @default("NGN") @db.VarChar(3)
+  walletLedgerEntryId   String?               @map("wallet_ledger_entry_id") @db.Uuid
+  failureReason         String?               @map("failure_reason") @db.VarChar(1000)
+  reversedAt            DateTime?             @map("reversed_at")
+  reversalReason        String?               @map("reversal_reason") @db.VarChar(1000)
+  reversalLedgerEntryId String?               @map("reversal_ledger_entry_id") @db.Uuid
+  createdAt             DateTime              @default(now()) @map("created_at")
+  updatedAt             DateTime              @updatedAt @map("updated_at")
+  order                 Order                 @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@index([merchantId])
+  @@index([status])
+  @@map("order_settlements")
 }
 
 model DeliveryJob {

@@ -102,6 +102,10 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
     description: 'View and edit the Driver-001 Security Standard risk-engine settings',
   },
   {
+    code: 'admin:merchant-settlement:commission:manage',
+    description: 'View and edit the DPX-MERCHANT-002 Marketplace merchant commission rate',
+  },
+  {
     code: 'driver:vehicle:manage',
     description: 'Manage own registered vehicles',
   },

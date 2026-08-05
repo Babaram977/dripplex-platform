@@ -1,12 +1,21 @@
 import type {
   CheckoutResponseDto,
   InventoryReservationDto,
+  MerchantCommissionSettingDto,
   OrderDisputeDto,
   OrderDto,
   OrderItemDto,
+  OrderSettlementDto,
   PaginatedResult,
 } from '@dripplex/types';
-import type { InventoryReservation, Order, OrderDispute, OrderItem } from '@prisma/client';
+import type {
+  InventoryReservation,
+  MerchantCommissionSetting,
+  Order,
+  OrderDispute,
+  OrderItem,
+  OrderSettlement,
+} from '@prisma/client';
 
 export type OrderWithRelations = Order & {
   items: OrderItem[];
@@ -130,4 +139,38 @@ export function generateOrderNumber(now = new Date()): string {
   const dd = String(now.getUTCDate()).padStart(2, '0');
   const suffix = Math.random().toString(36).slice(2, 8).toUpperCase();
   return `DPX-${String(yyyy)}${mm}${dd}-${suffix}`;
+}
+
+/// DPX-MERCHANT-002
+export function toOrderSettlementDto(settlement: OrderSettlement): OrderSettlementDto {
+  return {
+    id: settlement.id,
+    orderId: settlement.orderId,
+    merchantId: settlement.merchantId,
+    status: settlement.status,
+    grossAmount: Number(settlement.grossAmount),
+    commissionRate: Number(settlement.commissionRate),
+    commissionAmount: Number(settlement.commissionAmount),
+    merchantAmount: Number(settlement.merchantAmount),
+    currency: settlement.currency,
+    walletLedgerEntryId: settlement.walletLedgerEntryId,
+    failureReason: settlement.failureReason,
+    reversedAt: settlement.reversedAt?.toISOString() ?? null,
+    reversalReason: settlement.reversalReason,
+    reversalLedgerEntryId: settlement.reversalLedgerEntryId,
+    createdAt: settlement.createdAt.toISOString(),
+    updatedAt: settlement.updatedAt.toISOString(),
+  };
+}
+
+export function toMerchantCommissionSettingDto(
+  setting: MerchantCommissionSetting,
+): MerchantCommissionSettingDto {
+  return {
+    id: setting.id,
+    commissionRate: Number(setting.commissionRate),
+    updatedBy: setting.updatedBy,
+    updatedAt: setting.updatedAt.toISOString(),
+    createdAt: setting.createdAt.toISOString(),
+  };
 }

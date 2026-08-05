@@ -162,6 +162,41 @@ export interface MerchantCancelOrderRequest {
   reason?: string;
 }
 
+/// DPX-MERCHANT-002 — Marketplace Merchant Settlement. See
+/// docs/DPX-MERCHANT-002-SETTLEMENT-DESIGN.md.
+export type OrderSettlementStatus = 'PENDING' | 'COMPLETED' | 'FAILED' | 'REVERSED';
+
+export interface OrderSettlementDto {
+  id: string;
+  orderId: string;
+  merchantId: string;
+  status: OrderSettlementStatus;
+  grossAmount: number;
+  commissionRate: number;
+  commissionAmount: number;
+  merchantAmount: number;
+  currency: string;
+  walletLedgerEntryId: string | null;
+  failureReason: string | null;
+  reversedAt: string | null;
+  reversalReason: string | null;
+  reversalLedgerEntryId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MerchantCommissionSettingDto {
+  id: string;
+  commissionRate: number;
+  updatedBy: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+
+export interface UpdateMerchantCommissionSettingsRequest {
+  commissionRate: number;
+}
+
 export const ORDER_AUDIT_ACTIONS = {
   CREATED: 'order.created',
   CANCELLED: 'order.cancelled',

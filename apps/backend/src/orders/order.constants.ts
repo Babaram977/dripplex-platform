@@ -11,6 +11,10 @@ export const ORDER_AUDIT_ACTIONS = {
   REFUNDED: 'order.refunded',
   DISPUTE_RAISED: 'order.dispute_raised',
   DISPUTE_RESOLVED: 'order.dispute_resolved',
+  SETTLEMENT_COMPLETED: 'order.settlement.completed',
+  SETTLEMENT_FAILED: 'order.settlement.failed',
+  SETTLEMENT_REVERSED: 'order.settlement.reversed',
+  COMMISSION_SETTINGS_UPDATED: 'merchant_commission_settings.updated',
 } as const;
 
 export const ORDER_PERMISSIONS = {
@@ -19,7 +23,25 @@ export const ORDER_PERMISSIONS = {
   ADMIN_READ: 'admin:orders:read',
   ADMIN_MANAGE: 'admin:orders:manage',
   MERCHANT_MANAGE: 'merchant:orders:manage',
+  ADMIN_SETTLEMENT_COMMISSION_MANAGE: 'admin:merchant-settlement:commission:manage',
 } as const;
+
+/// DPX-MERCHANT-002 — the singleton MerchantCommissionSetting row's fixed
+/// id, same pattern as DRIVER_SECURITY_SETTINGS_ID.
+export const MERCHANT_COMMISSION_SETTING_ID = '00000000-0000-0000-0000-000000000002';
+
+export const DEFAULT_MERCHANT_COMMISSION_RATE = 0.1;
+
+/** WalletLedgerEntry.referenceType for a merchant order settlement credit,
+ * paired with referenceId = order.id — same idempotency-supporting
+ * pattern as ORDER_WALLET_REFERENCE_TYPE/ORDER_WALLET_PAYMENT_REFERENCE_TYPE. */
+export const ORDER_SETTLEMENT_WALLET_REFERENCE_TYPE = 'order_settlement';
+
+/** Distinct referenceType for a settlement reversal (post-completion
+ * refund), so the composite (walletId, referenceType, referenceId)
+ * uniqueness constraint keeps the original credit and its reversal as
+ * separate ledger entries. */
+export const ORDER_SETTLEMENT_REVERSAL_WALLET_REFERENCE_TYPE = 'order_settlement_reversal';
 
 export const RESERVATION_TTL_MS = 30 * 60 * 1000;
 export const RESERVATION_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
