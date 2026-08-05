@@ -8,6 +8,29 @@
 > intentional future migration**. Coolify's runbook is kept as a parked
 > reference, not deleted — do not silently switch back to it. Railway is
 > the canonical target as of this update.
+>
+> **RECONFIRMED AND LOCKED (2026-08-05):** Following the Merchant Phase 2
+> production audit (`docs/DPX-MERCHANT-013-PRODUCTION-AUDIT.md`), which
+> incorrectly cited Coolify's parked doc as the deployment target to
+> extend, the founder explicitly reconfirmed: **Railway is the canonical
+> production deployment platform for DrippleX.** All future deployment
+> work — documentation, runbooks, Docker configuration, environment
+> setup, health checks, production verification — targets Railway.
+> Coolify's doc remains parked/legacy reference only, per the note above;
+> treat it as historical, not as a live alternative to weigh against
+> Railway. Going forward, deployment guides and production audits should
+> assume Railway unless the founder explicitly decides to change
+> platforms again.
+>
+> The founder also locked the following as the required scope for a
+> **Railway-specific production readiness checklist, to be completed
+> before Ride launch** (not yet started as of this update — recorded here
+> so the scope isn't lost, to be picked up as its own dedicated pass):
+> backend deployment; customer-web; driver-portal; merchant-portal;
+> operations-console; environment variables and secrets; PostgreSQL and
+> Redis connectivity; health/readiness endpoints; domain and SSL
+> configuration; monitoring and logging; production build/start
+> verification; rollback procedure.
 
 **Status of this document:** Railway was chosen as the single production infrastructure target on 2026-07-28, following `docs/AUDIT-PRODUCTION-READINESS.md`, replacing the Cloudflare Workers / Hetzner / GHCR design in `docs/archive/pre-railway-infrastructure/`. Everything below marked **Verified** was confirmed hands-on in an earlier working session (live `curl` against the deployed API, not assumption) or via the founder's own browser screenshots (2026-08-03: backend `/api/v1/health` returned healthy with database and redis both `up`; customer-web and admin-portal loaded correctly). Everything marked **Not yet verified this session** needs a fresh check — Railway state can drift independently of this repo.
 

@@ -103,13 +103,21 @@ Cross-referenced the SDK surface against what the UI actually calls.
   doc against the live source in this pass; no drift found.
 - **This audit corrects the one inaccurate completeness claim** found
   (§2.1, in DPX-MERCHANT-010).
-- `docs/ops/PRODUCTION-COOLIFY.md` explicitly documents that
-  `merchant-portal` deployment is **not yet covered** by that pass (a
-  Dockerfile exists at `apps/merchant-portal/Dockerfile`, copied from the
-  same working pattern as `driver-portal`/`admin-portal`, but no
-  domain/CORS/env-var walkthrough has been written for it yet) — flagged
-  again below under Production readiness (§8) since it's directly
-  relevant to freeze-readiness.
+- **Correction (post-publish):** this section originally cited
+  `docs/ops/PRODUCTION-COOLIFY.md` as the relevant deployment doc to
+  extend. That was wrong — Railway, not Coolify, has been the canonical
+  production platform since 2026-08-03 (`docs/ops/PRODUCTION-RAILWAY.md`
+  header; Coolify's doc is explicitly parked, not canonical). The
+  founder reaffirmed this and locked it as the standing platform
+  decision for all future deployment work. `docs/ops/PRODUCTION-RAILWAY.md`
+  explicitly documents that `merchant-portal` deployment is **not yet
+  covered** (its own "Known gaps" section: "`merchant-portal`,
+  `rider-portal` have never been deployed anywhere, and have no
+  Dockerfile-based deploy recipe documented yet" — though a Dockerfile
+  does in fact exist at `apps/merchant-portal/Dockerfile`, so that doc's
+  gap note is itself slightly stale) — flagged again below under
+  Production readiness (§8) since it's directly relevant to
+  freeze-readiness.
 
 ## 6. Performance
 
@@ -160,12 +168,13 @@ listOrders()` filters by both together (the Incoming Orders screen's
 - **Merchant Portal deployment**: `apps/merchant-portal/Dockerfile`
   exists and follows the same proven multi-stage pattern as
   `driver-portal`/`admin-portal`/`customer-web`, but
-  `docs/ops/PRODUCTION-COOLIFY.md` has not yet been extended with a
-  merchant-portal domain/CORS/env-var section the way it has for
-  `operations-console`. **This should be closed before or immediately
-  after freeze** — the module isn't genuinely production-ready until
-  there's a documented path to actually deploying it, even though the
-  underlying backend/SDK/UI work is done.
+  `docs/ops/PRODUCTION-RAILWAY.md` (canonical) has no merchant-portal
+  Railway service/domain/env-var section yet — the same gap that exists
+  for `driver-portal`/`operations-console` before they were deployed
+  there. **This should be closed before or immediately after freeze** —
+  the module isn't genuinely production-ready until there's a documented
+  path to actually deploying it on the platform DrippleX actually runs
+  on, even though the underlying backend/SDK/UI work is done.
 - **Environment variables**: `merchant-portal` uses the same
   `NEXT_PUBLIC_API_BASE_URL` pattern as every other frontend app; no new
   environment variable was introduced by any Phase 2 screen (confirmed —
@@ -182,11 +191,11 @@ listOrders()` filters by both together (the Incoming Orders screen's
 
 ## 9. Summary of findings requiring a decision before/around freeze
 
-| #   | Finding                                                                        | Severity                                                                                 | Recommendation                                                           |
-| --- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| 1   | Home/Overview screen is a stale Phase 1 page, not a real Phase 2 screen (§2.1) | Medium — visible on every merchant login, but every underlying capability already exists | Build it before freeze (half-day, no backend/SDK work needed)            |
-| 2   | `stock-status` endpoint has no SDK method or UI (§3, §4)                       | Low — indirect workaround (`updateInventory` to 0) exists                                | Add SDK method + a small UI affordance; not urgent                       |
-| 3   | Merchant Portal not yet in `PRODUCTION-COOLIFY.md` (§8)                        | Medium — blocks an actual production deploy, not the code itself                         | Extend the ops doc with a merchant-portal section before real deployment |
+| #   | Finding                                                                        | Severity                                                                                 | Recommendation                                                       |
+| --- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| 1   | Home/Overview screen is a stale Phase 1 page, not a real Phase 2 screen (§2.1) | Medium — visible on every merchant login, but every underlying capability already exists | Build it before freeze (half-day, no backend/SDK work needed)        |
+| 2   | `stock-status` endpoint has no SDK method or UI (§3, §4)                       | Low — indirect workaround (`updateInventory` to 0) exists                                | Add SDK method + a small UI affordance; not urgent                   |
+| 3   | Merchant Portal not yet in `PRODUCTION-RAILWAY.md` (§8)                        | Medium — blocks an actual production deploy, not the code itself                         | Add a merchant-portal Railway service section before real deployment |
 
 None of these three are defects in what was built — they are honest,
 bounded gaps consistent with the founder's own observation that a
