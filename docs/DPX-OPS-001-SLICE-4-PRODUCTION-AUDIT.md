@@ -165,22 +165,42 @@ applied to time instead of space.
 8 new SDK client tests (`operations-analytics-client.spec.ts`) confirm
 every method calls the right endpoint with the range as query params.
 
-Full suite run against a real local Postgres: 1244 backend tests, of
-which 3 pre-existing, unrelated failures were found and confirmed **not**
-caused by this slice — `customer-products.service.spec.ts` (product
-rating/isFeatured filter tests), `driver-identity-verification.service.
-spec.ts` (a lockout-trigger assertion), and `operations-cases.service.
-spec.ts` (a `SosAlert.vehicleId` foreign-key assumption in a Slice 2 test
-predating this work). Verified via `git status`/`git diff` that this
-slice's diff touches none of those three files or the code paths they
-exercise, and reproduced the same failures running those files in
-isolation — consistent with local test-DB state accumulated across many
-runs in this session's ephemeral Postgres instance, not a regression.
+Full suite run against a real local Postgres: 1244 backend tests. Several
+pre-existing failures were observed across different full-suite runs, all
+traced to specific causes and confirmed **not** caused by this slice:
+
+- `customer-products.service.spec.ts` (rating/`isFeatured` filter
+  assertions) and `driver-identity-verification.service.spec.ts` (a
+  lockout-trigger assertion) reproduce the same failure running in
+  isolation, unrelated to any table this slice reads — pre-existing bugs
+  or environment-state assumptions in those files, predating this work.
+- `operations-cases.service.spec.ts` has a real pre-existing bug: it
+  creates a `SosAlert` with a random `vehicleId` that was never inserted
+  into `Vehicle`, which violates `sos_alerts_vehicle_id_fkey` — a Slice 2
+  test asserting a foreign key doesn't exist when it does.
+- `operations-dispatch-support.service.spec.ts` (Slice 3) failed in one
+  full-suite run with an extra "eligible" candidate — traced precisely,
+  not assumed: `operations-fleet.service.spec.ts` (Slice 1) creates a
+  driver named "Ada" at the exact same shared Lagos coordinate constant
+  Slice 3's dispatch-support suite uses for its own eligibility test. Both
+  are live-DB tests against one shared physical Postgres, and when jest
+  runs the two files concurrently in separate workers, Slice 1's fixture
+  can transiently exist while Slice 3's "exactly one eligible candidate"
+  assertion runs — a genuine cross-file parallel-worker race between two
+  pre-existing test files, not a bug in either file taken alone, and not
+  something this slice's diff touches or could have caused (confirmed via
+  `git diff`: zero changes to either file or the coordinate constant they
+  share).
+
 `operations-analytics.service.spec.ts` itself passed cleanly in every run,
-including the full-suite run. SDK: 138/138 tests pass (31 suites).
-operations-console: `tsc`/`eslint --max-warnings=0`/`vitest`/`next build`
-all clean — all 7 new analytics routes (`/analytics` plus six
-drill-downs) generate as static pages.
+including every full-suite run, because each of its tests is pinned to an
+isolated slice of a fixed multi-year timeline rather than shared "now" or
+shared coordinates — the same discipline that would also fix the
+Ada-driver race, were it in this slice's scope to change Slice 1/3's test
+files. SDK: 138/138 tests pass (31 suites). operations-console:
+`tsc`/`eslint --max-warnings=0`/`vitest`/`next build` all clean — all 7
+new analytics routes (`/analytics` plus six drill-downs) generate as
+static pages.
 
 ## Recommendation
 
