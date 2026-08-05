@@ -111,6 +111,27 @@ and geographic activity; don't invent metrics whose underlying timestamps
 or events don't exist. The Figma Protection Rule applies to Slice 4 in
 full.
 
+**Update (2026-08-05, same day): Slice 4 reality audit complete** — see
+`docs/DPX-OPS-001-SLICE-4-REALITY-AUDIT.md`. Every named area checked
+directly against the schema: driver utilization, shift analytics, ride
+demand/completion/cancellation, dispatch performance (`RideOffer`), and
+SOS/Incident/Support response times (`OperationsCase`, uniformly across
+all three case types since Slice 2 built its SLA fields as a first-class
+concern) are all fully real, no invented data needed. Fleet-availability
+_trend_ and driver-position _movement_ trend are honestly ❌ — both data
+points are stored as singleton, overwritten-in-place rows with no history
+table, the same gap Slice 2's Live Activity Feed already found and
+documented for driver online/offline events. Geographic ride-demand
+heatmaps are real and historical (permanent lat/lng columns on every
+`Ride` row); geographic driver-position data is real only as a live
+snapshot, no history. No named regions, consistent with Slice 2's
+standing deferral. The existing `apps/backend/src/analytics/` module
+(Marketplace/Delivery-scoped, `recordMetric()` never actually called
+anywhere) is explicitly **not** reused — wrong domain, dormant
+infrastructure; Slice 4 builds its own live-query aggregation the same
+way every prior slice has. Submitted for founder review before
+implementation begins.
+
 **Scope**: Phase 1 (Core Operations) only, per the founder's own phasing —
 Fleet Operations, Emergency Operations, Support Centre, Incident Management,
 Dispatch Oversight. Phase 2 (analytics, KPIs, heat maps, demand forecasting,

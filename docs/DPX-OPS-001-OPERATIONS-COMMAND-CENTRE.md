@@ -3,7 +3,8 @@
 **Status: Slice 1 (Live Operations Dashboard) shipped (2026-08-04). Slice 2
 (Operations Work Queues) 🔒 Founder Approved / Frozen (2026-08-05). Slice 3
 (Dispatch Management) 🔒 Founder Approved / Frozen (2026-08-05). Slice 4
-(Operations Analytics) not yet started — reality audit in progress.** See
+(Operations Analytics) reality audit complete, submitted for founder review
+— see `docs/DPX-OPS-001-SLICE-4-REALITY-AUDIT.md`.** See
 `docs/DPX-OPS-001-REALITY-AUDIT.md` for the full backend-capability audit,
 gap analysis, proposed Phase 1 slice plan, and the founder's locked-in
 refinements — this document stays the scope record, that one is the
