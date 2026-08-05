@@ -169,6 +169,10 @@ export type OrderSettlementStatus = 'PENDING' | 'COMPLETED' | 'FAILED' | 'REVERS
 export interface OrderSettlementDto {
   id: string;
   orderId: string;
+  /// The human-readable order number (Order.orderNumber), joined in for
+  /// merchant-facing settlement views so a merchant never has to look up
+  /// a raw order UUID to know which sale a settlement corresponds to.
+  orderNumber: string;
   merchantId: string;
   status: OrderSettlementStatus;
   grossAmount: number;

@@ -312,4 +312,32 @@ describe('MerchantSettlementService', () => {
 
     expect(result).toBeNull();
   });
+
+  it('listSettlements() returns the merchant real settlement history with orderNumber, paginated', async () => {
+    if (!databaseAvailable) return;
+    const orderA = await createOrder({ subtotal: 2000, total: 2500 });
+    const orderB = await createOrder({ subtotal: 3000, total: 3500 });
+    await service.settleOrder(orderA.id);
+    await service.settleOrder(orderB.id);
+
+    const page1 = await service.listSettlements(merchantUserId, 1, 1);
+    expect(page1.items).toHaveLength(1);
+    expect(page1.meta.total).toBeGreaterThanOrEqual(2);
+    expect(page1.meta.totalPages).toBeGreaterThanOrEqual(2);
+    // Most recent first.
+    expect(page1.items[0]?.orderId).toBe(orderB.id);
+    expect(page1.items[0]?.orderNumber).toEqual(expect.any(String));
+    expect(page1.items[0]?.orderNumber.length).toBeGreaterThan(0);
+
+    const page2 = await service.listSettlements(merchantUserId, 2, 1);
+    expect(page2.items).toHaveLength(1);
+    expect(page2.items[0]?.orderId).toBe(orderA.id);
+  });
+
+  it('listSettlements() throws for a user with no merchant profile', async () => {
+    if (!databaseAvailable) return;
+    await expect(service.listSettlements(customerId, 1, 20)).rejects.toThrow(
+      'Merchant profile not found',
+    );
+  });
 });

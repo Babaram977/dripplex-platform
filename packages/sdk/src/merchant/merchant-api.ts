@@ -17,6 +17,7 @@ import type {
   MerchantDetailResponse,
   MerchantKycDto,
   MerchantSummaryDto,
+  OrderSettlementDto,
   PaginatedMerchantsResult,
   PaginatedResult,
   PauseStoreRequest,
@@ -28,6 +29,9 @@ import type {
   UpdateProductInventoryRequest,
   UpdateProductRequest,
   UpdateProductVariantRequest,
+  WalletDto,
+  WalletHistoryQuery,
+  WalletLedgerEntryDto,
 } from '@dripplex/types';
 
 function toQueryString(params?: object): string {
@@ -133,6 +137,47 @@ export class MerchantApi {
       method: 'POST',
       auth: true,
     });
+  }
+
+  /**
+   * DPX-MERCHANT-007 — Wallet & Bank. Matches
+   * `MerchantWalletController`'s `GET /merchant/wallet` 1:1.
+   */
+  public getWallet(): Promise<WalletDto> {
+    return this.http.request<WalletDto>('/merchant/wallet', {
+      method: 'GET',
+      auth: true,
+    });
+  }
+
+  /**
+   * DPX-MERCHANT-007 — full wallet ledger history (every credit/debit,
+   * not just settlements). Matches `MerchantWalletController`'s
+   * `GET /merchant/wallet/transactions` 1:1.
+   */
+  public getWalletTransactions(
+    query: WalletHistoryQuery = {},
+  ): Promise<PaginatedResult<WalletLedgerEntryDto>> {
+    return this.http.request<PaginatedResult<WalletLedgerEntryDto>>(
+      `/merchant/wallet/transactions${toQueryString(query)}`,
+      { method: 'GET', auth: true },
+    );
+  }
+
+  /**
+   * DPX-MERCHANT-007 — per-order settlement transparency (gross,
+   * commission rate/amount, net, status, order reference, date) so the
+   * merchant can always answer "why did I receive ₦9,000 instead of
+   * ₦10,000". Matches `MerchantSettlementsController`'s
+   * `GET /merchant/settlements` 1:1.
+   */
+  public listSettlements(
+    query: { page?: number; pageSize?: number } = {},
+  ): Promise<PaginatedResult<OrderSettlementDto>> {
+    return this.http.request<PaginatedResult<OrderSettlementDto>>(
+      `/merchant/settlements${toQueryString(query)}`,
+      { method: 'GET', auth: true },
+    );
   }
 }
 

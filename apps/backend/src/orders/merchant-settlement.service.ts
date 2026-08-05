@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { OrderSettlementStatus, OrderStatus, PaymentStatus, WalletOwnerType } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
+import { NotFoundDomainException } from '../common/exceptions/domain.exception';
 import { DomainEventBus } from '../events/domain-event-bus';
 import { DOMAIN_EVENTS, type DomainEvent } from '../events/domain-events';
 import { PrismaService } from '../prisma/prisma.service';
@@ -13,7 +14,9 @@ import {
   ORDER_SETTLEMENT_REVERSAL_WALLET_REFERENCE_TYPE,
   ORDER_SETTLEMENT_WALLET_REFERENCE_TYPE,
 } from './order.constants';
+import { toOrderSettlementDto } from './order.mapper';
 
+import type { OrderSettlementDto, PaginatedResult } from '@dripplex/types';
 import type { OrderSettlement } from '@prisma/client';
 
 /**
@@ -266,6 +269,49 @@ export class MerchantSettlementService implements OnModuleInit {
     );
 
     return reversed;
+  }
+
+  /**
+   * DPX-MERCHANT-007 — merchant-facing settlement history for the Wallet
+   * screen. Read-only; no financial mutation happens here. Joins in the
+   * real `orderNumber` so the merchant never has to look up a raw order
+   * UUID to answer "why did I receive ₦9,000 instead of ₦10,000."
+   */
+  public async listSettlements(
+    merchantUserId: string,
+    page: number,
+    pageSize: number,
+  ): Promise<PaginatedResult<OrderSettlementDto>> {
+    const profile = await this.prisma.merchantProfile.findUnique({
+      where: { userId: merchantUserId },
+    });
+    if (!profile) {
+      throw new NotFoundDomainException('Merchant profile not found');
+    }
+
+    const where = { merchantId: profile.id };
+    const [items, total] = await Promise.all([
+      this.prisma.orderSettlement.findMany({
+        where,
+        include: { order: { select: { orderNumber: true } } },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.orderSettlement.count({ where }),
+    ]);
+
+    return {
+      items: items.map((settlement) =>
+        toOrderSettlementDto(settlement, settlement.order.orderNumber),
+      ),
+      meta: {
+        page,
+        limit: pageSize,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / pageSize) || 1),
+      },
+    };
   }
 
   /** `Order.merchantId` is `MerchantProfile.id`, but merchant `Wallet`

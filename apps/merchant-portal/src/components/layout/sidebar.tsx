@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   Package,
   ShieldCheck,
+  Wallet,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -20,6 +21,7 @@ const navItems = [
   { href: '/', label: 'Overview', icon: LayoutDashboard },
   { href: '/orders', label: 'Orders', icon: ClipboardList },
   { href: '/products', label: 'Products', icon: Package },
+  { href: '/wallet', label: 'Wallet & Bank', icon: Wallet },
   { href: '/business', label: 'Business', icon: Building2 },
   { href: '/kyc', label: 'Verification', icon: ShieldCheck },
 ] as const;

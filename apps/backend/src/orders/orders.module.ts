@@ -12,6 +12,7 @@ import { WalletModule } from '../wallet/wallet.module';
 import { AdminOrdersController } from './admin-orders.controller';
 import { CheckoutService } from './checkout.service';
 import { AdminMerchantCommissionSettingsController } from './controllers/admin-merchant-commission-settings.controller';
+import { MerchantSettlementsController } from './controllers/merchant-settlements.controller';
 import { CustomerOrdersController } from './customer-orders.controller';
 import { CatalogCheckoutInventoryValidator } from './inventory/catalog-checkout-inventory.validator';
 import { CHECKOUT_INVENTORY_VALIDATOR } from './inventory/checkout-inventory.validator';
@@ -43,6 +44,7 @@ import { ReservationCleanupService } from './reservation-cleanup.service';
     AdminOrdersController,
     MerchantOrdersController,
     AdminMerchantCommissionSettingsController,
+    MerchantSettlementsController,
   ],
   providers: [
     CheckoutService,

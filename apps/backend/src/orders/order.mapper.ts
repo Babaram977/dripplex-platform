@@ -141,11 +141,17 @@ export function generateOrderNumber(now = new Date()): string {
   return `DPX-${String(yyyy)}${mm}${dd}-${suffix}`;
 }
 
-/// DPX-MERCHANT-002
-export function toOrderSettlementDto(settlement: OrderSettlement): OrderSettlementDto {
+/// DPX-MERCHANT-002. `orderNumber` is joined in separately (the caller
+/// selects `order: { orderNumber: true }`) rather than widened onto the
+/// bare `OrderSettlement` type, since most call sites don't need it.
+export function toOrderSettlementDto(
+  settlement: OrderSettlement,
+  orderNumber: string,
+): OrderSettlementDto {
   return {
     id: settlement.id,
     orderId: settlement.orderId,
+    orderNumber,
     merchantId: settlement.merchantId,
     status: settlement.status,
     grossAmount: Number(settlement.grossAmount),
