@@ -6,7 +6,15 @@ import type {
   IncidentSeverity,
   SosAlertStatus,
 } from '../driver/index.js';
-import type { RideType } from '../ride/index.js';
+import type {
+  RideCancelledBy,
+  RideOfferDto,
+  RidePaymentMethod,
+  RidePaymentStatus,
+  RideStatus,
+  RideTrackingPointDto,
+  RideType,
+} from '../ride/index.js';
 
 export type { RideType };
 
@@ -94,6 +102,116 @@ export interface RideQueueSummaryDto {
 export interface OperationsRideQueueDto {
   rides: LiveRideDto[];
   summary: RideQueueSummaryDto;
+}
+
+/**
+ * DPX-OPS-001 Slice 3 — Dispatch Management (founder-approved 2026-08-05,
+ * reality-audited before implementation — see
+ * docs/DPX-OPS-001-SLICE-3-REALITY-AUDIT.md). A ride detail view for the
+ * live ride queue Slice 1 already built. Mirrors `RideDto`'s full shape
+ * (the frozen Ride module's own DTO) with resolved customer/driver
+ * names/phone for operator display — read-only, the same cross-module-read
+ * pattern `LiveRideDto` already established for the ride queue.
+ */
+export interface OperationsRideDetailDto {
+  rideId: string;
+  status: RideStatus;
+  rideType: RideType;
+  customerId: string;
+  customerName: string;
+  customerPhone: string | null;
+  driverId: string | null;
+  driverName: string | null;
+  driverPhone: string | null;
+  pickupLatitude: number;
+  pickupLongitude: number;
+  pickupAddress: string | null;
+  dropoffLatitude: number;
+  dropoffLongitude: number;
+  dropoffAddress: string | null;
+  estimatedDistanceMeters: number | null;
+  estimatedDurationSeconds: number | null;
+  baseFare: number;
+  distanceFare: number;
+  timeFare: number;
+  totalFare: number;
+  promoDiscount: number;
+  paymentMethod: RidePaymentMethod | null;
+  paymentStatus: RidePaymentStatus;
+  tipAmount: number | null;
+  requestedAt: string;
+  assignedAt: string | null;
+  arrivedAt: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  cancelledAt: string | null;
+  cancelledBy: RideCancelledBy | null;
+  cancellationReason: string | null;
+  /** True only when dispatch exhausted every retry with no driver ever
+   * accepting (`status === 'NO_DRIVERS_FOUND'`) — a distinct, real outcome
+   * from a cancellation. The Slice 3 reality audit confirmed the platform
+   * never stamps `cancelledBy: 'SYSTEM'` for this case (that enum value
+   * exists but has zero real call sites), so this flag exists specifically
+   * to let the console tell the two apart truthfully rather than
+   * fabricating `SYSTEM` cancellation metadata the backend doesn't
+   * record. */
+  noDriversFound: boolean;
+  /** True when an open (`OPEN`/`ACKNOWLEDGED`) `SosAlert` references this
+   * ride — the founder's UX direction names SOS as the top exception to
+   * give strong visual priority to on the ride detail view. Cross-module
+   * read only (`SosAlert.rideId`, a plain scalar per that frozen model's
+   * own doc comment) — `drivers/sos` is never imported or modified. */
+  hasOpenSos: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** One dispatch attempt for a ride — extends the frozen Ride module's own
+ * `RideOfferDto` with a resolved driver name/phone for operator display. */
+export interface OperationsRideOfferDto extends RideOfferDto {
+  driverName: string;
+  driverPhone: string | null;
+}
+
+export interface OperationsRideAllocationDto {
+  /** Ordered `offeredAt` ascending — the sequence dispatch actually tried. */
+  offers: OperationsRideOfferDto[];
+  currentDriverId: string | null;
+  currentDriverName: string | null;
+}
+
+/** Trip monitoring — the same `RideTracking` breadcrumb `RideTrackingReadService`
+ * already serves to the ride's own customer, read operations-side. Polled
+ * on the platform's established 15s cadence, not pushed — see the Slice 3
+ * reality audit's finding that `RideGateway` has no operations-wide
+ * broadcast room and adding one would touch the frozen gateway. */
+export interface OperationsRideTrackingDto {
+  points: RideTrackingPointDto[];
+}
+
+/** The founder's DPX-RIDE-201 decision-support panel, one candidate driver.
+ * Informational only — this DTO backs a "here are the best available
+ * drivers" display, never an assignment action. `etaSeconds` is always a
+ * constant-speed straight-line estimate (the same formula the platform's
+ * fare-estimate endpoint uses everywhere else) — `isEstimate` is always
+ * `true` and exists so the console can never accidentally present this as
+ * a routed, traffic-aware duration. */
+export interface DispatchCandidateDto {
+  driverId: string;
+  driverName: string;
+  driverPhone: string | null;
+  vehiclePlateNumber: string | null;
+  latitude: number;
+  longitude: number;
+  distanceMeters: number;
+  etaSeconds: number;
+  isEstimate: true;
+  averageRating: number | null;
+  ratingCount: number;
+}
+
+export interface DispatchSupportDto {
+  candidates: DispatchCandidateDto[];
 }
 
 /**

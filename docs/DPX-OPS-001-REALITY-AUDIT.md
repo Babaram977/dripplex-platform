@@ -74,6 +74,16 @@ today with zero changes to `apps/backend/src/rides/`. Manual reassignment
 itself stays exactly where DPX-RIDE-201 left it — no activation, no
 mutation. Submitted for founder review before implementation begins.
 
+**Update (2026-08-05, same day): Slice 3 shipped** — founder approved the
+audit's five-item scope in full; see
+`docs/DPX-OPS-001-OPERATIONS-COMMAND-CENTRE.md`'s "Slice 3 — Dispatch
+Management" section for what was built and
+`docs/DPX-OPS-001-SLICE-3-PRODUCTION-AUDIT.md` for the production audit.
+`apps/backend/src/rides/` remains untouched; the "Reassign Driver" panel
+ships with zero assignment action, exactly as `docs/DPX-RIDE-201-
+OPERATIONS-MANUAL-DISPATCH.md` specifies. Slice 4 (Analytics) is next,
+not yet started.
+
 **Scope**: Phase 1 (Core Operations) only, per the founder's own phasing —
 Fleet Operations, Emergency Operations, Support Centre, Incident Management,
 Dispatch Oversight. Phase 2 (analytics, KPIs, heat maps, demand forecasting,

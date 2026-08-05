@@ -12,7 +12,9 @@ import { OperationsRidesController } from './controllers/operations-rides.contro
 import { OperationsStaffController } from './controllers/operations-staff.controller';
 import { OperationsCasesService } from './operations-cases.service';
 import { OperationsDashboardService } from './operations-dashboard.service';
+import { OperationsDispatchSupportService } from './operations-dispatch-support.service';
 import { OperationsFleetService } from './operations-fleet.service';
+import { OperationsRideDetailService } from './operations-ride-detail.service';
 import { OperationsRideQueueService } from './operations-ride-queue.service';
 
 /** DPX-OPS-001 — Operations Command Centre backend.
@@ -31,9 +33,18 @@ import { OperationsRideQueueService } from './operations-ride-queue.service';
  * methods — the source tables' own driver-facing status and notifications
  * stay exactly as Driver Slice 2 built them.
  *
+ * Slice 3 (Dispatch Management, founder-approved 2026-08-05,
+ * reality-audited first — see docs/DPX-OPS-001-SLICE-3-REALITY-AUDIT.md):
+ * ride detail, driver allocation history (`RideOffer`), trip monitoring
+ * (`RideTracking`), and the DPX-RIDE-201 decision-support panel
+ * (`DriverAvailability`/`Vehicle`/`RideRating`) — all read-only, all
+ * composed inside `operations/`. No manual-reassignment action exists;
+ * that stays deferred to DPX-RIDE-201's own future founder-approved pass.
+ *
  * `apps/backend/src/rides/` is a frozen module and is never imported or
- * modified here; `Ride` is read directly via `PrismaService`, the same
- * cross-module-read pattern established throughout Driver Slice 2. */
+ * modified here; `Ride` and its related tables are read directly via
+ * `PrismaService`, the same cross-module-read pattern established
+ * throughout Driver Slice 2 and every DPX-OPS-001 slice since. */
 @Module({
   imports: [PrismaModule, AuditModule, DriversModule],
   controllers: [
@@ -47,12 +58,16 @@ import { OperationsRideQueueService } from './operations-ride-queue.service';
   providers: [
     OperationsFleetService,
     OperationsRideQueueService,
+    OperationsRideDetailService,
+    OperationsDispatchSupportService,
     OperationsCasesService,
     OperationsDashboardService,
   ],
   exports: [
     OperationsFleetService,
     OperationsRideQueueService,
+    OperationsRideDetailService,
+    OperationsDispatchSupportService,
     OperationsCasesService,
     OperationsDashboardService,
   ],

@@ -1,14 +1,21 @@
 # DPX-RIDE-201 — Operations Manual Dispatch (Future Ride Enhancement)
 
-**Status: Deferred, not yet implemented.** Founder decision (2026-08-04),
+**Status: Visibility half shipped (2026-08-05, DPX-OPS-001 Slice 3). Action
+half still deferred, not yet implemented.** Founder decision (2026-08-04),
 recorded alongside approval of DPX-OPS-001 Phase 1's Slice 3 (Dispatch
 Management): manual ride reassignment is real, wanted capability, but Ride
-is a frozen module — this document exists so Slice 3 can build the
-_visibility_ half of dispatch oversight now (eligible drivers, availability,
+is a frozen module — this document exists so Slice 3 could build the
+_visibility_ half of dispatch oversight (eligible drivers, availability,
 ETA, ratings) while the _action_ half (actually reassigning a ride) waits
 for its own explicit founder-approved-enhancement pass into `rides/`,
 instead of either being silently skipped or silently built without that
-sign-off.
+sign-off. **That visibility half is now real** — see
+`docs/DPX-OPS-001-OPERATIONS-COMMAND-CENTRE.md`'s Slice 3 section. The
+"Reassign Driver" control shows the decision-support panel below and has
+no assignment action wired to it, exactly as this document specifies. The
+_action_ half stays exactly as deferred as it was — nothing in Slice 3
+activated it, and this document's own "what activating this document later
+requires" section still applies unchanged.
 
 ## The rule, exactly as the founder set it
 

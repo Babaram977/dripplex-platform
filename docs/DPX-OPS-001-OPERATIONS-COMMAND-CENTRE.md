@@ -2,14 +2,14 @@
 
 **Status: Slice 1 (Live Operations Dashboard) shipped (2026-08-04). Slice 2
 (Operations Work Queues) 🔒 Founder Approved / Frozen (2026-08-05). Slice 3
-(Dispatch Management) reality audit complete
-(`docs/DPX-OPS-001-SLICE-3-REALITY-AUDIT.md`), awaiting founder review
-before implementation. Slice 4 (Analytics) not yet started.** See
+(Dispatch Management) shipped (2026-08-05), founder-approved implementation
+following the reality audit. Slice 4 (Analytics) not yet started.** See
 `docs/DPX-OPS-001-REALITY-AUDIT.md` for the full backend-capability audit,
 gap analysis, proposed Phase 1 slice plan, and the founder's locked-in
 refinements — this document stays the scope record, that one is the
 audit/plan/approval record. Manual ride reassignment is tracked separately:
-`docs/DPX-RIDE-201-OPERATIONS-MANUAL-DISPATCH.md`.
+`docs/DPX-RIDE-201-OPERATIONS-MANUAL-DISPATCH.md` — Slice 3 shipped that
+document's visibility half only; the action half stays deferred.
 
 ## Slice 1 — Live Operations Dashboard (shipped 2026-08-04)
 
@@ -184,6 +184,64 @@ Region filtering waits for a canonical operational geography/zone model;
 Lost & Found/Complaint Escalation belong to a future shared platform
 support/incident architecture, not a reopening of the frozen Driver
 incident model.
+
+## Slice 3 — Dispatch Management (shipped 2026-08-05)
+
+Founder-approved to implement, verbatim, after reviewing
+`docs/DPX-OPS-001-SLICE-3-REALITY-AUDIT.md`'s five-item visibility-only
+scope. Ships the founder's five named capabilities exactly, plus the
+standing `docs/DPX-RIDE-201-OPERATIONS-MANUAL-DISPATCH.md` boundary
+untouched: **no manual reassignment action exists anywhere in Slice 3.**
+
+- **Backend** — `apps/backend/src/operations/operations-ride-detail.service.ts`
+  (ride detail — the full `RideDto` shape with resolved customer/driver
+  identity, plus a `noDriversFound` flag that keeps `NO_DRIVERS_FOUND`
+  honestly distinct from a real cancellation rather than fabricating
+  `cancelledBy: SYSTEM` metadata the platform never actually records; and
+  driver allocation history, reading `RideOffer` rows directly) and
+  `operations-dispatch-support.service.ts` (trip monitoring off
+  `RideTracking`, and the DPX-RIDE-201 decision-support panel — a new
+  operations-side nearby-driver query, full-fidelity and driver-identified
+  unlike the customer-facing map's privacy-fuzzed one, capped to the 10
+  nearest within 10km for decision-support usability rather than left
+  unbounded, with rating aggregates via the same `RideRating.aggregate`
+  shape `DriversService.getOwnPerformanceStats` already uses). Also
+  surfaces `hasOpenSos` on the ride detail (a read of `SosAlert.rideId`,
+  the founder's own explicit "SOS" exception category). All endpoints
+  extend `OperationsRidesController` under the existing Slice 1
+  `operations:live:read` permission — no new permission needed for a
+  read-only extension. `apps/backend/src/rides/` was never touched; two
+  small pure formulas (`haversineMeters`, the constant-speed ETA estimate)
+  are deliberately duplicated from the frozen `ride-fare.service.ts` rather
+  than imported, matching the "operations/ never imports rides/" boundary
+  every prior slice held to.
+- **SDK** — `OperationsRidesClient` extended with `getRideDetail`/
+  `getRideAllocation`/`getTripTracking`/`getDispatchCandidates`.
+- **operations-console** — a new `/rides/[id]` detail view, reachable by
+  clicking any row in Slice 1's existing ride queue. Follows the founder's
+  own ordering for what an operator should be able to answer quickly:
+  where is the trip → what state → who's involved → what happened during
+  dispatch → is there a problem → what options are available. An
+  `ExceptionBanner` gives the founder's named exception categories (SOS,
+  stalled/unassigned, repeated offer failures, cancellations,
+  `NO_DRIVERS_FOUND`) strong visual priority right under the header, per
+  the founder's explicit UX direction — computed client-side from
+  already-fetched data, no new backend logic. The "Reassign Driver" panel
+  shows the decision-support list — nearby drivers, distance, an ETA
+  clearly labeled as an estimate, rating — with **no assignment control
+  anywhere in the component**; it's fetched lazily, only once an operator
+  opens it, not on the page's 15s poll.
+- **Tests** — 8 new backend tests (`operations-ride-detail.service.spec.ts`,
+  `operations-dispatch-support.service.spec.ts`, unit + live-DB, same
+  pattern as every prior slice).
+- **Verification** — backend/SDK/operations-console `tsc`, `eslint
+--max-warnings=0`, `jest`/`vitest`, and `next build` all clean.
+- **Scoping note, not a gap**: the "Live location" section is
+  text/coordinate-first (last known point, staleness, speed), not a second
+  full map implementation — MAPS-UI already renders this exact
+  `RideTracking` data on a map for the ride's own customer/driver, and
+  duplicating that map just for this internal view wasn't part of what the
+  founder approved. A map view remains a reasonable future enhancement.
 
 Founder-recorded (2026-08-04), alongside
 approval of the Driver Slice 2 freeze: the production audit's one outstanding

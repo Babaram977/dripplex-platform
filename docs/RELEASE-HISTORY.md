@@ -542,6 +542,47 @@ needed. Manual reassignment itself is untouched — no activation. Proposed
 five-item visibility-only Slice 3 scope submitted for founder review before
 any implementation begins.
 
+## 2026-08-05 (same day) — DPX-OPS-001 Slice 3 shipped: Dispatch Management
+
+Founder approved the reality audit's five-item scope in full: Ride Detail
+(complete trip state/timeline/assignment/pickup-dropoff/fare/payment,
+cancellation and `NO_DRIVERS_FOUND` clearly represented), Driver Allocation
+History (`RideOffer` sequence/timestamps/outcomes, current driver), Live
+Trip Monitoring (existing `RideTracking` data, the platform's established
+15s-polling precedent, no operations-only websocket channel added to the
+frozen Ride gateway), Cancellation Detail (reason/who/when/state, with
+`NO_DRIVERS_FOUND` never fabricated as a `SYSTEM` cancellation), and the
+DPX-RIDE-201 Decision Support panel (nearby eligible drivers, availability,
+distance, ETA explicitly labeled an estimate, rating).
+
+**The Ride boundary held.** No manual reassignment action exists anywhere
+in Slice 3 — the "Reassign Driver" panel is informational only, per the
+founder's own framing: it can tell an operator "these are the best
+available drivers," never "assign this driver." `apps/backend/src/rides/`
+was not touched.
+
+Built entirely inside `operations/`: `OperationsRideDetailService` (ride
+detail + allocation history) and `OperationsDispatchSupportService` (trip
+tracking + decision-support candidates), both under Slice 1's existing
+`operations:live:read` permission — no new permission needed. A new
+`/rides/[id]` operations-console view follows the founder's own UX
+ordering (where → what state → who's involved → what happened during
+dispatch → is there a problem → what options), with an exception banner
+giving SOS, stalled/unassigned rides, repeated offer failures,
+cancellations, and `NO_DRIVERS_FOUND` the strong visual priority the
+founder asked for. 8 new backend tests; full backend/SDK/operations-console
+`tsc`/`eslint --max-warnings=0`/`jest`/`vitest`/`next build` clean (1236
+backend tests total).
+
+**Slice 3 Production Audit run the same day** — see
+`docs/DPX-OPS-001-SLICE-3-PRODUCTION-AUDIT.md`. Confirmed the Ride
+boundary held (zero `rides/` edits, zero assignment mutation anywhere in
+the new code), permissions, cancellation truthfulness, and every claim in
+the shipped-scope list. Zero launch-blocking findings. Per the founder's
+own governance, this audit does not authorize a freeze — Slice 3 stays
+open pending Founder Review, and the module-level freeze still waits for
+Slice 4.
+
 ---
 
 ## What's next

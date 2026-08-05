@@ -1,10 +1,15 @@
+import { RideStatus } from '@prisma/client';
+
 import type {
+  DispatchCandidateDto,
   FleetDriverDto,
   FleetDriverStatus,
   IncidentQueueItemDto,
   LiveRideDto,
   OperationsCaseBaseDto,
   OperationsCaseEventDto,
+  OperationsRideDetailDto,
+  OperationsRideOfferDto,
   SosQueueItemDto,
   SupportQueueItemDto,
 } from '@dripplex/types';
@@ -16,6 +21,7 @@ import type {
   OperationsCase,
   OperationsCaseEvent,
   Ride,
+  RideOffer,
   SosAlert,
   User,
 } from '@prisma/client';
@@ -183,5 +189,104 @@ export function toCaseEventDto(
     actorName: userName(event.actorId, userMap),
     description: event.description,
     createdAt: event.createdAt.toISOString(),
+  };
+}
+
+/** DPX-OPS-001 Slice 3 — the full ride detail view. Mirrors `RideDto`'s
+ * shape with resolved customer/driver names/phone, same pattern as
+ * `toLiveRideDto` above. */
+export function toOperationsRideDetailDto(
+  ride: Ride & { customer: User; driver: User | null },
+  hasOpenSos: boolean,
+): OperationsRideDetailDto {
+  return {
+    rideId: ride.id,
+    status: ride.status,
+    rideType: ride.rideType,
+    customerId: ride.customerId,
+    customerName: `${ride.customer.firstName} ${ride.customer.lastName}`,
+    customerPhone: ride.customer.phone,
+    driverId: ride.driverId,
+    driverName: ride.driver ? `${ride.driver.firstName} ${ride.driver.lastName}` : null,
+    driverPhone: ride.driver?.phone ?? null,
+    pickupLatitude: Number(ride.pickupLatitude),
+    pickupLongitude: Number(ride.pickupLongitude),
+    pickupAddress: ride.pickupAddress,
+    dropoffLatitude: Number(ride.dropoffLatitude),
+    dropoffLongitude: Number(ride.dropoffLongitude),
+    dropoffAddress: ride.dropoffAddress,
+    estimatedDistanceMeters: ride.estimatedDistanceMeters,
+    estimatedDurationSeconds: ride.estimatedDurationSeconds,
+    baseFare: Number(ride.baseFare),
+    distanceFare: Number(ride.distanceFare),
+    timeFare: Number(ride.timeFare),
+    totalFare: Number(ride.totalFare),
+    promoDiscount: Number(ride.promoDiscount),
+    paymentMethod: ride.paymentMethod,
+    paymentStatus: ride.paymentStatus,
+    tipAmount: ride.tipAmount !== null ? Number(ride.tipAmount) : null,
+    requestedAt: ride.requestedAt.toISOString(),
+    assignedAt: ride.assignedAt ? ride.assignedAt.toISOString() : null,
+    arrivedAt: ride.arrivedAt ? ride.arrivedAt.toISOString() : null,
+    startedAt: ride.startedAt ? ride.startedAt.toISOString() : null,
+    completedAt: ride.completedAt ? ride.completedAt.toISOString() : null,
+    cancelledAt: ride.cancelledAt ? ride.cancelledAt.toISOString() : null,
+    cancelledBy: ride.cancelledBy,
+    cancellationReason: ride.cancellationReason,
+    // See OperationsRideDetailDto's own doc comment — NO_DRIVERS_FOUND is a
+    // real, distinct outcome the platform never stamps `cancelledBy:
+    // SYSTEM` for (confirmed by the Slice 3 reality audit: zero real call
+    // sites write that enum value).
+    noDriversFound: ride.status === RideStatus.NO_DRIVERS_FOUND,
+    hasOpenSos,
+    createdAt: ride.createdAt.toISOString(),
+    updatedAt: ride.updatedAt.toISOString(),
+  };
+}
+
+/** One dispatch attempt, with the driver's name/phone resolved for
+ * operator display — the founder's "driver allocation history." */
+export function toOperationsRideOfferDto(
+  offer: RideOffer & { driver: User },
+): OperationsRideOfferDto {
+  return {
+    id: offer.id,
+    rideId: offer.rideId,
+    driverId: offer.driverId,
+    status: offer.status,
+    offeredAt: offer.offeredAt.toISOString(),
+    expiresAt: offer.expiresAt.toISOString(),
+    respondedAt: offer.respondedAt ? offer.respondedAt.toISOString() : null,
+    driverName: `${offer.driver.firstName} ${offer.driver.lastName}`,
+    driverPhone: offer.driver.phone,
+  };
+}
+
+/** One candidate driver in the founder's DPX-RIDE-201 decision-support
+ * panel. Takes already-resolved scalars (distance/ETA computed by the
+ * caller, vehicle/rating looked up separately) rather than raw rows —
+ * this composes three independent lookups, unlike every other mapper here
+ * that maps one table's row straight to a DTO. */
+export function toDispatchCandidateDto(input: {
+  availability: DriverAvailability & { driver: User };
+  distanceMeters: number;
+  etaSeconds: number;
+  vehiclePlateNumber: string | null;
+  averageRating: number | null;
+  ratingCount: number;
+}): DispatchCandidateDto {
+  return {
+    driverId: input.availability.driverId,
+    driverName: `${input.availability.driver.firstName} ${input.availability.driver.lastName}`,
+    driverPhone: input.availability.driver.phone,
+    vehiclePlateNumber: input.vehiclePlateNumber,
+    latitude: Number(input.availability.latitude),
+    longitude: Number(input.availability.longitude),
+    distanceMeters: input.distanceMeters,
+    etaSeconds: input.etaSeconds,
+    isEstimate: true,
+    averageRating:
+      input.averageRating !== null ? Math.round(input.averageRating * 100) / 100 : null,
+    ratingCount: input.ratingCount,
   };
 }

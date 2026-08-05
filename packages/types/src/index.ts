@@ -238,6 +238,12 @@ export type {
   ActivityFeedItemDto,
   ActivityFeedDto,
   OperationsStaffMemberDto,
+  OperationsRideDetailDto,
+  OperationsRideOfferDto,
+  OperationsRideAllocationDto,
+  OperationsRideTrackingDto,
+  DispatchCandidateDto,
+  DispatchSupportDto,
 } from './operations/index.js';
 
 export type {

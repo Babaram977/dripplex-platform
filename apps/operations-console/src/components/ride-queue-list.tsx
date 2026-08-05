@@ -1,5 +1,6 @@
 import { Badge, EmptyState } from '@dripplex/ui';
 import { formatRelativeTime } from '@dripplex/utils';
+import Link from 'next/link';
 import * as React from 'react';
 
 import type { LiveRideDto, LiveRideStatus } from '@dripplex/types';
@@ -28,7 +29,8 @@ function statusBadgeVariant(status: LiveRideStatus): 'outline' | 'accent' | 'suc
   return 'outline';
 }
 
-/** DPX-OPS-001 Slice 1 — the live ride queue, read directly from `Ride` via
+/** DPX-OPS-001 Slice 1 (queue) + Slice 3 (click-through to ride detail) —
+ * the live ride queue, read directly from `Ride` via
  * `OperationsRideQueueService` (`rides/` itself is never imported). */
 export function RideQueueList({ rides }: { rides: LiveRideDto[] }): React.JSX.Element {
   if (rides.length === 0) {
@@ -47,7 +49,11 @@ export function RideQueueList({ rides }: { rides: LiveRideDto[] }): React.JSX.El
   return (
     <div className="border-border/70 divide-border/70 divide-y overflow-hidden rounded-lg border">
       {sorted.map((ride) => (
-        <div key={ride.rideId} className="flex flex-col gap-2 px-4 py-3 text-sm">
+        <Link
+          key={ride.rideId}
+          href={`/rides/${ride.rideId}`}
+          className="hover:bg-muted/40 flex flex-col gap-2 px-4 py-3 text-sm transition-colors"
+        >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="font-medium">{ride.customerName}</span>
             <Badge variant={statusBadgeVariant(ride.status)}>{STATUS_LABEL[ride.status]}</Badge>
@@ -57,7 +63,7 @@ export function RideQueueList({ rides }: { rides: LiveRideDto[] }): React.JSX.El
             <span>{ride.pickupAddress ?? 'Pickup address unavailable'}</span>
             <span>Requested {formatRelativeTime(ride.requestedAt)}</span>
           </div>
-        </div>
+        </Link>
       ))}
     </div>
   );
