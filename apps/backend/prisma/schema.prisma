@@ -3089,6 +3089,14 @@ model OperationsCase {
   firstRespondedAt DateTime?                 @map("first_responded_at")
   resolvedAt       DateTime?                 @map("resolved_at")
   closedAt         DateTime?                 @map("closed_at")
+  /// Optimistic-concurrency guard (DPX-OPS-001 module-closure audit,
+  /// 2026-08-05, founder-mandated). Incremented on every `updateCase()`
+  /// write. A caller must submit the `version` it last read; a mismatch
+  /// means another operator's update landed first, and the write is
+  /// rejected with a 409 rather than silently overwriting their change —
+  /// see `OperationsCasesService.updateCase()`'s own doc comment for the
+  /// concrete multi-operator scenario this closes.
+  version          Int                       @default(0)
   createdAt        DateTime                  @default(now()) @map("created_at")
   updatedAt        DateTime                  @updatedAt @map("updated_at")
   assignedTo       User?                     @relation("OperationsCaseAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)

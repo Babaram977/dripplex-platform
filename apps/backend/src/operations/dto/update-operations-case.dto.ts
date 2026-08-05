@@ -3,7 +3,7 @@ import {
   OperationsLifecycleStatus,
   OperationsPriority,
 } from '@prisma/client';
-import { IsEnum, IsOptional, IsUUID } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsUUID, Min } from 'class-validator';
 
 export class UpdateOperationsCaseDto {
   @IsOptional()
@@ -24,4 +24,11 @@ export class UpdateOperationsCaseDto {
   @IsOptional()
   @IsEnum(OperationsAssigneeRole)
   public assignedToRole?: OperationsAssigneeRole;
+
+  /** Required — the `version` the caller last read on this case. See
+   * `UpdateOperationsCaseRequest.version`'s doc comment (packages/types) for
+   * the optimistic-concurrency contract this enforces. */
+  @IsInt()
+  @Min(0)
+  public version!: number;
 }

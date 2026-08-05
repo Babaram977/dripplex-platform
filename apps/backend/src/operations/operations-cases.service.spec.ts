@@ -8,11 +8,13 @@ import {
   IncidentSeverity,
   OperationsAssigneeRole,
   OperationsLifecycleStatus,
+  OperationsPriority,
   PrismaClient,
   SosAlertStatus,
 } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
+import { ConflictDomainException } from '../common/exceptions/domain.exception';
 import { IncidentReportService } from '../drivers/incidents/incident-report.service';
 import { SosAlertService } from '../drivers/sos/sos-alert.service';
 import { DriverSupportService } from '../drivers/support/driver-support.service';
@@ -22,6 +24,7 @@ import { INCIDENT_SEVERITY_TO_PRIORITY, OperationsCasesService } from './operati
 import type { AuditLogRepository } from '../audit/repositories/audit-log.repository';
 import type { NotificationCenterService } from '../notification-center/notification-center.service';
 import type { PrismaService } from '../prisma/prisma.service';
+import type { OperationsCaseDetailDto } from '@dripplex/types';
 
 describe('INCIDENT_SEVERITY_TO_PRIORITY', () => {
   it('maps every severity onto the matching unified priority', () => {
@@ -278,7 +281,7 @@ describe('OperationsCasesService', () => {
 
     const detail = await service.updateCase(
       caseId,
-      { assignedToId: operatorId, assignedToRole: OperationsAssigneeRole.OPERATOR },
+      { assignedToId: operatorId, assignedToRole: OperationsAssigneeRole.OPERATOR, version: 0 },
       supervisorId,
       {},
     );
@@ -310,7 +313,7 @@ describe('OperationsCasesService', () => {
 
     const detail = await service.updateCase(
       caseId,
-      { status: OperationsLifecycleStatus.RESOLVED },
+      { status: OperationsLifecycleStatus.RESOLVED, version: 0 },
       supervisorId,
       {},
     );
@@ -339,7 +342,7 @@ describe('OperationsCasesService', () => {
 
     const detail = await service.updateCase(
       caseId,
-      { status: OperationsLifecycleStatus.CLOSED },
+      { status: OperationsLifecycleStatus.CLOSED, version: 0 },
       supervisorId,
       {},
     );
@@ -554,6 +557,115 @@ describe('OperationsCasesService', () => {
         where: { caseId: soleCase.id, eventType: 'CREATED' },
       });
       expect(events).toHaveLength(1);
+    });
+  });
+
+  describe('concurrent case updates (module-closure audit, 2026-08-05)', () => {
+    it('rejects a stale write when two operators race an update on the same case, and the surviving state matches only the winner', async () => {
+      if (!databaseAvailable) return;
+
+      const alert = await prisma.sosAlert.create({
+        data: { driverId, status: SosAlertStatus.OPEN },
+      });
+      const queue = await service.getSosQueue({ driverId });
+      const caseId = queue.items.find((i) => i.sourceId === alert.id)?.caseId;
+      if (!caseId) throw new Error('expected a case to have been lazily created for the SOS alert');
+
+      // Two operators, both having read the same freshly-created case
+      // (version 0), race to assign it to themselves at the same instant —
+      // the exact multi-operator scenario the founder named. Fired without
+      // an intervening `await` so both `requireCase()` reads interleave
+      // before either write lands, the same technique the lazy-creation
+      // race tests above use.
+      const results = await Promise.allSettled([
+        service.updateCase(
+          caseId,
+          { assignedToId: operatorId, assignedToRole: OperationsAssigneeRole.OPERATOR, version: 0 },
+          supervisorId,
+          {},
+        ),
+        service.updateCase(
+          caseId,
+          {
+            assignedToId: supervisorId,
+            assignedToRole: OperationsAssigneeRole.SUPERVISOR,
+            version: 0,
+          },
+          operatorId,
+          {},
+        ),
+      ]);
+
+      const fulfilled = results.filter(
+        (result): result is PromiseFulfilledResult<OperationsCaseDetailDto> =>
+          result.status === 'fulfilled',
+      );
+      const rejected = results.filter(
+        (result): result is PromiseRejectedResult => result.status === 'rejected',
+      );
+      // Exactly one write lands — a genuine race, not two independent
+      // successes that happened to both look fine in isolation.
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect(rejected[0]?.reason).toBeInstanceOf(ConflictDomainException);
+
+      // The persisted row reflects only the winner — never a merge of both,
+      // never the loser's assignment silently taking effect after the
+      // winner's.
+      const finalCase = await prisma.operationsCase.findUniqueOrThrow({ where: { id: caseId } });
+      expect(finalCase.assignedToId).toBe(fulfilled[0]?.value.assignedToId);
+      expect(finalCase.version).toBe(1);
+
+      // The timeline has exactly the winner's ASSIGNED event — not two
+      // (one per racer), which would misrepresent what actually happened
+      // to an operator reading the case history afterward.
+      const assignedEvents = await prisma.operationsCaseEvent.findMany({
+        where: { caseId, eventType: 'ASSIGNED' },
+      });
+      expect(assignedEvents).toHaveLength(1);
+    });
+
+    it('a rejected stale write can be retried once the caller refreshes to the current version', async () => {
+      if (!databaseAvailable) return;
+
+      const alert = await prisma.sosAlert.create({
+        data: { driverId, status: SosAlertStatus.OPEN },
+      });
+      const queue = await service.getSosQueue({ driverId });
+      const caseId = queue.items.find((i) => i.sourceId === alert.id)?.caseId;
+      if (!caseId) throw new Error('expected a case to have been lazily created for the SOS alert');
+
+      const first = await service.updateCase(
+        caseId,
+        { priority: OperationsPriority.HIGH, version: 0 },
+        supervisorId,
+        {},
+      );
+      expect(first.version).toBe(1);
+
+      // Still holding the version from before `first` landed — this is
+      // exactly what "silently overwrite a newer operator's action" would
+      // look like if the guard weren't there.
+      await expect(
+        service.updateCase(
+          caseId,
+          { priority: OperationsPriority.LOW, version: 0 },
+          operatorId,
+          {},
+        ),
+      ).rejects.toBeInstanceOf(ConflictDomainException);
+
+      // Refresh to the version the conflict implies, per
+      // `UpdateOperationsCaseRequest.version`'s documented contract, and
+      // the same write now succeeds.
+      const retried = await service.updateCase(
+        caseId,
+        { priority: OperationsPriority.LOW, version: first.version },
+        operatorId,
+        {},
+      );
+      expect(retried.version).toBe(2);
+      expect(retried.priority).toBe('LOW');
     });
   });
 });

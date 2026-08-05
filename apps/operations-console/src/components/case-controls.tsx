@@ -9,7 +9,7 @@ import type {
   OperationsPriority,
 } from '@dripplex/types';
 
-import { useUpdateCase } from '@/hooks/use-operations-case';
+import { isCaseVersionConflict, useUpdateCase } from '@/hooks/use-operations-case';
 import { useAssignableStaff } from '@/hooks/use-operations-staff';
 
 const STATUS_OPTIONS: { value: OperationsLifecycleStatus; label: string }[] = [
@@ -38,7 +38,20 @@ export function CaseControls({ kase }: { kase: OperationsCaseDetailDto }): React
   const staff = useAssignableStaff();
   const [assigneeSelection, setAssigneeSelection] = React.useState('');
 
-  const onMutationError = (label: string) => () => {
+  // A version conflict means another operator's update already landed —
+  // `useUpdateCase`'s shared onError already refetched the case, so this
+  // toast just tells the operator why their action didn't apply, instead
+  // of the generic "couldn't X, try again" that would invite retrying
+  // against the same stale state.
+  const onMutationError = (label: string) => (error: Error) => {
+    if (isCaseVersionConflict(error)) {
+      toast({
+        title: 'Someone else updated this case first',
+        description: 'Refreshed with their latest change — please try again.',
+        variant: 'destructive',
+      });
+      return;
+    }
     toast({ title: `Couldn't ${label}`, description: 'Please try again.', variant: 'destructive' });
   };
 
@@ -48,7 +61,7 @@ export function CaseControls({ kase }: { kase: OperationsCaseDetailDto }): React
     const member = staff.data?.find((s) => s.id === assigneeSelection);
     if (!member) return;
     updateCase.mutate(
-      { assignedToId: member.id, assignedToRole: member.role },
+      { assignedToId: member.id, assignedToRole: member.role, version: kase.version },
       { onError: onMutationError('assign the case') },
     );
   };
@@ -64,7 +77,7 @@ export function CaseControls({ kase }: { kase: OperationsCaseDetailDto }): React
             disabled={updateCase.isPending}
             onChange={(event) => {
               updateCase.mutate(
-                { priority: event.target.value as OperationsPriority },
+                { priority: event.target.value as OperationsPriority, version: kase.version },
                 { onError: onMutationError('change priority') },
               );
             }}
@@ -85,7 +98,7 @@ export function CaseControls({ kase }: { kase: OperationsCaseDetailDto }): React
             disabled={updateCase.isPending}
             onChange={(event) => {
               updateCase.mutate(
-                { status: event.target.value as OperationsLifecycleStatus },
+                { status: event.target.value as OperationsLifecycleStatus, version: kase.version },
                 { onError: onMutationError('change status') },
               );
             }}
@@ -137,7 +150,7 @@ export function CaseControls({ kase }: { kase: OperationsCaseDetailDto }): React
               disabled={updateCase.isPending}
               onClick={() => {
                 updateCase.mutate(
-                  { assignedToId: null },
+                  { assignedToId: null, version: kase.version },
                   { onError: onMutationError('unassign the case') },
                 );
               }}

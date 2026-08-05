@@ -5,12 +5,13 @@ Frozen — Slice 1 (Live Operations Dashboard, 2026-08-04), Slice 2
 (Operations Work Queues, 2026-08-05), Slice 3 (Dispatch Management,
 2026-08-05), Slice 4 (Operations Analytics, 2026-08-05). The
 module-level production audit across all four together is complete —
-see `docs/DPX-OPS-001-MODULE-PRODUCTION-AUDIT.md`. It found 2 items
-(a case-update concurrency gap and a missing production deployment
-path for `operations-console`) worth a founder decision before
-🔒 DPX-OPS-001 — Operations Command Centre, Phase 1 as a whole is
-declared frozen; that decision is pending Founder Review, per the
-founder's own instruction not to auto-freeze after the audit.** See
+see `docs/DPX-OPS-001-MODULE-PRODUCTION-AUDIT.md`. The founder ruled its
+2 findings (case-update concurrency, `operations-console` deployment
+path) Must-fix before freeze; both are now closed (optimistic
+concurrency + real-Postgres concurrent test; Dockerfile + Railway/
+Coolify runbook) and the audit is back for a final Founder decision on
+🔒 DPX-OPS-001 — Operations Command Centre, Phase 1 as a whole, per the
+founder's own instruction not to auto-freeze.** See
 `docs/DPX-OPS-001-REALITY-AUDIT.md` for the full backend-capability audit,
 gap analysis, proposed Phase 1 slice plan, and the founder's locked-in
 refinements — this document stays the scope record, that one is the
@@ -397,11 +398,11 @@ compliance work, or explicitly Founder-approved enhancements.
 This is still a **slice-level** freeze. All four Phase 1 slices are now
 individually frozen; the module-level production audit across all four
 together is complete — see `docs/DPX-OPS-001-MODULE-PRODUCTION-AUDIT.md`.
-Per the founder's explicit instruction, that audit did not auto-freeze the
-module — it found 2 items worth a founder decision (a narrow case-update
-concurrency gap, and `operations-console` having no production deployment
-path yet) and is back for Founder Review before any decision on
-🔒 DPX-OPS-001 — Operations Command Centre, Phase 1 as a whole.
+The founder ruled its 2 findings (case-update concurrency, `operations-
+console`'s missing production deployment path) Must-fix before freeze; both
+are now closed (see that document's "Closure round" section) and the audit
+is back for Founder Review before any decision on 🔒 DPX-OPS-001 —
+Operations Command Centre, Phase 1 as a whole.
 
 ## Founder's scope for this module
 

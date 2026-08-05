@@ -792,6 +792,75 @@ the module.** It's back for Founder Review with 2 items needing a
 decision before any verdict on 🔒 DPX-OPS-001 — Operations Command Centre,
 Phase 1 as a whole.
 
+## 2026-08-05 (same day) — DPX-OPS-001 module audit closure round: both Must-Fix findings closed
+
+Founder Review result on the module-level audit above: DPX-OPS-001 Phase 1
+is functionally approved, but module freeze was withheld pending the audit's
+2 findings, which the founder ruled Must-fix before freeze rather than
+optional — not the "future enhancement"/"technical debt" classification
+those items were left open with. Both are now closed; see
+`docs/DPX-OPS-001-MODULE-PRODUCTION-AUDIT.md`'s "Closure round" section for
+full detail.
+
+**1. Case-update concurrency, closed with optimistic versioning** (the
+founder's stated preference over broad locking, and it fit the existing
+Prisma architecture cleanly): `OperationsCase.version` (new column,
+migration `20260805033414_operations_case_version`),
+`UpdateOperationsCaseRequest.version` now required end-to-end (types → DTO
+validation → SDK → `operations-console`), and
+`OperationsCasesService.updateCase()` now writes the case update and its
+timeline events inside one transaction guarded by
+`updateMany({ where: { id, version } })` — Postgres itself decides
+atomically whether a write still applies to the version that was read. A
+stale write gets a 409 `ConflictDomainException`, not a silent overwrite;
+`apps/operations-console` refetches the case automatically and shows a
+distinct "someone else updated this case first" toast instead of the
+generic error. Tested against real Postgres with genuinely concurrent
+requests, the same technique the existing lazy-case-creation race tests
+use: two operators racing an update on the same case (exactly one wins, the
+loser gets a clean conflict, the persisted state and its timeline both
+reflect only the winner — never a merge, never a duplicate event), and a
+rejected stale write successfully retried once refreshed to the current
+version.
+
+**2. Operations Console deployment, closed with a real Dockerfile and
+runbook.** `apps/operations-console/Dockerfile` now exists, following the
+same multi-stage pattern `driver-portal`'s Dockerfile itself copied from
+`customer-web`'s — no Operations functionality touched, purely deployment
+plumbing. `NEXT_PUBLIC_API_BASE_URL`/`NEXT_PUBLIC_APP_URL`/
+`NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` wired end-to-end as real `ARG`+`ENV`
+pairs (not just documented — verified they actually reach the Next.js
+build). No Firebase/push configuration applies (confirmed, again: no push
+registration anywhere in the app) and no custom health-check route was
+added (confirmed first: none of `customer-web`/`driver-portal`/
+`admin-portal` have one either — matching the existing standard meant
+adding nothing there). Verified the build actually produces a working
+standalone server (`apps/operations-console/server.js`) by running the
+Dockerfile's build stage directly with `DOCKER_BUILD=1`, since this
+sandbox has the `docker` CLI but no daemon to run a literal `docker build`.
+Documentation updated to match whichever target is canonical, per the
+founder's instruction: `docs/ops/PRODUCTION-RAILWAY.md` (canonical) gained
+its own "Deploying `operations-console` to Railway" section plus a
+production-deployment-verification checklist, and `docs/ops/
+PRODUCTION-COOLIFY.md` (parked, kept as reusable reference) got the
+equivalent section for consistency. What's honestly still undone: creating
+the live Railway/Coolify service and attaching a domain — that needs
+console/CLI access this session doesn't have, the same honest framing
+`driver-portal`'s own still-undeployed row already uses in that runbook.
+
+**Full regression, re-run after both fixes:** backend `tsc`/`eslint` clean,
+`jest --runInBand` 1242/1246 (the exact same 4 pre-existing, unrelated
+failures as the original audit pass, plus both new concurrency tests
+passing), `prisma-foundation.spec.ts` 3/3. SDK `tsc`/`eslint`/`vitest`
+fully clean (138/138). `operations-console` `tsc`/`eslint`/`vitest` fully
+clean, and `next build` succeeds both normally and with `DOCKER_BUILD=1`.
+No new failures anywhere.
+
+**Per the founder's explicit instruction, this closure round does not
+auto-freeze the module either.** Both Must-fix findings are closed and
+verified; this is back for a final Founder decision on 🔒 DPX-OPS-001 —
+Operations Command Centre, Phase 1 as a whole.
+
 ---
 
 ## What's next

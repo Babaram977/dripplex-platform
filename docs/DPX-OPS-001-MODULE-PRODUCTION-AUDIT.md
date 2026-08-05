@@ -1,10 +1,13 @@
 # DPX-OPS-001 — Module-Level Production Audit (Slices 1–4 together)
 
-**Date:** 2026-08-05
-**Status:** 🟡 Founder Review — not yet frozen. Per the founder's explicit
-instruction, this audit does not auto-freeze the module; it evaluates the
-Operations Command Centre as one system and reports findings back for a
-final decision on 🔒 **DPX-OPS-001 — Operations Command Centre, Phase 1**.
+**Date:** 2026-08-05 (updated same day — closure round)
+**Status:** 🟡 Founder Review — not yet frozen. The founder reviewed this
+audit's original findings and ruled both Must-fix findings (§6 concurrency,
+§13 deployment) blocking, not optional. Both are now closed — see
+"Closure round" at the end of this document. Per the founder's own
+instruction, closing them does not auto-freeze the module either; this is
+back for a final Founder decision on
+🔒 **DPX-OPS-001 — Operations Command Centre, Phase 1**.
 
 **Scope:** all four individually-frozen Phase 1 slices, evaluated together —
 Slice 1 (Live Operations Dashboard, 2026-08-04), Slice 2 (Operations Work
@@ -163,30 +166,17 @@ there.
 Slice 2's case-creation race protection (`getOrCreateCase`, idempotent lazy
 creation under simultaneous requests) was already tested and is unchanged.
 
-**Real finding, not fixed in this audit — flagged for Founder Review.**
+**Real finding — CLOSED in the closure round (2026-08-05).**
 `OperationsCasesService.updateCase()` — the module's only other mutation
-path — reads the existing case, computes a diff against `dto`, then issues
-a single `operationsCase.update()`. It is not wrapped in a transaction and
-has no optimistic-lock guard (no version column, no `WHERE` clause
-re-checking the read). Two operators PATCHing the same case at nearly the
-same moment could each compute their diff against a stale read: for example,
-the `firstRespondedAt`/`resolvedAt`/`closedAt` "only set if still null"
-logic reads `existing.firstRespondedAt === null` and could still write a
-value even if a concurrent request already set it moments earlier, since
-each request's `data` object is independently correct only relative to the
-read it started from. The practical impact is a possibly-wrong SLA
-timestamp or a duplicate-looking `STATUS_CHANGED`/`ASSIGNED` event on the
-case timeline — not data loss, not privilege escalation, not a corrupted
-case. This is a narrow, low-frequency (human-driven, single-case) race, but
-it touches exactly the auditability guarantee the founder asked about in
-§9, so it's reported precisely rather than passed over.
-
-**Classification: Must-fix before freeze** (recommended fix: wrap the
-read-diff-write in a transaction with `SELECT ... FOR UPDATE`, or add an
-optimistic `version` column) — left for the founder to decide whether to
-fix now or accept as a documented, narrow gap, since it changes the core
-mutation surface's concurrency semantics and the founder has been explicit
-elsewhere in this audit cycle about not wanting scope silently expanded.
+path — read the existing case, computed a diff against `dto`, then issued a
+single `operationsCase.update()`. It wasn't wrapped in a transaction and had
+no optimistic-lock guard, so two operators PATCHing the same case at nearly
+the same moment could each compute their diff against a stale read: the
+`firstRespondedAt`/`resolvedAt`/`closedAt` "only set if still null" logic
+could still write a value even if a concurrent request already set it
+moments earlier. The founder ruled this Must-fix before freeze, preferring
+optimistic concurrency/versioning over broad locking. See "Closure round"
+at the end of this document for what changed and how it was verified.
 
 ## 7. Error / degraded states
 
@@ -295,16 +285,13 @@ falls back to list-only view when unset — §7). Firebase/push is not used by
 `operations-console` at all (no push registration anywhere in the app),
 so there's no Firebase dependency to configure for it.
 
-**Net effect: the finished, founder-approved Operations Command Centre has
-no working path to production today.** The fix is mechanical (copy
-`apps/driver-portal/Dockerfile`'s pattern, add an `operations-console`
-section to `PRODUCTION-COOLIFY.md`, add its 3 env vars to
-`.env.production.example`) — the same recipe already used three times in
-this repo — but it does not exist yet, and building/deploying it is outside
-this audit's scope (it is infrastructure work, not verification).
+**Net effect at the time: the finished, founder-approved Operations Command
+Centre had no working path to production.**
 
-**Classification: Launch blocker** for actually deploying DPX-OPS-001 to
-production, even though nothing about the _application_ itself is at fault.
+**CLOSED in the closure round (2026-08-05).** The founder ruled this
+Must-fix before freeze and asked for the deployment path to be built, not
+just left as a documented gap. See "Closure round" at the end of this
+document.
 
 ## 14. Full regression verification
 
@@ -361,45 +348,46 @@ by this audit's work (the index migration, §5).
 
 ## Phase 1 completeness matrix
 
-| Area                                      | Slice  | Status                                                                        |
-| ----------------------------------------- | ------ | ----------------------------------------------------------------------------- |
-| Live Fleet Map, driver list, fleet status | 1      | 🔒 Frozen                                                                     |
-| Ride Queue, dashboard counters            | 1      | 🔒 Frozen                                                                     |
-| SOS / Incident / Driver Support queues    | 2      | 🔒 Frozen                                                                     |
-| Case detail, assignment, notes, timeline  | 2      | 🔒 Frozen                                                                     |
-| Live Activity Feed                        | 2      | 🔒 Frozen                                                                     |
-| Queue Date/Ride/Vehicle filters           | 2      | 🔒 Frozen                                                                     |
-| Ride detail, driver allocation history    | 3      | 🔒 Frozen                                                                     |
-| Trip tracking                             | 3      | 🔒 Frozen                                                                     |
-| Dispatch decision-support panel           | 3      | 🔒 Frozen                                                                     |
-| Driver Utilization, Shift Analytics       | 4      | 🔒 Frozen                                                                     |
-| Ride Operations, Dispatch Performance     | 4      | 🔒 Frozen                                                                     |
-| Operations Response, Geographic Demand    | 4      | 🔒 Frozen                                                                     |
-| Cross-slice nav/workflow                  | Module | ✅ Verified this audit                                                        |
-| RBAC / permissions                        | Module | ✅ Verified this audit                                                        |
-| Data consistency                          | Module | ✅ Verified this audit                                                        |
-| Polling/query load, N+1                   | Module | ✅ Verified this audit                                                        |
-| DB indexes                                | Module | ✅ Fixed this audit (migration `20260805030622_ops_module_audit_indexes`)     |
-| Concurrency (case update race)            | Module | ⚠️ Found this audit, not fixed                                                |
-| Error/degraded states                     | Module | ✅ Verified this audit                                                        |
-| SOS priority consistency                  | Module | ✅ Verified this audit                                                        |
-| Auditability                              | Module | ✅ Verified this audit                                                        |
-| Frozen-module boundaries                  | Module | ✅ Verified this audit (zero violations)                                      |
-| Figma protection                          | Module | ✅ Verified this audit (zero violations)                                      |
-| Security/privacy                          | Module | ✅ Verified this audit                                                        |
-| Production deployment path                | Module | ❌ Missing — no Dockerfile/Coolify runbook for `operations-console`           |
-| Full regression                           | Module | ✅ Run this audit — clean aside from 3 known pre-existing, unrelated failures |
+| Area                                      | Slice  | Status                                                                                                |
+| ----------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------- |
+| Live Fleet Map, driver list, fleet status | 1      | 🔒 Frozen                                                                                             |
+| Ride Queue, dashboard counters            | 1      | 🔒 Frozen                                                                                             |
+| SOS / Incident / Driver Support queues    | 2      | 🔒 Frozen                                                                                             |
+| Case detail, assignment, notes, timeline  | 2      | 🔒 Frozen                                                                                             |
+| Live Activity Feed                        | 2      | 🔒 Frozen                                                                                             |
+| Queue Date/Ride/Vehicle filters           | 2      | 🔒 Frozen                                                                                             |
+| Ride detail, driver allocation history    | 3      | 🔒 Frozen                                                                                             |
+| Trip tracking                             | 3      | 🔒 Frozen                                                                                             |
+| Dispatch decision-support panel           | 3      | 🔒 Frozen                                                                                             |
+| Driver Utilization, Shift Analytics       | 4      | 🔒 Frozen                                                                                             |
+| Ride Operations, Dispatch Performance     | 4      | 🔒 Frozen                                                                                             |
+| Operations Response, Geographic Demand    | 4      | 🔒 Frozen                                                                                             |
+| Cross-slice nav/workflow                  | Module | ✅ Verified this audit                                                                                |
+| RBAC / permissions                        | Module | ✅ Verified this audit                                                                                |
+| Data consistency                          | Module | ✅ Verified this audit                                                                                |
+| Polling/query load, N+1                   | Module | ✅ Verified this audit                                                                                |
+| DB indexes                                | Module | ✅ Fixed this audit (migration `20260805030622_ops_module_audit_indexes`)                             |
+| Concurrency (case update race)            | Module | ⚠️ Found this audit, not fixed                                                                        |
+| Error/degraded states                     | Module | ✅ Verified this audit                                                                                |
+| SOS priority consistency                  | Module | ✅ Verified this audit                                                                                |
+| Auditability                              | Module | ✅ Verified this audit                                                                                |
+| Frozen-module boundaries                  | Module | ✅ Verified this audit (zero violations)                                                              |
+| Figma protection                          | Module | ✅ Verified this audit (zero violations)                                                              |
+| Security/privacy                          | Module | ✅ Verified this audit                                                                                |
+| Case-update concurrency guard             | Module | ✅ Closed this audit — optimistic versioning, real-Postgres concurrent test                           |
+| Production deployment path                | Module | ✅ Closed this audit — Dockerfile + Railway/Coolify runbook for `operations-console`                  |
+| Full regression                           | Module | ✅ Run this audit and again after closure — clean aside from 4 known pre-existing, unrelated failures |
 
 ## Findings summary and classification
 
-| #   | Finding                                                                                                                              | Classification                                                                                                                                            |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Missing indexes on 9 timestamp columns used by the 15s Activity Feed and by Analytics range queries                                  | **Must-fix before freeze — already fixed this audit** (migration applied, verified, no regressions)                                                       |
-| 2   | `OperationsCasesService.updateCase()` has no transaction/optimistic-lock guard against two operators racing a PATCH on the same case | **Must-fix before freeze** — not fixed; recommend transaction + row lock or a version column, founder's call on timing                                    |
-| 3   | `operations-console` has no Dockerfile and no Coolify deployment runbook section — currently un-deployable to production             | **Launch blocker** for going live, though not an application defect — infrastructure work, same mechanical pattern as `driver-portal`'s Dockerfile        |
-| 4   | All 3 Operations roles hold an identical permission set — no tiered access                                                           | **Future enhancement** — matches current small-team scope, not a defect                                                                                   |
-| 5   | Pre-existing "Ada" coordinate parallel-worker test race (Slice 1/3)                                                                  | **Technical debt**, per the founder's own Slice 4 ruling — this audit's clean serial run further supports that it doesn't undermine reliable verification |
-| 6   | 3 other pre-existing, unrelated test failures (Marketplace R1.3, Driver-001)                                                         | **Technical debt** — outside DPX-OPS-001 entirely                                                                                                         |
+| #   | Finding                                                                                                                              | Classification                                                                                                                                                                |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Missing indexes on 9 timestamp columns used by the 15s Activity Feed and by Analytics range queries                                  | **Must-fix before freeze — fixed in the original audit pass** (migration applied, verified, no regressions)                                                                   |
+| 2   | `OperationsCasesService.updateCase()` has no transaction/optimistic-lock guard against two operators racing a PATCH on the same case | **Must-fix before freeze — CLOSED in the closure round** (optimistic `version` column, transaction-guarded `updateMany`, real-Postgres concurrent test — see "Closure round") |
+| 3   | `operations-console` has no Dockerfile and no Coolify/Railway deployment runbook section — currently un-deployable to production     | **Must-fix before freeze — CLOSED in the closure round** (Dockerfile added, `PRODUCTION-RAILWAY.md`/`PRODUCTION-COOLIFY.md` both updated — see "Closure round")               |
+| 4   | All 3 Operations roles hold an identical permission set — no tiered access                                                           | **Future enhancement** — matches current small-team scope, not a defect                                                                                                       |
+| 5   | Pre-existing "Ada" coordinate parallel-worker test race (Slice 1/3)                                                                  | **Technical debt**, per the founder's own Slice 4 ruling — this audit's clean serial run further supports that it doesn't undermine reliable verification                     |
+| 6   | 3 other pre-existing, unrelated test failures (Marketplace R1.3, Driver-001)                                                         | **Technical debt** — outside DPX-OPS-001 entirely                                                                                                                             |
 
 No finding in this audit reveals a defect in what any of the four slices
 actually _does_ for an operator — every gap found is either already fixed
@@ -411,10 +399,162 @@ analytics, wired together as one console — is real, correctly permissioned,
 consistent, and matches the founder's approved design at every layer this
 audit checked.
 
-## Recommendation
+## Recommendation (superseded by the closure round below)
 
-Bringing this back for Founder Review, as instructed. Two items —
-concurrency (finding 2) and the deployment path (finding 3) — are real and
-worth a decision before 🔒 DPX-OPS-001 Phase 1 is declared frozen as a
-whole; everything else this audit checked came back clean or was already
-fixed in the course of the audit itself.
+Original recommendation, kept for the record: bringing this back for
+Founder Review, with two items — concurrency (finding 2) and the deployment
+path (finding 3) — real and worth a decision before 🔒 DPX-OPS-001 Phase 1
+is declared frozen as a whole.
+
+The founder's decision: both are Must-fix before freeze, not optional. See
+below.
+
+---
+
+## Closure round (2026-08-05, same day)
+
+**Founder Review result:** DPX-OPS-001 Phase 1 is functionally approved,
+but module freeze was withheld pending the two Must-Fix findings above.
+Instruction: close both, run the relevant full regression verification,
+perform a focused closure audit against these two findings, update this
+document and `RELEASE-HISTORY.md`, and return for Founder Review — without
+expanding product scope. Do not freeze DPX-OPS-001 automatically.
+
+### 1. Case-update concurrency — closed
+
+**Approach: optimistic concurrency**, per the founder's stated preference,
+fitting cleanly into the existing Prisma architecture without broad
+database locking.
+
+- Added `OperationsCase.version` (`Int @default(0)`), migration
+  `20260805033414_operations_case_version` — purely additive.
+- `UpdateOperationsCaseRequest.version` (packages/types) is now a **required**
+  field — every caller must echo back the version it last read.
+- `OperationsCasesService.updateCase()`:
+  1. Fast-path check: if `dto.version !== existing.version`, reject
+     immediately with `ConflictDomainException` (409) — a friendly,
+     early rejection, not the actual safety net.
+  2. The actual guard: the case update and its timeline events are now
+     written inside `prisma.$transaction()`, using
+     `operationsCase.updateMany({ where: { id, version: existing.version },
+data: { ...data, version: { increment: 1 } } })`. Postgres itself
+     decides atomically whether the row still has the version that was
+     read; if another write landed first, `count === 0` and the
+     transaction throws the same `ConflictDomainException`, rolling back
+     both the case update and the event insert together — so a case's
+     state and its own timeline can never end up telling contradictory
+     stories, which was the precise invariant the founder named.
+  3. `addNote()` was not touched — it only ever inserts a timeline event,
+     never writes to `OperationsCase` itself, so it has nothing to race on.
+- **A stale write gets a clear conflict response, not a silent
+  overwrite.** `apps/operations-console`: `useCaseMutation`'s shared
+  `onError` detects a 409 (`isCaseVersionConflict()`) and refetches the
+  case automatically; `CaseControls` shows a distinct "Someone else
+  updated this case first — refreshed with their latest change" toast
+  instead of the generic error, and every mutate call now sends
+  `version: kase.version` from the currently-loaded case.
+- **Tested against real Postgres with concurrent requests**, mirroring the
+  existing lazy-case-creation race tests:
+  `operations-cases.service.spec.ts`, new `describe('concurrent case
+updates (module-closure audit, 2026-08-05)')`:
+  - Two operators race `updateCase()` on the same freshly-created case
+    (same starting version), fired without an intervening `await` so both
+    reads interleave before either write lands. Asserts: exactly one
+    write succeeds, the other rejects with `ConflictDomainException`; the
+    persisted case reflects only the winner (never a merge); exactly one
+    `ASSIGNED` event exists (not two, which would misrepresent the actual
+    history).
+  - A rejected stale write, retried with the refreshed version, succeeds
+    and increments the version again — confirming the documented recovery
+    path actually works, not just that conflicts are detected.
+  - Both new tests pass against real Postgres on the first run; the full
+    `src/operations` suite and the full backend suite both remain at
+    their pre-existing baseline (see full regression below).
+
+### 2. Operations Console deployment — closed
+
+**Added, following the established portal Dockerfile pattern exactly**
+(the same multi-stage recipe `driver-portal`'s Dockerfile itself copied
+from `customer-web`'s):
+
+- `apps/operations-console/Dockerfile` — pnpm workspace-filtered install,
+  `@dripplex/types`/`@dripplex/utils`/`@dripplex/sdk` built before the app,
+  `DOCKER_BUILD=1` enabling `next.config.ts`'s `output: 'standalone'`,
+  non-root runtime user, port `3005` (matching the app's own existing
+  `OPERATIONS_CONSOLE_PORT` default). No Operations functionality was
+  touched — this is purely deployment plumbing.
+- Build args wired correctly end-to-end (`ARG` + `ENV`, not just
+  documented): `NEXT_PUBLIC_API_BASE_URL`, `NEXT_PUBLIC_APP_URL`,
+  `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` (same key as customer-web/
+  driver-portal; the Live Fleet Map falls back to its list-only view when
+  unset, confirmed in §7 of the original audit).
+- No Firebase/push configuration applies — confirmed (again) that
+  `operations-console` has no push registration anywhere in the app.
+- `apps/operations-console/.env.example` updated to document
+  `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`.
+- **Verified the build actually works**, not just that the Dockerfile
+  looks right: `docker` the CLI is present in this sandbox but has no
+  daemon socket available, so a literal `docker build` couldn't be run.
+  Instead, ran the exact equivalent of the Dockerfile's build stage
+  directly — `DOCKER_BUILD=1 NODE_ENV=production next build` — and
+  confirmed it produces `apps/operations-console/server.js` inside
+  `.next/standalone`, exactly the path the Dockerfile's runner stage
+  copies and the `CMD` executes. This is the same output Next.js would
+  produce inside the container; only the containerization step itself
+  (`docker build`) was unverifiable in this environment.
+- **Documentation updated to match whichever target is canonical**, per
+  the founder's instruction: `docs/ops/PRODUCTION-RAILWAY.md` (canonical,
+  per its own header) gained a "Deploying `operations-console` to Railway"
+  section (same recipe as the existing `driver-portal` one, plus a
+  production-deployment-verification checklist: HTTPS homepage load,
+  `NEXT_PUBLIC_API_BASE_URL` pointed at the real backend, a real login as
+  `operations_staff`/`administrator` confirming the Fleet Map/a queue/an
+  Analytics page all load real data, and the Maps-unavailable fallback
+  degrading gracefully) and its "What's actually running"/"Known gaps"
+  tables were updated to give `operations-console` its own row instead of
+  being lumped in with `merchant-portal`/`rider-portal` (which remain
+  genuinely out of scope, per the standing Phase-1-ride-launch directive).
+  `docs/ops/PRODUCTION-COOLIFY.md` (parked, kept as a reusable reference)
+  got the equivalent `### operations-console` section for consistency,
+  matching its existing `admin-portal`/`driver-portal` sections.
+  `infrastructure/secrets/.env.production.example`'s `CORS_ORIGINS`
+  already included an `https://ops.dripplex.com` placeholder from an
+  earlier pass — no backend-side change was needed there.
+- **No custom health-check route was added.** Checked first: none of
+  `customer-web`/`driver-portal`/`admin-portal` have one either — the
+  existing standard for this repo's Next.js portals is that the platform
+  probes the homepage/root path directly, not a dedicated `/health`
+  endpoint. Matching the existing standard meant adding nothing here, not
+  inventing a new convention.
+- **What remains genuinely undone, stated plainly:** an actual Railway (or
+  Coolify) "Application" resource for `operations-console` has not been
+  created, and no domain has been attached — that requires a human with
+  console/CLI access this session doesn't have. What this closure delivers
+  is the recipe and the verified-working build artifact the recipe
+  produces; creating the live service is the one remaining manual step,
+  the same honest framing `driver-portal`'s own still-undeployed row uses
+  in `PRODUCTION-RAILWAY.md`.
+
+### Full regression, re-run after both fixes
+
+| Suite                                                                       | Result                                                                                                                                         |
+| --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/backend` — `tsc --noEmit`                                             | Clean                                                                                                                                          |
+| `apps/backend` — `eslint src --max-warnings=0`                              | Clean                                                                                                                                          |
+| `apps/backend` — `jest --runInBand` (full suite)                            | 1242/1246 passed, 4 failed (same 4 pre-existing, unrelated failures as the original audit pass, plus the 2 new concurrency tests both passing) |
+| `apps/backend` — `prisma-foundation.spec.ts`                                | 3/3 passed                                                                                                                                     |
+| `packages/sdk` — `tsc --noEmit` / `eslint` / `vitest run`                   | Clean / Clean / 138/138 passed                                                                                                                 |
+| `apps/operations-console` — `tsc --noEmit` / `eslint` / `vitest run`        | Clean / Clean / 1/1 passed                                                                                                                     |
+| `apps/operations-console` — `next build` (both normal and `DOCKER_BUILD=1`) | Both succeed, all 17 routes                                                                                                                    |
+
+No new failures anywhere. The 4 known pre-existing failures are the exact
+same ones documented in the original audit pass and in Slice 4's own
+production audit — none were touched by this closure round.
+
+### Updated recommendation
+
+Both Must-fix findings are closed and verified. Per the founder's explicit
+instruction, this closure round does **not** auto-freeze the module — it's
+back for Founder Review. If this closure is accepted, nothing in this
+audit's findings stands in the way of 🔒 DPX-OPS-001 — Operations Command
+Centre, Phase 1 being declared frozen as a whole.

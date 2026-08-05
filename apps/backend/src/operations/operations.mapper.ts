@@ -110,6 +110,7 @@ export function toOperationsCaseBaseDto(
     closedAt: kase.closedAt ? kase.closedAt.toISOString() : null,
     createdAt: kase.createdAt.toISOString(),
     updatedAt: kase.updatedAt.toISOString(),
+    version: kase.version,
     // Overwritten by each concrete mapper with the real driver — placeholder
     // satisfies the shared base shape without repeating it three times.
     driverId: '',

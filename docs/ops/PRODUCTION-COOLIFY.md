@@ -166,7 +166,7 @@ marketplace order payments do.
 ## 3. Frontend apps — one Coolify "Application" resource each
 
 Same Build Pack (`Dockerfile`), same repo/branch, same root build context
-for each. All three below have `output: 'standalone'` gated behind
+for each. All four below have `output: 'standalone'` gated behind
 `DOCKER_BUILD=1` in their `next.config.ts`, which their Dockerfiles already
 set — nothing to change there.
 
@@ -222,11 +222,37 @@ set — nothing to change there.
   - `NEXT_PUBLIC_APP_URL=https://admin.dripplex.com`
 - Domain: `admin.dripplex.com`.
 
-`merchant-portal`, `rider-portal`, `operations-console` are not part of this
-pass — consistent with the standing "Phase 1 ride-launch only, no
-marketplace/merchant/post-launch work" directive. Their Dockerfiles already
-exist (`apps/merchant-portal/Dockerfile`) if/when that changes; deploying
-them would follow the exact same recipe as admin-portal above.
+### operations-console
+
+- Dockerfile: `apps/operations-console/Dockerfile` (added for the
+  DPX-OPS-001 module-closure audit, 2026-08-05 — the console previously
+  shipped only Cloudflare Workers tooling, `wrangler.jsonc`, with no Docker
+  path at all).
+- Port: `3005`.
+- Build args:
+  - `NEXT_PUBLIC_API_BASE_URL=https://api.dripplex.com/api/v1`
+  - `NEXT_PUBLIC_APP_URL=https://ops.dripplex.com`
+- Runtime/build env vars (from `apps/operations-console/.env.example`):
+  - `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` — same key as customer-web/
+    driver-portal. The Live Fleet Map (Slice 1) falls back to a list-only
+    view when unset rather than crashing (`src/lib/google-maps-config.ts`),
+    so this is optional for a first deploy, required for the map itself.
+  - No Firebase/push variables apply — `operations-console` has no push
+    registration anywhere in the app (confirmed by the module-level
+    production audit).
+- Domain: `ops.dripplex.com` — the backend's `CORS_ORIGINS` template
+  (`infrastructure/secrets/.env.production.example`) already includes this
+  placeholder, so no backend change is needed once the real domain matches
+  it.
+- Built by copying `apps/driver-portal/Dockerfile`'s exact multi-stage
+  pattern, the same way that Dockerfile was itself copied from
+  `apps/customer-web/Dockerfile`.
+
+`merchant-portal`, `rider-portal` are not part of this pass — consistent
+with the standing "Phase 1 ride-launch only, no marketplace/merchant/
+post-launch work" directive. Their Dockerfiles already exist
+(`apps/merchant-portal/Dockerfile`) if/when that changes; deploying them
+would follow the exact same recipe as admin-portal above.
 
 ## 4. HTTPS
 

@@ -12,7 +12,10 @@ import {
 } from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../audit/audit.service';
-import { NotFoundDomainException } from '../common/exceptions/domain.exception';
+import {
+  ConflictDomainException,
+  NotFoundDomainException,
+} from '../common/exceptions/domain.exception';
 import { IncidentReportService } from '../drivers/incidents/incident-report.service';
 import { SosAlertService } from '../drivers/sos/sos-alert.service';
 import { DriverSupportService } from '../drivers/support/driver-support.service';
@@ -273,6 +276,24 @@ export class OperationsCasesService {
     }
   }
 
+  /** Optimistic-concurrency guard (DPX-OPS-001 module-closure audit,
+   * 2026-08-05, founder-mandated). This is the module's only mutation path
+   * that can alter lifecycle/SLA state (`addNote()` below never touches
+   * `OperationsCase` fields, only inserts a timeline event) — exactly where
+   * two operators can realistically race: both open the same SOS/incident
+   * case and each act on it within the same few seconds.
+   *
+   * The read of `existing` at the top and the guarded write further down
+   * are two separate round-trips, so a caller's `dto.version` mismatch here
+   * is a fast, friendly rejection — not the actual safety net. The real
+   * guard is the `updateMany({ where: { id, version } })` inside the
+   * transaction below: its `WHERE version = <the version we read>` clause
+   * means the write only lands if nobody else's update landed between our
+   * read and our write, checked atomically by Postgres itself, not by this
+   * process. A `count === 0` there means we lost that race even though our
+   * initial check above passed — the caller gets the same conflict error
+   * either way and must refetch the case before retrying, so a stale
+   * action can never silently overwrite a newer one. */
   public async updateCase(
     caseId: string,
     dto: UpdateOperationsCaseRequest,
@@ -280,8 +301,15 @@ export class OperationsCasesService {
     context: AuditContext,
   ): Promise<OperationsCaseDetailDto> {
     const existing = await this.requireCase(caseId);
+    if (dto.version !== existing.version) {
+      throw new ConflictDomainException(
+        'This case was updated by someone else. Refresh and try again.',
+        { currentVersion: existing.version },
+      );
+    }
+
     const now = new Date();
-    const data: Parameters<typeof this.prisma.operationsCase.update>[0]['data'] = {};
+    const data: Parameters<typeof this.prisma.operationsCase.updateMany>[0]['data'] = {};
     const eventsToLog: { eventType: OperationsCaseEventType; description: string }[] = [];
 
     if (dto.priority !== undefined && dto.priority !== existing.priority) {
@@ -349,18 +377,37 @@ export class OperationsCasesService {
       return await this.getCaseDetail(caseId);
     }
 
-    const updated = await this.prisma.operationsCase.update({ where: { id: caseId }, data });
-
-    if (eventsToLog.length > 0) {
-      await this.prisma.operationsCaseEvent.createMany({
-        data: eventsToLog.map((event) => ({
-          caseId: updated.id,
-          eventType: event.eventType,
-          actorId: actorUserId,
-          description: event.description,
-        })),
+    const updated = await this.prisma.$transaction(async (tx) => {
+      // The atomic guard: `version` in the WHERE clause, not just the id.
+      // Only succeeds if the row still has the version we read above.
+      const result = await tx.operationsCase.updateMany({
+        where: { id: caseId, version: existing.version },
+        data: { ...data, version: { increment: 1 } },
       });
-    }
+      if (result.count === 0) {
+        throw new ConflictDomainException(
+          'This case was updated by someone else. Refresh and try again.',
+        );
+      }
+
+      if (eventsToLog.length > 0) {
+        await tx.operationsCaseEvent.createMany({
+          data: eventsToLog.map((event) => ({
+            caseId,
+            eventType: event.eventType,
+            actorId: actorUserId,
+            description: event.description,
+          })),
+        });
+      }
+
+      // The case row and the timeline events it just produced are only
+      // ever read back together (`getCaseDetail`) — committing them in the
+      // same transaction is what makes "case state and its own timeline
+      // can't contradict each other" actually true under concurrency, not
+      // just usually true.
+      return await tx.operationsCase.findUniqueOrThrow({ where: { id: caseId } });
+    });
 
     await this.syncSourceStatus(updated, actorUserId, context);
 

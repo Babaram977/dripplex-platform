@@ -26,11 +26,11 @@ describe('OperationsCasesClient', () => {
     const { http, request } = createHttpMock();
     const client = new OperationsCasesClient(http);
 
-    await client.updateCase('case-1', { status: 'ASSIGNED', assignedToId: 'user-1' });
+    await client.updateCase('case-1', { status: 'ASSIGNED', assignedToId: 'user-1', version: 3 });
 
     expect(request).toHaveBeenCalledWith('/operations/cases/case-1', {
       method: 'PATCH',
-      body: { status: 'ASSIGNED', assignedToId: 'user-1' },
+      body: { status: 'ASSIGNED', assignedToId: 'user-1', version: 3 },
       auth: true,
     });
   });

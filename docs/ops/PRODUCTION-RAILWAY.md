@@ -13,16 +13,17 @@
 
 ## What's actually running (Verified, as of last confirmed check)
 
-| Service                                                 | Platform                | Status                                                                                                                                                                                                                                                                                                                                                        |
-| ------------------------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Backend (`@dripplex/backend`, NestJS)                   | Railway                 | Verified live 2026-08-03 — `/api/v1/health` returned `{"status":"ok","checks":{"database":{"status":"up"},"redis":{"status":"up"}}}`                                                                                                                                                                                                                          |
-| PostgreSQL                                              | Railway (managed addon) | Verified — connected, backend health check confirms it                                                                                                                                                                                                                                                                                                        |
-| Redis                                                   | Railway (managed addon) | Verified — connected, backend health check confirms it                                                                                                                                                                                                                                                                                                        |
-| `customer-web`                                          | Railway                 | Verified live 2026-08-03 — homepage loads at `dripplexcustomer-web-production.up.railway.app`                                                                                                                                                                                                                                                                 |
-| `admin-portal`                                          | Railway                 | Verified live 2026-08-03 — login page loads at `dripplexadmin-portal-production.up.railway.app`                                                                                                                                                                                                                                                               |
-| `driver-portal`                                         | Railway                 | **Not deployed** — no Railway service/domain exists for it yet (confirmed 2026-08-03: hitting its expected URL returns Railway's "no deployment" page, not an app error). A Dockerfile now exists (`apps/driver-portal/Dockerfile`, added for the Coolify pass but equally usable here) — deploying it follows the exact same recipe as `admin-portal` below. |
-| `merchant-portal`, `rider-portal`, `operations-console` | —                       | Not deployed anywhere. No blocker to deploying them the same way as `customer-web`/`admin-portal` once needed.                                                                                                                                                                                                                                                |
-| `customer-mobile`                                       | —                       | Not applicable to Railway — it's a Capacitor shell that loads `customer-web`, not an independently deployable service. Store submission is separately gated (see `docs/AUDIT-PRODUCTION-READINESS.md` §5).                                                                                                                                                    |
+| Service                               | Platform                | Status                                                                                                                                                                                                                                                                                                                                                        |
+| ------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Backend (`@dripplex/backend`, NestJS) | Railway                 | Verified live 2026-08-03 — `/api/v1/health` returned `{"status":"ok","checks":{"database":{"status":"up"},"redis":{"status":"up"}}}`                                                                                                                                                                                                                          |
+| PostgreSQL                            | Railway (managed addon) | Verified — connected, backend health check confirms it                                                                                                                                                                                                                                                                                                        |
+| Redis                                 | Railway (managed addon) | Verified — connected, backend health check confirms it                                                                                                                                                                                                                                                                                                        |
+| `customer-web`                        | Railway                 | Verified live 2026-08-03 — homepage loads at `dripplexcustomer-web-production.up.railway.app`                                                                                                                                                                                                                                                                 |
+| `admin-portal`                        | Railway                 | Verified live 2026-08-03 — login page loads at `dripplexadmin-portal-production.up.railway.app`                                                                                                                                                                                                                                                               |
+| `driver-portal`                       | Railway                 | **Not deployed** — no Railway service/domain exists for it yet (confirmed 2026-08-03: hitting its expected URL returns Railway's "no deployment" page, not an app error). A Dockerfile now exists (`apps/driver-portal/Dockerfile`, added for the Coolify pass but equally usable here) — deploying it follows the exact same recipe as `admin-portal` below. |
+| `operations-console`                  | Railway                 | **Not deployed** — same situation as `driver-portal`. A Dockerfile now exists (`apps/operations-console/Dockerfile`, added for the DPX-OPS-001 module-closure audit, 2026-08-05) — deploying it follows the exact same recipe as `admin-portal` below, see "Deploying `operations-console` to Railway" further down.                                          |
+| `merchant-portal`, `rider-portal`     | —                       | Not deployed anywhere. No blocker to deploying them the same way as `customer-web`/`admin-portal` once needed.                                                                                                                                                                                                                                                |
+| `customer-mobile`                     | —                       | Not applicable to Railway — it's a Capacitor shell that loads `customer-web`, not an independently deployable service. Store submission is separately gated (see `docs/AUDIT-PRODUCTION-READINESS.md` §5).                                                                                                                                                    |
 
 ### Deploying `driver-portal` to Railway (next step)
 
@@ -34,6 +35,32 @@ Set `NEXT_PUBLIC_API_BASE_URL`/`NEXT_PUBLIC_APP_URL` build args and
 the exact variable table — same values apply regardless of platform). Set
 `PORT=3005` explicitly (the Railway healthcheck-prober gotcha below applies
 here too). Attach a public domain once deployed so it's reachable.
+
+### Deploying `operations-console` to Railway (next step)
+
+Same pattern again: new Railway service → this repo → Dockerfile builder →
+`apps/operations-console/Dockerfile` → root build context. Build args:
+`NEXT_PUBLIC_API_BASE_URL`, `NEXT_PUBLIC_APP_URL`,
+`NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` (same key as customer-web/driver-portal —
+see `apps/operations-console/.env.example`; the Live Fleet Map falls back to
+a list-only view if this is left unset, so it's optional for a first deploy,
+required for the map to actually render). No Firebase/push configuration
+applies — `operations-console` doesn't register for push anywhere in the app
+(confirmed via the module-level production audit, 2026-08-05). Set
+`PORT=3005` explicitly (the same healthcheck-prober gotcha below applies).
+Attach a public domain once deployed — the backend's CORS allowlist already
+includes an `https://ops.dripplex.com` placeholder
+(`infrastructure/secrets/.env.production.example`), so pointing the real
+domain there (or updating `CORS_ORIGINS` to whatever domain is actually
+chosen) is the only backend-side change needed.
+
+**Production deployment verification, once a service exists:** confirm the
+health path the same way `customer-web`/`admin-portal` were verified above —
+the homepage/login screen loads over HTTPS, `NEXT_PUBLIC_API_BASE_URL` points
+at the real backend (log in as an `operations_staff`/`administrator` user and
+confirm the Live Fleet Map, a queue list, and one Analytics page all load
+real data, not just the shell), and the Live Fleet Map degrades to its
+list-only view rather than crashing if the Maps key isn't set yet.
 
 ## Configuration that works (Verified)
 
@@ -50,7 +77,8 @@ here too). Attach a public domain once deployed so it's reachable.
 ## Known gaps (not yet done, as of this document)
 
 - Nothing from Reality Stage R1.1 (Product Catalog schema), R1.2 (Merchant API), or R1.3 (Customer API) was deployed here before this document was superseded. (A prior note claimed that work lived unmerged on `claude/dripplex-coolify-deploy-fatig4` — as of 2026-08-02 that branch does not exist on `origin`, so that claim could not be verified and is not carried forward. R1.1–R1.3 landed on `ride-002-implementation`/`main` through their own normal merges; check git history there, not this branch name, if you need that work.)
-- `merchant-portal`, `rider-portal`, `operations-console` have never been deployed anywhere.
+- `merchant-portal`, `rider-portal` have never been deployed anywhere, and have no Dockerfile-based deploy recipe documented yet.
+- `operations-console` has never been deployed anywhere either, but as of the DPX-OPS-001 module-closure audit (2026-08-05) it now has a real Dockerfile (`apps/operations-console/Dockerfile`) and a documented deploy recipe (above) — the remaining step is actually creating the Railway service and pointing a domain at it, not writing the recipe.
 - No custom domain confirmed attached (verified access was via Railway-generated domains) — production domains (`www.dripplex.com`, `api.dripplex.com`, etc.) referenced in the archived docs were never actually pointed at this infrastructure.
 - No monitoring/alerting/log aggregation has been set up for the Railway services specifically — the archived Prometheus/Grafana/Loki design assumed self-hosted infrastructure and doesn't transfer directly. Railway has built-in logs/metrics; whether that's sufficient or something more is wanted is an open question, not yet decided.
 - Backup/restore strategy for Railway's managed Postgres has not been documented or tested (`docs/ops/BACKUPS.md` has generic `pg_dump` guidance that still applies conceptually, but nothing Railway-specific has been verified).

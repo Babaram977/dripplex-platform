@@ -269,6 +269,11 @@ export interface OperationsCaseBaseDto {
   driverId: string;
   driverName: string;
   driverPhone: string | null;
+  /** Optimistic-concurrency token (DPX-OPS-001 module-closure audit,
+   * 2026-08-05). A caller mutating this case via `UpdateOperationsCaseRequest`
+   * must echo back the `version` it last read — see that request type's own
+   * doc comment for what happens on a mismatch. */
+  version: number;
 }
 
 export interface SosQueueItemDto extends OperationsCaseBaseDto {
@@ -347,6 +352,14 @@ export interface UpdateOperationsCaseRequest {
    * assignment unchanged. */
   assignedToId?: string | null;
   assignedToRole?: OperationsAssigneeRole;
+  /** Required — the `version` the caller last read from
+   * `OperationsCaseBaseDto`. `OperationsCasesService.updateCase()` rejects
+   * the write with a 409 `CONFLICT` if the case's current version doesn't
+   * match: someone else's update landed first. This is the optimistic-
+   * concurrency guard the DPX-OPS-001 module-closure audit (2026-08-05)
+   * added so two operators acting on the same case at once can never
+   * silently overwrite each other's assignment/status/SLA state. */
+  version: number;
 }
 
 export interface AddOperationsCaseNoteRequest {
