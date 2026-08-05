@@ -92,15 +92,63 @@ confusing. Fixed both to match the existing scoped pattern
 
 ## 4. Backup/restore drill
 
-**Status: paused before execution, pending feasibility check and an
-explicit go-ahead** — per the founder's own instruction ("stop-and-ask
-before touching anything production-adjacent"). Before running a real
-`pg_dump`/`pg_restore` cycle against Railway's Postgres, need to confirm:
-this session's network egress can actually reach it (the environment's
-outbound HTTPS proxy is known to block arbitrary hosts; raw Postgres
-TCP is a different, unconfirmed path), and where a restore target would
-live (a Railway-hosted throwaway database, ideally — not anything that
-could be confused with production). Not attempted yet.
+**Status: feasibility checked — this session structurally cannot run
+it, at all, regardless of credentials or founder go-ahead.**
+
+The question this section originally asked ("can this session's network
+reach Railway's Postgres for a `pg_dump`/`pg_restore` cycle?") now has a
+definitive answer, not a probe result: this environment's egress proxy
+documentation (`/root/.ccr/README.md`) explicitly lists **"raw-TCP
+databases"** under "Not supported through the proxy (report, do not
+work around)" — alongside gRPC, WebSocket upgrades, and non-443 HTTPS
+ports. This session's only network path out is the HTTPS-only proxy;
+there is no raw TCP path to Postgres's `5432` at all, independent of
+whether credentials are supplied. Supplying `DATABASE_URL` would not
+change this — the connection would never leave the proxy layer. This
+is a hard platform boundary of the session, not a permissions gap to
+ask the founder to lift.
+
+**What this changes for the backup/restore work itself:** it reframes
+from "give me the credentials and I'll run the drill" to "this needs a
+path that doesn't route through this sandbox's egress." Checked
+Railway's own documentation for what that looks like
+(`docs.railway.com/guides/postgres-backups-restores`) — Railway
+supports three backup layers for managed Postgres:
+
+1. **Scheduled volume backups** — full-volume snapshots, restorable
+   (via Railway's own dashboard/API) into the same project/environment.
+   Restoring removes any newer backups taken after the restore point.
+2. **Logical backups via `pg_dump`** — same tool this drill was
+   originally going to use, but run _from inside Railway's network_
+   (e.g. a one-off Railway CLI session or a Railway-hosted job), not
+   from this sandbox.
+3. **PITR (point-in-time recovery)** for restoring to a specific
+   timestamp rather than a snapshot boundary.
+
+None of these require this session to open a raw connection to
+Postgres. But none of them are exposed through the Railway MCP toolset
+available in this session either — there's no `backup`/`restore`
+action among the available tools (`get-status`, `list-*`,
+`get-logs`, `set-variables`, `update-service`, `create-deployment`,
+`generate-domain`, `redeploy`, `get-service-metrics`, plus
+`search-docs`/`fetch-docs`). Enabling scheduled volume backups and
+running a real restore drill is therefore a **Railway
+dashboard action**, not something this session can execute even with
+credentials — flagged as a founder/ops action item, not left silently
+unresolved.
+
+**Recommended concrete next step** (added to §7, does not require a
+credential, just a decision): founder or whoever holds Railway
+dashboard access enables scheduled volume backups on the `Postgres`
+service and runs one restore drill directly in Railway's UI, following
+their own documented "which layer to use when" guidance. Alternatively,
+Railway's guide describes deploying a small **cron-service** in-project
+that runs `pg_dump` on a schedule and ships the dump offsite — that
+_is_ something this session could implement as ordinary code (a new
+Railway service + script), since it runs inside Railway's network
+rather than through this sandbox's egress. That's a real implementation
+option worth raising with the founder rather than waiting on dashboard
+access, if backup automation is wanted sooner.
 
 ## 5. Monitoring-completeness spec
 
@@ -139,13 +187,14 @@ verification was) proves a deploy succeeded. It doesn't prove the
 platform stays healthy under real conditions over days. This section
 tracks samples taken across the stabilization window.
 
-| Date/time (UTC)   | Backend CPU/Mem         | Postgres CPU/Mem         | Notes                                      |
-| ----------------- | ----------------------- | ------------------------ | ------------------------------------------ |
-| 2026-08-05 ~21:05 | 0.034% avg / 109 MB avg | 0.034% avg / 62.4 MB avg | Baseline, ~4h post-launch, no real traffic |
+| Date/time (UTC)   | Backend CPU/Mem         | Postgres CPU/Mem         | Notes                                                                                            |
+| ----------------- | ----------------------- | ------------------------ | ------------------------------------------------------------------------------------------------ |
+| 2026-08-05 ~21:05 | 0.034% avg / 109 MB avg | 0.034% avg / 62.4 MB avg | Baseline, ~4h post-launch, no real traffic                                                       |
+| 2026-08-05 ~21:20 | 0.032% avg / 112 MB avg | 0.034% avg / 62.5 MB avg | Second sample (1h window), post rollback-drill deploys — no drift from baseline, no real traffic |
 
 _(Appended to as further samples are taken across the window.)_
 
-## 7. Still queued exactly as documented (unchanged from Launch Track 1)
+## 7. Still queued for the founder
 
 - `CORS_ORIGINS` current value — needed to safely append driver-portal's
   domain without dropping what's already there; this session's Railway
@@ -153,6 +202,20 @@ _(Appended to as further samples are taken across the window.)_
 - Payment provider keys (Paystack/Flutterwave/OPay), `GOOGLE_MAPS_SERVER_API_KEY`
   - `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`, Smile ID, Firebase (server + web),
     Sentry DSNs.
-- Backup plan tier decision, custom domain decision.
+- **Backup plan decision (updated by §4's feasibility finding, not just
+  "unchanged from Launch Track 1" anymore):** since this session cannot
+  reach Postgres via raw TCP under any circumstances, the founder (or
+  whoever holds Railway dashboard access) needs to choose one of two
+  concrete paths, not just "a tier":
+  1. Enable Railway's scheduled volume backups directly in the
+     dashboard and run one restore drill there (no credential needed
+     from this session — a dashboard click, following Railway's own
+     "which layer to use when" guide).
+  2. Authorize this session to build an in-project cron-service that
+     runs `pg_dump` on a schedule and ships the dump offsite (real
+     implementation work this session _can_ do, since it runs inside
+     Railway's network, not through this sandbox's blocked egress).
+- Custom domain decision.
 
-Full detail on all of these: `docs/ops/DPX-LAUNCH-001-RAILWAY-READINESS.md` §B.
+Full detail on the payment/maps/Smile ID/Firebase/Sentry items:
+`docs/ops/DPX-LAUNCH-001-RAILWAY-READINESS.md` §B.
