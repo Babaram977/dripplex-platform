@@ -2,7 +2,7 @@
 
 import { DripplexLogo } from '@dripplex/ui';
 import { cn } from '@dripplex/utils';
-import { Home, LayoutDashboard, Package } from 'lucide-react';
+import { ClipboardList, Home, LayoutDashboard, Package } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import * as React from 'react';
@@ -11,6 +11,7 @@ import { useUiStore } from '@/stores/ui-store';
 
 const navItems = [
   { href: '/', label: 'Overview', icon: LayoutDashboard },
+  { href: '/orders', label: 'Orders', icon: ClipboardList },
   { href: '/products', label: 'Products', icon: Package },
 ] as const;
 
