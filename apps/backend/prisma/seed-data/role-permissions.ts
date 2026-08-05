@@ -39,6 +39,8 @@ export const ROLE_PERMISSION_GRANTS: Record<string, string[]> = {
     'merchant:analytics:read',
     'merchant:reviews:reply',
     'merchant:orders:manage',
+    'customer:notifications:read',
+    'customer:notifications:manage',
   ],
   rider: [
     'profile:read',

@@ -106,6 +106,7 @@ export class DripplexClient {
   public readonly operationsAnalytics: OperationsAnalyticsClient;
   public readonly notifications: NotificationsClient;
   public readonly driverNotifications: NotificationsClient;
+  public readonly merchantNotifications: NotificationsClient;
   public readonly devices: DevicesClient;
   public readonly search: SearchClient;
   public readonly reviews: ReviewsClient;
@@ -169,6 +170,7 @@ export class DripplexClient {
     this.operationsAnalytics = new OperationsAnalyticsClient(this.http);
     this.notifications = new NotificationsClient(this.http);
     this.driverNotifications = new NotificationsClient(this.http, '/driver/notifications');
+    this.merchantNotifications = new NotificationsClient(this.http, '/merchant/notifications');
     this.devices = new DevicesClient(this.http);
     this.search = new SearchClient(this.http);
     this.reviews = new ReviewsClient(this.http);

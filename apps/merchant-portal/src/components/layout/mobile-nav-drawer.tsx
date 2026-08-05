@@ -3,6 +3,7 @@
 import { Drawer, DrawerContent, DrawerTitle, DripplexLogo } from '@dripplex/ui';
 import { cn } from '@dripplex/utils';
 import {
+  Bell,
   Building2,
   ClipboardList,
   Home,
@@ -24,6 +25,7 @@ const navItems = [
   { href: '/products', label: 'Products', icon: Package },
   { href: '/wallet', label: 'Wallet & Bank', icon: Wallet },
   { href: '/reviews', label: 'Reviews', icon: Star },
+  { href: '/notifications', label: 'Notifications', icon: Bell },
   { href: '/business', label: 'Business', icon: Building2 },
   { href: '/kyc', label: 'Verification', icon: ShieldCheck },
 ] as const;

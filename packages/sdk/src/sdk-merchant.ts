@@ -15,7 +15,7 @@ export function createMerchantSdk(config: Partial<SdkConfig> = {}): MerchantSdk 
     merchantProducts: client.merchantProducts,
     orders: client.orders,
     payments: client.payments,
-    notifications: client.notifications,
+    notifications: client.merchantNotifications,
     promotions: client.promotions,
     reviews: client.reviews,
     analytics: client.analytics,

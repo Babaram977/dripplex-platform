@@ -10,6 +10,7 @@ import { CustomerDevicesController } from './customer-devices.controller';
 import { CustomerNotificationsController } from './customer-notifications.controller';
 import { DeviceRegistryService } from './device-registry.service';
 import { DriverNotificationsController } from './driver-notifications.controller';
+import { MerchantNotificationsController } from './merchant-notifications.controller';
 import { NotificationCenterService } from './notification-center.service';
 import { NotificationCenterSubscriber } from './notification-center.subscriber';
 import { NotificationPreferencesService } from './notification-preferences.service';
@@ -27,6 +28,7 @@ import type { NotificationProvider } from './providers/notification-provider';
     CustomerNotificationsController,
     CustomerDevicesController,
     DriverNotificationsController,
+    MerchantNotificationsController,
     AdminNotificationsController,
   ],
   providers: [
