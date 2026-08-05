@@ -49,9 +49,30 @@ service, no real users yet, lowest possible stakes).
 1. Committed a trivial, harmless, single-comment-line change to
    `apps/merchant-portal/Dockerfile` (`d2455ea`), pushed to `main`.
 2. Railway auto-triggered a real rebuild+redeploy from the push —
-   confirmed via `list-deployments`/`get-status`, not assumed.
-3. [Result of step 3 to be filled in below once the drill deploy and
-   the revert-redeploy both complete.]
+   confirmed via `list-deployments`/`get-status`, not assumed. Deployment
+   `5fa67991-bb03-4dcb-a1c1-37d4eede4fd0` reached `SUCCESS`.
+3. Ran `git revert --no-edit d2455ea` (commit `b86d2b0`, confirmed clean
+   — one file changed, two deletions, `apps/merchant-portal/Dockerfile`
+   back to its exact pre-drill state) and `git push origin main`. Railway
+   auto-triggered another real rebuild+redeploy from the revert push —
+   deployment `2366d5f8-d6b7-40b0-94e8-497e0efe78fd`, `createdAt`
+   21:11:35 UTC, `updatedAt` 21:12:03 UTC (~28s, cached build layers),
+   status `SUCCESS`. Confirmed via `list-deployments` that this
+   deployment's `meta.commitHash` is `b86d2b0` and `meta.commitMessage`
+   is the revert commit message — not just "some deploy succeeded," but
+   specifically the revert. Deploy logs confirm the container started
+   clean on the reverted image: `Starting Container` → `✓ Starting...`
+   → `✓ Ready in 80ms` → `▲ Next.js 15.5.21` listening, no errors.
+
+**Result: the drill passed.** A bad (or in this case harmless-but-real)
+change pushed to `main` was auto-deployed, observed, then undone with a
+plain `git revert` + push, and Railway auto-deployed the reverted state
+just as automatically — no dashboard interaction, no manual redeploy
+trigger, no founder involvement needed. This confirms the documented
+recovery procedure in `docs/ops/DPX-LAUNCH-001-RAILWAY-READINESS.md` §D
+is real, not aspirational. Total time from "bad" push to confirmed
+reverted-and-healthy: under 3 minutes end to end (`d2455ea` push →
+`5fa67991` SUCCESS → `b86d2b0` push → `2366d5f8` SUCCESS).
 
 ## 3. Real finding: new services had no build-path scoping
 
