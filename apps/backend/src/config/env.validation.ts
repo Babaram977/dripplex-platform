@@ -69,6 +69,18 @@ export const envSchema = z.object({
   SMILE_ID_PARTNER_ID: z.string().default(''),
   SMILE_ID_API_KEY: z.string().default(''),
   SMILE_ID_BASE_URL: z.string().url().default('https://api.smileidentity.com/v1'),
+  // Termii (SMS) and Resend (email) — production notification providers.
+  // Both default to '' (unconfigured). ProductionNotificationService checks
+  // termiiConfigured/resendConfigured per-channel before ever calling the
+  // real API, falling back to LoggingNotificationService's log-only
+  // behavior for whichever channel isn't set — same safe-until-configured
+  // pattern as Google OAuth / Smile ID / payment providers above. This
+  // means SMS and email can be turned on independently, at different times.
+  TERMII_API_KEY: z.string().default(''),
+  TERMII_SENDER_ID: z.string().default('DrippleX'),
+  TERMII_BASE_URL: z.string().url().default('https://api.ng.termii.com'),
+  RESEND_API_KEY: z.string().default(''),
+  RESEND_FROM_EMAIL: z.string().default('DrippleX <no-reply@dripplex.com>'),
   // Driver-001 Security Standard: reconfirmed default 2h (was 8h), only used
   // to seed DriverSecuritySettings on first creation — see driver.constants.ts.
   IDENTITY_VERIFICATION_IDLE_HOURS: z.coerce.number().int().min(1).max(48).default(2),

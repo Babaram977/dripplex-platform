@@ -288,4 +288,32 @@ export class AppConfigService {
   public get driverIdvSpotCheckDenominator(): number {
     return this.configService.get('DRIVER_IDV_SPOT_CHECK_DENOMINATOR', { infer: true });
   }
+
+  public get termiiApiKey(): string {
+    return this.configService.get('TERMII_API_KEY', { infer: true });
+  }
+
+  public get termiiSenderId(): string {
+    return this.configService.get('TERMII_SENDER_ID', { infer: true });
+  }
+
+  public get termiiBaseUrl(): string {
+    return this.configService.get('TERMII_BASE_URL', { infer: true });
+  }
+
+  public get termiiConfigured(): boolean {
+    return this.termiiApiKey !== '';
+  }
+
+  public get resendApiKey(): string {
+    return this.configService.get('RESEND_API_KEY', { infer: true });
+  }
+
+  public get resendFromEmail(): string {
+    return this.configService.get('RESEND_FROM_EMAIL', { infer: true });
+  }
+
+  public get resendConfigured(): boolean {
+    return this.resendApiKey !== '';
+  }
 }

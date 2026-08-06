@@ -4,6 +4,17 @@
 **Scope:** Definitive, evidence-based verification of DrippleX production (Railway project `overflowing-unity`). No features added, no code redesigned, no production config changed as part of this report.
 **Rule applied throughout:** every claim below is either backed by a specific tool call/log/file cited inline, or explicitly marked **NOT VERIFIED** with the reason. Nothing is inferred from "should work."
 
+> **Addendum (2026-08-06, same day):** the Part 4/Part 7 finding below —
+> phone OTP and transactional email were stub-logged, never actually
+> delivered — has since been fixed in code. See
+> `docs/ops/DPX-LAUNCH-005-NOTIFICATION-PROVIDERS.md` for what changed
+> (real Termii SMS + Resend email adapters, activating independently once
+> their Railway env vars are set). This report's body below is left
+> exactly as originally verified, as the historical record of what this
+> session found; treat the Part 4/Part 7 FAIL verdicts as **resolved
+> pending the founder setting `TERMII_API_KEY`/`RESEND_API_KEY` on
+> Railway** rather than as still-open.
+
 **Git state at time of verification:**
 
 - `main` HEAD: `d3a2a3e9` ("chore: gitignore local .figma-import reference source")
