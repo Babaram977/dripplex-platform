@@ -67,3 +67,4 @@ temp
 
 *.pem
 !infrastructure/**/*.md
+.figma-import/
