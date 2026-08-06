@@ -87,7 +87,7 @@ export default function RootLayout({
       <body className="min-h-dvh font-sans">
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('dripplex-theme');var m=t?JSON.parse(t).state.theme:'system';var d=m==='dark'||(m==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);var e=document.documentElement;e.classList.toggle('dark',d);e.dataset.theme=d?'dark':'light';e.style.colorScheme=d?'dark':'light';}catch(e){}})();`,
+            __html: `(function(){try{var t=localStorage.getItem('dripplex-theme');var m;if(t){m=JSON.parse(t).state.theme;}else{m='dark';localStorage.setItem('dripplex-theme',JSON.stringify({state:{theme:'dark'},version:0}));}var d=m==='dark'||(m==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);var e=document.documentElement;e.classList.toggle('dark',d);e.dataset.theme=d?'dark':'light';e.style.colorScheme=d?'dark':'light';}catch(e){}})();`,
           }}
         />
         <AppProviders>

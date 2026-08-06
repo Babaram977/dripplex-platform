@@ -1,11 +1,20 @@
 <!--
-  TEMPORARY PLACEHOLDER app icon.
-  TODO(brand-assets): Replace with official Dripplex vector export from the brand kit.
-  See docs/BRAND-IDENTITY.md § Logo assets
+  Dripplex PWA app icon — the official traced brand mark (green speed-"D")
+  from packages/ui/src/brand/dripplex-mark.ts, on the locked NAVY_BASE tile.
+  Mark paths locked from docs/reference/figma-super-app-source/dripplex-brand-identity.png.
 -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
-  <rect width="64" height="64" rx="14" fill="#0E7A3E"/>
-  <path d="M18 16h18c9 0 15 5.5 15 14.5S45 45 36 45H18V16z" fill="#FFFFFF"/>
-  <path d="M26 24v16h8.5c4.7 0 7.5-2.6 7.5-7.2S39.2 24 34.5 24H26z" fill="#0E7A3E"/>
-  <rect x="18" y="48" width="28" height="6" rx="2" fill="#FFC107"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-label="Dripplex">
+  <defs>
+    <linearGradient id="dxApp" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#47CF72"/>
+      <stop offset="55%" stop-color="#2BAC52"/>
+      <stop offset="100%" stop-color="#176B30"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#0A1628"/>
+  <g transform="translate(9 12.5) scale(0.343)" fill="url(#dxApp)">
+    <path d="M 32.2 1.0 L 28.0 11.5 L 33.2 18.8 L 80.5 18.8 L 100.5 25.8 L 113.0 43.2 L 114.0 61.5 L 108.0 76.5 L 95.5 88.0 L 59.2 92.0 L 75.8 57.5 L 72.5 53.0 L 3.2 54.0 L 0.0 62.5 L 5.2 67.8 L 51.0 68.2 L 31.0 110.5 L 85.5 111.8 L 113.5 99.8 L 128.8 80.5 L 133.8 64.5 L 131.8 37.2 L 120.8 18.2 L 91.5 1.0 Z"/>
+    <path d="M 13.0 35.2 L 13.0 41.5 L 17.2 44.8 L 67.5 44.8 L 70.8 41.5 L 70.8 35.2 L 65.5 31.0 L 17.2 31.0 Z"/>
+    <circle cx="26.0" cy="83.5" r="7.4"/>
+  </g>
 </svg>
