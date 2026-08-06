@@ -24,13 +24,14 @@ describe('LandingPage', () => {
   it('renders brand, tagline, CTAs, and feature modules', () => {
     render(<LandingPage />);
 
-    expect(screen.getByText('Dripplex')).toBeInTheDocument();
+    // The splash intro and hero section each render their own logo/wordmark.
+    expect(screen.getAllByText('Dripplex').length).toBeGreaterThan(0);
     expect(screen.getByText('life, Simplified')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Create Account' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Get Started' })).toHaveAttribute('href', '/register');
+    expect(screen.getByRole('link', { name: 'I already have an account' })).toHaveAttribute(
       'href',
-      '/register',
+      '/login',
     );
-    expect(screen.getByRole('link', { name: 'Login' })).toHaveAttribute('href', '/login');
     expect(screen.getByRole('heading', { name: /Everything you need/i })).toBeInTheDocument();
     expect(screen.getByText('Marketplace')).toBeInTheDocument();
     expect(screen.getByText('Food Delivery')).toBeInTheDocument();
