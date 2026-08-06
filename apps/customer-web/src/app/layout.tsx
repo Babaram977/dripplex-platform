@@ -1,5 +1,5 @@
 import { AppProviders } from '@dripplex/hooks';
-import { Manrope, Sora } from 'next/font/google';
+import { Inter, Poppins } from 'next/font/google';
 import * as React from 'react';
 
 import type { Metadata, Viewport } from 'next';
@@ -13,13 +13,16 @@ import { siteConfig } from '@/lib/site';
 
 import './globals.css';
 
-const display = Sora({
+// Locked Figma type system: Poppins (headings) + Inter (body).
+// See docs/reference/figma-super-app-source/tokens/typography.ts
+const display = Poppins({
   subsets: ['latin'],
+  weight: ['400', '500', '600', '700', '800'],
   variable: '--font-display',
   display: 'swap',
 });
 
-const sans = Manrope({
+const sans = Inter({
   subsets: ['latin'],
   variable: '--font-sans',
   display: 'swap',
