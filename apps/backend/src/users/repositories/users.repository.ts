@@ -28,6 +28,7 @@ export interface UsersRepository {
   findById(id: string): Promise<User | null>;
   findByEmail(email: string): Promise<User | null>;
   findByPhone(phone: string): Promise<User | null>;
+  findByGoogleId(googleId: string): Promise<User | null>;
   findByIdWithRbac(id: string): Promise<UserWithRbac | null>;
   markLogin(id: string): Promise<User>;
   recordLoginActivity(id: string): Promise<User>;
@@ -36,6 +37,7 @@ export interface UsersRepository {
   activateIfVerificationsComplete(id: string, requiresPhoneVerification: boolean): Promise<User>;
   softDelete(id: string): Promise<User>;
   updatePassword(id: string, passwordHash: string): Promise<User>;
+  linkGoogleId(id: string, googleId: string): Promise<User>;
   list(params: { skip: number; take: number }): Promise<{ items: User[]; total: number }>;
 }
 

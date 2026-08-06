@@ -17,6 +17,7 @@ enum UserStatus {
 
 enum RegistrationChannel {
   CUSTOMER_WEB
+  CUSTOMER_WEB_GOOGLE
   MERCHANT_PORTAL
   RIDER_PORTAL
   DRIVER_PORTAL
@@ -231,6 +232,10 @@ model User {
   email                       String                       @unique @db.Citext
   phone                       String?                      @unique @db.VarChar(32)
   passwordHash                String                       @map("password_hash")
+  /// Google's stable account subject ID (profile.id from the OAuth2 userinfo
+  /// response). Set when a user signs in with Google, either at account
+  /// creation or when linking Google to an existing email/phone account.
+  googleId                    String?                      @unique @map("google_id")
   firstName                   String                       @map("first_name") @db.VarChar(100)
   lastName                    String                       @map("last_name") @db.VarChar(100)
   status                      UserStatus                   @default(PENDING_VERIFICATION)

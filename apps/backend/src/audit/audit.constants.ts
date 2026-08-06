@@ -31,6 +31,11 @@ export const AUTH_AUDIT_ACTIONS = {
   SESSION_LIST: 'auth.session.list',
   SESSIONS_REVOKED_ALL: 'auth.sessions.revoked_all',
   SESSION_ACTIVITY: 'auth.session.activity',
+  GOOGLE_LOGIN_STARTED: 'auth.google.login.started',
+  GOOGLE_LOGIN_SUCCESS: 'auth.google.login.success',
+  GOOGLE_LOGIN_FAILED: 'auth.google.login.failed',
+  GOOGLE_ACCOUNT_LINKED: 'auth.google.account.linked',
+  GOOGLE_ACCOUNT_CREATED: 'auth.google.account.created',
 } as const;
 
 export { MERCHANT_AUDIT_ACTIONS } from '../merchants/merchant.constants';

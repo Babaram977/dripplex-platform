@@ -266,4 +266,26 @@ export class AuthApi {
   public me(): Promise<AuthUserProfile> {
     return this.http.request<AuthUserProfile>('/auth/me');
   }
+
+  /**
+   * Full-page-navigation URL that starts the Google Sign-In flow — assign
+   * this to `window.location.href` (not `fetch`/`request`) since it's a
+   * browser redirect to Google's consent screen, not an API call.
+   */
+  public googleSignInUrl(): string {
+    return `${this.http.baseUrl}/auth/google`;
+  }
+
+  /**
+   * Exchanges the short-lived, single-use handoff code returned in the
+   * `?code=` query param after the /auth/google/callback redirect for the
+   * actual access/refresh token pair.
+   */
+  public exchangeGoogleCode(code: string): Promise<PortalLoginResponse> {
+    return this.http.request<PortalLoginResponse>('/auth/google/exchange', {
+      method: 'POST',
+      body: { code },
+      auth: false,
+    });
+  }
 }

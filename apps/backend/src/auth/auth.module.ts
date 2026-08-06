@@ -10,12 +10,14 @@ import { UsersModule } from '../users/users.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { EmailVerificationController } from './controllers/email-verification.controller';
+import { GoogleAuthController } from './controllers/google-auth.controller';
 import { LoginController } from './controllers/login.controller';
 import { PasswordController } from './controllers/password.controller';
 import { PhoneVerificationController } from './controllers/phone-verification.controller';
 import { RegistrationController } from './controllers/registration.controller';
 import { SessionsController } from './controllers/sessions.controller';
 import { VerificationController } from './controllers/verification.controller';
+import { GoogleConfiguredGuard } from './guards/google-configured.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { PermissionsGuard } from './guards/permissions.guard';
 import { AUTH_SESSION_REPOSITORY } from './repositories/auth-session.repository';
@@ -28,6 +30,7 @@ import { PrismaRegistrationRepository } from './repositories/prisma-registration
 import { REGISTRATION_REPOSITORY } from './repositories/registration.repository';
 import { DeviceInfoService } from './services/device-info.service';
 import { EmailVerificationService } from './services/email-verification.service';
+import { GoogleAuthService } from './services/google-auth.service';
 import { LoginAttemptService } from './services/login-attempt.service';
 import { LoginService } from './services/login.service';
 import { LogoutService } from './services/logout.service';
@@ -42,6 +45,7 @@ import { SessionManagementService } from './services/session-management.service'
 import { SessionService } from './services/session.service';
 import { TokenService } from './services/token.service';
 import { VerificationService } from './services/verification.service';
+import { GoogleStrategy } from './strategies/google.strategy';
 import { JwtStrategy } from './strategies/jwt.strategy';
 
 @Module({
@@ -62,6 +66,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     EmailVerificationController,
     PhoneVerificationController,
     SessionsController,
+    GoogleAuthController,
   ],
   providers: [
     AuthService,
@@ -84,6 +89,9 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     JwtStrategy,
     JwtAuthGuard,
     PermissionsGuard,
+    GoogleAuthService,
+    GoogleStrategy,
+    GoogleConfiguredGuard,
     {
       provide: REGISTRATION_REPOSITORY,
       useClass: PrismaRegistrationRepository,

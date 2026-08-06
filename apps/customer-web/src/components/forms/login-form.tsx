@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation';
 import * as React from 'react';
 import { useForm } from 'react-hook-form';
 
+import { GoogleSignInButton } from '@/components/forms/google-sign-in-button';
 import { describeSdkError, sdk } from '@/lib/sdk';
 import { siteConfig } from '@/lib/site';
 
@@ -53,42 +54,50 @@ export function LoginForm(): React.JSX.Element {
   });
 
   return (
-    <form className="space-y-4" onSubmit={(event) => void onSubmit(event)} noValidate>
-      <div className="space-y-2">
-        <Label htmlFor="email">Email</Label>
-        <Input
-          id="email"
-          type="email"
-          autoComplete="email"
-          aria-invalid={Boolean(errors.email)}
-          {...register('email')}
-        />
-        {errors.email ? <p className="text-destructive text-sm">{errors.email.message}</p> : null}
-      </div>
-      <div className="space-y-2">
-        <div className="flex items-center justify-between gap-2">
-          <Label htmlFor="password">Password</Label>
-          <Link
-            href="/forgot-password"
-            className="text-primary text-xs font-medium hover:underline"
-          >
-            Forgot password?
-          </Link>
+    <div className="space-y-4">
+      <form className="space-y-4" onSubmit={(event) => void onSubmit(event)} noValidate>
+        <div className="space-y-2">
+          <Label htmlFor="email">Email</Label>
+          <Input
+            id="email"
+            type="email"
+            autoComplete="email"
+            aria-invalid={Boolean(errors.email)}
+            {...register('email')}
+          />
+          {errors.email ? <p className="text-destructive text-sm">{errors.email.message}</p> : null}
         </div>
-        <Input
-          id="password"
-          type="password"
-          autoComplete="current-password"
-          aria-invalid={Boolean(errors.password)}
-          {...register('password')}
-        />
-        {errors.password ? (
-          <p className="text-destructive text-sm">{errors.password.message}</p>
-        ) : null}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <Label htmlFor="password">Password</Label>
+            <Link
+              href="/forgot-password"
+              className="text-primary text-xs font-medium hover:underline"
+            >
+              Forgot password?
+            </Link>
+          </div>
+          <Input
+            id="password"
+            type="password"
+            autoComplete="current-password"
+            aria-invalid={Boolean(errors.password)}
+            {...register('password')}
+          />
+          {errors.password ? (
+            <p className="text-destructive text-sm">{errors.password.message}</p>
+          ) : null}
+        </div>
+        <Button type="submit" className="w-full" disabled={isSubmitting}>
+          {isSubmitting ? 'Signing in…' : 'Login'}
+        </Button>
+      </form>
+      <div className="flex items-center gap-3">
+        <div className="border-border h-px flex-1 border-t" />
+        <span className="text-muted-foreground text-xs">or</span>
+        <div className="border-border h-px flex-1 border-t" />
       </div>
-      <Button type="submit" className="w-full" disabled={isSubmitting}>
-        {isSubmitting ? 'Signing in…' : 'Login'}
-      </Button>
-    </form>
+      <GoogleSignInButton />
+    </div>
   );
 }

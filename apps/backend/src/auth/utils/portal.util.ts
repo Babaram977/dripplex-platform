@@ -5,6 +5,7 @@ import type { PortalLoginType } from '../auth-login.types';
 export function registrationChannelToPortal(channel: RegistrationChannel): PortalLoginType {
   switch (channel) {
     case RegistrationChannel.CUSTOMER_WEB:
+    case RegistrationChannel.CUSTOMER_WEB_GOOGLE:
       return 'customer';
     case RegistrationChannel.MERCHANT_PORTAL:
       return 'merchant';

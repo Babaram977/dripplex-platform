@@ -44,6 +44,12 @@ export class PrismaUsersRepository implements UsersRepository {
     });
   }
 
+  public async findByGoogleId(googleId: string): Promise<User | null> {
+    return await this.prisma.user.findFirst({
+      where: { googleId, deletedAt: null },
+    });
+  }
+
   public async findByIdWithRbac(id: string): Promise<UserWithRbac | null> {
     return await this.prisma.user.findFirst({
       where: { id, deletedAt: null },
@@ -143,6 +149,13 @@ export class PrismaUsersRepository implements UsersRepository {
         passwordHash,
         passwordChangedAt: new Date(),
       },
+    });
+  }
+
+  public async linkGoogleId(id: string, googleId: string): Promise<User> {
+    return await this.prisma.user.update({
+      where: { id },
+      data: { googleId },
     });
   }
 

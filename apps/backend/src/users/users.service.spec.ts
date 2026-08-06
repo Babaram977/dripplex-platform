@@ -12,6 +12,7 @@ describe('UsersService', () => {
     findById: jest.fn(),
     findByEmail: jest.fn(),
     findByPhone: jest.fn(),
+    findByGoogleId: jest.fn(),
     findByIdWithRbac: jest.fn(),
     markLogin: jest.fn(),
     markEmailVerified: jest.fn(),
@@ -20,6 +21,7 @@ describe('UsersService', () => {
     recordLoginActivity: jest.fn(),
     softDelete: jest.fn(),
     updatePassword: jest.fn(),
+    linkGoogleId: jest.fn(),
     list: jest.fn(),
   };
 
@@ -30,6 +32,7 @@ describe('UsersService', () => {
     email: 'user@dripplex.com',
     phone: null,
     passwordHash: 'hash',
+    googleId: null,
     firstName: 'Ada',
     lastName: 'Lovelace',
     status: UserStatus.ACTIVE,

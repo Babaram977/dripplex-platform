@@ -35,6 +35,10 @@ export class PrismaRegistrationRepository implements RegistrationRepository {
           status: input.status,
           registrationChannel: input.registrationChannel,
           ...(input.phone !== undefined ? { phone: input.phone } : {}),
+          ...(input.emailVerifiedAt !== undefined
+            ? { emailVerifiedAt: input.emailVerifiedAt }
+            : {}),
+          ...(input.googleId !== undefined ? { googleId: input.googleId } : {}),
           roles: {
             create: {
               roleId: role.id,

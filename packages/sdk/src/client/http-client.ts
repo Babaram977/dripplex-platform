@@ -24,6 +24,11 @@ export class HttpClient {
 
   public constructor(private readonly config: SdkConfig) {}
 
+  /** The API base URL, for building full-page-navigation links (e.g. OAuth redirects) that can't go through request(). */
+  public get baseUrl(): string {
+    return this.config.baseUrl;
+  }
+
   public async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
     try {
       return await this.execute<T>(path, options);

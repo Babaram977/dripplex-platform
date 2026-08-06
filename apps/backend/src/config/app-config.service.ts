@@ -235,6 +235,28 @@ export class AppConfigService {
     return this.googleMapsServerApiKey !== '';
   }
 
+  public get googleClientId(): string {
+    return this.configService.get('GOOGLE_CLIENT_ID', { infer: true });
+  }
+
+  public get googleClientSecret(): string {
+    return this.configService.get('GOOGLE_CLIENT_SECRET', { infer: true });
+  }
+
+  public get googleCallbackUrl(): string {
+    return this.configService.get('GOOGLE_CALLBACK_URL', { infer: true });
+  }
+
+  public get googleOAuthConfigured(): boolean {
+    return (
+      this.googleClientId !== '' && this.googleClientSecret !== '' && this.googleCallbackUrl !== ''
+    );
+  }
+
+  public get customerAppUrl(): string {
+    return this.configService.get('CUSTOMER_APP_URL', { infer: true });
+  }
+
   public get smileIdPartnerId(): string {
     return this.configService.get('SMILE_ID_PARTNER_ID', { infer: true });
   }

@@ -34,6 +34,10 @@ export class UsersService {
     return this.usersRepository.findByPhone(phone);
   }
 
+  public findByGoogleId(googleId: string): Promise<User | null> {
+    return this.usersRepository.findByGoogleId(googleId);
+  }
+
   public findByIdWithRbac(id: string): Promise<UserWithRbac | null> {
     return this.usersRepository.findByIdWithRbac(id);
   }
@@ -63,6 +67,10 @@ export class UsersService {
 
   public updatePassword(id: string, passwordHash: string): Promise<User> {
     return this.usersRepository.updatePassword(id, passwordHash);
+  }
+
+  public linkGoogleId(id: string, googleId: string): Promise<User> {
+    return this.usersRepository.linkGoogleId(id, googleId);
   }
 
   public async getByIdOrThrow(id: string): Promise<User> {

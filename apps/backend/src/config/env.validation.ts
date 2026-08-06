@@ -55,6 +55,17 @@ export const envSchema = z.object({
   FIREBASE_CLIENT_EMAIL: z.string().default(''),
   FIREBASE_PRIVATE_KEY: z.string().default(''),
   GOOGLE_MAPS_SERVER_API_KEY: z.string().default(''),
+  // Google Sign-In (OAuth 2.0) — all default to '' (unconfigured). The
+  // strategy/controller check googleOAuthConfigured before ever attempting
+  // a real OAuth redirect, so an empty value here is a safe no-op, not a
+  // boot-time crash (same pattern as Smile ID / payment providers).
+  GOOGLE_CLIENT_ID: z.string().default(''),
+  GOOGLE_CLIENT_SECRET: z.string().default(''),
+  // Exact backend callback URL to register in Google Cloud Console, e.g.
+  // https://api.dripplex.com/api/v1/auth/google/callback in production.
+  GOOGLE_CALLBACK_URL: z.string().default(''),
+  // Where to send the browser after a Google OAuth round-trip completes.
+  CUSTOMER_APP_URL: z.string().default('http://localhost:3001'),
   SMILE_ID_PARTNER_ID: z.string().default(''),
   SMILE_ID_API_KEY: z.string().default(''),
   SMILE_ID_BASE_URL: z.string().url().default('https://api.smileidentity.com/v1'),

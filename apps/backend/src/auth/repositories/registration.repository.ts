@@ -10,6 +10,11 @@ export interface PortalRegistrationInput {
   registrationChannel: RegistrationChannel;
   roleName: string;
   portal: 'customer' | 'merchant' | 'rider' | 'driver';
+  /** Set for identity-provider signups (e.g. Google) that arrive with an
+   * already-verified email — skips the usual email-OTP verification step. */
+  emailVerifiedAt?: Date;
+  /** Set for Google-originated signups. */
+  googleId?: string;
 }
 
 export interface PortalRegistrationResult {
