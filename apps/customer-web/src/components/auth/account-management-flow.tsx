@@ -69,6 +69,9 @@ export function AccountManagementFlow(): React.JSX.Element {
           router.back();
         }}
         onNavigate={handleNavigate}
+        onEditProfile={() => {
+          router.push('/account/profile');
+        }}
         fullName={fullName}
         email={user?.email ?? null}
         phone={user?.phone ?? null}

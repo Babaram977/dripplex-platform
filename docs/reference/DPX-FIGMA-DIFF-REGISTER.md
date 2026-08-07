@@ -50,7 +50,15 @@ differences that need a founder call.
 
 **Resolved 2026-08-07** — founder decision: yes, editable profiles, no username. See
 `docs/DPX-PROFILE-KYC-001-DESIGN.md` for the full field list, endpoint shape, and
-verification-gating rules for phone/email changes. Implementation in progress on this branch.
+verification-gating rules for phone/email changes.
+
+**Built 2026-08-07** — `PATCH /auth/me` (`ProfileService.updateProfile`), verification-gated
+`POST /auth/me/phone/change` + `/phone/change/confirm` and `/email/change` + `/email/change/confirm`
+(OTP-based, reusing `PhoneVerificationService`/`EmailVerificationService`'s OTP primitives without
+touching their registration code path). SDK: `sdk.auth.updateProfile`/`requestPhoneChange`/
+`confirmPhoneChange`/`requestEmailChange`/`confirmEmailChange`. Frontend: `SuperAppAuthEditProfileScreen`
+at `/account/profile`, entered from the Account Management identity card (now tappable instead of
+read-only). KYC (below) is schema-only as of this commit — service/controller/UI still pending.
 
 ## Field-level & behavioral differences (Driver Registration, DPX-100 Priority 1)
 

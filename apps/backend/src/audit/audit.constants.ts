@@ -36,6 +36,13 @@ export const AUTH_AUDIT_ACTIONS = {
   GOOGLE_LOGIN_FAILED: 'auth.google.login.failed',
   GOOGLE_ACCOUNT_LINKED: 'auth.google.account.linked',
   GOOGLE_ACCOUNT_CREATED: 'auth.google.account.created',
+  PROFILE_UPDATED: 'profile.updated',
+  PROFILE_PHONE_CHANGE_REQUESTED: 'profile.phone_change_requested',
+  PROFILE_PHONE_CHANGED: 'profile.phone_changed',
+  PROFILE_PHONE_CHANGE_FAILED: 'profile.phone_change_failed',
+  PROFILE_EMAIL_CHANGE_REQUESTED: 'profile.email_change_requested',
+  PROFILE_EMAIL_CHANGED: 'profile.email_changed',
+  PROFILE_EMAIL_CHANGE_FAILED: 'profile.email_change_failed',
 } as const;
 
 export { MERCHANT_AUDIT_ACTIONS } from '../merchants/merchant.constants';

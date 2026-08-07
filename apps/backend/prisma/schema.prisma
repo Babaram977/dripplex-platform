@@ -98,6 +98,27 @@ enum KycVerificationStatus {
   REJECTED
 }
 
+/// DPX-PROFILE-KYC-001 — Customer-persona document KYC lifecycle. Richer
+/// than KycVerificationStatus (driver/merchant) per founder decision
+/// 2026-08-07: the UI needs to distinguish "never started" from "in review"
+/// from "needs new documents," not just pending/verified/rejected.
+enum CustomerKycStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  PENDING_REVIEW
+  VERIFIED
+  REJECTED
+  EXPIRED
+  REQUIRES_RESUBMISSION
+}
+
+/// DPX-PROFILE-KYC-001
+enum CustomerKycLevel {
+  LEVEL_0
+  LEVEL_1
+  LEVEL_2
+}
+
 enum AddressLabel {
   HOME
   WORK
@@ -238,6 +259,13 @@ model User {
   googleId                    String?                      @unique @map("google_id")
   firstName                   String                       @map("first_name") @db.VarChar(100)
   lastName                    String                       @map("last_name") @db.VarChar(100)
+  /// DPX-PROFILE-KYC-001 — URL only, no upload endpoint exists yet (same
+  /// contract as DriverKyc.frontImage/backImage).
+  profilePhotoUrl             String?                      @map("profile_photo_url") @db.VarChar(2048)
+  /// DPX-PROFILE-KYC-001
+  dateOfBirth                 DateTime?                    @map("date_of_birth") @db.Date
+  /// DPX-PROFILE-KYC-001 — deliberately free-text, not a closed enum.
+  gender                      String?                      @db.VarChar(50)
   status                      UserStatus                   @default(PENDING_VERIFICATION)
   registrationChannel         RegistrationChannel?         @map("registration_channel")
   emailVerifiedAt             DateTime?                    @map("email_verified_at")
@@ -251,6 +279,10 @@ model User {
   authSessions                AuthSession[]
   passwordResetTokens         PasswordResetToken[]
   identityVerifications       IdentityVerification[]
+  /// DPX-PROFILE-KYC-001 — Customer-persona document KYC, separate from
+  /// driver/merchant KYC (DriverKyc/MerchantKyc) and from IdentityVerification
+  /// (OTP/magic-link, not document verification).
+  customerKycs                CustomerKyc[]
   customerProfile             CustomerProfile?
   merchantProfile             MerchantProfile?
   riderProfile                RiderProfile?
@@ -1638,6 +1670,37 @@ model DriverKyc {
   @@index([driverId])
   @@index([verificationStatus])
   @@map("driver_kyc")
+}
+
+/// DPX-PROFILE-KYC-001 — Customer-persona document KYC. Deliberately not
+/// shared with DriverKyc: different persona, different (richer) lifecycle,
+/// and DriverKyc is already frozen/shipped — extending it risks regressing
+/// a frozen module. documentType reuses KycDocumentType (NATIONAL_ID/
+/// PASSPORT/DRIVER_LICENSE all apply to a person's ID); frontImageUrl/
+/// backImageUrl/selfieUrl are URL strings, same contract as DriverKyc's
+/// frontImage/backImage — no file-upload/storage service exists yet, this
+/// is not a new limitation.
+model CustomerKyc {
+  id             String                @id @default(uuid()) @db.Uuid
+  userId         String                @map("user_id") @db.Uuid
+  level          CustomerKycLevel      @default(LEVEL_0)
+  status         CustomerKycStatus     @default(NOT_STARTED)
+  documentType   KycDocumentType?      @map("document_type")
+  documentNumber String?               @map("document_number") @db.VarChar(100)
+  frontImageUrl  String?               @map("front_image_url") @db.VarChar(2048)
+  backImageUrl   String?               @map("back_image_url") @db.VarChar(2048)
+  selfieUrl      String?               @map("selfie_url") @db.VarChar(2048)
+  reviewedBy     String?               @map("reviewed_by") @db.Uuid
+  reviewedAt     DateTime?             @map("reviewed_at")
+  remarks        String?               @db.VarChar(1000)
+  submittedAt    DateTime?             @map("submitted_at")
+  createdAt      DateTime              @default(now()) @map("created_at")
+  updatedAt      DateTime              @updatedAt @map("updated_at")
+  user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@map("customer_kyc")
 }
 
 /// DPX-DRIVER-002 — structured vehicle record. Replaces the pre-existing

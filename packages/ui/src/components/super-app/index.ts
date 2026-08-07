@@ -34,6 +34,11 @@ export {
   SuperAppAuthAccountManagementScreen,
   type SuperAppAccountManagementLinkKey,
 } from './AuthAccountManagementScreen';
+export {
+  SuperAppAuthEditProfileScreen,
+  type SuperAppChangeStep,
+  type SuperAppEditProfileValues,
+} from './AuthEditProfileScreen';
 export { SuperAppSkeleton } from './Skeleton';
 export { SuperAppSectionHeader } from './SectionHeader';
 export { SuperAppStatusBarIcons } from './StatusBarIcons';

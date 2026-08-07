@@ -38,6 +38,7 @@ import { OtpService } from './services/otp.service';
 import { PasswordPolicyService } from './services/password-policy.service';
 import { PasswordService } from './services/password.service';
 import { PhoneVerificationService } from './services/phone-verification.service';
+import { ProfileService } from './services/profile.service';
 import { RefreshService } from './services/refresh.service';
 import { RegistrationService } from './services/registration.service';
 import { SessionActivityService } from './services/session-activity.service';
@@ -87,6 +88,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     LogoutService,
     PasswordPolicyService,
     PasswordService,
+    ProfileService,
     JwtStrategy,
     JwtAuthGuard,
     PermissionsGuard,

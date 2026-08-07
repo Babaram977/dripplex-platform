@@ -31,6 +31,9 @@ export interface AuthUserProfile {
   phone: string | null;
   firstName: string;
   lastName: string;
+  profilePhotoUrl: string | null;
+  dateOfBirth: string | null;
+  gender: string | null;
   status: string;
   roles: string[];
   permissions: string[];

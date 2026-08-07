@@ -5,7 +5,12 @@ import { isSyntheticEmail } from '../../auth/utils/synthetic-email.util';
 import { NotFoundDomainException } from '../../common/exceptions/domain.exception';
 import { PrismaService } from '../../prisma/prisma.service';
 
-import type { CreateUserInput, UserWithRbac, UsersRepository } from './users.repository';
+import type {
+  CreateUserInput,
+  UpdateProfileInput,
+  UserWithRbac,
+  UsersRepository,
+} from './users.repository';
 
 @Injectable()
 export class PrismaUsersRepository implements UsersRepository {
@@ -160,6 +165,33 @@ export class PrismaUsersRepository implements UsersRepository {
     return await this.prisma.user.update({
       where: { id },
       data: { googleId },
+    });
+  }
+
+  public async updateProfile(id: string, data: UpdateProfileInput): Promise<User> {
+    return await this.prisma.user.update({
+      where: { id },
+      data: {
+        ...(data.firstName !== undefined ? { firstName: data.firstName } : {}),
+        ...(data.lastName !== undefined ? { lastName: data.lastName } : {}),
+        ...(data.profilePhotoUrl !== undefined ? { profilePhotoUrl: data.profilePhotoUrl } : {}),
+        ...(data.dateOfBirth !== undefined ? { dateOfBirth: data.dateOfBirth } : {}),
+        ...(data.gender !== undefined ? { gender: data.gender } : {}),
+      },
+    });
+  }
+
+  public async updatePhone(id: string, phone: string): Promise<User> {
+    return await this.prisma.user.update({
+      where: { id },
+      data: { phone, phoneVerifiedAt: new Date() },
+    });
+  }
+
+  public async updateEmail(id: string, email: string): Promise<User> {
+    return await this.prisma.user.update({
+      where: { id },
+      data: { email, emailVerifiedAt: new Date() },
     });
   }
 

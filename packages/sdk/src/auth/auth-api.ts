@@ -6,6 +6,8 @@ import type {
   AuthUserProfile,
   ChangePasswordFormValues,
   ChangePasswordResponse,
+  ConfirmEmailChangeValues,
+  ConfirmPhoneChangeValues,
   CustomerRegistrationValues,
   DriverRegistrationValues,
   EmailVerificationResponse,
@@ -19,11 +21,14 @@ import type {
   PortalLoginValues,
   RegisterFormValues,
   RegistrationResponse,
+  RequestEmailChangeValues,
+  RequestPhoneChangeValues,
   ResetPasswordFormValues,
   ResetPasswordResponse,
   RiderRegistrationValues,
   SendOtpDto,
   SendVerificationDto,
+  UpdateProfileValues,
   VerificationSubmittedResponse,
   VerifyEmailDto,
   VerifyEmailValues,
@@ -312,6 +317,51 @@ export class AuthApi {
 
   public me(): Promise<AuthUserProfile> {
     return this.http.request<AuthUserProfile>('/auth/me');
+  }
+
+  /**
+   * DPX-PROFILE-KYC-001 (founder decision 2026-08-07): editable fields only
+   * -- no phone/email (verification-gated, see below) and no username (not
+   * introduced, by design).
+   */
+  public updateProfile(body: UpdateProfileValues): Promise<AuthUserProfile> {
+    return this.http.request<AuthUserProfile>('/auth/me', {
+      method: 'PATCH',
+      body,
+      auth: true,
+    });
+  }
+
+  public requestPhoneChange(body: RequestPhoneChangeValues): Promise<{ expiresInSeconds: number }> {
+    return this.http.request<{ expiresInSeconds: number }>('/auth/me/phone/change', {
+      method: 'POST',
+      body,
+      auth: true,
+    });
+  }
+
+  public confirmPhoneChange(body: ConfirmPhoneChangeValues): Promise<AuthUserProfile> {
+    return this.http.request<AuthUserProfile>('/auth/me/phone/change/confirm', {
+      method: 'POST',
+      body,
+      auth: true,
+    });
+  }
+
+  public requestEmailChange(body: RequestEmailChangeValues): Promise<{ expiresInSeconds: number }> {
+    return this.http.request<{ expiresInSeconds: number }>('/auth/me/email/change', {
+      method: 'POST',
+      body,
+      auth: true,
+    });
+  }
+
+  public confirmEmailChange(body: ConfirmEmailChangeValues): Promise<AuthUserProfile> {
+    return this.http.request<AuthUserProfile>('/auth/me/email/change/confirm', {
+      method: 'POST',
+      body,
+      auth: true,
+    });
   }
 
   /**

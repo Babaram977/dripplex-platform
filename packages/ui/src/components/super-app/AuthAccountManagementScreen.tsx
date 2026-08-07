@@ -104,28 +104,31 @@ const SETTINGS: {
 /**
  * Ported from the locked Figma Make `screensB.tsx`'s `AccountManagementScreen`
  * (AUTH-017, `MODULE_GROUPS["Auth"]`'s "Account" entry). One deliberate
- * departure from source: the source has editable Full Name/Username/Email
- * inputs with a "Save Changes" button. Verified 2026-08-07 there is no
- * self-service profile-update endpoint anywhere in the backend (see
- * `docs/reference/DPX-FIGMA-DIFF-REGISTER.md`), and "username" has no field
- * in the schema at all -- so the editable form is dropped in favor of a
- * read-only identity card showing the three fields that are real
- * (`GET /auth/me`: firstName/lastName/email/phone). Rendering editable
- * inputs with a Save button that silently no-ops would be worse than
- * showing accurate read-only data. The settings list below is kept
- * pixel-faithful; none of its eighteen targets are built yet (see
+ * departure from source, since resolved: the source has editable Full
+ * Name/Username/Email inputs with a "Save Changes" button. As of 2026-08-07
+ * this backend has a real `PATCH /auth/me` + verification-gated phone/email
+ * change endpoints (DPX-PROFILE-KYC-001, founder decision), so the identity
+ * card is now a tappable entry point into `SuperAppAuthEditProfileScreen`
+ * instead of a static read-only block. "Username" still has no field in the
+ * schema at all -- the founder's explicit decision was not to introduce one,
+ * so it stays out of the edit form (and its settings-list row below still
+ * routes to an honest "not available" notice, same as the other
+ * not-yet-built rows). The settings list is kept pixel-faithful; none of its
+ * eighteen targets besides identity editing are built yet (see
  * `SuperAppAccountManagementLinkKey`), so every row routes through
  * `onNavigate` rather than a fabricated destination.
  */
 export function SuperAppAuthAccountManagementScreen({
   onBack,
   onNavigate,
+  onEditProfile,
   fullName,
   email,
   phone,
 }: {
   onBack: () => void;
   onNavigate: (key: SuperAppAccountManagementLinkKey) => void;
+  onEditProfile: () => void;
   fullName: string;
   email: string | null;
   phone: string | null;
@@ -181,8 +184,10 @@ export function SuperAppAuthAccountManagementScreen({
           ) : null}
         </div>
 
-        <div
-          className="mx-6 mb-4 rounded-2xl p-4"
+        <button
+          type="button"
+          onClick={onEditProfile}
+          className="mx-6 mb-4 rounded-2xl p-4 text-left transition-all active:scale-[0.98]"
           style={{ background: '#0D1B2E', border: '1.5px solid rgba(255,255,255,.08)' }}
         >
           <p
@@ -206,13 +211,12 @@ export function SuperAppAuthAccountManagementScreen({
             </>
           ) : null}
           <p
-            className={`mt-3 text-[11px] leading-relaxed ${body}`}
-            style={{ color: 'rgba(255,255,255,.32)' }}
+            className={`mt-3 text-[11px] font-semibold leading-relaxed ${body}`}
+            style={{ color: '#47CF72' }}
           >
-            Editing your profile isn&rsquo;t available yet — there&rsquo;s no update endpoint wired
-            up for these fields today.
+            Tap to edit your profile →
           </p>
-        </div>
+        </button>
 
         <p
           className={`px-6 pb-2 text-[11px] font-semibold uppercase tracking-widest ${body}`}
