@@ -13,8 +13,17 @@
 // in the build stage — so nothing in prisma/ can be run through ts-node in
 // production. @prisma/client is a production dependency and is present.
 //
-// Run via the backend service's preDeployCommand, after `prisma migrate
-// deploy`: node prisma/seed-rbac.cjs
+// This script also runs `prisma migrate deploy` itself (via child_process)
+// before seeding, rather than relying on Railway's preDeployCommand to chain
+// two commands with `&&`. Railway spawns preDeployCommand directly (not
+// through a shell) — `&&` isn't interpreted as a shell operator, it's passed
+// as a literal extra argument, which Prisma's CLI silently ignores. The
+// practical effect: "prisma migrate deploy && node prisma/seed-rbac.cjs" ran
+// only the migrate step and exited 0, so the seed half never executed. See
+// the incident writeup in docs/ops/DPX-LAUNCH-004-PRODUCTION-VERIFICATION.md.
+//
+// Run via the backend service's preDeployCommand, as the ONLY command:
+// node prisma/seed-rbac.cjs
 //
 // Keep this file's data in sync with prisma/seed-data/{permissions,roles,
 // role-permissions}.ts by hand — there is currently no shared build step
@@ -24,6 +33,8 @@
 
 /* eslint-disable @typescript-eslint/no-require-imports -- plain CommonJS
    script run directly via `node`, not compiled TS source; see header. */
+const { execFileSync } = require('child_process');
+
 const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
@@ -608,7 +619,12 @@ async function seedRolePermissions(roleIds, permissionIds) {
   }
 }
 
+function runMigrations() {
+  execFileSync('node_modules/.bin/prisma', ['migrate', 'deploy'], { stdio: 'inherit' });
+}
+
 async function main() {
+  runMigrations();
   const permissionIds = await seedPermissions();
   const roleIds = await seedRoles();
   await seedRolePermissions(roleIds, permissionIds);
