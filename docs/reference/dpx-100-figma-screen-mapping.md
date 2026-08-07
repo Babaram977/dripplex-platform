@@ -142,6 +142,25 @@ and component tree, not inferred from task-history labels.
 
 ## 1. Auth (top-level nav group, 11 screens)
 
+**Status at a glance** (founder-requested format, 2026-08-07 — replaces "N/11 built" fractions,
+which hide _why_ a screen isn't done). UI/Backend/Integration are independent axes: a screen can
+have real UI and real backend but still be non-functional if nothing connects them.
+
+| Screen                      | UI              | Backend   | Integration | Status                                                                                                    |
+| --------------------------- | --------------- | --------- | ----------- | --------------------------------------------------------------------------------------------------------- |
+| Splash                      | ✅              | N/A       | N/A         | Complete                                                                                                  |
+| Welcome                     | ✅              | N/A       | N/A         | Complete                                                                                                  |
+| Register                    | ✅              | ✅        | ✅          | Complete                                                                                                  |
+| OTP                         | ✅              | ✅        | ✅          | Complete                                                                                                  |
+| Sign In                     | ✅              | ✅        | ✅          | Complete (unconfirmed vs. `ReturningLoginScreen` design — task #512)                                      |
+| Permissions                 | ❌              | N/A       | N/A         | Not in `MODULE_GROUPS`, low priority                                                                      |
+| Biometric                   | ❌              | N/A       | N/A         | Not in `MODULE_GROUPS`, low priority                                                                      |
+| Security Center             | ✅              | Partial   | Partial     | Functional — hub is real, all 7 linked sub-screens show an honest "not available yet" notice (none built) |
+| Account Management          | ✅              | Read-only | Read-only   | Functional — real identity data, no save capability (no update endpoint exists)                           |
+| Profile Setup               | ✅ (Figma only) | ❌        | ❌          | **Blocked — product decision needed** (task #508): does DrippleX support editable profiles?               |
+| KYC / Identity Verification | ✅ (Figma only) | Ambiguous | ❌          | **Blocked — product decision needed** (task #510): what is the KYC strategy/provider?                     |
+| Auth Summary                | ❌              | N/A       | N/A         | Not in `MODULE_GROUPS` critical path, low priority                                                        |
+
 **Corrected 2026-08-07** — the table below previously listed Permissions and Recovery as
 members of this group and omitted KYC and Account. Re-read directly from the live
 `MODULE_GROUPS["Auth"]` array in `src/app/App.tsx` (not `src/App.tsx` — that path 404s; the file
