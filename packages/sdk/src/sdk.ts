@@ -33,11 +33,17 @@ export function createCustomerSdk(config: Partial<SdkConfig> = {}): CustomerSdk 
     /**
      * Super App role-toggle (DPX-100 Phase 1): a customer-web account that
      * becomes a driver still uses this same SDK instance, not a separate
-     * driver-portal login. Only `driverOnboarding` is exposed here (not the
-     * full driver namespace from sdk-driver.ts) -- widen deliberately, not
+     * driver-portal login. Only the surfaces the in-app Driver Registration
+     * flow (DPX-100 Priority 1) actually needs are exposed here -- not the
+     * full driver namespace from sdk-driver.ts -- widened deliberately, not
      * wholesale, as more of the in-app Driver section lands.
      */
     driverOnboarding: client.driverOnboarding,
+    /** Vehicle registration step -- mirrors DriverVehiclesController. */
+    driverVehicles: client.driverVehicles,
+    /** KYC document submission + own profile (incl. submitted `kyc[]`)
+     * step -- mirrors DriverController. */
+    driverProfile: client.driverProfile,
   };
 }
 
@@ -63,6 +69,8 @@ export interface CustomerSdk {
   analytics: DripplexClient['analytics'];
   cms: DripplexClient['cms'];
   driverOnboarding: DripplexClient['driverOnboarding'];
+  driverVehicles: DripplexClient['driverVehicles'];
+  driverProfile: DripplexClient['driverProfile'];
 }
 
 export function resolveCustomerSdkConfig(config: Partial<SdkConfig> = {}): SdkConfig {

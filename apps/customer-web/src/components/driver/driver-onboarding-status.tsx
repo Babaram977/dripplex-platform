@@ -2,6 +2,7 @@
 
 import { useAuth } from '@dripplex/hooks';
 import { Button, EmptyState } from '@dripplex/ui';
+import Link from 'next/link';
 import * as React from 'react';
 
 import type { DriverOnboardingDto } from '@dripplex/types';
@@ -18,7 +19,7 @@ type ViewState =
 const STATUS_COPY: Record<DriverOnboardingDto['status'], { label: string; detail: string }> = {
   DRAFT: {
     label: 'Getting started',
-    detail: 'Your driver profile is set up. Continue in the Driver app to finish onboarding.',
+    detail: 'Register your vehicle and submit your documents to continue.',
   },
   SUBMITTED: {
     label: 'Submitted',
@@ -30,13 +31,26 @@ const STATUS_COPY: Record<DriverOnboardingDto['status'], { label: string; detail
   },
   APPROVED: {
     label: 'Approved',
-    detail: "You're approved to drive. Open the Driver app to go online.",
+    detail: "You're approved to drive.",
   },
   REJECTED: {
     label: 'Needs attention',
-    detail: 'Your onboarding was not approved. Check the Driver app for details on what to fix.',
+    detail: 'Your onboarding was not approved. Review your documents below.',
   },
 };
+
+const ONBOARDING_STEPS = [
+  {
+    href: '/driver-onboarding/vehicle',
+    label: 'Vehicle registration',
+    description: 'Make, model, year, colour, plate, ride category',
+  },
+  {
+    href: '/driver-onboarding/documents',
+    label: 'KYC documents',
+    description: 'National ID, licence, vehicle paper, insurance',
+  },
+] as const;
 
 /**
  * Super App onboarding entry point (DPX-100 Priority 1). Reads the real
@@ -133,10 +147,27 @@ export function DriverOnboardingStatus(): React.JSX.Element {
   const copy = STATUS_COPY[view.data.status];
 
   return (
-    <div className="space-y-2">
-      <h1 className="font-display text-2xl font-semibold tracking-tight">Driver onboarding</h1>
-      <p className="text-foreground text-sm font-medium">{copy.label}</p>
-      <p className="text-muted-foreground text-sm">{copy.detail}</p>
+    <div className="space-y-6">
+      <div className="space-y-2">
+        <h1 className="font-display text-2xl font-semibold tracking-tight">Driver onboarding</h1>
+        <p className="text-foreground text-sm font-medium">{copy.label}</p>
+        <p className="text-muted-foreground text-sm">{copy.detail}</p>
+      </div>
+
+      {view.data.status === 'DRAFT' || view.data.status === 'REJECTED' ? (
+        <div className="space-y-2.5">
+          {ONBOARDING_STEPS.map((step) => (
+            <Link
+              key={step.href}
+              href={step.href}
+              className="border-border/70 bg-card/60 hover:bg-muted block rounded-2xl border p-4 transition-colors"
+            >
+              <p className="text-sm font-medium">{step.label}</p>
+              <p className="text-muted-foreground text-xs">{step.description}</p>
+            </Link>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
