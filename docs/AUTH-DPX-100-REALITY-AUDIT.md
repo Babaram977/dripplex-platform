@@ -108,9 +108,43 @@ no slice marked done without a real backend call behind it.
 | **1** ✅ | Backend: flexible identifier (email OR phone) for registration + login across all 4 portals. Schema migration, DTO/validation changes, `PrismaRegistrationRepository`/`LoginService` updates, `NotificationService` interface nullable-email handling, OTP dispatch routes to whichever channel was supplied. | —          |
 | **2** ✅ | Splash + Welcome + Register (ported to `packages/ui/src/components/super-app/`, ties into Slice 1's backend). Splash already existed (`splash-intro.tsx`); Welcome + Register are new.                                                                                                                        | Slice 1    |
 | **3** ✅ | OTP Verification screen (digit-box UI, error states matching `OTPError`/`OTPStatus` from Figma)                                                                                                                                                                                                               | Slice 1, 2 |
-| **4**    | Profile Setup + Permissions + Biometric (post-verification onboarding)                                                                                                                                                                                                                                        | Slice 3    |
+| **4** ⚠️ | Profile Setup + Permissions + Biometric (post-verification onboarding) — **deferred, see below**                                                                                                                                                                                                              | Slice 3    |
 | **5**    | Sign In + Returning Login + Account Recovery                                                                                                                                                                                                                                                                  | Slice 1    |
 | **6**    | Full E2E Playwright walkthrough (register via phone, register via email, login both ways, recovery), production audit, freeze                                                                                                                                                                                 | 2-5        |
+
+### Slice 4 deferred — no real backend to attach it to
+
+Researched before building anything (same discipline as Driver-001's
+"document infeasible/unwired trigger gaps honestly" and RIDE-003 Slice
+4's capability-gap documentation) rather than shipping decorative UI
+that can't actually persist:
+
+- **Where this sits in the flow**: after OTP verification, before
+  login. At this point in `AuthFlow` there is **no authenticated
+  session yet** — `onVerified` sends the user to `/login`, it doesn't
+  log them in. Anything Profile Setup/Permissions would "save" has no
+  session to attach to.
+- **Profile Setup's fields aren't backed by schema**: `username`,
+  `gender`, `dateOfBirth`, `interests`, and avatar upload don't exist
+  anywhere on `User` or `CustomerProfile` (checked directly against
+  `schema.prisma`). Only `firstName`/`lastName` are real, and those
+  are already collected at Register (Slice 2).
+- **Permissions' most real candidate, push notification registration,
+  is already automatic and session-gated**: `usePushRegistration`
+  (`packages/hooks`, DPX-CORE-001 Phase D-2) fires on login transition,
+  not on a manual "grant" button, and needs `isAuthenticated` true —
+  which, per the point above, isn't available yet at this step. It
+  isn't a decision this screen could meaningfully front-run.
+- **Biometric has no WebAuthn/Face ID infra** — same reasoning already
+  applied when the "Use Biometric Authentication" button was
+  deliberately left off the Slice 2 Register screen.
+
+Building these three screens today would mean shipping inputs that
+don't save and toggles that don't do anything — worse than the gap
+they'd claim to close. Revisiting this is real work: either move
+onboarding after login (architecture change) or add the missing
+`CustomerProfile` fields — recorded here for whoever picks it up, not
+silently dropped.
 
 `screensB.tsx`'s 8 security/session screens: not slotted into this
 plan — tracked separately, to be reconciled against Wallet's existing
