@@ -1,5 +1,15 @@
 # DPX-LAUNCH-005 — Production Notification Providers (Termii SMS + Resend Email)
 
+> **Addendum (2026-08-07):** once the founder set the real Termii/Resend
+> keys and tested live registration, two further bugs surfaced and were
+> fixed — production's RBAC data was never seeded (blocked registration
+> entirely, unrelated to this doc's work), and registration's OTP
+> generation never actually called the providers below (a wiring gap in
+> `registration.service.ts`, not a defect in `TermiiSmsSender`/
+> `ResendEmailSender` themselves). See
+> `docs/ops/DPX-LAUNCH-006-REGISTRATION-INCIDENT.md` for the full
+> writeup. Confirmed working end-to-end after the fix.
+
 Founder-authorized (2026-08-06) as the one backend task to close before
 Launch Freeze, directly off the DPX-LAUNCH-004 production verification
 finding: production was binding every OTP/password-reset/verification/

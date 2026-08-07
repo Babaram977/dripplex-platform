@@ -14,6 +14,12 @@
 > session found; treat the Part 4/Part 7 FAIL verdicts as **resolved
 > pending the founder setting `TERMII_API_KEY`/`RESEND_API_KEY` on
 > Railway** rather than as still-open.
+>
+> **Addendum (2026-08-07):** setting the live keys immediately surfaced
+> two further production bugs — RBAC data was never seeded, and
+> registration's OTP generation never actually dispatched to the
+> providers above. Both are fixed and confirmed working end-to-end. See
+> `docs/ops/DPX-LAUNCH-006-REGISTRATION-INCIDENT.md`.
 
 **Git state at time of verification:**
 
