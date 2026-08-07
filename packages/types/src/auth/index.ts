@@ -26,7 +26,8 @@ export interface RegistrationVerificationInfo {
 
 export interface RegistrationResponse {
   userId: string;
-  email: string;
+  /** `null` when the account was registered with a phone number only. */
+  email: string | null;
   status: UserStatus;
   verification: RegistrationVerificationInfo;
   profileId?: string;

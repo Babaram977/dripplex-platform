@@ -12,6 +12,11 @@ export {
 } from './AuthPrimitives';
 export { SuperAppAuthWelcomeScreen } from './AuthWelcomeScreen';
 export {
+  SuperAppAuthOtpScreen,
+  type SuperAppAuthOtpErrorCode,
+  type SuperAppAuthOtpVerifyResult,
+} from './AuthOtpScreen';
+export {
   SuperAppAuthRegisterScreen,
   type SuperAppAuthRegisterMode,
   type SuperAppAuthRegisterValues,
