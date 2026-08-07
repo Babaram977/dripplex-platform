@@ -1,4 +1,21 @@
 export { SuperAppFontProvider, useSuperAppFonts } from './fonts';
+
+// Auth / onboarding module
+export { SuperAppAuthAmbient, SuperAppAuthStatusBar, SuperAppAuthBackButton } from './AuthChrome';
+export {
+  SuperAppAuthGreenButton,
+  SuperAppAuthDivider,
+  SuperAppAuthArrowIcon,
+  SuperAppAuthCheckIcon,
+  SUPER_APP_AUTH_COUNTRIES,
+  type SuperAppAuthCountry,
+} from './AuthPrimitives';
+export { SuperAppAuthWelcomeScreen } from './AuthWelcomeScreen';
+export {
+  SuperAppAuthRegisterScreen,
+  type SuperAppAuthRegisterMode,
+  type SuperAppAuthRegisterValues,
+} from './AuthRegisterScreen';
 export { SuperAppSkeleton } from './Skeleton';
 export { SuperAppSectionHeader } from './SectionHeader';
 export { SuperAppStatusBarIcons } from './StatusBarIcons';

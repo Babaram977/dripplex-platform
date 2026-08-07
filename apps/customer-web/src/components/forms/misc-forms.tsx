@@ -5,10 +5,12 @@ import {
   forgotPasswordSchema,
   resetPasswordUiSchema,
   verifyOtpSchema,
+  verifyPhoneSchema,
   type ContactFormValues,
   type ForgotPasswordFormValues,
   type ResetPasswordUiFormValues,
   type VerifyOtpFormValues,
+  type VerifyPhoneValues,
 } from '@dripplex/types';
 import { Button, Input, Label, toast } from '@dripplex/ui';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -148,16 +150,31 @@ export function ResetPasswordForm(): React.JSX.Element {
   );
 }
 
+/**
+ * Dispatches to phone- or email-verification based on which identifier the
+ * caller landed here with -- registration now accepts either (see
+ * docs/AUTH-DPX-100-REALITY-AUDIT.md Slice 1), so a phone-only signup must
+ * be able to verify by phone too, not just email.
+ */
 export function VerifyOtpForm(): React.JSX.Element {
-  const router = useRouter();
   const searchParams = useSearchParams();
+  const phone = searchParams.get('phone');
+  const email = searchParams.get('email');
+  if (phone && !email) {
+    return <VerifyPhoneOtpForm phone={phone} />;
+  }
+  return <VerifyEmailOtpForm email={email ?? ''} />;
+}
+
+function VerifyEmailOtpForm({ email }: { email: string }): React.JSX.Element {
+  const router = useRouter();
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<VerifyOtpFormValues>({
     resolver: zodResolver(verifyOtpSchema),
-    defaultValues: { email: searchParams.get('email') ?? '', otp: '' },
+    defaultValues: { email, otp: '' },
   });
 
   const onSubmit = handleSubmit(async (values) => {
@@ -190,6 +207,66 @@ export function VerifyOtpForm(): React.JSX.Element {
           {...register('email')}
         />
         {errors.email ? <p className="text-destructive text-sm">{errors.email.message}</p> : null}
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="otp">One-time code</Label>
+        <Input
+          id="otp"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          aria-invalid={Boolean(errors.otp)}
+          {...register('otp')}
+        />
+        {errors.otp ? <p className="text-destructive text-sm">{errors.otp.message}</p> : null}
+      </div>
+      <Button type="submit" className="w-full" disabled={isSubmitting}>
+        {isSubmitting ? 'Verifying…' : 'Verify code'}
+      </Button>
+    </form>
+  );
+}
+
+function VerifyPhoneOtpForm({ phone }: { phone: string }): React.JSX.Element {
+  const router = useRouter();
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<VerifyPhoneValues>({
+    resolver: zodResolver(verifyPhoneSchema),
+    defaultValues: { phone, otp: '' },
+  });
+
+  const onSubmit = handleSubmit(async (values) => {
+    try {
+      await sdk.auth.verifyPhone(values);
+      toast({
+        title: 'Phone verified',
+        description: 'Your account is verified. You can sign in now.',
+      });
+      router.push('/login');
+    } catch (error) {
+      const described = describeSdkError(error);
+      toast({
+        title: described.title,
+        description: described.description,
+        variant: 'destructive',
+      });
+    }
+  });
+
+  return (
+    <form className="space-y-4" onSubmit={(event) => void onSubmit(event)} noValidate>
+      <div className="space-y-2">
+        <Label htmlFor="phone">Phone number</Label>
+        <Input
+          id="phone"
+          type="tel"
+          autoComplete="tel"
+          aria-invalid={Boolean(errors.phone)}
+          {...register('phone')}
+        />
+        {errors.phone ? <p className="text-destructive text-sm">{errors.phone.message}</p> : null}
       </div>
       <div className="space-y-2">
         <Label htmlFor="otp">One-time code</Label>

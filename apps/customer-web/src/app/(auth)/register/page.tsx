@@ -1,33 +1,18 @@
-import Link from 'next/link';
-import * as React from 'react';
+import { redirect } from 'next/navigation';
 
 import type { Metadata } from 'next';
-
-import { RegisterForm } from '@/components/forms/register-form';
-import { siteConfig } from '@/lib/site';
 
 export const metadata: Metadata = {
   title: 'Create Account',
   description: 'Create your Dripplex customer account.',
 };
 
-export default function RegisterPage(): React.JSX.Element {
-  return (
-    <div className="space-y-6">
-      <div className="space-y-2 text-center lg:text-left">
-        <h1 className="font-display text-3xl font-semibold tracking-tight">Create Account</h1>
-        <p className="text-muted-foreground text-sm">
-          Join Dripplex — <span className="font-display text-foreground">{siteConfig.tagline}</span>
-          .
-        </p>
-      </div>
-      <RegisterForm />
-      <p className="text-muted-foreground text-center text-sm">
-        Already have an account?{' '}
-        <Link href="/login" className="text-primary font-medium hover:underline">
-          Login
-        </Link>
-      </p>
-    </div>
-  );
+/**
+ * The generic email+password form here has been replaced by the real
+ * Figma-ported Welcome/Register flow at `/get-started` (DPX-100 Auth Slice
+ * 2, see docs/AUTH-DPX-100-REALITY-AUDIT.md). Kept as a redirect so old
+ * links/bookmarks to `/register` still land somewhere real.
+ */
+export default function RegisterPage(): never {
+  redirect('/get-started');
 }

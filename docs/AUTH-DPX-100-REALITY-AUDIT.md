@@ -1,11 +1,24 @@
 # Auth/Onboarding — DPX-100 Reality Audit + Slice Plan
 
-**Status:** Audit complete, Slice 1 starting. Written after the founder
-flagged that live registration/login pages don't match the Figma
-standard — verified directly against the live Figma Make file via the
-Figma MCP connection (`rsHHFRxHVE3OKv81p7m3K1`, "DrippleX Super App
-Design (Copy)"), not just the static export previously saved to
+**Status:** Slice 1 (backend) and Slice 2 (Welcome + Register screens)
+shipped. Written after the founder flagged that live registration/login
+pages don't match the Figma standard — verified directly against the
+live Figma Make file via the Figma MCP connection
+(`rsHHFRxHVE3OKv81p7m3K1`, "DrippleX Super App Design (Copy)"), not just
+the static export previously saved to
 `docs/reference/figma-super-app-source/`.
+
+**Slice 2 note:** Splash (`SplashScreen`/AUTH-001) turned out to already
+exist in production as `marketing/splash-intro.tsx`, wired to the
+marketing homepage — discovered during Slice 2 research, not rebuilt.
+Slice 2 delivered Welcome (`SuperAppAuthWelcomeScreen`) and Register
+(`SuperAppAuthRegisterScreen`, phone/email toggle) as real
+`packages/ui/src/components/super-app/` components, orchestrated by
+`apps/customer-web/src/components/auth/auth-flow.tsx` at the new
+`/get-started` route, calling the real `registerCustomer` SDK method.
+`/register` now redirects to `/get-started`; the generic legacy
+`register-form.tsx` was removed. `verify-otp` was extended to handle
+phone-only signups (it previously only supported email).
 
 ## What's live today vs. what Figma defines
 
@@ -90,14 +103,14 @@ Same proven process as Marketplace/Ride/Wallet: backend first where a
 slice needs it, then the screen(s) it unblocks, Playwright-verified,
 no slice marked done without a real backend call behind it.
 
-| Slice | Scope                                                                                                                                                                                                                                                                                                         | Depends on |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| **1** | Backend: flexible identifier (email OR phone) for registration + login across all 4 portals. Schema migration, DTO/validation changes, `PrismaRegistrationRepository`/`LoginService` updates, `NotificationService` interface nullable-email handling, OTP dispatch routes to whichever channel was supplied. | —          |
-| **2** | Splash + Welcome + Register (ported to `packages/ui/src/components/super-app/`, ties into Slice 1's backend)                                                                                                                                                                                                  | Slice 1    |
-| **3** | OTP Verification screen (digit-box UI, error states matching `OTPError`/`OTPStatus` from Figma)                                                                                                                                                                                                               | Slice 1, 2 |
-| **4** | Profile Setup + Permissions + Biometric (post-verification onboarding)                                                                                                                                                                                                                                        | Slice 3    |
-| **5** | Sign In + Returning Login + Account Recovery                                                                                                                                                                                                                                                                  | Slice 1    |
-| **6** | Full E2E Playwright walkthrough (register via phone, register via email, login both ways, recovery), production audit, freeze                                                                                                                                                                                 | 2-5        |
+| Slice    | Scope                                                                                                                                                                                                                                                                                                         | Depends on |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| **1** ✅ | Backend: flexible identifier (email OR phone) for registration + login across all 4 portals. Schema migration, DTO/validation changes, `PrismaRegistrationRepository`/`LoginService` updates, `NotificationService` interface nullable-email handling, OTP dispatch routes to whichever channel was supplied. | —          |
+| **2** ✅ | Splash + Welcome + Register (ported to `packages/ui/src/components/super-app/`, ties into Slice 1's backend). Splash already existed (`splash-intro.tsx`); Welcome + Register are new.                                                                                                                        | Slice 1    |
+| **3**    | OTP Verification screen (digit-box UI, error states matching `OTPError`/`OTPStatus` from Figma)                                                                                                                                                                                                               | Slice 1, 2 |
+| **4**    | Profile Setup + Permissions + Biometric (post-verification onboarding)                                                                                                                                                                                                                                        | Slice 3    |
+| **5**    | Sign In + Returning Login + Account Recovery                                                                                                                                                                                                                                                                  | Slice 1    |
+| **6**    | Full E2E Playwright walkthrough (register via phone, register via email, login both ways, recovery), production audit, freeze                                                                                                                                                                                 | 2-5        |
 
 `screensB.tsx`'s 8 security/session screens: not slotted into this
 plan — tracked separately, to be reconciled against Wallet's existing

@@ -57,7 +57,7 @@ export function Footer(): React.JSX.Element {
                 </Link>
               </li>
               <li>
-                <Link href="/register" className="hover:text-foreground">
+                <Link href="/get-started" className="hover:text-foreground">
                   Create Account
                 </Link>
               </li>

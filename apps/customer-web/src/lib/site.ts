@@ -11,7 +11,7 @@ export const siteConfig = {
     contact: '/contact',
     about: '/about',
     login: '/login',
-    register: '/register',
+    register: '/get-started',
     dashboard: '/dashboard',
     marketplace: '/marketplace',
   },

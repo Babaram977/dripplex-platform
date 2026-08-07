@@ -22,7 +22,7 @@ export default function LoginPage(): React.JSX.Element {
       <LoginForm />
       <p className="text-muted-foreground text-center text-sm">
         New here?{' '}
-        <Link href="/register" className="text-primary font-medium hover:underline">
+        <Link href="/get-started" className="text-primary font-medium hover:underline">
           Create an account
         </Link>
       </p>
