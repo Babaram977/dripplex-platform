@@ -147,14 +147,15 @@ specifically before marking it done.
 
 ## 6. Driver App (13 screens) — resolved: in-app Super App section (see §0.2)
 
-| Figma Screen                                                                            | Backend                                            | SDK (driver-portal barrel, `sdk-driver.ts`)        | Status  |
-| --------------------------------------------------------------------------------------- | -------------------------------------------------- | -------------------------------------------------- | ------- |
-| Driver Splash / Login / OTP                                                             | `auth.controller.ts`, `verification.controller.ts` | `sdk.auth`                                         | ✅ Live |
-| KYC Status / Upload Docs                                                                | `drivers/` onboarding + identity-verification      | `sdk.driverIdentityVerification`, `sdk.onboarding` | ✅ Live |
-| Vehicle Registration                                                                    | `drivers/` vehicles                                | `sdk.vehicles`                                     | ✅ Live |
-| Driver Dashboard                                                                        | driver profile + shifts                            | `sdk.profile`, `sdk.shifts`                        | ✅ Live |
-| Incoming Request / Nav to Pickup / Verify Passenger / Trip In Progress / Trip Completed | `driverRides` (dispatch/trip lifecycle)            | `sdk.rides` (driver barrel)                        | ✅ Live |
-| Driver Settings                                                                         | driver profile + planned availability              | `sdk.profile`, `sdk.plannedAvailability`           | ✅ Live |
+| Figma Screen                                                                            | Backend                                             | SDK (driver-portal barrel, `sdk-driver.ts`) | Status  |
+| --------------------------------------------------------------------------------------- | --------------------------------------------------- | ------------------------------------------- | ------- |
+| Driver Splash / Login / OTP                                                             | `auth.controller.ts`, `verification.controller.ts`  | `sdk.auth`                                  | ✅ Live |
+| KYC Status                                                                              | `drivers/` onboarding + KYC (`GET /driver/profile`) | `sdk.driverProfile`                         | ✅ Live |
+| Upload Docs                                                                             | `drivers/` KYC (`POST /driver/kyc`)                 | `sdk.driverProfile`                         | ✅ Live |
+| Vehicle Registration                                                                    | `drivers/` vehicles                                 | `sdk.vehicles`                              | ✅ Live |
+| Driver Dashboard                                                                        | driver profile + shifts                             | `sdk.profile`, `sdk.shifts`                 | ✅ Live |
+| Incoming Request / Nav to Pickup / Verify Passenger / Trip In Progress / Trip Completed | `driverRides` (dispatch/trip lifecycle)             | `sdk.rides` (driver barrel)                 | ✅ Live |
+| Driver Settings                                                                         | driver profile + planned availability               | `sdk.profile`, `sdk.plannedAvailability`    | ✅ Live |
 
 All backend/SDK support for this group already exists (this is what `driver-portal` itself already
 runs on) — the only open question is **which app** consumes it (embedded Super App tab vs. the
@@ -224,6 +225,15 @@ Every screen falls into exactly one category. Nothing else is in scope:
 Additional locked rules: comments that contradict live `App.tsx` routing are stale — routing code
 wins. Operations/Admin stay desktop-only per Figma's own `DesktopFrame`. No new screens, no
 placeholder UI, no redesign. The founder designs every missing screen in Figma later.
+
+**Permanent rule, founder-locked 2026-08-07 (corrects the KYC merge in the first Driver
+Registration round):** no UX decisions. Never merge screens, never split screens, never simplify a
+flow, even when the backend's data model differs from what Figma assumes. If Figma has N screens
+for a flow, build N screens/routes — one component and route per Figma screen, always. Where the
+backend can't support something a screen assumes (a computed field, a fixed checklist, a specific
+data shape), that goes in `docs/reference/DPX-FIGMA-DIFF-REGISTER.md`, not into a UI restructure.
+Every field-level and screen-level Figma/backend difference is tracked there, not scattered across
+individual component doc-comments only.
 
 ---
 

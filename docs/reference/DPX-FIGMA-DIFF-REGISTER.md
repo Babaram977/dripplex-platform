@@ -1,0 +1,65 @@
+# DPX-FIGMA-DIFF-REGISTER
+
+Permanent, living register of every difference between the live Figma design and the real
+DrippleX backend — founder-requested 2026-08-07. This is the launch checklist: as the founder
+designs missing screens in Figma or the backend is extended, an item moves from "open" to
+"resolved" here, and only then does the corresponding integration work happen.
+
+**Standing rule this document exists to enforce:** integration work connects Figma to backend
+exactly as each defines it. It never merges screens, splits screens, simplifies a flow, invents a
+missing field, or fakes a missing backend capability to make a screen "work." Every difference —
+however small — is logged here instead. See the permanent rule in
+`docs/reference/dpx-100-figma-screen-mapping.md` for the full statement.
+
+Columns: **Figma** (what the design specifies) · **Backend** (what actually exists) · **Action**
+(what happens next, and who decides it — always the founder, never inferred).
+
+---
+
+## Screen-level differences
+
+| Figma                                            | Backend                                                             | Action                                              |
+| ------------------------------------------------ | ------------------------------------------------------------------- | --------------------------------------------------- |
+| Merchant onboarding & management (all screens)   | Fully live — `merchant.controller.ts`, ~30 SDK methods, DB complete | Waiting for founder Figma design. No UI built.      |
+| Two-Factor (2FA)                                 | No backend                                                          | Founder decision: build backend, or drop from scope |
+| Trusted Devices                                  | No backend                                                          | Founder decision                                    |
+| Security Activity (self audit log)               | No backend                                                          | Founder decision                                    |
+| Privacy Controls                                 | No backend                                                          | Founder decision                                    |
+| Consent                                          | No backend                                                          | Founder decision                                    |
+| Language & Region                                | No backend                                                          | Founder decision                                    |
+| Accessibility                                    | No backend                                                          | Founder decision                                    |
+| Linked Accounts                                  | No backend                                                          | Founder decision                                    |
+| Emergency Protection (customer self, not driver) | No backend (driver-only `emergency` fields exist, not customer)     | Founder decision                                    |
+| Connected Services                               | No backend                                                          | Founder decision                                    |
+| Username Management                              | No backend                                                          | Founder decision                                    |
+| Login Approvals                                  | No backend                                                          | Founder decision                                    |
+| Recovery Codes                                   | No backend                                                          | Founder decision                                    |
+| Security Questions                               | No backend                                                          | Founder decision                                    |
+| Account Transfer                                 | No backend                                                          | Founder decision                                    |
+| Account Suspension (self-service)                | No backend                                                          | Founder decision                                    |
+
+Full per-screen status (including the ✅ Live majority) is tracked in
+`docs/reference/dpx-100-figma-screen-mapping.md`, not duplicated here — this register is only the
+differences that need a founder call.
+
+## Field-level & behavioral differences (Driver Registration, DPX-100 Priority 1)
+
+| Figma                                                                                                              | Backend                                                                                                                             | Action                                                                                                                                                                                                                                                                                  |
+| ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Vehicle Registration: "Passenger Seats" field                                                                      | `CreateVehicleRequest` has no seats field — only `rideCategory` (ECONOMY/COMFORT/XL/TRICYCLE)                                       | Not built. Founder decision: add a `seats` column to `Vehicle`, or confirm `rideCategory` already covers this and drop the field for good.                                                                                                                                              |
+| Upload Documents: "Road Worthiness" document type                                                                  | `KycDocumentType` enum has no matching value                                                                                        | Not built. Founder decision: add the enum value (backend work), or confirm it's out of scope.                                                                                                                                                                                           |
+| Upload Documents: "Passport Photo" document type                                                                   | `KycDocumentType` enum has no matching value                                                                                        | Not built. Founder decision: add the enum value, or confirm out of scope.                                                                                                                                                                                                               |
+| Upload Documents: photo/document capture (camera / file picker)                                                    | `frontImage`/`backImage` are hosted-image URL strings only (`@IsUrl`) — no file-upload/storage backend anywhere in this codebase    | Not built. Documented, not faked. Future work: an upload service (image → cloud storage → returns URL → URL sent to this same endpoint). No UI changes needed once that exists — the URL field is already the real contract.                                                            |
+| KYC Status: progress ring computed from a fixed 6-document mock checklist with a client-side completion percentage | `DriverProfileDto.kyc: DriverKycDto[]` is a free-form submitted-documents list — no required-checklist concept, no percentage field | Not built. KYC Status screen shows the real submitted-documents list and their real `verificationStatus` instead of a percentage ring. Founder decision: define a real "required documents" concept backend-side if the percentage/ring UX is wanted, or accept the list view as final. |
+
+## Driver App placement (resolved, kept for the record)
+
+| Figma                                                                                                       | Backend                                                                | Resolution (2026-08-07)                                                                                                      |
+| ----------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `App.tsx` routes Driver screens inside the same phone-frame consumer app (`Home → onDriverApp → drvsplash`) | Full driver-portal backend/SDK support already exists, portal-agnostic | Founder: "code wins, comments lose." Driver is a first-class in-app Super App section, not deep-linked to a separate portal. |
+
+---
+
+_This document is append-only in spirit: new differences get added as they're found; resolved
+items get their Action column updated (not deleted), so the history of what changed and when stays
+visible. Owner: founder. Compiled/maintained by: Claude, per DPX-FIGMA-001._
