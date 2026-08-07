@@ -14,17 +14,34 @@ const phoneSchema = z
 export const portalRegistrationBaseSchema = z.object({
   firstName: z.string().trim().min(1, 'First name is required').max(100),
   lastName: z.string().trim().min(1, 'Last name is required').max(100),
-  email: z.string().trim().email('Enter a valid email address'),
+  // Optional -- registration accepts either an email or a phone number, not
+  // both. See docs/AUTH-DPX-100-REALITY-AUDIT.md.
+  email: z.string().trim().email('Enter a valid email address').optional().or(z.literal('')),
   password: passwordSchema,
 });
 
-export const customerRegistrationSchema = portalRegistrationBaseSchema.extend({
-  phone: phoneSchema.optional().or(z.literal('')),
-});
+const hasEmailOrPhone = (values: {
+  email?: string | undefined;
+  phone?: string | undefined;
+}): boolean => (values.email?.length ?? 0) > 0 || (values.phone?.length ?? 0) > 0;
 
-export const merchantRegistrationSchema = portalRegistrationBaseSchema.extend({
-  phone: phoneSchema.optional().or(z.literal('')),
-});
+export const customerRegistrationSchema = portalRegistrationBaseSchema
+  .extend({
+    phone: phoneSchema.optional().or(z.literal('')),
+  })
+  .refine(hasEmailOrPhone, {
+    message: 'Either email or phone is required',
+    path: ['email'],
+  });
+
+export const merchantRegistrationSchema = portalRegistrationBaseSchema
+  .extend({
+    phone: phoneSchema.optional().or(z.literal('')),
+  })
+  .refine(hasEmailOrPhone, {
+    message: 'Either email or phone is required',
+    path: ['email'],
+  });
 
 export const riderRegistrationSchema = portalRegistrationBaseSchema.extend({
   phone: phoneSchema,

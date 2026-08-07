@@ -1,3 +1,5 @@
+import { SYNTHETIC_EMAIL_DOMAIN } from '../auth/utils/synthetic-email.util';
+
 import { ProductionNotificationService } from './production-notification.service';
 
 import type { LoggingNotificationService } from './logging-notification.service';
@@ -176,6 +178,40 @@ describe('ProductionNotificationService', () => {
         'New order DPX-1 received',
         expect.any(String),
       );
+    });
+  });
+
+  describe('when the recipient is a synthetic phone-only placeholder address', () => {
+    it('no-ops instead of sending, even when Resend is configured', async () => {
+      const { service, emailSender, fallback } = buildService({
+        termiiConfigured: false,
+        resendConfigured: true,
+      });
+
+      await service.sendEmailVerification({
+        email: `2348012345678@${SYNTHETIC_EMAIL_DOMAIN}`,
+        verificationToken: 'nonce.sig',
+        expiresInSeconds: 600,
+      });
+
+      expect(emailSender.send).not.toHaveBeenCalled();
+      expect(fallback.sendEmailVerification).not.toHaveBeenCalled();
+    });
+
+    it('no-ops instead of falling back to logging when Resend is not configured', async () => {
+      const { service, emailSender, fallback } = buildService({
+        termiiConfigured: false,
+        resendConfigured: false,
+      });
+
+      await service.sendEmailVerification({
+        email: `2348012345678@${SYNTHETIC_EMAIL_DOMAIN}`,
+        verificationToken: 'nonce.sig',
+        expiresInSeconds: 600,
+      });
+
+      expect(emailSender.send).not.toHaveBeenCalled();
+      expect(fallback.sendEmailVerification).not.toHaveBeenCalled();
     });
   });
 });

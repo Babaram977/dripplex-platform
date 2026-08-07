@@ -22,6 +22,7 @@ import {
   REGISTRATION_REPOSITORY,
   type RegistrationRepository,
 } from '../repositories/registration.repository';
+import { makeSyntheticEmail } from '../utils/synthetic-email.util';
 
 import { OtpService } from './otp.service';
 
@@ -29,7 +30,7 @@ import type { AuditContext } from '../../audit/audit.service';
 import type { PortalRegistrationType, RegistrationResponse } from '../auth-registration.types';
 
 export interface PortalRegistrationDto {
-  email: string;
+  email?: string;
   password: string;
   firstName: string;
   lastName: string;
@@ -129,16 +130,18 @@ export class RegistrationService {
     context: AuditContext,
   ): Promise<RegistrationResponse> {
     const config = PORTAL_CONFIG[portal];
-    const email = dto.email.trim().toLowerCase();
+    const email = dto.email?.trim().toLowerCase();
     const phone = dto.phone?.trim();
 
     if (config.phoneRequired && !phone) {
       throw new ValidationDomainException('Phone number is required for this registration channel');
     }
 
-    const existingEmail = await this.usersService.findByEmail(email);
-    if (existingEmail) {
-      throw new ConflictDomainException('Email is already registered');
+    if (email) {
+      const existingEmail = await this.usersService.findByEmail(email);
+      if (existingEmail) {
+        throw new ConflictDomainException('Email is already registered');
+      }
     }
 
     if (phone) {
@@ -148,10 +151,24 @@ export class RegistrationService {
       }
     }
 
+    // `User.email` stays required/unique in the schema (see
+    // synthetic-email.util.ts for why) -- a phone-only registration gets a
+    // deterministic placeholder derived from the phone number instead of a
+    // real address. It's never shown back to the caller, never sent to,
+    // and treated as auto-verified for account activation.
+    let storedEmail: string;
+    if (email) {
+      storedEmail = email;
+    } else if (phone) {
+      storedEmail = makeSyntheticEmail(phone);
+    } else {
+      throw new ValidationDomainException('Either an email or phone number is required');
+    }
+
     const passwordHash = await bcrypt.hash(dto.password, this.appConfig.bcryptSaltRounds);
 
     const result = await this.registrationRepository.registerPortalUser({
-      email,
+      email: storedEmail,
       passwordHash,
       firstName: dto.firstName.trim(),
       lastName: dto.lastName.trim(),
@@ -162,19 +179,29 @@ export class RegistrationService {
       ...(phone !== undefined ? { phone } : {}),
     });
 
-    const emailOtp = await this.otpService.generateStoreAndDispatch(
-      'email_verification',
-      email,
-      context,
-      async (otp, expiresInSeconds) => {
-        await this.notificationService.sendEmailOtp({ email, otp, expiresInSeconds });
-      },
-      result.userId,
-    );
+    let emailOtpSent = false;
+    let emailExpiresInSeconds: number | undefined;
+    if (email) {
+      const emailOtp = await this.otpService.generateStoreAndDispatch(
+        'email_verification',
+        email,
+        context,
+        async (otp, expiresInSeconds) => {
+          await this.notificationService.sendEmailOtp({ email, otp, expiresInSeconds });
+        },
+        result.userId,
+      );
+      emailOtpSent = true;
+      emailExpiresInSeconds = emailOtp.expiresInSeconds;
+    }
 
+    // Phone gets verified whenever the portal always requires it, or when
+    // it's the only identifier the user gave (no email at all) -- either
+    // way there must be at least one verified channel to activate on.
     let phoneOtpSent = false;
-    if (phone && config.sendPhoneOtpOnRegister) {
-      await this.otpService.generateStoreAndDispatch(
+    let phoneExpiresInSeconds: number | undefined;
+    if (phone && (config.sendPhoneOtpOnRegister || !email)) {
+      const phoneOtp = await this.otpService.generateStoreAndDispatch(
         'phone_verification',
         phone,
         context,
@@ -184,6 +211,7 @@ export class RegistrationService {
         result.userId,
       );
       phoneOtpSent = true;
+      phoneExpiresInSeconds = phoneOtp.expiresInSeconds;
     }
 
     await this.auditService.record(
@@ -207,7 +235,7 @@ export class RegistrationService {
       DOMAIN_EVENTS.CUSTOMER_REGISTERED,
       {
         userId: result.userId,
-        email: result.email,
+        email: email ?? null,
         portal,
         registrationChannel: config.channel,
       },
@@ -232,12 +260,14 @@ export class RegistrationService {
 
     return {
       userId: result.userId,
-      email: result.email,
+      // Echoes back what the caller actually gave, not the internal
+      // synthetic placeholder used for a phone-only registration.
+      email: email ?? null,
       status: result.status,
       verification: {
-        emailOtpSent: true,
+        emailOtpSent,
         phoneOtpSent,
-        expiresInSeconds: emailOtp.expiresInSeconds,
+        expiresInSeconds: emailExpiresInSeconds ?? phoneExpiresInSeconds ?? 0,
       },
       ...(result.profileId !== undefined ? { profileId: result.profileId } : {}),
       ...(result.onboardingId !== undefined ? { onboardingId: result.onboardingId } : {}),

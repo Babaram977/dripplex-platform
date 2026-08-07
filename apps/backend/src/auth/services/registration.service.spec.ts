@@ -6,6 +6,7 @@ import {
   ConflictDomainException,
   ValidationDomainException,
 } from '../../common/exceptions/domain.exception';
+import { SYNTHETIC_EMAIL_DOMAIN } from '../utils/synthetic-email.util';
 
 import { RegistrationService } from './registration.service';
 
@@ -199,6 +200,41 @@ describe('RegistrationService', () => {
 
   it('requires phone for rider registration', async () => {
     await expect(service.registerRider(baseDto, {})).rejects.toBeInstanceOf(
+      ValidationDomainException,
+    );
+  });
+
+  it('registers a customer with phone only, using a synthetic email internally', async () => {
+    const phoneOnlyDto = {
+      password: baseDto.password,
+      firstName: baseDto.firstName,
+      lastName: baseDto.lastName,
+      phone: '+2348012345678',
+    };
+
+    const result = await service.registerCustomer(phoneOnlyDto, {});
+
+    expect(result.email).toBeNull();
+    expect(result.verification.emailOtpSent).toBe(false);
+    expect(result.verification.phoneOtpSent).toBe(true);
+    expect(registrationRepository.registerPortalUser).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: `2348012345678@${SYNTHETIC_EMAIL_DOMAIN}`,
+        phone: '+2348012345678',
+      }),
+    );
+    expect(notificationService.sendEmailOtp).not.toHaveBeenCalled();
+    expect(usersService.findByEmail).not.toHaveBeenCalled();
+  });
+
+  it('rejects registration with neither email nor phone', async () => {
+    const emptyDto = {
+      password: baseDto.password,
+      firstName: baseDto.firstName,
+      lastName: baseDto.lastName,
+    };
+
+    await expect(service.registerCustomer(emptyDto, {})).rejects.toBeInstanceOf(
       ValidationDomainException,
     );
   });

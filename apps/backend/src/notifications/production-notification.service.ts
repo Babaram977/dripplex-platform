@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 
+import { isSyntheticEmail } from '../auth/utils/synthetic-email.util';
 import { AppConfigService } from '../config/app-config.service';
 
 import { LoggingNotificationService } from './logging-notification.service';
@@ -195,6 +196,13 @@ export class ProductionNotificationService implements NotificationService {
     html: string,
     fallback: () => Promise<void>,
   ): Promise<void> {
+    // A phone-only registration is stored with a synthetic placeholder
+    // address (see auth/utils/synthetic-email.util.ts) -- there's no real
+    // inbox behind it, so every email path (this one included) silently
+    // no-ops for it rather than attempting a send or even logging one.
+    if (isSyntheticEmail(to)) {
+      return;
+    }
     if (!this.config.resendConfigured) {
       await fallback();
       return;

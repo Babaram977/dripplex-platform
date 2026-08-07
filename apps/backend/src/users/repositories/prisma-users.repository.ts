@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { type User, UserStatus } from '@prisma/client';
 
+import { isSyntheticEmail } from '../../auth/utils/synthetic-email.util';
 import { NotFoundDomainException } from '../../common/exceptions/domain.exception';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -118,7 +119,10 @@ export class PrismaUsersRepository implements UsersRepository {
       throw new NotFoundDomainException('User not found');
     }
 
-    const emailVerified = user.emailVerifiedAt !== null;
+    // A phone-only registration is stored with a synthetic placeholder email
+    // (see synthetic-email.util.ts) -- there's nothing real to verify, so it
+    // counts as trivially satisfied rather than blocking activation forever.
+    const emailVerified = isSyntheticEmail(user.email) || user.emailVerifiedAt !== null;
     const phoneVerified = user.phoneVerifiedAt !== null;
     const verificationsComplete = emailVerified && (!requiresPhoneVerification || phoneVerified);
 
