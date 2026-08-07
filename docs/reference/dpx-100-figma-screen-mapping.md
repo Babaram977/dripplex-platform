@@ -232,6 +232,50 @@ Action:
 Do not implement. No discussion until an approved design exists (founder decision, 2026-08-08).
 ```
 
+```
+Driver Emergency Contact
+
+Backend
+✓ Exists (POST /driver/onboarding/emergency-contact, OnboardingService)
+
+SDK
+✓ Exists (sdk.driverOnboarding.submitEmergencyContact)
+
+Database
+✓ Exists (DriverProfile.emergencyContactName/emergencyContactPhone)
+
+UI
+✗ Missing (no screen in the 13 Driver App Figma screens)
+
+Required Before
+Driver Status DRAFT -> SUBMITTED
+
+Priority
+HIGH
+```
+
+```
+Driver Agreement Acceptance
+
+Backend
+✓ Exists (POST /driver/onboarding/agreement, OnboardingService)
+
+SDK
+✓ Exists (sdk.driverOnboarding.acceptAgreement)
+
+Database
+✓ Exists (DriverProfile.agreementAcceptedAt/agreementVersion)
+
+UI
+✗ Missing (no screen in the 13 Driver App Figma screens)
+
+Required Before
+Driver Status DRAFT -> SUBMITTED
+
+Priority
+HIGH
+```
+
 ## Missing Backend Register (reciprocal gap — Figma has the screen, backend does not)
 
 For completeness, and because the founder's freeze policy says no new backend modules without a
