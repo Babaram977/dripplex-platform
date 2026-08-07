@@ -68,6 +68,25 @@ was built portal-agnostic and is correct under this resolution — it's being co
 
 ---
 
+## Burn-down (founder-requested format, 2026-08-08)
+
+"Integrated" here means the screen actually renders in the Super App today (a real route/component
+exists in `apps/customer-web`), not just "backend exists" — a stricter bar than the ✅ Live status
+used in the tables below, which only means connect-ready. Verified against the actual build output
+and component tree, not inferred from task-history labels.
+
+| Group                      |   Total |       Integrated |       Remaining | Notes                                                                                                                                                                                                                                                                                                                                                            |
+| -------------------------- | ------: | ---------------: | --------------: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Auth                       |      11 |                ? |               ? | **Unverified — flagged, not guessed.** Task history marks ProfileSetup/Permissions/Biometric/ReturningLogin/Recovery screens complete, but no component with those names exists in `packages/ui/src/components/super-app/` today (only Welcome/OTP/Register/SignIn do). Needs a dedicated verification pass before real numbers go here — not reporting a guess. |
+| Account & Security         |      27 |                ? |               ? | Same as above — backend-readiness (7 of 27) was audited for this doc, but actual UI build state in the Super App was not. Needs verification.                                                                                                                                                                                                                    |
+| Consumer Home              |       2 |                2 |               0 | `/dashboard` route confirmed in build output.                                                                                                                                                                                                                                                                                                                    |
+| Marketplace                |       6 |                6 |               0 | 6 marketplace routes confirmed in build output.                                                                                                                                                                                                                                                                                                                  |
+| Ride — Customer            |      31 |               31 |               0 | `/ride` route confirmed; full lifecycle shipped in DPX-100 Ride Slices 1-5 (earlier session).                                                                                                                                                                                                                                                                    |
+| Driver App                 |      13 |                3 |               7 | 3 verified integrated (Vehicle Registration, KYC Status, Upload Docs). 3 (Splash/Login/OTP) resolved **not applicable** — founder decision 2026-08-08, single-auth-system Super App, not a gap. 7 remaining: Dashboard, Incoming Request, Nav to Pickup, Verify Passenger, Trip In Progress, Trip Completed, Settings — backend/SDK ready, UI not yet built.     |
+| Wallet                     |      10 |               10 |               0 | `/wallet` route confirmed; shipped in DPX-100 Wallet Slices 1-5 (earlier session).                                                                                                                                                                                                                                                                               |
+| Ops Console                |      15 |               15 |               0 | Integrated in its own `operations-console` app (desktop), not the Super App — counted separately, not a Super App gap.                                                                                                                                                                                                                                           |
+| **Total (excl. Merchant)** | **115** | **67 confirmed** | **7 confirmed** | Plus 3 Driver screens resolved not-applicable, and 38 (Auth + Account & Security) unverified pending a dedicated pass. 67 + 7 + 3 + 38 = 115. Merchant (Category C) has no screen count — see Missing Figma Design Register.                                                                                                                                     |
+
 ## 1. Auth (top-level nav group, 11 screens)
 
 | Figma Screen                     | Backend                                                                        | SDK                                                                     | Status                                                                              |
@@ -147,15 +166,21 @@ specifically before marking it done.
 
 ## 6. Driver App (13 screens) — resolved: in-app Super App section (see §0.2)
 
-| Figma Screen                                                                            | Backend                                             | SDK (driver-portal barrel, `sdk-driver.ts`) | Status  |
-| --------------------------------------------------------------------------------------- | --------------------------------------------------- | ------------------------------------------- | ------- |
-| Driver Splash / Login / OTP                                                             | `auth.controller.ts`, `verification.controller.ts`  | `sdk.auth`                                  | ✅ Live |
-| KYC Status                                                                              | `drivers/` onboarding + KYC (`GET /driver/profile`) | `sdk.driverProfile`                         | ✅ Live |
-| Upload Docs                                                                             | `drivers/` KYC (`POST /driver/kyc`)                 | `sdk.driverProfile`                         | ✅ Live |
-| Vehicle Registration                                                                    | `drivers/` vehicles                                 | `sdk.vehicles`                              | ✅ Live |
-| Driver Dashboard                                                                        | driver profile + shifts                             | `sdk.profile`, `sdk.shifts`                 | ✅ Live |
-| Incoming Request / Nav to Pickup / Verify Passenger / Trip In Progress / Trip Completed | `driverRides` (dispatch/trip lifecycle)             | `sdk.rides` (driver barrel)                 | ✅ Live |
-| Driver Settings                                                                         | driver profile + planned availability               | `sdk.profile`, `sdk.plannedAvailability`    | ✅ Live |
+**Founder decision (2026-08-08): no separate Driver authentication.** The Super App has ONE
+identity system -- Splash -> Welcome -> Login/Register -> OTP -> role detection -> Consumer Home,
+with Driver/Merchant surfaced as roles in the drawer once granted, same pattern as
+Uber/Grab/Careem. `DriverSplashScreen`/`DriverLoginScreen`/`DriverOTPScreen` are confirmed not
+built -- this is correct, not a gap. See `docs/reference/DPX-FIGMA-DIFF-REGISTER.md`.
+
+| Figma Screen                                                                            | Backend                                             | SDK (driver-portal barrel, `sdk-driver.ts`) | Status                                         |
+| --------------------------------------------------------------------------------------- | --------------------------------------------------- | ------------------------------------------- | ---------------------------------------------- |
+| Driver Splash / Login / OTP                                                             | `auth.controller.ts`, `verification.controller.ts`  | `sdk.auth`                                  | ✅ N/A -- resolved not applicable (2026-08-08) |
+| KYC Status                                                                              | `drivers/` onboarding + KYC (`GET /driver/profile`) | `sdk.driverProfile`                         | ✅ Live                                        |
+| Upload Docs                                                                             | `drivers/` KYC (`POST /driver/kyc`)                 | `sdk.driverProfile`                         | ✅ Live                                        |
+| Vehicle Registration                                                                    | `drivers/` vehicles                                 | `sdk.vehicles`                              | ✅ Live                                        |
+| Driver Dashboard                                                                        | driver profile + shifts                             | `sdk.profile`, `sdk.shifts`                 | ✅ Live                                        |
+| Incoming Request / Nav to Pickup / Verify Passenger / Trip In Progress / Trip Completed | `driverRides` (dispatch/trip lifecycle)             | `sdk.rides` (driver barrel)                 | ✅ Live                                        |
+| Driver Settings                                                                         | driver profile + planned availability               | `sdk.profile`, `sdk.plannedAvailability`    | ✅ Live                                        |
 
 All backend/SDK support for this group already exists (this is what `driver-portal` itself already
 runs on) — the only open question is **which app** consumes it (embedded Super App tab vs. the
@@ -191,13 +216,20 @@ next porting target.
 ## Missing Figma Design Register
 
 ```
-Missing From Figma
-Merchant onboarding & management (all screens)
-Reason: No MERCHANT feature module, no screens, no nav entries anywhere in the live Figma Make
-        file — features/MERCHANT/index.ts is an empty stub with nothing behind it.
-Backend: Fully live (merchant.controller.ts, ~30 SDK methods in merchant-api.ts covering
-         business profile, KYC, bank accounts, wallet, settlements, products, store pause/resume).
-Status: Waiting for Figma — founder to design in Figma before any Merchant UI is built.
+Merchant Module
+
+Status:
+BLOCKED
+
+Reason:
+No approved Figma design.
+
+Backend/SDK/Database:
+✓ Complete (merchant.controller.ts, ~30 SDK methods in merchant-api.ts covering business
+  profile, KYC, bank accounts, wallet, settlements, products, store pause/resume)
+
+Action:
+Do not implement. No discussion until an approved design exists (founder decision, 2026-08-08).
 ```
 
 ## Missing Backend Register (reciprocal gap — Figma has the screen, backend does not)
