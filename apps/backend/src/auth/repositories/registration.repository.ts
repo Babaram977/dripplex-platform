@@ -25,8 +25,26 @@ export interface PortalRegistrationResult {
   onboardingId?: string;
 }
 
+/** Grants an additional role -- and its domain profile + onboarding record
+ * -- to an ALREADY-EXISTING user. Distinct from `registerPortalUser`, which
+ * always creates a brand-new user. Only 'merchant' and 'driver' carry a
+ * profile+onboarding pair today; 'rider' would follow the same shape if
+ * ever needed here. */
+export interface AddPortalRoleInput {
+  userId: string;
+  roleName: string;
+  portal: 'merchant' | 'driver';
+}
+
+export interface AddPortalRoleResult {
+  profileId: string;
+  onboardingId: string;
+}
+
 export interface RegistrationRepository {
   registerPortalUser(input: PortalRegistrationInput): Promise<PortalRegistrationResult>;
+  /** Throws `ConflictDomainException` if the user already holds the role. */
+  addPortalRole(input: AddPortalRoleInput): Promise<AddPortalRoleResult>;
 }
 
 export const REGISTRATION_REPOSITORY = Symbol('REGISTRATION_REPOSITORY');

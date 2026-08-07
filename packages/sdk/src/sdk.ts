@@ -30,6 +30,14 @@ export function createCustomerSdk(config: Partial<SdkConfig> = {}): CustomerSdk 
     wallet: client.wallet,
     analytics: client.analytics,
     cms: client.cms,
+    /**
+     * Super App role-toggle (DPX-100 Phase 1): a customer-web account that
+     * becomes a driver still uses this same SDK instance, not a separate
+     * driver-portal login. Only `driverOnboarding` is exposed here (not the
+     * full driver namespace from sdk-driver.ts) -- widen deliberately, not
+     * wholesale, as more of the in-app Driver section lands.
+     */
+    driverOnboarding: client.driverOnboarding,
   };
 }
 
@@ -54,6 +62,7 @@ export interface CustomerSdk {
   wallet: DripplexClient['wallet'];
   analytics: DripplexClient['analytics'];
   cms: DripplexClient['cms'];
+  driverOnboarding: DripplexClient['driverOnboarding'];
 }
 
 export function resolveCustomerSdkConfig(config: Partial<SdkConfig> = {}): SdkConfig {

@@ -1,5 +1,6 @@
 import type { HttpClient } from '../client/http-client.js';
 import type {
+  AddRoleResponse,
   AuthSessionPayload,
   AuthTokens,
   AuthUserProfile,
@@ -71,6 +72,28 @@ export class AuthApi {
       method: 'POST',
       body,
       auth: false,
+    });
+  }
+
+  /**
+   * "Become a Driver" -- grants the driver role to the currently
+   * authenticated account (Super App role toggle), as opposed to
+   * `registerDriver` above which always creates a brand-new account and
+   * rejects if the email/phone is already registered. Requires an active
+   * session; no body needed since the account already exists.
+   */
+  public becomeDriver(): Promise<AddRoleResponse> {
+    return this.http.request<AddRoleResponse>('/auth/roles/driver', {
+      method: 'POST',
+      auth: true,
+    });
+  }
+
+  /** Merchant counterpart to `becomeDriver` -- same fix, same reasoning. */
+  public becomeMerchant(): Promise<AddRoleResponse> {
+    return this.http.request<AddRoleResponse>('/auth/roles/merchant', {
+      method: 'POST',
+      auth: true,
     });
   }
 

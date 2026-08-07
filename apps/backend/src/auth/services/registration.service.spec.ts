@@ -25,6 +25,7 @@ jest.mock('bcrypt', () => ({
 describe('RegistrationService', () => {
   const registrationRepository = {
     registerPortalUser: jest.fn(),
+    addPortalRole: jest.fn(),
   } as unknown as jest.Mocked<RegistrationRepository>;
 
   const usersService = {
@@ -275,6 +276,70 @@ describe('RegistrationService', () => {
       await serviceWithReferrals.registerMerchant({ ...baseDto, referralCode: 'FRIEND01' }, {});
 
       expect(referralsService.tryRedeemAtRegistration).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('addRole', () => {
+    const addRoleResult = {
+      profileId: '33333333-3333-3333-3333-333333333333',
+      onboardingId: '44444444-4444-4444-4444-444444444444',
+    };
+
+    beforeEach(() => {
+      (registrationRepository.addPortalRole as jest.Mock).mockResolvedValue(addRoleResult);
+    });
+
+    it('grants the driver role to an existing user via the repository, not registerPortalUser', async () => {
+      const result = await service.addRole(registrationResult.userId, 'driver', {
+        ipAddress: '127.0.0.1',
+      });
+
+      expect(result).toEqual({
+        role: 'driver',
+        profileId: addRoleResult.profileId,
+        onboardingId: addRoleResult.onboardingId,
+      });
+      expect(registrationRepository.addPortalRole).toHaveBeenCalledWith({
+        userId: registrationResult.userId,
+        roleName: 'driver',
+        portal: 'driver',
+      });
+      expect(registrationRepository.registerPortalUser).not.toHaveBeenCalled();
+    });
+
+    it('grants the merchant role to an existing user', async () => {
+      const result = await service.addRole(registrationResult.userId, 'merchant', {});
+
+      expect(result.role).toBe('merchant');
+      expect(registrationRepository.addPortalRole).toHaveBeenCalledWith({
+        userId: registrationResult.userId,
+        roleName: 'merchant',
+        portal: 'merchant',
+      });
+    });
+
+    it('records an audit entry scoped to the granting user', async () => {
+      await service.addRole(registrationResult.userId, 'driver', { ipAddress: '10.0.0.1' });
+
+      expect(auditService.record).toHaveBeenCalledWith(
+        AUTH_AUDIT_ACTIONS.REGISTRATION_COMPLETED,
+        { ipAddress: '10.0.0.1', userId: registrationResult.userId },
+        {
+          resource: 'user',
+          resourceId: registrationResult.userId,
+          metadata: { portal: 'driver', role: 'driver' },
+        },
+      );
+    });
+
+    it('propagates ConflictDomainException when the user already holds the role', async () => {
+      (registrationRepository.addPortalRole as jest.Mock).mockRejectedValue(
+        new ConflictDomainException('User already holds the driver role'),
+      );
+
+      await expect(service.addRole(registrationResult.userId, 'driver', {})).rejects.toBeInstanceOf(
+        ConflictDomainException,
+      );
     });
   });
 });

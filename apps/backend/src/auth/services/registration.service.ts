@@ -124,6 +124,43 @@ export class RegistrationService {
     return await this.registerPortal('driver', dto, context);
   }
 
+  /**
+   * "Become a Driver" / "Become a Merchant" -- grants an additional role
+   * to an ALREADY AUTHENTICATED user's existing account, instead of the
+   * always-new-account path above. This is what makes the Super App's
+   * single-account, multi-role toggle real: `registerDriver`/
+   * `registerMerchant` reject outright if the email/phone is already
+   * registered, so a logged-in customer could never acquire the driver or
+   * merchant role through them. No OTP/email dispatch here -- the account
+   * is already verified; the user proceeds straight into the same
+   * onboarding endpoints (`/driver/onboarding/*`, `/merchant/onboarding`)
+   * a fresh registration would land on next.
+   */
+  public async addRole(
+    userId: string,
+    portal: 'merchant' | 'driver',
+    context: AuditContext,
+  ): Promise<{ role: string; profileId: string; onboardingId: string }> {
+    const roleName = portal;
+    const result = await this.registrationRepository.addPortalRole({
+      userId,
+      roleName,
+      portal,
+    });
+
+    await this.auditService.record(
+      AUTH_AUDIT_ACTIONS.REGISTRATION_COMPLETED,
+      { ...context, userId },
+      {
+        resource: 'user',
+        resourceId: userId,
+        metadata: { portal, role: roleName },
+      },
+    );
+
+    return { role: roleName, profileId: result.profileId, onboardingId: result.onboardingId };
+  }
+
   private async registerPortal(
     portal: PortalRegistrationType,
     dto: PortalRegistrationDto,

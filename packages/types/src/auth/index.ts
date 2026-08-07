@@ -110,6 +110,19 @@ export interface AuthSessionPayload {
   tokens: AuthTokens;
 }
 
+/**
+ * "Become a Driver" / "Become a Merchant" -- grants an additional role to
+ * the CURRENT authenticated user's account. Distinct from
+ * `RegistrationResponse`: no OTP/verification state, since the account is
+ * already verified; the caller proceeds straight into the role's existing
+ * onboarding endpoints using `onboardingId`.
+ */
+export interface AddRoleResponse {
+  role: string;
+  profileId: string;
+  onboardingId: string;
+}
+
 export const AUTH_AUDIT_ACTIONS = {
   REGISTRATION_COMPLETED: 'auth.registration.completed',
   OTP_SENT: 'auth.otp.sent',

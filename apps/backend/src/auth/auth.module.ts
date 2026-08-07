@@ -14,7 +14,7 @@ import { GoogleAuthController } from './controllers/google-auth.controller';
 import { LoginController } from './controllers/login.controller';
 import { PasswordController } from './controllers/password.controller';
 import { PhoneVerificationController } from './controllers/phone-verification.controller';
-import { RegistrationController } from './controllers/registration.controller';
+import { RegistrationController, RoleGrantController } from './controllers/registration.controller';
 import { SessionsController } from './controllers/sessions.controller';
 import { VerificationController } from './controllers/verification.controller';
 import { GoogleConfiguredGuard } from './guards/google-configured.guard';
@@ -60,6 +60,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
   controllers: [
     AuthController,
     RegistrationController,
+    RoleGrantController,
     VerificationController,
     LoginController,
     PasswordController,

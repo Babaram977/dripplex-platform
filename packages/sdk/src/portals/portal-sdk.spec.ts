@@ -17,6 +17,7 @@ describe('portal SDK barrels', () => {
         'cms',
         'delivery',
         'devices',
+        'driverOnboarding',
         'loyalty',
         'merchants',
         'notifications',
