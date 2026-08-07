@@ -21,6 +21,11 @@ export {
   type SuperAppAuthRegisterMode,
   type SuperAppAuthRegisterValues,
 } from './AuthRegisterScreen';
+export {
+  SuperAppAuthSignInScreen,
+  type SuperAppAuthSignInMode,
+  type SuperAppAuthSignInValues,
+} from './AuthSignInScreen';
 export { SuperAppSkeleton } from './Skeleton';
 export { SuperAppSectionHeader } from './SectionHeader';
 export { SuperAppStatusBarIcons } from './StatusBarIcons';

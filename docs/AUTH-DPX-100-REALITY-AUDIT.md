@@ -1,12 +1,16 @@
 # Auth/Onboarding — DPX-100 Reality Audit + Slice Plan
 
-**Status:** Slice 1 (backend) and Slice 2 (Welcome + Register screens)
-shipped. Written after the founder flagged that live registration/login
-pages don't match the Figma standard — verified directly against the
-live Figma Make file via the Figma MCP connection
-(`rsHHFRxHVE3OKv81p7m3K1`, "DrippleX Super App Design (Copy)"), not just
-the static export previously saved to
-`docs/reference/figma-super-app-source/`.
+**Status:** Slices 1-3 and 5 shipped (Slice 4 deferred with reasoning
+below; Returning Login/Recovery within Slice 5 also deferred). Written
+after the founder flagged that live registration/login pages don't
+match the Figma standard — verified directly against the live Figma
+Make file via the Figma MCP connection (`rsHHFRxHVE3OKv81p7m3K1`,
+"DrippleX Super App Design (Copy)"), not just the static export
+previously saved to `docs/reference/figma-super-app-source/`. Founder
+follow-up mid-build: "phone only is not what we want, phone or email
+either can sign" — confirmed as already the direction being built (not
+a course correction), plus explicit authorization to finish all
+remaining slices before reporting back.
 
 **Slice 2 note:** Splash (`SplashScreen`/AUTH-001) turned out to already
 exist in production as `marketing/splash-intro.tsx`, wired to the
@@ -109,7 +113,7 @@ no slice marked done without a real backend call behind it.
 | **2** ✅ | Splash + Welcome + Register (ported to `packages/ui/src/components/super-app/`, ties into Slice 1's backend). Splash already existed (`splash-intro.tsx`); Welcome + Register are new.                                                                                                                        | Slice 1    |
 | **3** ✅ | OTP Verification screen (digit-box UI, error states matching `OTPError`/`OTPStatus` from Figma)                                                                                                                                                                                                               | Slice 1, 2 |
 | **4** ⚠️ | Profile Setup + Permissions + Biometric (post-verification onboarding) — **deferred, see below**                                                                                                                                                                                                              | Slice 3    |
-| **5**    | Sign In + Returning Login + Account Recovery                                                                                                                                                                                                                                                                  | Slice 1    |
+| **5** ✅ | Sign In (ported, real phone-OR-email password login, fixes the live email-only `LoginForm` bug) + Returning Login/Account Recovery — **deferred, see below**                                                                                                                                                  | Slice 1    |
 | **6**    | Full E2E Playwright walkthrough (register via phone, register via email, login both ways, recovery), production audit, freeze                                                                                                                                                                                 | 2-5        |
 
 ### Slice 4 deferred — no real backend to attach it to
@@ -150,6 +154,58 @@ silently dropped.
 plan — tracked separately, to be reconciled against Wallet's existing
 Security/Settings work first (see "Verified overlap" above) before any
 new screens get built.
+
+### Slice 5 — Sign In shipped; Returning Login/Recovery deferred
+
+**Sign In (real, shipped):** ported from Figma's `SignInScreen`
+(phone-only, passwordless) and adapted the same way Register was in
+Slice 2 — a Phone/Email toggle plus a real password field, since our
+backend is password-based. While building this, found that the **live
+production login form never actually used the backend's phone-OR-email
+capability**: `login-form.tsx` was hardcoded to `loginSchema`
+(`{email, password}`) and called `sdk.auth.loginCustomer({email,
+password})` only, even though `PortalLoginDto`/`portalLoginSchema` (and
+the SDK method's own `PortalLoginValues` type) already accept phone OR
+email — the same pattern already found and fixed once for registration
+in the original Slice 1 research. `login-form.tsx` and the old
+`(auth)/login/page.tsx` are removed; `/login` now renders the real
+`SuperAppAuthSignInScreen` via `sign-in-flow.tsx`, moved into the
+`(onboarding)` route group so it gets the same NAVY_DEEP full-bleed
+shell as `/get-started` (route groups don't change the URL, so no
+`href="/login"` caller needed updating). Google Sign-In
+(`sdk.auth.googleSignInUrl()`) was kept and re-themed for the dark
+screen rather than dropped — it's a real, working OAuth integration
+that was only ever wired into the form being replaced here, and this
+module doesn't get to regress it as a side effect of a redesign.
+
+**Returning Login and Account Recovery — deferred**, same
+audit-before-build discipline as Slice 4:
+
+- **`ReturningLoginScreen`** is a biometric-unlock-first design (Face
+  ID/fingerprint prompt, OTP as the fallback) built around a
+  `LoginStatus`/`LoginError` state machine that resolves through a
+  `setTimeout`, not a real auth call. We have no WebAuthn/Face ID infra
+  (same gap already recorded for Slice 2's Register screen and Slice
+  4's Biometric screen) — there's nothing behind this screen to wire up
+  today. The screen `SignInScreen` already ships covers the same job
+  (returning-user login) with the auth we actually have.
+- **`RecoveryScreen`** is a choreographed multi-step demo
+  (`RecoveryStep = 'options' | 'phone' | 'verify_device' |
+'success'`) built around device-trust recovery — it has no real form
+  fields, just animated state transitions. Our actual account-recovery
+  mechanism is the already-shipped, functional
+  `/forgot-password` → `/reset-password` email-OTP flow, which follows
+  completely different mechanics (email link + token, not device
+  trust). Porting Figma's screen wouldn't replace or improve that flow,
+  just add a decorative one beside it.
+
+Net effect: no regression (the working recovery flow is untouched) and
+no decorative UI shipped. `/forgot-password`/`/reset-password` stay on
+the existing light `(auth)` layout for now — Figma's `RecoveryScreen`
+was the only design source that would have justified restyling them,
+and it's deferred, so there's no real target to build toward yet. This
+is an accepted interim visual inconsistency (dark Sign In → light
+forgot-password), not a functional gap.
 
 ## Starting now
 

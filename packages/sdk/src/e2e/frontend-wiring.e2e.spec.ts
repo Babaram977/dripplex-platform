@@ -12,8 +12,11 @@ function read(rel: string): string {
 
 describe('C2 Frontend wiring validation (no UI redesign)', () => {
   it('customer auth forms call live SDK methods', () => {
-    const login = read('apps/customer-web/src/components/forms/login-form.tsx');
-    const register = read('apps/customer-web/src/components/forms/register-form.tsx');
+    // DPX-100 Auth Slices 2-5 replaced the generic `register-form.tsx` /
+    // `login-form.tsx` with the real Figma-ported flows -- see
+    // docs/AUTH-DPX-100-REALITY-AUDIT.md.
+    const login = read('apps/customer-web/src/components/auth/sign-in-flow.tsx');
+    const register = read('apps/customer-web/src/components/auth/auth-flow.tsx');
     const misc = read('apps/customer-web/src/components/forms/misc-forms.tsx');
     const barrel = read('apps/customer-web/src/lib/sdk.ts');
 
