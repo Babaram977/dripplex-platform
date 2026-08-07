@@ -4,6 +4,7 @@ import { Logger } from 'nestjs-pino';
 import type {
   DeliveryLifecycleNotificationInput,
   DriverLifecycleNotificationInput,
+  EmailOtpNotificationInput,
   EmailVerificationNotificationInput,
   MerchantLifecycleNotificationInput,
   NotificationService,
@@ -59,6 +60,19 @@ export class LoggingNotificationService implements NotificationService {
         expiresInSeconds: input.expiresInSeconds,
       },
       'Email verification notification dispatched',
+    );
+    return Promise.resolve();
+  }
+
+  public sendEmailOtp(input: EmailOtpNotificationInput): Promise<void> {
+    this.logger.log(
+      {
+        channel: 'email',
+        template: 'email_otp',
+        email: input.email,
+        expiresInSeconds: input.expiresInSeconds,
+      },
+      'Email OTP notification dispatched',
     );
     return Promise.resolve();
   }

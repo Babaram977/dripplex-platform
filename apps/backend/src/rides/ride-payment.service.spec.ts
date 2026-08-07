@@ -69,6 +69,7 @@ describe('RidePaymentService', () => {
       sendPasswordReset: jest.fn(),
       sendPasswordChanged: jest.fn(),
       sendEmailVerification: jest.fn(),
+      sendEmailOtp: jest.fn(),
       sendPhoneOtp: jest.fn(),
       notifyMerchantLifecycle: jest.fn(),
       notifyOrderCreated: jest.fn(),

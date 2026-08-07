@@ -12,6 +12,7 @@ import { RegistrationService } from './registration.service';
 import type { OtpService } from './otp.service';
 import type { AuditService } from '../../audit/audit.service';
 import type { AppConfigService } from '../../config/app-config.service';
+import type { NotificationService } from '../../notifications/notification.service';
 import type { ReferralsService } from '../../referrals/referrals.service';
 import type { UsersService } from '../../users/users.service';
 import type { RegistrationRepository } from '../repositories/registration.repository';
@@ -31,7 +32,7 @@ describe('RegistrationService', () => {
   } as unknown as jest.Mocked<UsersService>;
 
   const otpService = {
-    generateAndStore: jest.fn(),
+    generateStoreAndDispatch: jest.fn(),
   } as unknown as jest.Mocked<OtpService>;
 
   const auditService = {
@@ -42,12 +43,18 @@ describe('RegistrationService', () => {
     bcryptSaltRounds: 12,
   } as unknown as AppConfigService;
 
+  const notificationService = {
+    sendEmailOtp: jest.fn(),
+    sendPhoneOtp: jest.fn(),
+  } as unknown as jest.Mocked<NotificationService>;
+
   const service = new RegistrationService(
     registrationRepository,
     usersService,
     otpService,
     auditService,
     appConfig,
+    notificationService,
   );
 
   const baseDto = {
@@ -70,9 +77,10 @@ describe('RegistrationService', () => {
     (usersService.findByPhone as jest.Mock).mockResolvedValue(null);
     (bcrypt.hash as jest.Mock).mockResolvedValue('hashed-password');
     (registrationRepository.registerPortalUser as jest.Mock).mockResolvedValue(registrationResult);
-    (otpService.generateAndStore as jest.Mock).mockResolvedValue({
+    (otpService.generateStoreAndDispatch as jest.Mock).mockResolvedValue({
       expiresInSeconds: 600,
       channel: 'email',
+      otp: '123456',
     });
     (auditService.record as jest.Mock).mockResolvedValue(undefined);
   });
@@ -101,19 +109,61 @@ describe('RegistrationService', () => {
     const result = await service.registerMerchant({ ...baseDto, phone: '+2348012345678' }, {});
 
     expect(result.verification.phoneOtpSent).toBe(true);
-    expect(otpService.generateAndStore).toHaveBeenCalledWith(
+    expect(otpService.generateStoreAndDispatch).toHaveBeenCalledWith(
       'phone_verification',
       '+2348012345678',
       {},
+      expect.any(Function),
       registrationResult.userId,
     );
+  });
+
+  it('dispatches the generated email OTP through the notification service', async () => {
+    (otpService.generateStoreAndDispatch as jest.Mock).mockImplementation(
+      async (purpose: string, _identifier: string, _context: unknown, dispatch) => {
+        if (purpose === 'email_verification') {
+          await dispatch('654321', 600);
+        }
+        return { expiresInSeconds: 600, channel: 'email', otp: '654321' };
+      },
+    );
+
+    await service.registerCustomer(baseDto, {});
+
+    expect(notificationService.sendEmailOtp).toHaveBeenCalledWith({
+      email: baseDto.email,
+      otp: '654321',
+      expiresInSeconds: 600,
+    });
+  });
+
+  it('dispatches the generated phone OTP through the notification service', async () => {
+    (otpService.generateStoreAndDispatch as jest.Mock).mockImplementation(
+      async (purpose: string, _identifier: string, _context: unknown, dispatch) => {
+        if (purpose === 'phone_verification') {
+          await dispatch('112233', 600);
+        }
+        return {
+          expiresInSeconds: 600,
+          channel: purpose === 'phone_verification' ? 'sms' : 'email',
+        };
+      },
+    );
+
+    await service.registerMerchant({ ...baseDto, phone: '+2348012345678' }, {});
+
+    expect(notificationService.sendPhoneOtp).toHaveBeenCalledWith({
+      phone: '+2348012345678',
+      otp: '112233',
+      expiresInSeconds: 600,
+    });
   });
 
   it('registers a rider with required phone', async () => {
     const result = await service.registerRider({ ...baseDto, phone: '+2348012345678' }, {});
 
     expect(result.profileId).toBe(registrationResult.profileId);
-    expect(otpService.generateAndStore).toHaveBeenCalledTimes(2);
+    expect(otpService.generateStoreAndDispatch).toHaveBeenCalledTimes(2);
   });
 
   it('registers a driver with required phone', async () => {
@@ -164,6 +214,7 @@ describe('RegistrationService', () => {
       otpService,
       auditService,
       appConfig,
+      notificationService,
       undefined,
       referralsService,
     );

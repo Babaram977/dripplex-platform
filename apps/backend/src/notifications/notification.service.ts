@@ -15,6 +15,12 @@ export interface EmailVerificationNotificationInput {
   expiresInSeconds: number;
 }
 
+export interface EmailOtpNotificationInput {
+  email: string;
+  otp: string;
+  expiresInSeconds: number;
+}
+
 export interface PhoneOtpNotificationInput {
   phone: string;
   otp: string;
@@ -129,6 +135,7 @@ export interface NotificationService {
   sendPasswordReset(input: PasswordResetNotificationInput): Promise<void>;
   sendPasswordChanged(input: PasswordChangedNotificationInput): Promise<void>;
   sendEmailVerification(input: EmailVerificationNotificationInput): Promise<void>;
+  sendEmailOtp(input: EmailOtpNotificationInput): Promise<void>;
   sendPhoneOtp(input: PhoneOtpNotificationInput): Promise<void>;
   notifyMerchantLifecycle(input: MerchantLifecycleNotificationInput): Promise<void>;
   notifyOrderCreated(input: OrderCreatedNotificationInput): Promise<void>;

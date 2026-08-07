@@ -9,6 +9,7 @@ import { TermiiSmsSender } from './providers/termii-sms.sender';
 import type {
   DeliveryLifecycleNotificationInput,
   DriverLifecycleNotificationInput,
+  EmailOtpNotificationInput,
   EmailVerificationNotificationInput,
   MerchantLifecycleNotificationInput,
   NotificationService,
@@ -90,6 +91,21 @@ export class ProductionNotificationService implements NotificationService {
          <p>This link expires in ${String(minutes)} minute${minutes === 1 ? '' : 's'}.</p>`,
       ),
       () => this.fallback.sendEmailVerification(input),
+    );
+  }
+
+  public async sendEmailOtp(input: EmailOtpNotificationInput): Promise<void> {
+    const minutes = Math.ceil(input.expiresInSeconds / 60);
+    await this.sendEmail(
+      input.email,
+      'Your DrippleX verification code',
+      this.wrapEmail(
+        'Verify your email',
+        `<p>Use this code to verify your DrippleX email address:</p>
+         <p style="font-size:28px;font-weight:700;letter-spacing:4px;">${input.otp}</p>
+         <p>This code expires in ${String(minutes)} minute${minutes === 1 ? '' : 's'}.</p>`,
+      ),
+      () => this.fallback.sendEmailOtp(input),
     );
   }
 

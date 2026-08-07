@@ -11,6 +11,10 @@ import {
 import { AppConfigService } from '../../config/app-config.service';
 import { DomainEventBus } from '../../events/domain-event-bus';
 import { DOMAIN_EVENTS } from '../../events/domain-events';
+import {
+  NOTIFICATION_SERVICE,
+  type NotificationService,
+} from '../../notifications/notification.service';
 import { DriverCampaignService } from '../../referrals/driver-campaign.service';
 import { ReferralsService } from '../../referrals/referrals.service';
 import { UsersService } from '../../users/users.service';
@@ -81,6 +85,8 @@ export class RegistrationService {
     private readonly otpService: OtpService,
     private readonly auditService: AuditService,
     private readonly appConfig: AppConfigService,
+    @Inject(NOTIFICATION_SERVICE)
+    private readonly notificationService: NotificationService,
     @Optional()
     private readonly eventBus?: DomainEventBus,
     @Optional()
@@ -156,16 +162,27 @@ export class RegistrationService {
       ...(phone !== undefined ? { phone } : {}),
     });
 
-    const emailOtp = await this.otpService.generateAndStore(
+    const emailOtp = await this.otpService.generateStoreAndDispatch(
       'email_verification',
       email,
       context,
+      async (otp, expiresInSeconds) => {
+        await this.notificationService.sendEmailOtp({ email, otp, expiresInSeconds });
+      },
       result.userId,
     );
 
     let phoneOtpSent = false;
     if (phone && config.sendPhoneOtpOnRegister) {
-      await this.otpService.generateAndStore('phone_verification', phone, context, result.userId);
+      await this.otpService.generateStoreAndDispatch(
+        'phone_verification',
+        phone,
+        context,
+        async (otp, expiresInSeconds) => {
+          await this.notificationService.sendPhoneOtp({ phone, otp, expiresInSeconds });
+        },
+        result.userId,
+      );
       phoneOtpSent = true;
     }
 
