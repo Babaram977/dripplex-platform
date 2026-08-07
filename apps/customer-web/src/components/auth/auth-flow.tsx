@@ -91,7 +91,7 @@ export function AuthFlow(): React.JSX.Element {
     ): Promise<{ expiresInSeconds?: number } | undefined> => {
       try {
         if (kind === 'email') {
-          await sdk.auth.resendEmailVerification({ email: identifier });
+          await sdk.auth.resendEmailOtp({ email: identifier });
         } else {
           await sdk.auth.resendPhoneOtp({ phone: identifier });
         }

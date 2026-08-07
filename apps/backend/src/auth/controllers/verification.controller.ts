@@ -2,6 +2,7 @@ import { Body, Controller, HttpCode, HttpStatus, Post, Req } from '@nestjs/commo
 import { Throttle } from '@nestjs/throttler';
 
 import { Public } from '../../common/decorators/permissions.decorator';
+import { SendOtpDto, SendVerificationDto } from '../dto/identity-verification.dto';
 import { VerifyEmailDto, VerifyPhoneDto } from '../dto/verification.dto';
 import { VerificationService } from '../services/verification.service';
 
@@ -43,6 +44,42 @@ export class VerificationController {
     const data = await this.verificationService.verifyPhone(
       dto.phone,
       dto.otp,
+      this.auditContext(request),
+    );
+    return { success: true, data };
+  }
+
+  /**
+   * Resends the digit code `verifyEmail` above checks -- not to be confused
+   * with `EmailVerificationController`'s `/auth/email/resend`, which resends
+   * a signed magic-link token for a different feature. See the doc comment
+   * on `VerificationService.resendEmailOtp` for why the distinction matters.
+   */
+  @Public()
+  @Post('email/resend')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 3_600_000 } })
+  public async resendEmail(
+    @Body() dto: SendVerificationDto,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<{ submitted: true }>> {
+    const data = await this.verificationService.resendEmailOtp(
+      dto.email,
+      this.auditContext(request),
+    );
+    return { success: true, data };
+  }
+
+  @Public()
+  @Post('phone/resend')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 3_600_000 } })
+  public async resendPhone(
+    @Body() dto: SendOtpDto,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<{ submitted: true }>> {
+    const data = await this.verificationService.resendPhoneOtp(
+      dto.phone,
       this.auditContext(request),
     );
     return { success: true, data };

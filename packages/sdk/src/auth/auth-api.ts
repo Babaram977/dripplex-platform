@@ -90,6 +90,21 @@ export class AuthApi {
     });
   }
 
+  /**
+   * Resends the 6-digit code `verifyEmail` above checks. Distinct from
+   * `resendEmailVerification` below, which resends a signed magic-link
+   * token for the separate `/verify-email` page flow -- mixing the two up
+   * was a real bug (the OTP screen's "Resend" previously called the
+   * magic-link resend, which never refreshed the code being verified).
+   */
+  public resendEmailOtp(body: SendVerificationDto): Promise<VerificationSubmittedResponse> {
+    return this.http.request<VerificationSubmittedResponse>('/auth/verify/email/resend', {
+      method: 'POST',
+      body,
+      auth: false,
+    });
+  }
+
   public login(body: LoginFormValues): Promise<AuthSessionPayload> {
     return this.http.request<AuthSessionPayload>('/auth/login', {
       method: 'POST',
@@ -234,8 +249,17 @@ export class AuthApi {
     });
   }
 
+  /**
+   * Resends the 6-digit code `verifyPhoneOtp` above checks (via
+   * `/auth/verify/phone`), not the code checked by `verifyPhoneOtp`'s
+   * System-B sibling on `PhoneVerificationController`. Was previously
+   * wired to `/auth/phone/resend`, a different, Postgres-backed OTP store
+   * than the one `/auth/verify/phone` reads from -- a resent code would
+   * arrive by SMS but always fail to verify. Fixed to hit the matching
+   * endpoint.
+   */
   public resendPhoneOtp(body: SendOtpDto): Promise<VerificationSubmittedResponse> {
-    return this.http.request<VerificationSubmittedResponse>('/auth/phone/resend', {
+    return this.http.request<VerificationSubmittedResponse>('/auth/verify/phone/resend', {
       method: 'POST',
       body,
       auth: false,
