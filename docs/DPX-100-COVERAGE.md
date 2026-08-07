@@ -31,7 +31,7 @@ overstate progress:
 | Driver          |                                                                                  13 |         0/13 † | partial † (`apps/driver-portal`, different screen set — dashboard/wallet/earnings/trip/history/profile/campaign, not a 1:1 port of `driverScreen.tsx`'s Splash/Login/OTP/KYC/DocsUpload/VehicleReg flow) | partial † |      — |
 | Merchant        |               — (`adminConsoleScreen.tsx`-style single file, not screen-enumerated) |              0 |                                                                                       partial † (`apps/merchant-portal` — dashboard, product CRUD, publish/images/variants/inventory, built pre-DPX-100) | partial † |      — |
 | Admin           |                                                             1 (single-file console) |            0/1 |                                                                                                              0/1 (`apps/admin-portal` exists; not audited against `adminConsoleScreen.tsx` in this pass) |         — |      — |
-| Auth/Onboarding |                                                      29 (`screensA`–`screensD.tsx`) |           0/29 |                                                                                                                                                                                                     0/29 |      0/29 |      — |
+| Auth/Onboarding |                                                      29 (`screensA`–`screensD.tsx`) |         4/29 ‡ |                                                                                                                                           4/29 ‡ (`/get-started` Welcome+Register+OTP, `/login` Sign In) |    4/29 ‡ |      — |
 | Orders          | — (no dedicated Figma screen file found; likely folded into Ride/Marketplace flows) |              — |                                                                                                                                                                                                        — |         — |      — |
 | AI (Ask Drip)   |          — (embedded as a sheet within other screens, not a standalone screen file) |              — |                                                                                                                                                                                                        — |         — |      — |
 
@@ -43,6 +43,21 @@ the time, but **not yet run through the DPX-100 port** into
 Counts are approximate (file-existence check, not a full screen-by-screen
 audit) and will be corrected when each module's DPX-100 pass actually
 starts.
+
+‡ See `docs/AUTH-DPX-100-REALITY-AUDIT.md` for the full slice
+breakdown. Welcome, Register, OTP Verification, and Sign In (4 of
+`screensA.tsx`'s 10) are shipped as real `packages/ui/super-app`
+components, backend-connected (`/get-started`, `/login`), Playwright-
+verified. Splash exists and is live (`marketing/splash-intro.tsx`) but
+predates DPX-100 and isn't counted as a port. Profile Setup,
+Permissions, Biometric, Returning Login, and Account Recovery (5 of
+`screensA.tsx`'s 10) are deferred with documented reasoning (no
+session at that point in the flow, no schema fields, no WebAuthn
+infra, or no real backend counterpart to port toward). `screensB.tsx`
+(8) and the remaining `screensC`/`screensD.tsx` scope (11) are not
+started — tracked separately per the reality audit's "Verified
+overlap" decision to reconcile against Wallet's existing Security/
+Settings work first, rather than rebuilt from scratch.
 
 ## Marketplace detail (the module currently in progress)
 

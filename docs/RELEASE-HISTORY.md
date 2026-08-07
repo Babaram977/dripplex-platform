@@ -1150,6 +1150,66 @@ the frozen modules, App Store/Google Play launch readiness, end-to-end
 production validation, security hardening/performance tuning/monitoring/
 operational readiness, and Beta/UAT and launch execution.
 
+## 2026-08-07 — Auth/Onboarding DPX-100 Slices 1-6: real Figma auth flow, phone-or-email everywhere
+
+The founder flagged that live registration/login didn't match the
+Figma standard and, separately, that phone-only was never the intent —
+"phone or email, either can sign." Both are now true end to end
+(`docs/AUTH-DPX-100-REALITY-AUDIT.md`, `docs/AUTH-DPX-100-PRODUCTION-AUDIT.md`):
+
+- **Slice 1 — Backend**: flexible identifier (email OR phone) for
+  registration and login across all 4 portals — schema, DTOs,
+  `PrismaRegistrationRepository`/`LoginService`, nullable-email
+  `NotificationService` handling, OTP dispatch to whichever channel was
+  supplied.
+- **Slice 2 — Welcome + Register**: real `packages/ui/super-app`
+  components (`SuperAppAuthWelcomeScreen`/`SuperAppAuthRegisterScreen`,
+  phone/email toggle), orchestrated by `auth-flow.tsx` at `/get-started`,
+  calling the real `registerCustomer` SDK method. Splash turned out to
+  already exist (`splash-intro.tsx`) — not rebuilt.
+- **Slice 3 — OTP Verification**: digit-box UI with all 4 real error
+  states (invalid/expired/attempts-exceeded/network), wired to
+  `verifyEmail`/`verifyPhone`/resend. Caught and fixed a real bug along
+  the way: `RegistrationResponse.email` was typed as always-`string` in
+  `packages/types`, even though phone-only registrations return `null`.
+- **Slice 4 — deferred**: Profile Setup/Permissions/Biometric have no
+  session to attach to at that point in the flow (OTP verification
+  doesn't log the user in), no schema fields for most of Profile
+  Setup's inputs, no WebAuthn infra for Biometric. Documented rather
+  than shipped as decorative UI.
+- **Slice 5 — Sign In**: real `SuperAppAuthSignInScreen` (phone/email
+  toggle + password, since our backend is password-based, not Figma's
+  passwordless design), wired via `sign-in-flow.tsx` to the real
+  `loginCustomer` SDK method. Found and fixed the same class of bug as
+  Slice 1, but on login this time: the live `login-form.tsx` was
+  hardcoded to email-only despite the backend already accepting phone
+  OR email — replaced entirely, `/login` moved into the `(onboarding)`
+  route group for the correct full-bleed shell. Google Sign-In was
+  re-themed for the dark screen rather than dropped, since it was a
+  real working integration the old form was the only thing wiring in.
+  Returning Login/Account Recovery deferred (no WebAuthn infra; our real
+  recovery mechanism is the already-functional email-OTP
+  forgot-password flow, which follows different mechanics than Figma's
+  device-trust demo).
+- **Slice 6 — Verification**: full Playwright navigation walkthrough
+  (Welcome→Register→Sign In→Forgot Password→Back, zero console errors),
+  security review (no findings — the backend auth infra was already
+  hardened by DPX-DS-001's lockout work), and one more real bug caught
+  and fixed: `/forgot-password`'s subtitle said the feature wasn't
+  connected yet, when it had been calling the real
+  `sdk.auth.forgotPassword` for some time.
+
+No live Postgres/Redis was available in this environment (no Docker
+daemon), so true database-backed E2E wasn't possible this pass —
+recorded honestly in the production audit rather than assumed away;
+covered instead by the backend's existing jest suite (unchanged, this
+work touched no backend code past Slice 1) and the SDK's mocked
+contract tests.
+
+Per the founder's explicit instruction, Slice 6 does **not** freeze
+Auth/Onboarding automatically — returned for founder review with all
+six slices complete, alongside the documented Slice 4/5 deferrals.
+
 ---
 
 ## What's next
