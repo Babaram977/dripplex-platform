@@ -16,6 +16,59 @@ Status legend: ✅ Live (endpoint + SDK method exist and are already wired somew
 
 ---
 
+## Governance: DPX-FIGMA-002A (2026-08-08) — role and workflow, current and standing
+
+**Finding that triggered this:** the Figma MCP's only write-capable tool, `use_figma`, returns
+`"This tool is not supported for Make files. Supported file types: Design, Figjam, Slides"` when
+called against the live file — confirmed with a live read-only probe, not inferred from the tool
+description alone. `get_metadata` and `get_screenshot` carry the same restriction in their own
+descriptions. The live Super App file (fileKey `rsHHFRxHVE3OKv81p7m3K1`) is a Figma Make file, so
+none of the three can touch it. Only `get_design_context` (read-only, code-out) and
+`ReadMcpResourceTool` (reads the underlying `.tsx` source) work against it. **Conclusion: Claude
+cannot design, edit, or create screens in the live Figma file. This is a tooling limitation, not a
+process choice** — confirmed by founder read of the same finding.
+
+**Founder decision, 2026-08-08 — role change:** Claude is not the designer. The founder designs
+every screen directly in Figma Make. Claude's role going forward is **Live Figma Reviewer +
+Integrator**:
+
+1. Continuously inspect the live Make file (read-only).
+2. Compare every screen against the backend.
+3. Maintain three living documents — **Existing Screen Register**, **Missing Backend Register**,
+   **Missing Figma Register**. (Already maintained in this file, in the sections below, plus
+   `docs/reference/DPX-FIGMA-DIFF-REGISTER.md` for field-level differences. `DPX-BLOCKERS-REGISTER.md`
+   is a fourth document from an earlier round, not named in the DPX-FIGMA-002A letter — open
+   question to the founder whether it stays a separate severity-ranked view or folds into the
+   Missing Figma Register; not resolved unilaterally, kept as-is until told otherwise.)
+4. When the founder finishes a screen in Figma, detect it and map it to Backend / SDK / API /
+   Database / Authentication / Permissions / Navigation — **without changing the design.**
+5. Figma has something the backend doesn't support → do not build UI for it. Log it in the Missing
+   Backend Register. Stop.
+6. Backend has something Figma doesn't support → do not design it. Log it in the Missing Figma
+   Register. Stop.
+7. On "Integrate": connect **only** the completed Figma screen — pixel-perfect, no redesign, no
+   improvement, no optimization.
+8. Primary job: make the backend behave exactly like the approved Figma design, not the reverse.
+
+**Superseded:** DPX-FIGMA-002's "design every missing screen in Figma" objective is retired — not
+because the instruction was wrong, but because the tool it depended on (`use_figma`) cannot reach
+this file. The four-report FIRST TASK already delivered under DPX-FIGMA-002 (Existing Screens /
+Missing Figma / Workflow / Critical Blockers, given to the founder in-chat, not committed) stands
+as the current baseline for reports 1–3 above; nothing further is designed in Figma by Claude from
+here on.
+
+**Terminology (founder decision, 2026-08-08):** the Figma file is the **DrippleX Super App** —
+Customer, Driver, Wallet, Ride, Marketplace, Merchant (once designed), and future modules all live
+in one design, one identity system, one app. Not "the customer app." Admin Portal and Operations
+Console stay separate desktop web applications, as already decided — not part of the Super App.
+Flagging one thing honestly rather than silently acting on it: the actual codebase directory is
+still named `apps/customer-web` — this document now uses "Super App" as the product name, but
+renaming the package/directory itself is a separate, deliberate technical change (touches imports,
+CI, deploy config, `pnpm-workspace.yaml`, etc. across the repo) that hasn't been requested and
+won't be done without an explicit ask.
+
+---
+
 ## 0. Two findings — resolved by founder decision (2026-08-07)
 
 **1. Merchant has zero screens in the live Figma file.** Not a placeholder stub — genuinely
