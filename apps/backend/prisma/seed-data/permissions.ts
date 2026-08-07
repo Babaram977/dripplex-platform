@@ -88,6 +88,11 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
     code: 'driver:identity-verification:manage',
     description: 'Submit own facial/identity verification',
   },
+  { code: 'customer:kyc:manage', description: 'Manage own customer identity verification (KYC)' },
+  {
+    code: 'admin:customer-kyc:review',
+    description: 'Review customer identity verification submissions',
+  },
   { code: 'admin:drivers:review', description: 'Review driver applications' },
   { code: 'admin:drivers:approve', description: 'Approve drivers' },
   { code: 'admin:drivers:reject', description: 'Reject drivers' },

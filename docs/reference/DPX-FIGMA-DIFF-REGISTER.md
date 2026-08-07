@@ -60,6 +60,19 @@ touching their registration code path). SDK: `sdk.auth.updateProfile`/`requestPh
 at `/account/profile`, entered from the Account Management identity card (now tappable instead of
 read-only). KYC (below) is schema-only as of this commit — service/controller/UI still pending.
 
+**Built 2026-08-07 (DPX-PROFILE-KYC-001 Slice 2)** — `CustomerKycService`/`CustomerKycController`
+(`kyc/me` self-service: status/start/submit) and `AdminCustomerKycController`
+(`admin/customer-kyc`: list-pending/get/verify/reject/request-resubmission), founder-locked
+7-state lifecycle (`NOT_STARTED → IN_PROGRESS → PENDING_REVIEW → VERIFIED | REJECTED |
+REQUIRES_RESUBMISSION`, `EXPIRED` reachable from `VERIFIED`) plus lifecycle timestamps
+(`startedAt`/`submittedAt`/`reviewStartedAt`/`reviewedAt`/`verifiedAt`/`rejectedAt`/`expiresAt`).
+SDK: `sdk.kyc.getStatus/start/submit`, `sdk.adminCustomerKyc.listPending/getForUser/verify/reject/
+requestResubmission`. Frontend: `SuperAppAuthIdentityVerificationScreen` at
+`/account/identity-verification`, entered from the Account Management "Identity Verification"
+row. Same URL-string document-image constraint as `DriverKyc` (no upload/storage backend yet).
+No in-app KYC notifications this round — deliberate scope cut, no `NotificationType` enum values
+exist for KYC events yet.
+
 ## Field-level & behavioral differences (Driver Registration, DPX-100 Priority 1)
 
 | Figma                                                                                                              | Backend                                                                                                                                                                              | Action                                                                                                                                                                                                                                                                                                                                   |

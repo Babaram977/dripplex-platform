@@ -27,6 +27,8 @@ import { DriverSosAlertClient } from '../drivers/driver-sos-alert-client.js';
 import { DriverSupportClient } from '../drivers/driver-support-client.js';
 import { DriverVehiclesClient } from '../drivers/driver-vehicles-client.js';
 import { OperationsInspectionsClient } from '../drivers/operations-inspections-client.js';
+import { AdminCustomerKycClient } from '../kyc/admin-customer-kyc-client.js';
+import { CustomerKycClient } from '../kyc/customer-kyc-client.js';
 import {
   AdminMerchantsApi,
   CustomerMerchantsApi,
@@ -132,6 +134,8 @@ export class DripplexClient {
   public readonly cms: CmsClient;
   public readonly adminCms: AdminCmsClient;
   public readonly adminFraud: AdminFraudClient;
+  public readonly kyc: CustomerKycClient;
+  public readonly adminCustomerKyc: AdminCustomerKycClient;
   private readonly http: HttpClient;
 
   public constructor(config: Partial<SdkConfig> = {}) {
@@ -200,6 +204,8 @@ export class DripplexClient {
     this.cms = new CmsClient(this.http);
     this.adminCms = new AdminCmsClient(this.http);
     this.adminFraud = new AdminFraudClient(this.http);
+    this.kyc = new CustomerKycClient(this.http);
+    this.adminCustomerKyc = new AdminCustomerKycClient(this.http);
   }
 }
 
@@ -215,6 +221,8 @@ export {
 export { CustomerProductsApi } from '../product/product-api.js';
 export { AddressClient } from '../address/address-client.js';
 export { CartClient } from '../cart/cart-client.js';
+export { AdminCustomerKycClient } from '../kyc/admin-customer-kyc-client.js';
+export { CustomerKycClient } from '../kyc/customer-kyc-client.js';
 export { AdminDeliveryClient } from '../delivery/admin-delivery-client.js';
 export { DeliveryClient } from '../delivery/delivery-client.js';
 export { RiderDeliveryClient } from '../delivery/rider-delivery-client.js';

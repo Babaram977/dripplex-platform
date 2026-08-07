@@ -1680,23 +1680,41 @@ model DriverKyc {
 /// backImageUrl/selfieUrl are URL strings, same contract as DriverKyc's
 /// frontImage/backImage — no file-upload/storage service exists yet, this
 /// is not a new limitation.
+/// DPX-PROFILE-KYC-002 (founder decision 2026-08-07): lifecycle timestamps
+/// beyond the current-state fields, kept distinct so each records exactly
+/// one transition instead of overloading `updatedAt`:
+///   startedAt        -- first entered IN_PROGRESS (KYC actually begun)
+///   submittedAt       -- user completed submission, entered PENDING_REVIEW
+///   reviewStartedAt   -- a reviewer picked it up (may lag submittedAt by a
+///                        real queue delay; distinct from submission itself)
+///   reviewedAt        -- the review decision was made (approve or reject)
+///   verifiedAt        -- entered VERIFIED
+///   rejectedAt        -- entered REJECTED
+///   expiresAt          -- when a VERIFIED record lapses (drives a future
+///                        expiry job -- no such job exists yet, see design
+///                        doc's "explicitly not built this round")
 model CustomerKyc {
-  id             String                @id @default(uuid()) @db.Uuid
-  userId         String                @map("user_id") @db.Uuid
-  level          CustomerKycLevel      @default(LEVEL_0)
-  status         CustomerKycStatus     @default(NOT_STARTED)
-  documentType   KycDocumentType?      @map("document_type")
-  documentNumber String?               @map("document_number") @db.VarChar(100)
-  frontImageUrl  String?               @map("front_image_url") @db.VarChar(2048)
-  backImageUrl   String?               @map("back_image_url") @db.VarChar(2048)
-  selfieUrl      String?               @map("selfie_url") @db.VarChar(2048)
-  reviewedBy     String?               @map("reviewed_by") @db.Uuid
-  reviewedAt     DateTime?             @map("reviewed_at")
-  remarks        String?               @db.VarChar(1000)
-  submittedAt    DateTime?             @map("submitted_at")
-  createdAt      DateTime              @default(now()) @map("created_at")
-  updatedAt      DateTime              @updatedAt @map("updated_at")
-  user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id              String                @id @default(uuid()) @db.Uuid
+  userId          String                @map("user_id") @db.Uuid
+  level           CustomerKycLevel      @default(LEVEL_0)
+  status          CustomerKycStatus     @default(NOT_STARTED)
+  documentType    KycDocumentType?      @map("document_type")
+  documentNumber  String?               @map("document_number") @db.VarChar(100)
+  frontImageUrl   String?               @map("front_image_url") @db.VarChar(2048)
+  backImageUrl    String?               @map("back_image_url") @db.VarChar(2048)
+  selfieUrl       String?               @map("selfie_url") @db.VarChar(2048)
+  reviewedBy      String?               @map("reviewed_by") @db.Uuid
+  reviewedAt      DateTime?             @map("reviewed_at")
+  remarks         String?               @db.VarChar(1000)
+  startedAt       DateTime?             @map("started_at")
+  submittedAt     DateTime?             @map("submitted_at")
+  reviewStartedAt DateTime?             @map("review_started_at")
+  verifiedAt      DateTime?             @map("verified_at")
+  rejectedAt      DateTime?             @map("rejected_at")
+  expiresAt       DateTime?             @map("expires_at")
+  createdAt       DateTime              @default(now()) @map("created_at")
+  updatedAt       DateTime              @updatedAt @map("updated_at")
+  user            User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([status])

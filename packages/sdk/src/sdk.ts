@@ -44,6 +44,12 @@ export function createCustomerSdk(config: Partial<SdkConfig> = {}): CustomerSdk 
     /** KYC document submission + own profile (incl. submitted `kyc[]`)
      * step -- mirrors DriverController. */
     driverProfile: client.driverProfile,
+    /**
+     * DPX-PROFILE-KYC-002 -- customer-persona Level 2 identity verification
+     * (self-service). Deliberately separate from `driverProfile`'s KYC
+     * surface above -- different model, different lifecycle.
+     */
+    kyc: client.kyc,
   };
 }
 
@@ -71,6 +77,7 @@ export interface CustomerSdk {
   driverOnboarding: DripplexClient['driverOnboarding'];
   driverVehicles: DripplexClient['driverVehicles'];
   driverProfile: DripplexClient['driverProfile'];
+  kyc: DripplexClient['kyc'];
 }
 
 export function resolveCustomerSdkConfig(config: Partial<SdkConfig> = {}): SdkConfig {

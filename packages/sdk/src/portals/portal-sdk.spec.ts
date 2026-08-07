@@ -20,6 +20,7 @@ describe('portal SDK barrels', () => {
         'driverOnboarding',
         'driverProfile',
         'driverVehicles',
+        'kyc',
         'loyalty',
         'merchants',
         'notifications',

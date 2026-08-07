@@ -2,6 +2,16 @@ export type { ApiErrorResponse, ApiResponse, ApiSuccessResponse } from './api/re
 export { isApiErrorResponse, isApiSuccessResponse } from './api/response.js';
 
 export type {
+  AdminCustomerKycListItemDto,
+  CustomerKycLevel,
+  CustomerKycStatus,
+  CustomerKycStatusDto,
+  RejectCustomerKycValues,
+  ReviewCustomerKycValues,
+  SubmitCustomerKycValues,
+} from './kyc/index.js';
+
+export type {
   AddRoleResponse,
   AuthenticatedUser,
   AuthAuditAction,

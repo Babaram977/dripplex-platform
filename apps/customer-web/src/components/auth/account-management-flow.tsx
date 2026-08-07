@@ -57,6 +57,10 @@ export function AccountManagementFlow(): React.JSX.Element {
         router.push('/account/security');
         return;
       }
+      if (key === 'kyc') {
+        router.push('/account/identity-verification');
+        return;
+      }
       setNotice(`${NOT_AVAILABLE_LABEL[key]} isn't available yet.`);
     },
     [router],

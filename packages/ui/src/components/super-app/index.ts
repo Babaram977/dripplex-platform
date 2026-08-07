@@ -39,6 +39,13 @@ export {
   type SuperAppChangeStep,
   type SuperAppEditProfileValues,
 } from './AuthEditProfileScreen';
+export {
+  SuperAppAuthIdentityVerificationScreen,
+  type SuperAppKycStatus,
+  type SuperAppKycDocumentType,
+  type SuperAppKycStatusValues,
+  type SuperAppSubmitKycValues,
+} from './AuthIdentityVerificationScreen';
 export { SuperAppSkeleton } from './Skeleton';
 export { SuperAppSectionHeader } from './SectionHeader';
 export { SuperAppStatusBarIcons } from './StatusBarIcons';
