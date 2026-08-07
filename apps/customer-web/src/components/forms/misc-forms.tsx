@@ -4,11 +4,13 @@ import {
   contactSchema,
   forgotPasswordSchema,
   resetPasswordUiSchema,
+  verifyEmailTokenSchema,
   verifyOtpSchema,
   verifyPhoneSchema,
   type ContactFormValues,
   type ForgotPasswordFormValues,
   type ResetPasswordUiFormValues,
+  type VerifyEmailDto,
   type VerifyOtpFormValues,
   type VerifyPhoneValues,
 } from '@dripplex/types';
@@ -145,6 +147,80 @@ export function ResetPasswordForm(): React.JSX.Element {
       </div>
       <Button type="submit" className="w-full" disabled={isSubmitting}>
         {isSubmitting ? 'Updating…' : 'Update password'}
+      </Button>
+    </form>
+  );
+}
+
+/**
+ * Landing page for the magic-link "Verify email" button in the
+ * account-verification email (`ProductionNotificationService.sendEmailVerification`,
+ * a signed one-time token via `EmailVerificationService` -- distinct from
+ * the 6-digit code flow below (`VerifyOtpForm`), which is what the real
+ * registration screen (`auth-flow.tsx`) actually uses today. The emailed
+ * link only carries `?token=`, not the address it was sent to, and the
+ * backend deliberately requires both (`VerifyEmailDto`) as a defense
+ * against a leaked token alone being enough -- so this form asks the user
+ * to confirm their email rather than silently trusting the URL.
+ */
+export function VerifyEmailForm(): React.JSX.Element {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const token = searchParams.get('token') ?? '';
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<VerifyEmailDto>({
+    resolver: zodResolver(verifyEmailTokenSchema),
+    defaultValues: { email: '', token },
+  });
+
+  const onSubmit = handleSubmit(async (values) => {
+    try {
+      await sdk.auth.verifyEmailToken(values);
+      toast({
+        title: 'Email verified',
+        description: 'Your account is verified. You can sign in now.',
+      });
+      router.push('/login');
+    } catch (error) {
+      const described = describeSdkError(error);
+      toast({
+        title: described.title,
+        description: described.description,
+        variant: 'destructive',
+      });
+    }
+  });
+
+  if (!token) {
+    return (
+      <p className="text-destructive text-sm">
+        This verification link is missing its token. Open the &ldquo;Verify email&rdquo; button from
+        the email we sent you, or request a new link.
+      </p>
+    );
+  }
+
+  return (
+    <form className="space-y-4" onSubmit={(event) => void onSubmit(event)} noValidate>
+      <input type="hidden" {...register('token')} />
+      <div className="space-y-2">
+        <Label htmlFor="verify-email-address">Confirm your email</Label>
+        <Input
+          id="verify-email-address"
+          type="email"
+          autoComplete="email"
+          autoFocus
+          aria-invalid={Boolean(errors.email)}
+          {...register('email')}
+        />
+        {errors.email ? <p className="text-destructive text-sm">{errors.email.message}</p> : null}
+      </div>
+      <Button type="submit" className="w-full" disabled={isSubmitting}>
+        {isSubmitting ? 'Verifying…' : 'Verify email'}
       </Button>
     </form>
   );
