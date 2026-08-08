@@ -1,3 +1,5 @@
+> **Superseded by FPX-001.** This interim stub is retained for history; the canonical frontend architecture reference is [`docs/FPX-001-frontend-platform-architecture.md`](../FPX-001-frontend-platform-architecture.md).
+
 # DPX-F001 — Frontend Architecture
 
 | Field            | Value                     |
