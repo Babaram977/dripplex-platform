@@ -90,6 +90,7 @@ function VehicleRow({ vehicle }: { vehicle: VehicleDto }): React.JSX.Element {
           </p>
           <p className="text-muted-foreground text-xs">
             {vehicle.plateNumber} · {vehicle.color} · {vehicle.rideCategory}
+            {vehicle.seats !== null ? ` · ${String(vehicle.seats)} seats` : ''}
           </p>
         </div>
         <Badge variant={statusBadgeVariant(vehicle.approvalStatus)}>{vehicle.approvalStatus}</Badge>

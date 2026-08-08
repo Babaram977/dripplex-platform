@@ -11,6 +11,7 @@ export function toVehicleDto(vehicle: Vehicle): VehicleDto {
     color: vehicle.color,
     year: vehicle.year,
     rideCategory: vehicle.rideCategory,
+    seats: vehicle.seats,
     isActive: vehicle.isActive,
     approvalStatus: vehicle.approvalStatus,
     approvedAt: vehicle.approvedAt ? vehicle.approvedAt.toISOString() : null,

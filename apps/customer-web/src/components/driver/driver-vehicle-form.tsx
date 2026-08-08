@@ -24,10 +24,10 @@ const CURRENT_YEAR = new Date().getFullYear();
  *
  * Adapted to the real backend contract (`CreateVehicleRequest` /
  * `DriverVehiclesController`), not the Figma mock:
- *  - Figma's "Passenger Seats" field has no backend counterpart -- dropped,
- *    not invented. `rideCategory` is what the backend actually models, read
- *    from the same real ride-type catalog customer-web's Ride module already
- *    uses (`useRideTypeCatalog`), not a hardcoded list.
+ *  - Figma's "Passenger Seats" field now has a real backend counterpart
+ *    (`Vehicle.seats`, DPX-DRIVER-017) and is captured here. `rideCategory` is
+ *    read from the same real ride-type catalog customer-web's Ride module
+ *    already uses (`useRideTypeCatalog`), not a hardcoded list.
  *  - No photo upload here: `photos` on `CreateVehicleRequest` takes hosted
  *    image URLs (`@IsUrl`) -- there is no file-upload/storage backend
  *    anywhere in this codebase (same constraint driver-portal's own KYC form
@@ -45,6 +45,7 @@ export function DriverVehicleForm(): React.JSX.Element {
   const [color, setColor] = React.useState('');
   const [year, setYear] = React.useState(String(CURRENT_YEAR));
   const [rideCategory, setRideCategory] = React.useState<RideType>('ECONOMY');
+  const [seats, setSeats] = React.useState('');
 
   React.useEffect(() => {
     if (!ready) return;
@@ -82,6 +83,7 @@ export function DriverVehicleForm(): React.JSX.Element {
           color: color.trim(),
           year: Number(year),
           rideCategory,
+          seats: Number(seats),
         });
         setView({ kind: 'submitted', vehicle });
       } catch (error) {
@@ -141,6 +143,7 @@ export function DriverVehicleForm(): React.JSX.Element {
           </p>
           <p className="text-muted-foreground">
             {v.color} · {v.plateNumber}
+            {v.seats !== null ? ` · ${String(v.seats)} seats` : ''}
           </p>
           <p className="text-muted-foreground mt-2">
             Approval status: <span className="text-foreground font-medium">{v.approvalStatus}</span>
@@ -220,6 +223,21 @@ export function DriverVehicleForm(): React.JSX.Element {
           value={plateNumber}
           onChange={(e) => {
             setPlateNumber(e.target.value);
+          }}
+          required
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="veh-seats">Passenger seats</Label>
+        <Input
+          id="veh-seats"
+          type="number"
+          min={1}
+          max={20}
+          placeholder="e.g. 4"
+          value={seats}
+          onChange={(e) => {
+            setSeats(e.target.value);
           }}
           required
         />

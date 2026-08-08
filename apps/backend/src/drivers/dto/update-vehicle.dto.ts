@@ -43,6 +43,13 @@ export class UpdateVehicleDto {
   @IsEnum(RideType)
   public rideCategory?: RideType;
 
+  // DPX-DRIVER-017 — passenger capacity.
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(20)
+  public seats?: number;
+
   @IsOptional()
   @IsBoolean()
   public isActive?: boolean;

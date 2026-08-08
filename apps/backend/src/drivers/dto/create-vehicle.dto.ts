@@ -42,6 +42,13 @@ export class CreateVehicleDto {
   @IsEnum(RideType)
   public rideCategory!: RideType;
 
+  // DPX-DRIVER-017 — passenger capacity, required on new submissions. Bounds are
+  // sane input limits for ride vehicles (incl. XL/minibus), not a category rule.
+  @IsInt()
+  @Min(1)
+  @Max(20)
+  public seats!: number;
+
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(10)

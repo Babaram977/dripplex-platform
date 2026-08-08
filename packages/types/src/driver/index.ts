@@ -17,6 +17,8 @@ export interface VehicleDto {
   color: string;
   year: number;
   rideCategory: RideType;
+  /** Passenger capacity. `null` for vehicles registered before DPX-DRIVER-017. */
+  seats: number | null;
   isActive: boolean;
   approvalStatus: VehicleApprovalStatus;
   approvedAt: string | null;
@@ -34,6 +36,7 @@ export interface CreateVehicleRequest {
   color: string;
   year: number;
   rideCategory: RideType;
+  seats: number;
   photos?: string[];
 }
 
@@ -43,6 +46,7 @@ export interface UpdateVehicleRequest {
   color?: string;
   year?: number;
   rideCategory?: RideType;
+  seats?: number;
   isActive?: boolean;
   photos?: string[];
 }
