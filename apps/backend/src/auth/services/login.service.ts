@@ -30,31 +30,52 @@ import type { AuthUserProfile, PortalLoginResponse, PortalLoginType } from '../a
 import type { PortalLoginDto } from '../dto/portal-login.dto';
 
 interface PortalLoginConfig {
-  roleName: string;
+  /**
+   * Roles permitted to sign in through this portal. A user is admitted if they
+   * hold ANY of these; the specific matched role is what gets stamped into the
+   * issued token (the JWT strategy rejects a token whose `role` the user does
+   * not actually hold, so admin — which admits two roles — must issue the one
+   * the user really has, not a fixed label).
+   */
+  roleNames: string[];
   channel: RegistrationChannel;
   requiresPhoneVerification: boolean;
 }
 
 const PORTAL_LOGIN_CONFIG: Record<PortalLoginType, PortalLoginConfig> = {
   customer: {
-    roleName: 'customer',
+    roleNames: ['customer'],
     channel: RegistrationChannel.CUSTOMER_WEB,
     requiresPhoneVerification: false,
   },
   merchant: {
-    roleName: 'merchant',
+    roleNames: ['merchant'],
     channel: RegistrationChannel.MERCHANT_PORTAL,
     requiresPhoneVerification: true,
   },
   rider: {
-    roleName: 'rider',
+    roleNames: ['rider'],
     channel: RegistrationChannel.RIDER_PORTAL,
     requiresPhoneVerification: true,
   },
   driver: {
-    roleName: 'driver',
+    roleNames: ['driver'],
     channel: RegistrationChannel.DRIVER_PORTAL,
     requiresPhoneVerification: true,
+  },
+  // DPX-DRIVER-015 — admin/operations staff authenticate through the same
+  // unified login pipeline (no separate auth system). Admin admits both the
+  // administrator and super_administrator roles. Staff accounts are invited,
+  // not self-registered, so phone verification is not required.
+  admin: {
+    roleNames: ['administrator', 'super_administrator'],
+    channel: RegistrationChannel.ADMIN_PORTAL,
+    requiresPhoneVerification: false,
+  },
+  operations: {
+    roleNames: ['operations_staff'],
+    channel: RegistrationChannel.OPERATIONS_CONSOLE,
+    requiresPhoneVerification: false,
   },
 };
 
@@ -88,6 +109,14 @@ export class LoginService {
     return this.loginPortal('driver', dto, context);
   }
 
+  public loginAdmin(dto: PortalLoginDto, context: AuditContext): Promise<PortalLoginResponse> {
+    return this.loginPortal('admin', dto, context);
+  }
+
+  public loginOperations(dto: PortalLoginDto, context: AuditContext): Promise<PortalLoginResponse> {
+    return this.loginPortal('operations', dto, context);
+  }
+
   private async loginPortal(
     portal: PortalLoginType,
     dto: PortalLoginDto,
@@ -113,7 +142,7 @@ export class LoginService {
 
     try {
       this.assertAccountEligible(user, config);
-      await this.assertPortalAccess(user.id, config.roleName, portal);
+      const matchedRole = await this.assertPortalAccess(user.id, config.roleNames, portal);
 
       await this.usersService.recordLoginActivity(user.id);
       await this.loginAttemptService.resetFailures(identifier, context.ipAddress);
@@ -128,7 +157,7 @@ export class LoginService {
       const tokens = await this.tokenService.issueTokenPair({
         userId: user.id,
         sessionId: session.id,
-        role: config.roleName,
+        role: matchedRole,
         portal: config.channel,
       });
 
@@ -220,17 +249,27 @@ export class LoginService {
     }
   }
 
+  /**
+   * Admits the user if they hold any of the portal's permitted roles and
+   * returns the specific matched role (config order breaks ties). The returned
+   * role is stamped into the issued token, so it must be a role the user
+   * actually holds — the JWT strategy rejects a token whose `role` claim is not
+   * among the user's roles.
+   */
   private async assertPortalAccess(
     userId: string,
-    requiredRole: string,
+    allowedRoles: string[],
     portal: PortalLoginType,
-  ): Promise<void> {
+  ): Promise<string> {
     const userWithRbac = await this.usersService.findByIdWithRbac(userId);
     const roles = userWithRbac?.roles.map((assignment) => assignment.role.name) ?? [];
 
-    if (!roles.includes(requiredRole)) {
+    const matchedRole = allowedRoles.find((role) => roles.includes(role));
+    if (matchedRole === undefined) {
       throw new WrongPortalDomainException('Account is not permitted for this portal', { portal });
     }
+
+    return matchedRole;
   }
 
   private async handleFailedLogin(

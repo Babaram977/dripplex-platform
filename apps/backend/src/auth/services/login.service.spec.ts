@@ -254,4 +254,78 @@ describe('LoginService', () => {
     expect(usersService.recordLoginActivity).toHaveBeenCalledWith(activeUser.id);
     expect(loginAttemptService.resetFailures).toHaveBeenCalled();
   });
+
+  // DPX-DRIVER-015 — admin/operations login through the same unified pipeline.
+  describe('admin & operations portals', () => {
+    function withRoles(...roleNames: string[]): void {
+      (usersService.findByIdWithRbac as jest.Mock).mockResolvedValue({
+        ...activeUser,
+        roles: roleNames.map((name) => ({
+          role: { name, permissions: [{ permission: { code: 'admin:read' } }] },
+        })),
+      });
+    }
+
+    it('admits an administrator to the admin portal on the ADMIN_PORTAL channel', async () => {
+      withRoles('administrator');
+
+      const result = await service.loginAdmin(
+        { email: 'ada@example.com', password: 'Password1' },
+        {},
+      );
+
+      expect(result.accessToken).toBe('access-token');
+      expect(sessionService.createPortalSession).toHaveBeenCalledWith(
+        expect.objectContaining({ portal: RegistrationChannel.ADMIN_PORTAL }),
+      );
+      expect(tokenService.issueTokenPair).toHaveBeenCalledWith(
+        expect.objectContaining({
+          role: 'administrator',
+          portal: RegistrationChannel.ADMIN_PORTAL,
+        }),
+      );
+    });
+
+    it('admits a super_administrator to the admin portal and stamps THEIR role in the token', async () => {
+      // The token role must be a role the user actually holds — the JWT strategy
+      // rejects a mismatched role — so a super-admin-only account must not be
+      // issued a token labelled "administrator".
+      withRoles('super_administrator');
+
+      await service.loginAdmin({ email: 'ada@example.com', password: 'Password1' }, {});
+
+      expect(tokenService.issueTokenPair).toHaveBeenCalledWith(
+        expect.objectContaining({ role: 'super_administrator' }),
+      );
+    });
+
+    it('admits operations_staff to the operations portal on the OPERATIONS_CONSOLE channel', async () => {
+      withRoles('operations_staff');
+
+      await service.loginOperations({ email: 'ada@example.com', password: 'Password1' }, {});
+
+      expect(sessionService.createPortalSession).toHaveBeenCalledWith(
+        expect.objectContaining({ portal: RegistrationChannel.OPERATIONS_CONSOLE }),
+      );
+      expect(tokenService.issueTokenPair).toHaveBeenCalledWith(
+        expect.objectContaining({ role: 'operations_staff' }),
+      );
+    });
+
+    it('rejects a non-staff role at the admin portal', async () => {
+      withRoles('customer');
+
+      await expect(
+        service.loginAdmin({ email: 'ada@example.com', password: 'Password1' }, {}),
+      ).rejects.toBeInstanceOf(WrongPortalDomainException);
+    });
+
+    it('does not admit an operations_staff member to the admin portal', async () => {
+      withRoles('operations_staff');
+
+      await expect(
+        service.loginAdmin({ email: 'ada@example.com', password: 'Password1' }, {}),
+      ).rejects.toBeInstanceOf(WrongPortalDomainException);
+    });
+  });
 });

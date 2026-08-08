@@ -1,4 +1,4 @@
-export type PortalLoginType = 'customer' | 'merchant' | 'rider' | 'driver';
+export type PortalLoginType = 'customer' | 'merchant' | 'rider' | 'driver' | 'admin' | 'operations';
 
 export interface AuthUserProfile {
   id: string;

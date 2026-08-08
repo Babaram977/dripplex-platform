@@ -173,6 +173,22 @@ export class AuthApi {
     });
   }
 
+  public loginAdmin(body: PortalLoginValues): Promise<PortalLoginResponse> {
+    return this.http.request<PortalLoginResponse>('/auth/login/admin', {
+      method: 'POST',
+      body,
+      auth: false,
+    });
+  }
+
+  public loginOperations(body: PortalLoginValues): Promise<PortalLoginResponse> {
+    return this.http.request<PortalLoginResponse>('/auth/login/operations', {
+      method: 'POST',
+      body,
+      auth: false,
+    });
+  }
+
   public requestOtp(email: string): Promise<{ expiresInSeconds: number }> {
     return this.http.request<{ expiresInSeconds: number }>('/auth/otp/request', {
       method: 'POST',

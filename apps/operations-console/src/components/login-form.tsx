@@ -25,14 +25,17 @@ export function LoginForm(): React.JSX.Element {
 
   const onSubmit = handleSubmit(async (values) => {
     try {
-      const session = await sdk.auth.login({
+      // DPX-DRIVER-015 — portal-specific login endpoint (operations_staff role
+      // gate). Returns the flat PortalLoginResponse token shape, not the nested
+      // AuthSessionPayload of the generic route.
+      const session = await sdk.auth.loginOperations({
         email: values.email,
         password: values.password,
       });
       setSession({
-        accessToken: session.tokens.accessToken,
-        refreshToken: session.tokens.refreshToken,
-        expiresIn: session.tokens.expiresIn,
+        accessToken: session.accessToken,
+        refreshToken: session.refreshToken,
+        expiresIn: session.expiresIn,
         user: session.user,
         portal: 'operations',
       });
