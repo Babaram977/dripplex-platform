@@ -9,6 +9,7 @@ import { CustomerKycService } from './customer-kyc.service';
 
 import type { AuditLogRepository } from '../audit/repositories/audit-log.repository';
 import type { PrismaService } from '../prisma/prisma.service';
+import type { StorageAssetService } from '../uploads/storage-asset.service';
 
 const databaseUrl =
   process.env['DATABASE_URL'] ??
@@ -63,7 +64,15 @@ describe('DPX-PROFILE-KYC-003 -- Profile + CustomerKyc real-Postgres lifecycle',
     };
     const auditService = new AuditService(auditLogRepository);
     usersRepository = new PrismaUsersRepository(prisma);
-    kycService = new CustomerKycService(prisma, auditService);
+    // Ownership checks are no-ops and signed-GET passes URLs through, so the
+    // lifecycle behaves exactly as before this hardening.
+    const storageAssets = {
+      assertOwned: jest.fn(),
+      assertOwnedOptional: jest.fn(),
+      assertOwnedMany: jest.fn(),
+      toSignedGetUrl: jest.fn((url: string | null) => Promise.resolve(url)),
+    } as unknown as StorageAssetService;
+    kycService = new CustomerKycService(prisma, auditService, storageAssets);
 
     const user = await prisma.user.create({
       data: {

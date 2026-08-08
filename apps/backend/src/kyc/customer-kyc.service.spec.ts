@@ -10,6 +10,7 @@ import { KYC_AUDIT_ACTIONS } from './kyc.constants';
 
 import type { AuditService } from '../audit/audit.service';
 import type { PrismaService } from '../prisma/prisma.service';
+import type { StorageAssetService } from '../uploads/storage-asset.service';
 import type { CustomerKyc } from '@prisma/client';
 
 describe('CustomerKycService', () => {
@@ -31,7 +32,17 @@ describe('CustomerKycService', () => {
 
   const auditService = { record: jest.fn() } as unknown as jest.Mocked<AuditService>;
 
-  const service = new CustomerKycService(prisma, auditService);
+  // Ownership checks are no-ops and signed-GET passes URLs through unchanged, so
+  // these unit assertions exercise the KYC logic directly (the StorageAssetService
+  // policy itself is unit-tested in storage-asset.service.spec.ts).
+  const storageAssets = {
+    assertOwned: jest.fn(),
+    assertOwnedOptional: jest.fn(),
+    assertOwnedMany: jest.fn(),
+    toSignedGetUrl: jest.fn((url: string | null) => Promise.resolve(url)),
+  } as unknown as StorageAssetService;
+
+  const service = new CustomerKycService(prisma, auditService, storageAssets);
 
   const verifiedUser = {
     phoneVerifiedAt: new Date(),
