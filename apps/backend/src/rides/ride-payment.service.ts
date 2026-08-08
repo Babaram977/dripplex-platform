@@ -9,7 +9,11 @@ import {
 } from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../audit/audit.service';
-import { COMMISSION_REFERENCE_TYPES } from '../commercial/commercial.constants';
+import {
+  COMMISSION_REFERENCE_TYPES,
+  COMMISSION_RIDE_EARNING_DEBT_REFERENCE_TYPE,
+  COMMISSION_RIDE_REVERSAL_REFERENCE_TYPE,
+} from '../commercial/commercial.constants';
 import { CommissionAccountService } from '../commercial/commission-account.service';
 import {
   ConflictDomainException,
@@ -219,6 +223,102 @@ export class RidePaymentService {
       totalFare: String(ride.totalFare),
     });
     return paid;
+  }
+
+  /**
+   * DPX-D4 — admin/operations-initiated FULL refund of a settled (PAID) ride.
+   *
+   * Money moves are idempotent per (wallet/account, referenceType, ride.id)
+   * and run BEFORE the guarded PAID -> REFUNDED transition, so a mid-refund
+   * failure leaves the ride PAID and a retry converges without double-moving
+   * money — the same shape as D7's confirmCash(). The optimistic transition is
+   * the exactly-once gate for the audit record and the RIDE_REFUNDED event: a
+   * concurrent/duplicate refund that already won leaves count === 0 and is
+   * rejected, its own money moves having been idempotent no-ops.
+   *
+   * By payment method:
+   *  - WALLET / gateway (PAYSTACK/FLUTTERWAVE): the fare was captured into the
+   *    platform wallet at settlement, so the refund mirrors settlement's four
+   *    wallet legs — release the capture from the platform and credit the
+   *    customer's Dx Wallet, then claw the driver's earning back to the
+   *    platform. Gateway rides refund to the Dx Wallet, never the PSP (founder
+   *    decision — no gateway refund adapters). If the driver's wallet can't
+   *    cover the clawback, the shortfall is recorded as a recoverable driver
+   *    liability rather than silently failing.
+   *  - CASH: no wallet money ever moved (the driver holds the cash), so the
+   *    refund only reverses the driver's accrued commission liability; no
+   *    digital customer refund is manufactured.
+   *
+   * RIDE_PLATFORM_COMMISSION_RATE is untouched — the platform's commission is
+   * given back through the wallet legs (wallet/gateway) or reverseAccrual
+   * (cash), never by recomputing a rate.
+   */
+  public async refundRide(
+    adminUserId: string,
+    rideId: string,
+    reason: string,
+    context: AuditContext,
+  ): Promise<RideDto> {
+    const ride = await this.requireRefundableRide(rideId);
+    const method = ride.paymentMethod;
+    if (method === null) {
+      throw new ValidationDomainException('Ride has no recorded payment method to refund');
+    }
+    const refundContext: AuditContext = { ...context, userId: adminUserId };
+
+    let customerRefundAmount = 0;
+    if (method === RidePaymentMethod.CASH) {
+      await this.refundCashRide(ride, reason, refundContext);
+    } else {
+      customerRefundAmount = await this.refundWalletCapturedRide(ride, reason, refundContext);
+    }
+
+    // Exactly-once gate: atomically claim the PAID -> REFUNDED transition.
+    const claimed = await this.prisma.ride.updateMany({
+      where: { id: ride.id, paymentStatus: RidePaymentStatus.PAID },
+      data: { paymentStatus: RidePaymentStatus.REFUNDED },
+    });
+    if (claimed.count !== 1) {
+      throw new ConflictDomainException('Ride has already been refunded');
+    }
+
+    // Gateway rides carry a settled RidePaymentTransaction row — mark it
+    // REFUNDED too so the transaction record reflects the reversal (no-op for
+    // wallet/cash rides, which have no such row).
+    await this.prisma.ridePaymentTransaction.updateMany({
+      where: { rideId: ride.id, status: TransactionStatus.SUCCESS },
+      data: { status: TransactionStatus.REFUNDED },
+    });
+
+    const refreshed = await this.prisma.ride.findUniqueOrThrow({ where: { id: ride.id } });
+
+    await this.auditService.record(RIDE_AUDIT_ACTIONS.REFUNDED, refundContext, {
+      resource: 'ride',
+      resourceId: ride.id,
+      metadata: {
+        method,
+        reason,
+        totalFare: Number(ride.totalFare),
+        customerRefundAmount,
+        driverEarning: ride.driverEarning !== null ? Number(ride.driverEarning) : null,
+        platformCommission:
+          ride.platformCommission !== null ? Number(ride.platformCommission) : null,
+      },
+    });
+
+    // Emitted for every refunded ride (founder decision D7 of the D4 policy —
+    // preserve the existing RIDE_REFUNDED consumer). `amount` is included only
+    // when the customer actually received a digital refund (wallet/gateway), so
+    // a CASH refund — which moves no customer money — does not notify a bogus
+    // "₦0 refunded".
+    await this.eventBus.emit(DOMAIN_EVENTS.RIDE_REFUNDED, {
+      rideId: ride.id,
+      customerId: ride.customerId,
+      ...(customerRefundAmount > 0 ? { amount: String(customerRefundAmount) } : {}),
+      reason,
+    });
+
+    return toRideDto(refreshed);
   }
 
   /**
@@ -432,6 +532,213 @@ export class RidePaymentService {
         }
       }
     }
+  }
+
+  /** DPX-D4 — a ride is refundable only once it has settled. A PAID ride can
+   * be refunded; an already-REFUNDED one is rejected (the common-path duplicate
+   * guard — the atomic transition in refundRide() is the concurrency-safe one);
+   * anything else has no money to refund. */
+  private async requireRefundableRide(rideId: string): Promise<Ride> {
+    const ride = await this.prisma.ride.findUnique({ where: { id: rideId } });
+    if (!ride) {
+      throw new NotFoundDomainException('Ride not found');
+    }
+    if (ride.paymentStatus === RidePaymentStatus.REFUNDED) {
+      throw new ConflictDomainException('Ride has already been refunded');
+    }
+    if (ride.paymentStatus !== RidePaymentStatus.PAID) {
+      throw new ValidationDomainException(
+        `Only a settled (paid) ride can be refunded (payment status: ${ride.paymentStatus})`,
+      );
+    }
+    return ride;
+  }
+
+  /** CASH refund — the customer's cash never entered the digital ledger, so
+   * there is nothing to credit back; only the driver's accrued commission
+   * liability is reversed (founder decision: do not manufacture a digital
+   * customer refund for cash). Idempotent via the distinct reversal
+   * referenceType; bounded retry for the shared-account version race. */
+  private async refundCashRide(ride: Ride, reason: string, context: AuditContext): Promise<void> {
+    const driverId = ride.driverId;
+    if (driverId === null) {
+      return;
+    }
+    const commission =
+      ride.platformCommission !== null
+        ? Number(ride.platformCommission)
+        : this.computeSplit(ride).platformCommission;
+    if (commission <= 0) {
+      return;
+    }
+    await this.withConflictRetry(() =>
+      this.commissionAccounts.reverseAccrual({
+        ownerType: CommissionOwnerType.DRIVER,
+        ownerId: driverId,
+        amount: commission,
+        referenceType: COMMISSION_RIDE_REVERSAL_REFERENCE_TYPE,
+        referenceId: ride.id,
+        description: `Commission reversed for refunded ride ${ride.id}: ${reason}`,
+        context,
+      }),
+    );
+  }
+
+  /** WALLET / gateway refund — the fare was captured into the platform wallet,
+   * so mirror settlement's four legs. Returns the amount refunded to the
+   * customer's Dx Wallet. Each leg is idempotent per (wallet, referenceType,
+   * ride.id) and retried on the optimistic-version race. */
+  private async refundWalletCapturedRide(
+    ride: Ride,
+    reason: string,
+    context: AuditContext,
+  ): Promise<number> {
+    const totalFare = Number(ride.totalFare);
+    const driverEarning =
+      ride.driverEarning !== null
+        ? Number(ride.driverEarning)
+        : this.computeSplit(ride).driverEarning;
+
+    // Claw the driver's earning back to the platform FIRST. At settlement the
+    // platform captured the fare and paid the driver out, keeping only the
+    // commission — so it must recover the driver's share before it can fund the
+    // customer's full-fare refund. (In the debt path the platform fronts the
+    // shortfall from its operating balance; the driver liability is the
+    // offsetting receivable.)
+    if (ride.driverId !== null && driverEarning > 0) {
+      await this.clawBackDriverEarning(ride, ride.driverId, driverEarning, reason, context);
+    }
+
+    if (totalFare > 0) {
+      // Release the captured fare from the platform wallet, then credit the
+      // customer — debit-before-credit so a failure between the two briefly
+      // holds money at the platform (recoverable on retry) rather than creating
+      // it for the customer out of nothing.
+      await this.withConflictRetry(() =>
+        this.walletService.debit({
+          ownerType: WalletOwnerType.PLATFORM,
+          ownerId: PLATFORM_WALLET_OWNER_ID,
+          amount: totalFare,
+          referenceType: RIDE_WALLET_REFERENCE_TYPES.REFUND,
+          referenceId: ride.id,
+          description: `Ride fare refund release (${ride.id}): ${reason}`,
+          context,
+        }),
+      );
+      await this.withConflictRetry(() =>
+        this.walletService.refund({
+          ownerType: WalletOwnerType.CUSTOMER,
+          ownerId: ride.customerId,
+          amount: totalFare,
+          referenceType: RIDE_WALLET_REFERENCE_TYPES.REFUND,
+          referenceId: ride.id,
+          description: `Ride fare refund (${ride.id}): ${reason}`,
+          context,
+        }),
+      );
+    }
+
+    return totalFare;
+  }
+
+  /** Claw the driver's earning back to the platform. If the driver's wallet
+   * can't cover it (already withdrawn), record the shortfall as a recoverable
+   * driver liability instead of silently failing (founder decision: money must
+   * not disappear). The re-check on the insufficient path prevents a concurrent
+   * refund from both debiting AND recording a debt for the same ride. */
+  private async clawBackDriverEarning(
+    ride: Ride,
+    driverId: string,
+    driverEarning: number,
+    reason: string,
+    context: AuditContext,
+  ): Promise<void> {
+    try {
+      await this.withConflictRetry(() =>
+        this.walletService.debit({
+          ownerType: WalletOwnerType.DRIVER,
+          ownerId: driverId,
+          amount: driverEarning,
+          referenceType: RIDE_WALLET_REFERENCE_TYPES.EARNING_REVERSAL,
+          referenceId: ride.id,
+          description: `Driver earning clawback for refunded ride ${ride.id}: ${reason}`,
+          context,
+        }),
+      );
+    } catch (error) {
+      if (!(error instanceof ValidationDomainException)) {
+        throw error;
+      }
+      // Insufficient driver balance. Under a concurrent refund the winner may
+      // already have debited it — only record a debt if no clawback debit
+      // exists yet, so we never both debit AND record a liability.
+      const alreadyClawedBack = await this.driverEarningReversalExists(driverId, ride.id);
+      if (!alreadyClawedBack) {
+        await this.recordDriverLiabilityWithRetry({
+          ownerType: CommissionOwnerType.DRIVER,
+          ownerId: driverId,
+          amount: driverEarning,
+          referenceType: COMMISSION_RIDE_EARNING_DEBT_REFERENCE_TYPE,
+          referenceId: ride.id,
+          description: `Unrecovered driver earning for refunded ride ${ride.id}: ${reason}`,
+          context,
+        });
+        return;
+      }
+      // A concurrent refund already clawed it back — fall through and ensure the
+      // matching platform credit leg is applied (idempotent).
+    }
+
+    // The driver's earning is back with the platform — credit it.
+    await this.withConflictRetry(() =>
+      this.walletService.credit({
+        ownerType: WalletOwnerType.PLATFORM,
+        ownerId: PLATFORM_WALLET_OWNER_ID,
+        amount: driverEarning,
+        referenceType: RIDE_WALLET_REFERENCE_TYPES.EARNING_REVERSAL,
+        referenceId: ride.id,
+        description: `Driver earning clawback returned to platform (${ride.id}): ${reason}`,
+        context,
+      }),
+    );
+  }
+
+  private async driverEarningReversalExists(driverId: string, rideId: string): Promise<boolean> {
+    const entry = await this.prisma.walletLedgerEntry.findFirst({
+      where: {
+        wallet: { ownerType: WalletOwnerType.DRIVER, ownerId: driverId },
+        referenceType: RIDE_WALLET_REFERENCE_TYPES.EARNING_REVERSAL,
+        referenceId: rideId,
+      },
+    });
+    return entry !== null;
+  }
+
+  private async recordDriverLiabilityWithRetry(
+    input: Parameters<CommissionAccountService['recordLiability']>[0],
+  ): Promise<void> {
+    await this.withConflictRetry(() => this.commissionAccounts.recordLiability(input));
+  }
+
+  /** Bounded retry on the optimistic-concurrency ConflictDomainException that a
+   * wallet/commission mutation raises when another operation moved the same
+   * balance first — the D7 pattern. Every wrapped mutation is idempotent by
+   * reference, so a retried call that already applied is a safe no-op. Only
+   * ConflictDomainException is retried; ValidationDomainException (e.g.
+   * insufficient balance) propagates so callers can branch on it. */
+  private async withConflictRetry<T>(op: () => Promise<T>): Promise<T> {
+    const maxAttempts = 5;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        return await op();
+      } catch (error) {
+        if (!(error instanceof ConflictDomainException) || attempt === maxAttempts) {
+          throw error;
+        }
+      }
+    }
+    // Unreachable — the loop returns or throws within maxAttempts.
+    throw new ConflictDomainException('Balance changed; retry operation');
   }
 
   private async captureIntoPlatformWallet(ride: Ride, context: AuditContext): Promise<void> {

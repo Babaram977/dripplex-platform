@@ -223,6 +223,48 @@ export class CommissionAccountService {
     return await this.currentAccount(result.account.id);
   }
 
+  /** DPX-D4 — records an amount the owner owes the platform that could NOT be
+   * recovered directly: a ride refund's driver-earning clawback when the
+   * driver's Wallet was already drawn down (see MerchantSettlementService's
+   * documented "money must not disappear" principle applied to rides). It is
+   * the mirror of reverseAccrual() — an `ADJUSTMENT` that moves the balance,
+   * here `INCREASE` (the owner now owes more) rather than `DECREASE`. Not an
+   * `ACCRUAL`: this is a recoverable liability, not commission. Exactly-once
+   * via referenceType/referenceId (the same ledger uniqueness guard). Like
+   * every other balance mutation it re-runs the block-state recompute, so the
+   * debt participates in the existing credit-control gate — a driver who owes
+   * an un-recovered clawback is treated the same as one who owes commission.
+   * Report-only: D4 adds no auto-collection; reconciliation surfaces it. */
+  public async recordLiability(input: {
+    ownerType: CommissionOwnerType;
+    ownerId: string;
+    amount: number | string | Prisma.Decimal;
+    referenceType: string;
+    referenceId: string;
+    description?: string;
+    context?: AuditContext;
+  }): Promise<CommissionAccount> {
+    const amount = this.toPositiveDecimal(input.amount);
+    const result = await this.prisma.$transaction(async (tx) => {
+      return await this.applyMutation(tx, {
+        ownerType: input.ownerType,
+        ownerId: input.ownerId,
+        amount,
+        entryType: CommissionEntryType.ADJUSTMENT,
+        direction: 'INCREASE',
+        referenceType: input.referenceType,
+        referenceId: input.referenceId,
+        description: input.description ?? 'Recoverable liability recorded',
+      });
+    });
+
+    if (result.applied) {
+      await this.recomputeAndPersistBlockState(result.account, input.context);
+    }
+
+    return await this.currentAccount(result.account.id);
+  }
+
   private async currentAccount(id: string): Promise<CommissionAccount> {
     return await this.prisma.commissionAccount.findUniqueOrThrow({ where: { id } });
   }
