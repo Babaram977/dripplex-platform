@@ -19,6 +19,7 @@ import { DriversModule } from './drivers/drivers.module';
 import { EventsModule } from './events/events.module';
 import { FraudModule } from './fraud/fraud.module';
 import { HealthModule } from './health/health.module';
+import { KycModule } from './kyc/kyc.module';
 import { AppLoggerModule } from './logger/logger.module';
 import { LoyaltyModule } from './loyalty/loyalty.module';
 import { MerchantsModule } from './merchants/merchants.module';
@@ -80,6 +81,7 @@ import { WishlistModule } from './wishlist/wishlist.module';
     HealthModule,
     OperationsModule,
     CommercialModule,
+    KycModule,
   ],
   providers: [
     {

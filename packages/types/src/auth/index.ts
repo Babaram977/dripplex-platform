@@ -100,14 +100,60 @@ export interface AuthUserProfile {
   phone: string | null;
   firstName: string;
   lastName: string;
+  profilePhotoUrl: string | null;
+  dateOfBirth: string | null;
+  gender: string | null;
   status: UserStatus;
   roles: string[];
   permissions: string[];
 }
 
+/**
+ * PATCH /auth/me — DPX-PROFILE-KYC-001 founder decision (2026-08-07). No
+ * `phone`/`email` here: those go through the verification-gated change
+ * endpoints below, never a silent PATCH. No `username`: explicit founder
+ * decision not to introduce one.
+ */
+export interface UpdateProfileValues {
+  firstName?: string;
+  lastName?: string;
+  profilePhotoUrl?: string;
+  dateOfBirth?: string;
+  gender?: string;
+}
+
+export interface RequestPhoneChangeValues {
+  newPhone: string;
+}
+
+export interface ConfirmPhoneChangeValues {
+  otp: string;
+}
+
+export interface RequestEmailChangeValues {
+  newEmail: string;
+}
+
+export interface ConfirmEmailChangeValues {
+  otp: string;
+}
+
 export interface AuthSessionPayload {
   user: AuthUserProfile;
   tokens: AuthTokens;
+}
+
+/**
+ * "Become a Driver" / "Become a Merchant" -- grants an additional role to
+ * the CURRENT authenticated user's account. Distinct from
+ * `RegistrationResponse`: no OTP/verification state, since the account is
+ * already verified; the caller proceeds straight into the role's existing
+ * onboarding endpoints using `onboardingId`.
+ */
+export interface AddRoleResponse {
+  role: string;
+  profileId: string;
+  onboardingId: string;
 }
 
 export const AUTH_AUDIT_ACTIONS = {

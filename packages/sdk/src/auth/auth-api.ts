@@ -1,10 +1,13 @@
 import type { HttpClient } from '../client/http-client.js';
 import type {
+  AddRoleResponse,
   AuthSessionPayload,
   AuthTokens,
   AuthUserProfile,
   ChangePasswordFormValues,
   ChangePasswordResponse,
+  ConfirmEmailChangeValues,
+  ConfirmPhoneChangeValues,
   CustomerRegistrationValues,
   DriverRegistrationValues,
   EmailVerificationResponse,
@@ -18,11 +21,14 @@ import type {
   PortalLoginValues,
   RegisterFormValues,
   RegistrationResponse,
+  RequestEmailChangeValues,
+  RequestPhoneChangeValues,
   ResetPasswordFormValues,
   ResetPasswordResponse,
   RiderRegistrationValues,
   SendOtpDto,
   SendVerificationDto,
+  UpdateProfileValues,
   VerificationSubmittedResponse,
   VerifyEmailDto,
   VerifyEmailValues,
@@ -74,6 +80,28 @@ export class AuthApi {
     });
   }
 
+  /**
+   * "Become a Driver" -- grants the driver role to the currently
+   * authenticated account (Super App role toggle), as opposed to
+   * `registerDriver` above which always creates a brand-new account and
+   * rejects if the email/phone is already registered. Requires an active
+   * session; no body needed since the account already exists.
+   */
+  public becomeDriver(): Promise<AddRoleResponse> {
+    return this.http.request<AddRoleResponse>('/auth/roles/driver', {
+      method: 'POST',
+      auth: true,
+    });
+  }
+
+  /** Merchant counterpart to `becomeDriver` -- same fix, same reasoning. */
+  public becomeMerchant(): Promise<AddRoleResponse> {
+    return this.http.request<AddRoleResponse>('/auth/roles/merchant', {
+      method: 'POST',
+      auth: true,
+    });
+  }
+
   public verifyEmail(body: VerifyEmailValues): Promise<EmailVerificationResponse> {
     return this.http.request<EmailVerificationResponse>('/auth/verify/email', {
       method: 'POST',
@@ -84,6 +112,21 @@ export class AuthApi {
 
   public verifyPhone(body: VerifyPhoneValues): Promise<PhoneVerificationResponse> {
     return this.http.request<PhoneVerificationResponse>('/auth/verify/phone', {
+      method: 'POST',
+      body,
+      auth: false,
+    });
+  }
+
+  /**
+   * Resends the 6-digit code `verifyEmail` above checks. Distinct from
+   * `resendEmailVerification` below, which resends a signed magic-link
+   * token for the separate `/verify-email` page flow -- mixing the two up
+   * was a real bug (the OTP screen's "Resend" previously called the
+   * magic-link resend, which never refreshed the code being verified).
+   */
+  public resendEmailOtp(body: SendVerificationDto): Promise<VerificationSubmittedResponse> {
+    return this.http.request<VerificationSubmittedResponse>('/auth/verify/email/resend', {
       method: 'POST',
       body,
       auth: false,
@@ -234,8 +277,17 @@ export class AuthApi {
     });
   }
 
+  /**
+   * Resends the 6-digit code `verifyPhoneOtp` above checks (via
+   * `/auth/verify/phone`), not the code checked by `verifyPhoneOtp`'s
+   * System-B sibling on `PhoneVerificationController`. Was previously
+   * wired to `/auth/phone/resend`, a different, Postgres-backed OTP store
+   * than the one `/auth/verify/phone` reads from -- a resent code would
+   * arrive by SMS but always fail to verify. Fixed to hit the matching
+   * endpoint.
+   */
   public resendPhoneOtp(body: SendOtpDto): Promise<VerificationSubmittedResponse> {
-    return this.http.request<VerificationSubmittedResponse>('/auth/phone/resend', {
+    return this.http.request<VerificationSubmittedResponse>('/auth/verify/phone/resend', {
       method: 'POST',
       body,
       auth: false,
@@ -265,6 +317,51 @@ export class AuthApi {
 
   public me(): Promise<AuthUserProfile> {
     return this.http.request<AuthUserProfile>('/auth/me');
+  }
+
+  /**
+   * DPX-PROFILE-KYC-001 (founder decision 2026-08-07): editable fields only
+   * -- no phone/email (verification-gated, see below) and no username (not
+   * introduced, by design).
+   */
+  public updateProfile(body: UpdateProfileValues): Promise<AuthUserProfile> {
+    return this.http.request<AuthUserProfile>('/auth/me', {
+      method: 'PATCH',
+      body,
+      auth: true,
+    });
+  }
+
+  public requestPhoneChange(body: RequestPhoneChangeValues): Promise<{ expiresInSeconds: number }> {
+    return this.http.request<{ expiresInSeconds: number }>('/auth/me/phone/change', {
+      method: 'POST',
+      body,
+      auth: true,
+    });
+  }
+
+  public confirmPhoneChange(body: ConfirmPhoneChangeValues): Promise<AuthUserProfile> {
+    return this.http.request<AuthUserProfile>('/auth/me/phone/change/confirm', {
+      method: 'POST',
+      body,
+      auth: true,
+    });
+  }
+
+  public requestEmailChange(body: RequestEmailChangeValues): Promise<{ expiresInSeconds: number }> {
+    return this.http.request<{ expiresInSeconds: number }>('/auth/me/email/change', {
+      method: 'POST',
+      body,
+      auth: true,
+    });
+  }
+
+  public confirmEmailChange(body: ConfirmEmailChangeValues): Promise<AuthUserProfile> {
+    return this.http.request<AuthUserProfile>('/auth/me/email/change/confirm', {
+      method: 'POST',
+      body,
+      auth: true,
+    });
   }
 
   /**

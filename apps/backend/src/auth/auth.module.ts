@@ -14,7 +14,7 @@ import { GoogleAuthController } from './controllers/google-auth.controller';
 import { LoginController } from './controllers/login.controller';
 import { PasswordController } from './controllers/password.controller';
 import { PhoneVerificationController } from './controllers/phone-verification.controller';
-import { RegistrationController } from './controllers/registration.controller';
+import { RegistrationController, RoleGrantController } from './controllers/registration.controller';
 import { SessionsController } from './controllers/sessions.controller';
 import { VerificationController } from './controllers/verification.controller';
 import { GoogleConfiguredGuard } from './guards/google-configured.guard';
@@ -38,6 +38,7 @@ import { OtpService } from './services/otp.service';
 import { PasswordPolicyService } from './services/password-policy.service';
 import { PasswordService } from './services/password.service';
 import { PhoneVerificationService } from './services/phone-verification.service';
+import { ProfileService } from './services/profile.service';
 import { RefreshService } from './services/refresh.service';
 import { RegistrationService } from './services/registration.service';
 import { SessionActivityService } from './services/session-activity.service';
@@ -60,6 +61,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
   controllers: [
     AuthController,
     RegistrationController,
+    RoleGrantController,
     VerificationController,
     LoginController,
     PasswordController,
@@ -86,6 +88,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     LogoutService,
     PasswordPolicyService,
     PasswordService,
+    ProfileService,
     JwtStrategy,
     JwtAuthGuard,
     PermissionsGuard,

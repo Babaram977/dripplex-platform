@@ -10,6 +10,14 @@ export interface CreateUserInput {
   registrationChannel?: RegistrationChannel;
 }
 
+export interface UpdateProfileInput {
+  firstName?: string;
+  lastName?: string;
+  profilePhotoUrl?: string;
+  dateOfBirth?: Date;
+  gender?: string;
+}
+
 export interface UserWithRbac extends User {
   roles: {
     role: {
@@ -38,6 +46,11 @@ export interface UsersRepository {
   softDelete(id: string): Promise<User>;
   updatePassword(id: string, passwordHash: string): Promise<User>;
   linkGoogleId(id: string, googleId: string): Promise<User>;
+  updateProfile(id: string, data: UpdateProfileInput): Promise<User>;
+  /** Sets the new phone number and marks it verified (the caller has already confirmed OTP). */
+  updatePhone(id: string, phone: string): Promise<User>;
+  /** Sets the new email and marks it verified (the caller has already confirmed OTP). */
+  updateEmail(id: string, email: string): Promise<User>;
   list(params: { skip: number; take: number }): Promise<{ items: User[]; total: number }>;
 }
 

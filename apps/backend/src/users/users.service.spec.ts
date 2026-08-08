@@ -22,6 +22,9 @@ describe('UsersService', () => {
     softDelete: jest.fn(),
     updatePassword: jest.fn(),
     linkGoogleId: jest.fn(),
+    updateProfile: jest.fn(),
+    updatePhone: jest.fn(),
+    updateEmail: jest.fn(),
     list: jest.fn(),
   };
 
@@ -35,6 +38,9 @@ describe('UsersService', () => {
     googleId: null,
     firstName: 'Ada',
     lastName: 'Lovelace',
+    profilePhotoUrl: null,
+    dateOfBirth: null,
+    gender: null,
     status: UserStatus.ACTIVE,
     emailVerifiedAt: null,
     phoneVerifiedAt: null,

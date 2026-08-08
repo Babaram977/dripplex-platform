@@ -1,12 +1,25 @@
 'use client';
 
+import { useAuth } from '@dripplex/hooks';
 import { DripplexLogo } from '@dripplex/ui';
 import { cn } from '@dripplex/utils';
-import { Home, LayoutDashboard, Package, ShoppingBag, UserRound, Wallet } from 'lucide-react';
+import {
+  Car,
+  Home,
+  LayoutDashboard,
+  LayoutGrid,
+  Package,
+  ShieldCheck,
+  ShoppingBag,
+  Store,
+  UserRound,
+  Wallet,
+} from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import * as React from 'react';
 
+import { siteConfig } from '@/lib/site';
 import { useUiStore } from '@/stores/ui-store';
 
 const navItems = [
@@ -17,9 +30,58 @@ const navItems = [
   { href: '/dashboard#profile', label: 'Profile', icon: UserRound },
 ] as const;
 
+/**
+ * Role-toggle drawer (Super App shell, DPX-100 Phase 1). Each entry is
+ * gated on the real role names the backend seeds
+ * (`apps/backend/prisma/seed-rbac.cjs`), read from `user.roles` off
+ * `/auth/me` -- not decorative, and not one entry per portal regardless
+ * of account. A customer-only account sees none of these; an account
+ * that also holds the `driver` role sees Driver, etc. Today each link
+ * opens the real, already-live portal app in a new tab (cross-app
+ * navigation) -- Phase 2 replaces Driver with an embedded in-app section
+ * ported from the Figma source; Ops/Admin stay separate desktop consoles
+ * because the Figma design itself renders them in a `DesktopFrame`, not
+ * a phone frame.
+ */
+interface CrossPortalLink {
+  role: string;
+  label: string;
+  href: string;
+  icon: typeof Car;
+}
+
+const CROSS_PORTAL_ROLE_LINKS: readonly CrossPortalLink[] = [
+  { role: 'driver', label: 'Driver', href: siteConfig.crossPortalUrls.driver, icon: Car },
+  { role: 'merchant', label: 'Merchant', href: siteConfig.crossPortalUrls.merchant, icon: Store },
+  {
+    role: 'operations_staff',
+    label: 'Operations',
+    href: siteConfig.crossPortalUrls.operations,
+    icon: LayoutGrid,
+  },
+];
+
 export function Sidebar(): React.JSX.Element {
   const pathname = usePathname();
   const collapsed = useUiStore((state) => state.isSidebarCollapsed);
+  const { user } = useAuth();
+  const roles = React.useMemo(() => new Set(user?.roles ?? []), [user?.roles]);
+
+  const crossPortalItems = React.useMemo((): readonly CrossPortalLink[] => {
+    const items = CROSS_PORTAL_ROLE_LINKS.filter((item) => roles.has(item.role));
+    const isAdmin = roles.has('administrator') || roles.has('super_administrator');
+    return isAdmin
+      ? [
+          ...items,
+          {
+            role: 'administrator',
+            label: 'Admin',
+            href: siteConfig.crossPortalUrls.admin,
+            icon: ShieldCheck,
+          },
+        ]
+      : items;
+  }, [roles]);
 
   return (
     <aside
@@ -63,6 +125,65 @@ export function Sidebar(): React.JSX.Element {
             </Link>
           );
         })}
+
+        {!roles.has('driver') ? (
+          <div className="border-border/70 mt-3 border-t pt-3">
+            {!collapsed ? (
+              <p className="text-muted-foreground px-3 pb-1 text-xs font-medium uppercase tracking-wide">
+                Get started
+              </p>
+            ) : null}
+            <Link
+              href="/driver-onboarding"
+              className={cn(
+                'hover:bg-muted text-muted-foreground inline-flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors',
+                collapsed && 'justify-center px-2',
+              )}
+              title="Become a Driver"
+            >
+              <Car className="h-4 w-4 shrink-0" aria-hidden="true" />
+              {!collapsed ? (
+                <span>Become a Driver</span>
+              ) : (
+                <span className="sr-only">Become a Driver</span>
+              )}
+            </Link>
+          </div>
+        ) : null}
+
+        {crossPortalItems.length > 0 ? (
+          <div className="border-border/70 mt-3 border-t pt-3">
+            {!collapsed ? (
+              <p className="text-muted-foreground px-3 pb-1 text-xs font-medium uppercase tracking-wide">
+                Your other apps
+              </p>
+            ) : null}
+            {crossPortalItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <a
+                  key={item.role}
+                  href={item.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={cn(
+                    'hover:bg-muted text-muted-foreground inline-flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors',
+                    collapsed && 'justify-center px-2',
+                  )}
+                  title={`${item.label} (opens in a new tab)`}
+                >
+                  <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  {!collapsed ? (
+                    <span>{item.label}</span>
+                  ) : (
+                    <span className="sr-only">{item.label}</span>
+                  )}
+                </a>
+              );
+            })}
+          </div>
+        ) : null}
+
         <Link
           href="/"
           className={cn(

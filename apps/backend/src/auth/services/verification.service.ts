@@ -1,10 +1,14 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { RegistrationChannel } from '@prisma/client';
 
 import {
   NotFoundDomainException,
   ValidationDomainException,
 } from '../../common/exceptions/domain.exception';
+import {
+  NOTIFICATION_SERVICE,
+  type NotificationService,
+} from '../../notifications/notification.service';
 import { UsersService } from '../../users/users.service';
 
 import { OtpService } from './otp.service';
@@ -26,6 +30,8 @@ export class VerificationService {
   constructor(
     private readonly usersService: UsersService,
     private readonly otpService: OtpService,
+    @Inject(NOTIFICATION_SERVICE)
+    private readonly notificationService: NotificationService,
   ) {}
 
   public async verifyEmail(
@@ -84,6 +90,60 @@ export class VerificationService {
       status: activated.status,
       phoneVerifiedAt: (updated.phoneVerifiedAt ?? new Date()).toISOString(),
     };
+  }
+
+  /**
+   * Resends the 6-digit code checked by `verifyEmail` above -- deliberately
+   * NOT the same system as `EmailVerificationController`'s `/auth/email/resend`
+   * (a signed magic-link token for a separate feature). That mismatch was a
+   * real bug: the OTP screen's "Resend" button called the magic-link resend,
+   * which neither refreshed the code `verifyEmail` checks nor sent one at
+   * all. This regenerates the same `OtpService`-backed code the original
+   * registration dispatch created, so a resent code actually verifies.
+   * Anti-enumeration: always reports success, whether or not the email
+   * belongs to an account.
+   */
+  public async resendEmailOtp(email: string, context: AuditContext): Promise<{ submitted: true }> {
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await this.usersService.findByEmail(normalizedEmail);
+    if (user && !user.deletedAt) {
+      await this.otpService.generateStoreAndDispatch(
+        'email_verification',
+        normalizedEmail,
+        context,
+        async (otp, expiresInSeconds) => {
+          await this.notificationService.sendEmailOtp({
+            email: normalizedEmail,
+            otp,
+            expiresInSeconds,
+          });
+        },
+        user.id,
+      );
+    }
+    return { submitted: true };
+  }
+
+  /** Phone counterpart to `resendEmailOtp` -- same fix, same reasoning. */
+  public async resendPhoneOtp(phone: string, context: AuditContext): Promise<{ submitted: true }> {
+    const normalizedPhone = phone.trim();
+    const user = await this.usersService.findByPhone(normalizedPhone);
+    if (user && !user.deletedAt) {
+      await this.otpService.generateStoreAndDispatch(
+        'phone_verification',
+        normalizedPhone,
+        context,
+        async (otp, expiresInSeconds) => {
+          await this.notificationService.sendPhoneOtp({
+            phone: normalizedPhone,
+            otp,
+            expiresInSeconds,
+          });
+        },
+        user.id,
+      );
+    }
+    return { submitted: true };
   }
 
   private requiresPhoneVerification(channel: RegistrationChannel | null): boolean {

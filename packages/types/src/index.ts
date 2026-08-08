@@ -2,12 +2,25 @@ export type { ApiErrorResponse, ApiResponse, ApiSuccessResponse } from './api/re
 export { isApiErrorResponse, isApiSuccessResponse } from './api/response.js';
 
 export type {
+  AdminCustomerKycListItemDto,
+  CustomerKycLevel,
+  CustomerKycStatus,
+  CustomerKycStatusDto,
+  RejectCustomerKycValues,
+  ReviewCustomerKycValues,
+  SubmitCustomerKycValues,
+} from './kyc/index.js';
+
+export type {
+  AddRoleResponse,
   AuthenticatedUser,
   AuthAuditAction,
   AuthSessionPayload,
   AuthTokens,
   AuthUserProfile,
   ChangePasswordResponse,
+  ConfirmEmailChangeValues,
+  ConfirmPhoneChangeValues,
   DeviceInfoDto,
   DeviceType,
   EmailVerificationResponse,
@@ -24,8 +37,11 @@ export type {
   RegistrationChannel,
   RegistrationResponse,
   RegistrationVerificationInfo,
+  RequestEmailChangeValues,
+  RequestPhoneChangeValues,
   ResetPasswordResponse,
   SessionDto,
+  UpdateProfileValues,
   UserStatus,
   VerificationSubmittedResponse,
 } from './auth/index.js';

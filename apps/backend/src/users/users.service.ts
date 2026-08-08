@@ -5,6 +5,7 @@ import { NotFoundDomainException } from '../common/exceptions/domain.exception';
 import {
   USERS_REPOSITORY,
   type CreateUserInput,
+  type UpdateProfileInput,
   type UserWithRbac,
   type UsersRepository,
 } from './repositories/users.repository';
@@ -71,6 +72,18 @@ export class UsersService {
 
   public linkGoogleId(id: string, googleId: string): Promise<User> {
     return this.usersRepository.linkGoogleId(id, googleId);
+  }
+
+  public updateProfile(id: string, data: UpdateProfileInput): Promise<User> {
+    return this.usersRepository.updateProfile(id, data);
+  }
+
+  public updatePhone(id: string, phone: string): Promise<User> {
+    return this.usersRepository.updatePhone(id, phone);
+  }
+
+  public updateEmail(id: string, email: string): Promise<User> {
+    return this.usersRepository.updateEmail(id, email);
   }
 
   public async getByIdOrThrow(id: string): Promise<User> {

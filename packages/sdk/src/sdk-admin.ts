@@ -40,6 +40,7 @@ export function createAdminSdk(config: Partial<SdkConfig> = {}): AdminSdk {
     wallet: client.wallet,
     adminCommercialCreditSettings: client.adminCommercialCreditSettings,
     adminCommissionAccounts: client.adminCommissionAccounts,
+    adminCustomerKyc: client.adminCustomerKyc,
   };
 }
 
@@ -76,6 +77,8 @@ export interface AdminSdk {
   adminCommercialCreditSettings: DripplexClient['adminCommercialCreditSettings'];
   /** DPX-COMMERCIAL-001 Slice 1/5 — any owner's commission account/ledger + manual payment recording. */
   adminCommissionAccounts: DripplexClient['adminCommissionAccounts'];
+  /** DPX-PROFILE-KYC-002 — admin review of customer Level 2 identity verification submissions. */
+  adminCustomerKyc: DripplexClient['adminCustomerKyc'];
 }
 
 export function resolveAdminSdkConfig(config: Partial<SdkConfig> = {}): SdkConfig {

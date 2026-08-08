@@ -1,14 +1,18 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Patch, Post, Req } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/permissions.decorator';
 
 import { AuthService } from './auth.service';
+import { ConfirmEmailChangeDto, RequestEmailChangeDto } from './dto/change-email.dto';
+import { ConfirmPhoneChangeDto, RequestPhoneChangeDto } from './dto/change-phone.dto';
 import { RequestOtpDto, VerifyOtpDto } from './dto/otp.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { LogoutService } from './services/logout.service';
+import { ProfileService } from './services/profile.service';
 import { RefreshService } from './services/refresh.service';
 
 import type { AuthenticatedUser, AuthTokens, AuthUserProfile } from './auth.types';
@@ -21,6 +25,7 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly refreshService: RefreshService,
     private readonly logoutService: LogoutService,
+    private readonly profileService: ProfileService,
   ) {}
 
   @Public()
@@ -91,6 +96,84 @@ export class AuthController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<ApiSuccessResponse<AuthUserProfile>> {
     const profile = await this.authService.getProfile(user.id);
+    return { success: true, data: profile };
+  }
+
+  @Patch('me')
+  public async updateMe(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateProfileDto,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<AuthUserProfile>> {
+    const profile = await this.profileService.updateProfile(
+      user.id,
+      dto,
+      this.auditContext(request, user.id),
+    );
+    return { success: true, data: profile };
+  }
+
+  @Post('me/phone/change')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  public async requestPhoneChange(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: RequestPhoneChangeDto,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<{ expiresInSeconds: number }>> {
+    const result = await this.profileService.requestPhoneChange(
+      user.id,
+      dto.newPhone,
+      this.auditContext(request, user.id),
+    );
+    return { success: true, data: result };
+  }
+
+  @Post('me/phone/change/confirm')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  public async confirmPhoneChange(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ConfirmPhoneChangeDto,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<AuthUserProfile>> {
+    const profile = await this.profileService.confirmPhoneChange(
+      user.id,
+      dto.otp,
+      this.auditContext(request, user.id),
+    );
+    return { success: true, data: profile };
+  }
+
+  @Post('me/email/change')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  public async requestEmailChange(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: RequestEmailChangeDto,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<{ expiresInSeconds: number }>> {
+    const result = await this.profileService.requestEmailChange(
+      user.id,
+      dto.newEmail,
+      this.auditContext(request, user.id),
+    );
+    return { success: true, data: result };
+  }
+
+  @Post('me/email/change/confirm')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  public async confirmEmailChange(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ConfirmEmailChangeDto,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<AuthUserProfile>> {
+    const profile = await this.profileService.confirmEmailChange(
+      user.id,
+      dto.otp,
+      this.auditContext(request, user.id),
+    );
     return { success: true, data: profile };
   }
 

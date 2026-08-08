@@ -5,6 +5,7 @@ import { NotFoundDomainException } from '../../common/exceptions/domain.exceptio
 import { VerificationService } from './verification.service';
 
 import type { OtpService } from './otp.service';
+import type { NotificationService } from '../../notifications/notification.service';
 import type { UsersService } from '../../users/users.service';
 
 describe('VerificationService', () => {
@@ -18,9 +19,15 @@ describe('VerificationService', () => {
 
   const otpService = {
     verify: jest.fn(),
+    generateStoreAndDispatch: jest.fn(),
   } as unknown as jest.Mocked<OtpService>;
 
-  const service = new VerificationService(usersService, otpService);
+  const notificationService = {
+    sendEmailOtp: jest.fn(),
+    sendPhoneOtp: jest.fn(),
+  } as unknown as jest.Mocked<NotificationService>;
+
+  const service = new VerificationService(usersService, otpService, notificationService);
 
   const user = {
     id: '11111111-1111-1111-1111-111111111111',
@@ -90,5 +97,81 @@ describe('VerificationService', () => {
     await expect(service.verifyEmail('missing@example.com', '123456', {})).rejects.toBeInstanceOf(
       NotFoundDomainException,
     );
+  });
+
+  describe('resendEmailOtp', () => {
+    it('regenerates the OTP through the same Redis-backed OtpService verifyEmail checks', async () => {
+      (usersService.findByEmail as jest.Mock).mockResolvedValue(user);
+      (otpService.generateStoreAndDispatch as jest.Mock).mockImplementation(
+        async (_purpose, _identifier, _context, dispatch) => {
+          await dispatch('654321', 600);
+          return { expiresInSeconds: 600, channel: 'email', otp: '654321' };
+        },
+      );
+
+      const result = await service.resendEmailOtp('Ada@example.com', {});
+
+      expect(result).toEqual({ submitted: true });
+      expect(otpService.generateStoreAndDispatch).toHaveBeenCalledWith(
+        'email_verification',
+        'ada@example.com',
+        {},
+        expect.any(Function),
+        user.id,
+      );
+      expect(notificationService.sendEmailOtp).toHaveBeenCalledWith({
+        email: 'ada@example.com',
+        otp: '654321',
+        expiresInSeconds: 600,
+      });
+    });
+
+    it('is silent (no dispatch, still reports submitted) for an unknown email -- anti-enumeration', async () => {
+      (usersService.findByEmail as jest.Mock).mockResolvedValue(null);
+
+      const result = await service.resendEmailOtp('missing@example.com', {});
+
+      expect(result).toEqual({ submitted: true });
+      expect(otpService.generateStoreAndDispatch).not.toHaveBeenCalled();
+      expect(notificationService.sendEmailOtp).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('resendPhoneOtp', () => {
+    it('regenerates the OTP through the same Redis-backed OtpService verifyPhone checks', async () => {
+      (usersService.findByPhone as jest.Mock).mockResolvedValue(user);
+      (otpService.generateStoreAndDispatch as jest.Mock).mockImplementation(
+        async (_purpose, _identifier, _context, dispatch) => {
+          await dispatch('111222', 300);
+          return { expiresInSeconds: 300, channel: 'sms', otp: '111222' };
+        },
+      );
+
+      const result = await service.resendPhoneOtp('+2348012345678', {});
+
+      expect(result).toEqual({ submitted: true });
+      expect(otpService.generateStoreAndDispatch).toHaveBeenCalledWith(
+        'phone_verification',
+        '+2348012345678',
+        {},
+        expect.any(Function),
+        user.id,
+      );
+      expect(notificationService.sendPhoneOtp).toHaveBeenCalledWith({
+        phone: '+2348012345678',
+        otp: '111222',
+        expiresInSeconds: 300,
+      });
+    });
+
+    it('is silent (no dispatch, still reports submitted) for an unknown phone -- anti-enumeration', async () => {
+      (usersService.findByPhone as jest.Mock).mockResolvedValue(null);
+
+      const result = await service.resendPhoneOtp('+2348099999999', {});
+
+      expect(result).toEqual({ submitted: true });
+      expect(otpService.generateStoreAndDispatch).not.toHaveBeenCalled();
+      expect(notificationService.sendPhoneOtp).not.toHaveBeenCalled();
+    });
   });
 });

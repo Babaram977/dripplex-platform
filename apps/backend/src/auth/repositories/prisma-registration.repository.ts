@@ -1,10 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { OnboardingStatus } from '@prisma/client';
 
-import { NotFoundDomainException } from '../../common/exceptions/domain.exception';
+import {
+  ConflictDomainException,
+  NotFoundDomainException,
+} from '../../common/exceptions/domain.exception';
 import { PrismaService } from '../../prisma/prisma.service';
 
 import type {
+  AddPortalRoleInput,
+  AddPortalRoleResult,
   PortalRegistrationInput,
   PortalRegistrationResult,
   RegistrationRepository,
@@ -109,6 +114,54 @@ export class PrismaRegistrationRepository implements RegistrationRepository {
         profileId,
         ...(onboardingId !== undefined ? { onboardingId } : {}),
       };
+    });
+  }
+
+  /**
+   * Grants an additional role to a user who already has an account --
+   * the "Become a Driver" / "Become a Merchant" path inside the Super App,
+   * as opposed to `registerPortalUser`'s always-new-account path. Reuses
+   * the exact same profile+onboarding creation this file already does for
+   * fresh registrations, just skipping user creation.
+   */
+  public async addPortalRole(input: AddPortalRoleInput): Promise<AddPortalRoleResult> {
+    const role = await this.prisma.role.findFirst({
+      where: { name: input.roleName, deletedAt: null },
+    });
+
+    if (!role) {
+      throw new NotFoundDomainException(`Role ${input.roleName} is not configured`);
+    }
+
+    return await this.prisma.$transaction(async (tx) => {
+      const existingGrant = await tx.userRole.findUnique({
+        where: { userId_roleId: { userId: input.userId, roleId: role.id } },
+      });
+      if (existingGrant) {
+        throw new ConflictDomainException(`User already holds the ${input.roleName} role`);
+      }
+
+      await tx.userRole.create({
+        data: { userId: input.userId, roleId: role.id },
+      });
+
+      if (input.portal === 'merchant') {
+        const profile = await tx.merchantProfile.create({
+          data: { userId: input.userId },
+        });
+        const onboarding = await tx.merchantOnboarding.create({
+          data: { merchantProfileId: profile.id, status: OnboardingStatus.DRAFT },
+        });
+        return { profileId: profile.id, onboardingId: onboarding.id };
+      }
+
+      const profile = await tx.driverProfile.create({
+        data: { userId: input.userId },
+      });
+      const onboarding = await tx.driverOnboarding.create({
+        data: { driverProfileId: profile.id, status: OnboardingStatus.DRAFT },
+      });
+      return { profileId: profile.id, onboardingId: onboarding.id };
     });
   }
 }
