@@ -95,6 +95,7 @@ describe('VehiclesService', () => {
         color: 'Blue',
         year: 2020,
         rideCategory: 'ECONOMY',
+        seats: 4,
       },
       context,
     );
@@ -102,6 +103,8 @@ describe('VehiclesService', () => {
     expect(vehicle.driverId).toBe(driverId);
     expect(vehicle.approvalStatus).toBe('PENDING');
     expect(vehicle.plateNumber).toBe(vehicle.plateNumber.toUpperCase());
+    // DPX-DRIVER-017 — passenger capacity is persisted and returned.
+    expect(vehicle.seats).toBe(4);
   });
 
   it('rejects a duplicate plate number', async () => {
@@ -117,6 +120,7 @@ describe('VehiclesService', () => {
         color: 'Red',
         year: 2019,
         rideCategory: 'ECONOMY',
+        seats: 4,
       },
       context,
     );
@@ -131,6 +135,7 @@ describe('VehiclesService', () => {
           color: 'Red',
           year: 2019,
           rideCategory: 'ECONOMY',
+          seats: 4,
         },
         context,
       ),
@@ -149,6 +154,7 @@ describe('VehiclesService', () => {
         color: 'Black',
         year: 2021,
         rideCategory: 'ECONOMY',
+        seats: 4,
       },
       context,
     );
@@ -170,6 +176,7 @@ describe('VehiclesService', () => {
         color: 'White',
         year: 2018,
         rideCategory: 'ECONOMY',
+        seats: 4,
       },
       context,
     );
@@ -198,6 +205,7 @@ describe('VehiclesService', () => {
         color: 'Grey',
         year: 2022,
         rideCategory: 'ECONOMY',
+        seats: 4,
       },
       context,
     );
@@ -226,6 +234,7 @@ describe('VehiclesService', () => {
         color: 'Silver',
         year: 2020,
         rideCategory: 'COMFORT',
+        seats: 4,
       },
       context,
     );

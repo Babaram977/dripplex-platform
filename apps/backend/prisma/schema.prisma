@@ -1748,6 +1748,11 @@ model Vehicle {
   color          String                @db.VarChar(30)
   year           Int
   rideCategory   RideType              @map("ride_category")
+  // DPX-DRIVER-017 — passenger capacity is operational data in its own right and
+  // must not be inferred from rideCategory (founder decision). Nullable so the
+  // additive migration leaves existing rows untouched (unknown, not fabricated);
+  // new vehicle submissions require it via CreateVehicleDto.
+  seats          Int?
   isActive       Boolean               @default(true) @map("is_active")
   approvalStatus VehicleApprovalStatus @default(PENDING) @map("approval_status")
   approvedAt     DateTime?             @map("approved_at")

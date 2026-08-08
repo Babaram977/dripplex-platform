@@ -18,6 +18,7 @@ describe('DPX-DRIVER-002 DTO validation', () => {
       color: 'Blue',
       year: 2020,
       rideCategory: 'ECONOMY',
+      seats: 4,
     });
 
     const errors = await validate(dto);

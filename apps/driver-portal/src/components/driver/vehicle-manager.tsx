@@ -30,6 +30,7 @@ interface VehicleFormState {
   color: string;
   year: string;
   rideCategory: RideType;
+  seats: string;
 }
 
 const EMPTY_FORM: VehicleFormState = {
@@ -39,6 +40,7 @@ const EMPTY_FORM: VehicleFormState = {
   color: '',
   year: String(new Date().getFullYear()),
   rideCategory: 'ECONOMY',
+  seats: '',
 };
 
 function VehicleRow({ vehicle }: { vehicle: VehicleDto }): React.JSX.Element {
@@ -125,6 +127,7 @@ function VehicleRow({ vehicle }: { vehicle: VehicleDto }): React.JSX.Element {
         <div className="flex items-center justify-between">
           <p className="text-muted-foreground text-xs">
             {vehicle.color} {vehicle.make} {vehicle.model} ({vehicle.year})
+            {vehicle.seats !== null ? ` · ${String(vehicle.seats)} seats` : ''}
           </p>
           <Button
             type="button"
@@ -153,10 +156,19 @@ export function VehicleManager(): React.JSX.Element {
 
   const onCreate = (): void => {
     const year = Number(form.year);
+    const seats = Number(form.seats);
     if (!form.plateNumber.trim() || !form.make.trim() || !form.model.trim() || !form.color.trim()) {
       toast({
         title: "Couldn't add vehicle",
         description: 'Fill in all fields.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (!Number.isInteger(seats) || seats < 1) {
+      toast({
+        title: "Couldn't add vehicle",
+        description: 'Enter the passenger seat count.',
         variant: 'destructive',
       });
       return;
@@ -169,6 +181,7 @@ export function VehicleManager(): React.JSX.Element {
         color: form.color.trim(),
         year,
         rideCategory: form.rideCategory,
+        seats,
       },
       {
         onSuccess: () => {
@@ -273,6 +286,18 @@ export function VehicleManager(): React.JSX.Element {
                 value={form.year}
                 onChange={(event) => {
                   setForm((prev) => ({ ...prev, year: event.target.value }));
+                }}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="vehicle-seats">Passenger seats</Label>
+              <Input
+                id="vehicle-seats"
+                type="number"
+                min={1}
+                value={form.seats}
+                onChange={(event) => {
+                  setForm((prev) => ({ ...prev, seats: event.target.value }));
                 }}
               />
             </div>

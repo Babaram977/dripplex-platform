@@ -45,6 +45,7 @@ export class VehiclesService {
           color: dto.color.trim(),
           year: dto.year,
           rideCategory: dto.rideCategory,
+          seats: dto.seats,
           photos: dto.photos ?? [],
         },
       });
@@ -97,7 +98,8 @@ export class VehiclesService {
       (dto.model !== undefined && dto.model.trim() !== existing.model) ||
       (dto.color !== undefined && dto.color.trim() !== existing.color) ||
       (dto.year !== undefined && dto.year !== existing.year) ||
-      (dto.rideCategory !== undefined && dto.rideCategory !== existing.rideCategory);
+      (dto.rideCategory !== undefined && dto.rideCategory !== existing.rideCategory) ||
+      (dto.seats !== undefined && dto.seats !== existing.seats);
 
     const updated = await this.prisma.vehicle.update({
       where: { id: vehicleId },
@@ -107,6 +109,7 @@ export class VehiclesService {
         ...(dto.color !== undefined ? { color: dto.color.trim() } : {}),
         ...(dto.year !== undefined ? { year: dto.year } : {}),
         ...(dto.rideCategory !== undefined ? { rideCategory: dto.rideCategory } : {}),
+        ...(dto.seats !== undefined ? { seats: dto.seats } : {}),
         ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
         ...(dto.photos !== undefined ? { photos: dto.photos } : {}),
         ...(changesReviewableFields && existing.approvalStatus !== VehicleApprovalStatus.PENDING
