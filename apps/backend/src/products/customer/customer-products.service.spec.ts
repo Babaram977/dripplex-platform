@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto';
 
-import { FulfillmentType, Prisma, PrismaClient, ProductStatus, ReviewTargetType } from '@prisma/client';
+import {
+  FulfillmentType,
+  Prisma,
+  PrismaClient,
+  ProductStatus,
+  ReviewTargetType,
+} from '@prisma/client';
 
 import { NotFoundDomainException } from '../../common/exceptions/domain.exception';
 
@@ -30,6 +36,21 @@ describe('CustomerProductsService', () => {
   let speakerId = '';
   let draftId = '';
   let featuredId = '';
+
+  // These specs run against one shared database (jest runs suites serially —
+  // see jest.config maxWorkers — but the database still accumulates rows other
+  // suites create and don't fully clean up, e.g. published products and
+  // polymorphic ReviewAggregate rows that have no product FK to cascade on).
+  // A global browse can therefore legitimately return products this suite did
+  // not create. Assertions that pin down an *exact* result set scope the browse
+  // output to this suite's own catalog first, so they verify the service's
+  // filter logic over controlled fixtures without assuming the whole database
+  // is otherwise empty.
+  const catalogIds = (): string[] => [riceId, outOfStockId, speakerId, draftId, featuredId];
+  const onlyOwn = (ids: string[]): string[] => {
+    const own = new Set(catalogIds());
+    return ids.filter((id) => own.has(id));
+  };
 
   async function createMerchant(businessName: string): Promise<string> {
     const user = await prisma.user.create({
@@ -89,9 +110,13 @@ describe('CustomerProductsService', () => {
     });
     categoryElectronicsId = electronics.id;
 
-    const acme = await prisma.brand.create({ data: { name: 'Acme', slug: `acme-${randomUUID()}` } });
+    const acme = await prisma.brand.create({
+      data: { name: 'Acme', slug: `acme-${randomUUID()}` },
+    });
     brandAcmeId = acme.id;
-    const zenith = await prisma.brand.create({ data: { name: 'Zenith', slug: `zenith-${randomUUID()}` } });
+    const zenith = await prisma.brand.create({
+      data: { name: 'Zenith', slug: `zenith-${randomUUID()}` },
+    });
     brandZenithId = zenith.id;
 
     const rice = await prisma.product.create({
@@ -228,6 +253,15 @@ describe('CustomerProductsService', () => {
 
   afterAll(async () => {
     if (databaseAvailable) {
+      // ReviewAggregate is polymorphic (targetType/targetId, no FK to Product),
+      // so deleting the products via user cascade below does NOT remove the
+      // aggregate rows this suite created — they would leak and pollute other
+      // suites' rating queries. Delete them explicitly first.
+      await prisma.reviewAggregate
+        .deleteMany({
+          where: { targetType: ReviewTargetType.PRODUCT, targetId: { in: catalogIds() } },
+        })
+        .catch(() => undefined);
       for (const id of userIds) {
         await prisma.user.delete({ where: { id } }).catch(() => undefined);
       }
@@ -264,13 +298,13 @@ describe('CustomerProductsService', () => {
   it('filters by price range', async () => {
     if (!databaseAvailable) return;
     const result = await service.browse({ minPrice: 1500, maxPrice: 2500 });
-    expect(result.items.map((item) => item.id)).toEqual([outOfStockId]);
+    expect(onlyOwn(result.items.map((item) => item.id))).toEqual([outOfStockId]);
   });
 
   it('filters by minimum rating, excluding products with no aggregate', async () => {
     if (!databaseAvailable) return;
     const result = await service.browse({ minRating: 4 });
-    expect(result.items.map((item) => item.id)).toEqual([riceId]);
+    expect(onlyOwn(result.items.map((item) => item.id))).toEqual([riceId]);
   });
 
   it('filters to in-stock products (tracked with quantity, or untracked)', async () => {
@@ -339,7 +373,7 @@ describe('CustomerProductsService', () => {
   it('forces isFeatured and sort overrides for preset endpoints', async () => {
     if (!databaseAvailable) return;
     const result = await service.browse({}, { isFeatured: true, forceSort: 'newest' });
-    expect(result.items.map((item) => item.id)).toEqual([featuredId]);
+    expect(onlyOwn(result.items.map((item) => item.id))).toEqual([featuredId]);
   });
 
   it('paginates with an opaque cursor across pages', async () => {
