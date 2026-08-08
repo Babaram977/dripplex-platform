@@ -87,7 +87,8 @@ describe('RidePaymentService', () => {
 
     paystackAdapter = fakeAdapter('PAYSTACK');
     const flutterwaveAdapter = fakeAdapter('FLUTTERWAVE');
-    const opayAdapter = fakeAdapter('OPAY');
+    // OPay is safe-disabled from ride selection (DPX-DRIVER-013 §G) — no OPAY
+    // adapter is registered, matching production GATEWAY_METHODS.
 
     eventBus = new DomainEventBus();
     const commercialCreditSettings = new CommercialCreditSettingsService(prisma, auditService);
@@ -102,7 +103,7 @@ describe('RidePaymentService', () => {
       auditService,
       notifications,
       events,
-      [paystackAdapter, flutterwaveAdapter, opayAdapter],
+      [paystackAdapter, flutterwaveAdapter],
       eventBus,
       commissionAccounts,
     );

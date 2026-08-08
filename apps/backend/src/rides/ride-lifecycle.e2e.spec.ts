@@ -74,7 +74,6 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
   let receiptService: RideReceiptService;
   let problemReportService: RideProblemReportService;
   let events: jest.Mocked<RideEventsPublisher>;
-  let opayAdapter: jest.Mocked<PaymentProviderAdapter>;
   const createdUserIds: string[] = [];
   const createdRideIds: string[] = [];
   const createdDriverIds: string[] = [];
@@ -114,8 +113,9 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
       notifyRideEarning: jest.fn().mockResolvedValue(undefined),
     };
     events = { publishToRide: jest.fn(), publishToDriver: jest.fn() };
-    opayAdapter = fakeAdapter('OPAY');
-    const providers = [fakeAdapter('PAYSTACK'), fakeAdapter('FLUTTERWAVE'), opayAdapter];
+    // OPay is safe-disabled from ride selection (DPX-DRIVER-013 §G): no OPAY
+    // adapter is registered, matching production where GATEWAY_METHODS excludes it.
+    const providers = [fakeAdapter('PAYSTACK'), fakeAdapter('FLUTTERWAVE')];
 
     const fareService = new RideFareService();
     dispatchService = new RideDispatchService(
@@ -551,8 +551,12 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
     });
   });
 
-  describe('Scenario 5 — OPay gateway payment', () => {
-    it('initiates, verifies, and settles through the OPay adapter (stubbed — no real OPay credentials exist yet)', async () => {
+  describe('Scenario 5 — OPay safe-disabled', () => {
+    // Founder decision (DPX-DRIVER-013 §G): OPay is removed from customer-selectable
+    // ride gateways until a real OpayProvider adapter exists. An OPAY ride request
+    // must be rejected cleanly at initiation (validation error) rather than reaching
+    // the not-yet-implemented adapter and 501-ing in production.
+    it('rejects an OPay ride payment at initiation (no adapter registered)', async () => {
       if (!databaseAvailable) return;
 
       const customerId = await createCustomer();
@@ -568,44 +572,12 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
       await tripService.startTrip(driverId, requested.id, {});
       await tripService.completeTrip(driverId, requested.id, {});
 
-      opayAdapter.initializePayment.mockResolvedValueOnce({
-        provider: 'OPAY',
-        reference: `e2e-opay-${requested.id}`,
-        authorizationUrl: 'https://checkout.opay.example/test',
-      });
-      const initiated = await paymentService.initiatePayment(
-        customerId,
-        requested.id,
-        'OPAY',
-        undefined,
-        {},
-      );
-      expect(initiated.ride.paymentStatus).toBe('PENDING');
-      expect(initiated.authorizationUrl).toBe('https://checkout.opay.example/test');
-
-      opayAdapter.verifyPayment.mockResolvedValueOnce({
-        success: true,
-        reference: initiated.reference ?? '',
-        paidAt: new Date(),
-      });
-      const verified = await paymentService.verifyPayment(
-        customerId,
-        requested.id,
-        initiated.reference,
-        {},
-      );
-      expect(verified.paymentStatus).toBe('PAID');
-      expect(verified.paymentMethod).toBe('OPAY');
+      await expect(
+        paymentService.initiatePayment(customerId, requested.id, 'OPAY', undefined, {}),
+      ).rejects.toThrow('Unsupported ride payment method: OPAY');
 
       const receipt = await receiptService.getReceipt(customerId, requested.id);
-      expect(receipt.paymentMethod).toBe('OPAY');
-      expect(receipt.paymentStatus).toBe('PAID');
-
-      const platformReconciliation = await walletService.reconcileWallet(
-        WalletOwnerType.PLATFORM,
-        PLATFORM_WALLET_OWNER_ID,
-      );
-      expect(platformReconciliation.reconciled).toBe(true);
+      expect(receipt.paymentStatus).not.toBe('PAID');
     });
   });
 
