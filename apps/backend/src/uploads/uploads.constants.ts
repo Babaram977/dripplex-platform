@@ -8,6 +8,13 @@ export const OBJECT_STORAGE_PROVIDER = Symbol('OBJECT_STORAGE_PROVIDER');
 /** Short-lived pre-signed PUT URL TTL (seconds). */
 export const UPLOAD_URL_TTL_SECONDS = 300;
 
+/**
+ * DPX-STORAGE-001 (F) — TTL for signed GET URLs used to retrieve private
+ * documents (KYC/identity). Short enough that a leaked URL expires quickly, long
+ * enough for a reviewer to open the document. 5 minutes, same as the PUT TTL.
+ */
+export const UPLOAD_SIGNED_GET_TTL_SECONDS = 300;
+
 /** Advisory maximum object size returned to clients (bytes). 10 MiB. */
 export const UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
 

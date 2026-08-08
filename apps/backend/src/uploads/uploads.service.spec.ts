@@ -20,6 +20,12 @@ describe('UploadsService', () => {
             expiresAt: '2026-08-08T12:05:00.000Z',
           }),
         ),
+      createPresignedGetUrl: jest.fn().mockImplementation((input: { key: string }) =>
+        Promise.resolve({
+          url: `https://storage.example/${input.key}?signed-get`,
+          expiresAt: '2026-08-08T12:05:00.000Z',
+        }),
+      ),
     };
     return { service: new UploadsService(provider), provider };
   }

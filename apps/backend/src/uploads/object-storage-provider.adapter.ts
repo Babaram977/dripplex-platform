@@ -29,6 +29,26 @@ export interface PresignPutResult {
   expiresAt: string;
 }
 
+/** DPX-STORAGE-001 (F) — a short-lived authenticated GET for a private object. */
+export interface PresignGetInput {
+  /** Full object key including folder prefix. */
+  key: string;
+  expiresInSeconds: number;
+}
+
+export interface PresignGetResult {
+  /** Pre-signed GET URL a legitimately-authorized consumer can read the object at. */
+  url: string;
+  /** ISO-8601 expiry of the pre-signed URL. */
+  expiresAt: string;
+}
+
 export interface ObjectStorageProvider {
   createPresignedPutUrl(input: PresignPutInput): Promise<PresignPutResult>;
+  /**
+   * DPX-STORAGE-001 (F) — sign a time-limited GET for a private object (KYC /
+   * identity documents live in a non-public bucket; this is how an authorized
+   * reviewer retrieves them).
+   */
+  createPresignedGetUrl(input: PresignGetInput): Promise<PresignGetResult>;
 }
