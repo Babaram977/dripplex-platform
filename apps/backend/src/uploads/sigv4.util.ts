@@ -29,6 +29,14 @@ export interface PresignInput {
   /** The signing instant. Injected so the result is deterministic/testable. */
   now: Date;
   protocol?: string;
+  /**
+   * Additional headers to fold into the signature besides `host` (lower-cased
+   * names, e.g. `content-type`, `content-length`). When present they become
+   * part of `X-Amz-SignedHeaders`, so the client MUST send exactly these header
+   * values on the upload or the signature is rejected — this is what binds the
+   * declared content type and byte length to the pre-signed URL (DPX-STORAGE-001).
+   */
+  signedHeaders?: Record<string, string>;
 }
 
 const ALGORITHM = 'AWS4-HMAC-SHA256';
@@ -72,11 +80,19 @@ export function createPresignedUrl(input: PresignInput): PresignResult {
   const credentialScope = `${dateStamp}/${input.region}/${input.service}/aws4_request`;
   const canonicalUri = rfc3986Encode(input.path, false);
 
-  // Only `host` is signed. Content-Type/size are enforced via the DTO allow-list
-  // and returned to the caller as guidance, not baked into the signature — this
-  // keeps the URL usable across browser/native clients that normalise headers.
-  const signedHeaders = 'host';
-  const canonicalHeaders = `host:${input.host}\n`;
+  // `host` is always signed; any additional signedHeaders (content-type,
+  // content-length) are folded in so the pre-signed URL only accepts an upload
+  // whose type and byte length match what was authorized (DPX-STORAGE-001).
+  // Canonical headers are lower-cased, trimmed, and sorted by name per SigV4.
+  const headerMap: Record<string, string> = { host: input.host };
+  for (const [name, value] of Object.entries(input.signedHeaders ?? {})) {
+    headerMap[name.toLowerCase()] = value.trim();
+  }
+  const sortedHeaderNames = Object.keys(headerMap).sort();
+  const signedHeaders = sortedHeaderNames.join(';');
+  const canonicalHeaders = `${sortedHeaderNames
+    .map((name) => `${name}:${headerMap[name] ?? ''}`)
+    .join('\n')}\n`;
 
   const queryParams: Record<string, string> = {
     'X-Amz-Algorithm': ALGORITHM,

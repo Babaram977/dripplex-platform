@@ -2,9 +2,12 @@ import { randomUUID } from 'node:crypto';
 
 import { Inject, Injectable } from '@nestjs/common';
 
+import { ForbiddenDomainException } from '../common/exceptions/domain.exception';
+
 import {
   CONTENT_TYPE_EXTENSION,
   OBJECT_STORAGE_PROVIDER,
+  UPLOAD_FOLDER_PERMISSIONS,
   UPLOAD_MAX_BYTES,
   UPLOAD_URL_TTL_SECONDS,
 } from './uploads.constants';
@@ -26,13 +29,28 @@ export class UploadsService {
     private readonly storage: ObjectStorageProvider,
   ) {}
 
-  public async sign(userId: string, dto: SignUploadDto): Promise<SignUploadResponse> {
+  public async sign(
+    userId: string,
+    permissions: readonly string[],
+    dto: SignUploadDto,
+  ): Promise<SignUploadResponse> {
+    // DPX-STORAGE-001 (G) — least-privilege folder access. A folder with a
+    // non-empty permission list may only be signed by a caller holding one of
+    // them, so folder is not an arbitrary client choice.
+    const required = UPLOAD_FOLDER_PERMISSIONS[dto.folder];
+    if (required.length > 0 && !required.some((permission) => permissions.includes(permission))) {
+      throw new ForbiddenDomainException(
+        `You are not permitted to upload to the '${dto.folder}' folder`,
+      );
+    }
+
     const extension = CONTENT_TYPE_EXTENSION[dto.contentType];
     const key = `${dto.folder}/${userId}/${randomUUID()}.${extension}`;
 
     const presigned = await this.storage.createPresignedPutUrl({
       key,
       contentType: dto.contentType,
+      contentLength: dto.contentLength,
       expiresInSeconds: UPLOAD_URL_TTL_SECONDS,
     });
 
@@ -43,7 +61,12 @@ export class UploadsService {
       publicUrl: presigned.publicUrl,
       expiresAt: presigned.expiresAt,
       maxBytes: UPLOAD_MAX_BYTES,
-      requiredHeaders: { 'Content-Type': dto.contentType },
+      // Both are now signed into the URL — the client MUST send them exactly or
+      // the storage provider rejects the upload (DPX-STORAGE-001).
+      requiredHeaders: {
+        'Content-Type': dto.contentType,
+        'Content-Length': String(dto.contentLength),
+      },
     };
   }
 }

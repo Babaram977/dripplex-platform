@@ -2,6 +2,14 @@ import { z } from 'zod';
 
 const durationSchema = z.string().regex(/^\d+[smhd]$/, 'Duration must look like 15m, 7d, 3600s');
 
+/**
+ * DPX-STORAGE-001 — a value that is either empty (the safe-until-configured
+ * default) or a well-formed URL. Optional object-storage endpoints use this so a
+ * non-empty-but-malformed value fails fast at boot instead of throwing an opaque
+ * `new URL(...)` error at the first sign request. Empty stays a valid no-op.
+ */
+const emptyOrUrl = z.union([z.string().url(), z.literal('')]).default('');
+
 export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   DATABASE_URL: z.string().url(),
@@ -94,14 +102,21 @@ export const envSchema = z.object({
   // uploads provider checks objectStorageConfigured before signing and throws a
   // clear error if unset, so an empty value is a safe no-op rather than a
   // boot-time crash — same safe-until-configured pattern as Smile ID / payments.
-  OBJECT_STORAGE_ENDPOINT: z.string().default(''),
+  //
+  // DPX-STORAGE-001 (Phase 4): storage stays OPTIONAL for development, but when
+  // an endpoint / public base URL IS provided it must be a well-formed URL —
+  // an empty string is still accepted (the no-op default), while a malformed
+  // value now fails fast at boot rather than throwing an opaque `new URL(...)`
+  // error at the first sign request. Credentials/bucket remain deployment-
+  // specific and are never defaulted to a real value here.
+  OBJECT_STORAGE_ENDPOINT: emptyOrUrl,
   OBJECT_STORAGE_REGION: z.string().default('auto'),
   OBJECT_STORAGE_BUCKET: z.string().default(''),
   OBJECT_STORAGE_ACCESS_KEY_ID: z.string().default(''),
   OBJECT_STORAGE_SECRET_ACCESS_KEY: z.string().default(''),
   // Optional public/CDN base URL objects are served from; falls back to the
-  // endpoint/bucket path when unset.
-  OBJECT_STORAGE_PUBLIC_BASE_URL: z.string().default(''),
+  // endpoint/bucket path when unset. Validated as a URL when non-empty.
+  OBJECT_STORAGE_PUBLIC_BASE_URL: emptyOrUrl,
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

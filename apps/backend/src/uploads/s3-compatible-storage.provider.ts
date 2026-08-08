@@ -47,6 +47,12 @@ export class S3CompatibleStorageProvider implements ObjectStorageProvider {
       secretAccessKey: this.config.objectStorageSecretAccessKey,
       expiresInSeconds: input.expiresInSeconds,
       now: new Date(),
+      // Bind the declared type and exact byte length into the signature so the
+      // pre-signed URL rejects an upload of a different content-type or size.
+      signedHeaders: {
+        'content-type': input.contentType,
+        'content-length': String(input.contentLength),
+      },
     });
 
     const publicBase = this.config.objectStoragePublicBaseUrl;

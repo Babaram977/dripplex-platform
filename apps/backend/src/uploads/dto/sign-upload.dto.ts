@@ -1,4 +1,4 @@
-import { IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsIn, IsInt, Max, Min } from 'class-validator';
 
 import {
   UPLOAD_ALLOWED_CONTENT_TYPES,
@@ -16,13 +16,15 @@ export class SignUploadDto {
   public folder!: UploadFolder;
 
   /**
-   * Optional declared byte size, rejected here when it exceeds the cap. This is
-   * an early client-side guard; pre-signed PUT URLs cannot themselves enforce a
-   * hard size limit, which is a bucket-policy concern (documented follow-up).
+   * DPX-STORAGE-001 — the exact byte length of the object being uploaded.
+   * Required (no longer advisory): it is rejected here when it exceeds
+   * UPLOAD_MAX_BYTES, and then bound into the pre-signed URL's signature, so
+   * the storage provider rejects any upload whose real length differs. The
+   * cap is enforced by the signature, not trusted from the client after the
+   * fact.
    */
-  @IsOptional()
   @IsInt()
   @Min(1)
   @Max(UPLOAD_MAX_BYTES)
-  public contentLength?: number;
+  public contentLength!: number;
 }

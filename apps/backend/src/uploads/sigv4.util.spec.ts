@@ -52,4 +52,34 @@ describe('createPresignedUrl (SigV4)', () => {
     expect(result.expiresAt).toBe('2026-08-08T12:05:00.000Z');
     expect(result.url).toContain('/dripplex-media/kyc-documents/user-1/doc.pdf?');
   });
+
+  it('binds content-type and content-length into the signed headers (DPX-STORAGE-001 E)', () => {
+    const base = {
+      method: 'PUT' as const,
+      host: 'account.r2.cloudflarestorage.com',
+      path: '/dripplex-media/kyc-documents/user-1/doc.pdf',
+      region: 'auto',
+      service: 's3',
+      accessKeyId: 'R2KEY',
+      secretAccessKey: 'r2secret',
+      expiresInSeconds: 300,
+      now: new Date('2026-08-08T12:00:00.000Z'),
+    };
+
+    const bound = createPresignedUrl({
+      ...base,
+      signedHeaders: { 'content-type': 'application/pdf', 'content-length': '2048' },
+    });
+
+    // SignedHeaders lists all three, sorted; the client must send them exactly.
+    expect(bound.url).toContain('X-Amz-SignedHeaders=content-length%3Bcontent-type%3Bhost');
+
+    // Binding changes the signature vs the host-only URL — the type/size are
+    // genuinely part of what is authorized, not advisory.
+    const hostOnly = createPresignedUrl(base);
+    expect(bound.signature).not.toBe(hostOnly.signature);
+
+    // Host-only still advertises only host (unchanged default behaviour).
+    expect(hostOnly.url).toContain('X-Amz-SignedHeaders=host');
+  });
 });

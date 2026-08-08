@@ -39,6 +39,26 @@ export const UPLOAD_FOLDERS = [
 
 export type UploadFolder = (typeof UPLOAD_FOLDERS)[number];
 
+/**
+ * DPX-STORAGE-001 (Phase 4, decision G) — least-privilege folder access. A
+ * folder may only be signed by a caller holding at least one of the listed
+ * permissions; an empty list means any authenticated user. This stops, e.g., a
+ * customer minting a `vehicle-photos` or `identity-verification` upload simply
+ * by naming the folder. Codes mirror the driver/merchant/kyc permission
+ * catalogs (stable contract strings; duplicated here to keep the uploads module
+ * decoupled from those feature modules).
+ */
+export const UPLOAD_FOLDER_PERMISSIONS: Record<UploadFolder, readonly string[]> = {
+  // Customer, merchant, and driver KYC flows all legitimately write here.
+  'kyc-documents': ['customer:kyc:manage', 'merchant:kyc:manage', 'driver:kyc:manage'],
+  // Only drivers upload their own vehicle photos.
+  'vehicle-photos': ['driver:vehicle:manage'],
+  // Every authenticated user has a profile/avatar — no extra permission.
+  'profile-photos': [],
+  // Driver identity documents only.
+  'identity-verification': ['driver:identity-verification:manage'],
+};
+
 /** File extension chosen server-side from the validated content type. */
 export const CONTENT_TYPE_EXTENSION: Record<UploadContentType, string> = {
   'image/jpeg': 'jpg',
