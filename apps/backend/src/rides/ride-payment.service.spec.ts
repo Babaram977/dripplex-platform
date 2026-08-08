@@ -5,6 +5,7 @@ import { PrismaClient, WalletOwnerType } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { CommercialCreditSettingsService } from '../commercial/commercial-credit-settings.service';
 import { CommissionAccountService } from '../commercial/commission-account.service';
+import { ConflictDomainException } from '../common/exceptions/domain.exception';
 import { DomainEventBus } from '../events/domain-event-bus';
 import { DOMAIN_EVENTS } from '../events/domain-events';
 import { PLATFORM_WALLET_OWNER_ID } from '../wallet/wallet.constants';
@@ -354,6 +355,125 @@ describe('RidePaymentService', () => {
         },
       });
       expect(ledgerCount).toBe(2);
+    });
+  });
+
+  describe('D7 — ride settlement atomicity (concurrent cash confirmation on the SAME ride)', () => {
+    it('lets exactly one of two concurrent confirmCash() calls settle the ride; the duplicate is safely rejected, with exactly one settlement and one commission entry', async () => {
+      if (!databaseAvailable) return;
+
+      const ride = await createCompletedRide(2000);
+      await service.initiatePayment(customerId, ride.id, 'CASH', undefined, {});
+      const expectedCommission = 2000 * RIDE_PLATFORM_COMMISSION_RATE;
+
+      // Pre-establish the driver's CommissionAccount so this test isolates the
+      // RIDE-LEVEL settlement race that D7 fixes. The separate first-touch
+      // account/credit-settings check-then-create race (two concurrent accruals
+      // both CREATE-ing a not-yet-existing account) is an orthogonal, documented
+      // commission-service follow-up deliberately out of D7's scope — the same
+      // reason the Slice 4 concurrency test above pre-creates the account too.
+      await commissionAccounts.getOrCreateAccount('DRIVER', driverId);
+
+      const emitSpy = jest.spyOn(eventBus, 'emit');
+
+      // Two confirmations for the SAME ride race. Before D7 both could pass the
+      // unlocked paymentStatus read and both settle; the atomic PAID transition
+      // now guarantees exactly one winner.
+      const settled = await Promise.allSettled([
+        service.confirmCash(driverId, ride.id, {}),
+        service.confirmCash(driverId, ride.id, {}),
+      ]);
+
+      const fulfilled = settled.filter((r) => r.status === 'fulfilled');
+      const rejected = settled.filter((r) => r.status === 'rejected');
+
+      // Proof 1 + 2: exactly one succeeds; the duplicate is safely rejected.
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      const rejection = rejected[0];
+      expect(rejection?.status).toBe('rejected');
+      if (rejection?.status === 'rejected') {
+        expect(rejection.reason).toBeInstanceOf(ConflictDomainException);
+      }
+
+      // Proof 3: exactly one settlement — the ride is PAID with the correct split.
+      const persisted = await prisma.ride.findUniqueOrThrow({ where: { id: ride.id } });
+      expect(persisted.paymentStatus).toBe('PAID');
+      expect(persisted.paymentMethod).toBe('CASH');
+      expect(Number(persisted.platformCommission)).toBeCloseTo(expectedCommission);
+
+      // Proof 4: exactly one commission ledger entry for this ride.
+      const ledgerCount = await prisma.commissionLedgerEntry.count({
+        where: {
+          account: { ownerType: 'DRIVER', ownerId: driverId },
+          referenceType: 'ride',
+          referenceId: ride.id,
+        },
+      });
+      expect(ledgerCount).toBe(1);
+
+      // Proof 5: no duplicated money movement — the driver's commission liability
+      // is a single ride's commission, not double.
+      const account = await commissionAccounts.getOrCreateAccount('DRIVER', driverId);
+      expect(Number(account.outstandingBalance)).toBeCloseTo(expectedCommission);
+
+      // The settlement event fires exactly once (only the winner emits it).
+      const cashConfirmedEmits = emitSpy.mock.calls.filter(
+        ([name]) => name === DOMAIN_EVENTS.RIDE_CASH_CONFIRMED,
+      );
+      expect(cashConfirmedEmits).toHaveLength(1);
+      emitSpy.mockRestore();
+    });
+
+    it('a failure during the PAID transition leaves a consistent, recoverable state — retry converges without duplicating money (proof 6)', async () => {
+      if (!databaseAvailable) return;
+
+      const ride = await createCompletedRide(1200);
+      await service.initiatePayment(customerId, ride.id, 'CASH', undefined, {});
+      const expectedCommission = 1200 * RIDE_PLATFORM_COMMISSION_RATE;
+
+      // Force the atomic PAID transition to fail once (simulating a DB error
+      // mid-settlement), after the commission accrual has already committed.
+      const updateManySpy = jest
+        .spyOn(prisma.ride, 'updateMany')
+        .mockRejectedValueOnce(new Error('simulated DB failure during PAID transition'));
+
+      await expect(service.confirmCash(driverId, ride.id, {})).rejects.toThrow(
+        'simulated DB failure during PAID transition',
+      );
+      updateManySpy.mockRestore();
+
+      // Consistent state: the failed transition left the ride NOT PAID (the
+      // single-statement updateMany is atomic — no half-written PAID row).
+      const afterFailure = await prisma.ride.findUniqueOrThrow({ where: { id: ride.id } });
+      expect(afterFailure.paymentStatus).not.toBe('PAID');
+
+      // The commission accrual that ran before the failure is present exactly once.
+      const ledgerAfterFailure = await prisma.commissionLedgerEntry.count({
+        where: {
+          account: { ownerType: 'DRIVER', ownerId: driverId },
+          referenceType: 'ride',
+          referenceId: ride.id,
+        },
+      });
+      expect(ledgerAfterFailure).toBe(1);
+
+      // Retry converges: the ride settles, and the commission entry is NOT
+      // duplicated (the (accountId, 'ride', rideId) ledger guard dedupes it).
+      const recovered = await service.confirmCash(driverId, ride.id, {});
+      expect(recovered.paymentStatus).toBe('PAID');
+
+      const ledgerAfterRecovery = await prisma.commissionLedgerEntry.count({
+        where: {
+          account: { ownerType: 'DRIVER', ownerId: driverId },
+          referenceType: 'ride',
+          referenceId: ride.id,
+        },
+      });
+      expect(ledgerAfterRecovery).toBe(1);
+
+      const account = await commissionAccounts.getOrCreateAccount('DRIVER', driverId);
+      expect(Number(account.outstandingBalance)).toBeCloseTo(expectedCommission);
     });
   });
 

@@ -189,6 +189,16 @@ export class RidePaymentService {
       description: `Commission owed for ride ${ride.id} (cash)`,
     });
 
+    // markPaid() atomically claims the PAID transition and throws
+    // ConflictDomainException if a concurrent confirmCash() already won it.
+    // Recording the CASH_CONFIRMED audit and emitting RIDE_CASH_CONFIRMED only
+    // *after* it succeeds guarantees they fire once — for the single call that
+    // actually settles the ride — never once per racing caller. The accrual
+    // above is a safe no-op on the losing path: its
+    // (accountId, 'ride', rideId) ledger guard dedupes the second attempt, so
+    // exactly one commission entry exists regardless of which call created it.
+    const paid = await this.markPaid(ride, RidePaymentMethod.CASH, split, context);
+
     await this.auditService.record(
       RIDE_AUDIT_ACTIONS.CASH_CONFIRMED,
       { ...context, userId: driverId },
@@ -203,8 +213,6 @@ export class RidePaymentService {
         },
       },
     );
-
-    const paid = await this.markPaid(ride, RidePaymentMethod.CASH, split, context);
     await this.eventBus.emit(DOMAIN_EVENTS.RIDE_CASH_CONFIRMED, {
       driverId,
       rideId: ride.id,
@@ -479,8 +487,16 @@ export class RidePaymentService {
     split: FareSplit,
     context: AuditContext,
   ): Promise<RideDto> {
-    const updated = await this.prisma.ride.update({
-      where: { id: ride.id },
+    // Atomically claim the ride's PAID transition. The conditional
+    // `paymentStatus: { not: PAID }` filter is the optimistic guard: at the DB
+    // row level exactly one caller can flip a not-yet-PAID ride to PAID, so two
+    // concurrent settlements that both passed the earlier *unlocked*
+    // paymentStatus read (RIDE-002.7's documented cash-confirm gap) can no
+    // longer both settle — the loser sees `count === 0` and is rejected as
+    // already paid. This only serialises the transition; the fare split and
+    // commission values written are unchanged.
+    const claimed = await this.prisma.ride.updateMany({
+      where: { id: ride.id, paymentStatus: { not: RidePaymentStatus.PAID } },
       data: {
         paymentMethod: method,
         paymentStatus: RidePaymentStatus.PAID,
@@ -488,6 +504,10 @@ export class RidePaymentService {
         driverEarning: split.driverEarning,
       },
     });
+    if (claimed.count !== 1) {
+      throw new ConflictDomainException('Ride has already been paid');
+    }
+    const updated = await this.prisma.ride.findUniqueOrThrow({ where: { id: ride.id } });
 
     await this.auditService.record(
       RIDE_AUDIT_ACTIONS.PAYMENT_SUCCEEDED,
