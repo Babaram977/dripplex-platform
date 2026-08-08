@@ -19,6 +19,13 @@ export function createAdminSdk(config: Partial<SdkConfig> = {}): AdminSdk {
     adminReferrals: client.adminReferrals,
     adminDriverCampaign: client.adminDriverCampaign,
     adminDriverSecuritySettings: client.adminDriverSecuritySettings,
+    adminDriverIdentityVerification: client.adminDriverIdentityVerification,
+    adminDriverPlannedAvailability: client.adminDriverPlannedAvailability,
+    adminDriverShifts: client.adminDriverShifts,
+    adminDriverSupport: client.adminDriverSupport,
+    adminIncidentReports: client.adminIncidentReports,
+    adminSosAlerts: client.adminSosAlerts,
+    adminRideReports: client.adminRideReports,
     adminDrivers: client.adminDrivers,
     adminDriverVehicles: client.adminDriverVehicles,
     adminInspectionCentres: client.adminInspectionCentres,
@@ -54,6 +61,13 @@ export interface AdminSdk {
   adminReferrals: DripplexClient['adminReferrals'];
   adminDriverCampaign: DripplexClient['adminDriverCampaign'];
   adminDriverSecuritySettings: DripplexClient['adminDriverSecuritySettings'];
+  adminDriverIdentityVerification: DripplexClient['adminDriverIdentityVerification'];
+  adminDriverPlannedAvailability: DripplexClient['adminDriverPlannedAvailability'];
+  adminDriverShifts: DripplexClient['adminDriverShifts'];
+  adminDriverSupport: DripplexClient['adminDriverSupport'];
+  adminIncidentReports: DripplexClient['adminIncidentReports'];
+  adminSosAlerts: DripplexClient['adminSosAlerts'];
+  adminRideReports: DripplexClient['adminRideReports'];
   adminDrivers: DripplexClient['adminDrivers'];
   adminDriverVehicles: DripplexClient['adminDriverVehicles'];
   adminInspectionCentres: DripplexClient['adminInspectionCentres'];
