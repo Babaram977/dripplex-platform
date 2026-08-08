@@ -1,6 +1,7 @@
 import type { HttpClient } from '../client/http-client.js';
 import type {
   DriverActivationEligibilityDto,
+  DriverApprovalDto,
   DriverProfileDto,
   DriverStatus,
 } from '@dripplex/types';
@@ -32,11 +33,13 @@ export interface PaginatedDriversResult {
 
 /**
  * DPX-DRIVER-002 Phase 4 — admin-facing surface for AdminDriversController.
- * Slice 5 (DPX-COMMERCIAL-001) adds `listDrivers`/`getDriver` — needed for
- * the Admin Portal's driver commission-account picker, closing part of a
- * documented gap. The rest of AdminDriversController's
- * approve/reject/suspend/reactivate endpoints still predate this client
- * and don't have SDK coverage yet — unrelated to this slice.
+ * Slice 5 (DPX-COMMERCIAL-001) added `listDrivers`/`getDriver` — needed for
+ * the Admin Portal's driver commission-account picker.
+ * DPX-DRIVER-006 adds the admin driver-lifecycle actions
+ * (`approveDriver`/`rejectDriver`/`suspendDriver`/`reactivateDriver`),
+ * closing the SDK gap the Driver kickoff audit flagged: these
+ * AdminDriversController endpoints previously had no SDK coverage. This
+ * client now mirrors AdminDriversController exactly.
  */
 export class AdminDriversClient {
   public constructor(private readonly http: HttpClient) {}
@@ -58,6 +61,54 @@ export class AdminDriversClient {
   public getDriver(driverId: string): Promise<DriverProfileDto> {
     return this.http.request<DriverProfileDto>(`/admin/driver/${driverId}`, {
       method: 'GET',
+      auth: true,
+    });
+  }
+
+  /**
+   * Approve a driver application. No body — the backend re-evaluates the
+   * unified activation gate (DriverActivationService) and moves the driver to
+   * APPROVED, or throws if not eligible. Requires `admin:drivers:approve`.
+   */
+  public approveDriver(driverId: string): Promise<DriverApprovalDto> {
+    return this.http.request<DriverApprovalDto>(`/admin/driver/${driverId}/approve`, {
+      method: 'POST',
+      auth: true,
+    });
+  }
+
+  /**
+   * Reject a driver application with a required reason (5–1000 chars).
+   * Requires `admin:drivers:reject`.
+   */
+  public rejectDriver(driverId: string, reason: string): Promise<DriverApprovalDto> {
+    return this.http.request<DriverApprovalDto>(`/admin/driver/${driverId}/reject`, {
+      method: 'POST',
+      body: { reason },
+      auth: true,
+    });
+  }
+
+  /**
+   * Suspend an active driver with a required reason (5–1000 chars).
+   * Requires `admin:drivers:suspend`.
+   */
+  public suspendDriver(driverId: string, reason: string): Promise<DriverApprovalDto> {
+    return this.http.request<DriverApprovalDto>(`/admin/driver/${driverId}/suspend`, {
+      method: 'POST',
+      body: { reason },
+      auth: true,
+    });
+  }
+
+  /**
+   * Reactivate a suspended driver. No body — the backend re-checks the
+   * activation gate before returning the driver to APPROVED. Requires
+   * `admin:drivers:reactivate`.
+   */
+  public reactivateDriver(driverId: string): Promise<DriverApprovalDto> {
+    return this.http.request<DriverApprovalDto>(`/admin/driver/${driverId}/reactivate`, {
+      method: 'POST',
       auth: true,
     });
   }
