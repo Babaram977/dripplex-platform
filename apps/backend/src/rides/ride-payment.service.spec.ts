@@ -696,4 +696,299 @@ describe('RidePaymentService', () => {
       'Ride has already been tipped',
     );
   });
+
+  describe('DPX-D4 — ride refunds (admin/operations-initiated, full)', () => {
+    async function settleWalletRide(totalFare: number): Promise<Ride> {
+      await walletService.credit({
+        ownerType: WalletOwnerType.CUSTOMER,
+        ownerId: customerId,
+        amount: totalFare,
+        description: 'top-up for ride',
+      });
+      const ride = await createCompletedRide(totalFare);
+      await service.initiatePayment(customerId, ride.id, 'WALLET', undefined, {});
+      return await prisma.ride.findUniqueOrThrow({ where: { id: ride.id } });
+    }
+
+    async function settleGatewayRide(totalFare: number): Promise<Ride> {
+      const ride = await createCompletedRide(totalFare);
+      paystackAdapter.initializePayment.mockResolvedValueOnce({
+        provider: 'PAYSTACK',
+        reference: `d4-ref-${ride.id}`,
+        authorizationUrl: 'https://checkout.paystack.com/d4',
+      });
+      const initiated = await service.initiatePayment(
+        customerId,
+        ride.id,
+        'PAYSTACK',
+        undefined,
+        {},
+      );
+      paystackAdapter.verifyPayment.mockResolvedValueOnce({
+        success: true,
+        reference: initiated.reference ?? '',
+        paidAt: new Date(),
+      });
+      await service.verifyPayment(customerId, ride.id, initiated.reference, {});
+      return await prisma.ride.findUniqueOrThrow({ where: { id: ride.id } });
+    }
+
+    async function settleCashRide(totalFare: number): Promise<Ride> {
+      const ride = await createCompletedRide(totalFare);
+      await service.initiatePayment(customerId, ride.id, 'CASH', undefined, {});
+      await service.confirmCash(driverId, ride.id, {});
+      return await prisma.ride.findUniqueOrThrow({ where: { id: ride.id } });
+    }
+
+    const balance = async (ownerType: WalletOwnerType, ownerId: string): Promise<number> =>
+      (await walletService.getWallet(ownerType, ownerId)).availableBalance;
+
+    it('D4-1: gateway-paid full refund credits the customer Dx wallet and marks the transaction REFUNDED', async () => {
+      if (!databaseAvailable) return;
+      const totalFare = 2000;
+      const ride = await settleGatewayRide(totalFare);
+      const earning = Number(ride.driverEarning);
+      const custBefore = await balance(WalletOwnerType.CUSTOMER, customerId);
+      const drvBefore = await balance(WalletOwnerType.DRIVER, driverId);
+
+      const refunded = await service.refundRide('admin-user', ride.id, 'gateway refund', {});
+
+      expect(refunded.paymentStatus).toBe('REFUNDED');
+      expect((await balance(WalletOwnerType.CUSTOMER, customerId)) - custBefore).toBeCloseTo(
+        totalFare,
+      );
+      expect(drvBefore - (await balance(WalletOwnerType.DRIVER, driverId))).toBeCloseTo(earning);
+
+      const txn = await prisma.ridePaymentTransaction.findFirst({ where: { rideId: ride.id } });
+      expect(txn?.status).toBe('REFUNDED');
+    });
+
+    it('D4-2: cash ride refund reverses only the driver commission, with no customer wallet movement', async () => {
+      if (!databaseAvailable) return;
+      const ride = await settleCashRide(1000);
+      const commission = Number(ride.platformCommission);
+      expect(
+        Number(
+          (await commissionAccounts.getOrCreateAccount('DRIVER', driverId)).outstandingBalance,
+        ),
+      ).toBeCloseTo(commission);
+      const custBefore = await balance(WalletOwnerType.CUSTOMER, customerId);
+
+      const refunded = await service.refundRide('admin-user', ride.id, 'cash refund', {});
+
+      expect(refunded.paymentStatus).toBe('REFUNDED');
+      expect(
+        Number(
+          (await commissionAccounts.getOrCreateAccount('DRIVER', driverId)).outstandingBalance,
+        ),
+      ).toBeCloseTo(0);
+      expect(await balance(WalletOwnerType.CUSTOMER, customerId)).toBe(custBefore);
+    });
+
+    it('D4-3: wallet ride refund claws the driver earning back and the platform nets the commission it gave up', async () => {
+      if (!databaseAvailable) return;
+      const totalFare = 1500;
+      const ride = await settleWalletRide(totalFare);
+      const earning = Number(ride.driverEarning);
+      const drvBefore = await balance(WalletOwnerType.DRIVER, driverId);
+      const platBefore = await balance(WalletOwnerType.PLATFORM, PLATFORM_WALLET_OWNER_ID);
+
+      await service.refundRide('admin-user', ride.id, 'wallet refund', {});
+
+      expect(drvBefore - (await balance(WalletOwnerType.DRIVER, driverId))).toBeCloseTo(earning);
+      // Platform releases the fare and receives the earning back → nets -commission.
+      expect(
+        platBefore - (await balance(WalletOwnerType.PLATFORM, PLATFORM_WALLET_OWNER_ID)),
+      ).toBeCloseTo(totalFare - earning);
+    });
+
+    it('D4-4: an uncoverable clawback records a recoverable driver liability instead of silently failing', async () => {
+      if (!databaseAvailable) return;
+      const totalFare = 2000;
+      const ride = await settleWalletRide(totalFare);
+      const earning = Number(ride.driverEarning);
+
+      // Drain the driver's wallet so the clawback cannot be taken.
+      const drvBal = await balance(WalletOwnerType.DRIVER, driverId);
+      if (drvBal > 0) {
+        await walletService.debit({
+          ownerType: WalletOwnerType.DRIVER,
+          ownerId: driverId,
+          amount: drvBal,
+          referenceType: 'test_drain',
+          referenceId: ride.id,
+          description: 'drain driver wallet',
+        });
+      }
+      // Platform operating buffer so it can still front the customer's refund.
+      await walletService.credit({
+        ownerType: WalletOwnerType.PLATFORM,
+        ownerId: PLATFORM_WALLET_OWNER_ID,
+        amount: totalFare,
+        description: 'platform operating buffer',
+      });
+      const custBefore = await balance(WalletOwnerType.CUSTOMER, customerId);
+
+      const refunded = await service.refundRide('admin-user', ride.id, 'drained driver refund', {});
+      expect(refunded.paymentStatus).toBe('REFUNDED');
+
+      // Customer still fully refunded; driver wallet never driven negative.
+      expect((await balance(WalletOwnerType.CUSTOMER, customerId)) - custBefore).toBeCloseTo(
+        totalFare,
+      );
+      expect(await balance(WalletOwnerType.DRIVER, driverId)).toBe(0);
+
+      // The unrecovered earning is a recoverable driver liability.
+      expect(
+        Number(
+          (await commissionAccounts.getOrCreateAccount('DRIVER', driverId)).outstandingBalance,
+        ),
+      ).toBeCloseTo(earning);
+      const debtEntry = await prisma.commissionLedgerEntry.findFirst({
+        where: {
+          account: { ownerType: 'DRIVER', ownerId: driverId },
+          referenceType: 'ride_earning_clawback_debt',
+          referenceId: ride.id,
+        },
+      });
+      expect(debtEntry).not.toBeNull();
+    });
+
+    it('D4-5: a cash commission reversal is applied exactly once even when refund is attempted twice', async () => {
+      if (!databaseAvailable) return;
+      const ride = await settleCashRide(1200);
+      await service.refundRide('admin-user', ride.id, 'first', {});
+      await expect(service.refundRide('admin-user', ride.id, 'second', {})).rejects.toThrow(
+        'already been refunded',
+      );
+
+      const reversalCount = await prisma.commissionLedgerEntry.count({
+        where: {
+          account: { ownerType: 'DRIVER', ownerId: driverId },
+          referenceType: 'ride_commission_reversal',
+          referenceId: ride.id,
+        },
+      });
+      expect(reversalCount).toBe(1);
+      expect(
+        Number(
+          (await commissionAccounts.getOrCreateAccount('DRIVER', driverId)).outstandingBalance,
+        ),
+      ).toBeCloseTo(0);
+    });
+
+    it('D4-6: a duplicate refund request is rejected and does not double-credit the customer', async () => {
+      if (!databaseAvailable) return;
+      const totalFare = 1000;
+      const ride = await settleWalletRide(totalFare);
+      const custBefore = await balance(WalletOwnerType.CUSTOMER, customerId);
+
+      await service.refundRide('admin-user', ride.id, 'first', {});
+      await expect(service.refundRide('admin-user', ride.id, 'dup', {})).rejects.toThrow(
+        'already been refunded',
+      );
+
+      expect((await balance(WalletOwnerType.CUSTOMER, customerId)) - custBefore).toBeCloseTo(
+        totalFare,
+      );
+    });
+
+    it('D4-7: two concurrent refunds settle exactly once — one succeeds, one rejected, money moves once', async () => {
+      if (!databaseAvailable) return;
+      const totalFare = 1600;
+      const ride = await settleWalletRide(totalFare);
+      const earning = Number(ride.driverEarning);
+      const custBefore = await balance(WalletOwnerType.CUSTOMER, customerId);
+      const drvBefore = await balance(WalletOwnerType.DRIVER, driverId);
+
+      const results = await Promise.allSettled([
+        service.refundRide('admin-a', ride.id, 'concurrent-a', {}),
+        service.refundRide('admin-b', ride.id, 'concurrent-b', {}),
+      ]);
+      const fulfilled = results.filter((r) => r.status === 'fulfilled');
+      const rejected = results.filter((r) => r.status === 'rejected');
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      const rej = rejected[0];
+      expect(rej?.status).toBe('rejected');
+      if (rej?.status === 'rejected') {
+        expect(rej.reason).toBeInstanceOf(ConflictDomainException);
+      }
+
+      expect((await prisma.ride.findUniqueOrThrow({ where: { id: ride.id } })).paymentStatus).toBe(
+        'REFUNDED',
+      );
+      expect((await balance(WalletOwnerType.CUSTOMER, customerId)) - custBefore).toBeCloseTo(
+        totalFare,
+      );
+      expect(drvBefore - (await balance(WalletOwnerType.DRIVER, driverId))).toBeCloseTo(earning);
+
+      const refundEntries = await prisma.walletLedgerEntry.count({
+        where: {
+          wallet: { ownerType: WalletOwnerType.CUSTOMER, ownerId: customerId },
+          referenceType: 'ride_refund',
+          referenceId: ride.id,
+        },
+      });
+      expect(refundEntries).toBe(1);
+    });
+
+    it('D4-8: a refunded ride transitions to RidePaymentStatus.REFUNDED', async () => {
+      if (!databaseAvailable) return;
+      const ride = await settleCashRide(500);
+      await service.refundRide('admin-user', ride.id, 'state check', {});
+      expect((await prisma.ride.findUniqueOrThrow({ where: { id: ride.id } })).paymentStatus).toBe(
+        'REFUNDED',
+      );
+    });
+
+    it('D4-9: refunding emits the RIDE_REFUNDED event with the customer and ride ids', async () => {
+      if (!databaseAvailable) return;
+      const ride = await settleWalletRide(900);
+      const emitSpy = jest.spyOn(eventBus, 'emit');
+      await service.refundRide('admin-user', ride.id, 'event check', {});
+      expect(emitSpy).toHaveBeenCalledWith(
+        DOMAIN_EVENTS.RIDE_REFUNDED,
+        expect.objectContaining({ rideId: ride.id, customerId }),
+      );
+      emitSpy.mockRestore();
+    });
+
+    it('D4-10: a failure mid-refund leaves the ride PAID and a retry converges without double movement', async () => {
+      if (!databaseAvailable) return;
+      const totalFare = 1400;
+      const ride = await settleWalletRide(totalFare);
+      const custBefore = await balance(WalletOwnerType.CUSTOMER, customerId);
+
+      // Force the guarded REFUNDED transition to fail once, after money moves ran.
+      const spy = jest
+        .spyOn(prisma.ride, 'updateMany')
+        .mockRejectedValueOnce(new Error('simulated failure during REFUNDED transition'));
+      await expect(service.refundRide('admin-user', ride.id, 'boom', {})).rejects.toThrow(
+        'simulated failure during REFUNDED transition',
+      );
+      spy.mockRestore();
+
+      // The ride is not left half-settled — the transition never committed.
+      expect((await prisma.ride.findUniqueOrThrow({ where: { id: ride.id } })).paymentStatus).toBe(
+        'PAID',
+      );
+
+      // Retry converges to REFUNDED, crediting the customer exactly once.
+      const refunded = await service.refundRide('admin-user', ride.id, 'retry', {});
+      expect(refunded.paymentStatus).toBe('REFUNDED');
+      expect((await balance(WalletOwnerType.CUSTOMER, customerId)) - custBefore).toBeCloseTo(
+        totalFare,
+      );
+
+      const refundEntries = await prisma.walletLedgerEntry.count({
+        where: {
+          wallet: { ownerType: WalletOwnerType.CUSTOMER, ownerId: customerId },
+          referenceType: 'ride_refund',
+          referenceId: ride.id,
+        },
+      });
+      expect(refundEntries).toBe(1);
+    });
+  });
 });

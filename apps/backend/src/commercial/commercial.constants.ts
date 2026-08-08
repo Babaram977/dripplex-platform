@@ -60,3 +60,19 @@ export const COMMISSION_ORDER_REVERSAL_REFERENCE_TYPE = 'order_commission_revers
 /// the same order) so the two ledgers' entries are independently
 /// idempotent.
 export const COMMISSION_AUTOMATIC_DEDUCTION_REFERENCE_TYPE = 'order_settlement_deduction';
+
+/// DPX-D4 — distinct referenceType for reversing a CASH ride's driver
+/// commission accrual on refund, paired with referenceId = ride.id. Kept
+/// separate from COMMISSION_REFERENCE_TYPES.RIDE (the original accrual) so
+/// the (accountId, referenceType, referenceId) uniqueness constraint keeps
+/// the accrual and its reversal as two distinct ledger entries — exactly the
+/// COMMISSION_ORDER_REVERSAL_REFERENCE_TYPE pattern, for the Ride domain.
+export const COMMISSION_RIDE_REVERSAL_REFERENCE_TYPE = 'ride_commission_reversal';
+
+/// DPX-D4 — referenceType for a recoverable driver liability recorded when a
+/// ride refund's driver-earning clawback cannot be taken from the driver's
+/// Wallet (already drawn down). An ADJUSTMENT/INCREASE on the driver's
+/// CommissionAccount, paired with referenceId = ride.id, so the money owed
+/// back to the platform is never silently lost; report-only reconciliation
+/// surfaces it (D4 builds no auto-repair engine).
+export const COMMISSION_RIDE_EARNING_DEBT_REFERENCE_TYPE = 'ride_earning_clawback_debt';

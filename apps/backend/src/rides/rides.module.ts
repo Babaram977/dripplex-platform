@@ -10,6 +10,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { PromotionsModule } from '../promotions/promotions.module';
 import { WalletModule } from '../wallet/wallet.module';
 
+import { AdminRidePaymentsController } from './controllers/admin-ride-payments.controller';
 import { AdminRideReportsController } from './controllers/admin-ride-reports.controller';
 import { CustomerRidesController } from './controllers/customer-rides.controller';
 import { DriverRidesController } from './controllers/driver-rides.controller';
@@ -38,7 +39,12 @@ import { RidesService } from './rides.service';
     DriversModule,
     CommercialModule,
   ],
-  controllers: [CustomerRidesController, DriverRidesController, AdminRideReportsController],
+  controllers: [
+    CustomerRidesController,
+    DriverRidesController,
+    AdminRideReportsController,
+    AdminRidePaymentsController,
+  ],
   providers: [
     RidesService,
     RideFareService,
