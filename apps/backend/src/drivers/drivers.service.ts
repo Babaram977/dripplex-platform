@@ -1,5 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { DriverStatus, KycVerificationStatus, RideRatingRole, RideStatus } from '@prisma/client';
+import {
+  DriverStatus,
+  KycVerificationStatus,
+  OnboardingStatus,
+  RideRatingRole,
+  RideStatus,
+} from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../audit/audit.service';
 import {
@@ -292,6 +298,14 @@ export class DriversService {
       },
     });
 
+    // DPX-DRIVER-008 — keep the onboarding state machine in sync with the
+    // driver lifecycle. updateMany is a no-op if the driver never submitted a
+    // structured onboarding record (legacy/direct-approved drivers).
+    await this.prisma.driverOnboarding.updateMany({
+      where: { driverProfileId: profile.id },
+      data: { status: OnboardingStatus.APPROVED },
+    });
+
     await this.auditService.record(
       DRIVER_AUDIT_ACTIONS.APPROVED,
       { ...context, userId: adminUserId },
@@ -313,7 +327,7 @@ export class DriversService {
     reason: string,
     context: AuditContext,
   ): Promise<DriverApprovalDto> {
-    const { user } = await this.requireDriverProfile(driverUserId);
+    const { profile, user } = await this.requireDriverProfile(driverUserId);
 
     const updated = await this.prisma.driverProfile.update({
       where: { userId: driverUserId },
@@ -324,6 +338,13 @@ export class DriversService {
         approvedBy: adminUserId,
         rejectedReason: reason,
       },
+    });
+
+    // DPX-DRIVER-008 — keep the onboarding state machine in sync (no-op if the
+    // driver has no structured onboarding record).
+    await this.prisma.driverOnboarding.updateMany({
+      where: { driverProfileId: profile.id },
+      data: { status: OnboardingStatus.REJECTED },
     });
 
     await this.auditService.record(

@@ -2,6 +2,7 @@ import type { HttpClient } from '../client/http-client.js';
 import type {
   DriverActivationEligibilityDto,
   DriverApprovalDto,
+  DriverKycDto,
   DriverProfileDto,
   DriverStatus,
 } from '@dripplex/types';
@@ -109,6 +110,30 @@ export class AdminDriversClient {
   public reactivateDriver(driverId: string): Promise<DriverApprovalDto> {
     return this.http.request<DriverApprovalDto>(`/admin/driver/${driverId}/reactivate`, {
       method: 'POST',
+      auth: true,
+    });
+  }
+
+  /**
+   * DPX-DRIVER-008 — verify a single submitted driver KYC document.
+   * Optional `remarks`. Requires `admin:drivers:approve`.
+   */
+  public verifyKyc(kycId: string, remarks?: string): Promise<DriverKycDto> {
+    return this.http.request<DriverKycDto>(`/admin/driver/kyc/${kycId}/verify`, {
+      method: 'POST',
+      ...(remarks !== undefined ? { body: { remarks } } : {}),
+      auth: true,
+    });
+  }
+
+  /**
+   * DPX-DRIVER-008 — reject a single submitted driver KYC document with a
+   * required reason (3–1000 chars). Requires `admin:drivers:reject`.
+   */
+  public rejectKyc(kycId: string, remarks: string): Promise<DriverKycDto> {
+    return this.http.request<DriverKycDto>(`/admin/driver/kyc/${kycId}/reject`, {
+      method: 'POST',
+      body: { remarks },
       auth: true,
     });
   }

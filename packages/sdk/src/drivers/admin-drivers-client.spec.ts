@@ -101,4 +101,42 @@ describe('AdminDriversClient', () => {
       auth: true,
     });
   });
+
+  it('verifyKyc() posts to /admin/driver/kyc/:kycId/verify with no body when no remarks', async () => {
+    const { http, request } = createHttpMock();
+    const client = new AdminDriversClient(http);
+
+    await client.verifyKyc('kyc-1');
+
+    expect(request).toHaveBeenCalledWith('/admin/driver/kyc/kyc-1/verify', {
+      method: 'POST',
+      auth: true,
+    });
+  });
+
+  it('verifyKyc() includes a remarks body when provided', async () => {
+    const { http, request } = createHttpMock();
+    const client = new AdminDriversClient(http);
+
+    await client.verifyKyc('kyc-1', 'Looks good.');
+
+    expect(request).toHaveBeenCalledWith('/admin/driver/kyc/kyc-1/verify', {
+      method: 'POST',
+      body: { remarks: 'Looks good.' },
+      auth: true,
+    });
+  });
+
+  it('rejectKyc() posts to /admin/driver/kyc/:kycId/reject with a remarks body', async () => {
+    const { http, request } = createHttpMock();
+    const client = new AdminDriversClient(http);
+
+    await client.rejectKyc('kyc-1', 'Document is blurry and unreadable.');
+
+    expect(request).toHaveBeenCalledWith('/admin/driver/kyc/kyc-1/reject', {
+      method: 'POST',
+      body: { remarks: 'Document is blurry and unreadable.' },
+      auth: true,
+    });
+  });
 });
