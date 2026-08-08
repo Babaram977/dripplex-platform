@@ -18,10 +18,12 @@ import { useFundWallet } from '@/hooks/wallet';
 
 const AMOUNT_PRESETS = ['500', '1,000', '2,000', '5,000', '10,000', '20,000'];
 
+// OPay is intentionally excluded until a real OpayProvider adapter exists
+// (DPX-DRIVER-018 safe-disable). The backend rejects OPAY wallet funding at
+// initiation, so it must not be offered here. Re-add once the adapter ships.
 const PROVIDERS: { id: WalletFundingProvider; icon: string; label: string }[] = [
   { id: 'PAYSTACK', icon: '🟦', label: 'Paystack' },
   { id: 'FLUTTERWAVE', icon: '🟧', label: 'Flutterwave' },
-  { id: 'OPAY', icon: '📱', label: 'OPay' },
 ];
 
 function parseAmount(value: string): number {

@@ -27,10 +27,12 @@ import { formatPrice } from '@/lib/format';
 import { describeSdkError, sdk } from '@/lib/sdk';
 import { siteConfig } from '@/lib/site';
 
+// OPay is intentionally excluded until a real OpayProvider adapter exists
+// (DPX-DRIVER-018 safe-disable). The backend rejects OPAY order payment at
+// initiation, so it must not be offered here. Re-add once the adapter ships.
 const GATEWAY_OPTIONS = [
   { key: 'PAYSTACK', icon: '💳', label: 'Paystack', sublabel: 'Card, bank transfer & USSD' },
   { key: 'FLUTTERWAVE', icon: '💳', label: 'Flutterwave', sublabel: 'Card, bank transfer & USSD' },
-  { key: 'OPAY', icon: '📱', label: 'OPay', sublabel: 'Wallet & bank transfer' },
 ] as const;
 
 function titleCase(label: string): string {

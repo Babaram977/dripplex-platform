@@ -121,7 +121,8 @@ describe('DPX-COMMERCIAL-001 Slice 6 — Full Commercial Lifecycle E2E', () => {
       auditService,
       notifications,
       events,
-      [fakeAdapter('PAYSTACK'), fakeAdapter('FLUTTERWAVE'), fakeAdapter('OPAY')],
+      // OPay is safe-disabled from order payment (DPX-DRIVER-018) — no OPAY adapter.
+      [fakeAdapter('PAYSTACK'), fakeAdapter('FLUTTERWAVE')],
       new DomainEventBus(),
       commissionAccounts,
     );
