@@ -32,6 +32,7 @@ describe('portal SDK barrels', () => {
         'reviews',
         'rides',
         'search',
+        'uploads',
         'wallet',
         'wishlist',
       ].sort(),

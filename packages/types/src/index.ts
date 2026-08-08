@@ -2,6 +2,13 @@ export type { ApiErrorResponse, ApiResponse, ApiSuccessResponse } from './api/re
 export { isApiErrorResponse, isApiSuccessResponse } from './api/response.js';
 
 export type {
+  SignUploadRequest,
+  SignUploadResponse,
+  UploadContentType,
+  UploadFolder,
+} from './uploads/index.js';
+
+export type {
   AdminCustomerKycListItemDto,
   CustomerKycLevel,
   CustomerKycStatus,

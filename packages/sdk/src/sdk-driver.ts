@@ -11,6 +11,7 @@ export function createDriverSdk(config: Partial<SdkConfig> = {}): DriverSdk {
   const client = new DripplexClient(config);
   return {
     auth: client.auth,
+    uploads: client.uploads,
     driverCampaign: client.driverCampaign,
     notifications: client.driverNotifications,
     wallet: client.wallet,
@@ -33,6 +34,7 @@ export function createDriverSdk(config: Partial<SdkConfig> = {}): DriverSdk {
 
 export interface DriverSdk {
   auth: DripplexClient['auth'];
+  uploads: DripplexClient['uploads'];
   driverCampaign: DripplexClient['driverCampaign'];
   notifications: DripplexClient['driverNotifications'];
   wallet: DripplexClient['wallet'];

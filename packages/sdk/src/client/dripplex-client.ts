@@ -74,6 +74,7 @@ import { CustomerProductsApi } from '../product/product-api.js';
 import { AdminRideReportsClient } from '../rides/admin-ride-reports-client.js';
 import { CustomerRideClient } from '../rides/customer-ride-client.js';
 import { DriverRideClient } from '../rides/driver-ride-client.js';
+import { UploadsClient } from '../uploads/uploads-client.js';
 
 import type { SdkConfig } from '../config/sdk-config.js';
 
@@ -150,6 +151,7 @@ export class DripplexClient {
   public readonly adminFraud: AdminFraudClient;
   public readonly kyc: CustomerKycClient;
   public readonly adminCustomerKyc: AdminCustomerKycClient;
+  public readonly uploads: UploadsClient;
   private readonly http: HttpClient;
 
   public constructor(config: Partial<SdkConfig> = {}) {
@@ -227,6 +229,7 @@ export class DripplexClient {
     this.adminFraud = new AdminFraudClient(this.http);
     this.kyc = new CustomerKycClient(this.http);
     this.adminCustomerKyc = new AdminCustomerKycClient(this.http);
+    this.uploads = new UploadsClient(this.http);
   }
 }
 
@@ -250,6 +253,7 @@ export { RiderDeliveryClient } from '../delivery/rider-delivery-client.js';
 export { OrderClient } from '../order/order-client.js';
 export { PaymentClient } from '../payment/payment-client.js';
 export { CustomerRideClient } from '../rides/customer-ride-client.js';
+export { UploadsClient } from '../uploads/uploads-client.js';
 export {
   AdminDriverCampaignClient,
   AdminPromotionsClient,

@@ -11,6 +11,7 @@ export function createRiderSdk(config: Partial<SdkConfig> = {}): RiderSdk {
   const client = new DripplexClient(config);
   return {
     auth: client.auth,
+    uploads: client.uploads,
     riderDelivery: client.riderDelivery,
     notifications: client.notifications,
     wallet: client.wallet,
@@ -20,6 +21,7 @@ export function createRiderSdk(config: Partial<SdkConfig> = {}): RiderSdk {
 
 export interface RiderSdk {
   auth: DripplexClient['auth'];
+  uploads: DripplexClient['uploads'];
   riderDelivery: DripplexClient['riderDelivery'];
   notifications: DripplexClient['notifications'];
   wallet: DripplexClient['wallet'];
