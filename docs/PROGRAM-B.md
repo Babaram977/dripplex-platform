@@ -63,31 +63,22 @@ Push/in-app notifications UX, live tracking, WebSockets, presence.
 
 ---
 
-## Documentation series (required before coding)
+## Frontend architecture documentation
 
-| Doc                                                      | Title                 |
-| -------------------------------------------------------- | --------------------- |
-| [DPX-F001](./frontend/DPX-F001-frontend-architecture.md) | Frontend Architecture |
-| [DPX-F002](./frontend/DPX-F002-design-system.md)         | Design System         |
-| [DPX-F003](./frontend/DPX-F003-customer-ux.md)           | Customer UX           |
-| [DPX-F004](./frontend/DPX-F004-merchant-ux.md)           | Merchant UX           |
-| [DPX-F005](./frontend/DPX-F005-admin-ux.md)              | Admin UX              |
-| [DPX-F006](./frontend/DPX-F006-routing.md)               | Routing               |
-| [DPX-F007](./frontend/DPX-F007-state-management.md)      | State Management      |
-| [DPX-F008](./frontend/DPX-F008-api-integration.md)       | API Integration       |
-| [DPX-F009](./frontend/DPX-F009-offline-strategy.md)      | Offline Strategy      |
-| [DPX-F010](./frontend/DPX-F010-accessibility.md)         | Accessibility         |
+**Canonical:** [FPX-001 — Frontend Platform Architecture](./FPX-001-frontend-platform-architecture.md) (adopted, as-built).
 
-These are the frontend equivalent of the backend DPX series. Treat them as **implementation contracts**, not essays.
+The `docs/frontend/DPX-F001…F010` documents are the earlier interim **stubs**, now **superseded by FPX-001** and retained for history only (each carries a banner pointing to FPX-001). See [`docs/frontend/README.md`](./frontend/README.md).
 
 ---
 
-## Recommended sequence
+## Original recommended sequence (historical — largely delivered)
+
+The kickoff plan; the apps and packages it targets are now implemented on `main`, and the DPX-F approval step has been superseded by FPX-001's adoption:
 
 ```
 TD-001 baseline clean
         ↓
-DPX-F001 … F010 review & approval
+Frontend architecture reference (now FPX-001, adopted as-built)
         ↓
 Design system (tokens + primitives) + Storybook
         ↓
