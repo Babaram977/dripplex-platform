@@ -169,6 +169,8 @@ export interface DriverProfileDto {
   /** DPX-DRIVER-002 Phase 1 */
   emergencyContactName: string | null;
   emergencyContactPhone: string | null;
+  emergencyContactRelationship: string | null;
+  emergencyContactEmail: string | null;
   /** DPX-DRIVER-002 Phase 4 */
   agreementAcceptedAt: string | null;
   agreementVersion: string | null;
@@ -232,6 +234,11 @@ export interface SubmitDriverKycRequest {
 export interface SubmitEmergencyContactRequest {
   emergencyContactName: string;
   emergencyContactPhone: string;
+  /** DPX-DRIVER-007 — relationship is required in the Driver Registration
+   * Figma flow (dropdown: Spouse/Parent/Sibling/Child/Relative/Friend/Other). */
+  emergencyContactRelationship: string;
+  /** DPX-DRIVER-007 — optional in the Figma flow. */
+  emergencyContactEmail?: string;
 }
 
 export interface AcceptDriverAgreementRequest {
