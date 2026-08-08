@@ -101,6 +101,11 @@ const PERMISSION_SEEDS = [
   },
   { code: 'admin:cms:manage', description: 'Manage CMS content' },
   { code: 'customer:cms:read', description: 'Read published CMS content' },
+  { code: 'customer:kyc:manage', description: 'Manage own customer identity verification (KYC)' },
+  {
+    code: 'admin:customer-kyc:review',
+    description: 'Review customer identity verification submissions',
+  },
   { code: 'admin:fraud:manage', description: 'Manage fraud signals and lists' },
   { code: 'support:fraud:review', description: 'Review fraud signals' },
   { code: 'admin:fraud:configure', description: 'Configure fraud thresholds' },
@@ -268,6 +273,7 @@ const ROLE_SEEDS = [
 
 const ROLE_PERMISSION_GRANTS = {
   customer: [
+    'customer:kyc:manage',
     'profile:read',
     'profile:write',
     'auth:sessions:read',
@@ -346,6 +352,7 @@ const ROLE_PERMISSION_GRANTS = {
     'customer:notifications:manage',
   ],
   operations_staff: [
+    'admin:customer-kyc:review',
     'profile:read',
     'profile:write',
     'auth:sessions:read',
@@ -397,6 +404,7 @@ const ROLE_PERMISSION_GRANTS = {
     'audit:read',
   ],
   administrator: [
+    'admin:customer-kyc:review',
     'profile:read',
     'profile:write',
     'auth:sessions:read',
@@ -460,6 +468,7 @@ const ROLE_PERMISSION_GRANTS = {
     'audit:read',
   ],
   super_administrator: [
+    'admin:customer-kyc:review',
     'profile:read',
     'profile:write',
     'auth:sessions:read',
