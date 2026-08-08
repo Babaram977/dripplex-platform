@@ -17,6 +17,7 @@ import { sdk } from '@/lib/sdk';
  * discipline avoids. */
 const NAV_LINKS = [
   { href: '/', label: 'Live Fleet Map' },
+  { href: '/drivers', label: 'Driver Approvals' },
   { href: '/rides', label: 'Ride Queue' },
   { href: '/queues/sos', label: 'SOS Queue' },
   { href: '/queues/incidents', label: 'Incidents' },

@@ -225,10 +225,24 @@ describe('DriversService', () => {
 
     await satisfyNonKycActivationRequirements();
 
+    // DPX-DRIVER-008 — seed a submitted onboarding record so we can assert the
+    // driver lifecycle keeps the onboarding state machine in sync.
+    const profile = await prisma.driverProfile.findUniqueOrThrow({ where: { userId: driverId } });
+    await prisma.driverOnboarding.upsert({
+      where: { driverProfileId: profile.id },
+      create: { driverProfileId: profile.id, status: 'SUBMITTED' },
+      update: { status: 'SUBMITTED' },
+    });
+
     const approval = await service.approveDriver(driverId, adminId, context);
 
     expect(approval.status).toBe('APPROVED');
     expect(approval.approvedBy).toBe(adminId);
+
+    const onboarding = await prisma.driverOnboarding.findUniqueOrThrow({
+      where: { driverProfileId: profile.id },
+    });
+    expect(onboarding.status).toBe('APPROVED');
   });
 
   it('rejects approving a driver twice', async () => {
