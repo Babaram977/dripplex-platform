@@ -482,16 +482,33 @@ describe('DriverIdentityVerificationService', () => {
 
   it('submit(): a FAILED result keeps the driver flagged and forces availability offline', async () => {
     if (!databaseAvailable) return;
-    const idleMs = IDLE_HOURS * 60 * 60 * 1000;
+    // Use a tiny idle window (2 seconds) rather than the shared 8h fixture so
+    // `lastIdentityVerifiedAt` is only ~2.5s in the past. That keeps it on the
+    // same Lagos calendar day as "now" — guaranteeing IDLE_TIMEOUT wins over the
+    // higher-priority FIRST_LOGIN_OF_DAY trigger without depending on the
+    // wall-clock time the test happens to run at (mirrors the boundary test).
+    const tinyIdleHours = 1 / 1800; // 2 seconds
+    const tinySecuritySettings = makeSecuritySettings({
+      idleHours: tinyIdleHours,
+    }) as unknown as DriverSecuritySettingsService;
+    const localAudit = new AuditService({ create: jest.fn().mockResolvedValue(undefined) });
+    const localAuditRecord = jest.spyOn(localAudit, 'record');
+    const tinyIdleService = new DriverIdentityVerificationService(
+      prisma,
+      localAudit,
+      tinySecuritySettings,
+      provider,
+    );
+    const idleMs = tinyIdleHours * 60 * 60 * 1000;
     const driverId = await createDriver({
-      lastIdentityVerifiedAt: new Date(Date.now() - idleMs - 1_000),
+      lastIdentityVerifiedAt: new Date(Date.now() - idleMs - 500),
     });
     await prisma.driverAvailability.create({
       data: { driverId, online: true, acceptingRides: true, vehicleType: 'ECONOMY' },
     });
     provider.verify.mockResolvedValue({ status: 'FAILED', failureReason: 'face mismatch' });
 
-    const record = await service.submit(
+    const record = await tinyIdleService.submit(
       { driverId, selfieImageBase64: 'x'.repeat(200) },
       { userId: driverId },
     );
@@ -507,7 +524,7 @@ describe('DriverIdentityVerificationService', () => {
     expect(availability.online).toBe(false);
     expect(availability.acceptingRides).toBe(false);
 
-    expect(auditRecord).toHaveBeenCalledWith(
+    expect(localAuditRecord).toHaveBeenCalledWith(
       DRIVER_AUDIT_ACTIONS.IDENTITY_VERIFICATION_FAILED,
       expect.objectContaining({ userId: driverId }),
       expect.objectContaining({
