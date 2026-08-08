@@ -13,12 +13,14 @@ import type { RidePaymentMethod } from '@dripplex/types';
 
 import { useCustomerWallet, useInitiateRidePayment, useRide } from '@/hooks/rides';
 
+// OPay is intentionally excluded until a real OpayProvider adapter exists
+// (DPX-DRIVER-013 §G safe-disable). The backend rejects OPAY ride payments at
+// initiation, so it must not be offered here. Re-add once the adapter ships.
 const METHODS: { id: RidePaymentMethod; icon: string; label: string }[] = [
   { id: 'WALLET', icon: '💳', label: 'DrippleX Wallet' },
   { id: 'CASH', icon: '💵', label: 'Cash' },
   { id: 'PAYSTACK', icon: '🟦', label: 'Paystack' },
   { id: 'FLUTTERWAVE', icon: '🟧', label: 'Flutterwave' },
-  { id: 'OPAY', icon: '🟢', label: 'OPay' },
 ];
 
 /**

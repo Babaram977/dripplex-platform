@@ -41,16 +41,22 @@ import { toRideDto } from './ride.mapper';
 import type { InitiateRidePaymentResponse, RideDto } from '@dripplex/types';
 import type { PaymentProvider, Ride } from '@prisma/client';
 
+// OPAY is intentionally omitted: a real OpayProvider adapter does not exist yet
+// (it throws NotImplementedException), so OPay is safe-disabled from customer
+// ride selection per the founder decision recorded in DPX-DRIVER-013 §G. The
+// RidePaymentMethod enum value is deliberately preserved for DB/wallet/order
+// compatibility; keeping OPAY out of both constants below means an OPAY ride
+// request is cleanly rejected at initiation (400) via the RIDE_PAYMENT_METHOD_TO_PROVIDER
+// guard, rather than reaching the adapter and 501-ing in production. Restore both
+// entries once a working adapter lands.
 const GATEWAY_METHODS: RidePaymentMethod[] = [
   RidePaymentMethod.PAYSTACK,
   RidePaymentMethod.FLUTTERWAVE,
-  RidePaymentMethod.OPAY,
 ];
 
 const RIDE_PAYMENT_METHOD_TO_PROVIDER: Partial<Record<RidePaymentMethod, PaymentProvider>> = {
   [RidePaymentMethod.PAYSTACK]: 'PAYSTACK',
   [RidePaymentMethod.FLUTTERWAVE]: 'FLUTTERWAVE',
-  [RidePaymentMethod.OPAY]: 'OPAY',
 };
 
 interface FareSplit {
