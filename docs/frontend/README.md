@@ -1,8 +1,10 @@
 # Frontend documentation index
 
-Program B architecture series. **Drafts only** — expand and approve before implementation.
+**Canonical frontend architecture:** [FPX-001 — Frontend Platform Architecture](../FPX-001-frontend-platform-architecture.md) (adopted, as-built).
 
-| ID       | Document                                                     |
+The `DPX-F001`–`DPX-F010` documents below are the earlier interim **stubs**. They are **superseded by FPX-001** and retained for history only — each carries a banner pointing to FPX-001. Do not treat them as current.
+
+| ID       | Document (superseded stub)                                   |
 | -------- | ------------------------------------------------------------ |
 | DPX-F001 | [Frontend Architecture](./DPX-F001-frontend-architecture.md) |
 | DPX-F002 | [Design System](./DPX-F002-design-system.md)                 |

@@ -1,24 +1,27 @@
 # Program B — Frontend Platform
 
-| Field            | Value                                          |
-| ---------------- | ---------------------------------------------- |
-| **Program**      | B — Frontend Platform                          |
-| **Baseline**     | Backend Core `v1.0.0-backend-core`             |
-| **Status**       | Planning — documentation before implementation |
-| **Last updated** | 2026-07-21                                     |
+| Field            | Value                                                                                                         |
+| ---------------- | ------------------------------------------------------------------------------------------------------------- |
+| **Program**      | B — Frontend Platform                                                                                         |
+| **Baseline**     | Backend Core `v1.0.0-backend-core`                                                                            |
+| **Status**       | Largely delivered — platform implemented on `main`                                                            |
+| **Architecture** | [FPX-001 — Frontend Platform Architecture](./FPX-001-frontend-platform-architecture.md) (canonical, as-built) |
+| **Last updated** | 2026-08-08                                                                                                    |
 
 ---
 
 ## Principle
 
-Do **not** start product UI implementation until:
+The canonical frontend architecture reference is now [**FPX-001**](./FPX-001-frontend-platform-architecture.md) (adopted, as-built), which supersedes the interim `docs/frontend/DPX-F001…F010` stubs. The frontend platform — all six apps and the six shared packages — is already implemented on `main`, so the original pre-implementation gate below is historical.
+
+Original gate (retained for context):
 
 1. Frontend lint/type baseline is clean (**TD-001**)
-2. DPX-F001…F010 architecture series is drafted and reviewed
-3. Design system tokens/primitives are defined (DPX-F002)
-4. High-fidelity Figma exists for Customer, Merchant, Admin, and Operations
+2. DPX-F001…F010 architecture series is drafted and reviewed → **superseded by FPX-001**
+3. Design system tokens/primitives are defined
+4. High-fidelity Figma exists for each portal
 
-Backend Core is **feature-frozen** (auth, checkout, payments, delivery — bugfixes only).
+**Standing rule for _new_ UI:** design-before-code against the Production Figma (never invent screens). Backend Core's commerce/auth foundation is stable; feature work continues in active domains (notably the Driver module and its admin/operations surfaces).
 
 ---
 
