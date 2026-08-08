@@ -142,6 +142,31 @@ describe('LoginService', () => {
     );
   });
 
+  it('lets a phone-only (synthetic-email) account log in without a verified email (DPX-DRIVER-010)', async () => {
+    const phoneOnlyUser = {
+      ...activeUser,
+      id: '33333333-3333-3333-3333-333333333333',
+      email: '2348012345678@phone.users.dripplex.internal',
+      emailVerifiedAt: null,
+    };
+    (usersService.findByEmail as jest.Mock).mockResolvedValue(null);
+    (usersService.findByPhone as jest.Mock).mockResolvedValue(phoneOnlyUser);
+    (usersService.findByIdWithRbac as jest.Mock).mockResolvedValue({
+      ...phoneOnlyUser,
+      roles: [
+        { role: { name: 'customer', permissions: [{ permission: { code: 'profile:read' } }] } },
+      ],
+    });
+
+    const result = await service.loginCustomer(
+      { phone: '+2348012345678', password: 'Password1' },
+      { ipAddress: '127.0.0.1' },
+    );
+
+    expect(result.accessToken).toBe('access-token');
+    expect(result.user.roles).toContain('customer');
+  });
+
   it('rejects wrong password', async () => {
     (bcrypt.compare as jest.Mock).mockResolvedValue(false);
 
