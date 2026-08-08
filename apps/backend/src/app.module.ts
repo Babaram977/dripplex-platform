@@ -34,6 +34,7 @@ import { ReferralsModule } from './referrals/referrals.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { RidesModule } from './rides/rides.module';
 import { SearchModule } from './search/search.module';
+import { UploadsModule } from './uploads/uploads.module';
 import { UsersModule } from './users/users.module';
 import { WalletFundingModule } from './wallet/wallet-funding.module';
 import { WalletModule } from './wallet/wallet.module';
@@ -82,6 +83,7 @@ import { WishlistModule } from './wishlist/wishlist.module';
     OperationsModule,
     CommercialModule,
     KycModule,
+    UploadsModule,
   ],
   providers: [
     {

@@ -316,4 +316,37 @@ export class AppConfigService {
   public get resendConfigured(): boolean {
     return this.resendApiKey !== '';
   }
+
+  public get objectStorageEndpoint(): string {
+    return this.configService.get('OBJECT_STORAGE_ENDPOINT', { infer: true });
+  }
+
+  public get objectStorageRegion(): string {
+    return this.configService.get('OBJECT_STORAGE_REGION', { infer: true });
+  }
+
+  public get objectStorageBucket(): string {
+    return this.configService.get('OBJECT_STORAGE_BUCKET', { infer: true });
+  }
+
+  public get objectStorageAccessKeyId(): string {
+    return this.configService.get('OBJECT_STORAGE_ACCESS_KEY_ID', { infer: true });
+  }
+
+  public get objectStorageSecretAccessKey(): string {
+    return this.configService.get('OBJECT_STORAGE_SECRET_ACCESS_KEY', { infer: true });
+  }
+
+  public get objectStoragePublicBaseUrl(): string {
+    return this.configService.get('OBJECT_STORAGE_PUBLIC_BASE_URL', { infer: true });
+  }
+
+  public get objectStorageConfigured(): boolean {
+    return (
+      this.objectStorageEndpoint !== '' &&
+      this.objectStorageBucket !== '' &&
+      this.objectStorageAccessKeyId !== '' &&
+      this.objectStorageSecretAccessKey !== ''
+    );
+  }
 }

@@ -89,6 +89,19 @@ export const envSchema = z.object({
   DRIVER_IDV_LOCKOUT_THRESHOLD: z.coerce.number().int().min(1).max(20).default(5),
   DRIVER_IDV_GPS_ANOMALY_SPEED_KMH: z.coerce.number().positive().default(150),
   DRIVER_IDV_SPOT_CHECK_DENOMINATOR: z.coerce.number().int().min(1).default(20),
+  // DPX-DRIVER-016 — S3-compatible object storage (Cloudflare R2 or AWS S3) for
+  // signed direct-to-storage uploads. All default to '' (unconfigured): the
+  // uploads provider checks objectStorageConfigured before signing and throws a
+  // clear error if unset, so an empty value is a safe no-op rather than a
+  // boot-time crash — same safe-until-configured pattern as Smile ID / payments.
+  OBJECT_STORAGE_ENDPOINT: z.string().default(''),
+  OBJECT_STORAGE_REGION: z.string().default('auto'),
+  OBJECT_STORAGE_BUCKET: z.string().default(''),
+  OBJECT_STORAGE_ACCESS_KEY_ID: z.string().default(''),
+  OBJECT_STORAGE_SECRET_ACCESS_KEY: z.string().default(''),
+  // Optional public/CDN base URL objects are served from; falls back to the
+  // endpoint/bucket path when unset.
+  OBJECT_STORAGE_PUBLIC_BASE_URL: z.string().default(''),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
