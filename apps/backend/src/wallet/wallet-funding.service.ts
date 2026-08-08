@@ -181,9 +181,11 @@ export class WalletFundingService {
     if (value === PaymentProvider.FLUTTERWAVE) {
       return PaymentProvider.FLUTTERWAVE;
     }
-    if (value === PaymentProvider.OPAY) {
-      return PaymentProvider.OPAY;
-    }
+    // OPAY is intentionally not accepted: no real OpayProvider adapter exists yet
+    // (it throws NotImplementedException), so OPay is safe-disabled from wallet
+    // top-up per the founder decision (DPX-DRIVER-018). An OPAY funding request is
+    // rejected here with a clean 400 rather than reaching the unimplemented adapter
+    // and 501-ing in production. Restore this branch once an adapter lands.
     throw new ValidationDomainException(`Unsupported payment provider: ${value}`);
   }
 

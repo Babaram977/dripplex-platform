@@ -64,10 +64,16 @@ import type { Order, PaymentTransaction } from '@prisma/client';
 /** Only these three OrderPaymentMethod values reach a PaymentProviderAdapter
  * — WALLET and CASH are handled entirely inside this service, exactly like
  * RidePaymentService's GATEWAY_METHODS / RIDE_PAYMENT_METHOD_TO_PROVIDER. */
+// OPAY is intentionally omitted: no real OpayProvider adapter exists yet (it
+// throws NotImplementedException), so OPay is safe-disabled from order payment
+// selection per the founder decision (DPX-DRIVER-018, extending DPX-DRIVER-014
+// from rides to orders + wallet). The OrderPaymentMethod enum value is preserved
+// for DB compatibility; omitting it here means an OPAY order is cleanly rejected
+// at initiation (400) via the `if (!provider)` guard below, rather than reaching
+// the unimplemented adapter and 501-ing in production. Restore once an adapter lands.
 const ORDER_PAYMENT_METHOD_TO_PROVIDER: Partial<Record<OrderPaymentMethod, PaymentProvider>> = {
   [OrderPaymentMethod.PAYSTACK]: 'PAYSTACK',
   [OrderPaymentMethod.FLUTTERWAVE]: 'FLUTTERWAVE',
-  [OrderPaymentMethod.OPAY]: 'OPAY',
 };
 
 @Injectable()

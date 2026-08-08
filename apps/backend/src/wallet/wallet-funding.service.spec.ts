@@ -5,6 +5,7 @@ import { PrismaClient, WalletOwnerType } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { DomainEventBus } from '../events/domain-event-bus';
 
+import { WalletFundingProviderDto } from './dto/wallet-funding.dto';
 import { WalletFundingService } from './wallet-funding.service';
 import { WalletService } from './wallet.service';
 
@@ -58,12 +59,12 @@ describe('WalletFundingService', () => {
 
     paystackAdapter = fakeAdapter('PAYSTACK');
     const flutterwaveAdapter = fakeAdapter('FLUTTERWAVE');
-    const opayAdapter = fakeAdapter('OPAY');
+    // OPay is safe-disabled from wallet top-up (DPX-DRIVER-018) — no OPAY adapter
+    // is registered, matching production.
 
     service = new WalletFundingService(prisma, walletService, auditService, config, [
       paystackAdapter,
       flutterwaveAdapter,
-      opayAdapter,
     ]);
 
     const customer = await prisma.user.create({
@@ -96,6 +97,18 @@ describe('WalletFundingService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  it('rejects OPay wallet funding at initiation (safe-disabled, DPX-DRIVER-018)', async () => {
+    if (!databaseAvailable) return;
+
+    await expect(
+      service.initiateFunding(
+        customerId,
+        { amount: 5000, provider: WalletFundingProviderDto.OPAY },
+        {},
+      ),
+    ).rejects.toThrow('Unsupported payment provider: OPAY');
   });
 
   it('initiates a funding transaction and records the authorization URL', async () => {
