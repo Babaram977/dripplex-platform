@@ -18,6 +18,7 @@ import { CommissionAccountService } from '../commercial/commission-account.servi
 import {
   ConflictDomainException,
   NotFoundDomainException,
+  ValidationDomainException,
 } from '../common/exceptions/domain.exception';
 import { DomainEventBus } from '../events/domain-event-bus';
 import { DOMAIN_EVENTS, type DomainEvent } from '../events/domain-events';
@@ -543,11 +544,27 @@ export class MerchantSettlementService implements OnModuleInit {
         });
         return this.roundMoney(merchantAmount - deduction);
       } catch (error) {
-        if (!(error instanceof ConflictDomainException) || attempt === maxAttempts) {
+        // Both exceptions are the SAME race — another settlement reduced this
+        // account's balance between our out-of-transaction read above (which
+        // sized `deduction`) and recordPayment's in-transaction check — and
+        // the correct response to both is identical: loop, re-read the
+        // now-current balance, and recompute a smaller deduction.
+        //   - ConflictDomainException: the loser's optimistic-version write
+        //     was rejected because the winner already bumped the version.
+        //   - ValidationDomainException: the winner had already committed when
+        //     the loser's transaction read the balance, so there was no
+        //     version conflict — but the pre-sized `deduction` now exceeds the
+        //     reduced balance and trips recordPayment's cap. Inside this method
+        //     `deduction` is always <= the balance we last read, so this cap
+        //     violation can ONLY mean "the balance shrank under us," never a
+        //     genuinely invalid deduction. Retrying re-reads the smaller (or
+        //     zero) balance and settles correctly. Without this, a benign race
+        //     would fail an otherwise-valid settlement outright.
+        const retriable =
+          error instanceof ConflictDomainException || error instanceof ValidationDomainException;
+        if (!retriable || attempt === maxAttempts) {
           throw error;
         }
-        // Someone else's settlement won the race on this account's
-        // version — loop, re-read the now-current balance, retry.
       }
     }
     // Unreachable (the loop always returns or throws), but keeps the
