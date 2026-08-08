@@ -25,6 +25,7 @@
     "test": {
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", "vitest.config.*", "jest.config.*"],
+      "passThroughEnv": ["DATABASE_URL", "DATABASE_REQUIRED"],
       "outputs": ["coverage/**"]
     },
     "clean": {
