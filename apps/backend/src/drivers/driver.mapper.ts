@@ -38,6 +38,8 @@ export function toDriverProfileDto(input: {
     suspendedAt: input.profile.suspendedAt ? input.profile.suspendedAt.toISOString() : null,
     emergencyContactName: input.profile.emergencyContactName,
     emergencyContactPhone: input.profile.emergencyContactPhone,
+    emergencyContactRelationship: input.profile.emergencyContactRelationship,
+    emergencyContactEmail: input.profile.emergencyContactEmail,
     agreementAcceptedAt: input.profile.agreementAcceptedAt
       ? input.profile.agreementAcceptedAt.toISOString()
       : null,

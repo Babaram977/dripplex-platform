@@ -80,7 +80,11 @@ describe('OnboardingService', () => {
 
     await service.submitEmergencyContact(
       driverId,
-      { emergencyContactName: 'Jane Doe', emergencyContactPhone: '+2348012345678' },
+      {
+        emergencyContactName: 'Jane Doe',
+        emergencyContactPhone: '+2348012345678',
+        emergencyContactRelationship: 'Spouse',
+      },
       context,
     );
     await service.acceptAgreement(driverId, { agreementVersion: 'v1' }, context);

@@ -669,6 +669,8 @@ model DriverProfile {
   /// DPX-DRIVER-002 Phase 1
   emergencyContactName               String?                    @map("emergency_contact_name") @db.VarChar(150)
   emergencyContactPhone              String?                    @map("emergency_contact_phone") @db.VarChar(20)
+  emergencyContactRelationship       String?                    @map("emergency_contact_relationship") @db.VarChar(50)
+  emergencyContactEmail              String?                    @map("emergency_contact_email") @db.VarChar(255)
   /// DPX-DRIVER-002 Phase 4 — non-null = driver has accepted the driver
   /// agreement. `agreementVersion` records which version, so a future
   /// agreement update can require re-acceptance without ambiguity.

@@ -50,6 +50,46 @@ describe('DPX-DRIVER-002 DTO validation', () => {
     expect(errors.some((e) => e.property === 'emergencyContactPhone')).toBe(true);
   });
 
+  it('requires the emergency contact relationship (DPX-DRIVER-007)', async () => {
+    const dto = plainToInstance(SubmitEmergencyContactDto, {
+      emergencyContactName: 'Jane Doe',
+      emergencyContactPhone: '+2348012345678',
+    });
+    const errors = await validate(dto);
+    expect(errors.some((e) => e.property === 'emergencyContactRelationship')).toBe(true);
+  });
+
+  it('rejects an unknown emergency contact relationship', async () => {
+    const dto = plainToInstance(SubmitEmergencyContactDto, {
+      emergencyContactName: 'Jane Doe',
+      emergencyContactPhone: '+2348012345678',
+      emergencyContactRelationship: 'Colleague',
+    });
+    const errors = await validate(dto);
+    expect(errors.some((e) => e.property === 'emergencyContactRelationship')).toBe(true);
+  });
+
+  it('rejects a malformed optional emergency contact email', async () => {
+    const dto = plainToInstance(SubmitEmergencyContactDto, {
+      emergencyContactName: 'Jane Doe',
+      emergencyContactPhone: '+2348012345678',
+      emergencyContactRelationship: 'Spouse',
+      emergencyContactEmail: 'not-an-email',
+    });
+    const errors = await validate(dto);
+    expect(errors.some((e) => e.property === 'emergencyContactEmail')).toBe(true);
+  });
+
+  it('accepts a complete emergency contact (relationship set, email omitted)', async () => {
+    const dto = plainToInstance(SubmitEmergencyContactDto, {
+      emergencyContactName: 'Jane Doe',
+      emergencyContactPhone: '+2348012345678',
+      emergencyContactRelationship: 'Spouse',
+    });
+    const errors = await validate(dto);
+    expect(errors).toHaveLength(0);
+  });
+
   it('accepts a valid inspection centre', async () => {
     const dto = plainToInstance(CreateInspectionCentreDto, {
       name: 'Lagos Centre',

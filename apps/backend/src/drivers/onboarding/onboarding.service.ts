@@ -47,6 +47,8 @@ export class OnboardingService {
       data: {
         emergencyContactName: dto.emergencyContactName.trim(),
         emergencyContactPhone: dto.emergencyContactPhone.trim(),
+        emergencyContactRelationship: dto.emergencyContactRelationship.trim(),
+        emergencyContactEmail: dto.emergencyContactEmail?.trim() ?? null,
       },
     });
 
