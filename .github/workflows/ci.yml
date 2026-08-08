@@ -16,6 +16,26 @@ jobs:
     name: Typecheck · Lint · Test · Build
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # Real PostgreSQL so the backend's DB-backed integration specs actually run.
+    # Without this the specs early-return (databaseAvailable=false) and pass
+    # vacuously; the jest globalSetup below fails the run if this DB is missing.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: dripplex
+          POSTGRES_PASSWORD: dripplex
+          POSTGRES_DB: dripplex
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U dripplex"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # GitHub Actions sets CI=true, which arms the DB-integrity globalSetup.
+      DATABASE_URL: postgresql://dripplex:dripplex@localhost:5432/dripplex?schema=public
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
@@ -23,7 +43,9 @@ jobs:
         run: pnpm typecheck
       - name: Lint
         run: pnpm lint
-      - name: Unit tests
+      - name: Apply database migrations
+        run: pnpm --filter @dripplex/backend exec prisma migrate deploy
+      - name: Unit & integration tests (real Postgres)
         run: pnpm test
       - name: Production build
         run: pnpm build

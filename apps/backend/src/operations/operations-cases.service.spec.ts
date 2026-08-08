@@ -207,6 +207,7 @@ describe('OperationsCasesService', () => {
       await prisma.sosAlert.deleteMany({ where: { driverId } }).catch(() => undefined);
       await prisma.incidentReport.deleteMany({ where: { driverId } }).catch(() => undefined);
       await prisma.driverSupportTicket.deleteMany({ where: { driverId } }).catch(() => undefined);
+      await prisma.vehicle.deleteMany({ where: { driverId } }).catch(() => undefined);
       await prisma.user.delete({ where: { id: driverId } }).catch(() => undefined);
       await prisma.user.delete({ where: { id: operatorId } }).catch(() => undefined);
       await prisma.user.delete({ where: { id: supervisorId } }).catch(() => undefined);
@@ -414,7 +415,22 @@ describe('OperationsCasesService', () => {
       if (!databaseAvailable) return;
 
       const rideId = randomUUID();
-      const vehicleId = randomUUID();
+      // vehicleId is a real FK to Vehicle (sos_alerts.vehicle_id -> vehicles.id),
+      // so it must reference an existing vehicle — a random UUID violates the
+      // constraint. Create a real vehicle owned by this driver. (rideId has no FK,
+      // so a random UUID is fine there.)
+      const vehicle = await prisma.vehicle.create({
+        data: {
+          driverId,
+          plateNumber: `SOS-${randomUUID().slice(0, 8)}`,
+          make: 'Toyota',
+          model: 'Corolla',
+          color: 'Blue',
+          year: 2020,
+          rideCategory: 'ECONOMY',
+        },
+      });
+      const vehicleId = vehicle.id;
       const matching = await prisma.sosAlert.create({
         data: { driverId, status: SosAlertStatus.OPEN, rideId, vehicleId },
       });
