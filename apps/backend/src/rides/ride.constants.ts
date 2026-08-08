@@ -19,6 +19,7 @@ export const RIDE_AUDIT_ACTIONS = {
   TIP_ADDED: 'ride.tip_added',
   PROBLEM_REPORTED: 'ride.problem_reported',
   PROBLEM_RESOLVED: 'ride.problem_resolved',
+  REFUNDED: 'ride.refunded',
 } as const;
 
 export const RIDE_PERMISSIONS = {
@@ -45,6 +46,14 @@ export const RIDE_WALLET_REFERENCE_TYPES = {
   FARE: 'ride_fare',
   EARNING: 'ride_earning',
   TIP: 'ride_tip',
+  /// DPX-D4 — refund legs, each paired with referenceId = ride.id so they are
+  /// idempotent exactly like the settlement legs above. REFUND is the
+  /// customer credit-back + the platform release of the captured fare;
+  /// EARNING_REVERSAL is the driver-earning clawback debit + the matching
+  /// platform credit. Distinct from FARE/EARNING so a refund's ledger entries
+  /// never collide with the original settlement's on the same wallet.
+  REFUND: 'ride_refund',
+  EARNING_REVERSAL: 'ride_earning_reversal',
 } as const;
 
 /** PromotionRedemption.referenceType for a ride fare coupon redemption,
