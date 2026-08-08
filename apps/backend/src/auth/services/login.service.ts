@@ -19,6 +19,7 @@ import {
   AUTH_SESSION_REPOSITORY,
   type AuthSessionRepository,
 } from '../repositories/auth-session.repository';
+import { isSyntheticEmail } from '../utils/synthetic-email.util';
 
 import { LoginAttemptService } from './login-attempt.service';
 import { SessionService } from './session.service';
@@ -205,7 +206,12 @@ export class LoginService {
       });
     }
 
-    if (!user.emailVerifiedAt) {
+    // DPX-DRIVER-010 — phone-only accounts register with a synthetic internal
+    // email that is auto-verified for activation (never a real send). They
+    // verify their PHONE, not an email, so the email-verified gate must not
+    // block them; the status checks above already guarantee the account is
+    // ACTIVE (i.e. the phone was verified) before reaching here.
+    if (!user.emailVerifiedAt && !isSyntheticEmail(user.email)) {
       throw new EmailNotVerifiedDomainException();
     }
 
