@@ -24,6 +24,11 @@ enum RegistrationChannel {
   OPS_INVITE
   ADMIN_INVITE
   SEED
+  // DPX-DRIVER-015 — dedicated portal channels for the admin portal and
+  // operations console login endpoints, so their sessions/tokens carry an
+  // accurate portal claim (the JWT strategy round-trips the channel).
+  ADMIN_PORTAL
+  OPERATIONS_CONSOLE
 }
 
 enum OnboardingStatus {

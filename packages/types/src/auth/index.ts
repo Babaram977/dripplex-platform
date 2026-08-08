@@ -7,7 +7,9 @@ export type RegistrationChannel =
   | 'DRIVER_PORTAL'
   | 'OPS_INVITE'
   | 'ADMIN_INVITE'
-  | 'SEED';
+  | 'SEED'
+  | 'ADMIN_PORTAL'
+  | 'OPERATIONS_CONSOLE';
 
 export type OtpPurpose =
   'email_verification' | 'phone_verification' | 'password_reset' | 'login_step_up';
@@ -16,7 +18,7 @@ export type OnboardingStatus = 'DRAFT' | 'SUBMITTED' | 'UNDER_REVIEW' | 'APPROVE
 
 export type PortalRegistrationType = 'customer' | 'merchant' | 'rider' | 'driver';
 
-export type PortalLoginType = 'customer' | 'merchant' | 'rider' | 'driver';
+export type PortalLoginType = 'customer' | 'merchant' | 'rider' | 'driver' | 'admin' | 'operations';
 
 export interface RegistrationVerificationInfo {
   emailOtpSent: boolean;

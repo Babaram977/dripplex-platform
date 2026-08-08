@@ -13,6 +13,10 @@ export function registrationChannelToPortal(channel: RegistrationChannel): Porta
       return 'rider';
     case RegistrationChannel.DRIVER_PORTAL:
       return 'driver';
+    case RegistrationChannel.ADMIN_PORTAL:
+      return 'admin';
+    case RegistrationChannel.OPERATIONS_CONSOLE:
+      return 'operations';
     default:
       return 'customer';
   }
@@ -28,6 +32,10 @@ export function portalToRegistrationChannel(portal: string): RegistrationChannel
       return RegistrationChannel.RIDER_PORTAL;
     case 'driver':
       return RegistrationChannel.DRIVER_PORTAL;
+    case 'admin':
+      return RegistrationChannel.ADMIN_PORTAL;
+    case 'operations':
+      return RegistrationChannel.OPERATIONS_CONSOLE;
     default:
       return null;
   }

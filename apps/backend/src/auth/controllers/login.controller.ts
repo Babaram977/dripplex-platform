@@ -61,6 +61,30 @@ export class LoginController {
     return { success: true, data };
   }
 
+  @Public()
+  @Post('admin')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  public async loginAdmin(
+    @Body() dto: PortalLoginDto,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<PortalLoginResponse>> {
+    const data = await this.loginService.loginAdmin(dto, this.auditContext(request));
+    return { success: true, data };
+  }
+
+  @Public()
+  @Post('operations')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  public async loginOperations(
+    @Body() dto: PortalLoginDto,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<PortalLoginResponse>> {
+    const data = await this.loginService.loginOperations(dto, this.auditContext(request));
+    return { success: true, data };
+  }
+
   private auditContext(request: Request): { ipAddress?: string; userAgent?: string } {
     const forwarded = request.headers['x-forwarded-for'];
     const ipAddress = typeof forwarded === 'string' ? forwarded.split(',')[0]?.trim() : request.ip;
