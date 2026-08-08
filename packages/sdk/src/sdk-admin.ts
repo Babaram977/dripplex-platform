@@ -22,9 +22,6 @@ export function createAdminSdk(config: Partial<SdkConfig> = {}): AdminSdk {
     adminDriverIdentityVerification: client.adminDriverIdentityVerification,
     adminDriverPlannedAvailability: client.adminDriverPlannedAvailability,
     adminDriverShifts: client.adminDriverShifts,
-    adminDriverSupport: client.adminDriverSupport,
-    adminIncidentReports: client.adminIncidentReports,
-    adminSosAlerts: client.adminSosAlerts,
     adminRideReports: client.adminRideReports,
     adminDrivers: client.adminDrivers,
     adminDriverVehicles: client.adminDriverVehicles,
@@ -64,9 +61,6 @@ export interface AdminSdk {
   adminDriverIdentityVerification: DripplexClient['adminDriverIdentityVerification'];
   adminDriverPlannedAvailability: DripplexClient['adminDriverPlannedAvailability'];
   adminDriverShifts: DripplexClient['adminDriverShifts'];
-  adminDriverSupport: DripplexClient['adminDriverSupport'];
-  adminIncidentReports: DripplexClient['adminIncidentReports'];
-  adminSosAlerts: DripplexClient['adminSosAlerts'];
   adminRideReports: DripplexClient['adminRideReports'];
   adminDrivers: DripplexClient['adminDrivers'];
   adminDriverVehicles: DripplexClient['adminDriverVehicles'];
