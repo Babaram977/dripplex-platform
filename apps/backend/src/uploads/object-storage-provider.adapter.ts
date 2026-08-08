@@ -10,6 +10,12 @@ export interface PresignPutInput {
   /** Full object key including folder prefix, e.g. `kyc-documents/<user>/<uuid>.pdf`. */
   key: string;
   contentType: string;
+  /**
+   * Exact byte length the upload is authorized for. Bound into the signature
+   * (DPX-STORAGE-001), so the client must upload exactly this many bytes — the
+   * storage-side enforcement of the size cap, not a client-trusted field.
+   */
+  contentLength: number;
   expiresInSeconds: number;
 }
 

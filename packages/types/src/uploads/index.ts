@@ -12,8 +12,12 @@ export type UploadFolder =
 export interface SignUploadRequest {
   contentType: UploadContentType;
   folder: UploadFolder;
-  /** Optional declared byte size; rejected server-side when over the cap. */
-  contentLength?: number;
+  /**
+   * DPX-STORAGE-001 — exact byte length of the file. Required: it is capped and
+   * bound into the pre-signed URL's signature, so the upload is rejected by
+   * storage if the real length differs.
+   */
+  contentLength: number;
 }
 
 export interface SignUploadResponse {
@@ -28,6 +32,9 @@ export interface SignUploadResponse {
   expiresAt: string;
   /** Advisory maximum object size in bytes. */
   maxBytes: number;
-  /** Headers the client should send on the PUT. */
-  requiredHeaders: { 'Content-Type': string };
+  /**
+   * Headers the client MUST send on the PUT — both are bound into the signature
+   * (DPX-STORAGE-001), so the upload fails if they don't match exactly.
+   */
+  requiredHeaders: { 'Content-Type': string; 'Content-Length': string };
 }

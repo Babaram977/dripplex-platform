@@ -37,4 +37,35 @@ describe('validateEnv', () => {
       }),
     ).toThrow(/Invalid environment configuration/);
   });
+
+  describe('DPX-STORAGE-001 — object storage URL validation', () => {
+    it('defaults object storage to empty (safe-until-configured) and region to auto', () => {
+      const env = validateEnv(base);
+      expect(env.OBJECT_STORAGE_ENDPOINT).toBe('');
+      expect(env.OBJECT_STORAGE_PUBLIC_BASE_URL).toBe('');
+      expect(env.OBJECT_STORAGE_REGION).toBe('auto');
+    });
+
+    it('accepts well-formed storage URLs when configured', () => {
+      const env = validateEnv({
+        ...base,
+        OBJECT_STORAGE_ENDPOINT: 'https://account.r2.cloudflarestorage.com',
+        OBJECT_STORAGE_PUBLIC_BASE_URL: 'https://cdn.dripplex.com',
+      });
+      expect(env.OBJECT_STORAGE_ENDPOINT).toBe('https://account.r2.cloudflarestorage.com');
+      expect(env.OBJECT_STORAGE_PUBLIC_BASE_URL).toBe('https://cdn.dripplex.com');
+    });
+
+    it('rejects a malformed OBJECT_STORAGE_ENDPOINT (fails fast at boot)', () => {
+      expect(() => validateEnv({ ...base, OBJECT_STORAGE_ENDPOINT: 'not-a-url' })).toThrow(
+        /Invalid environment configuration/,
+      );
+    });
+
+    it('rejects a malformed OBJECT_STORAGE_PUBLIC_BASE_URL', () => {
+      expect(() =>
+        validateEnv({ ...base, OBJECT_STORAGE_PUBLIC_BASE_URL: 'cdn.dripplex.com' }),
+      ).toThrow(/Invalid environment configuration/);
+    });
+  });
 });

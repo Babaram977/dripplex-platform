@@ -10,11 +10,14 @@ import type { ApiSuccessResponse } from '../common/dto/api-response.dto';
 import type { SignUploadResponse } from '@dripplex/types';
 
 /**
- * POST /uploads/sign — cross-cutting signed-upload endpoint. Available to any
- * authenticated user (no per-resource permission): a signed URL only grants a
- * write to a key namespaced under the caller's own user id, within the allowed
- * folders/content-types. If finer role-scoping is ever required it can be added
- * as a @RequirePermissions gate + seed grant without changing the contract.
+ * POST /uploads/sign — cross-cutting signed-upload endpoint. Requires
+ * authentication (global JwtAuthGuard); the signed URL only grants a write to a
+ * key namespaced under the caller's own user id, within the allowed
+ * folders/content-types. DPX-STORAGE-001 (G): the target folder is further
+ * least-privilege gated — a folder with required permissions (e.g. kyc-documents,
+ * vehicle-photos, identity-verification) may only be signed by a caller holding
+ * one of them (enforced in UploadsService from the authenticated user's
+ * permissions), so folder is not an arbitrary client choice.
  */
 @Controller('uploads')
 export class UploadsController {
@@ -26,7 +29,7 @@ export class UploadsController {
     @Body() dto: SignUploadDto,
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<ApiSuccessResponse<SignUploadResponse>> {
-    const data = await this.uploadsService.sign(user.id, dto);
+    const data = await this.uploadsService.sign(user.id, user.permissions, dto);
     return { success: true, data };
   }
 }
