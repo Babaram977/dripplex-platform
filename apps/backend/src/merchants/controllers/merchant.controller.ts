@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
   Req,
+  UseGuards,
 } from '@nestjs/common';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -18,6 +19,7 @@ import { CreateBusinessDto } from '../dto/create-business.dto';
 import { PauseStoreDto } from '../dto/pause-store.dto';
 import { SubmitKycDto } from '../dto/submit-kyc.dto';
 import { UpdateBusinessDto } from '../dto/update-business.dto';
+import { MerchantModuleEnabledGuard } from '../guards/merchant-module-enabled.guard';
 import { MERCHANT_PERMISSIONS } from '../merchant.constants';
 import { MerchantsService } from '../merchants.service';
 
@@ -27,6 +29,7 @@ import type { BankAccountDto, BusinessDto, MerchantKycDto } from '@dripplex/type
 import type { Request } from 'express';
 
 @Controller('merchant')
+@UseGuards(MerchantModuleEnabledGuard)
 export class MerchantController {
   constructor(private readonly merchantsService: MerchantsService) {}
 

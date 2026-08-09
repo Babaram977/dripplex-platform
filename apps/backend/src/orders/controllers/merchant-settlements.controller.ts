@@ -1,7 +1,8 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
+import { MerchantModuleEnabledGuard } from '../../merchants/guards/merchant-module-enabled.guard';
 import { WALLET_PERMISSIONS } from '../../wallet/wallet.constants';
 import { ListSettlementsQueryDto } from '../dto/list-settlements-query.dto';
 import { MerchantSettlementService } from '../merchant-settlement.service';
@@ -19,6 +20,7 @@ import type { OrderSettlementDto, PaginatedResult } from '@dripplex/types';
  */
 @Controller('merchant/settlements')
 @RequirePermissions(WALLET_PERMISSIONS.MERCHANT_READ)
+@UseGuards(MerchantModuleEnabledGuard)
 export class MerchantSettlementsController {
   constructor(private readonly settlementService: MerchantSettlementService) {}
 
