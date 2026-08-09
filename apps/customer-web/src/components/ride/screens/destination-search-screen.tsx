@@ -76,7 +76,7 @@ export function DestinationSearchScreen({
                 longitude: place.longitude,
               });
             }}
-            className="flex-1 bg-transparent outline-none"
+            className="w-full bg-transparent outline-none"
             style={{ fontSize: 15, color: '#fff' }}
             autoFocus
           />
