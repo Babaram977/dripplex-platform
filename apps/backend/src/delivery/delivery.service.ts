@@ -120,8 +120,17 @@ export class DeliveryService {
     if (order.fulfillmentType !== FulfillmentType.DELIVERY) {
       throw new ValidationDomainException('Order is not a delivery order');
     }
-    if (order.status !== OrderStatus.READY || order.paymentStatus !== PaymentStatus.PAID) {
+    if (order.status !== OrderStatus.READY) {
       throw new ValidationDomainException('Order must be ready before delivery can be created');
+    }
+    // Cash-on-delivery orders are dispatched while payment is still PENDING —
+    // the rider collects the cash at drop-off (confirmCash) and settlement runs
+    // then. Only non-cash (prepaid) orders must be PAID before a courier is
+    // dispatched. Requiring PAID for CASH would deadlock the entire cash
+    // delivery loop (no job is ever created, so no rider, so no collection).
+    const isCashOnDelivery = order.paymentMethod === OrderPaymentMethod.CASH;
+    if (!isCashOnDelivery && order.paymentStatus !== PaymentStatus.PAID) {
+      throw new ValidationDomainException('Order must be paid before delivery can be created');
     }
 
     const existing = await this.deliveryRepository.findJobByOrderId(order.id);
