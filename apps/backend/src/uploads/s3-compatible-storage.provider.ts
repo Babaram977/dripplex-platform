@@ -6,6 +6,8 @@ import { createPresignedUrl } from './sigv4.util';
 
 import type {
   ObjectStorageProvider,
+  PresignGetInput,
+  PresignGetResult,
   PresignPutInput,
   PresignPutResult,
 } from './object-storage-provider.adapter';
@@ -67,5 +69,36 @@ export class S3CompatibleStorageProvider implements ObjectStorageProvider {
       publicUrl,
       expiresAt: signed.expiresAt,
     });
+  }
+
+  public createPresignedGetUrl(input: PresignGetInput): Promise<PresignGetResult> {
+    if (!this.config.objectStorageConfigured) {
+      throw new Error(
+        'Object storage is not configured (set OBJECT_STORAGE_ENDPOINT / BUCKET / ' +
+          'ACCESS_KEY_ID / SECRET_ACCESS_KEY).',
+      );
+    }
+
+    const endpoint = new URL(this.config.objectStorageEndpoint);
+    const bucket = this.config.objectStorageBucket;
+    const path = `/${bucket}/${input.key}`;
+
+    // GET signs only `host` (no content headers), same SigV4 machinery as PUT.
+    // Sensitive objects live in a private bucket, so this signed URL is the only
+    // way an authorized reader can fetch them (DPX-STORAGE-001, decision F).
+    const signed = createPresignedUrl({
+      method: 'GET',
+      host: endpoint.host,
+      path,
+      protocol: endpoint.protocol.replace(':', ''),
+      region: this.config.objectStorageRegion,
+      service: S3CompatibleStorageProvider.SERVICE,
+      accessKeyId: this.config.objectStorageAccessKeyId,
+      secretAccessKey: this.config.objectStorageSecretAccessKey,
+      expiresInSeconds: input.expiresInSeconds,
+      now: new Date(),
+    });
+
+    return Promise.resolve({ url: signed.url, expiresAt: signed.expiresAt });
   }
 }

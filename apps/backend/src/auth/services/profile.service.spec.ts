@@ -5,10 +5,12 @@ import { UserStatus } from '@prisma/client';
 import { AUTH_AUDIT_ACTIONS } from '../../audit/audit.constants';
 import {
   ConflictDomainException,
+  ForbiddenDomainException,
   RateLimitedDomainException,
   UnauthorizedDomainException,
   ValidationDomainException,
 } from '../../common/exceptions/domain.exception';
+import { StorageAssetService } from '../../uploads/storage-asset.service';
 
 import { ProfileService } from './profile.service';
 
@@ -76,6 +78,15 @@ describe('ProfileService', () => {
     sendEmailOtp: jest.fn(),
   } as unknown as jest.Mocked<NotificationService>;
 
+  // Storage disabled in unit tests: profile-photo ownership check is a no-op.
+  const storageAssets = {
+    assertOwned: jest.fn(),
+    assertOwnedOptional: jest.fn(),
+    assertOwnedMany: jest.fn(),
+    toSignedGetUrl: jest.fn((url: string) => Promise.resolve(url)),
+    toSignedGetUrlOptional: jest.fn((url: string | null | undefined) => Promise.resolve(url)),
+  } as unknown as StorageAssetService;
+
   const service = new ProfileService(
     usersService,
     authService,
@@ -83,6 +94,7 @@ describe('ProfileService', () => {
     appConfig,
     redis,
     notificationService,
+    storageAssets,
   );
 
   const user = {
@@ -133,6 +145,39 @@ describe('ProfileService', () => {
       const result = await service.updateProfile(profile.id, {}, {});
       expect(usersService.updateProfile).not.toHaveBeenCalled();
       expect(result).toBe(profile);
+    });
+
+    it('(DPX-STORAGE-001 D) rejects a profile photo that is a foreign / cross-user URL', async () => {
+      // A ProfileService wired with configured storage so the ownership guard runs.
+      const guarded = new ProfileService(
+        usersService,
+        authService,
+        auditService,
+        appConfig,
+        redis,
+        notificationService,
+        new StorageAssetService(
+          {
+            objectStorageConfigured: true,
+            objectStorageEndpoint: 'https://s3.example.com',
+            objectStorageBucket: 'dripplex-assets',
+            objectStoragePublicBaseUrl: '',
+          } as unknown as AppConfigService,
+          {
+            createPresignedPutUrl: jest.fn(),
+            createPresignedGetUrl: jest.fn(),
+          },
+        ),
+      );
+
+      await expect(
+        guarded.updateProfile(
+          profile.id,
+          { profilePhotoUrl: 'https://evil.example.com/profile-photos/other/a.jpg' },
+          {},
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenDomainException);
+      expect(usersService.updateProfile).not.toHaveBeenCalled();
     });
   });
 

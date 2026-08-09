@@ -20,6 +20,7 @@ describe('UploadsService', () => {
             expiresAt: '2026-08-08T12:05:00.000Z',
           }),
         ),
+      createPresignedGetUrl: jest.fn(),
     };
     return { service: new UploadsService(provider), provider };
   }

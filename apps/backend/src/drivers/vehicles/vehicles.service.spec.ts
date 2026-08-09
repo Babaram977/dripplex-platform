@@ -3,10 +3,13 @@ import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 
 import { AuditService } from '../../audit/audit.service';
+import { ForbiddenDomainException } from '../../common/exceptions/domain.exception';
+import { StorageAssetService } from '../../uploads/storage-asset.service';
 
 import { VehiclesService } from './vehicles.service';
 
 import type { AuditLogRepository } from '../../audit/repositories/audit-log.repository';
+import type { AppConfigService } from '../../config/app-config.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 
 const databaseUrl =
@@ -39,7 +42,12 @@ describe('VehiclesService', () => {
       create: jest.fn().mockResolvedValue(undefined),
     };
     const auditService = new AuditService(auditLogRepository);
-    service = new VehiclesService(prisma, auditService);
+    // Storage unconfigured in this real-DB test: ownership checks are no-ops.
+    const storageAssets = new StorageAssetService(
+      { objectStorageConfigured: false } as unknown as AppConfigService,
+      { createPresignedPutUrl: jest.fn(), createPresignedGetUrl: jest.fn() },
+    );
+    service = new VehiclesService(prisma, auditService, storageAssets);
 
     const driver = await prisma.user.create({
       data: {
@@ -105,6 +113,44 @@ describe('VehiclesService', () => {
     expect(vehicle.plateNumber).toBe(vehicle.plateNumber.toUpperCase());
     // DPX-DRIVER-017 — passenger capacity is persisted and returned.
     expect(vehicle.seats).toBe(4);
+  });
+
+  it('(DPX-STORAGE-001 D) rejects photos that are foreign / cross-user URLs', async () => {
+    if (!databaseAvailable) return;
+    // A vehicles service wired with configured storage so the ownership guard runs.
+    const guarded = new VehiclesService(
+      prisma,
+      new AuditService({ create: jest.fn().mockResolvedValue(undefined) }),
+      new StorageAssetService(
+        {
+          objectStorageConfigured: true,
+          objectStorageEndpoint: 'https://s3.example.com',
+          objectStorageBucket: 'dripplex-assets',
+          objectStoragePublicBaseUrl: '',
+        } as unknown as AppConfigService,
+        {
+          createPresignedPutUrl: jest.fn(),
+          createPresignedGetUrl: jest.fn(),
+        },
+      ),
+    );
+
+    await expect(
+      guarded.createVehicle(
+        driverId,
+        {
+          plateNumber: `evil-${randomUUID().slice(0, 6)}`,
+          make: 'Toyota',
+          model: 'Corolla',
+          color: 'Blue',
+          year: 2020,
+          rideCategory: 'ECONOMY',
+          seats: 4,
+          photos: ['https://evil.example.com/vehicle-photos/other/car.jpg'],
+        },
+        context,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenDomainException);
   });
 
   it('rejects a duplicate plate number', async () => {

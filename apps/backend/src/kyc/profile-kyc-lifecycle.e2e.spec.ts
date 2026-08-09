@@ -3,11 +3,13 @@ import { randomUUID } from 'node:crypto';
 import { CustomerKycStatus, PrismaClient } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
+import { StorageAssetService } from '../uploads/storage-asset.service';
 import { PrismaUsersRepository } from '../users/repositories/prisma-users.repository';
 
 import { CustomerKycService } from './customer-kyc.service';
 
 import type { AuditLogRepository } from '../audit/repositories/audit-log.repository';
+import type { AppConfigService } from '../config/app-config.service';
 import type { PrismaService } from '../prisma/prisma.service';
 
 const databaseUrl =
@@ -63,7 +65,14 @@ describe('DPX-PROFILE-KYC-003 -- Profile + CustomerKyc real-Postgres lifecycle',
     };
     const auditService = new AuditService(auditLogRepository);
     usersRepository = new PrismaUsersRepository(prisma);
-    kycService = new CustomerKycService(prisma, auditService);
+    // Storage unconfigured in this e2e (no OBJECT_STORAGE_* env): the real
+    // StorageAssetService then behaves as the production dev no-op — ownership
+    // checks pass and stored URLs round-trip unchanged.
+    const storageAssets = new StorageAssetService(
+      { objectStorageConfigured: false } as unknown as AppConfigService,
+      { createPresignedPutUrl: jest.fn(), createPresignedGetUrl: jest.fn() },
+    );
+    kycService = new CustomerKycService(prisma, auditService, storageAssets);
 
     const user = await prisma.user.create({
       data: {

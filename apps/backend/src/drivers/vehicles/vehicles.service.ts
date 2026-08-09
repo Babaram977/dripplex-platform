@@ -8,6 +8,7 @@ import {
   NotFoundDomainException,
 } from '../../common/exceptions/domain.exception';
 import { PrismaService } from '../../prisma/prisma.service';
+import { StorageAssetService } from '../../uploads/storage-asset.service';
 import { DRIVER_AUDIT_ACTIONS } from '../driver.constants';
 
 import { toVehicleDto } from './vehicle.mapper';
@@ -27,6 +28,7 @@ export class VehiclesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly storageAssets: StorageAssetService,
   ) {}
 
   public async createVehicle(
@@ -34,6 +36,13 @@ export class VehiclesService {
     dto: CreateVehicleDto,
     context: AuditContext,
   ): Promise<VehicleDto> {
+    // DPX-STORAGE-001 (D) — vehicle photos must be DrippleX-controlled URLs
+    // owned by this driver, never arbitrary external or cross-user URLs.
+    this.storageAssets.assertOwnedMany(dto.photos ?? [], {
+      folder: 'vehicle-photos',
+      ownerId: driverUserId,
+    });
+
     let vehicle: Vehicle;
     try {
       vehicle = await this.prisma.vehicle.create({
@@ -89,6 +98,14 @@ export class VehiclesService {
     context: AuditContext,
   ): Promise<VehicleDto> {
     const existing = await this.requireOwnedVehicle(driverUserId, vehicleId);
+
+    // DPX-STORAGE-001 (D) — validate any replacement photos before persisting.
+    if (dto.photos !== undefined) {
+      this.storageAssets.assertOwnedMany(dto.photos, {
+        folder: 'vehicle-photos',
+        ownerId: driverUserId,
+      });
+    }
 
     // Any change to the physical vehicle's identifying/category details
     // invalidates a prior approval — it must be re-reviewed. Toggling

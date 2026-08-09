@@ -7,6 +7,7 @@ import {
   NotFoundDomainException,
 } from '../common/exceptions/domain.exception';
 import { PrismaService } from '../prisma/prisma.service';
+import { StorageAssetService } from '../uploads/storage-asset.service';
 
 import { toCustomerKycStatusDto } from './customer-kyc.mapper';
 import { KYC_AUDIT_ACTIONS } from './kyc.constants';
@@ -14,6 +15,9 @@ import { KYC_AUDIT_ACTIONS } from './kyc.constants';
 import type { SubmitCustomerKycDto } from './dto/submit-customer-kyc.dto';
 import type { AdminCustomerKycListItemDto, CustomerKycStatusDto } from '@dripplex/types';
 import type { CustomerKyc } from '@prisma/client';
+
+/** Server-derived storage folder customer KYC documents live under (DPX-STORAGE-001). */
+const KYC_FOLDER = 'kyc-documents' as const;
 
 /**
  * DPX-PROFILE-KYC-002 -- customer Level 2 identity verification. Deliberately
@@ -29,7 +33,27 @@ export class CustomerKycService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly storageAssets: StorageAssetService,
   ) {}
+
+  /**
+   * DPX-STORAGE-001 (F) — KYC document objects are private (not public-read);
+   * every read path returns short-lived signed GET URLs instead of the stored
+   * canonical URLs. No-op in dev (storage unconfigured) or for legacy values.
+   */
+  private async withSignedDocumentUrls(dto: CustomerKycStatusDto): Promise<CustomerKycStatusDto> {
+    const [frontImageUrl, backImageUrl, selfieUrl] = await Promise.all([
+      this.storageAssets.toSignedGetUrlOptional(dto.frontImageUrl),
+      this.storageAssets.toSignedGetUrlOptional(dto.backImageUrl),
+      this.storageAssets.toSignedGetUrlOptional(dto.selfieUrl),
+    ]);
+    return {
+      ...dto,
+      frontImageUrl: frontImageUrl ?? null,
+      backImageUrl: backImageUrl ?? null,
+      selfieUrl: selfieUrl ?? null,
+    };
+  }
 
   public async getMyStatus(userId: string): Promise<CustomerKycStatusDto> {
     const [record, user] = await Promise.all([
@@ -40,7 +64,7 @@ export class CustomerKycService {
       }),
     ]);
 
-    return toCustomerKycStatusDto(record, user);
+    return await this.withSignedDocumentUrls(toCustomerKycStatusDto(record, user));
   }
 
   public async start(userId: string, context: AuditContext): Promise<CustomerKycStatusDto> {
@@ -84,7 +108,7 @@ export class CustomerKycService {
       where: { id: userId },
       select: { phoneVerifiedAt: true, emailVerifiedAt: true, email: true },
     });
-    return toCustomerKycStatusDto(record, user);
+    return await this.withSignedDocumentUrls(toCustomerKycStatusDto(record, user));
   }
 
   public async submit(
@@ -103,6 +127,15 @@ export class CustomerKycService {
         'Call POST /kyc/me/start before submitting documents, or you already have a submission under review',
       );
     }
+
+    // DPX-STORAGE-001 (D) — only accept DrippleX-controlled storage URLs owned
+    // by this user; reject arbitrary external / foreign-bucket / cross-user URLs.
+    this.storageAssets.assertOwned(dto.frontImageUrl, { folder: KYC_FOLDER, ownerId: userId });
+    this.storageAssets.assertOwnedOptional(dto.backImageUrl, {
+      folder: KYC_FOLDER,
+      ownerId: userId,
+    });
+    this.storageAssets.assertOwnedOptional(dto.selfieUrl, { folder: KYC_FOLDER, ownerId: userId });
 
     const record = await this.prisma.customerKyc.update({
       where: { id: existing.id },
@@ -133,7 +166,7 @@ export class CustomerKycService {
       where: { id: userId },
       select: { phoneVerifiedAt: true, emailVerifiedAt: true, email: true },
     });
-    return toCustomerKycStatusDto(record, user);
+    return await this.withSignedDocumentUrls(toCustomerKycStatusDto(record, user));
   }
 
   public async listPendingReview(): Promise<AdminCustomerKycListItemDto[]> {
@@ -164,7 +197,7 @@ export class CustomerKycService {
       }),
     ]);
 
-    return toCustomerKycStatusDto(record, user);
+    return await this.withSignedDocumentUrls(toCustomerKycStatusDto(record, user));
   }
 
   public async verify(

@@ -5,6 +5,7 @@ import { PassportModule } from '@nestjs/passport';
 import { AuditModule } from '../audit/audit.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { ReferralsModule } from '../referrals/referrals.module';
+import { UploadsModule } from '../uploads/uploads.module';
 import { UsersModule } from '../users/users.module';
 
 import { AuthController } from './auth.controller';
@@ -55,6 +56,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     AuditModule,
     NotificationsModule,
     ReferralsModule,
+    UploadsModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.register({}),
   ],

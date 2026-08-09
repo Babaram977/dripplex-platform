@@ -16,6 +16,7 @@ import {
   type NotificationService,
 } from '../../notifications/notification.service';
 import { RedisService } from '../../redis/redis.service';
+import { StorageAssetService } from '../../uploads/storage-asset.service';
 import { UsersService } from '../../users/users.service';
 import { AuthService } from '../auth.service';
 
@@ -53,6 +54,7 @@ export class ProfileService {
     private readonly redis: RedisService,
     @Inject(NOTIFICATION_SERVICE)
     private readonly notificationService: NotificationService,
+    private readonly storageAssets: StorageAssetService,
   ) {}
 
   public async updateProfile(
@@ -72,6 +74,13 @@ export class ProfileService {
     if (dto.dateOfBirth !== undefined) {
       dateOfBirth = this.parseAndValidateDateOfBirth(dto.dateOfBirth);
     }
+
+    // DPX-STORAGE-001 (D) — a profile photo must be a DrippleX-controlled URL
+    // owned by this user, never an arbitrary external or cross-user URL.
+    this.storageAssets.assertOwnedOptional(dto.profilePhotoUrl, {
+      folder: 'profile-photos',
+      ownerId: userId,
+    });
 
     await this.usersService.updateProfile(userId, {
       ...(dto.firstName !== undefined ? { firstName: dto.firstName } : {}),

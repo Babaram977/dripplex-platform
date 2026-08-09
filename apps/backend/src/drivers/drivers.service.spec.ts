@@ -3,11 +3,14 @@ import { randomUUID } from 'node:crypto';
 import { PrismaClient, RideRatingRole, RideStatus, RideType } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
+import { ForbiddenDomainException } from '../common/exceptions/domain.exception';
+import { StorageAssetService } from '../uploads/storage-asset.service';
 
 import { DriverActivationService } from './activation/driver-activation.service';
 import { DriversService } from './drivers.service';
 
 import type { AuditLogRepository } from '../audit/repositories/audit-log.repository';
+import type { AppConfigService } from '../config/app-config.service';
 import type { NotificationService } from '../notifications/notification.service';
 import type { PrismaService } from '../prisma/prisma.service';
 
@@ -59,7 +62,19 @@ describe('DriversService', () => {
       notifyRideEarning: jest.fn(),
     };
     const activationService = new DriverActivationService(prisma);
-    service = new DriversService(prisma, auditService, notifications, activationService);
+    // Storage unconfigured in this real-DB test: StorageAssetService behaves as
+    // the production dev no-op — ownership passes and URLs round-trip unchanged.
+    const storageAssets = new StorageAssetService(
+      { objectStorageConfigured: false } as unknown as AppConfigService,
+      { createPresignedPutUrl: jest.fn(), createPresignedGetUrl: jest.fn() },
+    );
+    service = new DriversService(
+      prisma,
+      auditService,
+      notifications,
+      activationService,
+      storageAssets,
+    );
 
     const driver = await prisma.user.create({
       data: {
@@ -174,6 +189,51 @@ describe('DriversService', () => {
 
     expect(kyc.driverId).toBe(driverId);
     expect(kyc.verificationStatus).toBe('PENDING');
+  });
+
+  it('(DPX-STORAGE-001 D) rejects a KYC / avatar URL that is foreign or cross-user', async () => {
+    if (!databaseAvailable) return;
+    // A drivers service wired with configured storage so the ownership guard runs.
+    const guarded = new DriversService(
+      prisma,
+      new AuditService({ create: jest.fn().mockResolvedValue(undefined) }),
+      {
+        notifyDriverLifecycle: jest.fn().mockResolvedValue(undefined),
+      } as unknown as NotificationService,
+      new DriverActivationService(prisma),
+      new StorageAssetService(
+        {
+          objectStorageConfigured: true,
+          objectStorageEndpoint: 'https://s3.example.com',
+          objectStorageBucket: 'dripplex-assets',
+          objectStoragePublicBaseUrl: '',
+        } as unknown as AppConfigService,
+        {
+          createPresignedPutUrl: jest.fn(),
+          createPresignedGetUrl: jest.fn(),
+        },
+      ),
+    );
+
+    await expect(
+      guarded.submitKyc(
+        driverId,
+        {
+          documentType: 'DRIVER_LICENSE',
+          documentNumber: 'FOREIGN-1',
+          frontImage: 'https://evil.example.com/kyc-documents/other/id.jpg',
+        },
+        context,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenDomainException);
+
+    await expect(
+      guarded.updateOwnProfile(
+        driverId,
+        { avatarUrl: 'https://evil.example.com/profile-photos/other/a.jpg' },
+        context,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenDomainException);
   });
 
   it('rejects approval until all activation requirements (documents, identity, vehicle, inspection, agreement) are met', async () => {
