@@ -417,14 +417,26 @@ describe('DeliveryService', () => {
     );
   });
 
-  it('rejects orders with unpaid payment status', async () => {
+  it('rejects prepaid orders with unpaid payment status', async () => {
     ordersRepository.findById.mockResolvedValue(
-      makeOrder({ paymentStatus: PaymentStatus.PENDING }),
+      makeOrder({ paymentStatus: PaymentStatus.PENDING, paymentMethod: OrderPaymentMethod.WALLET }),
     );
 
     await expect(service.createDeliveryJob(orderId)).rejects.toBeInstanceOf(
       ValidationDomainException,
     );
+  });
+
+  it('creates a delivery job for a CASH order while payment is still pending (cash on delivery)', async () => {
+    assignmentService.findNearestRider.mockResolvedValue(makeRiderAvailability(riderId));
+    ordersRepository.findById.mockResolvedValue(
+      makeOrder({ paymentStatus: PaymentStatus.PENDING, paymentMethod: OrderPaymentMethod.CASH }),
+    );
+
+    const result = await service.createDeliveryJob(orderId, { userId: merchantId });
+
+    expect(result).toMatchObject({ id: jobId, riderId, status: DeliveryStatus.ASSIGNED });
+    expect(deliveryRepository.createJob).toHaveBeenCalled();
   });
 
   it('returns an existing delivery job idempotently', async () => {
