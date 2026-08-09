@@ -210,28 +210,37 @@ async function ensureWallet(ownerType, ownerId, balanceNgn) {
   });
 
   if (balanceNgn > 0) {
-    // Deterministic natural key: the wallet's own id as referenceId under a
-    // fixed referenceType, so re-runs update rather than duplicate.
-    await prisma.walletLedgerEntry.upsert({
-      where: {
-        walletId_referenceType_referenceId: {
-          walletId: wallet.id,
-          referenceType: 'DEMO_SEED_FUNDING',
-          referenceId: wallet.id,
-        },
-      },
-      update: { amount: balanceNgn, balanceAfter: balanceNgn },
-      create: {
-        walletId: wallet.id,
-        type: 'CREDIT',
-        amount: balanceNgn,
-        direction: 'CREDIT',
-        balanceAfter: balanceNgn,
-        referenceType: 'DEMO_SEED_FUNDING',
-        referenceId: wallet.id,
-        description: 'Demo wallet funding',
-      },
-    });
+    // The [walletId, referenceType, referenceId] unique has nullable columns,
+    // which breaks Prisma's upsert ON CONFLICT (PrismaClientUnknownRequestError).
+    // Guard with findFirst/create instead, wrapped non-fatally so a ledger
+    // hiccup never aborts the rest of the cast. The wallet's availableBalance
+    // above is what the wallet screen reads; this row is just funding history.
+    try {
+      const existing = await prisma.walletLedgerEntry.findFirst({
+        where: { walletId: wallet.id, referenceType: 'DEMO_SEED_FUNDING' },
+      });
+      if (existing) {
+        await prisma.walletLedgerEntry.update({
+          where: { id: existing.id },
+          data: { amount: balanceNgn, balanceAfter: balanceNgn },
+        });
+      } else {
+        await prisma.walletLedgerEntry.create({
+          data: {
+            walletId: wallet.id,
+            type: 'CREDIT',
+            amount: balanceNgn,
+            direction: 'CREDIT',
+            balanceAfter: balanceNgn,
+            referenceType: 'DEMO_SEED_FUNDING',
+            referenceId: wallet.id,
+            description: 'Demo wallet funding',
+          },
+        });
+      }
+    } catch (ledgerError) {
+      console.error('[seed-demo] wallet ledger entry skipped (non-fatal):', ledgerError);
+    }
   }
 }
 
@@ -482,15 +491,30 @@ async function seedMerchant(passwordHash) {
 async function main() {
   const passwordHash = await bcrypt.hash(DEMO_PASSWORD, BCRYPT_SALT_ROUNDS);
 
-  await seedCustomer(passwordHash);
-  await seedDriver(passwordHash);
-  await seedRider(passwordHash);
-  await seedMerchant(passwordHash);
+  // Each persona is isolated: a failure in one must not prevent the others
+  // (so e.g. a customer-wallet hiccup can never stop Dx Resto from seeding).
+  const steps = [
+    ['customer', seedCustomer],
+    ['driver', seedDriver],
+    ['rider', seedRider],
+    ['merchant', seedMerchant],
+  ];
+  const outcomes = [];
+  for (const [label, fn] of steps) {
+    try {
+      await fn(passwordHash);
+      outcomes.push(`${label}=OK`);
+      process.stdout.write(`[seed-demo] ${label} seeded.\n`);
+    } catch (personaError) {
+      outcomes.push(`${label}=FAILED`);
+      console.error(`[seed-demo] ${label} FAILED (continuing):`, personaError);
+    }
+  }
 
   process.stdout.write(
-    `[seed-demo] Seeded demo cast: customer ${DEMO_CUSTOMER.email}, driver ${DEMO_DRIVER.email}, ` +
-      `rider ${DEMO_RIDER.email}, merchant ${DEMO_MERCHANT.email} ` +
-      `(${String(DEMO_PRODUCTS.length)} products). Shared password set.\n`,
+    `[seed-demo] Demo cast result: ${outcomes.join(', ')} ` +
+      `(customer ${DEMO_CUSTOMER.email}, driver ${DEMO_DRIVER.email}, rider ${DEMO_RIDER.email}, ` +
+      `merchant ${DEMO_MERCHANT.email}, ${String(DEMO_PRODUCTS.length)} products).\n`,
   );
 }
 
