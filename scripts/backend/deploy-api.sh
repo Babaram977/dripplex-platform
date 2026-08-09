@@ -67,9 +67,18 @@ for i in $(seq 1 36); do
   sleep 5
 done
 
-log "Running Prisma migrate deploy"
+log "Running Prisma migrate deploy + idempotent RBAC bootstrap"
+# seed-rbac.cjs runs `prisma migrate deploy` itself (via node_modules/.bin/prisma)
+# and then upserts the Permission/Role/RolePermission catalog. It MUST be the
+# single command run here — see prisma/seed-rbac.cjs header and
+# docs/ops/DPX-LAUNCH-004-PRODUCTION-VERIFICATION.md. A bare `prisma migrate
+# deploy` migrates but never seeds RBAC, leaving a fresh production database
+# unable to register or log in (PrismaRegistrationRepository throws "Role … is
+# not configured"). The seed is upsert-only, so re-running it on every deploy is
+# idempotent. `prisma` is a production dependency, so node_modules/.bin/prisma
+# survives `pnpm prune --prod` in the image.
 docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" run --rm --entrypoint sh backend -lc \
-  'npx prisma migrate deploy'
+  'node prisma/seed-rbac.cjs'
 
 if [[ "${SKIP_CERTBOT:-0}" != "1" ]]; then
   log "Issuing Let's Encrypt certificate for ${DOMAIN}"
