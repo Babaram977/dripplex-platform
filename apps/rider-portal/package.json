@@ -27,6 +27,7 @@
     "@dripplex/utils": "workspace:*",
     "@hookform/resolvers": "^3.9.1",
     "@sentry/nextjs": "^9.0.0",
+    "@tanstack/react-query": "^5.62.8",
     "lucide-react": "^0.469.0",
     "next": "^15.5.21",
     "react": "^19.0.0",
