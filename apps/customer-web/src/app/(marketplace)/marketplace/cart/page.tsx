@@ -150,11 +150,7 @@ export default function CartPage(): React.JSX.Element {
       router.push(siteConfig.links.login);
       return;
     }
-    // TODO: route to the real Checkout screen once it's built (next in the Marketplace sequence).
-    toast({
-      title: 'Checkout is coming next',
-      description: 'The Checkout screen is being built next.',
-    });
+    router.push('/marketplace/checkout');
   };
 
   if (!hydrated || !loaded) {
