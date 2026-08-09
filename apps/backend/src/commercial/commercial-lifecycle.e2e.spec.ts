@@ -427,11 +427,11 @@ describe('DPX-COMMERCIAL-001 Slice 6 — Full Commercial Lifecycle E2E', () => {
       // Step 1 — Ride Cash: two cash rides, commission accrues onto the
       // driver's CommissionAccount instead of staying audit-only.
       // Fares chosen so commission crosses the 12,000 credit limit at the
-      // launch 10% rate (75,000 * 0.10 = 7,500), keeping the blocking narrative.
-      const rideA = await createCompletedRide(75_000); // commission 7,500
+      // launch 15% rate (50,000 * 0.15 = 7,500), keeping the blocking narrative.
+      const rideA = await createCompletedRide(50_000); // commission 7,500
       await ridePayment.initiatePayment(customerId, rideA.id, 'CASH', undefined, {});
       const confirmA = await ridePayment.confirmCash(driverId, rideA.id, {});
-      expect(confirmA.platformCommission).toBeCloseTo(75_000 * RIDE_PLATFORM_COMMISSION_RATE);
+      expect(confirmA.platformCommission).toBeCloseTo(50_000 * RIDE_PLATFORM_COMMISSION_RATE);
 
       let account = await commissionAccounts.getOrCreateAccount(
         CommissionOwnerType.DRIVER,
@@ -440,10 +440,10 @@ describe('DPX-COMMERCIAL-001 Slice 6 — Full Commercial Lifecycle E2E', () => {
       expect(Number(account.outstandingBalance)).toBeCloseTo(7_500);
       expect(account.blocked).toBe(false);
 
-      const rideB = await createCompletedRide(60_000); // commission 6,000
+      const rideB = await createCompletedRide(40_000); // commission 6,000
       await ridePayment.initiatePayment(customerId, rideB.id, 'CASH', undefined, {});
       const confirmB = await ridePayment.confirmCash(driverId, rideB.id, {});
-      expect(confirmB.platformCommission).toBeCloseTo(60_000 * RIDE_PLATFORM_COMMISSION_RATE);
+      expect(confirmB.platformCommission).toBeCloseTo(40_000 * RIDE_PLATFORM_COMMISSION_RATE);
 
       // Step 2 — Credit-limit / blocking: 13,500 outstanding exceeds the
       // 12,000 limit.
