@@ -72,13 +72,17 @@ export function SuperAppAddAddressSheet({
     );
   };
 
+  // The backend CreateAddressDto requires latitude/longitude. "Use my current
+  // location" (browser geolocation) fills them precisely, but it is often
+  // blocked/denied on mobile web — so it must NOT gate saving. When the user
+  // hasn't captured GPS we fall back to a real default coordinate (below) so a
+  // typed address can still be saved; the pin can be refined later.
   const canSubmit =
     recipientName.trim().length > 0 &&
     phone.trim().length > 0 &&
     addressLine1.trim().length > 0 &&
     city.trim().length > 0 &&
-    state.trim().length > 0 &&
-    coords !== null;
+    state.trim().length > 0;
 
   return (
     <div
@@ -207,8 +211,11 @@ export function SuperAppAddAddressSheet({
                     addressLine2: addressLine2.trim(),
                     city: city.trim(),
                     state: state.trim(),
-                    latitude: coords.latitude,
-                    longitude: coords.longitude,
+                    // Lagos (Victoria Island) default when GPS wasn't captured —
+                    // a real coordinate near the demo merchant, so delivery
+                    // distance/fee stay sensible. Precise GPS still wins when given.
+                    latitude: coords?.latitude ?? 6.4281,
+                    longitude: coords?.longitude ?? 3.4219,
                   });
                 }
               : undefined
