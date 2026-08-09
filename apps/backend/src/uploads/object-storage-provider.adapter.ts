@@ -29,6 +29,25 @@ export interface PresignPutResult {
   expiresAt: string;
 }
 
+export interface PresignGetInput {
+  /** Full object key including folder prefix, e.g. `kyc-documents/<user>/<uuid>.pdf`. */
+  key: string;
+  expiresInSeconds: number;
+}
+
+export interface PresignGetResult {
+  /** Pre-signed GET URL an authorized reader fetches the object bytes with. */
+  url: string;
+  /** ISO-8601 expiry of the pre-signed URL. */
+  expiresAt: string;
+}
+
 export interface ObjectStorageProvider {
   createPresignedPutUrl(input: PresignPutInput): Promise<PresignPutResult>;
+  /**
+   * Pre-signed GET URL for reading a private object (DPX-STORAGE-001, decision
+   * F). Sensitive objects (KYC, identity verification) are not public-read; an
+   * authorized reader is handed one of these short-lived URLs instead.
+   */
+  createPresignedGetUrl(input: PresignGetInput): Promise<PresignGetResult>;
 }
