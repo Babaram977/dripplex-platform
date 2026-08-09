@@ -11,6 +11,7 @@ import { CustomerNotificationsController } from './customer-notifications.contro
 import { DeviceRegistryService } from './device-registry.service';
 import { DriverNotificationsController } from './driver-notifications.controller';
 import { MerchantNotificationsController } from './merchant-notifications.controller';
+import { MerchantOrderNotificationSubscriber } from './merchant-order-notification.subscriber';
 import { NotificationCenterService } from './notification-center.service';
 import { NotificationCenterSubscriber } from './notification-center.subscriber';
 import { NotificationPreferencesService } from './notification-preferences.service';
@@ -36,6 +37,7 @@ import type { NotificationProvider } from './providers/notification-provider';
     NotificationPreferencesService,
     NotificationTemplateService,
     NotificationCenterSubscriber,
+    MerchantOrderNotificationSubscriber,
     DeviceRegistryService,
     // Default bindings until real provider credentials exist (Phase D —
     // see docs/DPX-CORE-001-NOTIFICATION-PLATFORM.md). Swapping in a real
