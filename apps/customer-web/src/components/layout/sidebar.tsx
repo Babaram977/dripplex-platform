@@ -8,7 +8,6 @@ import {
   Home,
   LayoutDashboard,
   LayoutGrid,
-  Package,
   ShieldCheck,
   ShoppingBag,
   Store,
@@ -22,12 +21,19 @@ import * as React from 'react';
 import { siteConfig } from '@/lib/site';
 import { useUiStore } from '@/stores/ui-store';
 
+// Primary Super App nav. Each entry points at a real, already-live route
+// group in this app (verified against `docs/reference/dpx-100-figma-screen-mapping.md`:
+// Marketplace/Ride/Wallet/Account are ✅ Live). These replaced dead
+// `/dashboard#…` hash anchors that resolved to nothing on the dashboard
+// page. The Figma "Orders list" screen does not exist yet (only per-order
+// tracking at `/marketplace/tracking/[orderId]`), so there is no Orders
+// entry — logged in `docs/reference/DPX-FIGMA-DIFF-REGISTER.md` for founder design.
 const navItems = [
   { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
-  { href: '/dashboard#marketplace', label: 'Marketplace', icon: ShoppingBag },
-  { href: '/dashboard#orders', label: 'Orders', icon: Package },
-  { href: '/dashboard#wallet', label: 'Wallet', icon: Wallet },
-  { href: '/dashboard#profile', label: 'Profile', icon: UserRound },
+  { href: '/marketplace', label: 'Marketplace', icon: ShoppingBag },
+  { href: '/ride', label: 'Ride', icon: Car },
+  { href: '/wallet', label: 'Wallet', icon: Wallet },
+  { href: '/account', label: 'Profile', icon: UserRound },
 ] as const;
 
 /**
@@ -103,7 +109,9 @@ export function Sidebar(): React.JSX.Element {
         {navItems.map((item) => {
           const Icon = item.icon;
           const active =
-            pathname === item.href || (item.href === '/dashboard' && pathname === '/dashboard');
+            item.href === '/dashboard'
+              ? pathname === '/dashboard'
+              : pathname === item.href || pathname.startsWith(`${item.href}/`);
           return (
             <Link
               key={item.href}
