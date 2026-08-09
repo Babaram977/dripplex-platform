@@ -1,4 +1,5 @@
 import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { Prisma } from '@prisma/client';
@@ -73,5 +74,26 @@ describe('Prisma schema foundation (S1-C1)', () => {
         'super_administrator',
       ]),
     );
+  });
+});
+
+describe('Production deploy path seeds RBAC (P0-1)', () => {
+  // A fresh production deployment must run the idempotent RBAC bootstrap, not a
+  // bare `prisma migrate deploy` — otherwise the roles/permissions registration
+  // depends on are absent and every portal's registration/login breaks. This
+  // static check guards against the deploy script regressing back to migrate-only.
+  const deployScript = readFileSync(
+    path.resolve(backendRoot, '../../scripts/backend/deploy-api.sh'),
+    'utf8',
+  );
+
+  it('deploy-api.sh runs the RBAC bootstrap (seed-rbac.cjs), which itself migrates', () => {
+    expect(deployScript).toContain('node prisma/seed-rbac.cjs');
+  });
+
+  it('deploy-api.sh does not run a bare migrate-only step that would skip RBAC seeding', () => {
+    // The RBAC bootstrap runs migrate deploy internally; the deploy script must
+    // not invoke `prisma migrate deploy` directly as its DB bring-up command.
+    expect(deployScript).not.toMatch(/(npx|pnpm exec) prisma migrate deploy/);
   });
 });
