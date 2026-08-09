@@ -14,15 +14,18 @@ import {
 import {
   ConflictDomainException,
   EmailNotVerifiedDomainException,
+  ForbiddenDomainException,
   NotFoundDomainException,
   PhoneNotVerifiedDomainException,
   ValidationDomainException,
 } from '../common/exceptions/domain.exception';
+import { StorageAssetService } from '../uploads/storage-asset.service';
 
 import { MERCHANT_AUDIT_ACTIONS } from './merchant.constants';
 import { MerchantsService } from './merchants.service';
 
 import type { AuditService } from '../audit/audit.service';
+import type { AppConfigService } from '../config/app-config.service';
 import type { NotificationService } from '../notifications/notification.service';
 import type { MerchantsRepository } from './repositories/merchants.repository';
 
@@ -179,7 +182,16 @@ describe('MerchantsService', () => {
     notifyMerchantLifecycle: jest.fn().mockResolvedValue(undefined),
   } as unknown as jest.Mocked<NotificationService>;
 
-  const service = new MerchantsService(repository, auditService, notifications);
+  // Storage disabled in unit tests: ownership checks no-op, signing passes URLs through.
+  const storageAssets = {
+    assertOwned: jest.fn(),
+    assertOwnedOptional: jest.fn(),
+    assertOwnedMany: jest.fn(),
+    toSignedGetUrl: jest.fn((url: string) => Promise.resolve(url)),
+    toSignedGetUrlOptional: jest.fn((url: string | null | undefined) => Promise.resolve(url)),
+  } as unknown as StorageAssetService;
+
+  const service = new MerchantsService(repository, auditService, notifications, storageAssets);
   const context = { userId: merchantId, ipAddress: '127.0.0.1' };
 
   beforeEach(() => {
@@ -411,6 +423,42 @@ describe('MerchantsService', () => {
           context,
         ),
       ).rejects.toBeInstanceOf(ConflictDomainException);
+    });
+
+    it('(DPX-STORAGE-001 D) rejects a KYC front image that is a foreign / cross-user URL', async () => {
+      repository.findBusinessByMerchantId.mockResolvedValue(business);
+      repository.findActivePendingKyc.mockResolvedValue(null);
+      // A merchants service wired with configured storage so the ownership guard runs.
+      const guarded = new MerchantsService(
+        repository,
+        auditService,
+        notifications,
+        new StorageAssetService(
+          {
+            objectStorageConfigured: true,
+            objectStorageEndpoint: 'https://s3.example.com',
+            objectStorageBucket: 'dripplex-assets',
+            objectStoragePublicBaseUrl: '',
+          } as unknown as AppConfigService,
+          {
+            createPresignedPutUrl: jest.fn(),
+            createPresignedGetUrl: jest.fn(),
+          },
+        ),
+      );
+
+      await expect(
+        guarded.submitKyc(
+          merchantId,
+          {
+            documentType: KycDocumentType.PASSPORT,
+            documentNumber: 'A123',
+            frontImage: 'https://evil.example.com/kyc-documents/other/p.jpg',
+          },
+          context,
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenDomainException);
+      expect(repository.createKyc).not.toHaveBeenCalled();
     });
 
     it('returns KYC status list', async () => {

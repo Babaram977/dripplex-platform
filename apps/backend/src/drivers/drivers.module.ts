@@ -5,6 +5,7 @@ import { CmsModule } from '../cms/cms.module';
 import { NotificationCenterModule } from '../notification-center/notification-center.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { UploadsModule } from '../uploads/uploads.module';
 
 import { DriverActivationService } from './activation/driver-activation.service';
 import { AdminDriverIdentityVerificationController } from './controllers/admin-driver-identity-verification.controller';
@@ -47,7 +48,14 @@ import { DriverSupportService } from './support/driver-support.service';
 import { VehiclesService } from './vehicles/vehicles.service';
 
 @Module({
-  imports: [PrismaModule, AuditModule, NotificationsModule, NotificationCenterModule, CmsModule],
+  imports: [
+    PrismaModule,
+    AuditModule,
+    NotificationsModule,
+    NotificationCenterModule,
+    CmsModule,
+    UploadsModule,
+  ],
   controllers: [
     DriverController,
     DriverHelpController,

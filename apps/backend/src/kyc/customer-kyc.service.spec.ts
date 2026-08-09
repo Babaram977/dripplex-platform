@@ -2,13 +2,16 @@ import { CustomerKycStatus } from '@prisma/client';
 
 import {
   ConflictDomainException,
+  ForbiddenDomainException,
   NotFoundDomainException,
 } from '../common/exceptions/domain.exception';
+import { StorageAssetService } from '../uploads/storage-asset.service';
 
 import { CustomerKycService } from './customer-kyc.service';
 import { KYC_AUDIT_ACTIONS } from './kyc.constants';
 
 import type { AuditService } from '../audit/audit.service';
+import type { AppConfigService } from '../config/app-config.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { CustomerKyc } from '@prisma/client';
 
@@ -31,7 +34,17 @@ describe('CustomerKycService', () => {
 
   const auditService = { record: jest.fn() } as unknown as jest.Mocked<AuditService>;
 
-  const service = new CustomerKycService(prisma, auditService);
+  // Storage disabled in unit tests: ownership checks are no-ops and signing
+  // returns URLs unchanged, so the mapper's stored values flow straight through.
+  const storageAssets = {
+    assertOwned: jest.fn(),
+    assertOwnedOptional: jest.fn(),
+    assertOwnedMany: jest.fn(),
+    toSignedGetUrl: jest.fn((url: string) => Promise.resolve(url)),
+    toSignedGetUrlOptional: jest.fn((url: string | null | undefined) => Promise.resolve(url)),
+  } as unknown as StorageAssetService;
+
+  const service = new CustomerKycService(prisma, auditService, storageAssets);
 
   const verifiedUser = {
     phoneVerifiedAt: new Date(),
@@ -209,6 +222,73 @@ describe('CustomerKycService', () => {
       await service.submit(userId, dto, {});
 
       expect(prisma.customerKyc.update).toHaveBeenCalled();
+    });
+  });
+
+  describe('DPX-STORAGE-001 (D+F) — persisted-URL ownership and signed GET', () => {
+    // A CustomerKycService wired with a *configured* StorageAssetService so the
+    // ownership guard (D) and signed-GET wrapping (F) actually run end-to-end.
+    const OWNED = `https://s3.example.com/dripplex-assets/kyc-documents/${userId}/front.jpg`;
+    const configuredStorage = new StorageAssetService(
+      {
+        objectStorageConfigured: true,
+        objectStorageEndpoint: 'https://s3.example.com',
+        objectStorageBucket: 'dripplex-assets',
+        objectStoragePublicBaseUrl: '',
+      } as unknown as AppConfigService,
+      {
+        createPresignedPutUrl: jest.fn(),
+        createPresignedGetUrl: jest.fn((input: { key: string }) =>
+          Promise.resolve({
+            url: `https://s3.example.com/dripplex-assets/${input.key}?X-Amz-Signature=sig`,
+            expiresAt: '2026-01-01T00:05:00.000Z',
+          }),
+        ),
+      },
+    );
+    const guardedService = new CustomerKycService(prisma, auditService, configuredStorage);
+
+    it('(D) rejects a submit whose front image is a foreign / cross-user URL', async () => {
+      (prisma.customerKyc.findFirst as jest.Mock).mockResolvedValue(baseRecord);
+
+      await expect(
+        guardedService.submit(
+          userId,
+          {
+            documentType: 'NATIONAL_ID',
+            frontImageUrl: 'https://evil.example.com/kyc-documents/other-user/front.jpg',
+          },
+          {},
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenDomainException);
+      expect(prisma.customerKyc.update).not.toHaveBeenCalled();
+    });
+
+    it('(D) accepts a submit whose front image is a DrippleX-owned URL', async () => {
+      (prisma.customerKyc.findFirst as jest.Mock).mockResolvedValue(baseRecord);
+      (prisma.customerKyc.update as jest.Mock).mockResolvedValue({
+        ...baseRecord,
+        status: CustomerKycStatus.PENDING_REVIEW,
+        frontImageUrl: OWNED,
+      });
+
+      await expect(
+        guardedService.submit(userId, { documentType: 'NATIONAL_ID', frontImageUrl: OWNED }, {}),
+      ).resolves.toBeDefined();
+      expect(prisma.customerKyc.update).toHaveBeenCalled();
+    });
+
+    it('(F) returns a short-lived signed GET URL for a stored document, not the raw URL', async () => {
+      (prisma.customerKyc.findFirst as jest.Mock).mockResolvedValue({
+        ...baseRecord,
+        status: CustomerKycStatus.PENDING_REVIEW,
+        frontImageUrl: OWNED,
+      });
+
+      const result = await guardedService.getMyStatus(userId);
+
+      expect(result.frontImageUrl).toContain('X-Amz-Signature=');
+      expect(result.frontImageUrl).not.toBe(OWNED);
     });
   });
 

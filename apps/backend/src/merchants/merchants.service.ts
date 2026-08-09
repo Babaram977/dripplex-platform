@@ -22,6 +22,7 @@ import {
   NOTIFICATION_SERVICE,
   type NotificationService,
 } from '../notifications/notification.service';
+import { StorageAssetService } from '../uploads/storage-asset.service';
 
 import { MERCHANT_AUDIT_ACTIONS } from './merchant.constants';
 import {
@@ -59,9 +60,26 @@ export class MerchantsService {
     private readonly auditService: AuditService,
     @Inject(NOTIFICATION_SERVICE)
     private readonly notifications: NotificationService,
+    private readonly storageAssets: StorageAssetService,
     @Optional()
     private readonly eventBus?: DomainEventBus,
   ) {}
+
+  /** DPX-STORAGE-001 (F) — merchant KYC documents are private; return signed GET URLs. */
+  private async signMerchantKyc(dto: MerchantKycDto): Promise<MerchantKycDto> {
+    const [frontImage, backImage, selfieImage] = await Promise.all([
+      this.storageAssets.toSignedGetUrl(dto.frontImage),
+      this.storageAssets.toSignedGetUrlOptional(dto.backImage),
+      this.storageAssets.toSignedGetUrlOptional(dto.selfieImage),
+    ]);
+    return { ...dto, frontImage, backImage: backImage ?? null, selfieImage: selfieImage ?? null };
+  }
+
+  /** Sign the KYC documents embedded in a merchant profile DTO, if any. */
+  private async signMerchantProfile(dto: MerchantProfileDto): Promise<MerchantProfileDto> {
+    if (dto.kyc === null) return dto;
+    return { ...dto, kyc: await this.signMerchantKyc(dto.kyc) };
+  }
 
   public async createBusiness(
     merchantUserId: string,
@@ -300,6 +318,20 @@ export class MerchantsService {
       throw new ConflictDomainException('An active KYC submission is already pending review');
     }
 
+    // DPX-STORAGE-001 (D) — only DrippleX-controlled URLs owned by this merchant.
+    this.storageAssets.assertOwned(dto.frontImage, {
+      folder: 'kyc-documents',
+      ownerId: merchantUserId,
+    });
+    this.storageAssets.assertOwnedOptional(dto.backImage, {
+      folder: 'kyc-documents',
+      ownerId: merchantUserId,
+    });
+    this.storageAssets.assertOwnedOptional(dto.selfieImage, {
+      folder: 'kyc-documents',
+      ownerId: merchantUserId,
+    });
+
     const kyc = await this.merchantsRepository.createKyc({
       merchantId: merchantUserId,
       businessId: business.id,
@@ -327,7 +359,7 @@ export class MerchantsService {
       documentType: kyc.documentType,
     });
 
-    return toMerchantKycDto(kyc);
+    return await this.signMerchantKyc(toMerchantKycDto(kyc));
   }
 
   public async getKycStatus(merchantUserId: string): Promise<{
@@ -336,9 +368,12 @@ export class MerchantsService {
   }> {
     await this.requireMerchantProfile(merchantUserId);
     const items = await this.merchantsRepository.listKycByMerchantId(merchantUserId);
+    const signed = await Promise.all(
+      items.map((item) => this.signMerchantKyc(toMerchantKycDto(item))),
+    );
     return {
-      latest: items[0] ? toMerchantKycDto(items[0]) : null,
-      items: items.map(toMerchantKycDto),
+      latest: signed[0] ?? null,
+      items: signed,
     };
   }
 
@@ -429,16 +464,22 @@ export class MerchantsService {
       ...(query.dateTo !== undefined ? { createdTo: new Date(query.dateTo) } : {}),
     });
 
-    return {
-      items: items.map((item) =>
-        toMerchantProfileDto({
-          profile: item,
-          user: item.user,
-          business: item.business,
-          kyc: item.kycDocuments[0] ?? null,
-          bankAccounts: item.bankAccounts,
-        }),
+    const signedItems = await Promise.all(
+      items.map((item) =>
+        this.signMerchantProfile(
+          toMerchantProfileDto({
+            profile: item,
+            user: item.user,
+            business: item.business,
+            kyc: item.kycDocuments[0] ?? null,
+            bankAccounts: item.bankAccounts,
+          }),
+        ),
       ),
+    );
+
+    return {
+      items: signedItems,
       meta: {
         page: query.page,
         limit: query.limit,
@@ -460,13 +501,15 @@ export class MerchantsService {
     const auditSummary = await this.merchantsRepository.getAuditSummary(merchantUserId);
 
     return {
-      profile: toMerchantProfileDto({
-        profile: detail,
-        user: detail.user,
-        business: detail.business,
-        kyc: detail.kycDocuments[0] ?? null,
-        bankAccounts: detail.bankAccounts,
-      }),
+      profile: await this.signMerchantProfile(
+        toMerchantProfileDto({
+          profile: detail,
+          user: detail.user,
+          business: detail.business,
+          kyc: detail.kycDocuments[0] ?? null,
+          bankAccounts: detail.bankAccounts,
+        }),
+      ),
       auditSummary: auditSummary.map((row) => ({
         action: row.action,
         count: row.count,
@@ -498,7 +541,7 @@ export class MerchantsService {
       },
     );
 
-    return toMerchantKycDto(verified);
+    return await this.signMerchantKyc(toMerchantKycDto(verified));
   }
 
   public async rejectKyc(
@@ -532,7 +575,7 @@ export class MerchantsService {
       },
     );
 
-    return toMerchantKycDto(rejected);
+    return await this.signMerchantKyc(toMerchantKycDto(rejected));
   }
 
   public async approveMerchant(

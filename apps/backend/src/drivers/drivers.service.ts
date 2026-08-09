@@ -18,6 +18,7 @@ import {
   type NotificationService,
 } from '../notifications/notification.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { StorageAssetService } from '../uploads/storage-asset.service';
 
 import { DriverActivationService } from './activation/driver-activation.service';
 import { DRIVER_AUDIT_ACTIONS } from './driver.constants';
@@ -42,7 +43,24 @@ export class DriversService {
     @Inject(NOTIFICATION_SERVICE)
     private readonly notifications: NotificationService,
     private readonly activationService: DriverActivationService,
+    private readonly storageAssets: StorageAssetService,
   ) {}
+
+  /** DPX-STORAGE-001 (F) — driver KYC documents are private; return signed GET URLs. */
+  private async signDriverKyc(dto: DriverKycDto): Promise<DriverKycDto> {
+    const [frontImage, backImage] = await Promise.all([
+      this.storageAssets.toSignedGetUrl(dto.frontImage),
+      this.storageAssets.toSignedGetUrlOptional(dto.backImage),
+    ]);
+    return { ...dto, frontImage, backImage: backImage ?? null };
+  }
+
+  /** Sign the KYC documents embedded in a driver profile DTO. Avatar (a
+   * profile photo, not a sensitive document) is intentionally left unsigned. */
+  private async signDriverProfile(dto: DriverProfileDto): Promise<DriverProfileDto> {
+    const kyc = await Promise.all(dto.kyc.map((item) => this.signDriverKyc(item)));
+    return { ...dto, kyc };
+  }
 
   public async submitKyc(
     driverUserId: string,
@@ -50,6 +68,16 @@ export class DriversService {
     context: AuditContext,
   ): Promise<DriverKycDto> {
     const profile = await this.requireDriverProfile(driverUserId);
+
+    // DPX-STORAGE-001 (D) — only DrippleX-controlled URLs owned by this driver.
+    this.storageAssets.assertOwned(dto.frontImage, {
+      folder: 'kyc-documents',
+      ownerId: driverUserId,
+    });
+    this.storageAssets.assertOwnedOptional(dto.backImage, {
+      folder: 'kyc-documents',
+      ownerId: driverUserId,
+    });
 
     const kyc = await this.prisma.driverKyc.create({
       data: {
@@ -74,7 +102,7 @@ export class DriversService {
       documentType: kyc.documentType,
     });
 
-    return toDriverKycDto(kyc);
+    return await this.signDriverKyc(toDriverKycDto(kyc));
   }
 
   public async getOwnProfile(driverUserId: string): Promise<DriverProfileDto> {
@@ -83,7 +111,9 @@ export class DriversService {
       where: { driverId: driverUserId },
       orderBy: { createdAt: 'desc' },
     });
-    return toDriverProfileDto({ profile: profile.profile, user: profile.user, kyc });
+    return await this.signDriverProfile(
+      toDriverProfileDto({ profile: profile.profile, user: profile.user, kyc }),
+    );
   }
 
   /** Driver Slice 2 item 9 — self-service edit of the fields the founder
@@ -107,7 +137,15 @@ export class DriversService {
       preferredServiceAreas?: string[];
       drivingExperienceYears?: number;
     } = {};
-    if (dto.avatarUrl !== undefined) profileData.avatarUrl = dto.avatarUrl;
+    if (dto.avatarUrl !== undefined) {
+      // DPX-STORAGE-001 (D) — only accept a DrippleX-controlled avatar owned by
+      // this driver, never an arbitrary external or cross-user URL.
+      this.storageAssets.assertOwned(dto.avatarUrl, {
+        folder: 'profile-photos',
+        ownerId: driverUserId,
+      });
+      profileData.avatarUrl = dto.avatarUrl;
+    }
     if (dto.languagesSpoken !== undefined) {
       profileData.languagesSpoken = dto.languagesSpoken.map((l) => l.trim()).filter(Boolean);
     }
@@ -138,7 +176,9 @@ export class DriversService {
       where: { driverId: driverUserId },
       orderBy: { createdAt: 'desc' },
     });
-    return toDriverProfileDto({ profile: updatedProfile, user: updatedUser, kyc });
+    return await this.signDriverProfile(
+      toDriverProfileDto({ profile: updatedProfile, user: updatedUser, kyc }),
+    );
   }
 
   /** Driver Slice 2 item 9 — read-only performance/ratings summary. Reads
@@ -190,12 +230,16 @@ export class DriversService {
       orderBy: { createdAt: 'desc' },
     });
 
-    const items = profiles.map((profile) =>
-      toDriverProfileDto({
-        profile,
-        user: profile.user,
-        kyc: kycByDriver.filter((k) => k.driverId === profile.userId),
-      }),
+    const items = await Promise.all(
+      profiles.map((profile) =>
+        this.signDriverProfile(
+          toDriverProfileDto({
+            profile,
+            user: profile.user,
+            kyc: kycByDriver.filter((k) => k.driverId === profile.userId),
+          }),
+        ),
+      ),
     );
 
     return {
@@ -215,7 +259,7 @@ export class DriversService {
       where: { driverId: driverUserId },
       orderBy: { createdAt: 'desc' },
     });
-    return toDriverProfileDto({ profile, user, kyc });
+    return await this.signDriverProfile(toDriverProfileDto({ profile, user, kyc }));
   }
 
   public async verifyKyc(
@@ -242,7 +286,7 @@ export class DriversService {
       { resource: 'driver_kyc', resourceId: kyc.id, metadata: { documentType: kyc.documentType } },
     );
 
-    return toDriverKycDto(updated);
+    return await this.signDriverKyc(toDriverKycDto(updated));
   }
 
   public async rejectKyc(
@@ -269,7 +313,7 @@ export class DriversService {
       { resource: 'driver_kyc', resourceId: kyc.id, metadata: { documentType: kyc.documentType } },
     );
 
-    return toDriverKycDto(updated);
+    return await this.signDriverKyc(toDriverKycDto(updated));
   }
 
   public async approveDriver(
