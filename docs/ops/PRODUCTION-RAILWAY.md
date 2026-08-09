@@ -1,8 +1,3 @@
-> ⚠️ **SUPERSEDED — not canonical.** Production runs on Cloudflare Workers +
-> GHCR/VPS Docker Compose, **not Railway.** See
-> **`docs/ops/DPX-LAUNCH-008-DEPLOYMENT-RECONCILIATION.md`** for the authoritative
-> architecture. Retained for history.
-
 # Production infrastructure — Railway (canonical)
 
 > **REINSTATED (2026-08-03):** The founder briefly evaluated moving to a

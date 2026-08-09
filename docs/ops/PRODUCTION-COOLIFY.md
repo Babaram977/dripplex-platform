@@ -1,7 +1,3 @@
-> ⚠️ **SUPERSEDED / parked.** Production runs on Cloudflare Workers + GHCR/VPS
-> Docker Compose. See **`docs/ops/DPX-LAUNCH-008-DEPLOYMENT-RECONCILIATION.md`**
-> for the authoritative architecture. Retained for history.
-
 # Production infrastructure — Coolify (parked, not canonical)
 
 > **PARKED (2026-08-03):** This was briefly the intended production target

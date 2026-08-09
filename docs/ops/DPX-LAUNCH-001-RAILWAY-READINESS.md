@@ -1,9 +1,3 @@
-> ⚠️ **Deployment architecture SUPERSEDED.** The live path is Cloudflare Workers
-> (frontends) + GHCR image → VPS Docker Compose (backend), **not Railway.** See
-> **`docs/ops/DPX-LAUNCH-008-DEPLOYMENT-RECONCILIATION.md`** for the current,
-> authoritative deployment/rollback sequence. App-behavior notes below may still
-> be useful; the Railway topology is historical.
-
 # DPX-LAUNCH-001 — Launch Track 1: Railway Production Readiness
 
 Founder-authorized (2026-08-05) as the first Launch Track following the
