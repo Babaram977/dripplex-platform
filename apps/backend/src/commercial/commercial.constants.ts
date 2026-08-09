@@ -9,6 +9,12 @@ export const COMMERCIAL_PERMISSIONS = {
   /// Driver-001's security-settings / DPX-MERCHANT-002's commission-rate
   /// permission split.
   ADMIN_CREDIT_SETTINGS_MANAGE: 'admin:commercial:credit-settings:manage',
+  /// DPX-LAUNCH — editing the platform (ride) commission rate. Its own
+  /// permission for the same reason as the credit-settings and merchant
+  /// commission-rate splits: changing the commercial commission policy is a
+  /// more sensitive action than routine admin work. Granted to
+  /// administrator / super_administrator only (line ops staff do not hold it).
+  ADMIN_COMMISSION_SETTINGS_MANAGE: 'admin:commercial:commission-settings:manage',
   /// Reading a commission account/ledger and recording a manual external
   /// payment against it — kept as one permission for Slice 1 (both are
   /// admin financial-reconciliation actions); can be split later if a
@@ -23,10 +29,23 @@ export const COMMERCIAL_PERMISSIONS = {
 
 export const COMMERCIAL_AUDIT_ACTIONS = {
   CREDIT_SETTING_UPDATED: 'commercial_credit_setting.updated',
+  COMMISSION_SETTING_UPDATED: 'platform_commission_setting.updated',
   PAYMENT_RECORDED: 'commission_account.payment_recorded',
   BLOCKED: 'commission_account.blocked',
   UNBLOCKED: 'commission_account.unblocked',
 } as const;
+
+/// DPX-LAUNCH — singleton row id for the Ops-configurable platform
+/// commission setting (mirrors MERCHANT_COMMISSION_SETTING_ID). One fixed id
+/// so getEffective() upserts a single authoritative row.
+export const PLATFORM_COMMISSION_SETTING_ID = '00000000-0000-0000-0000-000000000003';
+
+/// Seed-only fallback — read exactly once, the first time
+/// PlatformCommissionSettingsService.getEffective() finds no row. Founder-locked
+/// launch rate: 10%. Every subsequent read comes from the DB row, which an
+/// administrator can change without a code change or deploy. Never referenced
+/// directly by settlement once the row exists.
+export const DEFAULT_PLATFORM_COMMISSION_RATE = 0.1;
 
 /// Seed-only fallback values — read exactly once, the first time
 /// CommercialCreditSettingsService.getEffective(ownerType) finds no row for

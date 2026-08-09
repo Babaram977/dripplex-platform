@@ -8,13 +8,20 @@ import { MerchantCommissionSettingsService } from '../orders/merchant-commission
 import { MerchantSettlementService } from '../orders/merchant-settlement.service';
 import { MERCHANT_COMMISSION_SETTING_ID } from '../orders/order.constants';
 import { RidePaymentService } from '../rides/ride-payment.service';
-import { RIDE_PLATFORM_COMMISSION_RATE } from '../rides/ride.constants';
 import { PLATFORM_WALLET_OWNER_ID } from '../wallet/wallet.constants';
 import { WalletService } from '../wallet/wallet.service';
 
 import { CommercialCreditSettingsService } from './commercial-credit-settings.service';
-import { COMMISSION_AUTOMATIC_DEDUCTION_REFERENCE_TYPE } from './commercial.constants';
+import {
+  COMMISSION_AUTOMATIC_DEDUCTION_REFERENCE_TYPE,
+  DEFAULT_PLATFORM_COMMISSION_RATE,
+} from './commercial.constants';
 import { CommissionAccountService } from './commission-account.service';
+import { PlatformCommissionSettingsService } from './platform-commission-settings.service';
+
+// Ride settlement uses the Ops-configurable platform commission (default 10%);
+// this lifecycle exercises the default rate.
+const RIDE_PLATFORM_COMMISSION_RATE = DEFAULT_PLATFORM_COMMISSION_RATE;
 
 import type { AuditLogRepository } from '../audit/repositories/audit-log.repository';
 import type { NotificationService } from '../notifications/notification.service';
@@ -125,12 +132,15 @@ describe('DPX-COMMERCIAL-001 Slice 6 — Full Commercial Lifecycle E2E', () => {
       [fakeAdapter('PAYSTACK'), fakeAdapter('FLUTTERWAVE')],
       new DomainEventBus(),
       commissionAccounts,
+      new PlatformCommissionSettingsService(prisma, auditService),
     );
 
-    // Reset the singleton commission setting to the known 10% default.
+    // Reset the singleton commission settings to their known 10% defaults
+    // (guards against cross-file contamination of these shared singleton rows).
     await prisma.merchantCommissionSetting
       .delete({ where: { id: MERCHANT_COMMISSION_SETTING_ID } })
       .catch(() => undefined);
+    await prisma.platformCommissionSetting.deleteMany({}).catch(() => undefined);
   });
 
   afterAll(async () => {
@@ -416,10 +426,12 @@ describe('DPX-COMMERCIAL-001 Slice 6 — Full Commercial Lifecycle E2E', () => {
 
       // Step 1 — Ride Cash: two cash rides, commission accrues onto the
       // driver's CommissionAccount instead of staying audit-only.
-      const rideA = await createCompletedRide(50_000); // commission 7,500
+      // Fares chosen so commission crosses the 12,000 credit limit at the
+      // launch 10% rate (75,000 * 0.10 = 7,500), keeping the blocking narrative.
+      const rideA = await createCompletedRide(75_000); // commission 7,500
       await ridePayment.initiatePayment(customerId, rideA.id, 'CASH', undefined, {});
       const confirmA = await ridePayment.confirmCash(driverId, rideA.id, {});
-      expect(confirmA.platformCommission).toBeCloseTo(50_000 * RIDE_PLATFORM_COMMISSION_RATE);
+      expect(confirmA.platformCommission).toBeCloseTo(75_000 * RIDE_PLATFORM_COMMISSION_RATE);
 
       let account = await commissionAccounts.getOrCreateAccount(
         CommissionOwnerType.DRIVER,
@@ -428,10 +440,10 @@ describe('DPX-COMMERCIAL-001 Slice 6 — Full Commercial Lifecycle E2E', () => {
       expect(Number(account.outstandingBalance)).toBeCloseTo(7_500);
       expect(account.blocked).toBe(false);
 
-      const rideB = await createCompletedRide(40_000); // commission 6,000
+      const rideB = await createCompletedRide(60_000); // commission 6,000
       await ridePayment.initiatePayment(customerId, rideB.id, 'CASH', undefined, {});
       const confirmB = await ridePayment.confirmCash(driverId, rideB.id, {});
-      expect(confirmB.platformCommission).toBeCloseTo(40_000 * RIDE_PLATFORM_COMMISSION_RATE);
+      expect(confirmB.platformCommission).toBeCloseTo(60_000 * RIDE_PLATFORM_COMMISSION_RATE);
 
       // Step 2 — Credit-limit / blocking: 13,500 outstanding exceeds the
       // 12,000 limit.

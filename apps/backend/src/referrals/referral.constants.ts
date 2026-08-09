@@ -22,7 +22,7 @@ export const REFERRAL_WALLET_REFERENCE_TYPES = {
 
 /**
  * Reward amounts in NGN. Placeholder pending founder approval — same
- * discipline as RIDE_PLATFORM_COMMISSION_RATE in ride.constants.ts.
+ * placeholder discipline as RIDE_FARE_RATES in ride.constants.ts.
  * TODO: confirm actual amounts before production; trivial to change since
  * every caller reads from here rather than hardcoding a number.
  */

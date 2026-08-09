@@ -2,11 +2,13 @@ import type {
   CommercialCreditSettingDto,
   CommissionAccountDto,
   CommissionLedgerEntryDto,
+  PlatformCommissionSettingDto,
 } from '@dripplex/types';
 import type {
   CommercialCreditSetting,
   CommissionAccount,
   CommissionLedgerEntry,
+  PlatformCommissionSetting,
 } from '@prisma/client';
 
 export function toCommercialCreditSettingDto(
@@ -16,6 +18,18 @@ export function toCommercialCreditSettingDto(
     id: setting.id,
     ownerType: setting.ownerType,
     creditLimit: Number(setting.creditLimit),
+    updatedBy: setting.updatedBy,
+    updatedAt: setting.updatedAt.toISOString(),
+    createdAt: setting.createdAt.toISOString(),
+  };
+}
+
+export function toPlatformCommissionSettingDto(
+  setting: PlatformCommissionSetting,
+): PlatformCommissionSettingDto {
+  return {
+    id: setting.id,
+    commissionRate: Number(setting.commissionRate),
     updatedBy: setting.updatedBy,
     updatedAt: setting.updatedAt.toISOString(),
     createdAt: setting.createdAt.toISOString(),

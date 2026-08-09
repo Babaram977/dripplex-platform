@@ -1197,6 +1197,27 @@ model MerchantCommissionSetting {
   @@map("merchant_commission_settings")
 }
 
+/// DPX-LAUNCH — the Ops-configurable platform commission rate applied to
+/// ride settlement (default 10%). A single row, read at each ride
+/// settlement and editable by an administrator without a redeploy — same
+/// pattern as MerchantCommissionSetting / DriverSecuritySettings. The DB
+/// row is the source of truth from first creation onward;
+/// DEFAULT_PLATFORM_COMMISSION_RATE only seeds the row's initial value.
+///
+/// Changing the rate here never rewrites an already-settled ride — each
+/// ride snapshots the rate it settled at into Ride.platformCommissionRate
+/// (and the resulting platformCommission/driverEarning amounts), so
+/// refunds/reversals always use the rate that applied when the ride settled.
+model PlatformCommissionSetting {
+  id             String   @id @default(uuid()) @db.Uuid
+  commissionRate Decimal  @default(0.10) @map("commission_rate") @db.Decimal(5, 4)
+  updatedBy      String?  @map("updated_by") @db.Uuid
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@map("platform_commission_settings")
+}
+
 enum OrderSettlementStatus {
   PENDING
   COMPLETED
@@ -1490,6 +1511,7 @@ model Ride {
   paymentMethod            RidePaymentMethod?       @map("payment_method")
   paymentStatus            RidePaymentStatus        @default(PENDING) @map("payment_status")
   platformCommission       Decimal?                 @map("platform_commission") @db.Decimal(12, 2)
+  platformCommissionRate   Decimal?                 @map("platform_commission_rate") @db.Decimal(5, 4)
   driverEarning            Decimal?                 @map("driver_earning") @db.Decimal(12, 2)
   tipAmount                Decimal?                 @map("tip_amount") @db.Decimal(12, 2)
   requestedAt              DateTime                 @default(now()) @map("requested_at")

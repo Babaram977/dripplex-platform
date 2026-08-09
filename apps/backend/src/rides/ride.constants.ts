@@ -29,11 +29,13 @@ export const RIDE_PERMISSIONS = {
 } as const;
 
 /**
- * Percentage of the fare the platform retains; the remainder is the
- * driver's earning. TODO: founder approval required before production —
- * same placeholder discipline as RIDE_FARE_RATES below.
+ * The platform commission rate is no longer a hard-coded constant. The
+ * founder-locked launch rate is 10% and is Ops-configurable at runtime — see
+ * `PlatformCommissionSettingsService` (seeded from
+ * `DEFAULT_PLATFORM_COMMISSION_RATE` in commercial.constants.ts). Ride
+ * settlement reads the active rate and snapshots it onto each ride, so a later
+ * rate change never rewrites an already-settled ride.
  */
-export const RIDE_PLATFORM_COMMISSION_RATE = 0.15;
 
 /**
  * WalletLedgerEntry.referenceType values used for ride settlement.

@@ -115,6 +115,10 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
     description: 'View and edit the DPX-COMMERCIAL-001 commission credit-limit policy',
   },
   {
+    code: 'admin:commercial:commission-settings:manage',
+    description: 'View and edit the Ops-configurable platform (ride) commission rate',
+  },
+  {
     code: 'admin:commercial:account:manage',
     description: 'View a commission account/ledger and record manual external payments against it',
   },

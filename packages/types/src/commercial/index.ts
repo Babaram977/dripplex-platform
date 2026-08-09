@@ -50,6 +50,21 @@ export interface UpdateCommercialCreditSettingRequest {
   creditLimit: number;
 }
 
+/// DPX-LAUNCH — the Ops-configurable platform (ride) commission rate.
+export interface PlatformCommissionSettingDto {
+  id: string;
+  /// Decimal fraction, e.g. 0.1 = 10%.
+  commissionRate: number;
+  updatedBy: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+
+export interface UpdatePlatformCommissionSettingRequest {
+  /// Decimal fraction in [0, 1], e.g. 0.1 = 10%.
+  commissionRate: number;
+}
+
 export interface RecordCommissionPaymentRequest {
   amount: number;
   description?: string;
@@ -57,12 +72,14 @@ export interface RecordCommissionPaymentRequest {
 
 export type CommercialAuditAction =
   | 'commercial_credit_setting.updated'
+  | 'platform_commission_setting.updated'
   | 'commission_account.payment_recorded'
   | 'commission_account.blocked'
   | 'commission_account.unblocked';
 
 export const COMMERCIAL_AUDIT_ACTIONS = {
   CREDIT_SETTING_UPDATED: 'commercial_credit_setting.updated',
+  COMMISSION_SETTING_UPDATED: 'platform_commission_setting.updated',
   PAYMENT_RECORDED: 'commission_account.payment_recorded',
   BLOCKED: 'commission_account.blocked',
   UNBLOCKED: 'commission_account.unblocked',

@@ -151,6 +151,10 @@ const PERMISSION_SEEDS = [
     description: 'View and edit the DPX-COMMERCIAL-001 commission credit-limit policy',
   },
   {
+    code: 'admin:commercial:commission-settings:manage',
+    description: 'View and edit the Ops-configurable platform (ride) commission rate',
+  },
+  {
     code: 'admin:commercial:account:manage',
     description: 'View a commission account/ledger and record manual external payments against it',
   },
@@ -445,6 +449,7 @@ const ROLE_PERMISSION_GRANTS = {
     'admin:drivers:security-settings:manage',
     'admin:merchant-settlement:commission:manage',
     'admin:commercial:credit-settings:manage',
+    'admin:commercial:commission-settings:manage',
     'admin:commercial:account:manage',
     'admin:drivers:vehicles:manage',
     'admin:drivers:support-ticket:manage',
@@ -548,6 +553,7 @@ const ROLE_PERMISSION_GRANTS = {
     'admin:drivers:security-settings:manage',
     'admin:merchant-settlement:commission:manage',
     'admin:commercial:credit-settings:manage',
+    'admin:commercial:commission-settings:manage',
     'admin:commercial:account:manage',
     'admin:drivers:vehicles:manage',
     'admin:drivers:support-ticket:manage',

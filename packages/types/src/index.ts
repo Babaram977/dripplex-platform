@@ -535,8 +535,10 @@ export type {
   CommissionEntryType,
   CommissionLedgerEntryDto,
   CommissionOwnerType,
+  PlatformCommissionSettingDto,
   RecordCommissionPaymentRequest,
   UpdateCommercialCreditSettingRequest,
+  UpdatePlatformCommissionSettingRequest,
 } from './commercial/index.js';
 
 export { COMMERCIAL_AUDIT_ACTIONS } from './commercial/index.js';
