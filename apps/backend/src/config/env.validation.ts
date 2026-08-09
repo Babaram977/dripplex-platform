@@ -117,6 +117,15 @@ export const envSchema = z.object({
   // Optional public/CDN base URL objects are served from; falls back to the
   // endpoint/bucket path when unset. Validated as a URL when non-empty.
   OBJECT_STORAGE_PUBLIC_BASE_URL: emptyOrUrl,
+  // Merchant activation flag (staged launch). The Merchant module is fully
+  // built but stays deployed-but-disabled until the controlled merchant pilot:
+  // when 'false' (default) every merchant-facing endpoint is rejected by
+  // MerchantModuleEnabledGuard. Flip to 'true' to activate the merchant cohort.
+  // Admin merchant-review/approval and customer browse are NOT gated by this.
+  MERCHANT_MODULE_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

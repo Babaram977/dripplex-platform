@@ -11,10 +11,12 @@ import {
   Post,
   Query,
   Req,
+  UseGuards,
 } from '@nestjs/common';
 
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
+import { MerchantModuleEnabledGuard } from '../merchants/guards/merchant-module-enabled.guard';
 
 import { AddProductImageDto } from './dto/add-product-image.dto';
 import { CreateProductVariantDto } from './dto/create-product-variant.dto';
@@ -35,6 +37,7 @@ import type { Request } from 'express';
 
 @Controller('merchant/products')
 @RequirePermissions(PRODUCT_PERMISSIONS.MANAGE)
+@UseGuards(MerchantModuleEnabledGuard)
 export class MerchantProductsController {
   constructor(private readonly productsService: MerchantProductsService) {}
 

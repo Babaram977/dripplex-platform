@@ -349,4 +349,14 @@ export class AppConfigService {
       this.objectStorageSecretAccessKey !== ''
     );
   }
+
+  /**
+   * Staged-launch activation flag for the Merchant module. `false` (default)
+   * keeps every merchant-facing endpoint disabled (deployed-but-off) until the
+   * controlled merchant pilot; `true` activates it. Admin merchant review/
+   * approval and customer browse are unaffected.
+   */
+  public get merchantModuleEnabled(): boolean {
+    return this.configService.get('MERCHANT_MODULE_ENABLED', { infer: true });
+  }
 }

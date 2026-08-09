@@ -1,8 +1,9 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { WalletOwnerType } from '@prisma/client';
 
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
+import { MerchantModuleEnabledGuard } from '../merchants/guards/merchant-module-enabled.guard';
 
 import { WalletHistoryQueryDto } from './dto/wallet.dto';
 import { WALLET_PERMISSIONS } from './wallet.constants';
@@ -13,6 +14,7 @@ import type { ApiSuccessResponse } from '../common/dto/api-response.dto';
 import type { PaginatedResult } from '@dripplex/types';
 
 @Controller('merchant/wallet')
+@UseGuards(MerchantModuleEnabledGuard)
 export class MerchantWalletController {
   constructor(private readonly walletService: WalletService) {}
 

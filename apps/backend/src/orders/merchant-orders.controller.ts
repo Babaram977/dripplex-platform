@@ -1,7 +1,18 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Query, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
+import { MerchantModuleEnabledGuard } from '../merchants/guards/merchant-module-enabled.guard';
 
 import {
   AcceptOrderDto,
@@ -20,6 +31,7 @@ import type { Request } from 'express';
 
 @Controller('merchant/orders')
 @RequirePermissions(ORDER_PERMISSIONS.MERCHANT_MANAGE)
+@UseGuards(MerchantModuleEnabledGuard)
 export class MerchantOrdersController {
   constructor(private readonly merchantOrdersService: MerchantOrdersService) {}
 

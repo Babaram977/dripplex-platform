@@ -68,4 +68,28 @@ describe('validateEnv', () => {
       ).toThrow(/Invalid environment configuration/);
     });
   });
+
+  describe('MERCHANT_MODULE_ENABLED (staged activation flag)', () => {
+    it('defaults to false (deployed-but-disabled)', () => {
+      expect(validateEnv(base).MERCHANT_MODULE_ENABLED).toBe(false);
+    });
+
+    it("coerces the string 'true' to a boolean true", () => {
+      expect(
+        validateEnv({ ...base, MERCHANT_MODULE_ENABLED: 'true' }).MERCHANT_MODULE_ENABLED,
+      ).toBe(true);
+    });
+
+    it("coerces the string 'false' to a boolean false", () => {
+      expect(
+        validateEnv({ ...base, MERCHANT_MODULE_ENABLED: 'false' }).MERCHANT_MODULE_ENABLED,
+      ).toBe(false);
+    });
+
+    it('rejects a non-boolean flag value (fails fast at boot)', () => {
+      expect(() => validateEnv({ ...base, MERCHANT_MODULE_ENABLED: 'yes' })).toThrow(
+        /Invalid environment configuration/,
+      );
+    });
+  });
 });

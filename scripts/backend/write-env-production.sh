@@ -71,6 +71,9 @@ OBJECT_STORAGE_PUBLIC_BASE_URL=${OBJECT_STORAGE_PUBLIC_BASE_URL:-}
 # Driver identity verification is DrippleX-native (device biometric + the
 # DrippleX driver record). Smile ID is intentionally NOT a launch dependency,
 # so no SMILE_ID_* keys are required here.
+# Merchant module activation (staged launch). Deployed-but-disabled by default;
+# set to 'true' only when activating the controlled merchant pilot cohort.
+MERCHANT_MODULE_ENABLED=${MERCHANT_MODULE_ENABLED:-false}
 EOF
 chmod 600 "${OUT}"
 echo "Wrote ${OUT}"

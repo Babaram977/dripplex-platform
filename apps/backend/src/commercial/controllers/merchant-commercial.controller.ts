@@ -1,8 +1,9 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { CommissionOwnerType } from '@prisma/client';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
+import { MerchantModuleEnabledGuard } from '../../merchants/guards/merchant-module-enabled.guard';
 import { COMMERCIAL_PERMISSIONS } from '../commercial.constants';
 import { toCommissionAccountDto, toCommissionLedgerEntryDto } from '../commercial.mapper';
 import { CommissionAccountService } from '../commission-account.service';
@@ -26,6 +27,7 @@ import type {
  */
 @Controller('merchant/commercial')
 @RequirePermissions(COMMERCIAL_PERMISSIONS.MERCHANT_READ)
+@UseGuards(MerchantModuleEnabledGuard)
 export class MerchantCommercialController {
   constructor(private readonly accounts: CommissionAccountService) {}
 
