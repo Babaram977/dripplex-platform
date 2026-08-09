@@ -332,10 +332,8 @@ export default function ProductDetailPage(): React.JSX.Element {
             setCartSheetOpen(false);
           }}
           onViewCart={() => {
-            // TODO: route to the real Cart screen once it's built (next in the
-            // Marketplace sequence) — there is no /marketplace/cart route yet.
             setCartSheetOpen(false);
-            toast({ title: 'In your cart', description: `${product.name} is saved to your cart.` });
+            router.push('/marketplace/cart');
           }}
         />
       ) : null}
