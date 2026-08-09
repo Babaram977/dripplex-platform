@@ -97,10 +97,10 @@ export function DashboardHeader(): React.JSX.Element {
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
-                <Link href="/dashboard#profile">Profile</Link>
+                <Link href="/account">Profile</Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
-                <Link href="/dashboard#wallet">Wallet</Link>
+                <Link href="/wallet">Wallet</Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
