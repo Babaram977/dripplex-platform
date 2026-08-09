@@ -13,8 +13,10 @@ import {
   COMMISSION_REFERENCE_TYPES,
   COMMISSION_RIDE_EARNING_DEBT_REFERENCE_TYPE,
   COMMISSION_RIDE_REVERSAL_REFERENCE_TYPE,
+  DEFAULT_PLATFORM_COMMISSION_RATE,
 } from '../commercial/commercial.constants';
 import { CommissionAccountService } from '../commercial/commission-account.service';
+import { PlatformCommissionSettingsService } from '../commercial/platform-commission-settings.service';
 import {
   ConflictDomainException,
   NotFoundDomainException,
@@ -35,11 +37,7 @@ import { PLATFORM_WALLET_OWNER_ID } from '../wallet/wallet.constants';
 import { WalletService } from '../wallet/wallet.service';
 
 import { RIDE_EVENTS_PUBLISHER, type RideEventsPublisher } from './ride-events.publisher';
-import {
-  RIDE_AUDIT_ACTIONS,
-  RIDE_PLATFORM_COMMISSION_RATE,
-  RIDE_WALLET_REFERENCE_TYPES,
-} from './ride.constants';
+import { RIDE_AUDIT_ACTIONS, RIDE_WALLET_REFERENCE_TYPES } from './ride.constants';
 import { toRideDto } from './ride.mapper';
 
 import type { InitiateRidePaymentResponse, RideDto } from '@dripplex/types';
@@ -66,6 +64,8 @@ const RIDE_PAYMENT_METHOD_TO_PROVIDER: Partial<Record<RidePaymentMethod, Payment
 interface FareSplit {
   platformCommission: number;
   driverEarning: number;
+  /** The commission rate this split was computed at (snapshotted onto the ride). */
+  platformCommissionRate: number;
 }
 
 /**
@@ -91,6 +91,7 @@ export class RidePaymentService {
     private readonly providers: PaymentProviderAdapter[],
     private readonly eventBus: DomainEventBus,
     private readonly commissionAccounts: CommissionAccountService,
+    private readonly platformCommissionSettings: PlatformCommissionSettingsService,
   ) {}
 
   public async initiatePayment(
@@ -164,7 +165,8 @@ export class RidePaymentService {
       },
     });
 
-    const split = this.computeSplit(ride);
+    const rate = await this.platformCommissionSettings.getEffectiveRate();
+    const split = this.computeSplit(ride, rate);
     await this.captureIntoPlatformWallet(ride, context);
     await this.payoutDriver(ride, split, context);
     return await this.markPaid(ride, ride.paymentMethod, split, context);
@@ -176,7 +178,8 @@ export class RidePaymentService {
     context: AuditContext,
   ): Promise<RideDto> {
     const ride = await this.requireCashConfirmableRide(driverId, rideId);
-    const split = this.computeSplit(ride);
+    const rate = await this.platformCommissionSettings.getEffectiveRate();
+    const split = this.computeSplit(ride, rate);
 
     // DPX-COMMERCIAL-001 Slice 4 — cash never enters the digital ledger,
     // the driver already holds it physically, so there is nothing to
@@ -397,7 +400,8 @@ export class RidePaymentService {
     context: AuditContext,
   ): Promise<RideDto> {
     const ride = await this.requirePayableRide(customerId, rideId);
-    const split = this.computeSplit(ride);
+    const rate = await this.platformCommissionSettings.getEffectiveRate();
+    const split = this.computeSplit(ride, rate);
 
     try {
       await this.walletService.debit({
@@ -503,11 +507,30 @@ export class RidePaymentService {
     };
   }
 
-  private computeSplit(ride: Ride): FareSplit {
+  /**
+   * Split the fare at a given commission rate. The rate is passed in (fetched
+   * from the Ops-configurable PlatformCommissionSetting at settlement time)
+   * rather than read from a constant, and is returned so callers can snapshot it
+   * onto the ride — refunds then reverse the exact settled amounts/rate.
+   */
+  private computeSplit(ride: Ride, rate: number): FareSplit {
     const total = Number(ride.totalFare);
-    const platformCommission = this.roundCurrency(total * RIDE_PLATFORM_COMMISSION_RATE);
+    const platformCommission = this.roundCurrency(total * rate);
     const driverEarning = this.roundCurrency(total - platformCommission);
-    return { platformCommission, driverEarning };
+    return { platformCommission, driverEarning, platformCommissionRate: rate };
+  }
+
+  /**
+   * The rate to use for a defensive refund recompute when a settled ride is
+   * missing its stored amounts (should not happen — markPaid always writes
+   * them). Prefers the ride's snapshotted rate, else the founder-locked default;
+   * never re-reads the *current* Ops rate, so a later rate change cannot alter a
+   * historical refund.
+   */
+  private rideSnapshotRate(ride: Ride): number {
+    return ride.platformCommissionRate !== null
+      ? Number(ride.platformCommissionRate)
+      : DEFAULT_PLATFORM_COMMISSION_RATE;
   }
 
   /** DPX-COMMERCIAL-001 Slice 4 — bounded retry on ConflictDomainException,
@@ -567,7 +590,7 @@ export class RidePaymentService {
     const commission =
       ride.platformCommission !== null
         ? Number(ride.platformCommission)
-        : this.computeSplit(ride).platformCommission;
+        : this.computeSplit(ride, this.rideSnapshotRate(ride)).platformCommission;
     if (commission <= 0) {
       return;
     }
@@ -597,7 +620,7 @@ export class RidePaymentService {
     const driverEarning =
       ride.driverEarning !== null
         ? Number(ride.driverEarning)
-        : this.computeSplit(ride).driverEarning;
+        : this.computeSplit(ride, this.rideSnapshotRate(ride)).driverEarning;
 
     // Claw the driver's earning back to the platform FIRST. At settlement the
     // platform captured the fare and paid the driver out, keeping only the
@@ -808,6 +831,7 @@ export class RidePaymentService {
         paymentMethod: method,
         paymentStatus: RidePaymentStatus.PAID,
         platformCommission: split.platformCommission,
+        platformCommissionRate: split.platformCommissionRate,
         driverEarning: split.driverEarning,
       },
     });

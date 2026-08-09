@@ -5,6 +5,7 @@ import { PrismaClient, WalletOwnerType } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { CommercialCreditSettingsService } from '../commercial/commercial-credit-settings.service';
 import { CommissionAccountService } from '../commercial/commission-account.service';
+import { PlatformCommissionSettingsService } from '../commercial/platform-commission-settings.service';
 import { DomainEventBus } from '../events/domain-event-bus';
 import { PromotionsService } from '../promotions/promotions.service';
 import { PLATFORM_WALLET_OWNER_ID } from '../wallet/wallet.constants';
@@ -168,6 +169,7 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
       providers,
       new DomainEventBus(),
       commissionAccounts,
+      new PlatformCommissionSettingsService(prisma, auditService),
     );
     ratingService = new RideRatingService(prisma, auditService);
     receiptService = new RideReceiptService(prisma);

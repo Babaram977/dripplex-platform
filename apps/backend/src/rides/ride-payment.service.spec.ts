@@ -4,7 +4,12 @@ import { PrismaClient, WalletOwnerType } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
 import { CommercialCreditSettingsService } from '../commercial/commercial-credit-settings.service';
+import {
+  DEFAULT_PLATFORM_COMMISSION_RATE,
+  PLATFORM_COMMISSION_SETTING_ID,
+} from '../commercial/commercial.constants';
 import { CommissionAccountService } from '../commercial/commission-account.service';
+import { PlatformCommissionSettingsService } from '../commercial/platform-commission-settings.service';
 import { ConflictDomainException } from '../common/exceptions/domain.exception';
 import { DomainEventBus } from '../events/domain-event-bus';
 import { DOMAIN_EVENTS } from '../events/domain-events';
@@ -12,7 +17,11 @@ import { PLATFORM_WALLET_OWNER_ID } from '../wallet/wallet.constants';
 import { WalletService } from '../wallet/wallet.service';
 
 import { RidePaymentService } from './ride-payment.service';
-import { RIDE_PLATFORM_COMMISSION_RATE } from './ride.constants';
+
+// The launch platform commission rate is the Ops-configurable default (10%).
+// These tests exercise settlement/refund at the default rate; the dedicated
+// platform-commission-settings spec covers changing it + historical snapshots.
+const RIDE_PLATFORM_COMMISSION_RATE = DEFAULT_PLATFORM_COMMISSION_RATE;
 
 import type { RideEventsPublisher } from './ride-events.publisher';
 import type { AuditLogRepository } from '../audit/repositories/audit-log.repository';
@@ -98,6 +107,7 @@ describe('RidePaymentService', () => {
       auditService,
       commercialCreditSettings,
     );
+    const platformCommissionSettings = new PlatformCommissionSettingsService(prisma, auditService);
     service = new RidePaymentService(
       prisma,
       walletService,
@@ -107,6 +117,7 @@ describe('RidePaymentService', () => {
       [paystackAdapter, flutterwaveAdapter],
       eventBus,
       commissionAccounts,
+      platformCommissionSettings,
     );
 
     const customer = await prisma.user.create({
@@ -211,7 +222,7 @@ describe('RidePaymentService', () => {
     expect(customerWallet.availableBalance).toBeCloseTo(4000);
 
     const driverWallet = await walletService.getWallet(WalletOwnerType.DRIVER, driverId);
-    expect(driverWallet.availableBalance).toBeCloseTo(850);
+    expect(driverWallet.availableBalance).toBeCloseTo(1000 * (1 - RIDE_PLATFORM_COMMISSION_RATE));
   });
 
   it('fails a wallet payment when the customer balance is insufficient', async () => {
@@ -989,6 +1000,84 @@ describe('RidePaymentService', () => {
         },
       });
       expect(refundEntries).toBe(1);
+    });
+  });
+
+  describe('Ops-configurable platform commission rate (launch: 10%, adjustable)', () => {
+    async function setPlatformRate(rate: number): Promise<void> {
+      await prisma.platformCommissionSetting.upsert({
+        where: { id: PLATFORM_COMMISSION_SETTING_ID },
+        create: { id: PLATFORM_COMMISSION_SETTING_ID, commissionRate: rate },
+        update: { commissionRate: rate },
+      });
+    }
+
+    afterEach(async () => {
+      if (!databaseAvailable) return;
+      // Restore the shared singleton to its seed-default (10%) so the rest of
+      // this file — and other suites — settle at the default rate.
+      await prisma.platformCommissionSetting.deleteMany({});
+    });
+
+    it('settles at the default 10% when the rate has never been changed', async () => {
+      if (!databaseAvailable) return;
+      const ride = await createCompletedRide(1000);
+      await service.initiatePayment(customerId, ride.id, 'CASH', undefined, {});
+      await service.confirmCash(driverId, ride.id, {});
+      const settled = await prisma.ride.findUniqueOrThrow({ where: { id: ride.id } });
+      expect(Number(settled.platformCommission)).toBeCloseTo(100);
+      expect(Number(settled.platformCommissionRate)).toBeCloseTo(0.1);
+      expect(Number(settled.driverEarning)).toBeCloseTo(900);
+    });
+
+    it('settlement uses the active configured rate and snapshots it onto the ride', async () => {
+      if (!databaseAvailable) return;
+      await setPlatformRate(0.2);
+      const ride = await createCompletedRide(1000);
+      await service.initiatePayment(customerId, ride.id, 'CASH', undefined, {});
+      await service.confirmCash(driverId, ride.id, {});
+      const settled = await prisma.ride.findUniqueOrThrow({ where: { id: ride.id } });
+      expect(Number(settled.platformCommission)).toBeCloseTo(200);
+      expect(Number(settled.platformCommissionRate)).toBeCloseTo(0.2);
+      expect(Number(settled.driverEarning)).toBeCloseTo(800);
+    });
+
+    it('a later rate change never rewrites an already-settled ride (historical rate preserved)', async () => {
+      if (!databaseAvailable) return;
+      // Settle at the default 10%.
+      const ride = await createCompletedRide(1000);
+      await service.initiatePayment(customerId, ride.id, 'CASH', undefined, {});
+      await service.confirmCash(driverId, ride.id, {});
+
+      // Change the rate afterwards — the settled ride must be untouched.
+      await setPlatformRate(0.5);
+      const reread = await prisma.ride.findUniqueOrThrow({ where: { id: ride.id } });
+      expect(Number(reread.platformCommission)).toBeCloseTo(100);
+      expect(Number(reread.platformCommissionRate)).toBeCloseTo(0.1);
+    });
+
+    it('refund reverses the historical settled commission, not the current rate', async () => {
+      if (!databaseAvailable) return;
+      // Settle a CASH ride at 20%: commission 200 accrues to the driver account.
+      await setPlatformRate(0.2);
+      const ride = await createCompletedRide(1000);
+      await service.initiatePayment(customerId, ride.id, 'CASH', undefined, {});
+      await service.confirmCash(driverId, ride.id, {});
+      const outstandingAfterSettle = Number(
+        (await commissionAccounts.getOrCreateAccount('DRIVER', driverId)).outstandingBalance,
+      );
+      expect(outstandingAfterSettle).toBeCloseTo(200);
+
+      // Change the rate to 50% BEFORE refunding — the refund must reverse the
+      // historical 200 (fully clearing the account), not 500.
+      await setPlatformRate(0.5);
+      const refunded = await service.refundRide('admin-user', ride.id, 'historical refund', {});
+      expect(refunded.paymentStatus).toBe('REFUNDED');
+      expect(
+        Number(
+          (await commissionAccounts.getOrCreateAccount('DRIVER', driverId)).outstandingBalance,
+        ),
+      ).toBeCloseTo(0);
     });
   });
 });

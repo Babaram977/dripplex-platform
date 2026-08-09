@@ -4,6 +4,7 @@ import { CartClient } from '../cart/cart-client.js';
 import { HttpClient } from '../client/http-client.js';
 import { AdminCommercialCreditSettingsClient } from '../commercial/admin-commercial-credit-settings-client.js';
 import { AdminCommissionAccountsClient } from '../commercial/admin-commission-accounts-client.js';
+import { AdminPlatformCommissionSettingsClient } from '../commercial/admin-platform-commission-settings-client.js';
 import { DriverCommercialClient } from '../commercial/driver-commercial-client.js';
 import { MerchantCommercialClient } from '../commercial/merchant-commercial-client.js';
 import { resolveSdkConfig } from '../config/sdk-config.js';
@@ -114,6 +115,7 @@ export class DripplexClient {
   public readonly operationsInspections: OperationsInspectionsClient;
   public readonly operationsFleet: OperationsFleetClient;
   public readonly adminCommercialCreditSettings: AdminCommercialCreditSettingsClient;
+  public readonly adminPlatformCommissionSettings: AdminPlatformCommissionSettingsClient;
   public readonly adminCommissionAccounts: AdminCommissionAccountsClient;
   public readonly merchantCommercial: MerchantCommercialClient;
   public readonly driverCommercial: DriverCommercialClient;
@@ -189,6 +191,7 @@ export class DripplexClient {
     this.operationsInspections = new OperationsInspectionsClient(this.http);
     this.operationsFleet = new OperationsFleetClient(this.http);
     this.adminCommercialCreditSettings = new AdminCommercialCreditSettingsClient(this.http);
+    this.adminPlatformCommissionSettings = new AdminPlatformCommissionSettingsClient(this.http);
     this.adminCommissionAccounts = new AdminCommissionAccountsClient(this.http);
     this.merchantCommercial = new MerchantCommercialClient(this.http);
     this.driverCommercial = new DriverCommercialClient(this.http);

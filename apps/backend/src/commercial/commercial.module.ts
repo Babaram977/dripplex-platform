@@ -7,8 +7,10 @@ import { CommercialCreditSettingsService } from './commercial-credit-settings.se
 import { CommissionAccountService } from './commission-account.service';
 import { AdminCommercialCreditSettingsController } from './controllers/admin-commercial-credit-settings.controller';
 import { AdminCommissionAccountsController } from './controllers/admin-commission-accounts.controller';
+import { AdminPlatformCommissionSettingsController } from './controllers/admin-platform-commission-settings.controller';
 import { DriverCommercialController } from './controllers/driver-commercial.controller';
 import { MerchantCommercialController } from './controllers/merchant-commercial.controller';
+import { PlatformCommissionSettingsService } from './platform-commission-settings.service';
 
 /**
  * DPX-COMMERCIAL-001 — the shared commercial engine (commission credit
@@ -24,10 +26,19 @@ import { MerchantCommercialController } from './controllers/merchant-commercial.
   controllers: [
     AdminCommercialCreditSettingsController,
     AdminCommissionAccountsController,
+    AdminPlatformCommissionSettingsController,
     MerchantCommercialController,
     DriverCommercialController,
   ],
-  providers: [CommercialCreditSettingsService, CommissionAccountService],
-  exports: [CommercialCreditSettingsService, CommissionAccountService],
+  providers: [
+    CommercialCreditSettingsService,
+    CommissionAccountService,
+    PlatformCommissionSettingsService,
+  ],
+  exports: [
+    CommercialCreditSettingsService,
+    CommissionAccountService,
+    PlatformCommissionSettingsService,
+  ],
 })
 export class CommercialModule {}
