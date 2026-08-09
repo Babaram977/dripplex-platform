@@ -3,6 +3,7 @@
 import { ThemeToggle, useAuth } from '@dripplex/hooks';
 import { DripplexLogo, Button } from '@dripplex/ui';
 import { cn } from '@dripplex/utils';
+import { ShoppingCart } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import * as React from 'react';
@@ -62,6 +63,12 @@ export function Navbar(): React.JSX.Element {
           </nav>
         </div>
         <div className="flex items-center gap-2">
+          <Button asChild variant="ghost" className="inline-flex items-center gap-2">
+            <Link href="/marketplace/cart" aria-label="View cart">
+              <ShoppingCart className="h-4 w-4" aria-hidden="true" />
+              <span className="hidden sm:inline">Cart</span>
+            </Link>
+          </Button>
           <ThemeToggle />
           {!hydrated ? null : isAuthenticated ? (
             <>

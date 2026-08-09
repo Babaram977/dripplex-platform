@@ -1,1 +1,11 @@
 @import '@dripplex/ui/styles.css';
+
+/*
+ * Google Places Autocomplete renders its prediction dropdown (`.pac-container`)
+ * appended to <body>. The Ride "Set Destination" screen (and other flows) are
+ * full-screen overlays, so without this the dropdown renders behind them and
+ * address suggestions appear invisible. Keep it above app overlays.
+ */
+.pac-container {
+  z-index: 100000 !important;
+}
