@@ -54,12 +54,12 @@ describe('PlatformCommissionSettingsService', () => {
     service = new PlatformCommissionSettingsService(prisma, auditService);
   });
 
-  it('defaults to the founder-locked launch rate of 10%', async () => {
+  it('defaults to the founder-locked launch rate of 15%', async () => {
     if (!databaseAvailable) return;
     const setting = await service.getEffective();
-    expect(Number(setting.commissionRate)).toBe(0.1);
-    expect(DEFAULT_PLATFORM_COMMISSION_RATE).toBe(0.1);
-    expect(await service.getEffectiveRate()).toBe(0.1);
+    expect(Number(setting.commissionRate)).toBe(0.15);
+    expect(DEFAULT_PLATFORM_COMMISSION_RATE).toBe(0.15);
+    expect(await service.getEffectiveRate()).toBe(0.15);
   });
 
   it('is a stable singleton — repeated reads return the same row', async () => {
@@ -73,7 +73,7 @@ describe('PlatformCommissionSettingsService', () => {
 
   it('updates the rate, records who changed it, and audits the change', async () => {
     if (!databaseAvailable) return;
-    await service.getEffective(); // seed at 0.1
+    await service.getEffective(); // seed at 0.15
     const updated = await service.update(0.2, ADMIN_ID, { userId: ADMIN_ID });
 
     expect(Number(updated.commissionRate)).toBe(0.2);
@@ -84,7 +84,11 @@ describe('PlatformCommissionSettingsService', () => {
       expect.objectContaining({ userId: ADMIN_ID }),
       expect.objectContaining({
         resource: 'platform_commission_settings',
-        metadata: expect.objectContaining({ previousRate: 0.1, newRate: 0.2, changedBy: ADMIN_ID }),
+        metadata: expect.objectContaining({
+          previousRate: 0.15,
+          newRate: 0.2,
+          changedBy: ADMIN_ID,
+        }),
       }),
     );
   });
