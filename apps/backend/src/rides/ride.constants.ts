@@ -30,7 +30,7 @@ export const RIDE_PERMISSIONS = {
 
 /**
  * The platform commission rate is no longer a hard-coded constant. The
- * founder-locked launch rate is 15% and is Ops-configurable at runtime — see
+ * founder-locked launch rate is 10% and is Ops-configurable at runtime — see
  * `PlatformCommissionSettingsService` (seeded from
  * `DEFAULT_PLATFORM_COMMISSION_RATE` in commercial.constants.ts). Ride
  * settlement reads the active rate and snapshots it onto each ride, so a later

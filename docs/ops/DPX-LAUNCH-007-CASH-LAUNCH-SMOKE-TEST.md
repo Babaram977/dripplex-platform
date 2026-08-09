@@ -98,10 +98,10 @@ deployment sequence).
 - **Expected:** `200`; ride `paymentStatus → PAID`, `paymentMethod = CASH`. The customer's cash is collected physically; no digital balance moves.
 - **Verify (DB):** `rides.paymentStatus = PAID`, `platformCommission` and `platformCommissionRate` written.
 
-## 10. Verify the 15% commission
+## 10. Verify the 10% commission
 
-- **Verify (DB):** on the settled ride, `platformCommissionRate = 0.15` and `platformCommission = round(totalFare * 0.15)`, `driverEarning = totalFare − platformCommission`.
-- **Source:** `DEFAULT_PLATFORM_COMMISSION_RATE = 0.15` (Ops-configurable via `PATCH /admin/commercial/commission-settings`). If Ops changed the rate before this ride settled, expect that rate instead (it is snapshotted per-ride).
+- **Verify (DB):** on the settled ride, `platformCommissionRate = 0.10` and `platformCommission = round(totalFare * 0.10)`, `driverEarning = totalFare − platformCommission`.
+- **Source:** `DEFAULT_PLATFORM_COMMISSION_RATE = 0.10` (Ops-configurable via `PATCH /admin/commercial/commission-settings`). If Ops changed the rate before this ride settled, expect that rate instead (it is snapshotted per-ride).
 - **Failure:** rate ≠ expected → confirm the active `platform_commission_settings` row.
 
 ## 11. Settlement (commission accrual)

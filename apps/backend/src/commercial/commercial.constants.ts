@@ -42,10 +42,10 @@ export const PLATFORM_COMMISSION_SETTING_ID = '00000000-0000-0000-0000-000000000
 
 /// Seed-only fallback — read exactly once, the first time
 /// PlatformCommissionSettingsService.getEffective() finds no row. Founder-locked
-/// launch rate: 15%. Every subsequent read comes from the DB row, which an
+/// launch rate: 10%. Every subsequent read comes from the DB row, which an
 /// administrator can change without a code change or deploy. Never referenced
 /// directly by settlement once the row exists.
-export const DEFAULT_PLATFORM_COMMISSION_RATE = 0.15;
+export const DEFAULT_PLATFORM_COMMISSION_RATE = 0.1;
 
 /// Seed-only fallback values — read exactly once, the first time
 /// CommercialCreditSettingsService.getEffective(ownerType) finds no row for

@@ -1019,15 +1019,15 @@ describe('RidePaymentService', () => {
       await prisma.platformCommissionSetting.deleteMany({});
     });
 
-    it('settles at the default 15% when the rate has never been changed', async () => {
+    it('settles at the default 10% when the rate has never been changed', async () => {
       if (!databaseAvailable) return;
       const ride = await createCompletedRide(1000);
       await service.initiatePayment(customerId, ride.id, 'CASH', undefined, {});
       await service.confirmCash(driverId, ride.id, {});
       const settled = await prisma.ride.findUniqueOrThrow({ where: { id: ride.id } });
-      expect(Number(settled.platformCommission)).toBeCloseTo(150);
-      expect(Number(settled.platformCommissionRate)).toBeCloseTo(0.15);
-      expect(Number(settled.driverEarning)).toBeCloseTo(850);
+      expect(Number(settled.platformCommission)).toBeCloseTo(100);
+      expect(Number(settled.platformCommissionRate)).toBeCloseTo(0.1);
+      expect(Number(settled.driverEarning)).toBeCloseTo(900);
     });
 
     it('settlement uses the active configured rate and snapshots it onto the ride', async () => {
@@ -1044,7 +1044,7 @@ describe('RidePaymentService', () => {
 
     it('a later rate change never rewrites an already-settled ride (historical rate preserved)', async () => {
       if (!databaseAvailable) return;
-      // Settle at the default 15%.
+      // Settle at the default 10%.
       const ride = await createCompletedRide(1000);
       await service.initiatePayment(customerId, ride.id, 'CASH', undefined, {});
       await service.confirmCash(driverId, ride.id, {});
@@ -1052,8 +1052,8 @@ describe('RidePaymentService', () => {
       // Change the rate afterwards — the settled ride must be untouched.
       await setPlatformRate(0.5);
       const reread = await prisma.ride.findUniqueOrThrow({ where: { id: ride.id } });
-      expect(Number(reread.platformCommission)).toBeCloseTo(150);
-      expect(Number(reread.platformCommissionRate)).toBeCloseTo(0.15);
+      expect(Number(reread.platformCommission)).toBeCloseTo(100);
+      expect(Number(reread.platformCommissionRate)).toBeCloseTo(0.1);
     });
 
     it('refund reverses the historical settled commission, not the current rate', async () => {
