@@ -879,7 +879,12 @@ export const api = {
       }>('GET', `/customer/rides/${id}/receipt`),
     rateDriver: (
       id: string,
-      body: { rating: number; comment?: string; categoryRatings?: Record<string, number> },
+      body: {
+        rating: number;
+        comment?: string;
+        categoryRatings?: Record<string, number>;
+        tags?: string[];
+      },
     ) => dx<unknown>('POST', `/customer/rides/${id}/rate-driver`, body),
     tip: (id: string, amount: number) =>
       dx<RideDto>('POST', `/customer/rides/${id}/tip`, { amount }),
@@ -959,6 +964,42 @@ export const api = {
         publicUrl: string;
         expiresInSeconds: number;
       }>('POST', '/uploads/sign', body),
+  },
+
+  // ── REVIEWS & RATINGS (DPX-REVIEWS-001) ─────────────────────────────────────
+  reviews: {
+    // A customer rates the rider who delivered a job (stars + optional comment
+    // + preset tags). Target is resolved server-side from the delivery job.
+    rateRiderForDelivery: (
+      jobId: string,
+      body: { rating: number; comment?: string; tags?: string[] },
+    ) => dx<unknown>('POST', `/customer/reviews/deliveries/${jobId}/rate-rider`, body),
+    // Public reviews + aggregate for any target (product/merchant/rider).
+    listForTarget: (targetType: string, targetId: string, params?: { page?: number }) =>
+      dx<{
+        items: {
+          id: string;
+          rating: number;
+          comment: string | null;
+          tags: string[];
+          authorRole: string;
+          verifiedPurchase: boolean;
+          createdAt: string;
+        }[];
+        aggregate: {
+          averageRating: number;
+          reviewCount: number;
+          rating1: number;
+          rating2: number;
+          rating3: number;
+          rating4: number;
+          rating5: number;
+        } | null;
+        meta: { page: number; pageSize: number; total: number; totalPages: number };
+      }>('GET', '/reviews', undefined, { targetType, targetId, ...params }),
+    // A driver's public aggregate star rating.
+    driverRating: (driverId: string) =>
+      dx<{ average: number; count: number }>('GET', `/drivers/${driverId}/rating`),
   },
 
   // ── RIDER (delivery) ────────────────────────────────────────────────────────
