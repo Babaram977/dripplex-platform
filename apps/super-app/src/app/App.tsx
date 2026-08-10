@@ -832,7 +832,16 @@ function AppShell() {
     ),
     // ── DRIVER APP module ────────────────────────────────────────────────────
     drvsplash: <DriverSplashScreen onDone={() => go('drvlogin')} />,
-    drvlogin: <DriverLoginScreen onContinue={() => go('drvdash')} onBack={() => go('home')} />,
+    drvlogin: (
+      <DriverLoginScreen
+        onContinue={() => go('drvdash')}
+        onBack={() => go('home')}
+        onApply={() => {
+          setPartnerPersona('driver');
+          go('partnerdriver');
+        }}
+      />
+    ),
     drvotp: <DriverOTPScreen onVerified={() => go('drvkyc')} onBack={() => go('drvlogin')} />,
     drvkyc: (
       <DriverKYCStatusScreen
