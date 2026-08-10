@@ -214,6 +214,9 @@ describe('CheckoutService', () => {
       findFirst: jest.fn(),
       findUnique: jest.fn(),
     },
+    bankAccount: {
+      findFirst: jest.fn(),
+    },
   } as unknown as PrismaService;
 
   const service = new CheckoutService(
@@ -608,6 +611,62 @@ describe('CheckoutService', () => {
       await expect(
         service.cancelCustomerOrder(customerId, orderId, context),
       ).rejects.toBeInstanceOf(ValidationDomainException);
+    });
+  });
+
+  describe('getOrderMerchantBank', () => {
+    const bankAccount = {
+      id: '55555555-5555-5555-5555-555555555555',
+      merchantId, // BankAccount.merchantId === merchant User.id
+      bankName: 'Access Bank',
+      accountName: 'Dx Resto',
+      accountNumber: '0123456789',
+      currency: 'NGN',
+      isDefault: true,
+      verifiedAt: new Date(),
+      createdAt: new Date(),
+    };
+
+    it('returns the merchant default bank for the owning customer (isDefault-first, minimal shape)', async () => {
+      (prisma.bankAccount.findFirst as jest.Mock).mockResolvedValue(bankAccount);
+
+      const result = await service.getOrderMerchantBank(customerId, orderId);
+
+      expect(result).toEqual({
+        bankName: 'Access Bank',
+        accountName: 'Dx Resto',
+        accountNumber: '0123456789',
+        currency: 'NGN',
+      });
+      // No internal id / isDefault / verifiedAt leaked.
+      expect(result).not.toHaveProperty('id');
+      expect(result).not.toHaveProperty('isDefault');
+      expect(result).not.toHaveProperty('verifiedAt');
+      // Resolves the merchant User.id via MerchantProfile before the bank hop.
+      expect(prisma.merchantProfile.findUnique).toHaveBeenCalledWith({
+        where: { id: merchantId },
+      });
+      expect(prisma.bankAccount.findFirst).toHaveBeenCalledWith({
+        where: { merchantId },
+        orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
+      });
+    });
+
+    it('rejects a non-owner (order not found for this customer)', async () => {
+      ordersRepository.findByIdForCustomer.mockResolvedValue(null);
+
+      await expect(service.getOrderMerchantBank(customerId, orderId)).rejects.toBeInstanceOf(
+        NotFoundDomainException,
+      );
+      expect(prisma.bankAccount.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('gives a clear NotFound when the merchant has no bank on file', async () => {
+      (prisma.bankAccount.findFirst as jest.Mock).mockResolvedValue(null);
+
+      await expect(service.getOrderMerchantBank(customerId, orderId)).rejects.toThrow(
+        'Merchant has no payout account on file',
+      );
     });
   });
 

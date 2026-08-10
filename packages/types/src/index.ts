@@ -318,6 +318,7 @@ export type {
   CancelOrderDto,
   CheckoutDto,
   CheckoutResponseDto,
+  CustomerMerchantBankDto,
   DelayOrderRequest,
   FulfillmentType,
   InventoryReservationDto,

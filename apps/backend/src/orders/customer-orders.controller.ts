@@ -25,7 +25,12 @@ import { ORDER_PERMISSIONS } from './order.constants';
 
 import type { AuthenticatedUser } from '../auth/auth.types';
 import type { ApiSuccessResponse } from '../common/dto/api-response.dto';
-import type { CheckoutResponseDto, OrderDto, PaginatedResult } from '@dripplex/types';
+import type {
+  CheckoutResponseDto,
+  CustomerMerchantBankDto,
+  OrderDto,
+  PaginatedResult,
+} from '@dripplex/types';
 import type { Request } from 'express';
 
 @Controller('customer')
@@ -65,6 +70,21 @@ export class CustomerOrdersController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<ApiSuccessResponse<OrderDto>> {
     const data = await this.checkoutService.getCustomerOrder(user.id, id);
+    return { success: true, data };
+  }
+
+  /// Read-only exposure of the order merchant's default payout bank account so
+  /// the "Pay to Merchant Bank" (MERCHANT_DIRECT) checkout option can show the
+  /// customer where to transfer. Ownership is enforced in the service (the
+  /// order must belong to the authenticated customer). No settlement/payment
+  /// movement is triggered here.
+  @Get('orders/:id/merchant-bank')
+  @RequirePermissions(ORDER_PERMISSIONS.ORDERS)
+  public async getOrderMerchantBank(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ApiSuccessResponse<CustomerMerchantBankDto>> {
+    const data = await this.checkoutService.getOrderMerchantBank(user.id, id);
     return { success: true, data };
   }
 
