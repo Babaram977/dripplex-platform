@@ -7,6 +7,18 @@ export const RIDER_AUDIT_ACTIONS = {
   REJECTED: 'rider.rejected',
   SUSPENDED: 'rider.suspended',
   REACTIVATED: 'rider.reactivated',
+  // DPX-RIDER-002 — self-service actions.
+  KYC_SUBMITTED: 'rider.kyc_submitted',
+  PROFILE_UPDATED: 'rider.profile_updated',
+} as const;
+
+/**
+ * DPX-RIDER-002 — rider self-service permissions. `rider:kyc:manage` mirrors
+ * `driver:kyc:manage`; granted to the `rider` role (and super_administrator)
+ * in the RBAC seed. Also gates uploads to the `kyc-documents` folder.
+ */
+export const RIDER_SELF_PERMISSIONS = {
+  KYC_MANAGE: 'rider:kyc:manage',
 } as const;
 
 /**

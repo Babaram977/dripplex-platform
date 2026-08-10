@@ -589,6 +589,8 @@ export const api = {
       dx<RegistrationResponse>('POST', '/auth/register/merchant', body),
     registerDriver: (body: Record<string, unknown>) =>
       dx<RegistrationResponse>('POST', '/auth/register/driver', body),
+    registerRider: (body: Record<string, unknown>) =>
+      dx<RegistrationResponse>('POST', '/auth/register/rider', body),
     becomeDriver: () => dx<{ userId: string }>('POST', '/auth/roles/driver'),
     becomeMerchant: () => dx<{ userId: string }>('POST', '/auth/roles/merchant'),
 
@@ -606,17 +608,44 @@ export const api = {
     loginOperations: (body: { email?: string; phone?: string; password: string }) =>
       dx<PortalLoginResponse>('POST', '/auth/login/operations', body),
 
-    // OTP / verification
-    requestOtp: (body: { email: string }) =>
-      dx<{ expiresInSeconds: number }>('POST', '/auth/otp/request', body),
-    verifyOtp: (body: { email?: string; phone?: string; code: string }) =>
-      dx<unknown>('POST', '/auth/otp/verify', body),
-    verifyEmail: (body: Record<string, string>) => dx<unknown>('POST', '/auth/verify/email', body),
-    verifyPhone: (body: Record<string, string>) => dx<unknown>('POST', '/auth/verify/phone', body),
-    resendEmailVerification: (body: Record<string, string>) =>
-      dx<unknown>('POST', '/auth/verify/email/resend', body),
-    resendPhoneVerification: (body: Record<string, string>) =>
-      dx<unknown>('POST', '/auth/verify/phone/resend', body),
+    // Phone verification (OTP) — real routes are under /auth/phone/*.
+    // The backend has NO /auth/otp/* endpoints; registration dispatches a
+    // phone OTP that is confirmed here with { phone, otp }, which activates
+    // the account (PENDING_VERIFICATION → ACTIVE) so login can succeed.
+    sendPhoneOtp: (body: { phone: string }) =>
+      dx<{ submitted: true }>('POST', '/auth/phone/send-otp', body),
+    verifyPhoneOtp: (body: { phone: string; otp: string }) =>
+      dx<{ phone: string; status: string; phoneVerifiedAt: string }>(
+        'POST',
+        '/auth/phone/verify',
+        body,
+      ),
+    resendPhoneOtp: (body: { phone: string }) =>
+      dx<{ submitted: true }>('POST', '/auth/phone/resend', body),
+
+    // Email verification (OTP CODE) — real routes are under /auth/verify/*.
+    // Registration dispatches a numeric email OTP; this confirms it with
+    // { email, otp } and activates the account (for portals that don't require
+    // phone verification, e.g. customer). This is the email counterpart to
+    // verifyPhoneOtp and the path a new customer uses when onboarding by email
+    // (works today; SMS via Termii is pending sender-ID approval).
+    verifyEmailOtp: (body: { email: string; otp: string }) =>
+      dx<{ email: string; status: string; emailVerifiedAt: string }>(
+        'POST',
+        '/auth/verify/email',
+        body,
+      ),
+    resendEmailOtp: (body: { email: string }) =>
+      dx<{ submitted: true }>('POST', '/auth/verify/email/resend', body),
+
+    // Email verification (token / magic-link) — a DIFFERENT feature under
+    // /auth/email/*, kept for completeness. Not used by the OTP-code flow above.
+    sendEmailVerification: (body: { email: string }) =>
+      dx<unknown>('POST', '/auth/email/send-verification', body),
+    verifyEmail: (body: { email: string; token: string }) =>
+      dx<unknown>('POST', '/auth/email/verify', body),
+    resendEmailVerification: (body: { email: string }) =>
+      dx<unknown>('POST', '/auth/email/resend', body),
 
     // Session
     refresh: () =>
@@ -895,6 +924,43 @@ export const api = {
       ),
   },
 
+  // ── DRIVER onboarding (KYC docs + vehicle) ──────────────────────────────────
+  driver: {
+    // POST /driver/kyc — the document image must already be a hosted URL
+    // (upload it first via uploadFile → R2). documentType is the KycDocumentType
+    // enum (DRIVER_LICENSE | VEHICLE_REGISTRATION | GUARANTOR_ID | …).
+    submitKyc: (body: {
+      documentType: string;
+      documentNumber: string;
+      frontImage: string;
+      backImage?: string;
+    }) => dx<unknown>('POST', '/driver/kyc', body),
+    createVehicle: (body: {
+      plateNumber: string;
+      make: string;
+      model: string;
+      color: string;
+      year: number;
+      rideCategory: RideType;
+      seats: number;
+      photos?: string[];
+    }) => dx<unknown>('POST', '/driver/vehicles', body),
+  },
+
+  // ── Signed uploads (R2 object storage) ──────────────────────────────────────
+  uploads: {
+    // POST /uploads/sign — returns a short-lived pre-signed PUT URL. folder is
+    // one of the backend UPLOAD_FOLDERS (e.g. 'kyc-documents'); permission-gated.
+    sign: (body: { folder: string; contentType: string; contentLength: number }) =>
+      dx<{
+        method: 'PUT';
+        url: string;
+        key: string;
+        publicUrl: string;
+        expiresInSeconds: number;
+      }>('POST', '/uploads/sign', body),
+  },
+
   // ── RIDER (delivery) ────────────────────────────────────────────────────────
   rider: {
     getJobs: () => dx<DeliveryJobDto[]>('GET', '/rider/jobs'),
@@ -920,6 +986,17 @@ export const api = {
       longitude?: number;
     }) => dx<unknown>('POST', '/rider/availability', body),
     getWallet: () => dx<WalletDto>('GET', '/rider/wallet'),
+
+    // ── Onboarding: KYC docs (ID + Guarantor ID) + company name ───────────────
+    // documentType is the KycDocumentType enum (NATIONAL_ID | GUARANTOR_ID | …);
+    // frontImage/backImage are hosted URLs (upload first via uploadFile → R2).
+    submitKyc: (body: {
+      documentType: string;
+      documentNumber: string;
+      frontImage: string;
+      backImage?: string;
+    }) => dx<unknown>('POST', '/rider/kyc', body),
+    updateProfile: (body: { companyName?: string }) => dx<unknown>('PATCH', '/rider/profile', body),
   },
 
   // ── MERCHANT ───────────────────────────────────────────────────────────────
@@ -1006,3 +1083,25 @@ export const api = {
     markAllRead: () => dx<void>('POST', '/customer/notifications/mark-all-read'),
   },
 };
+
+// ─── Signed direct-to-R2 upload helper ─────────────────────────────────────────
+// Mints a pre-signed PUT URL from the backend, uploads the file straight to R2
+// (the signature is in the URL — no auth header on the PUT), and returns the
+// object's stored URL to hand to a KYC/vehicle endpoint. Throws ApiError on a
+// failed sign; throws a plain Error if the R2 PUT itself fails.
+export async function uploadFile(file: File, folder: string): Promise<string> {
+  const signed = await api.uploads.sign({
+    folder,
+    contentType: file.type || 'application/octet-stream',
+    contentLength: file.size,
+  });
+  const res = await fetch(signed.url, {
+    method: 'PUT',
+    body: file,
+    headers: { 'Content-Type': file.type || 'application/octet-stream' },
+  });
+  if (!res.ok) {
+    throw new Error(`Upload failed (${String(res.status)}). Please try again.`);
+  }
+  return signed.publicUrl;
+}

@@ -322,6 +322,7 @@ model User {
   ridesAsDriver               Ride[]                       @relation("RideDriver")
   driverAvailability          DriverAvailability?
   driverKycDocuments          DriverKyc[]
+  riderKycDocuments           RiderKyc[]
   driverIdentityVerifications DriverIdentityVerification[]
   driverVerifiedDevices       DriverVerifiedDevice[]
   /// DPX-DRIVER-002
@@ -640,6 +641,9 @@ model RiderProfile {
   id             String           @id @default(uuid()) @db.Uuid
   userId         String           @unique @map("user_id") @db.Uuid
   status         RiderStatus      @default(PENDING)
+  /// DPX-RIDER-002 — the company/organisation the rider delivers for. Name
+  /// only (founder scope: "just name of company, no need much details").
+  companyName    String?          @map("company_name") @db.VarChar(200)
   isApproved     Boolean          @default(false) @map("is_approved")
   approvedAt     DateTime?        @map("approved_at")
   approvedBy     String?          @map("approved_by") @db.Uuid
@@ -1715,6 +1719,28 @@ model DriverKyc {
   @@index([driverId])
   @@index([verificationStatus])
   @@map("driver_kyc")
+}
+
+/// DPX-RIDER-002 — delivery-rider document KYC. Separate model from DriverKyc
+/// (ride-hailing drivers) and CustomerKyc; riders submit an ID + a guarantor
+/// ID. Same hosted-URL-string convention for images as DriverKyc.
+model RiderKyc {
+  id                 String                @id @default(uuid()) @db.Uuid
+  riderId            String                @map("rider_id") @db.Uuid
+  documentType       KycDocumentType       @map("document_type")
+  documentNumber     String                @map("document_number") @db.VarChar(100)
+  frontImage         String                @map("front_image") @db.VarChar(2048)
+  backImage          String?               @map("back_image") @db.VarChar(2048)
+  verificationStatus KycVerificationStatus @default(PENDING) @map("verification_status")
+  reviewedBy         String?               @map("reviewed_by") @db.Uuid
+  reviewedAt         DateTime?             @map("reviewed_at")
+  remarks            String?               @db.VarChar(1000)
+  createdAt          DateTime              @default(now()) @map("created_at")
+  rider              User                  @relation(fields: [riderId], references: [id], onDelete: Cascade)
+
+  @@index([riderId])
+  @@index([verificationStatus])
+  @@map("rider_kyc")
 }
 
 /// DPX-PROFILE-KYC-001 — Customer-persona document KYC. Deliberately not

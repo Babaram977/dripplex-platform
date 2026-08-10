@@ -192,7 +192,14 @@ export type {
 
 export { DRIVER_AUDIT_ACTIONS } from './driver/index.js';
 
-export type { RiderStatus, RiderProfileDto, RiderApprovalDto } from './rider/index.js';
+export type {
+  RiderStatus,
+  RiderProfileDto,
+  RiderApprovalDto,
+  RiderKycDto,
+  UpdateRiderProfileRequest,
+  SubmitRiderKycRequest,
+} from './rider/index.js';
 
 export type {
   DriverAvailabilityDto,

@@ -58,7 +58,12 @@ export type UploadFolder = (typeof UPLOAD_FOLDERS)[number];
  */
 export const UPLOAD_FOLDER_PERMISSIONS: Record<UploadFolder, readonly string[]> = {
   // Customer, merchant, and driver KYC flows all legitimately write here.
-  'kyc-documents': ['customer:kyc:manage', 'merchant:kyc:manage', 'driver:kyc:manage'],
+  'kyc-documents': [
+    'customer:kyc:manage',
+    'merchant:kyc:manage',
+    'driver:kyc:manage',
+    'rider:kyc:manage',
+  ],
   // Only drivers upload their own vehicle photos.
   'vehicle-photos': ['driver:vehicle:manage'],
   // Every authenticated user has a profile/avatar — no extra permission.

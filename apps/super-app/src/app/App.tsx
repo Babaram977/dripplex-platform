@@ -153,6 +153,17 @@ import {
   RiderJobScreen,
   RiderEarningsScreen,
 } from './riderScreen';
+import {
+  PartnerChoiceScreen,
+  MerchantSignUpScreen,
+  DriverSignUpScreen,
+  RiderSignUpScreen,
+  DriverDocumentsScreen,
+  RiderDocumentsScreen,
+  BusinessDetailsScreen,
+  PendingReviewScreen,
+} from './onboardingScreen';
+import type { PartnerPersona } from './onboardingScreen';
 import type { DeliveryJobDto, RideOfferDto, RideDto } from '../lib/api';
 
 // DESKTOP FRAME — for admin operations console
@@ -366,15 +377,40 @@ type Screen =
   | 'riderlogin'
   | 'riderdash'
   | 'riderjob'
-  | 'riderearnings';
+  | 'riderearnings'
+  | 'partnerselect'
+  | 'partnermerchant'
+  | 'partnerdriver'
+  | 'partnerrider'
+  | 'partnerdocs'
+  | 'riderdocs'
+  | 'partnerbusiness'
+  | 'partnerreview';
 
 function AppShell() {
   const [screen, setScreen] = useState<Screen>('splash');
   const [rideDetailId, setRideDetailId] = useState<string>('RX-20241205-0012');
   const [fading, setFading] = useState(false);
-  const [otpData, setOtpData] = useState<{ phone: string; country: (typeof COUNTRIES)[0] }>({
+  const [otpData, setOtpData] = useState<{
+    phone: string;
+    country: (typeof COUNTRIES)[0];
+    email?: string;
+    verifyChannel?: 'email' | 'phone';
+    // Held in memory only for the register → OTP → login handoff. Never persisted.
+    password?: string;
+    // Which portal to log in through after the email code verifies. 'customer'
+    // (default) for consumer signup; a partner persona for partner onboarding.
+    persona?: 'customer' | 'merchant' | 'driver' | 'rider';
+  }>({
     phone: '801 234 5678',
     country: COUNTRIES[0],
+  });
+  const [partnerPersona, setPartnerPersona] = useState<PartnerPersona>('merchant');
+  // Merchant's business fields from sign-up, pre-filled into the post-login
+  // Business Details step (persisted via PATCH /merchant/business).
+  const [merchantBiz, setMerchantBiz] = useState<{ businessName: string; category: string }>({
+    businessName: '',
+    category: '',
   });
   const [activeRiderJob, setActiveRiderJob] = useState<DeliveryJobDto | null>(null);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
@@ -395,11 +431,17 @@ function AppShell() {
 
   const screens: Record<Screen, React.ReactNode> = {
     splash: <SplashScreen onDone={() => go('welcome')} />,
-    welcome: <WelcomeScreen onGetStarted={() => go('register')} onSignIn={() => go('signin')} />,
+    welcome: (
+      <WelcomeScreen
+        onGetStarted={() => go('register')}
+        onSignIn={() => go('signin')}
+        onPartner={() => go('partnerselect')}
+      />
+    ),
     register: (
       <RegisterScreen
-        onContinue={(phone, country) => {
-          setOtpData({ phone, country });
+        onContinue={({ email, phone, country, password, verifyChannel }) => {
+          setOtpData({ email, phone, country, password, verifyChannel });
           go('otp');
         }}
         onSignIn={() => go('signin')}
@@ -410,9 +452,27 @@ function AppShell() {
       <OTPScreen
         phone={otpData.phone}
         country={otpData.country}
-        onBack={() => go('register')}
-        onChangeNumber={() => go('register')}
-        onVerified={() => go('profile')}
+        email={otpData.email}
+        verifyChannel={otpData.verifyChannel}
+        password={otpData.password}
+        persona={otpData.persona}
+        onBack={() =>
+          go(otpData.persona && otpData.persona !== 'customer' ? 'partnerselect' : 'register')
+        }
+        onChangeNumber={() =>
+          go(otpData.persona && otpData.persona !== 'customer' ? 'partnerselect' : 'register')
+        }
+        onVerified={() =>
+          go(
+            otpData.persona === 'merchant'
+              ? 'partnerbusiness'
+              : otpData.persona === 'driver'
+                ? 'partnerdocs'
+                : otpData.persona === 'rider'
+                  ? 'riderdocs'
+                  : 'profile',
+          )
+        }
       />
     ),
     profile: (
@@ -898,6 +958,105 @@ function AppShell() {
       <RiderLoginScreen onContinue={() => go('riderdash')} onBack={() => go('home')} />
     ),
     riderearnings: <RiderEarningsScreen onBack={() => go('riderdash')} />,
+
+    // ── Partner Onboarding (merchant / driver / rider self-registration) ──────
+    partnerselect: (
+      <PartnerChoiceScreen
+        onSelect={(p) => {
+          setPartnerPersona(p);
+          go(
+            p === 'merchant'
+              ? 'partnermerchant'
+              : p === 'driver'
+                ? 'partnerdriver'
+                : 'partnerrider',
+          );
+        }}
+        onSignIn={() => go('signin')}
+      />
+    ),
+    partnermerchant: (
+      <MerchantSignUpScreen
+        onBack={() => go('partnerselect')}
+        onNext={({ email, password, businessName, category }) => {
+          setPartnerPersona('merchant');
+          setMerchantBiz({ businessName, category });
+          setOtpData({
+            email,
+            phone: '',
+            country: COUNTRIES[0],
+            password,
+            verifyChannel: 'email',
+            persona: 'merchant',
+          });
+          go('otp');
+        }}
+        onSignIn={() => go('signin')}
+      />
+    ),
+    partnerdriver: (
+      <DriverSignUpScreen
+        onBack={() => go('partnerselect')}
+        onNext={({ email, password }) => {
+          setPartnerPersona('driver');
+          setOtpData({
+            email,
+            phone: '',
+            country: COUNTRIES[0],
+            password,
+            verifyChannel: 'email',
+            persona: 'driver',
+          });
+          go('otp');
+        }}
+        onSignIn={() => go('signin')}
+      />
+    ),
+    partnerrider: (
+      <RiderSignUpScreen
+        onBack={() => go('partnerselect')}
+        onNext={({ email, password }) => {
+          setPartnerPersona('rider');
+          setOtpData({
+            email,
+            phone: '',
+            country: COUNTRIES[0],
+            password,
+            verifyChannel: 'email',
+            persona: 'rider',
+          });
+          go('otp');
+        }}
+        onSignIn={() => go('signin')}
+      />
+    ),
+    partnerdocs: (
+      <DriverDocumentsScreen
+        onBack={() => go('partnerdriver')}
+        onSubmit={() => go('partnerreview')}
+      />
+    ),
+    riderdocs: (
+      <RiderDocumentsScreen
+        onBack={() => go('partnerrider')}
+        onSubmit={() => go('partnerreview')}
+      />
+    ),
+    partnerbusiness: (
+      <BusinessDetailsScreen
+        businessName={merchantBiz.businessName}
+        category={merchantBiz.category}
+        onDone={() => go('partnerreview')}
+        onBack={() => go('partnerreview')}
+      />
+    ),
+    partnerreview: (
+      <PendingReviewScreen
+        persona={partnerPersona}
+        onHome={() => go('home')}
+        onRefresh={() => {}}
+      />
+    ),
   };
 
   // ── Module quick-jump entries ──────────────────────────────────────────────
@@ -1071,6 +1230,21 @@ function AppShell() {
         { label: 'Dashboard', key: 'riderdash' },
         { label: 'Job Detail', key: 'riderjob' },
         { label: 'Earnings', key: 'riderearnings' },
+      ],
+    },
+    {
+      label: 'Partner Onboarding',
+      color: '#2BAC52',
+      emoji: '🤝',
+      screens: [
+        { label: 'Role Selection', key: 'partnerselect' },
+        { label: 'Merchant Sign-up', key: 'partnermerchant' },
+        { label: 'Driver Sign-up', key: 'partnerdriver' },
+        { label: 'Rider Sign-up', key: 'partnerrider' },
+        { label: 'Driver Documents', key: 'partnerdocs' },
+        { label: 'Rider Documents', key: 'riderdocs' },
+        { label: 'Business Details', key: 'partnerbusiness' },
+        { label: 'Pending Review', key: 'partnerreview' },
       ],
     },
   ];

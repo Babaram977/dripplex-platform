@@ -10,6 +10,7 @@ import { RidersService } from './riders.service';
 
 import type { AuditService } from '../audit/audit.service';
 import type { PrismaService } from '../prisma/prisma.service';
+import type { StorageAssetService } from '../uploads/storage-asset.service';
 
 describe('RidersService', () => {
   const prisma = {
@@ -22,13 +23,25 @@ describe('RidersService', () => {
     riderOnboarding: {
       updateMany: jest.fn(),
     },
+    riderKyc: {
+      create: jest.fn(),
+    },
   } as unknown as jest.Mocked<PrismaService>;
 
   const auditService = {
     record: jest.fn(),
   } as unknown as jest.Mocked<AuditService>;
 
-  const service = new RidersService(prisma, auditService);
+  const storageAssets = {
+    assertOwned: jest.fn(),
+    assertOwnedOptional: jest.fn(),
+    toSignedGetUrl: jest.fn((url: string) => Promise.resolve(`${url}?signed`)),
+    toSignedGetUrlOptional: jest.fn((url: string | null) =>
+      Promise.resolve(url ? `${url}?signed` : null),
+    ),
+  } as unknown as jest.Mocked<StorageAssetService>;
+
+  const service = new RidersService(prisma, auditService, storageAssets);
 
   const ADMIN_ID = '99999999-9999-9999-9999-999999999999';
   const RIDER_ID = '11111111-1111-1111-1111-111111111111';
@@ -39,12 +52,14 @@ describe('RidersService', () => {
     phone: '+2348012345678',
     firstName: 'Tunde',
     lastName: 'Balogun',
+    riderKycDocuments: [],
   };
 
   const baseProfile = {
     id: '22222222-2222-2222-2222-222222222222',
     userId: RIDER_ID,
     status: RiderStatus.PENDING,
+    companyName: null,
     isApproved: false,
     approvedAt: null,
     approvedBy: null,
@@ -176,6 +191,71 @@ describe('RidersService', () => {
 
     expect(result.items).toHaveLength(1);
     expect(result.items[0]?.riderId).toBe(RIDER_ID);
+    expect(result.items[0]?.companyName).toBeNull();
+    expect(result.items[0]?.kyc).toEqual([]);
     expect(result.meta).toEqual({ page: 1, limit: 20, total: 1, totalPages: 1 });
+  });
+
+  // DPX-RIDER-002 — self-service KYC + company name.
+  it('submits a rider KYC document with an ownership assertion and audit entry', async () => {
+    (prisma.riderProfile.findUnique as jest.Mock).mockResolvedValue(profileWith({}));
+    (prisma.riderKyc.create as jest.Mock).mockResolvedValue({
+      id: '33333333-3333-3333-3333-333333333333',
+      riderId: RIDER_ID,
+      documentType: 'GUARANTOR_ID',
+      documentNumber: 'GID-1',
+      frontImage: 'https://storage/kyc-documents/front.jpg',
+      backImage: null,
+      verificationStatus: 'PENDING',
+      reviewedBy: null,
+      reviewedAt: null,
+      remarks: null,
+      createdAt: new Date('2026-08-10T00:00:00.000Z'),
+    });
+
+    const result = await service.submitRiderKyc(
+      RIDER_ID,
+      {
+        documentType: 'GUARANTOR_ID',
+        documentNumber: 'GID-1',
+        frontImage: 'https://storage/kyc-documents/front.jpg',
+      },
+      {},
+    );
+
+    expect(storageAssets.assertOwned).toHaveBeenCalledWith(
+      'https://storage/kyc-documents/front.jpg',
+      {
+        folder: 'kyc-documents',
+        ownerId: RIDER_ID,
+      },
+    );
+    expect(result.documentType).toBe('GUARANTOR_ID');
+    // KYC images are returned as signed GET URLs.
+    expect(result.frontImage).toBe('https://storage/kyc-documents/front.jpg?signed');
+    expect(auditService.record).toHaveBeenCalledWith(
+      'rider.kyc_submitted',
+      expect.objectContaining({ userId: RIDER_ID }),
+      expect.any(Object),
+    );
+  });
+
+  it('updates the rider company name and records an audit entry', async () => {
+    (prisma.riderProfile.findUnique as jest.Mock).mockResolvedValue(profileWith({}));
+    (prisma.riderProfile.update as jest.Mock).mockResolvedValue(profileWith({}));
+
+    await service.updateOwnProfile(RIDER_ID, { companyName: '  Jumia Logistics  ' }, {});
+
+    expect(prisma.riderProfile.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { userId: RIDER_ID },
+        data: expect.objectContaining({ companyName: 'Jumia Logistics' }),
+      }),
+    );
+    expect(auditService.record).toHaveBeenCalledWith(
+      'rider.profile_updated',
+      expect.objectContaining({ userId: RIDER_ID }),
+      expect.any(Object),
+    );
   });
 });
