@@ -19,5 +19,9 @@ export function RideMapsProvider({ children }: { children: React.ReactNode }): R
   if (!apiKey) {
     return <>{children}</>;
   }
-  return <APIProvider apiKey={apiKey}>{children}</APIProvider>;
+  return (
+    <APIProvider apiKey={apiKey} version="weekly" libraries={['places']}>
+      {children}
+    </APIProvider>
+  );
 }
