@@ -173,3 +173,43 @@ uri="file://figma/make/source/rsHHFRxHVE3OKv81p7m3K1/src/app/<file>.tsx")`.
 - Figma work queue: `docs/DPX-FIGMA-WORK-QUEUE.md`; one-shot prompt:
   `docs/DPX-FIGMA-MASTER-WIRING-PROMPT.md`; backend contract:
   `docs/DPX-BACKEND-CONTRACT-FOR-FIGMA.md`.
+
+## 9. Session 2026-08-10 (part 2) — self-registration for all personas
+
+Founder ask: customer (no KYC/approval) registers & orders; merchant/driver/rider register
+and **wait for approval**; **all register by EMAIL** while the Termii SMS sender ID is pending;
+approvals go to the Ops desk.
+
+**Verified backend truth (read the controllers/DTOs directly):**
+
+- Customer portal `requiresPhoneVerification=false` → email signup activates on the email code
+  alone, no approval. Merchant/driver/rider portals require a _verified phone_ to both activate
+  AND log in (two separate gates: `verification.service`/`email-verification.service` for
+  activation, `login.service` for login) → email-only would be stuck at PENDING_VERIFICATION.
+- Email OTP **code** endpoint is `POST /auth/verify/email {email, otp}` (VerificationService).
+  The `/auth/otp/*` and `/auth/email/verify` (magic-link token) paths are different things.
+- Prod has Termii + Resend keys set; email OTP is deliverable now, SMS is not (sender pending).
+- Merchant/driver **approval endpoints exist** under `admin:*` (admin-merchants / admin-drivers
+  controllers), NOT the operations module. **Rider approval does not exist** — `RiderProfile.
+isApproved` is a schema stub nothing reads/writes.
+
+**Shipped this session:**
+
+- **Customer email onboarding** (super-app, this branch): RegisterScreen takes Email (primary)
+  - phone optional; OTPScreen verifies email (`/auth/verify/email`) or phone, then logs in +
+    persists. Deployed via super-app build `76cdc212` (commit `d514af5`).
+- **Backend `PORTAL_EMAIL_ACTIVATION` flag** (PR **#95**, branch `claude/portal-email-activation`,
+  **MERGED** → main `903071eb`): when true, merchant/driver/rider activate + sign in on EMAIL
+  verification alone (no phone OTP dispatched; phone gate skipped at activation + login).
+  Reversible — flip to `false` when Termii SMS is live. Env var `PORTAL_EMAIL_ACTIVATION=true`
+  **set on prod backend**; backend redeployed (`0f72c548`, commit `903071eb`). 156 auth tests green.
+- **Figma onboarding prompt**: `docs/DPX-FIGMA-ONBOARDING-PROMPT.md` — one-shot brief for
+  merchant/driver/rider signup + driver doc-upload + pending-approval screens (founder runs it;
+  Claude wires the result).
+
+**In progress / next (Piece C — founder chose "Ops Console + build rider approval"):**
+
+- Build rider approve/reject backend (mirror admin-drivers) — riders currently have no approval
+  endpoints. Then surface merchant/driver/rider approvals in the **operations-console** app.
+- Dependencies still open: file-upload/storage for KYC doc images (URLs only today); Smile-ID →
+  DrippleX-native IDV (task #15); wiring the Figma onboarding screens once designed.
