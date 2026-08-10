@@ -277,8 +277,12 @@ export interface ReviewDto {
   targetType: ReviewTargetType;
   targetId: string;
   orderId: string | null;
+  /** DPX-REVIEWS-001 — CUSTOMER (default) or MERCHANT (merchant→rider). */
+  authorRole: 'CUSTOMER' | 'MERCHANT';
   rating: number;
   comment: string | null;
+  /** DPX-REVIEWS-001 — preset tags chosen from the direction's fixed set. */
+  tags: string[];
   photos: string[];
   verifiedPurchase: boolean;
   status: ReviewStatus;
@@ -296,7 +300,20 @@ export interface CreateReviewRequest {
   orderId?: string;
   rating: number;
   comment?: string;
+  /** DPX-REVIEWS-001 — preset tags from the direction's fixed set. */
+  tags?: string[];
   photos?: string[];
+}
+
+/**
+ * DPX-REVIEWS-001 — body for the target-derived rating endpoints
+ * (customer→rider from a delivery, merchant→rider). The target is resolved
+ * server-side, so only the score, an optional comment, and preset tags travel.
+ */
+export interface SubmitRatingRequest {
+  rating: number;
+  comment?: string;
+  tags?: string[];
 }
 
 export interface ReplyToReviewRequest {

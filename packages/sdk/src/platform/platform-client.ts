@@ -16,6 +16,7 @@ import type {
   CreatePromotionRequest,
   CreateReferralCampaignRequest,
   CreateReviewRequest,
+  SubmitRatingRequest,
   CreateWishlistRequest,
   CreateWithdrawalRequest,
   CustomerBankAccountDto,
@@ -268,6 +269,22 @@ export class ReviewsClient {
 
   public create(body: CreateReviewRequest): Promise<ReviewDto> {
     return this.http.request<ReviewDto>('/customer/reviews', { method: 'POST', body });
+  }
+
+  /** DPX-REVIEWS-001 — a customer rates the rider who delivered a job. */
+  public rateRiderForDelivery(jobId: string, body: SubmitRatingRequest): Promise<ReviewDto> {
+    return this.http.request<ReviewDto>(`/customer/reviews/deliveries/${enc(jobId)}/rate-rider`, {
+      method: 'POST',
+      body,
+    });
+  }
+
+  /** DPX-REVIEWS-001 — a merchant rates a delivery rider. */
+  public rateRiderAsMerchant(riderId: string, body: SubmitRatingRequest): Promise<ReviewDto> {
+    return this.http.request<ReviewDto>(`/merchant/reviews/riders/${enc(riderId)}`, {
+      method: 'POST',
+      body,
+    });
   }
 
   public listMine(query: ReviewListQuery = {}): Promise<ReviewListDto> {

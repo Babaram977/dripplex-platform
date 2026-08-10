@@ -1,29 +1,23 @@
-import { ReviewTargetType } from '@prisma/client';
 import { Transform } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
-  IsEnum,
   IsInt,
   IsOptional,
   IsString,
-  IsUUID,
   Max,
   MaxLength,
   Min,
 } from 'class-validator';
 
-export class CreateReviewDto {
-  @IsEnum(ReviewTargetType)
-  public targetType!: ReviewTargetType;
-
-  @IsUUID()
-  public targetId!: string;
-
-  @IsOptional()
-  @IsUUID()
-  public orderId?: string;
-
+/**
+ * DPX-REVIEWS-001 — body for the target-derived rating endpoints
+ * (customer→rider, merchant→rider). The target and author role are resolved
+ * server-side from the route + authenticated user, so the client only sends
+ * the rating, an optional comment, and preset tags. Tags are validated against
+ * the direction's fixed set in ReviewsService.
+ */
+export class SubmitRatingDto {
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' || typeof value === 'number' ? Number(value) : value,
   )
@@ -43,11 +37,4 @@ export class CreateReviewDto {
   @IsString({ each: true })
   @MaxLength(64, { each: true })
   public tags?: string[];
-
-  @IsOptional()
-  @IsArray()
-  @ArrayMaxSize(10)
-  @IsString({ each: true })
-  @MaxLength(2048, { each: true })
-  public photos?: string[];
 }

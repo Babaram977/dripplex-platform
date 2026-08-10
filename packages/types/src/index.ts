@@ -201,6 +201,14 @@ export type {
   SubmitRiderKycRequest,
 } from './rider/index.js';
 
+export type { ReviewAuthorRole, ReviewDirection } from './review/index.js';
+export {
+  REVIEW_TAGS,
+  DRIVER_RATING_TAGS,
+  reviewDirectionFor,
+  allowedReviewTags,
+} from './review/index.js';
+
 export type {
   DriverAvailabilityDto,
   EstimateRideFareRequest,
@@ -410,6 +418,7 @@ export type {
   CreatePromotionRequest,
   CreateReferralCampaignRequest,
   CreateReviewRequest,
+  SubmitRatingRequest,
   CreateWishlistRequest,
   DriverCampaignDashboardDto,
   DriverCampaignLeaderboardEntryDto,

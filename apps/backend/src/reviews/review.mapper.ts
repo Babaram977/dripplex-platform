@@ -6,8 +6,10 @@ export interface ReviewDto {
   targetType: string;
   targetId: string;
   orderId: string | null;
+  authorRole: string;
   rating: number;
   comment: string | null;
+  tags: string[];
   photos: string[];
   verifiedPurchase: boolean;
   status: string;
@@ -53,8 +55,10 @@ export function toReviewDto(review: ReviewWithRelations): ReviewDto {
     targetType: review.targetType,
     targetId: review.targetId,
     orderId: review.orderId,
+    authorRole: review.authorRole,
     rating: review.rating,
     comment: review.comment,
+    tags: review.tags,
     photos: review.photoUrls,
     verifiedPurchase: review.verifiedPurchase,
     status: review.status,

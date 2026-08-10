@@ -130,10 +130,15 @@ authorRole=MERCHANT)`; verified = the rider delivered an order belonging to this
 
 Large feature → split into reviewable sub-PRs (one concern each):
 
-- **PR A — backend:** migration (`tags`, `authorRole`), new endpoints (customer→rider,
-  merchant→rider, driver public rating), `RateRideDto.tags`, rider aggregate in `RiderProfileDto`,
-  permissions (3 seed sources + count + spec), types + SDK + tag constants, unit tests. Verify
-  against real Postgres.
+- **PR A — reviews backend (Review system):** migration (`Review.tags`, `Review.authorRole` +
+  `ReviewAuthorRole`), rider rating endpoints (`POST /customer/reviews/deliveries/:jobId/rate-rider`,
+  `POST /merchant/reviews/riders/:riderId`), tag validation against the fixed sets, rider aggregate
+  on `RiderProfileDto`, `merchant:reviews:manage` (3 seed sources + count 120→121 + spec), types +
+  SDK + tag constants, unit tests. Verified against real Postgres. **Shipped.** The rides module is
+  frozen, so driver tags + public driver rating are split into PR A2.
+- **PR A2 — driver rating (RideRating):** `RideRating.tags` + `RateRideDto.tags` + a public
+  driver-rating read (hosted in the drivers module, reading `RideRating` directly — the rides
+  module stays untouched).
 - **PR B — super-app UI:** rate-rider at delivery completion, tag chips on all rate flows, real
   driver/rider rating displays, wire mock review lists to real API. Reconcile against Figma +
   diff-register.
