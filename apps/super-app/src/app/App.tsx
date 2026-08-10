@@ -531,7 +531,10 @@ function AppShell() {
         onHome={() => go('home')}
         onAccount={() => go('account')}
         onNotifications={() => go('activitydash')}
-        onStore={() => go('store')}
+        onStore={(id) => {
+          setActiveMerchantId(id);
+          go('store');
+        }}
       />
     ),
     store: (

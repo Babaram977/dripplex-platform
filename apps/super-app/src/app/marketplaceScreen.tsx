@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { G0, G2, G3, NAVY_DEEP, NAVY_CARD, NAVY_SURFACE, BORDER, MUTED } from './shared';
+import { api } from '../lib/api';
+import type { MerchantSummaryDto } from '../lib/api';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DATA
@@ -25,93 +27,6 @@ const AI_PROMPTS = [
   'Pharmacy open right now',
   'Phone under ₦300,000',
   'Find an electrician nearby',
-];
-
-const MERCHANTS = [
-  {
-    name: 'Shoprite Ikeja',
-    cat: 'Supermarket',
-    rating: 4.8,
-    dist: '0.4 km',
-    eta: '12 min',
-    fee: 'Free delivery',
-    open: true,
-    verified: true,
-    bg: 'linear-gradient(135deg,#7F1D1D,#EF4444)',
-    emoji: '🛒',
-    tag: 'Free Delivery',
-    tagColor: '#10B981',
-  },
-  {
-    name: 'KFC Nigeria',
-    cat: 'Restaurant',
-    rating: 4.6,
-    dist: '0.9 km',
-    eta: '18 min',
-    fee: '₦350 delivery',
-    open: true,
-    verified: true,
-    bg: 'linear-gradient(135deg,#7C2D12,#F97316)',
-    emoji: '🍗',
-    tag: '20% Off',
-    tagColor: '#F59E0B',
-  },
-  {
-    name: 'HealthPlus',
-    cat: 'Pharmacy',
-    rating: 4.9,
-    dist: '0.6 km',
-    eta: '15 min',
-    fee: '₦200 delivery',
-    open: true,
-    verified: true,
-    bg: 'linear-gradient(135deg,#0C4A6E,#06B6D4)',
-    emoji: '💊',
-    tag: 'Trusted',
-    tagColor: '#06B6D4',
-  },
-  {
-    name: 'Ruff n Tumble',
-    cat: 'Fashion',
-    rating: 4.7,
-    dist: '1.8 km',
-    eta: '28 min',
-    fee: '₦500 delivery',
-    open: true,
-    verified: true,
-    bg: 'linear-gradient(135deg,#2E1065,#8B5CF6)',
-    emoji: '👗',
-    tag: 'New In',
-    tagColor: '#8B5CF6',
-  },
-  {
-    name: 'Slot Systems',
-    cat: 'Electronics',
-    rating: 4.5,
-    dist: '2.2 km',
-    eta: '35 min',
-    fee: '₦600 delivery',
-    open: false,
-    verified: true,
-    bg: 'linear-gradient(135deg,#1E3A5F,#3B82F6)',
-    emoji: '📱',
-    tag: 'Verified',
-    tagColor: '#3B82F6',
-  },
-  {
-    name: 'House of Tara',
-    cat: 'Beauty',
-    rating: 4.6,
-    dist: '1.1 km',
-    eta: '20 min',
-    fee: '₦250 delivery',
-    open: true,
-    verified: false,
-    bg: 'linear-gradient(135deg,#831843,#EC4899)',
-    emoji: '💄',
-    tag: 'Popular',
-    tagColor: '#EC4899',
-  },
 ];
 
 const TRENDING_PRODUCTS = [
@@ -855,147 +770,240 @@ function TodaysDeals() {
 // FEATURED MERCHANTS
 // ─────────────────────────────────────────────────────────────────────────────
 function FeaturedMerchants({
-  loaded,
   active,
   onStore,
 }: {
-  loaded: boolean;
   active: string;
-  onStore?: () => void;
+  onStore?: (id: string) => void;
 }) {
-  const filtered =
-    active === 'All'
-      ? MERCHANTS
-      : MERCHANTS.filter((m) =>
-          m.cat.toLowerCase().includes(active.toLowerCase().replace('s', '').slice(0, 5)),
-        );
-  const list = filtered.length ? filtered : MERCHANTS;
+  const [merchants, setMerchants] = useState<MerchantSummaryDto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const q = active === 'All' ? undefined : active;
+      const res = q
+        ? await api.marketplace.searchMerchants(q, { limit: 20 })
+        : await api.marketplace.getMerchants({ limit: 20 });
+      const r = res as { items?: MerchantSummaryDto[] };
+      setMerchants(r.items ?? []);
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load merchants');
+    } finally {
+      setLoading(false);
+    }
+  }, [active]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const BG_POOL = [
+    'linear-gradient(135deg,#0D2E18,#176B30 42%,#2BAC52)',
+    'linear-gradient(135deg,#7F1D1D,#EF4444)',
+    'linear-gradient(135deg,#7C2D12,#F97316)',
+    'linear-gradient(135deg,#0C4A6E,#06B6D4)',
+    'linear-gradient(135deg,#2E1065,#8B5CF6)',
+    'linear-gradient(135deg,#1E3A5F,#3B82F6)',
+    'linear-gradient(135deg,#831843,#EC4899)',
+    'linear-gradient(135deg,#064E3B,#10B981)',
+  ];
+  const EMOJI_POOL: Record<string, string> = {
+    Restaurant: '🍽',
+    Supermarket: '🛒',
+    Pharmacy: '💊',
+    Fashion: '👗',
+    Electronics: '📱',
+    Beauty: '💄',
+    Hotel: '🏨',
+    Hardware: '🔧',
+    default: '🏪',
+  };
 
   return (
     <div className="mb-5">
       <SRow title="Featured Merchants" sub="Trusted local businesses" onAll={() => {}} />
-      {!loaded ? (
+      {loading ? (
         <div className="flex gap-3 overflow-x-auto px-5" style={{ scrollbarWidth: 'none' }}>
           {[1, 2, 3].map((i) => (
             <Bone key={i} w={290} h={178} />
           ))}
         </div>
-      ) : (
-        <div className="flex flex-col gap-3 px-5">
-          {list.map((m) => (
-            <div
-              key={m.name}
-              className="overflow-hidden rounded-3xl"
+      ) : error ? (
+        <div className="px-5" style={{ padding: '16px 20px' }}>
+          <div
+            style={{
+              background: 'rgba(239,68,68,.07)',
+              border: '1px solid rgba(239,68,68,.18)',
+              borderRadius: 14,
+              padding: '14px 16px',
+            }}
+          >
+            <p
               style={{
-                background: NAVY_CARD,
-                border: `1.5px solid ${BORDER}`,
-                boxShadow: '0 4px 20px rgba(0,0,0,.28)',
+                fontFamily: "'Inter',sans-serif",
+                fontSize: 13,
+                color: 'rgba(255,255,255,.5)',
+                marginBottom: 8,
               }}
             >
-              {/* Cover */}
+              {error}
+            </p>
+            <button
+              onClick={load}
+              style={{
+                background: 'rgba(43,172,82,.1)',
+                border: '1px solid rgba(43,172,82,.25)',
+                borderRadius: 8,
+                padding: '6px 14px',
+                color: G3,
+                fontFamily: "'Inter',sans-serif",
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      ) : merchants.length === 0 ? (
+        <div style={{ padding: '24px 20px', textAlign: 'center' }}>
+          <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 13, color: MUTED }}>
+            No merchants found{active !== 'All' ? ` in "${active}"` : ''}.
+          </p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3 px-5">
+          {merchants.map((m, idx) => {
+            const isOpen = m.isOpenNow;
+            const bg = BG_POOL[idx % BG_POOL.length];
+            const emoji = EMOJI_POOL[m.businessType ?? ''] ?? EMOJI_POOL.default;
+            const verified = m.verificationStatus === 'VERIFIED';
+            const rating = m.rating?.average ?? 0;
+            const dist = m.distanceKm != null ? `${m.distanceKm.toFixed(1)} km` : '';
+            return (
               <div
-                className="relative flex h-[88px] items-center justify-center"
-                style={{ background: m.bg }}
+                key={m.id}
+                className="overflow-hidden rounded-3xl"
+                style={{
+                  background: NAVY_CARD,
+                  border: `1.5px solid ${BORDER}`,
+                  boxShadow: '0 4px 20px rgba(0,0,0,.28)',
+                }}
               >
-                <span style={{ fontSize: 44 }}>{m.emoji}</span>
-                <div className="absolute left-3 top-3">
-                  <span
-                    className="rounded-lg px-2 py-1 text-[9px] font-bold"
-                    style={{
-                      background: m.tagColor + '22',
-                      color: m.tagColor,
-                      border: `1px solid ${m.tagColor}35`,
-                      backdropFilter: 'blur(4px)',
-                      fontFamily: "'Inter',sans-serif",
-                    }}
-                  >
-                    {m.tag}
-                  </span>
-                </div>
-                <div className="absolute right-3 top-3 flex items-center gap-1.5">
-                  {!m.open && (
-                    <span
-                      className="rounded-lg px-2 py-1 text-[9px] font-bold"
-                      style={{
-                        background: 'rgba(239,68,68,.2)',
-                        color: '#FCA5A5',
-                        border: '1px solid rgba(239,68,68,.25)',
-                        fontFamily: "'Inter',sans-serif",
-                      }}
-                    >
-                      Closed
-                    </span>
+                <div
+                  className="relative flex h-[88px] items-center justify-center"
+                  style={{ background: m.coverPhotoUrl ? undefined : bg }}
+                >
+                  {m.coverPhotoUrl ? (
+                    <img
+                      src={m.coverPhotoUrl}
+                      alt={m.businessName}
+                      className="absolute inset-0 h-full w-full object-cover"
+                    />
+                  ) : (
+                    <span style={{ fontSize: 44 }}>{emoji}</span>
                   )}
-                  <span
-                    className="rounded-lg px-2 py-1 text-[9px] font-bold"
-                    style={{
-                      background: 'rgba(0,0,0,.45)',
-                      color: '#FFF',
-                      backdropFilter: 'blur(6px)',
-                      fontFamily: "'Inter',sans-serif",
-                    }}
-                  >
-                    ⏱ {m.eta}
-                  </span>
-                </div>
-              </div>
-
-              {/* Info */}
-              <div className="flex items-center gap-3 p-3.5">
-                <div className="min-w-0 flex-1">
-                  <div className="mb-0.5 flex items-center gap-2">
-                    <p
-                      className="truncate text-[13.5px] font-bold"
-                      style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
-                    >
-                      {m.name}
-                    </p>
-                    {m.verified && <VerifiedBadge />}
+                  <div className="absolute left-3 top-3">
+                    {verified && (
+                      <span
+                        className="rounded-lg px-2 py-1 text-[9px] font-bold"
+                        style={{
+                          background: 'rgba(71,207,114,.15)',
+                          color: G3,
+                          border: `1px solid rgba(71,207,114,.25)`,
+                          backdropFilter: 'blur(4px)',
+                          fontFamily: "'Inter',sans-serif",
+                        }}
+                      >
+                        ✓ Verified
+                      </span>
+                    )}
                   </div>
-                  <p
-                    className="mb-1.5 text-[10px]"
-                    style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
-                  >
-                    {m.cat}
-                  </p>
-                  <div className="flex items-center gap-3">
-                    <span className="text-[10px] font-bold" style={{ color: '#FBBF24' }}>
-                      ★ {m.rating}
-                    </span>
-                    <span
-                      className="text-[10px]"
+                  <div className="absolute right-3 top-3 flex items-center gap-1.5">
+                    {isOpen === false && (
+                      <span
+                        className="rounded-lg px-2 py-1 text-[9px] font-bold"
+                        style={{
+                          background: 'rgba(239,68,68,.2)',
+                          color: '#FCA5A5',
+                          border: '1px solid rgba(239,68,68,.25)',
+                          fontFamily: "'Inter',sans-serif",
+                        }}
+                      >
+                        Closed
+                      </span>
+                    )}
+                    {isOpen === null && (
+                      <span
+                        className="rounded-lg px-2 py-1 text-[9px] font-bold"
+                        style={{
+                          background: 'rgba(255,255,255,.12)',
+                          color: 'rgba(255,255,255,.6)',
+                          fontFamily: "'Inter',sans-serif",
+                        }}
+                      >
+                        Hours unavailable
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-3.5">
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-0.5 flex items-center gap-2">
+                      <p
+                        className="truncate text-[13.5px] font-bold"
+                        style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
+                      >
+                        {m.businessName}
+                      </p>
+                      {verified && <VerifiedBadge />}
+                    </div>
+                    <p
+                      className="mb-1.5 text-[10px]"
                       style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
                     >
-                      📍 {m.dist}
-                    </span>
-                    <span
-                      className="text-[10px]"
-                      style={{
-                        color: m.fee === 'Free delivery' ? G3 : MUTED,
-                        fontFamily: "'Inter',sans-serif",
-                      }}
-                    >
-                      🚚 {m.fee}
-                    </span>
+                      {m.businessType ?? 'Business'}
+                    </p>
+                    <div className="flex items-center gap-3">
+                      {rating > 0 && (
+                        <span className="text-[10px] font-bold" style={{ color: '#FBBF24' }}>
+                          ★ {rating.toFixed(1)}
+                        </span>
+                      )}
+                      {dist && (
+                        <span
+                          className="text-[10px]"
+                          style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
+                        >
+                          📍 {dist}
+                        </span>
+                      )}
+                    </div>
                   </div>
+                  <button
+                    onClick={() => isOpen !== false && onStore?.(m.id)}
+                    className="h-9 flex-shrink-0 rounded-xl px-4 text-[11px] font-semibold transition-all active:scale-95"
+                    style={{
+                      background:
+                        isOpen !== false
+                          ? `linear-gradient(135deg,${G0},${G2})`
+                          : 'rgba(255,255,255,.07)',
+                      color: isOpen !== false ? '#FFF' : 'rgba(255,255,255,.3)',
+                      fontFamily: "'Inter',sans-serif",
+                      boxShadow: isOpen !== false ? `0 3px 12px rgba(43,172,82,.22)` : 'none',
+                    }}
+                  >
+                    {isOpen === false ? 'Closed' : 'Visit Store'}
+                  </button>
                 </div>
-                <button
-                  onClick={() => m.open && onStore?.()}
-                  className="h-9 flex-shrink-0 rounded-xl px-4 text-[11px] font-semibold transition-all active:scale-95"
-                  style={{
-                    background: m.open
-                      ? `linear-gradient(135deg,${G0},${G2})`
-                      : 'rgba(255,255,255,.07)',
-                    color: m.open ? '#FFF' : 'rgba(255,255,255,.3)',
-                    fontFamily: "'Inter',sans-serif",
-                    boxShadow: m.open ? `0 3px 12px rgba(43,172,82,.22)` : 'none',
-                  }}
-                >
-                  {m.open ? 'Visit Store' : 'Closed'}
-                </button>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -1568,17 +1576,11 @@ export function MarketplaceScreen({
   onHome: () => void;
   onAccount: () => void;
   onNotifications: () => void;
-  onStore?: () => void;
+  onStore?: (merchantId: string) => void;
 }) {
   const [activecat, setActivecat] = useState('All');
-  const [loaded, setLoaded] = useState(false);
   const [showAI, setShowAI] = useState(false);
   const [cartCount] = useState(3);
-
-  useEffect(() => {
-    const t = setTimeout(() => setLoaded(true), 950);
-    return () => clearTimeout(t);
-  }, []);
 
   const handleNav = (t: NavTab) => {
     if (t === 'home') onHome();
@@ -1602,10 +1604,10 @@ export function MarketplaceScreen({
         <CategoryChips active={activecat} onChange={setActivecat} />
         <AIDiscovery onAsk={() => setShowAI(true)} />
         <TodaysDeals />
-        <FeaturedMerchants loaded={loaded} active={activecat} onStore={onStore} />
-        <TrendingProducts loaded={loaded} />
-        <NearbyBusinesses loaded={loaded} />
-        <AIRecs loaded={loaded} />
+        <FeaturedMerchants active={activecat} onStore={onStore} />
+        <TrendingProducts loaded={true} />
+        <NearbyBusinesses loaded={true} />
+        <AIRecs loaded={true} />
         <ContinueShopping />
 
         <div style={{ height: 104 }} />

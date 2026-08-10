@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ImageWithFallback } from '@/app/components/figma/ImageWithFallback';
 import logoImg from '@/imports/C3C48FE4-A0D8-4DA3-8A0D-A09D3D9EA7FB.jpeg';
 import {
@@ -21,6 +21,8 @@ import {
   CheckIcon,
   COUNTRIES,
 } from './shared';
+import { api } from '../lib/api';
+import type { NotificationDto } from '../lib/api';
 
 // AUTH-018  CONSENT & PRIVACY AGREEMENT
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2156,12 +2158,68 @@ export type ActivityFilter = 'today' | 'week' | 'month' | 'custom';
 export function ActivityDashboardScreen({ onBack }: { onBack: () => void }) {
   const [filter, setFilter] = useState<ActivityFilter>('week');
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [notifications, setNotifications] = useState<NotificationDto[]>([]);
+  const [notifLoading, setNotifLoading] = useState(true);
+  const [markingAll, setMarkingAll] = useState(false);
+
   const filters: { key: ActivityFilter; label: string }[] = [
     { key: 'today', label: 'Today' },
     { key: 'week', label: 'Last Week' },
     { key: 'month', label: 'Last Month' },
     { key: 'custom', label: 'Custom Range' },
   ];
+
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const res = await api.notifications.list({ page: 1, limit: 50 });
+      const items = (res as { items?: NotificationDto[] }).items ?? [];
+      setNotifications(items);
+    } catch {
+      setNotifications([]);
+    } finally {
+      setNotifLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchNotifications();
+  }, [fetchNotifications]);
+
+  const handleMarkRead = async (id: string) => {
+    setNotifications((ns) => ns.map((n) => (n.id === id ? { ...n, read: true } : n)));
+    try {
+      await api.notifications.markRead(id);
+    } catch {}
+  };
+
+  const handleMarkAllRead = async () => {
+    setMarkingAll(true);
+    setNotifications((ns) => ns.map((n) => ({ ...n, read: true })));
+    try {
+      await api.notifications.markAllRead();
+    } catch {}
+    setMarkingAll(false);
+  };
+
+  const unreadCount = notifications.filter((n) => !n.read).length;
+
+  const notifIconFor = (type: string) => {
+    if (type.includes('RIDE') || type.includes('ride')) return '🚖';
+    if (type.includes('WALLET') || type.includes('wallet') || type.includes('PAYMENT')) return '💳';
+    if (type.includes('ORDER') || type.includes('order')) return '🛍';
+    if (type.includes('SECURITY') || type.includes('security')) return '🔐';
+    return '🔔';
+  };
+
+  const timeAgo = (iso: string) => {
+    const diff = Date.now() - new Date(iso).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'Just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    return `${Math.floor(hrs / 24)}d ago`;
+  };
 
   return (
     <div
@@ -2171,17 +2229,32 @@ export function ActivityDashboardScreen({ onBack }: { onBack: () => void }) {
       <StatusBar />
       <div className="flex items-center gap-3 px-6 pb-2 pt-4">
         <BackBtn onClick={onBack} />
-        <div>
+        <div className="flex-1">
           <p
             className="text-[18px] font-bold"
             style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
           >
-            Account Activity
+            Notifications
           </p>
           <p className="text-[11px]" style={{ color: MUTED }}>
-            Monitor how your account is being used
+            {notifLoading ? 'Loading…' : `${unreadCount} unread`}
           </p>
         </div>
+        {unreadCount > 0 && (
+          <button
+            onClick={handleMarkAllRead}
+            disabled={markingAll}
+            className="h-[30px] rounded-full px-3 text-[11px] font-semibold transition-all"
+            style={{
+              background: 'rgba(43,172,82,.12)',
+              border: `1px solid rgba(43,172,82,.3)`,
+              color: G3,
+              opacity: markingAll ? 0.5 : 1,
+            }}
+          >
+            Mark all read
+          </button>
+        )}
       </div>
 
       {/* Filter chips */}
@@ -2202,131 +2275,192 @@ export function ActivityDashboardScreen({ onBack }: { onBack: () => void }) {
         ))}
       </div>
 
-      {/* Summary strip */}
-      <div
-        className="mx-6 my-2 flex items-center justify-between rounded-2xl px-4 py-3"
-        style={{ background: 'rgba(43,172,82,.07)', border: '1px solid rgba(43,172,82,.18)' }}
-      >
-        <p className="text-[12px] font-semibold" style={{ color: G3 }}>
-          {ACTIVITY_CARDS.reduce((s, c) => s + c.count, 0)} total events
-        </p>
-        <p className="text-[11px]" style={{ color: MUTED }}>
-          {filter === 'today'
-            ? 'Today'
-            : filter === 'week'
-              ? 'Last 7 days'
-              : filter === 'month'
-                ? 'Last 30 days'
-                : 'Custom range'}
-        </p>
-      </div>
-
-      {/* Activity cards */}
-      <p
-        className="px-6 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-widest"
-        style={{ color: MUTED }}
-      >
-        Activity Categories
-      </p>
-      {ACTIVITY_CARDS.map((card) => {
-        const isOpen = expanded === card.id;
-        return (
-          <div
-            key={card.id}
-            className="mx-6 mb-3 overflow-hidden rounded-2xl transition-all"
-            style={{
-              background: NAVY_CARD,
-              border: `1.5px solid ${isOpen ? card.color + '44' : BORDER}`,
-            }}
+      {/* Notifications list */}
+      {notifLoading ? (
+        <div className="flex flex-1 items-center justify-center">
+          <p className="text-[13px]" style={{ color: MUTED }}>
+            Loading notifications…
+          </p>
+        </div>
+      ) : notifications.length === 0 ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 px-10">
+          <span style={{ fontSize: 48 }}>🔔</span>
+          <p
+            className="text-center text-[15px] font-semibold"
+            style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
           >
+            No notifications
+          </p>
+          <p className="text-center text-[12px]" style={{ color: MUTED }}>
+            {"You're all caught up!"}
+          </p>
+        </div>
+      ) : (
+        <>
+          <p
+            className="px-6 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-widest"
+            style={{ color: MUTED }}
+          >
+            Recent
+          </p>
+          {notifications.map((n) => (
             <button
-              className="flex w-full items-center gap-3 p-4 text-left"
-              onClick={() => setExpanded(isOpen ? null : card.id)}
+              key={n.id}
+              onClick={() => handleMarkRead(n.id)}
+              className="mx-6 mb-3 flex w-[calc(100%-48px)] items-start gap-3 rounded-2xl p-4 text-left transition-all active:scale-[.98]"
+              style={{
+                background: n.read ? NAVY_CARD : 'rgba(43,172,82,.07)',
+                border: `1.5px solid ${n.read ? BORDER : 'rgba(43,172,82,.25)'}`,
+              }}
             >
               <div
-                className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl text-2xl"
-                style={{ background: card.bg }}
+                className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl text-xl"
+                style={{ background: n.read ? 'rgba(255,255,255,.05)' : 'rgba(43,172,82,.12)' }}
               >
-                {card.icon}
+                {notifIconFor(n.type)}
               </div>
-              <div className="flex-1">
-                <p
-                  className="text-[14px] font-semibold"
-                  style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
-                >
-                  {card.label}
+              <div className="min-w-0 flex-1">
+                <div className="mb-0.5 flex items-center gap-2">
+                  <p
+                    className="truncate text-[13px] font-semibold"
+                    style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
+                  >
+                    {n.title}
+                  </p>
+                  {!n.read && (
+                    <div
+                      className="h-2 w-2 flex-shrink-0 rounded-full"
+                      style={{ background: G2 }}
+                    />
+                  )}
+                </div>
+                <p className="text-[11px] leading-relaxed" style={{ color: MUTED }}>
+                  {n.body}
                 </p>
-                <p className="text-[11px]" style={{ color: MUTED }}>
-                  Last: {card.last}
+                <p className="mt-1 text-[10px]" style={{ color: 'rgba(255,255,255,.3)' }}>
+                  {timeAgo(n.createdAt)}
                 </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <span
-                  className="rounded-full px-2.5 py-0.5 text-[12px] font-bold"
-                  style={{ background: card.bg, color: card.color }}
-                >
-                  {card.count}
-                </span>
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke={MUTED}
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  style={{
-                    transform: isOpen ? 'rotate(180deg)' : 'none',
-                    transition: 'transform .25s',
-                  }}
-                >
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
               </div>
             </button>
-            {isOpen && (
-              <div
-                className="flex flex-col gap-1.5 px-4 pb-4"
-                style={{ borderTop: `1px solid ${BORDER}` }}
-              >
-                <p
-                  className="mb-1 pt-3 text-[10px] font-semibold uppercase tracking-widest"
-                  style={{ color: MUTED }}
-                >
-                  Details
-                </p>
-                <p className="text-[12px]" style={{ color: MUTED }}>
-                  📱 Device: {card.device}
-                </p>
-                <p className="text-[12px]" style={{ color: MUTED }}>
-                  📍 Location: {card.location}
-                </p>
-                <p className="text-[12px]" style={{ color: MUTED }}>
-                  🕐 Last: {card.last}
-                </p>
-                <p className="text-[12px]" style={{ color: MUTED }}>
-                  📊 Events this period: {card.count}
-                </p>
-                <button
-                  className="mt-2 h-[36px] w-full rounded-xl text-[12px] font-semibold"
-                  style={{
-                    background: card.bg,
-                    border: `1px solid ${card.color}44`,
-                    color: card.color,
-                  }}
-                >
-                  View Detailed History
-                </button>
-              </div>
-            )}
-          </div>
-        );
-      })}
+          ))}
+        </>
+      )}
 
-      <div className="mt-1 px-6 pb-10">
-        <GreenBtn label="View Detailed History" onClick={onBack} />
-      </div>
+      {/* Activity summary (below notifications) */}
+      {notifications.length > 0 && (
+        <>
+          <div
+            className="mx-6 my-2 flex items-center justify-between rounded-2xl px-4 py-3"
+            style={{ background: 'rgba(43,172,82,.07)', border: '1px solid rgba(43,172,82,.18)' }}
+          >
+            <p className="text-[12px] font-semibold" style={{ color: G3 }}>
+              {ACTIVITY_CARDS.reduce((s, c) => s + c.count, 0)} account events
+            </p>
+            <p className="text-[11px]" style={{ color: MUTED }}>
+              {filter === 'today'
+                ? 'Today'
+                : filter === 'week'
+                  ? 'Last 7 days'
+                  : filter === 'month'
+                    ? 'Last 30 days'
+                    : 'Custom range'}
+            </p>
+          </div>
+          <p
+            className="px-6 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-widest"
+            style={{ color: MUTED }}
+          >
+            Activity Categories
+          </p>
+          {ACTIVITY_CARDS.map((card) => {
+            const isOpen = expanded === card.id;
+            return (
+              <div
+                key={card.id}
+                className="mx-6 mb-3 overflow-hidden rounded-2xl transition-all"
+                style={{
+                  background: NAVY_CARD,
+                  border: `1.5px solid ${isOpen ? card.color + '44' : BORDER}`,
+                }}
+              >
+                <button
+                  className="flex w-full items-center gap-3 p-4 text-left"
+                  onClick={() => setExpanded(isOpen ? null : card.id)}
+                >
+                  <div
+                    className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl text-2xl"
+                    style={{ background: card.bg }}
+                  >
+                    {card.icon}
+                  </div>
+                  <div className="flex-1">
+                    <p
+                      className="text-[14px] font-semibold"
+                      style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
+                    >
+                      {card.label}
+                    </p>
+                    <p className="text-[11px]" style={{ color: MUTED }}>
+                      Last: {card.last}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="rounded-full px-2.5 py-0.5 text-[12px] font-bold"
+                      style={{ background: card.bg, color: card.color }}
+                    >
+                      {card.count}
+                    </span>
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke={MUTED}
+                      strokeWidth="2.2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      style={{
+                        transform: isOpen ? 'rotate(180deg)' : 'none',
+                        transition: 'transform .25s',
+                      }}
+                    >
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </div>
+                </button>
+                {isOpen && (
+                  <div
+                    className="flex flex-col gap-1.5 px-4 pb-4"
+                    style={{ borderTop: `1px solid ${BORDER}` }}
+                  >
+                    <p
+                      className="mb-1 pt-3 text-[10px] font-semibold uppercase tracking-widest"
+                      style={{ color: MUTED }}
+                    >
+                      Details
+                    </p>
+                    <p className="text-[12px]" style={{ color: MUTED }}>
+                      📱 Device: {card.device}
+                    </p>
+                    <p className="text-[12px]" style={{ color: MUTED }}>
+                      📍 Location: {card.location}
+                    </p>
+                    <p className="text-[12px]" style={{ color: MUTED }}>
+                      🕐 Last: {card.last}
+                    </p>
+                    <p className="text-[12px]" style={{ color: MUTED }}>
+                      📊 Events this period: {card.count}
+                    </p>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </>
+      )}
+
+      <div className="pb-10" />
     </div>
   );
 }

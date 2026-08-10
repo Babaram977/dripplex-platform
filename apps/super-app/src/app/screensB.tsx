@@ -21,6 +21,8 @@ import {
   CheckIcon,
   COUNTRIES,
 } from './shared';
+import { api } from '../lib/api';
+import { auth } from '../lib/auth';
 
 // AUTH-010  TWO-FACTOR AUTHENTICATION
 // ═══════════════════════════════════════════════════════════════════════════
@@ -281,6 +283,9 @@ export function TwoFactorScreen({ onBack, onDone }: { onBack: () => void; onDone
 // ═══════════════════════════════════════════════════════════════════════════
 // AUTH-011  TRUSTED DEVICES
 // ═══════════════════════════════════════════════════════════════════════════
+// No backend for trusted-device listing yet → start empty (honest "no devices").
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const DEVICES: any[] = [];
 export function TrustedDevicesScreen({ onBack }: { onBack: () => void }) {
   const [devices, setDevices] = useState(DEVICES);
   const [removing, setRemoving] = useState<string | null>(null);
@@ -1060,8 +1065,12 @@ export function SecurityCenterScreen({
                 Cancel
               </button>
               <button
-                onClick={() => {
+                onClick={async () => {
                   setLockSheet(false);
+                  try {
+                    await api.auth.logoutAll();
+                  } catch {}
+                  auth.clear();
                   setLocked(true);
                 }}
                 className="h-[46px] flex-1 rounded-2xl text-[14px] font-bold"

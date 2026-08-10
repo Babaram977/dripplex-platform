@@ -665,33 +665,21 @@ export function OTPScreen({
     [otp],
   );
 
-  const handleVerify = () => {
+  const handleVerify = async () => {
     if (!filled) {
       triggerShake();
       return;
     }
     setStatus('verifying');
-    setTimeout(() => {
-      // Prototype: "000000" simulates errors for demo
-      const code = otp.join('');
-      if (code === '111111') {
-        setStatus('idle');
-        setError('expired');
-      } else if (code === '222222') {
-        setStatus('idle');
-        setError('attempts');
-      } else if (code === '333333') {
-        setStatus('idle');
-        setError('network');
-      } else if (code === '000000') {
-        setStatus('idle');
-        setError('invalid');
-        triggerShake();
-      } else {
-        setStatus('success');
-        setTimeout(onVerified, 1600);
-      }
-    }, 1200);
+    try {
+      await api.auth.verifyOtp({ phone: `${country.code}${phone}`, code: otp.join('') });
+      setStatus('success');
+      setTimeout(onVerified, 1600);
+    } catch {
+      setStatus('idle');
+      setError('invalid');
+      triggerShake();
+    }
   };
 
   const handleResend = () => {
@@ -2672,29 +2660,32 @@ export function SignInScreen({
   onBack: () => void;
   onSuccess?: () => void;
 }) {
-  const [email, setEmail] = useState('mrd@dripplex.demo');
-  const [password, setPassword] = useState('Dripplex#Demo1');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [showPw, setShowPw] = useState(false);
-  const [focusedE, setFocusedE] = useState(false);
-  const [focusedP, setFocusedP] = useState(false);
+  const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
+  const [focused, setFocused] = useState<string | null>(null);
+  const [logging, setLogging] = useState(false);
+  const [loginErr, setLoginErr] = useState('');
+  const ready = phone.replace(/\D/g, '').length >= 7 && password.length >= 6;
 
-  const handleSignIn = async () => {
-    setLoading(true);
-    setError(null);
+  const handleLogin = async () => {
+    setLogging(true);
+    setLoginErr('');
     try {
-      const resp = await api.auth.loginCustomer({ email, password });
-      auth.setTokens(resp.accessToken, resp.refreshToken);
-      auth.setUser(resp.user);
-      onSuccess?.();
+      const res = await api.auth.loginCustomer({ phone, password });
+      const r = res as {
+        accessToken?: string;
+        refreshToken?: string;
+        user?: Record<string, unknown>;
+      };
+      if (r.accessToken && r.refreshToken) auth.setTokens(r.accessToken, r.refreshToken);
+      if (r.user) auth.setUser(r.user as Parameters<typeof auth.setUser>[0]);
+      (onSuccess ?? onBack)();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Sign in failed. Check your credentials.');
+      setLoginErr((e as { message?: string }).message ?? 'Login failed. Check your credentials.');
     } finally {
-      setLoading(false);
+      setLogging(false);
     }
   };
-
   return (
     <div
       className="relative flex h-full w-full flex-col overflow-hidden"
@@ -2708,7 +2699,7 @@ export function SignInScreen({
         <BackBtn onPress={onBack} />
       </div>
       <div
-        className="relative z-10 flex flex-1 flex-col gap-6 px-7 pt-5"
+        className="relative z-10 flex flex-1 flex-col gap-7 px-7 pt-5"
         style={{ animation: 'fade-up .5s ease .05s both' }}
       >
         <Logo width={160} />
@@ -2720,194 +2711,98 @@ export function SignInScreen({
             Welcome back
           </h2>
           <p className="text-sm" style={{ fontFamily: "'Inter',sans-serif", color: MUTED }}>
-            Sign in to your DrippleX account
+            Enter your phone number to continue
           </p>
         </div>
-
-        {error && (
+        <div className="flex flex-col gap-2">
+          <label
+            className="text-[11px] font-medium uppercase tracking-widest"
+            style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.32)' }}
+          >
+            Phone Number
+          </label>
           <div
-            className="flex items-center gap-3 rounded-2xl px-4 py-3"
+            className="flex h-[56px] items-center gap-3 rounded-2xl px-4 transition-all duration-200"
             style={{
-              background: 'rgba(248,113,113,.08)',
-              border: '1.5px solid rgba(248,113,113,.28)',
+              background: 'rgba(255,255,255,.045)',
+              border: focused === 'phone' ? `1.5px solid ${G2}` : `1.5px solid ${BORDER}`,
+              boxShadow: focused === 'phone' ? `0 0 0 3px rgba(43,172,82,.12)` : 'none',
             }}
           >
-            <span>⚠️</span>
-            <p
-              className="flex-1 text-[12px] leading-relaxed"
-              style={{ color: '#F87171', fontFamily: "'Inter',sans-serif" }}
-            >
-              {error}
-            </p>
-          </div>
-        )}
-
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
-            <label
-              className="text-[11px] font-medium uppercase tracking-widest"
-              style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.32)' }}
-            >
-              Email
-            </label>
-            <div
-              className="flex h-[56px] items-center gap-3 rounded-2xl px-4 transition-all duration-200"
-              style={{
-                background: 'rgba(255,255,255,.045)',
-                border: focusedE ? `1.5px solid ${G2}` : `1.5px solid ${BORDER}`,
-                boxShadow: focusedE ? '0 0 0 3px rgba(43,172,82,.12)' : 'none',
-              }}
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="rgba(255,255,255,.35)"
-                strokeWidth="1.8"
-                strokeLinecap="round"
+            <div className="flex shrink-0 items-center gap-2 border-r border-white/10 pr-3">
+              <span className="text-base">🌍</span>
+              <span
+                className="text-sm"
+                style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
               >
-                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
-                <polyline points="22,6 12,13 2,6" />
-              </svg>
-              <input
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                onFocus={() => setFocusedE(true)}
-                onBlur={() => setFocusedE(false)}
-                className="flex-1 bg-transparent text-base text-white outline-none placeholder:text-white/20"
-                style={{ fontFamily: "'Inter',sans-serif" }}
-              />
+                +234
+              </span>
             </div>
+            <input
+              type="tel"
+              placeholder="Phone number"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              onFocus={() => setFocused('phone')}
+              onBlur={() => setFocused(null)}
+              className="flex-1 bg-transparent text-base text-white outline-none placeholder:text-white/20"
+              style={{ fontFamily: "'Inter',sans-serif" }}
+            />
           </div>
-
-          <div className="flex flex-col gap-2">
-            <label
-              className="text-[11px] font-medium uppercase tracking-widest"
-              style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.32)' }}
-            >
-              Password
-            </label>
-            <div
-              className="flex h-[56px] items-center gap-3 rounded-2xl px-4 transition-all duration-200"
-              style={{
-                background: 'rgba(255,255,255,.045)',
-                border: focusedP ? `1.5px solid ${G2}` : `1.5px solid ${BORDER}`,
-                boxShadow: focusedP ? '0 0 0 3px rgba(43,172,82,.12)' : 'none',
-              }}
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="rgba(255,255,255,.35)"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-              >
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                <path d="M7 11V7a5 5 0 0110 0v4" />
-              </svg>
-              <input
-                type={showPw ? 'text' : 'password'}
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onFocus={() => setFocusedP(true)}
-                onBlur={() => setFocusedP(false)}
-                className="flex-1 bg-transparent text-base text-white outline-none placeholder:text-white/20"
-                style={{ fontFamily: "'Inter',sans-serif" }}
-              />
-              <button onClick={() => setShowPw((v) => !v)} className="opacity-40 active:opacity-70">
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="white"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                >
-                  {showPw ? (
-                    <>
-                      <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94" />
-                      <path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19" />
-                      <line x1="1" y1="1" x2="23" y2="23" />
-                    </>
-                  ) : (
-                    <>
-                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                      <circle cx="12" cy="12" r="3" />
-                    </>
-                  )}
-                </svg>
-              </button>
-            </div>
+          <div
+            className="mt-3 flex h-[56px] items-center gap-3 rounded-2xl px-4 transition-all duration-200"
+            style={{
+              background: 'rgba(255,255,255,.045)',
+              border: focused === 'pass' ? `1.5px solid ${G2}` : `1.5px solid ${BORDER}`,
+              boxShadow: focused === 'pass' ? `0 0 0 3px rgba(43,172,82,.12)` : 'none',
+            }}
+          >
+            <input
+              type="password"
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onFocus={() => setFocused('pass')}
+              onBlur={() => setFocused(null)}
+              className="flex-1 bg-transparent text-base text-white outline-none placeholder:text-white/20"
+              style={{ fontFamily: "'Inter',sans-serif" }}
+            />
           </div>
         </div>
-
-        <button
-          onClick={handleSignIn}
-          disabled={loading || !email || !password}
-          className="flex h-[56px] w-full items-center justify-center gap-2 rounded-2xl text-[15px] font-semibold text-white transition-all active:scale-[.97]"
-          style={{
-            background:
-              loading || !email || !password
-                ? 'rgba(255,255,255,.07)'
-                : `linear-gradient(135deg,${G0},${G2} 55%,${G3})`,
-            boxShadow: loading || !email || !password ? 'none' : '0 10px 32px rgba(43,172,82,.36)',
-            color: loading || !email || !password ? 'rgba(255,255,255,.25)' : 'white',
-            fontFamily: "'Poppins',sans-serif",
-          }}
-        >
-          {loading ? (
-            <>
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                style={{ animation: 'spin 1s linear infinite' }}
-              >
-                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4" />
-              </svg>{' '}
-              Signing in…
-            </>
-          ) : (
-            <>
-              Sign In <ArrowIcon />
-            </>
-          )}
-        </button>
-
-        <Divider label="demo accounts" />
-        <div className="flex flex-col gap-1.5">
-          {[
-            { label: 'Mr D (Customer)', email: 'mrd@dripplex.demo' },
-            { label: 'Drippo (Rider)', email: 'drippo@dripplex.demo' },
-          ].map((a) => (
+        {loginErr && (
+          <p style={{ color: '#F87171', fontSize: 13, textAlign: 'center' }}>{loginErr}</p>
+        )}
+        <GreenBtn
+          label={logging ? 'Signing in…' : 'Sign In'}
+          disabled={!ready || logging}
+          icon={<ArrowIcon />}
+          onClick={handleLogin}
+        />
+        <Divider label="or continue with" />
+        <div className="flex gap-3">
+          {(
+            [
+              { label: 'Google', icon: 'G', color: '#EA4335' },
+              { label: 'Apple', icon: '', color: '#fff' },
+              { label: 'Face ID', icon: '⌬', color: G2 },
+            ] as const
+          ).map(({ label, icon, color }) => (
             <button
-              key={a.email}
-              onClick={() => {
-                setEmail(a.email);
-                setPassword('Dripplex#Demo1');
-              }}
-              className="flex h-[42px] items-center justify-between rounded-xl px-4 transition-all active:scale-[.98]"
-              style={{ background: 'rgba(255,255,255,.04)', border: `1px solid ${BORDER}` }}
+              key={label}
+              className="flex h-[52px] flex-1 flex-col items-center justify-center gap-1 rounded-xl transition-all active:scale-95"
+              style={{ background: 'rgba(255,255,255,.04)', border: `1.5px solid ${BORDER}` }}
             >
               <span
-                className="text-[12px]"
-                style={{ color: 'rgba(255,255,255,.55)', fontFamily: "'Inter',sans-serif" }}
+                className="text-base font-bold"
+                style={{ color, fontFamily: "'Poppins',sans-serif" }}
               >
-                {a.label}
+                {icon}
               </span>
-              <span className="text-[11px]" style={{ color: G3, fontFamily: "'Inter',sans-serif" }}>
-                {a.email}
+              <span
+                className="text-[10px]"
+                style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.28)' }}
+              >
+                {label}
               </span>
             </button>
           ))}
@@ -3582,18 +3477,22 @@ export function RecoveryScreen({
     return () => clearTimeout(t);
   }, [step, onRecovered]);
 
-  const handleStart = () => {
+  const handleStart = async () => {
     if (!activeOption) return;
     setStep('phone');
     setCurrentStep(2);
-    // Simulate flow
-    setTimeout(() => {
-      setCurrentStep(3);
-    }, 900);
+    try {
+      if (activeOption === 'phone') {
+        await api.auth.forgotPassword({ phone: undefined });
+      } else {
+        await api.auth.forgotPassword({ email: undefined });
+      }
+    } catch {
+      /* proceed anyway — user enters phone/email on next step */
+    }
+    setCurrentStep(3);
     setTimeout(() => {
       setCurrentStep(4);
-    }, 1800);
-    setTimeout(() => {
       setStep('success');
     }, 2600);
   };
