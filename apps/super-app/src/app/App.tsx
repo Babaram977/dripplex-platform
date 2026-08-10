@@ -375,6 +375,8 @@ function AppShell() {
   const [otpData, setOtpData] = useState<{
     phone: string;
     country: (typeof COUNTRIES)[0];
+    email?: string;
+    verifyChannel?: 'email' | 'phone';
     // Held in memory only for the register → OTP → login handoff. Never persisted.
     password?: string;
   }>({
@@ -403,8 +405,8 @@ function AppShell() {
     welcome: <WelcomeScreen onGetStarted={() => go('register')} onSignIn={() => go('signin')} />,
     register: (
       <RegisterScreen
-        onContinue={({ phone, country, password }) => {
-          setOtpData({ phone, country, password });
+        onContinue={({ email, phone, country, password, verifyChannel }) => {
+          setOtpData({ email, phone, country, password, verifyChannel });
           go('otp');
         }}
         onSignIn={() => go('signin')}
@@ -415,6 +417,8 @@ function AppShell() {
       <OTPScreen
         phone={otpData.phone}
         country={otpData.country}
+        email={otpData.email}
+        verifyChannel={otpData.verifyChannel}
         password={otpData.password}
         onBack={() => go('register')}
         onChangeNumber={() => go('register')}

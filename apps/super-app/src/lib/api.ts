@@ -621,7 +621,23 @@ export const api = {
     resendPhoneOtp: (body: { phone: string }) =>
       dx<{ submitted: true }>('POST', '/auth/phone/resend', body),
 
-    // Email verification (token-based) — real routes are under /auth/email/*.
+    // Email verification (OTP CODE) — real routes are under /auth/verify/*.
+    // Registration dispatches a numeric email OTP; this confirms it with
+    // { email, otp } and activates the account (for portals that don't require
+    // phone verification, e.g. customer). This is the email counterpart to
+    // verifyPhoneOtp and the path a new customer uses when onboarding by email
+    // (works today; SMS via Termii is pending sender-ID approval).
+    verifyEmailOtp: (body: { email: string; otp: string }) =>
+      dx<{ email: string; status: string; emailVerifiedAt: string }>(
+        'POST',
+        '/auth/verify/email',
+        body,
+      ),
+    resendEmailOtp: (body: { email: string }) =>
+      dx<{ submitted: true }>('POST', '/auth/verify/email/resend', body),
+
+    // Email verification (token / magic-link) — a DIFFERENT feature under
+    // /auth/email/*, kept for completeness. Not used by the OTP-code flow above.
     sendEmailVerification: (body: { email: string }) =>
       dx<unknown>('POST', '/auth/email/send-verification', body),
     verifyEmail: (body: { email: string; token: string }) =>

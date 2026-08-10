@@ -231,22 +231,33 @@ export function RegisterScreen({
 }: {
   // Passes the verified inputs forward; `password` is held in memory only for
   // the immediately-following OTP → login step and never persisted here.
-  onContinue: (args: { phone: string; country: (typeof COUNTRIES)[0]; password: string }) => void;
+  // `verifyChannel` tells the OTP screen which identifier to confirm/log in
+  // with. Email is the identifier that works TODAY (SMS via Termii is pending
+  // sender-ID approval); phone stays supported for when it's live.
+  onContinue: (args: {
+    email: string;
+    phone: string;
+    country: (typeof COUNTRIES)[0];
+    password: string;
+    verifyChannel: 'email' | 'phone';
+  }) => void;
   onSignIn: () => void;
   onBack: () => void;
 }) {
   const [country, setCountry] = useState(COUNTRIES[0]);
   const [showPicker, setShowPicker] = useState(false);
+  const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [focused, setFocused] = useState(false);
+  const [emailFocused, setEmailFocused] = useState(false);
   const [shake, setShake] = useState(false);
   // Backend `POST /auth/register/customer` requires name + password up front
   // (the OTP is only dispatched after a successful register). The Figma
-  // onboarding screen collects neither, so these two fields are an
-  // intentional, backend-mandated deviation — logged in the Figma diff
-  // register and flagged for founder review. Password auth is the real,
-  // existing contract (login is phone + password); there is no passwordless
-  // path on the backend.
+  // onboarding screen collects neither, so these fields are an intentional,
+  // backend-mandated deviation — logged in the Figma diff register and flagged
+  // for founder review. Registration needs an email OR a phone; the customer
+  // portal does not require phone verification, so an email-only signup fully
+  // activates the account (verify the email code → ACTIVE → order).
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [nameFocused, setNameFocused] = useState(false);
@@ -254,14 +265,17 @@ export function RegisterScreen({
   const [showPw, setShowPw] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const phoneValid = phone.replace(/\D/g, '').length >= 7;
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const phoneDigits = phone.replace(/\D/g, '');
+  const phoneValid = phoneDigits.length >= 7;
   const nameValid = name.trim().length >= 2;
   // Mirror the backend password policy exactly (min 8, at least one lowercase,
   // one uppercase, one digit) so the user gets immediate feedback instead of a
   // server-side rejection after submit.
   const pwValid =
     password.length >= 8 && /[a-z]/.test(password) && /[A-Z]/.test(password) && /\d/.test(password);
-  const isValid = phoneValid && nameValid && pwValid;
+  // At least one identifier is required; email is preferred while SMS is down.
+  const isValid = nameValid && pwValid && (emailValid || phoneValid);
 
   const handleContinue = async () => {
     if (!isValid) {
@@ -276,14 +290,23 @@ export function RegisterScreen({
     const parts = name.trim().split(/\s+/);
     const firstName = parts[0];
     const lastName = parts.length > 1 ? parts.slice(1).join(' ') : parts[0];
-    const e164 = `${country.code}${phone.replace(/\D/g, '')}`;
+    const trimmedEmail = email.trim().toLowerCase();
+    const e164 = `${country.code}${phoneDigits}`;
+    // Prefer email verification (deliverable today); fall back to phone.
+    const verifyChannel: 'email' | 'phone' = emailValid ? 'email' : 'phone';
     try {
-      await api.auth.registerCustomer({ firstName, lastName, phone: e164, password });
-      onContinue({ phone, country, password });
+      await api.auth.registerCustomer({
+        firstName,
+        lastName,
+        password,
+        ...(emailValid ? { email: trimmedEmail } : {}),
+        ...(phoneValid ? { phone: e164 } : {}),
+      });
+      onContinue({ email: trimmedEmail, phone, country, password, verifyChannel });
     } catch (e) {
       const ae = e as { status?: number; message?: string };
       if (ae?.status === 409) {
-        setErr('This number is already registered. Please sign in instead.');
+        setErr('This email or number is already registered. Please sign in instead.');
       } else {
         setErr(ae?.message || 'Could not create your account. Please try again.');
       }
@@ -324,7 +347,7 @@ export function RegisterScreen({
             className="text-[14px] leading-relaxed"
             style={{ fontFamily: "'Inter',sans-serif", color: MUTED }}
           >
-            Sign in or create your account using your phone number.
+            Create your account with your email or phone number.
           </p>
         </div>
         <div
@@ -359,6 +382,35 @@ export function RegisterScreen({
                 onChange={(e) => setName(e.target.value)}
                 onFocus={() => setNameFocused(true)}
                 onBlur={() => setNameFocused(false)}
+                className="placeholder:text-white/22 flex-1 bg-transparent text-[15px] text-white outline-none"
+                style={{ fontFamily: "'Inter',sans-serif" }}
+              />
+            </div>
+          </div>
+          <div className="flex flex-col gap-2">
+            <label
+              className="text-[11px] font-medium uppercase tracking-widest"
+              style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.3)' }}
+            >
+              Email
+            </label>
+            <div
+              className="flex h-[54px] items-center gap-3 rounded-xl px-4 transition-all duration-200"
+              style={{
+                background: 'rgba(255,255,255,.05)',
+                border: emailFocused ? `1.5px solid ${G2}` : `1.5px solid ${BORDER}`,
+                boxShadow: emailFocused ? `0 0 0 3px rgba(43,172,82,.11)` : 'none',
+              }}
+            >
+              <input
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onFocus={() => setEmailFocused(true)}
+                onBlur={() => setEmailFocused(false)}
                 className="placeholder:text-white/22 flex-1 bg-transparent text-[15px] text-white outline-none"
                 style={{ fontFamily: "'Inter',sans-serif" }}
               />
@@ -459,7 +511,7 @@ export function RegisterScreen({
               className="text-[11px] font-medium uppercase tracking-widest"
               style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.3)' }}
             >
-              Phone Number
+              Phone Number (optional)
             </label>
             <div
               className="flex h-[54px] items-center gap-3 rounded-xl px-4 transition-all duration-200"
@@ -582,7 +634,8 @@ export function RegisterScreen({
               className="text-[12px] leading-relaxed"
               style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.34)' }}
             >
-              Your phone number is securely verified using a one-time password (OTP).
+              We'll send a one-time code to verify your email (or phone) — no password needed to
+              receive it.
             </p>
           </div>
         </div>
@@ -709,6 +762,8 @@ export const ERROR_CONFIG: Record<
 export function OTPScreen({
   phone,
   country,
+  email,
+  verifyChannel = 'phone',
   password,
   onBack,
   onChangeNumber,
@@ -716,8 +771,13 @@ export function OTPScreen({
 }: {
   phone: string;
   country: (typeof COUNTRIES)[0];
-  // Present during registration: after the phone is verified the account is
-  // ACTIVE, so we immediately log in with it and persist the session before
+  // The email identifier, when the account is being verified by email code.
+  email?: string;
+  // Which identifier this code confirms. 'email' is the path that works today
+  // (SMS via Termii is pending sender-ID approval); 'phone' once SMS is live.
+  verifyChannel?: 'email' | 'phone';
+  // Present during registration: after the identifier is verified the account
+  // is ACTIVE, so we immediately log in with it and persist the session before
   // moving on. Absent (undefined) for any non-registration use of this screen.
   password?: string;
   onBack: () => void;
@@ -734,7 +794,8 @@ export function OTPScreen({
   const inputs = useRef<(HTMLInputElement | null)[]>([]);
 
   const filled = otp.every((d) => d !== '');
-  const displayPhone = `${country.code} ${phone}`;
+  // What we show as the destination the code was sent to.
+  const displayPhone = verifyChannel === 'email' && email ? email : `${country.code} ${phone}`;
 
   // Countdown
   useEffect(() => {
@@ -794,6 +855,8 @@ export function OTPScreen({
   );
 
   const e164 = `${country.code}${phone.replace(/\D/g, '')}`;
+  const emailId = (email ?? '').trim().toLowerCase();
+  const useEmail = verifyChannel === 'email' && emailId.length > 0;
 
   const handleVerify = async () => {
     if (!filled) {
@@ -802,15 +865,21 @@ export function OTPScreen({
     }
     setStatus('verifying');
     try {
-      // Confirms the phone OTP → activates the account (PENDING_VERIFICATION
-      // → ACTIVE). Real route: POST /auth/phone/verify { phone, otp }.
-      await api.auth.verifyPhoneOtp({ phone: e164, otp: otp.join('') });
-      // Registration path: the account is now ACTIVE, so log in and persist
-      // the session so the user lands authenticated (Home works, orders can
-      // be placed). Login is phone + password — the same password captured at
-      // registration.
+      // Confirm the OTP → activates the account (PENDING_VERIFICATION → ACTIVE).
+      // Email code: POST /auth/verify/email { email, otp }.
+      // Phone code: POST /auth/phone/verify { phone, otp }.
+      if (useEmail) {
+        await api.auth.verifyEmailOtp({ email: emailId, otp: otp.join('') });
+      } else {
+        await api.auth.verifyPhoneOtp({ phone: e164, otp: otp.join('') });
+      }
+      // Registration path: the account is now ACTIVE, so log in and persist the
+      // session so the user lands authenticated (Home works, orders can be
+      // placed). Login uses the same identifier + password from registration.
       if (password) {
-        const res = await api.auth.loginCustomer({ phone: e164, password });
+        const res = await api.auth.loginCustomer(
+          useEmail ? { email: emailId, password } : { phone: e164, password },
+        );
         if (res.accessToken && res.refreshToken) {
           auth.setTokens(res.accessToken, res.refreshToken);
         }
@@ -830,8 +899,11 @@ export function OTPScreen({
     setOtp(['', '', '', '', '', '']);
     setError(null);
     inputs.current[0]?.focus();
-    // Best-effort re-dispatch of the phone OTP; UI countdown resets regardless.
-    void api.auth.resendPhoneOtp({ phone: e164 }).catch(() => {});
+    // Best-effort re-dispatch of the code; UI countdown resets regardless.
+    const resendReq = useEmail
+      ? api.auth.resendEmailOtp({ email: emailId })
+      : api.auth.resendPhoneOtp({ phone: e164 });
+    void resendReq.catch(() => {});
   };
   const handleErrorAction = (err: NonNullable<OTPError>) => {
     if (err === 'expired' || err === 'network') handleResend();
