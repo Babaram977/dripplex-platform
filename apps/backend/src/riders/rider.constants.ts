@@ -1,0 +1,24 @@
+// DPX-RIDER-001 — delivery-rider approval workflow. Mirrors the driver
+// approval constants; riders have no KYC/vehicle gate, so the audit set and
+// permissions are limited to the lifecycle transitions.
+
+export const RIDER_AUDIT_ACTIONS = {
+  APPROVED: 'rider.approved',
+  REJECTED: 'rider.rejected',
+  SUSPENDED: 'rider.suspended',
+  REACTIVATED: 'rider.reactivated',
+} as const;
+
+/**
+ * `admin:riders:*` mirrors `admin:drivers:*`. Granted to operations_staff,
+ * administrator and super_administrator in seed-rbac — the same roles that
+ * already hold the driver/merchant approval permissions, so rider approvals
+ * surface in the Operations Console exactly like driver/merchant ones.
+ */
+export const RIDER_PERMISSIONS = {
+  REVIEW: 'admin:riders:review',
+  APPROVE: 'admin:riders:approve',
+  REJECT: 'admin:riders:reject',
+  SUSPEND: 'admin:riders:suspend',
+  REACTIVATE: 'admin:riders:reactivate',
+} as const;
