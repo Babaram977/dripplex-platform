@@ -116,6 +116,19 @@ export interface CheckoutResponseDto {
   order: OrderDto;
 }
 
+/// Customer-facing view of the merchant's payout bank account for an order the
+/// customer owns — exposed at `GET /customer/orders/:id/merchant-bank` so the
+/// "Pay to Merchant Bank" (MERCHANT_DIRECT) checkout option can show where to
+/// transfer. Deliberately minimal and read-only: no isDefault/verifiedAt or
+/// internal ids are leaked. accountNumber IS included — the customer needs it
+/// to make the transfer.
+export interface CustomerMerchantBankDto {
+  bankName: string;
+  accountName: string;
+  accountNumber: string;
+  currency: string;
+}
+
 export interface CancelOrderDto {
   reason?: string;
 }

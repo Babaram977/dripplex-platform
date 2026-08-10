@@ -5,6 +5,7 @@ import type {
   CancelOrderDto,
   CheckoutDto,
   CheckoutResponseDto,
+  CustomerMerchantBankDto,
   DelayOrderRequest,
   InitializePaymentDto,
   InitializePaymentResponseDto,
@@ -59,6 +60,18 @@ export class OrderClient {
 
   public getOrder(id: string): Promise<OrderDto> {
     return this.http.request<OrderDto>(`/customer/orders/${id}`, {
+      method: 'GET',
+      auth: true,
+    });
+  }
+
+  /**
+   * Read-only: the order merchant's default payout bank account, so the "Pay
+   * to Merchant Bank" (MERCHANT_DIRECT) checkout option can show the customer
+   * where to transfer. Requires the caller to own the order.
+   */
+  public getMerchantBank(orderId: string): Promise<CustomerMerchantBankDto> {
+    return this.http.request<CustomerMerchantBankDto>(`/customer/orders/${orderId}/merchant-bank`, {
       method: 'GET',
       auth: true,
     });

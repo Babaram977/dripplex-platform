@@ -92,6 +92,17 @@ const DEMO_BUSINESS = {
 
 const DEMO_FOOD_CATEGORY = { name: 'Food', slug: 'demo-food' };
 
+// Dx Resto's payout bank account — exposed read-only to a customer at
+// GET /customer/orders/:id/merchant-bank for the "Pay to Merchant Bank"
+// (MERCHANT_DIRECT) checkout option. BankAccount.merchantId references
+// User.id (the merchant's user), not MerchantProfile.id.
+const DEMO_BANK_ACCOUNT = {
+  bankName: 'Access Bank',
+  accountName: 'Dx Resto',
+  accountNumber: '0123456789',
+  currency: 'NGN',
+};
+
 const DEMO_PRODUCTS = [
   {
     slug: 'demo-jollof-rice',
@@ -484,6 +495,34 @@ async function seedMerchant(passwordHash) {
       create: { productId: product.id, quantity: seedProduct.quantity, trackInventory: true },
     });
   }
+
+  // Default payout bank account (idempotent by the [merchantId, accountNumber]
+  // unique). merchantId is the merchant's User.id — the same id upsertDemoUser
+  // returned above.
+  await prisma.bankAccount.upsert({
+    where: {
+      merchantId_accountNumber: {
+        merchantId: userId,
+        accountNumber: DEMO_BANK_ACCOUNT.accountNumber,
+      },
+    },
+    update: {
+      bankName: DEMO_BANK_ACCOUNT.bankName,
+      accountName: DEMO_BANK_ACCOUNT.accountName,
+      currency: DEMO_BANK_ACCOUNT.currency,
+      isDefault: true,
+      verifiedAt: now(),
+    },
+    create: {
+      merchantId: userId,
+      bankName: DEMO_BANK_ACCOUNT.bankName,
+      accountName: DEMO_BANK_ACCOUNT.accountName,
+      accountNumber: DEMO_BANK_ACCOUNT.accountNumber,
+      currency: DEMO_BANK_ACCOUNT.currency,
+      isDefault: true,
+      verifiedAt: now(),
+    },
+  });
 
   await ensureWallet('MERCHANT', userId, 0);
 }

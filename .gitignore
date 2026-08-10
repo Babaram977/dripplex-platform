@@ -68,3 +68,7 @@ temp
 *.pem
 !infrastructure/**/*.md
 .figma-import/
+
+# super-app build output
+apps/super-app/dist/
+apps/super-app/.env

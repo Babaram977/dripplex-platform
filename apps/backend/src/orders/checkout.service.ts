@@ -49,7 +49,12 @@ import {
 import type { CheckoutDto } from './dto/order.dto';
 import type { CheckoutInventoryValidator } from './inventory/checkout-inventory.validator';
 import type { CheckoutProductValidator } from './pricing/checkout-product.validator';
-import type { CheckoutResponseDto, OrderDto, PaginatedResult } from '@dripplex/types';
+import type {
+  CheckoutResponseDto,
+  CustomerMerchantBankDto,
+  OrderDto,
+  PaginatedResult,
+} from '@dripplex/types';
 
 @Injectable()
 export class CheckoutService {
@@ -248,6 +253,47 @@ export class CheckoutService {
       throw new NotFoundDomainException('Order not found');
     }
     return toOrderDto(order);
+  }
+
+  /// Returns the default payout bank account of the order's merchant, for a
+  /// customer who owns the order. Read-only — no settlement, commission, or
+  /// payment-movement logic is touched; this only exposes existing merchant
+  /// bank data so the MERCHANT_DIRECT checkout option can show where to pay.
+  ///
+  /// Order.merchantId references MerchantProfile.id (the catalog convention,
+  /// same as assertMerchantApproved / dispatchOrderCreatedNotifications above),
+  /// while BankAccount.merchantId references the merchant's User.id — so the
+  /// profile's userId bridges the two hops.
+  public async getOrderMerchantBank(
+    customerId: string,
+    orderId: string,
+  ): Promise<CustomerMerchantBankDto> {
+    const order = await this.ordersRepository.findByIdForCustomer(orderId, customerId);
+    if (!order) {
+      throw new NotFoundDomainException('Order not found');
+    }
+
+    const profile = await this.prisma.merchantProfile.findUnique({
+      where: { id: order.merchantId },
+    });
+    if (!profile) {
+      throw new NotFoundDomainException('Merchant not found');
+    }
+
+    const account = await this.prisma.bankAccount.findFirst({
+      where: { merchantId: profile.userId },
+      orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
+    });
+    if (!account) {
+      throw new NotFoundDomainException('Merchant has no payout account on file');
+    }
+
+    return {
+      bankName: account.bankName,
+      accountName: account.accountName,
+      accountNumber: account.accountNumber,
+      currency: account.currency,
+    };
   }
 
   public async cancelCustomerOrder(
