@@ -56,8 +56,18 @@ All screens connect to real endpoints (no invented routes; DTO field names verif
   `ws.joinRide`/`onRideStatus` + poll `rides.get`; cash `rides.pay`; rate `rides.rateDriver`) ·
   Wallet (`wallet.get`/`getTransactions`/`fund`/`verifyFunding`/`getBankAccounts`/
   `addBankAccount`/`requestWithdrawal`/`findRecipient`/`transfer`/`getStatement`/`getPinStatus`) ·
-  Auth (`auth.registerCustomer`/`verifyOtp`, real Sign In `auth.loginCustomer` phone+password) ·
-  Notifications (`notifications.list`/`markRead`/`markAllRead`).
+  Auth — **real customer self-registration** (`RegisterScreen` → `auth.registerCustomer`
+  {firstName,lastName,phone,password} → `OTPScreen` `auth.verifyPhoneOtp` {phone,otp} activates the
+  account → `auth.loginCustomer` persists the session → `ProfileSetupScreen` `auth.updateMe`) and
+  real Sign In (`auth.loginCustomer` phone+password) · Notifications (`notifications.list`/
+  `markRead`/`markAllRead`).
+  - **Deviation logged & founder-flagged (2026-08-10):** the Figma register screen collected only a
+    phone; the backend requires name+password+phone BEFORE the OTP is sent (login is password-based,
+    no passwordless path). Added a Full Name + Password field to `RegisterScreen` (min 8, upper+lower+
+    digit, matching backend policy). SDK OTP paths were dead (`/auth/otp/verify` doesn't exist) →
+    corrected to `/auth/phone/*` + `/auth/email/*`. `ProfileSetup` mock **username** field removed
+    (locked no-username decision). Prod has Termii (SMS) + Resend (email) keys set → OTP delivery is
+    live. See `docs/reference/DPX-FIGMA-DIFF-REGISTER.md` → "Customer self-registration wiring".
 - **Driver (Drip):** `auth.loginDriver`; `driverRides.getAvailability`/`setAvailability`;
   poll `getOffers` + `getOfferPreview(id)`; `acceptOffer`/`declineOffer`; `arrive`/`start`/
   `complete`/`confirmCash`. (`getOfferPreview` was added to `api.ts` this effort — it exposes the

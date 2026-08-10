@@ -372,7 +372,12 @@ function AppShell() {
   const [screen, setScreen] = useState<Screen>('splash');
   const [rideDetailId, setRideDetailId] = useState<string>('RX-20241205-0012');
   const [fading, setFading] = useState(false);
-  const [otpData, setOtpData] = useState<{ phone: string; country: (typeof COUNTRIES)[0] }>({
+  const [otpData, setOtpData] = useState<{
+    phone: string;
+    country: (typeof COUNTRIES)[0];
+    // Held in memory only for the register → OTP → login handoff. Never persisted.
+    password?: string;
+  }>({
     phone: '801 234 5678',
     country: COUNTRIES[0],
   });
@@ -398,8 +403,8 @@ function AppShell() {
     welcome: <WelcomeScreen onGetStarted={() => go('register')} onSignIn={() => go('signin')} />,
     register: (
       <RegisterScreen
-        onContinue={(phone, country) => {
-          setOtpData({ phone, country });
+        onContinue={({ phone, country, password }) => {
+          setOtpData({ phone, country, password });
           go('otp');
         }}
         onSignIn={() => go('signin')}
@@ -410,6 +415,7 @@ function AppShell() {
       <OTPScreen
         phone={otpData.phone}
         country={otpData.country}
+        password={otpData.password}
         onBack={() => go('register')}
         onChangeNumber={() => go('register')}
         onVerified={() => go('profile')}

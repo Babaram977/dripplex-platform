@@ -229,7 +229,9 @@ export function RegisterScreen({
   onSignIn,
   onBack,
 }: {
-  onContinue: (phone: string, country: (typeof COUNTRIES)[0]) => void;
+  // Passes the verified inputs forward; `password` is held in memory only for
+  // the immediately-following OTP → login step and never persisted here.
+  onContinue: (args: { phone: string; country: (typeof COUNTRIES)[0]; password: string }) => void;
   onSignIn: () => void;
   onBack: () => void;
 }) {
@@ -238,15 +240,55 @@ export function RegisterScreen({
   const [phone, setPhone] = useState('');
   const [focused, setFocused] = useState(false);
   const [shake, setShake] = useState(false);
-  const isValid = phone.replace(/\D/g, '').length >= 7;
+  // Backend `POST /auth/register/customer` requires name + password up front
+  // (the OTP is only dispatched after a successful register). The Figma
+  // onboarding screen collects neither, so these two fields are an
+  // intentional, backend-mandated deviation — logged in the Figma diff
+  // register and flagged for founder review. Password auth is the real,
+  // existing contract (login is phone + password); there is no passwordless
+  // path on the backend.
+  const [name, setName] = useState('');
+  const [password, setPassword] = useState('');
+  const [nameFocused, setNameFocused] = useState(false);
+  const [pwFocused, setPwFocused] = useState(false);
+  const [showPw, setShowPw] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const phoneValid = phone.replace(/\D/g, '').length >= 7;
+  const nameValid = name.trim().length >= 2;
+  // Mirror the backend password policy exactly (min 8, at least one lowercase,
+  // one uppercase, one digit) so the user gets immediate feedback instead of a
+  // server-side rejection after submit.
+  const pwValid =
+    password.length >= 8 && /[a-z]/.test(password) && /[A-Z]/.test(password) && /\d/.test(password);
+  const isValid = phoneValid && nameValid && pwValid;
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     if (!isValid) {
       setShake(true);
       setTimeout(() => setShake(false), 500);
       return;
     }
-    onContinue(phone, country);
+    setErr(null);
+    setSubmitting(true);
+    // Split the collected name into first/last (backend requires both,
+    // non-empty). A single-token name reuses it for the last name.
+    const parts = name.trim().split(/\s+/);
+    const firstName = parts[0];
+    const lastName = parts.length > 1 ? parts.slice(1).join(' ') : parts[0];
+    const e164 = `${country.code}${phone.replace(/\D/g, '')}`;
+    try {
+      await api.auth.registerCustomer({ firstName, lastName, phone: e164, password });
+      onContinue({ phone, country, password });
+    } catch (e) {
+      const ae = e as { status?: number; message?: string };
+      if (ae?.status === 409) {
+        setErr('This number is already registered. Please sign in instead.');
+      } else {
+        setErr(ae?.message || 'Could not create your account. Please try again.');
+      }
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -294,6 +336,34 @@ export function RegisterScreen({
             animation: 'slide-in-right .42s cubic-bezier(.25,.46,.45,.94) .12s both',
           }}
         >
+          <div className="flex flex-col gap-2">
+            <label
+              className="text-[11px] font-medium uppercase tracking-widest"
+              style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.3)' }}
+            >
+              Full Name
+            </label>
+            <div
+              className="flex h-[54px] items-center gap-3 rounded-xl px-4 transition-all duration-200"
+              style={{
+                background: 'rgba(255,255,255,.05)',
+                border: nameFocused ? `1.5px solid ${G2}` : `1.5px solid ${BORDER}`,
+                boxShadow: nameFocused ? `0 0 0 3px rgba(43,172,82,.11)` : 'none',
+              }}
+            >
+              <input
+                type="text"
+                autoComplete="name"
+                placeholder="Your name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onFocus={() => setNameFocused(true)}
+                onBlur={() => setNameFocused(false)}
+                className="placeholder:text-white/22 flex-1 bg-transparent text-[15px] text-white outline-none"
+                style={{ fontFamily: "'Inter',sans-serif" }}
+              />
+            </div>
+          </div>
           <div className="flex flex-col gap-2">
             <label
               className="text-[11px] font-medium uppercase tracking-widest"
@@ -441,6 +511,59 @@ export function RegisterScreen({
               )}
             </div>
           </div>
+          <div className="flex flex-col gap-2">
+            <label
+              className="text-[11px] font-medium uppercase tracking-widest"
+              style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.3)' }}
+            >
+              Password
+            </label>
+            <div
+              className="flex h-[54px] items-center gap-3 rounded-xl px-4 transition-all duration-200"
+              style={{
+                background: 'rgba(255,255,255,.05)',
+                border: pwFocused ? `1.5px solid ${G2}` : `1.5px solid ${BORDER}`,
+                boxShadow: pwFocused ? `0 0 0 3px rgba(43,172,82,.11)` : 'none',
+              }}
+            >
+              <input
+                type={showPw ? 'text' : 'password'}
+                autoComplete="new-password"
+                placeholder="8+ chars, with a capital & number"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onFocus={() => setPwFocused(true)}
+                onBlur={() => setPwFocused(false)}
+                className="placeholder:text-white/22 flex-1 bg-transparent text-[15px] text-white outline-none"
+                style={{ fontFamily: "'Inter',sans-serif" }}
+              />
+              {password.length > 0 && (
+                <button
+                  onClick={() => setShowPw((v) => !v)}
+                  className="shrink-0 text-[12px] font-medium opacity-50 transition-opacity hover:opacity-90"
+                  style={{ fontFamily: "'Inter',sans-serif", color: G3 }}
+                >
+                  {showPw ? 'Hide' : 'Show'}
+                </button>
+              )}
+            </div>
+            {password.length > 0 && !pwValid && (
+              <p
+                className="pl-1 text-[11px]"
+                style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.4)' }}
+              >
+                Use at least 8 characters with an uppercase letter and a number.
+              </p>
+            )}
+          </div>
+          {err && (
+            <p
+              className="text-[13px] leading-relaxed"
+              style={{ fontFamily: "'Inter',sans-serif", color: '#E53935' }}
+            >
+              {err}
+            </p>
+          )}
           <div className="flex items-start gap-2.5 px-1">
             <svg
               width="14"
@@ -468,8 +591,8 @@ export function RegisterScreen({
           style={{ animation: 'slide-in-right .42s cubic-bezier(.25,.46,.45,.94) .2s both' }}
         >
           <GreenBtn
-            label="Continue"
-            disabled={!isValid}
+            label={submitting ? 'Creating account…' : 'Continue'}
+            disabled={!isValid || submitting}
             onClick={handleContinue}
             icon={<ArrowIcon />}
           />
@@ -586,12 +709,17 @@ export const ERROR_CONFIG: Record<
 export function OTPScreen({
   phone,
   country,
+  password,
   onBack,
   onChangeNumber,
   onVerified,
 }: {
   phone: string;
   country: (typeof COUNTRIES)[0];
+  // Present during registration: after the phone is verified the account is
+  // ACTIVE, so we immediately log in with it and persist the session before
+  // moving on. Absent (undefined) for any non-registration use of this screen.
+  password?: string;
   onBack: () => void;
   onChangeNumber: () => void;
   onVerified: () => void;
@@ -665,6 +793,8 @@ export function OTPScreen({
     [otp],
   );
 
+  const e164 = `${country.code}${phone.replace(/\D/g, '')}`;
+
   const handleVerify = async () => {
     if (!filled) {
       triggerShake();
@@ -672,7 +802,20 @@ export function OTPScreen({
     }
     setStatus('verifying');
     try {
-      await api.auth.verifyOtp({ phone: `${country.code}${phone}`, code: otp.join('') });
+      // Confirms the phone OTP → activates the account (PENDING_VERIFICATION
+      // → ACTIVE). Real route: POST /auth/phone/verify { phone, otp }.
+      await api.auth.verifyPhoneOtp({ phone: e164, otp: otp.join('') });
+      // Registration path: the account is now ACTIVE, so log in and persist
+      // the session so the user lands authenticated (Home works, orders can
+      // be placed). Login is phone + password — the same password captured at
+      // registration.
+      if (password) {
+        const res = await api.auth.loginCustomer({ phone: e164, password });
+        if (res.accessToken && res.refreshToken) {
+          auth.setTokens(res.accessToken, res.refreshToken);
+        }
+        if (res.user) auth.setUser(res.user as Parameters<typeof auth.setUser>[0]);
+      }
       setStatus('success');
       setTimeout(onVerified, 1600);
     } catch {
@@ -687,6 +830,8 @@ export function OTPScreen({
     setOtp(['', '', '', '', '', '']);
     setError(null);
     inputs.current[0]?.focus();
+    // Best-effort re-dispatch of the phone OTP; UI countdown resets regardless.
+    void api.auth.resendPhoneOtp({ phone: e164 }).catch(() => {});
   };
   const handleErrorAction = (err: NonNullable<OTPError>) => {
     if (err === 'expired' || err === 'network') handleResend();
@@ -1158,8 +1303,6 @@ export const INTERESTS = [
 
 export const GENDERS = ['Male', 'Female', 'Prefer not to say'] as const;
 
-export const TAKEN_NAMES = new Set(['saeed_taken', 'admin', 'dripple', 'dripplex']);
-
 export function ProfileSetupScreen({
   onContinue,
   onSkip,
@@ -1171,27 +1314,37 @@ export function ProfileSetupScreen({
 }) {
   const [hasPhoto, setHasPhoto] = useState(false);
   const [showPhotoMenu, setShowPhotoMenu] = useState(false);
-  const [fullName, setFullName] = useState('');
-  const [username, setUsername] = useState('saeed');
-  const [usernameFocused, setUsernameFocused] = useState(false);
-  const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>(
-    'available',
-  );
+  // Pre-fill with the name captured at registration so this screen edits the
+  // real account name rather than starting blank.
+  const [fullName, setFullName] = useState(() => {
+    const u = auth.getUser() as { firstName?: string; lastName?: string } | null;
+    return [u?.firstName, u?.lastName].filter(Boolean).join(' ');
+  });
   const [gender, setGender] = useState<(typeof GENDERS)[number] | ''>('');
   const [dob, setDob] = useState({ day: '', month: '', year: '' });
   const [interests, setInterests] = useState<Set<string>>(new Set());
   const [nameFocused, setNameFocused] = useState(false);
   const [chipAnimating, setChipAnimating] = useState<string | null>(null);
-  const usernameTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  const handleUsernameChange = (val: string) => {
-    const clean = val.replace(/[^a-z0-9_.]/gi, '').toLowerCase();
-    setUsername(clean);
-    setUsernameStatus('checking');
-    if (usernameTimer.current) clearTimeout(usernameTimer.current);
-    usernameTimer.current = setTimeout(() => {
-      setUsernameStatus(TAKEN_NAMES.has(clean) ? 'taken' : 'available');
-    }, 600);
+  // Persist the edited name to the real account, then continue. Enrichment is
+  // best-effort — the account already has a name from registration, so a
+  // failed PATCH must not trap the user on onboarding.
+  const handleContinue = async () => {
+    if (!canContinue) return;
+    setSaving(true);
+    const parts = fullName.trim().split(/\s+/);
+    const firstName = parts[0];
+    const lastName = parts.length > 1 ? parts.slice(1).join(' ') : parts[0];
+    try {
+      await api.auth.updateMe({ firstName, lastName });
+      const u = auth.getUser();
+      if (u) auth.setUser({ ...u, firstName, lastName });
+    } catch {
+      /* non-fatal — proceed regardless */
+    }
+    setSaving(false);
+    onContinue();
   };
 
   const toggleInterest = (id: string) => {
@@ -1447,99 +1600,9 @@ export function ProfileSetupScreen({
             </div>
           </div>
 
-          {/* Username */}
-          <div className="flex flex-col gap-1.5">
-            <label
-              className="text-[11px] font-medium uppercase tracking-widest"
-              style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.3)' }}
-            >
-              Username
-            </label>
-            <div
-              className="flex h-[52px] items-center gap-2 rounded-xl px-4 transition-all duration-200"
-              style={{
-                background: 'rgba(255,255,255,.05)',
-                border: usernameFocused ? `1.5px solid ${G2}` : `1.5px solid ${BORDER}`,
-                boxShadow: usernameFocused ? `0 0 0 3px rgba(43,172,82,.11)` : 'none',
-              }}
-            >
-              <span
-                className="shrink-0 text-[15px]"
-                style={{ fontFamily: "'Inter',sans-serif", color: MUTED }}
-              >
-                @
-              </span>
-              <input
-                type="text"
-                placeholder="username"
-                value={username}
-                onChange={(e) => handleUsernameChange(e.target.value)}
-                onFocus={() => setUsernameFocused(true)}
-                onBlur={() => setUsernameFocused(false)}
-                className="flex-1 bg-transparent text-[15px] text-white outline-none placeholder:text-white/20"
-                style={{ fontFamily: "'Inter',sans-serif" }}
-              />
-              {usernameStatus === 'checking' && (
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke={MUTED}
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  style={{ animation: 'spin .8s linear infinite', flexShrink: 0 }}
-                >
-                  <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4" />
-                </svg>
-              )}
-              {usernameStatus === 'available' && username.length > 0 && (
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke={G3}
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  style={{ flexShrink: 0 }}
-                >
-                  <path d="M20 6L9 17l-5-5" />
-                </svg>
-              )}
-              {usernameStatus === 'taken' && (
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#E53935"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  style={{ flexShrink: 0 }}
-                >
-                  <path d="M18 6L6 18M6 6l12 12" />
-                </svg>
-              )}
-            </div>
-            {usernameStatus === 'available' && username.length > 0 && (
-              <p
-                className="pl-1 text-[11px]"
-                style={{ fontFamily: "'Inter',sans-serif", color: G3 }}
-              >
-                ✅ Available
-              </p>
-            )}
-            {usernameStatus === 'taken' && (
-              <p
-                className="pl-1 text-[11px]"
-                style={{ fontFamily: "'Inter',sans-serif", color: '#E53935' }}
-              >
-                ❌ Already Taken
-              </p>
-            )}
-          </div>
+          {/* Username field removed — DrippleX uses phone (primary) + optional
+              email + name as stable identity. "No username" is a locked founder
+              decision; the prior mock username field contradicted it. */}
 
           {/* Gender */}
           <div className="flex flex-col gap-2">
@@ -1729,9 +1792,9 @@ export function ProfileSetupScreen({
           style={{ animation: 'slide-in-right .42s cubic-bezier(.25,.46,.45,.94) .24s both' }}
         >
           <GreenBtn
-            label="Continue"
-            disabled={!canContinue}
-            onClick={onContinue}
+            label={saving ? 'Saving…' : 'Continue'}
+            disabled={!canContinue || saving}
+            onClick={handleContinue}
             icon={<ArrowIcon />}
           />
           <button

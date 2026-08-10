@@ -606,17 +606,28 @@ export const api = {
     loginOperations: (body: { email?: string; phone?: string; password: string }) =>
       dx<PortalLoginResponse>('POST', '/auth/login/operations', body),
 
-    // OTP / verification
-    requestOtp: (body: { email: string }) =>
-      dx<{ expiresInSeconds: number }>('POST', '/auth/otp/request', body),
-    verifyOtp: (body: { email?: string; phone?: string; code: string }) =>
-      dx<unknown>('POST', '/auth/otp/verify', body),
-    verifyEmail: (body: Record<string, string>) => dx<unknown>('POST', '/auth/verify/email', body),
-    verifyPhone: (body: Record<string, string>) => dx<unknown>('POST', '/auth/verify/phone', body),
-    resendEmailVerification: (body: Record<string, string>) =>
-      dx<unknown>('POST', '/auth/verify/email/resend', body),
-    resendPhoneVerification: (body: Record<string, string>) =>
-      dx<unknown>('POST', '/auth/verify/phone/resend', body),
+    // Phone verification (OTP) — real routes are under /auth/phone/*.
+    // The backend has NO /auth/otp/* endpoints; registration dispatches a
+    // phone OTP that is confirmed here with { phone, otp }, which activates
+    // the account (PENDING_VERIFICATION → ACTIVE) so login can succeed.
+    sendPhoneOtp: (body: { phone: string }) =>
+      dx<{ submitted: true }>('POST', '/auth/phone/send-otp', body),
+    verifyPhoneOtp: (body: { phone: string; otp: string }) =>
+      dx<{ phone: string; status: string; phoneVerifiedAt: string }>(
+        'POST',
+        '/auth/phone/verify',
+        body,
+      ),
+    resendPhoneOtp: (body: { phone: string }) =>
+      dx<{ submitted: true }>('POST', '/auth/phone/resend', body),
+
+    // Email verification (token-based) — real routes are under /auth/email/*.
+    sendEmailVerification: (body: { email: string }) =>
+      dx<unknown>('POST', '/auth/email/send-verification', body),
+    verifyEmail: (body: { email: string; token: string }) =>
+      dx<unknown>('POST', '/auth/email/verify', body),
+    resendEmailVerification: (body: { email: string }) =>
+      dx<unknown>('POST', '/auth/email/resend', body),
 
     // Session
     refresh: () =>
