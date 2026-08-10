@@ -56,7 +56,7 @@ import { StoreScreen } from '../features/STORE';
 import { ProductDetailScreen } from '../features/PRODUCT';
 import { CartScreen } from '../features/CART';
 import { CheckoutScreen } from '../features/CHECKOUT';
-import { TrackingScreen } from '../features/ORDERS';
+import { TrackingScreen, OrderHistoryScreen } from '../features/ORDERS';
 import {
   RideHomeScreen,
   DestinationSearchScreen,
@@ -283,6 +283,7 @@ type Screen =
   | 'cart'
   | 'checkout'
   | 'ordertracking'
+  | 'orderhistory'
   | 'ridehome'
   | 'ridesearch'
   | 'ridepickup'
@@ -584,7 +585,17 @@ function AppShell() {
         onHome={() => go('home')}
         onAccount={() => go('account')}
         onNotifications={() => go('activitydash')}
+        onHistory={() => go('orderhistory')}
         orderId={activeOrderId ?? undefined}
+      />
+    ),
+    orderhistory: (
+      <OrderHistoryScreen
+        onBack={() => go('home')}
+        onOrder={(id) => {
+          setActiveOrderId(id);
+          go('ordertracking');
+        }}
       />
     ),
     // ── RIDE module ──────────────────────────────────────────────────────────
