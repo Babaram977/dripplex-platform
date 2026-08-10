@@ -986,6 +986,17 @@ export const api = {
       longitude?: number;
     }) => dx<unknown>('POST', '/rider/availability', body),
     getWallet: () => dx<WalletDto>('GET', '/rider/wallet'),
+
+    // ── Onboarding: KYC docs (ID + Guarantor ID) + company name ───────────────
+    // documentType is the KycDocumentType enum (NATIONAL_ID | GUARANTOR_ID | …);
+    // frontImage/backImage are hosted URLs (upload first via uploadFile → R2).
+    submitKyc: (body: {
+      documentType: string;
+      documentNumber: string;
+      frontImage: string;
+      backImage?: string;
+    }) => dx<unknown>('POST', '/rider/kyc', body),
+    updateProfile: (body: { companyName?: string }) => dx<unknown>('PATCH', '/rider/profile', body),
   },
 
   // ── MERCHANT ───────────────────────────────────────────────────────────────

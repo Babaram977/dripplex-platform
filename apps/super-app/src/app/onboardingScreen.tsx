@@ -1515,6 +1515,169 @@ export function DriverDocumentsScreen({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// RIDER DOCUMENTS (post-login) — wired: POST /rider/kyc ×2 + PATCH /rider/profile
+// The delivery rider uploads an ID and a Guarantor ID and enters the company
+// they deliver for (name only — founder scope). Runs while the rider is logged
+// in (post-OTP) with rider:kyc:manage. Real backend — DPX-RIDER-002.
+// ─────────────────────────────────────────────────────────────────────────────
+export function RiderDocumentsScreen({
+  onBack,
+  onSubmit,
+}: {
+  onBack: () => void;
+  onSubmit: () => void;
+}) {
+  const [focused, setFocused] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+
+  const [idNum, setIdNum] = useState('');
+  const [idStatus, setIdStatus] = useState<DocStatus>('pending');
+  const [idFile, setIdFile] = useState<File | null>(null);
+  const [gurNum, setGurNum] = useState('');
+  const [gurStatus, setGurStatus] = useState<DocStatus>('pending');
+  const [gurFile, setGurFile] = useState<File | null>(null);
+
+  const [companyName, setCompanyName] = useState('');
+
+  const ready = Boolean(idNum && gurNum && idFile && gurFile && !loading);
+
+  // Uploads the two document images to R2 (signed PUT), submits the two KYC
+  // docs (NATIONAL_ID / GUARANTOR_ID), then saves the company name. Requires
+  // the rider to be logged in (post-OTP) with rider:kyc:manage.
+  const handleSubmit = async () => {
+    if (!idFile || !gurFile) return;
+    setErr('');
+    setLoading(true);
+    try {
+      const [idUrl, gurUrl] = await Promise.all([
+        uploadFile(idFile, 'kyc-documents'),
+        uploadFile(gurFile, 'kyc-documents'),
+      ]);
+      await api.rider.submitKyc({
+        documentType: 'NATIONAL_ID',
+        documentNumber: idNum.trim(),
+        frontImage: idUrl,
+      });
+      await api.rider.submitKyc({
+        documentType: 'GUARANTOR_ID',
+        documentNumber: gurNum.trim(),
+        frontImage: gurUrl,
+      });
+      if (companyName.trim()) {
+        await api.rider.updateProfile({ companyName: companyName.trim() });
+      }
+      setIdStatus('verified');
+      setGurStatus('verified');
+      onSubmit();
+    } catch (e) {
+      setErr(messageFor(e));
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div
+      className="relative flex h-full w-full flex-col overflow-hidden"
+      style={{ background: BG }}
+    >
+      <Ambient />
+      <StatusBar />
+      <div className="relative z-10 px-6 pt-3">
+        <BackBtn onPress={onBack} />
+      </div>
+
+      <div
+        className="relative z-10 flex-1 overflow-y-auto px-5 pb-10"
+        style={{ scrollbarWidth: 'none' }}
+      >
+        <div className="mb-6 px-2" style={{ animation: 'fade-up .4s ease .05s both' }}>
+          <h1
+            className="text-[24px] font-bold leading-tight"
+            style={{ fontFamily: PP, color: '#fff', letterSpacing: '-0.02em' }}
+          >
+            Upload your documents
+          </h1>
+          <p className="mt-1 text-[14px]" style={{ fontFamily: IT, color: MUTED }}>
+            We verify these to ensure everyone's safety
+          </p>
+        </div>
+
+        <SectionDivider label="Required documents" />
+
+        <div
+          className="mb-6 flex flex-col gap-3.5"
+          style={{ animation: 'fade-up .4s ease .1s both' }}
+        >
+          <DocumentCard
+            icon="🪪"
+            title="Government ID"
+            docKey="id"
+            docNum={idNum}
+            setDocNum={setIdNum}
+            status={idStatus}
+            setStatus={setIdStatus}
+            onFile={setIdFile}
+            focused={focused}
+            onFocus={setFocused}
+            onBlur={() => setFocused(null)}
+          />
+          <DocumentCard
+            icon="🧑‍⚖️"
+            title="Guarantor ID"
+            docKey="gur"
+            docNum={gurNum}
+            setDocNum={setGurNum}
+            status={gurStatus}
+            setStatus={setGurStatus}
+            onFile={setGurFile}
+            focused={focused}
+            onFocus={setFocused}
+            onBlur={() => setFocused(null)}
+          />
+        </div>
+
+        <SectionDivider label="Company" />
+
+        <div
+          className="mb-8 flex flex-col gap-4"
+          style={{ animation: 'fade-up .4s ease .18s both' }}
+        >
+          <FieldGroup
+            label="Company name"
+            id="companyName"
+            placeholder="e.g. Jumia Logistics"
+            value={companyName}
+            onChange={setCompanyName}
+            focused={focused}
+            onFocus={setFocused}
+            onBlur={() => setFocused(null)}
+            helper="The company you deliver for (optional)"
+          />
+        </div>
+
+        <ErrorNote message={err} />
+
+        <GreenBtn
+          label="Submit for review"
+          disabled={!ready}
+          loading={loading}
+          onClick={handleSubmit}
+          icon={<ArrowIcon />}
+        />
+
+        <p
+          className="mt-4 text-center text-[12px]"
+          style={{ fontFamily: IT, color: 'rgba(255,255,255,.24)' }}
+        >
+          Our team typically reviews applications within 24–48 hours
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MERCHANT BUSINESS DETAILS (post-login) — wired: PATCH /merchant/business
 // Registration auto-creates a blank merchant profile; this persists the business
 // name + legal structure (+ an optional description carrying the retail category

@@ -159,6 +159,7 @@ import {
   DriverSignUpScreen,
   RiderSignUpScreen,
   DriverDocumentsScreen,
+  RiderDocumentsScreen,
   BusinessDetailsScreen,
   PendingReviewScreen,
 } from './onboardingScreen';
@@ -382,6 +383,7 @@ type Screen =
   | 'partnerdriver'
   | 'partnerrider'
   | 'partnerdocs'
+  | 'riderdocs'
   | 'partnerbusiness'
   | 'partnerreview';
 
@@ -467,7 +469,7 @@ function AppShell() {
               : otpData.persona === 'driver'
                 ? 'partnerdocs'
                 : otpData.persona === 'rider'
-                  ? 'partnerreview'
+                  ? 'riderdocs'
                   : 'profile',
           )
         }
@@ -1034,6 +1036,12 @@ function AppShell() {
         onSubmit={() => go('partnerreview')}
       />
     ),
+    riderdocs: (
+      <RiderDocumentsScreen
+        onBack={() => go('partnerrider')}
+        onSubmit={() => go('partnerreview')}
+      />
+    ),
     partnerbusiness: (
       <BusinessDetailsScreen
         businessName={merchantBiz.businessName}
@@ -1234,6 +1242,7 @@ function AppShell() {
         { label: 'Driver Sign-up', key: 'partnerdriver' },
         { label: 'Rider Sign-up', key: 'partnerrider' },
         { label: 'Driver Documents', key: 'partnerdocs' },
+        { label: 'Rider Documents', key: 'riderdocs' },
         { label: 'Business Details', key: 'partnerbusiness' },
         { label: 'Pending Review', key: 'partnerreview' },
       ],
