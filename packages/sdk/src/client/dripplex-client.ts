@@ -69,6 +69,7 @@ import {
   WishlistClient,
 } from '../platform/platform-client.js';
 import { CustomerProductsApi } from '../product/product-api.js';
+import { AdminRidersClient } from '../riders/admin-riders-client.js';
 import { AdminRideReportsClient } from '../rides/admin-ride-reports-client.js';
 import { CustomerRideClient } from '../rides/customer-ride-client.js';
 import { DriverRideClient } from '../rides/driver-ride-client.js';
@@ -107,6 +108,7 @@ export class DripplexClient {
   public readonly adminDriverShifts: AdminDriverShiftsClient;
   public readonly adminRideReports: AdminRideReportsClient;
   public readonly adminDrivers: AdminDriversClient;
+  public readonly adminRiders: AdminRidersClient;
   public readonly driverVehicles: DriverVehiclesClient;
   public readonly adminDriverVehicles: AdminDriverVehiclesClient;
   public readonly driverOnboarding: DriverOnboardingClient;
@@ -183,6 +185,7 @@ export class DripplexClient {
     this.adminDriverShifts = new AdminDriverShiftsClient(this.http);
     this.adminRideReports = new AdminRideReportsClient(this.http);
     this.adminDrivers = new AdminDriversClient(this.http);
+    this.adminRiders = new AdminRidersClient(this.http);
     this.driverVehicles = new DriverVehiclesClient(this.http);
     this.adminDriverVehicles = new AdminDriverVehiclesClient(this.http);
     this.driverOnboarding = new DriverOnboardingClient(this.http);

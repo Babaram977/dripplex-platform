@@ -32,6 +32,7 @@ import { PromotionsModule } from './promotions/promotions.module';
 import { RedisModule } from './redis/redis.module';
 import { ReferralsModule } from './referrals/referrals.module';
 import { ReviewsModule } from './reviews/reviews.module';
+import { RidersModule } from './riders/riders.module';
 import { RidesModule } from './rides/rides.module';
 import { SearchModule } from './search/search.module';
 import { UploadsModule } from './uploads/uploads.module';
@@ -66,6 +67,7 @@ import { WishlistModule } from './wishlist/wishlist.module';
     PaymentsModule,
     DeliveryModule,
     DriversModule,
+    RidersModule,
     RidesModule,
     ReviewsModule,
     WishlistModule,
