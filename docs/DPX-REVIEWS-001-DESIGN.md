@@ -145,9 +145,16 @@ DB behavior is touched; note any pre-existing failures explicitly).
 
 ---
 
-## 6. Open items to confirm before build
+## 6. Confirmed decisions (founder-approved 2026-08-10)
 
-- Tag wording (§3) — founder sign-off.
-- Merchant → rider **verified** rule: rider must have delivered ≥1 of this merchant's orders — confirm.
-- Whether a rider/driver can see _who_ left a review, or only aggregates + anonymized text (privacy).
-- Whether driver ratings should also gain a **stored** aggregate (perf) or stay live-computed (current).
+1. **Tag wording (§3):** approved as drafted.
+2. **Merchant → rider verified rule:** a merchant→rider review is `verifiedPurchase=true` iff the
+   rider has delivered **≥1 order belonging to that merchant** (`DeliveryJob.riderId = rider` AND
+   the job's order `merchantId = merchant`); otherwise the review is still accepted but
+   `verifiedPurchase=false`.
+3. **Reviewer privacy:** the rated party (driver/rider/merchant) sees **only the aggregate
+   (avg ★ + count + histogram) and the review text/tags — never the reviewer's identity.** Author
+   identity stays server-side (for moderation/anti-abuse) and is not returned on any
+   rated-party-facing endpoint.
+4. **Driver aggregate:** **stays live-computed** from `RideRating` (no stored aggregate); the new
+   public endpoint (§4.2) returns the computed `RatingSummaryDto`.
