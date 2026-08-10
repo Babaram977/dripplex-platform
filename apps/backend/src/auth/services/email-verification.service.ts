@@ -279,6 +279,11 @@ export class EmailVerificationService {
     if (!channel) {
       return false;
     }
+    // While PORTAL_EMAIL_ACTIVATION is on (Termii SMS sender-ID pending), the
+    // merchant/driver/rider portals activate on EMAIL verification alone.
+    if (this.appConfig.portalEmailActivation) {
+      return false;
+    }
     return PHONE_VERIFICATION_CHANNELS.has(channel);
   }
 }

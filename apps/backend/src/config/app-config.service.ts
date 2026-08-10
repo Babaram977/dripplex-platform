@@ -359,4 +359,15 @@ export class AppConfigService {
   public get merchantModuleEnabled(): boolean {
     return this.configService.get('MERCHANT_MODULE_ENABLED', { infer: true });
   }
+
+  /**
+   * When true, the merchant/driver/rider portals activate on EMAIL verification
+   * alone — no phone OTP is dispatched at registration and phone verification is
+   * not required to register or sign in. Temporary bridge while the Termii SMS
+   * sender ID is pending approval (phone OTPs are undeliverable). Customer is
+   * unaffected. Flip back to false to restore mandatory phone verification.
+   */
+  public get portalEmailActivation(): boolean {
+    return this.configService.get('PORTAL_EMAIL_ACTIVATION', { infer: true });
+  }
 }

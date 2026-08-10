@@ -170,6 +170,14 @@ export class RegistrationService {
     const email = dto.email?.trim().toLowerCase();
     const phone = dto.phone?.trim();
 
+    // While PORTAL_EMAIL_ACTIVATION is on (Termii SMS sender-ID pending), the
+    // merchant/driver/rider portals verify by email, so don't dispatch a phone
+    // OTP that can't be delivered. Phone (when provided) is still recorded for
+    // when SMS returns; activation/login no longer require it (see
+    // verification.service / login.service). Customer is never affected.
+    const emailActivation = this.appConfig.portalEmailActivation && portal !== 'customer';
+    const sendPhoneOtpOnRegister = emailActivation ? false : config.sendPhoneOtpOnRegister;
+
     if (config.phoneRequired && !phone) {
       throw new ValidationDomainException('Phone number is required for this registration channel');
     }
@@ -237,7 +245,7 @@ export class RegistrationService {
     // way there must be at least one verified channel to activate on.
     let phoneOtpSent = false;
     let phoneExpiresInSeconds: number | undefined;
-    if (phone && (config.sendPhoneOtpOnRegister || !email)) {
+    if (phone && (sendPhoneOtpOnRegister || !email)) {
       const phoneOtp = await this.otpService.generateStoreAndDispatch(
         'phone_verification',
         phone,
