@@ -900,7 +900,9 @@ function AppShell() {
       />
     ),
     drvtripdone: <DriverTripCompletedScreen ride={activeDriverRide} onDone={() => go('drvdash')} />,
-    drvsettings: <DriverSettingsScreen onBack={() => go('drvdash')} />,
+    drvsettings: (
+      <DriverSettingsScreen onBack={() => go('drvdash')} onLogout={() => go('drvlogin')} />
+    ),
     // ── WALLET module ────────────────────────────────────────────────────────
     wallethome: (
       <WalletHomeScreen

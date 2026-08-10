@@ -2999,7 +2999,13 @@ function DriverProfileTab({ onBack, onSettings }: { onBack: () => void; onSettin
 // ─────────────────────────────────────────────────────────────────────────────
 // DRIVER-017 — SETTINGS
 // ─────────────────────────────────────────────────────────────────────────────
-export function DriverSettingsScreen({ onBack }: { onBack: () => void }) {
+export function DriverSettingsScreen({
+  onBack,
+  onLogout,
+}: {
+  onBack: () => void;
+  onLogout?: () => void;
+}) {
   const [notifTrips, setNotifTrips] = useState(true);
   const [notifEarnings, setNotifEarnings] = useState(true);
   const [notifPromos, setNotifPromos] = useState(false);
@@ -3210,6 +3216,10 @@ export function DriverSettingsScreen({ onBack }: { onBack: () => void }) {
 
         {/* Logout */}
         <button
+          onClick={() => {
+            auth.clear();
+            onLogout?.();
+          }}
           className="flex h-12 w-full items-center justify-center rounded-2xl active:scale-[.97]"
           style={{
             background: 'rgba(239,68,68,.06)',
