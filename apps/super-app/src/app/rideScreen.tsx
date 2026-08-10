@@ -8,6 +8,9 @@ import {
   COLOR_INFO,
   TEXT_SECONDARY,
 } from '../tokens/colors';
+import { api } from '../lib/api';
+import { ws } from '../lib/ws';
+import type { RideDto, RideType } from '../lib/api';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS
@@ -16,19 +19,69 @@ const NAVY_BASE = '#0A1628';
 const PP = "'Poppins',sans-serif";
 const IT = "'Inter',sans-serif";
 
+// Demo geo — real Lagos coordinates so a booked ride carries a real route.
+// Pickup is the rider's "current location" shown across the ride screens.
+export const RIDE_PICKUP = {
+  latitude: 6.5833,
+  longitude: 3.35,
+  address: 'Ikeja GRA, Lagos',
+};
+
+export interface RideDestination {
+  latitude: number;
+  longitude: number;
+  address: string;
+  label: string;
+}
+
 const RECENT_PLACES = [
-  { icon: '🏠', label: 'Home', sub: '12 Adewale Close, Ikeja', type: 'saved' },
-  { icon: '💼', label: 'Work', sub: 'Plot 4, Victoria Island', type: 'saved' },
-  { icon: '🏥', label: 'Reddington Hospital', sub: '12 Mosley Rd, Ikoyi', type: 'recent' },
-  { icon: '✈️', label: 'Murtala Airport', sub: 'Ikeja, Lagos State', type: 'recent' },
-  { icon: '🛒', label: 'Shoprite Ikeja', sub: '400 Ikorodu Rd, Ikeja', type: 'recent' },
+  {
+    icon: '🏠',
+    label: 'Home',
+    sub: '12 Adewale Close, Ikeja',
+    type: 'saved',
+    lat: 6.6018,
+    lng: 3.3515,
+  },
+  {
+    icon: '💼',
+    label: 'Work',
+    sub: 'Plot 4, Victoria Island',
+    type: 'saved',
+    lat: 6.4281,
+    lng: 3.4219,
+  },
+  {
+    icon: '🏥',
+    label: 'Reddington Hospital',
+    sub: '12 Mosley Rd, Ikoyi',
+    type: 'recent',
+    lat: 6.4478,
+    lng: 3.4341,
+  },
+  {
+    icon: '✈️',
+    label: 'Murtala Airport',
+    sub: 'Ikeja, Lagos State',
+    type: 'recent',
+    lat: 6.5774,
+    lng: 3.3212,
+  },
+  {
+    icon: '🛒',
+    label: 'Shoprite Ikeja',
+    sub: '400 Ikorodu Rd, Ikeja',
+    type: 'recent',
+    lat: 6.6146,
+    lng: 3.3586,
+  },
 ];
 
 const POPULAR_PLACES = [
-  { icon: '🏖', label: 'Bar Beach', sub: 'Victoria Island' },
-  { icon: '🏟', label: 'National Stadium', sub: 'Surulere, Lagos' },
-  { icon: '🏛', label: 'Eko Hotel', sub: 'Plot 1415, VI' },
-  { icon: '🛍', label: 'Balogun Market', sub: 'Lagos Island' },
+  { icon: '🏖', label: 'Bar Beach', sub: 'Victoria Island', lat: 6.4207, lng: 3.4215 },
+  { icon: '🏟', label: 'National Stadium', sub: 'Surulere, Lagos', lat: 6.4998, lng: 3.3628 },
+  { icon: '🏛', label: 'Eko Hotel', sub: 'Plot 1415, VI', lat: 6.4331, lng: 3.4271 },
+  { icon: '🛍', label: 'Balogun Market', sub: 'Lagos Island', lat: 6.4548, lng: 3.3899 },
 ];
 
 const RIDE_TYPES = [
@@ -685,11 +738,22 @@ export function DestinationSearchScreen({
   onSelect,
 }: {
   onBack: () => void;
-  onSelect: () => void;
+  onSelect: (dest: RideDestination) => void;
 }) {
   const [query, setQuery] = useState('');
   const [focused, setFocused] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const pick = (p: { label: string; sub: string; lat?: number; lng?: number }) => {
+    // Places without coordinates fall back to a central Lagos point so booking
+    // still produces a real route.
+    onSelect({
+      latitude: p.lat ?? 6.4541,
+      longitude: p.lng ?? 3.3947,
+      address: `${p.label} · ${p.sub}`,
+      label: p.label,
+    });
+  };
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -792,7 +856,7 @@ export function DestinationSearchScreen({
             {RECENT_PLACES.slice(0, 2).map((p) => (
               <button
                 key={p.label}
-                onClick={onSelect}
+                onClick={() => pick(p)}
                 className="flex w-full items-center gap-3 rounded-xl px-1 py-3.5 transition-all active:bg-white/[.03]"
               >
                 <div
@@ -842,7 +906,7 @@ export function DestinationSearchScreen({
         {(query.length > 0 ? filtered : RECENT_PLACES.slice(2)).map((p, i) => (
           <button
             key={i}
-            onClick={onSelect}
+            onClick={() => pick(p)}
             className="flex w-full items-center gap-3 rounded-xl px-1 py-3.5 transition-all active:bg-white/[.03]"
           >
             <div
@@ -1026,9 +1090,69 @@ export function PickupConfirmScreen({
 // ─────────────────────────────────────────────────────────────────────────────
 // RIDE-004 — FARE ESTIMATE
 // ─────────────────────────────────────────────────────────────────────────────
-export function FareEstimateScreen({ onBack, onBook }: { onBack: () => void; onBook: () => void }) {
-  const [payment, setPayment] = useState('wallet');
+export function FareEstimateScreen({
+  onBack,
+  onBook,
+  dropoff,
+  rideType = 'ECONOMY',
+}: {
+  onBack: () => void;
+  onBook: (rideId: string) => void;
+  dropoff?: RideDestination;
+  rideType?: RideType;
+}) {
+  const [payment, setPayment] = useState('cash');
   const ride = RIDE_TYPES[0];
+
+  const [estimate, setEstimate] = useState<{
+    baseFare: number;
+    distanceFare: number;
+    timeFare: number;
+    totalFare: number;
+    promoDiscount: number;
+    distanceMeters: number;
+  } | null>(null);
+  const [booking, setBooking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!dropoff) return;
+    api.rides
+      .estimate({
+        rideType,
+        pickupLatitude: RIDE_PICKUP.latitude,
+        pickupLongitude: RIDE_PICKUP.longitude,
+        dropoffLatitude: dropoff.latitude,
+        dropoffLongitude: dropoff.longitude,
+      })
+      .then((e) => setEstimate(e))
+      .catch(() => {});
+  }, [dropoff, rideType]);
+
+  const naira = (n: number) => `₦${Math.round(n).toLocaleString()}`;
+  const fareLabel = estimate ? naira(estimate.totalFare) : ride.price;
+  const kmLabel = estimate ? (estimate.distanceMeters / 1000).toFixed(0) : '14';
+
+  const handleBook = async () => {
+    if (booking || !dropoff) return;
+    setBooking(true);
+    setError(null);
+    try {
+      const created = await api.rides.book({
+        rideType,
+        pickupLatitude: RIDE_PICKUP.latitude,
+        pickupLongitude: RIDE_PICKUP.longitude,
+        pickupAddress: RIDE_PICKUP.address,
+        dropoffLatitude: dropoff.latitude,
+        dropoffLongitude: dropoff.longitude,
+        dropoffAddress: dropoff.address,
+      });
+      onBook(created.id);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Could not book ride');
+      setBooking(false);
+    }
+  };
 
   return (
     <div
@@ -1079,10 +1203,10 @@ export function FareEstimateScreen({ onBack, onBook }: { onBack: () => void; onB
                 className="text-[22px] font-bold leading-tight"
                 style={{ fontFamily: PP, color: G3 }}
               >
-                {ride.price}
+                {fareLabel}
               </p>
               <p className="text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
-                fixed fare
+                est. fare
               </p>
             </div>
           </div>
@@ -1132,10 +1256,10 @@ export function FareEstimateScreen({ onBack, onBook }: { onBack: () => void; onB
               PRICE BREAKDOWN
             </p>
             {[
-              ['Base fare', '₦800'],
-              ['Distance (14 km)', '₦1,120'],
-              ['Time fee', '₦180'],
-              ['Promo applied', '−₦0'],
+              ['Base fare', estimate ? naira(estimate.baseFare) : '—'],
+              [`Distance (${kmLabel} km)`, estimate ? naira(estimate.distanceFare) : '—'],
+              ['Time fee', estimate ? naira(estimate.timeFare) : '—'],
+              ['Promo applied', estimate ? `−${naira(estimate.promoDiscount)}` : '−₦0'],
             ].map(([l, v]) => (
               <div key={l} className="mb-2 flex items-center justify-between">
                 <p className="text-[13px]" style={{ fontFamily: IT, color: TEXT_SECONDARY }}>
@@ -1152,12 +1276,24 @@ export function FareEstimateScreen({ onBack, onBook }: { onBack: () => void; onB
                 Total
               </p>
               <p className="text-[18px] font-bold" style={{ fontFamily: PP, color: G3 }}>
-                {ride.price}
+                {fareLabel}
               </p>
             </div>
           </div>
 
-          <GreenButton label={`Book Economy · ${ride.price}`} onClick={onBook} />
+          {error && (
+            <p
+              className="mb-3 text-center text-[12px]"
+              style={{ fontFamily: IT, color: COLOR_ERROR }}
+            >
+              {error}
+            </p>
+          )}
+
+          <GreenButton
+            label={booking ? 'Booking…' : `Book Economy · ${fareLabel}`}
+            onClick={handleBook}
+          />
 
           <p className="mt-3 text-center text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
             Price may vary with traffic · Ride protected by DrippleX Safe
@@ -1174,23 +1310,69 @@ export function FareEstimateScreen({ onBack, onBook }: { onBack: () => void; onB
 export function FindingDriverScreen({
   onBack,
   onFound,
+  rideId,
 }: {
   onBack: () => void;
-  onFound: () => void;
+  onFound: (ride: RideDto) => void;
+  rideId?: string;
 }) {
   const [dots, setDots] = useState(1);
   const [eta, setEta] = useState(8);
+  const foundRef = useRef(false);
 
   useEffect(() => {
     const d = setInterval(() => setDots((p) => (p === 3 ? 1 : p + 1)), 500);
-    const e = setTimeout(onFound, 4000);
     const c = setInterval(() => setEta((p) => Math.max(1, p - 1)), 1000);
     return () => {
       clearInterval(d);
-      clearTimeout(e);
       clearInterval(c);
     };
   }, []);
+
+  // Poll the real ride until a driver is assigned; ws gives us the fast path.
+  useEffect(() => {
+    if (!rideId) return;
+    const settle = (ride: RideDto) => {
+      if (foundRef.current) return;
+      const assigned =
+        !!ride.driverId ||
+        ['DRIVER_ASSIGNED', 'ARRIVED', 'IN_PROGRESS', 'COMPLETED'].includes(ride.status);
+      if (assigned) {
+        foundRef.current = true;
+        onFound(ride);
+      }
+    };
+    ws.joinRide(rideId);
+    const offStatus = ws.onRideStatus(() => {
+      api.rides
+        .get(rideId)
+        .then(settle)
+        .catch(() => {});
+    });
+    const poll = setInterval(() => {
+      api.rides
+        .get(rideId)
+        .then(settle)
+        .catch(() => {});
+    }, 3000);
+    api.rides
+      .get(rideId)
+      .then(settle)
+      .catch(() => {});
+    return () => {
+      clearInterval(poll);
+      offStatus();
+    };
+  }, [rideId, onFound]);
+
+  const handleCancel = async () => {
+    try {
+      if (rideId) await api.rides.cancel(rideId);
+    } catch {
+      /* leave anyway */
+    }
+    onBack();
+  };
 
   return (
     <div
@@ -1283,7 +1465,7 @@ export function FindingDriverScreen({
           </div>
 
           <button
-            onClick={onBack}
+            onClick={handleCancel}
             className="text-[14px] font-medium active:opacity-60"
             style={{ fontFamily: IT, color: MUTED }}
           >
@@ -1999,9 +2181,11 @@ export function TripCompletedScreen({
 export function RateDriverScreen({
   onBack,
   onSubmit,
+  rideId,
 }: {
   onBack: () => void;
   onSubmit: () => void;
+  rideId?: string;
 }) {
   const [stars, setStars] = useState(5);
   const [tags, setTags] = useState<string[]>(['Safe driving', 'Friendly']);
@@ -2026,6 +2210,13 @@ export function RateDriverScreen({
 
   const handleSubmit = () => {
     setSubmitted(true);
+    if (rideId) {
+      const comboComment = [comment, ...tags].filter(Boolean).join(' · ');
+      api.rides
+        .rateDriver(rideId, { rating: stars, comment: comboComment || undefined })
+        .catch(() => {});
+      if (tip) api.rides.tip(rideId, tip).catch(() => {});
+    }
     setTimeout(onSubmit, 1600);
   };
 
@@ -3059,11 +3250,26 @@ export function OPayPaymentScreen({
 export function CashPaymentScreen({
   onBack,
   onConfirm,
+  rideId,
 }: {
   onBack?: () => void;
   onConfirm?: () => void;
+  rideId?: string;
 }) {
   const [checked, setChecked] = useState(false);
+  const [paying, setPaying] = useState(false);
+
+  const handleConfirm = async () => {
+    if (paying) return;
+    setPaying(true);
+    try {
+      if (rideId) await api.rides.pay(rideId, { method: 'CASH' });
+    } catch {
+      /* proceed to confirmation either way */
+    }
+    setPaying(false);
+    onConfirm?.();
+  };
   return (
     <div
       className="relative flex h-full w-full flex-col overflow-hidden"
@@ -3173,7 +3379,7 @@ export function CashPaymentScreen({
         </p>
       </div>
       <div className="px-5 pb-8 pt-3">
-        <GreenButton label="Confirm Cash Ride" onClick={onConfirm || (() => {})} />
+        <GreenButton label={paying ? 'Confirming…' : 'Confirm Cash Ride'} onClick={handleConfirm} />
       </div>
     </div>
   );

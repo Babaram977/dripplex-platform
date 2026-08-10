@@ -63,6 +63,7 @@ import {
   PickupConfirmScreen,
   FareEstimateScreen,
   FindingDriverScreen,
+  type RideDestination,
   DriverAssignedScreen,
   DriverArrivedScreen,
   RideInProgressScreen,
@@ -380,6 +381,8 @@ function AppShell() {
   const [activeProductId, setActiveProductId] = useState<string | undefined>(undefined);
   const [activeDriverOffer, setActiveDriverOffer] = useState<RideOfferDto | null>(null);
   const [activeDriverRide, setActiveDriverRide] = useState<RideDto | null>(null);
+  const [rideDest, setRideDest] = useState<RideDestination | undefined>(undefined);
+  const [activeCustomerRideId, setActiveCustomerRideId] = useState<string | undefined>(undefined);
 
   const go = (to: Screen) => {
     setFading(true);
@@ -593,16 +596,34 @@ function AppShell() {
       />
     ),
     ridesearch: (
-      <DestinationSearchScreen onBack={() => go('ridehome')} onSelect={() => go('ridepickup')} />
+      <DestinationSearchScreen
+        onBack={() => go('ridehome')}
+        onSelect={(dest) => {
+          setRideDest(dest);
+          go('ridepickup');
+        }}
+      />
     ),
     ridepickup: (
       <PickupConfirmScreen onBack={() => go('ridesearch')} onConfirm={() => go('ridefare')} />
     ),
     ridefare: (
-      <FareEstimateScreen onBack={() => go('ridepickup')} onBook={() => go('ridefinding')} />
+      <FareEstimateScreen
+        onBack={() => go('ridepickup')}
+        dropoff={rideDest}
+        rideType="ECONOMY"
+        onBook={(rideId) => {
+          setActiveCustomerRideId(rideId);
+          go('ridefinding');
+        }}
+      />
     ),
     ridefinding: (
-      <FindingDriverScreen onBack={() => go('ridefare')} onFound={() => go('rideassigned')} />
+      <FindingDriverScreen
+        onBack={() => go('ridehome')}
+        rideId={activeCustomerRideId}
+        onFound={() => go('rideassigned')}
+      />
     ),
     rideassigned: (
       <DriverAssignedScreen onBack={() => go('ridefare')} onArrived={() => go('ridearrived')} />
@@ -617,7 +638,13 @@ function AppShell() {
       />
     ),
     ridecomplete: <TripCompletedScreen onRate={() => go('riderating')} onHome={() => go('home')} />,
-    riderating: <RateDriverScreen onBack={() => go('ridecomplete')} onSubmit={() => go('home')} />,
+    riderating: (
+      <RateDriverScreen
+        onBack={() => go('ridecomplete')}
+        onSubmit={() => go('home')}
+        rideId={activeCustomerRideId}
+      />
+    ),
     ridehistory: (
       <RideHistoryScreen
         onBack={() => go('ridehome')}
@@ -688,7 +715,11 @@ function AppShell() {
       <OPayPaymentScreen onBack={() => go('ridepayment')} onSuccess={() => go('ridepaysuccess')} />
     ),
     ridecash: (
-      <CashPaymentScreen onBack={() => go('ridepayment')} onConfirm={() => go('ridefinding')} />
+      <CashPaymentScreen
+        onBack={() => go('ridepayment')}
+        onConfirm={() => go('ridepaysuccess')}
+        rideId={activeCustomerRideId}
+      />
     ),
     ridetip: (
       <TipDriverScreen onBack={() => go('ridecomplete')} onSubmit={() => go('riderating')} />
