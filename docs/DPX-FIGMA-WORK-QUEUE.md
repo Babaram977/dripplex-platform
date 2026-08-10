@@ -72,6 +72,24 @@ Wire it: `api.marketplace.getMerchants({ sort, limit })` for the featured/list, 
 
 ---
 
+## JOB 7 — ORDERS + LIVE ORDER TRACKING (customer) — `trackingScreen.tsx` (+ Orders list)
+
+Completes the **customer-visible half of the food/delivery loop** — after checkout, Mr D watches his order move through prep → rider → delivered. Pairs with **JOB 3 (Merchant)**, which drives those status changes. Orders have **no socket — REST poll only** (re-fetch every 5–8s while mounted, clear on unmount).
+
+- **Order Tracking** (after checkout, or opened from an order): poll `api.orders.get(orderId)` → drive the status stepper from the real `order.status`:
+  `CONFIRMED → PREPARING → READY → DRIVER_ASSIGNED → PICKED_UP → IN_TRANSIT → DELIVERED` (also handle `CANCELLED`). Show `order.total` + `order.currency` and `order.items`.
+- **Rider card + ETA** (once a rider is assigned): `api.orders.getDelivery(orderId)` → `riderName`, `riderPhone`; `api.orders.getEta(orderId)` → `estimatedArrivalAt` / `remainingSeconds`. Live map trail: `api.orders.getTracking(orderId)` → `[{ latitude, longitude, recordedAt }]` (poll).
+- **Payment chip:** `api.orders.getPaymentStatus(orderId)` → `PENDING`/`PAID` (cash stays `PENDING` until delivery — show "Pay on delivery", not an error).
+- **Order History:** `api.orders.list({ page, pageSize })` → tap a row → tracking. Cancel while allowed → `api.orders.cancel(orderId, reason)`.
+- **States:** loading skeleton · error + Retry (`err.message`) · empty ("No orders yet"). **No silent mock.**
+- **No-backend rows** (Contact rider / Rate order / Reorder) → **"Not available yet"** unless an `api.ts` method exists. Do not fake.
+
+**Done when:** after Mr D checks out (cash or bank), the tracking screen shows the **real** order status advancing as Dx Resto (JOB 3) accepts → prepares → marks ready and Drippo (rider) picks up → delivers, with the real rider name + ETA.
+
+Import `{ api }` from `../lib/api`; poll (no `ws` for orders); render money as `₦{n.toLocaleString()}`.
+
+---
+
 ## Backend seed note (for the merchant-bank checkout option)
 
 The `MERCHANT_DIRECT` (bank-transfer) checkout option reads Dx Resto's default bank via `GET /customer/orders/:id/merchant-bank`. That bank row is created by `prisma/seed-demo.cjs` (`DEMO_BANK_ACCOUNT`), but prod's `preDeployCommand` only runs `seed-rbac.cjs`. **Re-run `node prisma/seed-demo.cjs` against prod once** so the bank exists, otherwise the bank option 404s. Cash-on-delivery is unaffected.
