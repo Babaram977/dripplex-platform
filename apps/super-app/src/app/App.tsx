@@ -962,7 +962,16 @@ function AppShell() {
     mxbank: <MerchantBankScreen />,
     mxapproval: <MerchantApprovalScreen />,
     // ── RIDER APP module ─────────────────────────────────────────────────────
-    riderlogin: <RiderLoginScreen onContinue={() => go('riderdash')} onBack={() => go('home')} />,
+    riderlogin: (
+      <RiderLoginScreen
+        onContinue={() => go('riderdash')}
+        onBack={() => go('home')}
+        onApply={() => {
+          setPartnerPersona('rider');
+          go('partnerrider');
+        }}
+      />
+    ),
     riderdash: (
       <RiderDashboardScreen
         onJob={(job) => {
@@ -979,7 +988,14 @@ function AppShell() {
         onDone={() => go('riderdash')}
       />
     ) : (
-      <RiderLoginScreen onContinue={() => go('riderdash')} onBack={() => go('home')} />
+      <RiderLoginScreen
+        onContinue={() => go('riderdash')}
+        onBack={() => go('home')}
+        onApply={() => {
+          setPartnerPersona('rider');
+          go('partnerrider');
+        }}
+      />
     ),
     riderearnings: <RiderEarningsScreen onBack={() => go('riderdash')} />,
 
