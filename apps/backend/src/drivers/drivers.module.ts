@@ -27,6 +27,7 @@ import { DriverSupportController } from './controllers/driver-support.controller
 import { DriverVehiclesController } from './controllers/driver-vehicles.controller';
 import { DriverController } from './controllers/driver.controller';
 import { OperationsInspectionsController } from './controllers/operations-inspections.controller';
+import { PublicDriversController } from './controllers/public-drivers.controller';
 import { DriversService } from './drivers.service';
 import { AccountRecoverySubscriber } from './identity-verification/account-recovery.subscriber';
 import { CredentialChangeSubscriber } from './identity-verification/credential-change.subscriber';
@@ -76,6 +77,7 @@ import { VehiclesService } from './vehicles/vehicles.service';
     DriverPlannedAvailabilityController,
     AdminDriverShiftsController,
     AdminDriverPlannedAvailabilityController,
+    PublicDriversController,
   ],
   providers: [
     DriversService,

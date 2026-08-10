@@ -32,6 +32,7 @@ import type {
   DriverKycDto,
   DriverPerformanceStatsDto,
   DriverProfileDto,
+  RatingSummaryDto,
 } from '@dripplex/types';
 import type { DriverKyc, DriverProfile, User } from '@prisma/client';
 
@@ -206,6 +207,25 @@ export class DriversService {
           ? Math.round(ratingAggregate._avg.rating * 100) / 100
           : null,
       ratingCount: ratingAggregate._count.rating,
+    };
+  }
+
+  /**
+   * DPX-REVIEWS-001 — a driver's public star rating (avg + count), computed
+   * live from RideRating where a customer rated this driver. Customer-facing;
+   * exposes only the aggregate, never individual raters (§6 decision 3). Reads
+   * the frozen RideRating table directly, same pattern as
+   * getOwnPerformanceStats — the rides module is never modified.
+   */
+  public async getPublicDriverRating(driverUserId: string): Promise<RatingSummaryDto> {
+    const aggregate = await this.prisma.rideRating.aggregate({
+      where: { rateeId: driverUserId, raterRole: RideRatingRole.CUSTOMER },
+      _avg: { rating: true },
+      _count: { rating: true },
+    });
+    return {
+      average: aggregate._avg.rating !== null ? Math.round(aggregate._avg.rating * 100) / 100 : 0,
+      count: aggregate._count.rating,
     };
   }
 

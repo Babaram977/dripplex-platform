@@ -1604,6 +1604,8 @@ model RideRating {
   rating          Int
   comment         String?        @db.VarChar(1000)
   categoryRatings Json?          @map("category_ratings")
+  /// DPX-REVIEWS-001 — preset tags chosen from the fixed driver-rating set.
+  tags            String[]       @default([]) @map("tags")
   createdAt       DateTime       @default(now()) @map("created_at")
   ride            Ride           @relation(fields: [rideId], references: [id], onDelete: Cascade)
 

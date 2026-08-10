@@ -4,6 +4,7 @@ import type {
   DriverKycDto,
   DriverPerformanceStatsDto,
   DriverProfileDto,
+  RatingSummaryDto,
   SubmitDriverKycRequest,
   UpdateDriverProfileRequest,
 } from '@dripplex/types';
@@ -37,6 +38,14 @@ export class DriverProfileClient {
     return this.http.request<DriverPerformanceStatsDto>('/driver/profile/performance', {
       method: 'GET',
       auth: true,
+    });
+  }
+
+  /** DPX-REVIEWS-001 — a driver's public aggregate star rating (no auth). */
+  public getPublicRating(driverId: string): Promise<RatingSummaryDto> {
+    return this.http.request<RatingSummaryDto>(`/drivers/${encodeURIComponent(driverId)}/rating`, {
+      method: 'GET',
+      auth: false,
     });
   }
 

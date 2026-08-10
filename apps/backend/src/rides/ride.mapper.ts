@@ -108,6 +108,7 @@ export function toRideRatingDto(rating: RideRating): RideRatingDto {
     raterRole: rating.raterRole,
     rating: rating.rating,
     comment: rating.comment,
+    tags: rating.tags,
     categoryRatings: (rating.categoryRatings as RideCategoryRatings | null) ?? null,
     createdAt: rating.createdAt.toISOString(),
   };
