@@ -924,6 +924,43 @@ export const api = {
       ),
   },
 
+  // ── DRIVER onboarding (KYC docs + vehicle) ──────────────────────────────────
+  driver: {
+    // POST /driver/kyc — the document image must already be a hosted URL
+    // (upload it first via uploadFile → R2). documentType is the KycDocumentType
+    // enum (DRIVER_LICENSE | VEHICLE_REGISTRATION | GUARANTOR_ID | …).
+    submitKyc: (body: {
+      documentType: string;
+      documentNumber: string;
+      frontImage: string;
+      backImage?: string;
+    }) => dx<unknown>('POST', '/driver/kyc', body),
+    createVehicle: (body: {
+      plateNumber: string;
+      make: string;
+      model: string;
+      color: string;
+      year: number;
+      rideCategory: RideType;
+      seats: number;
+      photos?: string[];
+    }) => dx<unknown>('POST', '/driver/vehicles', body),
+  },
+
+  // ── Signed uploads (R2 object storage) ──────────────────────────────────────
+  uploads: {
+    // POST /uploads/sign — returns a short-lived pre-signed PUT URL. folder is
+    // one of the backend UPLOAD_FOLDERS (e.g. 'kyc-documents'); permission-gated.
+    sign: (body: { folder: string; contentType: string; contentLength: number }) =>
+      dx<{
+        method: 'PUT';
+        url: string;
+        key: string;
+        publicUrl: string;
+        expiresInSeconds: number;
+      }>('POST', '/uploads/sign', body),
+  },
+
   // ── RIDER (delivery) ────────────────────────────────────────────────────────
   rider: {
     getJobs: () => dx<DeliveryJobDto[]>('GET', '/rider/jobs'),
@@ -1035,3 +1072,25 @@ export const api = {
     markAllRead: () => dx<void>('POST', '/customer/notifications/mark-all-read'),
   },
 };
+
+// ─── Signed direct-to-R2 upload helper ─────────────────────────────────────────
+// Mints a pre-signed PUT URL from the backend, uploads the file straight to R2
+// (the signature is in the URL — no auth header on the PUT), and returns the
+// object's stored URL to hand to a KYC/vehicle endpoint. Throws ApiError on a
+// failed sign; throws a plain Error if the R2 PUT itself fails.
+export async function uploadFile(file: File, folder: string): Promise<string> {
+  const signed = await api.uploads.sign({
+    folder,
+    contentType: file.type || 'application/octet-stream',
+    contentLength: file.size,
+  });
+  const res = await fetch(signed.url, {
+    method: 'PUT',
+    body: file,
+    headers: { 'Content-Type': file.type || 'application/octet-stream' },
+  });
+  if (!res.ok) {
+    throw new Error(`Upload failed (${String(res.status)}). Please try again.`);
+  }
+  return signed.publicUrl;
+}

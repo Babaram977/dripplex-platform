@@ -464,9 +464,11 @@ function AppShell() {
           go(
             otpData.persona === 'merchant'
               ? 'partnerbusiness'
-              : otpData.persona === 'driver' || otpData.persona === 'rider'
-                ? 'partnerreview'
-                : 'profile',
+              : otpData.persona === 'driver'
+                ? 'partnerdocs'
+                : otpData.persona === 'rider'
+                  ? 'partnerreview'
+                  : 'profile',
           )
         }
       />

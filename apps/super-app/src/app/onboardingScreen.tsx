@@ -20,7 +20,7 @@
 
 import React, { useState, useRef } from 'react';
 
-import { api, ApiError } from '../lib/api';
+import { api, ApiError, uploadFile } from '../lib/api';
 
 import {
   G0,
@@ -1063,6 +1063,7 @@ function DocumentCard({
   setDocNum,
   status,
   setStatus,
+  onFile,
   focused,
   onFocus,
   onBlur,
@@ -1074,6 +1075,7 @@ function DocumentCard({
   setDocNum: (v: string) => void;
   status: DocStatus;
   setStatus: (s: DocStatus) => void;
+  onFile: (f: File | null) => void;
   focused: string | null;
   onFocus: (id: string) => void;
   onBlur: () => void;
@@ -1083,11 +1085,10 @@ function DocumentCard({
   const numId = `${docKey}_num`;
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (f) {
-      setFileName(f.name);
-      setStatus('pending');
-    }
+    const f = e.target.files?.[0] ?? null;
+    setFileName(f?.name ?? null);
+    onFile(f);
+    if (f) setStatus('pending');
   };
 
   return (
@@ -1225,13 +1226,17 @@ export function DriverDocumentsScreen({
 }) {
   const [focused, setFocused] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
 
   const [licNum, setLicNum] = useState('');
   const [licStatus, setLicStatus] = useState<DocStatus>('pending');
+  const [licFile, setLicFile] = useState<File | null>(null);
   const [regNum, setRegNum] = useState('');
   const [regStatus, setRegStatus] = useState<DocStatus>('pending');
+  const [regFile, setRegFile] = useState<File | null>(null);
   const [gurNum, setGurNum] = useState('');
   const [gurStatus, setGurStatus] = useState<DocStatus>('pending');
+  const [gurFile, setGurFile] = useState<File | null>(null);
 
   const [vehicle, setVehicle] = useState({
     make: '',
@@ -1240,6 +1245,7 @@ export function DriverDocumentsScreen({
     colour: '',
     category: '',
     seats: '',
+    year: '',
   });
   const setV = (k: keyof typeof vehicle) => (v: string) => setVehicle((f) => ({ ...f, [k]: v }));
 
@@ -1249,17 +1255,66 @@ export function DriverDocumentsScreen({
     vehicle.plate &&
     vehicle.colour &&
     vehicle.category &&
-    vehicle.seats;
-  const ready = licNum && regNum && gurNum && vehicleReady;
+    vehicle.seats &&
+    vehicle.year;
+  const ready =
+    licNum && regNum && gurNum && licFile && regFile && gurFile && vehicleReady && !loading;
 
-  const handleSubmit = () => {
-    // NOTE: document images require a storage service that does not exist yet;
-    // this advances to pending review without persisting uploads (documented gap).
+  const CATEGORY_TO_RIDE_TYPE: Record<string, string> = {
+    Economy: 'ECONOMY',
+    Comfort: 'COMFORT',
+    XL: 'XL',
+    Tricycle: 'TRICYCLE',
+  };
+
+  // Uploads each document image to R2 (signed PUT), submits the three KYC docs
+  // (DRIVER_LICENSE / VEHICLE_REGISTRATION / GUARANTOR_ID), then registers the
+  // vehicle. Requires the driver to be logged in (they are, post-OTP) with
+  // driver:kyc:manage + driver:vehicle:manage. Real backend — no fake gap.
+  const handleSubmit = async () => {
+    if (!licFile || !regFile || !gurFile) return;
+    setErr('');
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      const [licUrl, regUrl, gurUrl] = await Promise.all([
+        uploadFile(licFile, 'kyc-documents'),
+        uploadFile(regFile, 'kyc-documents'),
+        uploadFile(gurFile, 'kyc-documents'),
+      ]);
+      await api.driver.submitKyc({
+        documentType: 'DRIVER_LICENSE',
+        documentNumber: licNum.trim(),
+        frontImage: licUrl,
+      });
+      await api.driver.submitKyc({
+        documentType: 'VEHICLE_REGISTRATION',
+        documentNumber: regNum.trim(),
+        frontImage: regUrl,
+      });
+      await api.driver.submitKyc({
+        documentType: 'GUARANTOR_ID',
+        documentNumber: gurNum.trim(),
+        frontImage: gurUrl,
+      });
+      await api.driver.createVehicle({
+        plateNumber: vehicle.plate.trim(),
+        make: vehicle.make.trim(),
+        model: vehicle.model.trim(),
+        color: vehicle.colour.trim(),
+        year: Number(vehicle.year),
+        rideCategory: (CATEGORY_TO_RIDE_TYPE[vehicle.category] ?? 'ECONOMY') as Parameters<
+          typeof api.driver.createVehicle
+        >[0]['rideCategory'],
+        seats: Number(vehicle.seats),
+      });
+      setLicStatus('verified');
+      setRegStatus('verified');
+      setGurStatus('verified');
       onSubmit();
-    }, 800);
+    } catch (e) {
+      setErr(messageFor(e));
+      setLoading(false);
+    }
   };
 
   return (
@@ -1303,6 +1358,7 @@ export function DriverDocumentsScreen({
             setDocNum={setLicNum}
             status={licStatus}
             setStatus={setLicStatus}
+            onFile={setLicFile}
             focused={focused}
             onFocus={setFocused}
             onBlur={() => setFocused(null)}
@@ -1315,6 +1371,7 @@ export function DriverDocumentsScreen({
             setDocNum={setRegNum}
             status={regStatus}
             setStatus={setRegStatus}
+            onFile={setRegFile}
             focused={focused}
             onFocus={setFocused}
             onBlur={() => setFocused(null)}
@@ -1327,6 +1384,7 @@ export function DriverDocumentsScreen({
             setDocNum={setGurNum}
             status={gurStatus}
             setStatus={setGurStatus}
+            onFile={setGurFile}
             focused={focused}
             onFocus={setFocused}
             onBlur={() => setFocused(null)}
@@ -1405,20 +1463,37 @@ export function DriverDocumentsScreen({
             onBlur={() => setFocused(null)}
           />
 
-          <div style={{ maxWidth: 140 }}>
-            <FieldGroup
-              label="Seats"
-              id="seats"
-              type="number"
-              placeholder="4"
-              value={vehicle.seats}
-              onChange={setV('seats')}
-              focused={focused}
-              onFocus={setFocused}
-              onBlur={() => setFocused(null)}
-            />
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <FieldGroup
+                label="Year"
+                id="year"
+                type="number"
+                placeholder="2020"
+                value={vehicle.year}
+                onChange={setV('year')}
+                focused={focused}
+                onFocus={setFocused}
+                onBlur={() => setFocused(null)}
+              />
+            </div>
+            <div className="flex-1">
+              <FieldGroup
+                label="Seats"
+                id="seats"
+                type="number"
+                placeholder="4"
+                value={vehicle.seats}
+                onChange={setV('seats')}
+                focused={focused}
+                onFocus={setFocused}
+                onBlur={() => setFocused(null)}
+              />
+            </div>
           </div>
         </div>
+
+        <ErrorNote message={err} />
 
         <GreenBtn
           label="Submit for review"
