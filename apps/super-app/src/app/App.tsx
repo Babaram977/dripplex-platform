@@ -583,6 +583,19 @@ function AppShell() {
           setActiveMerchantId(id);
           go('store');
         }}
+        onWallet={() => go('wallethome')}
+        onOrders={() => go('orderhistory')}
+        onWalletAction={(a) =>
+          go(
+            a === 'send'
+              ? 'wallettransfer'
+              : a === 'topup'
+                ? 'wallettopup'
+                : a === 'pay'
+                  ? 'walletpay'
+                  : 'wallethome',
+          )
+        }
       />
     ),
     marketplace: (

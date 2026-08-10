@@ -523,11 +523,13 @@ function BalanceCard({
   onActivate,
   wallet,
   flows,
+  onWalletAction,
 }: {
   activated: boolean;
   onActivate: () => void;
   wallet?: WalletDto | null;
   flows?: { income: number; spent: number } | null;
+  onWalletAction?: (a: 'send' | 'receive' | 'topup' | 'pay') => void;
 }) {
   const [show, setShow] = useState(true);
   if (!activated) return <ActivateWalletCard onActivate={onActivate} />;
@@ -632,14 +634,17 @@ function BalanceCard({
           ))}
         </div>
         <div className="flex gap-2">
-          {[
-            ['↑', 'Send'],
-            ['↓', 'Receive'],
-            ['⊕', 'Top Up'],
-            ['≡', 'Pay'],
-          ].map(([ico, lbl]) => (
+          {(
+            [
+              ['↑', 'Send', 'send'],
+              ['↓', 'Receive', 'receive'],
+              ['⊕', 'Top Up', 'topup'],
+              ['≡', 'Pay', 'pay'],
+            ] as const
+          ).map(([ico, lbl, action]) => (
             <button
               key={lbl}
+              onClick={() => onWalletAction?.(action)}
               className="flex flex-1 flex-col items-center gap-1 rounded-2xl py-2 transition-all active:scale-90"
               style={{ background: 'rgba(255,255,255,.10)' }}
             >
@@ -663,13 +668,14 @@ function BalanceCard({
 // ─────────────────────────────────────────────────────────────────────────────
 // QUICK ACTIONS
 // ─────────────────────────────────────────────────────────────────────────────
-function QuickActions() {
+function QuickActions({ onSelect }: { onSelect?: (label: string) => void }) {
   return (
     <div className="mb-5 px-5">
       <div className="grid grid-cols-4 gap-3">
         {QUICK.map((q) => (
           <button
             key={q.label}
+            onClick={() => onSelect?.(q.label)}
             className="flex flex-col items-center gap-1.5 transition-all active:scale-90"
           >
             <div
@@ -1466,6 +1472,9 @@ export function HomeScreen({
   onRide,
   onDriverApp,
   onStore,
+  onWallet,
+  onWalletAction,
+  onOrders,
 }: {
   onAccount: () => void;
   onSecurity: () => void;
@@ -1474,6 +1483,9 @@ export function HomeScreen({
   onRide?: () => void;
   onDriverApp?: () => void;
   onStore?: (id: string) => void;
+  onWallet?: () => void;
+  onWalletAction?: (a: 'send' | 'receive' | 'topup' | 'pay') => void;
+  onOrders?: () => void;
 }) {
   const [navTab, setNavTab] = useState<NavTab>('home');
   const [svcTab, setSvcTab] = useState<SvcKey>('market');
@@ -1525,6 +1537,28 @@ export function HomeScreen({
     if (t === 'profile') onAccount();
     if (t === 'market') onMarketplace?.();
     if (t === 'ride') onRide?.();
+    if (t === 'wallet') onWallet?.();
+  };
+
+  const handleQuickAction = (label: string) => {
+    switch (label) {
+      case 'Marketplace':
+      case 'Food':
+        onMarketplace?.();
+        break;
+      case 'Ride':
+        onRide?.();
+        break;
+      case 'Wallet':
+        onWallet?.();
+        break;
+      case 'Orders':
+        onOrders?.();
+        break;
+      default:
+        // Utilities / Health / More are not built yet — documented gap, no destination.
+        break;
+    }
   };
 
   return (
@@ -1560,12 +1594,13 @@ export function HomeScreen({
           onActivate={() => setWalletActivated(true)}
           wallet={wallet}
           flows={flows}
+          onWalletAction={onWalletAction}
         />
 
         {/* Quick actions 4×2 grid */}
         <div className="mb-1">
           <Row title="Quick Actions" />
-          <QuickActions />
+          <QuickActions onSelect={handleQuickAction} />
         </div>
 
         <AICard onAsk={() => setShowAI(true)} />
