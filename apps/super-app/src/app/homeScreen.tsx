@@ -980,9 +980,11 @@ const MERCHANT_BG_FALLBACKS = [
 function Merchants({
   loaded,
   liveMerchants,
+  onStore,
 }: {
   loaded: boolean;
   liveMerchants?: MerchantSummaryDto[];
+  onStore?: (id: string) => void;
 }) {
   const showLive = liveMerchants && liveMerchants.length > 0;
   return (
@@ -1055,6 +1057,7 @@ function Merchants({
                       </span>
                     </div>
                     <button
+                      onClick={() => onStore?.(m.id)}
                       className="h-[30px] w-full rounded-xl text-[11px] font-semibold transition-all active:scale-95"
                       style={{
                         background: `linear-gradient(135deg,${G0},${G2})`,
@@ -1454,6 +1457,7 @@ export function HomeScreen({
   onMarketplace,
   onRide,
   onDriverApp,
+  onStore,
 }: {
   onAccount: () => void;
   onSecurity: () => void;
@@ -1461,6 +1465,7 @@ export function HomeScreen({
   onMarketplace?: () => void;
   onRide?: () => void;
   onDriverApp?: () => void;
+  onStore?: (id: string) => void;
 }) {
   const [navTab, setNavTab] = useState<NavTab>('home');
   const [svcTab, setSvcTab] = useState<SvcKey>('market');
@@ -1543,7 +1548,7 @@ export function HomeScreen({
         <AICard onAsk={() => setShowAI(true)} />
         <PromoCarousel />
         <Categories />
-        <Merchants loaded={loaded} liveMerchants={liveMerchants} />
+        <Merchants loaded={loaded} liveMerchants={liveMerchants} onStore={onStore} />
         <Recs loaded={loaded} />
         <ActivityList loaded={loaded} />
 

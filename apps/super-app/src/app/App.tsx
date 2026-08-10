@@ -376,6 +376,8 @@ function AppShell() {
   });
   const [activeRiderJob, setActiveRiderJob] = useState<DeliveryJobDto | null>(null);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
+  const [activeMerchantId, setActiveMerchantId] = useState<string | undefined>(undefined);
+  const [activeProductId, setActiveProductId] = useState<string | undefined>(undefined);
 
   const go = (to: Screen) => {
     setFading(true);
@@ -511,6 +513,10 @@ function AppShell() {
         onMarketplace={() => go('marketplace')}
         onRide={() => go('ridehome')}
         onDriverApp={() => go('drvsplash')}
+        onStore={(id) => {
+          setActiveMerchantId(id);
+          go('store');
+        }}
       />
     ),
     marketplace: (
@@ -528,7 +534,11 @@ function AppShell() {
         onHome={() => go('home')}
         onAccount={() => go('account')}
         onNotifications={() => go('activitydash')}
-        onProduct={() => go('productdetail')}
+        merchantId={activeMerchantId}
+        onProduct={(p) => {
+          setActiveProductId(p?.id);
+          go('productdetail');
+        }}
       />
     ),
     productdetail: (
@@ -538,6 +548,8 @@ function AppShell() {
         onAccount={() => go('account')}
         onNotifications={() => go('activitydash')}
         onCart={() => go('cart')}
+        productId={activeProductId}
+        merchantId={activeMerchantId}
       />
     ),
     cart: (
