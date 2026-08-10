@@ -90,6 +90,28 @@ Import `{ api }` from `../lib/api`; poll (no `ws` for orders); render money as `
 
 ---
 
+## JOB 8 — MERCHANT (Dx Resto) — `merchantScreen.tsx` — closes the food loop
+
+This is the **merchant side that drives the statuses Mr D watches in JOB 7**. Without it, a cash order sits at CONFIRMED forever. Merchant persona; **REST poll** (no socket for orders). Import `{ api }` from `../lib/api`, `{ auth }` from `../lib/auth`. Money as `₦{n.toLocaleString()}`.
+
+- **Login (persona):** `api.auth.loginMerchant({ email, password })` → persist (`auth.setTokens(resp.accessToken, resp.refreshToken); auth.setUser(resp.user)`) → dashboard. Demo: `dxresto@dripplex.demo` / `Dripplex#Demo1` (confirm exact email against the seed if login 401s — report it, don't guess a new one).
+- **Dashboard:** `api.merchant.getBusiness()` (name, open/paused) + `api.merchant.getWallet()` (balance) + recent `api.merchant.getOrders({ pageSize: 10 })`.
+- **Incoming orders (the important one):** poll `api.merchant.getOrders({ status: "CONFIRMED" })` every 5–8s → new cash/bank orders land here. Also keep PREPARING and READY tabs (`getOrders({ status: "PREPARING" })` / `{ status: "READY" }`). Each row → `api.merchant.getOrder(id)` for items/total.
+- **Actions (drive the customer's tracker):**
+  - Accept → `api.merchant.acceptOrder(orderId)` → order becomes **PREPARING** (there is **no** separate "start preparing" call — accept _is_ preparing).
+  - Mark Ready → `api.merchant.markReady(orderId)` → **READY**, which **auto-dispatches a rider** (Drippo).
+  - Reject → `api.merchant.rejectOrder(orderId, reason)`; Cancel → `cancelOrder(orderId, reason?)`; Delay → `delayOrder(orderId, { estimatedReadyAt })` (ISO string).
+- **Products:** `api.merchant.getProducts()`; create/update/delete via `createProduct/updateProduct/deleteProduct`.
+- **Store pause/resume:** `api.merchant.pauseStore()` / `resumeStore()`.
+- **Earnings:** `api.merchant.getSettlements()` + `api.merchant.getWallet()` + `getWalletTransactions({ page, pageSize })`.
+- **KYC:** `api.merchant.getKyc()` · `submitKycDoc({ documentType, frontImageUrl, backImageUrl? })`.
+- **States:** loading · error+Retry (`err.message`) · empty ("No new orders"). **No silent mock.**
+- **No-backend rows** (chat with customer, print receipt, analytics charts) → **"Not available yet"**. Don't fake.
+
+**Done when:** Dx Resto logs in, sees Mr D's real CONFIRMED order, and **Accept → Mark Ready** advances it — and Mr D's JOB 7 tracker moves Confirmed → Preparing → Ready → (rider dispatched) in real time.
+
+---
+
 ## Backend seed note (for the merchant-bank checkout option)
 
 The `MERCHANT_DIRECT` (bank-transfer) checkout option reads Dx Resto's default bank via `GET /customer/orders/:id/merchant-bank`. That bank row is created by `prisma/seed-demo.cjs` (`DEMO_BANK_ACCOUNT`), but prod's `preDeployCommand` only runs `seed-rbac.cjs`. **Re-run `node prisma/seed-demo.cjs` against prod once** so the bank exists, otherwise the bank option 404s. Cash-on-delivery is unaffected.
