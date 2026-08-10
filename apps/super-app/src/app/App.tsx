@@ -387,14 +387,14 @@ function AppShell() {
 
   const screens: Record<Screen, React.ReactNode> = {
     splash: <SplashScreen onDone={() => go('welcome')} />,
-    welcome: <WelcomeScreen onGetStarted={() => go('register')} onSignIn={() => go('returning')} />,
+    welcome: <WelcomeScreen onGetStarted={() => go('register')} onSignIn={() => go('signin')} />,
     register: (
       <RegisterScreen
         onContinue={(phone, country) => {
           setOtpData({ phone, country });
           go('otp');
         }}
-        onSignIn={() => go('returning')}
+        onSignIn={() => go('signin')}
         onBack={() => go('welcome')}
       />
     ),
@@ -428,16 +428,9 @@ function AppShell() {
         onBack={() => go('permissions')}
       />
     ),
-    returning: (
-      <ReturningLoginScreen
-        onUnlocked={() => go('welcome')}
-        onOTP={() => go('otp')}
-        onRecover={() => go('recovery')}
-        onBack={() => go('welcome')}
-        onSecurity={() => go('security')}
-        onAccount={() => go('account')}
-      />
-    ),
+    // "Returning" routes to the REAL email/password sign-in (the biometric
+    // ReturningLoginScreen is a mock with no backend — do not use it for auth).
+    returning: <SignInScreen onBack={() => go('welcome')} onSuccess={() => go('home')} />,
     recovery: <RecoveryScreen onRecovered={() => go('returning')} onBack={() => go('returning')} />,
     signin: <SignInScreen onBack={() => go('welcome')} onSuccess={() => go('home')} />,
     twofa: <TwoFactorScreen onBack={() => go('security')} onDone={() => go('security')} />,
