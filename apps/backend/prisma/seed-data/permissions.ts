@@ -81,6 +81,7 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
   { code: 'admin:merchants:reactivate', description: 'Reactivate suspended merchants' },
   { code: 'rider:onboarding:submit', description: 'Submit rider onboarding' },
   { code: 'rider:onboarding:approve', description: 'Approve rider onboarding' },
+  { code: 'rider:kyc:manage', description: 'Manage own rider KYC documents' },
   { code: 'driver:onboarding:submit', description: 'Submit driver onboarding' },
   { code: 'driver:onboarding:approve', description: 'Approve driver onboarding' },
   { code: 'driver:kyc:manage', description: 'Manage own driver KYC documents' },

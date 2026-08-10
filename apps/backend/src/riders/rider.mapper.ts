@@ -1,7 +1,27 @@
-import type { RiderApprovalDto, RiderProfileDto } from '@dripplex/types';
-import type { RiderProfile, User } from '@prisma/client';
+import type { RiderApprovalDto, RiderKycDto, RiderProfileDto } from '@dripplex/types';
+import type { RiderKyc, RiderProfile, User } from '@prisma/client';
 
-export function toRiderProfileDto(input: { profile: RiderProfile; user: User }): RiderProfileDto {
+export function toRiderKycDto(kyc: RiderKyc): RiderKycDto {
+  return {
+    id: kyc.id,
+    riderId: kyc.riderId,
+    documentType: kyc.documentType,
+    documentNumber: kyc.documentNumber,
+    frontImage: kyc.frontImage,
+    backImage: kyc.backImage,
+    verificationStatus: kyc.verificationStatus,
+    reviewedBy: kyc.reviewedBy,
+    reviewedAt: kyc.reviewedAt ? kyc.reviewedAt.toISOString() : null,
+    remarks: kyc.remarks,
+    createdAt: kyc.createdAt.toISOString(),
+  };
+}
+
+export function toRiderProfileDto(input: {
+  profile: RiderProfile;
+  user: User;
+  kyc: RiderKyc[];
+}): RiderProfileDto {
   return {
     id: input.profile.id,
     riderId: input.profile.userId,
@@ -10,6 +30,7 @@ export function toRiderProfileDto(input: { profile: RiderProfile; user: User }):
     firstName: input.user.firstName,
     lastName: input.user.lastName,
     status: input.profile.status,
+    companyName: input.profile.companyName,
     isApproved: input.profile.isApproved,
     approvedAt: input.profile.approvedAt ? input.profile.approvedAt.toISOString() : null,
     approvedBy: input.profile.approvedBy,
@@ -17,6 +38,7 @@ export function toRiderProfileDto(input: { profile: RiderProfile; user: User }):
     suspendedAt: input.profile.suspendedAt ? input.profile.suspendedAt.toISOString() : null,
     createdAt: input.profile.createdAt.toISOString(),
     updatedAt: input.profile.updatedAt.toISOString(),
+    kyc: input.kyc.map(toRiderKycDto),
   };
 }
 
