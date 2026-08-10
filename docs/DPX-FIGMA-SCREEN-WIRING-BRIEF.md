@@ -61,16 +61,40 @@ On success persist tokens+user (see rule above) and route to that persona's home
 
 ## 3. CUSTOMER — FOOD loop (Mr D → Dx Resto → CASH)
 
-| Screen           | Wire to                                                                                                                                                                                                                                                  |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Home             | balance `api.wallet.get()` · nearby merchants `api.marketplace.getMerchants({ sort: "recommended", limit: 6 })` (Dx Resto appears here) · recommended `api.marketplace.getFeaturedProducts({ limit: 8 })` · categories `api.marketplace.getCategories()` |
-| Marketplace      | `api.marketplace.getMerchants(params)` · search `api.marketplace.searchMerchants(query)`                                                                                                                                                                 |
-| Store (Dx Resto) | `api.marketplace.getMerchant(merchantId)` (returns merchant + its products)                                                                                                                                                                              |
-| Product Detail   | `api.marketplace.getProduct(productId)`                                                                                                                                                                                                                  |
-| Add to cart      | `api.cart.addItem({ merchantId, productId, productName, unitPrice, quantity })`                                                                                                                                                                          |
-| Cart             | load `api.cart.get()` · qty `api.cart.updateItem(itemId, qty)` · remove `api.cart.removeItem(itemId)`                                                                                                                                                    |
-| Checkout (CASH)  | 1) `api.orders.checkout({ cartId, fulfillmentType: "DELIVERY", deliveryAddressId })` → get `order.id` 2) `api.orders.pay(order.id, { provider: "CASH" })` → order becomes **CONFIRMED**. Show confirmation with `order.orderNumber`.                     |
-| Order Tracking   | poll `api.orders.get(orderId)` (status) + `api.orders.getDelivery(orderId)` (rider name/phone once assigned) + `api.orders.getTracking(orderId)` + `api.orders.getEta(orderId)`                                                                          |
+| Screen           | Wire to                                                                                                                                                                                                                                                                             |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Home             | balance `api.wallet.get()` · nearby merchants `api.marketplace.getMerchants({ sort: "recommended", limit: 6 })` (Dx Resto appears here) · recommended `api.marketplace.getFeaturedProducts({ limit: 8 })` · categories `api.marketplace.getCategories()`                            |
+| Marketplace      | `api.marketplace.getMerchants(params)` · search `api.marketplace.searchMerchants(query)`                                                                                                                                                                                            |
+| Store (Dx Resto) | `api.marketplace.getMerchant(merchantId)` (returns merchant + its products)                                                                                                                                                                                                         |
+| Product Detail   | `api.marketplace.getProduct(productId)`                                                                                                                                                                                                                                             |
+| Add to cart      | `api.cart.addItem({ merchantId, productId, productName, unitPrice, quantity })`                                                                                                                                                                                                     |
+| Cart             | load `api.cart.get()` · qty `api.cart.updateItem(itemId, qty)` · remove `api.cart.removeItem(itemId)`                                                                                                                                                                               |
+| Checkout         | 1) `api.orders.checkout({ cartId, fulfillmentType: "DELIVERY", deliveryAddressId })` → get `order.id` 2) let the customer pick a payment method (see **§3a**) → `api.orders.pay(order.id, { provider })` → order becomes **CONFIRMED**. Show confirmation with `order.orderNumber`. |
+| Order Tracking   | poll `api.orders.get(orderId)` (status) + `api.orders.getDelivery(orderId)` (rider name/phone once assigned) + `api.orders.getTracking(orderId)` + `api.orders.getEta(orderId)`                                                                                                     |
+
+---
+
+## 3a. Checkout — payment method options
+
+At checkout, after `api.orders.checkout(...)` returns the `order`, show a payment-method
+picker, then call `api.orders.pay(order.id, { provider })` with the chosen `provider`.
+**For the demo, offer these two (card gateways stay dormant):**
+
+| Option shown to customer | `provider`          | Behavior                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------------ | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Cash on Delivery**     | `"CASH"`            | Order → CONFIRMED, `paymentStatus` PENDING; the rider collects cash at delivery; settlement fires on delivery. Nothing else to show.                                                                                                                                                                                                                                                                                                                                                                                                  |
+| **Pay to Merchant Bank** | `"MERCHANT_DIRECT"` | 1) Before paying, call `api.orders.getMerchantBank(order.id)` → `{ bankName, accountName, accountNumber, currency }` and **display it** so the customer can transfer. 2) After they confirm they've transferred, call `api.orders.pay(order.id, { provider: "MERCHANT_DIRECT" })` → order CONFIRMED. **DrippleX does not verify the transfer** — `paymentStatus` stays PENDING for the order's life; commission is accrued to the merchant. Show a "we've marked your order as placed; the merchant will confirm your transfer" note. |
+
+(Wallet is also available via `provider: "WALLET"` — `api.wallet.get()` shows the balance — but Cash and Merchant-Bank are the two the founder asked to surface.)
+
+`api.orders.getMerchantBank(orderId)` is a **new** method — add it to `src/lib/api.ts` under the
+`orders` namespace:
+
+```ts
+getMerchantBank: (orderId: string) =>
+  dx<{ bankName: string; accountName: string; accountNumber: string; currency: string }>(
+    "GET", `/customer/orders/${orderId}/merchant-bank`),
+```
 
 ---
 
