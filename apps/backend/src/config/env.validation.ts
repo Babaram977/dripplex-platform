@@ -126,6 +126,20 @@ export const envSchema = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((value) => value === 'true'),
+
+  // Portal email activation (temporary, SMS-provider dependent). While the
+  // Termii SMS sender ID is pending approval, phone OTPs can't be delivered,
+  // so merchant/driver/rider self-registration would be stuck forever at
+  // PENDING_VERIFICATION. When 'true', those three portals activate on EMAIL
+  // verification alone (no phone OTP dispatched, phone verification not
+  // required to register or log in). Customer is unaffected (already email-or-
+  // phone with no phone-verification requirement). Flip back to 'false' once
+  // Termii SMS is live to restore mandatory phone verification for those
+  // portals. Founder-authorized 2026-08-10.
+  PORTAL_EMAIL_ACTIVATION: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

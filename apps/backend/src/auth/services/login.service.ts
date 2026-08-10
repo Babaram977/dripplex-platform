@@ -14,6 +14,7 @@ import {
   ValidationDomainException,
   WrongPortalDomainException,
 } from '../../common/exceptions/domain.exception';
+import { AppConfigService } from '../../config/app-config.service';
 import { UsersService } from '../../users/users.service';
 import {
   AUTH_SESSION_REPOSITORY,
@@ -89,6 +90,7 @@ export class LoginService {
     private readonly loginAttemptService: LoginAttemptService,
     private readonly auditService: AuditService,
     private readonly tokenService: TokenService,
+    private readonly appConfig: AppConfigService,
     @Inject(AUTH_SESSION_REPOSITORY)
     private readonly authSessionRepository: AuthSessionRepository,
   ) {}
@@ -244,7 +246,13 @@ export class LoginService {
       throw new EmailNotVerifiedDomainException();
     }
 
-    if (config.requiresPhoneVerification && !user.phoneVerifiedAt) {
+    // While PORTAL_EMAIL_ACTIVATION is on (Termii SMS sender-ID pending), the
+    // merchant/driver/rider portals activate and sign in on EMAIL verification
+    // alone — phone verification is not required to log in. Restoring the flag
+    // to false re-enforces mandatory phone verification for those portals.
+    const requiresPhoneVerification =
+      config.requiresPhoneVerification && !this.appConfig.portalEmailActivation;
+    if (requiresPhoneVerification && !user.phoneVerifiedAt) {
       throw new PhoneNotVerifiedDomainException();
     }
   }

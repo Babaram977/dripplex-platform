@@ -5,6 +5,7 @@ import {
   NotFoundDomainException,
   ValidationDomainException,
 } from '../../common/exceptions/domain.exception';
+import { AppConfigService } from '../../config/app-config.service';
 import {
   NOTIFICATION_SERVICE,
   type NotificationService,
@@ -30,6 +31,7 @@ export class VerificationService {
   constructor(
     private readonly usersService: UsersService,
     private readonly otpService: OtpService,
+    private readonly appConfig: AppConfigService,
     @Inject(NOTIFICATION_SERVICE)
     private readonly notificationService: NotificationService,
   ) {}
@@ -148,6 +150,12 @@ export class VerificationService {
 
   private requiresPhoneVerification(channel: RegistrationChannel | null): boolean {
     if (!channel) {
+      return false;
+    }
+    // While PORTAL_EMAIL_ACTIVATION is on (Termii SMS sender-ID pending), the
+    // merchant/driver/rider portals activate on EMAIL verification alone.
+    // Restoring the flag to false re-enforces phone verification for them.
+    if (this.appConfig.portalEmailActivation) {
       return false;
     }
     return PHONE_VERIFICATION_CHANNELS.has(channel);
