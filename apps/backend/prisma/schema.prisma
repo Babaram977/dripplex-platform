@@ -2257,6 +2257,15 @@ enum ReviewTargetType {
   RIDER
 }
 
+/// DPX-REVIEWS-001 — who authored a review. Lets a merchant→rider review
+/// coexist with customer→rider reviews under the same RIDER target while the
+/// author's role stays explicit (drives verified-purchase resolution and
+/// display filtering). Defaults to CUSTOMER (all existing rows).
+enum ReviewAuthorRole {
+  CUSTOMER
+  MERCHANT
+}
+
 enum ReviewStatus {
   PENDING
   APPROVED
@@ -2593,8 +2602,10 @@ model Review {
   targetType        ReviewTargetType @map("target_type")
   targetId          String           @map("target_id") @db.Uuid
   orderId           String?          @map("order_id") @db.Uuid
+  authorRole        ReviewAuthorRole @default(CUSTOMER) @map("author_role")
   rating            Int
   comment           String?          @db.Text
+  tags              String[]         @default([]) @map("tags")
   photoUrls         String[]         @default([]) @map("photo_urls")
   verifiedPurchase  Boolean          @default(false) @map("verified_purchase")
   status            ReviewStatus     @default(PENDING)

@@ -49,6 +49,7 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
   { code: 'admin:search:manage', description: 'Manage search documents and ranking' },
   { code: 'customer:reviews:manage', description: 'Create and manage own reviews' },
   { code: 'merchant:reviews:reply', description: 'Reply to merchant reviews' },
+  { code: 'merchant:reviews:manage', description: 'Submit rider reviews as a merchant' },
   { code: 'admin:reviews:moderate', description: 'Moderate customer reviews' },
   { code: 'customer:wishlist:manage', description: 'Manage own wishlists' },
   { code: 'customer:promotions:use', description: 'Use platform promotions' },

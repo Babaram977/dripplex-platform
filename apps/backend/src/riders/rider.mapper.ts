@@ -1,5 +1,14 @@
 import type { RiderApprovalDto, RiderKycDto, RiderProfileDto } from '@dripplex/types';
-import type { RiderKyc, RiderProfile, User } from '@prisma/client';
+import type { ReviewAggregate, RiderKyc, RiderProfile, User } from '@prisma/client';
+
+/** DPX-REVIEWS-001 — a rider's public rating from their ReviewAggregate(RIDER)
+ * row (null when the rider has no aggregate yet → zero/empty summary). */
+function toRatingSummary(aggregate: ReviewAggregate | null): { average: number; count: number } {
+  return {
+    average: aggregate ? aggregate.averageRating : 0,
+    count: aggregate ? aggregate.reviewCount : 0,
+  };
+}
 
 export function toRiderKycDto(kyc: RiderKyc): RiderKycDto {
   return {
@@ -21,6 +30,7 @@ export function toRiderProfileDto(input: {
   profile: RiderProfile;
   user: User;
   kyc: RiderKyc[];
+  ratingAggregate?: ReviewAggregate | null;
 }): RiderProfileDto {
   return {
     id: input.profile.id,
@@ -39,6 +49,7 @@ export function toRiderProfileDto(input: {
     createdAt: input.profile.createdAt.toISOString(),
     updatedAt: input.profile.updatedAt.toISOString(),
     kyc: input.kyc.map(toRiderKycDto),
+    rating: toRatingSummary(input.ratingAggregate ?? null),
   };
 }
 

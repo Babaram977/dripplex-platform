@@ -1,5 +1,12 @@
+import { allowedReviewTags } from '@dripplex/types';
 import { Injectable } from '@nestjs/common';
-import { PaymentStatus, ReviewStatus, ReviewTargetType } from '@prisma/client';
+import {
+  DeliveryStatus,
+  PaymentStatus,
+  ReviewAuthorRole,
+  ReviewStatus,
+  ReviewTargetType,
+} from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../audit/audit.service';
 import {
@@ -24,6 +31,7 @@ import {
 import type { CreateReviewDto } from './dto/create-review.dto';
 import type { ListReviewsQueryDto } from './dto/list-reviews-query.dto';
 import type { ModerateReviewDto, ReplyReviewDto, ReportReviewDto } from './dto/review-actions.dto';
+import type { SubmitRatingDto } from './dto/submit-rating.dto';
 import type { UpdateReviewDto } from './dto/update-review.dto';
 import type { Prisma, Review } from '@prisma/client';
 
@@ -43,30 +51,157 @@ export class ReviewsService {
     context: AuditContext,
   ): Promise<ReviewDto> {
     const verifiedPurchase = await this.isVerifiedPurchase(authorId, dto);
-    const review = await this.prisma.review.create({
-      data: {
+    return await this.persistReview(
+      {
         authorId,
+        authorRole: ReviewAuthorRole.CUSTOMER,
         targetType: dto.targetType,
         targetId: dto.targetId,
         orderId: dto.orderId ?? null,
         rating: dto.rating,
-        comment: this.optionalTrimmed(dto.comment),
-        photoUrls: dto.photos ?? [],
+        comment: dto.comment,
+        tags: dto.tags,
+        photos: dto.photos,
         verifiedPurchase,
+      },
+      context,
+    );
+  }
+
+  /**
+   * DPX-REVIEWS-001 — a customer rates the rider who delivered a job. Resolves
+   * the delivery job (must belong to this customer and be DELIVERED, with an
+   * assigned rider), then creates a verified RIDER review authored by the
+   * customer, targeting the rider's User.id.
+   */
+  public async createRiderReviewForDelivery(
+    customerId: string,
+    jobId: string,
+    dto: SubmitRatingDto,
+    context: AuditContext,
+  ): Promise<ReviewDto> {
+    const job = await this.prisma.deliveryJob.findFirst({
+      where: { id: jobId, customerId },
+      select: { id: true, riderId: true, orderId: true, status: true },
+    });
+    if (!job) {
+      throw new NotFoundDomainException('Delivery job not found');
+    }
+    if (!job.riderId) {
+      throw new ValidationDomainException('Delivery has no assigned rider to rate');
+    }
+    if (job.status !== DeliveryStatus.DELIVERED) {
+      throw new ValidationDomainException(`Delivery cannot be rated from status ${job.status}`);
+    }
+    await this.assertNotAlreadyReviewed(
+      customerId,
+      ReviewTargetType.RIDER,
+      job.riderId,
+      job.orderId,
+    );
+
+    return await this.persistReview(
+      {
+        authorId: customerId,
+        authorRole: ReviewAuthorRole.CUSTOMER,
+        targetType: ReviewTargetType.RIDER,
+        targetId: job.riderId,
+        orderId: job.orderId,
+        rating: dto.rating,
+        comment: dto.comment,
+        tags: dto.tags,
+        verifiedPurchase: true,
+      },
+      context,
+    );
+  }
+
+  /**
+   * DPX-REVIEWS-001 — a merchant rates a delivery rider. Verified iff the rider
+   * has delivered ≥1 order belonging to this merchant (§6 decision 2). Author
+   * role is MERCHANT so the review coexists with customer→rider reviews under
+   * the same RIDER target.
+   */
+  public async createMerchantRiderReview(
+    merchantUserId: string,
+    riderUserId: string,
+    dto: SubmitRatingDto,
+    context: AuditContext,
+  ): Promise<ReviewDto> {
+    await this.requireMerchantProfile(merchantUserId);
+    const deliveredForMerchant = await this.prisma.deliveryJob.count({
+      where: {
+        riderId: riderUserId,
+        merchantId: merchantUserId,
+        status: DeliveryStatus.DELIVERED,
+      },
+    });
+
+    return await this.persistReview(
+      {
+        authorId: merchantUserId,
+        authorRole: ReviewAuthorRole.MERCHANT,
+        targetType: ReviewTargetType.RIDER,
+        targetId: riderUserId,
+        orderId: null,
+        rating: dto.rating,
+        comment: dto.comment,
+        tags: dto.tags,
+        verifiedPurchase: deliveredForMerchant > 0,
+      },
+      context,
+    );
+  }
+
+  /**
+   * Shared review-persistence path: validates tags against the direction's
+   * fixed set, writes the Review (starts PENDING — moderation-gated, same as
+   * every other review), audits, and emits the domain event.
+   */
+  private async persistReview(
+    params: {
+      authorId: string;
+      authorRole: ReviewAuthorRole;
+      targetType: ReviewTargetType;
+      targetId: string;
+      orderId: string | null;
+      rating: number;
+      comment?: string | undefined;
+      tags?: string[] | undefined;
+      photos?: string[] | undefined;
+      verifiedPurchase: boolean;
+    },
+    context: AuditContext,
+  ): Promise<ReviewDto> {
+    const tags = this.validateTags(params.targetType, params.authorRole, params.tags);
+
+    const review = await this.prisma.review.create({
+      data: {
+        authorId: params.authorId,
+        authorRole: params.authorRole,
+        targetType: params.targetType,
+        targetId: params.targetId,
+        orderId: params.orderId,
+        rating: params.rating,
+        comment: this.optionalTrimmed(params.comment),
+        tags,
+        photoUrls: params.photos ?? [],
+        verifiedPurchase: params.verifiedPurchase,
       },
     });
 
     await this.auditService.record(
       REVIEW_AUDIT_ACTIONS.CREATED,
-      { ...context, userId: authorId },
+      { ...context, userId: params.authorId },
       {
         resource: 'review',
         resourceId: review.id,
         metadata: {
           targetType: review.targetType,
           targetId: review.targetId,
+          authorRole: review.authorRole,
           rating: review.rating,
-          verifiedPurchase,
+          verifiedPurchase: review.verifiedPurchase,
         },
       },
     );
@@ -79,10 +214,45 @@ export class ReviewsService {
         targetId: review.targetId,
         rating: review.rating,
       },
-      { actorUserId: authorId },
+      { actorUserId: params.authorId },
     );
 
     return toReviewDto(review);
+  }
+
+  /** Every supplied tag must belong to the direction's fixed set; unknown tags
+   * are rejected. Returns the de-duplicated, trimmed tag list. */
+  private validateTags(
+    targetType: ReviewTargetType,
+    authorRole: ReviewAuthorRole,
+    tags: string[] | undefined,
+  ): string[] {
+    if (!tags || tags.length === 0) {
+      return [];
+    }
+    const allowed = allowedReviewTags(targetType, authorRole);
+    const cleaned = [...new Set(tags.map((tag) => tag.trim()).filter((tag) => tag.length > 0))];
+    const invalid = cleaned.filter((tag) => !allowed.includes(tag));
+    if (invalid.length > 0) {
+      throw new ValidationDomainException(`Unknown review tag(s): ${invalid.join(', ')}`);
+    }
+    return cleaned;
+  }
+
+  /** Guard against a duplicate review of the same target for the same order. */
+  private async assertNotAlreadyReviewed(
+    authorId: string,
+    targetType: ReviewTargetType,
+    targetId: string,
+    orderId: string | null,
+  ): Promise<void> {
+    const existing = await this.prisma.review.findFirst({
+      where: { authorId, targetType, targetId, orderId, deletedAt: null },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new ValidationDomainException('You have already reviewed this delivery');
+    }
   }
 
   public async listTargetReviews(query: ListReviewsQueryDto): Promise<ReviewWithAggregateDto> {

@@ -19,6 +19,7 @@ import { RequirePermissions } from '../common/decorators/permissions.decorator';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { ListReviewsQueryDto } from './dto/list-reviews-query.dto';
 import { ReportReviewDto } from './dto/review-actions.dto';
+import { SubmitRatingDto } from './dto/submit-rating.dto';
 import { UpdateReviewDto } from './dto/update-review.dto';
 import { REVIEW_PERMISSIONS } from './review.constants';
 import { ReviewsService } from './reviews.service';
@@ -42,6 +43,26 @@ export class CustomerReviewsController {
   ): Promise<ApiSuccessResponse<ReviewDto>> {
     const data = await this.reviewsService.createReview(
       user.id,
+      dto,
+      this.auditContext(request, user.id),
+    );
+    return { success: true, data };
+  }
+
+  // DPX-REVIEWS-001 — a customer rates the rider who delivered a job. Target
+  // (the rider) is resolved from the delivery job, not the body.
+  @Post('deliveries/:jobId/rate-rider')
+  @HttpCode(HttpStatus.CREATED)
+  @RequirePermissions(REVIEW_PERMISSIONS.CUSTOMER_MANAGE)
+  public async rateRider(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('jobId', ParseUUIDPipe) jobId: string,
+    @Body() dto: SubmitRatingDto,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<ReviewDto>> {
+    const data = await this.reviewsService.createRiderReviewForDelivery(
+      user.id,
+      jobId,
       dto,
       this.auditContext(request, user.id),
     );

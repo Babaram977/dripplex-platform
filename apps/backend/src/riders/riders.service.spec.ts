@@ -26,6 +26,10 @@ describe('RidersService', () => {
     riderKyc: {
       create: jest.fn(),
     },
+    reviewAggregate: {
+      findMany: jest.fn().mockResolvedValue([]),
+      findUnique: jest.fn().mockResolvedValue(null),
+    },
   } as unknown as jest.Mocked<PrismaService>;
 
   const auditService = {
