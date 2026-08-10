@@ -1,9 +1,10 @@
-import React, { useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { G0, G2, G3, NAVY_BASE, NAVY_CARD, NAVY_DEEP, NAVY_SURFACE, BORDER, MUTED } from './shared';
 import { api } from '../lib/api';
 import type { OrderDto } from '../lib/api';
 import { BottomNavigation } from '../components/navigation';
 import type { NavTabKey } from '../components/navigation/BottomNavigation';
+import { auth } from '../lib/auth';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -40,7 +41,7 @@ const ADDRESSES: Address[] = [
   {
     id: 'a1',
     label: 'Home',
-    name: 'Saeed Danwakili',
+    name: '',
     phone: '+234 801 234 5678',
     line1: '12 Murtala Way, GRA',
     line2: 'Kano, Kano State',
@@ -48,7 +49,7 @@ const ADDRESSES: Address[] = [
   {
     id: 'a2',
     label: 'Work',
-    name: 'Saeed Danwakili',
+    name: '',
     phone: '+234 801 234 5678',
     line1: 'DrippleX HQ, 4 Tech Crescent',
     line2: 'Abuja, FCT',
@@ -676,7 +677,14 @@ export function CheckoutScreen({
     shoprite: 'now',
   });
 
-  const address = ADDRESSES[addressIdx];
+  // Saved-addresses backend is not yet wired (documented gap); until then use the
+  // logged-in user's real name as the recipient rather than seeded mock data.
+  const recipientName = auth.displayName(auth.getUser());
+  const addresses = useMemo(
+    () => ADDRESSES.map((a) => ({ ...a, name: recipientName || a.name })),
+    [recipientName],
+  );
+  const address = addresses[addressIdx];
   const itemsTotal = MERCHANTS.reduce((s, m) => s + m.subtotal, 0);
   const deliveryTotal = MERCHANTS.reduce((s, m) => {
     const mode = modes[m.id] ?? 'standard';
@@ -1265,7 +1273,7 @@ export function CheckoutScreen({
             >
               Select Address
             </p>
-            {ADDRESSES.map((addr, i) => (
+            {addresses.map((addr, i) => (
               <button
                 key={addr.id}
                 onClick={() => {

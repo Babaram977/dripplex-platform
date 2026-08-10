@@ -2032,9 +2032,12 @@ export function AccountManagementScreen({
   onSuspension?: () => void;
   onAuthSummary?: () => void;
 }) {
-  const [name, setName] = useState('Saeed Danwakili');
-  const [username, setUsername] = useState('saeed.d');
-  const [email, setEmail] = useState('');
+  const dxUser = auth.getUser();
+  const [name, setName] = useState(auth.displayName(dxUser));
+  // NOTE: DrippleX has no username concept (founder decision: identity = phone + optional email + name).
+  // This field is legacy UI; seed it from the email local-part rather than mock data until the screen is reconciled.
+  const [username, setUsername] = useState(dxUser?.email?.split('@')[0] ?? '');
+  const [email, setEmail] = useState(dxUser?.email ?? '');
   const [saved, setSaved] = useState(false);
   const [deleteSheet, setDeleteSheet] = useState(false);
   const [deleteStep, setDeleteStep] = useState<'confirm' | 'type' | 'done'>('confirm');

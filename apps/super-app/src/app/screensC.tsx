@@ -23,6 +23,7 @@ import {
 } from './shared';
 import { api } from '../lib/api';
 import type { NotificationDto } from '../lib/api';
+import { auth } from '../lib/auth';
 
 // AUTH-018  CONSENT & PRIVACY AGREEMENT
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1160,6 +1161,7 @@ export function WelcomeDrippleXScreen({
   onTour: () => void;
 }) {
   const [phase, setPhase] = useState<'celebrate' | 'ready'>('celebrate');
+  const firstName = auth.getUser()?.firstName?.trim() || 'there';
 
   useEffect(() => {
     const t = setTimeout(() => setPhase('ready'), 2200);
@@ -1261,7 +1263,7 @@ export function WelcomeDrippleXScreen({
             animation: 'fade-up .5s ease .55s both',
           }}
         >
-          Welcome, Saeed 👋
+          Welcome, {firstName} 👋
         </p>
         <p
           className="mt-1 px-8 text-center text-[12px]"

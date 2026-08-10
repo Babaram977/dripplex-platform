@@ -3037,6 +3037,7 @@ export function ReturningLoginScreen({
   const [status, setStatus] = useState<LoginStatus>('idle');
   const [error, setError] = useState<LoginError>(null);
   const [bioPulse, setBioPulse] = useState(true);
+  const returningName = auth.displayName(auth.getUser()) || 'Welcome back';
 
   useEffect(() => {
     if (status !== 'success') return;
@@ -3123,7 +3124,7 @@ export function ReturningLoginScreen({
               Welcome Back!
             </h2>
             <p className="text-[14px]" style={{ fontFamily: "'Inter',sans-serif", color: G3 }}>
-              Saeed Danwakili
+              {returningName}
             </p>
             <p
               className="mt-1 text-[13px]"
@@ -3226,7 +3227,7 @@ export function ReturningLoginScreen({
               className="truncate text-[15px] font-semibold text-white"
               style={{ fontFamily: "'Poppins',sans-serif" }}
             >
-              Saeed Danwakili
+              {returningName}
             </p>
             <p
               className="mt-0.5 truncate text-[13px]"
