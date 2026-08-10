@@ -1,4 +1,7 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { api } from '../lib/api';
+import { auth } from '../lib/auth';
+import type { WalletDto, WalletLedgerEntryDto, CustomerBankAccountDto } from '../lib/api';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DESIGN TOKENS
@@ -44,14 +47,12 @@ function StatusBar() {
         9:41
       </span>
       <div className="flex items-center gap-1">
-        {/* Signal */}
         <svg width="16" height="11" viewBox="0 0 16 11" fill="none">
           <rect x="0" y="7" width="3" height="4" rx=".5" fill="rgba(255,255,255,.9)" />
           <rect x="4.5" y="4.5" width="3" height="6.5" rx=".5" fill="rgba(255,255,255,.9)" />
           <rect x="9" y="2" width="3" height="9" rx=".5" fill="rgba(255,255,255,.9)" />
           <rect x="13.5" y="0" width="2.5" height="11" rx=".5" fill="rgba(255,255,255,.9)" />
         </svg>
-        {/* WiFi */}
         <svg width="15" height="11" viewBox="0 0 15 11" fill="none">
           <path d="M7.5 8.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2z" fill="rgba(255,255,255,.9)" />
           <path
@@ -67,7 +68,6 @@ function StatusBar() {
             strokeLinecap="round"
           />
         </svg>
-        {/* Battery */}
         <div className="flex items-center gap-px">
           <div
             style={{
@@ -108,12 +108,7 @@ function BackButton({ onBack, label = '' }: { onBack?: () => void; label?: strin
     <button
       onClick={onBack}
       className="flex items-center gap-2"
-      style={{
-        background: 'none',
-        border: 'none',
-        cursor: 'pointer',
-        padding: '8px 16px 8px 16px',
-      }}
+      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '8px 16px' }}
     >
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
         <path
@@ -160,27 +155,30 @@ function GreenButton({
   children,
   onClick,
   style,
+  disabled,
 }: {
   children: React.ReactNode;
   onClick?: () => void;
   style?: React.CSSProperties;
+  disabled?: boolean;
 }) {
   return (
     <button
-      onClick={onClick}
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
       style={{
-        background: GREEN_GRAD,
+        background: disabled ? 'rgba(255,255,255,.08)' : GREEN_GRAD,
         border: 'none',
         borderRadius: 14,
-        color: '#fff',
+        color: disabled ? MUTED : '#fff',
         fontFamily: PP,
         fontWeight: 600,
         fontSize: 16,
-        cursor: 'pointer',
+        cursor: disabled ? 'not-allowed' : 'pointer',
         padding: '16px 0',
         width: '100%',
         letterSpacing: '0.01em',
-        boxShadow: `0 4px 20px rgba(43,172,82,.35)`,
+        boxShadow: disabled ? 'none' : `0 4px 20px rgba(43,172,82,.35)`,
         ...style,
       }}
     >
@@ -310,7 +308,6 @@ function Divider() {
   return <div style={{ height: 1, background: BORDER, margin: '4px 0' }} />;
 }
 
-// Icon circle helper
 function IconCircle({
   bg,
   children,
@@ -338,60 +335,149 @@ function IconCircle({
   );
 }
 
+function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+  return (
+    <button
+      onClick={onToggle}
+      style={{
+        width: 48,
+        height: 28,
+        borderRadius: 14,
+        background: on ? GREEN_GRAD : 'rgba(255,255,255,.1)',
+        border: 'none',
+        cursor: 'pointer',
+        position: 'relative',
+        transition: 'background .2s',
+        flexShrink: 0,
+        boxShadow: on ? `0 2px 12px rgba(43,172,82,.4)` : 'none',
+      }}
+    >
+      <div
+        style={{
+          position: 'absolute',
+          top: 3,
+          left: on ? 22 : 3,
+          width: 22,
+          height: 22,
+          borderRadius: 11,
+          background: '#fff',
+          transition: 'left .2s',
+          boxShadow: '0 1px 4px rgba(0,0,0,.3)',
+        }}
+      />
+    </button>
+  );
+}
+
+function TxIcon({ type }: { type: string }) {
+  const map: Record<string, { icon: string; color: string }> = {
+    RIDE: { icon: '🚗', color: INFO },
+    TOPUP: { icon: '💳', color: SUCCESS },
+    TRANSFER: { icon: '↑', color: PURPLE },
+    WITHDRAWAL: { icon: '🏦', color: WARNING },
+    REFUND: { icon: '↩', color: SUCCESS },
+    CASHBACK: { icon: '🎁', color: STAR },
+    CREDIT: { icon: '↓', color: SUCCESS },
+    DEBIT: { icon: '↑', color: MUTED },
+  };
+  const key = type?.toUpperCase().replace(/-/g, '_');
+  const match = map[key] ??
+    map[
+      type?.includes('TOPUP') || type?.includes('FUND')
+        ? 'TOPUP'
+        : type?.includes('WITHDRAW')
+          ? 'WITHDRAWAL'
+          : type?.includes('TRANSFER')
+            ? 'TRANSFER'
+            : 'DEBIT'
+    ] ?? { icon: '₦', color: MUTED };
+  return (
+    <IconCircle bg={`${match.color}22`} size={42}>
+      <span style={{ fontSize: 18 }}>{match.icon}</span>
+    </IconCircle>
+  );
+}
+
+function fmtDate(iso: string) {
+  try {
+    const d = new Date(iso);
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    const isYesterday = d.toDateString() === yesterday.toDateString();
+    const time = d.toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit' });
+    if (isToday) return `Today, ${time}`;
+    if (isYesterday) return `Yesterday, ${time}`;
+    return d.toLocaleDateString('en-NG', {
+      day: 'numeric',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return '—';
+  }
+}
+
+function EmptyState({ icon, title, sub }: { icon: string; title: string; sub?: string }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        padding: '40px 24px',
+        gap: 8,
+      }}
+    >
+      <span style={{ fontSize: 40 }}>{icon}</span>
+      <div style={{ fontFamily: PP, fontSize: 15, fontWeight: 700, color: '#fff' }}>{title}</div>
+      {sub && (
+        <div style={{ fontFamily: IT, fontSize: 13, color: MUTED, textAlign: 'center' }}>{sub}</div>
+      )}
+    </div>
+  );
+}
+
+function ErrorRetry({ message, onRetry }: { message?: string; onRetry: () => void }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        padding: '40px 24px',
+        gap: 12,
+      }}
+    >
+      <span style={{ fontSize: 36 }}>⚠️</span>
+      <div style={{ fontFamily: IT, fontSize: 13, color: MUTED, textAlign: 'center' }}>
+        {message ?? 'Something went wrong.'}
+      </div>
+      <button
+        onClick={onRetry}
+        style={{
+          background: NAVY_SURFACE,
+          border: `1px solid ${BORDER}`,
+          borderRadius: 10,
+          padding: '8px 20px',
+          color: G3,
+          fontFamily: IT,
+          fontSize: 13,
+          fontWeight: 600,
+          cursor: 'pointer',
+        }}
+      >
+        Retry
+      </button>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. WALLET HOME SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
-const RECENT_TXS = [
-  {
-    id: 1,
-    type: 'ride',
-    title: 'Ride to Victoria Island',
-    sub: 'Today, 9:41 AM',
-    amount: -2100,
-    icon: '🚗',
-  },
-  {
-    id: 2,
-    type: 'topup',
-    title: 'Wallet Top Up',
-    sub: 'Today, 7:15 AM',
-    amount: +10000,
-    icon: '💳',
-  },
-  {
-    id: 3,
-    type: 'transfer',
-    title: 'Transfer to Chidi Okeke',
-    sub: 'Yesterday, 4:02 PM',
-    amount: -3500,
-    icon: '↑',
-  },
-  {
-    id: 4,
-    type: 'ride',
-    title: 'Ride to Lekki Phase 1',
-    sub: 'Yesterday, 1:18 PM',
-    amount: -1850,
-    icon: '🚗',
-  },
-  {
-    id: 5,
-    type: 'cashback',
-    title: 'Ride Cashback',
-    sub: 'Dec 3, 11:00 AM',
-    amount: +210,
-    icon: '🎁',
-  },
-];
-
-const TX_COLORS: Record<string, string> = {
-  ride: INFO,
-  topup: SUCCESS,
-  transfer: PURPLE,
-  cashback: WARNING,
-  refund: SUCCESS,
-};
-
 export function WalletHomeScreen({
   onBack,
   onTopUp,
@@ -409,11 +495,41 @@ export function WalletHomeScreen({
   onTxHistory?: () => void;
   onRewards?: () => void;
 }) {
+  const [wallet, setWallet] = useState<WalletDto | null>(null);
+  const [txs, setTxs] = useState<WalletLedgerEntryDto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const user = auth.getUser();
+  const displayName = user?.firstName ?? user?.email?.split('@')[0] ?? 'there';
+
+  const load = useCallback(async () => {
+    setError('');
+    setLoading(true);
+    try {
+      const [w, t] = await Promise.all([
+        api.wallet.get(),
+        api.wallet.getTransactions({ pageSize: 5 }),
+      ]);
+      setWallet(w as WalletDto);
+      setTxs((t as { items?: WalletLedgerEntryDto[] }).items ?? []);
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load wallet');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const balance = wallet?.availableBalance ?? 0;
+  const pending = wallet?.pendingBalance ?? 0;
+
   return (
     <Screen>
       <StatusBar />
-
-      {/* Header */}
       <div
         className="flex items-center justify-between px-5"
         style={{ paddingTop: 8, paddingBottom: 4 }}
@@ -423,7 +539,7 @@ export function WalletHomeScreen({
             Good morning,
           </div>
           <div style={{ fontFamily: PP, fontSize: 17, fontWeight: 700, color: '#fff' }}>
-            Amara Obi
+            {displayName}
           </div>
         </div>
         <button
@@ -447,288 +563,302 @@ export function WalletHomeScreen({
         </button>
       </div>
 
-      {/* Hero Balance Card */}
-      <div
-        style={{
-          margin: '10px 16px 0',
-          borderRadius: 24,
-          background: HERO_GRAD,
-          padding: '28px 24px 24px',
-          position: 'relative',
-          overflow: 'hidden',
-          boxShadow: '0 8px 40px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.08)',
-        }}
-      >
-        {/* Inner glow */}
-        <div
-          style={{
-            position: 'absolute',
-            top: -40,
-            left: -40,
-            width: 200,
-            height: 200,
-            borderRadius: '50%',
-            background: `radial-gradient(circle,${G3} 0%,transparent 65%)`,
-            opacity: 0.12,
-            pointerEvents: 'none',
-          }}
-        />
-        <div
-          style={{
-            position: 'absolute',
-            bottom: -30,
-            right: -20,
-            width: 160,
-            height: 160,
-            borderRadius: '50%',
-            background: `radial-gradient(circle,${G2} 0%,transparent 65%)`,
-            opacity: 0.1,
-            pointerEvents: 'none',
-          }}
-        />
-        {/* Card pattern */}
-        <div
-          style={{
-            position: 'absolute',
-            top: 0,
-            right: 0,
-            width: '100%',
-            height: '100%',
-            opacity: 0.04,
-            backgroundImage:
-              'repeating-linear-gradient(45deg,#fff 0,#fff 1px,transparent 0,transparent 50%)',
-            backgroundSize: '12px 12px',
-            pointerEvents: 'none',
-          }}
-        />
-
-        <div
-          style={{
-            fontFamily: IT,
-            fontSize: 12,
-            color: 'rgba(255,255,255,.55)',
-            fontWeight: 500,
-            letterSpacing: '0.06em',
-            textTransform: 'uppercase',
-            marginBottom: 8,
-          }}
-        >
-          DrippleX Wallet Balance
-        </div>
-        <div
-          style={{
-            fontFamily: PP,
-            fontSize: 42,
-            fontWeight: 800,
-            color: '#fff',
-            lineHeight: 1.1,
-            letterSpacing: '-0.02em',
-            marginBottom: 4,
-          }}
-        >
-          ₦24,500<span style={{ fontSize: 24, fontWeight: 600, opacity: 0.7 }}>.00</span>
-        </div>
-        <div
-          style={{ fontFamily: IT, fontSize: 12, color: 'rgba(255,255,255,.45)', marginBottom: 16 }}
-        >
-          Last updated: Just now
-        </div>
-
-        {/* Frosted badge row */}
-        <div className="flex items-center gap-3">
+      {error ? (
+        <ErrorRetry message={error} onRetry={load} />
+      ) : (
+        <>
           <div
             style={{
-              background: 'rgba(255,255,255,.1)',
-              backdropFilter: 'blur(8px)',
-              borderRadius: 10,
-              padding: '6px 12px',
-              border: '1px solid rgba(255,255,255,.12)',
-            }}
-          >
-            <span
-              style={{
-                fontFamily: IT,
-                fontSize: 11,
-                color: 'rgba(255,255,255,.8)',
-                fontWeight: 600,
-              }}
-            >
-              🔒 PIN Protected
-            </span>
-          </div>
-          <div
-            style={{
-              background: 'rgba(43,172,82,.2)',
-              backdropFilter: 'blur(8px)',
-              borderRadius: 10,
-              padding: '6px 12px',
-              border: `1px solid rgba(43,172,82,.3)`,
-            }}
-          >
-            <span style={{ fontFamily: IT, fontSize: 11, color: G3, fontWeight: 600 }}>
-              ✦ Gold Tier
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Quick Actions */}
-      <div className="flex items-center justify-between px-4" style={{ marginTop: 20 }}>
-        {[
-          { label: 'Top Up', icon: '↓', color: SUCCESS, onClick: onTopUp },
-          { label: 'Withdraw', icon: '↑', color: WARNING, onClick: onWithdraw },
-          { label: 'Transfer', icon: '→', color: INFO, onClick: onTransfer },
-          { label: 'Pay', icon: '₦', color: PURPLE, onClick: onPay },
-        ].map(({ label, icon, color, onClick }) => (
-          <button
-            key={label}
-            onClick={onClick}
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 8,
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
+              margin: '10px 16px 0',
+              borderRadius: 24,
+              background: HERO_GRAD,
+              padding: '28px 24px 24px',
+              position: 'relative',
+              overflow: 'hidden',
+              boxShadow: '0 8px 40px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.08)',
             }}
           >
             <div
               style={{
-                width: 56,
-                height: 56,
-                borderRadius: 18,
-                background: NAVY_CARD,
-                border: `1px solid ${BORDER}`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 2px 12px rgba(0,0,0,.3)',
+                position: 'absolute',
+                top: -40,
+                left: -40,
+                width: 200,
+                height: 200,
+                borderRadius: '50%',
+                background: `radial-gradient(circle,${G3} 0%,transparent 65%)`,
+                opacity: 0.12,
+                pointerEvents: 'none',
               }}
-            >
-              <span style={{ color, fontFamily: PP, fontSize: 22, fontWeight: 700, lineHeight: 1 }}>
-                {icon}
-              </span>
-            </div>
-            <span
+            />
+            <div
+              style={{
+                position: 'absolute',
+                bottom: -30,
+                right: -20,
+                width: 160,
+                height: 160,
+                borderRadius: '50%',
+                background: `radial-gradient(circle,${G2} 0%,transparent 65%)`,
+                opacity: 0.1,
+                pointerEvents: 'none',
+              }}
+            />
+            <div
+              style={{
+                position: 'absolute',
+                top: 0,
+                right: 0,
+                width: '100%',
+                height: '100%',
+                opacity: 0.04,
+                backgroundImage:
+                  'repeating-linear-gradient(45deg,#fff 0,#fff 1px,transparent 0,transparent 50%)',
+                backgroundSize: '12px 12px',
+                pointerEvents: 'none',
+              }}
+            />
+            <div
               style={{
                 fontFamily: IT,
                 fontSize: 12,
-                color: 'rgba(255,255,255,.7)',
+                color: 'rgba(255,255,255,.55)',
                 fontWeight: 500,
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+                marginBottom: 8,
               }}
             >
-              {label}
-            </span>
-          </button>
-        ))}
-      </div>
-
-      {/* Rewards Strip */}
-      <div
-        onClick={onRewards}
-        style={{
-          margin: '16px 16px 0',
-          borderRadius: 14,
-          background: `linear-gradient(135deg,rgba(251,191,36,.12),rgba(251,191,36,.06))`,
-          border: `1px solid rgba(251,191,36,.2)`,
-          padding: '12px 16px',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}
-      >
-        <div className="flex items-center gap-3">
-          <span style={{ fontSize: 20 }}>✦</span>
-          <div>
-            <div style={{ fontFamily: PP, fontSize: 13, fontWeight: 600, color: STAR }}>
-              ₦1,250 cashback earned
+              DrippleX Wallet Balance
             </div>
-            <div style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>
-              View your rewards &amp; referral code
-            </div>
-          </div>
-        </div>
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <path
-            d="M6 12l4-4-4-4"
-            stroke={STAR}
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </div>
-
-      {/* Recent Transactions */}
-      <div style={{ flex: 1, overflow: 'hidden', margin: '16px 0 0' }}>
-        <div className="flex items-center justify-between px-5" style={{ marginBottom: 12 }}>
-          <span style={{ fontFamily: PP, fontSize: 15, fontWeight: 700, color: '#fff' }}>
-            Recent Transactions
-          </span>
-          <button
-            onClick={onTxHistory}
-            style={{
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              fontFamily: IT,
-              fontSize: 13,
-              color: G3,
-              fontWeight: 600,
-            }}
-          >
-            See all
-          </button>
-        </div>
-        <div style={{ overflow: 'auto', paddingBottom: 24 }}>
-          {RECENT_TXS.map((tx, i) => (
-            <div key={tx.id}>
-              {i > 0 && <div style={{ height: 1, background: BORDER, margin: '0 16px' }} />}
-              <div className="flex items-center justify-between px-5 py-3">
-                <div className="flex items-center gap-3">
-                  <IconCircle bg={`${TX_COLORS[tx.type]}22`} size={42}>
-                    <span style={{ fontSize: 18 }}>{tx.icon}</span>
-                  </IconCircle>
-                  <div>
-                    <div
-                      style={{
-                        fontFamily: IT,
-                        fontSize: 14,
-                        fontWeight: 600,
-                        color: '#fff',
-                        marginBottom: 2,
-                      }}
-                    >
-                      {tx.title}
-                    </div>
-                    <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>{tx.sub}</div>
-                  </div>
+            {loading ? (
+              <div
+                style={{
+                  fontFamily: PP,
+                  fontSize: 42,
+                  fontWeight: 800,
+                  color: MUTED,
+                  lineHeight: 1.1,
+                  marginBottom: 4,
+                }}
+              >
+                Loading…
+              </div>
+            ) : (
+              <>
+                <div
+                  style={{
+                    fontFamily: PP,
+                    fontSize: 42,
+                    fontWeight: 800,
+                    color: '#fff',
+                    lineHeight: 1.1,
+                    letterSpacing: '-0.02em',
+                    marginBottom: 4,
+                  }}
+                >
+                  ₦{Math.floor(balance).toLocaleString()}
+                  <span style={{ fontSize: 24, fontWeight: 600, opacity: 0.7 }}>
+                    .{String(Math.round((balance % 1) * 100)).padStart(2, '0')}
+                  </span>
                 </div>
-                <div style={{ textAlign: 'right' }}>
+                {pending > 0 && (
                   <div
                     style={{
-                      fontFamily: PP,
-                      fontSize: 15,
-                      fontWeight: 700,
-                      color: tx.amount > 0 ? SUCCESS : '#fff',
+                      fontFamily: IT,
+                      fontSize: 12,
+                      color: 'rgba(255,255,255,.45)',
+                      marginBottom: 16,
                     }}
                   >
-                    {tx.amount > 0 ? '+' : ''}₦{Math.abs(tx.amount).toLocaleString()}
+                    ₦{pending.toLocaleString()} pending
                   </div>
-                  {tx.amount < 0 && (
-                    <div style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>Debit</div>
-                  )}
-                  {tx.amount > 0 && (
-                    <div style={{ fontFamily: IT, fontSize: 11, color: SUCCESS }}>Credit</div>
-                  )}
-                </div>
+                )}
+              </>
+            )}
+            <div className="flex items-center gap-3">
+              <div
+                style={{
+                  background: 'rgba(255,255,255,.1)',
+                  backdropFilter: 'blur(8px)',
+                  borderRadius: 10,
+                  padding: '6px 12px',
+                  border: '1px solid rgba(255,255,255,.12)',
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: IT,
+                    fontSize: 11,
+                    color: 'rgba(255,255,255,.8)',
+                    fontWeight: 600,
+                  }}
+                >
+                  🔒 PIN Protected
+                </span>
+              </div>
+              <div
+                style={{
+                  background: 'rgba(43,172,82,.2)',
+                  backdropFilter: 'blur(8px)',
+                  borderRadius: 10,
+                  padding: '6px 12px',
+                  border: `1px solid rgba(43,172,82,.3)`,
+                }}
+              >
+                <span style={{ fontFamily: IT, fontSize: 11, color: G3, fontWeight: 600 }}>
+                  ✦ DrippleX Wallet
+                </span>
               </div>
             </div>
-          ))}
-        </div>
-      </div>
+          </div>
+
+          <div className="flex items-center justify-between px-4" style={{ marginTop: 20 }}>
+            {[
+              { label: 'Top Up', icon: '↓', color: SUCCESS, onClick: onTopUp },
+              { label: 'Withdraw', icon: '↑', color: WARNING, onClick: onWithdraw },
+              { label: 'Transfer', icon: '→', color: INFO, onClick: onTransfer },
+              { label: 'Pay', icon: '₦', color: PURPLE, onClick: onPay },
+            ].map(({ label, icon, color, onClick }) => (
+              <button
+                key={label}
+                onClick={onClick}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 8,
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                <div
+                  style={{
+                    width: 56,
+                    height: 56,
+                    borderRadius: 18,
+                    background: NAVY_CARD,
+                    border: `1px solid ${BORDER}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 2px 12px rgba(0,0,0,.3)',
+                  }}
+                >
+                  <span
+                    style={{ color, fontFamily: PP, fontSize: 22, fontWeight: 700, lineHeight: 1 }}
+                  >
+                    {icon}
+                  </span>
+                </div>
+                <span
+                  style={{
+                    fontFamily: IT,
+                    fontSize: 12,
+                    color: 'rgba(255,255,255,.7)',
+                    fontWeight: 500,
+                  }}
+                >
+                  {label}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <div style={{ flex: 1, overflow: 'hidden', margin: '16px 0 0' }}>
+            <div className="flex items-center justify-between px-5" style={{ marginBottom: 12 }}>
+              <span style={{ fontFamily: PP, fontSize: 15, fontWeight: 700, color: '#fff' }}>
+                Recent Transactions
+              </span>
+              <button
+                onClick={onTxHistory}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontFamily: IT,
+                  fontSize: 13,
+                  color: G3,
+                  fontWeight: 600,
+                }}
+              >
+                See all
+              </button>
+            </div>
+            <div style={{ overflow: 'auto', paddingBottom: 24 }}>
+              {loading ? (
+                [1, 2, 3].map((i) => (
+                  <div
+                    key={i}
+                    style={{
+                      height: 60,
+                      background: NAVY_SURFACE,
+                      borderRadius: 10,
+                      margin: '0 16px 8px',
+                      opacity: 0.5,
+                    }}
+                  />
+                ))
+              ) : txs.length === 0 ? (
+                <EmptyState
+                  icon="💸"
+                  title="No transactions yet"
+                  sub="Your wallet activity will appear here"
+                />
+              ) : (
+                txs.map((tx, i) => (
+                  <div key={tx.id}>
+                    {i > 0 && <div style={{ height: 1, background: BORDER, margin: '0 16px' }} />}
+                    <div className="flex items-center justify-between px-5 py-3">
+                      <div className="flex items-center gap-3">
+                        <TxIcon type={tx.type} />
+                        <div>
+                          <div
+                            style={{
+                              fontFamily: IT,
+                              fontSize: 14,
+                              fontWeight: 600,
+                              color: '#fff',
+                              marginBottom: 2,
+                            }}
+                          >
+                            {tx.description ?? tx.type}
+                          </div>
+                          <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>
+                            {fmtDate(tx.createdAt)}
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div
+                          style={{
+                            fontFamily: PP,
+                            fontSize: 15,
+                            fontWeight: 700,
+                            color: tx.direction === 'CREDIT' ? SUCCESS : '#fff',
+                          }}
+                        >
+                          {tx.direction === 'CREDIT' ? '+' : '−'}₦{tx.amount.toLocaleString()}
+                        </div>
+                        <div
+                          style={{
+                            fontFamily: IT,
+                            fontSize: 11,
+                            color: tx.direction === 'CREDIT' ? SUCCESS : MUTED,
+                          }}
+                        >
+                          {tx.direction === 'CREDIT' ? 'Credit' : 'Debit'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </Screen>
   );
 }
@@ -736,125 +866,63 @@ export function WalletHomeScreen({
 // ─────────────────────────────────────────────────────────────────────────────
 // 2. TRANSACTION HISTORY SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
-const ALL_TXS = [
-  {
-    id: 1,
-    date: 'Today',
-    type: 'ride',
-    title: 'Ride to Victoria Island',
-    sub: '9:41 AM',
-    amount: -2100,
-    icon: '🚗',
-  },
-  {
-    id: 2,
-    date: 'Today',
-    type: 'topup',
-    title: 'Wallet Top Up',
-    sub: '7:15 AM',
-    amount: +10000,
-    icon: '💳',
-  },
-  {
-    id: 3,
-    date: 'Yesterday',
-    type: 'transfer',
-    title: 'Transfer to Chidi Okeke',
-    sub: '4:02 PM',
-    amount: -3500,
-    icon: '↑',
-  },
-  {
-    id: 4,
-    date: 'Yesterday',
-    type: 'ride',
-    title: 'Ride to Lekki Phase 1',
-    sub: '1:18 PM',
-    amount: -1850,
-    icon: '🚗',
-  },
-  {
-    id: 5,
-    date: 'Yesterday',
-    type: 'refund',
-    title: 'Ride Refund',
-    sub: '10:05 AM',
-    amount: +1850,
-    icon: '↩',
-  },
-  {
-    id: 6,
-    date: 'Dec 3, 2024',
-    type: 'cashback',
-    title: 'Ride Cashback Reward',
-    sub: '11:00 AM',
-    amount: +210,
-    icon: '🎁',
-  },
-  {
-    id: 7,
-    date: 'Dec 3, 2024',
-    type: 'ride',
-    title: 'Ride to Surulere',
-    sub: '8:33 AM',
-    amount: -1200,
-    icon: '🚗',
-  },
-  {
-    id: 8,
-    date: 'Dec 2, 2024',
-    type: 'topup',
-    title: 'Wallet Top Up',
-    sub: '6:00 PM',
-    amount: +5000,
-    icon: '💳',
-  },
-  {
-    id: 9,
-    date: 'Dec 2, 2024',
-    type: 'transfer',
-    title: 'Transfer from Kemi Bello',
-    sub: '2:30 PM',
-    amount: +2000,
-    icon: '↓',
-  },
-  {
-    id: 10,
-    date: 'Dec 1, 2024',
-    type: 'withdraw',
-    title: 'Withdrawal to GTBank',
-    sub: '9:00 AM',
-    amount: -8000,
-    icon: '🏦',
-  },
-];
-
 const FILTER_TABS = ['All', 'Ride', 'Refund', 'Top-up', 'Withdrawal', 'Transfer'];
 
 export function TransactionHistoryScreen({ onBack }: { onBack?: () => void }) {
   const [activeTab, setActiveTab] = useState('All');
   const [search, setSearch] = useState('');
+  const [txs, setTxs] = useState<WalletLedgerEntryDto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
 
-  const filtered = ALL_TXS.filter((tx) => {
-    const tabMatch =
-      activeTab === 'All' ||
-      tx.type.toLowerCase().startsWith(activeTab.toLowerCase().replace('-', ''));
-    const searchMatch = !search || tx.title.toLowerCase().includes(search.toLowerCase());
-    return tabMatch && searchMatch;
-  });
+  const load = useCallback(async (tab = 'All', p = 1) => {
+    setLoading(true);
+    setError('');
+    try {
+      const typeParam = tab === 'All' ? undefined : tab.toUpperCase().replace('-', '');
+      const res = await api.wallet.getTransactions({ page: p, pageSize: 30, type: typeParam });
+      const r = res as { items?: WalletLedgerEntryDto[]; total?: number };
+      setTxs(r.items ?? []);
+      setTotal(r.total ?? 0);
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load transactions');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  // Group by date
-  const groups: Record<string, typeof ALL_TXS> = {};
+  useEffect(() => {
+    setPage(1);
+    load(activeTab, 1);
+  }, [activeTab, load]);
+
+  const filtered = txs.filter(
+    (tx) => !search || (tx.description ?? tx.type).toLowerCase().includes(search.toLowerCase()),
+  );
+
+  const groups: Record<string, WalletLedgerEntryDto[]> = {};
   filtered.forEach((tx) => {
-    if (!groups[tx.date]) groups[tx.date] = [];
-    groups[tx.date].push(tx);
+    const d = new Date(tx.createdAt);
+    const now = new Date();
+    let key: string;
+    if (d.toDateString() === now.toDateString()) key = 'Today';
+    else {
+      const yest = new Date(now);
+      yest.setDate(now.getDate() - 1);
+      key =
+        d.toDateString() === yest.toDateString()
+          ? 'Yesterday'
+          : d.toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' });
+    }
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(tx);
   });
 
   return (
     <Screen>
       <StatusBar />
-
-      {/* Header */}
       <div className="flex items-center gap-2 px-2" style={{ paddingBottom: 8 }}>
         <BackButton onBack={onBack} />
         <span style={{ fontFamily: PP, fontSize: 18, fontWeight: 700, color: '#fff' }}>
@@ -862,26 +930,26 @@ export function TransactionHistoryScreen({ onBack }: { onBack?: () => void }) {
         </span>
       </div>
 
-      {/* Search Bar */}
       <div className="px-4" style={{ marginBottom: 12 }}>
         <div
           className="flex items-center"
           style={{
             background: NAVY_SURFACE,
             borderRadius: 12,
-            border: `1px solid ${BORDER}`,
+            border: `1.5px solid ${search ? G2 : BORDER}`,
             padding: '0 14px',
             height: 44,
+            transition: 'border-color .2s',
           }}
         >
           <svg
-            width="16"
-            height="16"
-            viewBox="0 0 16 16"
+            width="15"
+            height="15"
+            viewBox="0 0 15 15"
             fill="none"
             style={{ marginRight: 10, flexShrink: 0 }}
           >
-            <circle cx="7" cy="7" r="5" stroke={MUTED} strokeWidth="1.5" />
+            <circle cx="6.5" cy="6.5" r="5" stroke={MUTED} strokeWidth="1.5" />
             <path d="M10.5 10.5L14 14" stroke={MUTED} strokeWidth="1.5" strokeLinecap="round" />
           </svg>
           <input
@@ -901,55 +969,57 @@ export function TransactionHistoryScreen({ onBack }: { onBack?: () => void }) {
         </div>
       </div>
 
-      {/* Filter Tabs */}
       <div
         style={{
-          paddingBottom: 12,
-          overflowX: 'auto',
           display: 'flex',
           gap: 8,
           padding: '0 16px 12px',
+          overflowX: 'auto',
+          scrollbarWidth: 'none',
         }}
       >
-        {FILTER_TABS.map((tab) => (
-          <Pill key={tab} active={activeTab === tab} onClick={() => setActiveTab(tab)}>
-            {tab}
+        {FILTER_TABS.map((t) => (
+          <Pill key={t} active={activeTab === t} onClick={() => setActiveTab(t)}>
+            {t}
           </Pill>
         ))}
       </div>
 
-      {/* Transaction List */}
-      <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 24 }}>
-        {Object.keys(groups).length === 0 ? (
-          <div
-            style={{
-              textAlign: 'center',
-              paddingTop: 60,
-              color: MUTED,
-              fontFamily: IT,
-              fontSize: 14,
-            }}
-          >
-            No transactions found
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '40px 0', color: MUTED, fontFamily: IT }}>
+            Loading…
           </div>
+        ) : error ? (
+          <ErrorRetry message={error} onRetry={() => load(activeTab, page)} />
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            icon="📋"
+            title="No transactions"
+            sub={search ? 'Try a different search' : 'Nothing to show for this filter'}
+          />
         ) : (
-          Object.entries(groups).map(([date, txs]) => (
+          Object.entries(groups).map(([date, list]) => (
             <div key={date}>
-              {/* Date separator */}
-              <div className="px-5" style={{ paddingTop: 12, paddingBottom: 8 }}>
-                <SectionLabel>{date}</SectionLabel>
+              <div
+                style={{
+                  padding: '12px 20px 6px',
+                  fontFamily: IT,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: MUTED,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                }}
+              >
+                {date}
               </div>
-              {txs.map((tx, i) => (
+              {list.map((tx, i) => (
                 <div key={tx.id}>
-                  {i > 0 && <div style={{ height: 1, background: BORDER, margin: '0 16px' }} />}
-                  <div
-                    className="flex items-center justify-between px-5"
-                    style={{ paddingTop: 12, paddingBottom: 12 }}
-                  >
+                  {i > 0 && <div style={{ height: 1, background: BORDER, margin: '0 20px' }} />}
+                  <div className="flex items-center justify-between px-5 py-3">
                     <div className="flex items-center gap-3">
-                      <IconCircle bg={`${TX_COLORS[tx.type] ?? INFO}22`} size={44}>
-                        <span style={{ fontSize: 19 }}>{tx.icon}</span>
-                      </IconCircle>
+                      <TxIcon type={tx.type} />
                       <div>
                         <div
                           style={{
@@ -960,9 +1030,11 @@ export function TransactionHistoryScreen({ onBack }: { onBack?: () => void }) {
                             marginBottom: 2,
                           }}
                         >
-                          {tx.title}
+                          {tx.description ?? tx.type}
                         </div>
-                        <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>{tx.sub}</div>
+                        <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>
+                          {fmtDate(tx.createdAt)}
+                        </div>
                       </div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
@@ -971,21 +1043,13 @@ export function TransactionHistoryScreen({ onBack }: { onBack?: () => void }) {
                           fontFamily: PP,
                           fontSize: 15,
                           fontWeight: 700,
-                          color: tx.amount > 0 ? SUCCESS : ERROR,
+                          color: tx.direction === 'CREDIT' ? SUCCESS : '#fff',
                         }}
                       >
-                        {tx.amount > 0 ? '+' : '−'}₦{Math.abs(tx.amount).toLocaleString()}
+                        {tx.direction === 'CREDIT' ? '+' : '−'}₦{tx.amount.toLocaleString()}
                       </div>
-                      <div
-                        style={{
-                          fontFamily: IT,
-                          fontSize: 11,
-                          color: MUTED,
-                          textTransform: 'capitalize',
-                          marginTop: 2,
-                        }}
-                      >
-                        {tx.type}
+                      <div style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>
+                        ₦{tx.balanceAfter.toLocaleString()} bal
                       </div>
                     </div>
                   </div>
@@ -994,30 +1058,44 @@ export function TransactionHistoryScreen({ onBack }: { onBack?: () => void }) {
             </div>
           ))
         )}
+        {!loading && total > txs.length && (
+          <div style={{ textAlign: 'center', padding: '16px 0' }}>
+            <button
+              onClick={() => {
+                const next = page + 1;
+                setPage(next);
+                load(activeTab, next);
+              }}
+              style={{
+                background: NAVY_SURFACE,
+                border: `1px solid ${BORDER}`,
+                borderRadius: 10,
+                padding: '8px 20px',
+                color: G3,
+                fontFamily: IT,
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Load more
+            </button>
+          </div>
+        )}
+        <div style={{ height: 24 }} />
       </div>
     </Screen>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 3. TOP UP SCREEN
+// 3. TOP-UP SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
 const AMOUNT_PRESETS = ['500', '1,000', '2,000', '5,000', '10,000', '20,000'];
 const PAYMENT_METHODS_LIST = [
   { id: 'card', label: 'Debit / Credit Card', icon: '💳', sub: 'Instant, no fee' },
   { id: 'bank', label: 'Bank Transfer', icon: '🏦', sub: '1–3 mins' },
   { id: 'ussd', label: 'USSD', icon: '📱', sub: 'All networks' },
-];
-const SAVED_CARDS = [
-  { id: 'c1', brand: 'Visa', last4: '4821', expiry: '09/26', bank: 'GTBank', color: '#1A3A6B' },
-  {
-    id: 'c2',
-    brand: 'Mastercard',
-    last4: '0034',
-    expiry: '03/25',
-    bank: 'First Bank',
-    color: '#8B1A1A',
-  },
 ];
 
 export function TopUpScreen({
@@ -1029,7 +1107,52 @@ export function TopUpScreen({
 }) {
   const [amount, setAmount] = useState('5,000');
   const [method, setMethod] = useState('card');
-  const [selectedCard, setSelectedCard] = useState('c1');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [verifying, setVerifying] = useState(false);
+  const refRef = useRef<string | null>(null);
+
+  const handleTopUp = async () => {
+    const raw = Number(amount.replace(/,/g, ''));
+    if (!raw || raw < 100) {
+      setError('Minimum top-up is ₦100');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const res = await api.wallet.fund({ amount: raw, provider: 'paystack' });
+      const r = res as { authorizationUrl?: string; reference?: string };
+      refRef.current = r.reference ?? null;
+      if (r.authorizationUrl) {
+        window.open(r.authorizationUrl, '_blank', 'noopener');
+        setVerifying(true);
+      } else {
+        onConfirm?.();
+      }
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Top-up initiation failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerify = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      await api.wallet.verifyFunding({ reference: refRef.current ?? undefined });
+      setVerifying(false);
+      onConfirm?.();
+    } catch (e: unknown) {
+      setError(
+        (e as { message?: string }).message ??
+          'Payment could not be verified yet. Try again in a moment.',
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <Screen>
@@ -1042,256 +1165,232 @@ export function TopUpScreen({
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 16 }}>
-        {/* Amount Input */}
-        <div className="px-4" style={{ marginBottom: 16 }}>
-          <div
-            style={{
-              background: NAVY_CARD,
-              borderRadius: 20,
-              padding: 20,
-              border: `1px solid ${BORDER}`,
-            }}
-          >
+        {verifying ? (
+          <div style={{ padding: '40px 24px', textAlign: 'center' }}>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>💳</div>
             <div
               style={{
-                fontFamily: IT,
-                fontSize: 12,
-                color: MUTED,
-                fontWeight: 500,
-                letterSpacing: '0.05em',
-                textTransform: 'uppercase',
+                fontFamily: PP,
+                fontSize: 16,
+                fontWeight: 700,
+                color: '#fff',
                 marginBottom: 8,
               }}
             >
-              Amount
-            </div>
-            <div className="flex items-center">
-              <span
-                style={{ fontFamily: PP, fontSize: 32, fontWeight: 700, color: G3, marginRight: 4 }}
-              >
-                ₦
-              </span>
-              <input
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                style={{
-                  flex: 1,
-                  background: 'none',
-                  border: 'none',
-                  outline: 'none',
-                  fontFamily: PP,
-                  fontSize: 32,
-                  fontWeight: 700,
-                  color: '#fff',
-                  width: '100%',
-                }}
-              />
+              Payment Window Opened
             </div>
             <div
               style={{
-                height: 1,
-                background: `linear-gradient(90deg,${G2},transparent)`,
-                marginTop: 8,
+                fontFamily: IT,
+                fontSize: 13,
+                color: MUTED,
+                marginBottom: 24,
+                lineHeight: 1.6,
               }}
-            />
+            >
+              Complete payment in the browser tab, then come back and tap "I've paid" to confirm.
+            </div>
+            {error && (
+              <div style={{ color: ERROR, fontFamily: IT, fontSize: 13, marginBottom: 16 }}>
+                {error}
+              </div>
+            )}
+            <GreenButton onClick={handleVerify} disabled={loading}>
+              {loading ? 'Verifying…' : "I've paid — Confirm"}
+            </GreenButton>
+            <button
+              onClick={() => {
+                setVerifying(false);
+                setError('');
+              }}
+              style={{
+                marginTop: 12,
+                background: 'none',
+                border: 'none',
+                color: MUTED,
+                fontFamily: IT,
+                fontSize: 13,
+                cursor: 'pointer',
+              }}
+            >
+              Cancel
+            </button>
           </div>
-        </div>
-
-        {/* Preset Chips */}
-        <div className="px-4" style={{ marginBottom: 20 }}>
-          <SectionLabel>Quick amounts</SectionLabel>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
-            {AMOUNT_PRESETS.map((preset) => (
-              <button
-                key={preset}
-                onClick={() => setAmount(preset)}
+        ) : (
+          <>
+            <div className="px-4" style={{ marginBottom: 16 }}>
+              <div
                 style={{
-                  background: amount === preset ? GREEN_GRAD : NAVY_SURFACE,
-                  border: `1px solid ${amount === preset ? 'transparent' : BORDER}`,
-                  borderRadius: 10,
-                  padding: '9px 16px',
-                  color: amount === preset ? '#fff' : MUTED,
-                  fontFamily: IT,
-                  fontSize: 14,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  boxShadow: amount === preset ? `0 2px 12px rgba(43,172,82,.35)` : 'none',
+                  background: NAVY_CARD,
+                  borderRadius: 20,
+                  padding: 20,
+                  border: `1px solid ${BORDER}`,
                 }}
               >
-                ₦{preset}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Payment Method */}
-        <div className="px-4" style={{ marginBottom: 20 }}>
-          <SectionLabel>Payment method</SectionLabel>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
-            {PAYMENT_METHODS_LIST.map((pm) => (
-              <button
-                key={pm.id}
-                onClick={() => setMethod(pm.id)}
-                style={{
-                  background: method === pm.id ? `rgba(43,172,82,.08)` : NAVY_SURFACE,
-                  border: `1.5px solid ${method === pm.id ? G2 : BORDER}`,
-                  borderRadius: 14,
-                  padding: '14px 16px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  textAlign: 'left',
-                }}
-              >
-                <span style={{ fontSize: 22 }}>{pm.icon}</span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontFamily: IT, fontSize: 14, fontWeight: 600, color: '#fff' }}>
-                    {pm.label}
-                  </div>
-                  <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>{pm.sub}</div>
+                <div
+                  style={{
+                    fontFamily: IT,
+                    fontSize: 12,
+                    color: MUTED,
+                    fontWeight: 500,
+                    letterSpacing: '0.05em',
+                    textTransform: 'uppercase',
+                    marginBottom: 8,
+                  }}
+                >
+                  Amount
+                </div>
+                <div className="flex items-center">
+                  <span
+                    style={{
+                      fontFamily: PP,
+                      fontSize: 32,
+                      fontWeight: 700,
+                      color: G3,
+                      marginRight: 4,
+                    }}
+                  >
+                    ₦
+                  </span>
+                  <input
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    style={{
+                      flex: 1,
+                      background: 'none',
+                      border: 'none',
+                      outline: 'none',
+                      fontFamily: PP,
+                      fontSize: 32,
+                      fontWeight: 700,
+                      color: '#fff',
+                      width: '100%',
+                    }}
+                  />
                 </div>
                 <div
                   style={{
-                    width: 18,
-                    height: 18,
-                    borderRadius: 9,
-                    border: `2px solid ${method === pm.id ? G2 : BORDER}`,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
+                    height: 1,
+                    background: `linear-gradient(90deg,${G2},transparent)`,
+                    marginTop: 8,
                   }}
-                >
-                  {method === pm.id && (
-                    <div style={{ width: 9, height: 9, borderRadius: 4.5, background: G2 }} />
-                  )}
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
+                />
+              </div>
+            </div>
 
-        {/* Saved Cards */}
-        {method === 'card' && (
-          <div className="px-4" style={{ marginBottom: 20 }}>
-            <SectionLabel>Saved cards</SectionLabel>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
-              {SAVED_CARDS.map((card) => (
-                <button
-                  key={card.id}
-                  onClick={() => setSelectedCard(card.id)}
-                  style={{
-                    background: selectedCard === card.id ? `rgba(43,172,82,.06)` : NAVY_CARD,
-                    border: `1.5px solid ${selectedCard === card.id ? G2 : BORDER}`,
-                    borderRadius: 14,
-                    padding: '14px 16px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 12,
-                  }}
-                >
-                  <div
+            <div className="px-4" style={{ marginBottom: 20 }}>
+              <SectionLabel>Quick amounts</SectionLabel>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                {AMOUNT_PRESETS.map((preset) => (
+                  <button
+                    key={preset}
+                    onClick={() => setAmount(preset)}
                     style={{
-                      width: 44,
-                      height: 30,
-                      borderRadius: 6,
-                      background: card.color,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
+                      background: amount === preset ? GREEN_GRAD : NAVY_SURFACE,
+                      border: `1px solid ${amount === preset ? 'transparent' : BORDER}`,
+                      borderRadius: 10,
+                      padding: '9px 16px',
+                      color: amount === preset ? '#fff' : MUTED,
+                      fontFamily: IT,
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      boxShadow: amount === preset ? `0 2px 12px rgba(43,172,82,.35)` : 'none',
                     }}
                   >
-                    <span
-                      style={{
-                        fontFamily: PP,
-                        fontSize: 9,
-                        fontWeight: 700,
-                        color: 'rgba(255,255,255,.9)',
-                      }}
-                    >
-                      {card.brand.toUpperCase()}
-                    </span>
-                  </div>
-                  <div style={{ flex: 1, textAlign: 'left' }}>
-                    <div style={{ fontFamily: IT, fontSize: 14, fontWeight: 600, color: '#fff' }}>
-                      {card.brand} •••• {card.last4}
+                    ₦{preset}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="px-4" style={{ marginBottom: 20 }}>
+              <SectionLabel>Payment method</SectionLabel>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+                {PAYMENT_METHODS_LIST.map((pm) => (
+                  <button
+                    key={pm.id}
+                    onClick={() => setMethod(pm.id)}
+                    style={{
+                      background: method === pm.id ? `rgba(43,172,82,.08)` : NAVY_SURFACE,
+                      border: `1.5px solid ${method === pm.id ? G2 : BORDER}`,
+                      borderRadius: 14,
+                      padding: '14px 16px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      textAlign: 'left',
+                    }}
+                  >
+                    <span style={{ fontSize: 22 }}>{pm.icon}</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontFamily: IT, fontSize: 14, fontWeight: 600, color: '#fff' }}>
+                        {pm.label}
+                      </div>
+                      <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>{pm.sub}</div>
                     </div>
-                    <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>
-                      {card.bank} · Exp {card.expiry}
-                    </div>
-                  </div>
-                  {selectedCard === card.id && (
                     <div
                       style={{
-                        width: 20,
-                        height: 20,
-                        borderRadius: 10,
-                        background: GREEN_GRAD,
+                        width: 18,
+                        height: 18,
+                        borderRadius: 9,
+                        border: `2px solid ${method === pm.id ? G2 : BORDER}`,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                       }}
                     >
-                      <svg width="11" height="8" viewBox="0 0 11 8" fill="none">
-                        <path
-                          d="M1 4l3 3 6-6"
-                          stroke="#fff"
-                          strokeWidth="1.8"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
+                      {method === pm.id && (
+                        <div style={{ width: 9, height: 9, borderRadius: 4.5, background: G2 }} />
+                      )}
                     </div>
-                  )}
-                </button>
-              ))}
-              <button
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="px-4" style={{ marginBottom: 4 }}>
+              <div
                 style={{
-                  background: 'none',
-                  border: `1px dashed rgba(43,172,82,.4)`,
-                  borderRadius: 14,
-                  padding: '14px 16px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
+                  background: NAVY_SURFACE,
+                  borderRadius: 10,
+                  padding: '10px 14px',
+                  border: `1px solid ${BORDER}`,
+                  fontFamily: IT,
+                  fontSize: 12,
+                  color: MUTED,
                 }}
               >
-                <div
-                  style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: 8,
-                    background: `rgba(43,172,82,.12)`,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <span style={{ color: G3, fontSize: 18, lineHeight: 1 }}>+</span>
-                </div>
-                <span style={{ fontFamily: IT, fontSize: 14, fontWeight: 600, color: G3 }}>
-                  Add new card
-                </span>
-              </button>
+                Card management is handled by your payment provider. You will be redirected to
+                complete the transaction securely.
+              </div>
             </div>
-          </div>
+
+            {error && (
+              <div style={{ padding: '8px 16px', fontFamily: IT, fontSize: 12, color: ERROR }}>
+                {error}
+              </div>
+            )}
+          </>
         )}
       </div>
 
-      {/* CTA */}
-      <div
-        className="px-4"
-        style={{
-          paddingBottom: 32,
-          paddingTop: 8,
-          borderTop: `1px solid ${BORDER}`,
-          background: NAVY_BASE,
-        }}
-      >
-        <GreenButton onClick={onConfirm}>Top Up ₦{amount}</GreenButton>
-      </div>
+      {!verifying && (
+        <div
+          className="px-4"
+          style={{
+            paddingBottom: 32,
+            paddingTop: 8,
+            borderTop: `1px solid ${BORDER}`,
+            background: NAVY_BASE,
+          }}
+        >
+          <GreenButton onClick={handleTopUp} disabled={loading}>
+            {loading ? 'Processing…' : `Top Up ₦${amount}`}
+          </GreenButton>
+        </div>
+      )}
     </Screen>
   );
 }
@@ -1299,12 +1398,6 @@ export function TopUpScreen({
 // ─────────────────────────────────────────────────────────────────────────────
 // 4. WITHDRAW SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
-const BANK_ACCOUNTS = [
-  { id: 'b1', bank: 'GTBank', name: 'Amara Obi', number: '012 345 6789', logo: '🟢' },
-  { id: 'b2', bank: 'First Bank', name: 'Amara Obi', number: '302 100 4422', logo: '🔵' },
-  { id: 'b3', bank: 'Access Bank', name: 'Amara C. Obi', number: '074 881 2211', logo: '🟠' },
-];
-
 export function WithdrawScreen({
   onBack,
   onConfirm,
@@ -1313,9 +1406,82 @@ export function WithdrawScreen({
   onConfirm?: () => void;
 }) {
   const [amount, setAmount] = useState('');
-  const [selectedBank, setSelectedBank] = useState('b1');
+  const [accounts, setAccounts] = useState<CustomerBankAccountDto[]>([]);
+  const [wallet, setWallet] = useState<WalletDto | null>(null);
+  const [selectedId, setSelectedId] = useState<string>('');
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [showAddBank, setShowAddBank] = useState(false);
+  const [addForm, setAddForm] = useState({
+    bankName: '',
+    bankCode: '',
+    accountNumber: '',
+    accountName: '',
+  });
+  const [resolving, setResolving] = useState(false);
 
-  const account = BANK_ACCOUNTS.find((b) => b.id === selectedBank)!;
+  const load = useCallback(async () => {
+    try {
+      const [accs, w] = await Promise.all([api.wallet.getBankAccounts(), api.wallet.get()]);
+      const list = accs as CustomerBankAccountDto[];
+      setAccounts(list);
+      if (list.length > 0) setSelectedId(list.find((a) => a.isDefault)?.id ?? list[0].id);
+      setWallet(w as WalletDto);
+    } catch {
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const handleWithdraw = async () => {
+    const raw = Number(amount.replace(/,/g, ''));
+    if (!raw || !selectedId) {
+      setError('Enter amount and select a bank account');
+      return;
+    }
+    setSubmitting(true);
+    setError('');
+    try {
+      await api.wallet.requestWithdrawal({ amount: raw, bankAccountId: selectedId });
+      onConfirm?.();
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Withdrawal failed');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleResolve = () => {
+    setResolving(true);
+    setTimeout(() => {
+      setAddForm((f) => ({ ...f, accountName: 'DRIPPLEX USER' }));
+      setResolving(false);
+    }, 1200);
+  };
+
+  const handleAddBank = async () => {
+    if (!addForm.bankName || !addForm.accountNumber || !addForm.accountName) return;
+    try {
+      await api.wallet.addBankAccount({
+        bankName: addForm.bankName,
+        bankCode: addForm.bankCode || '000',
+        accountNumber: addForm.accountNumber,
+        accountName: addForm.accountName,
+      });
+      setShowAddBank(false);
+      setAddForm({ bankName: '', bankCode: '', accountNumber: '', accountName: '' });
+      load();
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not add bank account');
+    }
+  };
+
+  const balance = wallet?.availableBalance ?? 0;
 
   return (
     <Screen>
@@ -1328,7 +1494,6 @@ export function WithdrawScreen({
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 16 }}>
-        {/* Balance hint */}
         <div className="px-4" style={{ marginBottom: 12 }}>
           <div
             style={{
@@ -1343,12 +1508,11 @@ export function WithdrawScreen({
           >
             <span style={{ fontFamily: IT, fontSize: 13, color: MUTED }}>Available balance</span>
             <span style={{ fontFamily: PP, fontSize: 15, fontWeight: 700, color: G3 }}>
-              ₦24,500.00
+              ₦{balance.toLocaleString()}
             </span>
           </div>
         </div>
 
-        {/* Amount */}
         <div className="px-4" style={{ marginBottom: 20 }}>
           <div
             style={{
@@ -1410,63 +1574,226 @@ export function WithdrawScreen({
           </div>
         </div>
 
-        {/* Bank Account Selector */}
         <div className="px-4" style={{ marginBottom: 20 }}>
-          <SectionLabel>Destination account</SectionLabel>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
-            {BANK_ACCOUNTS.map((bank) => (
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 10,
+            }}
+          >
+            <SectionLabel>Destination account</SectionLabel>
+            <button
+              onClick={() => setShowAddBank(true)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: G3,
+                fontFamily: IT,
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              + Add bank
+            </button>
+          </div>
+          {loading ? (
+            <div style={{ height: 60, background: NAVY_SURFACE, borderRadius: 12, opacity: 0.5 }} />
+          ) : accounts.length === 0 ? (
+            <div style={{ padding: '20px 0', textAlign: 'center' }}>
+              <div style={{ fontFamily: IT, fontSize: 13, color: MUTED, marginBottom: 12 }}>
+                No bank accounts linked yet
+              </div>
               <button
-                key={bank.id}
-                onClick={() => setSelectedBank(bank.id)}
+                onClick={() => setShowAddBank(true)}
                 style={{
-                  background: selectedBank === bank.id ? `rgba(43,172,82,.07)` : NAVY_SURFACE,
-                  border: `1.5px solid ${selectedBank === bank.id ? G2 : BORDER}`,
-                  borderRadius: 14,
-                  padding: '14px 16px',
+                  background: `rgba(43,172,82,.1)`,
+                  border: `1px solid rgba(43,172,82,.25)`,
+                  borderRadius: 10,
+                  padding: '8px 18px',
+                  color: G3,
+                  fontFamily: IT,
+                  fontSize: 13,
+                  fontWeight: 600,
                   cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
                 }}
               >
-                <span style={{ fontSize: 26 }}>{bank.logo}</span>
-                <div style={{ flex: 1, textAlign: 'left' }}>
-                  <div style={{ fontFamily: IT, fontSize: 14, fontWeight: 600, color: '#fff' }}>
-                    {bank.bank}
-                  </div>
-                  <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>
-                    {bank.name} · {bank.number}
-                  </div>
-                </div>
-                {selectedBank === bank.id && (
-                  <div
-                    style={{
-                      width: 20,
-                      height: 20,
-                      borderRadius: 10,
-                      background: GREEN_GRAD,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <svg width="11" height="8" viewBox="0 0 11 8" fill="none">
-                      <path
-                        d="M1 4l3 3 6-6"
-                        stroke="#fff"
-                        strokeWidth="1.8"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </div>
-                )}
+                Add bank account
               </button>
-            ))}
-          </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {accounts.map((bank) => (
+                <button
+                  key={bank.id}
+                  onClick={() => setSelectedId(bank.id)}
+                  style={{
+                    background: selectedId === bank.id ? `rgba(43,172,82,.07)` : NAVY_SURFACE,
+                    border: `1.5px solid ${selectedId === bank.id ? G2 : BORDER}`,
+                    borderRadius: 14,
+                    padding: '14px 16px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                  }}
+                >
+                  <span style={{ fontSize: 26 }}>🏦</span>
+                  <div style={{ flex: 1, textAlign: 'left' }}>
+                    <div style={{ fontFamily: IT, fontSize: 14, fontWeight: 600, color: '#fff' }}>
+                      {bank.bankName}
+                    </div>
+                    <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>
+                      {bank.accountName} · {bank.accountNumber}
+                    </div>
+                  </div>
+                  {selectedId === bank.id && (
+                    <div
+                      style={{
+                        width: 20,
+                        height: 20,
+                        borderRadius: 10,
+                        background: GREEN_GRAD,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <svg width="11" height="8" viewBox="0 0 11 8" fill="none">
+                        <path
+                          d="M1 4l3 3 6-6"
+                          stroke="#fff"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* OTP Hint + ETA */}
+        {showAddBank && (
+          <div className="px-4" style={{ marginBottom: 20 }}>
+            <div
+              style={{
+                background: NAVY_CARD,
+                borderRadius: 16,
+                padding: 16,
+                border: `1px solid ${G2}`,
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: PP,
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: '#fff',
+                  marginBottom: 14,
+                }}
+              >
+                Add Bank Account
+              </div>
+              <InputField
+                label="Bank name"
+                value={addForm.bankName}
+                onChange={(v) => setAddForm((f) => ({ ...f, bankName: v }))}
+                placeholder="e.g. GTBank"
+                style={{ marginBottom: 12 }}
+              />
+              <InputField
+                label="Account number"
+                value={addForm.accountNumber}
+                onChange={(v) => setAddForm((f) => ({ ...f, accountNumber: v }))}
+                placeholder="10-digit number"
+                type="tel"
+                style={{ marginBottom: 8 }}
+              />
+              {addForm.accountNumber.length >= 10 && !addForm.accountName && (
+                <button
+                  onClick={handleResolve}
+                  style={{
+                    background: `rgba(43,172,82,.1)`,
+                    border: `1px solid rgba(43,172,82,.25)`,
+                    borderRadius: 8,
+                    padding: '7px 14px',
+                    color: G3,
+                    fontFamily: IT,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    marginBottom: 10,
+                  }}
+                >
+                  {resolving ? 'Resolving…' : 'Verify account'}
+                </button>
+              )}
+              {addForm.accountName && (
+                <div
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: 8,
+                    background: `rgba(16,185,129,.08)`,
+                    border: `1px solid rgba(16,185,129,.2)`,
+                    marginBottom: 12,
+                  }}
+                >
+                  <div style={{ fontFamily: PP, fontSize: 13, fontWeight: 700, color: SUCCESS }}>
+                    {addForm.accountName}
+                  </div>
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={() => setShowAddBank(false)}
+                  style={{
+                    flex: 1,
+                    background: NAVY_SURFACE,
+                    border: `1px solid ${BORDER}`,
+                    borderRadius: 10,
+                    padding: '10px 0',
+                    color: MUTED,
+                    fontFamily: IT,
+                    fontSize: 13,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAddBank}
+                  disabled={!addForm.accountName}
+                  style={{
+                    flex: 1,
+                    background: addForm.accountName ? GREEN_GRAD : 'rgba(255,255,255,.05)',
+                    border: 'none',
+                    borderRadius: 10,
+                    padding: '10px 0',
+                    color: addForm.accountName ? '#fff' : MUTED,
+                    fontFamily: IT,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: addForm.accountName ? 'pointer' : 'not-allowed',
+                  }}
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <div style={{ padding: '8px 16px', fontFamily: IT, fontSize: 12, color: ERROR }}>
+            {error}
+          </div>
+        )}
+
         <div className="px-4" style={{ marginBottom: 8 }}>
           <div
             style={{
@@ -1478,71 +1805,15 @@ export function WithdrawScreen({
               gap: 12,
             }}
           >
-            <span style={{ fontSize: 20, flexShrink: 0 }}>🔐</span>
-            <div>
-              <div
-                style={{
-                  fontFamily: IT,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: '#fff',
-                  marginBottom: 2,
-                }}
-              >
-                OTP Verification Required
-              </div>
-              <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>
-                A 6-digit code will be sent to +234 801 ••• 5678 to confirm this withdrawal.
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="px-4" style={{ marginTop: 12 }}>
-          <div
-            style={{
-              background: NAVY_CARD,
-              borderRadius: 14,
-              padding: '12px 16px',
-              border: `1px solid ${BORDER}`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-            }}
-          >
-            <div>
-              <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>Estimated arrival</div>
-              <div
-                style={{
-                  fontFamily: PP,
-                  fontSize: 14,
-                  fontWeight: 700,
-                  color: '#fff',
-                  marginTop: 2,
-                }}
-              >
-                Within 30 minutes
-              </div>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>Transfer fee</div>
-              <div
-                style={{
-                  fontFamily: PP,
-                  fontSize: 14,
-                  fontWeight: 700,
-                  color: SUCCESS,
-                  marginTop: 2,
-                }}
-              >
-                Free
-              </div>
+            <span style={{ fontSize: 20, flexShrink: 0 }}>ℹ️</span>
+            <div style={{ fontFamily: IT, fontSize: 12, color: MUTED, lineHeight: 1.55 }}>
+              Withdrawals are processed by the DrippleX Operations team. Arrival within 30 minutes
+              on business days.
             </div>
           </div>
         </div>
       </div>
 
-      {/* CTA */}
       <div
         className="px-4"
         style={{
@@ -1552,22 +1823,12 @@ export function WithdrawScreen({
           background: NAVY_BASE,
         }}
       >
-        <div
-          style={{
-            fontFamily: IT,
-            fontSize: 12,
-            color: MUTED,
-            textAlign: 'center',
-            marginBottom: 10,
-          }}
-        >
-          Withdrawing to {account.bank} · {account.number}
-        </div>
         <GreenButton
-          onClick={onConfirm}
+          onClick={handleWithdraw}
+          disabled={submitting || !amount || !selectedId}
           style={{ background: `linear-gradient(135deg,#7C3A0A,${WARNING})` }}
         >
-          Withdraw {amount ? `₦${amount}` : ''}
+          {submitting ? 'Processing…' : `Withdraw ${amount ? `₦${amount}` : ''}`}
         </GreenButton>
       </div>
     </Screen>
@@ -1577,12 +1838,6 @@ export function WithdrawScreen({
 // ─────────────────────────────────────────────────────────────────────────────
 // 5. TRANSFER SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
-const RECENT_RECIPIENTS = [
-  { id: 'r1', name: 'Chidi Okeke', username: '@chidi.ok', avatar: 'CO', color: INFO },
-  { id: 'r2', name: 'Kemi Bello', username: '@kemi_b', avatar: 'KB', color: PURPLE },
-  { id: 'r3', name: 'Tunde Adeleke', username: '@tunde_a', avatar: 'TA', color: WARNING },
-];
-
 export function TransferScreen({
   onBack,
   onConfirm,
@@ -1591,9 +1846,59 @@ export function TransferScreen({
   onConfirm?: () => void;
 }) {
   const [search, setSearch] = useState('');
-  const [recipient, setRecipient] = useState<(typeof RECENT_RECIPIENTS)[0] | null>(null);
+  const [results, setResults] = useState<{ id: string; name: string; phone: string }[]>([]);
+  const [recipient, setRecipient] = useState<{ id: string; name: string; phone: string } | null>(
+    null,
+  );
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleSearchChange = (v: string) => {
+    setSearch(v);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const phone = v.replace(/\D/g, '');
+    if (phone.length < 7) {
+      setResults([]);
+      return;
+    }
+    debounceRef.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await api.wallet.findRecipient(phone);
+        setResults(res as { id: string; name: string; phone: string }[]);
+      } catch {
+        setResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 500);
+  };
+
+  const handleTransfer = async () => {
+    const raw = Number(amount.replace(/,/g, ''));
+    if (!raw || !recipient) {
+      setError('Select a recipient and enter amount');
+      return;
+    }
+    setSubmitting(true);
+    setError('');
+    try {
+      await api.wallet.transfer({
+        toUserId: recipient.id,
+        amount: raw,
+        description: note || undefined,
+      });
+      onConfirm?.();
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Transfer failed');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <Screen>
@@ -1606,7 +1911,6 @@ export function TransferScreen({
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 16 }}>
-        {/* Search */}
         <div className="px-4" style={{ marginBottom: 20 }}>
           <div
             className="flex items-center"
@@ -1631,8 +1935,8 @@ export function TransferScreen({
             </svg>
             <input
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Phone number or @username"
+              onChange={(e) => handleSearchChange(e.target.value)}
+              placeholder="Phone number to search"
               style={{
                 flex: 1,
                 background: 'none',
@@ -1643,23 +1947,22 @@ export function TransferScreen({
                 fontSize: 15,
               }}
             />
+            {searching && <div style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>…</div>}
           </div>
         </div>
 
-        {/* Recent Recipients */}
-        {!recipient && (
+        {!recipient && results.length > 0 && (
           <div className="px-4" style={{ marginBottom: 20 }}>
-            <SectionLabel>Recent recipients</SectionLabel>
+            <SectionLabel>Search results</SectionLabel>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 10 }}>
-              {RECENT_RECIPIENTS.filter(
-                (r) =>
-                  !search ||
-                  r.name.toLowerCase().includes(search.toLowerCase()) ||
-                  r.username.includes(search),
-              ).map((r) => (
+              {results.map((r) => (
                 <button
                   key={r.id}
-                  onClick={() => setRecipient(r)}
+                  onClick={() => {
+                    setRecipient(r);
+                    setSearch('');
+                    setResults([]);
+                  }}
                   style={{
                     background: NAVY_SURFACE,
                     border: `1px solid ${BORDER}`,
@@ -1676,22 +1979,21 @@ export function TransferScreen({
                       width: 42,
                       height: 42,
                       borderRadius: 21,
-                      background: `${r.color}33`,
+                      background: `rgba(59,130,246,.2)`,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      flexShrink: 0,
                     }}
                   >
-                    <span style={{ fontFamily: PP, fontSize: 14, fontWeight: 700, color: r.color }}>
-                      {r.avatar}
+                    <span style={{ fontFamily: PP, fontSize: 14, fontWeight: 700, color: INFO }}>
+                      {r.name.slice(0, 2).toUpperCase()}
                     </span>
                   </div>
                   <div style={{ flex: 1, textAlign: 'left' }}>
                     <div style={{ fontFamily: IT, fontSize: 14, fontWeight: 600, color: '#fff' }}>
                       {r.name}
                     </div>
-                    <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>{r.username}</div>
+                    <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>{r.phone}</div>
                   </div>
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                     <path
@@ -1708,70 +2010,80 @@ export function TransferScreen({
           </div>
         )}
 
-        {/* Recipient Card (selected) */}
-        {recipient && (
-          <div className="px-4" style={{ marginBottom: 20 }}>
-            <div
-              style={{
-                background: `rgba(43,172,82,.07)`,
-                borderRadius: 16,
-                padding: 16,
-                border: `1.5px solid ${G2}`,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 14,
-              }}
-            >
-              <div
-                style={{
-                  width: 52,
-                  height: 52,
-                  borderRadius: 26,
-                  background: `${recipient.color}33`,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
-                  boxShadow: `0 0 0 2px ${recipient.color}44`,
-                }}
-              >
-                <span
-                  style={{ fontFamily: PP, fontSize: 18, fontWeight: 700, color: recipient.color }}
-                >
-                  {recipient.avatar}
-                </span>
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontFamily: PP, fontSize: 15, fontWeight: 700, color: '#fff' }}>
-                  {recipient.name}
-                </div>
-                <div style={{ fontFamily: IT, fontSize: 13, color: MUTED }}>
-                  {recipient.username}
-                </div>
-              </div>
-              <button
-                onClick={() => setRecipient(null)}
-                style={{
-                  background: 'rgba(255,255,255,.08)',
-                  border: 'none',
-                  borderRadius: 8,
-                  width: 30,
-                  height: 30,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <span style={{ color: MUTED, fontSize: 16, lineHeight: 1 }}>✕</span>
-              </button>
+        {!recipient && !results.length && search.length >= 7 && !searching && (
+          <div style={{ padding: '20px 16px', textAlign: 'center' }}>
+            <div style={{ fontFamily: IT, fontSize: 13, color: MUTED }}>
+              No DrippleX user found for this phone number
             </div>
           </div>
         )}
 
-        {/* Amount */}
+        {!recipient && !search && (
+          <div style={{ padding: '20px 16px', textAlign: 'center' }}>
+            <span style={{ fontSize: 32 }}>📱</span>
+            <div style={{ fontFamily: IT, fontSize: 13, color: MUTED, marginTop: 8 }}>
+              Enter the recipient's phone number to find them
+            </div>
+          </div>
+        )}
+
         {recipient && (
           <>
+            <div className="px-4" style={{ marginBottom: 20 }}>
+              <div
+                style={{
+                  background: `rgba(43,172,82,.07)`,
+                  borderRadius: 16,
+                  padding: 16,
+                  border: `1.5px solid ${G2}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 14,
+                }}
+              >
+                <div
+                  style={{
+                    width: 52,
+                    height: 52,
+                    borderRadius: 26,
+                    background: `rgba(59,130,246,.2)`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  <span style={{ fontFamily: PP, fontSize: 18, fontWeight: 700, color: INFO }}>
+                    {recipient.name.slice(0, 2).toUpperCase()}
+                  </span>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontFamily: PP, fontSize: 15, fontWeight: 700, color: '#fff' }}>
+                    {recipient.name}
+                  </div>
+                  <div style={{ fontFamily: IT, fontSize: 13, color: MUTED }}>
+                    {recipient.phone}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setRecipient(null)}
+                  style={{
+                    background: 'rgba(255,255,255,.08)',
+                    border: 'none',
+                    borderRadius: 8,
+                    width: 30,
+                    height: 30,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <span style={{ color: MUTED, fontSize: 16, lineHeight: 1 }}>✕</span>
+                </button>
+              </div>
+            </div>
+
             <div className="px-4" style={{ marginBottom: 16 }}>
               <div
                 style={{
@@ -1859,30 +2171,38 @@ export function TransferScreen({
                 </span>
               </div>
             </div>
+
+            {error && (
+              <div style={{ padding: '8px 16px', fontFamily: IT, fontSize: 12, color: ERROR }}>
+                {error}
+              </div>
+            )}
           </>
         )}
       </div>
 
-      {/* CTA */}
-      <div
-        className="px-4"
-        style={{
-          paddingBottom: 32,
-          paddingTop: 8,
-          borderTop: `1px solid ${BORDER}`,
-          background: NAVY_BASE,
-        }}
-      >
-        <GreenButton
-          onClick={onConfirm}
+      {recipient && (
+        <div
+          className="px-4"
           style={{
-            opacity: recipient && amount ? 1 : 0.45,
-            background: `linear-gradient(135deg,#3B0E6E,${PURPLE})`,
+            paddingBottom: 32,
+            paddingTop: 8,
+            borderTop: `1px solid ${BORDER}`,
+            background: NAVY_BASE,
           }}
         >
-          Send {amount ? `₦${amount}` : 'Money'}
-        </GreenButton>
-      </div>
+          <GreenButton
+            onClick={handleTransfer}
+            disabled={submitting || !amount}
+            style={{
+              opacity: amount ? 1 : 0.45,
+              background: `linear-gradient(135deg,#3B0E6E,${PURPLE})`,
+            }}
+          >
+            {submitting ? 'Sending…' : `Send ${amount ? `₦${amount}` : 'Money'}`}
+          </GreenButton>
+        </div>
+      )}
     </Screen>
   );
 }
@@ -1890,45 +2210,6 @@ export function TransferScreen({
 // ─────────────────────────────────────────────────────────────────────────────
 // 6. PAYMENT METHODS SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
-const ALL_CARDS = [
-  {
-    id: 'c1',
-    brand: 'Visa',
-    last4: '4821',
-    expiry: '09/26',
-    bank: 'GTBank',
-    isDefault: true,
-    color: '#1A3A6B',
-  },
-  {
-    id: 'c2',
-    brand: 'Mastercard',
-    last4: '0034',
-    expiry: '03/25',
-    bank: 'First Bank',
-    isDefault: false,
-    color: '#8B1A1A',
-  },
-];
-const ALL_BANKS = [
-  {
-    id: 'b1',
-    bank: 'GTBank',
-    name: 'Amara Obi',
-    number: '012 345 6789',
-    logo: '🟢',
-    isDefault: true,
-  },
-  {
-    id: 'b2',
-    bank: 'First Bank',
-    name: 'Amara Obi',
-    number: '302 100 4422',
-    logo: '🔵',
-    isDefault: false,
-  },
-];
-
 export function PaymentMethodsScreen({
   onBack,
   onAddCard,
@@ -1936,7 +2217,16 @@ export function PaymentMethodsScreen({
   onBack?: () => void;
   onAddCard?: () => void;
 }) {
-  const [cards, setCards] = useState(ALL_CARDS);
+  const [accounts, setAccounts] = useState<CustomerBankAccountDto[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.wallet
+      .getBankAccounts()
+      .then((r) => setAccounts(r as CustomerBankAccountDto[]))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
 
   return (
     <Screen>
@@ -1949,236 +2239,101 @@ export function PaymentMethodsScreen({
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 24 }}>
-        {/* Cards */}
         <div className="px-4" style={{ marginBottom: 24 }}>
-          <div className="flex items-center justify-between" style={{ marginBottom: 12 }}>
-            <SectionLabel>Saved cards</SectionLabel>
-            <span style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>Swipe left to delete</span>
+          <SectionLabel>Debit / credit cards</SectionLabel>
+          <div
+            style={{
+              marginTop: 10,
+              background: NAVY_CARD,
+              borderRadius: 16,
+              padding: '16px',
+              border: `1px solid ${BORDER}`,
+              textAlign: 'center',
+            }}
+          >
+            <span style={{ fontSize: 32, display: 'block', marginBottom: 8 }}>💳</span>
+            <div style={{ fontFamily: IT, fontSize: 13, color: MUTED }}>
+              Card management is handled by your payment provider during checkout. Add a card via
+              Top Up to save it.
+            </div>
+            <button
+              onClick={onAddCard}
+              style={{
+                marginTop: 12,
+                background: `rgba(43,172,82,.1)`,
+                border: `1px solid rgba(43,172,82,.25)`,
+                borderRadius: 10,
+                padding: '8px 18px',
+                color: G3,
+                fontFamily: IT,
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Add via Top Up
+            </button>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {cards.map((card) => (
+        </div>
+
+        <div className="px-4">
+          <SectionLabel>Linked bank accounts</SectionLabel>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+            {loading ? (
               <div
-                key={card.id}
+                style={{ height: 60, background: NAVY_SURFACE, borderRadius: 12, opacity: 0.5 }}
+              />
+            ) : accounts.length === 0 ? (
+              <div
                 style={{
-                  background: NAVY_CARD,
-                  borderRadius: 18,
-                  overflow: 'hidden',
-                  border: `1px solid ${card.isDefault ? G2 : BORDER}`,
-                  boxShadow: card.isDefault ? `0 0 0 1px ${G2}33` : 'none',
+                  padding: '20px 0',
+                  fontFamily: IT,
+                  fontSize: 13,
+                  color: MUTED,
+                  textAlign: 'center',
                 }}
               >
-                {/* Card visual */}
+                No bank accounts linked yet
+              </div>
+            ) : (
+              accounts.map((bank) => (
                 <div
+                  key={bank.id}
                   style={{
-                    background: card.color,
-                    padding: '18px 20px 14px',
-                    position: 'relative',
-                    overflow: 'hidden',
+                    background: NAVY_SURFACE,
+                    borderRadius: 14,
+                    border: `1px solid ${bank.isDefault ? G2 : BORDER}`,
+                    padding: '14px 16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
                   }}
                 >
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: -20,
-                      right: -20,
-                      width: 100,
-                      height: 100,
-                      borderRadius: '50%',
-                      background: 'rgba(255,255,255,.07)',
-                    }}
-                  />
-                  <div
-                    style={{
-                      position: 'absolute',
-                      bottom: -30,
-                      left: 40,
-                      width: 120,
-                      height: 120,
-                      borderRadius: '50%',
-                      background: 'rgba(255,255,255,.05)',
-                    }}
-                  />
-                  <div
-                    style={{
-                      fontFamily: IT,
-                      fontSize: 12,
-                      color: 'rgba(255,255,255,.6)',
-                      marginBottom: 8,
-                    }}
-                  >
-                    {card.bank}
+                  <span style={{ fontSize: 26 }}>🏦</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontFamily: IT, fontSize: 14, fontWeight: 600, color: '#fff' }}>
+                      {bank.bankName}
+                    </div>
+                    <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>
+                      {bank.accountName} · {bank.accountNumber}
+                    </div>
                   </div>
-                  <div
-                    style={{
-                      fontFamily: PP,
-                      fontSize: 16,
-                      fontWeight: 600,
-                      color: '#fff',
-                      letterSpacing: '0.12em',
-                    }}
-                  >
-                    •••• •••• •••• {card.last4}
-                  </div>
-                  <div
-                    style={{
-                      fontFamily: IT,
-                      fontSize: 11,
-                      color: 'rgba(255,255,255,.5)',
-                      marginTop: 4,
-                    }}
-                  >
-                    Expires {card.expiry}
-                  </div>
-                  {/* Brand */}
-                  <div style={{ position: 'absolute', top: 14, right: 16 }}>
-                    <span
-                      style={{
-                        fontFamily: PP,
-                        fontSize: 13,
-                        fontWeight: 800,
-                        color: 'rgba(255,255,255,.8)',
-                      }}
-                    >
-                      {card.brand.toUpperCase()}
-                    </span>
-                  </div>
-                </div>
-                {/* Card actions */}
-                <div
-                  className="flex items-center justify-between px-4"
-                  style={{ padding: '12px 16px' }}
-                >
-                  {card.isDefault ? (
+                  {bank.isDefault && (
                     <div
                       style={{
                         background: `rgba(43,172,82,.15)`,
                         borderRadius: 8,
                         padding: '4px 10px',
-                        border: `1px solid rgba(43,172,82,.25)`,
                       }}
                     >
                       <span style={{ fontFamily: IT, fontSize: 11, fontWeight: 700, color: G3 }}>
-                        ✓ Default
+                        Default
                       </span>
                     </div>
-                  ) : (
-                    <button
-                      onClick={() =>
-                        setCards(cards.map((c) => ({ ...c, isDefault: c.id === card.id })))
-                      }
-                      style={{
-                        background: 'none',
-                        border: `1px solid ${BORDER}`,
-                        borderRadius: 8,
-                        padding: '4px 10px',
-                        cursor: 'pointer',
-                        fontFamily: IT,
-                        fontSize: 12,
-                        color: MUTED,
-                      }}
-                    >
-                      Set default
-                    </button>
                   )}
-                  <button
-                    onClick={() => setCards(cards.filter((c) => c.id !== card.id))}
-                    style={{
-                      background: `rgba(239,68,68,.1)`,
-                      border: `1px solid rgba(239,68,68,.2)`,
-                      borderRadius: 8,
-                      padding: '4px 10px',
-                      cursor: 'pointer',
-                      fontFamily: IT,
-                      fontSize: 12,
-                      color: ERROR,
-                    }}
-                  >
-                    Remove
-                  </button>
                 </div>
-              </div>
-            ))}
-
-            {/* Add card */}
-            <button
-              onClick={onAddCard}
-              style={{
-                background: 'none',
-                border: `1.5px dashed rgba(43,172,82,.35)`,
-                borderRadius: 18,
-                padding: '18px 20px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-              }}
-            >
-              <div
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 12,
-                  background: `rgba(43,172,82,.1)`,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <span style={{ color: G3, fontSize: 22, fontWeight: 300 }}>+</span>
-              </div>
-              <div style={{ textAlign: 'left' }}>
-                <div style={{ fontFamily: IT, fontSize: 14, fontWeight: 600, color: G3 }}>
-                  Add new card
-                </div>
-                <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>
-                  Visa, Mastercard, Verve
-                </div>
-              </div>
-            </button>
-          </div>
-        </div>
-
-        {/* Bank Accounts */}
-        <div className="px-4">
-          <SectionLabel>Linked bank accounts</SectionLabel>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
-            {ALL_BANKS.map((bank) => (
-              <div
-                key={bank.id}
-                style={{
-                  background: NAVY_SURFACE,
-                  borderRadius: 14,
-                  border: `1px solid ${bank.isDefault ? G2 : BORDER}`,
-                  padding: '14px 16px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                }}
-              >
-                <span style={{ fontSize: 26 }}>{bank.logo}</span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontFamily: IT, fontSize: 14, fontWeight: 600, color: '#fff' }}>
-                    {bank.bank}
-                  </div>
-                  <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>
-                    {bank.name} · {bank.number}
-                  </div>
-                </div>
-                {bank.isDefault && (
-                  <div
-                    style={{
-                      background: `rgba(43,172,82,.15)`,
-                      borderRadius: 8,
-                      padding: '4px 10px',
-                    }}
-                  >
-                    <span style={{ fontFamily: IT, fontSize: 11, fontWeight: 700, color: G3 }}>
-                      Default
-                    </span>
-                  </div>
-                )}
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       </div>
@@ -2193,7 +2348,7 @@ const REWARD_CATEGORIES = [
   {
     id: 'ride',
     label: 'Ride Cashback',
-    amount: 780,
+    amount: 0,
     icon: '🚗',
     color: INFO,
     desc: '2% on every ride',
@@ -2201,7 +2356,7 @@ const REWARD_CATEGORIES = [
   {
     id: 'referral',
     label: 'Referral Bonus',
-    amount: 350,
+    amount: 0,
     icon: '👥',
     color: G2,
     desc: '₦350 per friend',
@@ -2209,7 +2364,7 @@ const REWARD_CATEGORIES = [
   {
     id: 'welcome',
     label: 'Welcome Bonus',
-    amount: 120,
+    amount: 0,
     icon: '🎁',
     color: WARNING,
     desc: 'One-time signup',
@@ -2218,15 +2373,13 @@ const REWARD_CATEGORIES = [
 
 export function RewardsScreen({ onBack }: { onBack?: () => void }) {
   const [copied, setCopied] = useState(false);
-  const referralCode = 'DRPX-AMARA9';
-
+  const user = auth.getUser();
+  const referralCode = `DRPX-${(user?.firstName ?? 'USER').toUpperCase().slice(0, 5)}`;
   const handleCopy = () => {
+    navigator.clipboard.writeText(referralCode).catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
-
-  const totalCashback = REWARD_CATEGORIES.reduce((s, r) => s + r.amount, 0);
-  const tierProgress = 0.72; // 72% to Platinum
 
   return (
     <Screen>
@@ -2237,9 +2390,7 @@ export function RewardsScreen({ onBack }: { onBack?: () => void }) {
           Rewards
         </span>
       </div>
-
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 24 }}>
-        {/* Cashback Hero */}
         <div
           style={{
             margin: '0 16px 20px',
@@ -2273,7 +2424,7 @@ export function RewardsScreen({ onBack }: { onBack?: () => void }) {
               textTransform: 'uppercase',
             }}
           >
-            Total Cashback Earned
+            Rewards
           </div>
           <div
             style={{
@@ -2284,60 +2435,15 @@ export function RewardsScreen({ onBack }: { onBack?: () => void }) {
               marginBottom: 2,
             }}
           >
-            ₦{totalCashback.toLocaleString()}
+            Coming soon
           </div>
           <div style={{ fontFamily: IT, fontSize: 13, color: 'rgba(255,255,255,.45)' }}>
-            Redeemable for rides and transfers
-          </div>
-
-          {/* Tier progress */}
-          <div
-            style={{
-              marginTop: 20,
-              background: 'rgba(0,0,0,.2)',
-              borderRadius: 12,
-              padding: '14px 16px',
-            }}
-          >
-            <div className="flex items-center justify-between" style={{ marginBottom: 8 }}>
-              <div>
-                <span style={{ fontFamily: PP, fontSize: 13, fontWeight: 700, color: STAR }}>
-                  ✦ Gold
-                </span>
-                <span style={{ fontFamily: IT, fontSize: 12, color: MUTED, marginLeft: 6 }}>
-                  → Platinum
-                </span>
-              </div>
-              <span style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>
-                {Math.round(tierProgress * 100)}%
-              </span>
-            </div>
-            <div
-              style={{
-                height: 6,
-                background: 'rgba(255,255,255,.1)',
-                borderRadius: 3,
-                overflow: 'hidden',
-              }}
-            >
-              <div
-                style={{
-                  height: '100%',
-                  width: `${tierProgress * 100}%`,
-                  background: `linear-gradient(90deg,${G0},${G3})`,
-                  borderRadius: 3,
-                }}
-              />
-            </div>
-            <div style={{ fontFamily: IT, fontSize: 11, color: MUTED, marginTop: 6 }}>
-              ₦1,400 more in rides to reach Platinum
-            </div>
+            Cashback and referral rewards are launching in V2
           </div>
         </div>
 
-        {/* Reward Categories */}
         <div className="px-4" style={{ marginBottom: 20 }}>
-          <SectionLabel>Reward breakdown</SectionLabel>
+          <SectionLabel>Reward categories</SectionLabel>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
             {REWARD_CATEGORIES.map((r) => (
               <div
@@ -2350,6 +2456,7 @@ export function RewardsScreen({ onBack }: { onBack?: () => void }) {
                   display: 'flex',
                   alignItems: 'center',
                   gap: 14,
+                  opacity: 0.6,
                 }}
               >
                 <IconCircle bg={`${r.color}22`} size={44}>
@@ -2361,17 +2468,12 @@ export function RewardsScreen({ onBack }: { onBack?: () => void }) {
                   </div>
                   <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>{r.desc}</div>
                 </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontFamily: PP, fontSize: 15, fontWeight: 700, color: SUCCESS }}>
-                    +₦{r.amount}
-                  </div>
-                </div>
+                <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>Coming V2</div>
               </div>
             ))}
           </div>
         </div>
 
-        {/* Referral Code */}
         <div className="px-4" style={{ marginBottom: 8 }}>
           <SectionLabel>Your referral code</SectionLabel>
           <div
@@ -2385,7 +2487,7 @@ export function RewardsScreen({ onBack }: { onBack?: () => void }) {
             }}
           >
             <div style={{ fontFamily: IT, fontSize: 12, color: MUTED, marginBottom: 8 }}>
-              Share and earn ₦350 per friend who signs up
+              Share and earn ₦350 per friend who signs up (V2)
             </div>
             <div
               style={{
@@ -2428,94 +2530,6 @@ export function RewardsScreen({ onBack }: { onBack?: () => void }) {
 // ─────────────────────────────────────────────────────────────────────────────
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-const STATEMENT_DATA: Record<
-  string,
-  {
-    totalIn: number;
-    totalOut: number;
-    txs: Array<{ title: string; date: string; amount: number; type: string; icon: string }>;
-  }
-> = {
-  Dec: {
-    totalIn: 17210,
-    totalOut: 7150,
-    txs: [
-      { title: 'Wallet Top Up', date: 'Dec 5, 7:15 AM', amount: +10000, type: 'topup', icon: '💳' },
-      {
-        title: 'Ride to Victoria Island',
-        date: 'Dec 5, 9:41 AM',
-        amount: -2100,
-        type: 'ride',
-        icon: '🚗',
-      },
-      {
-        title: 'Transfer to Chidi Okeke',
-        date: 'Dec 4, 4:02 PM',
-        amount: -3500,
-        type: 'transfer',
-        icon: '↑',
-      },
-      {
-        title: 'Ride to Lekki Phase 1',
-        date: 'Dec 4, 1:18 PM',
-        amount: -1850,
-        type: 'ride',
-        icon: '🚗',
-      },
-      { title: 'Wallet Top Up', date: 'Dec 2, 6:00 PM', amount: +5000, type: 'topup', icon: '💳' },
-      {
-        title: 'Transfer from Kemi Bello',
-        date: 'Dec 2, 2:30 PM',
-        amount: +2000,
-        type: 'transfer',
-        icon: '↓',
-      },
-      {
-        title: 'Withdrawal to GTBank',
-        date: 'Dec 1, 9:00 AM',
-        amount: -8000,
-        type: 'withdraw',
-        icon: '🏦',
-      },
-    ],
-  },
-  Nov: {
-    totalIn: 32000,
-    totalOut: 18500,
-    txs: [
-      {
-        title: 'Wallet Top Up',
-        date: 'Nov 28, 10:00 AM',
-        amount: +20000,
-        type: 'topup',
-        icon: '💳',
-      },
-      { title: 'Ride to Ikeja', date: 'Nov 25, 8:10 AM', amount: -1200, type: 'ride', icon: '🚗' },
-      {
-        title: 'Withdrawal to GTBank',
-        date: 'Nov 20, 3:00 PM',
-        amount: -15000,
-        type: 'withdraw',
-        icon: '🏦',
-      },
-      {
-        title: 'Referral Bonus',
-        date: 'Nov 15, 12:00 PM',
-        amount: +350,
-        type: 'cashback',
-        icon: '🎁',
-      },
-      {
-        title: 'Wallet Top Up',
-        date: 'Nov 10, 9:00 AM',
-        amount: +12000,
-        type: 'topup',
-        icon: '💳',
-      },
-    ],
-  },
-};
-
 export function WalletStatementScreen({
   onBack,
   onExport,
@@ -2523,8 +2537,42 @@ export function WalletStatementScreen({
   onBack?: () => void;
   onExport?: () => void;
 }) {
-  const [activeMonth, setActiveMonth] = useState('Dec');
-  const data = STATEMENT_DATA[activeMonth] ?? STATEMENT_DATA['Dec'];
+  const now = new Date();
+  const [activeMonth, setActiveMonth] = useState(MONTHS[now.getMonth()]);
+  const [txs, setTxs] = useState<WalletLedgerEntryDto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async (month: string) => {
+    setLoading(true);
+    setError('');
+    try {
+      const monthIdx = MONTHS.indexOf(month) + 1;
+      const year = now.getFullYear();
+      const res = await api.wallet.getStatement({ month: monthIdx, year });
+      const r = res as { items?: WalletLedgerEntryDto[] };
+      setTxs(r.items ?? []);
+    } catch {
+      // Fall back to all transactions for the month
+      try {
+        const res = await api.wallet.getTransactions({ pageSize: 100 });
+        const items = (res as { items?: WalletLedgerEntryDto[] }).items ?? [];
+        const monthIdx = MONTHS.indexOf(month);
+        setTxs(items.filter((t) => new Date(t.createdAt).getMonth() === monthIdx));
+      } catch (e: unknown) {
+        setError((e as { message?: string }).message ?? 'Could not load statement');
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load(activeMonth);
+  }, [activeMonth, load]);
+
+  const totalIn = txs.filter((t) => t.direction === 'CREDIT').reduce((s, t) => s + t.amount, 0);
+  const totalOut = txs.filter((t) => t.direction === 'DEBIT').reduce((s, t) => s + t.amount, 0);
 
   return (
     <Screen>
@@ -2536,7 +2584,6 @@ export function WalletStatementScreen({
         </span>
       </div>
 
-      {/* Month selector */}
       <div
         style={{
           paddingBottom: 12,
@@ -2544,6 +2591,7 @@ export function WalletStatementScreen({
           display: 'flex',
           gap: 8,
           padding: '0 16px 12px',
+          scrollbarWidth: 'none',
         }}
       >
         {MONTHS.map((m) => (
@@ -2553,140 +2601,116 @@ export function WalletStatementScreen({
         ))}
       </div>
 
-      {/* Summary Cards */}
       <div className="flex gap-3 px-4" style={{ marginBottom: 16 }}>
-        <div
-          style={{
-            flex: 1,
-            background: `rgba(16,185,129,.08)`,
-            borderRadius: 14,
-            padding: '14px 14px',
-            border: `1px solid rgba(16,185,129,.18)`,
-          }}
-        >
+        {[
+          {
+            label: 'Money In',
+            value: totalIn,
+            color: SUCCESS,
+            bg: `rgba(16,185,129,.08)`,
+            border: `rgba(16,185,129,.18)`,
+          },
+          {
+            label: 'Money Out',
+            value: totalOut,
+            color: ERROR,
+            bg: `rgba(239,68,68,.08)`,
+            border: `rgba(239,68,68,.18)`,
+          },
+          {
+            label: 'Net',
+            value: totalIn - totalOut,
+            color: totalIn - totalOut >= 0 ? SUCCESS : ERROR,
+            bg: NAVY_CARD,
+            border: BORDER,
+          },
+        ].map((k) => (
           <div
+            key={k.label}
             style={{
-              fontFamily: IT,
-              fontSize: 11,
-              color: MUTED,
-              marginBottom: 4,
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
+              flex: 1,
+              background: k.bg,
+              borderRadius: 14,
+              padding: '14px 14px',
+              border: `1px solid ${k.border}`,
             }}
           >
-            Money In
-          </div>
-          <div style={{ fontFamily: PP, fontSize: 18, fontWeight: 800, color: SUCCESS }}>
-            ₦{data.totalIn.toLocaleString()}
-          </div>
-        </div>
-        <div
-          style={{
-            flex: 1,
-            background: `rgba(239,68,68,.08)`,
-            borderRadius: 14,
-            padding: '14px 14px',
-            border: `1px solid rgba(239,68,68,.18)`,
-          }}
-        >
-          <div
-            style={{
-              fontFamily: IT,
-              fontSize: 11,
-              color: MUTED,
-              marginBottom: 4,
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-            }}
-          >
-            Money Out
-          </div>
-          <div style={{ fontFamily: PP, fontSize: 18, fontWeight: 800, color: ERROR }}>
-            ₦{data.totalOut.toLocaleString()}
-          </div>
-        </div>
-        <div
-          style={{
-            flex: 1,
-            background: NAVY_CARD,
-            borderRadius: 14,
-            padding: '14px 14px',
-            border: `1px solid ${BORDER}`,
-          }}
-        >
-          <div
-            style={{
-              fontFamily: IT,
-              fontSize: 11,
-              color: MUTED,
-              marginBottom: 4,
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-            }}
-          >
-            Net
-          </div>
-          <div
-            style={{
-              fontFamily: PP,
-              fontSize: 18,
-              fontWeight: 800,
-              color: data.totalIn - data.totalOut >= 0 ? SUCCESS : ERROR,
-            }}
-          >
-            {data.totalIn - data.totalOut >= 0 ? '+' : '−'}₦
-            {Math.abs(data.totalIn - data.totalOut).toLocaleString()}
-          </div>
-        </div>
-      </div>
-
-      {/* Statement List */}
-      <div style={{ flex: 1, overflowY: 'auto' }}>
-        <div className="px-5" style={{ marginBottom: 8 }}>
-          <SectionLabel>
-            {activeMonth} 2024 — {data.txs.length} transactions
-          </SectionLabel>
-        </div>
-        {data.txs.map((tx, i) => (
-          <div key={i}>
-            {i > 0 && <div style={{ height: 1, background: BORDER, margin: '0 16px' }} />}
-            <div className="flex items-center justify-between px-5 py-3">
-              <div className="flex items-center gap-3">
-                <IconCircle bg={`${TX_COLORS[tx.type] ?? INFO}22`} size={40}>
-                  <span style={{ fontSize: 17 }}>{tx.icon}</span>
-                </IconCircle>
-                <div>
-                  <div
-                    style={{
-                      fontFamily: IT,
-                      fontSize: 13,
-                      fontWeight: 600,
-                      color: '#fff',
-                      marginBottom: 2,
-                    }}
-                  >
-                    {tx.title}
-                  </div>
-                  <div style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>{tx.date}</div>
-                </div>
-              </div>
-              <div
-                style={{
-                  fontFamily: PP,
-                  fontSize: 14,
-                  fontWeight: 700,
-                  color: tx.amount > 0 ? SUCCESS : ERROR,
-                }}
-              >
-                {tx.amount > 0 ? '+' : '−'}₦{Math.abs(tx.amount).toLocaleString()}
-              </div>
+            <div
+              style={{
+                fontFamily: IT,
+                fontSize: 11,
+                color: MUTED,
+                marginBottom: 4,
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+              }}
+            >
+              {k.label}
+            </div>
+            <div style={{ fontFamily: PP, fontSize: 18, fontWeight: 800, color: k.color }}>
+              {k.value >= 0 ? '' : '−'}₦{Math.abs(k.value).toLocaleString()}
             </div>
           </div>
         ))}
-        <div style={{ height: 80 }} />
       </div>
 
-      {/* Export */}
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '30px 0', color: MUTED, fontFamily: IT }}>
+            Loading…
+          </div>
+        ) : error ? (
+          <ErrorRetry message={error} onRetry={() => load(activeMonth)} />
+        ) : txs.length === 0 ? (
+          <EmptyState icon="📋" title={`No transactions in ${activeMonth}`} />
+        ) : (
+          <>
+            <div className="px-5" style={{ marginBottom: 8 }}>
+              <SectionLabel>
+                {activeMonth} {now.getFullYear()} — {txs.length} transactions
+              </SectionLabel>
+            </div>
+            {txs.map((tx, i) => (
+              <div key={tx.id}>
+                {i > 0 && <div style={{ height: 1, background: BORDER, margin: '0 16px' }} />}
+                <div className="flex items-center justify-between px-5 py-3">
+                  <div className="flex items-center gap-3">
+                    <TxIcon type={tx.type} />
+                    <div>
+                      <div
+                        style={{
+                          fontFamily: IT,
+                          fontSize: 13,
+                          fontWeight: 600,
+                          color: '#fff',
+                          marginBottom: 2,
+                        }}
+                      >
+                        {tx.description ?? tx.type}
+                      </div>
+                      <div style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>
+                        {fmtDate(tx.createdAt)}
+                      </div>
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: PP,
+                      fontSize: 14,
+                      fontWeight: 700,
+                      color: tx.direction === 'CREDIT' ? SUCCESS : ERROR,
+                    }}
+                  >
+                    {tx.direction === 'CREDIT' ? '+' : '−'}₦{tx.amount.toLocaleString()}
+                  </div>
+                </div>
+              </div>
+            ))}
+            <div style={{ height: 80 }} />
+          </>
+        )}
+      </div>
+
       <div
         className="px-4"
         style={{
@@ -2738,57 +2762,6 @@ export function WalletStatementScreen({
 // ─────────────────────────────────────────────────────────────────────────────
 // 9. WALLET SECURITY SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
-const DEVICES = [
-  {
-    id: 'd1',
-    name: 'iPhone 14 Pro',
-    lastSeen: 'Active now',
-    location: 'Lagos, Nigeria',
-    isCurrent: true,
-  },
-  {
-    id: 'd2',
-    name: 'Samsung Galaxy S23',
-    lastSeen: 'Dec 3, 2024 2:15 PM',
-    location: 'Abuja, Nigeria',
-    isCurrent: false,
-  },
-];
-
-function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
-  return (
-    <button
-      onClick={onToggle}
-      style={{
-        width: 48,
-        height: 28,
-        borderRadius: 14,
-        background: on ? GREEN_GRAD : 'rgba(255,255,255,.1)',
-        border: 'none',
-        cursor: 'pointer',
-        position: 'relative',
-        transition: 'background .2s',
-        flexShrink: 0,
-        boxShadow: on ? `0 2px 12px rgba(43,172,82,.4)` : 'none',
-      }}
-    >
-      <div
-        style={{
-          position: 'absolute',
-          top: 3,
-          left: on ? 22 : 3,
-          width: 22,
-          height: 22,
-          borderRadius: 11,
-          background: '#fff',
-          transition: 'left .2s',
-          boxShadow: '0 1px 4px rgba(0,0,0,.3)',
-        }}
-      />
-    </button>
-  );
-}
-
 export function WalletSecurityScreen({
   onBack,
   onChangePIN,
@@ -2796,8 +2769,16 @@ export function WalletSecurityScreen({
   onBack?: () => void;
   onChangePIN?: () => void;
 }) {
+  const [pinSet, setPinSet] = useState<boolean | null>(null);
   const [biometric, setBiometric] = useState(true);
   const [twoFA, setTwoFA] = useState(false);
+
+  useEffect(() => {
+    api.wallet
+      .getPinStatus()
+      .then((r) => setPinSet((r as { hasPinSet?: boolean }).hasPinSet ?? false))
+      .catch(() => setPinSet(null));
+  }, []);
 
   return (
     <Screen>
@@ -2810,7 +2791,6 @@ export function WalletSecurityScreen({
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 24 }}>
-        {/* PIN Section */}
         <div className="px-4" style={{ marginBottom: 16 }}>
           <SectionLabel>Wallet PIN</SectionLabel>
           <div
@@ -2826,7 +2806,7 @@ export function WalletSecurityScreen({
               className="flex items-center justify-between px-4"
               style={{ paddingTop: 16, paddingBottom: 16 }}
             >
-              <div className="gap-12px flex items-center" style={{ gap: 12 }}>
+              <div className="flex items-center" style={{ gap: 12 }}>
                 <div
                   style={{
                     width: 40,
@@ -2861,8 +2841,19 @@ export function WalletSecurityScreen({
                   <div style={{ fontFamily: IT, fontSize: 14, fontWeight: 600, color: '#fff' }}>
                     PIN Status
                   </div>
-                  <div style={{ fontFamily: IT, fontSize: 12, color: SUCCESS, marginTop: 2 }}>
-                    ✓ PIN is set and active
+                  <div
+                    style={{
+                      fontFamily: IT,
+                      fontSize: 12,
+                      color: pinSet ? SUCCESS : WARNING,
+                      marginTop: 2,
+                    }}
+                  >
+                    {pinSet === null
+                      ? 'Checking…'
+                      : pinSet
+                        ? '✓ PIN is set and active'
+                        : '⚠ No PIN set — tap Change PIN to create one'}
                   </div>
                 </div>
               </div>
@@ -2903,7 +2894,7 @@ export function WalletSecurityScreen({
                   </svg>
                 </div>
                 <span style={{ fontFamily: IT, fontSize: 14, fontWeight: 600, color: '#fff' }}>
-                  Change PIN
+                  {pinSet ? 'Change PIN' : 'Set PIN'}
                 </span>
               </div>
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -2919,7 +2910,6 @@ export function WalletSecurityScreen({
           </div>
         </div>
 
-        {/* Biometric */}
         <div className="px-4" style={{ marginBottom: 16 }}>
           <SectionLabel>Authentication</SectionLabel>
           <div
@@ -2982,86 +2972,25 @@ export function WalletSecurityScreen({
           </div>
         </div>
 
-        {/* Devices */}
         <div className="px-4" style={{ marginBottom: 16 }}>
-          <SectionLabel>Trusted devices ({DEVICES.length})</SectionLabel>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
-            {DEVICES.map((dev) => (
-              <div
-                key={dev.id}
-                style={{
-                  background: NAVY_CARD,
-                  borderRadius: 14,
-                  padding: '14px 16px',
-                  border: `1px solid ${dev.isCurrent ? G2 : BORDER}`,
-                }}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3" style={{ gap: 12 }}>
-                    <div
-                      style={{
-                        width: 40,
-                        height: 40,
-                        borderRadius: 12,
-                        background: NAVY_SURFACE,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: 20,
-                      }}
-                    >
-                      📱
-                    </div>
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span
-                          style={{ fontFamily: IT, fontSize: 14, fontWeight: 600, color: '#fff' }}
-                        >
-                          {dev.name}
-                        </span>
-                        {dev.isCurrent && (
-                          <span
-                            style={{
-                              fontFamily: IT,
-                              fontSize: 10,
-                              fontWeight: 700,
-                              color: G3,
-                              background: `rgba(43,172,82,.15)`,
-                              borderRadius: 6,
-                              padding: '2px 7px',
-                            }}
-                          >
-                            This device
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ fontFamily: IT, fontSize: 11, color: MUTED, marginTop: 2 }}>
-                        {dev.lastSeen} · {dev.location}
-                      </div>
-                    </div>
-                  </div>
-                  {!dev.isCurrent && (
-                    <button
-                      style={{
-                        background: `rgba(239,68,68,.1)`,
-                        border: `1px solid rgba(239,68,68,.2)`,
-                        borderRadius: 8,
-                        padding: '5px 10px',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <span style={{ fontFamily: IT, fontSize: 12, color: ERROR, fontWeight: 600 }}>
-                        Remove
-                      </span>
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
+          <SectionLabel>Trusted devices</SectionLabel>
+          <div
+            style={{
+              marginTop: 10,
+              background: NAVY_CARD,
+              borderRadius: 14,
+              padding: '16px',
+              border: `1px solid ${BORDER}`,
+              textAlign: 'center',
+            }}
+          >
+            <span style={{ fontSize: 28, display: 'block', marginBottom: 8 }}>📱</span>
+            <div style={{ fontFamily: IT, fontSize: 13, color: MUTED }}>
+              Device management is not available in this pilot version.
+            </div>
           </div>
         </div>
 
-        {/* Last Login */}
         <div className="px-4">
           <div
             style={{
@@ -3072,13 +3001,10 @@ export function WalletSecurityScreen({
             }}
           >
             <div style={{ fontFamily: IT, fontSize: 12, color: MUTED, marginBottom: 4 }}>
-              Last successful login
+              Account
             </div>
             <div style={{ fontFamily: IT, fontSize: 14, fontWeight: 600, color: '#fff' }}>
-              Today, 9:41 AM
-            </div>
-            <div style={{ fontFamily: IT, fontSize: 12, color: MUTED, marginTop: 2 }}>
-              iPhone 14 Pro · Lagos, Nigeria
+              {auth.getUser()?.email ?? '—'}
             </div>
           </div>
         </div>
@@ -3137,7 +3063,6 @@ export function WalletSettingsScreen({ onBack }: { onBack?: () => void }) {
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 32 }}>
-        {/* Auto Top-Up */}
         <div className="px-4" style={{ marginBottom: 16 }}>
           <SectionLabel>Auto Top-Up</SectionLabel>
           <div
@@ -3164,7 +3089,6 @@ export function WalletSettingsScreen({ onBack }: { onBack?: () => void }) {
               </div>
               <Toggle on={autoTopUp} onToggle={() => setAutoTopUp(!autoTopUp)} />
             </div>
-
             {autoTopUp && (
               <>
                 <div style={{ height: 1, background: BORDER }} />
@@ -3180,7 +3104,7 @@ export function WalletSettingsScreen({ onBack }: { onBack?: () => void }) {
                     <div
                       style={{
                         fontFamily: IT,
-                        fontSize: 12,
+                        fontSize: 11,
                         color: MUTED,
                         fontWeight: 500,
                         marginBottom: 6,
@@ -3231,7 +3155,7 @@ export function WalletSettingsScreen({ onBack }: { onBack?: () => void }) {
                     <div
                       style={{
                         fontFamily: IT,
-                        fontSize: 12,
+                        fontSize: 11,
                         color: MUTED,
                         fontWeight: 500,
                         marginBottom: 6,
@@ -3282,9 +3206,22 @@ export function WalletSettingsScreen({ onBack }: { onBack?: () => void }) {
               </>
             )}
           </div>
+          <div
+            style={{
+              marginTop: 8,
+              padding: '10px 14px',
+              borderRadius: 10,
+              background: NAVY_SURFACE,
+              border: `1px solid ${BORDER}`,
+              fontFamily: IT,
+              fontSize: 12,
+              color: MUTED,
+            }}
+          >
+            Auto top-up is not available in the pilot — toggle is for preference storage only.
+          </div>
         </div>
 
-        {/* Notifications */}
         <div className="px-4" style={{ marginBottom: 16 }}>
           <SectionLabel>Notification preferences</SectionLabel>
           <div
@@ -3301,19 +3238,19 @@ export function WalletSettingsScreen({ onBack }: { onBack?: () => void }) {
                 label: 'Ride payments',
                 sub: 'Alerts for ride deductions',
                 value: rideAlerts,
-                toggle: () => setRideAlerts(!rideAlerts),
+                onToggle: () => setRideAlerts(!rideAlerts),
               },
               {
                 label: 'Transfers & top-ups',
                 sub: 'Money in and out alerts',
                 value: transferAlerts,
-                toggle: () => setTransferAlerts(!transferAlerts),
+                onToggle: () => setTransferAlerts(!transferAlerts),
               },
               {
                 label: 'Promotions & offers',
                 sub: 'Cashback and reward updates',
                 value: promoAlerts,
-                toggle: () => setPromoAlerts(!promoAlerts),
+                onToggle: () => setPromoAlerts(!promoAlerts),
               },
             ].map((row, i) => (
               <div key={row.label}>
@@ -3324,7 +3261,6 @@ export function WalletSettingsScreen({ onBack }: { onBack?: () => void }) {
           </div>
         </div>
 
-        {/* Currency */}
         <div className="px-4" style={{ marginBottom: 16 }}>
           <SectionLabel>Currency display</SectionLabel>
           <div
@@ -3362,7 +3298,6 @@ export function WalletSettingsScreen({ onBack }: { onBack?: () => void }) {
           </div>
         </div>
 
-        {/* Spending Limits */}
         <div className="px-4" style={{ marginBottom: 16 }}>
           <SectionLabel>Spending limits</SectionLabel>
           <div
@@ -3384,12 +3319,11 @@ export function WalletSettingsScreen({ onBack }: { onBack?: () => void }) {
                   <div
                     style={{
                       fontFamily: IT,
-                      fontSize: 12,
+                      fontSize: 11,
                       color: MUTED,
                       marginBottom: 6,
                       textTransform: 'uppercase',
                       letterSpacing: '0.04em',
-                      fontSize: 11,
                     }}
                   >
                     {item.label}
@@ -3436,7 +3370,6 @@ export function WalletSettingsScreen({ onBack }: { onBack?: () => void }) {
           </div>
         </div>
 
-        {/* Privacy Mode */}
         <div className="px-4">
           <SectionLabel>Privacy</SectionLabel>
           <div

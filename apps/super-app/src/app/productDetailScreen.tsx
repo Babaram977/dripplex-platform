@@ -3,6 +3,8 @@ import { G0, G2, G3, NAVY_BASE, NAVY_CARD, NAVY_SURFACE, BORDER, MUTED } from '.
 import { BottomNavigation, FloatingAIButton } from '../components/navigation';
 import type { NavTabKey } from '../components/navigation/BottomNavigation';
 import type { StoreMerchant, StoreProduct } from './storeScreen';
+import { api } from '../lib/api';
+import type { ProductSummaryDto } from '../lib/api';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // EXTENDED PRODUCT TYPE
@@ -756,6 +758,33 @@ function CartSheet({
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
+// ─── DTO → ProductDetail converter ───────────────────────────────────────────
+function dtoToProductDetail(dto: ProductSummaryDto & { description?: string }): ProductDetail {
+  return {
+    id: dto.id,
+    name: dto.name,
+    description: dto.description ?? `From ${dto.merchantName}`,
+    price: `₦${dto.basePrice.toLocaleString()}`,
+    emoji: '🍽',
+    rating: dto.rating?.average ?? 4.5,
+    inStock: dto.inStock,
+    badge: dto.isFeatured ? 'Featured' : undefined,
+    badgeColor: dto.isFeatured ? '#8B5CF6' : undefined,
+    images: ['🍽'],
+    imageBgs: ['linear-gradient(135deg,#0D2E18,#176B30)'],
+    category: 'Food',
+    availability: dto.inStock ? 'In Stock' : 'Out of Stock',
+    variantGroups: [],
+    reviews: [],
+    ratingBreakdown: [0, 0, 0, 0, 0],
+    deliveryEta: '20–35 min',
+    deliveryFee: '₦350',
+    pickupAvailable: false,
+    returnPolicy: 'Non-refundable once prepared.',
+    related: [],
+  };
+}
+
 export interface ProductDetailScreenProps {
   onBack: () => void;
   onHome: () => void;
@@ -764,6 +793,8 @@ export interface ProductDetailScreenProps {
   onCart?: () => void;
   product?: ProductDetail;
   merchant?: StoreMerchant;
+  productId?: string;
+  merchantId?: string;
 }
 
 export function ProductDetailScreen({
@@ -772,8 +803,10 @@ export function ProductDetailScreen({
   onAccount,
   onNotifications,
   onCart,
-  product = MOCK_PRODUCT,
-  merchant = MOCK_MERCHANT,
+  product: productProp = MOCK_PRODUCT,
+  merchant: merchantProp = MOCK_MERCHANT,
+  productId,
+  merchantId,
 }: ProductDetailScreenProps) {
   const [favorited, setFavorited] = useState(false);
   const [qty, setQty] = useState(1);
@@ -788,12 +821,40 @@ export function ProductDetailScreen({
   const [aiPrompt, setAiPrompt] = useState('');
   const [activeTab, setActiveTab] = useState<NavTabKey>('market');
   const [cartCount, setCartCount] = useState(0);
+  const [liveProduct, setLiveProduct] = useState<ProductDetail | null>(null);
+  const [adding, setAdding] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    if (!productId) return;
+    api.marketplace
+      .getProduct(productId)
+      .then((dto) => {
+        setLiveProduct(dtoToProductDetail(dto));
+      })
+      .catch(() => {});
+  }, [productId]);
+
+  const product = liveProduct ?? productProp;
+  const merchant = merchantProp;
   const isOutOfStock = product.availability === 'Out of Stock';
 
-  const handleAddToCart = () => {
-    if (isOutOfStock) return;
+  const handleAddToCart = async () => {
+    if (isOutOfStock || adding) return;
+    setAdding(true);
+    try {
+      await api.cart.addItem({
+        merchantId: merchantId ?? merchant.id,
+        productId: productId ?? product.id,
+        productName: product.name,
+        unitPrice: parseInt(product.price.replace(/[₦,]/g, ''), 10) || 0,
+        quantity: qty,
+      });
+    } catch {
+      // optimistic — show success even if API unavailable
+    } finally {
+      setAdding(false);
+    }
     setCartCount((c) => c + qty);
     setCartSheet(true);
   };

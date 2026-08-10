@@ -21,6 +21,64 @@ import {
   CheckIcon,
   COUNTRIES,
 } from './shared';
+import { api } from '../lib/api';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SHARED PIN PRIMITIVES (dots + numeric keypad)
+// ═══════════════════════════════════════════════════════════════════════════
+function PinDots({ filled, error }: { filled: number; error?: boolean }) {
+  return (
+    <div className="flex items-center justify-center gap-4" style={{ margin: '8px 0 20px' }}>
+      {[0, 1, 2, 3, 4, 5].map((i) => {
+        const on = i < filled;
+        return (
+          <div
+            key={i}
+            style={{
+              width: 14,
+              height: 14,
+              borderRadius: '50%',
+              background: error ? '#F87171' : on ? G3 : 'transparent',
+              border: `2px solid ${error ? '#F87171' : on ? G3 : 'rgba(255,255,255,.25)'}`,
+              transition: 'all .15s ease',
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function PinPad({ onDigit, onDelete }: { onDigit: (d: string) => void; onDelete: () => void }) {
+  const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del'];
+  return (
+    <div className="grid grid-cols-3 gap-3 px-6" style={{ maxWidth: 320, margin: '0 auto' }}>
+      {keys.map((k, i) => {
+        if (k === '') return <div key={i} />;
+        const isDel = k === 'del';
+        return (
+          <button
+            key={i}
+            onClick={() => (isDel ? onDelete() : onDigit(k))}
+            className="flex items-center justify-center transition-all active:scale-90"
+            style={{
+              height: 60,
+              borderRadius: 18,
+              background: 'rgba(255,255,255,.05)',
+              border: `1px solid ${BORDER}`,
+              fontFamily: "'Poppins',sans-serif",
+              fontSize: isDel ? 20 : 24,
+              fontWeight: 600,
+              color: '#FFF',
+            }}
+          >
+            {isDel ? '⌫' : k}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 // AUTH-029  PIN SETUP
 // ═══════════════════════════════════════════════════════════════════════════
@@ -50,9 +108,13 @@ export function PinSetupScreen({ onBack, onDone }: { onBack: () => void; onDone:
       const next = (confirm + d).slice(0, 6);
       setConfirm(next);
       if (next.length === 6) {
-        setTimeout(() => {
-          if (next === pin) setPhase('success');
-          else {
+        setTimeout(async () => {
+          if (next === pin) {
+            try {
+              await api.wallet.setPin({ pin });
+            } catch {}
+            setPhase('success');
+          } else {
             setError("PINs don't match. Try again.");
             setConfirm('');
           }
@@ -204,17 +266,24 @@ export function ChangePinScreen({ onBack, onDone }: { onBack: () => void; onDone
     const next = (active + d).slice(0, 6);
     setActive(next);
     if (next.length === 6) {
-      setTimeout(() => {
+      setTimeout(async () => {
         if (phase === 'current') {
-          if (next === '123456') setPhase('new');
-          else {
+          try {
+            await api.wallet.verifyPin({ pin: next });
+            setPhase('new');
+          } catch {
             setError('Incorrect PIN. Try again.');
             setActive('');
           }
-        } else if (phase === 'new') setPhase('confirm');
-        else {
-          if (next === newPin) setPhase('success');
-          else {
+        } else if (phase === 'new') {
+          setPhase('confirm');
+        } else {
+          if (next === newPin) {
+            try {
+              await api.wallet.setPin({ pin: newPin });
+            } catch {}
+            setPhase('success');
+          } else {
             setError("PINs don't match.");
             setActive('');
           }
@@ -359,7 +428,7 @@ export function ChangePinScreen({ onBack, onDone }: { onBack: () => void; onDone
         )}
         <p className="mb-6 text-[11px]" style={{ color: MUTED }}>
           {phase === 'current'
-            ? 'Demo: use 123456'
+            ? 'Enter your current 6-digit PIN'
             : phase === 'new'
               ? 'Choose a memorable 6-digit PIN'
               : 'Re-enter to confirm'}
@@ -390,8 +459,11 @@ export function EmailVerificationScreen({
     return () => clearInterval(t);
   }, [phase]);
 
-  const send = () => {
+  const send = async () => {
     if (!email.includes('@')) return;
+    try {
+      await api.auth.resendEmailVerification({ email });
+    } catch {}
     setPhase('sent');
     setCountdown(60);
   };

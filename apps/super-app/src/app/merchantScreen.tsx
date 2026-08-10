@@ -1,6 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { api } from '../lib/api';
+import { auth } from '../lib/auth';
+import type {
+  MerchantBusinessDto,
+  MerchantProductDto,
+  MerchantOrderDto,
+  MerchantSettlementDto,
+  WalletDto,
+  MerchantKycDto,
+  WalletLedgerEntryDto,
+} from '../lib/api';
 
-// ─── Design tokens (matches DrippleX system exactly) ─────────────────────────
+// ─── Design tokens ────────────────────────────────────────────────────────────
 const G0 = '#176B30';
 const G2 = '#2BAC52';
 const G3 = '#47CF72';
@@ -63,130 +74,7 @@ type MerchantPage =
   | 'bank'
   | 'approval'
   | 'settings';
-// "accepted" removed — accept goes directly to PREPARING per real backend contract
-type OrderStatus = 'new' | 'preparing' | 'ready' | 'completed' | 'cancelled';
-
-// ─── Mock data ────────────────────────────────────────────────────────────────
-const MOCK_ORDERS = [
-  {
-    id: 'ORD-0041',
-    time: '9:41 AM',
-    customer: 'Tunde B.',
-    items: 3,
-    total: 4800,
-    status: 'new' as OrderStatus,
-    summary: 'Jollof Rice × 2, Chicken × 1',
-  },
-  {
-    id: 'ORD-0040',
-    time: '9:28 AM',
-    customer: 'Amaka O.',
-    items: 2,
-    total: 2600,
-    status: 'preparing' as OrderStatus,
-    summary: 'Fried Rice × 1, Plantain × 1',
-  },
-  {
-    id: 'ORD-0039',
-    time: '9:12 AM',
-    customer: 'Kola A.',
-    items: 4,
-    total: 6200,
-    status: 'ready' as OrderStatus,
-    summary: 'Egusi Soup, Pounded Yam × 2…',
-  },
-  {
-    id: 'ORD-0038',
-    time: '8:55 AM',
-    customer: 'Bisi D.',
-    items: 1,
-    total: 1500,
-    status: 'completed' as OrderStatus,
-    summary: 'Pepper Soup × 1',
-  },
-  {
-    id: 'ORD-0037',
-    time: '8:30 AM',
-    customer: 'Nkechi E.',
-    items: 2,
-    total: 3100,
-    status: 'completed' as OrderStatus,
-    summary: 'Ofada Rice × 1, Stew × 1',
-  },
-];
-
-const MOCK_PRODUCTS = [
-  { id: 'P01', name: 'Jollof Rice', category: 'Rice', price: 1800, inStock: true, published: true },
-  { id: 'P02', name: 'Fried Rice', category: 'Rice', price: 2000, inStock: true, published: true },
-  { id: 'P03', name: 'Egusi Soup', category: 'Soup', price: 2200, inStock: true, published: true },
-  {
-    id: 'P04',
-    name: 'Pepper Soup',
-    category: 'Soup',
-    price: 1500,
-    inStock: false,
-    published: true,
-  },
-  {
-    id: 'P05',
-    name: 'Pounded Yam',
-    category: 'Swallow',
-    price: 800,
-    inStock: true,
-    published: false,
-  },
-  {
-    id: 'P06',
-    name: 'Grilled Chicken',
-    category: 'Protein',
-    price: 2500,
-    inStock: true,
-    published: true,
-  },
-];
-
-const MOCK_SETTLEMENTS = [
-  {
-    date: 'Today, 9:41 AM',
-    ref: 'ORD-0038',
-    gross: 1500,
-    commission: 150,
-    net: 1350,
-    settled: true,
-  },
-  {
-    date: 'Today, 8:30 AM',
-    ref: 'ORD-0037',
-    gross: 3100,
-    commission: 310,
-    net: 2790,
-    settled: true,
-  },
-  {
-    date: 'Yesterday, 7:12 PM',
-    ref: 'ORD-0036',
-    gross: 5600,
-    commission: 560,
-    net: 5040,
-    settled: true,
-  },
-  {
-    date: 'Yesterday, 1:05 PM',
-    ref: 'ORD-0035',
-    gross: 2400,
-    commission: 240,
-    net: 2160,
-    settled: false,
-  },
-  {
-    date: 'Aug 6, 11:30 AM',
-    ref: 'ORD-0034',
-    gross: 4200,
-    commission: 420,
-    net: 3780,
-    settled: true,
-  },
-];
+type MxStatus = 'new' | 'preparing' | 'ready' | 'completed' | 'cancelled';
 
 const NIGERIAN_BANKS = [
   'GTBank',
@@ -199,6 +87,47 @@ const NIGERIAN_BANKS = [
   'Polaris Bank',
   'Wema Bank',
 ];
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function apiStatusToMx(s: string): MxStatus {
+  switch (s) {
+    case 'CONFIRMED':
+      return 'new';
+    case 'PREPARING':
+      return 'preparing';
+    case 'READY':
+    case 'DRIVER_ASSIGNED':
+      return 'ready';
+    case 'PICKED_UP':
+    case 'IN_TRANSIT':
+    case 'DELIVERED':
+    case 'COMPLETED':
+      return 'completed';
+    case 'CANCELLED':
+      return 'cancelled';
+    default:
+      return 'new';
+  }
+}
+function fmtTime(iso: string) {
+  try {
+    return new Date(iso).toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '—';
+  }
+}
+function fmtDate(iso: string) {
+  try {
+    return new Date(iso).toLocaleDateString('en-NG', {
+      day: 'numeric',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return '—';
+  }
+}
 
 // ─── Shared primitives ────────────────────────────────────────────────────────
 function MxBtn({
@@ -279,7 +208,7 @@ function MxChip({ label, color, bg }: { label: string; color: string; bg?: strin
   );
 }
 
-function OrderStatusChip({ status }: { status: OrderStatus | string }) {
+function OrderStatusChip({ status }: { status: MxStatus | string }) {
   const map: Record<string, [string, string]> = {
     new: [C_ERR, 'New Order'],
     preparing: [C_WARN, 'Preparing'],
@@ -504,9 +433,9 @@ function Modal({
 }
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
-const NAV_PRIMARY: { page: MerchantPage; icon: string; label: string; badge?: number }[] = [
+const NAV_PRIMARY: { page: MerchantPage; icon: string; label: string }[] = [
   { page: 'dashboard', icon: '⬛', label: 'Dashboard' },
-  { page: 'orders', icon: '📦', label: 'Orders', badge: 1 },
+  { page: 'orders', icon: '📦', label: 'Orders' },
   { page: 'products', icon: '🏪', label: 'Products' },
   { page: 'store', icon: '🏬', label: 'Store' },
   { page: 'earnings', icon: '💰', label: 'Earnings' },
@@ -522,11 +451,18 @@ function MxSidebar({
   page,
   onNav,
   storeOpen,
+  businessName,
+  newOrderCount,
+  onLogout,
 }: {
   page: MerchantPage;
   onNav: (p: MerchantPage) => void;
   storeOpen: boolean;
+  businessName?: string;
+  newOrderCount?: number;
+  onLogout?: () => void;
 }) {
+  const initials = (businessName ?? 'MX').slice(0, 2).toUpperCase();
   return (
     <div
       style={{
@@ -606,6 +542,8 @@ function MxSidebar({
         </div>
         {NAV_PRIMARY.map((item) => {
           const active = item.page === page;
+          const badge =
+            item.page === 'orders' && (newOrderCount ?? 0) > 0 ? newOrderCount : undefined;
           return (
             <div
               key={item.page}
@@ -629,7 +567,7 @@ function MxSidebar({
             >
               <span style={{ fontSize: 13, lineHeight: 1, minWidth: 16 }}>{item.icon}</span>
               <span style={{ flex: 1 }}>{item.label}</span>
-              {item.badge && (
+              {badge && (
                 <span
                   style={{
                     background: C_ERR,
@@ -641,7 +579,7 @@ function MxSidebar({
                     lineHeight: 1.6,
                   }}
                 >
-                  {item.badge}
+                  {badge}
                 </span>
               )}
             </div>
@@ -705,14 +643,42 @@ function MxSidebar({
               color: WHITE,
             }}
           >
-            CH
+            {initials}
           </div>
-          <div>
-            <div style={{ fontFamily: IT, fontSize: 11, color: WHITE, fontWeight: 600 }}>
-              Chidi's Kitchen
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              style={{
+                fontFamily: IT,
+                fontSize: 11,
+                color: WHITE,
+                fontWeight: 600,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {businessName ?? 'Merchant'}
             </div>
             <div style={{ fontFamily: IT, fontSize: 10, color: MUTED }}>Pilot · Lagos</div>
           </div>
+          {onLogout && (
+            <button
+              className="mx-btn"
+              onClick={onLogout}
+              title="Sign out"
+              style={{
+                background: 'none',
+                border: 'none',
+                color: MUTED,
+                fontSize: 14,
+                cursor: 'pointer',
+                padding: 2,
+                flexShrink: 0,
+              }}
+            >
+              ⎋
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -720,7 +686,15 @@ function MxSidebar({
 }
 
 // ─── Header ───────────────────────────────────────────────────────────────────
-function MxHeader({ page, orderBadge }: { page: MerchantPage; orderBadge: number }) {
+function MxHeader({
+  page,
+  orderBadge,
+  initials,
+}: {
+  page: MerchantPage;
+  orderBadge: number;
+  initials?: string;
+}) {
   const labels: Record<MerchantPage, string> = {
     dashboard: 'Dashboard',
     orders: 'Orders',
@@ -807,7 +781,7 @@ function MxHeader({ page, orderBadge }: { page: MerchantPage; orderBadge: number
           color: WHITE,
         }}
       >
-        CH
+        {initials ?? 'MX'}
       </div>
     </div>
   );
@@ -818,25 +792,41 @@ function MxHeader({ page, orderBadge }: { page: MerchantPage; orderBadge: number
 // ─────────────────────────────────────────────────────────────────────────────
 function DashboardPage({
   onNav,
-  orders,
+  business,
+  wallet,
   storeOpen,
-  setStoreOpen,
+  onToggleStore,
 }: {
   onNav: (p: MerchantPage) => void;
-  orders: typeof MOCK_ORDERS;
+  business: MerchantBusinessDto | null;
+  wallet: WalletDto | null;
   storeOpen: boolean;
-  setStoreOpen: (v: boolean) => void;
+  onToggleStore: (open: boolean) => void;
 }) {
-  const newCount = orders.filter((o) => o.status === 'new').length;
-  const todayTotal = orders
-    .filter((o) => o.status === 'completed')
-    .reduce((s, o) => s + o.total, 0);
-  const grossToday = 17050;
-  const netToday = Math.round(grossToday * 0.9);
+  const [recentOrders, setRecentOrders] = useState<MerchantOrderDto[]>([]);
+  const [products, setProducts] = useState<MerchantProductDto[]>([]);
+
+  useEffect(() => {
+    api.merchant
+      .getOrders({ pageSize: 20 })
+      .then((r) => {
+        const res = r as { items?: MerchantOrderDto[] };
+        setRecentOrders(res.items ?? []);
+      })
+      .catch(() => {});
+    api.merchant
+      .getProducts()
+      .then((r) => setProducts(r as MerchantProductDto[]))
+      .catch(() => {});
+  }, []);
+
+  const newCount = recentOrders.filter((o) => o.status === 'CONFIRMED').length;
+  const balance = wallet?.availableBalance ?? 0;
+  const liveProd = products.filter((p) => p.published && p.inStock).length;
+  const outStock = products.filter((p) => !p.inStock).length;
 
   return (
     <div className="mx-scroll" style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
-      {/* Store status banner */}
       <div
         style={{
           display: 'flex',
@@ -872,11 +862,10 @@ function DashboardPage({
           type="checkbox"
           className="mx-toggle"
           checked={storeOpen}
-          onChange={(e) => setStoreOpen(e.target.checked)}
+          onChange={(e) => onToggleStore(e.target.checked)}
         />
       </div>
 
-      {/* New order alert */}
       {newCount > 0 && (
         <div
           onClick={() => onNav('orders')}
@@ -919,7 +908,6 @@ function DashboardPage({
         </div>
       )}
 
-      {/* KPI row */}
       <div
         style={{
           display: 'grid',
@@ -931,23 +919,28 @@ function DashboardPage({
         {[
           {
             label: "Today's Orders",
-            value: String(orders.length),
+            value: String(recentOrders.length),
             sub: `${newCount} new`,
             color: '#3B82F6',
           },
           {
-            label: 'Gross Earnings',
-            value: `₦${grossToday.toLocaleString()}`,
-            sub: 'today',
+            label: 'Wallet Balance',
+            value: `₦${balance.toLocaleString()}`,
+            sub: 'available',
             color: G3,
           },
           {
-            label: 'Net (after 10%)',
-            value: `₦${netToday.toLocaleString()}`,
-            sub: 'settled by Ops',
+            label: 'Pending Balance',
+            value: `₦${(wallet?.pendingBalance ?? 0).toLocaleString()}`,
+            sub: 'processing',
             color: G2,
           },
-          { label: 'Products Live', value: '5', sub: '1 out of stock', color: C_WARN },
+          {
+            label: 'Products Live',
+            value: String(liveProd),
+            sub: outStock > 0 ? `${outStock} out of stock` : 'all in stock',
+            color: C_WARN,
+          },
         ].map((k) => (
           <MxCard key={k.label} style={{ padding: '14px 16px' }}>
             <div style={{ fontFamily: IT, fontSize: 11, color: MUTED, marginBottom: 6 }}>
@@ -961,7 +954,6 @@ function DashboardPage({
         ))}
       </div>
 
-      {/* Recent orders */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <MxCard>
           <SectionHead
@@ -975,32 +967,48 @@ function DashboardPage({
               </span>
             }
           />
-          {orders.slice(0, 4).map((o) => (
+          {recentOrders.length === 0 ? (
             <div
-              key={o.id}
-              className="mx-row"
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                padding: '9px 0',
-                borderBottom: `1px solid ${BORDER}`,
+                fontFamily: IT,
+                fontSize: 12,
+                color: MUTED,
+                padding: '16px 0',
+                textAlign: 'center',
               }}
             >
-              <div style={{ flex: 1 }}>
-                <div style={{ fontFamily: IT, fontSize: 12, fontWeight: 600, color: WHITE }}>
-                  {o.id}
-                </div>
-                <div style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>{o.summary}</div>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontFamily: PP, fontSize: 12, fontWeight: 700, color: WHITE }}>
-                  ₦{o.total.toLocaleString()}
-                </div>
-                <OrderStatusChip status={o.status} />
-              </div>
+              No recent orders
             </div>
-          ))}
+          ) : (
+            recentOrders.slice(0, 4).map((o) => (
+              <div
+                key={o.id}
+                className="mx-row"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '9px 0',
+                  borderBottom: `1px solid ${BORDER}`,
+                }}
+              >
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontFamily: IT, fontSize: 12, fontWeight: 600, color: WHITE }}>
+                    {o.orderNumber}
+                  </div>
+                  <div style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>
+                    {o.items.length} item{o.items.length !== 1 ? 's' : ''}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontFamily: PP, fontSize: 12, fontWeight: 700, color: WHITE }}>
+                    ₦{o.total.toLocaleString()}
+                  </div>
+                  <OrderStatusChip status={apiStatusToMx(o.status)} />
+                </div>
+              </div>
+            ))
+          )}
         </MxCard>
 
         <MxCard>
@@ -1015,51 +1023,65 @@ function DashboardPage({
               </span>
             }
           />
-          {MOCK_PRODUCTS.slice(0, 5).map((p) => (
+          {products.length === 0 ? (
             <div
-              key={p.id}
-              className="mx-row"
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                padding: '9px 0',
-                borderBottom: `1px solid ${BORDER}`,
+                fontFamily: IT,
+                fontSize: 12,
+                color: MUTED,
+                padding: '16px 0',
+                textAlign: 'center',
               }}
             >
+              No products yet
+            </div>
+          ) : (
+            products.slice(0, 5).map((p) => (
               <div
+                key={p.id}
+                className="mx-row"
                 style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 7,
-                  background: NAVY_SURFACE,
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 16,
+                  gap: 10,
+                  padding: '9px 0',
+                  borderBottom: `1px solid ${BORDER}`,
                 }}
               >
-                🍛
-              </div>
-              <div style={{ flex: 1 }}>
                 <div
                   style={{
-                    fontFamily: IT,
-                    fontSize: 12,
-                    fontWeight: 600,
-                    color: p.inStock ? WHITE : MUTED,
+                    width: 32,
+                    height: 32,
+                    borderRadius: 7,
+                    background: NAVY_SURFACE,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 16,
                   }}
                 >
-                  {p.name}
+                  🍛
                 </div>
-                <div style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>
-                  ₦{p.price.toLocaleString()}
+                <div style={{ flex: 1 }}>
+                  <div
+                    style={{
+                      fontFamily: IT,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: p.inStock ? WHITE : MUTED,
+                    }}
+                  >
+                    {p.name}
+                  </div>
+                  <div style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>
+                    ₦{p.price.toLocaleString()}
+                  </div>
                 </div>
+                {!p.inStock && <MxChip label="Out of stock" color={C_WARN} />}
+                {!p.published && <MxChip label="Hidden" color={MUTED} />}
               </div>
-              {!p.inStock && <MxChip label="Out of stock" color={C_WARN} />}
-              {!p.published && <MxChip label="Hidden" color={MUTED} />}
-            </div>
-          ))}
+            ))
+          )}
         </MxCard>
       </div>
     </div>
@@ -1069,35 +1091,86 @@ function DashboardPage({
 // ─────────────────────────────────────────────────────────────────────────────
 // PAGE 2 — ORDERS
 // ─────────────────────────────────────────────────────────────────────────────
-function OrdersPage({
-  orders,
-  setOrders,
-  onDetail,
-}: {
-  orders: typeof MOCK_ORDERS;
-  setOrders: (o: typeof MOCK_ORDERS) => void;
-  onDetail: (id: string) => void;
-}) {
-  const tabs: { key: OrderStatus | 'all'; label: string }[] = [
+const TAB_STATUS: Record<string, string | undefined> = {
+  new: 'CONFIRMED',
+  preparing: 'PREPARING',
+  ready: 'READY',
+  completed: 'COMPLETED',
+  all: undefined,
+};
+
+function OrdersPage({ onDetail }: { onDetail: (id: string) => void }) {
+  const tabs: { key: MxStatus | 'all'; label: string }[] = [
     { key: 'all', label: 'All' },
     { key: 'new', label: 'New' },
     { key: 'preparing', label: 'Preparing' },
     { key: 'ready', label: 'Ready' },
     { key: 'completed', label: 'Completed' },
   ];
-  const [activeTab, setActiveTab] = useState<OrderStatus | 'all'>('new');
+  const [activeTab, setActiveTab] = useState<MxStatus | 'all'>('new');
+  const [orders, setOrders] = useState<MerchantOrderDto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [actionId, setActionId] = useState<string | null>(null);
+  const [showRejectId, setShowRejectId] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const visible = activeTab === 'all' ? orders : orders.filter((o) => o.status === activeTab);
+  const fetchOrders = useCallback(async (tab: MxStatus | 'all') => {
+    try {
+      const res = await api.merchant.getOrders({ status: TAB_STATUS[tab], pageSize: 30 });
+      setOrders((res as { items?: MerchantOrderDto[] }).items ?? []);
+    } catch {
+      setOrders([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const updateStatus = (id: string, s: OrderStatus) => {
-    setOrders(orders.map((o) => (o.id === id ? { ...o, status: s } : o)));
+  useEffect(() => {
+    setLoading(true);
+    fetchOrders(activeTab);
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = setInterval(() => fetchOrders(activeTab), 6000);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [activeTab, fetchOrders]);
+
+  const doAccept = async (id: string) => {
+    setActionId(id);
+    try {
+      await api.merchant.acceptOrder(id);
+      fetchOrders(activeTab);
+    } catch {}
+    setActionId(null);
+  };
+  const doReject = async () => {
+    if (!showRejectId) return;
+    setActionId(showRejectId);
+    try {
+      await api.merchant.rejectOrder(showRejectId, rejectReason || 'Order rejected');
+      fetchOrders(activeTab);
+    } catch {}
+    setActionId(null);
+    setShowRejectId(null);
+    setRejectReason('');
+  };
+  const doMarkReady = async (id: string) => {
+    setActionId(id);
+    try {
+      await api.merchant.markReady(id);
+      fetchOrders(activeTab);
+    } catch {}
+    setActionId(null);
   };
 
   return (
-    <div className="mx-scroll" style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+    <div
+      className="mx-scroll"
+      style={{ flex: 1, overflowY: 'auto', padding: 20, position: 'relative' }}
+    >
       <SectionHead title="Incoming Orders" sub="Accept and process customer orders" />
 
-      {/* Tab bar */}
       <div
         style={{
           display: 'flex',
@@ -1109,48 +1182,41 @@ function OrdersPage({
           width: 'fit-content',
         }}
       >
-        {tabs.map((t) => {
-          const count =
-            t.key === 'all' ? orders.length : orders.filter((o) => o.status === t.key).length;
-          const active = activeTab === t.key;
-          return (
-            <button
-              key={t.key}
-              className="mx-btn"
-              onClick={() => setActiveTab(t.key)}
-              style={{
-                padding: '5px 12px',
-                borderRadius: 6,
-                border: 'none',
-                cursor: 'pointer',
-                background: active ? NAVY_CARD : 'transparent',
-                fontFamily: IT,
-                fontSize: 12,
-                fontWeight: active ? 600 : 400,
-                color: active ? WHITE : MUTED,
-              }}
-            >
-              {t.label}{' '}
-              {count > 0 && (
-                <span
-                  style={{
-                    marginLeft: 4,
-                    background: t.key === 'new' && count > 0 ? C_ERR : NAVY_SURFACE,
-                    color: WHITE,
-                    borderRadius: 99,
-                    fontSize: 10,
-                    padding: '1px 5px',
-                  }}
-                >
-                  {count}
-                </span>
-              )}
-            </button>
-          );
-        })}
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            className="mx-btn"
+            onClick={() => setActiveTab(t.key)}
+            style={{
+              padding: '5px 12px',
+              borderRadius: 6,
+              border: 'none',
+              cursor: 'pointer',
+              background: activeTab === t.key ? NAVY_CARD : 'transparent',
+              fontFamily: IT,
+              fontSize: 12,
+              fontWeight: activeTab === t.key ? 600 : 400,
+              color: activeTab === t.key ? WHITE : MUTED,
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
-      {visible.length === 0 ? (
+      {loading ? (
+        <div
+          style={{
+            textAlign: 'center',
+            padding: '60px 0',
+            color: MUTED,
+            fontFamily: IT,
+            fontSize: 13,
+          }}
+        >
+          Loading orders…
+        </div>
+      ) : orders.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px 0' }}>
           <div style={{ fontSize: 36, marginBottom: 12 }}>📭</div>
           <div style={{ fontFamily: PP, fontSize: 14, color: MUTED }}>
@@ -1159,79 +1225,114 @@ function OrdersPage({
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {visible.map((o) => (
-            <MxCard key={o.id} style={{ padding: 0, overflow: 'hidden' }}>
-              {o.status === 'new' && (
-                <div style={{ height: 3, background: `linear-gradient(90deg,${G0},${C_ERR})` }} />
-              )}
-              <div style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14 }}>
-                {/* Order info */}
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-                    <span style={{ fontFamily: PP, fontSize: 13, fontWeight: 700, color: WHITE }}>
-                      {o.id}
-                    </span>
-                    <OrderStatusChip status={o.status} />
-                    <MxChip label="CASH" color={C_WARN} />
+          {orders.map((o) => {
+            const mxStatus = apiStatusToMx(o.status);
+            const busy = actionId === o.id;
+            const payLabel =
+              o.paymentMethod === 'CASH' ? 'CASH' : o.paymentStatus === 'PAID' ? 'PAID' : 'CARD';
+            const payColor =
+              o.paymentMethod === 'CASH' ? C_WARN : o.paymentStatus === 'PAID' ? C_OK : '#3B82F6';
+            return (
+              <MxCard key={o.id} style={{ padding: 0, overflow: 'hidden' }}>
+                {mxStatus === 'new' && (
+                  <div style={{ height: 3, background: `linear-gradient(90deg,${G0},${C_ERR})` }} />
+                )}
+                <div
+                  style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14 }}
+                >
+                  <div style={{ flex: 1 }}>
+                    <div
+                      style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}
+                    >
+                      <span style={{ fontFamily: PP, fontSize: 13, fontWeight: 700, color: WHITE }}>
+                        {o.orderNumber}
+                      </span>
+                      <OrderStatusChip status={mxStatus} />
+                      <MxChip label={payLabel} color={payColor} />
+                    </div>
+                    <div style={{ fontFamily: IT, fontSize: 12, color: MUTED, marginBottom: 2 }}>
+                      {o.items.map((i) => `${i.snapshotName} ×${i.quantity}`).join(', ')}
+                    </div>
+                    <div style={{ display: 'flex', gap: 14 }}>
+                      <span style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>
+                        🕐 {fmtTime(o.createdAt)}
+                      </span>
+                      <span style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>
+                        {o.items.length} item{o.items.length !== 1 ? 's' : ''}
+                      </span>
+                    </div>
                   </div>
-                  <div style={{ fontFamily: IT, fontSize: 12, color: MUTED, marginBottom: 2 }}>
-                    {o.summary}
-                  </div>
-                  <div style={{ display: 'flex', gap: 14 }}>
-                    <span style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>
-                      👤 {o.customer}
-                    </span>
-                    <span style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>🕐 {o.time}</span>
-                    <span style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>
-                      {o.items} item{o.items > 1 ? 's' : ''}
-                    </span>
-                  </div>
-                </div>
-                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <div
-                    style={{
-                      fontFamily: PP,
-                      fontSize: 15,
-                      fontWeight: 700,
-                      color: WHITE,
-                      marginBottom: 8,
-                    }}
-                  >
-                    ₦{o.total.toLocaleString()}
-                  </div>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    {o.status === 'new' && (
-                      <>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div
+                      style={{
+                        fontFamily: PP,
+                        fontSize: 15,
+                        fontWeight: 700,
+                        color: WHITE,
+                        marginBottom: 8,
+                      }}
+                    >
+                      ₦{o.total.toLocaleString()}
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {mxStatus === 'new' && (
+                        <>
+                          <MxBtn
+                            label="Reject"
+                            variant="danger"
+                            small
+                            disabled={busy}
+                            onClick={() => {
+                              setShowRejectId(o.id);
+                              setRejectReason('');
+                            }}
+                          />
+                          <MxBtn
+                            label={busy ? '…' : 'Accept'}
+                            variant="primary"
+                            small
+                            disabled={busy}
+                            onClick={() => doAccept(o.id)}
+                          />
+                        </>
+                      )}
+                      {mxStatus === 'preparing' && (
                         <MxBtn
-                          label="Reject"
-                          variant="danger"
-                          small
-                          onClick={() => updateStatus(o.id, 'cancelled')}
-                        />
-                        {/* accept → PREPARING (no separate preparing step per backend contract) */}
-                        <MxBtn
-                          label="Accept"
+                          label={busy ? '…' : 'Mark Ready'}
                           variant="primary"
                           small
-                          onClick={() => updateStatus(o.id, 'preparing')}
+                          disabled={busy}
+                          onClick={() => doMarkReady(o.id)}
                         />
-                      </>
-                    )}
-                    {o.status === 'preparing' && (
-                      <MxBtn
-                        label="Mark Ready"
-                        variant="primary"
-                        small
-                        onClick={() => updateStatus(o.id, 'ready')}
-                      />
-                    )}
-                    <MxBtn label="View" variant="ghost" small onClick={() => onDetail(o.id)} />
+                      )}
+                      <MxBtn label="View" variant="ghost" small onClick={() => onDetail(o.id)} />
+                    </div>
                   </div>
                 </div>
-              </div>
-            </MxCard>
-          ))}
+              </MxCard>
+            );
+          })}
         </div>
+      )}
+
+      {showRejectId && (
+        <Modal title="Reject this order?" onClose={() => setShowRejectId(null)}>
+          <MxInput
+            label="Reason (optional)"
+            placeholder="e.g. Item unavailable, store closed"
+            value={rejectReason}
+            onChange={setRejectReason}
+          />
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+            <MxBtn label="Cancel" variant="outline" onClick={() => setShowRejectId(null)} />
+            <MxBtn
+              label={actionId === showRejectId ? 'Rejecting…' : 'Yes, Reject'}
+              variant="danger"
+              disabled={!!actionId}
+              onClick={doReject}
+            />
+          </div>
+        </Modal>
       )}
     </div>
   );
@@ -1240,58 +1341,112 @@ function OrdersPage({
 // ─────────────────────────────────────────────────────────────────────────────
 // PAGE 3 — ORDER DETAIL
 // ─────────────────────────────────────────────────────────────────────────────
-function OrderDetailPage({
-  orderId,
-  orders,
-  setOrders,
-  onBack,
-}: {
-  orderId: string;
-  orders: typeof MOCK_ORDERS;
-  setOrders: (o: typeof MOCK_ORDERS) => void;
-  onBack: () => void;
-}) {
-  const order = orders.find((o) => o.id === orderId) ?? orders[0];
-  const [showConfirm, setShowConfirm] = useState<'reject' | 'ready' | null>(null);
+function OrderDetailPage({ orderId, onBack }: { orderId: string; onBack: () => void }) {
+  const [order, setOrder] = useState<MerchantOrderDto | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [showConfirm, setShowConfirm] = useState<'reject' | 'ready' | 'cancel' | null>(null);
+  const [reason, setReason] = useState('');
+  const [delayModal, setDelayModal] = useState(false);
+  const [delayMinutes, setDelayMinutes] = useState('30');
+  const [actionError, setActionError] = useState('');
 
-  const updateStatus = (s: OrderStatus) => {
-    setOrders(orders.map((o) => (o.id === orderId ? { ...o, status: s } : o)));
-    setShowConfirm(null);
+  const fetchOrder = useCallback(async () => {
+    try {
+      setOrder((await api.merchant.getOrder(orderId)) as MerchantOrderDto);
+    } catch {
+      setOrder(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [orderId]);
+
+  useEffect(() => {
+    fetchOrder();
+  }, [fetchOrder]);
+
+  const doAction = async (fn: () => Promise<unknown>) => {
+    setActionLoading(true);
+    setActionError('');
+    try {
+      await fn();
+      await fetchOrder();
+      setShowConfirm(null);
+      setDelayModal(false);
+    } catch (e: unknown) {
+      setActionError((e as { message?: string }).message ?? 'Action failed. Try again.');
+    } finally {
+      setActionLoading(false);
+    }
   };
 
+  if (loading)
+    return (
+      <div
+        style={{
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: MUTED,
+          fontFamily: IT,
+        }}
+      >
+        Loading order…
+      </div>
+    );
+  if (!order)
+    return (
+      <div
+        style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 12,
+        }}
+      >
+        <div style={{ fontSize: 36 }}>⚠️</div>
+        <div style={{ fontFamily: PP, fontSize: 14, color: MUTED }}>Could not load order</div>
+        <MxBtn label="Retry" variant="outline" onClick={fetchOrder} />
+      </div>
+    );
+
+  const mxStatus = apiStatusToMx(order.status);
+  const subtotal = order.items.reduce((s, i) => s + i.subtotal, 0);
+  const payLabel =
+    order.paymentMethod === 'CASH'
+      ? 'Cash on Delivery'
+      : order.paymentStatus === 'PAID'
+        ? 'Paid (Card)'
+        : 'Card (Pending)';
+
   const timeline: { label: string; done: boolean; time?: string }[] = [
-    { label: 'Order placed', done: true, time: order.time },
+    { label: 'Order placed', done: true, time: fmtTime(order.createdAt) },
     {
       label: 'Accepted → Preparing',
-      done: ['preparing', 'ready', 'completed'].includes(order.status),
-      time: order.status !== 'new' ? '9:43 AM' : undefined,
+      done: !!order.confirmedAt,
+      time: order.confirmedAt ? fmtTime(order.confirmedAt) : undefined,
+    },
+    { label: 'Preparing', done: mxStatus === 'ready' || mxStatus === 'completed' },
+    {
+      label: 'Ready for pickup',
+      done: !!order.readyAt,
+      time: order.readyAt ? fmtTime(order.readyAt) : undefined,
     },
     {
-      label: 'Preparing',
-      done: ['ready', 'completed'].includes(order.status),
-      time:
-        order.status === 'preparing'
-          ? 'Now'
-          : order.status === 'ready' || order.status === 'completed'
-            ? '9:48 AM'
-            : undefined,
+      label: 'Driver pickup & delivery',
+      done: !!order.deliveredAt,
+      time: order.deliveredAt ? fmtTime(order.deliveredAt) : undefined,
     },
-    { label: 'Ready for pickup', done: ['ready', 'completed'].includes(order.status) },
-    { label: 'Driver pickup & delivery', done: order.status === 'completed' },
   ];
-
-  const items = [
-    { name: 'Jollof Rice', qty: 2, price: 1800 },
-    { name: 'Grilled Chicken', qty: 1, price: 2500 },
-  ];
-  const subtotal = items.reduce((s, i) => s + i.price * i.qty, 0);
 
   return (
     <div
       className="mx-scroll"
       style={{ flex: 1, overflowY: 'auto', padding: 20, position: 'relative' }}
     >
-      {/* Back + header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
         <button
           className="mx-btn"
@@ -1311,28 +1466,51 @@ function OrderDetailPage({
         </button>
         <div style={{ flex: 1 }}>
           <span style={{ fontFamily: PP, fontWeight: 700, fontSize: 15, color: WHITE }}>
-            {order.id}
+            {order.orderNumber}
           </span>
           <span style={{ marginLeft: 10 }}>
-            <OrderStatusChip status={order.status} />
+            <OrderStatusChip status={mxStatus} />
           </span>
           <span style={{ marginLeft: 6 }}>
-            <MxChip label="CASH" color={C_WARN} />
+            <MxChip
+              label={order.paymentMethod === 'CASH' ? 'CASH' : 'CARD'}
+              color={order.paymentMethod === 'CASH' ? C_WARN : '#3B82F6'}
+            />
           </span>
         </div>
-        {order.status === 'new' && (
-          <MxBtn label="Reject Order" variant="danger" onClick={() => setShowConfirm('reject')} />
+        {(mxStatus === 'new' || mxStatus === 'preparing') && (
+          <MxBtn
+            label="Cancel Order"
+            variant="danger"
+            onClick={() => {
+              setShowConfirm('cancel');
+              setReason('');
+            }}
+          />
         )}
       </div>
 
+      {actionError && (
+        <div
+          style={{
+            padding: '9px 14px',
+            borderRadius: 8,
+            background: 'rgba(239,68,68,.07)',
+            border: '1px solid rgba(239,68,68,.2)',
+            marginBottom: 14,
+          }}
+        >
+          <span style={{ fontFamily: IT, fontSize: 12, color: C_ERR }}>{actionError}</span>
+        </div>
+      )}
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 16 }}>
-        {/* Left: items + summary */}
         <div>
           <MxCard style={{ marginBottom: 14 }}>
             <SectionHead title="Order Items" />
-            {items.map((item) => (
+            {order.items.map((item) => (
               <div
-                key={item.name}
+                key={item.id}
                 style={{
                   display: 'flex',
                   justifyContent: 'space-between',
@@ -1342,12 +1520,14 @@ function OrderDetailPage({
               >
                 <div>
                   <div style={{ fontFamily: IT, fontSize: 13, color: WHITE, fontWeight: 600 }}>
-                    {item.name}
+                    {item.snapshotName}
                   </div>
-                  <div style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>× {item.qty}</div>
+                  <div style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>
+                    × {item.quantity}
+                  </div>
                 </div>
                 <div style={{ fontFamily: PP, fontSize: 13, fontWeight: 700, color: WHITE }}>
-                  ₦{(item.price * item.qty).toLocaleString()}
+                  ₦{item.subtotal.toLocaleString()}
                 </div>
               </div>
             ))}
@@ -1360,7 +1540,15 @@ function OrderDetailPage({
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
               <span style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>Delivery fee</span>
               <span style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>
-                Handled by platform
+                ₦{order.deliveryFee.toLocaleString()}
+              </span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
+              <span style={{ fontFamily: IT, fontSize: 12, color: WHITE, fontWeight: 600 }}>
+                Total
+              </span>
+              <span style={{ fontFamily: PP, fontSize: 13, fontWeight: 700, color: G3 }}>
+                ₦{order.total.toLocaleString()}
               </span>
             </div>
           </MxCard>
@@ -1428,27 +1616,44 @@ function OrderDetailPage({
           </MxCard>
         </div>
 
-        {/* Right: actions + delivery info */}
         <div>
           <MxCard style={{ marginBottom: 14 }}>
             <SectionHead title="Order Actions" />
-            {order.status === 'new' && (
+            {mxStatus === 'new' && (
               <>
                 <InfoBanner
                   icon="⏰"
-                  text="This order expires in 3 minutes if not accepted."
+                  text="Accept or reject this order quickly. Unresponded orders may be auto-cancelled."
                   color={C_ERR}
                 />
-                {/* accept → PREPARING immediately per backend contract (no separate preparing step) */}
+                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                  <MxBtn
+                    label="Reject"
+                    variant="danger"
+                    fullWidth
+                    disabled={actionLoading}
+                    onClick={() => {
+                      setShowConfirm('reject');
+                      setReason('');
+                    }}
+                  />
+                  <MxBtn
+                    label={actionLoading ? '…' : '✓ Accept'}
+                    variant="primary"
+                    fullWidth
+                    disabled={actionLoading}
+                    onClick={() => doAction(() => api.merchant.acceptOrder(orderId))}
+                  />
+                </div>
                 <MxBtn
-                  label="✓ Accept Order"
-                  variant="primary"
+                  label="Delay (need more time)"
+                  variant="outline"
                   fullWidth
-                  onClick={() => updateStatus('preparing')}
+                  onClick={() => setDelayModal(true)}
                 />
               </>
             )}
-            {order.status === 'preparing' && (
+            {mxStatus === 'preparing' && (
               <>
                 <InfoBanner
                   icon="📢"
@@ -1456,14 +1661,23 @@ function OrderDetailPage({
                   color={G2}
                 />
                 <MxBtn
-                  label="Mark as Ready ✓"
+                  label={actionLoading ? '…' : 'Mark as Ready ✓'}
                   variant="primary"
                   fullWidth
+                  disabled={actionLoading}
                   onClick={() => setShowConfirm('ready')}
                 />
+                <div style={{ marginTop: 8 }}>
+                  <MxBtn
+                    label="Delay (need more time)"
+                    variant="outline"
+                    fullWidth
+                    onClick={() => setDelayModal(true)}
+                  />
+                </div>
               </>
             )}
-            {order.status === 'ready' && (
+            {mxStatus === 'ready' && (
               <div style={{ textAlign: 'center', padding: '12px 0' }}>
                 <div style={{ fontSize: 28, marginBottom: 8 }}>🏍️</div>
                 <div
@@ -1478,11 +1692,11 @@ function OrderDetailPage({
                   Awaiting driver pickup
                 </div>
                 <div style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>
-                  A driver has been assigned and is on the way to your store.
+                  A rider has been notified and is on the way to your store.
                 </div>
               </div>
             )}
-            {order.status === 'completed' && (
+            {mxStatus === 'completed' && (
               <div style={{ textAlign: 'center', padding: '12px 0' }}>
                 <div style={{ fontSize: 28, marginBottom: 8 }}>✅</div>
                 <div
@@ -1501,14 +1715,35 @@ function OrderDetailPage({
                 </div>
               </div>
             )}
+            {mxStatus === 'cancelled' && (
+              <div style={{ textAlign: 'center', padding: '12px 0' }}>
+                <div style={{ fontSize: 28, marginBottom: 8 }}>❌</div>
+                <div
+                  style={{
+                    fontFamily: PP,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: C_ERR,
+                    marginBottom: 4,
+                  }}
+                >
+                  Order cancelled
+                </div>
+                {order.cancellationReason && (
+                  <div style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>
+                    {order.cancellationReason}
+                  </div>
+                )}
+              </div>
+            )}
           </MxCard>
 
           <MxCard>
             <SectionHead title="Delivery Info" />
             {[
-              ['Payment', 'Cash on Delivery'],
-              ['Order time', order.time],
-              ['Items', `${order.items} item${order.items > 1 ? 's' : ''}`],
+              ['Payment', payLabel],
+              ['Order time', fmtDate(order.createdAt)],
+              ['Items', `${order.items.length} item${order.items.length !== 1 ? 's' : ''}`],
               ['Total', `₦${order.total.toLocaleString()}`],
             ].map(([l, v]) => (
               <div
@@ -1530,12 +1765,29 @@ function OrderDetailPage({
         </div>
       </div>
 
-      {/* Confirmation modal */}
-      {showConfirm && (
-        <Modal
-          title={showConfirm === 'reject' ? 'Reject this order?' : 'Mark order as ready?'}
-          onClose={() => setShowConfirm(null)}
-        >
+      {showConfirm === 'reject' && (
+        <Modal title="Reject this order?" onClose={() => setShowConfirm(null)}>
+          <MxInput
+            label="Reason (optional)"
+            placeholder="e.g. Item unavailable"
+            value={reason}
+            onChange={setReason}
+          />
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+            <MxBtn label="Cancel" variant="outline" onClick={() => setShowConfirm(null)} />
+            <MxBtn
+              label={actionLoading ? 'Rejecting…' : 'Yes, Reject'}
+              variant="danger"
+              disabled={actionLoading}
+              onClick={() =>
+                doAction(() => api.merchant.rejectOrder(orderId, reason || 'Order rejected'))
+              }
+            />
+          </div>
+        </Modal>
+      )}
+      {showConfirm === 'ready' && (
+        <Modal title="Mark order as ready?" onClose={() => setShowConfirm(null)}>
           <p
             style={{
               fontFamily: IT,
@@ -1545,16 +1797,69 @@ function OrderDetailPage({
               lineHeight: 1.6,
             }}
           >
-            {showConfirm === 'reject'
-              ? 'This order will be cancelled and the customer will be notified. This action cannot be undone.'
-              : 'Marking this order as ready will notify the assigned driver to come pick it up. Make sure the order is fully packed.'}
+            This will notify the assigned rider to pick up the order. Make sure it is fully packed.
           </p>
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
             <MxBtn label="Cancel" variant="outline" onClick={() => setShowConfirm(null)} />
             <MxBtn
-              label={showConfirm === 'reject' ? 'Yes, Reject' : 'Yes, Mark Ready'}
-              variant={showConfirm === 'reject' ? 'danger' : 'primary'}
-              onClick={() => updateStatus(showConfirm === 'reject' ? 'cancelled' : 'ready')}
+              label={actionLoading ? '…' : 'Yes, Mark Ready'}
+              variant="primary"
+              disabled={actionLoading}
+              onClick={() => doAction(() => api.merchant.markReady(orderId))}
+            />
+          </div>
+        </Modal>
+      )}
+      {showConfirm === 'cancel' && (
+        <Modal title="Cancel this order?" onClose={() => setShowConfirm(null)}>
+          <MxInput
+            label="Reason (optional)"
+            placeholder="e.g. Out of stock, store closing"
+            value={reason}
+            onChange={setReason}
+          />
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+            <MxBtn label="Back" variant="outline" onClick={() => setShowConfirm(null)} />
+            <MxBtn
+              label={actionLoading ? 'Cancelling…' : 'Yes, Cancel Order'}
+              variant="danger"
+              disabled={actionLoading}
+              onClick={() => doAction(() => api.merchant.cancelOrder(orderId, reason || undefined))}
+            />
+          </div>
+        </Modal>
+      )}
+      {delayModal && (
+        <Modal title="Delay — need more time?" onClose={() => setDelayModal(false)}>
+          <p
+            style={{
+              fontFamily: IT,
+              fontSize: 12,
+              color: MUTED,
+              marginBottom: 14,
+              lineHeight: 1.55,
+            }}
+          >
+            Enter how many more minutes you need. The customer will be informed.
+          </p>
+          <MxInput
+            label="Additional minutes"
+            placeholder="e.g. 30"
+            value={delayMinutes}
+            onChange={setDelayMinutes}
+            type="number"
+          />
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+            <MxBtn label="Cancel" variant="outline" onClick={() => setDelayModal(false)} />
+            <MxBtn
+              label={actionLoading ? '…' : 'Confirm Delay'}
+              variant="primary"
+              disabled={actionLoading || !delayMinutes}
+              onClick={() => {
+                const mins = parseInt(delayMinutes, 10) || 30;
+                const at = new Date(Date.now() + mins * 60000).toISOString();
+                doAction(() => api.merchant.delayOrder(orderId, { estimatedReadyAt: at }));
+              }}
             />
           </div>
         </Modal>
@@ -1566,62 +1871,91 @@ function OrderDetailPage({
 // ─────────────────────────────────────────────────────────────────────────────
 // PAGE 4 — PRODUCTS
 // ─────────────────────────────────────────────────────────────────────────────
-function ProductsPage({
-  products,
-  setProducts,
-}: {
-  products: typeof MOCK_PRODUCTS;
-  setProducts: (p: typeof MOCK_PRODUCTS) => void;
-}) {
+function ProductsPage() {
+  const [products, setProducts] = useState<MerchantProductDto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState({ name: '', category: '', price: '', description: '' });
   const [showDeleteId, setShowDeleteId] = useState<string | null>(null);
+
+  const fetchProducts = useCallback(async () => {
+    try {
+      setProducts((await api.merchant.getProducts()) as MerchantProductDto[]);
+    } catch {
+      setProducts([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchProducts();
+  }, [fetchProducts]);
 
   const openAdd = () => {
     setForm({ name: '', category: '', price: '', description: '' });
     setEditId(null);
     setShowAdd(true);
   };
-  const openEdit = (p: (typeof products)[0]) => {
-    setForm({ name: p.name, category: p.category, price: String(p.price), description: '' });
+  const openEdit = (p: MerchantProductDto) => {
+    setForm({
+      name: p.name,
+      category: p.category ?? '',
+      price: String(p.price),
+      description: p.description ?? '',
+    });
     setEditId(p.id);
     setShowAdd(true);
   };
 
-  const saveProduct = () => {
+  const saveProduct = async () => {
     if (!form.name || !form.price) return;
-    if (editId) {
-      setProducts(
-        products.map((p) =>
-          p.id === editId
-            ? { ...p, name: form.name, category: form.category, price: Number(form.price) }
-            : p,
-        ),
-      );
-    } else {
-      setProducts([
-        ...products,
-        {
-          id: `P0${products.length + 1}`,
+    setSaving(true);
+    try {
+      if (editId) {
+        await api.merchant.updateProduct(editId, {
           name: form.name,
           category: form.category,
           price: Number(form.price),
+          description: form.description || undefined,
+        });
+      } else {
+        await api.merchant.createProduct({
+          name: form.name,
+          category: form.category,
+          price: Number(form.price),
+          description: form.description || undefined,
           inStock: true,
           published: false,
-        },
-      ]);
+        });
+      }
+      await fetchProducts();
+      setShowAdd(false);
+    } catch {
+    } finally {
+      setSaving(false);
     }
-    setShowAdd(false);
   };
 
-  const toggle = (id: string, field: 'inStock' | 'published') => {
-    setProducts(products.map((p) => (p.id === id ? { ...p, [field]: !p[field] } : p)));
+  const toggle = async (p: MerchantProductDto, field: 'inStock' | 'published') => {
+    setProducts((ps) => ps.map((x) => (x.id === p.id ? { ...x, [field]: !x[field] } : x)));
+    try {
+      await api.merchant.updateProduct(p.id, { [field]: !p[field] });
+    } catch {
+      fetchProducts();
+    }
   };
 
-  const deleteProduct = (id: string) => {
-    setProducts(products.filter((p) => p.id !== id));
+  const deleteProduct = async (id: string) => {
     setShowDeleteId(null);
+    setProducts((ps) => ps.filter((p) => p.id !== id));
+    try {
+      await api.merchant.deleteProduct(id);
+    } catch {
+      fetchProducts();
+    }
   };
 
   const CATEGORIES = ['Rice', 'Soup', 'Swallow', 'Protein', 'Drinks', 'Snacks', 'Other'];
@@ -1633,11 +1967,27 @@ function ProductsPage({
     >
       <SectionHead
         title="Products & Catalogue"
-        sub={`${products.filter((p) => p.published).length} published · ${products.filter((p) => !p.inStock).length} out of stock`}
+        sub={
+          loading
+            ? 'Loading…'
+            : `${products.filter((p) => p.published).length} published · ${products.filter((p) => !p.inStock).length} out of stock`
+        }
         action={<MxBtn label="+ Add Product" variant="primary" onClick={openAdd} />}
       />
 
-      {products.length === 0 ? (
+      {loading ? (
+        <div
+          style={{
+            textAlign: 'center',
+            padding: '80px 0',
+            color: MUTED,
+            fontFamily: IT,
+            fontSize: 13,
+          }}
+        >
+          Loading products…
+        </div>
+      ) : products.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '80px 0' }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>🍽️</div>
           <div
@@ -1660,14 +2010,17 @@ function ProductsPage({
               <div
                 style={{
                   height: 80,
-                  background: NAVY_SURFACE,
+                  background: p.imageUrl ? 'transparent' : NAVY_SURFACE,
+                  backgroundImage: p.imageUrl ? `url(${p.imageUrl})` : undefined,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   fontSize: 32,
                 }}
               >
-                🍛
+                {!p.imageUrl && '🍛'}
               </div>
               <div style={{ padding: '12px 14px' }}>
                 <div
@@ -1682,7 +2035,9 @@ function ProductsPage({
                     <div style={{ fontFamily: PP, fontSize: 13, fontWeight: 700, color: WHITE }}>
                       {p.name}
                     </div>
-                    <div style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>{p.category}</div>
+                    <div style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>
+                      {p.category ?? 'Uncategorized'}
+                    </div>
                   </div>
                   <div style={{ fontFamily: PP, fontSize: 13, fontWeight: 700, color: G3 }}>
                     ₦{p.price.toLocaleString()}
@@ -1706,7 +2061,7 @@ function ProductsPage({
                       type="checkbox"
                       className="mx-toggle"
                       checked={p.inStock}
-                      onChange={() => toggle(p.id, 'inStock')}
+                      onChange={() => toggle(p, 'inStock')}
                     />
                   </div>
                   <div
@@ -1721,7 +2076,7 @@ function ProductsPage({
                       type="checkbox"
                       className="mx-toggle"
                       checked={p.published}
-                      onChange={() => toggle(p.id, 'published')}
+                      onChange={() => toggle(p, 'published')}
                     />
                   </div>
                 </div>
@@ -1766,15 +2121,12 @@ function ProductsPage({
           />
           <MxInput
             label="Description (optional)"
-            placeholder="Brief description of this product"
+            placeholder="Brief description"
             value={form.description}
             onChange={(v) => setForm((f) => ({ ...f, description: v }))}
           />
           <div
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
               padding: '10px 14px',
               borderRadius: 8,
               background: NAVY_SURFACE,
@@ -1782,36 +2134,16 @@ function ProductsPage({
               marginBottom: 16,
             }}
           >
-            <div
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: 8,
-                background: NAVY_CARD,
-                border: `1.5px dashed ${BORDER}`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 20,
-              }}
-            >
-              🖼️
-            </div>
-            <div>
-              <div style={{ fontFamily: IT, fontSize: 12, color: WHITE, fontWeight: 600 }}>
-                Product image
-              </div>
-              <div style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>
-                Tap to upload (optional)
-              </div>
+            <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>
+              Product image upload — not available in pilot
             </div>
           </div>
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
             <MxBtn label="Cancel" variant="outline" onClick={() => setShowAdd(false)} />
             <MxBtn
-              label={editId ? 'Save Changes' : 'Add Product'}
+              label={saving ? 'Saving…' : editId ? 'Save Changes' : 'Add Product'}
               variant="primary"
-              disabled={!form.name || !form.price}
+              disabled={!form.name || !form.price || saving}
               onClick={saveProduct}
             />
           </div>
@@ -1829,8 +2161,7 @@ function ProductsPage({
               lineHeight: 1.6,
             }}
           >
-            This product will be permanently removed from your catalogue. Ongoing orders won't be
-            affected.
+            This product will be permanently removed from your catalogue.
           </p>
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
             <MxBtn label="Cancel" variant="outline" onClick={() => setShowDeleteId(null)} />
@@ -1847,20 +2178,21 @@ function ProductsPage({
 // ─────────────────────────────────────────────────────────────────────────────
 function StoreSetupPage({
   storeOpen,
-  setStoreOpen,
+  onToggleStore,
+  business,
 }: {
   storeOpen: boolean;
-  setStoreOpen: (v: boolean) => void;
+  onToggleStore: (v: boolean) => void;
+  business: MerchantBusinessDto | null;
 }) {
-  const [storeName, setStoreName] = useState("Chidi's Kitchen");
-  const [category, setCategory] = useState('Local Food');
-  const [description, setDescription] = useState(
-    'Authentic Nigerian home-cooked meals, delivered fresh.',
-  );
-  const [address, setAddress] = useState('12 Allen Avenue, Ikeja, Lagos');
-  const [openTime, setOpenTime] = useState('08:00');
-  const [closeTime, setCloseTime] = useState('21:00');
+  const [storeName, setStoreName] = useState(business?.businessName ?? '');
+  const [category, setCategory] = useState(business?.businessType ?? 'Local Food');
+  const [description, setDescription] = useState(business?.description ?? '');
+  const [address, setAddress] = useState(business?.address ?? '');
+  const [openTime, setOpenTime] = useState(business?.openingTime ?? '08:00');
+  const [closeTime, setCloseTime] = useState(business?.closingTime ?? '21:00');
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const CATS = [
     'Local Food',
@@ -1872,9 +2204,22 @@ function StoreSetupPage({
     'Other',
   ];
 
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await api.merchant.updateBusiness({
+        businessName: storeName,
+        description: description || undefined,
+        address: address || undefined,
+        openingTime: openTime,
+        closingTime: closeTime,
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch {
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -1902,7 +2247,6 @@ function StoreSetupPage({
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        {/* Business info */}
         <MxCard>
           <SectionHead title="Business Information" />
           <MxInput
@@ -1927,7 +2271,6 @@ function StoreSetupPage({
           </div>
         </MxCard>
 
-        {/* Store details */}
         <MxCard>
           <SectionHead title="Store Location & Hours" />
           <MxInput
@@ -1951,23 +2294,12 @@ function StoreSetupPage({
             <span style={{ fontSize: 20 }}>📍</span>
             <div>
               <div style={{ fontFamily: IT, fontSize: 12, color: WHITE, fontWeight: 600 }}>
-                Map pin confirmed
+                Map pin
               </div>
               <div style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>
-                Location set to {address}
+                {address || 'No address set'}
               </div>
             </div>
-            <span
-              style={{
-                marginLeft: 'auto',
-                fontFamily: IT,
-                fontSize: 12,
-                color: G3,
-                cursor: 'pointer',
-              }}
-            >
-              Change
-            </span>
           </div>
           <div
             style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}
@@ -1997,7 +2329,6 @@ function StoreSetupPage({
           </div>
         </MxCard>
 
-        {/* Store logo */}
         <MxCard>
           <SectionHead title="Store Logo & Cover" />
           <div style={{ display: 'flex', gap: 14 }}>
@@ -2032,19 +2363,19 @@ function StoreSetupPage({
                   flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  cursor: 'pointer',
                   gap: 4,
                   marginBottom: 6,
                 }}
               >
                 <span style={{ fontSize: 20 }}>🖼️</span>
-                <span style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>Cover image</span>
+                <span style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>
+                  Cover image — not available in pilot
+                </span>
               </div>
             </div>
           </div>
         </MxCard>
 
-        {/* Store operations */}
         <MxCard>
           <SectionHead title="Store Operations" />
           <div
@@ -2070,7 +2401,7 @@ function StoreSetupPage({
               type="checkbox"
               className="mx-toggle"
               checked={storeOpen}
-              onChange={(e) => setStoreOpen(e.target.checked)}
+              onChange={(e) => onToggleStore(e.target.checked)}
             />
           </div>
           <div style={{ padding: '10px 0' }}>
@@ -2082,7 +2413,12 @@ function StoreSetupPage({
           </div>
           <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
             <MxBtn label="Save & Exit" variant="outline" onClick={handleSave} />
-            <MxBtn label="Save Changes" variant="primary" onClick={handleSave} />
+            <MxBtn
+              label={saving ? 'Saving…' : 'Save Changes'}
+              variant="primary"
+              disabled={saving}
+              onClick={handleSave}
+            />
           </div>
         </MxCard>
       </div>
@@ -2093,157 +2429,219 @@ function StoreSetupPage({
 // ─────────────────────────────────────────────────────────────────────────────
 // PAGE 6 — MERCHANT KYC
 // ─────────────────────────────────────────────────────────────────────────────
+const KYC_META: Record<string, { label: string; desc: string; icon: string; required: boolean }> = {
+  CAC_CERTIFICATE: {
+    label: 'CAC Certificate',
+    desc: 'Business registration certificate',
+    icon: '📋',
+    required: true,
+  },
+  DIRECTOR_NIN: {
+    label: 'Director NIN / ID',
+    desc: 'National Identity Number or valid government ID',
+    icon: '🪪',
+    required: true,
+  },
+  UTILITY_BILL: {
+    label: 'Utility Bill',
+    desc: 'Recent utility bill showing business address',
+    icon: '📄',
+    required: true,
+  },
+  BUSINESS_PHOTO: {
+    label: 'Business Premises Photo',
+    desc: 'Photo of your store/premises exterior',
+    icon: '🖼️',
+    required: false,
+  },
+};
+const KYC_FALLBACK = [
+  { type: 'CAC_CERTIFICATE', status: 'NOT_SUBMITTED', uploadedAt: null, rejectionReason: null },
+  { type: 'DIRECTOR_NIN', status: 'NOT_SUBMITTED', uploadedAt: null, rejectionReason: null },
+  { type: 'UTILITY_BILL', status: 'NOT_SUBMITTED', uploadedAt: null, rejectionReason: null },
+  { type: 'BUSINESS_PHOTO', status: 'NOT_SUBMITTED', uploadedAt: null, rejectionReason: null },
+];
+
 function MerchantKYCPage() {
-  const [docs, setDocs] = useState([
-    {
-      id: 'cac',
-      label: 'CAC Certificate',
-      desc: 'Business registration certificate',
-      icon: '📋',
-      status: 'verified',
-      required: true,
-    },
-    {
-      id: 'nin',
-      label: 'Director NIN / ID',
-      desc: 'National Identity Number or valid government ID',
-      icon: '🪪',
-      status: 'verified',
-      required: true,
-    },
-    {
-      id: 'utility',
-      label: 'Utility Bill',
-      desc: 'Recent utility bill showing business address',
-      icon: '📄',
-      status: 'review',
-      required: true,
-    },
-    {
-      id: 'photo',
-      label: 'Business Premises Photo',
-      desc: 'Photo of your store/premises exterior',
-      icon: '🖼️',
-      status: 'uploaded',
-      required: false,
-    },
-  ]);
+  const [kyc, setKyc] = useState<MerchantKycDto | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [uploadingType, setUploadingType] = useState<string | null>(null);
 
-  const total = docs.filter((d) => d.required).length;
-  const done = docs.filter((d) => d.required && d.status === 'verified').length;
-  const pct = Math.round((done / total) * 100);
-  const overallStatus =
-    done === total ? 'approved' : docs.some((d) => d.status === 'review') ? 'review' : 'pending';
+  const fetchKyc = useCallback(async () => {
+    try {
+      setKyc((await api.merchant.getKyc()) as MerchantKycDto);
+    } catch {
+      setKyc(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const simulateUpload = (id: string) => {
-    setDocs(docs.map((d) => (d.id === id ? { ...d, status: 'uploaded' } : d)));
+  useEffect(() => {
+    fetchKyc();
+  }, [fetchKyc]);
+
+  const handleUpload = async (documentType: string) => {
+    setUploadingType(documentType);
+    try {
+      await api.merchant.submitKycDoc({
+        documentType,
+        frontImageUrl: 'https://placehold.co/800x600/0A1628/2BAC52?text=Document',
+      });
+      await fetchKyc();
+    } catch {}
+    setUploadingType(null);
+  };
+
+  const docs = kyc?.documents ?? KYC_FALLBACK;
+  const required = docs.filter((d) => KYC_META[d.type]?.required);
+  const done = required.filter((d) => d.status === 'VERIFIED').length;
+  const total = required.length;
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  const overallStatus = kyc?.overallStatus?.toLowerCase() ?? 'pending';
+
+  const uiStatus = (s: string) => {
+    switch (s.toUpperCase()) {
+      case 'VERIFIED':
+        return 'verified';
+      case 'PENDING_REVIEW':
+        return 'review';
+      case 'REJECTED':
+        return 'rejected';
+      case 'SUBMITTED':
+        return 'uploaded';
+      default:
+        return 'pending';
+    }
   };
 
   return (
     <div className="mx-scroll" style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
       <SectionHead title="Merchant KYC" sub="Submit required documents to verify your business" />
 
-      {/* Progress */}
-      <MxCard style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-          <span style={{ fontFamily: PP, fontSize: 13, fontWeight: 600, color: WHITE }}>
-            Verification progress
-          </span>
-          <span style={{ fontFamily: PP, fontSize: 13, fontWeight: 700, color: G3 }}>
-            {done}/{total} verified
-          </span>
+      {loading ? (
+        <div
+          style={{
+            textAlign: 'center',
+            padding: '60px 0',
+            color: MUTED,
+            fontFamily: IT,
+            fontSize: 13,
+          }}
+        >
+          Loading KYC status…
         </div>
-        <div style={{ height: 6, borderRadius: 3, background: NAVY_SURFACE, marginBottom: 10 }}>
-          <div
-            style={{
-              height: 6,
-              borderRadius: 3,
-              background: `linear-gradient(90deg,${G0},${G3})`,
-              width: `${pct}%`,
-              transition: 'width .4s',
-            }}
-          />
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>Overall status</span>
-          <OrderStatusChip status={overallStatus} />
-        </div>
-      </MxCard>
-
-      <InfoBanner
-        icon="🔒"
-        text="Your documents are encrypted and stored securely. They are only used to verify your business identity. DrippleX does not share your KYC documents with third parties."
-        color={G2}
-      />
-
-      {docs.map((doc) => (
-        <MxCard key={doc.id} style={{ marginBottom: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <div
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: 10,
-                background: NAVY_SURFACE,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 20,
-                flexShrink: 0,
-              }}
-            >
-              {doc.icon}
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-                <span style={{ fontFamily: PP, fontSize: 13, fontWeight: 600, color: WHITE }}>
-                  {doc.label}
-                </span>
-                {doc.required && (
-                  <span style={{ fontFamily: IT, fontSize: 10, color: C_ERR }}>Required</span>
-                )}
-              </div>
-              <div style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>{doc.desc}</div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-              <OrderStatusChip status={doc.status} />
-              {(doc.status === 'uploaded' || doc.status === 'review') && (
-                <MxBtn
-                  label="Replace"
-                  variant="outline"
-                  small
-                  onClick={() => simulateUpload(doc.id)}
-                />
-              )}
-              {doc.status !== 'verified' &&
-                doc.status !== 'review' &&
-                doc.status !== 'uploaded' && (
-                  <MxBtn
-                    label="Upload"
-                    variant="primary"
-                    small
-                    onClick={() => simulateUpload(doc.id)}
-                  />
-                )}
-            </div>
-          </div>
-          {doc.status === 'rejected' && (
-            <div
-              style={{
-                marginTop: 10,
-                padding: '8px 12px',
-                borderRadius: 7,
-                background: 'rgba(239,68,68,.07)',
-                border: '1px solid rgba(239,68,68,.2)',
-              }}
-            >
-              <span style={{ fontFamily: IT, fontSize: 12, color: C_ERR }}>
-                ⚠️ Document rejected — please upload a clearer version of this document.
+      ) : (
+        <>
+          <MxCard style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+              <span style={{ fontFamily: PP, fontSize: 13, fontWeight: 600, color: WHITE }}>
+                Verification progress
+              </span>
+              <span style={{ fontFamily: PP, fontSize: 13, fontWeight: 700, color: G3 }}>
+                {done}/{total} verified
               </span>
             </div>
-          )}
-        </MxCard>
-      ))}
+            <div style={{ height: 6, borderRadius: 3, background: NAVY_SURFACE, marginBottom: 10 }}>
+              <div
+                style={{
+                  height: 6,
+                  borderRadius: 3,
+                  background: `linear-gradient(90deg,${G0},${G3})`,
+                  width: `${pct}%`,
+                  transition: 'width .4s',
+                }}
+              />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>Overall status</span>
+              <OrderStatusChip status={overallStatus} />
+            </div>
+          </MxCard>
+
+          <InfoBanner
+            icon="🔒"
+            text="Your documents are encrypted and stored securely. DrippleX does not share your KYC documents with third parties."
+            color={G2}
+          />
+
+          {docs.map((doc) => {
+            const meta = KYC_META[doc.type] ?? {
+              label: doc.type,
+              desc: '',
+              icon: '📄',
+              required: false,
+            };
+            const st = uiStatus(doc.status);
+            const busy = uploadingType === doc.type;
+            return (
+              <MxCard key={doc.type} style={{ marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <div
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 10,
+                      background: NAVY_SURFACE,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 20,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {meta.icon}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                      <span style={{ fontFamily: PP, fontSize: 13, fontWeight: 600, color: WHITE }}>
+                        {meta.label}
+                      </span>
+                      {meta.required && (
+                        <span style={{ fontFamily: IT, fontSize: 10, color: C_ERR }}>Required</span>
+                      )}
+                    </div>
+                    <div style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>{meta.desc}</div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                    <OrderStatusChip status={st} />
+                    {st !== 'verified' && (
+                      <MxBtn
+                        label={
+                          busy
+                            ? 'Uploading…'
+                            : st === 'uploaded' || st === 'review'
+                              ? 'Replace'
+                              : 'Upload'
+                        }
+                        variant={st === 'rejected' ? 'danger' : 'primary'}
+                        small
+                        disabled={busy}
+                        onClick={() => handleUpload(doc.type)}
+                      />
+                    )}
+                  </div>
+                </div>
+                {doc.rejectionReason && (
+                  <div
+                    style={{
+                      marginTop: 10,
+                      padding: '8px 12px',
+                      borderRadius: 7,
+                      background: 'rgba(239,68,68,.07)',
+                      border: '1px solid rgba(239,68,68,.2)',
+                    }}
+                  >
+                    <span style={{ fontFamily: IT, fontSize: 12, color: C_ERR }}>
+                      ⚠️ Rejected: {doc.rejectionReason}
+                    </span>
+                  </div>
+                )}
+              </MxCard>
+            );
+          })}
+        </>
+      )}
     </div>
   );
 }
@@ -2272,14 +2670,12 @@ function BankAccountPage() {
   return (
     <div className="mx-scroll" style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
       <SectionHead title="Bank Account" sub="Your payout destination account" />
-
       <div style={{ maxWidth: 520 }}>
         <InfoBanner
           icon="💰"
           text="This account receives your settlement payments. Payouts are processed by the DrippleX Operations team during the pilot period."
           color={G2}
         />
-
         <MxCard style={{ marginBottom: 14 }}>
           <SectionHead
             title={editing ? 'Edit Bank Account' : 'Settlement Account'}
@@ -2297,7 +2693,6 @@ function BankAccountPage() {
               ) : undefined
             }
           />
-
           {!editing ? (
             <div>
               {[
@@ -2392,12 +2787,11 @@ function BankAccountPage() {
             </div>
           )}
         </MxCard>
-
         <MxCard>
           <SectionHead title="Payout Information" />
           <InfoBanner
             icon="ℹ️"
-            text="During the V1 pilot, all merchant payouts are administered by the DrippleX Operations team. You will be notified when a settlement is processed to this account."
+            text="During the V1 pilot, all merchant payouts are administered by the DrippleX Operations team."
             color={'#3B82F6'}
           />
           {[
@@ -2429,38 +2823,27 @@ function BankAccountPage() {
 // ─────────────────────────────────────────────────────────────────────────────
 function ApprovalStatusPage({ onNav }: { onNav: (p: MerchantPage) => void }) {
   const steps = [
-    { label: 'Business Setup', sub: 'Store name, address, category', status: 'done', action: null },
-    {
-      label: 'KYC Documents',
-      sub: 'Identity & business verification',
-      status: 'done',
-      action: null,
-    },
-    { label: 'Bank Account', sub: 'Settlement destination account', status: 'done', action: null },
+    { label: 'Business Setup', sub: 'Store name, address, category', status: 'done' },
+    { label: 'KYC Documents', sub: 'Identity & business verification', status: 'done' },
+    { label: 'Bank Account', sub: 'Settlement destination account', status: 'done' },
     {
       label: 'Operations Approval',
       sub: 'DrippleX team reviews your application',
       status: 'review',
-      action: null,
     },
-    { label: 'Store Activation', sub: 'Begin accepting orders', status: 'locked', action: null },
+    { label: 'Store Activation', sub: 'Begin accepting orders', status: 'locked' },
   ];
-
-  const STATUS_MAP: Record<string, [string, string, string]> = {
-    done: [C_OK, '✓', 'Completed'],
-    review: [C_WARN, '⏳', 'Under Review'],
-    action: [C_ERR, '!', 'Action Required'],
-    locked: [MUTED, '○', 'Waiting'],
-    rejected: [C_ERR, '✕', 'Rejected'],
+  const STATUS_MAP: Record<string, [string, string]> = {
+    done: [C_OK, '✓'],
+    review: [C_WARN, '⏳'],
+    action: [C_ERR, '!'],
+    locked: [MUTED, '○'],
+    rejected: [C_ERR, '✕'],
   };
-
-  const overallStatus = 'Pending Approval';
 
   return (
     <div className="mx-scroll" style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
       <SectionHead title="Onboarding & Approval Status" />
-
-      {/* Overall banner */}
       <div
         style={{
           display: 'flex',
@@ -2477,20 +2860,18 @@ function ApprovalStatusPage({ onNav }: { onNav: (p: MerchantPage) => void }) {
           <div
             style={{ fontFamily: PP, fontSize: 14, fontWeight: 700, color: WHITE, marginBottom: 3 }}
           >
-            {overallStatus}
+            Pending Approval
           </div>
           <div style={{ fontFamily: IT, fontSize: 12, color: MUTED, lineHeight: 1.55 }}>
             Your application is under review by the DrippleX Operations team. This typically takes
-            1–2 business days. You will receive a notification when approved.
+            1–2 business days.
           </div>
         </div>
       </div>
-
-      {/* Stepper */}
       <MxCard>
         <SectionHead title="Application Progress" />
         {steps.map((step, i) => {
-          const [color, symbol] = STATUS_MAP[step.status];
+          const [color, symbol] = STATUS_MAP[step.status] ?? [MUTED, '○'];
           const isLast = i === steps.length - 1;
           return (
             <div
@@ -2567,7 +2948,6 @@ function ApprovalStatusPage({ onNav }: { onNav: (p: MerchantPage) => void }) {
           );
         })}
       </MxCard>
-
       <div style={{ marginTop: 16 }}>
         <InfoBanner
           icon="📞"
@@ -2583,36 +2963,73 @@ function ApprovalStatusPage({ onNav }: { onNav: (p: MerchantPage) => void }) {
 // PAGE 9 — EARNINGS
 // ─────────────────────────────────────────────────────────────────────────────
 function EarningsPage() {
-  const totalGross = MOCK_SETTLEMENTS.reduce((s, r) => s + r.gross, 0);
-  const totalNet = MOCK_SETTLEMENTS.reduce((s, r) => s + r.net, 0);
-  const pending = MOCK_SETTLEMENTS.filter((r) => !r.settled).reduce((s, r) => s + r.net, 0);
+  const [settlements, setSettlements] = useState<MerchantSettlementDto[]>([]);
+  const [wallet, setWallet] = useState<WalletDto | null>(null);
+  const [txns, setTxns] = useState<WalletLedgerEntryDto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<'settlements' | 'wallet'>('settlements');
+
+  useEffect(() => {
+    Promise.all([
+      api.merchant
+        .getSettlements()
+        .then((r) => setSettlements(r as MerchantSettlementDto[]))
+        .catch(() => {}),
+      api.merchant
+        .getWallet()
+        .then((r) => setWallet(r as WalletDto))
+        .catch(() => {}),
+      api.merchant
+        .getWalletTransactions({ pageSize: 20 })
+        .then((r) => {
+          setTxns((r as { items?: WalletLedgerEntryDto[] }).items ?? []);
+        })
+        .catch(() => {}),
+    ]).finally(() => setLoading(false));
+  }, []);
+
+  const totalGross = settlements.reduce((s, r) => s + r.grossAmount, 0);
+  const totalNet = settlements.reduce((s, r) => s + r.netAmount, 0);
+  const pending = settlements
+    .filter((r) => r.status === 'PENDING')
+    .reduce((s, r) => s + r.netAmount, 0);
 
   return (
     <div className="mx-scroll" style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
       <SectionHead title="Earnings & Settlements" sub="Financial summary for your store" />
 
-      {/* Balance cards */}
       <div
-        style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 20 }}
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr 1fr 1fr',
+          gap: 12,
+          marginBottom: 20,
+        }}
       >
         {[
           {
-            label: 'Total Earned (Gross)',
-            value: `₦${totalGross.toLocaleString()}`,
-            color: WHITE,
-            sub: 'all orders',
-          },
-          {
-            label: 'Net Earnings (after 10%)',
-            value: `₦${totalNet.toLocaleString()}`,
+            label: 'Wallet Balance',
+            value: wallet ? `₦${wallet.availableBalance.toLocaleString()}` : '—',
             color: G3,
-            sub: 'your share',
+            sub: 'available now',
           },
           {
-            label: 'Pending Settlement',
-            value: `₦${pending.toLocaleString()}`,
+            label: 'Pending',
+            value: wallet ? `₦${wallet.pendingBalance.toLocaleString()}` : '—',
             color: C_WARN,
-            sub: 'processing by Ops',
+            sub: 'being processed',
+          },
+          {
+            label: 'Total Gross (Orders)',
+            value: loading ? '…' : `₦${totalGross.toLocaleString()}`,
+            color: WHITE,
+            sub: 'all settlements',
+          },
+          {
+            label: 'Total Net (after 10%)',
+            value: loading ? '…' : `₦${totalNet.toLocaleString()}`,
+            color: G2,
+            sub: 'your share',
           },
         ].map((k) => (
           <MxCard key={k.label} style={{ textAlign: 'center', padding: '20px 16px' }}>
@@ -2629,85 +3046,208 @@ function EarningsPage() {
 
       <InfoBanner
         icon="ℹ️"
-        text="Commission is 10% per order, configured by DrippleX Operations. Payouts are administered by Operations during the V1 pilot — you will be notified when each settlement is processed."
+        text="Commission is 10% per order. Payouts are administered by Operations during the V1 pilot."
         color={'#3B82F6'}
       />
 
-      {/* Settlement table */}
-      <MxCard style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ padding: '14px 16px', borderBottom: `1px solid ${BORDER}` }}>
-          <span style={{ fontFamily: PP, fontWeight: 600, fontSize: 14, color: WHITE }}>
-            Settlement History
-          </span>
-        </div>
-        {/* Header row */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1.5fr 1fr 1fr 1fr 1fr 100px',
-            gap: 0,
-            padding: '8px 16px',
-            background: NAVY_SURFACE,
-          }}
-        >
-          {['Date', 'Order Ref', 'Gross (₦)', 'Commission', 'Net (₦)', 'Status'].map((h) => (
-            <span
-              key={h}
-              style={{
-                fontFamily: IT,
-                fontSize: 11,
-                color: MUTED,
-                fontWeight: 600,
-                letterSpacing: 0.4,
-              }}
-            >
-              {h}
-            </span>
-          ))}
-        </div>
-        {MOCK_SETTLEMENTS.map((row, i) => (
-          <div
-            key={row.ref}
-            className="mx-row"
+      <div
+        style={{
+          display: 'flex',
+          gap: 4,
+          marginBottom: 16,
+          background: NAVY_SURFACE,
+          padding: 4,
+          borderRadius: 8,
+          width: 'fit-content',
+        }}
+      >
+        {(['settlements', 'wallet'] as const).map((t) => (
+          <button
+            key={t}
+            className="mx-btn"
+            onClick={() => setTab(t)}
             style={{
-              display: 'grid',
-              gridTemplateColumns: '1.5fr 1fr 1fr 1fr 1fr 100px',
-              gap: 0,
-              padding: '11px 16px',
-              borderBottom: i < MOCK_SETTLEMENTS.length - 1 ? `1px solid ${BORDER}` : 'none',
-              alignItems: 'center',
+              padding: '5px 14px',
+              borderRadius: 6,
+              border: 'none',
+              cursor: 'pointer',
+              background: tab === t ? NAVY_CARD : 'transparent',
+              fontFamily: IT,
+              fontSize: 12,
+              fontWeight: tab === t ? 600 : 400,
+              color: tab === t ? WHITE : MUTED,
             }}
           >
-            <span style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>{row.date}</span>
-            <span style={{ fontFamily: IT, fontSize: 12, color: WHITE, fontWeight: 500 }}>
-              {row.ref}
-            </span>
-            <span style={{ fontFamily: PP, fontSize: 12, fontWeight: 600, color: WHITE }}>
-              ₦{row.gross.toLocaleString()}
-            </span>
-            <span style={{ fontFamily: IT, fontSize: 12, color: C_WARN }}>
-              −₦{row.commission.toLocaleString()}
-            </span>
-            <span style={{ fontFamily: PP, fontSize: 12, fontWeight: 700, color: G3 }}>
-              ₦{row.net.toLocaleString()}
-            </span>
-            <MxChip
-              label={row.settled ? 'Settled' : 'Pending'}
-              color={row.settled ? C_OK : C_WARN}
-            />
-          </div>
+            {t === 'settlements' ? 'Settlement History' : 'Wallet Transactions'}
+          </button>
         ))}
-      </MxCard>
+      </div>
+
+      {loading ? (
+        <div
+          style={{
+            textAlign: 'center',
+            padding: '40px 0',
+            color: MUTED,
+            fontFamily: IT,
+            fontSize: 13,
+          }}
+        >
+          Loading…
+        </div>
+      ) : tab === 'settlements' ? (
+        settlements.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '60px 0' }}>
+            <div style={{ fontSize: 36, marginBottom: 12 }}>💰</div>
+            <div style={{ fontFamily: PP, fontSize: 14, color: MUTED }}>No settlements yet</div>
+          </div>
+        ) : (
+          <MxCard style={{ padding: 0, overflow: 'hidden' }}>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1.5fr 1fr 1fr 1fr 1fr 100px',
+                gap: 0,
+                padding: '8px 16px',
+                background: NAVY_SURFACE,
+              }}
+            >
+              {['Date', 'Order Ref', 'Gross (₦)', 'Commission', 'Net (₦)', 'Status'].map((h) => (
+                <span
+                  key={h}
+                  style={{
+                    fontFamily: IT,
+                    fontSize: 11,
+                    color: MUTED,
+                    fontWeight: 600,
+                    letterSpacing: 0.4,
+                  }}
+                >
+                  {h}
+                </span>
+              ))}
+            </div>
+            {settlements.map((row, i) => (
+              <div
+                key={row.id}
+                className="mx-row"
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1.5fr 1fr 1fr 1fr 1fr 100px',
+                  gap: 0,
+                  padding: '11px 16px',
+                  borderBottom: i < settlements.length - 1 ? `1px solid ${BORDER}` : 'none',
+                  alignItems: 'center',
+                }}
+              >
+                <span style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>
+                  {fmtDate(row.createdAt)}
+                </span>
+                <span style={{ fontFamily: IT, fontSize: 12, color: WHITE, fontWeight: 500 }}>
+                  {row.orderId.slice(0, 8).toUpperCase()}
+                </span>
+                <span style={{ fontFamily: PP, fontSize: 12, fontWeight: 600, color: WHITE }}>
+                  ₦{row.grossAmount.toLocaleString()}
+                </span>
+                <span style={{ fontFamily: IT, fontSize: 12, color: C_WARN }}>
+                  −₦{row.commissionAmount.toLocaleString()}
+                </span>
+                <span style={{ fontFamily: PP, fontSize: 12, fontWeight: 700, color: G3 }}>
+                  ₦{row.netAmount.toLocaleString()}
+                </span>
+                <MxChip
+                  label={row.status === 'SETTLED' ? 'Settled' : 'Pending'}
+                  color={row.status === 'SETTLED' ? C_OK : C_WARN}
+                />
+              </div>
+            ))}
+          </MxCard>
+        )
+      ) : txns.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '60px 0' }}>
+          <div style={{ fontSize: 36, marginBottom: 12 }}>📋</div>
+          <div style={{ fontFamily: PP, fontSize: 14, color: MUTED }}>
+            No wallet transactions yet
+          </div>
+        </div>
+      ) : (
+        <MxCard style={{ padding: 0, overflow: 'hidden' }}>
+          {txns.map((t, i) => (
+            <div
+              key={t.id}
+              className="mx-row"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                padding: '12px 16px',
+                borderBottom: i < txns.length - 1 ? `1px solid ${BORDER}` : 'none',
+              }}
+            >
+              <div
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 8,
+                  background:
+                    t.direction === 'CREDIT' ? 'rgba(16,185,129,.12)' : 'rgba(239,68,68,.12)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 16,
+                  flexShrink: 0,
+                }}
+              >
+                {t.direction === 'CREDIT' ? '↓' : '↑'}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontFamily: IT, fontSize: 12, fontWeight: 600, color: WHITE }}>
+                  {t.description ?? t.type}
+                </div>
+                <div style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>
+                  {fmtDate(t.createdAt)}
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div
+                  style={{
+                    fontFamily: PP,
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: t.direction === 'CREDIT' ? C_OK : C_ERR,
+                  }}
+                >
+                  {t.direction === 'CREDIT' ? '+' : '−'}₦{t.amount.toLocaleString()}
+                </div>
+                <div style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>
+                  Bal: ₦{t.balanceAfter.toLocaleString()}
+                </div>
+              </div>
+            </div>
+          ))}
+        </MxCard>
+      )}
+
+      {!loading && pending > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <InfoBanner
+            icon="⏳"
+            text={`₦${pending.toLocaleString()} in settlements are being processed by the DrippleX Operations team.`}
+            color={C_WARN}
+          />
+        </div>
+      )}
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PAGE 10 — SETTINGS (minimal pilot)
+// PAGE 10 — SETTINGS
 // ─────────────────────────────────────────────────────────────────────────────
 function SettingsPage() {
   const [notifOrders, setNotifOrders] = useState(true);
   const [notifSettlements, setNotifSettlements] = useState(true);
+  const user = auth.getUser();
 
   return (
     <div className="mx-scroll" style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
@@ -2758,10 +3298,8 @@ function SettingsPage() {
         <MxCard>
           <SectionHead title="Account" />
           <div style={{ padding: '10px 0', borderBottom: `1px solid ${BORDER}` }}>
-            <div style={{ fontFamily: IT, fontSize: 12, color: MUTED, marginBottom: 2 }}>
-              Registered phone
-            </div>
-            <div style={{ fontFamily: IT, fontSize: 13, color: WHITE }}>+234 803 XXX XXXX</div>
+            <div style={{ fontFamily: IT, fontSize: 12, color: MUTED, marginBottom: 2 }}>Email</div>
+            <div style={{ fontFamily: IT, fontSize: 13, color: WHITE }}>{user?.email ?? '—'}</div>
           </div>
           <div style={{ padding: '10px 0', marginBottom: 12 }}>
             <div style={{ fontFamily: IT, fontSize: 12, color: MUTED, marginBottom: 2 }}>
@@ -2781,6 +3319,126 @@ function SettingsPage() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// LOGIN SCREEN
+// ─────────────────────────────────────────────────────────────────────────────
+function MerchantLoginScreen({ onLogin }: { onLogin: () => void }) {
+  const [email, setEmail] = useState('dxresto@dripplex.demo');
+  const [password, setPassword] = useState('Dripplex#Demo1');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleLogin = async () => {
+    if (!email || !password) return;
+    setLoading(true);
+    setError('');
+    try {
+      const res = await api.auth.loginMerchant({ email, password });
+      const r = res as {
+        accessToken?: string;
+        refreshToken?: string;
+        user?: Record<string, unknown>;
+      };
+      if (r.accessToken && r.refreshToken) auth.setTokens(r.accessToken, r.refreshToken);
+      if (r.user) auth.setUser(r.user as Parameters<typeof auth.setUser>[0]);
+      onLogin();
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Login failed. Check your credentials.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        width: '100%',
+        height: '100%',
+        background: NAVY_BASE,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <div style={{ width: 400 }}>
+        <div style={{ textAlign: 'center', marginBottom: 28 }}>
+          <div
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: 12,
+              background: `linear-gradient(135deg,${G0},${G3})`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 22,
+              fontWeight: 700,
+              color: NAVY_DEEP,
+              margin: '0 auto 12px',
+              fontFamily: PP,
+            }}
+          >
+            D
+          </div>
+          <div style={{ fontFamily: PP, fontWeight: 700, fontSize: 20, color: WHITE }}>
+            DrippleX Merchant Portal
+          </div>
+          <div style={{ fontFamily: IT, fontSize: 13, color: MUTED, marginTop: 6 }}>
+            Sign in to manage your store
+          </div>
+        </div>
+        <MxCard style={{ padding: 24 }}>
+          <MxInput
+            label="Email address"
+            placeholder="merchant@example.com"
+            value={email}
+            onChange={setEmail}
+            type="email"
+          />
+          <MxInput
+            label="Password"
+            placeholder="••••••••"
+            value={password}
+            onChange={setPassword}
+            type="password"
+          />
+          {error && (
+            <div
+              style={{
+                padding: '9px 12px',
+                borderRadius: 7,
+                background: 'rgba(239,68,68,.07)',
+                border: '1px solid rgba(239,68,68,.2)',
+                marginBottom: 14,
+              }}
+            >
+              <span style={{ fontFamily: IT, fontSize: 12, color: C_ERR }}>{error}</span>
+            </div>
+          )}
+          <MxBtn
+            label={loading ? 'Signing in…' : 'Sign In'}
+            variant="primary"
+            fullWidth
+            disabled={loading || !email || !password}
+            onClick={handleLogin}
+          />
+          <div
+            style={{
+              fontFamily: IT,
+              fontSize: 11,
+              color: MUTED,
+              textAlign: 'center',
+              marginTop: 14,
+            }}
+          >
+            Demo: dxresto@dripplex.demo · Dripplex#Demo1
+          </div>
+        </MxCard>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MAIN — MERCHANT PORTAL SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
 export function MerchantPortalScreen({
@@ -2788,14 +3446,65 @@ export function MerchantPortalScreen({
 }: {
   initialPage?: MerchantPage;
 }) {
+  const [isLoggedIn, setIsLoggedIn] = useState(() => !!auth.getUser());
   const [page, setPage] = useState<MerchantPage>(initialPage);
-  const [storeOpen, setStoreOpen] = useState(true);
-  const [orders, setOrders] = useState(MOCK_ORDERS);
-  const [products, setProducts] = useState(MOCK_PRODUCTS);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [business, setBusiness] = useState<MerchantBusinessDto | null>(null);
+  const [wallet, setWallet] = useState<WalletDto | null>(null);
+  const [storeOpen, setStoreOpen] = useState(false);
+  const [newOrderCount, setNewOrderCount] = useState(0);
+  const badgePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const newOrderCount = orders.filter((o) => o.status === 'new').length;
+  const loadPortalData = useCallback(async () => {
+    try {
+      const b = (await api.merchant.getBusiness()) as MerchantBusinessDto;
+      setBusiness(b);
+      setStoreOpen(b.isOpen);
+    } catch {}
+    try {
+      setWallet((await api.merchant.getWallet()) as WalletDto);
+    } catch {}
+  }, []);
 
+  const pollNewOrders = useCallback(async () => {
+    try {
+      const r = await api.merchant.getOrders({ status: 'CONFIRMED', pageSize: 1 });
+      const res = r as { total?: number; items?: unknown[] };
+      setNewOrderCount(res.total ?? res.items?.length ?? 0);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    loadPortalData();
+    pollNewOrders();
+    badgePollRef.current = setInterval(pollNewOrders, 8000);
+    return () => {
+      if (badgePollRef.current) clearInterval(badgePollRef.current);
+    };
+  }, [isLoggedIn, loadPortalData, pollNewOrders]);
+
+  const handleToggleStore = async (open: boolean) => {
+    try {
+      if (open) await api.merchant.resumeStore();
+      else await api.merchant.pauseStore();
+      setStoreOpen(open);
+      if (business) setBusiness({ ...business, isOpen: open });
+    } catch {}
+  };
+
+  const handleLogout = () => {
+    if (badgePollRef.current) clearInterval(badgePollRef.current);
+    auth.clear();
+    setIsLoggedIn(false);
+    setBusiness(null);
+    setWallet(null);
+  };
+
+  if (!isLoggedIn) return <MerchantLoginScreen onLogin={() => setIsLoggedIn(true)} />;
+
+  const businessName = business?.businessName ?? 'Merchant';
+  const initials = businessName.slice(0, 2).toUpperCase();
   const onDetail = (id: string) => {
     setDetailId(id);
     setPage('orders');
@@ -2803,31 +3512,31 @@ export function MerchantPortalScreen({
 
   const renderPage = () => {
     if (page === 'orders' && detailId) {
-      return (
-        <OrderDetailPage
-          orderId={detailId}
-          orders={orders}
-          setOrders={setOrders}
-          onBack={() => setDetailId(null)}
-        />
-      );
+      return <OrderDetailPage orderId={detailId} onBack={() => setDetailId(null)} />;
     }
     switch (page) {
       case 'dashboard':
         return (
           <DashboardPage
             onNav={setPage}
-            orders={orders}
+            business={business}
+            wallet={wallet}
             storeOpen={storeOpen}
-            setStoreOpen={setStoreOpen}
+            onToggleStore={handleToggleStore}
           />
         );
       case 'orders':
-        return <OrdersPage orders={orders} setOrders={setOrders} onDetail={onDetail} />;
+        return <OrdersPage onDetail={onDetail} />;
       case 'products':
-        return <ProductsPage products={products} setProducts={setProducts} />;
+        return <ProductsPage />;
       case 'store':
-        return <StoreSetupPage storeOpen={storeOpen} setStoreOpen={setStoreOpen} />;
+        return (
+          <StoreSetupPage
+            storeOpen={storeOpen}
+            onToggleStore={handleToggleStore}
+            business={business}
+          />
+        );
       case 'earnings':
         return <EarningsPage />;
       case 'kyc':
@@ -2861,9 +3570,12 @@ export function MerchantPortalScreen({
           setDetailId(null);
         }}
         storeOpen={storeOpen}
+        businessName={businessName}
+        newOrderCount={newOrderCount}
+        onLogout={handleLogout}
       />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <MxHeader page={page} orderBadge={newOrderCount} />
+        <MxHeader page={page} orderBadge={newOrderCount} initials={initials} />
         {renderPage()}
       </div>
     </div>

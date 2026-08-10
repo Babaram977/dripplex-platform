@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { G0, G2, G3, NAVY_DEEP, NAVY_CARD, NAVY_SURFACE, BORDER, MUTED } from './shared';
 import { BottomNavigation, FloatingAIButton } from '../components/navigation';
 import type { NavTabKey } from '../components/navigation/BottomNavigation';
+import { api } from '../lib/api';
+import type { MerchantSummaryDto, ProductSummaryDto } from '../lib/api';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -226,6 +228,45 @@ const AI_QUESTIONS = [
   'Any promotions today?',
   "What's the spiciest item?",
 ];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LIVE DATA MAPPERS — backend DTO → screen shape (connect only, no invented data)
+// Fields the backend does not provide (eta, delivery fee, hours, phone…) render
+// as "—" rather than fabricated values.
+// ─────────────────────────────────────────────────────────────────────────────
+function dtoToStoreMerchant(dto: MerchantSummaryDto): StoreMerchant {
+  return {
+    id: dto.id,
+    name: dto.businessName,
+    category: dto.businessType,
+    coverBg: DEFAULT_MERCHANT.coverBg,
+    emoji: '🏪',
+    tagline: dto.businessType,
+    rating: dto.rating?.average ?? 0,
+    reviewCount: dto.rating?.count ?? 0,
+    distance: dto.distanceKm != null ? `${dto.distanceKm.toFixed(1)} km` : dto.city,
+    eta: '—',
+    deliveryFee: '—',
+    minOrder: '—',
+    isOpen: dto.isOpenNow ?? true,
+    isVerified: dto.verificationStatus === 'VERIFIED' || dto.verificationStatus === 'APPROVED',
+    hours: '—',
+    phone: '—',
+    address: [dto.city, dto.state].filter(Boolean).join(', ') || '—',
+  };
+}
+
+function dtoToStoreProduct(dto: ProductSummaryDto): StoreProduct {
+  return {
+    id: dto.id,
+    name: dto.name,
+    description: '',
+    price: `₦${dto.basePrice.toLocaleString()}`,
+    emoji: '🛍️',
+    rating: dto.rating?.average ?? 0,
+    inStock: dto.inStock,
+  };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STATUS BAR
@@ -685,189 +726,203 @@ function ProductGrid({
         </button>
       </div>
       <div className="grid gap-3" style={{ gridTemplateColumns: '1fr 1fr' }}>
-        {!loaded
-          ? [1, 2, 3, 4].map((i) => (
-              <div
-                key={i}
-                className="overflow-hidden rounded-3xl"
-                style={{ background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
-              >
-                <div style={{ height: 88, background: 'rgba(255,255,255,.04)' }} />
-                <div className="flex flex-col gap-2 p-3">
-                  <div
-                    style={{
-                      height: 11,
-                      width: '70%',
-                      borderRadius: 6,
-                      background: 'rgba(255,255,255,.055)',
-                    }}
-                  />
-                  <div
-                    style={{
-                      height: 9,
-                      width: '50%',
-                      borderRadius: 6,
-                      background: 'rgba(255,255,255,.04)',
-                    }}
-                  />
-                  <div
-                    style={{
-                      height: 28,
-                      borderRadius: 12,
-                      background: 'rgba(255,255,255,.04)',
-                      marginTop: 4,
-                    }}
-                  />
-                </div>
-              </div>
-            ))
-          : products.map((p) => (
-              <div
-                key={p.id}
-                onClick={() => onProduct(p)}
-                className="overflow-hidden rounded-3xl transition-all active:scale-[.97]"
-                style={{
-                  background: NAVY_CARD,
-                  border: `1.5px solid ${BORDER}`,
-                  opacity: p.inStock ? 1 : 0.55,
-                }}
-              >
-                {/* Image area */}
+        {!loaded ? (
+          [1, 2, 3, 4].map((i) => (
+            <div
+              key={i}
+              className="overflow-hidden rounded-3xl"
+              style={{ background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
+            >
+              <div style={{ height: 88, background: 'rgba(255,255,255,.04)' }} />
+              <div className="flex flex-col gap-2 p-3">
                 <div
-                  className="relative flex items-center justify-center"
-                  style={{ height: 88, background: 'linear-gradient(135deg,#0D1B2E,#1A2E45)' }}
-                >
-                  <span style={{ fontSize: 44 }}>{p.emoji}</span>
-                  {p.badge && (
-                    <div
-                      className="absolute left-2 top-2 rounded-lg px-2 py-0.5 text-[9px] font-bold"
-                      style={{
-                        background: p.badgeColor,
-                        color: '#FFF',
-                        fontFamily: "'Inter',sans-serif",
-                      }}
-                    >
-                      {p.badge}
-                    </div>
-                  )}
-                  {!p.inStock && (
-                    <div
-                      className="absolute inset-0 flex items-center justify-center"
-                      style={{ background: 'rgba(6,14,28,.72)' }}
-                    >
-                      <p
-                        style={{
-                          fontSize: 10,
-                          fontWeight: 700,
-                          color: 'rgba(255,255,255,.5)',
-                          fontFamily: "'Inter',sans-serif",
-                        }}
-                      >
-                        Out of Stock
-                      </p>
-                    </div>
-                  )}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggle(p.id);
-                    }}
-                    className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-xl active:scale-90"
+                  style={{
+                    height: 11,
+                    width: '70%',
+                    borderRadius: 6,
+                    background: 'rgba(255,255,255,.055)',
+                  }}
+                />
+                <div
+                  style={{
+                    height: 9,
+                    width: '50%',
+                    borderRadius: 6,
+                    background: 'rgba(255,255,255,.04)',
+                  }}
+                />
+                <div
+                  style={{
+                    height: 28,
+                    borderRadius: 12,
+                    background: 'rgba(255,255,255,.04)',
+                    marginTop: 4,
+                  }}
+                />
+              </div>
+            </div>
+          ))
+        ) : products.length === 0 ? (
+          <div
+            className="col-span-2 rounded-2xl p-6 text-center text-[12.5px]"
+            style={{
+              color: MUTED,
+              background: NAVY_CARD,
+              border: `1.5px solid ${BORDER}`,
+              fontFamily: "'Inter',sans-serif",
+            }}
+          >
+            No items available yet.
+          </div>
+        ) : (
+          products.map((p) => (
+            <div
+              key={p.id}
+              onClick={() => onProduct(p)}
+              className="overflow-hidden rounded-3xl transition-all active:scale-[.97]"
+              style={{
+                background: NAVY_CARD,
+                border: `1.5px solid ${BORDER}`,
+                opacity: p.inStock ? 1 : 0.55,
+              }}
+            >
+              {/* Image area */}
+              <div
+                className="relative flex items-center justify-center"
+                style={{ height: 88, background: 'linear-gradient(135deg,#0D1B2E,#1A2E45)' }}
+              >
+                <span style={{ fontSize: 44 }}>{p.emoji}</span>
+                {p.badge && (
+                  <div
+                    className="absolute left-2 top-2 rounded-lg px-2 py-0.5 text-[9px] font-bold"
                     style={{
-                      background: wishlist.has(p.id) ? 'rgba(239,68,68,.2)' : 'rgba(0,0,0,.4)',
-                    }}
-                  >
-                    <svg
-                      width="12"
-                      height="12"
-                      viewBox="0 0 24 24"
-                      fill={wishlist.has(p.id) ? '#F87171' : 'none'}
-                      stroke={wishlist.has(p.id) ? '#F87171' : 'rgba(255,255,255,.6)'}
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                    >
-                      <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" />
-                    </svg>
-                  </button>
-                </div>
-                {/* Info */}
-                <div style={{ padding: '10px 12px 12px' }}>
-                  <p
-                    className="truncate"
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 700,
+                      background: p.badgeColor,
                       color: '#FFF',
-                      fontFamily: "'Poppins',sans-serif",
-                      marginBottom: 2,
-                    }}
-                  >
-                    {p.name}
-                  </p>
-                  <p
-                    className="truncate"
-                    style={{
-                      fontSize: 9.5,
-                      color: MUTED,
                       fontFamily: "'Inter',sans-serif",
-                      marginBottom: 4,
                     }}
                   >
-                    {p.description}
-                  </p>
-                  <div className="flex items-center gap-1.5" style={{ marginBottom: 4 }}>
-                    <span style={{ fontSize: 9.5, fontWeight: 700, color: '#FBBF24' }}>
-                      ★ {p.rating}
-                    </span>
+                    {p.badge}
                   </div>
-                  {p.originalPrice && (
+                )}
+                {!p.inStock && (
+                  <div
+                    className="absolute inset-0 flex items-center justify-center"
+                    style={{ background: 'rgba(6,14,28,.72)' }}
+                  >
                     <p
                       style={{
-                        fontSize: 9.5,
-                        textDecoration: 'line-through',
-                        color: MUTED,
+                        fontSize: 10,
+                        fontWeight: 700,
+                        color: 'rgba(255,255,255,.5)',
                         fontFamily: "'Inter',sans-serif",
                       }}
                     >
-                      {p.originalPrice}
+                      Out of Stock
                     </p>
-                  )}
+                  </div>
+                )}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggle(p.id);
+                  }}
+                  className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-xl active:scale-90"
+                  style={{
+                    background: wishlist.has(p.id) ? 'rgba(239,68,68,.2)' : 'rgba(0,0,0,.4)',
+                  }}
+                >
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill={wishlist.has(p.id) ? '#F87171' : 'none'}
+                    stroke={wishlist.has(p.id) ? '#F87171' : 'rgba(255,255,255,.6)'}
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  >
+                    <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" />
+                  </svg>
+                </button>
+              </div>
+              {/* Info */}
+              <div style={{ padding: '10px 12px 12px' }}>
+                <p
+                  className="truncate"
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: '#FFF',
+                    fontFamily: "'Poppins',sans-serif",
+                    marginBottom: 2,
+                  }}
+                >
+                  {p.name}
+                </p>
+                <p
+                  className="truncate"
+                  style={{
+                    fontSize: 9.5,
+                    color: MUTED,
+                    fontFamily: "'Inter',sans-serif",
+                    marginBottom: 4,
+                  }}
+                >
+                  {p.description}
+                </p>
+                <div className="flex items-center gap-1.5" style={{ marginBottom: 4 }}>
+                  <span style={{ fontSize: 9.5, fontWeight: 700, color: '#FBBF24' }}>
+                    ★ {p.rating}
+                  </span>
+                </div>
+                {p.originalPrice && (
                   <p
                     style={{
-                      fontSize: 13,
-                      fontWeight: 700,
-                      color: G3,
-                      fontFamily: "'Poppins',sans-serif",
-                      marginBottom: 8,
-                    }}
-                  >
-                    {p.price}
-                  </p>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (p.inStock) addCart(p.id);
-                    }}
-                    className="h-[30px] w-full rounded-xl text-[10.5px] font-semibold transition-all active:scale-95"
-                    disabled={!p.inStock}
-                    style={{
-                      background: cart.has(p.id)
-                        ? 'rgba(43,172,82,.2)'
-                        : p.inStock
-                          ? `linear-gradient(135deg,${G0},${G2})`
-                          : 'rgba(255,255,255,.05)',
-                      color: cart.has(p.id) ? G3 : p.inStock ? '#FFF' : 'rgba(255,255,255,.3)',
-                      border: cart.has(p.id) ? `1px solid rgba(43,172,82,.3)` : 'none',
+                      fontSize: 9.5,
+                      textDecoration: 'line-through',
+                      color: MUTED,
                       fontFamily: "'Inter',sans-serif",
-                      boxShadow:
-                        !cart.has(p.id) && p.inStock ? `0 3px 10px rgba(43,172,82,.22)` : 'none',
                     }}
                   >
-                    {cart.has(p.id) ? '✓ Added' : p.isService ? 'Book Now' : 'Add to Cart'}
-                  </button>
-                </div>
+                    {p.originalPrice}
+                  </p>
+                )}
+                <p
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: G3,
+                    fontFamily: "'Poppins',sans-serif",
+                    marginBottom: 8,
+                  }}
+                >
+                  {p.price}
+                </p>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (p.inStock) addCart(p.id);
+                  }}
+                  className="h-[30px] w-full rounded-xl text-[10.5px] font-semibold transition-all active:scale-95"
+                  disabled={!p.inStock}
+                  style={{
+                    background: cart.has(p.id)
+                      ? 'rgba(43,172,82,.2)'
+                      : p.inStock
+                        ? `linear-gradient(135deg,${G0},${G2})`
+                        : 'rgba(255,255,255,.05)',
+                    color: cart.has(p.id) ? G3 : p.inStock ? '#FFF' : 'rgba(255,255,255,.3)',
+                    border: cart.has(p.id) ? `1px solid rgba(43,172,82,.3)` : 'none',
+                    fontFamily: "'Inter',sans-serif",
+                    boxShadow:
+                      !cart.has(p.id) && p.inStock ? `0 3px 10px rgba(43,172,82,.22)` : 'none',
+                  }}
+                >
+                  {cart.has(p.id) ? '✓ Added' : p.isService ? 'Book Now' : 'Add to Cart'}
+                </button>
               </div>
-            ))}
+            </div>
+          ))
+        )}
       </div>
     </div>
   );
@@ -1298,7 +1353,8 @@ export function StoreScreen({
   onNotifications,
   onProduct,
   onCart,
-  merchant = DEFAULT_MERCHANT,
+  merchantId,
+  merchant: merchantProp = DEFAULT_MERCHANT,
 }: {
   onBack: () => void;
   onHome: () => void;
@@ -1306,23 +1362,51 @@ export function StoreScreen({
   onNotifications: () => void;
   onProduct?: (p: StoreProduct) => void;
   onCart?: () => void;
+  merchantId?: string;
   merchant?: StoreMerchant;
 }) {
   const [activeCat, setActiveCat] = useState('All');
-  const [followed, setFollowed] = useState(merchant.isFollowed ?? false);
   const [loaded, setLoaded] = useState(false);
   const [showAI, setShowAI] = useState(false);
-  const [cartCount] = useState(2);
+  const [cartCount] = useState(0);
 
-  useEffect(() => {
-    const t = setTimeout(() => setLoaded(true), 900);
-    return () => clearTimeout(t);
-  }, []);
+  // Live merchant + products (from real backend when a merchantId is routed in).
+  const [liveMerchant, setLiveMerchant] = useState<StoreMerchant | null>(null);
+  const [liveProducts, setLiveProducts] = useState<StoreProduct[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const load = () => {
+    if (!merchantId) {
+      // Design-preview only (no id routed): keep the mock so the standalone
+      // navigator still renders. Never falls back to mock when live is expected.
+      const t = setTimeout(() => setLoaded(true), 300);
+      return () => clearTimeout(t);
+    }
+    setLoaded(false);
+    setLoadError(null);
+    api.marketplace
+      .getMerchant(merchantId)
+      .then((dto) => {
+        setLiveMerchant(dtoToStoreMerchant(dto));
+        setLiveProducts((dto.products ?? []).map(dtoToStoreProduct));
+        setLoaded(true);
+      })
+      .catch((err: unknown) => {
+        setLoadError(err instanceof Error ? err.message : 'Failed to load store');
+        setLoaded(true);
+      });
+  };
+
+  useEffect(load, [merchantId]);
+
+  const merchant = liveMerchant ?? merchantProp;
+  const products = liveProducts ?? (merchantId ? [] : PRODUCTS);
+  const [followed, setFollowed] = useState(false);
 
   const filteredProducts =
     activeCat === 'All'
-      ? PRODUCTS
-      : PRODUCTS.filter((p) => {
+      ? products
+      : products.filter((p) => {
           if (activeCat === 'Promotions') return !!p.badge;
           if (activeCat === 'Featured') return p.rating >= 4.7;
           return true;
@@ -1352,11 +1436,32 @@ export function StoreScreen({
         <StoreCats active={activeCat} onChange={setActiveCat} />
 
         <div style={{ height: 16 }} />
-        <ProductGrid
-          products={filteredProducts}
-          loaded={loaded}
-          onProduct={(p) => onProduct?.(p)}
-        />
+        {loadError ? (
+          <div
+            className="mx-5 my-6 rounded-2xl p-5 text-center"
+            style={{ background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
+          >
+            <p
+              className="mb-3 text-[13px]"
+              style={{ color: '#FFF', fontFamily: "'Inter',sans-serif" }}
+            >
+              {loadError}
+            </p>
+            <button
+              onClick={load}
+              className="h-[38px] rounded-xl px-5 text-[12px] font-semibold active:scale-95"
+              style={{ background: `linear-gradient(135deg,${G0},${G2})`, color: '#FFF' }}
+            >
+              Retry
+            </button>
+          </div>
+        ) : (
+          <ProductGrid
+            products={filteredProducts}
+            loaded={loaded}
+            onProduct={(p) => onProduct?.(p)}
+          />
+        )}
         <ReviewsSection merchant={merchant} />
         <StorePolicies />
         <StoreInfo merchant={merchant} />

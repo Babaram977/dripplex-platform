@@ -7,6 +7,9 @@ import {
   COLOR_WARNING,
   TEXT_SECONDARY,
 } from '../tokens/colors';
+import { api } from '../lib/api';
+import { auth } from '../lib/auth';
+import type { RideOfferDto, RideOfferPreviewDto, RideDto } from '../lib/api';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DRIVER APP — DrippleX Ride Partner Platform
@@ -605,15 +608,24 @@ export function DriverLoginScreen({
   onContinue: () => void;
   onBack: () => void;
 }) {
-  const [phone, setPhone] = useState('801 234 5678');
+  const [email, setEmail] = useState('drip@dripplex.demo');
+  const [password, setPassword] = useState('Dripplex#Demo1');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    setError(null);
+    try {
+      const resp = await api.auth.loginDriver({ email, password });
+      auth.setTokens(resp.accessToken, resp.refreshToken);
+      auth.setUser(resp.user);
       onContinue();
-    }, 1200);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Login failed');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -645,37 +657,60 @@ export function DriverLoginScreen({
             Driver Partner
           </p>
           <p className="text-[14px]" style={{ fontFamily: IT, color: MUTED }}>
-            Enter your phone number to continue
+            Sign in to continue
           </p>
         </div>
 
-        {/* Phone input */}
+        {/* Email input */}
         <div className="mb-4">
           <p
             className="mb-2 text-[13px] font-medium"
             style={{ fontFamily: IT, color: TEXT_SECONDARY }}
           >
-            Phone Number
+            Email
           </p>
           <div
             className="flex h-14 items-center overflow-hidden rounded-2xl"
             style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
           >
-            <div
-              className="flex h-full items-center gap-2 border-r px-4"
-              style={{ borderColor: BORDER }}
-            >
-              <span>🇳🇬</span>
-              <span style={{ fontFamily: IT, fontSize: 14, color: TEXT_SECONDARY }}>+234</span>
-            </div>
             <input
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              type="email"
+              autoCapitalize="none"
               className="flex-1 bg-transparent px-4 outline-none"
               style={{ fontFamily: IT, fontSize: 15, color: '#fff' }}
             />
           </div>
         </div>
+
+        {/* Password input */}
+        <div className="mb-4">
+          <p
+            className="mb-2 text-[13px] font-medium"
+            style={{ fontFamily: IT, color: TEXT_SECONDARY }}
+          >
+            Password
+          </p>
+          <div
+            className="flex h-14 items-center overflow-hidden rounded-2xl"
+            style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
+          >
+            <input
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              type="password"
+              className="flex-1 bg-transparent px-4 outline-none"
+              style={{ fontFamily: IT, fontSize: 15, color: '#fff' }}
+            />
+          </div>
+        </div>
+
+        {error && (
+          <p className="mb-3 text-[13px]" style={{ fontFamily: IT, color: COLOR_ERROR }}>
+            {error}
+          </p>
+        )}
 
         {/* Stats highlight */}
         <div
@@ -1246,20 +1281,63 @@ export function DriverDashboardScreen({
   onRequest,
   onSettings,
 }: {
-  onRequest: () => void;
+  onRequest: (offer: RideOfferDto) => void;
   onSettings: () => void;
 }) {
   const [online, setOnline] = useState(false);
   const [tab, setTab] = useState<'dash' | 'trips' | 'earnings' | 'wallet' | 'profile'>('dash');
   const [toggling, setToggling] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleToggle = () => {
+  // Restore availability on mount (driver may already be online).
+  useEffect(() => {
+    api.driverRides
+      .getAvailability()
+      .then((a) => {
+        const online = !!(a && typeof a === 'object' && (a as { online?: boolean }).online);
+        setOnline(online);
+      })
+      .catch(() => {});
+  }, []);
+
+  // While online, poll for ride offers; navigate to the request screen on first offer.
+  useEffect(() => {
+    if (!online) return;
+    let cancelled = false;
+    const poll = () => {
+      api.driverRides
+        .getOffers()
+        .then((offers) => {
+          if (cancelled) return;
+          const pending = offers.find((o) => o.status === 'PENDING' || o.status === 'OFFERED');
+          if (pending) onRequest(pending);
+        })
+        .catch(() => {});
+    };
+    poll();
+    const iv = setInterval(poll, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(iv);
+    };
+  }, [online, onRequest]);
+
+  const handleToggle = async () => {
     setToggling(true);
-    setTimeout(() => {
-      setOnline((o) => !o);
+    setError(null);
+    const next = !online;
+    try {
+      await api.driverRides.setAvailability({
+        online: next,
+        acceptingRides: next,
+        vehicleType: 'ECONOMY',
+      });
+      setOnline(next);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Could not update availability');
+    } finally {
       setToggling(false);
-    }, 600);
-    if (!online) setTimeout(onRequest, 4000);
+    }
   };
 
   const handleTabChange = (t: typeof tab) => setTab(t);
@@ -1476,17 +1554,54 @@ export function DriverDashboardScreen({
 // DRIVER-008 — INCOMING RIDE REQUEST
 // ─────────────────────────────────────────────────────────────────────────────
 export function DriverIncomingRequestScreen({
+  offer,
   onAccept,
   onDecline,
 }: {
-  onAccept: () => void;
+  offer: RideOfferDto | null;
+  onAccept: (ride: RideDto) => void;
   onDecline: () => void;
 }) {
   const [countdown, setCountdown] = useState(15);
+  const [preview, setPreview] = useState<RideOfferPreviewDto | null>(null);
+  const [busy, setBusy] = useState<null | 'accept' | 'decline'>(null);
+
+  useEffect(() => {
+    if (!offer) return;
+    api.driverRides
+      .getOfferPreview(offer.id)
+      .then(setPreview)
+      .catch(() => {});
+  }, [offer]);
+
+  const handleDecline = async () => {
+    if (busy) return;
+    setBusy('decline');
+    try {
+      if (offer) await api.driverRides.declineOffer(offer.id);
+    } catch {
+      /* fall through to leave the screen either way */
+    } finally {
+      setBusy(null);
+      onDecline();
+    }
+  };
+
+  const handleAccept = async () => {
+    if (busy || !offer) return;
+    setBusy('accept');
+    try {
+      const ride = await api.driverRides.acceptOffer(offer.id);
+      onAccept(ride);
+    } catch {
+      setBusy(null);
+      onDecline();
+    }
+  };
 
   useEffect(() => {
     if (countdown <= 0) {
-      onDecline();
+      handleDecline();
       return;
     }
     const t = setTimeout(() => setCountdown((c) => c - 1), 1000);
@@ -1494,6 +1609,15 @@ export function DriverIncomingRequestScreen({
   }, [countdown]);
 
   const pct = (countdown / 15) * 100;
+
+  const km = preview ? (preview.estimatedDistanceMeters / 1000).toFixed(1) : null;
+  const mins = preview ? Math.max(1, Math.round(preview.estimatedDurationSeconds / 60)) : null;
+  const fareLabel = preview ? `₦${preview.totalFare.toLocaleString()}` : '—';
+  const rideTypeLabel = preview
+    ? preview.rideType.charAt(0) + preview.rideType.slice(1).toLowerCase()
+    : 'Ride';
+  const pickupLabel = preview?.pickupAddress ?? 'Pickup location';
+  const dropoffLabel = preview?.dropoffAddress ?? 'Drop-off location';
 
   return (
     <div
@@ -1550,7 +1674,7 @@ export function DriverIncomingRequestScreen({
                 NEW RIDE REQUEST
               </p>
               <p className="text-[20px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
-                Economy · ₦2,100
+                {rideTypeLabel} · {fareLabel}
               </p>
             </div>
             <div
@@ -1586,33 +1710,33 @@ export function DriverIncomingRequestScreen({
               <div className="flex-1">
                 <div className="mb-3">
                   <p className="mb-0.5 text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
-                    PICKUP · 1.2 km away
+                    PICKUP
                   </p>
                   <p
                     className="text-[14px] font-semibold"
                     style={{ fontFamily: PP, color: '#fff' }}
                   >
-                    Ikeja GRA, Lagos
+                    {pickupLabel}
                   </p>
                 </div>
                 <div>
                   <p className="mb-0.5 text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
-                    DROP-OFF · 14 km
+                    DROP-OFF{km ? ` · ${km} km` : ''}
                   </p>
                   <p
                     className="text-[14px] font-semibold"
                     style={{ fontFamily: PP, color: '#fff' }}
                   >
-                    Victoria Island, Lagos
+                    {dropoffLabel}
                   </p>
                 </div>
               </div>
             </div>
             <div className="mt-1 flex gap-3 border-t pt-3" style={{ borderColor: BORDER }}>
               {[
-                ['~3 min', 'To Pickup'],
-                ['22 min', 'Trip Duration'],
-                ['₦2,100', 'Your Fare'],
+                [km ? `${km} km` : '—', 'Distance'],
+                [mins ? `${mins} min` : '—', 'Trip Duration'],
+                [fareLabel, 'Your Fare'],
               ].map(([v, l]) => (
                 <div key={l} className="flex-1 text-center">
                   <p className="text-[14px] font-bold" style={{ fontFamily: PP, color: G3 }}>
@@ -1661,7 +1785,8 @@ export function DriverIncomingRequestScreen({
           {/* CTA */}
           <div className="flex gap-3">
             <button
-              onClick={onDecline}
+              onClick={handleDecline}
+              disabled={busy !== null}
               className="flex h-14 w-16 flex-shrink-0 items-center justify-center rounded-2xl active:scale-[.95]"
               style={{
                 background: 'rgba(239,68,68,.08)',
@@ -1680,7 +1805,11 @@ export function DriverIncomingRequestScreen({
                 <path d="M18 6L6 18M6 6l12 12" />
               </svg>
             </button>
-            <DGreenBtn label="✓  Accept Ride" onClick={onAccept} />
+            <DGreenBtn
+              label={busy === 'accept' ? 'Accepting…' : '✓  Accept Ride'}
+              onClick={handleAccept}
+              loading={busy === 'accept'}
+            />
           </div>
         </div>
       </div>
@@ -1694,12 +1823,28 @@ export function DriverIncomingRequestScreen({
 export function DriverNavToPickupScreen({
   onArrived,
   onBack,
+  rideId,
 }: {
   onArrived: () => void;
   onBack: () => void;
+  rideId?: string;
 }) {
   const [eta, setEta] = useState(3);
   const [dist, setDist] = useState(1.2);
+  const [busy, setBusy] = useState(false);
+
+  const handleArrived = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (rideId) await api.driverRides.arrive(rideId);
+    } catch {
+      /* best-effort — still advance so the driver isn't stuck */
+    } finally {
+      setBusy(false);
+      onArrived();
+    }
+  };
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -1820,7 +1965,11 @@ export function DriverNavToPickupScreen({
           </button>
         </div>
 
-        <DGreenBtn label="I've Arrived at Pickup →" onClick={onArrived} />
+        <DGreenBtn
+          label={busy ? 'Confirming…' : "I've Arrived at Pickup →"}
+          onClick={handleArrived}
+          loading={busy}
+        />
       </div>
     </div>
   );
@@ -1832,13 +1981,25 @@ export function DriverNavToPickupScreen({
 export function DriverPassengerVerifyScreen({
   onVerified,
   onBack,
+  rideId,
 }: {
   onVerified: () => void;
   onBack: () => void;
+  rideId?: string;
 }) {
   const [otp, setOtp] = useState(['', '', '', '']);
   const [verified, setVerified] = useState(false);
   const refs = useRef<(HTMLInputElement | null)[]>([]);
+
+  // Passenger OTP is a local gate (no backend); starting the trip is the real call.
+  const startTrip = async () => {
+    try {
+      if (rideId) await api.driverRides.start(rideId);
+    } catch {
+      /* best-effort — still advance so the driver isn't stuck */
+    }
+    onVerified();
+  };
 
   const handleChange = (i: number, v: string) => {
     if (!/^\d*$/.test(v)) return;
@@ -1848,7 +2009,7 @@ export function DriverPassengerVerifyScreen({
     if (v && i < 3) refs.current[i + 1]?.focus();
     if (next.every((d) => d) && next.join('') === '4729') {
       setVerified(true);
-      setTimeout(onVerified, 900);
+      setTimeout(startTrip, 900);
     }
   };
 
@@ -1959,12 +2120,27 @@ export function DriverPassengerVerifyScreen({
 export function DriverTripInProgressScreen({
   onComplete,
   onBack,
+  rideId,
 }: {
-  onComplete: () => void;
+  onComplete: (ride: RideDto | null) => void;
   onBack: () => void;
+  rideId?: string;
 }) {
   const [progress, setProgress] = useState(0.2);
   const [elapsed, setElapsed] = useState(5);
+  const completedRef = useRef(false);
+
+  const completeTrip = async () => {
+    if (completedRef.current) return;
+    completedRef.current = true;
+    let ride: RideDto | null = null;
+    try {
+      if (rideId) ride = await api.driverRides.complete(rideId);
+    } catch {
+      /* best-effort — still advance to the summary */
+    }
+    onComplete(ride);
+  };
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -1972,7 +2148,7 @@ export function DriverTripInProgressScreen({
         const n = Math.min(p + 0.05, 1);
         if (n >= 1) {
           clearInterval(t);
-          setTimeout(onComplete, 600);
+          setTimeout(completeTrip, 600);
         }
         return n;
       });
@@ -2112,7 +2288,23 @@ export function DriverTripInProgressScreen({
 // ─────────────────────────────────────────────────────────────────────────────
 // DRIVER-012 — TRIP COMPLETED
 // ─────────────────────────────────────────────────────────────────────────────
-export function DriverTripCompletedScreen({ onDone }: { onDone: () => void }) {
+export function DriverTripCompletedScreen({
+  onDone,
+  ride,
+}: {
+  onDone: () => void;
+  ride?: RideDto | null;
+}) {
+  // For cash rides the driver collected fare in person — settle it (10% commission).
+  useEffect(() => {
+    if (ride && ride.paymentMethod === 'CASH') {
+      api.driverRides.confirmCash(ride.id).catch(() => {});
+    }
+  }, [ride]);
+
+  const earned = ride ? `₦${ride.driverEarning.toLocaleString()}` : '—';
+  const dropoff = ride?.dropoffAddress ?? '';
+
   return (
     <div
       className="absolute inset-0 flex flex-col items-center justify-center gap-6 px-5"
@@ -2153,10 +2345,10 @@ export function DriverTripCompletedScreen({ onDone }: { onDone: () => void }) {
           TRIP COMPLETED
         </p>
         <p className="mb-1 text-[26px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
-          Great job, Adeyemi!
+          Great job!
         </p>
         <p className="text-[14px]" style={{ fontFamily: IT, color: MUTED }}>
-          Victoria Island, Lagos
+          {dropoff}
         </p>
       </div>
 
@@ -2170,9 +2362,12 @@ export function DriverTripCompletedScreen({ onDone }: { onDone: () => void }) {
             TRIP SUMMARY
           </p>
           {[
-            ['Duration', '22 min'],
-            ['Distance', '14.2 km'],
-            ['Passenger', 'Chidi O.'],
+            [
+              'Duration',
+              ride ? `${Math.max(1, Math.round(ride.estimatedDurationSeconds / 60))} min` : '—',
+            ],
+            ['Distance', ride ? `${(ride.estimatedDistanceMeters / 1000).toFixed(1)} km` : '—'],
+            ['Total Fare', ride ? `₦${ride.totalFare.toLocaleString()}` : '—'],
           ].map(([l, v]) => (
             <div key={l} className="mb-2 flex justify-between">
               <p className="text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
@@ -2190,11 +2385,11 @@ export function DriverTripCompletedScreen({ onDone }: { onDone: () => void }) {
               You Earned
             </p>
             <p className="text-[24px] font-bold" style={{ fontFamily: PP, color: G3 }}>
-              ₦1,995
+              {earned}
             </p>
           </div>
           <p className="text-right text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
-            After 5% platform fee · Added to wallet
+            After 10% platform fee · Added to wallet
           </p>
         </div>
       </div>

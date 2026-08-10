@@ -34,3 +34,4 @@ export {
   TripReceiptScreen,
   WalletPaySuccessScreen,
 } from '../../app/rideScreen';
+export type { RideDestination } from '../../app/rideScreen';

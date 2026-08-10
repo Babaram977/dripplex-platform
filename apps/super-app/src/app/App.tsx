@@ -56,13 +56,14 @@ import { StoreScreen } from '../features/STORE';
 import { ProductDetailScreen } from '../features/PRODUCT';
 import { CartScreen } from '../features/CART';
 import { CheckoutScreen } from '../features/CHECKOUT';
-import { TrackingScreen } from '../features/ORDERS';
+import { TrackingScreen, OrderHistoryScreen } from '../features/ORDERS';
 import {
   RideHomeScreen,
   DestinationSearchScreen,
   PickupConfirmScreen,
   FareEstimateScreen,
   FindingDriverScreen,
+  type RideDestination,
   DriverAssignedScreen,
   DriverArrivedScreen,
   RideInProgressScreen,
@@ -152,7 +153,7 @@ import {
   RiderJobScreen,
   RiderEarningsScreen,
 } from './riderScreen';
-import type { DeliveryJobDto } from '../lib/api';
+import type { DeliveryJobDto, RideOfferDto, RideDto } from '../lib/api';
 
 // DESKTOP FRAME — for admin operations console
 // ═══════════════════════════════════════════════════════════════════════════
@@ -282,6 +283,7 @@ type Screen =
   | 'cart'
   | 'checkout'
   | 'ordertracking'
+  | 'orderhistory'
   | 'ridehome'
   | 'ridesearch'
   | 'ridepickup'
@@ -376,6 +378,12 @@ function AppShell() {
   });
   const [activeRiderJob, setActiveRiderJob] = useState<DeliveryJobDto | null>(null);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
+  const [activeMerchantId, setActiveMerchantId] = useState<string | undefined>(undefined);
+  const [activeProductId, setActiveProductId] = useState<string | undefined>(undefined);
+  const [activeDriverOffer, setActiveDriverOffer] = useState<RideOfferDto | null>(null);
+  const [activeDriverRide, setActiveDriverRide] = useState<RideDto | null>(null);
+  const [rideDest, setRideDest] = useState<RideDestination | undefined>(undefined);
+  const [activeCustomerRideId, setActiveCustomerRideId] = useState<string | undefined>(undefined);
 
   const go = (to: Screen) => {
     setFading(true);
@@ -387,14 +395,14 @@ function AppShell() {
 
   const screens: Record<Screen, React.ReactNode> = {
     splash: <SplashScreen onDone={() => go('welcome')} />,
-    welcome: <WelcomeScreen onGetStarted={() => go('register')} onSignIn={() => go('returning')} />,
+    welcome: <WelcomeScreen onGetStarted={() => go('register')} onSignIn={() => go('signin')} />,
     register: (
       <RegisterScreen
         onContinue={(phone, country) => {
           setOtpData({ phone, country });
           go('otp');
         }}
-        onSignIn={() => go('returning')}
+        onSignIn={() => go('signin')}
         onBack={() => go('welcome')}
       />
     ),
@@ -428,16 +436,9 @@ function AppShell() {
         onBack={() => go('permissions')}
       />
     ),
-    returning: (
-      <ReturningLoginScreen
-        onUnlocked={() => go('welcome')}
-        onOTP={() => go('otp')}
-        onRecover={() => go('recovery')}
-        onBack={() => go('welcome')}
-        onSecurity={() => go('security')}
-        onAccount={() => go('account')}
-      />
-    ),
+    // "Returning" routes to the REAL email/password sign-in (the biometric
+    // ReturningLoginScreen is a mock with no backend — do not use it for auth).
+    returning: <SignInScreen onBack={() => go('welcome')} onSuccess={() => go('home')} />,
     recovery: <RecoveryScreen onRecovered={() => go('returning')} onBack={() => go('returning')} />,
     signin: <SignInScreen onBack={() => go('welcome')} onSuccess={() => go('home')} />,
     twofa: <TwoFactorScreen onBack={() => go('security')} onDone={() => go('security')} />,
@@ -518,6 +519,10 @@ function AppShell() {
         onMarketplace={() => go('marketplace')}
         onRide={() => go('ridehome')}
         onDriverApp={() => go('drvsplash')}
+        onStore={(id) => {
+          setActiveMerchantId(id);
+          go('store');
+        }}
       />
     ),
     marketplace: (
@@ -526,7 +531,10 @@ function AppShell() {
         onHome={() => go('home')}
         onAccount={() => go('account')}
         onNotifications={() => go('activitydash')}
-        onStore={() => go('store')}
+        onStore={(id) => {
+          setActiveMerchantId(id);
+          go('store');
+        }}
       />
     ),
     store: (
@@ -535,7 +543,11 @@ function AppShell() {
         onHome={() => go('home')}
         onAccount={() => go('account')}
         onNotifications={() => go('activitydash')}
-        onProduct={() => go('productdetail')}
+        merchantId={activeMerchantId}
+        onProduct={(p) => {
+          setActiveProductId(p?.id);
+          go('productdetail');
+        }}
       />
     ),
     productdetail: (
@@ -545,6 +557,8 @@ function AppShell() {
         onAccount={() => go('account')}
         onNotifications={() => go('activitydash')}
         onCart={() => go('cart')}
+        productId={activeProductId}
+        merchantId={activeMerchantId}
       />
     ),
     cart: (
@@ -574,7 +588,17 @@ function AppShell() {
         onHome={() => go('home')}
         onAccount={() => go('account')}
         onNotifications={() => go('activitydash')}
+        onHistory={() => go('orderhistory')}
         orderId={activeOrderId ?? undefined}
+      />
+    ),
+    orderhistory: (
+      <OrderHistoryScreen
+        onBack={() => go('home')}
+        onOrder={(id) => {
+          setActiveOrderId(id);
+          go('ordertracking');
+        }}
       />
     ),
     // ── RIDE module ──────────────────────────────────────────────────────────
@@ -586,16 +610,34 @@ function AppShell() {
       />
     ),
     ridesearch: (
-      <DestinationSearchScreen onBack={() => go('ridehome')} onSelect={() => go('ridepickup')} />
+      <DestinationSearchScreen
+        onBack={() => go('ridehome')}
+        onSelect={(dest) => {
+          setRideDest(dest);
+          go('ridepickup');
+        }}
+      />
     ),
     ridepickup: (
       <PickupConfirmScreen onBack={() => go('ridesearch')} onConfirm={() => go('ridefare')} />
     ),
     ridefare: (
-      <FareEstimateScreen onBack={() => go('ridepickup')} onBook={() => go('ridefinding')} />
+      <FareEstimateScreen
+        onBack={() => go('ridepickup')}
+        dropoff={rideDest}
+        rideType="ECONOMY"
+        onBook={(rideId) => {
+          setActiveCustomerRideId(rideId);
+          go('ridefinding');
+        }}
+      />
     ),
     ridefinding: (
-      <FindingDriverScreen onBack={() => go('ridefare')} onFound={() => go('rideassigned')} />
+      <FindingDriverScreen
+        onBack={() => go('ridehome')}
+        rideId={activeCustomerRideId}
+        onFound={() => go('rideassigned')}
+      />
     ),
     rideassigned: (
       <DriverAssignedScreen onBack={() => go('ridefare')} onArrived={() => go('ridearrived')} />
@@ -610,7 +652,13 @@ function AppShell() {
       />
     ),
     ridecomplete: <TripCompletedScreen onRate={() => go('riderating')} onHome={() => go('home')} />,
-    riderating: <RateDriverScreen onBack={() => go('ridecomplete')} onSubmit={() => go('home')} />,
+    riderating: (
+      <RateDriverScreen
+        onBack={() => go('ridecomplete')}
+        onSubmit={() => go('home')}
+        rideId={activeCustomerRideId}
+      />
+    ),
     ridehistory: (
       <RideHistoryScreen
         onBack={() => go('ridehome')}
@@ -681,7 +729,11 @@ function AppShell() {
       <OPayPaymentScreen onBack={() => go('ridepayment')} onSuccess={() => go('ridepaysuccess')} />
     ),
     ridecash: (
-      <CashPaymentScreen onBack={() => go('ridepayment')} onConfirm={() => go('ridefinding')} />
+      <CashPaymentScreen
+        onBack={() => go('ridepayment')}
+        onConfirm={() => go('ridepaysuccess')}
+        rideId={activeCustomerRideId}
+      />
     ),
     ridetip: (
       <TipDriverScreen onBack={() => go('ridecomplete')} onSubmit={() => go('riderating')} />
@@ -707,7 +759,7 @@ function AppShell() {
     ),
     // ── DRIVER APP module ────────────────────────────────────────────────────
     drvsplash: <DriverSplashScreen onDone={() => go('drvlogin')} />,
-    drvlogin: <DriverLoginScreen onContinue={() => go('drvotp')} onBack={() => go('home')} />,
+    drvlogin: <DriverLoginScreen onContinue={() => go('drvdash')} onBack={() => go('home')} />,
     drvotp: <DriverOTPScreen onVerified={() => go('drvkyc')} onBack={() => go('drvlogin')} />,
     drvkyc: (
       <DriverKYCStatusScreen
@@ -733,32 +785,48 @@ function AppShell() {
     ),
     drvdash: (
       <DriverDashboardScreen
-        onRequest={() => go('drvrequest')}
+        onRequest={(offer) => {
+          setActiveDriverOffer(offer);
+          go('drvrequest');
+        }}
         onSettings={() => go('drvsettings')}
       />
     ),
     drvrequest: (
       <DriverIncomingRequestScreen
-        onAccept={() => go('drvtopickup')}
+        offer={activeDriverOffer}
+        onAccept={(ride) => {
+          setActiveDriverRide(ride);
+          go('drvtopickup');
+        }}
         onDecline={() => go('drvdash')}
       />
     ),
     drvtopickup: (
-      <DriverNavToPickupScreen onArrived={() => go('drvverify')} onBack={() => go('drvdash')} />
+      <DriverNavToPickupScreen
+        rideId={activeDriverRide?.id}
+        onArrived={() => go('drvverify')}
+        onBack={() => go('drvdash')}
+      />
     ),
     drvverify: (
       <DriverPassengerVerifyScreen
+        rideId={activeDriverRide?.id}
         onVerified={() => go('drvtripactive')}
         onBack={() => go('drvtopickup')}
       />
     ),
     drvtripactive: (
       <DriverTripInProgressScreen
-        onComplete={() => go('drvtripdone')}
+        rideId={activeDriverRide?.id}
+        onComplete={(ride) => {
+          if (ride) setActiveDriverRide(ride);
+          go('drvtripdone');
+        }}
         onBack={() => go('drvverify')}
       />
     ),
-    drvtripdone: <DriverTripCompletedScreen onDone={() => go('drvdash')} />,
+    drvtripdone: <DriverTripCompletedScreen ride={activeDriverRide} onDone={() => go('drvdash')} />,
     drvsettings: <DriverSettingsScreen onBack={() => go('drvdash')} />,
     // ── WALLET module ────────────────────────────────────────────────────────
     wallethome: (
