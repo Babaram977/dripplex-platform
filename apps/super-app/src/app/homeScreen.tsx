@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { G0, G2, G3, NAVY_DEEP, NAVY_CARD, NAVY_SURFACE, BORDER, MUTED } from './shared';
 import { api } from '../lib/api';
+import { auth } from '../lib/auth';
 import type { MerchantSummaryDto, CategoryDto, WalletDto } from '../lib/api';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -232,10 +233,12 @@ function HomeStatusBar() {
 // ─────────────────────────────────────────────────────────────────────────────
 function Header({
   greeting,
+  name,
   onNotif,
   onProfile,
 }: {
   greeting: string;
+  name: string;
   onNotif: () => void;
   onProfile: () => void;
 }) {
@@ -273,7 +276,7 @@ function Header({
             className="text-[22px] font-bold leading-tight"
             style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
           >
-            Saeed
+            {name}
           </p>
           <p
             className="mt-0.5 text-[11px] font-semibold"
@@ -319,7 +322,7 @@ function Header({
               className="text-[17px] font-bold text-white"
               style={{ fontFamily: "'Poppins',sans-serif" }}
             >
-              S
+              {(name.trim().charAt(0) || 'D').toUpperCase()}
             </span>
           </button>
         </div>
@@ -1503,7 +1506,15 @@ export function HomeScreen({
       style={{ background: NAVY_DEEP }}
     >
       {/* Fixed header with hero bg, search */}
-      <Header greeting={greeting} onNotif={onNotifications} onProfile={onAccount} />
+      <Header
+        greeting={greeting}
+        name={(() => {
+          const u = auth.getUser();
+          return u ? `${u.firstName} ${u.lastName}`.trim() : 'there';
+        })()}
+        onNotif={onNotifications}
+        onProfile={onAccount}
+      />
 
       {/* Scrollable body */}
       <div
