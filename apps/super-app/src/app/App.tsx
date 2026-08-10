@@ -146,6 +146,13 @@ import {
   MerchantBankScreen,
   MerchantApprovalScreen,
 } from './merchantScreen';
+import {
+  RiderLoginScreen,
+  RiderDashboardScreen,
+  RiderJobScreen,
+  RiderEarningsScreen,
+} from './riderScreen';
+import type { DeliveryJobDto } from '../lib/api';
 
 // DESKTOP FRAME — for admin operations console
 // ═══════════════════════════════════════════════════════════════════════════
@@ -353,7 +360,11 @@ type Screen =
   | 'mxearnings'
   | 'mxkyc'
   | 'mxbank'
-  | 'mxapproval';
+  | 'mxapproval'
+  | 'riderlogin'
+  | 'riderdash'
+  | 'riderjob'
+  | 'riderearnings';
 
 function AppShell() {
   const [screen, setScreen] = useState<Screen>('splash');
@@ -363,6 +374,7 @@ function AppShell() {
     phone: '801 234 5678',
     country: COUNTRIES[0],
   });
+  const [activeRiderJob, setActiveRiderJob] = useState<DeliveryJobDto | null>(null);
 
   const go = (to: Screen) => {
     setFading(true);
@@ -792,6 +804,27 @@ function AppShell() {
     mxkyc: <MerchantKYCScreen />,
     mxbank: <MerchantBankScreen />,
     mxapproval: <MerchantApprovalScreen />,
+    // ── RIDER APP module ─────────────────────────────────────────────────────
+    riderlogin: <RiderLoginScreen onContinue={() => go('riderdash')} onBack={() => go('home')} />,
+    riderdash: (
+      <RiderDashboardScreen
+        onJob={(job) => {
+          setActiveRiderJob(job);
+          go('riderjob');
+        }}
+        onEarnings={() => go('riderearnings')}
+      />
+    ),
+    riderjob: activeRiderJob ? (
+      <RiderJobScreen
+        job={activeRiderJob}
+        onBack={() => go('riderdash')}
+        onDone={() => go('riderdash')}
+      />
+    ) : (
+      <RiderLoginScreen onContinue={() => go('riderdash')} onBack={() => go('home')} />
+    ),
+    riderearnings: <RiderEarningsScreen onBack={() => go('riderdash')} />,
   };
 
   // ── Module quick-jump entries ──────────────────────────────────────────────
@@ -954,6 +987,17 @@ function AppShell() {
         { label: 'KYC', key: 'mxkyc' },
         { label: 'Bank Account', key: 'mxbank' },
         { label: 'Approval Status', key: 'mxapproval' },
+      ],
+    },
+    {
+      label: 'Rider App',
+      color: '#47CF72',
+      emoji: '🏍️',
+      screens: [
+        { label: 'Rider Login', key: 'riderlogin' },
+        { label: 'Dashboard', key: 'riderdash' },
+        { label: 'Job Detail', key: 'riderjob' },
+        { label: 'Earnings', key: 'riderearnings' },
       ],
     },
   ];

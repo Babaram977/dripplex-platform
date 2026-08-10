@@ -1,9 +1,6 @@
 // ─── DrippleX WebSocket Client ────────────────────────────────────────────────
 // Socket.io against https://api.dripplex.com namespace /rides
-// Auth: socket.handshake.auth.token = RAW access token (backend does NOT strip
-//   a "Bearer " prefix from auth.token — see rides/ride.gateway.ts extractToken).
-// Namespace MUST be in the connection URL (`${SOCKET_URL}/rides`) — socket.io-client
-//   has no `namespace` option; passing one connects to the default "/" namespace.
+// Auth: socket.handshake.auth.token = RAW access token (backend does not strip "Bearer ")
 // Orders/deliveries use REST polling — no socket for those.
 
 import { io, Socket } from 'socket.io-client';
