@@ -152,7 +152,7 @@ import {
   RiderJobScreen,
   RiderEarningsScreen,
 } from './riderScreen';
-import type { DeliveryJobDto } from '../lib/api';
+import type { DeliveryJobDto, RideOfferDto, RideDto } from '../lib/api';
 
 // DESKTOP FRAME — for admin operations console
 // ═══════════════════════════════════════════════════════════════════════════
@@ -378,6 +378,8 @@ function AppShell() {
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [activeMerchantId, setActiveMerchantId] = useState<string | undefined>(undefined);
   const [activeProductId, setActiveProductId] = useState<string | undefined>(undefined);
+  const [activeDriverOffer, setActiveDriverOffer] = useState<RideOfferDto | null>(null);
+  const [activeDriverRide, setActiveDriverRide] = useState<RideDto | null>(null);
 
   const go = (to: Screen) => {
     setFading(true);
@@ -712,7 +714,7 @@ function AppShell() {
     ),
     // ── DRIVER APP module ────────────────────────────────────────────────────
     drvsplash: <DriverSplashScreen onDone={() => go('drvlogin')} />,
-    drvlogin: <DriverLoginScreen onContinue={() => go('drvotp')} onBack={() => go('home')} />,
+    drvlogin: <DriverLoginScreen onContinue={() => go('drvdash')} onBack={() => go('home')} />,
     drvotp: <DriverOTPScreen onVerified={() => go('drvkyc')} onBack={() => go('drvlogin')} />,
     drvkyc: (
       <DriverKYCStatusScreen
@@ -738,32 +740,48 @@ function AppShell() {
     ),
     drvdash: (
       <DriverDashboardScreen
-        onRequest={() => go('drvrequest')}
+        onRequest={(offer) => {
+          setActiveDriverOffer(offer);
+          go('drvrequest');
+        }}
         onSettings={() => go('drvsettings')}
       />
     ),
     drvrequest: (
       <DriverIncomingRequestScreen
-        onAccept={() => go('drvtopickup')}
+        offer={activeDriverOffer}
+        onAccept={(ride) => {
+          setActiveDriverRide(ride);
+          go('drvtopickup');
+        }}
         onDecline={() => go('drvdash')}
       />
     ),
     drvtopickup: (
-      <DriverNavToPickupScreen onArrived={() => go('drvverify')} onBack={() => go('drvdash')} />
+      <DriverNavToPickupScreen
+        rideId={activeDriverRide?.id}
+        onArrived={() => go('drvverify')}
+        onBack={() => go('drvdash')}
+      />
     ),
     drvverify: (
       <DriverPassengerVerifyScreen
+        rideId={activeDriverRide?.id}
         onVerified={() => go('drvtripactive')}
         onBack={() => go('drvtopickup')}
       />
     ),
     drvtripactive: (
       <DriverTripInProgressScreen
-        onComplete={() => go('drvtripdone')}
+        rideId={activeDriverRide?.id}
+        onComplete={(ride) => {
+          if (ride) setActiveDriverRide(ride);
+          go('drvtripdone');
+        }}
         onBack={() => go('drvverify')}
       />
     ),
-    drvtripdone: <DriverTripCompletedScreen onDone={() => go('drvdash')} />,
+    drvtripdone: <DriverTripCompletedScreen ride={activeDriverRide} onDone={() => go('drvdash')} />,
     drvsettings: <DriverSettingsScreen onBack={() => go('drvdash')} />,
     // ── WALLET module ────────────────────────────────────────────────────────
     wallethome: (

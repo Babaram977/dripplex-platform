@@ -369,6 +369,35 @@ export interface RideDto {
   updatedAt: string;
 }
 
+// Driver ride offers (dispatch)
+export interface RideOfferDto {
+  id: string;
+  rideId: string;
+  driverId: string;
+  status: string;
+  offeredAt: string;
+  expiresAt: string;
+  respondedAt: string | null;
+}
+
+export interface RideOfferPreviewDto {
+  id: string;
+  rideId: string;
+  status: string;
+  expiresAt: string;
+  rideType: RideType;
+  pickupLatitude: number;
+  pickupLongitude: number;
+  pickupAddress: string | null;
+  dropoffLatitude: number;
+  dropoffLongitude: number;
+  dropoffAddress: string | null;
+  estimatedDistanceMeters: number;
+  estimatedDurationSeconds: number;
+  totalFare: number;
+  paymentMethod: RidePaymentMethod | null;
+}
+
 export interface EstimateRideFareResponse {
   distanceMeters: number;
   durationSeconds: number;
@@ -843,7 +872,9 @@ export const api = {
     }) => dx<unknown>('POST', '/driver/rides/availability', body),
     getAvailability: () => dx<unknown | null>('GET', '/driver/rides/availability'),
     getActive: () => dx<RideDto | null>('GET', '/driver/rides/active'),
-    getOffers: () => dx<unknown[]>('GET', '/driver/rides/offers'),
+    getOffers: () => dx<RideOfferDto[]>('GET', '/driver/rides/offers'),
+    getOfferPreview: (offerId: string) =>
+      dx<RideOfferPreviewDto>('GET', `/driver/rides/offers/${offerId}`),
     acceptOffer: (offerId: string) => dx<RideDto>('POST', `/driver/rides/offers/${offerId}/accept`),
     declineOffer: (offerId: string) => dx<null>('POST', `/driver/rides/offers/${offerId}/decline`),
     arrive: (id: string) => dx<RideDto>('POST', `/driver/rides/${id}/arrive`),
