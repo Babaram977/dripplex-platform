@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { G0, G2, G3, NAVY_DEEP, NAVY_CARD, NAVY_SURFACE, BORDER, MUTED } from './shared';
 import { api } from '../lib/api';
 import { auth } from '../lib/auth';
-import type { MerchantSummaryDto, CategoryDto, WalletDto } from '../lib/api';
+import type { MerchantSummaryDto, CategoryDto, WalletDto, WalletLedgerEntryDto } from '../lib/api';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DATA
@@ -522,13 +522,21 @@ function BalanceCard({
   activated,
   onActivate,
   wallet,
+  flows,
 }: {
   activated: boolean;
   onActivate: () => void;
   wallet?: WalletDto | null;
+  flows?: { income: number; spent: number } | null;
 }) {
   const [show, setShow] = useState(true);
   if (!activated) return <ActivateWalletCard onActivate={onActivate} />;
+
+  // Compact naira (₦320K / ₦4,200). Savings + USD have no backend → "—".
+  const compact = (n: number) =>
+    n >= 1000 ? `₦${(n / 1000).toFixed(n >= 100000 ? 0 : 1)}K` : `₦${Math.round(n)}`;
+  const incomeLabel = flows ? `+${compact(flows.income)}` : '—';
+  const spentLabel = flows ? `-${compact(flows.spent)}` : '—';
   return (
     <div
       className="relative mx-5 mb-5 overflow-hidden rounded-3xl p-5"
@@ -588,20 +596,20 @@ function BalanceCard({
           className="mb-0.5 text-[36px] font-bold leading-tight tracking-tight"
           style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
         >
-          {show ? `₦${(wallet?.availableBalance ?? 847250).toLocaleString()}` : '₦ •••,•••'}
-          <span className="text-[20px]">{show ? '.00' : ''}</span>
+          {show ? (wallet ? `₦${wallet.availableBalance.toLocaleString()}` : '₦—') : '₦ •••,•••'}
+          <span className="text-[20px]">{show && wallet ? '.00' : ''}</span>
         </p>
         <p
           className="mb-5 text-[11px]"
           style={{ color: 'rgba(255,255,255,.45)', fontFamily: "'Inter',sans-serif" }}
         >
-          {show ? '≈ $563.50 USD' : 'Hidden'}
+          {show ? '≈ — USD' : 'Hidden'}
         </p>
         <div className="mb-4 flex gap-2.5">
           {[
-            ['↑ Income', '+₦320K', 'rgba(255,255,255,.12)'],
-            ['↓ Spent', '-₦87.5K', 'rgba(0,0,0,.15)'],
-            ['⊙ Savings', '₦150K', 'rgba(255,255,255,.09)'],
+            ['↑ Income', incomeLabel, 'rgba(255,255,255,.12)'],
+            ['↓ Spent', spentLabel, 'rgba(0,0,0,.15)'],
+            ['⊙ Savings', '—', 'rgba(255,255,255,.09)'],
           ].map(([l, v, bg]) => (
             <div
               key={l}
@@ -1476,6 +1484,8 @@ export function HomeScreen({
   // Live API state
   const [wallet, setWallet] = useState<WalletDto | null>(null);
   const [liveMerchants, setLiveMerchants] = useState<MerchantSummaryDto[]>([]);
+  // Income / Spent are summed from real wallet transactions (JOB 6).
+  const [flows, setFlows] = useState<{ income: number; spent: number } | null>(null);
 
   const [greeting] = useState(() => {
     const h = new Date().getHours();
@@ -1486,13 +1496,25 @@ export function HomeScreen({
     Promise.allSettled([
       api.wallet.get(),
       api.marketplace.getMerchants({ sort: 'recommended', limit: 6 }),
-    ]).then(([walletRes, merchantsRes]) => {
+      api.wallet.getTransactions({ page: 1, pageSize: 100 }),
+    ]).then(([walletRes, merchantsRes, txRes]) => {
       if (walletRes.status === 'fulfilled') setWallet(walletRes.value);
       if (merchantsRes.status === 'fulfilled') {
         const result = merchantsRes.value as
           { data?: MerchantSummaryDto[]; items?: MerchantSummaryDto[] } | MerchantSummaryDto[];
         const list = Array.isArray(result) ? result : (result.data ?? result.items ?? []);
         setLiveMerchants(list);
+      }
+      if (txRes.status === 'fulfilled') {
+        const raw = txRes.value as
+          | { data?: WalletLedgerEntryDto[]; items?: WalletLedgerEntryDto[] }
+          | WalletLedgerEntryDto[];
+        const txs = Array.isArray(raw) ? raw : (raw.data ?? raw.items ?? []);
+        const income = txs
+          .filter((t) => t.direction === 'CREDIT')
+          .reduce((s, t) => s + t.amount, 0);
+        const spent = txs.filter((t) => t.direction === 'DEBIT').reduce((s, t) => s + t.amount, 0);
+        setFlows({ income, spent });
       }
       setLoaded(true);
     });
@@ -1537,6 +1559,7 @@ export function HomeScreen({
           activated={walletActivated}
           onActivate={() => setWalletActivated(true)}
           wallet={wallet}
+          flows={flows}
         />
 
         {/* Quick actions 4×2 grid */}
