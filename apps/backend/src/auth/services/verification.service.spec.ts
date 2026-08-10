@@ -5,6 +5,7 @@ import { NotFoundDomainException } from '../../common/exceptions/domain.exceptio
 import { VerificationService } from './verification.service';
 
 import type { OtpService } from './otp.service';
+import type { AppConfigService } from '../../config/app-config.service';
 import type { NotificationService } from '../../notifications/notification.service';
 import type { UsersService } from '../../users/users.service';
 
@@ -27,7 +28,11 @@ describe('VerificationService', () => {
     sendPhoneOtp: jest.fn(),
   } as unknown as jest.Mocked<NotificationService>;
 
-  const service = new VerificationService(usersService, otpService, notificationService);
+  const appConfig = {
+    portalEmailActivation: false,
+  } as unknown as jest.Mocked<AppConfigService>;
+
+  const service = new VerificationService(usersService, otpService, appConfig, notificationService);
 
   const user = {
     id: '11111111-1111-1111-1111-111111111111',
@@ -89,6 +94,28 @@ describe('VerificationService', () => {
 
     expect(result.verified).toBe(true);
     expect(usersService.activateIfVerificationsComplete).toHaveBeenCalledWith(user.id, true);
+  });
+
+  it('activates a merchant on email verification alone when PORTAL_EMAIL_ACTIVATION is on', async () => {
+    (appConfig as unknown as { portalEmailActivation: boolean }).portalEmailActivation = true;
+    (usersService.findByEmail as jest.Mock).mockResolvedValue({
+      ...user,
+      registrationChannel: RegistrationChannel.MERCHANT_PORTAL,
+    });
+    (usersService.markEmailVerified as jest.Mock).mockResolvedValue({
+      ...user,
+      emailVerifiedAt: new Date('2026-08-10T08:00:00.000Z'),
+    });
+    (usersService.activateIfVerificationsComplete as jest.Mock).mockResolvedValue({
+      ...user,
+      status: UserStatus.ACTIVE,
+    });
+
+    await service.verifyEmail('ada@example.com', '123456', {});
+
+    // requiresPhoneVerification is forced false → merchant activates on email.
+    expect(usersService.activateIfVerificationsComplete).toHaveBeenCalledWith(user.id, false);
+    (appConfig as unknown as { portalEmailActivation: boolean }).portalEmailActivation = false;
   });
 
   it('rejects verification for unknown email', async () => {

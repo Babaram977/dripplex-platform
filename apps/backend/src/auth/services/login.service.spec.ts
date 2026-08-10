@@ -6,6 +6,7 @@ import {
   AccountBlockedDomainException,
   AccountSuspendedDomainException,
   EmailNotVerifiedDomainException,
+  PhoneNotVerifiedDomainException,
   UnauthorizedDomainException,
   WrongPortalDomainException,
 } from '../../common/exceptions/domain.exception';
@@ -16,6 +17,7 @@ import type { LoginAttemptService } from './login-attempt.service';
 import type { SessionService } from './session.service';
 import type { TokenService } from './token.service';
 import type { AuditService } from '../../audit/audit.service';
+import type { AppConfigService } from '../../config/app-config.service';
 import type { UsersService } from '../../users/users.service';
 import type { AuthSessionRepository } from '../repositories/auth-session.repository';
 
@@ -54,12 +56,17 @@ describe('LoginService', () => {
     updateRefreshTokenHash: jest.fn(),
   } as unknown as jest.Mocked<AuthSessionRepository>;
 
+  const appConfig = {
+    portalEmailActivation: false,
+  } as unknown as jest.Mocked<AppConfigService>;
+
   const service = new LoginService(
     usersService,
     sessionService,
     loginAttemptService,
     auditService,
     tokenService,
+    appConfig,
     authSessionRepository,
   );
 
@@ -253,6 +260,51 @@ describe('LoginService', () => {
     );
     expect(usersService.recordLoginActivity).toHaveBeenCalledWith(activeUser.id);
     expect(loginAttemptService.resetFailures).toHaveBeenCalled();
+  });
+
+  // PORTAL_EMAIL_ACTIVATION — merchant/driver/rider sign in on email
+  // verification alone while Termii SMS sender-ID approval is pending.
+  describe('portal email activation flag', () => {
+    const merchantNoPhone = {
+      ...activeUser,
+      registrationChannel: RegistrationChannel.MERCHANT_PORTAL,
+      emailVerifiedAt: new Date(),
+      phoneVerifiedAt: null,
+    };
+
+    function asMerchant(): void {
+      (usersService.findByEmail as jest.Mock).mockResolvedValue(merchantNoPhone);
+      (usersService.findByIdWithRbac as jest.Mock).mockResolvedValue({
+        ...merchantNoPhone,
+        roles: [{ role: { name: 'merchant', permissions: [] } }],
+      });
+    }
+
+    afterEach(() => {
+      (appConfig as unknown as { portalEmailActivation: boolean }).portalEmailActivation = false;
+    });
+
+    it('rejects a merchant with an unverified phone when the flag is OFF', async () => {
+      (appConfig as unknown as { portalEmailActivation: boolean }).portalEmailActivation = false;
+      asMerchant();
+
+      await expect(
+        service.loginMerchant({ email: 'ada@example.com', password: 'Password1' }, {}),
+      ).rejects.toBeInstanceOf(PhoneNotVerifiedDomainException);
+    });
+
+    it('admits a merchant with an unverified phone when the flag is ON', async () => {
+      (appConfig as unknown as { portalEmailActivation: boolean }).portalEmailActivation = true;
+      asMerchant();
+
+      const result = await service.loginMerchant(
+        { email: 'ada@example.com', password: 'Password1' },
+        {},
+      );
+
+      expect(result.accessToken).toBe('access-token');
+      expect(result.user.roles).toContain('merchant');
+    });
   });
 
   // DPX-DRIVER-015 — admin/operations login through the same unified pipeline.

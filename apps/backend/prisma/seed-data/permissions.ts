@@ -98,6 +98,12 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
   { code: 'admin:drivers:reject', description: 'Reject drivers' },
   { code: 'admin:drivers:suspend', description: 'Suspend drivers' },
   { code: 'admin:drivers:reactivate', description: 'Reactivate suspended drivers' },
+  // DPX-RIDER-001 — delivery-rider approval desk (mirrors admin:drivers:*).
+  { code: 'admin:riders:review', description: 'Review rider applications' },
+  { code: 'admin:riders:approve', description: 'Approve riders' },
+  { code: 'admin:riders:reject', description: 'Reject riders' },
+  { code: 'admin:riders:suspend', description: 'Suspend riders' },
+  { code: 'admin:riders:reactivate', description: 'Reactivate suspended riders' },
   {
     code: 'admin:drivers:identity-verification:manage',
     description: 'Manually require or unlock a driver identity verification',

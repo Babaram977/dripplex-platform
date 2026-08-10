@@ -60,6 +60,17 @@ enum DriverStatus {
   SUSPENDED
 }
 
+/// DPX-RIDER-001 — delivery-rider approval lifecycle, mirrors DriverStatus.
+/// PENDING → (UNDER_REVIEW) → APPROVED | REJECTED; APPROVED → SUSPENDED →
+/// (reactivate) APPROVED. Ops/Admin drive the transitions.
+enum RiderStatus {
+  PENDING
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
 enum BusinessStatus {
   DRAFT
   SUBMITTED
@@ -626,17 +637,22 @@ model BankAccount {
 }
 
 model RiderProfile {
-  id         String           @id @default(uuid()) @db.Uuid
-  userId     String           @unique @map("user_id") @db.Uuid
-  isApproved Boolean          @default(false) @map("is_approved")
-  approvedAt DateTime?        @map("approved_at")
-  createdAt  DateTime         @default(now()) @map("created_at")
-  updatedAt  DateTime         @updatedAt @map("updated_at")
-  deletedAt  DateTime?        @map("deleted_at")
-  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  onboarding RiderOnboarding?
+  id             String           @id @default(uuid()) @db.Uuid
+  userId         String           @unique @map("user_id") @db.Uuid
+  status         RiderStatus      @default(PENDING)
+  isApproved     Boolean          @default(false) @map("is_approved")
+  approvedAt     DateTime?        @map("approved_at")
+  approvedBy     String?          @map("approved_by") @db.Uuid
+  rejectedReason String?          @map("rejected_reason") @db.VarChar(1000)
+  suspendedAt    DateTime?        @map("suspended_at")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+  deletedAt      DateTime?        @map("deleted_at")
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  onboarding     RiderOnboarding?
 
   @@index([isApproved])
+  @@index([status])
   @@index([deletedAt])
   @@map("rider_profiles")
 }
