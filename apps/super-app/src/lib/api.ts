@@ -758,6 +758,11 @@ export const api = {
     getTracking: (orderId: string) =>
       dx<DeliveryTrackingDto[]>('GET', `/customer/orders/${orderId}/tracking`),
     getEta: (orderId: string) => dx<DeliveryEtaDto>('GET', `/customer/orders/${orderId}/eta`),
+    getMerchantBank: (orderId: string) =>
+      dx<{ bankName: string; accountName: string; accountNumber: string; currency: string }>(
+        'GET',
+        `/customer/orders/${orderId}/merchant-bank`,
+      ),
   },
 
   // ── RIDES (customer) ───────────────────────────────────────────────────────

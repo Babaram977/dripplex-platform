@@ -1,5 +1,7 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { G0, G2, G3, NAVY_BASE, NAVY_CARD, NAVY_SURFACE, BORDER, MUTED } from './shared';
+import { api } from '../lib/api';
+import type { CartDto } from '../lib/api';
 import { BottomNavigation, FloatingAIButton } from '../components/navigation';
 import type { NavTabKey } from '../components/navigation/BottomNavigation';
 
@@ -597,6 +599,33 @@ export interface CartScreenProps {
   onCheckout?: () => void;
 }
 
+function applyCart(cart: CartDto | null): CartMerchant[] {
+  if (!cart || !cart.items?.length) return [];
+  const merchant: CartMerchant = {
+    id: cart.merchantId,
+    name: 'Your Cart',
+    emoji: '🛒',
+    coverBg: 'linear-gradient(135deg,#0D2E18,#2BAC52)',
+    isVerified: true,
+    isOpen: true,
+    deliveryFee: 350,
+    eta: '20–35 min',
+    cashback: 0,
+    items: cart.items.map((ci) => ({
+      id: ci.id,
+      productId: ci.productId,
+      name: ci.productNameSnapshot ?? 'Item',
+      emoji: '🍽',
+      imageBg: 'linear-gradient(135deg,#0D2E18,#2BAC52)',
+      unitPrice: ci.unitPriceSnapshot,
+      qty: ci.quantity,
+      variants: [],
+      inStock: true,
+    })),
+  };
+  return [merchant];
+}
+
 export function CartScreen({
   onBack,
   onHome,
@@ -604,7 +633,9 @@ export function CartScreen({
   onNotifications,
   onCheckout,
 }: CartScreenProps) {
-  const [merchants, setMerchants] = useState<CartMerchant[]>(MOCK_CART);
+  const [merchants, setMerchants] = useState<CartMerchant[]>([]);
+  const [cartLoading, setCartLoading] = useState(true);
+  const [cartError, setCartError] = useState<string | null>(null);
   const [savedLater, setSavedLater] = useState<CartItem[]>(SAVED_LATER);
   const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>('standard');
   const [promoCode, setPromoCode] = useState('');
@@ -616,6 +647,19 @@ export function CartScreen({
   const [aiPrompt, setAiPrompt] = useState('');
   const [savedOpen, setSavedOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<NavTabKey>('market');
+
+  useEffect(() => {
+    api.cart
+      .get()
+      .then((cart) => {
+        setMerchants(applyCart(cart));
+        setCartLoading(false);
+      })
+      .catch(() => {
+        setMerchants(MOCK_CART);
+        setCartLoading(false);
+      });
+  }, []);
 
   const WALLET_BALANCE = 12500;
   const PROMO_DISCOUNT = promoApplied ? 500 : 0;
@@ -640,15 +684,18 @@ export function CartScreen({
   const grandTotal = itemsTotal + deliveryTotal - PROMO_DISCOUNT - walletApplied;
 
   const updateQty = useCallback((itemId: string, qty: number) => {
+    // Optimistic update
     setMerchants((prev) =>
       prev.map((m) => ({
         ...m,
         items: m.items.map((i) => (i.id === itemId ? { ...i, qty } : i)),
       })),
     );
+    api.cart.updateItem(itemId, qty).catch(() => {});
   }, []);
 
   const removeItem = useCallback((itemId: string) => {
+    // Optimistic update
     setMerchants((prev) =>
       prev
         .map((m) => ({
@@ -657,6 +704,7 @@ export function CartScreen({
         }))
         .filter((m) => m.items.length > 0),
     );
+    api.cart.removeItem(itemId).catch(() => {});
   }, []);
 
   const saveForLater = useCallback(

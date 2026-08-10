@@ -375,6 +375,7 @@ function AppShell() {
     country: COUNTRIES[0],
   });
   const [activeRiderJob, setActiveRiderJob] = useState<DeliveryJobDto | null>(null);
+  const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
 
   const go = (to: Screen) => {
     setFading(true);
@@ -438,7 +439,7 @@ function AppShell() {
       />
     ),
     recovery: <RecoveryScreen onRecovered={() => go('returning')} onBack={() => go('returning')} />,
-    signin: <SignInScreen onBack={() => go('welcome')} />,
+    signin: <SignInScreen onBack={() => go('welcome')} onSuccess={() => go('home')} />,
     twofa: <TwoFactorScreen onBack={() => go('security')} onDone={() => go('security')} />,
     devices: <TrustedDevicesScreen onBack={() => go('security')} />,
     activity: (
@@ -561,7 +562,10 @@ function AppShell() {
         onHome={() => go('home')}
         onAccount={() => go('account')}
         onNotifications={() => go('activitydash')}
-        onOrderTracking={() => go('ordertracking')}
+        onOrderTracking={(id) => {
+          setActiveOrderId(id);
+          go('ordertracking');
+        }}
       />
     ),
     ordertracking: (
@@ -570,6 +574,7 @@ function AppShell() {
         onHome={() => go('home')}
         onAccount={() => go('account')}
         onNotifications={() => go('activitydash')}
+        orderId={activeOrderId ?? undefined}
       />
     ),
     // ── RIDE module ──────────────────────────────────────────────────────────

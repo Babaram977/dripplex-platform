@@ -1,5 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { G0, G2, G3, NAVY_BASE, NAVY_CARD, NAVY_DEEP, NAVY_SURFACE, BORDER, MUTED } from './shared';
+import { api } from '../lib/api';
+import type { OrderDto } from '../lib/api';
 import { BottomNavigation } from '../components/navigation';
 import type { NavTabKey } from '../components/navigation/BottomNavigation';
 
@@ -14,7 +16,7 @@ interface Address {
   line1: string;
   line2: string;
 }
-type PaymentKey = 'wallet' | 'card' | 'cash' | 'bank';
+type PaymentKey = 'CASH' | 'MERCHANT_DIRECT';
 type DeliveryMode = 'standard' | 'express' | 'pickup';
 type ScheduleMode = 'now' | 'later';
 
@@ -81,10 +83,18 @@ const MERCHANTS: CheckoutMerchant[] = [
 ];
 
 const PAYMENT_METHODS: { key: PaymentKey; icon: string; label: string; sub: string }[] = [
-  { key: 'wallet', icon: '💳', label: 'DrippleX Wallet', sub: 'Balance: ₦12,500' },
-  { key: 'card', icon: '💳', label: 'Debit / Credit Card', sub: '···· ···· ···· 4521 (GTBank)' },
-  { key: 'cash', icon: '💵', label: 'Cash on Delivery', sub: 'Pay when delivered' },
-  { key: 'bank', icon: '🏦', label: 'Bank Transfer', sub: 'Instant via your bank app' },
+  {
+    key: 'CASH',
+    icon: '💵',
+    label: 'Cash on Delivery',
+    sub: 'Pay the rider when your order arrives',
+  },
+  {
+    key: 'MERCHANT_DIRECT',
+    icon: '🏦',
+    label: 'Pay to Merchant Bank',
+    sub: "Transfer to merchant's account directly",
+  },
 ];
 
 const fmt = (n: number) => `₦${n.toLocaleString()}`;
@@ -212,7 +222,6 @@ function MerchantCard({
       className="overflow-hidden rounded-2xl"
       style={{ background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
     >
-      {/* Header */}
       <button
         className="flex w-full items-center gap-3 px-4 py-3.5 text-left"
         onClick={() => setOpen((v) => !v)}
@@ -274,7 +283,6 @@ function MerchantCard({
 
       {open && (
         <div className="flex flex-col gap-3 px-4 pb-4" style={{ borderTop: `1px solid ${BORDER}` }}>
-          {/* Delivery method */}
           <div className="flex gap-2 pt-3">
             {[
               {
@@ -314,7 +322,6 @@ function MerchantCard({
             ))}
           </div>
 
-          {/* Schedule */}
           <div className="flex gap-2">
             {[['now', 'Deliver Now', '🕐'] as const, ['later', 'Schedule', '📅'] as const].map(
               ([k, l, icon]) => (
@@ -358,7 +365,6 @@ function MerchantCard({
             </div>
           )}
 
-          {/* Delivery note */}
           <div
             className="flex h-[38px] items-center gap-2 rounded-xl px-3"
             style={{ background: 'rgba(255,255,255,.04)', border: `1px solid ${BORDER}` }}
@@ -383,7 +389,6 @@ function MerchantCard({
             />
           </div>
 
-          {/* Merchant subtotal strip */}
           <div className="flex flex-col gap-1 pt-2" style={{ borderTop: `1px solid ${BORDER}` }}>
             {[
               { label: 'Subtotal', value: fmt(merchant.subtotal) },
@@ -426,7 +431,6 @@ function OrderSuccess({
         background: `linear-gradient(155deg,${NAVY_DEEP} 0%,${NAVY_BASE} 60%,#0B1D2F 100%)`,
       }}
     >
-      {/* Confetti burst */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
         {Array.from({ length: 18 }).map((_, i) => (
           <div
@@ -444,7 +448,6 @@ function OrderSuccess({
         ))}
       </div>
 
-      {/* Check animation */}
       <div
         className="relative mb-6 flex items-center justify-center"
         style={{
@@ -466,7 +469,7 @@ function OrderSuccess({
             cx="64"
             cy="64"
             r="58"
-            stroke={`url(#cg)`}
+            stroke="url(#cg)"
             strokeWidth="4"
             strokeLinecap="round"
             strokeDasharray="364"
@@ -507,7 +510,7 @@ function OrderSuccess({
         <div className="mt-1 flex items-center gap-3">
           <div
             className="flex flex-col items-center rounded-2xl px-4 py-2"
-            style={{ background: 'rgba(43,172,82,.12)', border: `1px solid rgba(43,172,82,.25)` }}
+            style={{ background: 'rgba(43,172,82,.12)', border: '1px solid rgba(43,172,82,.25)' }}
           >
             <span
               className="text-[10px] font-semibold uppercase tracking-widest"
@@ -524,7 +527,7 @@ function OrderSuccess({
           </div>
           <div
             className="flex flex-col items-center rounded-2xl px-4 py-2"
-            style={{ background: 'rgba(43,172,82,.12)', border: `1px solid rgba(43,172,82,.25)` }}
+            style={{ background: 'rgba(43,172,82,.12)', border: '1px solid rgba(43,172,82,.25)' }}
           >
             <span
               className="text-[10px] font-semibold uppercase tracking-widest"
@@ -551,7 +554,7 @@ function OrderSuccess({
           className="flex h-[52px] w-full items-center justify-center gap-2 rounded-2xl text-[15px] font-semibold text-white transition-all active:scale-[.97]"
           style={{
             background: `linear-gradient(135deg,${G0},${G2} 55%,${G3})`,
-            boxShadow: `0 10px 32px rgba(43,172,82,.36)`,
+            boxShadow: '0 10px 32px rgba(43,172,82,.36)',
             fontFamily: "'Poppins',sans-serif",
           }}
         >
@@ -581,95 +584,44 @@ function OrderSuccess({
 // ─────────────────────────────────────────────────────────────────────────────
 // ERROR BANNER
 // ─────────────────────────────────────────────────────────────────────────────
-function ErrorBanner({ type, onDismiss }: { type: string; onDismiss: () => void }) {
-  const configs: Record<string, { icon: string; title: string; msg: string; action: string }> = {
-    payment_failed: {
-      icon: '💳',
-      title: 'Payment Failed',
-      msg: 'Your payment could not be processed. Please try again or use a different method.',
-      action: 'Retry',
-    },
-    wallet_changed: {
-      icon: '💳',
-      title: 'Wallet Balance Changed',
-      msg: 'Your wallet balance has changed. Please review your payment method.',
-      action: 'Update',
-    },
-    merchant_closed: {
-      icon: '🏪',
-      title: 'Merchant Closed',
-      msg: 'One of your merchants is currently closed. Remove their items to continue.',
-      action: 'Review',
-    },
-    out_of_stock: {
-      icon: '📦',
-      title: 'Item Out of Stock',
-      msg: 'One or more items are no longer available. Please remove them from your cart.',
-      action: 'Review Cart',
-    },
-    delivery_area: {
-      icon: '📍',
-      title: 'Delivery Unavailable',
-      msg: 'Delivery to your selected address is not available for one of your merchants.',
-      action: 'Change Address',
-    },
-    network_error: {
-      icon: '📡',
-      title: 'Connection Error',
-      msg: "We couldn't process your request. Check your connection and try again.",
-      action: 'Retry',
-    },
-  };
-  const c = configs[type] ?? configs.network_error;
+function ErrorBanner({ message, onDismiss }: { message: string; onDismiss: () => void }) {
   return (
     <div
-      className="mx-0 mb-4 flex items-start gap-3 rounded-2xl px-4 py-3"
+      className="mb-4 flex items-start gap-3 rounded-2xl px-4 py-3"
       style={{
         background: 'rgba(248,113,113,.08)',
         border: '1.5px solid rgba(248,113,113,.28)',
         animation: 'fade-up .3s ease both',
       }}
     >
-      <span className="mt-0.5 text-xl">{c.icon}</span>
+      <span className="mt-0.5 text-xl">⚠️</span>
       <div className="min-w-0 flex-1">
         <p
           className="text-[13px] font-semibold"
           style={{ color: '#F87171', fontFamily: "'Poppins',sans-serif" }}
         >
-          {c.title}
+          Checkout Error
         </p>
         <p className="mt-0.5 text-[11px] leading-relaxed" style={{ color: MUTED }}>
-          {c.msg}
+          {message}
         </p>
       </div>
-      <div className="flex shrink-0 items-center gap-2">
-        <button
-          className="rounded-lg px-2.5 py-1 text-[11px] font-semibold active:opacity-70"
-          style={{
-            background: 'rgba(248,113,113,.18)',
-            border: '1px solid rgba(248,113,113,.3)',
-            color: '#F87171',
-          }}
+      <button
+        onClick={onDismiss}
+        className="flex h-6 w-6 items-center justify-center opacity-50 active:opacity-80"
+      >
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="white"
+          strokeWidth="2.5"
+          strokeLinecap="round"
         >
-          {c.action}
-        </button>
-        <button
-          onClick={onDismiss}
-          className="flex h-6 w-6 items-center justify-center opacity-50 active:opacity-80"
-        >
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="white"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-          >
-            <path d="M18 6L6 18M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
+          <path d="M18 6L6 18M6 6l12 12" />
+        </svg>
+      </button>
     </div>
   );
 }
@@ -682,7 +634,7 @@ export interface CheckoutScreenProps {
   onHome: () => void;
   onAccount: () => void;
   onNotifications: () => void;
-  onOrderTracking?: () => void;
+  onOrderTracking?: (orderId: string) => void;
 }
 
 export function CheckoutScreen({
@@ -693,16 +645,27 @@ export function CheckoutScreen({
   onOrderTracking,
 }: CheckoutScreenProps) {
   const [addressIdx, setAddressIdx] = useState(0);
-  const [paymentKey, setPaymentKey] = useState<PaymentKey>('wallet');
+  const [paymentKey, setPaymentKey] = useState<PaymentKey>('CASH');
   const [termsChecked, setTermsChecked] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showAddrSheet, setShowAddrSheet] = useState(false);
-  const [showPaySheet, setShowPaySheet] = useState(false);
   const [activeTab, setActiveTab] = useState<NavTabKey>('market');
 
-  // Per-merchant state
+  // §3a payment flow
+  const [pendingOrder, setPendingOrder] = useState<OrderDto | null>(null);
+  const [bankDetails, setBankDetails] = useState<{
+    bankName: string;
+    accountName: string;
+    accountNumber: string;
+    currency: string;
+  } | null>(null);
+  const [showBankSheet, setShowBankSheet] = useState(false);
+  const [paying, setPaying] = useState(false);
+  const [confirmedOrderId, setConfirmedOrderId] = useState<string | null>(null);
+  const [confirmedOrderNum, setConfirmedOrderNum] = useState<string>('#DRX-XXXX');
+
   const [modes, setModes] = useState<Record<string, DeliveryMode>>({
     kfc: 'standard',
     shoprite: 'standard',
@@ -714,7 +677,6 @@ export function CheckoutScreen({
   });
 
   const address = ADDRESSES[addressIdx];
-  const WALLET_BAL = 12500;
   const itemsTotal = MERCHANTS.reduce((s, m) => s + m.subtotal, 0);
   const deliveryTotal = MERCHANTS.reduce((s, m) => {
     const mode = modes[m.id] ?? 'standard';
@@ -722,19 +684,52 @@ export function CheckoutScreen({
   }, 0);
   const promoSavings = 500;
   const cashbackTotal = MERCHANTS.reduce((s, m) => s + m.cashback, 0);
-  const walletApplied =
-    paymentKey === 'wallet' ? Math.min(WALLET_BAL, itemsTotal + deliveryTotal - promoSavings) : 0;
-  const grandTotal = itemsTotal + deliveryTotal - promoSavings - walletApplied;
+  const grandTotal = itemsTotal + deliveryTotal - promoSavings;
 
-  const handlePlaceOrder = () => {
+  // Step 1: cart → order, then branch on payment method
+  const handlePlaceOrder = async () => {
     if (!termsChecked) return;
     setPlacing(true);
     setError(null);
-    setTimeout(() => {
-      setPlacing(false);
-      // Simulate occasional error for demo — use "fail" as order trigger
+    try {
+      const { order } = await api.orders.checkout({ fulfillmentType: 'DELIVERY' });
+      setPendingOrder(order);
+
+      if (paymentKey === 'MERCHANT_DIRECT') {
+        const bank = await api.orders.getMerchantBank(order.id);
+        setBankDetails(bank);
+        setPlacing(false);
+        setShowBankSheet(true);
+        return;
+      }
+
+      // CASH: pay immediately
+      await api.orders.pay(order.id, { provider: 'CASH' });
+      setConfirmedOrderId(order.id);
+      setConfirmedOrderNum(order.orderNumber);
       setSuccess(true);
-    }, 2200);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Checkout failed. Please try again.');
+    } finally {
+      setPlacing(false);
+    }
+  };
+
+  // Step 2 (MERCHANT_DIRECT): user confirms they've transferred
+  const handleConfirmBankTransfer = async () => {
+    if (!pendingOrder) return;
+    setPaying(true);
+    try {
+      await api.orders.pay(pendingOrder.id, { provider: 'MERCHANT_DIRECT' });
+      setConfirmedOrderId(pendingOrder.id);
+      setConfirmedOrderNum(pendingOrder.orderNumber);
+      setShowBankSheet(false);
+      setSuccess(true);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Payment confirmation failed.');
+    } finally {
+      setPaying(false);
+    }
   };
 
   const handleTabChange = useCallback(
@@ -749,9 +744,12 @@ export function CheckoutScreen({
   if (success) {
     return (
       <OrderSuccess
-        orderNum="#DRX-2024-7842"
+        orderNum={confirmedOrderNum}
         eta="18–25 min"
-        onTrack={() => onOrderTracking?.() ?? onHome()}
+        onTrack={() => {
+          if (confirmedOrderId) onOrderTracking?.(confirmedOrderId);
+          else onHome();
+        }}
         onContinue={onHome}
       />
     );
@@ -826,7 +824,7 @@ export function CheckoutScreen({
         </div>
         <div
           className="flex h-8 items-center gap-1.5 rounded-full px-3"
-          style={{ background: 'rgba(43,172,82,.12)', border: `1px solid rgba(43,172,82,.25)` }}
+          style={{ background: 'rgba(43,172,82,.12)', border: '1px solid rgba(43,172,82,.25)' }}
         >
           <svg
             width="12"
@@ -852,16 +850,13 @@ export function CheckoutScreen({
         className="flex-1 overflow-y-auto px-5"
         style={{ scrollbarWidth: 'none', paddingBottom: 120 }}
       >
-        {/* Error banner */}
-        {error && <ErrorBanner type={error} onDismiss={() => setError(null)} />}
+        {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
 
-        {/* Delivery Address */}
         <div className="mb-4">
           <SectionLabel>Delivery Address</SectionLabel>
           <AddressSection address={address} onChangeAddress={() => setShowAddrSheet(true)} />
         </div>
 
-        {/* Merchant cards */}
         <div className="mb-4">
           <SectionLabel>Order Details ({MERCHANTS.length} Merchants)</SectionLabel>
           <div className="flex flex-col gap-3">
@@ -929,32 +924,20 @@ export function CheckoutScreen({
             ))}
           </div>
 
-          {/* Wallet detail */}
-          {paymentKey === 'wallet' && (
+          {paymentKey === 'MERCHANT_DIRECT' && (
             <div
-              className="mt-2 flex flex-col gap-1.5 rounded-xl px-4 py-3"
+              className="mt-2 flex items-start gap-2.5 rounded-xl px-4 py-3"
               style={{
-                background: 'rgba(43,172,82,.08)',
-                border: `1px solid rgba(43,172,82,.22)`,
+                background: 'rgba(59,130,246,.08)',
+                border: '1px solid rgba(59,130,246,.25)',
                 animation: 'fade-up .2s ease both',
               }}
             >
-              <div className="flex items-center justify-between text-[12px]">
-                <span style={{ color: MUTED }}>Available Balance</span>
-                <span className="font-semibold text-white">{fmt(WALLET_BAL)}</span>
-              </div>
-              <div className="flex items-center justify-between text-[12px]">
-                <span style={{ color: MUTED }}>Applying</span>
-                <span className="font-semibold" style={{ color: G3 }}>
-                  {fmt(Math.round(walletApplied))}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-[12px]">
-                <span style={{ color: MUTED }}>Remaining After</span>
-                <span className="font-semibold text-white">
-                  {fmt(WALLET_BAL - Math.round(walletApplied))}
-                </span>
-              </div>
+              <span className="mt-0.5 text-base">ℹ️</span>
+              <p className="text-[11px] leading-relaxed" style={{ color: 'rgba(147,197,253,.85)' }}>
+                After placing your order you&apos;ll be shown the merchant&apos;s bank details to
+                complete the transfer.
+              </p>
             </div>
           )}
         </div>
@@ -962,7 +945,7 @@ export function CheckoutScreen({
         {/* Promo & Rewards */}
         <div
           className="mb-4 rounded-2xl p-4"
-          style={{ background: NAVY_CARD, border: `1.5px solid rgba(43,172,82,.22)` }}
+          style={{ background: NAVY_CARD, border: '1.5px solid rgba(43,172,82,.22)' }}
         >
           <SectionLabel>Promo & Rewards</SectionLabel>
           <div className="flex flex-col gap-2">
@@ -1012,25 +995,17 @@ export function CheckoutScreen({
                 color: 'rgba(255,255,255,.7)',
               },
               { label: 'Promo (DRIP20)', value: `−${fmt(promoSavings)}`, color: G3 },
-              {
-                label: 'Wallet Applied',
-                value: `−${fmt(Math.round(walletApplied))}`,
-                color: G3,
-                hide: paymentKey !== 'wallet',
-              },
               { label: 'Cashback Earned', value: `+${fmt(cashbackTotal)}`, color: G3 },
-            ]
-              .filter((r) => !r.hide)
-              .map((r) => (
-                <div key={r.label} className="flex items-center justify-between">
-                  <span className="text-[13px]" style={{ color: MUTED }}>
-                    {r.label}
-                  </span>
-                  <span className="text-[13px] font-medium" style={{ color: r.color }}>
-                    {r.value}
-                  </span>
-                </div>
-              ))}
+            ].map((r) => (
+              <div key={r.label} className="flex items-center justify-between">
+                <span className="text-[13px]" style={{ color: MUTED }}>
+                  {r.label}
+                </span>
+                <span className="text-[13px] font-medium" style={{ color: r.color }}>
+                  {r.value}
+                </span>
+              </div>
+            ))}
             <div className="my-1 h-px" style={{ background: BORDER }} />
             <div className="flex items-center justify-between">
               <span
@@ -1108,7 +1083,7 @@ export function CheckoutScreen({
                 !termsChecked || placing
                   ? 'rgba(255,255,255,.07)'
                   : `linear-gradient(135deg,${G0},${G2} 55%,${G3})`,
-              boxShadow: !termsChecked || placing ? 'none' : `0 10px 32px rgba(43,172,82,.36)`,
+              boxShadow: !termsChecked || placing ? 'none' : '0 10px 32px rgba(43,172,82,.36)',
               color: !termsChecked || placing ? 'rgba(255,255,255,.25)' : 'white',
               fontFamily: "'Poppins',sans-serif",
             }}
@@ -1136,6 +1111,133 @@ export function CheckoutScreen({
         </div>
         <BottomNavigation activeTab={activeTab} onTabChange={handleTabChange} />
       </div>
+
+      {/* Bank details sheet (MERCHANT_DIRECT step 2) */}
+      {showBankSheet && bankDetails && (
+        <div
+          className="absolute inset-0 z-50 flex flex-col justify-end"
+          style={{ background: 'rgba(0,0,0,.78)' }}
+        >
+          <div
+            className="flex flex-col gap-4 rounded-t-[32px] px-6 pb-8 pt-5"
+            style={{
+              background: NAVY_CARD,
+              border: `1px solid ${BORDER}`,
+              animation: 'fade-up .25s ease both',
+            }}
+          >
+            <div
+              className="mx-auto mb-1 h-1 w-10 rounded-full"
+              style={{ background: 'rgba(255,255,255,.2)' }}
+            />
+            <div className="flex items-center gap-3">
+              <div
+                className="flex h-10 w-10 items-center justify-center rounded-xl text-xl"
+                style={{ background: 'rgba(59,130,246,.15)' }}
+              >
+                🏦
+              </div>
+              <div>
+                <p
+                  className="text-[16px] font-bold text-white"
+                  style={{ fontFamily: "'Poppins',sans-serif" }}
+                >
+                  Merchant Bank Details
+                </p>
+                <p className="text-[11px]" style={{ color: MUTED }}>
+                  Transfer the exact amount shown below
+                </p>
+              </div>
+            </div>
+
+            <div
+              className="flex flex-col gap-3 rounded-2xl p-4"
+              style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
+            >
+              {[
+                { label: 'Bank Name', value: bankDetails.bankName },
+                { label: 'Account Name', value: bankDetails.accountName },
+                { label: 'Account Number', value: bankDetails.accountNumber },
+                { label: 'Amount', value: `${bankDetails.currency} ${fmt(grandTotal)}` },
+              ].map((row) => (
+                <div key={row.label} className="flex items-center justify-between">
+                  <span className="text-[12px]" style={{ color: MUTED }}>
+                    {row.label}
+                  </span>
+                  <span
+                    className="text-[13px] font-semibold text-white"
+                    style={{ fontFamily: "'Poppins',sans-serif" }}
+                  >
+                    {row.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div
+              className="flex items-start gap-2.5 rounded-xl px-4 py-3"
+              style={{
+                background: 'rgba(251,191,36,.07)',
+                border: '1px solid rgba(251,191,36,.22)',
+              }}
+            >
+              <span className="mt-0.5 text-base">⚠️</span>
+              <p className="text-[11px] leading-relaxed" style={{ color: 'rgba(253,230,138,.85)' }}>
+                Complete the transfer, then tap &quot;I Have Paid&quot;. DrippleX marks your order
+                as placed — the merchant will confirm receipt.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2.5">
+              <button
+                onClick={handleConfirmBankTransfer}
+                disabled={paying}
+                className="flex h-[52px] w-full items-center justify-center gap-2 rounded-2xl text-[15px] font-semibold text-white transition-all active:scale-[.97]"
+                style={{
+                  background: paying
+                    ? 'rgba(255,255,255,.07)'
+                    : `linear-gradient(135deg,${G0},${G2} 55%,${G3})`,
+                  boxShadow: paying ? 'none' : '0 10px 32px rgba(43,172,82,.36)',
+                  fontFamily: "'Poppins',sans-serif",
+                }}
+              >
+                {paying ? (
+                  <>
+                    <svg
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      style={{ animation: 'spin 1s linear infinite' }}
+                    >
+                      <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4" />
+                    </svg>{' '}
+                    Confirming…
+                  </>
+                ) : (
+                  '✅ I Have Paid'
+                )}
+              </button>
+              <button
+                onClick={() => setShowBankSheet(false)}
+                disabled={paying}
+                className="h-[46px] w-full rounded-2xl text-[13px] font-medium transition-all active:scale-[.97]"
+                style={{
+                  background: 'rgba(255,255,255,.04)',
+                  border: `1.5px solid ${BORDER}`,
+                  color: MUTED,
+                  fontFamily: "'Poppins',sans-serif",
+                }}
+              >
+                Cancel / Change Payment
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Address picker sheet */}
       {showAddrSheet && (
@@ -1194,7 +1296,7 @@ export function CheckoutScreen({
               className="flex items-center gap-3 rounded-2xl p-3.5"
               style={{
                 background: 'rgba(43,172,82,.08)',
-                border: `1.5px dashed rgba(43,172,82,.35)`,
+                border: '1.5px dashed rgba(43,172,82,.35)',
               }}
             >
               <div

@@ -21,6 +21,8 @@ import {
   CheckIcon,
   COUNTRIES,
 } from './shared';
+import { api } from '../lib/api';
+import { auth } from '../lib/auth';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SPLASH
@@ -2663,10 +2665,36 @@ export function BiometricScreen({
 // ═══════════════════════════════════════════════════════════════════════════
 // SIGN IN
 // ═══════════════════════════════════════════════════════════════════════════
-export function SignInScreen({ onBack }: { onBack: () => void }) {
-  const [phone, setPhone] = useState('');
-  const [focused, setFocused] = useState(false);
-  const ready = phone.replace(/\D/g, '').length >= 7;
+export function SignInScreen({
+  onBack,
+  onSuccess,
+}: {
+  onBack: () => void;
+  onSuccess?: () => void;
+}) {
+  const [email, setEmail] = useState('mrd@dripplex.demo');
+  const [password, setPassword] = useState('Dripplex#Demo1');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showPw, setShowPw] = useState(false);
+  const [focusedE, setFocusedE] = useState(false);
+  const [focusedP, setFocusedP] = useState(false);
+
+  const handleSignIn = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const resp = await api.auth.loginCustomer({ email, password });
+      auth.setTokens(resp.accessToken, resp.refreshToken);
+      auth.setUser(resp.user);
+      onSuccess?.();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Sign in failed. Check your credentials.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div
       className="relative flex h-full w-full flex-col overflow-hidden"
@@ -2680,7 +2708,7 @@ export function SignInScreen({ onBack }: { onBack: () => void }) {
         <BackBtn onPress={onBack} />
       </div>
       <div
-        className="relative z-10 flex flex-1 flex-col gap-7 px-7 pt-5"
+        className="relative z-10 flex flex-1 flex-col gap-6 px-7 pt-5"
         style={{ animation: 'fade-up .5s ease .05s both' }}
       >
         <Logo width={160} />
@@ -2692,83 +2720,194 @@ export function SignInScreen({ onBack }: { onBack: () => void }) {
             Welcome back
           </h2>
           <p className="text-sm" style={{ fontFamily: "'Inter',sans-serif", color: MUTED }}>
-            Enter your phone number to continue
+            Sign in to your DrippleX account
           </p>
         </div>
-        <div className="flex flex-col gap-2">
-          <label
-            className="text-[11px] font-medium uppercase tracking-widest"
-            style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.32)' }}
-          >
-            Phone Number
-          </label>
+
+        {error && (
           <div
-            className="flex h-[56px] items-center gap-3 rounded-2xl px-4 transition-all duration-200"
+            className="flex items-center gap-3 rounded-2xl px-4 py-3"
             style={{
-              background: 'rgba(255,255,255,.045)',
-              border: focused ? `1.5px solid ${G2}` : `1.5px solid ${BORDER}`,
-              boxShadow: focused ? `0 0 0 3px rgba(43,172,82,.12)` : 'none',
+              background: 'rgba(248,113,113,.08)',
+              border: '1.5px solid rgba(248,113,113,.28)',
             }}
           >
-            <div className="flex shrink-0 items-center gap-2 border-r border-white/10 pr-3">
-              <span className="text-base">🌍</span>
-              <span
-                className="text-sm"
-                style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
-              >
-                +1
-              </span>
+            <span>⚠️</span>
+            <p
+              className="flex-1 text-[12px] leading-relaxed"
+              style={{ color: '#F87171', fontFamily: "'Inter',sans-serif" }}
+            >
+              {error}
+            </p>
+          </div>
+        )}
+
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <label
+              className="text-[11px] font-medium uppercase tracking-widest"
+              style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.32)' }}
+            >
+              Email
+            </label>
+            <div
+              className="flex h-[56px] items-center gap-3 rounded-2xl px-4 transition-all duration-200"
+              style={{
+                background: 'rgba(255,255,255,.045)',
+                border: focusedE ? `1.5px solid ${G2}` : `1.5px solid ${BORDER}`,
+                boxShadow: focusedE ? '0 0 0 3px rgba(43,172,82,.12)' : 'none',
+              }}
+            >
               <svg
-                width="12"
-                height="12"
+                width="16"
+                height="16"
                 viewBox="0 0 24 24"
                 fill="none"
-                stroke="rgba(255,255,255,.3)"
-                strokeWidth="2.5"
+                stroke="rgba(255,255,255,.35)"
+                strokeWidth="1.8"
                 strokeLinecap="round"
-                strokeLinejoin="round"
               >
-                <path d="M6 9l6 6 6-6" />
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                <polyline points="22,6 12,13 2,6" />
               </svg>
+              <input
+                type="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onFocus={() => setFocusedE(true)}
+                onBlur={() => setFocusedE(false)}
+                className="flex-1 bg-transparent text-base text-white outline-none placeholder:text-white/20"
+                style={{ fontFamily: "'Inter',sans-serif" }}
+              />
             </div>
-            <input
-              type="tel"
-              placeholder="(555) 000-0000"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              onFocus={() => setFocused(true)}
-              onBlur={() => setFocused(false)}
-              className="flex-1 bg-transparent text-base text-white outline-none placeholder:text-white/20"
-              style={{ fontFamily: "'Inter',sans-serif" }}
-            />
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <label
+              className="text-[11px] font-medium uppercase tracking-widest"
+              style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.32)' }}
+            >
+              Password
+            </label>
+            <div
+              className="flex h-[56px] items-center gap-3 rounded-2xl px-4 transition-all duration-200"
+              style={{
+                background: 'rgba(255,255,255,.045)',
+                border: focusedP ? `1.5px solid ${G2}` : `1.5px solid ${BORDER}`,
+                boxShadow: focusedP ? '0 0 0 3px rgba(43,172,82,.12)' : 'none',
+              }}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="rgba(255,255,255,.35)"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              >
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                <path d="M7 11V7a5 5 0 0110 0v4" />
+              </svg>
+              <input
+                type={showPw ? 'text' : 'password'}
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onFocus={() => setFocusedP(true)}
+                onBlur={() => setFocusedP(false)}
+                className="flex-1 bg-transparent text-base text-white outline-none placeholder:text-white/20"
+                style={{ fontFamily: "'Inter',sans-serif" }}
+              />
+              <button onClick={() => setShowPw((v) => !v)} className="opacity-40 active:opacity-70">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="white"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                >
+                  {showPw ? (
+                    <>
+                      <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94" />
+                      <path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19" />
+                      <line x1="1" y1="1" x2="23" y2="23" />
+                    </>
+                  ) : (
+                    <>
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </>
+                  )}
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
-        <GreenBtn label="Continue" disabled={!ready} icon={<ArrowIcon />} />
-        <Divider label="or continue with" />
-        <div className="flex gap-3">
-          {(
-            [
-              { label: 'Google', icon: 'G', color: '#EA4335' },
-              { label: 'Apple', icon: '', color: '#fff' },
-              { label: 'Face ID', icon: '⌬', color: G2 },
-            ] as const
-          ).map(({ label, icon, color }) => (
+
+        <button
+          onClick={handleSignIn}
+          disabled={loading || !email || !password}
+          className="flex h-[56px] w-full items-center justify-center gap-2 rounded-2xl text-[15px] font-semibold text-white transition-all active:scale-[.97]"
+          style={{
+            background:
+              loading || !email || !password
+                ? 'rgba(255,255,255,.07)'
+                : `linear-gradient(135deg,${G0},${G2} 55%,${G3})`,
+            boxShadow: loading || !email || !password ? 'none' : '0 10px 32px rgba(43,172,82,.36)',
+            color: loading || !email || !password ? 'rgba(255,255,255,.25)' : 'white',
+            fontFamily: "'Poppins',sans-serif",
+          }}
+        >
+          {loading ? (
+            <>
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                style={{ animation: 'spin 1s linear infinite' }}
+              >
+                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4" />
+              </svg>{' '}
+              Signing in…
+            </>
+          ) : (
+            <>
+              Sign In <ArrowIcon />
+            </>
+          )}
+        </button>
+
+        <Divider label="demo accounts" />
+        <div className="flex flex-col gap-1.5">
+          {[
+            { label: 'Mr D (Customer)', email: 'mrd@dripplex.demo' },
+            { label: 'Drippo (Rider)', email: 'drippo@dripplex.demo' },
+          ].map((a) => (
             <button
-              key={label}
-              className="flex h-[52px] flex-1 flex-col items-center justify-center gap-1 rounded-xl transition-all active:scale-95"
-              style={{ background: 'rgba(255,255,255,.04)', border: `1.5px solid ${BORDER}` }}
+              key={a.email}
+              onClick={() => {
+                setEmail(a.email);
+                setPassword('Dripplex#Demo1');
+              }}
+              className="flex h-[42px] items-center justify-between rounded-xl px-4 transition-all active:scale-[.98]"
+              style={{ background: 'rgba(255,255,255,.04)', border: `1px solid ${BORDER}` }}
             >
               <span
-                className="text-base font-bold"
-                style={{ color, fontFamily: "'Poppins',sans-serif" }}
+                className="text-[12px]"
+                style={{ color: 'rgba(255,255,255,.55)', fontFamily: "'Inter',sans-serif" }}
               >
-                {icon}
+                {a.label}
               </span>
-              <span
-                className="text-[10px]"
-                style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.28)' }}
-              >
-                {label}
+              <span className="text-[11px]" style={{ color: G3, fontFamily: "'Inter',sans-serif" }}>
+                {a.email}
               </span>
             </button>
           ))}

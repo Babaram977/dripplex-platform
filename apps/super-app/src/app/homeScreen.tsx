@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { G0, G2, G3, NAVY_DEEP, NAVY_CARD, NAVY_SURFACE, BORDER, MUTED } from './shared';
+import { api } from '../lib/api';
+import type { MerchantSummaryDto, CategoryDto, WalletDto } from '../lib/api';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DATA
@@ -513,7 +515,15 @@ function ActivateWalletCard({ onActivate }: { onActivate: () => void }) {
   );
 }
 
-function BalanceCard({ activated, onActivate }: { activated: boolean; onActivate: () => void }) {
+function BalanceCard({
+  activated,
+  onActivate,
+  wallet,
+}: {
+  activated: boolean;
+  onActivate: () => void;
+  wallet?: WalletDto | null;
+}) {
   const [show, setShow] = useState(true);
   if (!activated) return <ActivateWalletCard onActivate={onActivate} />;
   return (
@@ -575,7 +585,7 @@ function BalanceCard({ activated, onActivate }: { activated: boolean; onActivate
           className="mb-0.5 text-[36px] font-bold leading-tight tracking-tight"
           style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
         >
-          {show ? '₦847,250' : '₦ •••,•••'}
+          {show ? `₦${(wallet?.availableBalance ?? 847250).toLocaleString()}` : '₦ •••,•••'}
           <span className="text-[20px]">{show ? '.00' : ''}</span>
         </p>
         <p
@@ -956,79 +966,171 @@ function Categories() {
 // ─────────────────────────────────────────────────────────────────────────────
 // MERCHANTS
 // ─────────────────────────────────────────────────────────────────────────────
-function Merchants({ loaded }: { loaded: boolean }) {
+const MERCHANT_BG_FALLBACKS = [
+  'linear-gradient(135deg,#7F1D1D,#EF4444)',
+  'linear-gradient(135deg,#7C2D12,#F97316)',
+  'linear-gradient(135deg,#0D2E18,#2BAC52)',
+  'linear-gradient(135deg,#0C4A6E,#06B6D4)',
+  'linear-gradient(135deg,#2E1065,#8B5CF6)',
+];
+
+function Merchants({
+  loaded,
+  liveMerchants,
+}: {
+  loaded: boolean;
+  liveMerchants?: MerchantSummaryDto[];
+}) {
+  const showLive = liveMerchants && liveMerchants.length > 0;
   return (
     <div className="mb-5">
       <Row title="Nearby Merchants" onAll={() => {}} />
       <div className="flex gap-3 overflow-x-auto px-5" style={{ scrollbarWidth: 'none' }}>
         {!loaded
           ? [1, 2, 3].map((i) => <Bone key={i} w={155} h={188} />)
-          : MERCHANTS.map((m) => (
-              <div
-                key={m.name}
-                className="flex-shrink-0 overflow-hidden rounded-3xl"
-                style={{
-                  width: 155,
-                  background: NAVY_CARD,
-                  border: `1.5px solid ${BORDER}`,
-                  boxShadow: '0 4px 20px rgba(0,0,0,.3)',
-                }}
-              >
+          : showLive
+            ? liveMerchants!.map((m, idx) => (
                 <div
-                  className="relative flex h-[82px] items-center justify-center"
-                  style={{ background: m.bg }}
+                  key={m.id}
+                  className="flex-shrink-0 overflow-hidden rounded-3xl"
+                  style={{
+                    width: 155,
+                    background: NAVY_CARD,
+                    border: `1.5px solid ${BORDER}`,
+                    boxShadow: '0 4px 20px rgba(0,0,0,.3)',
+                  }}
                 >
-                  <span style={{ fontSize: 40 }}>{m.emoji}</span>
                   <div
-                    className="absolute right-2.5 top-2.5 rounded-xl px-2 py-1 text-[9px] font-bold"
+                    className="relative flex h-[82px] items-center justify-center"
                     style={{
-                      background: 'rgba(0,0,0,.5)',
-                      color: '#FFF',
-                      backdropFilter: 'blur(6px)',
-                      fontFamily: "'Inter',sans-serif",
+                      background: MERCHANT_BG_FALLBACKS[idx % MERCHANT_BG_FALLBACKS.length],
                     }}
                   >
-                    ⏱ {m.eta}
+                    {m.logoUrl ? (
+                      <img
+                        src={m.logoUrl}
+                        alt={m.businessName}
+                        className="h-14 w-14 rounded-xl object-cover"
+                      />
+                    ) : (
+                      <span style={{ fontSize: 40 }}>🏪</span>
+                    )}
+                    <div
+                      className="absolute right-2.5 top-2.5 rounded-xl px-2 py-1 text-[9px] font-bold"
+                      style={{
+                        background: 'rgba(0,0,0,.5)',
+                        color: '#FFF',
+                        backdropFilter: 'blur(6px)',
+                        fontFamily: "'Inter',sans-serif",
+                      }}
+                    >
+                      {m.isOpenNow ? '🟢 Open' : m.isOpenNow === false ? '🔴 Closed' : '🏪'}
+                    </div>
                   </div>
-                </div>
-                <div className="p-3">
-                  <p
-                    className="mb-0.5 truncate text-[12.5px] font-bold"
-                    style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
-                  >
-                    {m.name}
-                  </p>
-                  <p
-                    className="mb-2 text-[10px]"
-                    style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
-                  >
-                    {m.cat}
-                  </p>
-                  <div className="mb-3 flex items-center justify-between">
-                    <span className="text-[10px] font-bold" style={{ color: '#FBBF24' }}>
-                      ★ {m.rating}
-                    </span>
-                    <span
-                      className="text-[10px]"
+                  <div className="p-3">
+                    <p
+                      className="mb-0.5 truncate text-[12.5px] font-bold"
+                      style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
+                    >
+                      {m.businessName}
+                    </p>
+                    <p
+                      className="mb-2 text-[10px]"
                       style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
                     >
-                      {m.dist}
-                    </span>
+                      {m.businessType}
+                    </p>
+                    <div className="mb-3 flex items-center justify-between">
+                      <span className="text-[10px] font-bold" style={{ color: '#FBBF24' }}>
+                        ★ {m.rating.average.toFixed(1)}
+                      </span>
+                      <span
+                        className="text-[10px]"
+                        style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
+                      >
+                        {m.distanceKm != null ? `${m.distanceKm.toFixed(1)} km` : m.city}
+                      </span>
+                    </div>
+                    <button
+                      className="h-[30px] w-full rounded-xl text-[11px] font-semibold transition-all active:scale-95"
+                      style={{
+                        background: `linear-gradient(135deg,${G0},${G2})`,
+                        color: '#FFF',
+                        fontFamily: "'Inter',sans-serif",
+                        boxShadow: '0 3px 12px rgba(43,172,82,.25)',
+                      }}
+                    >
+                      View Store
+                    </button>
                   </div>
-                  <button
-                    className="h-[30px] w-full rounded-xl text-[11px] font-semibold transition-all active:scale-95"
-                    style={{
-                      background: `linear-gradient(135deg,${G0},${G2})`,
-                      color: '#FFF',
-                      fontFamily: "'Inter',sans-serif",
-                      boxShadow: `0 3px 12px rgba(43,172,82,.25)`,
-                    }}
-                  >
-                    View Store
-                  </button>
                 </div>
-              </div>
-            ))}
+              ))
+            : MERCHANTS.map((m) => (
+                <div
+                  key={m.name}
+                  className="flex-shrink-0 overflow-hidden rounded-3xl"
+                  style={{
+                    width: 155,
+                    background: NAVY_CARD,
+                    border: `1.5px solid ${BORDER}`,
+                    boxShadow: '0 4px 20px rgba(0,0,0,.3)',
+                  }}
+                >
+                  <div
+                    className="relative flex h-[82px] items-center justify-center"
+                    style={{ background: m.bg }}
+                  >
+                    <span style={{ fontSize: 40 }}>{m.emoji}</span>
+                    <div
+                      className="absolute right-2.5 top-2.5 rounded-xl px-2 py-1 text-[9px] font-bold"
+                      style={{
+                        background: 'rgba(0,0,0,.5)',
+                        color: '#FFF',
+                        backdropFilter: 'blur(6px)',
+                        fontFamily: "'Inter',sans-serif",
+                      }}
+                    >
+                      ⏱ {m.eta}
+                    </div>
+                  </div>
+                  <div className="p-3">
+                    <p
+                      className="mb-0.5 truncate text-[12.5px] font-bold"
+                      style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
+                    >
+                      {m.name}
+                    </p>
+                    <p
+                      className="mb-2 text-[10px]"
+                      style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
+                    >
+                      {m.cat}
+                    </p>
+                    <div className="mb-3 flex items-center justify-between">
+                      <span className="text-[10px] font-bold" style={{ color: '#FBBF24' }}>
+                        ★ {m.rating}
+                      </span>
+                      <span
+                        className="text-[10px]"
+                        style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
+                      >
+                        {m.dist}
+                      </span>
+                    </div>
+                    <button
+                      className="h-[30px] w-full rounded-xl text-[11px] font-semibold transition-all active:scale-95"
+                      style={{
+                        background: `linear-gradient(135deg,${G0},${G2})`,
+                        color: '#FFF',
+                        fontFamily: "'Inter',sans-serif",
+                        boxShadow: '0 3px 12px rgba(43,172,82,.25)',
+                      }}
+                    >
+                      View Store
+                    </button>
+                  </div>
+                </div>
+              ))}
       </div>
     </div>
   );
@@ -1363,14 +1465,29 @@ export function HomeScreen({
   const [showAI, setShowAI] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
+  // Live API state
+  const [wallet, setWallet] = useState<WalletDto | null>(null);
+  const [liveMerchants, setLiveMerchants] = useState<MerchantSummaryDto[]>([]);
+
   const [greeting] = useState(() => {
     const h = new Date().getHours();
     return h < 12 ? 'Good Morning' : h < 17 ? 'Good Afternoon' : 'Good Evening';
   });
 
   useEffect(() => {
-    const t = setTimeout(() => setLoaded(true), 1000);
-    return () => clearTimeout(t);
+    Promise.allSettled([
+      api.wallet.get(),
+      api.marketplace.getMerchants({ sort: 'recommended', limit: 6 }),
+    ]).then(([walletRes, merchantsRes]) => {
+      if (walletRes.status === 'fulfilled') setWallet(walletRes.value);
+      if (merchantsRes.status === 'fulfilled') {
+        const result = merchantsRes.value as
+          { data?: MerchantSummaryDto[]; items?: MerchantSummaryDto[] } | MerchantSummaryDto[];
+        const list = Array.isArray(result) ? result : (result.data ?? result.items ?? []);
+        setLiveMerchants(list);
+      }
+      setLoaded(true);
+    });
   }, []);
 
   const handleNav = (t: NavTab) => {
@@ -1400,7 +1517,11 @@ export function HomeScreen({
         <ServiceSwitcher active={svcTab} onChange={setSvcTab} />
 
         {/* Wallet balance card (or activate CTA) */}
-        <BalanceCard activated={walletActivated} onActivate={() => setWalletActivated(true)} />
+        <BalanceCard
+          activated={walletActivated}
+          onActivate={() => setWalletActivated(true)}
+          wallet={wallet}
+        />
 
         {/* Quick actions 4×2 grid */}
         <div className="mb-1">
@@ -1411,7 +1532,7 @@ export function HomeScreen({
         <AICard onAsk={() => setShowAI(true)} />
         <PromoCarousel />
         <Categories />
-        <Merchants loaded={loaded} />
+        <Merchants loaded={loaded} liveMerchants={liveMerchants} />
         <Recs loaded={loaded} />
         <ActivityList loaded={loaded} />
 

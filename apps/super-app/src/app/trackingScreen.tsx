@@ -1,5 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { G0, G2, G3, NAVY_BASE, NAVY_CARD, NAVY_DEEP, NAVY_SURFACE, BORDER, MUTED } from './shared';
+import { api } from '../lib/api';
+import type { OrderDto, CustomerDeliveryDto, DeliveryEtaDto } from '../lib/api';
 import { BottomNavigation, FloatingAIButton } from '../components/navigation';
 import type { NavTabKey } from '../components/navigation/BottomNavigation';
 
@@ -7,6 +9,30 @@ import type { NavTabKey } from '../components/navigation/BottomNavigation';
 // TYPES & CONSTANTS
 // ─────────────────────────────────────────────────────────────────────────────
 type OrderStatus = 'confirmed' | 'accepted' | 'preparing' | 'assigned' | 'on_the_way' | 'delivered';
+
+function mapApiStatus(order: OrderDto, delivery?: CustomerDeliveryDto | null): OrderStatus {
+  const ds = delivery?.status;
+  if (ds === 'DELIVERED') return 'delivered';
+  if (ds === 'ON_THE_WAY' || ds === 'PICKED_UP') return 'on_the_way';
+  if (ds === 'ASSIGNED' || ds === 'ACCEPTED') return 'assigned';
+  switch (order.status) {
+    case 'DELIVERED':
+    case 'COMPLETED':
+      return 'delivered';
+    case 'IN_TRANSIT':
+    case 'PICKED_UP':
+      return 'on_the_way';
+    case 'DRIVER_ASSIGNED':
+      return 'assigned';
+    case 'READY':
+    case 'PREPARING':
+      return 'preparing';
+    case 'CONFIRMED':
+      return 'accepted';
+    default:
+      return 'confirmed';
+  }
+}
 
 const STATUS_STEPS: { key: OrderStatus; label: string; icon: string; sub: string }[] = [
   { key: 'confirmed', label: 'Order Confirmed', icon: '✓', sub: 'Payment received' },
@@ -352,7 +378,17 @@ function OrderTimeline({ currentStatus }: { currentStatus: OrderStatus }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // DRIVER CARD
 // ─────────────────────────────────────────────────────────────────────────────
-function DriverCard({ onCall, onMessage }: { onCall: () => void; onMessage: () => void }) {
+function DriverCard({
+  name,
+  phone,
+  onCall,
+  onMessage,
+}: {
+  name: string;
+  phone: string;
+  onCall: () => void;
+  onMessage: () => void;
+}) {
   return (
     <div
       className="rounded-2xl p-4"
@@ -392,7 +428,7 @@ function DriverCard({ onCall, onMessage }: { onCall: () => void; onMessage: () =
             className="text-[15px] font-semibold text-white"
             style={{ fontFamily: "'Poppins',sans-serif" }}
           >
-            Emeka Okafor
+            {name}
           </p>
           <div className="mt-0.5 flex items-center gap-1.5">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="#F59E0B">
@@ -404,7 +440,7 @@ function DriverCard({ onCall, onMessage }: { onCall: () => void; onMessage: () =
             </span>
           </div>
           <p className="mt-0.5 text-[11px]" style={{ color: MUTED }}>
-            Honda CB500 ·{' '}
+            {phone} ·{' '}
             <span className="font-semibold" style={{ color: 'rgba(255,255,255,.6)' }}>
               KNO-423-AA
             </span>
@@ -478,11 +514,13 @@ function DriverCard({ onCall, onMessage }: { onCall: () => void; onMessage: () =
 // COMPLETION STATE
 // ─────────────────────────────────────────────────────────────────────────────
 function DeliveredScreen({
+  orderNum,
   onRate,
   onReorder,
   onReceipt,
   onHome,
 }: {
+  orderNum: string;
   onRate: () => void;
   onReorder: () => void;
   onReceipt: () => void;
@@ -574,7 +612,7 @@ function DeliveredScreen({
           style={{ background: 'rgba(43,172,82,.12)', border: `1px solid rgba(43,172,82,.25)` }}
         >
           <span className="text-[13px]" style={{ color: MUTED }}>
-            Order <span className="font-bold text-white">#DRX-2026-0124</span>
+            Order <span className="font-bold text-white">{orderNum}</span>
           </span>
         </div>
       </div>
@@ -640,6 +678,7 @@ export interface TrackingScreenProps {
   onHome: () => void;
   onAccount: () => void;
   onNotifications: () => void;
+  orderId?: string;
 }
 
 export function TrackingScreen({
@@ -647,6 +686,7 @@ export function TrackingScreen({
   onHome,
   onAccount,
   onNotifications,
+  orderId,
 }: TrackingScreenProps) {
   const [status, setStatus] = useState<OrderStatus>('on_the_way');
   const [driverProgress, setDriverProgress] = useState(0.52);
@@ -657,9 +697,49 @@ export function TrackingScreen({
   const [showCancel, setShowCancel] = useState(false);
   const [delivered, setDelivered] = useState(false);
 
-  // Simulate driver moving
+  // Live API state
+  const [liveOrder, setLiveOrder] = useState<OrderDto | null>(null);
+  const [liveDelivery, setLiveDelivery] = useState<CustomerDeliveryDto | null>(null);
+  const [liveEta, setLiveEta] = useState<DeliveryEtaDto | null>(null);
+  const [pollError, setPollError] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const fetchAll = useCallback(async () => {
+    if (!orderId) return;
+    try {
+      const [orderRes, deliveryRes, etaRes] = await Promise.allSettled([
+        api.orders.get(orderId),
+        api.orders.getDelivery(orderId),
+        api.orders.getEta(orderId),
+      ]);
+      if (orderRes.status === 'fulfilled') {
+        const order = orderRes.value;
+        setLiveOrder(order);
+        const delivery = deliveryRes.status === 'fulfilled' ? deliveryRes.value : null;
+        if (deliveryRes.status === 'fulfilled') setLiveDelivery(deliveryRes.value);
+        if (etaRes.status === 'fulfilled') setLiveEta(etaRes.value);
+        const mapped = mapApiStatus(order, delivery);
+        setStatus(mapped);
+        if (mapped === 'delivered') setTimeout(() => setDelivered(true), 1200);
+      }
+      setPollError(null);
+    } catch {
+      setPollError('Connection issue — retrying…');
+    }
+  }, [orderId]);
+
   useEffect(() => {
-    if (status !== 'on_the_way') return;
+    if (!orderId) return;
+    fetchAll();
+    pollRef.current = setInterval(fetchAll, 7000);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [orderId, fetchAll]);
+
+  // Demo animation when no real orderId
+  useEffect(() => {
+    if (orderId || status !== 'on_the_way') return;
     const interval = setInterval(() => {
       setDriverProgress((p) => {
         const next = p + 0.018;
@@ -673,7 +753,7 @@ export function TrackingScreen({
       });
     }, 600);
     return () => clearInterval(interval);
-  }, [status]);
+  }, [orderId, status]);
 
   const handleTabChange = useCallback(
     (tab: NavTabKey) => {
@@ -692,14 +772,26 @@ export function TrackingScreen({
     'Reorder this',
   ];
 
+  const etaMin = liveEta
+    ? Math.max(1, Math.round(liveEta.remainingSeconds / 60))
+    : Math.max(1, Math.round((1 - driverProgress) * 12));
+  const displayOrderNum = liveOrder?.orderNumber ?? '#DRX-2026-0124';
+  const riderName = liveDelivery?.riderName ?? 'Emeka Okafor';
+  const riderPhone = liveDelivery?.riderPhone ?? '+234 801 234 5678';
+
   if (delivered) {
     return (
-      <DeliveredScreen onRate={() => {}} onReorder={onHome} onReceipt={() => {}} onHome={onHome} />
+      <DeliveredScreen
+        orderNum={displayOrderNum}
+        onRate={() => {}}
+        onReorder={onHome}
+        onReceipt={() => {}}
+        onHome={onHome}
+      />
     );
   }
 
   const currentStep = STATUS_STEPS.find((s) => s.key === status);
-  const etaMin = Math.max(1, Math.round((1 - driverProgress) * 12));
 
   return (
     <div
@@ -764,7 +856,7 @@ export function TrackingScreen({
               Track Order
             </p>
             <p className="mt-0.5 text-[11px]" style={{ color: MUTED }}>
-              #DRX-2026-0124 · KFC Nigeria
+              {displayOrderNum} · {liveOrder ? 'Your Order' : 'KFC Nigeria'}
             </p>
           </div>
         </div>
@@ -788,6 +880,21 @@ export function TrackingScreen({
         className="flex-1 overflow-y-auto px-5"
         style={{ scrollbarWidth: 'none', paddingBottom: 100 }}
       >
+        {pollError && (
+          <div
+            className="mb-3 flex items-center gap-2.5 rounded-xl px-4 py-2.5"
+            style={{
+              background: 'rgba(248,113,113,.08)',
+              border: '1px solid rgba(248,113,113,.22)',
+            }}
+          >
+            <span className="text-sm">📡</span>
+            <span className="text-[11px]" style={{ color: '#F87171' }}>
+              {pollError}
+            </span>
+          </div>
+        )}
+
         {/* Live Map */}
         <div className="mb-4">
           <LiveMap progress={driverProgress} />
@@ -833,7 +940,14 @@ export function TrackingScreen({
           >
             Your Driver
           </p>
-          <DriverCard onCall={() => {}} onMessage={() => {}} />
+          <DriverCard
+            name={riderName}
+            phone={riderPhone}
+            onCall={() => {
+              if (riderPhone) window.open(`tel:${riderPhone}`);
+            }}
+            onMessage={() => {}}
+          />
         </div>
 
         {/* Timeline */}
