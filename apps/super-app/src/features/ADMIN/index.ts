@@ -1,0 +1,19 @@
+// RIDE OPERATIONS CONSOLE — DrippleX Admin (desktop-first)
+export {
+  AdminConsoleScreen,
+  AdminDashboardScreen,
+  AdminLiveMapScreen,
+  AdminTripsScreen,
+  AdminDriversScreen,
+  AdminKYCScreen,
+  AdminVehiclesScreen,
+  AdminCustomersScreen,
+  AdminPricingScreen,
+  AdminIncidentsScreen,
+  AdminSupportScreen,
+  AdminAnalyticsScreen,
+  AdminReportsScreen,
+  AdminSettingsScreen,
+  AdminAuditScreen,
+  AdminProfileScreen,
+} from '../../app/adminConsoleScreen';
