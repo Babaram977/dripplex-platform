@@ -10,7 +10,7 @@ import {
 } from '../common/exceptions/domain.exception';
 import { PrismaService } from '../prisma/prisma.service';
 
-import { RIDE_AUDIT_ACTIONS } from './ride.constants';
+import { DRIVER_RATING_TAGS, RIDE_AUDIT_ACTIONS } from './ride.constants';
 import { toRideRatingDto } from './ride.mapper';
 
 import type { RateRideDto } from './dto/ride-rating.dto';
@@ -91,6 +91,10 @@ export class RideRatingService {
     dto: RateRideDto,
     context: AuditContext,
   ): Promise<RideRatingDto> {
+    // DPX-REVIEWS-001 — tags only apply to a customer rating a driver; a
+    // driver rating a customer has no preset tag set.
+    const tags = this.validateTags(raterRole, dto.tags);
+
     try {
       const rating = await this.prisma.rideRating.create({
         data: {
@@ -99,6 +103,7 @@ export class RideRatingService {
           rateeId,
           raterRole,
           rating: dto.rating,
+          tags,
           ...(dto.comment !== undefined ? { comment: dto.comment } : {}),
           ...(dto.categoryRatings !== undefined
             ? {
@@ -135,6 +140,23 @@ export class RideRatingService {
       throw new ValidationDomainException(`Ride cannot be rated from status ${ride.status}`);
     }
     return ride;
+  }
+
+  /** Tags are only valid for a customer→driver rating and must belong to the
+   * fixed DRIVER_RATING_TAGS set. Returns the de-duplicated, trimmed list. */
+  private validateTags(raterRole: RideRatingRole, tags: string[] | undefined): string[] {
+    if (!tags || tags.length === 0) {
+      return [];
+    }
+    if (raterRole !== RideRatingRole.CUSTOMER) {
+      throw new ValidationDomainException('Tags are only supported when rating a driver');
+    }
+    const cleaned = [...new Set(tags.map((tag) => tag.trim()).filter((tag) => tag.length > 0))];
+    const invalid = cleaned.filter((tag) => !DRIVER_RATING_TAGS.includes(tag));
+    if (invalid.length > 0) {
+      throw new ValidationDomainException(`Unknown driver rating tag(s): ${invalid.join(', ')}`);
+    }
+    return cleaned;
   }
 
   private isUniqueConstraintViolation(error: unknown): boolean {

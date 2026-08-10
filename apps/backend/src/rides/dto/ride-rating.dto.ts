@@ -1,5 +1,15 @@
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 
 class CategoryRatingsDto {
   @IsOptional()
@@ -54,4 +64,13 @@ export class RateRideDto {
   @ValidateNested()
   @Type(() => CategoryRatingsDto)
   public categoryRatings?: CategoryRatingsDto;
+
+  // DPX-REVIEWS-001 — preset tags from the fixed driver-rating set (validated
+  // against DRIVER_RATING_TAGS in RideRatingService).
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @IsString({ each: true })
+  @MaxLength(64, { each: true })
+  public tags?: string[];
 }

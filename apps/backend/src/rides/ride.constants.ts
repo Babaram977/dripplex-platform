@@ -1,5 +1,19 @@
 import { RideStatus, RideType } from '@prisma/client';
 
+/**
+ * DPX-REVIEWS-001 — fixed preset tags a customer can attach when rating a
+ * driver. Backend source of truth for validation; the UI-facing copy is the
+ * shared `DRIVER_RATING_TAGS` in `@dripplex/types` (kept identical).
+ */
+export const DRIVER_RATING_TAGS: readonly string[] = [
+  'Safe driving',
+  'Clean vehicle',
+  'Polite',
+  'On time',
+  'Great conversation',
+  'Helped with bags',
+];
+
 export const RIDE_AUDIT_ACTIONS = {
   REQUESTED: 'ride.requested',
   CANCELLED: 'ride.cancelled',
