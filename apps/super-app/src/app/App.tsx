@@ -159,6 +159,7 @@ import {
   DriverSignUpScreen,
   RiderSignUpScreen,
   DriverDocumentsScreen,
+  BusinessDetailsScreen,
   PendingReviewScreen,
 } from './onboardingScreen';
 import type { PartnerPersona } from './onboardingScreen';
@@ -381,6 +382,7 @@ type Screen =
   | 'partnerdriver'
   | 'partnerrider'
   | 'partnerdocs'
+  | 'partnerbusiness'
   | 'partnerreview';
 
 function AppShell() {
@@ -402,6 +404,12 @@ function AppShell() {
     country: COUNTRIES[0],
   });
   const [partnerPersona, setPartnerPersona] = useState<PartnerPersona>('merchant');
+  // Merchant's business fields from sign-up, pre-filled into the post-login
+  // Business Details step (persisted via PATCH /merchant/business).
+  const [merchantBiz, setMerchantBiz] = useState<{ businessName: string; category: string }>({
+    businessName: '',
+    category: '',
+  });
   const [activeRiderJob, setActiveRiderJob] = useState<DeliveryJobDto | null>(null);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [activeMerchantId, setActiveMerchantId] = useState<string | undefined>(undefined);
@@ -453,7 +461,13 @@ function AppShell() {
           go(otpData.persona && otpData.persona !== 'customer' ? 'partnerselect' : 'register')
         }
         onVerified={() =>
-          go(otpData.persona && otpData.persona !== 'customer' ? 'partnerreview' : 'profile')
+          go(
+            otpData.persona === 'merchant'
+              ? 'partnerbusiness'
+              : otpData.persona === 'driver' || otpData.persona === 'rider'
+                ? 'partnerreview'
+                : 'profile',
+          )
         }
       />
     ),
@@ -960,8 +974,9 @@ function AppShell() {
     partnermerchant: (
       <MerchantSignUpScreen
         onBack={() => go('partnerselect')}
-        onNext={({ email, password }) => {
+        onNext={({ email, password, businessName, category }) => {
           setPartnerPersona('merchant');
+          setMerchantBiz({ businessName, category });
           setOtpData({
             email,
             phone: '',
@@ -1015,6 +1030,14 @@ function AppShell() {
       <DriverDocumentsScreen
         onBack={() => go('partnerdriver')}
         onSubmit={() => go('partnerreview')}
+      />
+    ),
+    partnerbusiness: (
+      <BusinessDetailsScreen
+        businessName={merchantBiz.businessName}
+        category={merchantBiz.category}
+        onDone={() => go('partnerreview')}
+        onBack={() => go('partnerreview')}
       />
     ),
     partnerreview: (
@@ -1209,6 +1232,7 @@ function AppShell() {
         { label: 'Driver Sign-up', key: 'partnerdriver' },
         { label: 'Rider Sign-up', key: 'partnerrider' },
         { label: 'Driver Documents', key: 'partnerdocs' },
+        { label: 'Business Details', key: 'partnerbusiness' },
         { label: 'Pending Review', key: 'partnerreview' },
       ],
     },

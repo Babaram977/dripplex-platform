@@ -533,6 +533,12 @@ export function PartnerChoiceScreen({
 
 // The payload each signup hands to App for the shared OTP → login handoff.
 export type PartnerSignupResult = { email: string; password: string };
+// Merchant carries the extra business fields it collected, so the post-login
+// Business Details step can pre-fill them before persisting via PATCH /merchant/business.
+export type MerchantSignupResult = PartnerSignupResult & {
+  businessName: string;
+  category: string;
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SCREEN 2 — MERCHANT SIGN-UP (wired: POST /auth/register/merchant)
@@ -558,7 +564,7 @@ export function MerchantSignUpScreen({
   onSignIn,
 }: {
   onBack: () => void;
-  onNext: (r: PartnerSignupResult) => void;
+  onNext: (r: MerchantSignupResult) => void;
   onSignIn: () => void;
 }) {
   const [form, setForm] = useState({ name: '', email: '', password: '', biz: '', type: '' });
@@ -584,7 +590,7 @@ export function MerchantSignUpScreen({
       // no registration field for them; the merchant sets them in the dashboard
       // after approval (registration auto-creates the blank merchant profile).
       await api.auth.registerMerchant({ firstName, lastName, email, password: form.password });
-      onNext({ email, password: form.password });
+      onNext({ email, password: form.password, businessName: form.biz, category: form.type });
     } catch (e) {
       setErr(messageFor(e));
       setLoading(false);
@@ -1428,6 +1434,203 @@ export function DriverDocumentsScreen({
         >
           Our team typically reviews applications within 24–48 hours
         </p>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MERCHANT BUSINESS DETAILS (post-login) — wired: PATCH /merchant/business
+// Registration auto-creates a blank merchant profile; this persists the business
+// name + legal structure (+ an optional description carrying the retail category
+// the signup collected, which has no dedicated backend field). Uses the real
+// UpdateBusinessDto — businessType is the LEGAL structure enum, not a retail type.
+// ─────────────────────────────────────────────────────────────────────────────
+const BUSINESS_STRUCTURES: { label: string; value: string }[] = [
+  { label: 'Sole Proprietorship', value: 'SOLE_PROPRIETORSHIP' },
+  { label: 'Partnership', value: 'PARTNERSHIP' },
+  { label: 'Limited Liability Company', value: 'LIMITED_LIABILITY' },
+  { label: 'Corporation', value: 'CORPORATION' },
+  { label: 'Other', value: 'OTHER' },
+];
+
+export function BusinessDetailsScreen({
+  businessName: initialName,
+  category,
+  onDone,
+  onBack,
+}: {
+  businessName: string;
+  category: string;
+  onDone: () => void;
+  onBack: () => void;
+}) {
+  const [name, setName] = useState(initialName ?? '');
+  const [structure, setStructure] = useState('');
+  const [description, setDescription] = useState(category ? `${category}` : '');
+  const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState('');
+  const [focused, setFocused] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+
+  const ready = name.trim().length >= 2 && structure.length > 0;
+
+  const handleSubmit = async () => {
+    setErr('');
+    setLoading(true);
+    try {
+      const businessType = BUSINESS_STRUCTURES.find((s) => s.label === structure)?.value;
+      const body: Record<string, unknown> = { businessName: name.trim() };
+      if (businessType) body.businessType = businessType;
+      if (description.trim()) body.description = description.trim();
+      if (phone.replace(/\D/g, '').length >= 7) body.phone = toE164(phone);
+      if (address.trim()) body.address = address.trim();
+      await api.merchant.updateBusiness(body as Parameters<typeof api.merchant.updateBusiness>[0]);
+      onDone();
+    } catch (e) {
+      setErr(messageFor(e));
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div
+      className="relative flex h-full w-full flex-col overflow-hidden"
+      style={{ background: BG }}
+    >
+      <Ambient />
+      <StatusBar />
+      <div className="relative z-10 px-6 pt-3">
+        <BackBtn onPress={onBack} />
+      </div>
+
+      <div
+        className="relative z-10 flex-1 overflow-y-auto px-7 pb-10"
+        style={{ scrollbarWidth: 'none' }}
+      >
+        <div style={{ animation: 'fade-up .4s ease .05s both' }}>
+          <div className="mb-1 flex items-center gap-2">
+            <span className="text-2xl">🏪</span>
+            <span
+              className="rounded-full px-2.5 py-1 text-[12px] font-semibold"
+              style={{
+                background: 'rgba(249,115,22,.12)',
+                color: '#FB923C',
+                fontFamily: IT,
+                border: '1px solid rgba(249,115,22,.22)',
+              }}
+            >
+              Business details
+            </span>
+          </div>
+          <h1
+            className="mt-3 text-[26px] font-bold leading-tight"
+            style={{ fontFamily: PP, color: '#fff', letterSpacing: '-0.02em' }}
+          >
+            Tell us about
+            <br />
+            your business
+          </h1>
+          <p className="mt-1.5 text-[14px]" style={{ fontFamily: IT, color: MUTED }}>
+            This appears on your storefront and helps us verify you faster
+          </p>
+        </div>
+
+        <div
+          className="mt-7 flex flex-col gap-4"
+          style={{ animation: 'fade-up .4s ease .12s both' }}
+        >
+          <FieldGroup
+            label="Business Name"
+            id="name"
+            placeholder="Amara's Boutique"
+            value={name}
+            onChange={setName}
+            focused={focused}
+            onFocus={setFocused}
+            onBlur={() => setFocused(null)}
+          />
+          <Dropdown
+            id="structure"
+            label="Business Structure"
+            placeholder="Select a structure"
+            value={structure}
+            onChange={setStructure}
+            options={BUSINESS_STRUCTURES.map((s) => s.label)}
+            focused={focused}
+            onFocus={setFocused}
+            onBlur={() => setFocused(null)}
+          />
+          <FieldGroup
+            label="What you sell (optional)"
+            id="description"
+            placeholder="e.g. Restaurant & Food"
+            value={description}
+            onChange={setDescription}
+            focused={focused}
+            onFocus={setFocused}
+            onBlur={() => setFocused(null)}
+          />
+          <div className="flex flex-col gap-2">
+            <FieldLabel>Business Phone (optional)</FieldLabel>
+            <div
+              className="flex h-[56px] items-center gap-3 rounded-2xl px-4 transition-all duration-200"
+              style={{
+                background: 'rgba(255,255,255,.045)',
+                border: `1.5px solid ${focused === 'bphone' ? G2 : BORDER}`,
+                boxShadow: focused === 'bphone' ? '0 0 0 3px rgba(43,172,82,.12)' : 'none',
+              }}
+            >
+              <div
+                className="flex shrink-0 items-center gap-2 pr-3"
+                style={{ borderRight: `1px solid ${BORDER}` }}
+              >
+                <span className="text-base">🇳🇬</span>
+                <span
+                  className="text-[14px]"
+                  style={{ fontFamily: IT, color: 'rgba(255,255,255,.5)' }}
+                >
+                  +234
+                </span>
+              </div>
+              <input
+                type="tel"
+                placeholder="801 234 5678"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                onFocus={() => setFocused('bphone')}
+                onBlur={() => setFocused(null)}
+                className="flex-1 bg-transparent text-[15px] text-white outline-none"
+                style={{ fontFamily: IT }}
+              />
+            </div>
+          </div>
+          <FieldGroup
+            label="Business Address (optional)"
+            id="address"
+            placeholder="12 Allen Avenue, Ikeja, Lagos"
+            value={address}
+            onChange={setAddress}
+            focused={focused}
+            onFocus={setFocused}
+            onBlur={() => setFocused(null)}
+          />
+        </div>
+
+        <div
+          className="mt-8 flex flex-col gap-4"
+          style={{ animation: 'fade-up .4s ease .2s both' }}
+        >
+          <ErrorNote message={err} />
+          <GreenBtn
+            label="Save & submit for review"
+            disabled={!ready}
+            loading={loading}
+            onClick={handleSubmit}
+            icon={<ArrowIcon />}
+          />
+        </div>
       </div>
     </div>
   );
