@@ -10,6 +10,7 @@ import {
 } from '../tokens/colors';
 import { api } from '../lib/api';
 import { ws } from '../lib/ws';
+import { DRIVER_RATING_TAGS, RIDER_RATING_TAGS } from '../lib/reviewTags';
 import type { RideDto, RideType } from '../lib/api';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2188,21 +2189,12 @@ export function RateDriverScreen({
   rideId?: string;
 }) {
   const [stars, setStars] = useState(5);
-  const [tags, setTags] = useState<string[]>(['Safe driving', 'Friendly']);
+  const [tags, setTags] = useState<string[]>([]);
   const [comment, setComment] = useState('');
   const [tip, setTip] = useState<number | null>(null);
   const [submitted, setSubmitted] = useState(false);
 
-  const ALL_TAGS = [
-    'Safe driving',
-    'Friendly',
-    'On time',
-    'Clean car',
-    'Great music',
-    'Quiet ride',
-    'Professional',
-    'Smooth ride',
-  ];
+  const ALL_TAGS = DRIVER_RATING_TAGS;
   const TIPS = [200, 500, 1000];
 
   const toggleTag = (t: string) =>
@@ -2211,9 +2203,12 @@ export function RateDriverScreen({
   const handleSubmit = () => {
     setSubmitted(true);
     if (rideId) {
-      const comboComment = [comment, ...tags].filter(Boolean).join(' · ');
       api.rides
-        .rateDriver(rideId, { rating: stars, comment: comboComment || undefined })
+        .rateDriver(rideId, {
+          rating: stars,
+          comment: comment.trim() || undefined,
+          tags: tags.length > 0 ? tags : undefined,
+        })
         .catch(() => {});
       if (tip) api.rides.tip(rideId, tip).catch(() => {});
     }
@@ -2362,6 +2357,163 @@ export function RateDriverScreen({
           label={tip ? `Submit & Tip ₦${tip.toLocaleString()}` : 'Submit Rating'}
           onClick={handleSubmit}
         />
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RATE RIDER (post-delivery) — DPX-REVIEWS-001. A customer rates the delivery
+// rider (stars + preset tags + optional comment) → POST /customer/reviews/
+// deliveries/:jobId/rate-rider. Mirrors RateDriverScreen, minus the tip and
+// vehicle line; reuses the same primitives + chip pattern.
+// ─────────────────────────────────────────────────────────────────────────────
+export function RateRiderScreen({
+  onBack,
+  onSubmit,
+  jobId,
+  riderName,
+}: {
+  onBack: () => void;
+  onSubmit: () => void;
+  jobId?: string;
+  riderName?: string;
+}) {
+  const [stars, setStars] = useState(5);
+  const [tags, setTags] = useState<string[]>([]);
+  const [comment, setComment] = useState('');
+  const [submitted, setSubmitted] = useState(false);
+
+  const toggleTag = (t: string) =>
+    setTags((p) => (p.includes(t) ? p.filter((x) => x !== t) : [...p, t]));
+
+  const handleSubmit = () => {
+    setSubmitted(true);
+    if (jobId) {
+      api.reviews
+        .rateRiderForDelivery(jobId, {
+          rating: stars,
+          comment: comment.trim() || undefined,
+          tags: tags.length > 0 ? tags : undefined,
+        })
+        .catch(() => {});
+    }
+    setTimeout(onSubmit, 1600);
+  };
+
+  if (submitted)
+    return (
+      <div
+        className="absolute inset-0 flex flex-col items-center justify-center gap-5 px-5"
+        style={{ background: NAVY_BASE }}
+      >
+        <div
+          className="flex h-20 w-20 items-center justify-center rounded-full text-4xl"
+          style={{
+            background: `linear-gradient(135deg,${G0},${G2})`,
+            boxShadow: `0 0 40px rgba(43,172,82,.35)`,
+            animation: 'success-bounce .5s ease both',
+          }}
+        >
+          🙌
+        </div>
+        <p className="text-center text-[20px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
+          Thanks for the feedback!
+        </p>
+        <p className="text-center text-[14px]" style={{ fontFamily: IT, color: MUTED }}>
+          Your rating helps keep DrippleX deliveries reliable
+        </p>
+      </div>
+    );
+
+  return (
+    <div
+      className="absolute inset-0 flex flex-col overflow-hidden"
+      style={{ background: NAVY_BASE }}
+    >
+      <RideStatusBar />
+      <div className="flex-1 overflow-y-auto px-5 pb-6">
+        {/* Header */}
+        <div className="mb-6 flex items-center gap-3 pt-3">
+          <BackArrow onClick={onBack} />
+          <p className="text-[17px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
+            Rate Your Delivery
+          </p>
+        </div>
+
+        {/* Rider */}
+        <div className="mb-6 flex flex-col items-center">
+          <div
+            className="mb-3 flex h-20 w-20 items-center justify-center rounded-3xl text-3xl"
+            style={{
+              background: `linear-gradient(135deg,${G0},${G2})`,
+              boxShadow: `0 8px 32px rgba(43,172,82,.3)`,
+            }}
+          >
+            🛵
+          </div>
+          <p className="mb-0.5 text-[18px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
+            {riderName ?? 'Your rider'}
+          </p>
+          <p className="text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
+            Delivery rider
+          </p>
+        </div>
+
+        {/* Stars */}
+        <div className="mb-6 flex flex-col items-center gap-3">
+          <StarRow value={stars} onChange={setStars} />
+          <p className="text-[14px] font-medium" style={{ fontFamily: IT, color: TEXT_SECONDARY }}>
+            {['', 'Poor', 'Fair', 'Good', 'Great', 'Excellent!'][stars]}
+          </p>
+        </div>
+
+        {/* Tags */}
+        <div className="mb-5">
+          <p className="mb-3 text-[13px] font-semibold" style={{ fontFamily: PP, color: MUTED }}>
+            WHAT STOOD OUT?
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {RIDER_RATING_TAGS.map((t) => (
+              <button
+                key={t}
+                onClick={() => toggleTag(t)}
+                className="rounded-full px-3 py-1.5 text-[12px] font-medium transition-all active:scale-[.95]"
+                style={{
+                  background: tags.includes(t) ? 'rgba(43,172,82,.15)' : NAVY_SURFACE,
+                  border: `1px solid ${tags.includes(t) ? 'rgba(43,172,82,.4)' : BORDER}`,
+                  color: tags.includes(t) ? G3 : TEXT_SECONDARY,
+                  fontFamily: IT,
+                }}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Comment */}
+        <div className="mb-6">
+          <p className="mb-2 text-[13px] font-semibold" style={{ fontFamily: PP, color: MUTED }}>
+            ADD A COMMENT
+          </p>
+          <textarea
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            placeholder="Tell us about your delivery..."
+            rows={3}
+            className="w-full resize-none rounded-2xl px-4 py-3 outline-none"
+            style={{
+              background: NAVY_SURFACE,
+              border: `1px solid ${BORDER}`,
+              fontFamily: IT,
+              fontSize: 14,
+              color: '#fff',
+            }}
+          />
+        </div>
+
+        <GreenButton label="Submit Rating" onClick={handleSubmit} />
       </div>
     </div>
   );

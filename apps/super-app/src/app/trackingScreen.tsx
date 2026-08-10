@@ -446,7 +446,17 @@ function DriverCard({
 // ─────────────────────────────────────────────────────────────────────────────
 // DELIVERED STATE
 // ─────────────────────────────────────────────────────────────────────────────
-function DeliveredScreen({ orderNumber, onHome }: { orderNumber?: string; onHome: () => void }) {
+function DeliveredScreen({
+  orderNumber,
+  onHome,
+  onRate,
+  hasRider,
+}: {
+  orderNumber?: string;
+  onHome: () => void;
+  onRate?: () => void;
+  hasRider?: boolean;
+}) {
   return (
     <div
       className="relative flex h-full w-full flex-col items-center justify-center overflow-hidden"
@@ -536,14 +546,37 @@ function DeliveredScreen({ orderNumber, onHome }: { orderNumber?: string; onHome
         )}
       </div>
       <div className="flex w-full flex-col gap-3 px-7">
+        {hasRider && onRate && (
+          <button
+            onClick={onRate}
+            className="flex h-[50px] w-full items-center justify-center gap-2 rounded-2xl text-[14px] font-semibold text-white transition-all active:scale-[.97]"
+            style={{
+              background: `linear-gradient(135deg,${G0},${G2} 55%,${G3})`,
+              boxShadow: `0 10px 32px rgba(43,172,82,.36)`,
+              fontFamily: "'Poppins',sans-serif",
+            }}
+          >
+            ⭐ Rate your rider
+          </button>
+        )}
         <button
           onClick={onHome}
-          className="flex h-[50px] w-full items-center justify-center gap-2 rounded-2xl text-[14px] font-semibold text-white transition-all active:scale-[.97]"
-          style={{
-            background: `linear-gradient(135deg,${G0},${G2} 55%,${G3})`,
-            boxShadow: `0 10px 32px rgba(43,172,82,.36)`,
-            fontFamily: "'Poppins',sans-serif",
-          }}
+          className="flex h-[50px] w-full items-center justify-center gap-2 rounded-2xl text-[14px] font-semibold transition-all active:scale-[.97]"
+          style={
+            hasRider && onRate
+              ? {
+                  background: NAVY_SURFACE,
+                  border: `1px solid ${BORDER}`,
+                  color: '#fff',
+                  fontFamily: "'Poppins',sans-serif",
+                }
+              : {
+                  background: `linear-gradient(135deg,${G0},${G2} 55%,${G3})`,
+                  boxShadow: `0 10px 32px rgba(43,172,82,.36)`,
+                  color: '#fff',
+                  fontFamily: "'Poppins',sans-serif",
+                }
+          }
         >
           Continue Shopping
         </button>
@@ -822,6 +855,8 @@ export interface TrackingScreenProps {
   onNotifications: () => void;
   onHistory?: () => void;
   orderId?: string;
+  // DPX-REVIEWS-001 — navigate to the rate-rider screen after a delivery.
+  onRateRider?: (jobId: string, riderName?: string) => void;
 }
 
 export function TrackingScreen({
@@ -831,6 +866,7 @@ export function TrackingScreen({
   onNotifications,
   onHistory,
   orderId,
+  onRateRider,
 }: TrackingScreenProps) {
   const [order, setOrder] = useState<OrderDto | null>(null);
   const [delivery, setDelivery] = useState<CustomerDeliveryDto | null>(null);
@@ -1009,7 +1045,18 @@ export function TrackingScreen({
   }
 
   if (isDelivered) {
-    return <DeliveredScreen orderNumber={orderNumber} onHome={onHome} />;
+    return (
+      <DeliveredScreen
+        orderNumber={orderNumber}
+        onHome={onHome}
+        hasRider={hasRider}
+        onRate={
+          delivery?.id && onRateRider
+            ? () => onRateRider(delivery.id, delivery.riderName ?? undefined)
+            : undefined
+        }
+      />
+    );
   }
 
   if (isCancelled) {

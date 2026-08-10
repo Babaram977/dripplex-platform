@@ -11,6 +11,7 @@ export {
   RideInProgressScreen,
   TripCompletedScreen,
   RateDriverScreen,
+  RateRiderScreen,
   RideHistoryScreen,
   RideDetailScreen,
   // Extended screens

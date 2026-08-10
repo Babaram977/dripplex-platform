@@ -69,6 +69,7 @@ import {
   RideInProgressScreen,
   TripCompletedScreen,
   RateDriverScreen,
+  RateRiderScreen,
   RideHistoryScreen,
   RideDetailScreen,
   DriverProfileSheet,
@@ -305,6 +306,7 @@ type Screen =
   | 'rideinprogress'
   | 'ridecomplete'
   | 'riderating'
+  | 'raterider'
   | 'ridehistory'
   | 'ridedetail'
   | 'ridehomeplus'
@@ -420,6 +422,9 @@ function AppShell() {
   const [activeDriverRide, setActiveDriverRide] = useState<RideDto | null>(null);
   const [rideDest, setRideDest] = useState<RideDestination | undefined>(undefined);
   const [activeCustomerRideId, setActiveCustomerRideId] = useState<string | undefined>(undefined);
+  // DPX-REVIEWS-001 — the delivery job + rider being rated post-delivery.
+  const [activeDeliveryJobId, setActiveDeliveryJobId] = useState<string | undefined>(undefined);
+  const [activeRiderName, setActiveRiderName] = useState<string | undefined>(undefined);
 
   const go = (to: Screen) => {
     setFading(true);
@@ -650,6 +655,19 @@ function AppShell() {
         onNotifications={() => go('activitydash')}
         onHistory={() => go('orderhistory')}
         orderId={activeOrderId ?? undefined}
+        onRateRider={(jobId, riderName) => {
+          setActiveDeliveryJobId(jobId);
+          setActiveRiderName(riderName);
+          go('raterider');
+        }}
+      />
+    ),
+    raterider: (
+      <RateRiderScreen
+        onBack={() => go('home')}
+        onSubmit={() => go('home')}
+        jobId={activeDeliveryJobId}
+        riderName={activeRiderName}
       />
     ),
     orderhistory: (
