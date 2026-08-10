@@ -1,6 +1,6 @@
 'use client';
 
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import * as React from 'react';
 
 import { RideMapsProvider } from './ride-maps-provider';
@@ -93,6 +93,7 @@ function useResumeScreen(): RideFlowScreen | null {
 }
 
 export function RideFlow(): React.JSX.Element {
+  const router = useRouter();
   const resumeScreen = useResumeScreen();
   const [screen, setScreen] = React.useState<RideFlowScreen>(resumeScreen ?? { name: 'home' });
   const location = useCurrentLocation();
@@ -126,6 +127,9 @@ export function RideFlow(): React.JSX.Element {
             }}
             onSavedPlaces={() => {
               setScreen({ name: 'savedPlaces' });
+            }}
+            onExit={() => {
+              router.push('/marketplace');
             }}
           />
         );
