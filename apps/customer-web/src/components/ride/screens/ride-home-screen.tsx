@@ -23,11 +23,14 @@ export function RideHomeScreen({
   onSelectPlace,
   onHistory,
   onSavedPlaces,
+  onExit,
 }: {
   onSearch: () => void;
   onSelectPlace: (place: CustomerAddressDto) => void;
   onHistory: () => void;
   onSavedPlaces: () => void;
+  /** Leaves the full-screen ride flow entirely (back to the rest of the app). */
+  onExit: () => void;
 }): React.JSX.Element {
   const { user } = useAuth();
   const savedPlaces = useSavedPlaces();
@@ -74,6 +77,32 @@ export function RideHomeScreen({
         />
         <div className="absolute inset-0">
           <SuperAppRideStatusBar />
+        </div>
+        <div className="absolute left-0 top-14 flex items-center px-5" style={{ marginTop: 16 }}>
+          <button
+            type="button"
+            onClick={onExit}
+            aria-label="Back to app"
+            className="flex h-10 w-10 items-center justify-center rounded-2xl"
+            style={{
+              background: 'rgba(6,14,28,.85)',
+              border: '1px solid rgba(255,255,255,.08)',
+              backdropFilter: 'blur(12px)',
+            }}
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="rgba(255,255,255,.7)"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M19 12H5M12 19l-7-7 7-7" />
+            </svg>
+          </button>
         </div>
         <div
           className="absolute right-0 top-14 flex items-center justify-end gap-2 px-5"
