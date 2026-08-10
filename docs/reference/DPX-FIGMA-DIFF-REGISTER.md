@@ -140,6 +140,18 @@ OTP delivered to a brand-new phone. Confirmed 2026-08-10 that prod backend has `
 `ProductionNotificationService` dispatches phone OTP via Termii when the key is present (log-only
 fallback otherwise). So a new customer registering with a valid phone should receive an SMS code.
 
+### Partner self-onboarding (merchant/driver/rider) — logged 2026-08-10 (Figma onboarding wiring)
+
+Figma generated `onboardingScreen.tsx` (role picker → merchant/driver/rider sign-up → driver
+documents → pending review), wired into the super-app this session.
+
+| Figma                                                                                      | Backend                                                                                        | Action                                                                                                                                                                                                                                                                                     |
+| ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Merchant sign-up collects **Business Name + Business Type**                                | `PortalRegistrationDto` has no business fields; no `POST /merchant/business` exists            | Wired register with the verified fields only (firstName/lastName/email/password). Business name/type are collected in the UI but **not persisted at signup** — the merchant sets them later in the merchant dashboard. Founder: confirm whether to add a business-details step post-login. |
+| Driver documents screen uploads **license/vehicle-reg/guarantor images** + vehicle details | Driver KYC (`POST /driver/kyc`) requires image **URLs**; no file-upload/storage service exists | Screen kept **visual only** (documented gap). Driver still creates the account + reaches pending review. Wire document capture + `POST /driver/vehicles` once storage ships (see storage dependency).                                                                                      |
+| All three verify via the existing **email OTP** screen                                     | `POST /auth/verify/email` + `PORTAL_EMAIL_ACTIVATION` (PR #95)                                 | Wired: register → email code → portal login → pending review. Activation requires `PORTAL_EMAIL_ACTIVATION=true` (set on prod).                                                                                                                                                            |
+| Pending-review checklists (merchant 3-step, driver 6-check, rider 2-step)                  | Merchant/driver approval = Admin endpoints; **rider approval not built**                       | Checklists are **static** (design), not live status. Rider approval backend is being built (Piece C); live status wiring follows once approval endpoints exist.                                                                                                                            |
+
 ---
 
 _This document is append-only in spirit: new differences get added as they're found; resolved

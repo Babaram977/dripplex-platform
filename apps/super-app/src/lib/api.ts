@@ -589,6 +589,8 @@ export const api = {
       dx<RegistrationResponse>('POST', '/auth/register/merchant', body),
     registerDriver: (body: Record<string, unknown>) =>
       dx<RegistrationResponse>('POST', '/auth/register/driver', body),
+    registerRider: (body: Record<string, unknown>) =>
+      dx<RegistrationResponse>('POST', '/auth/register/rider', body),
     becomeDriver: () => dx<{ userId: string }>('POST', '/auth/roles/driver'),
     becomeMerchant: () => dx<{ userId: string }>('POST', '/auth/roles/merchant'),
 

@@ -80,9 +80,11 @@ export function SplashScreen({ onDone }: { onDone: () => void }) {
 export function WelcomeScreen({
   onGetStarted,
   onSignIn,
+  onPartner,
 }: {
   onGetStarted: () => void;
   onSignIn: () => void;
+  onPartner?: () => void;
 }) {
   return (
     <div
@@ -202,6 +204,15 @@ export function WelcomeScreen({
           >
             I already have an account
           </button>
+          {onPartner && (
+            <button
+              onClick={onPartner}
+              className="py-1 text-center text-[13px] font-medium transition-opacity active:opacity-70"
+              style={{ fontFamily: "'Inter',sans-serif", color: G3 }}
+            >
+              Become a partner — sell, drive or deliver →
+            </button>
+          )}
         </div>
         <p
           className="text-center text-[11px]"
@@ -765,6 +776,7 @@ export function OTPScreen({
   email,
   verifyChannel = 'phone',
   password,
+  persona = 'customer',
   onBack,
   onChangeNumber,
   onVerified,
@@ -780,6 +792,10 @@ export function OTPScreen({
   // is ACTIVE, so we immediately log in with it and persist the session before
   // moving on. Absent (undefined) for any non-registration use of this screen.
   password?: string;
+  // Which portal to log in through after verification. Customer for consumer
+  // signup; merchant/driver/rider for partner onboarding (they activate on the
+  // email code while PORTAL_EMAIL_ACTIVATION is on, then land in pending review).
+  persona?: 'customer' | 'merchant' | 'driver' | 'rider';
   onBack: () => void;
   onChangeNumber: () => void;
   onVerified: () => void;
@@ -877,9 +893,16 @@ export function OTPScreen({
       // session so the user lands authenticated (Home works, orders can be
       // placed). Login uses the same identifier + password from registration.
       if (password) {
-        const res = await api.auth.loginCustomer(
-          useEmail ? { email: emailId, password } : { phone: e164, password },
-        );
+        const creds = useEmail ? { email: emailId, password } : { phone: e164, password };
+        const loginFn =
+          persona === 'merchant'
+            ? api.auth.loginMerchant
+            : persona === 'driver'
+              ? api.auth.loginDriver
+              : persona === 'rider'
+                ? api.auth.loginRider
+                : api.auth.loginCustomer;
+        const res = await loginFn(creds);
         if (res.accessToken && res.refreshToken) {
           auth.setTokens(res.accessToken, res.refreshToken);
         }

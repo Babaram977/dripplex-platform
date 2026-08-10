@@ -153,6 +153,15 @@ import {
   RiderJobScreen,
   RiderEarningsScreen,
 } from './riderScreen';
+import {
+  PartnerChoiceScreen,
+  MerchantSignUpScreen,
+  DriverSignUpScreen,
+  RiderSignUpScreen,
+  DriverDocumentsScreen,
+  PendingReviewScreen,
+} from './onboardingScreen';
+import type { PartnerPersona } from './onboardingScreen';
 import type { DeliveryJobDto, RideOfferDto, RideDto } from '../lib/api';
 
 // DESKTOP FRAME — for admin operations console
@@ -366,7 +375,13 @@ type Screen =
   | 'riderlogin'
   | 'riderdash'
   | 'riderjob'
-  | 'riderearnings';
+  | 'riderearnings'
+  | 'partnerselect'
+  | 'partnermerchant'
+  | 'partnerdriver'
+  | 'partnerrider'
+  | 'partnerdocs'
+  | 'partnerreview';
 
 function AppShell() {
   const [screen, setScreen] = useState<Screen>('splash');
@@ -379,10 +394,14 @@ function AppShell() {
     verifyChannel?: 'email' | 'phone';
     // Held in memory only for the register → OTP → login handoff. Never persisted.
     password?: string;
+    // Which portal to log in through after the email code verifies. 'customer'
+    // (default) for consumer signup; a partner persona for partner onboarding.
+    persona?: 'customer' | 'merchant' | 'driver' | 'rider';
   }>({
     phone: '801 234 5678',
     country: COUNTRIES[0],
   });
+  const [partnerPersona, setPartnerPersona] = useState<PartnerPersona>('merchant');
   const [activeRiderJob, setActiveRiderJob] = useState<DeliveryJobDto | null>(null);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [activeMerchantId, setActiveMerchantId] = useState<string | undefined>(undefined);
@@ -402,7 +421,13 @@ function AppShell() {
 
   const screens: Record<Screen, React.ReactNode> = {
     splash: <SplashScreen onDone={() => go('welcome')} />,
-    welcome: <WelcomeScreen onGetStarted={() => go('register')} onSignIn={() => go('signin')} />,
+    welcome: (
+      <WelcomeScreen
+        onGetStarted={() => go('register')}
+        onSignIn={() => go('signin')}
+        onPartner={() => go('partnerselect')}
+      />
+    ),
     register: (
       <RegisterScreen
         onContinue={({ email, phone, country, password, verifyChannel }) => {
@@ -420,9 +445,16 @@ function AppShell() {
         email={otpData.email}
         verifyChannel={otpData.verifyChannel}
         password={otpData.password}
-        onBack={() => go('register')}
-        onChangeNumber={() => go('register')}
-        onVerified={() => go('profile')}
+        persona={otpData.persona}
+        onBack={() =>
+          go(otpData.persona && otpData.persona !== 'customer' ? 'partnerselect' : 'register')
+        }
+        onChangeNumber={() =>
+          go(otpData.persona && otpData.persona !== 'customer' ? 'partnerselect' : 'register')
+        }
+        onVerified={() =>
+          go(otpData.persona && otpData.persona !== 'customer' ? 'partnerreview' : 'profile')
+        }
       />
     ),
     profile: (
@@ -908,6 +940,90 @@ function AppShell() {
       <RiderLoginScreen onContinue={() => go('riderdash')} onBack={() => go('home')} />
     ),
     riderearnings: <RiderEarningsScreen onBack={() => go('riderdash')} />,
+
+    // ── Partner Onboarding (merchant / driver / rider self-registration) ──────
+    partnerselect: (
+      <PartnerChoiceScreen
+        onSelect={(p) => {
+          setPartnerPersona(p);
+          go(
+            p === 'merchant'
+              ? 'partnermerchant'
+              : p === 'driver'
+                ? 'partnerdriver'
+                : 'partnerrider',
+          );
+        }}
+        onSignIn={() => go('signin')}
+      />
+    ),
+    partnermerchant: (
+      <MerchantSignUpScreen
+        onBack={() => go('partnerselect')}
+        onNext={({ email, password }) => {
+          setPartnerPersona('merchant');
+          setOtpData({
+            email,
+            phone: '',
+            country: COUNTRIES[0],
+            password,
+            verifyChannel: 'email',
+            persona: 'merchant',
+          });
+          go('otp');
+        }}
+        onSignIn={() => go('signin')}
+      />
+    ),
+    partnerdriver: (
+      <DriverSignUpScreen
+        onBack={() => go('partnerselect')}
+        onNext={({ email, password }) => {
+          setPartnerPersona('driver');
+          setOtpData({
+            email,
+            phone: '',
+            country: COUNTRIES[0],
+            password,
+            verifyChannel: 'email',
+            persona: 'driver',
+          });
+          go('otp');
+        }}
+        onSignIn={() => go('signin')}
+      />
+    ),
+    partnerrider: (
+      <RiderSignUpScreen
+        onBack={() => go('partnerselect')}
+        onNext={({ email, password }) => {
+          setPartnerPersona('rider');
+          setOtpData({
+            email,
+            phone: '',
+            country: COUNTRIES[0],
+            password,
+            verifyChannel: 'email',
+            persona: 'rider',
+          });
+          go('otp');
+        }}
+        onSignIn={() => go('signin')}
+      />
+    ),
+    partnerdocs: (
+      <DriverDocumentsScreen
+        onBack={() => go('partnerdriver')}
+        onSubmit={() => go('partnerreview')}
+      />
+    ),
+    partnerreview: (
+      <PendingReviewScreen
+        persona={partnerPersona}
+        onHome={() => go('home')}
+        onRefresh={() => {}}
+      />
+    ),
   };
 
   // ── Module quick-jump entries ──────────────────────────────────────────────
@@ -1081,6 +1197,19 @@ function AppShell() {
         { label: 'Dashboard', key: 'riderdash' },
         { label: 'Job Detail', key: 'riderjob' },
         { label: 'Earnings', key: 'riderearnings' },
+      ],
+    },
+    {
+      label: 'Partner Onboarding',
+      color: '#2BAC52',
+      emoji: '🤝',
+      screens: [
+        { label: 'Role Selection', key: 'partnerselect' },
+        { label: 'Merchant Sign-up', key: 'partnermerchant' },
+        { label: 'Driver Sign-up', key: 'partnerdriver' },
+        { label: 'Rider Sign-up', key: 'partnerrider' },
+        { label: 'Driver Documents', key: 'partnerdocs' },
+        { label: 'Pending Review', key: 'partnerreview' },
       ],
     },
   ];
