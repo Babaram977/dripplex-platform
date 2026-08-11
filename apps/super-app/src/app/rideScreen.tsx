@@ -488,7 +488,41 @@ function SafetyChip() {
   );
 }
 
-function StarRow({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+function StarRow({
+  value,
+  onChange,
+  rating,
+  size,
+}: {
+  value?: number;
+  onChange?: (v: number) => void;
+  rating?: number;
+  size?: number;
+}) {
+  // Display mode: a `rating` is shown read-only, without interactive click
+  // handling. Guarding here prevents a runtime crash when StarRow is used
+  // purely to render a rating (no `onChange` supplied).
+  if (!onChange) {
+    const filled = Math.round(rating ?? value ?? 0);
+    return (
+      <div className="flex gap-1">
+        {[1, 2, 3, 4, 5].map((n) => (
+          <span
+            key={n}
+            style={{
+              fontSize: size ?? 14,
+              filter: n <= filled ? 'none' : 'grayscale(1) opacity(.3)',
+            }}
+          >
+            ⭐
+          </span>
+        ))}
+      </div>
+    );
+  }
+
+  // Interactive mode: clickable stars that report the selected value.
+  const current = value ?? 0;
   return (
     <div className="flex justify-center gap-3">
       {[1, 2, 3, 4, 5].map((n) => (
@@ -496,7 +530,7 @@ function StarRow({ value, onChange }: { value: number; onChange: (v: number) => 
           key={n}
           onClick={() => onChange(n)}
           className="transition-transform active:scale-90"
-          style={{ fontSize: 36, filter: n <= value ? 'none' : 'grayscale(1) opacity(.3)' }}
+          style={{ fontSize: 36, filter: n <= current ? 'none' : 'grayscale(1) opacity(.3)' }}
         >
           ⭐
         </button>
