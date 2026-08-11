@@ -27,4 +27,24 @@ describe('AdminDriverIdentityVerificationClient', () => {
       auth: true,
     });
   });
+
+  it('verify() posts to /admin/drivers/:id/identity-verification/verify with remarks', async () => {
+    const { http, request } = createHttpMock();
+    await new AdminDriverIdentityVerificationClient(http).verify('driver-1', 'matched licence');
+    expect(request).toHaveBeenCalledWith('/admin/drivers/driver-1/identity-verification/verify', {
+      method: 'POST',
+      body: { remarks: 'matched licence' },
+      auth: true,
+    });
+  });
+
+  it('verify() posts an empty body when no remarks given', async () => {
+    const { http, request } = createHttpMock();
+    await new AdminDriverIdentityVerificationClient(http).verify('driver-1');
+    expect(request).toHaveBeenCalledWith('/admin/drivers/driver-1/identity-verification/verify', {
+      method: 'POST',
+      body: {},
+      auth: true,
+    });
+  });
 });

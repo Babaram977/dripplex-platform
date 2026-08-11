@@ -1,13 +1,25 @@
-import { Controller, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Req,
+} from '@nestjs/common';
 import { DriverVerificationTrigger } from '@prisma/client';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 import { DRIVER_PERMISSIONS } from '../driver.constants';
+import { VerifyIdentityDto } from '../dto/verify-identity.dto';
+import { toDriverIdentityVerificationDto } from '../identity-verification/driver-identity-verification.mapper';
 import { DriverIdentityVerificationService } from '../identity-verification/driver-identity-verification.service';
 
 import type { AuthenticatedUser } from '../../auth/auth.types';
 import type { ApiSuccessResponse } from '../../common/dto/api-response.dto';
+import type { DriverIdentityVerificationDto } from '@dripplex/types';
 import type { Request } from 'express';
 
 /**
@@ -32,6 +44,26 @@ export class AdminDriverIdentityVerificationController {
       { userId: admin.id, ...(request.ip !== undefined ? { ipAddress: request.ip } : {}) },
     );
     return { success: true, data: { required: true } };
+  }
+
+  @Post('verify')
+  @HttpCode(HttpStatus.OK)
+  public async verify(
+    @CurrentUser() admin: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: VerifyIdentityDto,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<DriverIdentityVerificationDto>> {
+    const record = await this.identityVerificationService.verifyManually(
+      id,
+      admin.id,
+      dto.remarks,
+      {
+        userId: admin.id,
+        ...(request.ip !== undefined ? { ipAddress: request.ip } : {}),
+      },
+    );
+    return { success: true, data: toDriverIdentityVerificationDto(record) };
   }
 
   @Post('unlock')

@@ -1,4 +1,5 @@
 import type { HttpClient } from '../client/http-client.js';
+import type { DriverIdentityVerificationDto } from '@dripplex/types';
 
 /**
  * DPX-DRIVER-012 — admin surface for AdminDriverIdentityVerificationController
@@ -13,6 +14,18 @@ export class AdminDriverIdentityVerificationClient {
     return this.http.request<{ required: true }>(
       `/admin/drivers/${driverId}/identity-verification/require`,
       { method: 'POST', auth: true },
+    );
+  }
+
+  /**
+   * Manually mark a driver's identity verified after reviewing their submitted
+   * ID/KYC (MANUAL_REVIEW provider). Clears the activation identity gate and
+   * any lockout. Optional `remarks` are recorded on the audit trail.
+   */
+  public verify(driverId: string, remarks?: string): Promise<DriverIdentityVerificationDto> {
+    return this.http.request<DriverIdentityVerificationDto>(
+      `/admin/drivers/${driverId}/identity-verification/verify`,
+      { method: 'POST', body: remarks !== undefined ? { remarks } : {}, auth: true },
     );
   }
 

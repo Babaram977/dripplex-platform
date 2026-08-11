@@ -5,6 +5,7 @@ import {
   DriverVerificationStatus,
   DriverVerificationTrigger,
   FraudReviewStatus,
+  IdentityVerificationProvider as IdentityVerificationProviderEnum,
   type DriverIdentityVerification,
 } from '@prisma/client';
 
@@ -297,6 +298,63 @@ export class DriverIdentityVerificationService {
       { ...context, userId: driverId },
       { resource: 'driver_profile', resourceId: profile.id },
     );
+  }
+
+  /**
+   * DPX-DRIVER (task #15) — an operations reviewer marks the driver's identity
+   * verified after reviewing their submitted ID/KYC documents, satisfying
+   * DriverActivationService's identity gate without an external vendor. Records
+   * an append-only PASSED verification (provider MANUAL_REVIEW) and clears any
+   * required/locked state and the failure counter, so a manual review also
+   * resolves a lockout. The DrippleX-native device-biometric (WebAuthn)
+   * provider is a follow-up; this is the launch path that removes the hard
+   * Smile ID dependency.
+   */
+  public async verifyManually(
+    driverId: string,
+    adminId: string,
+    remarks: string | undefined,
+    context: AuditContext,
+  ): Promise<DriverIdentityVerification> {
+    const profile = await this.prisma.driverProfile.findUnique({ where: { userId: driverId } });
+    if (!profile) {
+      throw new NotFoundDomainException('Driver profile not found');
+    }
+
+    const now = new Date();
+    const record = await this.prisma.driverIdentityVerification.create({
+      data: {
+        driverId,
+        provider: IdentityVerificationProviderEnum.MANUAL_REVIEW,
+        trigger:
+          profile.identityVerificationRequiredReason ?? DriverVerificationTrigger.MANUAL_ADMIN,
+        status: DriverVerificationStatus.PASSED,
+        completedAt: now,
+        providerReference: `manual-review:${adminId}`,
+      },
+    });
+
+    await this.prisma.driverProfile.update({
+      where: { userId: driverId },
+      data: {
+        lastIdentityVerifiedAt: now,
+        identityVerificationRequiredReason: null,
+        identityVerificationLockedAt: null,
+        failedVerificationAttempts: 0,
+      },
+    });
+
+    await this.auditService.record(
+      DRIVER_AUDIT_ACTIONS.IDENTITY_VERIFICATION_PASSED,
+      { ...context, userId: driverId },
+      {
+        resource: 'driver_identity_verification',
+        resourceId: record.id,
+        metadata: { manual: true, reviewedBy: adminId, ...(remarks ? { remarks } : {}) },
+      },
+    );
+
+    return record;
   }
 
   public async status(driverId: string, deviceId?: string): Promise<VerificationRequiredCheck> {

@@ -727,6 +727,7 @@ model DriverProfile {
 
 enum IdentityVerificationProvider {
   SMILE_ID
+  MANUAL_REVIEW
 }
 
 enum DriverVerificationTrigger {
