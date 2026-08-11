@@ -215,3 +215,42 @@ backend) rather than faked, per §3 "document gaps, don't invent."
   duplicate of the real `apps/operations-console` Next.js app. Its buttons (Save Changes,
   Change Password, Revoke, report date-presets) are intentionally inert — the functional
   Operations Console is the separately-deployed app, not this preview.
+
+---
+
+### Merchant product model — base price + variants wiring (DPX-MERCHANT-003) — logged 2026-08-11
+
+The merchant Products screen was wired to a flattened UI shape (`price` / `published` /
+`inStock` / `category` name / `imageUrl`) that does not match the real backend `ProductDto`
+(`basePrice` + `variants[]`, `status` enum, `inventory`, `images[]`, `categoryId`). The read
+path already mapped the raw entity to that flat shape, but the **write** path was broken —
+create/update sent fields the backend ignores, publish/stock were PATCHed as non-existent
+fields, and there was no variants UI at all.
+
+Founder decision (2026-08-11): the merchant portal manages **base price + variants** (the
+full model), not a single flat price.
+
+Wiring done in this pass (verified against the backend contract in
+`apps/backend/src/products/*` — controllers, DTOs, mapper):
+
+| Concern  | Real backend contract                                                                                       | Implementation                                                                                    |
+| -------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Price    | `basePrice` (Decimal) + per-variant `priceOverride`                                                         | Create/Update send `basePrice`; variants carry optional `priceOverride`.                          |
+| Publish  | `POST /merchant/products/:id/publish` \| `/unpublish` (status transition, asymmetric: unpublish → ARCHIVED) | Publish toggle calls the dedicated endpoints, not a PATCH field.                                  |
+| Stock    | `PATCH /merchant/products/:id/stock-status { outOfStock }` → `inventory.manuallyDisabled`                   | In-stock toggle calls stock-status; read `inStock` = `available > 0 && !manuallyDisabled`.        |
+| Category | `categoryId` (UUID)                                                                                         | Real category dropdown from `GET /categories` (id → name); create/update send `categoryId`.       |
+| Variants | `POST/PATCH/DELETE /merchant/products/:id/variants { name, sku?, priceOverride? }`                          | Variants section in the product editor (add/list/remove); only available once the product exists. |
+| Images   | `images[]` via `/images` sub-endpoints                                                                      | Still read-only (first image shown); full image management deferred — logged below.               |
+
+**Open dependency (Figma):** the variant editor + category picker reuse the existing merchant
+design-system components (`MxCard`/`MxInput`/`MxSelect`/`MxBtn`) because there is no Figma frame
+for merchant variant/inventory management yet — same pattern as the rider-documents work
+(DPX-RIDER-002): built on the shared design system, to be reconciled when the founder adds the
+matching Figma frames. Product **image upload** and per-variant **inventory** remain deferred
+(no design; backend supports images via `/images` and inventory via `/inventory`).
+
+**Verification status:** render-safe (super-app builds clean; a Playwright crawl of the Merchant
+screens shows 0 pageerrors). End-to-end write-path verification against a live backend is
+**pending** — it could not be run from the build sandbox (the local stack was reclaimed and the
+production backend is egress-restricted). The endpoint paths/payloads are grounded in the real
+backend controller/DTO source, so this is a live-smoke gap, not a contract guess.

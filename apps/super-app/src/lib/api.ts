@@ -500,16 +500,35 @@ export interface DeliveryEtaDto {
 // Merchant types
 export interface MerchantOrderDto extends OrderDto {}
 
+export interface MerchantProductVariantDto {
+  id: string;
+  name: string;
+  sku: string | null;
+  priceOverride: number | null;
+  isActive: boolean;
+}
+
 export interface MerchantProductDto {
   id: string;
   name: string;
   description: string | null;
+  /** Flat alias of basePrice, kept for existing dashboard cards. */
   price: number;
+  basePrice: number;
   currency: string;
+  /** Display alias of categoryId (the UI shows/edits categoryId). */
   category: string | null;
+  categoryId: string | null;
+  sku: string | null;
   imageUrl: string | null;
+  /** Derived: has sellable stock and is not manually disabled. */
   inStock: boolean;
+  /** True when the backend product status is PUBLISHED. */
   published: boolean;
+  status: string;
+  /** Product-level inventory quantity (0 when untracked/none). */
+  stockQty: number;
+  variants: MerchantProductVariantDto[];
   createdAt: string;
   updatedAt: string;
 }
@@ -522,10 +541,22 @@ export interface RawMerchantProduct {
   basePrice: number;
   currency: string;
   categoryId: string | null;
+  sku?: string | null;
   status: string;
   publishedAt: string | null;
   images?: { url: string }[];
-  inventory?: { available?: number; quantity?: number } | null;
+  inventory?: {
+    available?: number;
+    quantity?: number;
+    manuallyDisabled?: boolean;
+  } | null;
+  variants?: {
+    id: string;
+    name: string;
+    sku?: string | null;
+    priceOverride?: number | null;
+    isActive?: boolean;
+  }[];
   createdAt: string;
   updatedAt: string;
 }
@@ -1078,34 +1109,89 @@ export const api = {
         'GET',
         '/merchant/products',
       );
-      const items: MerchantProductDto[] = (res.items ?? []).map((p) => ({
-        id: p.id,
-        name: p.name,
-        description: p.description ?? null,
-        price: p.basePrice,
-        currency: p.currency,
-        category: p.categoryId ?? null,
-        imageUrl: p.images?.[0]?.url ?? null,
-        inStock: (p.inventory?.available ?? p.inventory?.quantity ?? 0) > 0,
-        published: p.status === 'PUBLISHED' || !!p.publishedAt,
-        createdAt: p.createdAt,
-        updatedAt: p.updatedAt,
-      }));
+      const items: MerchantProductDto[] = (res.items ?? []).map((p) => {
+        const qty = p.inventory?.available ?? p.inventory?.quantity ?? 0;
+        return {
+          id: p.id,
+          name: p.name,
+          description: p.description ?? null,
+          price: p.basePrice,
+          basePrice: p.basePrice,
+          currency: p.currency,
+          category: p.categoryId ?? null,
+          categoryId: p.categoryId ?? null,
+          sku: p.sku ?? null,
+          imageUrl: p.images?.[0]?.url ?? null,
+          // A product only counts as in stock when it has sellable quantity and
+          // the merchant hasn't manually marked it out of stock.
+          inStock: qty > 0 && !p.inventory?.manuallyDisabled,
+          published: p.status === 'PUBLISHED' || !!p.publishedAt,
+          status: p.status,
+          stockQty: qty,
+          variants: (p.variants ?? []).map((v) => ({
+            id: v.id,
+            name: v.name,
+            sku: v.sku ?? null,
+            priceOverride: v.priceOverride ?? null,
+            isActive: v.isActive ?? true,
+          })),
+          createdAt: p.createdAt,
+          updatedAt: p.updatedAt,
+        };
+      });
       return { items, meta: res.meta };
     },
+    // Create/update only accept the backend's scalar product fields
+    // (CreateProductDto/UpdateProductDto): categoryId (a UUID, not a name),
+    // name, description, basePrice, currency, sku. Publishing, stock and
+    // variants are managed through the dedicated endpoints below.
     createProduct: (body: {
+      categoryId?: string;
       name: string;
       description?: string;
-      price: number;
+      basePrice: number;
       currency?: string;
-      category?: string;
-      imageUrl?: string;
-      inStock?: boolean;
-      published?: boolean;
-    }) => dx<MerchantProductDto>('POST', '/merchant/products', body),
-    updateProduct: (id: string, body: Partial<MerchantProductDto>) =>
-      dx<MerchantProductDto>('PATCH', `/merchant/products/${id}`, body),
+      sku?: string;
+    }) => dx<RawMerchantProduct>('POST', '/merchant/products', body),
+    updateProduct: (
+      id: string,
+      body: {
+        categoryId?: string;
+        name?: string;
+        description?: string;
+        basePrice?: number;
+        currency?: string;
+        sku?: string;
+        isFeatured?: boolean;
+      },
+    ) => dx<RawMerchantProduct>('PATCH', `/merchant/products/${id}`, body),
     deleteProduct: (id: string) => dx<void>('DELETE', `/merchant/products/${id}`),
+
+    // Publish state is a status transition, not an updatable field.
+    publishProduct: (id: string) =>
+      dx<RawMerchantProduct>('POST', `/merchant/products/${id}/publish`),
+    unpublishProduct: (id: string) =>
+      dx<RawMerchantProduct>('POST', `/merchant/products/${id}/unpublish`),
+
+    // Stock: `outOfStock` toggles inventory.manuallyDisabled; setInventory
+    // adjusts the tracked quantity.
+    setProductStock: (id: string, outOfStock: boolean) =>
+      dx<RawMerchantProduct>('PATCH', `/merchant/products/${id}/stock-status`, { outOfStock }),
+    setProductInventory: (
+      id: string,
+      body: { quantity?: number; lowStockAlert?: number; trackInventory?: boolean },
+    ) => dx<RawMerchantProduct>('PATCH', `/merchant/products/${id}/inventory`, body),
+
+    // Variants — base price + per-variant priceOverride.
+    createVariant: (id: string, body: { name: string; sku?: string; priceOverride?: number }) =>
+      dx<RawMerchantProduct>('POST', `/merchant/products/${id}/variants`, body),
+    updateVariant: (
+      id: string,
+      variantId: string,
+      body: { name?: string; sku?: string; priceOverride?: number; isActive?: boolean },
+    ) => dx<RawMerchantProduct>('PATCH', `/merchant/products/${id}/variants/${variantId}`, body),
+    deleteVariant: (id: string, variantId: string) =>
+      dx<RawMerchantProduct>('DELETE', `/merchant/products/${id}/variants/${variantId}`),
 
     // Orders — accept moves to PREPARING (no separate preparing endpoint)
     getOrders: (params?: { page?: number; pageSize?: number; status?: string }) =>
