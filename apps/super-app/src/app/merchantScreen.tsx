@@ -816,7 +816,7 @@ function DashboardPage({
       .catch(() => {});
     api.merchant
       .getProducts()
-      .then((r) => setProducts(r as MerchantProductDto[]))
+      .then((r) => setProducts(r.items ?? []))
       .catch(() => {});
   }, []);
 
@@ -1882,7 +1882,7 @@ function ProductsPage() {
 
   const fetchProducts = useCallback(async () => {
     try {
-      setProducts((await api.merchant.getProducts()) as MerchantProductDto[]);
+      setProducts((await api.merchant.getProducts()).items ?? []);
     } catch {
       setProducts([]);
     } finally {
@@ -2973,7 +2973,7 @@ function EarningsPage() {
     Promise.all([
       api.merchant
         .getSettlements()
-        .then((r) => setSettlements(r as MerchantSettlementDto[]))
+        .then((r) => setSettlements(r.items ?? []))
         .catch(() => {}),
       api.merchant
         .getWallet()

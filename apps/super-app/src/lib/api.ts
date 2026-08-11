@@ -514,6 +514,22 @@ export interface MerchantProductDto {
   updatedAt: string;
 }
 
+// Raw product entity as returned by GET /merchant/products (before UI normalization).
+export interface RawMerchantProduct {
+  id: string;
+  name: string;
+  description: string | null;
+  basePrice: number;
+  currency: string;
+  categoryId: string | null;
+  status: string;
+  publishedAt: string | null;
+  images?: { url: string }[];
+  inventory?: { available?: number; quantity?: number } | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface MerchantSettlementDto {
   id: string;
   orderId: string;
@@ -1054,8 +1070,29 @@ export const api = {
     submitKycDoc: (body: { documentType: string; frontImageUrl: string; backImageUrl?: string }) =>
       dx<MerchantKycDto>('POST', '/merchant/kyc', body),
 
-    // Products
-    getProducts: () => dx<MerchantProductDto[]>('GET', '/merchant/products'),
+    // Products: the backend returns a paginated { items, meta } envelope of RAW
+    // product entities (basePrice / status / images[] / inventory), so normalize
+    // each to the MerchantProductDto shape the UI renders.
+    getProducts: async () => {
+      const res = await dx<{ items: RawMerchantProduct[]; meta: unknown }>(
+        'GET',
+        '/merchant/products',
+      );
+      const items: MerchantProductDto[] = (res.items ?? []).map((p) => ({
+        id: p.id,
+        name: p.name,
+        description: p.description ?? null,
+        price: p.basePrice,
+        currency: p.currency,
+        category: p.categoryId ?? null,
+        imageUrl: p.images?.[0]?.url ?? null,
+        inStock: (p.inventory?.available ?? p.inventory?.quantity ?? 0) > 0,
+        published: p.status === 'PUBLISHED' || !!p.publishedAt,
+        createdAt: p.createdAt,
+        updatedAt: p.updatedAt,
+      }));
+      return { items, meta: res.meta };
+    },
     createProduct: (body: {
       name: string;
       description?: string;
@@ -1085,7 +1122,8 @@ export const api = {
       dx<MerchantOrderDto>('PATCH', `/merchant/orders/${id}/cancel`, { reason }),
 
     // Earnings / settlements
-    getSettlements: () => dx<MerchantSettlementDto[]>('GET', '/merchant/settlements'),
+    getSettlements: () =>
+      dx<{ items: MerchantSettlementDto[]; meta: unknown }>('GET', '/merchant/settlements'),
 
     // Wallet
     getWallet: () => dx<WalletDto>('GET', '/merchant/wallet'),
