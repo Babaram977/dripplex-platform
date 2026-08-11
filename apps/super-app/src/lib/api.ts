@@ -1013,8 +1013,12 @@ export const api = {
     submitKycDoc: (body: { documentType: string; frontImageUrl: string; backImageUrl?: string }) =>
       dx<MerchantKycDto>('POST', '/merchant/kyc', body),
 
-    // Products
-    getProducts: () => dx<MerchantProductDto[]>('GET', '/merchant/products'),
+    // Products — the backend returns a PaginatedResult ({ items: [...] }),
+    // matching /merchant/orders. Unwrap to a bare array so callers can treat
+    // the result as MerchantProductDto[] (a raw cast to an array left callers
+    // running .filter() on the pagination envelope and crashing).
+    getProducts: async () =>
+      (await dx<PaginatedResult<MerchantProductDto>>('GET', '/merchant/products')).items ?? [],
     createProduct: (body: {
       name: string;
       description?: string;
