@@ -171,3 +171,39 @@ the visual source of truth — on 2026-08-10.
 _This document is append-only in spirit: new differences get added as they're found; resolved
 items get their Action column updated (not deleted), so the history of what changed and when stays
 visible. Owner: founder. Compiled/maintained by: Claude, per DPX-FIGMA-001._
+
+---
+
+### Merchant product model — super-app DTO vs real backend contract (DPX-MERCHANT-003) — logged 2026-08-11
+
+Surfaced by the super-app UI crawl harness (`_e2e/button-test.mjs`): signing in on the
+Merchant Portal (demo merchant `dxresto@dripplex.demo`) crashed the dashboard. Two distinct
+defects, both verified against the running backend (`GET /merchant/products`,
+`GET /merchant/orders`, demo login):
+
+1. **Pagination envelope treated as an array (fixed).** `GET /merchant/products` returns
+   `ApiSuccessResponse<PaginatedResult>` (`{ data: { items, meta } }`), exactly like
+   `/merchant/orders`. `api.merchant.getProducts()` was typed `MerchantProductDto[]` and callers
+   ran `.filter()` on the envelope → `s.filter is not a function`. Fixed by unwrapping `.items`
+   (branch `claude/fix-merchant-products-filter-crash`).
+
+2. **Product field-name contract mismatch (OPEN — needs founder confirmation).** The super-app's
+   `MerchantProductDto` assumes a flat pilot shape that does **not** match the real `ProductDto`:
+
+   | super-app `MerchantProductDto` | real backend `ProductDto` (verified)                         | Note                                                  |
+   | ------------------------------ | ------------------------------------------------------------ | ----------------------------------------------------- |
+   | `price: number`                | `basePrice: number` + `variants[]` (each with its own price) | UI's single price can't represent per-variant pricing |
+   | `published: boolean`           | `status: 'PUBLISHED' \| 'DRAFT' \| …`                        | boolean vs enum                                       |
+   | `inStock: boolean`             | `inventory` (stock record)                                   | derived, not a flat boolean                           |
+   | `imageUrl: string \| null`     | `images[]`                                                   | array of images                                       |
+   | `category: string \| null`     | `categoryId` (+ category relation)                           | id vs label                                           |
+   | —                              | `slug`, `sku`, `brandId`, `isFeatured`, `publishedAt`        | present in backend, unused in UI                      |
+
+   Because of this, the merchant dashboard/products screens render `undefined.toLocaleString()`
+   (on `p.price`), and the create/update product calls send `{price, published, inStock, category}`
+   which the backend (expecting `basePrice`/`status`/inventory/etc.) will not accept.
+
+   **Action:** this is a dedicated merchant-products wiring pass, not a defensive one-liner. Per the
+   standing rule above, the mapping is **not** invented here — the founder must confirm the pilot
+   merchant-product model, in particular whether the merchant UI edits a single `basePrice` or the
+   full `variants[]` pricing, before the fields are remapped. Logged for that follow-up.
