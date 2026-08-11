@@ -3,6 +3,7 @@
 // DPX-RIDER-002 adds document KYC (ID + guarantor ID) and a company name.
 
 import type { KycDocumentType, KycVerificationStatus } from '../merchant/index.js';
+import type { RatingSummaryDto } from '../product/index.js';
 
 export type RiderStatus = 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
 
@@ -42,6 +43,9 @@ export interface RiderProfileDto {
   updatedAt: string;
   /** DPX-RIDER-002 — the rider's submitted KYC documents. */
   kyc: RiderKycDto[];
+  /** DPX-REVIEWS-001 — the rider's public delivery rating (avg ★ + count),
+   * sourced from ReviewAggregate(RIDER). Zero/empty when unrated. */
+  rating: RatingSummaryDto;
 }
 
 /** DPX-RIDER-002 — self-service update of the rider's own profile fields.

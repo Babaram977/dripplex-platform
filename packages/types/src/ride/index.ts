@@ -89,6 +89,8 @@ export interface RideRatingDto {
   raterRole: RideRatingRole;
   rating: number;
   comment: string | null;
+  /** DPX-REVIEWS-001 — preset tags (customer→driver only). */
+  tags: string[];
   categoryRatings: RideCategoryRatings | null;
   createdAt: string;
 }
@@ -97,6 +99,8 @@ export interface RateRideRequest {
   rating: number;
   comment?: string;
   categoryRatings?: RideCategoryRatings;
+  /** DPX-REVIEWS-001 — preset tags (customer→driver only). */
+  tags?: string[];
 }
 
 export type RideProblemCategory =

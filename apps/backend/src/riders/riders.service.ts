@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { OnboardingStatus, RiderStatus } from '@prisma/client';
+import { OnboardingStatus, ReviewTargetType, RiderStatus } from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../audit/audit.service';
 import {
@@ -49,9 +49,24 @@ export class RidersService {
       this.prisma.riderProfile.count({ where }),
     ]);
 
+    // DPX-REVIEWS-001 — batch-load each rider's public rating aggregate.
+    const riderUserIds = profiles.map((profile) => profile.userId);
+    const aggregates = await this.prisma.reviewAggregate.findMany({
+      where: { targetType: ReviewTargetType.RIDER, targetId: { in: riderUserIds } },
+    });
+    const aggregateByRider = new Map(aggregates.map((agg) => [agg.targetId, agg]));
+
     const items = await Promise.all(
-      profiles.map(async ({ user, ...profile }) =>
-        await this.signRiderProfile(toRiderProfileDto({ profile, user, kyc: user.riderKycDocuments })),
+      profiles.map(
+        async ({ user, ...profile }) =>
+          await this.signRiderProfile(
+            toRiderProfileDto({
+              profile,
+              user,
+              kyc: user.riderKycDocuments,
+              ratingAggregate: aggregateByRider.get(profile.userId) ?? null,
+            }),
+          ),
       ),
     );
 
@@ -68,7 +83,12 @@ export class RidersService {
 
   public async getRiderProfile(riderUserId: string): Promise<RiderProfileDto> {
     const { profile, user, kyc } = await this.requireRiderProfile(riderUserId);
-    return await this.signRiderProfile(toRiderProfileDto({ profile, user, kyc }));
+    const ratingAggregate = await this.prisma.reviewAggregate.findUnique({
+      where: {
+        targetType_targetId: { targetType: ReviewTargetType.RIDER, targetId: riderUserId },
+      },
+    });
+    return await this.signRiderProfile(toRiderProfileDto({ profile, user, kyc, ratingAggregate }));
   }
 
   /**

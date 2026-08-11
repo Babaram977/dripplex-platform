@@ -1,4 +1,4 @@
-import { PaymentStatus, ReviewStatus, ReviewTargetType } from '@prisma/client';
+import { PaymentStatus, ReviewAuthorRole, ReviewStatus, ReviewTargetType } from '@prisma/client';
 
 import {
   NotFoundDomainException,
@@ -30,8 +30,10 @@ const review = (overrides: Partial<Review> = {}): Review => ({
   targetType: ReviewTargetType.PRODUCT,
   targetId,
   orderId: null,
+  authorRole: ReviewAuthorRole.CUSTOMER,
   rating: 5,
   comment: 'Great',
+  tags: [],
   photoUrls: [],
   verifiedPurchase: false,
   status: ReviewStatus.PENDING,
@@ -75,6 +77,10 @@ describe('ReviewsService', () => {
     },
     product: {
       findMany: jest.fn(),
+    },
+    deliveryJob: {
+      findFirst: jest.fn(),
+      count: jest.fn(),
     },
   };
 
@@ -442,6 +448,126 @@ describe('ReviewsService', () => {
     prisma.review.findFirst.mockResolvedValue(null);
     await expect(service.getCustomerReview(userId, reviewId)).rejects.toBeInstanceOf(
       NotFoundDomainException,
+    );
+  });
+
+  // DPX-REVIEWS-001 — rider ratings + tags.
+  const riderId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+  const jobId = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+
+  it('creates a verified RIDER review from a delivered job with valid tags', async () => {
+    prisma.deliveryJob.findFirst.mockResolvedValue({
+      id: jobId,
+      riderId,
+      orderId,
+      status: 'DELIVERED',
+    });
+    prisma.review.findFirst.mockResolvedValue(null); // not already reviewed
+    prisma.review.create.mockResolvedValue(
+      review({
+        targetType: ReviewTargetType.RIDER,
+        targetId: riderId,
+        orderId,
+        verifiedPurchase: true,
+        tags: ['On time', 'Polite'],
+      }),
+    );
+
+    const result = await service.createRiderReviewForDelivery(
+      userId,
+      jobId,
+      { rating: 5, comment: 'Great', tags: ['On time', 'Polite'] },
+      context,
+    );
+
+    expect(result.verifiedPurchase).toBe(true);
+    expect(prisma.review.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          targetType: ReviewTargetType.RIDER,
+          targetId: riderId,
+          authorRole: ReviewAuthorRole.CUSTOMER,
+          verifiedPurchase: true,
+          tags: ['On time', 'Polite'],
+        }),
+      }),
+    );
+  });
+
+  it('rejects an unknown tag for the rating direction', async () => {
+    prisma.deliveryJob.findFirst.mockResolvedValue({
+      id: jobId,
+      riderId,
+      orderId,
+      status: 'DELIVERED',
+    });
+    prisma.review.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.createRiderReviewForDelivery(
+        userId,
+        jobId,
+        { rating: 5, tags: ['Safe driving'] }, // driver tag, not valid for rider
+        context,
+      ),
+    ).rejects.toBeInstanceOf(ValidationDomainException);
+    expect(prisma.review.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects rating a delivery that is not DELIVERED', async () => {
+    prisma.deliveryJob.findFirst.mockResolvedValue({
+      id: jobId,
+      riderId,
+      orderId,
+      status: 'IN_TRANSIT',
+    });
+    await expect(
+      service.createRiderReviewForDelivery(userId, jobId, { rating: 4 }, context),
+    ).rejects.toBeInstanceOf(ValidationDomainException);
+  });
+
+  it('creates a merchant→rider review, verified when the rider delivered for the merchant', async () => {
+    prisma.merchantProfile.findUnique.mockResolvedValue({ id: merchantProfileId });
+    prisma.deliveryJob.count.mockResolvedValue(2);
+    prisma.review.create.mockResolvedValue(
+      review({
+        targetType: ReviewTargetType.RIDER,
+        targetId: riderId,
+        authorRole: ReviewAuthorRole.MERCHANT,
+        verifiedPurchase: true,
+      }),
+    );
+
+    const result = await service.createMerchantRiderReview(
+      userId,
+      riderId,
+      { rating: 4, tags: ['Prompt pickup'] },
+      context,
+    );
+
+    expect(result.authorRole).toBe(ReviewAuthorRole.MERCHANT);
+    expect(prisma.review.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          authorRole: ReviewAuthorRole.MERCHANT,
+          verifiedPurchase: true,
+          tags: ['Prompt pickup'],
+        }),
+      }),
+    );
+  });
+
+  it('marks a merchant→rider review unverified when the rider never delivered for the merchant', async () => {
+    prisma.merchantProfile.findUnique.mockResolvedValue({ id: merchantProfileId });
+    prisma.deliveryJob.count.mockResolvedValue(0);
+    prisma.review.create.mockResolvedValue(
+      review({ targetType: ReviewTargetType.RIDER, authorRole: ReviewAuthorRole.MERCHANT }),
+    );
+
+    await service.createMerchantRiderReview(userId, riderId, { rating: 3 }, context);
+
+    expect(prisma.review.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ verifiedPurchase: false }) }),
     );
   });
 });

@@ -111,6 +111,30 @@ describe('RideRatingService', () => {
     expect(rating.categoryRatings).toEqual({ driving: 5, cleanliness: 4 });
   });
 
+  // DPX-REVIEWS-001 — driver rating tags.
+  it('stores valid preset tags on a customer→driver rating', async () => {
+    if (!databaseAvailable) return;
+
+    const ride = await createCompletedRide();
+    const rating = await service.rateDriver(
+      customerId,
+      ride.id,
+      { rating: 5, tags: ['Safe driving', 'Polite', 'Safe driving'] },
+      {},
+    );
+
+    expect(rating.tags).toEqual(['Safe driving', 'Polite']); // de-duplicated
+  });
+
+  it('rejects a tag outside the fixed driver-rating set', async () => {
+    if (!databaseAvailable) return;
+
+    const ride = await createCompletedRide();
+    await expect(
+      service.rateDriver(customerId, ride.id, { rating: 5, tags: ['Well packaged'] }, {}),
+    ).rejects.toThrow('Unknown driver rating tag');
+  });
+
   it('lets a driver rate the customer independently of the customer rating', async () => {
     if (!databaseAvailable) return;
 

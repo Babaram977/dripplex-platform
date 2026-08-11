@@ -27,6 +27,7 @@ describe('DriversService', () => {
   let centreId: string;
   let customerId: string;
   const rideIds: string[] = [];
+  const userIds: string[] = [];
   const context = {};
 
   beforeAll(async () => {
@@ -131,6 +132,9 @@ describe('DriversService', () => {
       await prisma.user.delete({ where: { id: driverId } }).catch(() => undefined);
       await prisma.user.delete({ where: { id: adminId } }).catch(() => undefined);
       await prisma.user.delete({ where: { id: customerId } }).catch(() => undefined);
+      if (userIds.length > 0) {
+        await prisma.user.deleteMany({ where: { id: { in: userIds } } }).catch(() => undefined);
+      }
     }
     await prisma.$disconnect();
   });
@@ -484,6 +488,74 @@ describe('DriversService', () => {
       expect(stats.completedTrips).toBe(2);
       expect(stats.averageRating).toBe(4.5);
       expect(stats.ratingCount).toBe(2);
+    });
+  });
+
+  // DPX-REVIEWS-001 — public driver rating. Uses a fresh driver per test so
+  // ratings left on the shared `driverId` by other tests don't interfere.
+  describe('getPublicDriverRating', () => {
+    async function freshDriver(): Promise<string> {
+      const user = await prisma.user.create({
+        data: {
+          email: `public-rating-driver-${randomUUID()}@dripplex.test`,
+          passwordHash: 'not-a-real-hash',
+          firstName: 'Rated',
+          lastName: 'Driver',
+        },
+      });
+      userIds.push(user.id);
+      return user.id;
+    }
+
+    it('returns a zero/empty summary for an unrated driver', async () => {
+      if (!databaseAvailable) return;
+
+      const rating = await service.getPublicDriverRating(await freshDriver());
+
+      expect(rating).toEqual({ average: 0, count: 0 });
+    });
+
+    it('computes the aggregate from customer→driver ratings only', async () => {
+      if (!databaseAvailable) return;
+
+      const ratedDriver = await freshDriver();
+      const ride = await prisma.ride.create({
+        data: {
+          customerId,
+          driverId: ratedDriver,
+          rideType: RideType.ECONOMY,
+          status: RideStatus.COMPLETED,
+          pickupLatitude: 6.5244,
+          pickupLongitude: 3.3792,
+          dropoffLatitude: 6.601,
+          dropoffLongitude: 3.3489,
+        },
+      });
+      rideIds.push(ride.id);
+
+      await prisma.rideRating.create({
+        data: {
+          rideId: ride.id,
+          raterId: customerId,
+          rateeId: ratedDriver,
+          raterRole: RideRatingRole.CUSTOMER,
+          rating: 4,
+        },
+      });
+      // A driver→customer rating must not affect the driver's public rating.
+      await prisma.rideRating.create({
+        data: {
+          rideId: ride.id,
+          raterId: ratedDriver,
+          rateeId: customerId,
+          raterRole: RideRatingRole.DRIVER,
+          rating: 1,
+        },
+      });
+
+      const rating = await service.getPublicDriverRating(ratedDriver);
+
+      expect(rating).toEqual({ average: 4, count: 1 });
     });
   });
 });
