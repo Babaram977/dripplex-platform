@@ -791,6 +791,7 @@ export interface ProductDetailScreenProps {
   onAccount: () => void;
   onNotifications: () => void;
   onCart?: () => void;
+  onCheckout?: () => void;
   product?: ProductDetail;
   merchant?: StoreMerchant;
   productId?: string;
@@ -803,6 +804,7 @@ export function ProductDetailScreen({
   onAccount,
   onNotifications,
   onCart,
+  onCheckout,
   product: productProp = MOCK_PRODUCT,
   merchant: merchantProp = MOCK_MERCHANT,
   productId,
@@ -857,6 +859,26 @@ export function ProductDetailScreen({
     }
     setCartCount((c) => c + qty);
     setCartSheet(true);
+  };
+
+  // Buy Now: add to cart then jump straight to checkout (skip the confirmation sheet).
+  const handleBuyNow = async () => {
+    if (isOutOfStock || adding) return;
+    setAdding(true);
+    try {
+      await api.cart.addItem({
+        merchantId: merchantId ?? merchant.id,
+        productId: productId ?? product.id,
+        productName: product.name,
+        unitPrice: parseInt(product.price.replace(/[₦,]/g, ''), 10) || 0,
+        quantity: qty,
+      });
+    } catch {
+      // optimistic — proceed to checkout even if API unavailable
+    } finally {
+      setAdding(false);
+    }
+    onCheckout?.();
   };
 
   const handleTabChange = useCallback(
@@ -1516,6 +1538,7 @@ export function ProductDetailScreen({
           {/* Buy Now */}
           {!isOutOfStock && (
             <button
+              onClick={handleBuyNow}
               className="h-[50px] rounded-2xl px-4 text-[13px] font-semibold transition-all active:scale-[.97]"
               style={{
                 background: 'rgba(255,255,255,.07)',

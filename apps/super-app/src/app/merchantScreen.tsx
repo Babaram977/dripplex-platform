@@ -293,8 +293,9 @@ function MxSelect({
   label?: string;
   value: string;
   onChange: (v: string) => void;
-  options: string[];
+  options: (string | { value: string; label: string })[];
 }) {
+  const items = options.map((o) => (typeof o === 'string' ? { value: o, label: o } : o));
   return (
     <div style={{ marginBottom: 14 }}>
       {label && (
@@ -302,9 +303,9 @@ function MxSelect({
       )}
       <select className="mx-select" value={value} onChange={(e) => onChange(e.target.value)}>
         <option value="">Select…</option>
-        {options.map((o) => (
-          <option key={o} value={o}>
-            {o}
+        {items.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
           </option>
         ))}
       </select>
@@ -816,7 +817,7 @@ function DashboardPage({
       .catch(() => {});
     api.merchant
       .getProducts()
-      .then((r) => setProducts(r as MerchantProductDto[]))
+      .then((r) => setProducts(r.items ?? []))
       .catch(() => {});
   }, []);
 
@@ -1873,16 +1874,26 @@ function OrderDetailPage({ orderId, onBack }: { orderId: string; onBack: () => v
 // ─────────────────────────────────────────────────────────────────────────────
 function ProductsPage() {
   const [products, setProducts] = useState<MerchantProductDto[]>([]);
+  const [categories, setCategories] = useState<{ value: string; label: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: '', category: '', price: '', description: '' });
+  const [form, setForm] = useState({
+    name: '',
+    categoryId: '',
+    basePrice: '',
+    sku: '',
+    description: '',
+  });
   const [showDeleteId, setShowDeleteId] = useState<string | null>(null);
+  // Variant editor (only meaningful once a product exists).
+  const [variantDraft, setVariantDraft] = useState({ name: '', priceOverride: '', sku: '' });
+  const [variantBusy, setVariantBusy] = useState(false);
 
   const fetchProducts = useCallback(async () => {
     try {
-      setProducts((await api.merchant.getProducts()) as MerchantProductDto[]);
+      setProducts((await api.merchant.getProducts()).items ?? []);
     } catch {
       setProducts([]);
     } finally {
@@ -1892,59 +1903,111 @@ function ProductsPage() {
 
   useEffect(() => {
     fetchProducts();
+    api.marketplace
+      .getCategories()
+      .then((cs) => setCategories(cs.map((c) => ({ value: c.id, label: c.name }))))
+      .catch(() => setCategories([]));
   }, [fetchProducts]);
 
+  const catName = (id: string | null) =>
+    categories.find((c) => c.value === id)?.label ?? (id ? 'Uncategorized' : 'Uncategorized');
+
+  // The product currently open in the editor (for its live variant list).
+  const editing = editId ? (products.find((p) => p.id === editId) ?? null) : null;
+
   const openAdd = () => {
-    setForm({ name: '', category: '', price: '', description: '' });
+    setForm({ name: '', categoryId: '', basePrice: '', sku: '', description: '' });
+    setVariantDraft({ name: '', priceOverride: '', sku: '' });
     setEditId(null);
     setShowAdd(true);
   };
   const openEdit = (p: MerchantProductDto) => {
     setForm({
       name: p.name,
-      category: p.category ?? '',
-      price: String(p.price),
+      categoryId: p.categoryId ?? '',
+      basePrice: String(p.basePrice),
+      sku: p.sku ?? '',
       description: p.description ?? '',
     });
+    setVariantDraft({ name: '', priceOverride: '', sku: '' });
     setEditId(p.id);
     setShowAdd(true);
   };
 
   const saveProduct = async () => {
-    if (!form.name || !form.price) return;
+    if (!form.name || !form.basePrice) return;
     setSaving(true);
     try {
       if (editId) {
         await api.merchant.updateProduct(editId, {
           name: form.name,
-          category: form.category,
-          price: Number(form.price),
+          categoryId: form.categoryId || undefined,
+          basePrice: Number(form.basePrice),
+          sku: form.sku || undefined,
           description: form.description || undefined,
         });
+        await fetchProducts();
       } else {
-        await api.merchant.createProduct({
+        // Create returns the new product; keep the editor open on it so the
+        // merchant can immediately add variants (which need a product id).
+        const created = await api.merchant.createProduct({
           name: form.name,
-          category: form.category,
-          price: Number(form.price),
+          categoryId: form.categoryId || undefined,
+          basePrice: Number(form.basePrice),
+          sku: form.sku || undefined,
           description: form.description || undefined,
-          inStock: true,
-          published: false,
         });
+        await fetchProducts();
+        setEditId(created.id);
       }
-      await fetchProducts();
-      setShowAdd(false);
     } catch {
     } finally {
       setSaving(false);
     }
   };
 
+  // Publish state is a status transition; stock is inventory.manuallyDisabled.
   const toggle = async (p: MerchantProductDto, field: 'inStock' | 'published') => {
-    setProducts((ps) => ps.map((x) => (x.id === p.id ? { ...x, [field]: !x[field] } : x)));
+    const next = !p[field];
+    setProducts((ps) => ps.map((x) => (x.id === p.id ? { ...x, [field]: next } : x)));
     try {
-      await api.merchant.updateProduct(p.id, { [field]: !p[field] });
+      if (field === 'published') {
+        await (next ? api.merchant.publishProduct(p.id) : api.merchant.unpublishProduct(p.id));
+      } else {
+        // next=true means "in stock" → not out of stock.
+        await api.merchant.setProductStock(p.id, !next);
+      }
     } catch {
       fetchProducts();
+    }
+  };
+
+  const addVariant = async () => {
+    if (!editId || !variantDraft.name) return;
+    setVariantBusy(true);
+    try {
+      await api.merchant.createVariant(editId, {
+        name: variantDraft.name,
+        sku: variantDraft.sku || undefined,
+        priceOverride: variantDraft.priceOverride ? Number(variantDraft.priceOverride) : undefined,
+      });
+      setVariantDraft({ name: '', priceOverride: '', sku: '' });
+      await fetchProducts();
+    } catch {
+    } finally {
+      setVariantBusy(false);
+    }
+  };
+
+  const removeVariant = async (variantId: string) => {
+    if (!editId) return;
+    setVariantBusy(true);
+    try {
+      await api.merchant.deleteVariant(editId, variantId);
+      await fetchProducts();
+    } catch {
+    } finally {
+      setVariantBusy(false);
     }
   };
 
@@ -1957,8 +2020,6 @@ function ProductsPage() {
       fetchProducts();
     }
   };
-
-  const CATEGORIES = ['Rice', 'Soup', 'Swallow', 'Protein', 'Drinks', 'Snacks', 'Other'];
 
   return (
     <div
@@ -2036,11 +2097,14 @@ function ProductsPage() {
                       {p.name}
                     </div>
                     <div style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>
-                      {p.category ?? 'Uncategorized'}
+                      {catName(p.categoryId)}
+                      {p.variants.length > 0
+                        ? ` · ${p.variants.length} variant${p.variants.length > 1 ? 's' : ''}`
+                        : ''}
                     </div>
                   </div>
                   <div style={{ fontFamily: PP, fontSize: 13, fontWeight: 700, color: G3 }}>
-                    ₦{p.price.toLocaleString()}
+                    ₦{p.basePrice.toLocaleString()}
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
@@ -2108,16 +2172,22 @@ function ProductsPage() {
           />
           <MxSelect
             label="Category"
-            value={form.category}
-            onChange={(v) => setForm((f) => ({ ...f, category: v }))}
-            options={CATEGORIES}
+            value={form.categoryId}
+            onChange={(v) => setForm((f) => ({ ...f, categoryId: v }))}
+            options={categories}
           />
           <MxInput
-            label="Price (₦) *"
+            label="Base price (₦) *"
             placeholder="e.g. 1800"
-            value={form.price}
-            onChange={(v) => setForm((f) => ({ ...f, price: v }))}
+            value={form.basePrice}
+            onChange={(v) => setForm((f) => ({ ...f, basePrice: v }))}
             type="number"
+          />
+          <MxInput
+            label="SKU (optional)"
+            placeholder="e.g. JOL-001"
+            value={form.sku}
+            onChange={(v) => setForm((f) => ({ ...f, sku: v }))}
           />
           <MxInput
             label="Description (optional)"
@@ -2125,25 +2195,124 @@ function ProductsPage() {
             value={form.description}
             onChange={(v) => setForm((f) => ({ ...f, description: v }))}
           />
-          <div
-            style={{
-              padding: '10px 14px',
-              borderRadius: 8,
-              background: NAVY_SURFACE,
-              border: `1px solid ${BORDER}`,
-              marginBottom: 16,
-            }}
-          >
-            <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>
-              Product image upload — not available in pilot
+
+          {/* Variants — base price + per-variant price overrides. Only available
+              once the product exists (variants attach to a product id). */}
+          {editId ? (
+            <div
+              style={{
+                padding: '12px 14px',
+                borderRadius: 8,
+                background: NAVY_SURFACE,
+                border: `1px solid ${BORDER}`,
+                marginBottom: 16,
+              }}
+            >
+              <div style={{ fontFamily: PP, fontSize: 13, fontWeight: 700, color: WHITE }}>
+                Variants
+              </div>
+              <div style={{ fontFamily: IT, fontSize: 11, color: MUTED, marginBottom: 10 }}>
+                Add sizes or options. Leave price blank to use the base price.
+              </div>
+              {editing && editing.variants.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+                  {editing.variants.map((v) => (
+                    <div
+                      key={v.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 8,
+                        padding: '7px 10px',
+                        borderRadius: 7,
+                        background: NAVY_CARD,
+                        border: `1px solid ${BORDER}`,
+                      }}
+                    >
+                      <span style={{ fontFamily: IT, fontSize: 12, color: WHITE }}>
+                        {v.name}
+                        {v.sku ? ` · ${v.sku}` : ''}
+                      </span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span style={{ fontFamily: PP, fontSize: 12, fontWeight: 600, color: G3 }}>
+                          {v.priceOverride != null
+                            ? `₦${v.priceOverride.toLocaleString()}`
+                            : 'Base price'}
+                        </span>
+                        <button
+                          onClick={() => removeVariant(v.id)}
+                          disabled={variantBusy}
+                          style={{
+                            fontFamily: IT,
+                            fontSize: 11,
+                            color: C_ERR,
+                            background: 'transparent',
+                            border: 'none',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Remove
+                        </button>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontFamily: IT, fontSize: 11, color: MUTED, marginBottom: 10 }}>
+                  No variants yet.
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end' }}>
+                <div style={{ flex: 2 }}>
+                  <MxInput
+                    label="Name"
+                    placeholder="e.g. Large"
+                    value={variantDraft.name}
+                    onChange={(v) => setVariantDraft((d) => ({ ...d, name: v }))}
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <MxInput
+                    label="Price ₦"
+                    placeholder="opt."
+                    value={variantDraft.priceOverride}
+                    onChange={(v) => setVariantDraft((d) => ({ ...d, priceOverride: v }))}
+                    type="number"
+                  />
+                </div>
+                <div style={{ marginBottom: 14 }}>
+                  <MxBtn
+                    label={variantBusy ? '…' : 'Add'}
+                    variant="outline"
+                    small
+                    disabled={!variantDraft.name || variantBusy}
+                    onClick={addVariant}
+                  />
+                </div>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div
+              style={{
+                padding: '10px 14px',
+                borderRadius: 8,
+                background: NAVY_SURFACE,
+                border: `1px solid ${BORDER}`,
+                marginBottom: 16,
+              }}
+            >
+              <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>
+                Save the product first to add size/price variants and manage images.
+              </div>
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
             <MxBtn label="Cancel" variant="outline" onClick={() => setShowAdd(false)} />
             <MxBtn
               label={saving ? 'Saving…' : editId ? 'Save Changes' : 'Add Product'}
               variant="primary"
-              disabled={!form.name || !form.price || saving}
+              disabled={!form.name || !form.basePrice || saving}
               onClick={saveProduct}
             />
           </div>
@@ -2973,7 +3142,7 @@ function EarningsPage() {
     Promise.all([
       api.merchant
         .getSettlements()
-        .then((r) => setSettlements(r as MerchantSettlementDto[]))
+        .then((r) => setSettlements(r.items ?? []))
         .catch(() => {}),
       api.merchant
         .getWallet()
