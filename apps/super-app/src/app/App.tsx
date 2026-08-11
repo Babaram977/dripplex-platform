@@ -1093,7 +1093,7 @@ function AppShell() {
           });
           go('otp');
         }}
-        onSignIn={() => go('signin')}
+        onSignIn={() => go('drvlogin')}
       />
     ),
     partnerrider: (
@@ -1111,7 +1111,7 @@ function AppShell() {
           });
           go('otp');
         }}
-        onSignIn={() => go('signin')}
+        onSignIn={() => go('riderlogin')}
       />
     ),
     partnerdocs: (
