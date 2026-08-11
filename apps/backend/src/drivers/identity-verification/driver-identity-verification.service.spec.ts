@@ -172,6 +172,35 @@ describe('DriverIdentityVerificationService', () => {
     });
   });
 
+  it('verifyManually clears the identity gate and records a MANUAL_REVIEW pass', async () => {
+    if (!databaseAvailable) return;
+    const driverId = await createDriver({
+      lastIdentityVerifiedAt: null,
+      identityVerificationRequiredReason: 'ONBOARDING',
+    });
+    const adminId = randomUUID();
+
+    const record = await service.verifyManually(driverId, adminId, 'matched against licence', {
+      userId: adminId,
+    });
+
+    expect(record.provider).toBe('MANUAL_REVIEW');
+    expect(record.status).toBe('PASSED');
+
+    const profile = await prisma.driverProfile.findUnique({ where: { userId: driverId } });
+    expect(profile?.lastIdentityVerifiedAt).not.toBeNull();
+    expect(profile?.identityVerificationRequiredReason).toBeNull();
+
+    const check = await service.checkRequired(driverId, undefined);
+    expect(check.required).toBe(false);
+
+    expect(auditRecord).toHaveBeenCalledWith(
+      DRIVER_AUDIT_ACTIONS.IDENTITY_VERIFICATION_PASSED,
+      expect.objectContaining({ userId: driverId }),
+      expect.objectContaining({ metadata: expect.objectContaining({ manual: true }) }),
+    );
+  });
+
   it('does not require verification when recently verified with no other risk signal', async () => {
     if (!databaseAvailable) return;
     const driverId = await createDriver();

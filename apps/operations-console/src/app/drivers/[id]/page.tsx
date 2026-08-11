@@ -15,6 +15,7 @@ import * as React from 'react';
 import type { DriverActivationChecks } from '@dripplex/types';
 
 import { AppShell } from '@/components/app-shell';
+import { DriverIdentityVerify } from '@/components/driver-identity-verify';
 import { DriverKycReview } from '@/components/driver-kyc-review';
 import { DriverLifecycleActions } from '@/components/driver-lifecycle-actions';
 import { useDriverEligibility, useDriverReview } from '@/hooks/use-driver-approvals';
@@ -96,6 +97,18 @@ export default function DriverReviewPage(): React.JSX.Element {
               </CardHeader>
               <CardContent>
                 <DriverKycReview driverId={driverId} documents={driverQuery.data.kyc} />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Identity verification</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <DriverIdentityVerify
+                  driverId={driverId}
+                  verified={eligibilityQuery.data?.checks.identityVerified ?? false}
+                />
               </CardContent>
             </Card>
 

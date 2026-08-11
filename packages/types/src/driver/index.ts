@@ -308,7 +308,7 @@ export type DriverAuditAction = (typeof DRIVER_AUDIT_ACTIONS)[keyof typeof DRIVE
 
 /** Driver-001: risk-based facial/identity verification (Smile ID). See
  * docs/DRIVER-001-IDENTITY-VERIFICATION-DESIGN.md. */
-export type IdentityVerificationProviderName = 'SMILE_ID';
+export type IdentityVerificationProviderName = 'SMILE_ID' | 'MANUAL_REVIEW';
 
 export type DriverVerificationTrigger =
   | 'ONBOARDING'

@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   DriverActivationEligibilityDto,
   DriverApprovalDto,
+  DriverIdentityVerificationDto,
   DriverKycDto,
   DriverProfileDto,
   DriverStatus,
@@ -95,6 +96,16 @@ export function useReactivateDriver(
   driverId: string,
 ): UseMutationResult<DriverApprovalDto, Error, void> {
   return useDriverMutation(driverId, () => sdk.adminDrivers.reactivateDriver(driverId));
+}
+
+/** DPX-DRIVER (task #15) — manually mark the driver's identity verified after
+ * reviewing their ID/KYC, clearing the activation identity gate. */
+export function useVerifyDriverIdentity(
+  driverId: string,
+): UseMutationResult<DriverIdentityVerificationDto, Error, string | undefined> {
+  return useDriverMutation(driverId, (remarks: string | undefined) =>
+    sdk.adminDriverIdentityVerification.verify(driverId, remarks),
+  );
 }
 
 export function useVerifyKyc(
