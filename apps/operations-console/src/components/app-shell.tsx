@@ -19,6 +19,7 @@ const NAV_LINKS = [
   { href: '/', label: 'Live Fleet Map' },
   { href: '/drivers', label: 'Driver Approvals' },
   { href: '/riders', label: 'Rider Approvals' },
+  { href: '/merchants', label: 'Merchant Approvals' },
   { href: '/vehicles', label: 'Vehicle Approvals' },
   { href: '/rides', label: 'Ride Queue' },
   { href: '/queues/sos', label: 'SOS Queue' },
