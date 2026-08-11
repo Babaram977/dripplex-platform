@@ -22,6 +22,7 @@ const NAV_LINKS = [
   { href: '/merchants', label: 'Merchant Approvals' },
   { href: '/vehicles', label: 'Vehicle Approvals' },
   { href: '/inspections', label: 'Inspections' },
+  { href: '/inspection-centres', label: 'Inspection Centres' },
   { href: '/rides', label: 'Ride Queue' },
   { href: '/queues/sos', label: 'SOS Queue' },
   { href: '/queues/incidents', label: 'Incidents' },
