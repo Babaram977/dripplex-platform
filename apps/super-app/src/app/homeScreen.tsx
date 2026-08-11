@@ -1138,6 +1138,7 @@ function Merchants({
                       </span>
                     </div>
                     <button
+                      onClick={() => onStore?.(m.name)}
                       className="h-[30px] w-full rounded-xl text-[11px] font-semibold transition-all active:scale-95"
                       style={{
                         background: `linear-gradient(135deg,${G0},${G2})`,

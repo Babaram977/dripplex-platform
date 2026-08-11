@@ -1991,9 +1991,15 @@ export function AccountSuspensionScreen({
 export function AuthSummaryScreen({
   onBack,
   onFinish,
+  onAddEmail,
+  onRecoveryCodes,
+  onVerifyId,
 }: {
   onBack: () => void;
   onFinish: () => void;
+  onAddEmail?: () => void;
+  onRecoveryCodes?: () => void;
+  onVerifyId?: () => void;
 }) {
   const score = 78;
   const dxUser = auth.getUser();
@@ -2049,9 +2055,9 @@ export function AuthSummaryScreen({
   ];
 
   const recs = [
-    { text: 'Verify your email address', action: 'Add Email' },
-    { text: 'Generate recovery codes', action: 'Generate' },
-    { text: 'Complete identity verification', action: 'Verify ID' },
+    { text: 'Verify your email address', action: 'Add Email', nav: onAddEmail },
+    { text: 'Generate recovery codes', action: 'Generate', nav: onRecoveryCodes },
+    { text: 'Complete identity verification', action: 'Verify ID', nav: onVerifyId },
   ];
 
   return (
@@ -2148,6 +2154,7 @@ export function AuthSummaryScreen({
             {r.text}
           </p>
           <button
+            onClick={r.nav}
             className="rounded-xl px-2.5 py-1 text-[10px] font-bold"
             style={{ background: 'rgba(251,191,36,.12)', color: '#FCD34D' }}
           >

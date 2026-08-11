@@ -719,6 +719,7 @@ export function WalletHomeScreen({
               { label: 'Withdraw', icon: '↑', color: WARNING, onClick: onWithdraw },
               { label: 'Transfer', icon: '→', color: INFO, onClick: onTransfer },
               { label: 'Pay', icon: '₦', color: PURPLE, onClick: onPay },
+              { label: 'Rewards', icon: '🎁', color: WARNING, onClick: onRewards },
             ].map(({ label, icon, color, onClick }) => (
               <button
                 key={label}

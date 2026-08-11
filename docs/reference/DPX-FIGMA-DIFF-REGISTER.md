@@ -171,3 +171,47 @@ the visual source of truth — on 2026-08-10.
 _This document is append-only in spirit: new differences get added as they're found; resolved
 items get their Action column updated (not deleted), so the history of what changed and when stays
 visible. Owner: founder. Compiled/maintained by: Claude, per DPX-FIGMA-001._
+
+---
+
+### Super-app dead-button wiring pass — logged 2026-08-11
+
+The deployed super-app is the Figma "Design Preview" build (a screen catalog navigable from
+the left sidebar). Many Figma-generated buttons shipped with no `onClick`. A full audit of
+~20 screen files (66 candidate buttons) was done; primary buttons were wired to existing
+route keys, and the rest are recorded here as **gaps** (unbuilt feature / no route / no
+backend) rather than faked, per §3 "document gaps, don't invent."
+
+**Wired (existing routes/handlers):**
+
+| Area                | Button(s)                                                                                           | Destination                                                                                                     |
+| ------------------- | --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Home                | Wallet nav tab, Send/Receive/Top Up/Pay, Quick-Actions grid, "View Store"                           | wallethome / wallettransfer·wallettopup·walletpay·wallethome / marketplace·ride·wallethome·orderhistory / store |
+| Marketplace + Store | cart icon (was dead on both headers), nearby-store "Order"                                          | cart / store                                                                                                    |
+| Product detail      | "Buy Now"                                                                                           | add-to-cart → checkout                                                                                          |
+| Ride                | cancel ride, share trip, Emergency (SOS), skip-tip, report issue (RideDetail + TripReceipt), rebook | ridehome / rideshare / ridesos / riderating / ridereport / ridehome                                             |
+| Wallet              | surfaced the "Rewards" tile (prop+route already existed)                                            | walletrewards                                                                                                   |
+| Driver / Rider      | Sign Out, "Apply to join" (both portals)                                                            | drvlogin·riderlogin / partnerdriver·partnerrider                                                                |
+| Settings            | Trust Center + Auth Summary recommendation actions                                                  | emailverify / recoverycodes / kyc                                                                               |
+
+**Gaps — intentionally NOT wired (no route / unbuilt backend / stated dependency):**
+
+- **Telephony / in-app chat**: ride Call/Message tiles, driver "call passenger", tracking
+  "Message", recovery "Chat" — no voice/SMS/chat capability exists.
+- **File upload / device**: avatar-edit (✎) on profile screens, driver "Camera", ride
+  "Attach photo" — depend on the not-yet-built storage/device APIs.
+- **Promo / campaign**: home & marketplace promo/deal CTAs, checkout applied-promo "Remove" —
+  no campaign route or applied-promo state.
+- **Static demo data**: marketplace "Add to Cart" on Trending, home Recs product cards,
+  store-grid add-to-cart persistence — mock items lack real product/merchant IDs.
+- **Missing destination screens**: driver Statement, Change PIN / Privacy / Terms / Help rows,
+  "View full Driver Agreement", "Forgot PIN?", data-export "Request", "Report Device",
+  "Remove All Other Devices", Print/Download — no corresponding screen/route exists.
+- **Search / share icons**: search bar mic/QR, filter, share glyphs — search & native share
+  features are unbuilt.
+- **OTP "Contact Support"**: the only in-app target is the Ops Console `adminsupport` mock
+  (no `onBack`, no backend); not wired to avoid dropping customers into an ops-side dead-end.
+- **Embedded Ops Console / Admin mock** (`adminConsoleScreen.tsx`, 0 API calls): a visual
+  duplicate of the real `apps/operations-console` Next.js app. Its buttons (Save Changes,
+  Change Password, Revoke, report date-presets) are intentionally inert — the functional
+  Operations Console is the separately-deployed app, not this preview.

@@ -1483,9 +1483,11 @@ export function FindingDriverScreen({
 export function DriverAssignedScreen({
   onBack,
   onArrived,
+  onCancel,
 }: {
   onBack: () => void;
   onArrived: () => void;
+  onCancel?: () => void;
 }) {
   const [eta, setEta] = useState(3);
 
@@ -1673,6 +1675,7 @@ export function DriverAssignedScreen({
               Message
             </button>
             <button
+              onClick={onCancel}
               className="flex h-12 items-center justify-center rounded-2xl px-4 transition-all active:scale-[.97]"
               style={{ background: 'rgba(239,68,68,.08)', border: '1px solid rgba(239,68,68,.2)' }}
             >
@@ -1716,9 +1719,11 @@ export function DriverAssignedScreen({
 export function DriverArrivedScreen({
   onBack,
   onStart,
+  onShare,
 }: {
   onBack: () => void;
   onStart: () => void;
+  onShare?: () => void;
 }) {
   const [pulse, setPulse] = useState(true);
   useEffect(() => {
@@ -1820,6 +1825,7 @@ export function DriverArrivedScreen({
 
           {/* Share trip */}
           <button
+            onClick={onShare}
             className="flex items-center gap-3 rounded-2xl p-3.5 transition-all active:scale-[.97]"
             style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
           >
@@ -1872,9 +1878,11 @@ export function DriverArrivedScreen({
 export function RideInProgressScreen({
   onBack,
   onComplete,
+  onSOS,
 }: {
   onBack: () => void;
   onComplete: () => void;
+  onSOS?: () => void;
 }) {
   const [progress, setProgress] = useState(0.15);
   const [elapsed, setElapsed] = useState(0);
@@ -2007,12 +2015,13 @@ export function RideInProgressScreen({
           {expanded && (
             <div className="mb-3 flex gap-2">
               {[
-                { label: 'Call', icon: '📞' },
-                { label: 'Message', icon: '💬' },
-                { label: 'Emergency', icon: '🆘' },
+                { label: 'Call', icon: '📞', fn: undefined },
+                { label: 'Message', icon: '💬', fn: undefined },
+                { label: 'Emergency', icon: '🆘', fn: onSOS },
               ].map((a) => (
                 <button
                   key={a.label}
+                  onClick={a.fn}
                   className="flex flex-1 flex-col items-center gap-1 rounded-xl py-2.5 transition-all active:scale-[.95]"
                   style={{
                     background: NAVY_CARD,
@@ -2561,7 +2570,17 @@ export function RideHistoryScreen({
 // ─────────────────────────────────────────────────────────────────────────────
 // RIDE-012 — RIDE DETAILS
 // ─────────────────────────────────────────────────────────────────────────────
-export function RideDetailScreen({ onBack, rideId }: { onBack: () => void; rideId?: string }) {
+export function RideDetailScreen({
+  onBack,
+  rideId,
+  onRebook,
+  onReport,
+}: {
+  onBack: () => void;
+  rideId?: string;
+  onRebook?: () => void;
+  onReport?: () => void;
+}) {
   const ride = RIDE_HISTORY.find((r) => r.id === rideId) || RIDE_HISTORY[0];
   const [shareVisible, setShareVisible] = useState(false);
 
@@ -2744,6 +2763,7 @@ export function RideDetailScreen({ onBack, rideId }: { onBack: () => void; rideI
         {/* Actions */}
         <div className="flex flex-col gap-2.5">
           <button
+            onClick={onRebook}
             className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl text-[14px] font-medium transition-all active:scale-[.97]"
             style={{
               background: NAVY_SURFACE,
@@ -2768,6 +2788,7 @@ export function RideDetailScreen({ onBack, rideId }: { onBack: () => void; rideI
             Book same route again
           </button>
           <button
+            onClick={onReport}
             className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl text-[14px] font-medium transition-all active:scale-[.97]"
             style={{
               background: 'rgba(239,68,68,.06)',
@@ -3389,9 +3410,11 @@ export function CashPaymentScreen({
 export function TipDriverScreen({
   onBack,
   onSubmit,
+  onSkip,
 }: {
   onBack?: () => void;
   onSubmit?: () => void;
+  onSkip?: () => void;
 }) {
   const presets = ['₦100', '₦200', '₦500', '₦1,000', 'Custom'];
   const [selected, setSelected] = useState('₦200');
@@ -3492,6 +3515,7 @@ export function TipDriverScreen({
           onClick={onSubmit || (() => {})}
         />
         <button
+          onClick={onSkip}
           className="h-10 w-full text-sm"
           style={{ color: MUTED, fontFamily: IT, background: 'transparent' }}
         >
@@ -4719,7 +4743,15 @@ export function ShareTripScreen({ onBack }: { onBack?: () => void }) {
 }
 
 // 13. TripReceiptScreen
-export function TripReceiptScreen({ onBack, rideId }: { onBack?: () => void; rideId?: string }) {
+export function TripReceiptScreen({
+  onBack,
+  rideId,
+  onReport,
+}: {
+  onBack?: () => void;
+  rideId?: string;
+  onReport?: () => void;
+}) {
   const breakdown = [
     { label: 'Base fare', amount: '₦800' },
     { label: 'Distance (14.2 km × ₦80)', amount: '₦1,136' },
@@ -4879,7 +4911,7 @@ export function TripReceiptScreen({ onBack, rideId }: { onBack?: () => void; rid
         </div>
         {/* Support link */}
         <div className="mb-6 text-center">
-          <button style={{ fontSize: 12, color: '#EF4444', fontFamily: IT }}>
+          <button onClick={onReport} style={{ fontSize: 12, color: '#EF4444', fontFamily: IT }}>
             Issue with this trip?
           </button>
         </div>

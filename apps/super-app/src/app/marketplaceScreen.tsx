@@ -1117,7 +1117,13 @@ function TrendingProducts({ loaded }: { loaded: boolean }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // NEARBY BUSINESSES
 // ─────────────────────────────────────────────────────────────────────────────
-function NearbyBusinesses({ loaded }: { loaded: boolean }) {
+function NearbyBusinesses({
+  loaded,
+  onStore,
+}: {
+  loaded: boolean;
+  onStore?: (merchantId: string) => void;
+}) {
   return (
     <div className="mb-5">
       <SRow title="Nearby Businesses" sub="Based on your location" onAll={() => {}} />
@@ -1195,6 +1201,7 @@ function NearbyBusinesses({ loaded }: { loaded: boolean }) {
                       {b.fee === 'Free' ? 'Free delivery' : b.fee}
                     </p>
                     <button
+                      onClick={() => b.open && onStore?.(b.name)}
                       className="h-7 rounded-xl px-3 text-[10px] font-semibold transition-all active:scale-95"
                       style={{
                         background: b.open
@@ -1571,12 +1578,14 @@ export function MarketplaceScreen({
   onAccount,
   onNotifications,
   onStore,
+  onCart,
 }: {
   onBack: () => void;
   onHome: () => void;
   onAccount: () => void;
   onNotifications: () => void;
   onStore?: (merchantId: string) => void;
+  onCart?: () => void;
 }) {
   const [activecat, setActivecat] = useState('All');
   const [showAI, setShowAI] = useState(false);
@@ -1592,7 +1601,12 @@ export function MarketplaceScreen({
       className="relative flex h-full w-full flex-col overflow-hidden"
       style={{ background: NAVY_DEEP }}
     >
-      <MpHeader onBack={onBack} onCart={() => {}} onNotif={onNotifications} cartCount={cartCount} />
+      <MpHeader
+        onBack={onBack}
+        onCart={onCart ?? (() => {})}
+        onNotif={onNotifications}
+        cartCount={cartCount}
+      />
 
       <div
         className="flex-1 overflow-y-auto"
@@ -1606,7 +1620,7 @@ export function MarketplaceScreen({
         <TodaysDeals />
         <FeaturedMerchants active={activecat} onStore={onStore} />
         <TrendingProducts loaded={true} />
-        <NearbyBusinesses loaded={true} />
+        <NearbyBusinesses loaded={true} onStore={onStore} />
         <AIRecs loaded={true} />
         <ContinueShopping />
 

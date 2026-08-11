@@ -2705,9 +2705,13 @@ export function ConnectedServicesScreen({ onBack }: { onBack: () => void }) {
 export function TrustCenterScreen({
   onBack,
   onSecurity,
+  onAddEmail,
+  onVerifyId,
 }: {
   onBack: () => void;
   onSecurity: () => void;
+  onAddEmail?: () => void;
+  onVerifyId?: () => void;
 }) {
   const score = 96;
 
@@ -2729,11 +2733,17 @@ export function TrustCenterScreen({
   ];
 
   const recommendations = [
-    { icon: '📧', text: 'Add an email address to improve recovery options', action: 'Add Email' },
+    {
+      icon: '📧',
+      text: 'Add an email address to improve recovery options',
+      action: 'Add Email',
+      nav: onAddEmail,
+    },
     {
       icon: '🪪',
       text: 'Complete identity verification to unlock all services',
       action: 'Verify ID',
+      nav: onVerifyId,
     },
   ];
 
@@ -2874,6 +2884,7 @@ export function TrustCenterScreen({
                 {r.text}
               </p>
               <button
+                onClick={r.nav}
                 className="flex-shrink-0 rounded-xl px-3 py-1.5 text-[11px] font-semibold"
                 style={{ background: 'rgba(251,191,36,.12)', color: '#FCD34D' }}
               >
