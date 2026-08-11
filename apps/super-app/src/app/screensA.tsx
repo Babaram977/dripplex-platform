@@ -2829,7 +2829,15 @@ export function SignInScreen({
     setLogging(true);
     setLoginErr('');
     try {
-      const res = await api.auth.loginCustomer({ phone, password });
+      // The "+234" shown beside the field is a display prefix; compose it into the
+      // value so the backend receives a full E.164 number (it stores +234…).
+      const digits = phone.replace(/\D/g, '');
+      const normalizedPhone = digits.startsWith('234')
+        ? `+${digits}`
+        : digits.startsWith('0')
+          ? `+234${digits.slice(1)}`
+          : `+234${digits}`;
+      const res = await api.auth.loginCustomer({ phone: normalizedPhone, password });
       const r = res as {
         accessToken?: string;
         refreshToken?: string;

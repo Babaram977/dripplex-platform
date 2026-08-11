@@ -1,10 +1,11 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { G0, G2, G3, NAVY_BASE, NAVY_CARD, NAVY_DEEP, NAVY_SURFACE, BORDER, MUTED } from './shared';
 import { api } from '../lib/api';
-import type { OrderDto } from '../lib/api';
+import type { OrderDto, CustomerAddressDto } from '../lib/api';
 import { BottomNavigation } from '../components/navigation';
 import type { NavTabKey } from '../components/navigation/BottomNavigation';
 import { auth } from '../lib/auth';
+import { getCurrentPosition, reverseGeocode } from '../lib/maps';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -120,9 +121,13 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 function AddressSection({
   address,
   onChangeAddress,
+  onUseLocation,
+  busy,
 }: {
   address: Address;
   onChangeAddress: () => void;
+  onUseLocation?: () => void;
+  busy?: boolean;
 }) {
   const labelColors: Record<Address['label'], string> = {
     Home: G2,
@@ -172,12 +177,17 @@ function AddressSection({
       </div>
       <div className="mt-3 flex gap-2 pt-3" style={{ borderTop: `1px solid ${BORDER}` }}>
         {[
-          { label: 'Change Address', icon: '✏️' },
-          { label: 'Use My Location', icon: '📌' },
+          { label: 'Change Address', icon: '✏️', fn: onChangeAddress },
+          {
+            label: busy ? 'Locating…' : 'Use My Location',
+            icon: '📌',
+            fn: onUseLocation ?? onChangeAddress,
+          },
         ].map((btn) => (
           <button
-            key={btn.label}
-            onClick={onChangeAddress}
+            key={btn.icon}
+            onClick={btn.fn}
+            disabled={busy}
             className="flex h-[34px] flex-1 items-center justify-center gap-1.5 rounded-xl text-[11px] font-semibold transition-all active:scale-95"
             style={{
               background: 'rgba(255,255,255,.05)',
@@ -677,14 +687,91 @@ export function CheckoutScreen({
     shoprite: 'now',
   });
 
-  // Saved-addresses backend is not yet wired (documented gap); until then use the
-  // logged-in user's real name as the recipient rather than seeded mock data.
   const recipientName = auth.displayName(auth.getUser());
+
+  // Real delivery addresses from the backend (every customer, not just seeded ones).
+  const [realAddresses, setRealAddresses] = useState<CustomerAddressDto[] | null>(null);
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
+  const [addrBusy, setAddrBusy] = useState(false);
+  const [addrError, setAddrError] = useState<string | null>(null);
+
+  const loadAddresses = useCallback(async () => {
+    if (!auth.isLoggedIn()) return;
+    try {
+      const res = await api.addresses.list();
+      const list = res.items ?? [];
+      setRealAddresses(list);
+      setSelectedAddressId(
+        (prev) => prev ?? list.find((a) => a.isDefault)?.id ?? list[0]?.id ?? null,
+      );
+    } catch {
+      setRealAddresses([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadAddresses();
+  }, [loadAddresses]);
+
+  // "Use My Location": browser geolocation → (Google) reverse-geocode → create a
+  // real CustomerAddress. Works for any customer; makes the delivery-address rule
+  // passable through the UI instead of being pre-seeded.
+  const handleUseMyLocation = useCallback(async () => {
+    setAddrBusy(true);
+    setAddrError(null);
+    try {
+      const pos = await getCurrentPosition();
+      if (!pos) {
+        setAddrError('Location permission is needed to set your delivery address.');
+        return;
+      }
+      const geo = await reverseGeocode(pos);
+      const user = auth.getUser();
+      const created = await api.addresses.create({
+        label: 'HOME',
+        recipientName: recipientName || 'Customer',
+        phone: user?.phone ?? '',
+        addressLine1: geo?.addressLine1 || 'Current location',
+        city: geo?.city || 'Lagos',
+        state: geo?.state || 'Lagos',
+        country: geo?.country || 'Nigeria',
+        postalCode: geo?.postalCode,
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+        isDefault: !(realAddresses && realAddresses.length > 0),
+      });
+      setSelectedAddressId(created.id);
+      await loadAddresses();
+      setShowAddrSheet(false);
+    } catch (e: unknown) {
+      setAddrError(e instanceof Error ? e.message : 'Could not save your location.');
+    } finally {
+      setAddrBusy(false);
+    }
+  }, [recipientName, realAddresses, loadAddresses]);
+
+  // Mock fallback only for the standalone design-preview (logged-out) navigator.
   const addresses = useMemo(
     () => ADDRESSES.map((a) => ({ ...a, name: recipientName || a.name })),
     [recipientName],
   );
-  const address = addresses[addressIdx];
+  const selectedRealAddress =
+    realAddresses?.find((a) => a.id === selectedAddressId) ?? realAddresses?.[0] ?? null;
+  const labelMap: Record<string, Address['label']> = {
+    HOME: 'Home',
+    WORK: 'Work',
+    OTHER: 'Other',
+  };
+  const address: Address = selectedRealAddress
+    ? {
+        id: selectedRealAddress.id,
+        label: labelMap[selectedRealAddress.label] ?? 'Home',
+        name: selectedRealAddress.recipientName,
+        phone: selectedRealAddress.phone,
+        line1: selectedRealAddress.addressLine1,
+        line2: `${selectedRealAddress.city}, ${selectedRealAddress.state}`,
+      }
+    : addresses[addressIdx];
   const itemsTotal = MERCHANTS.reduce((s, m) => s + m.subtotal, 0);
   const deliveryTotal = MERCHANTS.reduce((s, m) => {
     const mode = modes[m.id] ?? 'standard';
@@ -697,10 +784,24 @@ export function CheckoutScreen({
   // Step 1: cart → order, then branch on payment method
   const handlePlaceOrder = async () => {
     if (!termsChecked) return;
+
+    // A delivery address is required. Use the selected one; if the customer has
+    // none, prompt them to set it (via "Use My Location") rather than silently
+    // failing at the API.
+    let deliveryAddressId = selectedAddressId ?? selectedRealAddress?.id ?? null;
+    if (!deliveryAddressId) {
+      setError('Add a delivery address to continue.');
+      setShowAddrSheet(true);
+      return;
+    }
+
     setPlacing(true);
     setError(null);
     try {
-      const { order } = await api.orders.checkout({ fulfillmentType: 'DELIVERY' });
+      const { order } = await api.orders.checkout({
+        fulfillmentType: 'DELIVERY',
+        deliveryAddressId,
+      });
       setPendingOrder(order);
 
       if (paymentKey === 'MERCHANT_DIRECT') {
@@ -862,7 +963,12 @@ export function CheckoutScreen({
 
         <div className="mb-4">
           <SectionLabel>Delivery Address</SectionLabel>
-          <AddressSection address={address} onChangeAddress={() => setShowAddrSheet(true)} />
+          <AddressSection
+            address={address}
+            onChangeAddress={() => setShowAddrSheet(true)}
+            onUseLocation={handleUseMyLocation}
+            busy={addrBusy}
+          />
         </div>
 
         <div className="mb-4">

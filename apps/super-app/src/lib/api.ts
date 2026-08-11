@@ -231,6 +231,24 @@ export interface CartItemDto {
   updatedAt: string;
 }
 
+export interface CustomerAddressDto {
+  id: string;
+  label: 'HOME' | 'WORK' | 'OTHER';
+  recipientName: string;
+  phone: string;
+  addressLine1: string;
+  addressLine2?: string | null;
+  landmark?: string | null;
+  city: string;
+  state: string;
+  country: string;
+  postalCode?: string | null;
+  latitude: number;
+  longitude: number;
+  isDefault: boolean;
+  isActive: boolean;
+}
+
 export interface CartDto {
   id: string;
   customerId: string;
@@ -783,6 +801,29 @@ export const api = {
     removeItem: (itemId: string) => dx<CartDto>('DELETE', `/customer/cart/items/${itemId}`),
     clear: () => dx<{ cleared: boolean; cartId: string | null }>('DELETE', '/customer/cart'),
     recalculate: () => dx<CartDto>('POST', '/customer/cart/recalculate'),
+  },
+
+  // ── DELIVERY ADDRESSES (customer) ──────────────────────────────────────────
+  addresses: {
+    list: () => dx<{ items: CustomerAddressDto[]; total: number }>('GET', '/customer/addresses'),
+    getDefault: () => dx<CustomerAddressDto | null>('GET', '/customer/addresses/default'),
+    create: (body: {
+      label: 'HOME' | 'WORK' | 'OTHER';
+      recipientName: string;
+      phone: string;
+      addressLine1: string;
+      addressLine2?: string;
+      landmark?: string;
+      city: string;
+      state: string;
+      country: string;
+      postalCode?: string;
+      latitude: number;
+      longitude: number;
+      isDefault?: boolean;
+    }) => dx<CustomerAddressDto>('POST', '/customer/addresses', body),
+    setDefault: (id: string) =>
+      dx<CustomerAddressDto>('PATCH', `/customer/addresses/${id}/default`),
   },
 
   // ── ORDERS (customer) ──────────────────────────────────────────────────────
