@@ -1,11 +1,13 @@
 // Production RBAC bootstrap — idempotent (upsert-only), safe to run on every
 // deploy. Separate from prisma/seed.ts's `main()` on purpose: seed.ts also
 // seeds marketplace fixture data (fake merchants/products/reviews), which
-// must never touch a real production database. This script seeds ONLY
-// Permission, Role, and RolePermission rows — the RBAC bootstrap every
-// portal's registration flow depends on (PrismaRegistrationRepository looks
+// must never touch a real production database. This script seeds Permission,
+// Role, and RolePermission rows — the RBAC bootstrap every portal's
+// registration flow depends on (PrismaRegistrationRepository looks
 // up `Role.findFirst({ where: { name: roleName } })` and throws "Role X is
-// not configured" if it's missing).
+// not configured" if it's missing) — and then chains the env-gated
+// privileged-user bootstrap (prisma/seed-admin.cjs) so the Ops/Admin console
+// has real logins. It still seeds NO marketplace fixture data.
 //
 // Written as plain CommonJS (not TypeScript) because apps/backend/prisma/ is
 // copied into the production Docker image as raw source (see Dockerfile),
@@ -673,6 +675,15 @@ async function main() {
   process.stdout.write(
     `RBAC bootstrap: seeded ${String(permissionIds.size)} permissions, ${String(roleIds.size)} roles, and role-permission grants.\n`,
   );
+
+  // Chain the env-gated privileged-user bootstrap so the Ops/Admin console has
+  // real logins in a fresh production database. It runs in its own process
+  // (its own PrismaClient) and is a no-op unless BOOTSTRAP_ADMINS (or the
+  // single-account BOOTSTRAP_ADMIN_* form) is set — see prisma/seed-admin.cjs.
+  // Kept as a chained step (not a second preDeployCommand) because Railway
+  // spawns preDeployCommand as a single argv with no shell, so it must remain
+  // the one command: `node prisma/seed-rbac.cjs`.
+  execFileSync('node', ['prisma/seed-admin.cjs'], { stdio: 'inherit' });
 }
 
 main()
