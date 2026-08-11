@@ -24,10 +24,14 @@ export class CreateBusinessDto {
   @IsEnum(BusinessType)
   public businessType!: BusinessType;
 
+  // Minimal onboarding (founder decision) creates the business with just name +
+  // structure; the fields below are optional here and completed/verified later
+  // before Ops approval. Full-detail callers still send them and get full validation.
+  @IsOptional()
   @IsString()
   @MinLength(3)
   @MaxLength(100)
-  public registrationNumber!: string;
+  public registrationNumber?: string;
 
   @IsOptional()
   @IsString()
@@ -39,49 +43,57 @@ export class CreateBusinessDto {
   @MaxLength(2000)
   public description?: string;
 
+  @IsOptional()
   @IsEmail()
-  public email!: string;
+  public email?: string;
 
+  @IsOptional()
   @IsString()
   @MinLength(7)
   @MaxLength(32)
-  public phone!: string;
+  public phone?: string;
 
+  @IsOptional()
   @IsString()
   @MinLength(2)
   @MaxLength(100)
-  public country!: string;
+  public country?: string;
 
+  @IsOptional()
   @IsString()
   @MinLength(2)
   @MaxLength(100)
-  public state!: string;
+  public state?: string;
 
+  @IsOptional()
   @IsString()
   @MinLength(2)
   @MaxLength(100)
-  public city!: string;
+  public city?: string;
 
+  @IsOptional()
   @IsString()
   @MinLength(5)
   @MaxLength(500)
-  public address!: string;
+  public address?: string;
 
+  @IsOptional()
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' || typeof value === 'number' ? Number(value) : value,
   )
   @IsNumber({ maxDecimalPlaces: 7 })
   @Min(-90)
   @Max(90)
-  public latitude!: number;
+  public latitude?: number;
 
+  @IsOptional()
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' || typeof value === 'number' ? Number(value) : value,
   )
   @IsNumber({ maxDecimalPlaces: 7 })
   @Min(-180)
   @Max(180)
-  public longitude!: number;
+  public longitude?: number;
 
   @IsOptional()
   @IsUrl({ require_tld: false })
