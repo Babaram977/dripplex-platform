@@ -87,7 +87,14 @@ export class MerchantsService {
     context: AuditContext,
   ): Promise<BusinessDto> {
     const profile = await this.requireMerchantProfile(merchantUserId);
-    this.assertIdentityVerified(profile.user);
+    // Merchant onboarding is email-first (PORTAL_EMAIL_ACTIVATION), so business
+    // creation gates on a verified email only — phone verification is not part of
+    // the email-first partner flow and would otherwise block onboarding.
+    if (!profile.user.emailVerifiedAt) {
+      throw new EmailNotVerifiedDomainException(
+        'Email must be verified before merchant onboarding',
+      );
+    }
 
     const existing = await this.merchantsRepository.findBusinessByMerchantId(merchantUserId);
     if (existing && existing.status !== BusinessStatus.SUSPENDED) {
@@ -97,29 +104,54 @@ export class MerchantsService {
       throw new ConflictDomainException('Merchant already has a business profile');
     }
 
-    const duplicateReg = await this.merchantsRepository.findBusinessByRegistrationNumber(
-      dto.registrationNumber.trim().toUpperCase(),
-    );
-    if (duplicateReg) {
-      throw new ConflictDomainException('Registration/CAC number already registered');
+    // Minimal onboarding (founder decision): only businessName + businessType are
+    // required. Everything else is optional and completed/verified before Ops
+    // approval. Fill draft-safe defaults so the NOT NULL columns are satisfied
+    // without inventing real business facts.
+    const providedRegistration = dto.registrationNumber?.trim().toUpperCase();
+    if (providedRegistration) {
+      const duplicateReg =
+        await this.merchantsRepository.findBusinessByRegistrationNumber(providedRegistration);
+      if (duplicateReg) {
+        throw new ConflictDomainException('Registration/CAC number already registered');
+      }
     }
+    // A unique per-merchant placeholder for the required-unique column until the
+    // merchant supplies their real CAC/registration number.
+    const registrationNumber = providedRegistration ?? `DRAFT-${merchantUserId.toUpperCase()}`;
 
-    this.assertValidCoordinates(dto.latitude, dto.longitude);
-    this.assertAddress(dto);
+    const email = dto.email?.trim().toLowerCase() ?? profile.user.email;
+    const phone = dto.phone?.trim() ?? profile.user.phone ?? '';
+    // country is validated @MinLength(2) when present, so it is never an empty
+    // string here — only a real value or undefined (→ default).
+    const country = dto.country?.trim() ?? 'Nigeria';
+    const state = dto.state?.trim() ?? '';
+    const city = dto.city?.trim() ?? '';
+    const address = dto.address?.trim() ?? '';
+    const latitude = dto.latitude ?? 0;
+    const longitude = dto.longitude ?? 0;
+
+    // Only enforce full location validation when the merchant actually supplied it.
+    if (dto.latitude !== undefined || dto.longitude !== undefined) {
+      this.assertValidCoordinates(latitude, longitude);
+    }
+    if (dto.address !== undefined) {
+      this.assertAddress({ address, city, state, country });
+    }
 
     const business = await this.merchantsRepository.createBusiness({
       merchantId: merchantUserId,
       businessName: dto.businessName.trim(),
       businessType: dto.businessType,
-      registrationNumber: dto.registrationNumber.trim().toUpperCase(),
-      email: dto.email.trim().toLowerCase(),
-      phone: dto.phone.trim(),
-      country: dto.country.trim(),
-      state: dto.state.trim(),
-      city: dto.city.trim(),
-      address: dto.address.trim(),
-      latitude: dto.latitude,
-      longitude: dto.longitude,
+      registrationNumber,
+      email,
+      phone,
+      country,
+      state,
+      city,
+      address,
+      latitude,
+      longitude,
       status: BusinessStatus.SUBMITTED,
       verificationStatus: BusinessVerificationStatus.UNDER_REVIEW,
       ...(dto.taxNumber !== undefined ? { taxNumber: dto.taxNumber.trim() } : {}),

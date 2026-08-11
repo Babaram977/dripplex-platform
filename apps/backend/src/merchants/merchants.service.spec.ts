@@ -16,7 +16,6 @@ import {
   EmailNotVerifiedDomainException,
   ForbiddenDomainException,
   NotFoundDomainException,
-  PhoneNotVerifiedDomainException,
   ValidationDomainException,
 } from '../common/exceptions/domain.exception';
 import { StorageAssetService } from '../uploads/storage-asset.service';
@@ -235,15 +234,43 @@ describe('MerchantsService', () => {
       ).rejects.toBeInstanceOf(EmailNotVerifiedDomainException);
     });
 
-    it('rejects when phone is not verified', async () => {
+    it('allows onboarding when only email is verified (email-first, phone unverified)', async () => {
       repository.findMerchantProfileByUserId.mockResolvedValue({
         ...profile,
         user: { ...verifiedUser, phoneVerifiedAt: null },
       } as never);
+      repository.findBusinessByMerchantId.mockResolvedValue(null);
+      repository.findBusinessByRegistrationNumber.mockResolvedValue(null);
+      repository.createBusiness.mockResolvedValue(business);
 
       await expect(
         service.createBusiness(merchantId, createBusinessDto, context),
-      ).rejects.toBeInstanceOf(PhoneNotVerifiedDomainException);
+      ).resolves.toBeDefined();
+    });
+
+    it('creates a minimal business (name + structure only) with draft-safe defaults', async () => {
+      repository.findBusinessByMerchantId.mockResolvedValue(null);
+      repository.createBusiness.mockResolvedValue(business);
+
+      await service.createBusiness(
+        merchantId,
+        { businessName: 'Ara Table Water', businessType: BusinessType.SOLE_PROPRIETORSHIP },
+        context,
+      );
+
+      // No registration number supplied → no duplicate lookup, draft placeholder used.
+      expect(repository.findBusinessByRegistrationNumber).not.toHaveBeenCalled();
+      expect(repository.createBusiness).toHaveBeenCalledWith(
+        expect.objectContaining({
+          businessName: 'Ara Table Water',
+          registrationNumber: `DRAFT-${merchantId.toUpperCase()}`,
+          email: verifiedUser.email,
+          country: 'Nigeria',
+          latitude: 0,
+          longitude: 0,
+          status: BusinessStatus.SUBMITTED,
+        }),
+      );
     });
 
     it('rejects duplicate active business', async () => {
