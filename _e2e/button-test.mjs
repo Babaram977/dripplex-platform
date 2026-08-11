@@ -3,7 +3,14 @@ import fs from 'node:fs';
 const CHROME = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const OUT = process.argv[2];
 const APP = 'http://127.0.0.1:3006/';
-const DEADLINE = Date.now() + 10 * 60 * 1000;
+// E2E_MINUTES caps the total crawl (default 10). E2E_GROUPS is an optional
+// comma-separated substring filter to crawl only matching sidebar groups
+// (e.g. E2E_GROUPS="Rider,Partner" to cover groups a prior budget cut off).
+const DEADLINE = Date.now() + (Number(process.env.E2E_MINUTES) || 10) * 60 * 1000;
+const GROUP_FILTER = (process.env.E2E_GROUPS || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
 fs.mkdirSync(`${OUT}/screenshots`, { recursive: true });
 fs.mkdirSync(`${OUT}/videos`, { recursive: true });
 const results = [];
@@ -97,6 +104,7 @@ try {
       break;
     }
     const gname = g.t.replace(/[▼▲]/g, '').trim();
+    if (GROUP_FILTER.length && !GROUP_FILTER.some((f) => gname.includes(f))) continue;
     const findHdr = async () => {
       const hs = await groupHeaders();
       return hs.find((x) => x.t.replace(/[▼▲]/g, '').trim() === gname);
