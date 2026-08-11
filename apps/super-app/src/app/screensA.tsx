@@ -2829,7 +2829,15 @@ export function SignInScreen({
     setLogging(true);
     setLoginErr('');
     try {
-      const res = await api.auth.loginCustomer({ phone, password });
+      // The "+234" shown beside the field is a display prefix; compose it into the
+      // value so the backend receives a full E.164 number (it stores +234…).
+      const digits = phone.replace(/\D/g, '');
+      const normalizedPhone = digits.startsWith('234')
+        ? `+${digits}`
+        : digits.startsWith('0')
+          ? `+234${digits.slice(1)}`
+          : `+234${digits}`;
+      const res = await api.auth.loginCustomer({ phone: normalizedPhone, password });
       const r = res as {
         accessToken?: string;
         refreshToken?: string;
@@ -3037,6 +3045,7 @@ export function ReturningLoginScreen({
   const [status, setStatus] = useState<LoginStatus>('idle');
   const [error, setError] = useState<LoginError>(null);
   const [bioPulse, setBioPulse] = useState(true);
+  const returningName = auth.displayName(auth.getUser()) || 'Welcome back';
 
   useEffect(() => {
     if (status !== 'success') return;
@@ -3123,7 +3132,7 @@ export function ReturningLoginScreen({
               Welcome Back!
             </h2>
             <p className="text-[14px]" style={{ fontFamily: "'Inter',sans-serif", color: G3 }}>
-              Saeed Danwakili
+              {returningName}
             </p>
             <p
               className="mt-1 text-[13px]"
@@ -3226,7 +3235,7 @@ export function ReturningLoginScreen({
               className="truncate text-[15px] font-semibold text-white"
               style={{ fontFamily: "'Poppins',sans-serif" }}
             >
-              Saeed Danwakili
+              {returningName}
             </p>
             <p
               className="mt-0.5 truncate text-[13px]"

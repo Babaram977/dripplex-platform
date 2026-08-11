@@ -22,6 +22,7 @@ import {
   COUNTRIES,
 } from './shared';
 import { api } from '../lib/api';
+import { auth } from '../lib/auth';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SHARED PIN PRIMITIVES (dots + numeric keypad)
@@ -823,16 +824,19 @@ export function UsernameManagementScreen({
   onBack: () => void;
   onSave: () => void;
 }) {
-  const [username, setUsername] = useState('saeed.d');
+  // NOTE: DrippleX has no username concept (founder decision: identity = phone + optional
+  // email + name). This screen is legacy UI pending reconciliation; seed the handle from the
+  // email local-part rather than mock personal data. See DPX-FIGMA-DIFF-REGISTER.
+  const emailHandle = auth.getUser()?.email?.split('@')[0] ?? '';
+  const [username, setUsername] = useState(emailHandle);
   const [checking, setChecking] = useState(false);
   const [available, setAvailable] = useState<boolean | null>(true);
   const [saved, setSaved] = useState(false);
   const RESERVED = ['dripplex', 'admin', 'support', 'wallet', 'rider', 'merchant'];
-  const SUGGESTIONS = ['saeed_dan', 'saeed.dw', 's.danwakili', 'saeed007'];
-  const HISTORY = [
-    { name: 'saeed.d', date: 'Current', active: true },
-    { name: 'saeeddan23', date: 'Changed 3 months ago', active: false },
-  ];
+  const SUGGESTIONS = emailHandle
+    ? [`${emailHandle}_dx`, `${emailHandle}1`, `${emailHandle}.ng`, `real_${emailHandle}`]
+    : [];
+  const HISTORY = emailHandle ? [{ name: emailHandle, date: 'Current', active: true }] : [];
 
   useEffect(() => {
     if (!username) return;
@@ -1525,6 +1529,7 @@ export function AccountTransferScreen({ onBack }: { onBack: () => void }) {
   const [scenario, setScenario] = useState<'business' | 'estate' | 'corporate' | null>(null);
   const [step, setStep] = useState<'choose' | 'identity' | 'review' | 'submitted'>('choose');
   const [agreed, setAgreed] = useState(false);
+  const accountLabel = auth.getUser()?.phone ?? auth.displayName(auth.getUser()) ?? '';
 
   const scenarios = [
     {
@@ -1734,7 +1739,7 @@ export function AccountTransferScreen({ onBack }: { onBack: () => void }) {
                 Type: {scenarios.find((s) => s.id === scenario)?.label}
               </p>
               <p className="text-[12px]" style={{ color: MUTED }}>
-                Account: @saeed.d
+                Account: {accountLabel}
               </p>
               <p className="text-[12px]" style={{ color: MUTED }}>
                 Processing time: 3–5 business days
@@ -1986,19 +1991,29 @@ export function AccountSuspensionScreen({
 export function AuthSummaryScreen({
   onBack,
   onFinish,
+  onAddEmail,
+  onRecoveryCodes,
+  onVerifyId,
 }: {
   onBack: () => void;
   onFinish: () => void;
+  onAddEmail?: () => void;
+  onRecoveryCodes?: () => void;
+  onVerifyId?: () => void;
 }) {
   const score = 78;
+  const dxUser = auth.getUser();
   const sections = [
     {
       title: 'Identity',
       icon: '👤',
       items: [
-        { label: 'Phone', value: '+234 801 234 5678', ok: true },
-        { label: 'Email', value: 'Not verified', ok: false },
-        { label: 'Username', value: '@saeed.d', ok: true },
+        { label: 'Phone', value: dxUser?.phone ?? 'Not added', ok: !!dxUser?.phone },
+        {
+          label: 'Email',
+          value: dxUser?.email ?? 'Not verified',
+          ok: !!dxUser?.email,
+        },
         { label: 'KYC', value: 'In Review', ok: false },
       ],
     },
@@ -2040,9 +2055,9 @@ export function AuthSummaryScreen({
   ];
 
   const recs = [
-    { text: 'Verify your email address', action: 'Add Email' },
-    { text: 'Generate recovery codes', action: 'Generate' },
-    { text: 'Complete identity verification', action: 'Verify ID' },
+    { text: 'Verify your email address', action: 'Add Email', nav: onAddEmail },
+    { text: 'Generate recovery codes', action: 'Generate', nav: onRecoveryCodes },
+    { text: 'Complete identity verification', action: 'Verify ID', nav: onVerifyId },
   ];
 
   return (
@@ -2139,6 +2154,7 @@ export function AuthSummaryScreen({
             {r.text}
           </p>
           <button
+            onClick={r.nav}
             className="rounded-xl px-2.5 py-1 text-[10px] font-bold"
             style={{ background: 'rgba(251,191,36,.12)', color: '#FCD34D' }}
           >

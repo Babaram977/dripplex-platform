@@ -1384,11 +1384,21 @@ export function StoreScreen({
     }
     setLoaded(false);
     setLoadError(null);
-    api.marketplace
-      .getMerchant(merchantId)
-      .then((dto) => {
+    // The merchant-detail endpoint returns storefront info + productCount but not
+    // the product list itself, so the catalogue is fetched from /products.
+    Promise.all([
+      api.marketplace.getMerchant(merchantId),
+      api.marketplace
+        .getProducts({ merchantId })
+        .catch(() => ({ items: [] as ProductSummaryDto[] })),
+    ])
+      .then(([dto, productsRes]) => {
         setLiveMerchant(dtoToStoreMerchant(dto));
-        setLiveProducts((dto.products ?? []).map(dtoToStoreProduct));
+        const res = productsRes as
+          { items?: ProductSummaryDto[]; data?: ProductSummaryDto[] } | ProductSummaryDto[];
+        const list = Array.isArray(res) ? res : (res.items ?? res.data ?? []);
+        const raw = list.length > 0 ? list : (dto.products ?? []);
+        setLiveProducts(raw.map(dtoToStoreProduct));
         setLoaded(true);
       })
       .catch((err: unknown) => {

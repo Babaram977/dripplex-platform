@@ -604,9 +604,11 @@ export function DriverSplashScreen({ onDone }: { onDone: () => void }) {
 export function DriverLoginScreen({
   onContinue,
   onBack,
+  onApply,
 }: {
   onContinue: () => void;
   onBack: () => void;
+  onApply?: () => void;
 }) {
   const [email, setEmail] = useState('drip@dripplex.demo');
   const [password, setPassword] = useState('Dripplex#Demo1');
@@ -736,7 +738,15 @@ export function DriverLoginScreen({
         <DGreenBtn label={loading ? '' : 'Continue →'} onClick={handleContinue} loading={loading} />
 
         <p className="mt-4 text-center text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
-          New driver partner? <span style={{ color: G3 }}>Apply to join →</span>
+          New driver partner?{' '}
+          <button
+            type="button"
+            onClick={onApply}
+            className="active:opacity-60"
+            style={{ color: G3, fontFamily: IT, fontWeight: 600 }}
+          >
+            Apply to join →
+          </button>
         </p>
       </div>
     </div>
@@ -2999,7 +3009,13 @@ function DriverProfileTab({ onBack, onSettings }: { onBack: () => void; onSettin
 // ─────────────────────────────────────────────────────────────────────────────
 // DRIVER-017 — SETTINGS
 // ─────────────────────────────────────────────────────────────────────────────
-export function DriverSettingsScreen({ onBack }: { onBack: () => void }) {
+export function DriverSettingsScreen({
+  onBack,
+  onLogout,
+}: {
+  onBack: () => void;
+  onLogout?: () => void;
+}) {
   const [notifTrips, setNotifTrips] = useState(true);
   const [notifEarnings, setNotifEarnings] = useState(true);
   const [notifPromos, setNotifPromos] = useState(false);
@@ -3210,6 +3226,10 @@ export function DriverSettingsScreen({ onBack }: { onBack: () => void }) {
 
         {/* Logout */}
         <button
+          onClick={() => {
+            auth.clear();
+            onLogout?.();
+          }}
           className="flex h-12 w-full items-center justify-center rounded-2xl active:scale-[.97]"
           style={{
             background: 'rgba(239,68,68,.06)',
