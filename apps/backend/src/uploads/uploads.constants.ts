@@ -43,6 +43,7 @@ export const UPLOAD_FOLDERS = [
   'vehicle-photos',
   'profile-photos',
   'identity-verification',
+  'product-images',
 ] as const;
 
 export type UploadFolder = (typeof UPLOAD_FOLDERS)[number];
@@ -70,6 +71,8 @@ export const UPLOAD_FOLDER_PERMISSIONS: Record<UploadFolder, readonly string[]> 
   'profile-photos': [],
   // Driver identity documents only.
   'identity-verification': ['driver:identity-verification:manage'],
+  // Merchants upload photos for their own catalogue products.
+  'product-images': ['merchant:products:manage'],
 };
 
 /** File extension chosen server-side from the validated content type. */

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { api } from '../lib/api';
+import { api, uploadFile } from '../lib/api';
 import { auth } from '../lib/auth';
 import type {
   MerchantBusinessDto,
@@ -1891,6 +1891,12 @@ function ProductsPage() {
   const [variantDraft, setVariantDraft] = useState({ name: '', priceOverride: '', sku: '' });
   const [variantBusy, setVariantBusy] = useState(false);
   const [saveErr, setSaveErr] = useState('');
+  const [savedMsg, setSavedMsg] = useState('');
+  const [imgBusy, setImgBusy] = useState(false);
+  const flash = (msg: string) => {
+    setSavedMsg(msg);
+    window.setTimeout(() => setSavedMsg(''), 2600);
+  };
 
   const fetchProducts = useCallback(async () => {
     try {
@@ -1962,6 +1968,7 @@ function ProductsPage() {
       await fetchProducts();
       // Close on success. Variants are managed by re-opening Edit (they persist
       // immediately via their own Add/Remove), so there's no half-saved state.
+      flash(editId ? 'Product updated' : `“${form.name}” added to your catalogue`);
       setShowAdd(false);
       setEditId(null);
     } catch (e: unknown) {
@@ -2016,6 +2023,23 @@ function ProductsPage() {
     }
   };
 
+  // Upload a product photo: file → signed R2 upload → attach its URL.
+  const uploadImage = async (file: File | undefined) => {
+    if (!editId || !file) return;
+    setSaveErr('');
+    setImgBusy(true);
+    try {
+      const url = await uploadFile(file, 'product-images');
+      await api.merchant.addProductImage(editId, url);
+      await fetchProducts();
+      flash('Photo added');
+    } catch (e: unknown) {
+      setSaveErr((e as { message?: string }).message ?? 'Image upload failed. Try again.');
+    } finally {
+      setImgBusy(false);
+    }
+  };
+
   const deleteProduct = async (id: string) => {
     setShowDeleteId(null);
     setProducts((ps) => ps.filter((p) => p.id !== id));
@@ -2031,6 +2055,28 @@ function ProductsPage() {
       className="mx-scroll"
       style={{ flex: 1, overflowY: 'auto', padding: 20, position: 'relative' }}
     >
+      {savedMsg && (
+        <div
+          style={{
+            position: 'sticky',
+            top: 0,
+            zIndex: 20,
+            marginBottom: 12,
+            padding: '10px 14px',
+            borderRadius: 8,
+            background: 'rgba(43,172,82,.12)',
+            border: `1px solid rgba(71,207,114,.4)`,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <span style={{ fontSize: 14 }}>✓</span>
+          <span style={{ fontFamily: IT, fontSize: 13, color: G3, fontWeight: 600 }}>
+            {savedMsg}
+          </span>
+        </div>
+      )}
       <SectionHead
         title="Products & Catalogue"
         sub={
@@ -2200,6 +2246,80 @@ function ProductsPage() {
             value={form.description}
             onChange={(v) => setForm((f) => ({ ...f, description: v }))}
           />
+
+          {/* Product photo — upload once the product exists. */}
+          {editId ? (
+            <div
+              style={{
+                padding: '12px 14px',
+                borderRadius: 8,
+                background: NAVY_SURFACE,
+                border: `1px solid ${BORDER}`,
+                marginBottom: 16,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+              }}
+            >
+              <div
+                style={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: 8,
+                  flexShrink: 0,
+                  background: editing?.imageUrl ? 'transparent' : NAVY_CARD,
+                  backgroundImage: editing?.imageUrl ? `url(${editing.imageUrl})` : undefined,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 22,
+                  border: `1px solid ${BORDER}`,
+                }}
+              >
+                {!editing?.imageUrl && '🍛'}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontFamily: PP, fontSize: 13, fontWeight: 700, color: WHITE }}>
+                  Product photo
+                </div>
+                <div style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>
+                  JPG, PNG or WebP. Shown to customers in the store.
+                </div>
+              </div>
+              <label style={{ marginBottom: 0 }}>
+                <span
+                  className="transition-transform active:scale-95"
+                  style={{
+                    display: 'inline-block',
+                    padding: '7px 14px',
+                    borderRadius: 8,
+                    background: 'transparent',
+                    border: `1px solid rgba(71,207,114,.4)`,
+                    color: imgBusy ? MUTED : G3,
+                    fontFamily: IT,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: imgBusy ? 'not-allowed' : 'pointer',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {imgBusy ? 'Uploading…' : editing?.imageUrl ? 'Change photo' : 'Upload photo'}
+                </span>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  disabled={imgBusy}
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    void uploadImage(e.target.files?.[0]);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+            </div>
+          ) : null}
 
           {/* Variants — base price + per-variant price overrides. Only available
               once the product exists (variants attach to a product id). */}

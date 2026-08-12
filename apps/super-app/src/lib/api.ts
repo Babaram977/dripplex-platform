@@ -1193,6 +1193,13 @@ export const api = {
     deleteVariant: (id: string, variantId: string) =>
       dx<RawMerchantProduct>('DELETE', `/merchant/products/${id}/variants/${variantId}`),
 
+    // Product images — upload the file to storage first (uploadFile → the
+    // 'product-images' folder) then attach its URL here.
+    addProductImage: (id: string, url: string) =>
+      dx<RawMerchantProduct>('POST', `/merchant/products/${id}/images`, { url }),
+    removeProductImage: (id: string, imageId: string) =>
+      dx<RawMerchantProduct>('DELETE', `/merchant/products/${id}/images/${imageId}`),
+
     // Orders — accept moves to PREPARING (no separate preparing endpoint)
     getOrders: (params?: { page?: number; pageSize?: number; status?: string }) =>
       dx<PaginatedResult<MerchantOrderDto>>('GET', '/merchant/orders', undefined, params),
