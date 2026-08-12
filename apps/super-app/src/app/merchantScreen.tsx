@@ -2487,10 +2487,12 @@ function StoreSetupPage({
   storeOpen,
   onToggleStore,
   business,
+  onExit,
 }: {
   storeOpen: boolean;
   onToggleStore: (v: boolean) => void;
   business: MerchantBusinessDto | null;
+  onExit?: () => void;
 }) {
   const [storeName, setStoreName] = useState(business?.businessName ?? '');
   const [category, setCategory] = useState(business?.businessType ?? 'Local Food');
@@ -2498,8 +2500,12 @@ function StoreSetupPage({
   const [address, setAddress] = useState(business?.address ?? '');
   const [openTime, setOpenTime] = useState(business?.openingTime ?? '08:00');
   const [closeTime, setCloseTime] = useState(business?.closingTime ?? '21:00');
+  const [logoUrl, setLogoUrl] = useState(business?.logoUrl ?? '');
+  const [coverUrl, setCoverUrl] = useState(business?.coverPhotoUrl ?? '');
+  const [uploading, setUploading] = useState<null | 'logo' | 'cover'>(null);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveErr, setSaveErr] = useState('');
 
   const CATS = [
     'Local Food',
@@ -2511,21 +2517,53 @@ function StoreSetupPage({
     'Other',
   ];
 
-  const handleSave = async () => {
+  // Only send fields the backend UpdateBusinessDto actually accepts. Opening/
+  // closing hours and the cuisine "Category" have no field on the business
+  // model yet (businessType is a legal-entity enum, not a cuisine), so sending
+  // them made the whole PATCH fail silently.
+  const handleSave = async (): Promise<boolean> => {
     setSaving(true);
+    setSaveErr('');
     try {
       await api.merchant.updateBusiness({
         businessName: storeName,
         description: description || undefined,
         address: address || undefined,
-        openingTime: openTime,
-        closingTime: closeTime,
+        logoUrl: logoUrl || undefined,
+        coverPhotoUrl: coverUrl || undefined,
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
-    } catch {
+      return true;
+    } catch (e: unknown) {
+      setSaveErr((e as { message?: string }).message ?? 'Could not save. Please try again.');
+      return false;
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSaveExit = async () => {
+    if (await handleSave()) onExit?.();
+  };
+
+  const uploadBranding = async (kind: 'logo' | 'cover', file: File | undefined) => {
+    if (!file) return;
+    setUploading(kind);
+    setSaveErr('');
+    try {
+      const url = await uploadFile(file, 'product-images');
+      if (kind === 'logo') {
+        setLogoUrl(url);
+        await api.merchant.updateBusiness({ logoUrl: url });
+      } else {
+        setCoverUrl(url);
+        await api.merchant.updateBusiness({ coverPhotoUrl: url });
+      }
+    } catch (e: unknown) {
+      setSaveErr((e as { message?: string }).message ?? 'Image upload failed. Try again.');
+    } finally {
+      setUploading(null);
     }
   };
 
@@ -2640,45 +2678,80 @@ function StoreSetupPage({
           <SectionHead title="Store Logo & Cover" />
           <div style={{ display: 'flex', gap: 14 }}>
             <div style={{ textAlign: 'center' }}>
-              <div
-                style={{
-                  width: 72,
-                  height: 72,
-                  borderRadius: 14,
-                  background: NAVY_SURFACE,
-                  border: `2px dashed ${BORDER}`,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 28,
-                  cursor: 'pointer',
-                  marginBottom: 6,
-                }}
-              >
-                🏪
-              </div>
-              <div style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>Logo</div>
+              <label style={{ cursor: uploading ? 'not-allowed' : 'pointer' }}>
+                <div
+                  style={{
+                    width: 72,
+                    height: 72,
+                    borderRadius: 14,
+                    background: logoUrl ? 'transparent' : NAVY_SURFACE,
+                    backgroundImage: logoUrl ? `url(${logoUrl})` : undefined,
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                    border: `2px dashed ${BORDER}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 28,
+                    marginBottom: 6,
+                  }}
+                >
+                  {!logoUrl && (uploading === 'logo' ? '…' : '🏪')}
+                </div>
+                <div style={{ fontFamily: IT, fontSize: 11, color: G3 }}>
+                  {uploading === 'logo' ? 'Uploading…' : logoUrl ? 'Change logo' : 'Upload logo'}
+                </div>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  disabled={uploading !== null}
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    void uploadBranding('logo', e.target.files?.[0]);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
             </div>
             <div style={{ flex: 1 }}>
-              <div
-                style={{
-                  height: 72,
-                  borderRadius: 10,
-                  background: NAVY_SURFACE,
-                  border: `2px dashed ${BORDER}`,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 4,
-                  marginBottom: 6,
-                }}
-              >
-                <span style={{ fontSize: 20 }}>🖼️</span>
-                <span style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>
-                  Cover image — not available in pilot
-                </span>
-              </div>
+              <label style={{ cursor: uploading ? 'not-allowed' : 'pointer' }}>
+                <div
+                  style={{
+                    height: 72,
+                    borderRadius: 10,
+                    background: coverUrl ? 'transparent' : NAVY_SURFACE,
+                    backgroundImage: coverUrl ? `url(${coverUrl})` : undefined,
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                    border: `2px dashed ${BORDER}`,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 4,
+                    marginBottom: 6,
+                  }}
+                >
+                  {!coverUrl && (
+                    <>
+                      <span style={{ fontSize: 20 }}>🖼️</span>
+                      <span style={{ fontFamily: IT, fontSize: 11, color: G3 }}>
+                        {uploading === 'cover' ? 'Uploading…' : 'Upload cover image'}
+                      </span>
+                    </>
+                  )}
+                </div>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  disabled={uploading !== null}
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    void uploadBranding('cover', e.target.files?.[0]);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
             </div>
           </div>
         </MxCard>
@@ -2718,13 +2791,31 @@ function StoreSetupPage({
               color={'#3B82F6'}
             />
           </div>
+          {saveErr && (
+            <div
+              style={{
+                padding: '9px 12px',
+                borderRadius: 7,
+                background: 'rgba(239,68,68,.07)',
+                border: '1px solid rgba(239,68,68,.2)',
+                marginTop: 10,
+              }}
+            >
+              <span style={{ fontFamily: IT, fontSize: 12, color: C_ERR }}>{saveErr}</span>
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
-            <MxBtn label="Save & Exit" variant="outline" onClick={handleSave} />
+            <MxBtn
+              label="Save & Exit"
+              variant="outline"
+              disabled={saving}
+              onClick={handleSaveExit}
+            />
             <MxBtn
               label={saving ? 'Saving…' : 'Save Changes'}
               variant="primary"
               disabled={saving}
-              onClick={handleSave}
+              onClick={() => void handleSave()}
             />
           </div>
         </MxCard>
@@ -3848,6 +3939,7 @@ export function MerchantPortalScreen({
             storeOpen={storeOpen}
             onToggleStore={handleToggleStore}
             business={business}
+            onExit={() => setPage('dashboard')}
           />
         );
       case 'earnings':
