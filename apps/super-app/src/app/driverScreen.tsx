@@ -7,7 +7,7 @@ import {
   COLOR_WARNING,
   TEXT_SECONDARY,
 } from '../tokens/colors';
-import { api } from '../lib/api';
+import { api, uploadFile } from '../lib/api';
 import { auth } from '../lib/auth';
 import type { RideOfferDto, RideOfferPreviewDto, RideDto, RideType } from '../lib/api';
 
@@ -1026,6 +1026,48 @@ export function DriverKYCStatusScreen({
 // ─────────────────────────────────────────────────────────────────────────────
 // DRIVER-005 — UPLOAD DOCUMENTS
 // ─────────────────────────────────────────────────────────────────────────────
+// Driver KYC documents. documentType MUST be a real backend KycDocumentType.
+// Road Worthiness and Passport Photo have no KycDocumentType and are a documented
+// gap (Road Worthiness needs a new enum value + founder decision; the passport
+// photo is a profile avatar, not a KYC document), so they are omitted here rather
+// than submitted as invalid types.
+const DRIVER_KYC_DOCS: {
+  type: string;
+  label: string;
+  icon: string;
+  numberLabel: string;
+  numberPlaceholder: string;
+}[] = [
+  {
+    type: 'NATIONAL_ID',
+    label: 'NIN / National ID',
+    icon: '🪪',
+    numberLabel: 'NIN / ID number',
+    numberPlaceholder: 'e.g. 12345678901',
+  },
+  {
+    type: 'DRIVER_LICENSE',
+    label: "Driver's Licence",
+    icon: '🪪',
+    numberLabel: 'Licence number',
+    numberPlaceholder: 'e.g. ABC123456',
+  },
+  {
+    type: 'VEHICLE_REGISTRATION',
+    label: 'Vehicle Paper',
+    icon: '📄',
+    numberLabel: 'Registration / plate number',
+    numberPlaceholder: 'e.g. LAG 482 KA',
+  },
+  {
+    type: 'INSURANCE',
+    label: 'Insurance Certificate',
+    icon: '📋',
+    numberLabel: 'Policy number',
+    numberPlaceholder: 'e.g. POL-000123',
+  },
+];
+
 export function DriverUploadDocsScreen({
   onBack,
   onSave,
@@ -1033,17 +1075,76 @@ export function DriverUploadDocsScreen({
   onBack: () => void;
   onSave: () => void;
 }) {
-  const pending = DOC_ITEMS.filter((d) => d.status === 'pending');
-  const [uploading, setUploading] = useState<string | null>(null);
-  const [uploaded, setUploaded] = useState<string[]>([]);
+  // Inline upload form state (one document at a time).
+  const [openType, setOpenType] = useState<string | null>(null);
+  const [docNumber, setDocNumber] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [formErr, setFormErr] = useState('');
+  // Documents submitted this session. There is no GET /driver/kyc, so prior
+  // submissions can't be re-hydrated on reload — the data is still saved
+  // server-side; this only tracks what was uploaded in this visit.
+  const [submitted, setSubmitted] = useState<string[]>([]);
+  const [reviewing, setReviewing] = useState(false);
+  const [reviewErr, setReviewErr] = useState('');
+  const fileRef = useRef<HTMLInputElement | null>(null);
 
-  const handleUpload = (id: string) => {
-    setUploading(id);
-    setTimeout(() => {
-      setUploading(null);
-      setUploaded((p) => [...p, id]);
-    }, 1800);
+  const openForm = (type: string) => {
+    setOpenType(type);
+    setDocNumber('');
+    setFile(null);
+    setFormErr('');
   };
+
+  const submitDoc = async (type: string) => {
+    setFormErr('');
+    if (docNumber.trim().length < 3) {
+      setFormErr('Enter the document number (at least 3 characters).');
+      return;
+    }
+    if (!file) {
+      setFormErr('Choose a clear photo or scan of the document.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const frontImage = await uploadFile(file, 'kyc-documents');
+      await api.driver.submitKyc({
+        documentType: type,
+        documentNumber: docNumber.trim(),
+        frontImage,
+      });
+      setSubmitted((s) => (s.includes(type) ? s : [...s, type]));
+      setOpenType(null);
+      setDocNumber('');
+      setFile(null);
+    } catch (e: unknown) {
+      setFormErr(
+        (e as { message?: string }).message ?? 'Could not submit the document. Please try again.',
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Submit the whole onboarding for Ops review. The backend requires emergency
+  // contact + agreement + at least one KYC document; surfaces the exact reason
+  // if anything is still missing.
+  const submitForReview = async () => {
+    setReviewErr('');
+    setReviewing(true);
+    try {
+      await api.driver.submitOnboarding();
+      onSave();
+    } catch (e: unknown) {
+      setReviewErr(
+        (e as { message?: string }).message ?? 'Could not submit for review. Please try again.',
+      );
+      setReviewing(false);
+    }
+  };
+
+  const canReview = submitted.length > 0;
 
   return (
     <div
@@ -1059,7 +1160,7 @@ export function DriverUploadDocsScreen({
               Upload Documents
             </p>
             <p className="text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
-              {pending.length} pending
+              {submitted.length}/{DRIVER_KYC_DOCS.length} submitted
             </p>
           </div>
         </div>
@@ -1071,18 +1172,26 @@ export function DriverUploadDocsScreen({
         >
           <span style={{ fontSize: 20, flexShrink: 0 }}>💡</span>
           <p style={{ fontFamily: IT, fontSize: 13, color: TEXT_SECONDARY, lineHeight: 1.5 }}>
-            Documents should be clear, unblurred photos. All 4 corners must be visible. Files must
-            be under 5MB.
+            Documents should be clear, unblurred photos or PDFs. All 4 corners must be visible.
+            Files must be under 10MB.
           </p>
         </div>
 
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*,application/pdf"
+          style={{ display: 'none' }}
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+        />
+
         <div className="mb-6 flex flex-col gap-4">
-          {pending.map((doc) => {
-            const done = uploaded.includes(doc.id);
-            const busy = uploading === doc.id;
+          {DRIVER_KYC_DOCS.map((doc) => {
+            const done = submitted.includes(doc.type);
+            const isOpen = openType === doc.type;
             return (
               <div
-                key={doc.id}
+                key={doc.type}
                 className="overflow-hidden rounded-2xl"
                 style={{
                   background: NAVY_SURFACE,
@@ -1104,16 +1213,13 @@ export function DriverUploadDocsScreen({
                       {doc.label}
                     </p>
                     <p className="text-[12px]" style={{ fontFamily: IT, color: done ? G3 : MUTED }}>
-                      {done ? 'Uploaded — under review' : 'Required · PDF or image'}
+                      {done ? 'Submitted — under review' : 'Required · PDF or image'}
                     </p>
                   </div>
-                </div>
-                {!done && (
-                  <div className="flex gap-2 px-4 pb-4">
+                  {!done && !isOpen && (
                     <button
-                      onClick={() => handleUpload(doc.id)}
-                      disabled={busy}
-                      className="flex h-10 flex-1 items-center justify-center gap-2 rounded-xl text-[13px] font-semibold active:scale-[.97]"
+                      onClick={() => openForm(doc.type)}
+                      className="h-10 rounded-xl px-4 text-[13px] font-semibold active:scale-[.97]"
                       style={{
                         background: `linear-gradient(135deg,${G0},${G2})`,
                         color: '#fff',
@@ -1121,37 +1227,82 @@ export function DriverUploadDocsScreen({
                         boxShadow: `0 4px 16px rgba(43,172,82,.3)`,
                       }}
                     >
-                      {busy ? (
-                        <>
-                          <svg
-                            width="14"
-                            height="14"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2.5"
-                            strokeLinecap="round"
-                            style={{ animation: 'spin 1s linear infinite' }}
-                          >
-                            <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4" />
-                          </svg>{' '}
-                          Uploading...
-                        </>
-                      ) : (
-                        '📤 Upload'
-                      )}
+                      Upload
                     </button>
-                    <button
-                      className="h-10 rounded-xl px-4 text-[13px] font-medium active:scale-[.97]"
-                      style={{
-                        background: 'rgba(255,255,255,.04)',
-                        border: `1px solid ${BORDER}`,
-                        color: MUTED,
-                        fontFamily: IT,
-                      }}
-                    >
-                      📷 Camera
-                    </button>
+                  )}
+                </div>
+
+                {isOpen && (
+                  <div
+                    className="px-4 pb-4"
+                    style={{ borderTop: '1px solid rgba(255,255,255,.06)', paddingTop: 14 }}
+                  >
+                    <DInput
+                      label={doc.numberLabel}
+                      placeholder={doc.numberPlaceholder}
+                      value={docNumber}
+                      onChange={setDocNumber}
+                    />
+                    <div className="mb-3 flex items-center gap-3">
+                      <button
+                        onClick={() => fileRef.current?.click()}
+                        className="h-10 rounded-xl px-4 text-[13px] font-medium active:scale-[.97]"
+                        style={{
+                          background: 'rgba(255,255,255,.04)',
+                          border: `1px solid ${BORDER}`,
+                          color: '#fff',
+                          fontFamily: IT,
+                        }}
+                      >
+                        {file ? 'Change file' : '📤 Choose file'}
+                      </button>
+                      <span
+                        className="flex-1 truncate text-[12px]"
+                        style={{ fontFamily: IT, color: file ? '#fff' : MUTED }}
+                      >
+                        {file ? file.name : 'No file selected'}
+                      </span>
+                    </div>
+                    {formErr && (
+                      <div
+                        className="mb-3 rounded-xl px-3 py-2"
+                        style={{
+                          background: 'rgba(239,68,68,.07)',
+                          border: '1px solid rgba(239,68,68,.2)',
+                        }}
+                      >
+                        <p style={{ fontFamily: IT, fontSize: 12, color: '#F87171' }}>{formErr}</p>
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => submitDoc(doc.type)}
+                        disabled={submitting}
+                        className="flex h-10 flex-1 items-center justify-center rounded-xl text-[13px] font-semibold active:scale-[.97]"
+                        style={{
+                          background: submitting
+                            ? 'rgba(255,255,255,.08)'
+                            : `linear-gradient(135deg,${G0},${G2})`,
+                          color: submitting ? MUTED : '#fff',
+                          fontFamily: IT,
+                        }}
+                      >
+                        {submitting ? 'Submitting…' : 'Submit for review'}
+                      </button>
+                      <button
+                        onClick={() => setOpenType(null)}
+                        disabled={submitting}
+                        className="h-10 rounded-xl px-4 text-[13px] font-medium active:scale-[.97]"
+                        style={{
+                          background: 'rgba(255,255,255,.04)',
+                          border: `1px solid ${BORDER}`,
+                          color: MUTED,
+                          fontFamily: IT,
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -1159,12 +1310,20 @@ export function DriverUploadDocsScreen({
           })}
         </div>
 
+        {reviewErr && (
+          <div
+            className="mb-4 rounded-2xl px-4 py-3"
+            style={{ background: 'rgba(239,68,68,.07)', border: '1px solid rgba(239,68,68,.2)' }}
+          >
+            <p style={{ fontFamily: IT, fontSize: 12, color: '#F87171' }}>{reviewErr}</p>
+          </div>
+        )}
+
         <DGreenBtn
-          label={
-            uploaded.length === pending.length ? 'Submit for Review →' : `Upload All to Continue`
-          }
-          onClick={onSave}
-          disabled={uploaded.length < pending.length}
+          label={canReview ? 'Submit for Review →' : 'Upload a document to continue'}
+          onClick={submitForReview}
+          disabled={!canReview}
+          loading={reviewing}
         />
       </div>
     </div>
