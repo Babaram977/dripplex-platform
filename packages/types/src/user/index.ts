@@ -20,3 +20,23 @@ export interface PaginatedResult<T> {
     totalPages: number;
   };
 }
+
+/**
+ * A customer row for the Operations Console customer roster
+ * (`GET /admin/customers`). Combines the customer's `User` identity with two
+ * live aggregates over their rides: `tripsCount` and `totalSpent` are computed
+ * from that customer's COMPLETED rides only (sum of `Ride.totalFare`), so an
+ * in-flight or cancelled ride never inflates spend. There is no customer
+ * rating model, so no rating field is included.
+ */
+export interface AdminCustomerDto {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string | null;
+  status: UserStatus;
+  tripsCount: number;
+  totalSpent: number;
+  createdAt: string;
+}

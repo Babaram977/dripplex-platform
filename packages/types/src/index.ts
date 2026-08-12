@@ -55,7 +55,7 @@ export type {
 
 export { AUTH_AUDIT_ACTIONS } from './auth/index.js';
 
-export type { PaginatedResult, UserSummary } from './user/index.js';
+export type { AdminCustomerDto, PaginatedResult, UserSummary } from './user/index.js';
 
 export type {
   AddProductImageRequest,
