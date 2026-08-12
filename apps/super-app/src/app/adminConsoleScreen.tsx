@@ -2574,6 +2574,19 @@ function PageCustomers() {
               ))}
             </tbody>
           </table>
+          {filtered.length === 0 && (
+            <div
+              style={{
+                padding: '8px 4px',
+                fontSize: 12,
+                color: MUTED,
+                fontFamily: 'Inter, sans-serif',
+              }}
+            >
+              No customer directory is available yet — the Operations backend has no customer-roster
+              endpoint (see docs/reference/DPX-OPS-PREVIEW-WIRING-STATUS.md).
+            </div>
+          )}
         </Card>
       </div>
       {selected && (
@@ -2667,9 +2680,17 @@ function PagePricing() {
     const m = surge ? parseFloat(mult) || 1 : 1;
     return ((b + d * DIST_KM + t * TIME_MIN) * m).toFixed(0);
   };
-  const promos = [] as Record<string, unknown>[]; // mock cleared
+  const promos = [] as Record<string, unknown>[]; // no ops-facing promo feed (see wiring-status doc)
+  const [msg, setMsg] = useState<string | null>(null);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {msg && (
+        <Card style={{ padding: '10px 14px' }}>
+          <span style={{ fontSize: 11.5, color: WHITE, fontFamily: 'Inter, sans-serif' }}>
+            {msg}
+          </span>
+        </Card>
+      )}
       <div style={{ display: 'flex', gap: 14 }}>
         {/* Fare config */}
         <Card style={{ flex: 1 }}>
@@ -2705,8 +2726,29 @@ function PagePricing() {
             ))}
           </div>
           <div style={{ marginTop: 14, display: 'flex', gap: 8 }}>
-            <Btn label="Save Configuration" color={G2} />
-            <Btn label="Reset to Default" color={MUTED} outline />
+            <Btn
+              label="Save Configuration"
+              color={G2}
+              onClick={() =>
+                setMsg(
+                  'Saving fare parameters isn’t available yet — the Operations backend has no fare-config endpoint (fares live in the Ride module). See docs/reference/DPX-OPS-PREVIEW-WIRING-STATUS.md.',
+                )
+              }
+            />
+            <Btn
+              label="Reset to Default"
+              color={MUTED}
+              outline
+              onClick={() => {
+                setBase('500');
+                setDist('120');
+                setTime('40');
+                setWait('35');
+                setSurge(false);
+                setMult('1.5');
+                setMsg('Preview values reset (local only — not persisted).');
+              }}
+            />
           </div>
         </Card>
         {/* Surge + preview */}
@@ -2792,7 +2834,18 @@ function PagePricing() {
       <Card>
         <SectionHeader
           title="Promo Campaigns"
-          action={<Btn label="+ New Promo" small color={G2} />}
+          action={
+            <Btn
+              label="+ New Promo"
+              small
+              color={G2}
+              onClick={() =>
+                setMsg(
+                  'Promotions are managed on the marketing/admin surface (promotions:admin:manage), not the operations console.',
+                )
+              }
+            />
+          }
         />
         <table
           style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Inter, sans-serif' }}
@@ -2849,6 +2902,19 @@ function PagePricing() {
             ))}
           </tbody>
         </table>
+        {promos.length === 0 && (
+          <div
+            style={{
+              padding: '8px 4px',
+              fontSize: 12,
+              color: MUTED,
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            No promo campaigns to show here — promotions live on the marketing/admin surface, not
+            the operations console.
+          </div>
+        )}
       </Card>
     </div>
   );
@@ -3700,6 +3766,14 @@ function PageAnalytics() {
   const heatVal = (_d: number, _h: number) => 0;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <Card style={{ padding: '10px 14px' }}>
+        <span style={{ fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          These charts need day/hour/month time-series and a revenue feed. The Operations analytics
+          endpoints currently return KPI aggregates and ranked lists (surfaced on the Dashboard),
+          not chart-ready series — so these render empty until a series endpoint exists. See
+          docs/reference/DPX-OPS-PREVIEW-WIRING-STATUS.md.
+        </span>
+      </Card>
       <div style={{ display: 'flex', gap: 12 }}>
         {/* Weekly revenue+trips */}
         <Card style={{ flex: 2, padding: '14px 16px' }}>
@@ -3886,9 +3960,21 @@ function PageReports() {
     { icon: '⚠️', label: 'Incident Report', desc: 'Incident frequency, resolution time' },
     { icon: '🎧', label: 'Support Report', desc: 'Ticket volume, CSAT scores' },
   ];
-  const generated = [] as Record<string, unknown>[]; // mock cleared
+  const generated = [] as Record<string, unknown>[]; // no report-generation endpoint yet
+  const [msg, setMsg] = useState<string | null>(null);
+  const notAvailable = () =>
+    setMsg(
+      'Report generation isn’t available yet — the Operations backend has no report/export endpoint (see docs/reference/DPX-OPS-PREVIEW-WIRING-STATUS.md).',
+    );
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {msg && (
+        <Card style={{ padding: '10px 14px' }}>
+          <span style={{ fontSize: 11.5, color: WHITE, fontFamily: 'Inter, sans-serif' }}>
+            {msg}
+          </span>
+        </Card>
+      )}
       {/* Date range */}
       <Card>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
@@ -3957,8 +4043,8 @@ function PageReports() {
               </div>
             </div>
             <div style={{ display: 'flex', gap: 6 }}>
-              <Btn label="PDF" small color={C_ERR} />
-              <Btn label="Excel" small color={C_OK} />
+              <Btn label="PDF" small color={C_ERR} onClick={notAvailable} />
+              <Btn label="Excel" small color={C_OK} onClick={notAvailable} />
             </div>
           </Card>
         ))}
@@ -3966,6 +4052,11 @@ function PageReports() {
       {/* Generated reports */}
       <Card>
         <SectionHeader title="Generated Reports" />
+        {generated.length === 0 && (
+          <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+            No reports have been generated — report export isn’t wired to a backend yet.
+          </div>
+        )}
         {generated.map((g, i) => (
           <div
             key={g.name}
@@ -4158,7 +4249,15 @@ function PageSettings() {
           </table>
         </Card>
       )}
-      {settingsTab === 'Roles' && (
+      {settingsTab === 'Roles' && roles.length === 0 && (
+        <Card style={{ padding: '10px 14px' }}>
+          <span style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+            No role-management endpoint is exposed to this console yet — roles/permissions are
+            provisioned via the RBAC seed. See docs/reference/DPX-OPS-PREVIEW-WIRING-STATUS.md.
+          </span>
+        </Card>
+      )}
+      {settingsTab === 'Roles' && roles.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           {roles.map((r) => (
             <Card key={r.name}>
@@ -4194,7 +4293,14 @@ function PageSettings() {
           ))}
         </div>
       )}
-      {settingsTab === 'Integrations' && (
+      {settingsTab === 'Integrations' && integrations.length === 0 && (
+        <Card style={{ padding: '10px 14px' }}>
+          <span style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+            No integrations registry endpoint is exposed to this console yet.
+          </span>
+        </Card>
+      )}
+      {settingsTab === 'Integrations' && integrations.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }}>
           {integrations.map((int) => (
             <Card key={int.name} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -4233,6 +4339,7 @@ function PageSettings() {
 // ─── Page: Audit Logs ─────────────────────────────────────────────────────────
 function PageAuditLogs() {
   const [search, setSearch] = useState('');
+  const [msg, setMsg] = useState<string | null>(null);
   const filtered = AUDIT_LOGS.filter((a) =>
     (a.admin + a.action + a.target).toLowerCase().includes(search.toLowerCase()),
   );
@@ -4247,9 +4354,24 @@ function PageAuditLogs() {
           style={{ width: 260 }}
         />
         <div style={{ marginLeft: 'auto' }}>
-          <Btn label="Export CSV" color={G2} />
+          <Btn
+            label="Export CSV"
+            color={G2}
+            onClick={() =>
+              setMsg(
+                'Audit logs aren’t available here — the AuditService writes entries but exposes no admin read/export endpoint yet (see docs/reference/DPX-OPS-PREVIEW-WIRING-STATUS.md).',
+              )
+            }
+          />
         </div>
       </div>
+      {msg && (
+        <Card style={{ padding: '10px 14px' }}>
+          <span style={{ fontSize: 11.5, color: WHITE, fontFamily: 'Inter, sans-serif' }}>
+            {msg}
+          </span>
+        </Card>
+      )}
       <Card style={{ padding: '12px 16px' }}>
         <table
           style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Inter, sans-serif' }}
@@ -4319,9 +4441,19 @@ function PageAuditLogs() {
             ))}
           </tbody>
         </table>
-        <div style={{ marginTop: 10, fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
-          {filtered.length} of {AUDIT_LOGS.length} records
-        </div>
+        {AUDIT_LOGS.length === 0 && (
+          <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+            No audit-log read endpoint is available yet — entries are written but not exposed to
+            this console.
+          </div>
+        )}
+        {AUDIT_LOGS.length > 0 && (
+          <div
+            style={{ marginTop: 10, fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}
+          >
+            {filtered.length} of {AUDIT_LOGS.length} records
+          </div>
+        )}
       </Card>
     </div>
   );
