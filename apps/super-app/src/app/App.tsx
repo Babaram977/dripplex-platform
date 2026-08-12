@@ -503,6 +503,7 @@ function AppShell() {
         onBack={() => go('welcome')}
         onSuccess={() => go('home')}
         onMerchant={() => go('mxdash')}
+        onDriver={() => go('drvlogin')}
       />
     ),
     recovery: <RecoveryScreen onRecovered={() => go('returning')} onBack={() => go('returning')} />,
@@ -511,6 +512,7 @@ function AppShell() {
         onBack={() => go('welcome')}
         onSuccess={() => go('home')}
         onMerchant={() => go('mxdash')}
+        onDriver={() => go('drvlogin')}
       />
     ),
     twofa: <TwoFactorScreen onBack={() => go('security')} onDone={() => go('security')} />,
@@ -928,6 +930,7 @@ function AppShell() {
           go('drvrequest');
         }}
         onSettings={() => go('drvsettings')}
+        onSignIn={() => go('drvlogin')}
       />
     ),
     drvrequest: (

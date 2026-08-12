@@ -53,6 +53,11 @@ export const auth = {
     return !!localStorage.getItem(ACCESS_KEY);
   },
 
+  /** True when the stored session carries the given role (e.g. 'driver'). */
+  hasRole(role: string): boolean {
+    return this.getUser()?.roles.includes(role) ?? false;
+  },
+
   // Convenience: full display name
   displayName(user: DxUser | null): string {
     if (!user) return '';
