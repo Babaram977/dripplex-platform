@@ -685,6 +685,117 @@ export interface AdminDriverDto {
   kyc: AdminDriverKycDto[];
 }
 
+// A single Operations work-queue case (SOS alert or incident report), as
+// returned by /operations/queues/{sos,incidents}. Both share OperationsCaseBase
+// fields; the type-specific fields (severity/category/description for incidents,
+// lat/long/battery for SOS) are optional here so one shape covers both queues.
+export interface AdminOperationsCaseDto {
+  caseId: string;
+  caseType: 'SOS' | 'INCIDENT' | 'SUPPORT';
+  sourceId: string;
+  priority: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+  status: 'NEW' | 'ASSIGNED' | 'IN_PROGRESS' | 'WAITING' | 'RESOLVED' | 'CLOSED';
+  assignedToId: string | null;
+  assignedToName: string | null;
+  assignedToRole: 'OPERATOR' | 'SUPERVISOR' | null;
+  createdAt: string;
+  updatedAt: string;
+  driverId: string;
+  driverName: string;
+  driverPhone: string | null;
+  // Optimistic-concurrency token — echo it back on every PATCH (409 on mismatch).
+  version: number;
+  // Incident-only
+  category?: string;
+  severity?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  description?: string;
+  rideId?: string | null;
+  adminNotes?: string | null;
+  // SOS-only
+  latitude?: number | null;
+  longitude?: number | null;
+  batteryLevel?: number | null;
+  // Support-only
+  subject?: string;
+  adminResponse?: string | null;
+}
+
+// One driver in the live fleet snapshot (GET /operations/fleet).
+export interface AdminFleetDriverDto {
+  driverId: string;
+  firstName: string;
+  lastName: string;
+  phone: string | null;
+  status: 'SOS' | 'SUSPENDED' | 'NEEDS_INSPECTION' | 'BUSY' | 'AVAILABLE' | 'OFFLINE';
+  hasOpenSos: boolean;
+  isSuspended: boolean;
+  needsInspection: boolean;
+  online: boolean;
+  acceptingRides: boolean;
+  latitude: number | null;
+  longitude: number | null;
+  vehicleType: string | null;
+  activeRideId: string | null;
+  shiftStatus: 'ACTIVE' | 'ON_BREAK' | null;
+  vehiclePlateNumber: string | null;
+}
+export interface AdminFleetSummaryDto {
+  totalDrivers: number;
+  onlineCount: number;
+  availableCount: number;
+  busyCount: number;
+  offlineCount: number;
+  sosCount: number;
+  suspendedCount: number;
+  needsInspectionCount: number;
+}
+
+// One live ride in the operations ride queue (GET /operations/rides).
+export interface AdminLiveRideDto {
+  rideId: string;
+  status: 'REQUESTED' | 'SEARCHING' | 'DRIVER_ASSIGNED' | 'ARRIVED' | 'IN_PROGRESS';
+  rideType: string;
+  customerId: string;
+  customerName: string;
+  driverId: string | null;
+  driverName: string | null;
+  pickupLatitude: number;
+  pickupLongitude: number;
+  pickupAddress: string | null;
+  dropoffLatitude: number;
+  dropoffLongitude: number;
+  dropoffAddress: string | null;
+  requestedAt: string;
+  assignedAt: string | null;
+}
+
+// One activity-feed event (GET /operations/dashboard/activity-feed).
+export interface AdminActivityFeedItemDto {
+  id: string;
+  type: string;
+  message: string;
+  occurredAt: string;
+  driverId: string | null;
+  driverName: string | null;
+}
+
+// Operations analytics overview KPIs (GET /operations/analytics/overview).
+export interface AdminAnalyticsOverviewDto {
+  range: { from: string; to: string };
+  ridesRequested: number;
+  ridesCompleted: number;
+  completionRate: number;
+  cancellationRate: number;
+  noDriversFoundRate: number;
+  onlineDriversNow: number;
+  activeDriversInRange: number;
+  averageUtilizationRate: number | null;
+  averageTimeToAcceptSeconds: number | null;
+  repeatedOfferRideRate: number;
+  openCasesCount: number;
+  averageTimeToFirstResponseSeconds: number | null;
+}
+
 // Customer KYC
 export interface CustomerKycStatusDto {
   level: 'LEVEL_0' | 'LEVEL_1' | 'LEVEL_2';
@@ -1422,6 +1533,59 @@ export const api = {
         openSupportTicketsCount: number;
         waitingReviewCount: number;
       }>('GET', '/operations/dashboard/counters'),
+
+    // Operations work queues. Each returns { items, summary }.
+    getIncidentQueue: () =>
+      dx<{ items: AdminOperationsCaseDto[]; summary: Record<string, number> }>(
+        'GET',
+        '/operations/queues/incidents',
+      ),
+    getSosQueue: () =>
+      dx<{ items: AdminOperationsCaseDto[]; summary: Record<string, number> }>(
+        'GET',
+        '/operations/queues/sos',
+      ),
+    getSupportQueue: () =>
+      dx<{ items: AdminOperationsCaseDto[]; summary: Record<string, number> }>(
+        'GET',
+        '/operations/queues/support',
+      ),
+    // Mutate a case. version is REQUIRED (optimistic concurrency, 409 on stale).
+    updateCase: (
+      caseId: string,
+      body: {
+        version: number;
+        status?: 'NEW' | 'ASSIGNED' | 'IN_PROGRESS' | 'WAITING' | 'RESOLVED' | 'CLOSED';
+        priority?: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+        assignedToId?: string | null;
+        assignedToRole?: 'OPERATOR' | 'SUPERVISOR';
+      },
+    ) => dx<AdminOperationsCaseDto>('PATCH', `/operations/cases/${caseId}`, body),
+    // Append an operator note to a case's timeline.
+    addCaseNote: (caseId: string, note: string) =>
+      dx<AdminOperationsCaseDto>('POST', `/operations/cases/${caseId}/notes`, { note }),
+
+    // Live fleet snapshot (drivers + summary) for the Live Map.
+    getFleet: () =>
+      dx<{ drivers: AdminFleetDriverDto[]; summary: AdminFleetSummaryDto }>(
+        'GET',
+        '/operations/fleet',
+      ),
+    // Live ride queue (active rides only) for the Trips screen.
+    getRideQueue: () =>
+      dx<{
+        rides: AdminLiveRideDto[];
+        summary: { pendingCount: number; assignedCount: number; inProgressCount: number };
+      }>('GET', '/operations/rides'),
+    // Recent operations activity feed for the Dashboard.
+    getActivityFeed: () =>
+      dx<{ items: AdminActivityFeedItemDto[] }>('GET', '/operations/dashboard/activity-feed'),
+    // Analytics overview KPIs. from/to are ISO timestamps (required).
+    getAnalyticsOverview: (from: string, to: string) =>
+      dx<AdminAnalyticsOverviewDto>('GET', '/operations/analytics/overview', undefined, {
+        from,
+        to,
+      }),
   },
 
   // ── CUSTOMER KYC ───────────────────────────────────────────────────────────

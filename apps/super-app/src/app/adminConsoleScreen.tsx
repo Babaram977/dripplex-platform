@@ -1,5 +1,14 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { api, type AdminVehicleDto, type AdminDriverDto, type AdminDriverKycDto } from '../lib/api';
+import {
+  api,
+  type AdminVehicleDto,
+  type AdminDriverDto,
+  type AdminDriverKycDto,
+  type AdminOperationsCaseDto,
+  type AdminFleetDriverDto,
+  type AdminFleetSummaryDto,
+  type AdminLiveRideDto,
+} from '../lib/api';
 import { auth } from '../lib/auth';
 import {
   LineChart,
@@ -254,13 +263,7 @@ const TRIPS: Record<string, unknown>[] = []; // mock cleared — wired to backen
 
 const CUSTOMERS: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
 
-const INCIDENTS: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
-
-const SUPPORT_TICKETS: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
-
-const REVENUE_DATA: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
-
-const TRIP_STATUS_PIE: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
+const REVENUE_DATA: Record<string, unknown>[] = []; // mock cleared — no revenue time-series feed yet
 
 const WEEKLY_DATA: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
 
@@ -714,28 +717,77 @@ function PageDashboard() {
     openSupportTicketsCount: number;
     waitingReviewCount: number;
   } | null>(null);
+  const [fleet, setFleet] = useState<AdminFleetSummaryDto | null>(null);
+  const [rides, setRides] = useState<AdminLiveRideDto[] | null>(null);
+  const [overview, setOverview] = useState<{ ridesCompleted: number } | null>(null);
+
   useEffect(() => {
     let cancelled = false;
-    void api.admin
-      .getOpsCounters()
-      .then((c) => {
-        if (!cancelled) setCounters(c);
-      })
-      .catch(() => {
-        /* leave counters null → tiles show — */
-      });
+    // Each metric source is independent — a failure in one leaves that tile at
+    // "—" rather than blanking the whole dashboard.
+    void api.admin.getOpsCounters().then(
+      (v) => !cancelled && setCounters(v),
+      () => {},
+    );
+    void api.admin.getFleet().then(
+      (v) => !cancelled && setFleet(v.summary),
+      () => {},
+    );
+    const loadRides = () =>
+      api.admin.getRideQueue().then(
+        (v) => !cancelled && setRides(v.rides),
+        () => {},
+      );
+    void loadRides();
+    // The "Live Trip Feed" card advertises Auto-refresh: ON — honour it by
+    // re-polling the live ride queue on the platform's 15s cadence.
+    const rideTimer = setInterval(() => void loadRides(), 15000);
+    // "Completed today" — analytics overview scoped to the start of today → now.
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    void api.admin.getAnalyticsOverview(startOfToday.toISOString(), now.toISOString()).then(
+      (v) => !cancelled && setOverview({ ridesCompleted: v.ridesCompleted }),
+      () => {},
+    );
     return () => {
       cancelled = true;
+      clearInterval(rideTimer);
     };
   }, []);
+
   // Real counters where available; every other tile shows "—" rather than a fake
-  // number until its metric is wired (trips/revenue/driver-availability).
+  // number until its metric is wired (revenue has no backend feed yet).
   const c = (n: number | undefined) => (n === undefined ? '—' : String(n));
+  const activeTrips = rides === null ? undefined : rides.length;
+
+  // Trip Status pie from the real live ride queue (status distribution).
+  const pieData = (() => {
+    if (!rides || rides.length === 0) return [] as { name: string; value: number; color: string }[];
+    const buckets: Record<string, { value: number; color: string }> = {};
+    const colorFor = (label: string) =>
+      label === 'in progress'
+        ? C_OK
+        : label === 'accepted'
+          ? G2
+          : label === 'arriving'
+            ? C_WARN
+            : C_INFO;
+    for (const r of rides) {
+      const label = LIVE_RIDE_STATUS_LABEL[r.status];
+      buckets[label] = { value: (buckets[label]?.value ?? 0) + 1, color: colorFor(label) };
+    }
+    return Object.entries(buckets).map(([name, v]) => ({
+      name: name.replace(/\b\w/g, (m) => m.toUpperCase()),
+      value: v.value,
+      color: v.color,
+    }));
+  })();
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* KPI Row 1 */}
       <div style={{ display: 'flex', gap: 12 }}>
-        <KpiCard label="Active Trips" value="—" sub="" color={G3} icon="🚗" />
+        <KpiCard label="Active Trips" value={c(activeTrips)} sub="Live now" color={G3} icon="🚗" />
         <KpiCard
           label="Pending Requests"
           value={c(counters?.waitingReviewCount)}
@@ -743,13 +795,31 @@ function PageDashboard() {
           color={C_WARN}
           icon="⏳"
         />
-        <KpiCard label="Completed Today" value="—" sub="" color={C_OK} icon="✅" />
-        <KpiCard label="Revenue Today" value="—" sub="" color={G2} icon="💰" />
+        <KpiCard
+          label="Completed Today"
+          value={c(overview?.ridesCompleted)}
+          sub="Rides"
+          color={C_OK}
+          icon="✅"
+        />
+        <KpiCard label="Revenue Today" value="—" sub="No feed yet" color={G2} icon="💰" />
       </div>
       {/* KPI Row 2 */}
       <div style={{ display: 'flex', gap: 12 }}>
-        <KpiCard label="Online Drivers" value="—" sub="" color={C_OK} icon="🟢" />
-        <KpiCard label="Offline Drivers" value="—" sub="" color={MUTED} icon="⚫" />
+        <KpiCard
+          label="Online Drivers"
+          value={c(fleet?.onlineCount)}
+          sub="Now"
+          color={C_OK}
+          icon="🟢"
+        />
+        <KpiCard
+          label="Offline Drivers"
+          value={c(fleet?.offlineCount)}
+          sub="Now"
+          color={MUTED}
+          icon="⚫"
+        />
         <KpiCard
           label="Support Tickets"
           value={c(counters?.openSupportTicketsCount)}
@@ -802,28 +872,45 @@ function PageDashboard() {
         {/* Pie chart */}
         <Card style={{ flex: 1, padding: '14px 16px' }}>
           <SectionHeader title="Trip Status" />
-          <ResponsiveContainer width="100%" height={120}>
-            <PieChart>
-              <Pie
-                data={TRIP_STATUS_PIE}
-                cx="50%"
-                cy="50%"
-                innerRadius={30}
-                outerRadius={52}
-                paddingAngle={3}
-                dataKey="value"
-              >
-                {TRIP_STATUS_PIE.map((e, i) => (
-                  <Cell key={i} fill={e.color} />
-                ))}
-              </Pie>
-              <Tooltip contentStyle={TOOLTIP_STYLE} />
-              <Legend
-                iconSize={8}
-                wrapperStyle={{ fontSize: 10, fontFamily: 'Inter, sans-serif', color: MUTED }}
-              />
-            </PieChart>
-          </ResponsiveContainer>
+          {pieData.length === 0 ? (
+            <div
+              style={{
+                height: 120,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 12,
+                color: MUTED,
+                fontFamily: 'Inter, sans-serif',
+              }}
+            >
+              No live rides.
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={120}>
+              <PieChart>
+                <Pie
+                  data={pieData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={30}
+                  outerRadius={52}
+                  paddingAngle={3}
+                  dataKey="value"
+                  nameKey="name"
+                >
+                  {pieData.map((e, i) => (
+                    <Cell key={i} fill={e.color} />
+                  ))}
+                </Pie>
+                <Tooltip contentStyle={TOOLTIP_STYLE} />
+                <Legend
+                  iconSize={8}
+                  wrapperStyle={{ fontSize: 10, fontFamily: 'Inter, sans-serif', color: MUTED }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          )}
         </Card>
       </div>
       {/* Live trip feed */}
@@ -854,55 +941,147 @@ function PageDashboard() {
             </tr>
           </thead>
           <tbody>
-            {TRIPS.map((t, i) => (
-              <tr
-                key={t.id}
-                className="dx-row"
-                style={{
-                  borderBottom: `1px solid ${BORDER}`,
-                  background: i % 2 === 1 ? 'rgba(255,255,255,.01)' : 'transparent',
-                }}
-              >
-                <td style={{ padding: '7px 8px', fontSize: 11.5, color: G3, fontWeight: 600 }}>
-                  {t.id}
-                </td>
-                <td style={{ padding: '7px 8px', fontSize: 11.5, color: WHITE }}>{t.driver}</td>
-                <td style={{ padding: '7px 8px', fontSize: 11.5, color: WHITE }}>{t.passenger}</td>
-                <td style={{ padding: '7px 8px', fontSize: 11, color: MUTED }}>
-                  {t.pickup} → {t.dropoff}
-                </td>
-                <td style={{ padding: '7px 8px', fontSize: 11.5, color: WHITE, fontWeight: 600 }}>
-                  {t.fare}
-                </td>
-                <td style={{ padding: '7px 8px' }}>
-                  <StatusChip status={t.status} />
-                </td>
-                <td style={{ padding: '7px 8px', fontSize: 11, color: MUTED }}>{t.eta}</td>
-              </tr>
-            ))}
+            {(rides ?? []).map((t, i) => {
+              const route = `${t.pickupAddress ?? `${t.pickupLatitude.toFixed(2)},${t.pickupLongitude.toFixed(2)}`} → ${t.dropoffAddress ?? `${t.dropoffLatitude.toFixed(2)},${t.dropoffLongitude.toFixed(2)}`}`;
+              return (
+                <tr
+                  key={t.rideId}
+                  className="dx-row"
+                  style={{
+                    borderBottom: `1px solid ${BORDER}`,
+                    background: i % 2 === 1 ? 'rgba(255,255,255,.01)' : 'transparent',
+                  }}
+                >
+                  <td style={{ padding: '7px 8px', fontSize: 11.5, color: G3, fontWeight: 600 }}>
+                    {t.rideId.slice(0, 8)}
+                  </td>
+                  <td style={{ padding: '7px 8px', fontSize: 11.5, color: WHITE }}>
+                    {t.driverName ?? '—'}
+                  </td>
+                  <td style={{ padding: '7px 8px', fontSize: 11.5, color: WHITE }}>
+                    {t.customerName}
+                  </td>
+                  <td style={{ padding: '7px 8px', fontSize: 11, color: MUTED }}>{route}</td>
+                  <td style={{ padding: '7px 8px', fontSize: 11.5, color: MUTED, fontWeight: 600 }}>
+                    —
+                  </td>
+                  <td style={{ padding: '7px 8px' }}>
+                    <StatusChip status={LIVE_RIDE_STATUS_LABEL[t.status]} />
+                  </td>
+                  <td style={{ padding: '7px 8px', fontSize: 11, color: MUTED }}>—</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
+        {rides !== null && rides.length === 0 && (
+          <div
+            style={{ marginTop: 10, fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}
+          >
+            No live rides right now.
+          </div>
+        )}
       </Card>
     </div>
   );
 }
 
 // ─── Page: Live Map ───────────────────────────────────────────────────────────
+// Project real lat/long onto the decorative map viewBox by normalising each
+// driver's position within the bounding box of all plotted drivers. This is an
+// honest *relative* plot (real coordinates, real spread) — it does not claim a
+// driver sits on a specific illustrated street.
+function projectFleet(
+  drivers: AdminFleetDriverDto[],
+): { d: AdminFleetDriverDto; x: number; y: number }[] {
+  const withCoords = drivers.filter((d) => d.latitude != null && d.longitude != null);
+  if (withCoords.length === 0) return [];
+  const lats = withCoords.map((d) => d.latitude as number);
+  const lons = withCoords.map((d) => d.longitude as number);
+  const minLat = Math.min(...lats);
+  const maxLat = Math.max(...lats);
+  const minLon = Math.min(...lons);
+  const maxLon = Math.max(...lons);
+  const spanLat = maxLat - minLat || 1;
+  const spanLon = maxLon - minLon || 1;
+  const PAD_X = 50;
+  const PAD_Y = 50;
+  const W = 650 - PAD_X * 2;
+  const H = 400 - PAD_Y * 2;
+  return withCoords.map((d) => ({
+    d,
+    x: withCoords.length === 1 ? 325 : PAD_X + (((d.longitude as number) - minLon) / spanLon) * W,
+    // invert latitude so north is up
+    y:
+      withCoords.length === 1 ? 200 : PAD_Y + (1 - ((d.latitude as number) - minLat) / spanLat) * H,
+  }));
+}
+
+function fleetDotColor(s: AdminFleetDriverDto['status']): string {
+  switch (s) {
+    case 'SOS':
+      return C_ERR;
+    case 'SUSPENDED':
+      return C_ERR;
+    case 'NEEDS_INSPECTION':
+      return C_WARN;
+    case 'BUSY':
+      return C_WARN;
+    case 'AVAILABLE':
+      return G3;
+    default:
+      return MUTED;
+  }
+}
+
 function PageLiveMap() {
   const [filter, setFilter] = useState('All');
   const filters = ['All', 'Available', 'Busy', 'Trips'];
-  const drivers = [] as Record<string, unknown>[]; // mock cleared
-  const routes = [] as Record<string, unknown>[]; // mock cleared
-  const pickups = [] as Record<string, unknown>[]; // mock cleared
-  const visible = drivers.filter((d) =>
+  const [fleet, setFleet] = useState<{
+    drivers: AdminFleetDriverDto[];
+    summary: AdminFleetSummaryDto;
+  } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      const res = await api.admin.getFleet();
+      setFleet(res);
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load the live fleet.');
+      setFleet({
+        drivers: [],
+        summary: {
+          totalDrivers: 0,
+          onlineCount: 0,
+          availableCount: 0,
+          busyCount: 0,
+          offlineCount: 0,
+          sosCount: 0,
+          suspendedCount: 0,
+          needsInspectionCount: 0,
+        },
+      });
+    }
+  }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const allDrivers = fleet?.drivers ?? [];
+  const drivers = allDrivers.filter((d) =>
     filter === 'All'
       ? true
       : filter === 'Available'
-        ? d.status === 'available'
+        ? d.status === 'AVAILABLE'
         : filter === 'Busy'
-          ? d.status === 'busy'
-          : true,
+          ? d.status === 'BUSY'
+          : d.activeRideId != null,
   );
+  const projected = projectFleet(drivers);
+  const activeCount = fleet?.summary.onlineCount ?? 0;
+  const tripsInProgress = allDrivers.filter((d) => d.activeRideId != null).length;
   return (
     <div style={{ display: 'flex', gap: 12, height: '100%' }}>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -1046,58 +1225,25 @@ function PageLiveMap() {
             >
               Third Mainland Bridge
             </text>
-            {/* Trip route lines */}
-            {routes.map((r, i) => (
-              <line
-                key={i}
-                x1={r.x1}
-                y1={r.y1}
-                x2={r.x2}
-                y2={r.y2}
-                stroke={r.color}
-                strokeWidth={2}
-                strokeDasharray="6,4"
-                opacity={0.7}
-              />
-            ))}
-            {/* Pickup pins */}
-            {pickups.map((p, i) => (
-              <g key={i}>
-                <circle cx={p.x} cy={p.y} r={8} fill={C_INFO} opacity={0.2} />
-                <circle cx={p.x} cy={p.y} r={4} fill={C_INFO} />
-                <text
-                  x={p.x + 10}
-                  y={p.y + 4}
-                  fill={C_INFO}
-                  fontSize={9}
-                  fontFamily="Inter, sans-serif"
-                >
-                  {p.label}
-                </text>
-              </g>
-            ))}
-            {/* Driver dots */}
-            {visible.map((d) => (
-              <g key={d.id}>
-                <circle
-                  cx={d.x}
-                  cy={d.y}
-                  r={10}
-                  fill={d.status === 'available' ? G3 : C_WARN}
-                  opacity={0.18}
-                />
-                <circle cx={d.x} cy={d.y} r={5} fill={d.status === 'available' ? G3 : C_WARN} />
-                <text
-                  x={d.x + 8}
-                  y={d.y - 8}
-                  fill={WHITE}
-                  fontSize={8.5}
-                  fontFamily="Inter, sans-serif"
-                >
-                  {d.name}
-                </text>
-              </g>
-            ))}
+            {/* Driver dots — real drivers plotted by normalised lat/long */}
+            {projected.map(({ d, x, y }) => {
+              const color = fleetDotColor(d.status);
+              return (
+                <g key={d.driverId}>
+                  <circle cx={x} cy={y} r={10} fill={color} opacity={0.18} />
+                  <circle cx={x} cy={y} r={5} fill={color} />
+                  <text
+                    x={x + 8}
+                    y={y - 8}
+                    fill={WHITE}
+                    fontSize={8.5}
+                    fontFamily="Inter, sans-serif"
+                  >
+                    {`${d.firstName} ${d.lastName}`.trim()}
+                  </text>
+                </g>
+              );
+            })}
             {/* Area labels */}
             <text
               x={440}
@@ -1164,8 +1310,10 @@ function PageLiveMap() {
             }}
           >
             <div style={{ fontSize: 10, color: MUTED, marginBottom: 4 }}>NOW LIVE</div>
-            <div style={{ fontSize: 12, color: G3, fontWeight: 600 }}>— Active Drivers</div>
-            <div style={{ fontSize: 11, color: MUTED }}>— Trips in Progress</div>
+            <div style={{ fontSize: 12, color: G3, fontWeight: 600 }}>
+              {activeCount} Active Drivers
+            </div>
+            <div style={{ fontSize: 11, color: MUTED }}>{tripsInProgress} Trips in Progress</div>
           </div>
         </Card>
       </div>
@@ -1180,33 +1328,71 @@ function PageLiveMap() {
           className="dx-scroll"
           style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}
         >
-          {drivers.map((d) => (
-            <Card key={d.id} style={{ padding: '10px 12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Avatar name={d.name} size={28} />
-                <div style={{ flex: 1 }}>
-                  <div
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: WHITE,
-                      fontFamily: 'Inter, sans-serif',
-                    }}
-                  >
-                    {d.name}
-                  </div>
-                  <StatusChip status={d.status} />
-                </div>
-              </div>
+          {error && (
+            <Card style={{ padding: '10px 12px' }}>
+              <span style={{ fontSize: 11.5, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>
+                {error}
+              </span>
             </Card>
-          ))}
+          )}
+          {!error && drivers.length === 0 && (
+            <Card style={{ padding: '10px 12px' }}>
+              <span style={{ fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+                No drivers online.
+              </span>
+            </Card>
+          )}
+          {drivers.map((d) => {
+            const name = `${d.firstName} ${d.lastName}`.trim() || '—';
+            return (
+              <Card key={d.driverId} style={{ padding: '10px 12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Avatar name={name} size={28} />
+                  <div style={{ flex: 1 }}>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: WHITE,
+                        fontFamily: 'Inter, sans-serif',
+                      }}
+                    >
+                      {name}
+                    </div>
+                    <Chip
+                      label={lifecycleLabelFromFleet(d.status)}
+                      color={fleetDotColor(d.status)}
+                    />
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
         </div>
       </div>
     </div>
   );
 }
 
+function lifecycleLabelFromFleet(s: AdminFleetDriverDto['status']): string {
+  return s
+    .split('_')
+    .map((w) => w.charAt(0) + w.slice(1).toLowerCase())
+    .join(' ');
+}
+
 // ─── Page: Trips ──────────────────────────────────────────────────────────────
+// The Operations ride queue is live-only (active rides between request and
+// settlement); it has no historical Completed/Cancelled rows, so those filter
+// tabs simply match nothing here.
+const LIVE_RIDE_STATUS_LABEL: Record<AdminLiveRideDto['status'], string> = {
+  REQUESTED: 'searching',
+  SEARCHING: 'searching',
+  DRIVER_ASSIGNED: 'accepted',
+  ARRIVED: 'arriving',
+  IN_PROGRESS: 'in progress',
+};
+
 function PageTrips() {
   const statuses = [
     'All',
@@ -1219,13 +1405,36 @@ function PageTrips() {
   ];
   const [activeStatus, setActiveStatus] = useState('All');
   const [search, setSearch] = useState('');
-  const filtered = TRIPS.filter(
-    (t) =>
-      (activeStatus === 'All' || t.status.toLowerCase() === activeStatus.toLowerCase()) &&
-      (t.id + t.driver + t.passenger + t.pickup + t.dropoff)
-        .toLowerCase()
-        .includes(search.toLowerCase()),
-  );
+  const [rides, setRides] = useState<AdminLiveRideDto[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [rowMsg, setRowMsg] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      setRides((await api.admin.getRideQueue()).rides);
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load the live ride queue.');
+      setRides([]);
+    }
+  }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const liveRides = rides ?? [];
+  const filtered = liveRides.filter((t) => {
+    const label = LIVE_RIDE_STATUS_LABEL[t.status];
+    const matchesStatus = activeStatus === 'All' || label === activeStatus.toLowerCase();
+    const hay = (
+      t.rideId +
+      (t.driverName ?? '') +
+      t.customerName +
+      (t.pickupAddress ?? '') +
+      (t.dropoffAddress ?? '')
+    ).toLowerCase();
+    return matchesStatus && hay.includes(search.toLowerCase());
+  });
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {/* Filters */}
@@ -1294,41 +1503,105 @@ function PageTrips() {
             </tr>
           </thead>
           <tbody>
-            {(filtered.length ? filtered : TRIPS).map((t, i) => (
-              <tr
-                key={t.id}
-                className="dx-row"
-                style={{ borderBottom: `1px solid rgba(255,255,255,.04)` }}
-              >
-                <td style={{ padding: '8px 8px', fontSize: 11.5, color: G3, fontWeight: 700 }}>
-                  {t.id}
-                </td>
-                <td style={{ padding: '8px 8px', fontSize: 12, color: WHITE }}>{t.driver}</td>
-                <td style={{ padding: '8px 8px', fontSize: 12, color: WHITE }}>{t.passenger}</td>
-                <td style={{ padding: '8px 8px', fontSize: 11, color: MUTED }}>{t.pickup}</td>
-                <td style={{ padding: '8px 8px', fontSize: 11, color: MUTED }}>{t.dropoff}</td>
-                <td style={{ padding: '8px 8px', fontSize: 12, color: WHITE, fontWeight: 600 }}>
-                  {t.fare}
-                </td>
-                <td style={{ padding: '8px 8px' }}>
-                  <StatusChip status={t.status} />
-                </td>
-                <td style={{ padding: '8px 8px', fontSize: 11, color: MUTED }}>{t.eta}</td>
-                <td style={{ padding: '8px 8px' }}>
-                  <div style={{ display: 'flex', gap: 5 }}>
-                    <Btn label="View" small outline color={G3} />
-                    {t.status !== 'completed' && t.status !== 'cancelled' && (
-                      <Btn label="Cancel" small outline color={C_ERR} />
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
+            {filtered.map((t) => {
+              const pickup =
+                t.pickupAddress ??
+                `${t.pickupLatitude.toFixed(3)}, ${t.pickupLongitude.toFixed(3)}`;
+              const dropoff =
+                t.dropoffAddress ??
+                `${t.dropoffLatitude.toFixed(3)}, ${t.dropoffLongitude.toFixed(3)}`;
+              return (
+                <tr
+                  key={t.rideId}
+                  className="dx-row"
+                  style={{ borderBottom: `1px solid rgba(255,255,255,.04)` }}
+                >
+                  <td style={{ padding: '8px 8px', fontSize: 11.5, color: G3, fontWeight: 700 }}>
+                    {t.rideId.slice(0, 8)}
+                  </td>
+                  <td style={{ padding: '8px 8px', fontSize: 12, color: WHITE }}>
+                    {t.driverName ?? '—'}
+                  </td>
+                  <td style={{ padding: '8px 8px', fontSize: 12, color: WHITE }}>
+                    {t.customerName}
+                  </td>
+                  <td style={{ padding: '8px 8px', fontSize: 11, color: MUTED }}>{pickup}</td>
+                  <td style={{ padding: '8px 8px', fontSize: 11, color: MUTED }}>{dropoff}</td>
+                  <td style={{ padding: '8px 8px', fontSize: 12, color: MUTED, fontWeight: 600 }}>
+                    —
+                  </td>
+                  <td style={{ padding: '8px 8px' }}>
+                    <StatusChip status={LIVE_RIDE_STATUS_LABEL[t.status]} />
+                  </td>
+                  <td style={{ padding: '8px 8px', fontSize: 11, color: MUTED }}>—</td>
+                  <td style={{ padding: '8px 8px' }}>
+                    <div style={{ display: 'flex', gap: 5 }}>
+                      <Btn
+                        label="View"
+                        small
+                        outline
+                        color={G3}
+                        onClick={() =>
+                          setRowMsg(
+                            `Ride ${t.rideId.slice(0, 8)} · ${t.customerName}${t.driverName ? ` ↔ ${t.driverName}` : ''} · ${LIVE_RIDE_STATUS_LABEL[t.status]}`,
+                          )
+                        }
+                      />
+                      <Btn
+                        label="Cancel"
+                        small
+                        outline
+                        color={C_ERR}
+                        onClick={() =>
+                          setRowMsg(
+                            'Cancelling a ride from Operations isn’t available — the ride lifecycle is owned by the rider/driver apps (read-only here).',
+                          )
+                        }
+                      />
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
-        <div style={{ marginTop: 10, fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
-          Showing {filtered.length || TRIPS.length} of {TRIPS.length} trips
-        </div>
+        {error && (
+          <div
+            style={{ marginTop: 10, fontSize: 12, color: C_ERR, fontFamily: 'Inter, sans-serif' }}
+          >
+            {error}
+          </div>
+        )}
+        {!error && rides !== null && filtered.length === 0 && (
+          <div
+            style={{ marginTop: 10, fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}
+          >
+            {liveRides.length === 0
+              ? 'No live rides right now.'
+              : 'No live rides match this filter (the queue is live-only — no completed/cancelled history).'}
+          </div>
+        )}
+        {rides === null && !error && (
+          <div
+            style={{ marginTop: 10, fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}
+          >
+            Loading…
+          </div>
+        )}
+        {rowMsg && (
+          <div
+            style={{ marginTop: 10, fontSize: 11.5, color: WHITE, fontFamily: 'Inter, sans-serif' }}
+          >
+            {rowMsg}
+          </div>
+        )}
+        {rides !== null && filtered.length > 0 && (
+          <div
+            style={{ marginTop: 10, fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}
+          >
+            Showing {filtered.length} of {liveRides.length} live rides
+          </div>
+        )}
       </Card>
     </div>
   );
@@ -2301,6 +2574,19 @@ function PageCustomers() {
               ))}
             </tbody>
           </table>
+          {filtered.length === 0 && (
+            <div
+              style={{
+                padding: '8px 4px',
+                fontSize: 12,
+                color: MUTED,
+                fontFamily: 'Inter, sans-serif',
+              }}
+            >
+              No customer directory is available yet — the Operations backend has no customer-roster
+              endpoint (see docs/reference/DPX-OPS-PREVIEW-WIRING-STATUS.md).
+            </div>
+          )}
         </Card>
       </div>
       {selected && (
@@ -2394,9 +2680,17 @@ function PagePricing() {
     const m = surge ? parseFloat(mult) || 1 : 1;
     return ((b + d * DIST_KM + t * TIME_MIN) * m).toFixed(0);
   };
-  const promos = [] as Record<string, unknown>[]; // mock cleared
+  const promos = [] as Record<string, unknown>[]; // no ops-facing promo feed (see wiring-status doc)
+  const [msg, setMsg] = useState<string | null>(null);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {msg && (
+        <Card style={{ padding: '10px 14px' }}>
+          <span style={{ fontSize: 11.5, color: WHITE, fontFamily: 'Inter, sans-serif' }}>
+            {msg}
+          </span>
+        </Card>
+      )}
       <div style={{ display: 'flex', gap: 14 }}>
         {/* Fare config */}
         <Card style={{ flex: 1 }}>
@@ -2432,8 +2726,29 @@ function PagePricing() {
             ))}
           </div>
           <div style={{ marginTop: 14, display: 'flex', gap: 8 }}>
-            <Btn label="Save Configuration" color={G2} />
-            <Btn label="Reset to Default" color={MUTED} outline />
+            <Btn
+              label="Save Configuration"
+              color={G2}
+              onClick={() =>
+                setMsg(
+                  'Saving fare parameters isn’t available yet — the Operations backend has no fare-config endpoint (fares live in the Ride module). See docs/reference/DPX-OPS-PREVIEW-WIRING-STATUS.md.',
+                )
+              }
+            />
+            <Btn
+              label="Reset to Default"
+              color={MUTED}
+              outline
+              onClick={() => {
+                setBase('500');
+                setDist('120');
+                setTime('40');
+                setWait('35');
+                setSurge(false);
+                setMult('1.5');
+                setMsg('Preview values reset (local only — not persisted).');
+              }}
+            />
           </div>
         </Card>
         {/* Surge + preview */}
@@ -2519,7 +2834,18 @@ function PagePricing() {
       <Card>
         <SectionHeader
           title="Promo Campaigns"
-          action={<Btn label="+ New Promo" small color={G2} />}
+          action={
+            <Btn
+              label="+ New Promo"
+              small
+              color={G2}
+              onClick={() =>
+                setMsg(
+                  'Promotions are managed on the marketing/admin surface (promotions:admin:manage), not the operations console.',
+                )
+              }
+            />
+          }
         />
         <table
           style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Inter, sans-serif' }}
@@ -2576,25 +2902,206 @@ function PagePricing() {
             ))}
           </tbody>
         </table>
+        {promos.length === 0 && (
+          <div
+            style={{
+              padding: '8px 4px',
+              fontSize: 12,
+              color: MUTED,
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            No promo campaigns to show here — promotions live on the marketing/admin surface, not
+            the operations console.
+          </div>
+        )}
       </Card>
     </div>
   );
 }
 
 // ─── Page: Incidents ──────────────────────────────────────────────────────────
+// ── Incident/SOS helpers (map real OperationsCase fields to the frozen UI) ────
+const INCIDENT_PRIORITY_LADDER = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as const;
+
+function nextPriority(p: AdminOperationsCaseDto['priority']): AdminOperationsCaseDto['priority'] {
+  const i = INCIDENT_PRIORITY_LADDER.indexOf(p);
+  return i < 0 || i >= INCIDENT_PRIORITY_LADDER.length - 1
+    ? 'CRITICAL'
+    : INCIDENT_PRIORITY_LADDER[i + 1];
+}
+
+function caseSeverity(c: AdminOperationsCaseDto): string {
+  // SOS alerts always run at CRITICAL; incidents carry their own severity.
+  return (c.severity ?? (c.caseType === 'SOS' ? 'CRITICAL' : c.priority)).toUpperCase();
+}
+
+function caseIcon(c: AdminOperationsCaseDto): string {
+  if (c.caseType === 'SOS') return '🆘';
+  switch (c.category) {
+    case 'ACCIDENT':
+      return '💥';
+    case 'VEHICLE_BREAKDOWN':
+      return '🔧';
+    case 'PASSENGER_ALTERCATION':
+      return '⚠️';
+    case 'SAFETY_CONCERN':
+      return '🛡️';
+    default:
+      return '⚠️';
+  }
+}
+
+function caseTypeLabel(c: AdminOperationsCaseDto): string {
+  if (c.caseType === 'SOS') return 'SOS';
+  const cat = c.category ?? 'INCIDENT';
+  return cat
+    .split('_')
+    .map((w) => w.charAt(0) + w.slice(1).toLowerCase())
+    .join(' ');
+}
+
+function caseDesc(c: AdminOperationsCaseDto): string {
+  if (c.description && c.description.trim().length > 0) return c.description;
+  return c.caseType === 'SOS'
+    ? 'Emergency SOS alert triggered by the driver.'
+    : 'No description was provided.';
+}
+
+function incidentSevColor(s: string): string {
+  const u = s.toUpperCase();
+  return u === 'CRITICAL' ? C_ERR : u === 'HIGH' ? C_WARN : u === 'MEDIUM' ? C_INFO : MUTED;
+}
+
+function lifecycleLabel(s: AdminOperationsCaseDto['status']): string {
+  return s
+    .split('_')
+    .map((w) => w.charAt(0) + w.slice(1).toLowerCase())
+    .join(' ');
+}
+
+function lifecycleColor(s: AdminOperationsCaseDto['status']): string {
+  switch (s) {
+    case 'NEW':
+      return C_INFO;
+    case 'ASSIGNED':
+      return G2;
+    case 'IN_PROGRESS':
+      return C_OK;
+    case 'WAITING':
+      return C_WARN;
+    case 'RESOLVED':
+      return G3;
+    case 'CLOSED':
+      return MUTED;
+    default:
+      return MUTED;
+  }
+}
+
+function formatCaseTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 function PageIncidents() {
-  const [sel, setSel] = useState(0);
-  const inc = INCIDENTS[sel];
+  const [cases, setCases] = useState<AdminOperationsCaseDto[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [selId, setSelId] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [actionMsg, setActionMsg] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      // The frozen "Incidents" screen shows both SOS alerts and incident
+      // reports; fetch both work queues and merge, newest first.
+      const [incidents, sos] = await Promise.all([
+        api.admin.getIncidentQueue(),
+        api.admin.getSosQueue(),
+      ]);
+      const merged = [...sos.items, ...incidents.items].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+      setCases(merged);
+      setSelId((cur) =>
+        cur && merged.some((c) => c.caseId === cur) ? cur : (merged[0]?.caseId ?? null),
+      );
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load the incident queue.');
+      setCases([]);
+    }
+  }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const inc = cases?.find((c) => c.caseId === selId) ?? null;
+
+  const runAction = useCallback(
+    async (
+      action: string,
+      body: Parameters<typeof api.admin.updateCase>[1],
+      successMsg: string,
+    ) => {
+      if (!inc) return;
+      setBusy(action);
+      setActionMsg(null);
+      try {
+        await api.admin.updateCase(inc.caseId, body);
+        setActionMsg(successMsg);
+        await load();
+      } catch (e: unknown) {
+        const msg = (e as { message?: string }).message ?? 'Action failed.';
+        // 409 → someone else updated this case first; a reload refreshes version.
+        setActionMsg(
+          /conflict|version/i.test(msg)
+            ? 'This case changed since you opened it — reloaded the latest.'
+            : msg,
+        );
+        await load();
+      } finally {
+        setBusy(null);
+      }
+    },
+    [inc, load],
+  );
+
+  if (cases === null && !error)
+    return (
+      <Card>
+        <span style={{ fontSize: 13, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          Loading…
+        </span>
+      </Card>
+    );
+  if (error)
+    return (
+      <Card>
+        <span style={{ fontSize: 13, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>{error}</span>
+      </Card>
+    );
   if (!inc)
     return (
       <Card>
         <span style={{ fontSize: 13, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
-          No incidents in the queue.
+          No incidents or SOS alerts in the queue.
         </span>
       </Card>
     );
-  const sevColor = (s: string) =>
-    s === 'critical' ? C_ERR : s === 'high' ? C_WARN : s === 'medium' ? C_INFO : MUTED;
+
+  const list = cases ?? [];
+  const isSos = inc.caseType === 'SOS';
+  const hasCoords = inc.latitude != null && inc.longitude != null;
+  const canResolve = inc.status !== 'RESOLVED' && inc.status !== 'CLOSED';
+  const canEscalate = inc.priority !== 'CRITICAL' && canResolve;
+
   return (
     <div style={{ display: 'flex', gap: 14, height: '100%' }}>
       {/* Queue */}
@@ -2604,57 +3111,66 @@ function PageIncidents() {
         >
           Incident Queue
         </div>
-        {INCIDENTS.map((inc, i) => (
-          <Card
-            key={inc.id}
-            style={{
-              cursor: 'pointer',
-              padding: '12px 14px',
-              borderColor: sel === i ? `${G3}55` : BORDER,
-            }}
-            onClick={() => setSel(i)}
-          >
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-              <span style={{ fontSize: 18 }}>{inc.icon}</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-                  <span
+        {list.map((c) => {
+          const sev = caseSeverity(c);
+          return (
+            <Card
+              key={c.caseId}
+              style={{
+                cursor: 'pointer',
+                padding: '12px 14px',
+                borderColor: selId === c.caseId ? `${G3}55` : BORDER,
+              }}
+              onClick={() => {
+                setSelId(c.caseId);
+                setActionMsg(null);
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                <span style={{ fontSize: 18 }}>{caseIcon(c)}</span>
+                <div style={{ flex: 1 }}>
+                  <div
+                    style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}
+                  >
+                    <span
+                      style={{
+                        fontSize: 11.5,
+                        fontWeight: 700,
+                        color: WHITE,
+                        fontFamily: 'Poppins, sans-serif',
+                      }}
+                    >
+                      {caseTypeLabel(c)}
+                    </span>
+                    <Chip label={sev} color={incidentSevColor(sev)} />
+                  </div>
+                  <div
                     style={{
-                      fontSize: 11.5,
-                      fontWeight: 700,
-                      color: WHITE,
-                      fontFamily: 'Poppins, sans-serif',
+                      fontSize: 11,
+                      color: MUTED,
+                      fontFamily: 'Inter, sans-serif',
+                      lineHeight: 1.4,
                     }}
                   >
-                    {inc.id}
-                  </span>
-                  <Chip label={inc.severity} color={sevColor(inc.severity)} />
-                </div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: MUTED,
-                    fontFamily: 'Inter, sans-serif',
-                    lineHeight: 1.4,
-                  }}
-                >
-                  {inc.desc.slice(0, 55)}...
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
-                  <StatusChip status={inc.status} />
-                  <span style={{ fontSize: 10, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
-                    {inc.time}
-                  </span>
+                    {caseDesc(c).slice(0, 55)}
+                    {caseDesc(c).length > 55 ? '…' : ''}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+                    <Chip label={lifecycleLabel(c.status)} color={lifecycleColor(c.status)} />
+                    <span style={{ fontSize: 10, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+                      {formatCaseTime(c.createdAt)}
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
-          </Card>
-        ))}
+            </Card>
+          );
+        })}
       </div>
       {/* Detail */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 22 }}>{inc.icon}</span>
+          <span style={{ fontSize: 22 }}>{caseIcon(inc)}</span>
           <div>
             <div
               style={{
@@ -2664,18 +3180,19 @@ function PageIncidents() {
                 color: WHITE,
               }}
             >
-              {inc.id} — {inc.type}
+              {caseTypeLabel(inc)}
             </div>
             <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 11, color: MUTED }}>
-              {inc.time} · Trip {inc.trip}
+              {formatCaseTime(inc.createdAt)}
+              {inc.rideId ? ` · Trip ${inc.rideId.slice(0, 8)}` : ''}
             </div>
           </div>
           <div style={{ marginLeft: 'auto' }}>
-            <Chip label={inc.severity.toUpperCase()} color={sevColor(inc.severity)} />
+            <Chip label={caseSeverity(inc)} color={incidentSevColor(caseSeverity(inc))} />
           </div>
         </div>
         <div style={{ display: 'flex', gap: 12 }}>
-          {/* SVG mini-map for SOS */}
+          {/* SVG mini-map */}
           <Card style={{ flex: 1, padding: 12 }}>
             <div
               style={{
@@ -2715,9 +3232,11 @@ function PageIncidents() {
                 fontSize={9}
                 fontFamily="Inter, sans-serif"
               >
-                Lekki-Epe Expressway
+                {hasCoords
+                  ? `${inc.latitude?.toFixed(4)}, ${inc.longitude?.toFixed(4)}`
+                  : 'Location not reported'}
               </text>
-              {inc.type === 'SOS' && (
+              {isSos && hasCoords && (
                 <>
                   <circle cx={150} cy={70} r={24} fill={`${C_ERR}22`} />
                   <circle cx={150} cy={70} r={12} fill={`${C_ERR}44`} />
@@ -2734,11 +3253,11 @@ function PageIncidents() {
                   </text>
                 </>
               )}
-              {inc.type !== 'SOS' && (
+              {!isSos && hasCoords && (
                 <>
                   <circle cx={150} cy={70} r={8} fill={C_WARN} />
                   <text x={160} y={66} fill={C_WARN} fontSize={10} fontFamily="Inter, sans-serif">
-                    {inc.icon}
+                    {caseIcon(inc)}
                   </text>
                 </>
               )}
@@ -2754,15 +3273,17 @@ function PageIncidents() {
                 lineHeight: 1.6,
               }}
             >
-              {inc.desc}
+              {caseDesc(inc)}
             </div>
             <SEP />
             {[
-              ['Driver', inc.driver],
-              ['Passenger', inc.passenger],
-              ['Trip', inc.trip],
+              ['Driver', inc.driverName || '—'],
+              ['Driver Phone', inc.driverPhone ?? '—'],
+              ['Trip', inc.rideId ? inc.rideId.slice(0, 8) : '—'],
+              ['Assigned', inc.assignedToName ?? 'Unassigned'],
               ['Status', ''],
-              ['Time', inc.time],
+              ['Priority', inc.priority],
+              ['Reported', formatCaseTime(inc.createdAt)],
             ].map(([k, v]) => (
               <div
                 key={k}
@@ -2775,7 +3296,7 @@ function PageIncidents() {
               >
                 <span style={{ fontSize: 11, color: MUTED }}>{k}</span>
                 {k === 'Status' ? (
-                  <StatusChip status={inc.status} />
+                  <Chip label={lifecycleLabel(inc.status)} color={lifecycleColor(inc.status)} />
                 ) : (
                   <span style={{ fontSize: 11.5, color: WHITE }}>{v}</span>
                 )}
@@ -2783,13 +3304,76 @@ function PageIncidents() {
             ))}
           </Card>
         </div>
+        {actionMsg && (
+          <Card style={{ padding: '10px 14px' }}>
+            <span style={{ fontSize: 11.5, color: WHITE, fontFamily: 'Inter, sans-serif' }}>
+              {actionMsg}
+            </span>
+          </Card>
+        )}
         {/* Actions */}
         <Card style={{ display: 'flex', gap: 10 }}>
-          <Btn label="✓ Resolve Incident" color={C_OK} />
-          <Btn label="⬆ Escalate" color={C_WARN} outline />
-          <Btn label="📞 Contact Driver" color={C_INFO} outline />
-          <Btn label="📞 Contact Passenger" color={C_INFO} outline />
-          <Btn label="Export Report" color={MUTED} outline />
+          <Btn
+            label={busy === 'resolve' ? 'Resolving…' : '✓ Resolve Incident'}
+            color={C_OK}
+            onClick={
+              busy || !canResolve
+                ? undefined
+                : () =>
+                    void runAction(
+                      'resolve',
+                      { version: inc.version, status: 'RESOLVED' },
+                      'Case marked resolved.',
+                    )
+            }
+          />
+          <Btn
+            label={busy === 'escalate' ? 'Escalating…' : '⬆ Escalate'}
+            color={C_WARN}
+            outline
+            onClick={
+              busy || !canEscalate
+                ? undefined
+                : () => {
+                    const np = nextPriority(inc.priority);
+                    void runAction(
+                      'escalate',
+                      { version: inc.version, priority: np, status: 'IN_PROGRESS' },
+                      `Escalated to ${np}.`,
+                    );
+                  }
+            }
+          />
+          <Btn
+            label="📞 Contact Driver"
+            color={C_INFO}
+            outline
+            onClick={
+              inc.driverPhone
+                ? () => {
+                    window.location.href = `tel:${inc.driverPhone ?? ''}`;
+                  }
+                : () => setActionMsg('No phone number on file for this driver.')
+            }
+          />
+          <Btn
+            label="📞 Contact Passenger"
+            color={C_INFO}
+            outline
+            onClick={() =>
+              setActionMsg(
+                'Passenger contact isn’t available here — SOS/incident cases carry the driver’s details, not the passenger’s.',
+              )
+            }
+          />
+          <Btn
+            label="Export Report"
+            color={MUTED}
+            outline
+            onClick={() =>
+              setActionMsg('Report export isn’t available yet — no backend endpoint exists.')
+            }
+          />
         </Card>
       </div>
     </div>
@@ -2797,19 +3381,88 @@ function PageIncidents() {
 }
 
 // ─── Page: Support ────────────────────────────────────────────────────────────
+function supportCategoryLabel(c?: string): string {
+  if (!c) return 'Support';
+  return c
+    .split('_')
+    .map((w) => w.charAt(0) + w.slice(1).toLowerCase())
+    .join(' ');
+}
+
 function PageSupport() {
   const [tab, setTab] = useState<'Tickets' | 'Chats' | 'Calls'>('Tickets');
-  const [selIdx, setSelIdx] = useState(0);
+  const [tickets, setTickets] = useState<AdminOperationsCaseDto[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [selId, setSelId] = useState<string | null>(null);
   const [reply, setReply] = useState('');
-  const selTicket = SUPPORT_TICKETS[selIdx];
-  if (!selTicket)
+  const [busy, setBusy] = useState<string | null>(null);
+  const [actionMsg, setActionMsg] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      const res = await api.admin.getSupportQueue();
+      const items = [...res.items].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+      setTickets(items);
+      setSelId((cur) =>
+        cur && items.some((c) => c.caseId === cur) ? cur : (items[0]?.caseId ?? null),
+      );
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load support tickets.');
+      setTickets([]);
+    }
+  }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const selTicket = tickets?.find((c) => c.caseId === selId) ?? null;
+
+  const runAction = useCallback(
+    async (action: string, body: Parameters<typeof api.admin.updateCase>[1], msg: string) => {
+      if (!selTicket) return;
+      setBusy(action);
+      setActionMsg(null);
+      try {
+        await api.admin.updateCase(selTicket.caseId, body);
+        setActionMsg(msg);
+        await load();
+      } catch (e: unknown) {
+        const m = (e as { message?: string }).message ?? 'Action failed.';
+        setActionMsg(
+          /conflict|version/i.test(m) ? 'This ticket changed since you opened it — reloaded.' : m,
+        );
+        await load();
+      } finally {
+        setBusy(null);
+      }
+    },
+    [selTicket, load],
+  );
+
+  if (tickets === null && !error)
     return (
       <Card>
         <span style={{ fontSize: 13, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
-          No support tickets.
+          Loading…
         </span>
       </Card>
     );
+  if (error)
+    return (
+      <Card>
+        <span style={{ fontSize: 13, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>{error}</span>
+      </Card>
+    );
+
+  const list = tickets ?? [];
+  const canResolve = selTicket
+    ? selTicket.status !== 'RESOLVED' && selTicket.status !== 'CLOSED'
+    : false;
+  const canEscalate = selTicket ? selTicket.priority !== 'CRITICAL' && canResolve : false;
+
   return (
     <div style={{ display: 'flex', gap: 14, height: '100%' }}>
       {/* Left */}
@@ -2846,50 +3499,74 @@ function PageSupport() {
           ))}
         </div>
         {/* Ticket queue */}
-        {SUPPORT_TICKETS.map((tk, i) => (
-          <Card
-            key={tk.id}
-            style={{
-              cursor: 'pointer',
-              padding: '10px 12px',
-              borderColor: selIdx === i ? `${G3}55` : BORDER,
-            }}
-            onClick={() => setSelIdx(i)}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-              <span
-                style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  color: G3,
-                  fontFamily: 'Inter, sans-serif',
-                }}
-              >
-                {tk.id}
-              </span>
-              <StatusChip status={tk.status === 'in progress' ? 'in progress ticket' : tk.status} />
-            </div>
-            <div
+        {tab === 'Tickets' && list.length === 0 && (
+          <Card style={{ padding: '10px 12px' }}>
+            <span style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              No support tickets.
+            </span>
+          </Card>
+        )}
+        {tab === 'Tickets' &&
+          list.map((tk) => (
+            <Card
+              key={tk.caseId}
               style={{
-                fontSize: 12,
-                fontWeight: 600,
-                color: WHITE,
-                fontFamily: 'Inter, sans-serif',
-                marginBottom: 2,
+                cursor: 'pointer',
+                padding: '10px 12px',
+                borderColor: selId === tk.caseId ? `${G3}55` : BORDER,
+              }}
+              onClick={() => {
+                setSelId(tk.caseId);
+                setActionMsg(null);
               }}
             >
-              {tk.customer}
-            </div>
-            <div style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
-              {tk.subject.slice(0, 40)}...
-            </div>
-            <div
-              style={{ fontSize: 10, color: MUTED, fontFamily: 'Inter, sans-serif', marginTop: 4 }}
-            >
-              {tk.time}
-            </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: G3,
+                    fontFamily: 'Inter, sans-serif',
+                  }}
+                >
+                  {supportCategoryLabel(tk.category)}
+                </span>
+                <Chip label={lifecycleLabel(tk.status)} color={lifecycleColor(tk.status)} />
+              </div>
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: WHITE,
+                  fontFamily: 'Inter, sans-serif',
+                  marginBottom: 2,
+                }}
+              >
+                {tk.driverName || '—'}
+              </div>
+              <div style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+                {(tk.subject ?? '').slice(0, 40)}
+                {(tk.subject ?? '').length > 40 ? '…' : ''}
+              </div>
+              <div
+                style={{
+                  fontSize: 10,
+                  color: MUTED,
+                  fontFamily: 'Inter, sans-serif',
+                  marginTop: 4,
+                }}
+              >
+                {formatCaseTime(tk.createdAt)}
+              </div>
+            </Card>
+          ))}
+        {tab !== 'Tickets' && (
+          <Card style={{ padding: '10px 12px' }}>
+            <span style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              {tab} aren’t available yet — no backend channel exists for live {tab.toLowerCase()}.
+            </span>
           </Card>
-        ))}
+        )}
       </div>
       {/* Chat panel */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 0 }}>
@@ -2903,106 +3580,175 @@ function PageSupport() {
             overflow: 'hidden',
           }}
         >
-          {/* Chat header */}
-          <div
-            style={{
-              padding: '12px 16px',
-              borderBottom: `1px solid ${BORDER}`,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-            }}
-          >
-            <Avatar name={selTicket.customer} size={32} />
-            <div>
+          {selTicket ? (
+            <>
+              {/* Chat header */}
               <div
                 style={{
-                  fontFamily: 'Poppins, sans-serif',
-                  fontSize: 13,
-                  fontWeight: 700,
-                  color: WHITE,
-                }}
-              >
-                {selTicket.customer}
-              </div>
-              <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 11, color: MUTED }}>
-                {selTicket.subject}
-              </div>
-            </div>
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-              <Btn label="Resolve" small color={C_OK} />
-              <Btn label="Escalate" small color={C_WARN} outline />
-            </div>
-          </div>
-          {/* Messages */}
-          <div
-            className="dx-scroll"
-            style={{
-              flex: 1,
-              overflowY: 'auto',
-              padding: 16,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 10,
-            }}
-          >
-            {selTicket.messages.length === 0 && (
-              <div
-                style={{
-                  textAlign: 'center',
-                  color: MUTED,
-                  fontFamily: 'Inter, sans-serif',
-                  fontSize: 12,
-                  marginTop: 40,
-                }}
-              >
-                No messages yet.
-              </div>
-            )}
-            {selTicket.messages.map((m, i) => (
-              <div
-                key={i}
-                style={{
+                  padding: '12px 16px',
+                  borderBottom: `1px solid ${BORDER}`,
                   display: 'flex',
-                  justifyContent: m.from === 'agent' ? 'flex-end' : 'flex-start',
+                  alignItems: 'center',
+                  gap: 10,
                 }}
               >
-                <div
-                  style={{
-                    maxWidth: '72%',
-                    padding: '9px 13px',
-                    borderRadius: m.from === 'agent' ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
-                    background: m.from === 'agent' ? `${G0}` : NAVY_SURFACE,
-                    border: `1px solid ${m.from === 'agent' ? G2 + '44' : BORDER}`,
-                    fontFamily: 'Inter, sans-serif',
-                    fontSize: 12.5,
-                    color: WHITE,
-                    lineHeight: 1.5,
-                  }}
-                >
-                  {m.text}
+                <Avatar name={selTicket.driverName || 'Driver'} size={32} />
+                <div>
+                  <div
+                    style={{
+                      fontFamily: 'Poppins, sans-serif',
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: WHITE,
+                    }}
+                  >
+                    {selTicket.driverName || '—'}
+                  </div>
+                  <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 11, color: MUTED }}>
+                    {selTicket.subject ?? supportCategoryLabel(selTicket.category)}
+                  </div>
+                </div>
+                <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                  <Btn
+                    label={busy === 'resolve' ? '…' : 'Resolve'}
+                    small
+                    color={C_OK}
+                    onClick={
+                      busy || !canResolve
+                        ? undefined
+                        : () =>
+                            void runAction(
+                              'resolve',
+                              { version: selTicket.version, status: 'RESOLVED' },
+                              'Ticket marked resolved.',
+                            )
+                    }
+                  />
+                  <Btn
+                    label={busy === 'escalate' ? '…' : 'Escalate'}
+                    small
+                    color={C_WARN}
+                    outline
+                    onClick={
+                      busy || !canEscalate
+                        ? undefined
+                        : () => {
+                            const np = nextPriority(selTicket.priority);
+                            void runAction(
+                              'escalate',
+                              { version: selTicket.version, priority: np, status: 'IN_PROGRESS' },
+                              `Escalated to ${np}.`,
+                            );
+                          }
+                    }
+                  />
                 </div>
               </div>
-            ))}
-          </div>
-          {/* Reply input */}
-          <div
-            style={{
-              padding: '10px 14px',
-              borderTop: `1px solid ${BORDER}`,
-              display: 'flex',
-              gap: 8,
-            }}
-          >
-            <input
-              className="dx-input"
-              placeholder="Type a reply..."
-              value={reply}
-              onChange={(e) => setReply(e.target.value)}
-              style={{ flex: 1 }}
-            />
-            <Btn label="Send" color={G2} onClick={() => setReply('')} />
-          </div>
+              {/* Messages — built from the real ticket body + admin response */}
+              <div
+                className="dx-scroll"
+                style={{
+                  flex: 1,
+                  overflowY: 'auto',
+                  padding: 16,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 10,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                  <div
+                    style={{
+                      maxWidth: '72%',
+                      padding: '9px 13px',
+                      borderRadius: '14px 14px 14px 4px',
+                      background: NAVY_SURFACE,
+                      border: `1px solid ${BORDER}`,
+                      fontFamily: 'Inter, sans-serif',
+                      fontSize: 12.5,
+                      color: WHITE,
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {selTicket.description ?? 'No description provided.'}
+                  </div>
+                </div>
+                {selTicket.adminResponse && (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <div
+                      style={{
+                        maxWidth: '72%',
+                        padding: '9px 13px',
+                        borderRadius: '14px 14px 4px 14px',
+                        background: `${G0}`,
+                        border: `1px solid ${G2}44`,
+                        fontFamily: 'Inter, sans-serif',
+                        fontSize: 12.5,
+                        color: WHITE,
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      {selTicket.adminResponse}
+                    </div>
+                  </div>
+                )}
+                {actionMsg && (
+                  <div
+                    style={{
+                      textAlign: 'center',
+                      color: MUTED,
+                      fontFamily: 'Inter, sans-serif',
+                      fontSize: 11.5,
+                      marginTop: 6,
+                    }}
+                  >
+                    {actionMsg}
+                  </div>
+                )}
+              </div>
+              {/* Reply input — no admin-reply endpoint exists yet, so this is honest */}
+              <div
+                style={{
+                  padding: '10px 14px',
+                  borderTop: `1px solid ${BORDER}`,
+                  display: 'flex',
+                  gap: 8,
+                }}
+              >
+                <input
+                  className="dx-input"
+                  placeholder="Type a reply..."
+                  value={reply}
+                  onChange={(e) => setReply(e.target.value)}
+                  style={{ flex: 1 }}
+                />
+                <Btn
+                  label="Send"
+                  color={G2}
+                  onClick={() => {
+                    setActionMsg(
+                      'Sending a reply to the driver isn’t available yet — no backend endpoint sets a support response.',
+                    );
+                    setReply('');
+                  }}
+                />
+              </div>
+            </>
+          ) : (
+            <div
+              style={{
+                flex: 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: MUTED,
+                fontFamily: 'Inter, sans-serif',
+                fontSize: 12,
+              }}
+            >
+              Select a ticket to view it.
+            </div>
+          )}
         </Card>
       </div>
     </div>
@@ -3020,6 +3766,14 @@ function PageAnalytics() {
   const heatVal = (_d: number, _h: number) => 0;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <Card style={{ padding: '10px 14px' }}>
+        <span style={{ fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          These charts need day/hour/month time-series and a revenue feed. The Operations analytics
+          endpoints currently return KPI aggregates and ranked lists (surfaced on the Dashboard),
+          not chart-ready series — so these render empty until a series endpoint exists. See
+          docs/reference/DPX-OPS-PREVIEW-WIRING-STATUS.md.
+        </span>
+      </Card>
       <div style={{ display: 'flex', gap: 12 }}>
         {/* Weekly revenue+trips */}
         <Card style={{ flex: 2, padding: '14px 16px' }}>
@@ -3206,9 +3960,21 @@ function PageReports() {
     { icon: '⚠️', label: 'Incident Report', desc: 'Incident frequency, resolution time' },
     { icon: '🎧', label: 'Support Report', desc: 'Ticket volume, CSAT scores' },
   ];
-  const generated = [] as Record<string, unknown>[]; // mock cleared
+  const generated = [] as Record<string, unknown>[]; // no report-generation endpoint yet
+  const [msg, setMsg] = useState<string | null>(null);
+  const notAvailable = () =>
+    setMsg(
+      'Report generation isn’t available yet — the Operations backend has no report/export endpoint (see docs/reference/DPX-OPS-PREVIEW-WIRING-STATUS.md).',
+    );
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {msg && (
+        <Card style={{ padding: '10px 14px' }}>
+          <span style={{ fontSize: 11.5, color: WHITE, fontFamily: 'Inter, sans-serif' }}>
+            {msg}
+          </span>
+        </Card>
+      )}
       {/* Date range */}
       <Card>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
@@ -3277,8 +4043,8 @@ function PageReports() {
               </div>
             </div>
             <div style={{ display: 'flex', gap: 6 }}>
-              <Btn label="PDF" small color={C_ERR} />
-              <Btn label="Excel" small color={C_OK} />
+              <Btn label="PDF" small color={C_ERR} onClick={notAvailable} />
+              <Btn label="Excel" small color={C_OK} onClick={notAvailable} />
             </div>
           </Card>
         ))}
@@ -3286,6 +4052,11 @@ function PageReports() {
       {/* Generated reports */}
       <Card>
         <SectionHeader title="Generated Reports" />
+        {generated.length === 0 && (
+          <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+            No reports have been generated — report export isn’t wired to a backend yet.
+          </div>
+        )}
         {generated.map((g, i) => (
           <div
             key={g.name}
@@ -3478,7 +4249,15 @@ function PageSettings() {
           </table>
         </Card>
       )}
-      {settingsTab === 'Roles' && (
+      {settingsTab === 'Roles' && roles.length === 0 && (
+        <Card style={{ padding: '10px 14px' }}>
+          <span style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+            No role-management endpoint is exposed to this console yet — roles/permissions are
+            provisioned via the RBAC seed. See docs/reference/DPX-OPS-PREVIEW-WIRING-STATUS.md.
+          </span>
+        </Card>
+      )}
+      {settingsTab === 'Roles' && roles.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           {roles.map((r) => (
             <Card key={r.name}>
@@ -3514,7 +4293,14 @@ function PageSettings() {
           ))}
         </div>
       )}
-      {settingsTab === 'Integrations' && (
+      {settingsTab === 'Integrations' && integrations.length === 0 && (
+        <Card style={{ padding: '10px 14px' }}>
+          <span style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+            No integrations registry endpoint is exposed to this console yet.
+          </span>
+        </Card>
+      )}
+      {settingsTab === 'Integrations' && integrations.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }}>
           {integrations.map((int) => (
             <Card key={int.name} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -3553,6 +4339,7 @@ function PageSettings() {
 // ─── Page: Audit Logs ─────────────────────────────────────────────────────────
 function PageAuditLogs() {
   const [search, setSearch] = useState('');
+  const [msg, setMsg] = useState<string | null>(null);
   const filtered = AUDIT_LOGS.filter((a) =>
     (a.admin + a.action + a.target).toLowerCase().includes(search.toLowerCase()),
   );
@@ -3567,9 +4354,24 @@ function PageAuditLogs() {
           style={{ width: 260 }}
         />
         <div style={{ marginLeft: 'auto' }}>
-          <Btn label="Export CSV" color={G2} />
+          <Btn
+            label="Export CSV"
+            color={G2}
+            onClick={() =>
+              setMsg(
+                'Audit logs aren’t available here — the AuditService writes entries but exposes no admin read/export endpoint yet (see docs/reference/DPX-OPS-PREVIEW-WIRING-STATUS.md).',
+              )
+            }
+          />
         </div>
       </div>
+      {msg && (
+        <Card style={{ padding: '10px 14px' }}>
+          <span style={{ fontSize: 11.5, color: WHITE, fontFamily: 'Inter, sans-serif' }}>
+            {msg}
+          </span>
+        </Card>
+      )}
       <Card style={{ padding: '12px 16px' }}>
         <table
           style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Inter, sans-serif' }}
@@ -3639,9 +4441,19 @@ function PageAuditLogs() {
             ))}
           </tbody>
         </table>
-        <div style={{ marginTop: 10, fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
-          {filtered.length} of {AUDIT_LOGS.length} records
-        </div>
+        {AUDIT_LOGS.length === 0 && (
+          <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+            No audit-log read endpoint is available yet — entries are written but not exposed to
+            this console.
+          </div>
+        )}
+        {AUDIT_LOGS.length > 0 && (
+          <div
+            style={{ marginTop: 10, fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}
+          >
+            {filtered.length} of {AUDIT_LOGS.length} records
+          </div>
+        )}
       </Card>
     </div>
   );
