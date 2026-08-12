@@ -8,6 +8,7 @@ import type {
   MerchantSettlementDto,
   WalletDto,
   MerchantKycDto,
+  MerchantKycStatusDto,
   WalletLedgerEntryDto,
 } from '../lib/api';
 
@@ -2827,49 +2828,69 @@ function StoreSetupPage({
 // ─────────────────────────────────────────────────────────────────────────────
 // PAGE 6 — MERCHANT KYC
 // ─────────────────────────────────────────────────────────────────────────────
-const KYC_META: Record<string, { label: string; desc: string; icon: string; required: boolean }> = {
-  CAC_CERTIFICATE: {
+// Merchant KYC documents. documentType MUST be a real backend KycDocumentType
+// (see prisma KycDocumentType) — the previous DIRECTOR_NIN / UTILITY_BILL /
+// BUSINESS_PHOTO values are not in the enum and were silently rejected. Each of
+// these has a natural document number, which the backend requires (min 3 chars).
+// Proof-of-address (utility bill) and a premises photo are a documented gap:
+// they have no KycDocumentType yet and need a founder decision before wiring.
+const KYC_DOCS: {
+  type: string;
+  label: string;
+  desc: string;
+  icon: string;
+  numberLabel: string;
+  numberPlaceholder: string;
+}[] = [
+  {
+    type: 'CAC_CERTIFICATE',
     label: 'CAC Certificate',
-    desc: 'Business registration certificate',
+    desc: 'Corporate Affairs Commission registration certificate',
     icon: '📋',
-    required: true,
+    numberLabel: 'RC / registration number',
+    numberPlaceholder: 'e.g. RC 1234567',
   },
-  DIRECTOR_NIN: {
-    label: 'Director NIN / ID',
-    desc: 'National Identity Number or valid government ID',
+  {
+    type: 'NATIONAL_ID',
+    label: "Director's National ID (NIN)",
+    desc: 'Government-issued ID or National Identity Number of a director',
     icon: '🪪',
-    required: true,
+    numberLabel: 'NIN / ID number',
+    numberPlaceholder: 'e.g. 12345678901',
   },
-  UTILITY_BILL: {
-    label: 'Utility Bill',
-    desc: 'Recent utility bill showing business address',
-    icon: '📄',
-    required: true,
-  },
-  BUSINESS_PHOTO: {
-    label: 'Business Premises Photo',
-    desc: 'Photo of your store/premises exterior',
-    icon: '🖼️',
-    required: false,
-  },
-};
-const KYC_FALLBACK = [
-  { type: 'CAC_CERTIFICATE', status: 'NOT_SUBMITTED', uploadedAt: null, rejectionReason: null },
-  { type: 'DIRECTOR_NIN', status: 'NOT_SUBMITTED', uploadedAt: null, rejectionReason: null },
-  { type: 'UTILITY_BILL', status: 'NOT_SUBMITTED', uploadedAt: null, rejectionReason: null },
-  { type: 'BUSINESS_PHOTO', status: 'NOT_SUBMITTED', uploadedAt: null, rejectionReason: null },
 ];
 
+// Backend KycVerificationStatus (PENDING | VERIFIED | REJECTED) → OrderStatusChip key.
+function kycStatusUi(s: string | undefined): string {
+  switch ((s ?? '').toUpperCase()) {
+    case 'VERIFIED':
+      return 'verified';
+    case 'REJECTED':
+      return 'rejected';
+    case 'PENDING':
+      return 'review';
+    default:
+      return 'pending';
+  }
+}
+
 function MerchantKYCPage() {
-  const [kyc, setKyc] = useState<MerchantKycDto | null>(null);
+  const [status, setStatus] = useState<MerchantKycStatusDto | null>(null);
   const [loading, setLoading] = useState(true);
-  const [uploadingType, setUploadingType] = useState<string | null>(null);
+  // Inline upload form state (one document at a time).
+  const [openType, setOpenType] = useState<string | null>(null);
+  const [docNumber, setDocNumber] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [formErr, setFormErr] = useState('');
+  const fileRef = useRef<HTMLInputElement | null>(null);
 
   const fetchKyc = useCallback(async () => {
     try {
-      setKyc((await api.merchant.getKyc()) as MerchantKycDto);
+      setStatus(await api.merchant.getKyc());
     } catch {
-      setKyc(null);
+      // Not a merchant / no business yet → nothing submitted.
+      setStatus({ latest: null, items: [] });
     } finally {
       setLoading(false);
     }
@@ -2879,39 +2900,56 @@ function MerchantKYCPage() {
     fetchKyc();
   }, [fetchKyc]);
 
-  const handleUpload = async (documentType: string) => {
-    setUploadingType(documentType);
-    try {
-      await api.merchant.submitKycDoc({
-        documentType,
-        frontImageUrl: 'https://placehold.co/800x600/0A1628/2BAC52?text=Document',
-      });
-      await fetchKyc();
-    } catch {}
-    setUploadingType(null);
+  // Newest submission for a given document type (items come newest-first).
+  const latestFor = (type: string): MerchantKycDto | undefined =>
+    (status?.items ?? []).find((it) => it.documentType === type);
+
+  const anyPending = (status?.items ?? []).some((it) => it.verificationStatus === 'PENDING');
+
+  const openForm = (type: string) => {
+    setOpenType(type);
+    setDocNumber('');
+    setFile(null);
+    setFormErr('');
   };
 
-  const docs = kyc?.documents ?? KYC_FALLBACK;
-  const required = docs.filter((d) => KYC_META[d.type]?.required);
-  const done = required.filter((d) => d.status === 'VERIFIED').length;
-  const total = required.length;
-  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-  const overallStatus = kyc?.overallStatus?.toLowerCase() ?? 'pending';
-
-  const uiStatus = (s: string) => {
-    switch (s.toUpperCase()) {
-      case 'VERIFIED':
-        return 'verified';
-      case 'PENDING_REVIEW':
-        return 'review';
-      case 'REJECTED':
-        return 'rejected';
-      case 'SUBMITTED':
-        return 'uploaded';
-      default:
-        return 'pending';
+  const submit = async (type: string) => {
+    setFormErr('');
+    if (docNumber.trim().length < 3) {
+      setFormErr('Enter the document number (at least 3 characters).');
+      return;
+    }
+    if (!file) {
+      setFormErr('Choose a clear photo or scan of the document.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      // Upload to the merchant-owned kyc-documents folder, then submit the record.
+      const frontImage = await uploadFile(file, 'kyc-documents');
+      await api.merchant.submitKyc({
+        documentType: type,
+        documentNumber: docNumber.trim(),
+        frontImage,
+      });
+      setOpenType(null);
+      setDocNumber('');
+      setFile(null);
+      await fetchKyc();
+    } catch (e: unknown) {
+      setFormErr(
+        (e as { message?: string }).message ?? 'Could not submit the document. Please try again.',
+      );
+    } finally {
+      setSubmitting(false);
     }
   };
+
+  const verified = KYC_DOCS.filter(
+    (d) => latestFor(d.type)?.verificationStatus === 'VERIFIED',
+  ).length;
+  const total = KYC_DOCS.length;
+  const pct = total > 0 ? Math.round((verified / total) * 100) : 0;
 
   return (
     <div className="mx-scroll" style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
@@ -2937,10 +2975,10 @@ function MerchantKYCPage() {
                 Verification progress
               </span>
               <span style={{ fontFamily: PP, fontSize: 13, fontWeight: 700, color: G3 }}>
-                {done}/{total} verified
+                {verified}/{total} verified
               </span>
             </div>
-            <div style={{ height: 6, borderRadius: 3, background: NAVY_SURFACE, marginBottom: 10 }}>
+            <div style={{ height: 6, borderRadius: 3, background: NAVY_SURFACE }}>
               <div
                 style={{
                   height: 6,
@@ -2951,27 +2989,26 @@ function MerchantKYCPage() {
                 }}
               />
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>Overall status</span>
-              <OrderStatusChip status={overallStatus} />
-            </div>
           </MxCard>
 
+          {anyPending && (
+            <InfoBanner
+              icon="⏳"
+              text="A document is in review. You can submit the next one once the Operations team has reviewed it."
+              color="#3B82F6"
+            />
+          )}
           <InfoBanner
             icon="🔒"
             text="Your documents are encrypted and stored securely. DrippleX does not share your KYC documents with third parties."
             color={G2}
           />
 
-          {docs.map((doc) => {
-            const meta = KYC_META[doc.type] ?? {
-              label: doc.type,
-              desc: '',
-              icon: '📄',
-              required: false,
-            };
-            const st = uiStatus(doc.status);
-            const busy = uploadingType === doc.type;
+          {KYC_DOCS.map((doc) => {
+            const latest = latestFor(doc.type);
+            const st = latest ? kycStatusUi(latest.verificationStatus) : 'pending';
+            const isOpen = openType === doc.type;
+            const verifiedDoc = latest?.verificationStatus === 'VERIFIED';
             return (
               <MxCard key={doc.type} style={{ marginBottom: 10 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -2988,39 +3025,31 @@ function MerchantKYCPage() {
                       flexShrink: 0,
                     }}
                   >
-                    {meta.icon}
+                    {doc.icon}
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
                       <span style={{ fontFamily: PP, fontSize: 13, fontWeight: 600, color: WHITE }}>
-                        {meta.label}
+                        {doc.label}
                       </span>
-                      {meta.required && (
-                        <span style={{ fontFamily: IT, fontSize: 10, color: C_ERR }}>Required</span>
-                      )}
+                      <span style={{ fontFamily: IT, fontSize: 10, color: C_ERR }}>Required</span>
                     </div>
-                    <div style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>{meta.desc}</div>
+                    <div style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>{doc.desc}</div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-                    <OrderStatusChip status={st} />
-                    {st !== 'verified' && (
+                    {latest && <OrderStatusChip status={st} />}
+                    {!verifiedDoc && !isOpen && (
                       <MxBtn
-                        label={
-                          busy
-                            ? 'Uploading…'
-                            : st === 'uploaded' || st === 'review'
-                              ? 'Replace'
-                              : 'Upload'
-                        }
+                        label={latest ? 'Replace' : 'Upload'}
                         variant={st === 'rejected' ? 'danger' : 'primary'}
                         small
-                        disabled={busy}
-                        onClick={() => handleUpload(doc.type)}
+                        onClick={() => openForm(doc.type)}
                       />
                     )}
                   </div>
                 </div>
-                {doc.rejectionReason && (
+
+                {latest?.remarks && st === 'rejected' && (
                   <div
                     style={{
                       marginTop: 10,
@@ -3031,8 +3060,88 @@ function MerchantKYCPage() {
                     }}
                   >
                     <span style={{ fontFamily: IT, fontSize: 12, color: C_ERR }}>
-                      ⚠️ Rejected: {doc.rejectionReason}
+                      ⚠️ Rejected: {latest.remarks}
                     </span>
+                  </div>
+                )}
+
+                {isOpen && (
+                  <div
+                    style={{
+                      marginTop: 14,
+                      paddingTop: 14,
+                      borderTop: '1px solid rgba(255,255,255,.07)',
+                    }}
+                  >
+                    <MxInput
+                      label={doc.numberLabel}
+                      placeholder={doc.numberPlaceholder}
+                      value={docNumber}
+                      onChange={setDocNumber}
+                    />
+                    <div style={{ fontFamily: IT, fontSize: 12, color: MUTED, marginBottom: 6 }}>
+                      Document image
+                    </div>
+                    <input
+                      ref={fileRef}
+                      type="file"
+                      accept="image/*,application/pdf"
+                      style={{ display: 'none' }}
+                      onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                    />
+                    <div
+                      style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}
+                    >
+                      <MxBtn
+                        label={file ? 'Change file' : 'Choose file'}
+                        variant="outline"
+                        small
+                        onClick={() => fileRef.current?.click()}
+                      />
+                      <span
+                        style={{
+                          fontFamily: IT,
+                          fontSize: 12,
+                          color: file ? WHITE : MUTED,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {file ? file.name : 'No file selected'}
+                      </span>
+                    </div>
+                    {formErr && (
+                      <div
+                        style={{
+                          marginBottom: 12,
+                          padding: '8px 12px',
+                          borderRadius: 7,
+                          background: 'rgba(239,68,68,.07)',
+                          border: '1px solid rgba(239,68,68,.2)',
+                        }}
+                      >
+                        <span style={{ fontFamily: IT, fontSize: 12, color: C_ERR }}>
+                          {formErr}
+                        </span>
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      <MxBtn
+                        label={submitting ? 'Submitting…' : 'Submit for review'}
+                        variant="primary"
+                        small
+                        disabled={submitting}
+                        onClick={() => submit(doc.type)}
+                      />
+                      <MxBtn
+                        label="Cancel"
+                        variant="ghost"
+                        small
+                        disabled={submitting}
+                        onClick={() => setOpenType(null)}
+                      />
+                    </div>
                   </div>
                 )}
               </MxCard>
