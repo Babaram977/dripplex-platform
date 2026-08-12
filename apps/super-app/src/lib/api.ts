@@ -1442,23 +1442,39 @@ export const api = {
 // object's stored URL to hand to a KYC/vehicle endpoint. Throws ApiError on a
 // failed sign; throws a plain Error if the R2 PUT itself fails.
 export async function uploadFile(file: File, folder: string): Promise<string> {
-  const contentType = file.type || 'application/octet-stream';
-  const signed = await api.uploads.sign({
-    folder,
-    contentType,
-    contentLength: file.size,
+  // Proxy upload through our own API (POST /uploads/direct) rather than a direct
+  // browser→R2 PUT. The backend streams the bytes to object storage server-side,
+  // so uploads don't depend on R2 bucket CORS allowing a cross-origin PUT (which
+  // the app doesn't control). api.dripplex.com already permits the app origin,
+  // and errors come back as structured ApiErrors, not opaque "network" failures.
+  const form = new FormData();
+  form.append('folder', folder);
+  form.append('file', file);
+  const token = auth.getAccessToken();
+  const res = await fetch(`${BASE}/uploads/direct`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
   });
-  // PUT the bytes straight to the pre-signed `uploadUrl`. Only Content-Type is
-  // set here — Content-Length is signed too, but browsers set it automatically
-  // from the File body (to file.size, exactly what was signed) and forbid
-  // setting it manually, so we must not add it to the headers.
-  const res = await fetch(signed.uploadUrl, {
-    method: 'PUT',
-    body: file,
-    headers: { 'Content-Type': signed.requiredHeaders['Content-Type'] || contentType },
-  });
-  if (!res.ok) {
-    throw new Error(`Upload failed (${String(res.status)}). Please try again.`);
+  if (res.status === 401) {
+    const refreshed = await tryRefresh();
+    if (refreshed) return uploadFile(file, folder);
   }
-  return signed.publicUrl;
+  const json: unknown = await res.json().catch(() => null);
+  const envelope = json as {
+    success?: boolean;
+    statusCode?: number;
+    message?: string;
+    errorCode?: string;
+    data?: unknown;
+  } | null;
+  if (!res.ok || envelope?.success === false) {
+    throw new ApiError(
+      envelope?.statusCode ?? res.status,
+      envelope?.message ?? 'Upload failed. Please try again.',
+      envelope?.errorCode ?? 'UPLOAD_FAILED',
+    );
+  }
+  const data = (envelope && 'data' in envelope ? envelope.data : envelope) as { publicUrl: string };
+  return data.publicUrl;
 }

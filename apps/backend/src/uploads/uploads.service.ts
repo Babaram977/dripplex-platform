@@ -2,7 +2,10 @@ import { randomUUID } from 'node:crypto';
 
 import { Inject, Injectable } from '@nestjs/common';
 
-import { ForbiddenDomainException } from '../common/exceptions/domain.exception';
+import {
+  ForbiddenDomainException,
+  ValidationDomainException,
+} from '../common/exceptions/domain.exception';
 
 import {
   CONTENT_TYPE_EXTENSION,
@@ -68,5 +71,66 @@ export class UploadsService {
         'Content-Length': String(dto.contentLength),
       },
     };
+  }
+
+  /**
+   * Server-side (proxy) upload. The browser POSTs the file bytes to our API and
+   * the backend streams them to object storage itself, so the upload never
+   * depends on the browser being allowed to PUT cross-origin to R2 (which needs
+   * bucket CORS the app doesn't control). Same least-privilege folder gating and
+   * server-chosen key/extension as sign(); returns the stored public URL.
+   */
+  public async uploadDirect(
+    userId: string,
+    permissions: readonly string[],
+    input: { folder: string; contentType: string; size: number; body: Buffer },
+  ): Promise<{ publicUrl: string; key: string }> {
+    if (!Object.prototype.hasOwnProperty.call(UPLOAD_FOLDER_PERMISSIONS, input.folder)) {
+      throw new ValidationDomainException(`Unknown upload folder '${input.folder}'`);
+    }
+    const required =
+      UPLOAD_FOLDER_PERMISSIONS[input.folder as keyof typeof UPLOAD_FOLDER_PERMISSIONS];
+    if (required.length > 0 && !required.some((permission) => permissions.includes(permission))) {
+      throw new ForbiddenDomainException(
+        `You are not permitted to upload to the '${input.folder}' folder`,
+      );
+    }
+
+    if (!Object.prototype.hasOwnProperty.call(CONTENT_TYPE_EXTENSION, input.contentType)) {
+      throw new ValidationDomainException(`Unsupported file type '${input.contentType}'`);
+    }
+    const extension =
+      CONTENT_TYPE_EXTENSION[input.contentType as keyof typeof CONTENT_TYPE_EXTENSION];
+    if (input.size <= 0 || input.size > UPLOAD_MAX_BYTES) {
+      throw new ValidationDomainException(
+        `File must be between 1 byte and ${String(UPLOAD_MAX_BYTES)} bytes`,
+      );
+    }
+
+    const key = `${input.folder}/${userId}/${randomUUID()}.${extension}`;
+    const presigned = await this.storage.createPresignedPutUrl({
+      key,
+      contentType: input.contentType,
+      contentLength: input.size,
+      expiresInSeconds: UPLOAD_URL_TTL_SECONDS,
+    });
+
+    // Server-to-server PUT — no browser/CORS involved. The signature binds
+    // content-type + content-length, so send them exactly.
+    const res = await fetch(presigned.uploadUrl, {
+      method: 'PUT',
+      body: input.body,
+      headers: {
+        'Content-Type': input.contentType,
+        'Content-Length': String(input.size),
+      },
+    });
+    if (!res.ok) {
+      throw new ValidationDomainException(
+        `Object storage rejected the upload (${String(res.status)})`,
+      );
+    }
+
+    return { publicUrl: presigned.publicUrl, key: presigned.key };
   }
 }

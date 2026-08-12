@@ -1,4 +1,7 @@
-import { ForbiddenDomainException } from '../common/exceptions/domain.exception';
+import {
+  ForbiddenDomainException,
+  ValidationDomainException,
+} from '../common/exceptions/domain.exception';
 
 import { UploadsService } from './uploads.service';
 
@@ -134,6 +137,80 @@ describe('UploadsService', () => {
         contentLength: 100,
       });
       expect(provider.createPresignedPutUrl).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('uploadDirect (server-side proxy upload)', () => {
+    const realFetch = global.fetch;
+    afterEach(() => {
+      global.fetch = realFetch;
+    });
+
+    it('applies the same least-privilege folder gating as sign()', async () => {
+      const { service, provider } = createService();
+      await expect(
+        service.uploadDirect('u', ['customer:ride:manage'], {
+          folder: 'vehicle-photos',
+          contentType: 'image/jpeg',
+          size: 100,
+          body: Buffer.from('x'),
+        }),
+      ).rejects.toBeInstanceOf(ForbiddenDomainException);
+      expect(provider.createPresignedPutUrl).not.toHaveBeenCalled();
+    });
+
+    it('rejects an unknown folder and an unsupported content type', async () => {
+      const { service } = createService();
+      await expect(
+        service.uploadDirect('u', ['driver:kyc:manage'], {
+          folder: 'not-a-folder',
+          contentType: 'image/png',
+          size: 10,
+          body: Buffer.from('x'),
+        }),
+      ).rejects.toBeInstanceOf(ValidationDomainException);
+      await expect(
+        service.uploadDirect('u', ['driver:kyc:manage'], {
+          folder: 'kyc-documents',
+          contentType: 'application/zip',
+          size: 10,
+          body: Buffer.from('x'),
+        }),
+      ).rejects.toBeInstanceOf(ValidationDomainException);
+    });
+
+    it('streams the bytes to storage server-side and returns the public URL', async () => {
+      const { service, provider } = createService();
+      const fetchMock = jest.fn().mockResolvedValue({ ok: true, status: 200 });
+      global.fetch = fetchMock;
+
+      const res = await service.uploadDirect('user-9', ['driver:kyc:manage'], {
+        folder: 'kyc-documents',
+        contentType: 'image/png',
+        size: 3,
+        body: Buffer.from('abc'),
+      });
+
+      expect(provider.createPresignedPutUrl).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining('kyc-documents/user-9/'),
+        expect.objectContaining({ method: 'PUT' }),
+      );
+      expect(res.publicUrl).toContain('cdn.example');
+      expect(res.key).toMatch(/^kyc-documents\/user-9\/[0-9a-f-]{36}\.png$/);
+    });
+
+    it('throws when object storage rejects the upload', async () => {
+      const { service } = createService();
+      global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 403 });
+      await expect(
+        service.uploadDirect('user-10', ['driver:kyc:manage'], {
+          folder: 'kyc-documents',
+          contentType: 'image/png',
+          size: 3,
+          body: Buffer.from('abc'),
+        }),
+      ).rejects.toBeInstanceOf(ValidationDomainException);
     });
   });
 });
