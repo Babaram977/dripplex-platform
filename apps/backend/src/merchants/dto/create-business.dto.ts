@@ -1,5 +1,5 @@
 import { BusinessType } from '@prisma/client';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsEmail,
   IsEnum,
@@ -11,9 +11,12 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
 
 import { BUSINESS_NAME_MAX_LENGTH, BUSINESS_NAME_MIN_LENGTH } from '../merchant.constants';
+
+import { BusinessOperatingHoursDto } from './operating-hours.dto';
 
 export class CreateBusinessDto {
   @IsString()
@@ -104,4 +107,9 @@ export class CreateBusinessDto {
   @IsUrl({ require_tld: false })
   @MaxLength(2048)
   public coverPhotoUrl?: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BusinessOperatingHoursDto)
+  public operatingHours?: BusinessOperatingHoursDto;
 }

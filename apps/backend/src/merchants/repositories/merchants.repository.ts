@@ -1,3 +1,4 @@
+import type { OperatingHoursDto } from '@dripplex/types';
 import type {
   BankAccount,
   Business,
@@ -44,6 +45,7 @@ export interface CreateBusinessInput {
   longitude: number;
   logoUrl?: string;
   coverPhotoUrl?: string;
+  operatingHours?: OperatingHoursDto;
   status: BusinessStatus;
   verificationStatus: BusinessVerificationStatus;
 }
@@ -64,6 +66,7 @@ export interface UpdateBusinessInput {
   longitude?: number;
   logoUrl?: string | null;
   coverPhotoUrl?: string | null;
+  operatingHours?: OperatingHoursDto | null;
 }
 
 export interface CreateKycInput {

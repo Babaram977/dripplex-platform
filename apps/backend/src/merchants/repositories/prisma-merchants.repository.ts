@@ -83,6 +83,9 @@ export class PrismaMerchantsRepository implements MerchantsRepository {
           ...(input.description !== undefined ? { description: input.description } : {}),
           ...(input.logoUrl !== undefined ? { logoUrl: input.logoUrl } : {}),
           ...(input.coverPhotoUrl !== undefined ? { coverPhotoUrl: input.coverPhotoUrl } : {}),
+          ...(input.operatingHours !== undefined
+            ? { operatingHours: input.operatingHours as Prisma.InputJsonValue }
+            : {}),
         },
       });
 
@@ -121,6 +124,14 @@ export class PrismaMerchantsRepository implements MerchantsRepository {
         ...(input.longitude !== undefined ? { longitude: input.longitude } : {}),
         ...(input.logoUrl !== undefined ? { logoUrl: input.logoUrl } : {}),
         ...(input.coverPhotoUrl !== undefined ? { coverPhotoUrl: input.coverPhotoUrl } : {}),
+        ...(input.operatingHours !== undefined
+          ? {
+              operatingHours:
+                input.operatingHours === null
+                  ? Prisma.JsonNull
+                  : (input.operatingHours as Prisma.InputJsonValue),
+            }
+          : {}),
       },
     });
   }

@@ -585,8 +585,9 @@ export interface MerchantBusinessDto {
   longitude: number | null;
   logoUrl: string | null;
   coverPhotoUrl: string | null;
-  openingTime: string | null;
-  closingTime: string | null;
+  // Operating hours keyed by day (mon–sun), each an { open, close } pair or null
+  // for a closed day — the same persisted shape the customer marketplace reads.
+  operatingHours: Record<string, { open: string; close: string } | null> | null;
   isOpen: boolean;
   verificationStatus: string;
 }
@@ -614,6 +615,19 @@ export interface MerchantKycDto {
 export interface MerchantKycStatusDto {
   latest: MerchantKycDto | null;
   items: MerchantKycDto[];
+}
+
+// One merchant settlement/payout bank account (backend BankAccount record).
+export interface MerchantBankAccountDto {
+  id: string;
+  merchantId: string;
+  bankName: string;
+  accountName: string;
+  accountNumber: string;
+  currency: string;
+  isDefault: boolean;
+  verifiedAt: string | null;
+  createdAt: string;
 }
 
 // Customer KYC
@@ -1070,10 +1084,17 @@ export const api = {
     sign: (body: { folder: string; contentType: string; contentLength: number }) =>
       dx<{
         method: 'PUT';
-        url: string;
+        // Pre-signed URL to PUT the bytes to. NOTE: the backend field is
+        // `uploadUrl` (not `url`) — reading the wrong name yields undefined and
+        // makes the browser PUT fail with "Failed to fetch".
+        uploadUrl: string;
         key: string;
         publicUrl: string;
-        expiresInSeconds: number;
+        expiresAt: string;
+        maxBytes: number;
+        // Headers the PUT MUST send — both are bound into the signature, so the
+        // upload is rejected if they don't match exactly (DPX-STORAGE-001).
+        requiredHeaders: { 'Content-Type': string; 'Content-Length': string };
       }>('POST', '/uploads/sign', body),
   },
 
@@ -1153,6 +1174,18 @@ export const api = {
       backImage?: string;
       selfieImage?: string;
     }) => dx<MerchantKycDto>('POST', '/merchant/kyc', body),
+
+    // Settlement bank account. bankName is free text (any Nigerian bank),
+    // accountName is the resolved holder name (typed by the merchant — the
+    // backend has no NUBAN resolution service yet), accountNumber is 8–20 digits.
+    listBankAccounts: () => dx<MerchantBankAccountDto[]>('GET', '/merchant/bank-account'),
+    createBankAccount: (body: {
+      bankName: string;
+      accountName: string;
+      accountNumber: string;
+      currency?: string;
+      isDefault?: boolean;
+    }) => dx<MerchantBankAccountDto>('POST', '/merchant/bank-account', body),
 
     // Products: the backend returns a paginated { items, meta } envelope of RAW
     // product entities (basePrice / status / images[] / inventory), so normalize
@@ -1315,15 +1348,20 @@ export const api = {
 // object's stored URL to hand to a KYC/vehicle endpoint. Throws ApiError on a
 // failed sign; throws a plain Error if the R2 PUT itself fails.
 export async function uploadFile(file: File, folder: string): Promise<string> {
+  const contentType = file.type || 'application/octet-stream';
   const signed = await api.uploads.sign({
     folder,
-    contentType: file.type || 'application/octet-stream',
+    contentType,
     contentLength: file.size,
   });
-  const res = await fetch(signed.url, {
+  // PUT the bytes straight to the pre-signed `uploadUrl`. Only Content-Type is
+  // set here — Content-Length is signed too, but browsers set it automatically
+  // from the File body (to file.size, exactly what was signed) and forbid
+  // setting it manually, so we must not add it to the headers.
+  const res = await fetch(signed.uploadUrl, {
     method: 'PUT',
     body: file,
-    headers: { 'Content-Type': file.type || 'application/octet-stream' },
+    headers: { 'Content-Type': signed.requiredHeaders['Content-Type'] || contentType },
   });
   if (!res.ok) {
     throw new Error(`Upload failed (${String(res.status)}). Please try again.`);
