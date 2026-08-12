@@ -1407,6 +1407,15 @@ export const api = {
       ),
     rejectDriverKyc: (kycId: string, remarks: string) =>
       dx<AdminDriverKycDto>('POST', `/admin/driver/kyc/${kycId}/reject`, { remarks }),
+
+    // Operations queue counters (for the dashboard tiles + sidebar badges).
+    getOpsCounters: () =>
+      dx<{
+        activeSosCount: number;
+        openIncidentsCount: number;
+        openSupportTicketsCount: number;
+        waitingReviewCount: number;
+      }>('GET', '/operations/dashboard/counters'),
   },
 
   // ── CUSTOMER KYC ───────────────────────────────────────────────────────────

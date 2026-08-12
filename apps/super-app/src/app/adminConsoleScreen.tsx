@@ -742,17 +742,17 @@ const AUDIT_LOGS = [
 ];
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
-const NAV_ITEMS: { page: AdminPage; icon: string; label: string; badge?: number }[] = [
+const NAV_ITEMS: { page: AdminPage; icon: string; label: string }[] = [
   { page: 'dashboard', icon: '⬛', label: 'Dashboard' },
   { page: 'livemap', icon: '🗺️', label: 'Live Map' },
-  { page: 'trips', icon: '🚗', label: 'Trips', badge: 11 },
+  { page: 'trips', icon: '🚗', label: 'Trips' },
   { page: 'drivers', icon: '🧑‍✈️', label: 'Drivers' },
-  { page: 'drvkyc', icon: '🪪', label: 'Driver KYC', badge: 3 },
-  { page: 'vehicles', icon: '🔑', label: 'Vehicles', badge: 3 },
+  { page: 'drvkyc', icon: '🪪', label: 'Driver KYC' },
+  { page: 'vehicles', icon: '🔑', label: 'Vehicles' },
   { page: 'customers', icon: '👥', label: 'Customers' },
   { page: 'pricing', icon: '💲', label: 'Pricing' },
-  { page: 'incidents', icon: '⚠️', label: 'Incidents', badge: 2 },
-  { page: 'support', icon: '🎧', label: 'Support', badge: 5 },
+  { page: 'incidents', icon: '⚠️', label: 'Incidents' },
+  { page: 'support', icon: '🎧', label: 'Support' },
   { page: 'analytics', icon: '📊', label: 'Analytics' },
   { page: 'reports', icon: '📄', label: 'Reports' },
   { page: 'settings', icon: '⚙️', label: 'Settings' },
@@ -760,7 +760,18 @@ const NAV_ITEMS: { page: AdminPage; icon: string; label: string; badge?: number 
   { page: 'profile', icon: '👤', label: 'My Profile' },
 ];
 
-function Sidebar({ page, onNav }: { page: AdminPage; onNav: (p: AdminPage) => void }) {
+// Real queue counts for the sidebar badges, keyed by page. Absent/0 → no badge.
+type NavBadges = Partial<Record<AdminPage, number>>;
+
+function Sidebar({
+  page,
+  onNav,
+  badges,
+}: {
+  page: AdminPage;
+  onNav: (p: AdminPage) => void;
+  badges?: NavBadges;
+}) {
   return (
     <div
       style={{
@@ -848,7 +859,7 @@ function Sidebar({ page, onNav }: { page: AdminPage; onNav: (p: AdminPage) => vo
                 {item.icon}
               </span>
               <span style={{ flex: 1 }}>{item.label}</span>
-              {item.badge && (
+              {badges?.[item.page] ? (
                 <span
                   style={{
                     background: C_ERR,
@@ -860,9 +871,9 @@ function Sidebar({ page, onNav }: { page: AdminPage; onNav: (p: AdminPage) => vo
                     lineHeight: 1.6,
                   }}
                 >
-                  {item.badge}
+                  {badges[item.page]}
                 </span>
-              )}
+              ) : null}
             </div>
           );
         })}
@@ -896,9 +907,24 @@ const PAGE_LABELS: Record<AdminPage, string> = {
   profile: 'My Profile',
 };
 
-function Header({ page }: { page: AdminPage }) {
+function Header({
+  page,
+  onNav,
+  onSignOut,
+}: {
+  page: AdminPage;
+  onNav?: (p: AdminPage) => void;
+  onSignOut?: () => void;
+}) {
   const [bell, setBell] = useState(false);
   const [admin, setAdmin] = useState(false);
+  const user = auth.getUser();
+  const adminName =
+    user && `${user.firstName} ${user.lastName}`.trim().length > 0
+      ? `${user.firstName} ${user.lastName}`.trim()
+      : 'Operations';
+  const adminRole =
+    user?.roles?.[0]?.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) ?? 'Operations';
   return (
     <div
       style={{
@@ -986,24 +1012,6 @@ function Header({ page }: { page: AdminPage }) {
         >
           🔔
         </button>
-        <span
-          style={{
-            position: 'absolute',
-            top: -3,
-            right: -3,
-            background: C_ERR,
-            borderRadius: 99,
-            fontSize: 9,
-            fontWeight: 700,
-            color: WHITE,
-            padding: '1px 4px',
-            lineHeight: 1.5,
-            minWidth: 14,
-            textAlign: 'center',
-          }}
-        >
-          7
-        </span>
         {bell && (
           <div
             style={{
@@ -1014,36 +1022,20 @@ function Header({ page }: { page: AdminPage }) {
               background: NAVY_CARD,
               border: `1px solid ${BORDER}`,
               borderRadius: 10,
-              padding: 8,
+              padding: 16,
               zIndex: 100,
             }}
           >
-            {[
-              { icon: '🆘', text: 'SOS alert — TRP-8842 Lekki Expwy', t: '2m' },
-              { icon: '🪪', text: 'KYC submission: Babatunde Lawal', t: '15m' },
-              { icon: '💬', text: 'New ticket TKT-4421 — Payment issue', t: '22m' },
-              { icon: '🚗', text: 'Accident report INC-300 — Ojota', t: '35m' },
-            ].map((n, i) => (
-              <div
-                key={i}
-                style={{
-                  display: 'flex',
-                  gap: 8,
-                  padding: '8px 8px',
-                  borderRadius: 7,
-                  cursor: 'pointer',
-                }}
-                className="dx-row"
-              >
-                <span style={{ fontSize: 14 }}>{n.icon}</span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 11.5, color: WHITE, fontFamily: 'Inter, sans-serif' }}>
-                    {n.text}
-                  </div>
-                  <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>{n.t} ago</div>
-                </div>
-              </div>
-            ))}
+            <div
+              style={{
+                fontSize: 12,
+                color: MUTED,
+                fontFamily: 'Inter, sans-serif',
+                textAlign: 'center',
+              }}
+            >
+              No new notifications.
+            </div>
           </div>
         )}
       </div>
@@ -1066,10 +1058,10 @@ function Header({ page }: { page: AdminPage }) {
             border: `1px solid ${BORDER}`,
           }}
         >
-          <Avatar name="Adaora Nwosu" size={24} />
+          <Avatar name={adminName} size={24} />
           <div style={{ fontFamily: 'Inter, sans-serif' }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: WHITE }}>Adaora Nwosu</div>
-            <div style={{ fontSize: 10, color: MUTED }}>Super Admin</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: WHITE }}>{adminName}</div>
+            <div style={{ fontSize: 10, color: MUTED }}>{adminRole}</div>
           </div>
           <span style={{ fontSize: 10, color: MUTED }}>▾</span>
         </div>
@@ -1087,23 +1079,34 @@ function Header({ page }: { page: AdminPage }) {
               zIndex: 100,
             }}
           >
-            {['My Profile', 'Settings', '─────────', 'Sign Out'].map((t, i) =>
-              t === '─────────' ? (
+            {(
+              [
+                { label: 'My Profile', onClick: () => onNav?.('profile') },
+                { label: 'Settings', onClick: () => onNav?.('settings') },
+                { label: '─────────' },
+                { label: 'Sign Out', onClick: () => onSignOut?.() },
+              ] as { label: string; onClick?: () => void }[]
+            ).map((item, i) =>
+              item.label === '─────────' ? (
                 <div key={i} style={{ height: 1, background: BORDER, margin: '4px 0' }} />
               ) : (
                 <div
                   key={i}
                   className="dx-row"
+                  onClick={() => {
+                    setAdmin(false);
+                    item.onClick?.();
+                  }}
                   style={{
                     padding: '7px 10px',
                     borderRadius: 6,
                     cursor: 'pointer',
                     fontSize: 12,
                     fontFamily: 'Inter, sans-serif',
-                    color: t === 'Sign Out' ? C_ERR : WHITE,
+                    color: item.label === 'Sign Out' ? C_ERR : WHITE,
                   }}
                 >
-                  {t}
+                  {item.label}
                 </div>
               ),
             )}
@@ -4375,6 +4378,46 @@ function OpsSignIn({ onSignedIn }: { onSignedIn: () => void }) {
 export function AdminConsoleScreen({ initialPage = 'dashboard' }: { initialPage?: AdminPage }) {
   const [page, setPage] = useState<AdminPage>(initialPage);
   const [authed, setAuthed] = useState<boolean>(() => isOpsAuthed());
+  const [badges, setBadges] = useState<NavBadges>({});
+  const handleSignOut = () => {
+    auth.clear();
+    setAuthed(false);
+    setPage('dashboard');
+  };
+
+  // Real sidebar badge counts. Each source is independent so one failing queue
+  // never blanks the others; absent/0 simply shows no badge.
+  useEffect(() => {
+    if (!authed) return;
+    let cancelled = false;
+    void (async () => {
+      const next: NavBadges = {};
+      try {
+        next.vehicles = (await api.admin.listVehicles('PENDING')).items.length;
+      } catch {
+        /* leave unset */
+      }
+      try {
+        next.drvkyc = (await api.admin.listDrivers()).items.filter((d) =>
+          d.kyc.some((k) => k.verificationStatus === 'PENDING'),
+        ).length;
+      } catch {
+        /* leave unset */
+      }
+      try {
+        const c = await api.admin.getOpsCounters();
+        next.incidents = c.openIncidentsCount;
+        next.support = c.openSupportTicketsCount;
+      } catch {
+        /* leave unset */
+      }
+      if (!cancelled) setBadges(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authed, page]);
+
   if (!authed) return <OpsSignIn onSignedIn={() => setAuthed(true)} />;
   return (
     <div
@@ -4387,7 +4430,7 @@ export function AdminConsoleScreen({ initialPage = 'dashboard' }: { initialPage?
         background: NAVY_BASE,
       }}
     >
-      <Sidebar page={page} onNav={setPage} />
+      <Sidebar page={page} onNav={setPage} badges={badges} />
       <div
         style={{
           flex: 1,
@@ -4397,7 +4440,7 @@ export function AdminConsoleScreen({ initialPage = 'dashboard' }: { initialPage?
           minWidth: 0,
         }}
       >
-        <Header page={page} />
+        <Header page={page} onNav={setPage} onSignOut={handleSignOut} />
         <div
           className="dx-scroll"
           style={{
