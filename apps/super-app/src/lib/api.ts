@@ -1033,6 +1033,20 @@ export const api = {
       seats: number;
       photos?: string[];
     }) => dx<unknown>('POST', '/driver/vehicles', body),
+    // Onboarding: persist the driver's emergency contact. relationship must be one
+    // of the fixed backend set (Spouse | Parent | Sibling | Child | Relative |
+    // Friend | Other).
+    submitEmergencyContact: (body: {
+      emergencyContactName: string;
+      emergencyContactPhone: string;
+      emergencyContactRelationship: string;
+      emergencyContactEmail?: string;
+    }) => dx<unknown>('POST', '/driver/onboarding/emergency-contact', body),
+    // Record acceptance of the driver agreement (version string).
+    acceptAgreement: (agreementVersion: string) =>
+      dx<unknown>('POST', '/driver/onboarding/agreement', { agreementVersion }),
+    // Submit the completed onboarding for Ops review (moves to pending review).
+    submitOnboarding: () => dx<unknown>('POST', '/driver/onboarding/submit'),
   },
 
   // ── Signed uploads (R2 object storage) ──────────────────────────────────────

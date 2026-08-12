@@ -9,7 +9,7 @@ import {
 } from '../tokens/colors';
 import { api } from '../lib/api';
 import { auth } from '../lib/auth';
-import type { RideOfferDto, RideOfferPreviewDto, RideDto } from '../lib/api';
+import type { RideOfferDto, RideOfferPreviewDto, RideDto, RideType } from '../lib/api';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DRIVER APP — DrippleX Ride Partner Platform
@@ -1187,14 +1187,56 @@ export function DriverVehicleRegScreen({
   const [colour, setColour] = useState('White');
   const [plate, setPlate] = useState('LAG 482 KA');
   const [seats, setSeats] = useState('4');
+  const [category, setCategory] = useState<RideType>('ECONOMY');
   const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
 
-  const handleSave = () => {
+  const CATEGORIES: { value: RideType; label: string }[] = [
+    { value: 'ECONOMY', label: 'Economy' },
+    { value: 'COMFORT', label: 'Comfort' },
+    { value: 'XL', label: 'XL' },
+    { value: 'TRICYCLE', label: 'Keke' },
+  ];
+
+  const handleSave = async () => {
+    setErr('');
+    const yearNum = parseInt(year, 10);
+    const seatsNum = parseInt(seats, 10);
+    const maxYear = new Date().getFullYear() + 1;
+    if (make.trim().length < 2 || model.trim().length < 1 || colour.trim().length < 2) {
+      setErr('Enter the make, model and colour of your vehicle.');
+      return;
+    }
+    if (plate.trim().length < 3) {
+      setErr('Enter a valid plate number.');
+      return;
+    }
+    if (!Number.isFinite(yearNum) || yearNum < 1990 || yearNum > maxYear) {
+      setErr('Enter a valid vehicle year.');
+      return;
+    }
+    if (!Number.isFinite(seatsNum) || seatsNum < 1 || seatsNum > 20) {
+      setErr('Enter the number of passenger seats (1–20).');
+      return;
+    }
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      await api.driver.createVehicle({
+        plateNumber: plate.trim(),
+        make: make.trim(),
+        model: model.trim(),
+        color: colour.trim(),
+        year: yearNum,
+        rideCategory: category,
+        seats: seatsNum,
+      });
       onSave();
-    }, 1400);
+    } catch (e: unknown) {
+      setErr(
+        (e as { message?: string }).message ?? 'Could not save the vehicle. Please try again.',
+      );
+      setLoading(false);
+    }
   };
 
   return (
@@ -1267,6 +1309,34 @@ export function DriverVehicleRegScreen({
           type="number"
         />
 
+        {/* Ride category */}
+        <p
+          className="mb-2 text-[13px] font-medium"
+          style={{ fontFamily: IT, color: TEXT_SECONDARY }}
+        >
+          Ride Category
+        </p>
+        <div className="mb-6 grid grid-cols-4 gap-2">
+          {CATEGORIES.map((c) => {
+            const active = category === c.value;
+            return (
+              <button
+                key={c.value}
+                onClick={() => setCategory(c.value)}
+                className="h-11 rounded-xl text-[13px] font-semibold active:scale-[.97]"
+                style={{
+                  background: active ? `linear-gradient(135deg,${G0},${G2})` : NAVY_SURFACE,
+                  border: `1px solid ${active ? 'transparent' : BORDER}`,
+                  color: active ? '#fff' : MUTED,
+                  fontFamily: IT,
+                }}
+              >
+                {c.label}
+              </button>
+            );
+          })}
+        </div>
+
         <div
           className="mb-6 flex gap-3 rounded-2xl p-4"
           style={{ background: 'rgba(245,158,11,.06)', border: '1px solid rgba(245,158,11,.12)' }}
@@ -1277,6 +1347,15 @@ export function DriverVehicleRegScreen({
             exactly.
           </p>
         </div>
+
+        {err && (
+          <div
+            className="mb-4 rounded-2xl px-4 py-3"
+            style={{ background: 'rgba(239,68,68,.07)', border: '1px solid rgba(239,68,68,.2)' }}
+          >
+            <p style={{ fontFamily: IT, fontSize: 12, color: '#F87171' }}>{err}</p>
+          </div>
+        )}
 
         <DGreenBtn label="Save Vehicle →" onClick={handleSave} loading={loading} />
       </div>
@@ -3313,20 +3392,41 @@ export function EmergencyContactScreen({
   const [email, setEmail] = useState('');
   const [relOpen, setRelOpen] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(false);
+  const [submitErr, setSubmitErr] = useState('');
 
+  // Must mirror the backend EMERGENCY_CONTACT_RELATIONSHIPS set exactly.
   const RELATIONSHIPS = ['Spouse', 'Parent', 'Sibling', 'Child', 'Relative', 'Friend', 'Other'];
 
   const validate = () => {
     const e: Record<string, string> = {};
-    if (!name.trim()) e.name = 'Full name is required';
+    if (name.trim().length < 2) e.name = 'Full name is required';
     if (!relationship) e.relationship = 'Please select a relationship';
-    if (!phone.trim()) e.phone = 'Phone number is required';
+    if (phone.trim().length < 7) e.phone = 'Enter a valid phone number';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
-  const handleContinue = () => {
-    if (validate()) onContinue();
+  const handleContinue = async () => {
+    if (!validate()) return;
+    setSubmitErr('');
+    setLoading(true);
+    try {
+      // The UI shows a fixed +234 prefix, so store the full number.
+      const localDigits = phone.replace(/\D/g, '').replace(/^0+/, '');
+      await api.driver.submitEmergencyContact({
+        emergencyContactName: name.trim(),
+        emergencyContactPhone: `+234${localDigits}`,
+        emergencyContactRelationship: relationship,
+        ...(email.trim() ? { emergencyContactEmail: email.trim() } : {}),
+      });
+      onContinue();
+    } catch (e: unknown) {
+      setSubmitErr(
+        (e as { message?: string }).message ?? 'Could not save the contact. Please try again.',
+      );
+      setLoading(false);
+    }
   };
 
   return (
@@ -3554,7 +3654,16 @@ export function EmergencyContactScreen({
           </p>
         </div>
 
-        <DGreenBtn label="Continue →" onClick={handleContinue} />
+        {submitErr && (
+          <div
+            className="mb-4 rounded-2xl px-4 py-3"
+            style={{ background: 'rgba(239,68,68,.07)', border: '1px solid rgba(239,68,68,.2)' }}
+          >
+            <p style={{ fontFamily: IT, fontSize: 12, color: '#F87171' }}>{submitErr}</p>
+          </div>
+        )}
+
+        <DGreenBtn label="Continue →" onClick={handleContinue} loading={loading} />
       </div>
     </div>
   );
@@ -3571,6 +3680,27 @@ export function AgreementAcceptanceScreen({
   onContinue: () => void;
 }) {
   const [agreed, setAgreed] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+
+  const handleAccept = async () => {
+    if (!agreed) return;
+    setErr('');
+    setLoading(true);
+    try {
+      // Record acceptance. Onboarding is submitted for review from the KYC
+      // status screen once at least one document is uploaded (backend requires
+      // emergency contact + agreement + a KYC document before review).
+      await api.driver.acceptAgreement('v1');
+      onContinue();
+    } catch (e: unknown) {
+      setErr(
+        (e as { message?: string }).message ??
+          'Could not record your acceptance. Please try again.',
+      );
+      setLoading(false);
+    }
+  };
 
   const SECTIONS = [
     {
@@ -3734,7 +3864,16 @@ export function AgreementAcceptanceScreen({
           </p>
         </div>
 
-        <DGreenBtn label="Continue →" onClick={onContinue} disabled={!agreed} />
+        {err && (
+          <div
+            className="mb-4 rounded-2xl px-4 py-3"
+            style={{ background: 'rgba(239,68,68,.07)', border: '1px solid rgba(239,68,68,.2)' }}
+          >
+            <p style={{ fontFamily: IT, fontSize: 12, color: '#F87171' }}>{err}</p>
+          </div>
+        )}
+
+        <DGreenBtn label="Continue →" onClick={handleAccept} disabled={!agreed} loading={loading} />
       </div>
     </div>
   );
