@@ -1091,6 +1091,22 @@ export const api = {
   merchant: {
     // Business profile
     getBusiness: () => dx<MerchantBusinessDto>('GET', '/merchant/business'),
+    // Registration: create the merchant's business record (minimal onboarding —
+    // only businessName + businessType are required; it starts PENDING and
+    // enters the Ops approval queue). Use this the first time; updateBusiness
+    // PATCHes an existing one.
+    createBusiness: (body: {
+      businessName: string;
+      businessType: string;
+      description?: string;
+      phone?: string;
+      address?: string;
+      email?: string;
+      city?: string;
+      state?: string;
+      country?: string;
+      registrationNumber?: string;
+    }) => dx<MerchantBusinessDto>('POST', '/merchant/business', body),
     updateBusiness: (body: Partial<MerchantBusinessDto>) =>
       dx<MerchantBusinessDto>('PATCH', '/merchant/business', body),
     pauseStore: () => dx<void>('POST', '/merchant/business/pause'),
