@@ -25,6 +25,7 @@ export function toBusinessDto(business: Business): BusinessDto {
     longitude: Number(business.longitude),
     logoUrl: business.logoUrl,
     coverPhotoUrl: business.coverPhotoUrl,
+    operatingHours: (business.operatingHours as BusinessDto['operatingHours']) ?? null,
     status: business.status,
     verificationStatus: business.verificationStatus,
     approvedBy: business.approvedBy,

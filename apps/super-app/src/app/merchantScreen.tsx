@@ -9,6 +9,7 @@ import type {
   WalletDto,
   MerchantKycDto,
   MerchantKycStatusDto,
+  MerchantBankAccountDto,
   WalletLedgerEntryDto,
 } from '../lib/api';
 
@@ -77,18 +78,6 @@ type MerchantPage =
   | 'approval'
   | 'settings';
 type MxStatus = 'new' | 'preparing' | 'ready' | 'completed' | 'cancelled';
-
-const NIGERIAN_BANKS = [
-  'GTBank',
-  'Access Bank',
-  'First Bank',
-  'Zenith Bank',
-  'UBA',
-  'Fidelity Bank',
-  'Sterling Bank',
-  'Polaris Bank',
-  'Wema Bank',
-];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function apiStatusToMx(s: string): MxStatus {
@@ -284,6 +273,50 @@ function MxInput({
       />
     </div>
   );
+}
+
+// A read-only labelled value — used for fields that come from registration and
+// must not be re-entered (Business Name, Business Type).
+function ReadOnlyField({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ fontFamily: IT, fontSize: 12, color: MUTED, marginBottom: 6 }}>{label}</div>
+      <div
+        style={{
+          padding: '10px 12px',
+          borderRadius: 8,
+          background: NAVY_SURFACE,
+          border: `1px solid ${BORDER}`,
+          fontFamily: IT,
+          fontSize: 13,
+          color: WHITE,
+          fontWeight: 500,
+        }}
+      >
+        {value || '—'}
+      </div>
+      {hint && (
+        <div style={{ fontFamily: IT, fontSize: 11, color: MUTED, marginTop: 4 }}>{hint}</div>
+      )}
+    </div>
+  );
+}
+
+function businessTypeLabel(bt: string | undefined | null): string {
+  switch (bt) {
+    case 'SOLE_PROPRIETORSHIP':
+      return 'Sole Proprietorship';
+    case 'PARTNERSHIP':
+      return 'Partnership';
+    case 'LIMITED_LIABILITY':
+      return 'Limited Liability';
+    case 'CORPORATION':
+      return 'Corporation';
+    case 'OTHER':
+      return 'Other';
+    default:
+      return bt ?? '—';
+  }
 }
 
 function MxSelect({
@@ -2496,12 +2529,16 @@ function StoreSetupPage({
   business: MerchantBusinessDto | null;
   onExit?: () => void;
 }) {
-  const [storeName, setStoreName] = useState(business?.businessName ?? '');
-  const [category, setCategory] = useState(business?.businessType ?? 'Local Food');
+  // Business Name + type are captured at registration and shown read-only here —
+  // the merchant never re-enters their identity, only operational details.
+  const firstDayHours = business?.operatingHours
+    ? Object.values(business.operatingHours).find((d): d is { open: string; close: string } => !!d)
+    : null;
+
   const [description, setDescription] = useState(business?.description ?? '');
   const [address, setAddress] = useState(business?.address ?? '');
-  const [openTime, setOpenTime] = useState(business?.openingTime ?? '08:00');
-  const [closeTime, setCloseTime] = useState(business?.closingTime ?? '21:00');
+  const [openTime, setOpenTime] = useState(firstDayHours?.open ?? '08:00');
+  const [closeTime, setCloseTime] = useState(firstDayHours?.close ?? '21:00');
   const [logoUrl, setLogoUrl] = useState(business?.logoUrl ?? '');
   const [coverUrl, setCoverUrl] = useState(business?.coverPhotoUrl ?? '');
   const [uploading, setUploading] = useState<null | 'logo' | 'cover'>(null);
@@ -2509,30 +2546,24 @@ function StoreSetupPage({
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState('');
 
-  const CATS = [
-    'Local Food',
-    'Fast Food',
-    'Pastry & Bakery',
-    'Drinks & Beverages',
-    'Groceries',
-    'Pharmacy',
-    'Other',
-  ];
+  const WEEK = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 
-  // Only send fields the backend UpdateBusinessDto actually accepts. Opening/
-  // closing hours and the cuisine "Category" have no field on the business
-  // model yet (businessType is a legal-entity enum, not a cuisine), so sending
-  // them made the whole PATCH fail silently.
+  // Store Setup edits operational details only. Business Name + type come from
+  // registration and are never re-sent. The single open/close pair is applied to
+  // every day, matching the per-day operatingHours shape the marketplace reads.
   const handleSave = async (): Promise<boolean> => {
     setSaving(true);
     setSaveErr('');
     try {
+      const operatingHours = Object.fromEntries(
+        WEEK.map((d) => [d, { open: openTime, close: closeTime }]),
+      );
       await api.merchant.updateBusiness({
-        businessName: storeName,
         description: description || undefined,
         address: address || undefined,
         logoUrl: logoUrl || undefined,
         coverPhotoUrl: coverUrl || undefined,
+        operatingHours,
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
@@ -2569,6 +2600,39 @@ function StoreSetupPage({
     }
   };
 
+  // No business record yet (registration not completed) — show a clear next step
+  // instead of a broken form that 404s ("Business not found") on save.
+  if (!business) {
+    return (
+      <div className="mx-scroll" style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+        <SectionHead title="Store Setup" sub="Configure your business profile and store details" />
+        <MxCard style={{ maxWidth: 520 }}>
+          <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+            <span style={{ fontSize: 22 }}>🏪</span>
+            <div>
+              <div
+                style={{
+                  fontFamily: PP,
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: WHITE,
+                  marginBottom: 4,
+                }}
+              >
+                Finish your business registration first
+              </div>
+              <div style={{ fontFamily: IT, fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
+                We couldn&apos;t find a business on your account yet. Complete Business Setup during
+                registration to create your store — then your name and business type appear here and
+                you can add hours, logo and cover image.
+              </div>
+            </div>
+          </div>
+        </MxCard>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-scroll" style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
       <SectionHead title="Store Setup" sub="Configure your business profile and store details" />
@@ -2596,13 +2660,12 @@ function StoreSetupPage({
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <MxCard>
           <SectionHead title="Business Information" />
-          <MxInput
-            label="Store / Business Name *"
-            placeholder="e.g. Chidi's Kitchen"
-            value={storeName}
-            onChange={setStoreName}
+          <ReadOnlyField label="Store / Business Name" value={business.businessName} />
+          <ReadOnlyField
+            label="Category / Business Type"
+            value={businessTypeLabel(business.businessType)}
+            hint="Set during registration"
           />
-          <MxSelect label="Category *" value={category} onChange={setCategory} options={CATS} />
           <div style={{ marginBottom: 14 }}>
             <div style={{ fontFamily: IT, fontSize: 12, color: MUTED, marginBottom: 6 }}>
               Description
@@ -3158,21 +3221,69 @@ function MerchantKYCPage() {
 // PAGE 7 — BANK ACCOUNT
 // ─────────────────────────────────────────────────────────────────────────────
 function BankAccountPage() {
-  const [bank, setBank] = useState('GTBank');
-  const [accNo, setAccNo] = useState('0123456789');
-  const [accName, setAccName] = useState('CHIDI RESTAURANTS LTD');
+  const [account, setAccount] = useState<MerchantBankAccountDto | null>(null);
+  const [loading, setLoading] = useState(true);
+  // `editing` is null when viewing; true when the form is open (add or replace).
   const [editing, setEditing] = useState(false);
-  const [resolving, setResolving] = useState(false);
-  const [resolved, setResolved] = useState(true);
+  const [bank, setBank] = useState('');
+  const [accNo, setAccNo] = useState('');
+  const [accName, setAccName] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
 
-  const handleResolve = () => {
-    if (accNo.length < 10) return;
-    setResolving(true);
-    setTimeout(() => {
-      setAccName('CHIDI RESTAURANTS LTD');
-      setResolved(true);
-      setResolving(false);
-    }, 1400);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const list = await api.merchant.listBankAccounts();
+      const primary = list.find((a) => a.isDefault) ?? list[0] ?? null;
+      setAccount(primary);
+      // If none exists yet, open the form straight away so the merchant can add one.
+      setEditing(!primary);
+    } catch (e: unknown) {
+      setErr((e as { message?: string }).message ?? 'Could not load your bank account.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const openForm = () => {
+    setBank('');
+    setAccNo('');
+    setAccName('');
+    setErr('');
+    setEditing(true);
+  };
+
+  const canSave =
+    bank.trim().length >= 2 &&
+    accName.trim().length >= 2 &&
+    accNo.length >= 8 &&
+    accNo.length <= 20;
+
+  const handleSave = async () => {
+    if (!canSave) return;
+    setSaving(true);
+    setErr('');
+    try {
+      const created = await api.merchant.createBankAccount({
+        bankName: bank.trim(),
+        accountName: accName.trim(),
+        accountNumber: accNo,
+        isDefault: true,
+      });
+      setAccount(created);
+      setEditing(false);
+    } catch (e: unknown) {
+      setErr(
+        (e as { message?: string }).message ?? 'Could not save the account. Please try again.',
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -3186,27 +3297,29 @@ function BankAccountPage() {
         />
         <MxCard style={{ marginBottom: 14 }}>
           <SectionHead
-            title={editing ? 'Edit Bank Account' : 'Settlement Account'}
+            title={
+              editing
+                ? account
+                  ? 'Replace Bank Account'
+                  : 'Add Bank Account'
+                : 'Settlement Account'
+            }
             action={
-              !editing ? (
-                <MxBtn
-                  label="Edit"
-                  variant="outline"
-                  small
-                  onClick={() => {
-                    setEditing(true);
-                    setResolved(false);
-                  }}
-                />
+              !editing && account ? (
+                <MxBtn label="Change" variant="outline" small onClick={openForm} />
               ) : undefined
             }
           />
-          {!editing ? (
+          {loading ? (
+            <div style={{ fontFamily: IT, fontSize: 13, color: MUTED, padding: '8px 0' }}>
+              Loading…
+            </div>
+          ) : !editing && account ? (
             <div>
               {[
-                ['Bank', bank],
-                ['Account Number', accNo.replace(/\d(?=\d{4})/g, '•')],
-                ['Account Name', accName],
+                ['Bank', account.bankName],
+                ['Account Number', account.accountNumber.replace(/\d(?=\d{4})/g, '•')],
+                ['Account Name', account.accountName],
               ].map(([l, v]) => (
                 <div
                   key={l}
@@ -3224,75 +3337,70 @@ function BankAccountPage() {
                 </div>
               ))}
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 12 }}>
-                <div style={{ width: 7, height: 7, borderRadius: '50%', background: C_OK }} />
-                <span style={{ fontFamily: IT, fontSize: 12, color: C_OK }}>Account verified</span>
+                <div
+                  style={{
+                    width: 7,
+                    height: 7,
+                    borderRadius: '50%',
+                    background: account.verifiedAt ? C_OK : C_WARN,
+                  }}
+                />
+                <span
+                  style={{
+                    fontFamily: IT,
+                    fontSize: 12,
+                    color: account.verifiedAt ? C_OK : C_WARN,
+                  }}
+                >
+                  {account.verifiedAt ? 'Account verified' : 'Pending verification by Operations'}
+                </span>
               </div>
             </div>
           ) : (
             <div>
-              <MxSelect
+              <MxInput
                 label="Bank *"
                 value={bank}
-                onChange={(v) => {
-                  setBank(v);
-                  setResolved(false);
-                  setAccName('');
-                }}
-                options={NIGERIAN_BANKS}
+                onChange={setBank}
+                placeholder="Type your bank name (e.g. GTBank, Opay, Kuda)"
               />
-              <div style={{ marginBottom: 14 }}>
-                <div style={{ fontFamily: IT, fontSize: 12, color: MUTED, marginBottom: 6 }}>
-                  Account Number *
-                </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <input
-                    className="mx-input"
-                    value={accNo}
-                    onChange={(e) => {
-                      setAccNo(e.target.value);
-                      setResolved(false);
-                      setAccName('');
-                    }}
-                    placeholder="10-digit account number"
-                    maxLength={10}
-                    style={{ flex: 1 }}
-                  />
-                  <MxBtn
-                    label={resolving ? '…' : 'Verify'}
-                    variant="primary"
-                    disabled={accNo.length < 10 || resolving}
-                    onClick={handleResolve}
-                  />
-                </div>
-              </div>
-              {resolved && (
-                <div
-                  style={{
-                    padding: '10px 14px',
-                    borderRadius: 8,
-                    background: 'rgba(16,185,129,.08)',
-                    border: '1px solid rgba(16,185,129,.2)',
-                    marginBottom: 14,
-                  }}
-                >
-                  <div style={{ fontFamily: IT, fontSize: 11, color: MUTED, marginBottom: 2 }}>
-                    Account name (verified)
-                  </div>
-                  <div style={{ fontFamily: PP, fontSize: 14, fontWeight: 700, color: C_OK }}>
-                    {accName}
-                  </div>
+              <MxInput
+                label="Account Number *"
+                value={accNo}
+                onChange={(v) => setAccNo(v.replace(/\D/g, '').slice(0, 20))}
+                placeholder="Account number (8–20 digits)"
+              />
+              <MxInput
+                label="Account Name *"
+                value={accName}
+                onChange={setAccName}
+                placeholder="Account holder name, exactly as at the bank"
+              />
+              {err && (
+                <div style={{ fontFamily: IT, fontSize: 12, color: C_ERR, marginBottom: 12 }}>
+                  {err}
                 </div>
               )}
               <div style={{ display: 'flex', gap: 10 }}>
-                <MxBtn label="Cancel" variant="outline" onClick={() => setEditing(false)} />
+                {account && (
+                  <MxBtn
+                    label="Cancel"
+                    variant="outline"
+                    disabled={saving}
+                    onClick={() => setEditing(false)}
+                  />
+                )}
                 <MxBtn
-                  label="Save Account"
+                  label={saving ? 'Saving…' : 'Save Account'}
                   variant="primary"
-                  disabled={!resolved}
-                  onClick={() => setEditing(false)}
+                  disabled={!canSave || saving}
+                  onClick={() => void handleSave()}
                 />
               </div>
             </div>
+          )}
+          {err && !editing && (
+            <div style={{ fontFamily: IT, fontSize: 12, color: C_ERR, marginTop: 10 }}>{err}</div>
           )}
         </MxCard>
         <MxCard>

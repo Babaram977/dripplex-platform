@@ -40,6 +40,7 @@ export interface BusinessDto {
   longitude: number;
   logoUrl: string | null;
   coverPhotoUrl: string | null;
+  operatingHours: OperatingHoursDto | null;
   status: BusinessStatus;
   verificationStatus: BusinessVerificationStatus;
   approvedBy: string | null;

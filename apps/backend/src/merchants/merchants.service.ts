@@ -157,6 +157,7 @@ export class MerchantsService {
       ...(dto.description !== undefined ? { description: dto.description.trim() } : {}),
       ...(dto.logoUrl !== undefined ? { logoUrl: dto.logoUrl } : {}),
       ...(dto.coverPhotoUrl !== undefined ? { coverPhotoUrl: dto.coverPhotoUrl } : {}),
+      ...(dto.operatingHours !== undefined ? { operatingHours: dto.operatingHours } : {}),
     });
 
     await this.auditService.record(
@@ -250,6 +251,7 @@ export class MerchantsService {
       ...(dto.longitude !== undefined ? { longitude: dto.longitude } : {}),
       ...(dto.logoUrl !== undefined ? { logoUrl: dto.logoUrl } : {}),
       ...(dto.coverPhotoUrl !== undefined ? { coverPhotoUrl: dto.coverPhotoUrl } : {}),
+      ...(dto.operatingHours !== undefined ? { operatingHours: dto.operatingHours } : {}),
     });
 
     await this.auditService.record(

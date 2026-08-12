@@ -7,6 +7,7 @@ import { CreateBankAccountDto } from './create-bank-account.dto';
 import { CreateBusinessDto } from './create-business.dto';
 import { ListMerchantsQueryDto } from './list-merchants-query.dto';
 import { SubmitKycDto } from './submit-kyc.dto';
+import { UpdateBusinessDto } from './update-business.dto';
 
 describe('Merchant DTO validation', () => {
   it('accepts a valid create business payload', async () => {
@@ -94,6 +95,25 @@ describe('Merchant DTO validation', () => {
     });
     const errors = await validate(dto);
     expect(errors.some((e) => e.property === 'accountNumber')).toBe(true);
+  });
+
+  it('accepts a per-day operating hours payload on update', async () => {
+    const dto = plainToInstance(UpdateBusinessDto, {
+      operatingHours: {
+        mon: { open: '08:00', close: '21:00' },
+        sun: null,
+      },
+    });
+    const errors = await validate(dto);
+    expect(errors).toHaveLength(0);
+  });
+
+  it('rejects malformed operating-hours times', async () => {
+    const dto = plainToInstance(UpdateBusinessDto, {
+      operatingHours: { mon: { open: '8am', close: '21:00' } },
+    });
+    const errors = await validate(dto);
+    expect(errors.some((e) => e.property === 'operatingHours')).toBe(true);
   });
 
   it('requires rejection reason', async () => {
