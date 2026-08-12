@@ -250,496 +250,23 @@ function Card({ children, style }: { children: React.ReactNode; style?: React.CS
   );
 }
 
-// ─── Mock data ────────────────────────────────────────────────────────────────
-const DRIVERS = [
-  {
-    id: 'DRV-001',
-    name: 'Emeka Okafor',
-    phone: '+234 803 412 7891',
-    vehicle: 'Toyota Corolla · ABC 123 LG',
-    rating: 4.8,
-    trips: 1247,
-    status: 'online',
-    kyc: 'verified',
-    vehicleType: 'Sedan',
-  },
-  {
-    id: 'DRV-002',
-    name: 'Adebayo Fashola',
-    phone: '+234 806 234 5678',
-    vehicle: 'Honda Accord · XYZ 456 LG',
-    rating: 4.6,
-    trips: 893,
-    status: 'busy',
-    kyc: 'verified',
-    vehicleType: 'Sedan',
-  },
-  {
-    id: 'DRV-003',
-    name: 'Chukwuemeka Eze',
-    phone: '+234 705 567 8901',
-    vehicle: 'Hyundai Elantra · QRS 789 LG',
-    rating: 4.9,
-    trips: 2104,
-    status: 'offline',
-    kyc: 'verified',
-    vehicleType: 'Sedan',
-  },
-  {
-    id: 'DRV-004',
-    name: 'Fatima Abubakar',
-    phone: '+234 812 345 6789',
-    vehicle: 'Toyota Camry · DEF 321 LG',
-    rating: 4.7,
-    trips: 678,
-    status: 'online',
-    kyc: 'unverified',
-    vehicleType: 'Sedan',
-  },
-  {
-    id: 'DRV-005',
-    name: 'Olumide Adeyemi',
-    phone: '+234 901 234 5670',
-    vehicle: 'Kia Rio · GHI 654 LG',
-    rating: 4.5,
-    trips: 412,
-    status: 'busy',
-    kyc: 'verified',
-    vehicleType: 'Hatchback',
-  },
-  {
-    id: 'DRV-006',
-    name: 'Ngozi Okonkwo',
-    phone: '+234 803 789 0123',
-    vehicle: 'Honda Civic · JKL 987 LG',
-    rating: 4.8,
-    trips: 1563,
-    status: 'online',
-    kyc: 'verified',
-    vehicleType: 'Sedan',
-  },
-  {
-    id: 'DRV-007',
-    name: 'Babatunde Lawal',
-    phone: '+234 706 890 1234',
-    vehicle: 'Nissan Sentra · MNO 246 LG',
-    rating: 4.3,
-    trips: 234,
-    status: 'offline',
-    kyc: 'pending',
-    vehicleType: 'Sedan',
-  },
-  {
-    id: 'DRV-008',
-    name: 'Chisom Obiora',
-    phone: '+234 813 901 2345',
-    vehicle: 'Toyota Yaris · PQR 135 LG',
-    rating: 4.6,
-    trips: 789,
-    status: 'online',
-    kyc: 'verified',
-    vehicleType: 'Hatchback',
-  },
-];
+const TRIPS: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
 
-const TRIPS = [
-  {
-    id: 'TRP-8842',
-    driver: 'Emeka Okafor',
-    passenger: 'Tunde Bakare',
-    pickup: 'Victoria Island',
-    dropoff: 'Lekki Phase 1',
-    fare: '₦2,850',
-    status: 'in progress',
-    eta: '8 min',
-  },
-  {
-    id: 'TRP-8841',
-    driver: 'Adebayo Fashola',
-    passenger: 'Amaka Igwe',
-    pickup: 'Ikeja GRA',
-    dropoff: 'Maryland Mall',
-    fare: '₦1,200',
-    status: 'arriving',
-    eta: '3 min',
-  },
-  {
-    id: 'TRP-8840',
-    driver: 'Ngozi Okonkwo',
-    passenger: 'Seun Alade',
-    pickup: 'Surulere',
-    dropoff: 'Yaba Tech',
-    fare: '₦950',
-    status: 'accepted',
-    eta: '12 min',
-  },
-  {
-    id: 'TRP-8839',
-    driver: 'Olumide Adeyemi',
-    passenger: 'Kelechi Eze',
-    pickup: 'Ajah',
-    dropoff: 'Chevron Drive',
-    fare: '₦1,650',
-    status: 'searching',
-    eta: '—',
-  },
-  {
-    id: 'TRP-8838',
-    driver: 'Chisom Obiora',
-    passenger: 'Folake Adeleke',
-    pickup: 'Ojota',
-    dropoff: 'Oshodi',
-    fare: '₦700',
-    status: 'completed',
-    eta: 'Done',
-  },
-  {
-    id: 'TRP-8837',
-    driver: 'Babatunde Lawal',
-    passenger: 'Rotimi Ajayi',
-    pickup: 'Berger',
-    dropoff: 'Ikeja',
-    fare: '₦500',
-    status: 'cancelled',
-    eta: '—',
-  },
-  {
-    id: 'TRP-8836',
-    driver: 'Fatima Abubakar',
-    passenger: 'Chidi Nwachukwu',
-    pickup: 'Onikan',
-    dropoff: 'CMS Marina',
-    fare: '₦600',
-    status: 'completed',
-    eta: 'Done',
-  },
-  {
-    id: 'TRP-8835',
-    driver: 'Chukwuemeka Eze',
-    passenger: 'Aisha Garba',
-    pickup: 'Ikoyi',
-    dropoff: 'Broad Street',
-    fare: '₦1,100',
-    status: 'in progress',
-    eta: '5 min',
-  },
-];
+const CUSTOMERS: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
 
-const CUSTOMERS = [
-  {
-    id: 'CUS-001',
-    name: 'Tunde Bakare',
-    phone: '+234 803 111 2222',
-    email: 'tunde.b@gmail.com',
-    trips: 47,
-    rating: 4.7,
-    spent: '₦142,500',
-    status: 'active',
-  },
-  {
-    id: 'CUS-002',
-    name: 'Amaka Igwe',
-    phone: '+234 806 333 4444',
-    email: 'amaka.igwe@yahoo.com',
-    trips: 23,
-    rating: 4.9,
-    spent: '₦67,200',
-    status: 'active',
-  },
-  {
-    id: 'CUS-003',
-    name: 'Seun Alade',
-    phone: '+234 705 555 6666',
-    email: 'seun.alade@outlook.com',
-    trips: 112,
-    rating: 4.5,
-    spent: '₦389,000',
-    status: 'active',
-  },
-  {
-    id: 'CUS-004',
-    name: 'Kelechi Eze',
-    phone: '+234 812 777 8888',
-    email: 'kele.eze@gmail.com',
-    trips: 8,
-    rating: 4.2,
-    spent: '₦18,750',
-    status: 'inactive',
-  },
-  {
-    id: 'CUS-005',
-    name: 'Folake Adeleke',
-    phone: '+234 901 999 0001',
-    email: 'folake.a@gmail.com',
-    trips: 67,
-    rating: 4.8,
-    spent: '₦201,400',
-    status: 'active',
-  },
-  {
-    id: 'CUS-006',
-    name: 'Rotimi Ajayi',
-    phone: '+234 803 222 3333',
-    email: 'rotimi.aj@gmail.com',
-    trips: 3,
-    rating: 3.8,
-    spent: '₦5,200',
-    status: 'suspended',
-  },
-  {
-    id: 'CUS-007',
-    name: 'Chidi Nwachukwu',
-    phone: '+234 706 444 5555',
-    email: 'chidi.nw@yahoo.com',
-    trips: 89,
-    rating: 4.6,
-    spent: '₦256,800',
-    status: 'active',
-  },
-  {
-    id: 'CUS-008',
-    name: 'Aisha Garba',
-    phone: '+234 813 666 7777',
-    email: 'aisha.garba@gmail.com',
-    trips: 31,
-    rating: 4.7,
-    spent: '₦94,300',
-    status: 'active',
-  },
-];
+const INCIDENTS: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
 
-const INCIDENTS = [
-  {
-    id: 'INC-301',
-    type: 'SOS',
-    icon: '🆘',
-    severity: 'critical',
-    desc: 'Driver activated emergency SOS — Lekki-Epe Expressway',
-    status: 'open',
-    driver: 'Emeka Okafor',
-    passenger: 'Tunde Bakare',
-    time: '2 min ago',
-    trip: 'TRP-8842',
-  },
-  {
-    id: 'INC-300',
-    type: 'Accident',
-    icon: '🚗',
-    severity: 'high',
-    desc: 'Minor collision reported near Ojota bus stop',
-    status: 'in review',
-    driver: 'Adebayo Fashola',
-    passenger: 'Amaka Igwe',
-    time: '18 min ago',
-    trip: 'TRP-8830',
-  },
-  {
-    id: 'INC-299',
-    type: 'Overcharge',
-    icon: '💰',
-    severity: 'medium',
-    desc: 'Passenger reports being charged ₦3,200 over estimate',
-    status: 'open',
-    driver: 'Olumide Adeyemi',
-    passenger: 'Kelechi Eze',
-    time: '1 hr ago',
-    trip: 'TRP-8820',
-  },
-  {
-    id: 'INC-298',
-    type: 'No-show',
-    icon: '👻',
-    severity: 'low',
-    desc: 'Driver did not arrive after 15-minute wait',
-    status: 'resolved',
-    driver: 'Babatunde Lawal',
-    passenger: 'Folake Adeleke',
-    time: '3 hr ago',
-    trip: 'TRP-8811',
-  },
-  {
-    id: 'INC-297',
-    type: 'Complaint',
-    icon: '📣',
-    severity: 'medium',
-    desc: 'Rude behaviour reported by customer after trip',
-    status: 'escalated',
-    driver: 'Chisom Obiora',
-    passenger: 'Rotimi Ajayi',
-    time: '5 hr ago',
-    trip: 'TRP-8800',
-  },
-];
+const SUPPORT_TICKETS: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
 
-const SUPPORT_TICKETS = [
-  {
-    id: 'TKT-4421',
-    customer: 'Tunde Bakare',
-    subject: 'Payment deducted but trip cancelled',
-    status: 'open',
-    priority: 'high',
-    time: '5 min ago',
-    messages: [
-      {
-        from: 'customer',
-        text: 'My card was charged ₦2,850 but the trip was cancelled before it started. Please refund.',
-      },
-      {
-        from: 'agent',
-        text: "Hello Tunde! I can see the charge on your account. I'm investigating this now and will process a refund within 24 hours.",
-      },
-      { from: 'customer', text: 'Thank you. How long will the refund take to reflect?' },
-      {
-        from: 'agent',
-        text: "The refund should reflect within 3-5 business days depending on your bank. You'll receive an email confirmation shortly.",
-      },
-    ],
-  },
-  {
-    id: 'TKT-4420',
-    customer: 'Amaka Igwe',
-    subject: 'Driver took wrong route',
-    status: 'in progress',
-    priority: 'medium',
-    time: '22 min ago',
-    messages: [],
-  },
-  {
-    id: 'TKT-4419',
-    customer: 'Seun Alade',
-    subject: 'App crashing on Android 12',
-    status: 'open',
-    priority: 'low',
-    time: '1 hr ago',
-    messages: [],
-  },
-  {
-    id: 'TKT-4418',
-    customer: 'Kelechi Eze',
-    subject: 'Unable to add new payment card',
-    status: 'in progress',
-    priority: 'medium',
-    time: '2 hr ago',
-    messages: [],
-  },
-  {
-    id: 'TKT-4417',
-    customer: 'Folake Adeleke',
-    subject: 'Driver rating not updating',
-    status: 'resolved',
-    priority: 'low',
-    time: '4 hr ago',
-    messages: [],
-  },
-];
+const REVENUE_DATA: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
 
-const REVENUE_DATA = [
-  { time: '08:00', revenue: 42000 },
-  { time: '09:00', revenue: 78000 },
-  { time: '10:00', revenue: 65000 },
-  { time: '11:00', revenue: 91000 },
-  { time: '12:00', revenue: 105000 },
-  { time: '13:00', revenue: 88000 },
-  { time: '14:00', revenue: 72000 },
-  { time: '15:00', revenue: 95000 },
-  { time: '16:00', revenue: 118000 },
-  { time: '17:00', revenue: 134000 },
-  { time: '18:00', revenue: 121000 },
-  { time: '19:00', revenue: 98000 },
-];
+const TRIP_STATUS_PIE: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
 
-const TRIP_STATUS_PIE = [
-  { name: 'Completed', value: 847, color: C_OK },
-  { name: 'In Progress', value: 43, color: G3 },
-  { name: 'Searching', value: 28, color: C_INFO },
-  { name: 'Cancelled', value: 67, color: C_ERR },
-];
+const WEEKLY_DATA: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
 
-const WEEKLY_DATA = [
-  { day: 'Mon', revenue: 1240000, trips: 412 },
-  { day: 'Tue', revenue: 1580000, trips: 538 },
-  { day: 'Wed', revenue: 1320000, trips: 467 },
-  { day: 'Thu', revenue: 1890000, trips: 623 },
-  { day: 'Fri', revenue: 2140000, trips: 714 },
-  { day: 'Sat', revenue: 1960000, trips: 651 },
-  { day: 'Sun', revenue: 1450000, trips: 483 },
-];
+const DRIVER_GROWTH: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
 
-const DRIVER_GROWTH = [
-  { month: 'Feb', drivers: 1120 },
-  { month: 'Mar', drivers: 1340 },
-  { month: 'Apr', drivers: 1580 },
-  { month: 'May', drivers: 1820 },
-  { month: 'Jun', drivers: 2104 },
-  { month: 'Jul', drivers: 2390 },
-];
-
-const AUDIT_LOGS = [
-  {
-    ts: '2025-07-20 14:32:11',
-    admin: 'Adaora Nwosu',
-    role: 'Super Admin',
-    action: 'Suspended driver account',
-    target: 'Babatunde Lawal (DRV-007)',
-    ip: '102.88.21.45',
-  },
-  {
-    ts: '2025-07-20 14:18:07',
-    admin: 'Emeka Obi',
-    role: 'Operations',
-    action: 'Resolved incident INC-298',
-    target: 'INC-298 No-show',
-    ip: '197.210.54.12',
-  },
-  {
-    ts: '2025-07-20 13:55:43',
-    admin: 'Adaora Nwosu',
-    role: 'Super Admin',
-    action: 'Updated base fare configuration',
-    target: 'Pricing / Sedan',
-    ip: '102.88.21.45',
-  },
-  {
-    ts: '2025-07-20 13:22:19',
-    admin: 'Chika Eze',
-    role: 'Support',
-    action: 'Processed refund ₦2,850',
-    target: 'Tunde Bakare (CUS-001)',
-    ip: '41.73.112.88',
-  },
-  {
-    ts: '2025-07-20 12:48:56',
-    admin: 'Emeka Obi',
-    role: 'Operations',
-    action: 'Approved KYC documents',
-    target: 'Olumide Adeyemi (DRV-005)',
-    ip: '197.210.54.12',
-  },
-  {
-    ts: '2025-07-20 11:34:22',
-    admin: 'Adaora Nwosu',
-    role: 'Super Admin',
-    action: 'Enabled maintenance mode',
-    target: 'System / Global',
-    ip: '102.88.21.45',
-  },
-  {
-    ts: '2025-07-20 10:17:09',
-    admin: 'Chika Eze',
-    role: 'Support',
-    action: 'Escalated incident INC-297',
-    target: 'INC-297 Complaint',
-    ip: '41.73.112.88',
-  },
-  {
-    ts: '2025-07-20 09:03:44',
-    admin: 'Ngozi Kalu',
-    role: 'Finance',
-    action: 'Exported revenue report',
-    target: 'June 2025 Report',
-    ip: '105.112.44.21',
-  },
-];
+const AUDIT_LOGS: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 const NAV_ITEMS: { page: AdminPage; icon: string; label: string }[] = [
@@ -1182,51 +709,58 @@ const TOOLTIP_STYLE = {
 
 // ─── Page: Dashboard ──────────────────────────────────────────────────────────
 function PageDashboard() {
-  const fmt = (n: number) =>
-    '₦' +
-    (n >= 1000000 ? (n / 1000000).toFixed(1) + 'M' : n >= 1000 ? (n / 1000).toFixed(0) + 'K' : n);
+  const [counters, setCounters] = useState<{
+    openIncidentsCount: number;
+    openSupportTicketsCount: number;
+    waitingReviewCount: number;
+  } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void api.admin
+      .getOpsCounters()
+      .then((c) => {
+        if (!cancelled) setCounters(c);
+      })
+      .catch(() => {
+        /* leave counters null → tiles show — */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  // Real counters where available; every other tile shows "—" rather than a fake
+  // number until its metric is wired (trips/revenue/driver-availability).
+  const c = (n: number | undefined) => (n === undefined ? '—' : String(n));
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* KPI Row 1 */}
       <div style={{ display: 'flex', gap: 12 }}>
-        <KpiCard label="Active Trips" value="43" sub="↑ 12% vs yesterday" color={G3} icon="🚗" />
+        <KpiCard label="Active Trips" value="—" sub="" color={G3} icon="🚗" />
         <KpiCard
           label="Pending Requests"
-          value="28"
-          sub="Avg wait 2.4 min"
+          value={c(counters?.waitingReviewCount)}
+          sub="Awaiting review"
           color={C_WARN}
           icon="⏳"
         />
-        <KpiCard label="Completed Today" value="847" sub="Target: 1,000" color={C_OK} icon="✅" />
-        <KpiCard label="Revenue Today" value="₦4.2M" sub="↑ 8% vs yesterday" color={G2} icon="💰" />
+        <KpiCard label="Completed Today" value="—" sub="" color={C_OK} icon="✅" />
+        <KpiCard label="Revenue Today" value="—" sub="" color={G2} icon="💰" />
       </div>
       {/* KPI Row 2 */}
       <div style={{ display: 'flex', gap: 12 }}>
-        <KpiCard
-          label="Online Drivers"
-          value="312"
-          sub="Of 490 registered"
-          color={C_OK}
-          icon="🟢"
-        />
-        <KpiCard
-          label="Offline Drivers"
-          value="178"
-          sub="Last seen < 4 hr"
-          color={MUTED}
-          icon="⚫"
-        />
+        <KpiCard label="Online Drivers" value="—" sub="" color={C_OK} icon="🟢" />
+        <KpiCard label="Offline Drivers" value="—" sub="" color={MUTED} icon="⚫" />
         <KpiCard
           label="Support Tickets"
-          value="5"
-          sub="3 awaiting reply"
+          value={c(counters?.openSupportTicketsCount)}
+          sub="Open"
           color={C_INFO}
           icon="🎧"
         />
         <KpiCard
           label="Open Incidents"
-          value="2"
-          sub="1 critical, 1 high"
+          value={c(counters?.openIncidentsCount)}
+          sub="Open"
           color={C_ERR}
           icon="⚠️"
         />
@@ -1357,24 +891,9 @@ function PageDashboard() {
 function PageLiveMap() {
   const [filter, setFilter] = useState('All');
   const filters = ['All', 'Available', 'Busy', 'Trips'];
-  const drivers = [
-    { id: 1, x: 320, y: 180, status: 'available', name: 'Emeka O.' },
-    { id: 2, x: 480, y: 240, status: 'busy', name: 'Adebayo F.' },
-    { id: 3, x: 250, y: 300, status: 'available', name: 'Ngozi O.' },
-    { id: 4, x: 560, y: 180, status: 'busy', name: 'Olumide A.' },
-    { id: 5, x: 380, y: 340, status: 'available', name: 'Chisom O.' },
-    { id: 6, x: 460, y: 140, status: 'busy', name: 'Fatima A.' },
-    { id: 7, x: 300, y: 220, status: 'available', name: 'Chukwuemeka E.' },
-    { id: 8, x: 500, y: 300, status: 'available', name: 'Babatunde L.' },
-  ];
-  const routes = [
-    { x1: 320, y1: 180, x2: 480, y2: 240, color: G3 },
-    { x1: 560, y1: 180, x2: 460, y2: 140, color: C_WARN },
-  ];
-  const pickups = [
-    { x: 340, y: 170, label: 'Lekki Ph1' },
-    { x: 590, y: 175, label: 'Ikeja GRA' },
-  ];
+  const drivers = [] as Record<string, unknown>[]; // mock cleared
+  const routes = [] as Record<string, unknown>[]; // mock cleared
+  const pickups = [] as Record<string, unknown>[]; // mock cleared
   const visible = drivers.filter((d) =>
     filter === 'All'
       ? true
@@ -1645,8 +1164,8 @@ function PageLiveMap() {
             }}
           >
             <div style={{ fontSize: 10, color: MUTED, marginBottom: 4 }}>NOW LIVE</div>
-            <div style={{ fontSize: 12, color: G3, fontWeight: 600 }}>312 Active Drivers</div>
-            <div style={{ fontSize: 11, color: MUTED }}>43 Trips in Progress</div>
+            <div style={{ fontSize: 12, color: G3, fontWeight: 600 }}>— Active Drivers</div>
+            <div style={{ fontSize: 11, color: MUTED }}>— Trips in Progress</div>
           </div>
         </Card>
       </div>
@@ -1816,12 +1335,82 @@ function PageTrips() {
 }
 
 // ─── Page: Drivers ─────────────────────────────────────────────────────────────
+const driverKycState = (d: AdminDriverDto): 'verified' | 'pending' | 'unverified' => {
+  if (d.kyc.some((k) => k.verificationStatus === 'PENDING')) return 'pending';
+  if (d.kyc.some((k) => k.verificationStatus === 'VERIFIED')) return 'verified';
+  return 'unverified';
+};
+const driverStatusChip = (s: string) => (s === 'UNDER_REVIEW' ? 'in review' : s.toLowerCase());
+
 function PageDrivers() {
-  const [selected, setSelected] = useState<(typeof DRIVERS)[0] | null>(null);
+  const [drivers, setDrivers] = useState<AdminDriverDto[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const filtered = DRIVERS.filter((d) =>
-    (d.name + d.phone + d.vehicle).toLowerCase().includes(search.toLowerCase()),
-  );
+  const [kycFilter, setKycFilter] = useState('All KYC');
+  const [selId, setSelId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [showSuspend, setShowSuspend] = useState(false);
+  const [suspendReason, setSuspendReason] = useState('');
+  const [note, setNote] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      setDrivers((await api.admin.listDrivers()).items);
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load drivers.');
+      setDrivers([]);
+    }
+  }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const rows = (drivers ?? []).filter((d) => {
+    const q = search.toLowerCase();
+    const matchesSearch = (driverName(d) + (d.phone ?? '') + d.email).toLowerCase().includes(q);
+    const k = driverKycState(d);
+    const matchesKyc =
+      kycFilter === 'All KYC' ||
+      (kycFilter === 'Verified' && k === 'verified') ||
+      (kycFilter === 'Pending' && k === 'pending');
+    return matchesSearch && matchesKyc;
+  });
+  const selected = rows.find((d) => d.driverId === selId) ?? null;
+
+  const suspend = async () => {
+    if (!selected) return;
+    if (suspendReason.trim().length < 3) {
+      setNote('Add a short reason.');
+      return;
+    }
+    setBusy(true);
+    setNote(null);
+    try {
+      await api.admin.suspendDriver(selected.driverId, suspendReason.trim());
+      setShowSuspend(false);
+      setSuspendReason('');
+      await load();
+    } catch (e: unknown) {
+      setNote((e as { message?: string }).message ?? 'Could not suspend.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const reactivate = async () => {
+    if (!selected) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      await api.admin.reactivateDriver(selected.driverId);
+      await load();
+    } catch (e: unknown) {
+      setNote((e as { message?: string }).message ?? 'Could not reactivate.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div style={{ display: 'flex', gap: 14, height: '100%' }}>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -1839,20 +1428,40 @@ function PageDrivers() {
             <option>Offline</option>
             <option>Busy</option>
           </select>
-          <select className="dx-select" style={{ color: MUTED }}>
+          <select
+            className="dx-select"
+            style={{ color: MUTED }}
+            value={kycFilter}
+            onChange={(e) => setKycFilter(e.target.value)}
+          >
             <option>All KYC</option>
             <option>Verified</option>
             <option>Pending</option>
           </select>
         </div>
         <Card style={{ padding: '12px 16px', flex: 1 }}>
-          <table
-            style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Inter, sans-serif' }}
-          >
-            <thead>
-              <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
-                {['Driver', 'Phone', 'Vehicle', 'Rating', 'Trips', 'Status', 'KYC', 'Actions'].map(
-                  (h) => (
+          {drivers === null && !error ? (
+            <div style={{ fontSize: 13, color: MUTED, padding: 8 }}>Loading…</div>
+          ) : error ? (
+            <div style={{ fontSize: 13, color: C_ERR, padding: 8 }}>{error}</div>
+          ) : rows.length === 0 ? (
+            <div style={{ fontSize: 13, color: MUTED, padding: 8 }}>No drivers found.</div>
+          ) : (
+            <table
+              style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Inter, sans-serif' }}
+            >
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
+                  {[
+                    'Driver',
+                    'Phone',
+                    'Vehicle',
+                    'Rating',
+                    'Trips',
+                    'Status',
+                    'KYC',
+                    'Actions',
+                  ].map((h) => (
                     <th
                       key={h}
                       style={{
@@ -1865,60 +1474,73 @@ function PageDrivers() {
                     >
                       {h}
                     </th>
-                  ),
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((d, i) => (
-                <tr
-                  key={d.id}
-                  className="dx-row"
-                  style={{
-                    borderBottom: `1px solid rgba(255,255,255,.04)`,
-                    background:
-                      selected?.id === d.id
-                        ? 'rgba(71,207,114,.05)'
-                        : i % 2 === 1
-                          ? 'rgba(255,255,255,.01)'
-                          : 'transparent',
-                    cursor: 'pointer',
-                  }}
-                  onClick={() => setSelected(d)}
-                >
-                  <td style={{ padding: '8px 8px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <Avatar name={d.name} size={28} />
-                      <div>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: WHITE }}>{d.name}</div>
-                        <div style={{ fontSize: 10, color: MUTED }}>{d.id}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td style={{ padding: '8px 8px', fontSize: 11.5, color: MUTED }}>{d.phone}</td>
-                  <td style={{ padding: '8px 8px', fontSize: 11, color: MUTED }}>{d.vehicle}</td>
-                  <td style={{ padding: '8px 8px' }}>
-                    <span style={{ color: C_WARN, fontSize: 12 }}>★</span>
-                    <span style={{ fontSize: 12, color: WHITE, fontWeight: 600 }}> {d.rating}</span>
-                  </td>
-                  <td style={{ padding: '8px 8px', fontSize: 12, color: WHITE }}>
-                    {d.trips.toLocaleString()}
-                  </td>
-                  <td style={{ padding: '8px 8px' }}>
-                    <StatusChip status={d.status} />
-                  </td>
-                  <td style={{ padding: '8px 8px' }}>
-                    <StatusChip status={d.kyc} />
-                  </td>
-                  <td style={{ padding: '8px 8px' }}>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      <Btn label="View" small outline color={G3} />
-                    </div>
-                  </td>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {rows.map((d, i) => (
+                  <tr
+                    key={d.driverId}
+                    className="dx-row"
+                    style={{
+                      borderBottom: `1px solid rgba(255,255,255,.04)`,
+                      background:
+                        selId === d.driverId
+                          ? 'rgba(71,207,114,.05)'
+                          : i % 2 === 1
+                            ? 'rgba(255,255,255,.01)'
+                            : 'transparent',
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => {
+                      setSelId(d.driverId);
+                      setShowSuspend(false);
+                      setNote(null);
+                    }}
+                  >
+                    <td style={{ padding: '8px 8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Avatar name={driverName(d)} size={28} />
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: WHITE }}>
+                            {driverName(d)}
+                          </div>
+                          <div style={{ fontSize: 10, color: MUTED }}>{d.driverId.slice(0, 8)}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td style={{ padding: '8px 8px', fontSize: 11.5, color: MUTED }}>
+                      {d.phone ?? '—'}
+                    </td>
+                    <td style={{ padding: '8px 8px', fontSize: 11, color: MUTED }}>—</td>
+                    <td style={{ padding: '8px 8px', fontSize: 12, color: MUTED }}>—</td>
+                    <td style={{ padding: '8px 8px', fontSize: 12, color: MUTED }}>—</td>
+                    <td style={{ padding: '8px 8px' }}>
+                      <StatusChip status={driverStatusChip(d.status)} />
+                    </td>
+                    <td style={{ padding: '8px 8px' }}>
+                      <StatusChip status={driverKycState(d)} />
+                    </td>
+                    <td style={{ padding: '8px 8px' }}>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <Btn
+                          label="View"
+                          small
+                          outline
+                          color={G3}
+                          onClick={() => {
+                            setSelId(d.driverId);
+                            setShowSuspend(false);
+                            setNote(null);
+                          }}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </Card>
       </div>
       {/* Detail panel */}
@@ -1939,7 +1561,7 @@ function PageDrivers() {
                 Driver Profile
               </div>
               <button
-                onClick={() => setSelected(null)}
+                onClick={() => setSelId(null)}
                 className="dx-btn"
                 style={{
                   background: 'none',
@@ -1953,7 +1575,7 @@ function PageDrivers() {
               </button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-              <Avatar name={selected.name} size={48} />
+              <Avatar name={driverName(selected)} size={48} />
               <div style={{ textAlign: 'center' }}>
                 <div
                   style={{
@@ -1963,23 +1585,23 @@ function PageDrivers() {
                     color: WHITE,
                   }}
                 >
-                  {selected.name}
+                  {driverName(selected)}
                 </div>
                 <div style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
-                  {selected.id}
+                  {selected.driverId.slice(0, 8)}
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
-                <StatusChip status={selected.status} />
-                <StatusChip status={selected.kyc} />
+                <StatusChip status={driverStatusChip(selected.status)} />
+                <StatusChip status={driverKycState(selected)} />
               </div>
             </div>
             <SEP />
             {[
-              ['Phone', selected.phone],
-              ['Vehicle', selected.vehicle],
-              ['Rating', `★ ${selected.rating}`],
-              ['Total Trips', selected.trips.toLocaleString()],
+              ['Phone', selected.phone ?? '—'],
+              ['Email', selected.email],
+              ['Vehicle', '—'],
+              ['Total Trips', '—'],
             ].map(([k, v]) => (
               <div
                 key={k}
@@ -1994,10 +1616,60 @@ function PageDrivers() {
               </div>
             ))}
             <SEP />
+            {note && <span style={{ fontSize: 11, color: C_WARN }}>{note}</span>}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-              <Btn label="Suspend Driver" color={C_WARN} outline />
-              <Btn label="Deactivate Account" color={C_ERR} outline />
-              <Btn label="View Trip History" color={G3} />
+              {selected.status === 'SUSPENDED' ? (
+                <Btn
+                  label={busy ? 'Reactivating…' : 'Reactivate Driver'}
+                  color={G2}
+                  onClick={() => void reactivate()}
+                />
+              ) : showSuspend ? (
+                <>
+                  <input
+                    className="dx-input"
+                    value={suspendReason}
+                    onChange={(e) => setSuspendReason(e.target.value)}
+                    placeholder="Reason for suspension"
+                  />
+                  <Btn
+                    label={busy ? 'Suspending…' : 'Confirm Suspend'}
+                    color={C_WARN}
+                    onClick={() => void suspend()}
+                  />
+                  <Btn
+                    label="Cancel"
+                    color={MUTED}
+                    outline
+                    onClick={() => {
+                      setShowSuspend(false);
+                      setNote(null);
+                    }}
+                  />
+                </>
+              ) : (
+                <Btn
+                  label="Suspend Driver"
+                  color={C_WARN}
+                  outline
+                  onClick={() => setShowSuspend(true)}
+                />
+              )}
+              <Btn
+                label="Deactivate Account"
+                color={C_ERR}
+                outline
+                onClick={() =>
+                  setNote('No permanent-deactivate endpoint yet — use Suspend to disable a driver.')
+                }
+              />
+              <Btn
+                label="View Trip History"
+                color={G3}
+                onClick={() =>
+                  setNote('Trip history opens with the Trips screen (being wired next).')
+                }
+              />
             </div>
           </Card>
         </div>
@@ -2722,29 +2394,7 @@ function PagePricing() {
     const m = surge ? parseFloat(mult) || 1 : 1;
     return ((b + d * DIST_KM + t * TIME_MIN) * m).toFixed(0);
   };
-  const promos = [
-    {
-      code: 'WELCOME30',
-      discount: '30%',
-      usage: '1,204/2,000',
-      expires: '31 Jul 2025',
-      status: 'active',
-    },
-    {
-      code: 'PAYDAY20',
-      discount: '20%',
-      usage: '892/1,500',
-      expires: '28 Jul 2025',
-      status: 'active',
-    },
-    {
-      code: 'EIDMUBARAK',
-      discount: '₦500',
-      usage: '2,000/2,000',
-      expires: '22 Jun 2025',
-      status: 'expired',
-    },
-  ];
+  const promos = [] as Record<string, unknown>[]; // mock cleared
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'flex', gap: 14 }}>
@@ -2935,6 +2585,14 @@ function PagePricing() {
 function PageIncidents() {
   const [sel, setSel] = useState(0);
   const inc = INCIDENTS[sel];
+  if (!inc)
+    return (
+      <Card>
+        <span style={{ fontSize: 13, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          No incidents in the queue.
+        </span>
+      </Card>
+    );
   const sevColor = (s: string) =>
     s === 'critical' ? C_ERR : s === 'high' ? C_WARN : s === 'medium' ? C_INFO : MUTED;
   return (
@@ -3144,6 +2802,14 @@ function PageSupport() {
   const [selIdx, setSelIdx] = useState(0);
   const [reply, setReply] = useState('');
   const selTicket = SUPPORT_TICKETS[selIdx];
+  if (!selTicket)
+    return (
+      <Card>
+        <span style={{ fontSize: 13, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          No support tickets.
+        </span>
+      </Card>
+    );
   return (
     <div style={{ display: 'flex', gap: 14, height: '100%' }}>
       {/* Left */}
@@ -3344,44 +3010,14 @@ function PageSupport() {
 }
 
 // ─── Page: Analytics ──────────────────────────────────────────────────────────
-const PEAK_HOURS = [
-  { hour: '6am', demand: 35 },
-  { hour: '7am', demand: 68 },
-  { hour: '8am', demand: 92 },
-  { hour: '9am', demand: 78 },
-  { hour: '10am', demand: 55 },
-  { hour: '11am', demand: 60 },
-  { hour: '12pm', demand: 72 },
-  { hour: '1pm', demand: 65 },
-  { hour: '2pm', demand: 58 },
-  { hour: '3pm', demand: 61 },
-  { hour: '4pm', demand: 75 },
-  { hour: '5pm', demand: 95 },
-  { hour: '6pm', demand: 100 },
-  { hour: '7pm', demand: 88 },
-  { hour: '8pm', demand: 70 },
-  { hour: '9pm', demand: 52 },
-  { hour: '10pm', demand: 38 },
-  { hour: '11pm', demand: 22 },
-];
+const PEAK_HOURS: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
 
 function PageAnalytics() {
   const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const HOURS = Array.from({ length: 24 }, (_, i) => i);
-  const heatVal = (d: number, h: number) => {
-    const base = [40, 55, 80, 70, 90, 100, 85][d];
-    const timeFactor =
-      h < 6
-        ? 5
-        : h < 9
-          ? 70 + h * 5
-          : h < 18
-            ? 50 + Math.sin((h - 8) * 0.4) * 40
-            : h < 22
-              ? 60
-              : 15;
-    return Math.min(100, Math.max(0, (base / 100) * timeFactor + Math.random() * 8));
-  };
+  // No demand-analytics feed wired yet — return 0 so the heatmap renders empty
+  // rather than synthetic values.
+  const heatVal = (_d: number, _h: number) => 0;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'flex', gap: 12 }}>
@@ -3570,11 +3206,7 @@ function PageReports() {
     { icon: '⚠️', label: 'Incident Report', desc: 'Incident frequency, resolution time' },
     { icon: '🎧', label: 'Support Report', desc: 'Ticket volume, CSAT scores' },
   ];
-  const generated = [
-    { name: 'Revenue Report — June 2025', size: '2.4 MB', date: '2025-07-01', format: 'PDF' },
-    { name: 'Driver Performance — Q2 2025', size: '1.8 MB', date: '2025-06-30', format: 'Excel' },
-    { name: 'Customer Activity — May 2025', size: '3.1 MB', date: '2025-06-01', format: 'PDF' },
-  ];
+  const generated = [] as Record<string, unknown>[]; // mock cleared
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {/* Date range */}
@@ -3704,20 +3336,8 @@ function PageSettings() {
     sos: true,
     maintenance: false,
   });
-  const integrations = [
-    { name: 'Paystack', icon: '💳', desc: 'Payment processing gateway', status: true },
-    { name: 'Google Maps', icon: '🗺️', desc: 'Routing and geocoding API', status: true },
-    { name: 'Firebase', icon: '🔥', desc: 'Push notifications & auth', status: true },
-    { name: 'Twilio', icon: '📱', desc: 'SMS OTP verification', status: true },
-    { name: 'AWS S3', icon: '☁️', desc: 'Document & image storage', status: true },
-    { name: 'Intercom', icon: '💬', desc: 'Customer support chat', status: false },
-  ];
-  const roles = [
-    { name: 'Super Admin', members: 2, perms: ['Full Access', 'Settings', 'Finance', 'KYC'] },
-    { name: 'Operations', members: 5, perms: ['Trips', 'Drivers', 'Map', 'Incidents'] },
-    { name: 'Support', members: 8, perms: ['Support', 'Customers', 'Tickets'] },
-    { name: 'Finance', members: 3, perms: ['Revenue', 'Pricing', 'Reports'] },
-  ];
+  const integrations = [] as Record<string, unknown>[]; // mock cleared
+  const roles = [] as Record<string, unknown>[]; // mock cleared
   const notifEvents = [
     ['New trip request', true, true, false],
     ['Driver SOS alert', true, true, true],
@@ -4029,21 +3649,16 @@ function PageAuditLogs() {
 
 // ─── Page: Profile ────────────────────────────────────────────────────────────
 function PageProfile() {
+  const u = auth.getUser();
   const [emailNotif, setEmailNotif] = useState(true);
   const [pushNotif, setPushNotif] = useState(true);
   const [twoFA, setTwoFA] = useState(true);
-  const [name, setName] = useState('Adaora Nwosu');
-  const [email, setEmail] = useState('adaora.nwosu@dripplex.ng');
-  const [phone, setPhone] = useState('+234 803 412 7800');
-  const sessions = [
-    {
-      device: 'MacBook Pro · Chrome 125',
-      location: 'Lagos, NG',
-      time: 'Active now',
-      current: true,
-    },
-    { device: 'iPhone 15 · Safari', location: 'Lagos, NG', time: '2 hours ago', current: false },
-  ];
+  const [name, setName] = useState(u ? `${u.firstName} ${u.lastName}`.trim() : '');
+  const [email, setEmail] = useState(u?.email ?? '');
+  const [phone, setPhone] = useState(u?.phone ?? '');
+  const roleLabel =
+    u?.roles?.[0]?.replace(/_/g, ' ').replace(/\b\w/g, (ch) => ch.toUpperCase()) ?? 'Operations';
+  const sessions = [] as Record<string, unknown>[]; // mock cleared
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
       {/* Profile card */}
@@ -4059,7 +3674,7 @@ function PageProfile() {
             }}
           >
             <div style={{ position: 'relative' }}>
-              <Avatar name="Adaora Nwosu" size={60} />
+              <Avatar name={name || 'Operations'} size={60} />
               <button
                 className="dx-btn"
                 style={{
@@ -4091,9 +3706,9 @@ function PageProfile() {
                   color: WHITE,
                 }}
               >
-                Adaora Nwosu
+                {name || 'Operations'}
               </div>
-              <Chip label="Super Admin" color={G3} />
+              <Chip label={roleLabel} color={G3} />
             </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -4131,7 +3746,7 @@ function PageProfile() {
               >
                 Department
               </div>
-              <input className="dx-input" value="Operations & Engineering" readOnly />
+              <input className="dx-input" value={roleLabel} readOnly />
             </div>
           </div>
           <div style={{ marginTop: 14 }}>

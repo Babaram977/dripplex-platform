@@ -1398,6 +1398,12 @@ export const api = {
         undefined,
         status ? { status } : undefined,
       ),
+    getDriver: (driverId: string) => dx<AdminDriverDto>('GET', `/admin/driver/${driverId}`),
+    // Driver lifecycle actions (driverId = the driver's user id).
+    suspendDriver: (driverId: string, reason: string) =>
+      dx<unknown>('POST', `/admin/driver/${driverId}/suspend`, { reason }),
+    reactivateDriver: (driverId: string) =>
+      dx<unknown>('POST', `/admin/driver/${driverId}/reactivate`),
     // Per-document KYC review — kycId is a DriverKyc.id from a driver's kyc[].
     verifyDriverKyc: (kycId: string, remarks?: string) =>
       dx<AdminDriverKycDto>(
