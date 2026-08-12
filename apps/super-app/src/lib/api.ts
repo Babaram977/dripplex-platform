@@ -591,15 +591,29 @@ export interface MerchantBusinessDto {
   verificationStatus: string;
 }
 
+// One merchant KYC submission (matches the backend MerchantKyc record). The
+// merchant submits documents one at a time; each is a full record with its own
+// documentType + documentNumber + image and its own review status.
 export interface MerchantKycDto {
   id: string;
-  overallStatus: string;
-  documents: {
-    type: string;
-    status: string;
-    uploadedAt: string | null;
-    rejectionReason: string | null;
-  }[];
+  merchantId: string;
+  businessId: string;
+  documentType: string;
+  documentNumber: string;
+  frontImage: string;
+  backImage: string | null;
+  selfieImage: string | null;
+  verificationStatus: 'PENDING' | 'VERIFIED' | 'REJECTED';
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  remarks: string | null;
+  createdAt: string;
+}
+
+// GET /merchant/kyc returns the full submission history plus the newest one.
+export interface MerchantKycStatusDto {
+  latest: MerchantKycDto | null;
+  items: MerchantKycDto[];
 }
 
 // Customer KYC
@@ -1112,10 +1126,19 @@ export const api = {
     pauseStore: () => dx<void>('POST', '/merchant/business/pause'),
     resumeStore: () => dx<void>('POST', '/merchant/business/resume'),
 
-    // KYC
-    getKyc: () => dx<MerchantKycDto>('GET', '/merchant/kyc'),
-    submitKycDoc: (body: { documentType: string; frontImageUrl: string; backImageUrl?: string }) =>
-      dx<MerchantKycDto>('POST', '/merchant/kyc', body),
+    // KYC. Documents must first be uploaded via uploadFile(file, 'kyc-documents')
+    // — the backend only accepts DrippleX-owned URLs in that folder. documentType
+    // must be a real KycDocumentType (e.g. CAC_CERTIFICATE, NATIONAL_ID) and
+    // documentNumber is required (min 3 chars). Only one submission may be pending
+    // review at a time.
+    getKyc: () => dx<MerchantKycStatusDto>('GET', '/merchant/kyc'),
+    submitKyc: (body: {
+      documentType: string;
+      documentNumber: string;
+      frontImage: string;
+      backImage?: string;
+      selfieImage?: string;
+    }) => dx<MerchantKycDto>('POST', '/merchant/kyc', body),
 
     // Products: the backend returns a paginated { items, meta } envelope of RAW
     // product entities (basePrice / status / images[] / inventory), so normalize
