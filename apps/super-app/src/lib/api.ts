@@ -652,6 +652,39 @@ export interface AdminVehicleDto {
   updatedAt: string;
 }
 
+// One driver KYC document (backend DriverKyc). frontImage/backImage are hosted
+// URLs. verificationStatus drives the per-document review chip.
+export interface AdminDriverKycDto {
+  id: string;
+  driverId: string;
+  documentType: string;
+  documentNumber: string;
+  frontImage: string;
+  backImage: string | null;
+  expiresAt: string | null;
+  verificationStatus: 'PENDING' | 'VERIFIED' | 'REJECTED';
+  reviewedAt: string | null;
+  remarks: string | null;
+  createdAt: string;
+}
+
+// A driver row for the Ops Console (subset of backend DriverProfileDto). The
+// admin list embeds the driver's KYC documents, so the KYC review queue needs
+// no extra fetch.
+export interface AdminDriverDto {
+  id: string;
+  driverId: string;
+  email: string;
+  phone: string | null;
+  firstName: string;
+  lastName: string;
+  status: 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
+  isApproved: boolean;
+  createdAt: string;
+  updatedAt: string;
+  kyc: AdminDriverKycDto[];
+}
+
 // Customer KYC
 export interface CustomerKycStatusDto {
   level: 'LEVEL_0' | 'LEVEL_1' | 'LEVEL_2';
@@ -1355,6 +1388,25 @@ export const api = {
     // rejectedReason must be 5–1000 chars (RejectVehicleDto).
     rejectVehicle: (id: string, rejectedReason: string) =>
       dx<AdminVehicleDto>('POST', `/admin/vehicles/${id}/reject`, { rejectedReason }),
+
+    // Drivers. The list embeds each driver's KYC documents (kyc[]). Pass a
+    // status to scope (e.g. 'UNDER_REVIEW' for the KYC review queue).
+    listDrivers: (status?: 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUSPENDED') =>
+      dx<{ items: AdminDriverDto[]; meta: { total: number } }>(
+        'GET',
+        '/admin/drivers',
+        undefined,
+        status ? { status } : undefined,
+      ),
+    // Per-document KYC review — kycId is a DriverKyc.id from a driver's kyc[].
+    verifyDriverKyc: (kycId: string, remarks?: string) =>
+      dx<AdminDriverKycDto>(
+        'POST',
+        `/admin/driver/kyc/${kycId}/verify`,
+        remarks ? { remarks } : {},
+      ),
+    rejectDriverKyc: (kycId: string, remarks: string) =>
+      dx<AdminDriverKycDto>('POST', `/admin/driver/kyc/${kycId}/reject`, { remarks }),
   },
 
   // ── CUSTOMER KYC ───────────────────────────────────────────────────────────

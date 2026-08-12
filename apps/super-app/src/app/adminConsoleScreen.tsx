@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { api, type AdminVehicleDto } from '../lib/api';
+import { api, type AdminVehicleDto, type AdminDriverDto, type AdminDriverKycDto } from '../lib/api';
 import { auth } from '../lib/auth';
 import {
   LineChart,
@@ -2004,20 +2004,176 @@ function PageDrivers() {
 }
 
 // ─── Page: Driver KYC ─────────────────────────────────────────────────────────
+const KYC_DOC_LABELS: Record<string, string> = {
+  DRIVER_LICENSE: "Driver's Licence",
+  NATIONAL_ID: 'NIN / National ID',
+  PASSPORT: 'Passport',
+  VEHICLE_REGISTRATION: 'Vehicle Reg. Cert',
+  BUSINESS_REGISTRATION: 'Business Registration',
+  CAC_CERTIFICATE: 'CAC Certificate',
+  GUARANTOR_ID: 'Guarantor ID',
+  INSURANCE: 'Insurance',
+};
+const kycDocLabel = (t: string) => KYC_DOC_LABELS[t] ?? t.replace(/_/g, ' ');
+const driverName = (d: AdminDriverDto) =>
+  `${d.firstName} ${d.lastName}`.trim() || d.driverId.slice(0, 8);
+
+// One reviewable KYC document — real verify/reject against /admin/driver/kyc/:id.
+function KycDocCard({ doc, onDone }: { doc: AdminDriverKycDto; onDone: () => Promise<void> }) {
+  const [busy, setBusy] = useState<null | 'verify' | 'reject'>(null);
+  const [rejecting, setRejecting] = useState(false);
+  const [reason, setReason] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+
+  const verify = async () => {
+    setBusy('verify');
+    setErr(null);
+    try {
+      await api.admin.verifyDriverKyc(doc.id);
+      await onDone();
+    } catch (e: unknown) {
+      setErr((e as { message?: string }).message ?? 'Could not verify.');
+      setBusy(null);
+    }
+  };
+  const reject = async () => {
+    if (reason.trim().length < 3) {
+      setErr('Add a short reason.');
+      return;
+    }
+    setBusy('reject');
+    setErr(null);
+    try {
+      await api.admin.rejectDriverKyc(doc.id, reason.trim());
+      await onDone();
+    } catch (e: unknown) {
+      setErr((e as { message?: string }).message ?? 'Could not reject.');
+      setBusy(null);
+    }
+  };
+
+  const st = doc.verificationStatus;
+  return (
+    <Card style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, fontWeight: 600, color: WHITE }}>
+        {kycDocLabel(doc.documentType)}
+      </div>
+      <div
+        style={{
+          height: 90,
+          background: doc.frontImage
+            ? `center / cover no-repeat url(${doc.frontImage})`
+            : 'rgba(255,255,255,.04)',
+          borderRadius: 6,
+          border: `1px dashed ${BORDER}`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: MUTED,
+          fontSize: 24,
+        }}
+      >
+        {!doc.frontImage && '📄'}
+      </div>
+      {err && <span style={{ fontSize: 11, color: C_ERR }}>{err}</span>}
+      {st !== 'PENDING' ? (
+        <StatusChip status={st === 'VERIFIED' ? 'verified' : 'rejected'} />
+      ) : rejecting ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <input
+            className="dx-input"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Reason"
+          />
+          <div style={{ display: 'flex', gap: 6 }}>
+            <Btn
+              label={busy === 'reject' ? '…' : 'Confirm'}
+              small
+              color={C_ERR}
+              onClick={() => void reject()}
+            />
+            <Btn label="Cancel" small color={MUTED} outline onClick={() => setRejecting(false)} />
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: 6 }}>
+          <Btn
+            label={busy === 'verify' ? '…' : 'Approve'}
+            small
+            color={C_OK}
+            onClick={() => void verify()}
+          />
+          <Btn label="Reject" small color={C_ERR} outline onClick={() => setRejecting(true)} />
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function PageDrvKYC() {
-  const [selIdx, setSelIdx] = useState(0);
-  const queue = [
-    { name: 'Babatunde Lawal', submitted: '2 hr ago', docs: 4, status: 'pending' },
-    { name: 'Ifeoma Chukwu', submitted: '5 hr ago', docs: 4, status: 'pending' },
-    { name: 'Musa Abdullahi', submitted: '8 hr ago', docs: 3, status: 'in review' },
-  ];
-  const docs = [
-    { label: "Driver's Licence", status: 'pending' },
-    { label: 'NIN / Passport', status: 'pending' },
-    { label: 'Vehicle Reg. Cert', status: 'pending' },
-    { label: 'Proof of Address', status: 'pending' },
-  ];
-  const sel = queue[selIdx];
+  const [drivers, setDrivers] = useState<AdminDriverDto[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [selId, setSelId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      const res = await api.admin.listDrivers();
+      setDrivers(res.items);
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load the KYC queue.');
+      setDrivers([]);
+    }
+  }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  // The queue is every driver with at least one document still awaiting review.
+  const queue = (drivers ?? []).filter((d) =>
+    d.kyc.some((k) => k.verificationStatus === 'PENDING'),
+  );
+  const sel = queue.find((d) => d.driverId === selId) ?? queue[0] ?? null;
+
+  if (drivers === null && !error) {
+    return (
+      <Card>
+        <span style={{ fontSize: 13, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          Loading…
+        </span>
+      </Card>
+    );
+  }
+  if (error) {
+    return (
+      <Card>
+        <span style={{ fontSize: 13, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>{error}</span>
+      </Card>
+    );
+  }
+  if (queue.length === 0) {
+    return (
+      <Card>
+        <span style={{ fontSize: 13, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          No drivers are awaiting KYC review.
+        </span>
+      </Card>
+    );
+  }
+
+  const pendingDocs = sel ? sel.kyc.filter((k) => k.verificationStatus === 'PENDING') : [];
+  const approveAll = async () => {
+    for (const k of pendingDocs) {
+      try {
+        await api.admin.verifyDriverKyc(k.id);
+      } catch {
+        /* continue; per-doc errors surface on the cards after reload */
+      }
+    }
+    await load();
+  };
+
   return (
     <div style={{ display: 'flex', gap: 14, height: '100%' }}>
       {/* Queue */}
@@ -2027,180 +2183,114 @@ function PageDrvKYC() {
         >
           Pending Queue ({queue.length})
         </div>
-        {queue.map((q, i) => (
-          <Card
-            key={i}
-            style={{
-              cursor: 'pointer',
-              padding: '12px 14px',
-              borderColor: selIdx === i ? `${G3}44` : BORDER,
-            }}
-            onClick={() => setSelIdx(i)}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Avatar name={q.name} size={32} />
-              <div style={{ flex: 1 }}>
-                <div
-                  style={{
-                    fontSize: 12.5,
-                    fontWeight: 600,
-                    color: WHITE,
-                    fontFamily: 'Poppins, sans-serif',
-                  }}
-                >
-                  {q.name}
-                </div>
-                <div style={{ fontSize: 10, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
-                  Submitted {q.submitted}
-                </div>
-                <div style={{ display: 'flex', gap: 6, marginTop: 4, alignItems: 'center' }}>
-                  <span style={{ fontSize: 10, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
-                    {q.docs} docs
-                  </span>
-                  <StatusChip status={q.status} />
+        {queue.map((q) => {
+          const pend = q.kyc.filter((k) => k.verificationStatus === 'PENDING').length;
+          return (
+            <Card
+              key={q.driverId}
+              style={{
+                cursor: 'pointer',
+                padding: '12px 14px',
+                borderColor: sel?.driverId === q.driverId ? `${G3}44` : BORDER,
+              }}
+              onClick={() => setSelId(q.driverId)}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Avatar name={driverName(q)} size={32} />
+                <div style={{ flex: 1 }}>
+                  <div
+                    style={{
+                      fontSize: 12.5,
+                      fontWeight: 600,
+                      color: WHITE,
+                      fontFamily: 'Poppins, sans-serif',
+                    }}
+                  >
+                    {driverName(q)}
+                  </div>
+                  <div style={{ fontSize: 10, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+                    {q.phone ?? q.email}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 4, alignItems: 'center' }}>
+                    <span style={{ fontSize: 10, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+                      {q.kyc.length} docs
+                    </span>
+                    <StatusChip status={pend > 0 ? 'pending' : 'verified'} />
+                  </div>
                 </div>
               </div>
-            </div>
-          </Card>
-        ))}
+            </Card>
+          );
+        })}
       </div>
       {/* Review panel */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Avatar name={sel.name} size={36} />
-          <div>
-            <div
-              style={{
-                fontFamily: 'Poppins, sans-serif',
-                fontSize: 15,
-                fontWeight: 700,
-                color: WHITE,
-              }}
-            >
-              {sel.name}
-            </div>
-            <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 11, color: MUTED }}>
-              KYC Review · {sel.docs} documents submitted
-            </div>
-          </div>
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-            <Btn label="Approve All" color={G2} />
-            <Btn label="Reject All" color={C_ERR} outline />
-          </div>
-        </div>
-        {/* Document grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          {docs.map((doc, i) => (
-            <Card key={i} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {sel && (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Avatar name={driverName(sel)} size={36} />
+            <div>
               <div
                 style={{
-                  fontFamily: 'Inter, sans-serif',
-                  fontSize: 12,
-                  fontWeight: 600,
+                  fontFamily: 'Poppins, sans-serif',
+                  fontSize: 15,
+                  fontWeight: 700,
                   color: WHITE,
                 }}
               >
-                {doc.label}
+                {driverName(sel)}
               </div>
-              <div
-                style={{
-                  height: 90,
-                  background: 'rgba(255,255,255,.04)',
-                  borderRadius: 6,
-                  border: `1px dashed ${BORDER}`,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: MUTED,
-                  fontSize: 24,
-                }}
-              >
-                📄
+              <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 11, color: MUTED }}>
+                KYC Review · {sel.kyc.length} documents submitted
               </div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <Btn label="Approve" small color={C_OK} />
-                <Btn label="Reject" small color={C_ERR} outline />
-              </div>
-            </Card>
-          ))}
-        </div>
-        {/* Selfie verification */}
-        <Card style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-          <div
-            style={{
-              width: 70,
-              height: 70,
-              background: 'rgba(255,255,255,.04)',
-              borderRadius: 8,
-              border: `1px dashed ${BORDER}`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 28,
-              flexShrink: 0,
-            }}
-          >
-            🤳
+            </div>
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+              <Btn label="Approve All" color={G2} onClick={() => void approveAll()} />
+            </div>
           </div>
-          <div style={{ flex: 1 }}>
+          {/* Document grid — real submitted documents */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            {sel.kyc.map((doc) => (
+              <KycDocCard key={doc.id} doc={doc} onDone={load} />
+            ))}
+          </div>
+          {/* Selfie / face-match — no biometric backend (Smile ID removed), so
+              this is shown as unavailable rather than a fake match score. */}
+          <Card style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
             <div
               style={{
-                fontFamily: 'Poppins, sans-serif',
-                fontSize: 13,
-                fontWeight: 600,
-                color: WHITE,
-                marginBottom: 4,
+                width: 70,
+                height: 70,
+                background: 'rgba(255,255,255,.04)',
+                borderRadius: 8,
+                border: `1px dashed ${BORDER}`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 28,
+                flexShrink: 0,
               }}
             >
-              Selfie Verification
+              🤳
             </div>
-            <div
-              style={{
-                fontFamily: 'Inter, sans-serif',
-                fontSize: 11,
-                color: MUTED,
-                marginBottom: 8,
-              }}
-            >
-              Face match against NIN photo
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ flex: 1 }}>
               <div
                 style={{
-                  flex: 1,
-                  height: 6,
-                  background: 'rgba(255,255,255,.08)',
-                  borderRadius: 3,
-                  overflow: 'hidden',
-                }}
-              >
-                <div
-                  style={{
-                    width: '87%',
-                    height: '100%',
-                    background: `linear-gradient(90deg,${G0},${G3})`,
-                    borderRadius: 3,
-                  }}
-                />
-              </div>
-              <span
-                style={{
-                  fontFamily: 'Inter, sans-serif',
+                  fontFamily: 'Poppins, sans-serif',
                   fontSize: 13,
-                  fontWeight: 700,
-                  color: G3,
+                  fontWeight: 600,
+                  color: WHITE,
+                  marginBottom: 4,
                 }}
               >
-                87% match
-              </span>
+                Selfie Verification
+              </div>
+              <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 11, color: MUTED }}>
+                Automated face-match isn&apos;t enabled — review the ID photos above manually.
+              </div>
             </div>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <Btn label="Verify" color={G2} small />
-            <Btn label="Flag" color={C_WARN} small outline />
-          </div>
-        </Card>
-      </div>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
