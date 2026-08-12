@@ -435,6 +435,47 @@ describe('MerchantsService', () => {
       );
     });
 
+    it('allows KYC submission when only email is verified (email-first, phone unverified)', async () => {
+      repository.findMerchantProfileByUserId.mockResolvedValue({
+        ...profile,
+        user: { ...verifiedUser, phoneVerifiedAt: null },
+      } as never);
+      repository.findBusinessByMerchantId.mockResolvedValue(business);
+      repository.findActivePendingKyc.mockResolvedValue(null);
+      repository.createKyc.mockResolvedValue(pendingKyc);
+
+      await expect(
+        service.submitKyc(
+          merchantId,
+          {
+            documentType: KycDocumentType.CAC_CERTIFICATE,
+            documentNumber: 'RC123456',
+            frontImage: 'https://cdn.example/front.jpg',
+          },
+          context,
+        ),
+      ).resolves.toBeDefined();
+    });
+
+    it('rejects KYC submission when email is not verified', async () => {
+      repository.findMerchantProfileByUserId.mockResolvedValue({
+        ...profile,
+        user: { ...verifiedUser, emailVerifiedAt: null },
+      } as never);
+
+      await expect(
+        service.submitKyc(
+          merchantId,
+          {
+            documentType: KycDocumentType.CAC_CERTIFICATE,
+            documentNumber: 'RC123456',
+            frontImage: 'https://cdn.example/front.jpg',
+          },
+          context,
+        ),
+      ).rejects.toBeInstanceOf(EmailNotVerifiedDomainException);
+    });
+
     it('rejects duplicate pending KYC', async () => {
       repository.findBusinessByMerchantId.mockResolvedValue(business);
       repository.findActivePendingKyc.mockResolvedValue(pendingKyc);

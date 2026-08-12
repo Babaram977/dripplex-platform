@@ -13,7 +13,6 @@ import {
   EmailNotVerifiedDomainException,
   ForbiddenDomainException,
   NotFoundDomainException,
-  PhoneNotVerifiedDomainException,
   ValidationDomainException,
 } from '../common/exceptions/domain.exception';
 import { DomainEventBus } from '../events/domain-event-bus';
@@ -830,18 +829,14 @@ export class MerchantsService {
     return detail;
   }
 
-  private assertIdentityVerified(user: {
-    emailVerifiedAt: Date | null;
-    phoneVerifiedAt: Date | null;
-  }): void {
+  private assertIdentityVerified(user: { emailVerifiedAt: Date | null }): void {
+    // Merchant onboarding is email-first (PORTAL_EMAIL_ACTIVATION): KYC submission
+    // gates on a verified email only, consistent with business creation. Phone
+    // verification is not part of the email-first partner flow and requiring it
+    // here would block an otherwise-valid merchant from submitting KYC.
     if (!user.emailVerifiedAt) {
       throw new EmailNotVerifiedDomainException(
         'Email must be verified before merchant onboarding',
-      );
-    }
-    if (!user.phoneVerifiedAt) {
-      throw new PhoneNotVerifiedDomainException(
-        'Phone must be verified before merchant onboarding',
       );
     }
   }
