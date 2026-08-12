@@ -5,6 +5,9 @@ import {
   type AdminDriverDto,
   type AdminDriverKycDto,
   type AdminOperationsCaseDto,
+  type AdminFleetDriverDto,
+  type AdminFleetSummaryDto,
+  type AdminLiveRideDto,
 } from '../lib/api';
 import { auth } from '../lib/auth';
 import {
@@ -890,21 +893,101 @@ function PageDashboard() {
 }
 
 // ─── Page: Live Map ───────────────────────────────────────────────────────────
+// Project real lat/long onto the decorative map viewBox by normalising each
+// driver's position within the bounding box of all plotted drivers. This is an
+// honest *relative* plot (real coordinates, real spread) — it does not claim a
+// driver sits on a specific illustrated street.
+function projectFleet(
+  drivers: AdminFleetDriverDto[],
+): { d: AdminFleetDriverDto; x: number; y: number }[] {
+  const withCoords = drivers.filter((d) => d.latitude != null && d.longitude != null);
+  if (withCoords.length === 0) return [];
+  const lats = withCoords.map((d) => d.latitude as number);
+  const lons = withCoords.map((d) => d.longitude as number);
+  const minLat = Math.min(...lats);
+  const maxLat = Math.max(...lats);
+  const minLon = Math.min(...lons);
+  const maxLon = Math.max(...lons);
+  const spanLat = maxLat - minLat || 1;
+  const spanLon = maxLon - minLon || 1;
+  const PAD_X = 50;
+  const PAD_Y = 50;
+  const W = 650 - PAD_X * 2;
+  const H = 400 - PAD_Y * 2;
+  return withCoords.map((d) => ({
+    d,
+    x: withCoords.length === 1 ? 325 : PAD_X + (((d.longitude as number) - minLon) / spanLon) * W,
+    // invert latitude so north is up
+    y:
+      withCoords.length === 1 ? 200 : PAD_Y + (1 - ((d.latitude as number) - minLat) / spanLat) * H,
+  }));
+}
+
+function fleetDotColor(s: AdminFleetDriverDto['status']): string {
+  switch (s) {
+    case 'SOS':
+      return C_ERR;
+    case 'SUSPENDED':
+      return C_ERR;
+    case 'NEEDS_INSPECTION':
+      return C_WARN;
+    case 'BUSY':
+      return C_WARN;
+    case 'AVAILABLE':
+      return G3;
+    default:
+      return MUTED;
+  }
+}
+
 function PageLiveMap() {
   const [filter, setFilter] = useState('All');
   const filters = ['All', 'Available', 'Busy', 'Trips'];
-  const drivers = [] as Record<string, unknown>[]; // mock cleared
-  const routes = [] as Record<string, unknown>[]; // mock cleared
-  const pickups = [] as Record<string, unknown>[]; // mock cleared
-  const visible = drivers.filter((d) =>
+  const [fleet, setFleet] = useState<{
+    drivers: AdminFleetDriverDto[];
+    summary: AdminFleetSummaryDto;
+  } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      const res = await api.admin.getFleet();
+      setFleet(res);
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load the live fleet.');
+      setFleet({
+        drivers: [],
+        summary: {
+          totalDrivers: 0,
+          onlineCount: 0,
+          availableCount: 0,
+          busyCount: 0,
+          offlineCount: 0,
+          sosCount: 0,
+          suspendedCount: 0,
+          needsInspectionCount: 0,
+        },
+      });
+    }
+  }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const allDrivers = fleet?.drivers ?? [];
+  const drivers = allDrivers.filter((d) =>
     filter === 'All'
       ? true
       : filter === 'Available'
-        ? d.status === 'available'
+        ? d.status === 'AVAILABLE'
         : filter === 'Busy'
-          ? d.status === 'busy'
-          : true,
+          ? d.status === 'BUSY'
+          : d.activeRideId != null,
   );
+  const projected = projectFleet(drivers);
+  const activeCount = fleet?.summary.onlineCount ?? 0;
+  const tripsInProgress = allDrivers.filter((d) => d.activeRideId != null).length;
   return (
     <div style={{ display: 'flex', gap: 12, height: '100%' }}>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -1048,58 +1131,25 @@ function PageLiveMap() {
             >
               Third Mainland Bridge
             </text>
-            {/* Trip route lines */}
-            {routes.map((r, i) => (
-              <line
-                key={i}
-                x1={r.x1}
-                y1={r.y1}
-                x2={r.x2}
-                y2={r.y2}
-                stroke={r.color}
-                strokeWidth={2}
-                strokeDasharray="6,4"
-                opacity={0.7}
-              />
-            ))}
-            {/* Pickup pins */}
-            {pickups.map((p, i) => (
-              <g key={i}>
-                <circle cx={p.x} cy={p.y} r={8} fill={C_INFO} opacity={0.2} />
-                <circle cx={p.x} cy={p.y} r={4} fill={C_INFO} />
-                <text
-                  x={p.x + 10}
-                  y={p.y + 4}
-                  fill={C_INFO}
-                  fontSize={9}
-                  fontFamily="Inter, sans-serif"
-                >
-                  {p.label}
-                </text>
-              </g>
-            ))}
-            {/* Driver dots */}
-            {visible.map((d) => (
-              <g key={d.id}>
-                <circle
-                  cx={d.x}
-                  cy={d.y}
-                  r={10}
-                  fill={d.status === 'available' ? G3 : C_WARN}
-                  opacity={0.18}
-                />
-                <circle cx={d.x} cy={d.y} r={5} fill={d.status === 'available' ? G3 : C_WARN} />
-                <text
-                  x={d.x + 8}
-                  y={d.y - 8}
-                  fill={WHITE}
-                  fontSize={8.5}
-                  fontFamily="Inter, sans-serif"
-                >
-                  {d.name}
-                </text>
-              </g>
-            ))}
+            {/* Driver dots — real drivers plotted by normalised lat/long */}
+            {projected.map(({ d, x, y }) => {
+              const color = fleetDotColor(d.status);
+              return (
+                <g key={d.driverId}>
+                  <circle cx={x} cy={y} r={10} fill={color} opacity={0.18} />
+                  <circle cx={x} cy={y} r={5} fill={color} />
+                  <text
+                    x={x + 8}
+                    y={y - 8}
+                    fill={WHITE}
+                    fontSize={8.5}
+                    fontFamily="Inter, sans-serif"
+                  >
+                    {`${d.firstName} ${d.lastName}`.trim()}
+                  </text>
+                </g>
+              );
+            })}
             {/* Area labels */}
             <text
               x={440}
@@ -1166,8 +1216,10 @@ function PageLiveMap() {
             }}
           >
             <div style={{ fontSize: 10, color: MUTED, marginBottom: 4 }}>NOW LIVE</div>
-            <div style={{ fontSize: 12, color: G3, fontWeight: 600 }}>— Active Drivers</div>
-            <div style={{ fontSize: 11, color: MUTED }}>— Trips in Progress</div>
+            <div style={{ fontSize: 12, color: G3, fontWeight: 600 }}>
+              {activeCount} Active Drivers
+            </div>
+            <div style={{ fontSize: 11, color: MUTED }}>{tripsInProgress} Trips in Progress</div>
           </div>
         </Card>
       </div>
@@ -1182,33 +1234,71 @@ function PageLiveMap() {
           className="dx-scroll"
           style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}
         >
-          {drivers.map((d) => (
-            <Card key={d.id} style={{ padding: '10px 12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Avatar name={d.name} size={28} />
-                <div style={{ flex: 1 }}>
-                  <div
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: WHITE,
-                      fontFamily: 'Inter, sans-serif',
-                    }}
-                  >
-                    {d.name}
-                  </div>
-                  <StatusChip status={d.status} />
-                </div>
-              </div>
+          {error && (
+            <Card style={{ padding: '10px 12px' }}>
+              <span style={{ fontSize: 11.5, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>
+                {error}
+              </span>
             </Card>
-          ))}
+          )}
+          {!error && drivers.length === 0 && (
+            <Card style={{ padding: '10px 12px' }}>
+              <span style={{ fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+                No drivers online.
+              </span>
+            </Card>
+          )}
+          {drivers.map((d) => {
+            const name = `${d.firstName} ${d.lastName}`.trim() || '—';
+            return (
+              <Card key={d.driverId} style={{ padding: '10px 12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Avatar name={name} size={28} />
+                  <div style={{ flex: 1 }}>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: WHITE,
+                        fontFamily: 'Inter, sans-serif',
+                      }}
+                    >
+                      {name}
+                    </div>
+                    <Chip
+                      label={lifecycleLabelFromFleet(d.status)}
+                      color={fleetDotColor(d.status)}
+                    />
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
         </div>
       </div>
     </div>
   );
 }
 
+function lifecycleLabelFromFleet(s: AdminFleetDriverDto['status']): string {
+  return s
+    .split('_')
+    .map((w) => w.charAt(0) + w.slice(1).toLowerCase())
+    .join(' ');
+}
+
 // ─── Page: Trips ──────────────────────────────────────────────────────────────
+// The Operations ride queue is live-only (active rides between request and
+// settlement); it has no historical Completed/Cancelled rows, so those filter
+// tabs simply match nothing here.
+const LIVE_RIDE_STATUS_LABEL: Record<AdminLiveRideDto['status'], string> = {
+  REQUESTED: 'searching',
+  SEARCHING: 'searching',
+  DRIVER_ASSIGNED: 'accepted',
+  ARRIVED: 'arriving',
+  IN_PROGRESS: 'in progress',
+};
+
 function PageTrips() {
   const statuses = [
     'All',
@@ -1221,13 +1311,36 @@ function PageTrips() {
   ];
   const [activeStatus, setActiveStatus] = useState('All');
   const [search, setSearch] = useState('');
-  const filtered = TRIPS.filter(
-    (t) =>
-      (activeStatus === 'All' || t.status.toLowerCase() === activeStatus.toLowerCase()) &&
-      (t.id + t.driver + t.passenger + t.pickup + t.dropoff)
-        .toLowerCase()
-        .includes(search.toLowerCase()),
-  );
+  const [rides, setRides] = useState<AdminLiveRideDto[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [rowMsg, setRowMsg] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      setRides((await api.admin.getRideQueue()).rides);
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load the live ride queue.');
+      setRides([]);
+    }
+  }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const liveRides = rides ?? [];
+  const filtered = liveRides.filter((t) => {
+    const label = LIVE_RIDE_STATUS_LABEL[t.status];
+    const matchesStatus = activeStatus === 'All' || label === activeStatus.toLowerCase();
+    const hay = (
+      t.rideId +
+      (t.driverName ?? '') +
+      t.customerName +
+      (t.pickupAddress ?? '') +
+      (t.dropoffAddress ?? '')
+    ).toLowerCase();
+    return matchesStatus && hay.includes(search.toLowerCase());
+  });
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {/* Filters */}
@@ -1296,41 +1409,105 @@ function PageTrips() {
             </tr>
           </thead>
           <tbody>
-            {(filtered.length ? filtered : TRIPS).map((t, i) => (
-              <tr
-                key={t.id}
-                className="dx-row"
-                style={{ borderBottom: `1px solid rgba(255,255,255,.04)` }}
-              >
-                <td style={{ padding: '8px 8px', fontSize: 11.5, color: G3, fontWeight: 700 }}>
-                  {t.id}
-                </td>
-                <td style={{ padding: '8px 8px', fontSize: 12, color: WHITE }}>{t.driver}</td>
-                <td style={{ padding: '8px 8px', fontSize: 12, color: WHITE }}>{t.passenger}</td>
-                <td style={{ padding: '8px 8px', fontSize: 11, color: MUTED }}>{t.pickup}</td>
-                <td style={{ padding: '8px 8px', fontSize: 11, color: MUTED }}>{t.dropoff}</td>
-                <td style={{ padding: '8px 8px', fontSize: 12, color: WHITE, fontWeight: 600 }}>
-                  {t.fare}
-                </td>
-                <td style={{ padding: '8px 8px' }}>
-                  <StatusChip status={t.status} />
-                </td>
-                <td style={{ padding: '8px 8px', fontSize: 11, color: MUTED }}>{t.eta}</td>
-                <td style={{ padding: '8px 8px' }}>
-                  <div style={{ display: 'flex', gap: 5 }}>
-                    <Btn label="View" small outline color={G3} />
-                    {t.status !== 'completed' && t.status !== 'cancelled' && (
-                      <Btn label="Cancel" small outline color={C_ERR} />
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
+            {filtered.map((t) => {
+              const pickup =
+                t.pickupAddress ??
+                `${t.pickupLatitude.toFixed(3)}, ${t.pickupLongitude.toFixed(3)}`;
+              const dropoff =
+                t.dropoffAddress ??
+                `${t.dropoffLatitude.toFixed(3)}, ${t.dropoffLongitude.toFixed(3)}`;
+              return (
+                <tr
+                  key={t.rideId}
+                  className="dx-row"
+                  style={{ borderBottom: `1px solid rgba(255,255,255,.04)` }}
+                >
+                  <td style={{ padding: '8px 8px', fontSize: 11.5, color: G3, fontWeight: 700 }}>
+                    {t.rideId.slice(0, 8)}
+                  </td>
+                  <td style={{ padding: '8px 8px', fontSize: 12, color: WHITE }}>
+                    {t.driverName ?? '—'}
+                  </td>
+                  <td style={{ padding: '8px 8px', fontSize: 12, color: WHITE }}>
+                    {t.customerName}
+                  </td>
+                  <td style={{ padding: '8px 8px', fontSize: 11, color: MUTED }}>{pickup}</td>
+                  <td style={{ padding: '8px 8px', fontSize: 11, color: MUTED }}>{dropoff}</td>
+                  <td style={{ padding: '8px 8px', fontSize: 12, color: MUTED, fontWeight: 600 }}>
+                    —
+                  </td>
+                  <td style={{ padding: '8px 8px' }}>
+                    <StatusChip status={LIVE_RIDE_STATUS_LABEL[t.status]} />
+                  </td>
+                  <td style={{ padding: '8px 8px', fontSize: 11, color: MUTED }}>—</td>
+                  <td style={{ padding: '8px 8px' }}>
+                    <div style={{ display: 'flex', gap: 5 }}>
+                      <Btn
+                        label="View"
+                        small
+                        outline
+                        color={G3}
+                        onClick={() =>
+                          setRowMsg(
+                            `Ride ${t.rideId.slice(0, 8)} · ${t.customerName}${t.driverName ? ` ↔ ${t.driverName}` : ''} · ${LIVE_RIDE_STATUS_LABEL[t.status]}`,
+                          )
+                        }
+                      />
+                      <Btn
+                        label="Cancel"
+                        small
+                        outline
+                        color={C_ERR}
+                        onClick={() =>
+                          setRowMsg(
+                            'Cancelling a ride from Operations isn’t available — the ride lifecycle is owned by the rider/driver apps (read-only here).',
+                          )
+                        }
+                      />
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
-        <div style={{ marginTop: 10, fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
-          Showing {filtered.length || TRIPS.length} of {TRIPS.length} trips
-        </div>
+        {error && (
+          <div
+            style={{ marginTop: 10, fontSize: 12, color: C_ERR, fontFamily: 'Inter, sans-serif' }}
+          >
+            {error}
+          </div>
+        )}
+        {!error && rides !== null && filtered.length === 0 && (
+          <div
+            style={{ marginTop: 10, fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}
+          >
+            {liveRides.length === 0
+              ? 'No live rides right now.'
+              : 'No live rides match this filter (the queue is live-only — no completed/cancelled history).'}
+          </div>
+        )}
+        {rides === null && !error && (
+          <div
+            style={{ marginTop: 10, fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}
+          >
+            Loading…
+          </div>
+        )}
+        {rowMsg && (
+          <div
+            style={{ marginTop: 10, fontSize: 11.5, color: WHITE, fontFamily: 'Inter, sans-serif' }}
+          >
+            {rowMsg}
+          </div>
+        )}
+        {rides !== null && filtered.length > 0 && (
+          <div
+            style={{ marginTop: 10, fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}
+          >
+            Showing {filtered.length} of {liveRides.length} live rides
+          </div>
+        )}
       </Card>
     </div>
   );

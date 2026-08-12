@@ -720,6 +720,82 @@ export interface AdminOperationsCaseDto {
   adminResponse?: string | null;
 }
 
+// One driver in the live fleet snapshot (GET /operations/fleet).
+export interface AdminFleetDriverDto {
+  driverId: string;
+  firstName: string;
+  lastName: string;
+  phone: string | null;
+  status: 'SOS' | 'SUSPENDED' | 'NEEDS_INSPECTION' | 'BUSY' | 'AVAILABLE' | 'OFFLINE';
+  hasOpenSos: boolean;
+  isSuspended: boolean;
+  needsInspection: boolean;
+  online: boolean;
+  acceptingRides: boolean;
+  latitude: number | null;
+  longitude: number | null;
+  vehicleType: string | null;
+  activeRideId: string | null;
+  shiftStatus: 'ACTIVE' | 'ON_BREAK' | null;
+  vehiclePlateNumber: string | null;
+}
+export interface AdminFleetSummaryDto {
+  totalDrivers: number;
+  onlineCount: number;
+  availableCount: number;
+  busyCount: number;
+  offlineCount: number;
+  sosCount: number;
+  suspendedCount: number;
+  needsInspectionCount: number;
+}
+
+// One live ride in the operations ride queue (GET /operations/rides).
+export interface AdminLiveRideDto {
+  rideId: string;
+  status: 'REQUESTED' | 'SEARCHING' | 'DRIVER_ASSIGNED' | 'ARRIVED' | 'IN_PROGRESS';
+  rideType: string;
+  customerId: string;
+  customerName: string;
+  driverId: string | null;
+  driverName: string | null;
+  pickupLatitude: number;
+  pickupLongitude: number;
+  pickupAddress: string | null;
+  dropoffLatitude: number;
+  dropoffLongitude: number;
+  dropoffAddress: string | null;
+  requestedAt: string;
+  assignedAt: string | null;
+}
+
+// One activity-feed event (GET /operations/dashboard/activity-feed).
+export interface AdminActivityFeedItemDto {
+  id: string;
+  type: string;
+  message: string;
+  occurredAt: string;
+  driverId: string | null;
+  driverName: string | null;
+}
+
+// Operations analytics overview KPIs (GET /operations/analytics/overview).
+export interface AdminAnalyticsOverviewDto {
+  range: { from: string; to: string };
+  ridesRequested: number;
+  ridesCompleted: number;
+  completionRate: number;
+  cancellationRate: number;
+  noDriversFoundRate: number;
+  onlineDriversNow: number;
+  activeDriversInRange: number;
+  averageUtilizationRate: number | null;
+  averageTimeToAcceptSeconds: number | null;
+  repeatedOfferRideRate: number;
+  openCasesCount: number;
+  averageTimeToFirstResponseSeconds: number | null;
+}
+
 // Customer KYC
 export interface CustomerKycStatusDto {
   level: 'LEVEL_0' | 'LEVEL_1' | 'LEVEL_2';
@@ -1488,6 +1564,28 @@ export const api = {
     // Append an operator note to a case's timeline.
     addCaseNote: (caseId: string, note: string) =>
       dx<AdminOperationsCaseDto>('POST', `/operations/cases/${caseId}/notes`, { note }),
+
+    // Live fleet snapshot (drivers + summary) for the Live Map.
+    getFleet: () =>
+      dx<{ drivers: AdminFleetDriverDto[]; summary: AdminFleetSummaryDto }>(
+        'GET',
+        '/operations/fleet',
+      ),
+    // Live ride queue (active rides only) for the Trips screen.
+    getRideQueue: () =>
+      dx<{
+        rides: AdminLiveRideDto[];
+        summary: { pendingCount: number; assignedCount: number; inProgressCount: number };
+      }>('GET', '/operations/rides'),
+    // Recent operations activity feed for the Dashboard.
+    getActivityFeed: () =>
+      dx<{ items: AdminActivityFeedItemDto[] }>('GET', '/operations/dashboard/activity-feed'),
+    // Analytics overview KPIs. from/to are ISO timestamps (required).
+    getAnalyticsOverview: (from: string, to: string) =>
+      dx<AdminAnalyticsOverviewDto>('GET', '/operations/analytics/overview', undefined, {
+        from,
+        to,
+      }),
   },
 
   // ── CUSTOMER KYC ───────────────────────────────────────────────────────────
