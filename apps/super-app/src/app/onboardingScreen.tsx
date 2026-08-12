@@ -107,7 +107,7 @@ function TextInput({
   const isFocused = focused === id;
   return (
     <div
-      className="flex h-[56px] items-center gap-3 rounded-2xl px-4 transition-all duration-200"
+      className="flex h-[56px] min-w-0 items-center gap-3 rounded-2xl px-4 transition-all duration-200"
       style={{
         background: 'rgba(255,255,255,.045)',
         border: `1.5px solid ${isFocused ? G2 : BORDER}`,
@@ -121,7 +121,7 @@ function TextInput({
         onChange={(e) => onChange(e.target.value)}
         onFocus={() => onFocus(id)}
         onBlur={onBlur}
-        className="flex-1 bg-transparent text-[15px] text-white outline-none"
+        className="w-full min-w-0 flex-1 bg-transparent text-[15px] text-white outline-none"
         style={{ fontFamily: IT, caretColor: G3 }}
       />
       {suffix}
@@ -1260,6 +1260,14 @@ export function DriverDocumentsScreen({
   const ready =
     licNum && regNum && gurNum && licFile && regFile && gurFile && vehicleReady && !loading;
 
+  // Precise, user-facing list of what still blocks submission, so a disabled
+  // button never leaves the driver guessing which field is incomplete.
+  const missing: string[] = [];
+  if (!licNum || !licFile) missing.push("Driver's Licence (number + file)");
+  if (!regNum || !regFile) missing.push('Vehicle Registration (number + file)');
+  if (!gurNum || !gurFile) missing.push('Guarantor ID (number + file)');
+  if (!vehicleReady) missing.push('all vehicle details');
+
   const CATEGORY_TO_RIDE_TYPE: Record<string, string> = {
     Economy: 'ECONOMY',
     Comfort: 'COMFORT',
@@ -1398,7 +1406,7 @@ export function DriverDocumentsScreen({
           style={{ animation: 'fade-up .4s ease .18s both' }}
         >
           <div className="flex gap-3">
-            <div className="flex-1">
+            <div className="min-w-0 flex-1">
               <FieldGroup
                 label="Make"
                 id="make"
@@ -1410,7 +1418,7 @@ export function DriverDocumentsScreen({
                 onBlur={() => setFocused(null)}
               />
             </div>
-            <div className="flex-1">
+            <div className="min-w-0 flex-1">
               <FieldGroup
                 label="Model"
                 id="model"
@@ -1425,7 +1433,7 @@ export function DriverDocumentsScreen({
           </div>
 
           <div className="flex gap-3">
-            <div className="flex-1">
+            <div className="min-w-0 flex-1">
               <FieldGroup
                 label="Plate number"
                 id="plate"
@@ -1437,7 +1445,7 @@ export function DriverDocumentsScreen({
                 onBlur={() => setFocused(null)}
               />
             </div>
-            <div className="flex-1">
+            <div className="min-w-0 flex-1">
               <FieldGroup
                 label="Colour"
                 id="colour"
@@ -1464,7 +1472,7 @@ export function DriverDocumentsScreen({
           />
 
           <div className="flex gap-3">
-            <div className="flex-1">
+            <div className="min-w-0 flex-1">
               <FieldGroup
                 label="Year"
                 id="year"
@@ -1477,7 +1485,7 @@ export function DriverDocumentsScreen({
                 onBlur={() => setFocused(null)}
               />
             </div>
-            <div className="flex-1">
+            <div className="min-w-0 flex-1">
               <FieldGroup
                 label="Seats"
                 id="seats"
@@ -1494,6 +1502,15 @@ export function DriverDocumentsScreen({
         </div>
 
         <ErrorNote message={err} />
+
+        {!loading && missing.length > 0 && (
+          <p
+            className="mb-3 text-[12px] leading-relaxed"
+            style={{ fontFamily: IT, color: 'rgba(255,255,255,.5)' }}
+          >
+            Still needed to submit: {missing.join(' · ')}
+          </p>
+        )}
 
         <GreenBtn
           label="Submit for review"
