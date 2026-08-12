@@ -3941,6 +3941,25 @@ function MerchantLoginScreen({ onLogin }: { onLogin: () => void }) {
             Demo: dxresto@dripplex.demo · Dripplex#Demo1
           </div>
         </MxCard>
+        <div
+          style={{
+            fontFamily: IT,
+            fontSize: 13,
+            color: MUTED,
+            textAlign: 'center',
+            marginTop: 16,
+          }}
+        >
+          New merchant partner?{' '}
+          <a
+            href="https://merchant.dripplex.com/signup"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: G3, fontWeight: 600, textDecoration: 'none' }}
+          >
+            Apply to join →
+          </a>
+        </div>
       </div>
     </div>
   );

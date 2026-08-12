@@ -157,11 +157,9 @@ function JobStatusChip({ status }: { status: string }) {
 export function RiderLoginScreen({
   onContinue,
   onBack,
-  onApply,
 }: {
   onContinue: () => void;
   onBack: () => void;
-  onApply?: () => void;
 }) {
   const [email, setEmail] = useState('drippo@dripplex.demo');
   const [password, setPassword] = useState('Dripplex#Demo1');
@@ -297,19 +295,18 @@ export function RiderLoginScreen({
         </p>
         <RGreenBtn label={loading ? '' : 'Sign In →'} loading={loading} onClick={handleLogin} />
 
-        {onApply && (
-          <p style={{ fontSize: 12, color: MUTED, textAlign: 'center', marginTop: 16 }}>
-            New delivery partner?{' '}
-            <button
-              type="button"
-              onClick={onApply}
-              className="active:opacity-60"
-              style={{ color: G3, fontWeight: 600 }}
-            >
-              Apply to join →
-            </button>
-          </p>
-        )}
+        <p style={{ fontSize: 12, color: MUTED, textAlign: 'center', marginTop: 16 }}>
+          New delivery partner?{' '}
+          <a
+            href="https://dripplexrider-portal-production.up.railway.app"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="active:opacity-60"
+            style={{ color: G3, fontWeight: 600, textDecoration: 'none' }}
+          >
+            Apply to join →
+          </a>
+        </p>
       </div>
     </div>
   );
