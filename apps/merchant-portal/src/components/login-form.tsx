@@ -85,6 +85,12 @@ export function LoginForm(): React.JSX.Element {
         {isSubmitting ? 'Signing in…' : 'Sign in'}
       </Button>
       <p className="text-muted-foreground text-center text-sm">
+        New to DrippleX?{' '}
+        <Link href="/signup" className="text-primary hover:underline">
+          Create a merchant account
+        </Link>
+      </p>
+      <p className="text-muted-foreground text-center text-sm">
         <Link href="/" className="text-primary hover:underline">
           Back to status
         </Link>
