@@ -1890,6 +1890,7 @@ function ProductsPage() {
   // Variant editor (only meaningful once a product exists).
   const [variantDraft, setVariantDraft] = useState({ name: '', priceOverride: '', sku: '' });
   const [variantBusy, setVariantBusy] = useState(false);
+  const [saveErr, setSaveErr] = useState('');
 
   const fetchProducts = useCallback(async () => {
     try {
@@ -1918,6 +1919,7 @@ function ProductsPage() {
   const openAdd = () => {
     setForm({ name: '', categoryId: '', basePrice: '', sku: '', description: '' });
     setVariantDraft({ name: '', priceOverride: '', sku: '' });
+    setSaveErr('');
     setEditId(null);
     setShowAdd(true);
   };
@@ -1930,6 +1932,7 @@ function ProductsPage() {
       description: p.description ?? '',
     });
     setVariantDraft({ name: '', priceOverride: '', sku: '' });
+    setSaveErr('');
     setEditId(p.id);
     setShowAdd(true);
   };
@@ -1937,6 +1940,7 @@ function ProductsPage() {
   const saveProduct = async () => {
     if (!form.name || !form.basePrice) return;
     setSaving(true);
+    setSaveErr('');
     try {
       if (editId) {
         await api.merchant.updateProduct(editId, {
@@ -1946,21 +1950,22 @@ function ProductsPage() {
           sku: form.sku || undefined,
           description: form.description || undefined,
         });
-        await fetchProducts();
       } else {
-        // Create returns the new product; keep the editor open on it so the
-        // merchant can immediately add variants (which need a product id).
-        const created = await api.merchant.createProduct({
+        await api.merchant.createProduct({
           name: form.name,
           categoryId: form.categoryId || undefined,
           basePrice: Number(form.basePrice),
           sku: form.sku || undefined,
           description: form.description || undefined,
         });
-        await fetchProducts();
-        setEditId(created.id);
       }
-    } catch {
+      await fetchProducts();
+      // Close on success. Variants are managed by re-opening Edit (they persist
+      // immediately via their own Add/Remove), so there's no half-saved state.
+      setShowAdd(false);
+      setEditId(null);
+    } catch (e: unknown) {
+      setSaveErr((e as { message?: string }).message ?? 'Could not save the product. Try again.');
     } finally {
       setSaving(false);
     }
@@ -2305,6 +2310,19 @@ function ProductsPage() {
               <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>
                 Save the product first to add size/price variants and manage images.
               </div>
+            </div>
+          )}
+          {saveErr && (
+            <div
+              style={{
+                padding: '9px 12px',
+                borderRadius: 7,
+                background: 'rgba(239,68,68,.07)',
+                border: '1px solid rgba(239,68,68,.2)',
+                marginBottom: 12,
+              }}
+            >
+              <span style={{ fontFamily: IT, fontSize: 12, color: C_ERR }}>{saveErr}</span>
             </div>
           )}
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
