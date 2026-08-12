@@ -163,8 +163,8 @@ export function RiderLoginScreen({
   onBack: () => void;
   onApply?: () => void;
 }) {
-  const [email, setEmail] = useState('drippo@dripplex.demo');
-  const [password, setPassword] = useState('Dripplex#Demo1');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -284,17 +284,6 @@ export function RiderLoginScreen({
           </div>
         )}
 
-        <p
-          style={{
-            fontFamily: IT,
-            fontSize: 11,
-            color: MUTED,
-            textAlign: 'center',
-            marginBottom: 14,
-          }}
-        >
-          Demo: drippo@dripplex.demo · Dripplex#Demo1
-        </p>
         <RGreenBtn label={loading ? '' : 'Sign In →'} loading={loading} onClick={handleLogin} />
 
         <p style={{ fontSize: 12, color: MUTED, textAlign: 'center', marginTop: 16 }}>

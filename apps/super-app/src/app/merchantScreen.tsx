@@ -3938,8 +3938,8 @@ function SettingsPage() {
 // LOGIN SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
 function MerchantLoginScreen({ onLogin, onApply }: { onLogin: () => void; onApply?: () => void }) {
-  const [email, setEmail] = useState('dxresto@dripplex.demo');
-  const [password, setPassword] = useState('Dripplex#Demo1');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -4037,17 +4037,6 @@ function MerchantLoginScreen({ onLogin, onApply }: { onLogin: () => void; onAppl
             disabled={loading || !email || !password}
             onClick={handleLogin}
           />
-          <div
-            style={{
-              fontFamily: IT,
-              fontSize: 11,
-              color: MUTED,
-              textAlign: 'center',
-              marginTop: 14,
-            }}
-          >
-            Demo: dxresto@dripplex.demo · Dripplex#Demo1
-          </div>
         </MxCard>
         {onApply && (
           <div

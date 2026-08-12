@@ -610,8 +610,8 @@ export function DriverLoginScreen({
   onBack: () => void;
   onApply?: () => void;
 }) {
-  const [email, setEmail] = useState('drip@dripplex.demo');
-  const [password, setPassword] = useState('Dripplex#Demo1');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
