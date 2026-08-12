@@ -297,17 +297,19 @@ export function RiderLoginScreen({
         </p>
         <RGreenBtn label={loading ? '' : 'Sign In →'} loading={loading} onClick={handleLogin} />
 
-        <p style={{ fontSize: 12, color: MUTED, textAlign: 'center', marginTop: 16 }}>
-          New delivery partner?{' '}
-          <button
-            type="button"
-            onClick={onApply}
-            className="active:opacity-60"
-            style={{ color: G3, fontWeight: 600 }}
-          >
-            Apply to join →
-          </button>
-        </p>
+        {onApply && (
+          <p style={{ fontSize: 12, color: MUTED, textAlign: 'center', marginTop: 16 }}>
+            New delivery partner?{' '}
+            <button
+              type="button"
+              onClick={onApply}
+              className="active:opacity-60"
+              style={{ color: G3, fontWeight: 600 }}
+            >
+              Apply to join →
+            </button>
+          </p>
+        )}
       </div>
     </div>
   );
