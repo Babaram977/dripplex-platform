@@ -250,98 +250,6 @@ function Card({ children, style }: { children: React.ReactNode; style?: React.CS
   );
 }
 
-// ─── Mock data ────────────────────────────────────────────────────────────────
-const DRIVERS = [
-  {
-    id: 'DRV-001',
-    name: 'Emeka Okafor',
-    phone: '+234 803 412 7891',
-    vehicle: 'Toyota Corolla · ABC 123 LG',
-    rating: 4.8,
-    trips: 1247,
-    status: 'online',
-    kyc: 'verified',
-    vehicleType: 'Sedan',
-  },
-  {
-    id: 'DRV-002',
-    name: 'Adebayo Fashola',
-    phone: '+234 806 234 5678',
-    vehicle: 'Honda Accord · XYZ 456 LG',
-    rating: 4.6,
-    trips: 893,
-    status: 'busy',
-    kyc: 'verified',
-    vehicleType: 'Sedan',
-  },
-  {
-    id: 'DRV-003',
-    name: 'Chukwuemeka Eze',
-    phone: '+234 705 567 8901',
-    vehicle: 'Hyundai Elantra · QRS 789 LG',
-    rating: 4.9,
-    trips: 2104,
-    status: 'offline',
-    kyc: 'verified',
-    vehicleType: 'Sedan',
-  },
-  {
-    id: 'DRV-004',
-    name: 'Fatima Abubakar',
-    phone: '+234 812 345 6789',
-    vehicle: 'Toyota Camry · DEF 321 LG',
-    rating: 4.7,
-    trips: 678,
-    status: 'online',
-    kyc: 'unverified',
-    vehicleType: 'Sedan',
-  },
-  {
-    id: 'DRV-005',
-    name: 'Olumide Adeyemi',
-    phone: '+234 901 234 5670',
-    vehicle: 'Kia Rio · GHI 654 LG',
-    rating: 4.5,
-    trips: 412,
-    status: 'busy',
-    kyc: 'verified',
-    vehicleType: 'Hatchback',
-  },
-  {
-    id: 'DRV-006',
-    name: 'Ngozi Okonkwo',
-    phone: '+234 803 789 0123',
-    vehicle: 'Honda Civic · JKL 987 LG',
-    rating: 4.8,
-    trips: 1563,
-    status: 'online',
-    kyc: 'verified',
-    vehicleType: 'Sedan',
-  },
-  {
-    id: 'DRV-007',
-    name: 'Babatunde Lawal',
-    phone: '+234 706 890 1234',
-    vehicle: 'Nissan Sentra · MNO 246 LG',
-    rating: 4.3,
-    trips: 234,
-    status: 'offline',
-    kyc: 'pending',
-    vehicleType: 'Sedan',
-  },
-  {
-    id: 'DRV-008',
-    name: 'Chisom Obiora',
-    phone: '+234 813 901 2345',
-    vehicle: 'Toyota Yaris · PQR 135 LG',
-    rating: 4.6,
-    trips: 789,
-    status: 'online',
-    kyc: 'verified',
-    vehicleType: 'Hatchback',
-  },
-];
-
 const TRIPS = [
   {
     id: 'TRP-8842',
@@ -1816,12 +1724,82 @@ function PageTrips() {
 }
 
 // ─── Page: Drivers ─────────────────────────────────────────────────────────────
+const driverKycState = (d: AdminDriverDto): 'verified' | 'pending' | 'unverified' => {
+  if (d.kyc.some((k) => k.verificationStatus === 'PENDING')) return 'pending';
+  if (d.kyc.some((k) => k.verificationStatus === 'VERIFIED')) return 'verified';
+  return 'unverified';
+};
+const driverStatusChip = (s: string) => (s === 'UNDER_REVIEW' ? 'in review' : s.toLowerCase());
+
 function PageDrivers() {
-  const [selected, setSelected] = useState<(typeof DRIVERS)[0] | null>(null);
+  const [drivers, setDrivers] = useState<AdminDriverDto[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const filtered = DRIVERS.filter((d) =>
-    (d.name + d.phone + d.vehicle).toLowerCase().includes(search.toLowerCase()),
-  );
+  const [kycFilter, setKycFilter] = useState('All KYC');
+  const [selId, setSelId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [showSuspend, setShowSuspend] = useState(false);
+  const [suspendReason, setSuspendReason] = useState('');
+  const [note, setNote] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      setDrivers((await api.admin.listDrivers()).items);
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load drivers.');
+      setDrivers([]);
+    }
+  }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const rows = (drivers ?? []).filter((d) => {
+    const q = search.toLowerCase();
+    const matchesSearch = (driverName(d) + (d.phone ?? '') + d.email).toLowerCase().includes(q);
+    const k = driverKycState(d);
+    const matchesKyc =
+      kycFilter === 'All KYC' ||
+      (kycFilter === 'Verified' && k === 'verified') ||
+      (kycFilter === 'Pending' && k === 'pending');
+    return matchesSearch && matchesKyc;
+  });
+  const selected = rows.find((d) => d.driverId === selId) ?? null;
+
+  const suspend = async () => {
+    if (!selected) return;
+    if (suspendReason.trim().length < 3) {
+      setNote('Add a short reason.');
+      return;
+    }
+    setBusy(true);
+    setNote(null);
+    try {
+      await api.admin.suspendDriver(selected.driverId, suspendReason.trim());
+      setShowSuspend(false);
+      setSuspendReason('');
+      await load();
+    } catch (e: unknown) {
+      setNote((e as { message?: string }).message ?? 'Could not suspend.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const reactivate = async () => {
+    if (!selected) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      await api.admin.reactivateDriver(selected.driverId);
+      await load();
+    } catch (e: unknown) {
+      setNote((e as { message?: string }).message ?? 'Could not reactivate.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div style={{ display: 'flex', gap: 14, height: '100%' }}>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -1839,20 +1817,40 @@ function PageDrivers() {
             <option>Offline</option>
             <option>Busy</option>
           </select>
-          <select className="dx-select" style={{ color: MUTED }}>
+          <select
+            className="dx-select"
+            style={{ color: MUTED }}
+            value={kycFilter}
+            onChange={(e) => setKycFilter(e.target.value)}
+          >
             <option>All KYC</option>
             <option>Verified</option>
             <option>Pending</option>
           </select>
         </div>
         <Card style={{ padding: '12px 16px', flex: 1 }}>
-          <table
-            style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Inter, sans-serif' }}
-          >
-            <thead>
-              <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
-                {['Driver', 'Phone', 'Vehicle', 'Rating', 'Trips', 'Status', 'KYC', 'Actions'].map(
-                  (h) => (
+          {drivers === null && !error ? (
+            <div style={{ fontSize: 13, color: MUTED, padding: 8 }}>Loading…</div>
+          ) : error ? (
+            <div style={{ fontSize: 13, color: C_ERR, padding: 8 }}>{error}</div>
+          ) : rows.length === 0 ? (
+            <div style={{ fontSize: 13, color: MUTED, padding: 8 }}>No drivers found.</div>
+          ) : (
+            <table
+              style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Inter, sans-serif' }}
+            >
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
+                  {[
+                    'Driver',
+                    'Phone',
+                    'Vehicle',
+                    'Rating',
+                    'Trips',
+                    'Status',
+                    'KYC',
+                    'Actions',
+                  ].map((h) => (
                     <th
                       key={h}
                       style={{
@@ -1865,60 +1863,73 @@ function PageDrivers() {
                     >
                       {h}
                     </th>
-                  ),
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((d, i) => (
-                <tr
-                  key={d.id}
-                  className="dx-row"
-                  style={{
-                    borderBottom: `1px solid rgba(255,255,255,.04)`,
-                    background:
-                      selected?.id === d.id
-                        ? 'rgba(71,207,114,.05)'
-                        : i % 2 === 1
-                          ? 'rgba(255,255,255,.01)'
-                          : 'transparent',
-                    cursor: 'pointer',
-                  }}
-                  onClick={() => setSelected(d)}
-                >
-                  <td style={{ padding: '8px 8px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <Avatar name={d.name} size={28} />
-                      <div>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: WHITE }}>{d.name}</div>
-                        <div style={{ fontSize: 10, color: MUTED }}>{d.id}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td style={{ padding: '8px 8px', fontSize: 11.5, color: MUTED }}>{d.phone}</td>
-                  <td style={{ padding: '8px 8px', fontSize: 11, color: MUTED }}>{d.vehicle}</td>
-                  <td style={{ padding: '8px 8px' }}>
-                    <span style={{ color: C_WARN, fontSize: 12 }}>★</span>
-                    <span style={{ fontSize: 12, color: WHITE, fontWeight: 600 }}> {d.rating}</span>
-                  </td>
-                  <td style={{ padding: '8px 8px', fontSize: 12, color: WHITE }}>
-                    {d.trips.toLocaleString()}
-                  </td>
-                  <td style={{ padding: '8px 8px' }}>
-                    <StatusChip status={d.status} />
-                  </td>
-                  <td style={{ padding: '8px 8px' }}>
-                    <StatusChip status={d.kyc} />
-                  </td>
-                  <td style={{ padding: '8px 8px' }}>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      <Btn label="View" small outline color={G3} />
-                    </div>
-                  </td>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {rows.map((d, i) => (
+                  <tr
+                    key={d.driverId}
+                    className="dx-row"
+                    style={{
+                      borderBottom: `1px solid rgba(255,255,255,.04)`,
+                      background:
+                        selId === d.driverId
+                          ? 'rgba(71,207,114,.05)'
+                          : i % 2 === 1
+                            ? 'rgba(255,255,255,.01)'
+                            : 'transparent',
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => {
+                      setSelId(d.driverId);
+                      setShowSuspend(false);
+                      setNote(null);
+                    }}
+                  >
+                    <td style={{ padding: '8px 8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Avatar name={driverName(d)} size={28} />
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: WHITE }}>
+                            {driverName(d)}
+                          </div>
+                          <div style={{ fontSize: 10, color: MUTED }}>{d.driverId.slice(0, 8)}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td style={{ padding: '8px 8px', fontSize: 11.5, color: MUTED }}>
+                      {d.phone ?? '—'}
+                    </td>
+                    <td style={{ padding: '8px 8px', fontSize: 11, color: MUTED }}>—</td>
+                    <td style={{ padding: '8px 8px', fontSize: 12, color: MUTED }}>—</td>
+                    <td style={{ padding: '8px 8px', fontSize: 12, color: MUTED }}>—</td>
+                    <td style={{ padding: '8px 8px' }}>
+                      <StatusChip status={driverStatusChip(d.status)} />
+                    </td>
+                    <td style={{ padding: '8px 8px' }}>
+                      <StatusChip status={driverKycState(d)} />
+                    </td>
+                    <td style={{ padding: '8px 8px' }}>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <Btn
+                          label="View"
+                          small
+                          outline
+                          color={G3}
+                          onClick={() => {
+                            setSelId(d.driverId);
+                            setShowSuspend(false);
+                            setNote(null);
+                          }}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </Card>
       </div>
       {/* Detail panel */}
@@ -1939,7 +1950,7 @@ function PageDrivers() {
                 Driver Profile
               </div>
               <button
-                onClick={() => setSelected(null)}
+                onClick={() => setSelId(null)}
                 className="dx-btn"
                 style={{
                   background: 'none',
@@ -1953,7 +1964,7 @@ function PageDrivers() {
               </button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-              <Avatar name={selected.name} size={48} />
+              <Avatar name={driverName(selected)} size={48} />
               <div style={{ textAlign: 'center' }}>
                 <div
                   style={{
@@ -1963,23 +1974,23 @@ function PageDrivers() {
                     color: WHITE,
                   }}
                 >
-                  {selected.name}
+                  {driverName(selected)}
                 </div>
                 <div style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
-                  {selected.id}
+                  {selected.driverId.slice(0, 8)}
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
-                <StatusChip status={selected.status} />
-                <StatusChip status={selected.kyc} />
+                <StatusChip status={driverStatusChip(selected.status)} />
+                <StatusChip status={driverKycState(selected)} />
               </div>
             </div>
             <SEP />
             {[
-              ['Phone', selected.phone],
-              ['Vehicle', selected.vehicle],
-              ['Rating', `★ ${selected.rating}`],
-              ['Total Trips', selected.trips.toLocaleString()],
+              ['Phone', selected.phone ?? '—'],
+              ['Email', selected.email],
+              ['Vehicle', '—'],
+              ['Total Trips', '—'],
             ].map(([k, v]) => (
               <div
                 key={k}
@@ -1994,10 +2005,60 @@ function PageDrivers() {
               </div>
             ))}
             <SEP />
+            {note && <span style={{ fontSize: 11, color: C_WARN }}>{note}</span>}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-              <Btn label="Suspend Driver" color={C_WARN} outline />
-              <Btn label="Deactivate Account" color={C_ERR} outline />
-              <Btn label="View Trip History" color={G3} />
+              {selected.status === 'SUSPENDED' ? (
+                <Btn
+                  label={busy ? 'Reactivating…' : 'Reactivate Driver'}
+                  color={G2}
+                  onClick={() => void reactivate()}
+                />
+              ) : showSuspend ? (
+                <>
+                  <input
+                    className="dx-input"
+                    value={suspendReason}
+                    onChange={(e) => setSuspendReason(e.target.value)}
+                    placeholder="Reason for suspension"
+                  />
+                  <Btn
+                    label={busy ? 'Suspending…' : 'Confirm Suspend'}
+                    color={C_WARN}
+                    onClick={() => void suspend()}
+                  />
+                  <Btn
+                    label="Cancel"
+                    color={MUTED}
+                    outline
+                    onClick={() => {
+                      setShowSuspend(false);
+                      setNote(null);
+                    }}
+                  />
+                </>
+              ) : (
+                <Btn
+                  label="Suspend Driver"
+                  color={C_WARN}
+                  outline
+                  onClick={() => setShowSuspend(true)}
+                />
+              )}
+              <Btn
+                label="Deactivate Account"
+                color={C_ERR}
+                outline
+                onClick={() =>
+                  setNote('No permanent-deactivate endpoint yet — use Suspend to disable a driver.')
+                }
+              />
+              <Btn
+                label="View Trip History"
+                color={G3}
+                onClick={() =>
+                  setNote('Trip history opens with the Trips screen (being wired next).')
+                }
+              />
             </div>
           </Card>
         </div>
