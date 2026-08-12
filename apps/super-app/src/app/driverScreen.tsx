@@ -737,19 +737,17 @@ export function DriverLoginScreen({
 
         <DGreenBtn label={loading ? '' : 'Continue →'} onClick={handleContinue} loading={loading} />
 
-        {onApply && (
-          <p className="mt-4 text-center text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
-            New driver partner?{' '}
-            <button
-              type="button"
-              onClick={onApply}
-              className="active:opacity-60"
-              style={{ color: G3, fontFamily: IT, fontWeight: 600 }}
-            >
-              Apply to join →
-            </button>
-          </p>
-        )}
+        <p className="mt-4 text-center text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
+          New driver partner?{' '}
+          <button
+            type="button"
+            onClick={onApply}
+            className="active:opacity-60"
+            style={{ color: G3, fontFamily: IT, fontWeight: 600 }}
+          >
+            Apply to join →
+          </button>
+        </p>
       </div>
     </div>
   );
