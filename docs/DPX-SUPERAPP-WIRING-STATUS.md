@@ -146,15 +146,22 @@ uri="file://figma/make/source/rsHHFRxHVE3OKv81p7m3K1/src/app/<file>.tsx")`.
 - Backend `preDeployCommand` (steady state) = `["node prisma/seed-rbac.cjs"]`. `startCommand` =
   `node dist/main.js`. Health `/api/v1/health`.
 
-### Running the demo seed on prod (how the bank got seeded)
+### Demo seed — REMOVED (DrippleX runs on real registrations now)
 
-1. Ensure `DEMO_SEED_ENABLED=true` on the backend service.
-2. `update-service` backend `preDeployCommand` → `["node prisma/seed-demo.cjs"]` (seed-rbac
-   roles already exist in the DB, so seed-demo alone is fine for one run).
-3. Trigger a **fresh build** of `@dripplex/backend` (agent, main HEAD SHA) so the new preDeploy
-   is used. Confirm in deploy logs: `[seed-demo] Demo cast result: ... merchant=OK ...`.
-4. **Revert** `preDeployCommand` → `["node prisma/seed-rbac.cjs"]`. (Leaving `DEMO_SEED_ENABLED=true`
-   is harmless since seed-demo is no longer in the deploy path.)
+The demo cast (`@dripplex.demo` customer/driver/rider + the "Dx Resto" merchant,
+its products and payout bank) has been **removed**. There is no demo data in
+production and it can no longer be re-seeded:
+
+- `prisma/seed-demo.cjs` and the `seed:demo` npm script are deleted.
+- Migration `20260812120000_purge_demo_cast` deletes the demo cast on the next
+  `prisma migrate deploy` (runs via `seed-rbac.cjs` in the deploy path). It is
+  scoped to the reserved `@dripplex.demo` domain + the demo `Food` category, so
+  it is a no-op on a clean database.
+- `DEMO_SEED_ENABLED` on the backend service is now inert (nothing reads it) and
+  can be removed at leisure.
+
+Do not reference the demo accounts as ground truth — build and test against real
+registrations.
 
 ## 7. Locked founder decisions to respect
 
