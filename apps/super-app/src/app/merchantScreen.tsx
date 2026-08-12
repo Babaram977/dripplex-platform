@@ -3615,7 +3615,13 @@ export function MerchantPortalScreen({
 }: {
   initialPage?: MerchantPage;
 }) {
-  const [isLoggedIn, setIsLoggedIn] = useState(() => !!auth.getUser());
+  // Only treat the session as "signed in" when it's actually a MERCHANT. A
+  // leftover customer/other session would otherwise skip the merchant login and
+  // render an empty dashboard whose merchant API calls all 403.
+  const [isLoggedIn, setIsLoggedIn] = useState(() => {
+    const u = auth.getUser();
+    return !!u && u.roles.includes('merchant');
+  });
   const [page, setPage] = useState<MerchantPage>(initialPage);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [business, setBusiness] = useState<MerchantBusinessDto | null>(null);

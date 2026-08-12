@@ -498,9 +498,21 @@ function AppShell() {
     ),
     // "Returning" routes to the REAL email/password sign-in (the biometric
     // ReturningLoginScreen is a mock with no backend — do not use it for auth).
-    returning: <SignInScreen onBack={() => go('welcome')} onSuccess={() => go('home')} />,
+    returning: (
+      <SignInScreen
+        onBack={() => go('welcome')}
+        onSuccess={() => go('home')}
+        onMerchant={() => go('mxdash')}
+      />
+    ),
     recovery: <RecoveryScreen onRecovered={() => go('returning')} onBack={() => go('returning')} />,
-    signin: <SignInScreen onBack={() => go('welcome')} onSuccess={() => go('home')} />,
+    signin: (
+      <SignInScreen
+        onBack={() => go('welcome')}
+        onSuccess={() => go('home')}
+        onMerchant={() => go('mxdash')}
+      />
+    ),
     twofa: <TwoFactorScreen onBack={() => go('security')} onDone={() => go('security')} />,
     devices: <TrustedDevicesScreen onBack={() => go('security')} />,
     activity: (
