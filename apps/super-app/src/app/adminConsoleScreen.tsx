@@ -1,4 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { api, type AdminVehicleDto } from '../lib/api';
+import { auth } from '../lib/auth';
 import {
   LineChart,
   Line,
@@ -2204,34 +2206,199 @@ function PageDrvKYC() {
 }
 
 // ─── Page: Vehicles ────────────────────────────────────────────────────────────
+// One reviewable vehicle card — real approve/reject against /admin/vehicles.
+function VehicleReviewCard({
+  v,
+  onResolved,
+}: {
+  v: AdminVehicleDto;
+  onResolved: (id: string) => void;
+}) {
+  const [busy, setBusy] = useState<null | 'approve' | 'reject'>(null);
+  const [showReject, setShowReject] = useState(false);
+  const [showCorrections, setShowCorrections] = useState(false);
+  const [reason, setReason] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+
+  // VehicleDto carries no per-document verification state (that lives in driver
+  // KYC, not the vehicle), so the doc checklist is shown neutral rather than
+  // faking pass/fail. Documented gap — a vehicle-doc endpoint would fill it.
+  const DOCS = ['Insurance', 'Road Worthiness', 'Vehicle Reg.', 'Inspection'];
+  const ANGLES = ['Front', 'Rear', 'Left Side', 'Right Side'];
+
+  const approve = async () => {
+    setBusy('approve');
+    setErr(null);
+    try {
+      await api.admin.approveVehicle(v.id);
+      onResolved(v.id);
+    } catch (e: unknown) {
+      setErr((e as { message?: string }).message ?? 'Could not approve. Try again.');
+      setBusy(null);
+    }
+  };
+  const reject = async () => {
+    if (reason.trim().length < 5) {
+      setErr('Rejection reason must be at least 5 characters.');
+      return;
+    }
+    setBusy('reject');
+    setErr(null);
+    try {
+      await api.admin.rejectVehicle(v.id, reason.trim());
+      onResolved(v.id);
+    } catch (e: unknown) {
+      setErr((e as { message?: string }).message ?? 'Could not reject. Try again.');
+      setBusy(null);
+    }
+  };
+
+  return (
+    <Card style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div
+          style={{ fontFamily: 'Poppins, sans-serif', fontSize: 13, fontWeight: 700, color: WHITE }}
+        >
+          {v.make} {v.model} · {v.year}
+        </div>
+        <span style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          {v.plateNumber}
+        </span>
+        <Chip label={v.rideCategory} color={C_INFO} />
+        <div
+          style={{
+            marginLeft: 'auto',
+            display: 'flex',
+            gap: 6,
+            alignItems: 'center',
+            fontSize: 11,
+            color: MUTED,
+            fontFamily: 'Inter, sans-serif',
+          }}
+        >
+          Driver: <Avatar name={v.driverId} size={20} /> {v.driverId.slice(0, 8)}
+        </div>
+      </div>
+      {/* Photo grid — real vehicle photos where present */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
+        {ANGLES.map((angle, idx) => {
+          const url = v.photos[idx];
+          return (
+            <div
+              key={angle}
+              style={{
+                height: 80,
+                background: url ? `center / cover no-repeat url(${url})` : 'rgba(255,255,255,.04)',
+                borderRadius: 7,
+                border: `1px dashed ${BORDER}`,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 4,
+              }}
+            >
+              {!url && <span style={{ fontSize: 22 }}>🚗</span>}
+              <span
+                style={{
+                  fontSize: 9,
+                  color: url ? '#fff' : MUTED,
+                  fontFamily: 'Inter, sans-serif',
+                  background: url ? 'rgba(0,0,0,.45)' : 'transparent',
+                  padding: url ? '1px 4px' : 0,
+                  borderRadius: 3,
+                }}
+              >
+                {angle}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      {/* Doc checklist — neutral (no per-vehicle doc state on the backend yet) */}
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        {DOCS.map((d) => (
+          <div key={d} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ fontSize: 12, color: MUTED }}>•</span>
+            <span style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>{d}</span>
+          </div>
+        ))}
+      </div>
+      {err && <span style={{ fontSize: 12, color: C_ERR }}>{err}</span>}
+      {showReject ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <input
+            className="dx-input"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Reason for rejection (min 5 characters)"
+          />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Btn
+              label={busy === 'reject' ? 'Rejecting…' : 'Confirm Reject'}
+              color={C_ERR}
+              onClick={() => void reject()}
+            />
+            <Btn
+              label="Cancel"
+              color={MUTED}
+              outline
+              onClick={() => {
+                setShowReject(false);
+                setErr(null);
+              }}
+            />
+          </div>
+        </div>
+      ) : showCorrections ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span style={{ fontSize: 11, color: C_WARN, fontFamily: 'Inter, sans-serif' }}>
+            A "request corrections" workflow isn&apos;t available on the backend yet — use Approve
+            or Reject (with a reason) for now.
+          </span>
+          <Btn label="Dismiss" color={MUTED} outline onClick={() => setShowCorrections(false)} />
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Btn
+            label={busy === 'approve' ? 'Approving…' : 'Approve Vehicle'}
+            color={G2}
+            onClick={() => void approve()}
+          />
+          <Btn
+            label="Request Corrections"
+            color={C_WARN}
+            outline
+            onClick={() => setShowCorrections(true)}
+          />
+          <Btn label="Reject" color={C_ERR} outline onClick={() => setShowReject(true)} />
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function PageVehicles() {
-  const vehicles = [
-    {
-      id: 'VEH-001',
-      driver: 'Babatunde Lawal',
-      plate: 'QRS 789 LG',
-      type: 'Sedan',
-      year: 2019,
-      model: 'Toyota Corolla',
-    },
-    {
-      id: 'VEH-002',
-      driver: 'Ifeoma Chukwu',
-      plate: 'MNO 234 LG',
-      type: 'Hatchback',
-      year: 2021,
-      model: 'Honda Jazz',
-    },
-    {
-      id: 'VEH-003',
-      driver: 'Musa Abdullahi',
-      plate: 'STU 567 LG',
-      type: 'Sedan',
-      year: 2020,
-      model: 'Kia Cerato',
-    },
-  ];
-  const docs = ['Insurance', 'Road Worthiness', 'Vehicle Reg.', 'Inspection'];
+  const [vehicles, setVehicles] = useState<AdminVehicleDto[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      const res = await api.admin.listVehicles('PENDING');
+      setVehicles(res.items);
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load pending vehicles.');
+      setVehicles([]);
+    }
+  }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const onResolved = (id: string) =>
+    setVehicles((cur) => (cur ? cur.filter((v) => v.id !== id) : cur));
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -2240,89 +2407,31 @@ function PageVehicles() {
         >
           Pending Vehicle Approvals
         </div>
-        <Chip label={`${vehicles.length} pending`} color={C_WARN} />
+        <Chip label={`${vehicles?.length ?? 0} pending`} color={C_WARN} />
       </div>
-      {vehicles.map((v, i) => (
-        <Card key={v.id} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div
-              style={{
-                fontFamily: 'Poppins, sans-serif',
-                fontSize: 13,
-                fontWeight: 700,
-                color: WHITE,
-              }}
-            >
-              {v.model} · {v.year}
-            </div>
-            <span style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
-              {v.plate}
-            </span>
-            <Chip label={v.type} color={C_INFO} />
-            <div
-              style={{
-                marginLeft: 'auto',
-                display: 'flex',
-                gap: 6,
-                alignItems: 'center',
-                fontSize: 11,
-                color: MUTED,
-                fontFamily: 'Inter, sans-serif',
-              }}
-            >
-              Driver: <Avatar name={v.driver} size={20} /> {v.driver}
-            </div>
-          </div>
-          {/* Photo grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
-            {['Front', 'Rear', 'Left Side', 'Right Side'].map((angle) => (
-              <div
-                key={angle}
-                style={{
-                  height: 80,
-                  background: 'rgba(255,255,255,.04)',
-                  borderRadius: 7,
-                  border: `1px dashed ${BORDER}`,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 4,
-                }}
-              >
-                <span style={{ fontSize: 22 }}>🚗</span>
-                <span style={{ fontSize: 9, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
-                  {angle}
-                </span>
-              </div>
-            ))}
-          </div>
-          {/* Doc checklist */}
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            {docs.map((d, di) => {
-              const ok = di < (i === 2 ? 3 : 4);
-              return (
-                <div key={d} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <span style={{ fontSize: 12, color: ok ? C_OK : C_ERR }}>{ok ? '✓' : '✗'}</span>
-                  <span
-                    style={{
-                      fontSize: 11,
-                      color: ok ? WHITE : MUTED,
-                      fontFamily: 'Inter, sans-serif',
-                    }}
-                  >
-                    {d}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <Btn label="Approve Vehicle" color={G2} />
-            <Btn label="Request Corrections" color={C_WARN} outline />
-            <Btn label="Reject" color={C_ERR} outline />
-          </div>
+      {vehicles === null && !error && (
+        <Card>
+          <span style={{ fontSize: 13, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+            Loading…
+          </span>
         </Card>
+      )}
+      {error && (
+        <Card>
+          <span style={{ fontSize: 13, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>
+            {error}
+          </span>
+        </Card>
+      )}
+      {vehicles && vehicles.length === 0 && !error && (
+        <Card>
+          <span style={{ fontSize: 13, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+            No vehicles are awaiting approval.
+          </span>
+        </Card>
+      )}
+      {vehicles?.map((v) => (
+        <VehicleReviewCard key={v.id} v={v} onResolved={onResolved} />
       ))}
     </div>
   );
@@ -4070,8 +4179,113 @@ function renderPage(page: AdminPage) {
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
+// A session is an Operations session only when it carries the operations_staff
+// role or an operations:* permission — a leftover customer/merchant token must
+// not slip past the gate (its /admin/* calls would all 403).
+function isOpsAuthed(): boolean {
+  const u = auth.getUser();
+  if (!u || !auth.getAccessToken()) return false;
+  return (
+    u.roles.includes('operations_staff') ||
+    u.roles.includes('admin') ||
+    u.permissions.some((p) => p.startsWith('operations:'))
+  );
+}
+
+// Ops sign-in — the console's front door. Reuses the existing Card/Btn/dx-input
+// visual language (no new design) and the real POST /auth/login/operations.
+function OpsSignIn({ onSignedIn }: { onSignedIn: () => void }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const submit = async () => {
+    if (!email || !password || loading) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.auth.loginOperations({ email, password });
+      auth.setTokens(res.accessToken, res.refreshToken);
+      auth.setUser(res.user);
+      if (!isOpsAuthed()) {
+        auth.clear();
+        setError('This account does not have Operations access.');
+        return;
+      }
+      onSignedIn();
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Sign in failed. Check your credentials.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        width: '100%',
+        height: 641,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontFamily: 'Inter, sans-serif',
+        background: NAVY_BASE,
+      }}
+    >
+      <Card style={{ width: 340, display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ textAlign: 'center' }}>
+          <div
+            style={{
+              fontFamily: 'Poppins, sans-serif',
+              fontSize: 17,
+              fontWeight: 700,
+              color: WHITE,
+            }}
+          >
+            DrippleX Operations
+          </div>
+          <div style={{ fontSize: 12, color: MUTED, marginTop: 4 }}>
+            Sign in to the Operations Console
+          </div>
+        </div>
+        <div>
+          <div style={{ fontSize: 12, color: MUTED, marginBottom: 6 }}>Email</div>
+          <input
+            className="dx-input"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="ops@dripplex.com"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void submit();
+            }}
+          />
+        </div>
+        <div>
+          <div style={{ fontSize: 12, color: MUTED, marginBottom: 6 }}>Password</div>
+          <input
+            className="dx-input"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void submit();
+            }}
+          />
+        </div>
+        {error && <div style={{ fontSize: 12, color: C_ERR }}>{error}</div>}
+        <Btn label={loading ? 'Signing in…' : 'Sign In'} color={G2} onClick={() => void submit()} />
+      </Card>
+    </div>
+  );
+}
+
 export function AdminConsoleScreen({ initialPage = 'dashboard' }: { initialPage?: AdminPage }) {
   const [page, setPage] = useState<AdminPage>(initialPage);
+  const [authed, setAuthed] = useState<boolean>(() => isOpsAuthed());
+  if (!authed) return <OpsSignIn onSignedIn={() => setAuthed(true)} />;
   return (
     <div
       style={{

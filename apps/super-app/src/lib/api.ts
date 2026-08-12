@@ -630,6 +630,28 @@ export interface MerchantBankAccountDto {
   createdAt: string;
 }
 
+// ─── Operations Console (admin) DTOs ────────────────────────────────────────
+// A vehicle awaiting / holding an approval decision (backend VehicleDto). Used
+// by the Ops Console Vehicles queue. photos[] are hosted image URLs.
+export interface AdminVehicleDto {
+  id: string;
+  driverId: string;
+  plateNumber: string;
+  make: string;
+  model: string;
+  color: string;
+  year: number;
+  rideCategory: string;
+  seats: number | null;
+  isActive: boolean;
+  approvalStatus: 'PENDING' | 'APPROVED' | 'REJECTED';
+  approvedAt: string | null;
+  rejectedReason: string | null;
+  photos: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 // Customer KYC
 export interface CustomerKycStatusDto {
   level: 'LEVEL_0' | 'LEVEL_1' | 'LEVEL_2';
@@ -1313,6 +1335,26 @@ export const api = {
         undefined,
         params,
       ),
+  },
+
+  // ── OPERATIONS CONSOLE (admin) ─────────────────────────────────────────────
+  // Reuses the same /admin/* endpoints the production Operations Console
+  // (ops.dripplex.com) uses — no new/duplicate backend. All require an
+  // operations_staff session (see api.auth.loginOperations).
+  admin: {
+    // Vehicles review queue. Pass 'PENDING' to scope to the approval queue.
+    // The backend returns { items, meta } (page/limit/total/totalPages).
+    listVehicles: (approvalStatus?: 'PENDING' | 'APPROVED' | 'REJECTED') =>
+      dx<{ items: AdminVehicleDto[]; meta: { total: number } }>(
+        'GET',
+        '/admin/vehicles',
+        undefined,
+        approvalStatus ? { approvalStatus } : undefined,
+      ),
+    approveVehicle: (id: string) => dx<AdminVehicleDto>('POST', `/admin/vehicles/${id}/approve`),
+    // rejectedReason must be 5–1000 chars (RejectVehicleDto).
+    rejectVehicle: (id: string, rejectedReason: string) =>
+      dx<AdminVehicleDto>('POST', `/admin/vehicles/${id}/reject`, { rejectedReason }),
   },
 
   // ── CUSTOMER KYC ───────────────────────────────────────────────────────────
