@@ -1718,13 +1718,32 @@ export function BusinessDetailsScreen({
     setErr('');
     setLoading(true);
     try {
-      const businessType = BUSINESS_STRUCTURES.find((s) => s.label === structure)?.value;
-      const body: Record<string, unknown> = { businessName: name.trim() };
-      if (businessType) body.businessType = businessType;
+      const businessType = BUSINESS_STRUCTURES.find((s) => s.label === structure)?.value ?? 'OTHER';
+      const body: Record<string, unknown> = {
+        businessName: name.trim(),
+        businessType,
+      };
       if (description.trim()) body.description = description.trim();
       if (phone.replace(/\D/g, '').length >= 7) body.phone = toE164(phone);
       if (address.trim()) body.address = address.trim();
-      await api.merchant.updateBusiness(body as Parameters<typeof api.merchant.updateBusiness>[0]);
+
+      // First-time registration CREATEs the business (POST) — it starts SUBMITTED /
+      // UNDER_REVIEW and enters the Ops approval queue. If the merchant already has a
+      // business (e.g. returning to edit these details), the backend replies 409 and
+      // we PATCH the existing record instead. This is the real approval flow — no bypass.
+      try {
+        await api.merchant.createBusiness(
+          body as Parameters<typeof api.merchant.createBusiness>[0],
+        );
+      } catch (createErr) {
+        if (createErr instanceof ApiError && createErr.status === 409) {
+          await api.merchant.updateBusiness(
+            body as Parameters<typeof api.merchant.updateBusiness>[0],
+          );
+        } else {
+          throw createErr;
+        }
+      }
       onDone();
     } catch (e) {
       setErr(messageFor(e));
