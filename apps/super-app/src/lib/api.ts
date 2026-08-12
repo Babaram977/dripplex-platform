@@ -715,6 +715,9 @@ export interface AdminOperationsCaseDto {
   latitude?: number | null;
   longitude?: number | null;
   batteryLevel?: number | null;
+  // Support-only
+  subject?: string;
+  adminResponse?: string | null;
 }
 
 // Customer KYC

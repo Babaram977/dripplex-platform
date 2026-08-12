@@ -260,8 +260,6 @@ const TRIPS: Record<string, unknown>[] = []; // mock cleared — wired to backen
 
 const CUSTOMERS: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
 
-const SUPPORT_TICKETS: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
-
 const REVENUE_DATA: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
 
 const TRIP_STATUS_PIE: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
@@ -3046,19 +3044,88 @@ function PageIncidents() {
 }
 
 // ─── Page: Support ────────────────────────────────────────────────────────────
+function supportCategoryLabel(c?: string): string {
+  if (!c) return 'Support';
+  return c
+    .split('_')
+    .map((w) => w.charAt(0) + w.slice(1).toLowerCase())
+    .join(' ');
+}
+
 function PageSupport() {
   const [tab, setTab] = useState<'Tickets' | 'Chats' | 'Calls'>('Tickets');
-  const [selIdx, setSelIdx] = useState(0);
+  const [tickets, setTickets] = useState<AdminOperationsCaseDto[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [selId, setSelId] = useState<string | null>(null);
   const [reply, setReply] = useState('');
-  const selTicket = SUPPORT_TICKETS[selIdx];
-  if (!selTicket)
+  const [busy, setBusy] = useState<string | null>(null);
+  const [actionMsg, setActionMsg] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      const res = await api.admin.getSupportQueue();
+      const items = [...res.items].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+      setTickets(items);
+      setSelId((cur) =>
+        cur && items.some((c) => c.caseId === cur) ? cur : (items[0]?.caseId ?? null),
+      );
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load support tickets.');
+      setTickets([]);
+    }
+  }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const selTicket = tickets?.find((c) => c.caseId === selId) ?? null;
+
+  const runAction = useCallback(
+    async (action: string, body: Parameters<typeof api.admin.updateCase>[1], msg: string) => {
+      if (!selTicket) return;
+      setBusy(action);
+      setActionMsg(null);
+      try {
+        await api.admin.updateCase(selTicket.caseId, body);
+        setActionMsg(msg);
+        await load();
+      } catch (e: unknown) {
+        const m = (e as { message?: string }).message ?? 'Action failed.';
+        setActionMsg(
+          /conflict|version/i.test(m) ? 'This ticket changed since you opened it — reloaded.' : m,
+        );
+        await load();
+      } finally {
+        setBusy(null);
+      }
+    },
+    [selTicket, load],
+  );
+
+  if (tickets === null && !error)
     return (
       <Card>
         <span style={{ fontSize: 13, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
-          No support tickets.
+          Loading…
         </span>
       </Card>
     );
+  if (error)
+    return (
+      <Card>
+        <span style={{ fontSize: 13, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>{error}</span>
+      </Card>
+    );
+
+  const list = tickets ?? [];
+  const canResolve = selTicket
+    ? selTicket.status !== 'RESOLVED' && selTicket.status !== 'CLOSED'
+    : false;
+  const canEscalate = selTicket ? selTicket.priority !== 'CRITICAL' && canResolve : false;
+
   return (
     <div style={{ display: 'flex', gap: 14, height: '100%' }}>
       {/* Left */}
@@ -3095,50 +3162,74 @@ function PageSupport() {
           ))}
         </div>
         {/* Ticket queue */}
-        {SUPPORT_TICKETS.map((tk, i) => (
-          <Card
-            key={tk.id}
-            style={{
-              cursor: 'pointer',
-              padding: '10px 12px',
-              borderColor: selIdx === i ? `${G3}55` : BORDER,
-            }}
-            onClick={() => setSelIdx(i)}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-              <span
-                style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  color: G3,
-                  fontFamily: 'Inter, sans-serif',
-                }}
-              >
-                {tk.id}
-              </span>
-              <StatusChip status={tk.status === 'in progress' ? 'in progress ticket' : tk.status} />
-            </div>
-            <div
+        {tab === 'Tickets' && list.length === 0 && (
+          <Card style={{ padding: '10px 12px' }}>
+            <span style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              No support tickets.
+            </span>
+          </Card>
+        )}
+        {tab === 'Tickets' &&
+          list.map((tk) => (
+            <Card
+              key={tk.caseId}
               style={{
-                fontSize: 12,
-                fontWeight: 600,
-                color: WHITE,
-                fontFamily: 'Inter, sans-serif',
-                marginBottom: 2,
+                cursor: 'pointer',
+                padding: '10px 12px',
+                borderColor: selId === tk.caseId ? `${G3}55` : BORDER,
+              }}
+              onClick={() => {
+                setSelId(tk.caseId);
+                setActionMsg(null);
               }}
             >
-              {tk.customer}
-            </div>
-            <div style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
-              {tk.subject.slice(0, 40)}...
-            </div>
-            <div
-              style={{ fontSize: 10, color: MUTED, fontFamily: 'Inter, sans-serif', marginTop: 4 }}
-            >
-              {tk.time}
-            </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: G3,
+                    fontFamily: 'Inter, sans-serif',
+                  }}
+                >
+                  {supportCategoryLabel(tk.category)}
+                </span>
+                <Chip label={lifecycleLabel(tk.status)} color={lifecycleColor(tk.status)} />
+              </div>
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: WHITE,
+                  fontFamily: 'Inter, sans-serif',
+                  marginBottom: 2,
+                }}
+              >
+                {tk.driverName || '—'}
+              </div>
+              <div style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+                {(tk.subject ?? '').slice(0, 40)}
+                {(tk.subject ?? '').length > 40 ? '…' : ''}
+              </div>
+              <div
+                style={{
+                  fontSize: 10,
+                  color: MUTED,
+                  fontFamily: 'Inter, sans-serif',
+                  marginTop: 4,
+                }}
+              >
+                {formatCaseTime(tk.createdAt)}
+              </div>
+            </Card>
+          ))}
+        {tab !== 'Tickets' && (
+          <Card style={{ padding: '10px 12px' }}>
+            <span style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              {tab} aren’t available yet — no backend channel exists for live {tab.toLowerCase()}.
+            </span>
           </Card>
-        ))}
+        )}
       </div>
       {/* Chat panel */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 0 }}>
@@ -3152,106 +3243,175 @@ function PageSupport() {
             overflow: 'hidden',
           }}
         >
-          {/* Chat header */}
-          <div
-            style={{
-              padding: '12px 16px',
-              borderBottom: `1px solid ${BORDER}`,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-            }}
-          >
-            <Avatar name={selTicket.customer} size={32} />
-            <div>
+          {selTicket ? (
+            <>
+              {/* Chat header */}
               <div
                 style={{
-                  fontFamily: 'Poppins, sans-serif',
-                  fontSize: 13,
-                  fontWeight: 700,
-                  color: WHITE,
-                }}
-              >
-                {selTicket.customer}
-              </div>
-              <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 11, color: MUTED }}>
-                {selTicket.subject}
-              </div>
-            </div>
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-              <Btn label="Resolve" small color={C_OK} />
-              <Btn label="Escalate" small color={C_WARN} outline />
-            </div>
-          </div>
-          {/* Messages */}
-          <div
-            className="dx-scroll"
-            style={{
-              flex: 1,
-              overflowY: 'auto',
-              padding: 16,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 10,
-            }}
-          >
-            {selTicket.messages.length === 0 && (
-              <div
-                style={{
-                  textAlign: 'center',
-                  color: MUTED,
-                  fontFamily: 'Inter, sans-serif',
-                  fontSize: 12,
-                  marginTop: 40,
-                }}
-              >
-                No messages yet.
-              </div>
-            )}
-            {selTicket.messages.map((m, i) => (
-              <div
-                key={i}
-                style={{
+                  padding: '12px 16px',
+                  borderBottom: `1px solid ${BORDER}`,
                   display: 'flex',
-                  justifyContent: m.from === 'agent' ? 'flex-end' : 'flex-start',
+                  alignItems: 'center',
+                  gap: 10,
                 }}
               >
-                <div
-                  style={{
-                    maxWidth: '72%',
-                    padding: '9px 13px',
-                    borderRadius: m.from === 'agent' ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
-                    background: m.from === 'agent' ? `${G0}` : NAVY_SURFACE,
-                    border: `1px solid ${m.from === 'agent' ? G2 + '44' : BORDER}`,
-                    fontFamily: 'Inter, sans-serif',
-                    fontSize: 12.5,
-                    color: WHITE,
-                    lineHeight: 1.5,
-                  }}
-                >
-                  {m.text}
+                <Avatar name={selTicket.driverName || 'Driver'} size={32} />
+                <div>
+                  <div
+                    style={{
+                      fontFamily: 'Poppins, sans-serif',
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: WHITE,
+                    }}
+                  >
+                    {selTicket.driverName || '—'}
+                  </div>
+                  <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 11, color: MUTED }}>
+                    {selTicket.subject ?? supportCategoryLabel(selTicket.category)}
+                  </div>
+                </div>
+                <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                  <Btn
+                    label={busy === 'resolve' ? '…' : 'Resolve'}
+                    small
+                    color={C_OK}
+                    onClick={
+                      busy || !canResolve
+                        ? undefined
+                        : () =>
+                            void runAction(
+                              'resolve',
+                              { version: selTicket.version, status: 'RESOLVED' },
+                              'Ticket marked resolved.',
+                            )
+                    }
+                  />
+                  <Btn
+                    label={busy === 'escalate' ? '…' : 'Escalate'}
+                    small
+                    color={C_WARN}
+                    outline
+                    onClick={
+                      busy || !canEscalate
+                        ? undefined
+                        : () => {
+                            const np = nextPriority(selTicket.priority);
+                            void runAction(
+                              'escalate',
+                              { version: selTicket.version, priority: np, status: 'IN_PROGRESS' },
+                              `Escalated to ${np}.`,
+                            );
+                          }
+                    }
+                  />
                 </div>
               </div>
-            ))}
-          </div>
-          {/* Reply input */}
-          <div
-            style={{
-              padding: '10px 14px',
-              borderTop: `1px solid ${BORDER}`,
-              display: 'flex',
-              gap: 8,
-            }}
-          >
-            <input
-              className="dx-input"
-              placeholder="Type a reply..."
-              value={reply}
-              onChange={(e) => setReply(e.target.value)}
-              style={{ flex: 1 }}
-            />
-            <Btn label="Send" color={G2} onClick={() => setReply('')} />
-          </div>
+              {/* Messages — built from the real ticket body + admin response */}
+              <div
+                className="dx-scroll"
+                style={{
+                  flex: 1,
+                  overflowY: 'auto',
+                  padding: 16,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 10,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                  <div
+                    style={{
+                      maxWidth: '72%',
+                      padding: '9px 13px',
+                      borderRadius: '14px 14px 14px 4px',
+                      background: NAVY_SURFACE,
+                      border: `1px solid ${BORDER}`,
+                      fontFamily: 'Inter, sans-serif',
+                      fontSize: 12.5,
+                      color: WHITE,
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {selTicket.description ?? 'No description provided.'}
+                  </div>
+                </div>
+                {selTicket.adminResponse && (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <div
+                      style={{
+                        maxWidth: '72%',
+                        padding: '9px 13px',
+                        borderRadius: '14px 14px 4px 14px',
+                        background: `${G0}`,
+                        border: `1px solid ${G2}44`,
+                        fontFamily: 'Inter, sans-serif',
+                        fontSize: 12.5,
+                        color: WHITE,
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      {selTicket.adminResponse}
+                    </div>
+                  </div>
+                )}
+                {actionMsg && (
+                  <div
+                    style={{
+                      textAlign: 'center',
+                      color: MUTED,
+                      fontFamily: 'Inter, sans-serif',
+                      fontSize: 11.5,
+                      marginTop: 6,
+                    }}
+                  >
+                    {actionMsg}
+                  </div>
+                )}
+              </div>
+              {/* Reply input — no admin-reply endpoint exists yet, so this is honest */}
+              <div
+                style={{
+                  padding: '10px 14px',
+                  borderTop: `1px solid ${BORDER}`,
+                  display: 'flex',
+                  gap: 8,
+                }}
+              >
+                <input
+                  className="dx-input"
+                  placeholder="Type a reply..."
+                  value={reply}
+                  onChange={(e) => setReply(e.target.value)}
+                  style={{ flex: 1 }}
+                />
+                <Btn
+                  label="Send"
+                  color={G2}
+                  onClick={() => {
+                    setActionMsg(
+                      'Sending a reply to the driver isn’t available yet — no backend endpoint sets a support response.',
+                    );
+                    setReply('');
+                  }}
+                />
+              </div>
+            </>
+          ) : (
+            <div
+              style={{
+                flex: 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: MUTED,
+                fontFamily: 'Inter, sans-serif',
+                fontSize: 12,
+              }}
+            >
+              Select a ticket to view it.
+            </div>
+          )}
         </Card>
       </div>
     </div>
