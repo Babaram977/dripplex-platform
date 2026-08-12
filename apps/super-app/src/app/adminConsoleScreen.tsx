@@ -1,5 +1,11 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { api, type AdminVehicleDto, type AdminDriverDto, type AdminDriverKycDto } from '../lib/api';
+import {
+  api,
+  type AdminVehicleDto,
+  type AdminDriverDto,
+  type AdminDriverKycDto,
+  type AdminOperationsCaseDto,
+} from '../lib/api';
 import { auth } from '../lib/auth';
 import {
   LineChart,
@@ -253,8 +259,6 @@ function Card({ children, style }: { children: React.ReactNode; style?: React.CS
 const TRIPS: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
 
 const CUSTOMERS: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
-
-const INCIDENTS: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
 
 const SUPPORT_TICKETS: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
 
@@ -2582,19 +2586,187 @@ function PagePricing() {
 }
 
 // ─── Page: Incidents ──────────────────────────────────────────────────────────
+// ── Incident/SOS helpers (map real OperationsCase fields to the frozen UI) ────
+const INCIDENT_PRIORITY_LADDER = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as const;
+
+function nextPriority(p: AdminOperationsCaseDto['priority']): AdminOperationsCaseDto['priority'] {
+  const i = INCIDENT_PRIORITY_LADDER.indexOf(p);
+  return i < 0 || i >= INCIDENT_PRIORITY_LADDER.length - 1
+    ? 'CRITICAL'
+    : INCIDENT_PRIORITY_LADDER[i + 1];
+}
+
+function caseSeverity(c: AdminOperationsCaseDto): string {
+  // SOS alerts always run at CRITICAL; incidents carry their own severity.
+  return (c.severity ?? (c.caseType === 'SOS' ? 'CRITICAL' : c.priority)).toUpperCase();
+}
+
+function caseIcon(c: AdminOperationsCaseDto): string {
+  if (c.caseType === 'SOS') return '🆘';
+  switch (c.category) {
+    case 'ACCIDENT':
+      return '💥';
+    case 'VEHICLE_BREAKDOWN':
+      return '🔧';
+    case 'PASSENGER_ALTERCATION':
+      return '⚠️';
+    case 'SAFETY_CONCERN':
+      return '🛡️';
+    default:
+      return '⚠️';
+  }
+}
+
+function caseTypeLabel(c: AdminOperationsCaseDto): string {
+  if (c.caseType === 'SOS') return 'SOS';
+  const cat = c.category ?? 'INCIDENT';
+  return cat
+    .split('_')
+    .map((w) => w.charAt(0) + w.slice(1).toLowerCase())
+    .join(' ');
+}
+
+function caseDesc(c: AdminOperationsCaseDto): string {
+  if (c.description && c.description.trim().length > 0) return c.description;
+  return c.caseType === 'SOS'
+    ? 'Emergency SOS alert triggered by the driver.'
+    : 'No description was provided.';
+}
+
+function incidentSevColor(s: string): string {
+  const u = s.toUpperCase();
+  return u === 'CRITICAL' ? C_ERR : u === 'HIGH' ? C_WARN : u === 'MEDIUM' ? C_INFO : MUTED;
+}
+
+function lifecycleLabel(s: AdminOperationsCaseDto['status']): string {
+  return s
+    .split('_')
+    .map((w) => w.charAt(0) + w.slice(1).toLowerCase())
+    .join(' ');
+}
+
+function lifecycleColor(s: AdminOperationsCaseDto['status']): string {
+  switch (s) {
+    case 'NEW':
+      return C_INFO;
+    case 'ASSIGNED':
+      return G2;
+    case 'IN_PROGRESS':
+      return C_OK;
+    case 'WAITING':
+      return C_WARN;
+    case 'RESOLVED':
+      return G3;
+    case 'CLOSED':
+      return MUTED;
+    default:
+      return MUTED;
+  }
+}
+
+function formatCaseTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 function PageIncidents() {
-  const [sel, setSel] = useState(0);
-  const inc = INCIDENTS[sel];
+  const [cases, setCases] = useState<AdminOperationsCaseDto[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [selId, setSelId] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [actionMsg, setActionMsg] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      // The frozen "Incidents" screen shows both SOS alerts and incident
+      // reports; fetch both work queues and merge, newest first.
+      const [incidents, sos] = await Promise.all([
+        api.admin.getIncidentQueue(),
+        api.admin.getSosQueue(),
+      ]);
+      const merged = [...sos.items, ...incidents.items].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+      setCases(merged);
+      setSelId((cur) =>
+        cur && merged.some((c) => c.caseId === cur) ? cur : (merged[0]?.caseId ?? null),
+      );
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load the incident queue.');
+      setCases([]);
+    }
+  }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const inc = cases?.find((c) => c.caseId === selId) ?? null;
+
+  const runAction = useCallback(
+    async (
+      action: string,
+      body: Parameters<typeof api.admin.updateCase>[1],
+      successMsg: string,
+    ) => {
+      if (!inc) return;
+      setBusy(action);
+      setActionMsg(null);
+      try {
+        await api.admin.updateCase(inc.caseId, body);
+        setActionMsg(successMsg);
+        await load();
+      } catch (e: unknown) {
+        const msg = (e as { message?: string }).message ?? 'Action failed.';
+        // 409 → someone else updated this case first; a reload refreshes version.
+        setActionMsg(
+          /conflict|version/i.test(msg)
+            ? 'This case changed since you opened it — reloaded the latest.'
+            : msg,
+        );
+        await load();
+      } finally {
+        setBusy(null);
+      }
+    },
+    [inc, load],
+  );
+
+  if (cases === null && !error)
+    return (
+      <Card>
+        <span style={{ fontSize: 13, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          Loading…
+        </span>
+      </Card>
+    );
+  if (error)
+    return (
+      <Card>
+        <span style={{ fontSize: 13, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>{error}</span>
+      </Card>
+    );
   if (!inc)
     return (
       <Card>
         <span style={{ fontSize: 13, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
-          No incidents in the queue.
+          No incidents or SOS alerts in the queue.
         </span>
       </Card>
     );
-  const sevColor = (s: string) =>
-    s === 'critical' ? C_ERR : s === 'high' ? C_WARN : s === 'medium' ? C_INFO : MUTED;
+
+  const list = cases ?? [];
+  const isSos = inc.caseType === 'SOS';
+  const hasCoords = inc.latitude != null && inc.longitude != null;
+  const canResolve = inc.status !== 'RESOLVED' && inc.status !== 'CLOSED';
+  const canEscalate = inc.priority !== 'CRITICAL' && canResolve;
+
   return (
     <div style={{ display: 'flex', gap: 14, height: '100%' }}>
       {/* Queue */}
@@ -2604,57 +2776,66 @@ function PageIncidents() {
         >
           Incident Queue
         </div>
-        {INCIDENTS.map((inc, i) => (
-          <Card
-            key={inc.id}
-            style={{
-              cursor: 'pointer',
-              padding: '12px 14px',
-              borderColor: sel === i ? `${G3}55` : BORDER,
-            }}
-            onClick={() => setSel(i)}
-          >
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-              <span style={{ fontSize: 18 }}>{inc.icon}</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-                  <span
+        {list.map((c) => {
+          const sev = caseSeverity(c);
+          return (
+            <Card
+              key={c.caseId}
+              style={{
+                cursor: 'pointer',
+                padding: '12px 14px',
+                borderColor: selId === c.caseId ? `${G3}55` : BORDER,
+              }}
+              onClick={() => {
+                setSelId(c.caseId);
+                setActionMsg(null);
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                <span style={{ fontSize: 18 }}>{caseIcon(c)}</span>
+                <div style={{ flex: 1 }}>
+                  <div
+                    style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}
+                  >
+                    <span
+                      style={{
+                        fontSize: 11.5,
+                        fontWeight: 700,
+                        color: WHITE,
+                        fontFamily: 'Poppins, sans-serif',
+                      }}
+                    >
+                      {caseTypeLabel(c)}
+                    </span>
+                    <Chip label={sev} color={incidentSevColor(sev)} />
+                  </div>
+                  <div
                     style={{
-                      fontSize: 11.5,
-                      fontWeight: 700,
-                      color: WHITE,
-                      fontFamily: 'Poppins, sans-serif',
+                      fontSize: 11,
+                      color: MUTED,
+                      fontFamily: 'Inter, sans-serif',
+                      lineHeight: 1.4,
                     }}
                   >
-                    {inc.id}
-                  </span>
-                  <Chip label={inc.severity} color={sevColor(inc.severity)} />
-                </div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: MUTED,
-                    fontFamily: 'Inter, sans-serif',
-                    lineHeight: 1.4,
-                  }}
-                >
-                  {inc.desc.slice(0, 55)}...
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
-                  <StatusChip status={inc.status} />
-                  <span style={{ fontSize: 10, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
-                    {inc.time}
-                  </span>
+                    {caseDesc(c).slice(0, 55)}
+                    {caseDesc(c).length > 55 ? '…' : ''}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+                    <Chip label={lifecycleLabel(c.status)} color={lifecycleColor(c.status)} />
+                    <span style={{ fontSize: 10, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+                      {formatCaseTime(c.createdAt)}
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
-          </Card>
-        ))}
+            </Card>
+          );
+        })}
       </div>
       {/* Detail */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 22 }}>{inc.icon}</span>
+          <span style={{ fontSize: 22 }}>{caseIcon(inc)}</span>
           <div>
             <div
               style={{
@@ -2664,18 +2845,19 @@ function PageIncidents() {
                 color: WHITE,
               }}
             >
-              {inc.id} — {inc.type}
+              {caseTypeLabel(inc)}
             </div>
             <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 11, color: MUTED }}>
-              {inc.time} · Trip {inc.trip}
+              {formatCaseTime(inc.createdAt)}
+              {inc.rideId ? ` · Trip ${inc.rideId.slice(0, 8)}` : ''}
             </div>
           </div>
           <div style={{ marginLeft: 'auto' }}>
-            <Chip label={inc.severity.toUpperCase()} color={sevColor(inc.severity)} />
+            <Chip label={caseSeverity(inc)} color={incidentSevColor(caseSeverity(inc))} />
           </div>
         </div>
         <div style={{ display: 'flex', gap: 12 }}>
-          {/* SVG mini-map for SOS */}
+          {/* SVG mini-map */}
           <Card style={{ flex: 1, padding: 12 }}>
             <div
               style={{
@@ -2715,9 +2897,11 @@ function PageIncidents() {
                 fontSize={9}
                 fontFamily="Inter, sans-serif"
               >
-                Lekki-Epe Expressway
+                {hasCoords
+                  ? `${inc.latitude?.toFixed(4)}, ${inc.longitude?.toFixed(4)}`
+                  : 'Location not reported'}
               </text>
-              {inc.type === 'SOS' && (
+              {isSos && hasCoords && (
                 <>
                   <circle cx={150} cy={70} r={24} fill={`${C_ERR}22`} />
                   <circle cx={150} cy={70} r={12} fill={`${C_ERR}44`} />
@@ -2734,11 +2918,11 @@ function PageIncidents() {
                   </text>
                 </>
               )}
-              {inc.type !== 'SOS' && (
+              {!isSos && hasCoords && (
                 <>
                   <circle cx={150} cy={70} r={8} fill={C_WARN} />
                   <text x={160} y={66} fill={C_WARN} fontSize={10} fontFamily="Inter, sans-serif">
-                    {inc.icon}
+                    {caseIcon(inc)}
                   </text>
                 </>
               )}
@@ -2754,15 +2938,17 @@ function PageIncidents() {
                 lineHeight: 1.6,
               }}
             >
-              {inc.desc}
+              {caseDesc(inc)}
             </div>
             <SEP />
             {[
-              ['Driver', inc.driver],
-              ['Passenger', inc.passenger],
-              ['Trip', inc.trip],
+              ['Driver', inc.driverName || '—'],
+              ['Driver Phone', inc.driverPhone ?? '—'],
+              ['Trip', inc.rideId ? inc.rideId.slice(0, 8) : '—'],
+              ['Assigned', inc.assignedToName ?? 'Unassigned'],
               ['Status', ''],
-              ['Time', inc.time],
+              ['Priority', inc.priority],
+              ['Reported', formatCaseTime(inc.createdAt)],
             ].map(([k, v]) => (
               <div
                 key={k}
@@ -2775,7 +2961,7 @@ function PageIncidents() {
               >
                 <span style={{ fontSize: 11, color: MUTED }}>{k}</span>
                 {k === 'Status' ? (
-                  <StatusChip status={inc.status} />
+                  <Chip label={lifecycleLabel(inc.status)} color={lifecycleColor(inc.status)} />
                 ) : (
                   <span style={{ fontSize: 11.5, color: WHITE }}>{v}</span>
                 )}
@@ -2783,13 +2969,76 @@ function PageIncidents() {
             ))}
           </Card>
         </div>
+        {actionMsg && (
+          <Card style={{ padding: '10px 14px' }}>
+            <span style={{ fontSize: 11.5, color: WHITE, fontFamily: 'Inter, sans-serif' }}>
+              {actionMsg}
+            </span>
+          </Card>
+        )}
         {/* Actions */}
         <Card style={{ display: 'flex', gap: 10 }}>
-          <Btn label="✓ Resolve Incident" color={C_OK} />
-          <Btn label="⬆ Escalate" color={C_WARN} outline />
-          <Btn label="📞 Contact Driver" color={C_INFO} outline />
-          <Btn label="📞 Contact Passenger" color={C_INFO} outline />
-          <Btn label="Export Report" color={MUTED} outline />
+          <Btn
+            label={busy === 'resolve' ? 'Resolving…' : '✓ Resolve Incident'}
+            color={C_OK}
+            onClick={
+              busy || !canResolve
+                ? undefined
+                : () =>
+                    void runAction(
+                      'resolve',
+                      { version: inc.version, status: 'RESOLVED' },
+                      'Case marked resolved.',
+                    )
+            }
+          />
+          <Btn
+            label={busy === 'escalate' ? 'Escalating…' : '⬆ Escalate'}
+            color={C_WARN}
+            outline
+            onClick={
+              busy || !canEscalate
+                ? undefined
+                : () => {
+                    const np = nextPriority(inc.priority);
+                    void runAction(
+                      'escalate',
+                      { version: inc.version, priority: np, status: 'IN_PROGRESS' },
+                      `Escalated to ${np}.`,
+                    );
+                  }
+            }
+          />
+          <Btn
+            label="📞 Contact Driver"
+            color={C_INFO}
+            outline
+            onClick={
+              inc.driverPhone
+                ? () => {
+                    window.location.href = `tel:${inc.driverPhone ?? ''}`;
+                  }
+                : () => setActionMsg('No phone number on file for this driver.')
+            }
+          />
+          <Btn
+            label="📞 Contact Passenger"
+            color={C_INFO}
+            outline
+            onClick={() =>
+              setActionMsg(
+                'Passenger contact isn’t available here — SOS/incident cases carry the driver’s details, not the passenger’s.',
+              )
+            }
+          />
+          <Btn
+            label="Export Report"
+            color={MUTED}
+            outline
+            onClick={() =>
+              setActionMsg('Report export isn’t available yet — no backend endpoint exists.')
+            }
+          />
         </Card>
       </div>
     </div>
