@@ -2814,9 +2814,11 @@ export function BiometricScreen({
 export function SignInScreen({
   onBack,
   onSuccess,
+  onMerchant,
 }: {
   onBack: () => void;
   onSuccess?: () => void;
+  onMerchant?: () => void;
 }) {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
@@ -2944,35 +2946,28 @@ export function SignInScreen({
           icon={<ArrowIcon />}
           onClick={handleLogin}
         />
-        <Divider label="or continue with" />
-        <div className="flex gap-3">
-          {(
-            [
-              { label: 'Google', icon: 'G', color: '#EA4335' },
-              { label: 'Apple', icon: '', color: '#fff' },
-              { label: 'Face ID', icon: '⌬', color: G2 },
-            ] as const
-          ).map(({ label, icon, color }) => (
+        {/* Social/biometric sign-in (Google/Apple/Face ID) is intentionally not
+            shown yet: Apple has no backend, Face ID is native-only, and Google
+            OAuth is not wired into this screen. Hidden rather than left as dead
+            buttons (DPX §3: document gaps, don't fake). */}
+        {onMerchant && (
+          <>
+            <Divider label="business account" />
             <button
-              key={label}
-              className="flex h-[52px] flex-1 flex-col items-center justify-center gap-1 rounded-xl transition-all active:scale-95"
+              onClick={onMerchant}
+              className="flex h-[52px] w-full items-center justify-center gap-2 rounded-xl transition-all active:scale-95"
               style={{ background: 'rgba(255,255,255,.04)', border: `1.5px solid ${BORDER}` }}
             >
+              <span className="text-base">🏪</span>
               <span
-                className="text-base font-bold"
-                style={{ color, fontFamily: "'Poppins',sans-serif" }}
+                className="text-sm font-semibold text-white"
+                style={{ fontFamily: "'Inter',sans-serif" }}
               >
-                {icon}
-              </span>
-              <span
-                className="text-[10px]"
-                style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.28)' }}
-              >
-                {label}
+                Sign in as a merchant
               </span>
             </button>
-          ))}
-        </div>
+          </>
+        )}
       </div>
       <div className="pb-8" />
     </div>
