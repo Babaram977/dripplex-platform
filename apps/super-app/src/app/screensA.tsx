@@ -2815,10 +2815,12 @@ export function SignInScreen({
   onBack,
   onSuccess,
   onMerchant,
+  onDriver,
 }: {
   onBack: () => void;
   onSuccess?: () => void;
   onMerchant?: () => void;
+  onDriver?: () => void;
 }) {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
@@ -2950,22 +2952,41 @@ export function SignInScreen({
             shown yet: Apple has no backend, Face ID is native-only, and Google
             OAuth is not wired into this screen. Hidden rather than left as dead
             buttons (DPX §3: document gaps, don't fake). */}
-        {onMerchant && (
+        {(onMerchant || onDriver) && (
           <>
-            <Divider label="business account" />
-            <button
-              onClick={onMerchant}
-              className="flex h-[52px] w-full items-center justify-center gap-2 rounded-xl transition-all active:scale-95"
-              style={{ background: 'rgba(255,255,255,.04)', border: `1.5px solid ${BORDER}` }}
-            >
-              <span className="text-base">🏪</span>
-              <span
-                className="text-sm font-semibold text-white"
-                style={{ fontFamily: "'Inter',sans-serif" }}
-              >
-                Sign in as a merchant
-              </span>
-            </button>
+            <Divider label="partner sign-in" />
+            <div className="flex gap-3">
+              {onMerchant && (
+                <button
+                  onClick={onMerchant}
+                  className="flex h-[52px] flex-1 items-center justify-center gap-2 rounded-xl transition-all active:scale-95"
+                  style={{ background: 'rgba(255,255,255,.04)', border: `1.5px solid ${BORDER}` }}
+                >
+                  <span className="text-base">🏪</span>
+                  <span
+                    className="text-sm font-semibold text-white"
+                    style={{ fontFamily: "'Inter',sans-serif" }}
+                  >
+                    Merchant
+                  </span>
+                </button>
+              )}
+              {onDriver && (
+                <button
+                  onClick={onDriver}
+                  className="flex h-[52px] flex-1 items-center justify-center gap-2 rounded-xl transition-all active:scale-95"
+                  style={{ background: 'rgba(255,255,255,.04)', border: `1.5px solid ${BORDER}` }}
+                >
+                  <span className="text-base">🚗</span>
+                  <span
+                    className="text-sm font-semibold text-white"
+                    style={{ fontFamily: "'Inter',sans-serif" }}
+                  >
+                    Driver
+                  </span>
+                </button>
+              )}
+            </div>
           </>
         )}
       </div>

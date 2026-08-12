@@ -1290,9 +1290,11 @@ export function DriverVehicleRegScreen({
 export function DriverDashboardScreen({
   onRequest,
   onSettings,
+  onSignIn,
 }: {
   onRequest: (offer: RideOfferDto) => void;
   onSettings: () => void;
+  onSignIn?: () => void;
 }) {
   const [online, setOnline] = useState(false);
   const [tab, setTab] = useState<'dash' | 'trips' | 'earnings' | 'wallet' | 'profile'>('dash');
@@ -1351,6 +1353,34 @@ export function DriverDashboardScreen({
   };
 
   const handleTabChange = (t: typeof tab) => setTab(t);
+
+  // Only a driver session can use this app — otherwise every request 403s and
+  // the driver-only data is meaningless. Send non-drivers to the driver login.
+  if (!auth.hasRole('driver')) {
+    return (
+      <div
+        className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-8 text-center"
+        style={{ background: NAVY_DEEP }}
+      >
+        <div className="text-4xl">🚗</div>
+        <div
+          className="text-[18px] font-bold text-white"
+          style={{ fontFamily: "'Poppins',sans-serif" }}
+        >
+          Sign in as a driver
+        </div>
+        <div className="text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
+          You’re not signed in as a driver. Sign in to your driver account to go online and accept
+          trips.
+        </div>
+        {onSignIn && (
+          <div className="mt-2 w-full max-w-[240px]">
+            <DGreenBtn label="Go to driver sign-in" onClick={onSignIn} />
+          </div>
+        )}
+      </div>
+    );
+  }
 
   if (tab === 'trips') return <DriverTripsTab onBack={() => setTab('dash')} />;
   if (tab === 'earnings') return <DriverEarningsTab onBack={() => setTab('dash')} />;
@@ -1575,13 +1605,14 @@ export function DriverIncomingRequestScreen({
   const [countdown, setCountdown] = useState(15);
   const [preview, setPreview] = useState<RideOfferPreviewDto | null>(null);
   const [busy, setBusy] = useState<null | 'accept' | 'decline'>(null);
+  const [err, setErr] = useState('');
 
   useEffect(() => {
     if (!offer) return;
     api.driverRides
       .getOfferPreview(offer.id)
       .then(setPreview)
-      .catch(() => {});
+      .catch(() => setErr('Could not load ride details — do not accept until it loads.'));
   }, [offer]);
 
   const handleDecline = async () => {
@@ -1598,14 +1629,19 @@ export function DriverIncomingRequestScreen({
   };
 
   const handleAccept = async () => {
-    if (busy || !offer) return;
+    if (busy || !offer || !preview) return;
     setBusy('accept');
+    setErr('');
     try {
       const ride = await api.driverRides.acceptOffer(offer.id);
       onAccept(ride);
-    } catch {
+    } catch (e: unknown) {
+      // Don't silently decline — tell the driver why (usually the ride was
+      // already taken/expired). The countdown returns them to the dashboard.
+      setErr(
+        (e as { message?: string }).message ?? 'Could not accept — the ride may have been taken.',
+      );
       setBusy(null);
-      onDecline();
     }
   };
 
@@ -1792,6 +1828,17 @@ export function DriverIncomingRequestScreen({
             </div>
           </div>
 
+          {err && (
+            <div
+              className="mb-3 rounded-xl px-3 py-2 text-center"
+              style={{ background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.25)' }}
+            >
+              <span className="text-[12px]" style={{ fontFamily: IT, color: '#F87171' }}>
+                {err}
+              </span>
+            </div>
+          )}
+
           {/* CTA */}
           <div className="flex gap-3">
             <button
@@ -1816,9 +1863,12 @@ export function DriverIncomingRequestScreen({
               </svg>
             </button>
             <DGreenBtn
-              label={busy === 'accept' ? 'Accepting…' : '✓  Accept Ride'}
+              label={
+                busy === 'accept' ? 'Accepting…' : preview ? '✓  Accept Ride' : 'Loading ride…'
+              }
               onClick={handleAccept}
               loading={busy === 'accept'}
+              disabled={!preview || busy !== null}
             />
           </div>
         </div>
