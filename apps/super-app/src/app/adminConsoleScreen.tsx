@@ -263,9 +263,7 @@ const TRIPS: Record<string, unknown>[] = []; // mock cleared — wired to backen
 
 const CUSTOMERS: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
 
-const REVENUE_DATA: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
-
-const TRIP_STATUS_PIE: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
+const REVENUE_DATA: Record<string, unknown>[] = []; // mock cleared — no revenue time-series feed yet
 
 const WEEKLY_DATA: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
 
@@ -719,28 +717,77 @@ function PageDashboard() {
     openSupportTicketsCount: number;
     waitingReviewCount: number;
   } | null>(null);
+  const [fleet, setFleet] = useState<AdminFleetSummaryDto | null>(null);
+  const [rides, setRides] = useState<AdminLiveRideDto[] | null>(null);
+  const [overview, setOverview] = useState<{ ridesCompleted: number } | null>(null);
+
   useEffect(() => {
     let cancelled = false;
-    void api.admin
-      .getOpsCounters()
-      .then((c) => {
-        if (!cancelled) setCounters(c);
-      })
-      .catch(() => {
-        /* leave counters null → tiles show — */
-      });
+    // Each metric source is independent — a failure in one leaves that tile at
+    // "—" rather than blanking the whole dashboard.
+    void api.admin.getOpsCounters().then(
+      (v) => !cancelled && setCounters(v),
+      () => {},
+    );
+    void api.admin.getFleet().then(
+      (v) => !cancelled && setFleet(v.summary),
+      () => {},
+    );
+    const loadRides = () =>
+      api.admin.getRideQueue().then(
+        (v) => !cancelled && setRides(v.rides),
+        () => {},
+      );
+    void loadRides();
+    // The "Live Trip Feed" card advertises Auto-refresh: ON — honour it by
+    // re-polling the live ride queue on the platform's 15s cadence.
+    const rideTimer = setInterval(() => void loadRides(), 15000);
+    // "Completed today" — analytics overview scoped to the start of today → now.
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    void api.admin.getAnalyticsOverview(startOfToday.toISOString(), now.toISOString()).then(
+      (v) => !cancelled && setOverview({ ridesCompleted: v.ridesCompleted }),
+      () => {},
+    );
     return () => {
       cancelled = true;
+      clearInterval(rideTimer);
     };
   }, []);
+
   // Real counters where available; every other tile shows "—" rather than a fake
-  // number until its metric is wired (trips/revenue/driver-availability).
+  // number until its metric is wired (revenue has no backend feed yet).
   const c = (n: number | undefined) => (n === undefined ? '—' : String(n));
+  const activeTrips = rides === null ? undefined : rides.length;
+
+  // Trip Status pie from the real live ride queue (status distribution).
+  const pieData = (() => {
+    if (!rides || rides.length === 0) return [] as { name: string; value: number; color: string }[];
+    const buckets: Record<string, { value: number; color: string }> = {};
+    const colorFor = (label: string) =>
+      label === 'in progress'
+        ? C_OK
+        : label === 'accepted'
+          ? G2
+          : label === 'arriving'
+            ? C_WARN
+            : C_INFO;
+    for (const r of rides) {
+      const label = LIVE_RIDE_STATUS_LABEL[r.status];
+      buckets[label] = { value: (buckets[label]?.value ?? 0) + 1, color: colorFor(label) };
+    }
+    return Object.entries(buckets).map(([name, v]) => ({
+      name: name.replace(/\b\w/g, (m) => m.toUpperCase()),
+      value: v.value,
+      color: v.color,
+    }));
+  })();
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* KPI Row 1 */}
       <div style={{ display: 'flex', gap: 12 }}>
-        <KpiCard label="Active Trips" value="—" sub="" color={G3} icon="🚗" />
+        <KpiCard label="Active Trips" value={c(activeTrips)} sub="Live now" color={G3} icon="🚗" />
         <KpiCard
           label="Pending Requests"
           value={c(counters?.waitingReviewCount)}
@@ -748,13 +795,31 @@ function PageDashboard() {
           color={C_WARN}
           icon="⏳"
         />
-        <KpiCard label="Completed Today" value="—" sub="" color={C_OK} icon="✅" />
-        <KpiCard label="Revenue Today" value="—" sub="" color={G2} icon="💰" />
+        <KpiCard
+          label="Completed Today"
+          value={c(overview?.ridesCompleted)}
+          sub="Rides"
+          color={C_OK}
+          icon="✅"
+        />
+        <KpiCard label="Revenue Today" value="—" sub="No feed yet" color={G2} icon="💰" />
       </div>
       {/* KPI Row 2 */}
       <div style={{ display: 'flex', gap: 12 }}>
-        <KpiCard label="Online Drivers" value="—" sub="" color={C_OK} icon="🟢" />
-        <KpiCard label="Offline Drivers" value="—" sub="" color={MUTED} icon="⚫" />
+        <KpiCard
+          label="Online Drivers"
+          value={c(fleet?.onlineCount)}
+          sub="Now"
+          color={C_OK}
+          icon="🟢"
+        />
+        <KpiCard
+          label="Offline Drivers"
+          value={c(fleet?.offlineCount)}
+          sub="Now"
+          color={MUTED}
+          icon="⚫"
+        />
         <KpiCard
           label="Support Tickets"
           value={c(counters?.openSupportTicketsCount)}
@@ -807,28 +872,45 @@ function PageDashboard() {
         {/* Pie chart */}
         <Card style={{ flex: 1, padding: '14px 16px' }}>
           <SectionHeader title="Trip Status" />
-          <ResponsiveContainer width="100%" height={120}>
-            <PieChart>
-              <Pie
-                data={TRIP_STATUS_PIE}
-                cx="50%"
-                cy="50%"
-                innerRadius={30}
-                outerRadius={52}
-                paddingAngle={3}
-                dataKey="value"
-              >
-                {TRIP_STATUS_PIE.map((e, i) => (
-                  <Cell key={i} fill={e.color} />
-                ))}
-              </Pie>
-              <Tooltip contentStyle={TOOLTIP_STYLE} />
-              <Legend
-                iconSize={8}
-                wrapperStyle={{ fontSize: 10, fontFamily: 'Inter, sans-serif', color: MUTED }}
-              />
-            </PieChart>
-          </ResponsiveContainer>
+          {pieData.length === 0 ? (
+            <div
+              style={{
+                height: 120,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 12,
+                color: MUTED,
+                fontFamily: 'Inter, sans-serif',
+              }}
+            >
+              No live rides.
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={120}>
+              <PieChart>
+                <Pie
+                  data={pieData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={30}
+                  outerRadius={52}
+                  paddingAngle={3}
+                  dataKey="value"
+                  nameKey="name"
+                >
+                  {pieData.map((e, i) => (
+                    <Cell key={i} fill={e.color} />
+                  ))}
+                </Pie>
+                <Tooltip contentStyle={TOOLTIP_STYLE} />
+                <Legend
+                  iconSize={8}
+                  wrapperStyle={{ fontSize: 10, fontFamily: 'Inter, sans-serif', color: MUTED }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          )}
         </Card>
       </div>
       {/* Live trip feed */}
@@ -859,34 +941,46 @@ function PageDashboard() {
             </tr>
           </thead>
           <tbody>
-            {TRIPS.map((t, i) => (
-              <tr
-                key={t.id}
-                className="dx-row"
-                style={{
-                  borderBottom: `1px solid ${BORDER}`,
-                  background: i % 2 === 1 ? 'rgba(255,255,255,.01)' : 'transparent',
-                }}
-              >
-                <td style={{ padding: '7px 8px', fontSize: 11.5, color: G3, fontWeight: 600 }}>
-                  {t.id}
-                </td>
-                <td style={{ padding: '7px 8px', fontSize: 11.5, color: WHITE }}>{t.driver}</td>
-                <td style={{ padding: '7px 8px', fontSize: 11.5, color: WHITE }}>{t.passenger}</td>
-                <td style={{ padding: '7px 8px', fontSize: 11, color: MUTED }}>
-                  {t.pickup} → {t.dropoff}
-                </td>
-                <td style={{ padding: '7px 8px', fontSize: 11.5, color: WHITE, fontWeight: 600 }}>
-                  {t.fare}
-                </td>
-                <td style={{ padding: '7px 8px' }}>
-                  <StatusChip status={t.status} />
-                </td>
-                <td style={{ padding: '7px 8px', fontSize: 11, color: MUTED }}>{t.eta}</td>
-              </tr>
-            ))}
+            {(rides ?? []).map((t, i) => {
+              const route = `${t.pickupAddress ?? `${t.pickupLatitude.toFixed(2)},${t.pickupLongitude.toFixed(2)}`} → ${t.dropoffAddress ?? `${t.dropoffLatitude.toFixed(2)},${t.dropoffLongitude.toFixed(2)}`}`;
+              return (
+                <tr
+                  key={t.rideId}
+                  className="dx-row"
+                  style={{
+                    borderBottom: `1px solid ${BORDER}`,
+                    background: i % 2 === 1 ? 'rgba(255,255,255,.01)' : 'transparent',
+                  }}
+                >
+                  <td style={{ padding: '7px 8px', fontSize: 11.5, color: G3, fontWeight: 600 }}>
+                    {t.rideId.slice(0, 8)}
+                  </td>
+                  <td style={{ padding: '7px 8px', fontSize: 11.5, color: WHITE }}>
+                    {t.driverName ?? '—'}
+                  </td>
+                  <td style={{ padding: '7px 8px', fontSize: 11.5, color: WHITE }}>
+                    {t.customerName}
+                  </td>
+                  <td style={{ padding: '7px 8px', fontSize: 11, color: MUTED }}>{route}</td>
+                  <td style={{ padding: '7px 8px', fontSize: 11.5, color: MUTED, fontWeight: 600 }}>
+                    —
+                  </td>
+                  <td style={{ padding: '7px 8px' }}>
+                    <StatusChip status={LIVE_RIDE_STATUS_LABEL[t.status]} />
+                  </td>
+                  <td style={{ padding: '7px 8px', fontSize: 11, color: MUTED }}>—</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
+        {rides !== null && rides.length === 0 && (
+          <div
+            style={{ marginTop: 10, fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}
+          >
+            No live rides right now.
+          </div>
+        )}
       </Card>
     </div>
   );
