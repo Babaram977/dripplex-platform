@@ -874,6 +874,23 @@ export interface CustomerKycStatusDto {
   levelAccess: { level0: boolean; level1: boolean };
 }
 
+// One active login session/device (GET /auth/sessions). `current` flags the
+// caller's own session (must not be revocable in the UI).
+export interface SessionDto {
+  sessionId: string;
+  current: boolean;
+  portal: string | null;
+  browser: string | null;
+  operatingSystem: string | null;
+  device: string | null;
+  deviceType: 'desktop' | 'mobile' | 'tablet' | 'bot' | 'unknown';
+  ip: string | null;
+  location: string | null;
+  createdAt: string;
+  lastActiveAt: string;
+  expiresAt: string;
+}
+
 // Notifications
 export interface NotificationDto {
   id: string;
@@ -982,6 +999,23 @@ export const api = {
       dx<unknown>('POST', '/auth/password/reset', body),
     changePassword: (body: { currentPassword: string; newPassword: string }) =>
       dx<unknown>('POST', '/auth/password/change', body),
+
+    // Active sessions / devices. Revoking the current session is disallowed by
+    // the backend; the UI must hide the revoke action on the `current` row.
+    listSessions: () => dx<{ items: SessionDto[] }>('GET', '/auth/sessions'),
+    revokeSession: (sessionId: string) => dx<void>('DELETE', `/auth/sessions/${sessionId}`),
+    revokeOtherSessions: () => dx<{ revokedCount: number }>('DELETE', '/auth/sessions'),
+
+    // Change phone / email — two-step, OTP-confirmed. `request` sends an OTP to
+    // the NEW phone/email; `confirm` applies the change once the code verifies.
+    requestPhoneChange: (body: { newPhone: string }) =>
+      dx<{ expiresInSeconds: number }>('POST', '/auth/me/phone/change', body),
+    confirmPhoneChange: (body: { otp: string }) =>
+      dx<DxUser>('POST', '/auth/me/phone/change/confirm', body),
+    requestEmailChange: (body: { newEmail: string }) =>
+      dx<{ expiresInSeconds: number }>('POST', '/auth/me/email/change', body),
+    confirmEmailChange: (body: { otp: string }) =>
+      dx<DxUser>('POST', '/auth/me/email/change/confirm', body),
   },
 
   // ── WALLET (customer) ───────────────────────────────────────────────────────
