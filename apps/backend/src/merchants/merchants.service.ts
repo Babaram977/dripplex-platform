@@ -134,7 +134,12 @@ export class MerchantsService {
     if (dto.latitude !== undefined || dto.longitude !== undefined) {
       this.assertValidCoordinates(latitude, longitude);
     }
-    if (dto.address !== undefined) {
+    // Minimal onboarding (founder decision): Store Setup has a single free-text
+    // address field and no separate city/state inputs, so a free-text address
+    // alone is accepted — city/state/country are completed and verified before
+    // Ops approval. The complete structured-address check only applies when the
+    // merchant actually supplies structured location fields (city/state).
+    if (dto.city !== undefined || dto.state !== undefined) {
       this.assertAddress({ address, city, state, country });
     }
 
@@ -219,12 +224,10 @@ export class MerchantsService {
       );
     }
 
-    if (
-      dto.address !== undefined ||
-      dto.city !== undefined ||
-      dto.state !== undefined ||
-      dto.country !== undefined
-    ) {
+    // Mirror createBusiness: a free-text address update alone is accepted for
+    // minimal onboarding; the complete structured-address check only applies
+    // when the merchant is setting structured location (city/state/country).
+    if (dto.city !== undefined || dto.state !== undefined || dto.country !== undefined) {
       this.assertAddress({
         address: dto.address ?? business.address,
         city: dto.city ?? business.city,

@@ -273,6 +273,46 @@ describe('MerchantsService', () => {
       );
     });
 
+    it('accepts a free-text address alone (minimal onboarding, no city/state)', async () => {
+      // Store Setup has a single free-text address field and no separate
+      // city/state inputs — a bare address must not trip "Complete address is
+      // required" and block the merchant from ever submitting.
+      repository.findBusinessByMerchantId.mockResolvedValue(null);
+      repository.createBusiness.mockResolvedValue(business);
+
+      await expect(
+        service.createBusiness(
+          merchantId,
+          {
+            businessName: 'Ghasan Leather Shop',
+            businessType: BusinessType.SOLE_PROPRIETORSHIP,
+            address: '634 Hadejia Road Kano',
+          },
+          context,
+        ),
+      ).resolves.toBeDefined();
+      expect(repository.createBusiness).toHaveBeenCalledWith(
+        expect.objectContaining({ address: '634 Hadejia Road Kano', city: '', state: '' }),
+      );
+    });
+
+    it('still enforces the complete address when structured location is supplied', async () => {
+      repository.findBusinessByMerchantId.mockResolvedValue(null);
+
+      await expect(
+        service.createBusiness(
+          merchantId,
+          {
+            businessName: 'Ghasan Leather Shop',
+            businessType: BusinessType.SOLE_PROPRIETORSHIP,
+            city: 'Kano',
+            address: '',
+          },
+          context,
+        ),
+      ).rejects.toBeInstanceOf(ValidationDomainException);
+    });
+
     it('rejects duplicate active business', async () => {
       repository.findBusinessByMerchantId.mockResolvedValue(business);
 
