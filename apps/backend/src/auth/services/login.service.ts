@@ -189,7 +189,9 @@ export class LoginService {
       }
 
       const reason = error instanceof Error ? error.constructor.name : 'login_rejected';
-      await this.handleFailedLogin(identifier, context, portal, reason, user.id);
+      // Password was already verified above; this is an eligibility/portal
+      // rejection, so audit it but do not count it toward the account lockout.
+      await this.handleFailedLogin(identifier, context, portal, reason, user.id, false);
       throw error;
     }
   }
@@ -286,8 +288,15 @@ export class LoginService {
     portal: PortalLoginType,
     reason: string,
     userId?: string,
+    // The brute-force lockout must only count genuine credential failures.
+    // Post-password rejections (unverified email, wrong portal/role, suspended)
+    // happen with a CORRECT password, so counting them would lock out a
+    // legitimate user and hide the real reason — audit them, don't lock.
+    countTowardLockout = true,
   ): Promise<void> {
-    await this.loginAttemptService.recordFailure(identifier, context.ipAddress);
+    if (countTowardLockout) {
+      await this.loginAttemptService.recordFailure(identifier, context.ipAddress);
+    }
 
     const auditContext: AuditContext = userId !== undefined ? { ...context, userId } : context;
     await this.auditService.record(AUTH_AUDIT_ACTIONS.LOGIN_FAILED, auditContext, {

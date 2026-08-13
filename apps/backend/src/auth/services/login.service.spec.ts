@@ -242,6 +242,27 @@ describe('LoginService', () => {
     ).rejects.toBeInstanceOf(WrongPortalDomainException);
   });
 
+  it('does not count a post-password rejection toward the account lockout', async () => {
+    // Correct password but wrong portal/role: the failure is audited but must
+    // NOT trip the brute-force lockout (that would lock a legitimate user out
+    // and hide the real reason).
+    (usersService.findByIdWithRbac as jest.Mock).mockResolvedValue({
+      ...activeUser,
+      roles: [{ role: { name: 'merchant', permissions: [] } }],
+    });
+
+    await expect(
+      service.loginCustomer({ email: 'ada@example.com', password: 'Password1' }, {}),
+    ).rejects.toBeInstanceOf(WrongPortalDomainException);
+
+    expect(loginAttemptService.recordFailure).not.toHaveBeenCalled();
+    expect(auditService.record).toHaveBeenCalledWith(
+      AUTH_AUDIT_ACTIONS.LOGIN_FAILED,
+      expect.any(Object),
+      expect.any(Object),
+    );
+  });
+
   it('creates a session and stores refresh hash on successful login', async () => {
     await service.loginCustomer({ email: 'ada@example.com', password: 'Password1' }, {});
 
