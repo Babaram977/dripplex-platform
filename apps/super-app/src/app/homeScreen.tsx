@@ -839,6 +839,121 @@ function AICard({ onAsk }: { onAsk: () => void }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PARTNER ENTRY CARD — prominent in-feed "Become a Partner" entry point.
+// Founder decision: the partner hub gets a prominent in-app entry (it used to be
+// buried under the Driver App). Tapping opens the partner choice hub (Sell /
+// Drive / Deliver). personaCounts, when supplied from the API, annotate each
+// chip; otherwise the chips read as plain labels.
+// ─────────────────────────────────────────────────────────────────────────────
+function PartnerEntryCard({
+  onOpen,
+  badgeText = '2,400+ active partners',
+  personaCounts,
+}: {
+  onOpen: () => void;
+  badgeText?: string;
+  personaCounts?: { sell?: number; drive?: number; deliver?: number };
+}) {
+  const [pressed, setPressed] = useState(false);
+  const handleTap = () => {
+    setPressed(true);
+    // Brief press-feedback delay before navigating (matches the hub's tap feel).
+    setTimeout(() => {
+      setPressed(false);
+      onOpen();
+    }, 145);
+  };
+  const chips: { icon: string; label: string; count?: number }[] = [
+    { icon: '🏪', label: 'Sell', count: personaCounts?.sell },
+    { icon: '🚗', label: 'Drive', count: personaCounts?.drive },
+    { icon: '🛵', label: 'Deliver', count: personaCounts?.deliver },
+  ];
+  return (
+    <button
+      onClick={handleTap}
+      className="mx-5 mb-5 block w-full overflow-hidden rounded-3xl text-left transition-transform"
+      style={{
+        background: 'linear-gradient(135deg,#0A1628 0%,#0E1F38 100%)',
+        border: '1.5px solid rgba(43,172,82,.28)',
+        boxShadow: '0 4px 32px rgba(43,172,82,.10)',
+        transform: pressed ? 'scale(0.985)' : 'scale(1)',
+      }}
+    >
+      {/* green gradient accent bar */}
+      <div style={{ height: 3, background: `linear-gradient(90deg,${G0},${G2},${G3})` }} />
+      <div className="p-4">
+        <div className="mb-3 flex items-center gap-3">
+          <div
+            className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl"
+            style={{
+              background:
+                'radial-gradient(circle at 30% 30%, rgba(43,172,82,.45), rgba(43,172,82,.12))',
+              boxShadow: `0 6px 20px rgba(43,172,82,.30)`,
+            }}
+          >
+            <span style={{ fontSize: 22 }}>🤝</span>
+          </div>
+          <div className="flex-1">
+            <p
+              className="text-[15px] font-bold leading-tight"
+              style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
+            >
+              Become a Partner
+            </p>
+            <p className="text-[11px]" style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}>
+              Sell, drive or deliver on DrippleX · {badgeText}
+            </p>
+          </div>
+        </div>
+
+        <div className="mb-4 flex gap-2">
+          {chips.map((c) => (
+            <div
+              key={c.label}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl px-2 py-2.5"
+              style={{ background: 'rgba(43,172,82,.07)', border: '1px solid rgba(43,172,82,.14)' }}
+            >
+              <span style={{ fontSize: 15 }}>{c.icon}</span>
+              <span
+                className="text-[11.5px] font-medium"
+                style={{ color: 'rgba(255,255,255,.78)', fontFamily: "'Inter',sans-serif" }}
+              >
+                {c.label}
+                {typeof c.count === 'number' ? ` · ${c.count.toLocaleString()}` : ''}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div
+          className="flex h-[46px] w-full items-center justify-center gap-2 rounded-2xl text-[14px] font-semibold"
+          style={{
+            background: `linear-gradient(135deg,${G0} 0%,${G2} 55%,${G3} 100%)`,
+            color: '#FFF',
+            fontFamily: "'Poppins',sans-serif",
+            boxShadow: `0 8px 24px rgba(43,172,82,.28)`,
+          }}
+        >
+          Join now
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#FFF"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M9 18l6-6-6-6" />
+          </svg>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // PROMO CAROUSEL
 // ─────────────────────────────────────────────────────────────────────────────
 function PromoCarousel() {
@@ -1476,6 +1591,7 @@ export function HomeScreen({
   onWallet,
   onWalletAction,
   onOrders,
+  onBecomePartner,
 }: {
   onAccount: () => void;
   onSecurity: () => void;
@@ -1487,6 +1603,7 @@ export function HomeScreen({
   onWallet?: () => void;
   onWalletAction?: (a: 'send' | 'receive' | 'topup' | 'pay') => void;
   onOrders?: () => void;
+  onBecomePartner?: () => void;
 }) {
   const [navTab, setNavTab] = useState<NavTab>('home');
   const [svcTab, setSvcTab] = useState<SvcKey>('market');
@@ -1605,6 +1722,7 @@ export function HomeScreen({
         </div>
 
         <AICard onAsk={() => setShowAI(true)} />
+        {onBecomePartner && <PartnerEntryCard onOpen={onBecomePartner} />}
         <PromoCarousel />
         <Categories />
         <Merchants loaded={loaded} liveMerchants={liveMerchants} onStore={onStore} />

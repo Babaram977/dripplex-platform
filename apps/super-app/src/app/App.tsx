@@ -406,6 +406,9 @@ function AppShell() {
     country: COUNTRIES[0],
   });
   const [partnerPersona, setPartnerPersona] = useState<PartnerPersona>('merchant');
+  // Where the partner hub was opened from, so its back button returns there.
+  // null when the hub is reached mid-onboarding (no back affordance then).
+  const [partnerFrom, setPartnerFrom] = useState<Screen | null>(null);
   // Merchant's business fields from sign-up, pre-filled into the post-login
   // Business Details step (persisted via PATCH /merchant/business).
   const [merchantBiz, setMerchantBiz] = useState<{ businessName: string; category: string }>({
@@ -504,6 +507,10 @@ function AppShell() {
         onSuccess={() => go('home')}
         onMerchant={() => go('mxdash')}
         onDriver={() => go('drvlogin')}
+        onBecomePartner={() => {
+          setPartnerFrom('returning');
+          go('partnerselect');
+        }}
       />
     ),
     recovery: <RecoveryScreen onRecovered={() => go('returning')} onBack={() => go('returning')} />,
@@ -513,6 +520,10 @@ function AppShell() {
         onSuccess={() => go('home')}
         onMerchant={() => go('mxdash')}
         onDriver={() => go('drvlogin')}
+        onBecomePartner={() => {
+          setPartnerFrom('signin');
+          go('partnerselect');
+        }}
       />
     ),
     twofa: <TwoFactorScreen onBack={() => go('security')} onDone={() => go('security')} />,
@@ -614,6 +625,10 @@ function AppShell() {
         }}
         onWallet={() => go('wallethome')}
         onOrders={() => go('orderhistory')}
+        onBecomePartner={() => {
+          setPartnerFrom('home');
+          go('partnerselect');
+        }}
         onWalletAction={(a) =>
           go(
             a === 'send'
@@ -1072,6 +1087,15 @@ function AppShell() {
           );
         }}
         onSignIn={() => go('signin')}
+        onBack={
+          partnerFrom
+            ? () => {
+                const dest = partnerFrom;
+                setPartnerFrom(null);
+                go(dest);
+              }
+            : undefined
+        }
       />
     ),
     partnermerchant: (

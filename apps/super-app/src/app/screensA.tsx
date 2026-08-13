@@ -2816,11 +2816,13 @@ export function SignInScreen({
   onSuccess,
   onMerchant,
   onDriver,
+  onBecomePartner,
 }: {
   onBack: () => void;
   onSuccess?: () => void;
   onMerchant?: () => void;
   onDriver?: () => void;
+  onBecomePartner?: () => void;
 }) {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
@@ -2988,6 +2990,21 @@ export function SignInScreen({
               )}
             </div>
           </>
+        )}
+        {onBecomePartner && (
+          <p
+            className="mt-5 text-center text-[13px]"
+            style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
+          >
+            New to DrippleX?{' '}
+            <button
+              onClick={onBecomePartner}
+              className="font-semibold underline underline-offset-2 transition-opacity active:opacity-70"
+              style={{ color: G3 }}
+            >
+              Become a partner →
+            </button>
+          </p>
         )}
       </div>
       <div className="pb-8" />

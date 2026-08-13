@@ -415,9 +415,17 @@ const ROLES: {
 export function PartnerChoiceScreen({
   onSelect,
   onSignIn,
+  onBack,
+  partnerStats,
 }: {
   onSelect: (p: PartnerPersona) => void;
   onSignIn: () => void;
+  // Shown only when the hub is reached from somewhere it can return to (e.g. the
+  // Home "Become a Partner" card). Omitted on the pre-auth onboarding flow.
+  onBack?: () => void;
+  // Optional live partner counts (from the API); the stats strip is hidden when
+  // absent rather than showing zeros.
+  partnerStats?: { merchant?: number; driver?: number; rider?: number };
 }) {
   const [pressed, setPressed] = useState<PartnerPersona | null>(null);
 
@@ -428,6 +436,14 @@ export function PartnerChoiceScreen({
       onSelect(p);
     }, 160);
   };
+
+  const statItems = partnerStats
+    ? ([
+        { label: 'Merchants', value: partnerStats.merchant },
+        { label: 'Drivers', value: partnerStats.driver },
+        { label: 'Riders', value: partnerStats.rider },
+      ].filter((s) => typeof s.value === 'number') as { label: string; value: number }[])
+    : [];
 
   return (
     <div
@@ -441,7 +457,28 @@ export function PartnerChoiceScreen({
         className="relative z-10 flex flex-1 flex-col gap-7 overflow-y-auto px-7 pt-6"
         style={{ scrollbarWidth: 'none' }}
       >
-        <div style={{ animation: 'fade-up .45s ease both' }}>
+        {onBack && (
+          <button
+            onClick={onBack}
+            className="absolute left-6 top-5 z-20 flex h-9 w-9 items-center justify-center rounded-full transition-opacity active:opacity-70"
+            style={{ background: NAVY_CARD, border: `1px solid ${BORDER}` }}
+            aria-label="Back"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#fff"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
+          </button>
+        )}
+        <div style={{ animation: 'fade-up .45s ease both', marginTop: onBack ? 40 : 0 }}>
           <Logo width={140} />
           <h1
             className="mt-5 text-[26px] font-bold leading-tight"
@@ -454,6 +491,24 @@ export function PartnerChoiceScreen({
           <p className="mt-1.5 text-[14px]" style={{ fontFamily: IT, color: MUTED }}>
             Choose how you want to grow with us
           </p>
+          {statItems.length > 0 && (
+            <div className="mt-4 flex gap-2.5">
+              {statItems.map((s) => (
+                <div
+                  key={s.label}
+                  className="flex flex-1 flex-col items-center rounded-2xl py-2.5"
+                  style={{ background: NAVY_CARD, border: `1px solid ${BORDER}` }}
+                >
+                  <span className="text-[16px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
+                    {s.value.toLocaleString()}
+                  </span>
+                  <span className="text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
+                    {s.label}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col gap-3.5" style={{ animation: 'fade-up .45s ease .1s both' }}>
@@ -530,6 +585,9 @@ export function PartnerChoiceScreen({
     </div>
   );
 }
+
+// Alias for newer call-sites that refer to the partner hub as PartnerHub.
+export const PartnerHub = PartnerChoiceScreen;
 
 // The payload each signup hands to App for the shared OTP → login handoff.
 export type PartnerSignupResult = { email: string; password: string };
