@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { api } from '../lib/api';
+import { api, uploadFile } from '../lib/api';
 import { auth } from '../lib/auth';
 import type { DeliveryJobDto, WalletDto } from '../lib/api';
 
@@ -158,10 +158,12 @@ export function RiderLoginScreen({
   onContinue,
   onBack,
   onApply,
+  onForgot,
 }: {
   onContinue: () => void;
   onBack: () => void;
   onApply?: () => void;
+  onForgot?: () => void;
 }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -280,6 +282,25 @@ export function RiderLoginScreen({
           >
             <p style={{ fontFamily: IT, fontSize: 12, color: C_ERR }}>{error}</p>
           </div>
+        )}
+
+        {onForgot && (
+          <button
+            type="button"
+            onClick={onForgot}
+            className="active:opacity-70"
+            style={{
+              display: 'block',
+              marginLeft: 'auto',
+              marginBottom: 14,
+              fontFamily: IT,
+              fontSize: 13,
+              fontWeight: 600,
+              color: G3,
+            }}
+          >
+            Forgot password?
+          </button>
         )}
 
         <RGreenBtn label={loading ? '' : 'Sign In →'} loading={loading} onClick={handleLogin} />
@@ -612,6 +633,24 @@ export function RiderJobScreen({
   const [acting, setActing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cashAmount, setCashAmount] = useState(String(initialJob.cashCollectedAmount ?? ''));
+  // Real proof-of-delivery photo: uploaded to the delivery-proofs folder, then
+  // sent to /deliver — never a placeholder URL.
+  const [proofUrl, setProofUrl] = useState<string | null>(null);
+  const [proofUploading, setProofUploading] = useState(false);
+
+  const handleProofPhoto = async (file: File | undefined) => {
+    if (!file) return;
+    setProofUploading(true);
+    setError(null);
+    try {
+      const url = await uploadFile(file, 'delivery-proofs');
+      setProofUrl(url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not upload the photo. Try again.');
+    } finally {
+      setProofUploading(false);
+    }
+  };
 
   // Poll for job status updates
   useEffect(() => {
@@ -736,16 +775,42 @@ export function RiderJobScreen({
         {job.status === 'ARRIVED' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <p style={{ fontFamily: IT, fontSize: 13, color: MUTED }}>Proof of delivery</p>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                height: 54,
+                borderRadius: 16,
+                border: `1.5px dashed ${proofUrl ? G2 : BORDER}`,
+                background: NAVY_SURFACE,
+                color: proofUrl ? G3 : MUTED,
+                fontFamily: IT,
+                fontSize: 14,
+                cursor: 'pointer',
+              }}
+            >
+              {proofUploading
+                ? 'Uploading photo…'
+                : proofUrl
+                  ? '✓ Photo attached — retake'
+                  : '📷 Take delivery photo'}
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                style={{ display: 'none' }}
+                onChange={(e) => void handleProofPhoto(e.target.files?.[0])}
+              />
+            </label>
             <RGreenBtn
-              label={acting ? '' : 'Mark as Delivered (Photo)'}
+              label={acting ? '' : 'Mark as Delivered →'}
               loading={acting}
+              disabled={!proofUrl || proofUploading}
               onClick={() =>
-                act(() =>
-                  api.rider.deliver(job.id, {
-                    proofType: 'PHOTO',
-                    photoUrl: 'https://placeholder.photo/delivery',
-                  }),
-                )
+                proofUrl &&
+                act(() => api.rider.deliver(job.id, { proofType: 'PHOTO', photoUrl: proofUrl }))
               }
             />
           </div>

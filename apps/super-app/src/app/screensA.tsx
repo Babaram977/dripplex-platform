@@ -2280,539 +2280,6 @@ export function PermissionsScreen({
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// AUTH-007 — BIOMETRIC SECURITY SETUP
-// ═══════════════════════════════════════════════════════════════════════════
-export type BiometricStatus = 'idle' | 'prompting' | 'success';
-
-export function BiometricScreen({
-  onDone,
-  onSkip,
-  onBack,
-}: {
-  onDone: () => void;
-  onSkip: () => void;
-  onBack: () => void;
-}) {
-  const [status, setStatus] = useState<BiometricStatus>('idle');
-
-  const handleEnable = () => {
-    setStatus('prompting');
-    // Simulate native biometric prompt result
-    setTimeout(() => setStatus('success'), 1400);
-  };
-
-  // Auto-advance from success state
-  useEffect(() => {
-    if (status !== 'success') return;
-    const t = setTimeout(onDone, 2400);
-    return () => clearTimeout(t);
-  }, [status, onDone]);
-
-  // ── Success / welcome state ────────────────────────────────────────────
-  if (status === 'success') {
-    return (
-      <div
-        className="relative flex h-full w-full flex-col items-center justify-center overflow-hidden"
-        style={{
-          background: `linear-gradient(155deg,${NAVY_DEEP} 0%,${NAVY_BASE} 55%,#0B1D2F 100%)`,
-        }}
-      >
-        <Ambient />
-
-        {/* Shield + logo composition */}
-        <div
-          className="relative mb-8 flex items-center justify-center"
-          style={{ width: 200, height: 200 }}
-        >
-          {/* Outer pulse rings */}
-          <div
-            className="absolute inset-0 rounded-full"
-            style={{
-              border: `2px solid ${G2}`,
-              animation: 'pulse-ring 1.6s ease-out .2s infinite',
-            }}
-          />
-          <div
-            className="absolute inset-0 rounded-full"
-            style={{
-              border: `2px solid ${G2}`,
-              animation: 'pulse-ring 1.6s ease-out .6s infinite',
-            }}
-          />
-
-          {/* Green shield */}
-          <div
-            className="relative flex h-32 w-32 items-center justify-center"
-            style={{ animation: 'success-bounce .65s cubic-bezier(.34,1.56,.64,1) .1s both' }}
-          >
-            <svg width="128" height="128" viewBox="0 0 128 128" fill="none">
-              <defs>
-                <linearGradient
-                  id="shieldG"
-                  x1="0"
-                  y1="0"
-                  x2="128"
-                  y2="128"
-                  gradientUnits="userSpaceOnUse"
-                >
-                  <stop stopColor={G0} />
-                  <stop offset="1" stopColor={G3} />
-                </linearGradient>
-              </defs>
-              <path
-                d="M64 8L20 26v34c0 28.7 18.7 55.5 44 62 25.3-6.5 44-33.3 44-62V26L64 8z"
-                fill={`url(#shieldG)`}
-                opacity=".18"
-              />
-              <path
-                d="M64 8L20 26v34c0 28.7 18.7 55.5 44 62 25.3-6.5 44-33.3 44-62V26L64 8z"
-                stroke={`url(#shieldG)`}
-                strokeWidth="3"
-                fill="none"
-              />
-            </svg>
-            {/* Checkmark inside shield */}
-            <svg width="52" height="52" viewBox="0 0 52 52" fill="none" className="absolute">
-              <path
-                d="M12 26l12 12 18-18"
-                stroke="white"
-                strokeWidth="4.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeDasharray="60"
-                strokeDashoffset="0"
-                style={{ animation: 'check-draw .4s ease .4s both' }}
-              />
-            </svg>
-          </div>
-
-          {/* Logo badge */}
-          <div
-            className="absolute -bottom-4 left-1/2 -translate-x-1/2 rounded-xl px-4 py-2"
-            style={{
-              background: `linear-gradient(145deg,${NAVY_SURFACE},${NAVY_CARD})`,
-              border: `1px solid rgba(43,172,82,.2)`,
-              animation: 'fade-up .5s ease .6s both',
-              boxShadow: `0 0 24px rgba(43,172,82,.15)`,
-            }}
-          >
-            <Logo width={90} />
-          </div>
-        </div>
-
-        {/* Text */}
-        <div
-          className="mt-6 flex flex-col items-center gap-2 px-8 text-center"
-          style={{ animation: 'fade-up .6s ease .55s both' }}
-        >
-          <h1
-            className="text-[28px] font-bold text-white"
-            style={{ fontFamily: "'Poppins',sans-serif", letterSpacing: '-0.025em' }}
-          >
-            You're All Set!
-          </h1>
-          <p className="text-[14px]" style={{ fontFamily: "'Inter',sans-serif", color: MUTED }}>
-            Welcome to DrippleX.
-          </p>
-          <p
-            className="mt-0.5 text-[14px] font-semibold tracking-[0.2em]"
-            style={{ fontFamily: "'Poppins',sans-serif", color: G2 }}
-          >
-            life,Simplified
-          </p>
-          <p
-            className="mt-3 text-[12px]"
-            style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.28)' }}
-          >
-            Loading your dashboard…
-          </p>
-        </div>
-
-        {/* Loading dots */}
-        <div
-          className="mt-5 flex items-center gap-2"
-          style={{ animation: 'fade-in .4s ease 1s both' }}
-        >
-          {[0, 1, 2].map((i) => (
-            <div
-              key={i}
-              className="h-2 w-2 rounded-full"
-              style={{
-                background: G2,
-                animation: `otp-pop .6s ease ${i * 0.15}s infinite alternate`,
-              }}
-            />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  // ── Main biometric UI ────────────────────────────────────────────────────
-  const isPending = status === 'prompting';
-
-  return (
-    <div
-      className="relative flex h-full w-full flex-col overflow-hidden"
-      style={{
-        background: `linear-gradient(155deg,${NAVY_DEEP} 0%,${NAVY_BASE} 55%,#0B1D2F 100%)`,
-      }}
-    >
-      <Ambient />
-      <StatusBar />
-
-      <div
-        className="relative z-10 flex flex-1 flex-col overflow-y-auto"
-        style={{ scrollbarWidth: 'none' }}
-      >
-        {/* Nav + progress */}
-        <div className="flex items-center justify-between px-6 pt-3">
-          <BackBtn onPress={onBack} />
-          <div className="flex items-center gap-2">
-            <span
-              className="text-[11px]"
-              style={{ fontFamily: "'Inter',sans-serif", color: MUTED }}
-            >
-              Step 5 of 5
-            </span>
-            <div className="flex gap-1">
-              {[1, 2, 3, 4, 5].map((s) => (
-                <div
-                  key={s}
-                  className="h-1 rounded-full transition-all duration-300"
-                  style={{
-                    width: s === 5 ? 20 : 6,
-                    background: s <= 5 ? G2 : 'rgba(255,255,255,.15)',
-                  }}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Heading */}
-        <div
-          className="px-7 pb-2 pt-4"
-          style={{ animation: 'slide-in-right .42s cubic-bezier(.25,.46,.45,.94) .04s both' }}
-        >
-          <h1
-            className="text-[26px] font-bold leading-tight text-white"
-            style={{ fontFamily: "'Poppins',sans-serif", letterSpacing: '-0.022em' }}
-          >
-            Secure Your Account
-          </h1>
-          <p
-            className="mt-1 text-[14px]"
-            style={{ fontFamily: "'Inter',sans-serif", color: MUTED }}
-          >
-            Enable biometric authentication for faster and more secure access.
-          </p>
-        </div>
-
-        {/* Hero fingerprint illustration */}
-        <div
-          className="flex items-center justify-center py-6"
-          style={{ animation: 'fade-in .6s ease .08s both' }}
-        >
-          <div
-            className="relative flex items-center justify-center"
-            style={{ width: 160, height: 160 }}
-          >
-            {/* Soft glow ring */}
-            <div
-              className="absolute inset-0 rounded-full"
-              style={{
-                background: `radial-gradient(circle,rgba(43,172,82,.18) 0%,transparent 68%)`,
-                animation: 'glow-ring 3s ease-in-out infinite',
-              }}
-            />
-            {/* Outer border ring */}
-            <div
-              className="absolute inset-4 rounded-full"
-              style={{
-                border: `1px solid rgba(43,172,82,.2)`,
-                animation: 'orbit-cw 18s linear infinite',
-              }}
-            />
-            {/* Inner card */}
-            <div
-              className="relative z-10 flex h-24 w-24 items-center justify-center rounded-[28px]"
-              style={{
-                background: `linear-gradient(145deg,${NAVY_SURFACE},${NAVY_CARD})`,
-                border: `1.5px solid rgba(43,172,82,.22)`,
-                boxShadow: `0 0 0 1px rgba(43,172,82,.1), 0 20px 48px rgba(0,0,0,.5), 0 0 60px rgba(43,172,82,.1)`,
-              }}
-            >
-              {/* Fingerprint SVG */}
-              <svg width="52" height="52" viewBox="0 0 52 52" fill="none">
-                <defs>
-                  <linearGradient
-                    id="fpG"
-                    x1="0"
-                    y1="0"
-                    x2="52"
-                    y2="52"
-                    gradientUnits="userSpaceOnUse"
-                  >
-                    <stop stopColor={G0} />
-                    <stop offset="1" stopColor={G3} />
-                  </linearGradient>
-                </defs>
-                {/* Stylised fingerprint arcs */}
-                <path
-                  d="M26 10c-8.8 0-16 7.2-16 16"
-                  stroke={`url(#fpG)`}
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  opacity=".5"
-                />
-                <path
-                  d="M26 15c-6.1 0-11 4.9-11 11 0 4.5 2.7 8.4 6.6 10.2"
-                  stroke={`url(#fpG)`}
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  opacity=".65"
-                />
-                <path
-                  d="M26 20c-3.3 0-6 2.7-6 6 0 2.4 1.4 4.4 3.4 5.5"
-                  stroke={`url(#fpG)`}
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  opacity=".8"
-                />
-                <path
-                  d="M26 20c3.3 0 6 2.7 6 6s-2.7 6-6 6"
-                  stroke={`url(#fpG)`}
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  opacity=".8"
-                />
-                <path
-                  d="M26 15c6.1 0 11 4.9 11 11 0 6.1-4.9 11-11 11"
-                  stroke={`url(#fpG)`}
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  opacity=".65"
-                />
-                <path
-                  d="M26 10c8.8 0 16 7.2 16 16 0 8.8-7.2 16-16 16"
-                  stroke={`url(#fpG)`}
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  opacity=".5"
-                />
-                <circle
-                  cx="26"
-                  cy="26"
-                  r="2.5"
-                  fill={G3}
-                  style={{ animation: 'avatar-pulse 2s ease-in-out infinite' }}
-                />
-              </svg>
-            </div>
-            {/* Floating method badges */}
-            {[
-              { label: '👆', desc: 'Touch ID', angle: -100 },
-              { label: '😊', desc: 'Face ID', angle: 20 },
-            ].map(({ label, desc, angle }) => {
-              const rad = (angle * Math.PI) / 180,
-                r = 72;
-              return (
-                <div
-                  key={desc}
-                  className="absolute"
-                  style={{ transform: `translate(${Math.cos(rad) * r}px,${Math.sin(rad) * r}px)` }}
-                >
-                  <div
-                    className="flex flex-col items-center gap-0.5 rounded-xl px-2.5 py-2"
-                    style={{
-                      background: `linear-gradient(145deg,${NAVY_SURFACE},${NAVY_CARD})`,
-                      border: `1px solid rgba(43,172,82,.16)`,
-                      boxShadow: '0 8px 20px rgba(0,0,0,.4)',
-                      animation: `float-a 3.4s ease-in-out infinite`,
-                    }}
-                  >
-                    <span className="text-lg">{label}</span>
-                    <span
-                      className="text-[9px]"
-                      style={{ fontFamily: "'Inter',sans-serif", color: G3, whiteSpace: 'nowrap' }}
-                    >
-                      {desc}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Benefits card */}
-        <div
-          className="mx-5 rounded-3xl px-5 py-5"
-          style={{
-            background: `linear-gradient(145deg,${NAVY_SURFACE},${NAVY_CARD})`,
-            border: `1px solid ${BORDER}`,
-            boxShadow: '0 20px 60px rgba(0,0,0,.35)',
-            animation: 'slide-in-right .42s cubic-bezier(.25,.46,.45,.94) .12s both',
-          }}
-        >
-          <div className="mb-4 flex items-center gap-2.5">
-            <div
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl"
-              style={{ background: `linear-gradient(135deg,${G0},${G2})` }}
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="white"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-              </svg>
-            </div>
-            <p
-              className="text-[14px] font-semibold text-white"
-              style={{ fontFamily: "'Poppins',sans-serif" }}
-            >
-              Why Enable Biometrics?
-            </p>
-          </div>
-          <div className="flex flex-col gap-3">
-            {[
-              { icon: '⚡', label: 'Faster login', desc: 'Access DrippleX instantly' },
-              { icon: '🔒', label: 'Secure authentication', desc: 'Military-grade protection' },
-              { icon: '💳', label: 'Protect wallet transactions', desc: 'Approve payments safely' },
-              { icon: '✅', label: 'Quick payment approvals', desc: 'One touch to confirm' },
-              { icon: '🧠', label: 'No passwords to remember', desc: 'Your biometric is your key' },
-            ].map(({ icon, label, desc }) => (
-              <div key={label} className="flex items-center gap-3">
-                <div
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-base"
-                  style={{ background: 'rgba(43,172,82,.1)' }}
-                >
-                  {icon}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p
-                    className="text-[13px] font-medium text-white"
-                    style={{ fontFamily: "'Inter',sans-serif" }}
-                  >
-                    {label}
-                  </p>
-                  <p
-                    className="text-[11px]"
-                    style={{ fontFamily: "'Inter',sans-serif", color: MUTED }}
-                  >
-                    {desc}
-                  </p>
-                </div>
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke={G2}
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M20 6L9 17l-5-5" />
-                </svg>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Security notice */}
-        <div
-          className="mx-5 mt-3 flex items-start gap-3 rounded-2xl px-4 py-3.5"
-          style={{
-            background: 'rgba(43,172,82,.06)',
-            border: `1px solid rgba(43,172,82,.14)`,
-            animation: 'slide-in-right .42s cubic-bezier(.25,.46,.45,.94) .18s both',
-          }}
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke={G2}
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="mt-0.5 shrink-0"
-          >
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-          </svg>
-          <p
-            className="text-[12px] leading-relaxed"
-            style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.42)' }}
-          >
-            <span className="font-semibold" style={{ color: 'rgba(255,255,255,.65)' }}>
-              Your biometric data stays on your device.
-            </span>{' '}
-            DrippleX never stores your fingerprint or facial data on our servers.
-          </p>
-        </div>
-
-        {/* Actions */}
-        <div
-          className="flex flex-col gap-3 px-7 pt-5"
-          style={{ animation: 'slide-in-right .42s cubic-bezier(.25,.46,.45,.94) .24s both' }}
-        >
-          <GreenBtn
-            label="Enable Biometric Login"
-            onClick={handleEnable}
-            loading={isPending}
-            icon={
-              !isPending ? (
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                </svg>
-              ) : undefined
-            }
-          />
-          <button
-            onClick={onSkip}
-            className="flex h-[50px] w-full items-center justify-center rounded-2xl text-[14px] font-medium transition-all active:scale-[0.97]"
-            style={{
-              fontFamily: "'Poppins',sans-serif",
-              color: MUTED,
-              background: 'rgba(255,255,255,.03)',
-              border: `1.5px solid ${BORDER}`,
-            }}
-          >
-            Maybe Later
-          </button>
-          <p
-            className="-mt-1 text-center text-[11px]"
-            style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.22)' }}
-          >
-            You can enable biometrics later in Profile → Security
-          </p>
-        </div>
-
-        <div className="pb-10" />
-      </div>
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
 // SIGN IN
 // ═══════════════════════════════════════════════════════════════════════════
 export function SignInScreen({
@@ -2821,12 +2288,14 @@ export function SignInScreen({
   onMerchant,
   onDriver,
   onBecomePartner,
+  onForgot,
 }: {
   onBack: () => void;
   onSuccess?: () => void;
   onMerchant?: () => void;
   onDriver?: () => void;
   onBecomePartner?: () => void;
+  onForgot?: () => void;
 }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -2936,6 +2405,15 @@ export function SignInScreen({
             />
           </div>
         </div>
+        {onForgot && (
+          <button
+            onClick={onForgot}
+            className="-mt-2 self-end text-[13px] font-medium transition-opacity active:opacity-70"
+            style={{ fontFamily: "'Inter',sans-serif", color: G3 }}
+          >
+            Forgot password?
+          </button>
+        )}
         {loginErr && (
           <p style={{ color: '#F87171', fontSize: 13, textAlign: 'center' }}>{loginErr}</p>
         )}
@@ -3662,37 +3140,94 @@ export function RecoveryScreen({
   onRecovered: () => void;
   onBack: () => void;
 }) {
-  const [step, setStep] = useState<RecoveryStep>('options');
-  const [activeOption, setActiveOption] = useState<'phone' | 'email' | null>(null);
-  const [currentStep, setCurrentStep] = useState(1);
+  const [step, setStep] = useState<'email' | 'reset' | 'success'>('email');
+  const [email, setEmail] = useState('');
+  const [otp, setOtp] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [focused, setFocused] = useState<string | null>(null);
+
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const otpValid = /^\d{4,8}$/.test(otp.trim());
+  const pwValid =
+    password.length >= 8 && /[a-z]/.test(password) && /[A-Z]/.test(password) && /\d/.test(password);
 
   useEffect(() => {
     if (step !== 'success') return;
-    const t = setTimeout(onRecovered, 2500);
+    const t = setTimeout(onRecovered, 2200);
     return () => clearTimeout(t);
   }, [step, onRecovered]);
 
-  const handleStart = async () => {
-    if (!activeOption) return;
-    setStep('phone');
-    setCurrentStep(2);
+  const sendCode = async () => {
+    if (!emailValid || busy) return;
+    setBusy(true);
+    setErr(null);
     try {
-      if (activeOption === 'phone') {
-        await api.auth.forgotPassword({ phone: undefined });
-      } else {
-        await api.auth.forgotPassword({ email: undefined });
-      }
-    } catch {
-      /* proceed anyway — user enters phone/email on next step */
+      await api.auth.forgotPassword({ email: email.trim().toLowerCase() });
+      // Backend never reveals whether the email exists; if it does, a code is
+      // emailed. Move on to code entry regardless.
+      setStep('reset');
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not send the code. Please try again.');
+    } finally {
+      setBusy(false);
     }
-    setCurrentStep(3);
-    setTimeout(() => {
-      setCurrentStep(4);
-      setStep('success');
-    }, 2600);
   };
 
-  // ── Success ──────────────────────────────────────────────────────────────
+  const doReset = async () => {
+    if (!otpValid || !pwValid || busy) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await api.auth.resetPassword({
+        email: email.trim().toLowerCase(),
+        otp: otp.trim(),
+        password,
+      });
+      setStep('success');
+    } catch (e) {
+      setErr(
+        e instanceof Error
+          ? e.message
+          : 'Could not reset your password. Check the code and try again.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const fieldStyle = (key: string): React.CSSProperties => ({
+    display: 'flex',
+    alignItems: 'center',
+    height: 56,
+    borderRadius: 16,
+    padding: '0 16px',
+    background: 'rgba(255,255,255,.045)',
+    border: focused === key ? `1.5px solid ${G2}` : `1.5px solid ${BORDER}`,
+    boxShadow: focused === key ? `0 0 0 3px rgba(43,172,82,.12)` : 'none',
+    transition: 'all .2s',
+  });
+  const inputStyle: React.CSSProperties = {
+    flex: 1,
+    background: 'transparent',
+    color: '#fff',
+    fontFamily: "'Inter',sans-serif",
+    fontSize: 15,
+    outline: 'none',
+    border: 'none',
+  };
+  const labelStyle: React.CSSProperties = {
+    fontFamily: "'Inter',sans-serif",
+    fontSize: 11,
+    fontWeight: 500,
+    letterSpacing: '.12em',
+    textTransform: 'uppercase',
+    color: 'rgba(255,255,255,.32)',
+    marginBottom: 8,
+    display: 'block',
+  };
+
   if (step === 'success') {
     return (
       <div
@@ -3702,107 +3237,26 @@ export function RecoveryScreen({
         }}
       >
         <Ambient />
-        <div
-          className="flex flex-col items-center gap-5"
-          style={{ animation: 'success-bounce .6s cubic-bezier(.34,1.56,.64,1) both' }}
-        >
-          {/* Shield checkmark */}
-          <div className="relative flex h-32 w-32 items-center justify-center">
-            <div
-              className="absolute inset-0 rounded-full"
-              style={{
-                border: `2px solid ${G2}`,
-                animation: 'pulse-ring 1.4s ease-out .3s infinite',
-              }}
-            />
-            <div
-              className="absolute inset-0 rounded-full"
-              style={{
-                border: `2px solid ${G2}`,
-                animation: 'pulse-ring 1.4s ease-out .65s infinite',
-              }}
-            />
-            <svg
-              width="128"
-              height="128"
-              viewBox="0 0 128 128"
-              fill="none"
-              className="absolute inset-0"
-            >
-              <defs>
-                <linearGradient
-                  id="recShield"
-                  x1="0"
-                  y1="0"
-                  x2="128"
-                  y2="128"
-                  gradientUnits="userSpaceOnUse"
-                >
-                  <stop stopColor={G0} />
-                  <stop offset="1" stopColor={G3} />
-                </linearGradient>
-              </defs>
-              <path
-                d="M64 8L20 26v34c0 28.7 18.7 55.5 44 62 25.3-6.5 44-33.3 44-62V26L64 8z"
-                fill={`url(#recShield)`}
-                opacity=".16"
-              />
-              <path
-                d="M64 8L20 26v34c0 28.7 18.7 55.5 44 62 25.3-6.5 44-33.3 44-62V26L64 8z"
-                stroke={`url(#recShield)`}
-                strokeWidth="3"
-                fill="none"
-              />
-            </svg>
-            <svg width="44" height="44" viewBox="0 0 44 44" fill="none" className="relative z-10">
-              <path
-                d="M8 22l12 12 18-18"
-                stroke="white"
-                strokeWidth="4.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeDasharray="60"
-                strokeDashoffset="0"
-                style={{ animation: 'check-draw .4s ease .35s both' }}
-              />
-            </svg>
+        <div className="relative z-10 flex flex-col items-center gap-4 px-8 text-center">
+          <div
+            className="flex h-20 w-20 items-center justify-center rounded-full"
+            style={{ background: `${G2}22`, border: `2px solid ${G2}`, fontSize: 34 }}
+          >
+            ✓
           </div>
-          <div className="flex flex-col items-center gap-2 px-8 text-center">
-            <h2
-              className="text-[24px] font-bold text-white"
-              style={{ fontFamily: "'Poppins',sans-serif", letterSpacing: '-0.02em' }}
-            >
-              Account Recovered
-            </h2>
-            <p className="text-[14px]" style={{ fontFamily: "'Inter',sans-serif", color: G3 }}>
-              Successfully
-            </p>
-            <p
-              className="mt-1 text-[13px] leading-relaxed"
-              style={{ fontFamily: "'Inter',sans-serif", color: MUTED }}
-            >
-              Redirecting you to sign in…
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {[0, 1, 2].map((i) => (
-              <div
-                key={i}
-                className="h-2 w-2 rounded-full"
-                style={{
-                  background: G2,
-                  animation: `otp-pop .6s ease ${i * 0.15}s infinite alternate`,
-                }}
-              />
-            ))}
-          </div>
+          <p
+            className="text-[20px] font-bold text-white"
+            style={{ fontFamily: "'Poppins',sans-serif" }}
+          >
+            Password updated
+          </p>
+          <p className="text-sm" style={{ fontFamily: "'Inter',sans-serif", color: MUTED }}>
+            You can now sign in with your new password.
+          </p>
         </div>
       </div>
     );
   }
-
-  // ── Progress bar steps ────────────────────────────────────────────────────
-  const STEPS = ['Confirm Phone', 'Enter OTP', 'Verify Device', 'Restore Access'];
 
   return (
     <div
@@ -3813,356 +3267,120 @@ export function RecoveryScreen({
     >
       <Ambient />
       <StatusBar />
-
+      <div className="relative z-10 px-6 pt-3">
+        <BackBtn onPress={step === 'reset' ? () => setStep('email') : onBack} />
+      </div>
       <div
-        className="relative z-10 flex flex-1 flex-col overflow-y-auto"
-        style={{ scrollbarWidth: 'none' }}
+        className="relative z-10 flex flex-1 flex-col gap-6 px-7 pt-5"
+        style={{ animation: 'fade-up .5s ease .05s both' }}
       >
-        {/* Nav */}
-        <div className="px-6 pt-3">
-          <BackBtn onPress={onBack} label="Back to Login" />
-        </div>
-        <div className="px-7 pb-1 pt-3">
-          <Logo width={138} />
-        </div>
-
-        {/* Heading */}
-        <div
-          className="px-7 pb-3 pt-5"
-          style={{ animation: 'slide-in-right .42s cubic-bezier(.25,.46,.45,.94) .04s both' }}
-        >
-          <h1
-            className="text-[26px] font-bold leading-tight text-white"
-            style={{ fontFamily: "'Poppins',sans-serif", letterSpacing: '-0.022em' }}
+        <Logo width={150} />
+        <div className="flex flex-col gap-1.5">
+          <h2
+            className="text-[24px] font-bold text-white"
+            style={{ fontFamily: "'Poppins',sans-serif", letterSpacing: '-0.02em' }}
           >
-            Recover Your Account
-          </h1>
-          <p
-            className="mt-1 text-[14px]"
-            style={{ fontFamily: "'Inter',sans-serif", color: MUTED }}
-          >
-            Let's securely verify your identity and restore access.
+            Reset password
+          </h2>
+          <p className="text-sm" style={{ fontFamily: "'Inter',sans-serif", color: MUTED }}>
+            {step === 'email'
+              ? 'Enter your email and we’ll send you a reset code.'
+              : `Enter the code sent to ${email} and choose a new password.`}
           </p>
         </div>
 
-        {/* Progress steps */}
-        {step !== 'options' && (
-          <div
-            className="mx-5 mb-2 rounded-2xl px-5 py-4"
-            style={{
-              background: `linear-gradient(145deg,${NAVY_SURFACE},${NAVY_CARD})`,
-              border: `1px solid ${BORDER}`,
-              animation: 'fade-in .3s ease both',
-            }}
-          >
-            <div className="relative flex items-center justify-between">
-              {/* Connector line */}
-              <div
-                className="absolute left-4 right-4 top-4 h-px"
-                style={{ background: 'rgba(255,255,255,.08)' }}
+        {step === 'email' ? (
+          <div className="flex flex-col gap-2">
+            <label style={labelStyle}>Email</label>
+            <div style={fieldStyle('email')}>
+              <input
+                type="email"
+                autoCapitalize="none"
+                autoCorrect="off"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onFocus={() => setFocused('email')}
+                onBlur={() => setFocused(null)}
+                style={inputStyle}
               />
-              <div
-                className="absolute left-4 top-4 h-px transition-all duration-700"
-                style={{
-                  width: `${((currentStep - 1) / (STEPS.length - 1)) * (100 - 8)}%`,
-                  background: `linear-gradient(90deg,${G0},${G2})`,
-                }}
-              />
-              {STEPS.map((s, i) => {
-                const done = i + 1 < currentStep;
-                const active = i + 1 === currentStep;
-                return (
-                  <div
-                    key={s}
-                    className="relative z-10 flex flex-col items-center gap-1.5"
-                    style={{ flex: 1 }}
-                  >
-                    <div
-                      className="flex h-8 w-8 items-center justify-center rounded-full transition-all duration-500"
-                      style={{
-                        background: done
-                          ? `linear-gradient(135deg,${G0},${G2})`
-                          : active
-                            ? 'rgba(43,172,82,.2)'
-                            : 'rgba(255,255,255,.06)',
-                        border: active
-                          ? `2px solid ${G2}`
-                          : done
-                            ? 'none'
-                            : `1.5px solid rgba(255,255,255,.12)`,
-                        boxShadow: active ? `0 0 0 3px rgba(43,172,82,.15)` : 'none',
-                      }}
-                    >
-                      {done ? (
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="white"
-                          strokeWidth="3"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M20 6L9 17l-5-5" />
-                        </svg>
-                      ) : (
-                        <span
-                          className="text-[11px] font-bold"
-                          style={{
-                            fontFamily: "'Poppins',sans-serif",
-                            color: active ? G3 : 'rgba(255,255,255,.3)',
-                          }}
-                        >
-                          {i + 1}
-                        </span>
-                      )}
-                    </div>
-                    <span
-                      className="text-center text-[9px] leading-tight"
-                      style={{
-                        fontFamily: "'Inter',sans-serif",
-                        color: done ? G3 : active ? 'white' : 'rgba(255,255,255,.3)',
-                        maxWidth: 56,
-                      }}
-                    >
-                      {s}
-                    </span>
-                  </div>
-                );
-              })}
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <label style={labelStyle}>Reset code</label>
+              <div style={fieldStyle('otp')}>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="6-digit code"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                  onFocus={() => setFocused('otp')}
+                  onBlur={() => setFocused(null)}
+                  style={{ ...inputStyle, letterSpacing: '.3em' }}
+                />
+              </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              <label style={labelStyle}>New password</label>
+              <div style={fieldStyle('pass')}>
+                <input
+                  type="password"
+                  placeholder="8+ chars, with a capital & number"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onFocus={() => setFocused('pass')}
+                  onBlur={() => setFocused(null)}
+                  style={inputStyle}
+                />
+              </div>
             </div>
           </div>
         )}
 
-        {/* New device card */}
-        <div
-          className="mx-5 mb-1 mt-0 flex items-start gap-3 rounded-2xl px-4 py-3.5"
-          style={{
-            background: 'rgba(99,102,241,.08)',
-            border: '1px solid rgba(99,102,241,.22)',
-            animation: 'slide-in-right .42s cubic-bezier(.25,.46,.45,.94) .06s both',
-          }}
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#818CF8"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="mt-0.5 shrink-0"
-          >
-            <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
-            <path d="M12 18h.01" />
-          </svg>
-          <div>
-            <p
-              className="text-[13px] font-semibold"
-              style={{ fontFamily: "'Poppins',sans-serif", color: '#818CF8' }}
-            >
-              New Device Detected
-            </p>
-            <p
-              className="mt-0.5 text-[12px] leading-relaxed"
-              style={{ fontFamily: "'Inter',sans-serif", color: MUTED }}
-            >
-              For your security, we need to verify this device before allowing access.
-            </p>
-          </div>
-        </div>
-
-        {/* Recovery options */}
-        <div
-          className="mx-5 mt-3 flex flex-col gap-3"
-          style={{ animation: 'slide-in-right .42s cubic-bezier(.25,.46,.45,.94) .1s both' }}
-        >
-          {[
-            {
-              key: 'phone' as const,
-              icon: '📱',
-              title: 'Verify with Phone Number',
-              desc: "We'll send a one-time code to your registered mobile number.",
-            },
-            {
-              key: 'email' as const,
-              icon: '📧',
-              title: 'Verify with Email',
-              desc: "Available if you've linked an email address to your profile.",
-            },
-          ].map(({ key, icon, title, desc }) => {
-            const selected = activeOption === key;
-            return (
-              <button
-                key={key}
-                onClick={() => setActiveOption(selected ? null : key)}
-                className="flex items-start gap-3.5 rounded-2xl px-4 py-4 text-left transition-all duration-200 active:scale-[0.98]"
-                style={{
-                  background: selected
-                    ? `linear-gradient(145deg,rgba(43,172,82,.12),rgba(43,172,82,.06))`
-                    : `linear-gradient(145deg,${NAVY_SURFACE},${NAVY_CARD})`,
-                  border: selected ? `1.5px solid rgba(43,172,82,.35)` : `1px solid ${BORDER}`,
-                  boxShadow: selected
-                    ? `0 0 0 1px rgba(43,172,82,.08), 0 4px 20px rgba(43,172,82,.1)`
-                    : 'none',
-                }}
-              >
-                <div
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-xl transition-all"
-                  style={{ background: selected ? 'rgba(43,172,82,.2)' : 'rgba(255,255,255,.06)' }}
-                >
-                  {icon}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p
-                    className="text-[14px] font-semibold text-white"
-                    style={{ fontFamily: "'Poppins',sans-serif" }}
-                  >
-                    {title}
-                  </p>
-                  <p
-                    className="mt-1 text-[12px] leading-relaxed"
-                    style={{ fontFamily: "'Inter',sans-serif", color: MUTED }}
-                  >
-                    {desc}
-                  </p>
-                </div>
-                <div
-                  className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition-all"
-                  style={{
-                    background: selected
-                      ? `linear-gradient(135deg,${G0},${G2})`
-                      : 'rgba(255,255,255,.06)',
-                    border: selected ? 'none' : `1.5px solid rgba(255,255,255,.15)`,
-                  }}
-                >
-                  {selected && (
-                    <svg
-                      width="10"
-                      height="10"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="white"
-                      strokeWidth="3"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="M20 6L9 17l-5-5" />
-                    </svg>
-                  )}
-                </div>
-              </button>
-            );
-          })}
-
-          {/* Contact support card */}
+        {err && (
           <div
-            className="flex items-start gap-3.5 rounded-2xl px-4 py-4"
             style={{
-              background: `linear-gradient(145deg,${NAVY_SURFACE},${NAVY_CARD})`,
-              border: `1px solid ${BORDER}`,
+              padding: '10px 14px',
+              borderRadius: 12,
+              background: 'rgba(239,68,68,.08)',
+              border: '1px solid rgba(239,68,68,.25)',
+              fontFamily: "'Inter',sans-serif",
+              fontSize: 13,
+              color: '#EF4444',
             }}
           >
-            <div
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-xl"
-              style={{ background: 'rgba(255,255,255,.06)' }}
-            >
-              🆘
-            </div>
-            <div className="min-w-0 flex-1">
-              <p
-                className="text-[14px] font-semibold text-white"
-                style={{ fontFamily: "'Poppins',sans-serif" }}
-              >
-                Contact Support
-              </p>
-              <p
-                className="mt-1 text-[12px] leading-relaxed"
-                style={{ fontFamily: "'Inter',sans-serif", color: MUTED }}
-              >
-                If you no longer have access to your phone or email, our support team can help
-                restore your account.
-              </p>
-            </div>
+            {err}
+          </div>
+        )}
+
+        {step === 'email' ? (
+          <GreenBtn
+            label="Send reset code"
+            onClick={sendCode}
+            disabled={!emailValid}
+            loading={busy}
+          />
+        ) : (
+          <div className="flex flex-col gap-3">
+            <GreenBtn
+              label="Reset password"
+              onClick={doReset}
+              disabled={!otpValid || !pwValid}
+              loading={busy}
+            />
             <button
-              className="mt-0.5 h-[32px] shrink-0 rounded-full px-3 text-[12px] font-semibold transition-all active:scale-95"
-              style={{
-                fontFamily: "'Inter',sans-serif",
-                color: 'rgba(255,255,255,.6)',
-                background: 'rgba(255,255,255,.07)',
-                border: `1px solid ${BORDER}`,
-                whiteSpace: 'nowrap',
-              }}
+              onClick={busy ? undefined : sendCode}
+              className="text-center text-[13px] font-medium active:opacity-70"
+              style={{ fontFamily: "'Inter',sans-serif", color: G3 }}
             >
-              Chat
+              Resend code
             </button>
           </div>
-        </div>
-
-        {/* Security notice */}
-        <div
-          className="mx-5 mt-3 flex items-start gap-3 rounded-2xl px-4 py-4"
-          style={{
-            background: 'rgba(43,172,82,.05)',
-            border: `1px solid rgba(43,172,82,.14)`,
-            animation: 'slide-in-right .42s cubic-bezier(.25,.46,.45,.94) .18s both',
-          }}
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke={G2}
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="mt-0.5 shrink-0"
-          >
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-          </svg>
-          <p
-            className="text-[12px] leading-relaxed"
-            style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.4)' }}
-          >
-            <span className="font-semibold" style={{ color: 'rgba(255,255,255,.65)' }}>
-              DrippleX will never ask for
-            </span>{' '}
-            your OTP, biometric information, or payment PIN through phone calls, SMS, or email. Keep
-            your account information private.
-          </p>
-        </div>
-
-        {/* Actions */}
-        <div
-          className="flex flex-col gap-3 px-7 pb-10 pt-5"
-          style={{ animation: 'slide-in-right .42s cubic-bezier(.25,.46,.45,.94) .22s both' }}
-        >
-          <GreenBtn
-            label={step === 'phone' ? 'Verifying…' : 'Start Recovery'}
-            disabled={!activeOption && step === 'options'}
-            loading={step === 'phone'}
-            onClick={handleStart}
-            icon={activeOption && step === 'options' ? <ArrowIcon /> : undefined}
-          />
-          <button
-            onClick={onBack}
-            className="flex h-[50px] w-full items-center justify-center rounded-2xl text-[14px] font-medium transition-all active:scale-[0.97]"
-            style={{
-              fontFamily: "'Poppins',sans-serif",
-              color: MUTED,
-              background: 'rgba(255,255,255,.03)',
-              border: `1.5px solid ${BORDER}`,
-            }}
-          >
-            Back to Login
-          </button>
-        </div>
+        )}
       </div>
     </div>
   );
 }
-
-// ═══════════════════════════════════════════════════════════════════════════

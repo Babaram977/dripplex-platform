@@ -29,54 +29,6 @@ const QUICK = [
   { icon: '⋯', label: 'More', color: '#6B7280' },
 ];
 
-const MERCHANTS = [
-  {
-    name: 'Shoprite',
-    cat: 'Supermarket',
-    rating: 4.8,
-    dist: '0.4 km',
-    eta: '12 min',
-    bg: 'linear-gradient(135deg,#7F1D1D,#EF4444)',
-    emoji: '🛒',
-  },
-  {
-    name: 'KFC Ikeja',
-    cat: 'Fast Food',
-    rating: 4.6,
-    dist: '0.9 km',
-    eta: '18 min',
-    bg: 'linear-gradient(135deg,#7C2D12,#F97316)',
-    emoji: '🍗',
-  },
-  {
-    name: 'Jumia Express',
-    cat: 'E-commerce',
-    rating: 4.7,
-    dist: '1.2 km',
-    eta: '25 min',
-    bg: 'linear-gradient(135deg,#0D2E18,#2BAC52)',
-    emoji: '📦',
-  },
-  {
-    name: 'HealthPlus',
-    cat: 'Pharmacy',
-    rating: 4.9,
-    dist: '0.6 km',
-    eta: '15 min',
-    bg: 'linear-gradient(135deg,#0C4A6E,#06B6D4)',
-    emoji: '💊',
-  },
-  {
-    name: 'ZARA Nigeria',
-    cat: 'Fashion',
-    rating: 4.5,
-    dist: '2.1 km',
-    eta: '30 min',
-    bg: 'linear-gradient(135deg,#2E1065,#8B5CF6)',
-    emoji: '👗',
-  },
-];
-
 const RECS = [
   { emoji: '📱', name: 'iPhone 15 Pro', price: '₦890K', badge: 'Trending', bc: '#EF4444' },
   { emoji: '🍛', name: 'Jollof + Protein', price: '₦4,200', badge: 'Popular', bc: '#F97316' },
@@ -1120,153 +1072,94 @@ function Merchants({
     <div className="mb-5">
       <Row title="Nearby Merchants" onAll={() => {}} />
       <div className="flex gap-3 overflow-x-auto px-5" style={{ scrollbarWidth: 'none' }}>
-        {!loaded
-          ? [1, 2, 3].map((i) => <Bone key={i} w={155} h={188} />)
-          : showLive
-            ? liveMerchants!.map((m, idx) => (
+        {!loaded ? (
+          [1, 2, 3].map((i) => <Bone key={i} w={155} h={188} />)
+        ) : showLive ? (
+          liveMerchants!.map((m, idx) => (
+            <div
+              key={m.id}
+              className="flex-shrink-0 overflow-hidden rounded-3xl"
+              style={{
+                width: 155,
+                background: NAVY_CARD,
+                border: `1.5px solid ${BORDER}`,
+                boxShadow: '0 4px 20px rgba(0,0,0,.3)',
+              }}
+            >
+              <div
+                className="relative flex h-[82px] items-center justify-center"
+                style={{
+                  background: MERCHANT_BG_FALLBACKS[idx % MERCHANT_BG_FALLBACKS.length],
+                }}
+              >
+                {m.logoUrl ? (
+                  <img
+                    src={m.logoUrl}
+                    alt={m.businessName}
+                    className="h-14 w-14 rounded-xl object-cover"
+                  />
+                ) : (
+                  <span style={{ fontSize: 40 }}>🏪</span>
+                )}
                 <div
-                  key={m.id}
-                  className="flex-shrink-0 overflow-hidden rounded-3xl"
+                  className="absolute right-2.5 top-2.5 rounded-xl px-2 py-1 text-[9px] font-bold"
                   style={{
-                    width: 155,
-                    background: NAVY_CARD,
-                    border: `1.5px solid ${BORDER}`,
-                    boxShadow: '0 4px 20px rgba(0,0,0,.3)',
+                    background: 'rgba(0,0,0,.5)',
+                    color: '#FFF',
+                    backdropFilter: 'blur(6px)',
+                    fontFamily: "'Inter',sans-serif",
                   }}
                 >
-                  <div
-                    className="relative flex h-[82px] items-center justify-center"
-                    style={{
-                      background: MERCHANT_BG_FALLBACKS[idx % MERCHANT_BG_FALLBACKS.length],
-                    }}
-                  >
-                    {m.logoUrl ? (
-                      <img
-                        src={m.logoUrl}
-                        alt={m.businessName}
-                        className="h-14 w-14 rounded-xl object-cover"
-                      />
-                    ) : (
-                      <span style={{ fontSize: 40 }}>🏪</span>
-                    )}
-                    <div
-                      className="absolute right-2.5 top-2.5 rounded-xl px-2 py-1 text-[9px] font-bold"
-                      style={{
-                        background: 'rgba(0,0,0,.5)',
-                        color: '#FFF',
-                        backdropFilter: 'blur(6px)',
-                        fontFamily: "'Inter',sans-serif",
-                      }}
-                    >
-                      {m.isOpenNow ? '🟢 Open' : m.isOpenNow === false ? '🔴 Closed' : '🏪'}
-                    </div>
-                  </div>
-                  <div className="p-3">
-                    <p
-                      className="mb-0.5 truncate text-[12.5px] font-bold"
-                      style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
-                    >
-                      {m.businessName}
-                    </p>
-                    <p
-                      className="mb-2 text-[10px]"
-                      style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
-                    >
-                      {m.businessType}
-                    </p>
-                    <div className="mb-3 flex items-center justify-between">
-                      <span className="text-[10px] font-bold" style={{ color: '#FBBF24' }}>
-                        ★ {m.rating.average.toFixed(1)}
-                      </span>
-                      <span
-                        className="text-[10px]"
-                        style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
-                      >
-                        {m.distanceKm != null ? `${m.distanceKm.toFixed(1)} km` : m.city}
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => onStore?.(m.id)}
-                      className="h-[30px] w-full rounded-xl text-[11px] font-semibold transition-all active:scale-95"
-                      style={{
-                        background: `linear-gradient(135deg,${G0},${G2})`,
-                        color: '#FFF',
-                        fontFamily: "'Inter',sans-serif",
-                        boxShadow: '0 3px 12px rgba(43,172,82,.25)',
-                      }}
-                    >
-                      View Store
-                    </button>
-                  </div>
+                  {m.isOpenNow ? '🟢 Open' : m.isOpenNow === false ? '🔴 Closed' : '🏪'}
                 </div>
-              ))
-            : MERCHANTS.map((m) => (
-                <div
-                  key={m.name}
-                  className="flex-shrink-0 overflow-hidden rounded-3xl"
+              </div>
+              <div className="p-3">
+                <p
+                  className="mb-0.5 truncate text-[12.5px] font-bold"
+                  style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
+                >
+                  {m.businessName}
+                </p>
+                <p
+                  className="mb-2 text-[10px]"
+                  style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
+                >
+                  {m.businessType}
+                </p>
+                <div className="mb-3 flex items-center justify-between">
+                  <span className="text-[10px] font-bold" style={{ color: '#FBBF24' }}>
+                    ★ {m.rating.average.toFixed(1)}
+                  </span>
+                  <span
+                    className="text-[10px]"
+                    style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
+                  >
+                    {m.distanceKm != null ? `${m.distanceKm.toFixed(1)} km` : m.city}
+                  </span>
+                </div>
+                <button
+                  onClick={() => onStore?.(m.id)}
+                  className="h-[30px] w-full rounded-xl text-[11px] font-semibold transition-all active:scale-95"
                   style={{
-                    width: 155,
-                    background: NAVY_CARD,
-                    border: `1.5px solid ${BORDER}`,
-                    boxShadow: '0 4px 20px rgba(0,0,0,.3)',
+                    background: `linear-gradient(135deg,${G0},${G2})`,
+                    color: '#FFF',
+                    fontFamily: "'Inter',sans-serif",
+                    boxShadow: '0 3px 12px rgba(43,172,82,.25)',
                   }}
                 >
-                  <div
-                    className="relative flex h-[82px] items-center justify-center"
-                    style={{ background: m.bg }}
-                  >
-                    <span style={{ fontSize: 40 }}>{m.emoji}</span>
-                    <div
-                      className="absolute right-2.5 top-2.5 rounded-xl px-2 py-1 text-[9px] font-bold"
-                      style={{
-                        background: 'rgba(0,0,0,.5)',
-                        color: '#FFF',
-                        backdropFilter: 'blur(6px)',
-                        fontFamily: "'Inter',sans-serif",
-                      }}
-                    >
-                      ⏱ {m.eta}
-                    </div>
-                  </div>
-                  <div className="p-3">
-                    <p
-                      className="mb-0.5 truncate text-[12.5px] font-bold"
-                      style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
-                    >
-                      {m.name}
-                    </p>
-                    <p
-                      className="mb-2 text-[10px]"
-                      style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
-                    >
-                      {m.cat}
-                    </p>
-                    <div className="mb-3 flex items-center justify-between">
-                      <span className="text-[10px] font-bold" style={{ color: '#FBBF24' }}>
-                        ★ {m.rating}
-                      </span>
-                      <span
-                        className="text-[10px]"
-                        style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
-                      >
-                        {m.dist}
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => onStore?.(m.name)}
-                      className="h-[30px] w-full rounded-xl text-[11px] font-semibold transition-all active:scale-95"
-                      style={{
-                        background: `linear-gradient(135deg,${G0},${G2})`,
-                        color: '#FFF',
-                        fontFamily: "'Inter',sans-serif",
-                        boxShadow: '0 3px 12px rgba(43,172,82,.25)',
-                      }}
-                    >
-                      View Store
-                    </button>
-                  </div>
-                </div>
-              ))}
+                  View Store
+                </button>
+              </div>
+            </div>
+          ))
+        ) : (
+          // No live merchants → honest empty state (no fabricated storefronts).
+          <div style={{ padding: '24px 20px', width: '100%', textAlign: 'center' }}>
+            <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 13, color: MUTED }}>
+              No merchants nearby right now.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

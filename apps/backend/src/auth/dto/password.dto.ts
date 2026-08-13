@@ -18,11 +18,8 @@ export class ResetPasswordDto {
   )
   public email!: string;
 
-  @IsString()
-  @MinLength(32)
-  @MaxLength(128)
-  public resetToken!: string;
-
+  // Reset is verified by the emailed OTP code (proof of inbox control); there is
+  // no separate reset token in the flow.
   @IsString()
   @Matches(/^\d{4,8}$/, { message: 'otp must be a numeric code' })
   public otp!: string;

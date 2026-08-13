@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { G0, G2, G3, NAVY_BASE, NAVY_CARD, NAVY_DEEP, NAVY_SURFACE, BORDER, MUTED } from './shared';
 import { api } from '../lib/api';
-import type { OrderDto, CustomerAddressDto } from '../lib/api';
+import type { OrderDto, CustomerAddressDto, CartDto } from '../lib/api';
 import { BottomNavigation } from '../components/navigation';
 import type { NavTabKey } from '../components/navigation/BottomNavigation';
 import { auth } from '../lib/auth';
@@ -695,6 +695,38 @@ export function CheckoutScreen({
   const [addrBusy, setAddrBusy] = useState(false);
   const [addrError, setAddrError] = useState<string | null>(null);
 
+  // Real server-side cart — the single source of truth for what is being bought
+  // and every money figure shown here. The mock MERCHANTS array below is used
+  // ONLY by the logged-out design-preview navigator (no real cart to read).
+  const [realCart, setRealCart] = useState<CartDto | null>(null);
+  const [cartLoaded, setCartLoaded] = useState(false);
+  const [cartMerchantName, setCartMerchantName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!auth.isLoggedIn()) {
+      setCartLoaded(true);
+      return;
+    }
+    let alive = true;
+    api.cart
+      .get()
+      .then((c) => {
+        if (!alive) return;
+        setRealCart(c);
+        if (c?.merchantId) {
+          api.marketplace
+            .getMerchant(c.merchantId)
+            .then((m) => alive && setCartMerchantName(m.businessName))
+            .catch(() => {});
+        }
+      })
+      .catch(() => {})
+      .finally(() => alive && setCartLoaded(true));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const loadAddresses = useCallback(async () => {
     if (!auth.isLoggedIn()) return;
     try {
@@ -772,18 +804,34 @@ export function CheckoutScreen({
         line2: `${selectedRealAddress.city}, ${selectedRealAddress.state}`,
       }
     : addresses[addressIdx];
-  const itemsTotal = MERCHANTS.reduce((s, m) => s + m.subtotal, 0);
-  const deliveryTotal = MERCHANTS.reduce((s, m) => {
+  // ── Money: real cart totals when logged in; mock only for the design preview.
+  const mockItemsTotal = MERCHANTS.reduce((s, m) => s + m.subtotal, 0);
+  const mockDeliveryTotal = MERCHANTS.reduce((s, m) => {
     const mode = modes[m.id] ?? 'standard';
     return s + (mode === 'pickup' ? 0 : mode === 'express' ? m.deliveryFee * 2 : m.deliveryFee);
   }, 0);
-  const promoSavings = 500;
-  const cashbackTotal = MERCHANTS.reduce((s, m) => s + m.cashback, 0);
-  const grandTotal = itemsTotal + deliveryTotal - promoSavings;
+  const mockPromoSavings = 500;
+
+  const t = realCart?.totals ?? null;
+  const itemsTotal = t ? t.subtotal : mockItemsTotal;
+  const deliveryTotal = t ? t.deliveryFee : mockDeliveryTotal;
+  const discountTotal = t ? t.discount : mockPromoSavings;
+  const taxTotal = t ? t.tax : 0;
+  // GAP: the backend has no "cashback" concept (CartTotalsDto = subtotal/discount/
+  // tax/deliveryFee/total). Never fabricated for a real cart — mock preview only.
+  const cashbackTotal = t ? 0 : MERCHANTS.reduce((s, m) => s + m.cashback, 0);
+  const grandTotal = t ? t.total : mockItemsTotal + mockDeliveryTotal - mockPromoSavings;
+
+  const cartItems = realCart?.items ?? [];
+  const cartEmpty = auth.isLoggedIn() && cartLoaded && cartItems.length === 0;
 
   // Step 1: cart → order, then branch on payment method
   const handlePlaceOrder = async () => {
     if (!termsChecked) return;
+    if (cartEmpty) {
+      setError('Your cart is empty. Add items from a store to check out.');
+      return;
+    }
 
     // A delivery address is required. Use the selected one; if the customer has
     // none, prompt them to set it (via "Use My Location") rather than silently
@@ -972,21 +1020,71 @@ export function CheckoutScreen({
         </div>
 
         <div className="mb-4">
-          <SectionLabel>Order Details ({MERCHANTS.length} Merchants)</SectionLabel>
-          <div className="flex flex-col gap-3">
-            {MERCHANTS.map((m) => (
-              <MerchantCard
-                key={m.id}
-                merchant={m}
-                mode={modes[m.id] ?? 'standard'}
-                note={notes[m.id] ?? ''}
-                schedule={schedules[m.id] ?? 'now'}
-                onMode={(v) => setModes((p) => ({ ...p, [m.id]: v }))}
-                onNote={(v) => setNotes((p) => ({ ...p, [m.id]: v }))}
-                onSchedule={(v) => setSchedules((p) => ({ ...p, [m.id]: v }))}
-              />
-            ))}
-          </div>
+          {realCart ? (
+            <>
+              <SectionLabel>Order Details</SectionLabel>
+              <div
+                className="rounded-2xl p-4"
+                style={{ background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
+              >
+                <div className="mb-3 flex items-center gap-2">
+                  <div
+                    className="flex h-8 w-8 items-center justify-center rounded-xl text-base"
+                    style={{ background: 'rgba(255,255,255,.05)' }}
+                  >
+                    🏪
+                  </div>
+                  <p
+                    className="text-[13px] font-semibold text-white"
+                    style={{ fontFamily: "'Poppins',sans-serif" }}
+                  >
+                    {cartMerchantName ?? 'Your order'}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2.5">
+                  {cartItems.map((it) => (
+                    <div key={it.id} className="flex items-center justify-between gap-3">
+                      <span
+                        className="min-w-0 flex-1 truncate text-[13px]"
+                        style={{ color: MUTED }}
+                      >
+                        {it.quantity} × {it.productNameSnapshot}
+                      </span>
+                      <span
+                        className="shrink-0 text-[13px] font-medium"
+                        style={{ color: 'rgba(255,255,255,.85)' }}
+                      >
+                        {fmt(it.subtotal)}
+                      </span>
+                    </div>
+                  ))}
+                  {cartItems.length === 0 && (
+                    <p className="py-2 text-[13px]" style={{ color: MUTED }}>
+                      Your cart is empty. Add items from a store to check out.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <SectionLabel>Order Details ({MERCHANTS.length} Merchants)</SectionLabel>
+              <div className="flex flex-col gap-3">
+                {MERCHANTS.map((m) => (
+                  <MerchantCard
+                    key={m.id}
+                    merchant={m}
+                    mode={modes[m.id] ?? 'standard'}
+                    note={notes[m.id] ?? ''}
+                    schedule={schedules[m.id] ?? 'now'}
+                    onMode={(v) => setModes((p) => ({ ...p, [m.id]: v }))}
+                    onNote={(v) => setNotes((p) => ({ ...p, [m.id]: v }))}
+                    onSchedule={(v) => setSchedules((p) => ({ ...p, [m.id]: v }))}
+                  />
+                ))}
+              </div>
+            </>
+          )}
         </div>
 
         {/* Payment method */}
@@ -1056,43 +1154,64 @@ export function CheckoutScreen({
           )}
         </div>
 
-        {/* Promo & Rewards */}
-        <div
-          className="mb-4 rounded-2xl p-4"
-          style={{ background: NAVY_CARD, border: '1.5px solid rgba(43,172,82,.22)' }}
-        >
-          <SectionLabel>Promo & Rewards</SectionLabel>
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-base">🎁</span>
-                <div>
-                  <p className="text-[12px] font-semibold text-white">DRIP20 Applied</p>
-                  <p className="text-[11px]" style={{ color: MUTED }}>
-                    ₦500 discount
+        {/* Promo & Rewards — for a real cart, only when a real discount applies.
+            The mock DRIP20/cashback block is design-preview only. */}
+        {realCart ? (
+          discountTotal > 0 && (
+            <div
+              className="mb-4 rounded-2xl p-4"
+              style={{ background: NAVY_CARD, border: '1.5px solid rgba(43,172,82,.22)' }}
+            >
+              <SectionLabel>Promo & Rewards</SectionLabel>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">🎁</span>
+                  <p className="text-[12px] font-semibold text-white">Discount applied</p>
+                </div>
+                <span className="text-[12px] font-semibold" style={{ color: G3 }}>
+                  −{fmt(discountTotal)}
+                </span>
+              </div>
+            </div>
+          )
+        ) : (
+          <div
+            className="mb-4 rounded-2xl p-4"
+            style={{ background: NAVY_CARD, border: '1.5px solid rgba(43,172,82,.22)' }}
+          >
+            <SectionLabel>Promo & Rewards</SectionLabel>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">🎁</span>
+                  <div>
+                    <p className="text-[12px] font-semibold text-white">DRIP20 Applied</p>
+                    <p className="text-[11px]" style={{ color: MUTED }}>
+                      ₦500 discount
+                    </p>
+                  </div>
+                </div>
+                <button
+                  className="text-[11px] font-semibold active:opacity-60"
+                  style={{ color: '#F87171' }}
+                >
+                  Remove
+                </button>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">💳</span>
+                  <p className="text-[12px]" style={{ color: MUTED }}>
+                    Cashback Earned
                   </p>
                 </div>
+                <span className="text-[12px] font-semibold" style={{ color: G3 }}>
+                  +{fmt(cashbackTotal)}
+                </span>
               </div>
-              <button
-                className="text-[11px] font-semibold active:opacity-60"
-                style={{ color: '#F87171' }}
-              >
-                Remove
-              </button>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-base">💳</span>
-                <p className="text-[12px]" style={{ color: MUTED }}>
-                  Cashback Earned
-                </p>
-              </div>
-              <span className="text-[12px] font-semibold" style={{ color: G3 }}>
-                +{fmt(cashbackTotal)}
-              </span>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Order Summary */}
         <div
@@ -1101,16 +1220,32 @@ export function CheckoutScreen({
         >
           <SectionLabel>Order Summary</SectionLabel>
           <div className="flex flex-col gap-2.5">
-            {[
-              { label: 'Items Total', value: fmt(itemsTotal), color: 'rgba(255,255,255,.8)' },
-              {
-                label: 'Delivery Fees',
-                value: deliveryTotal === 0 ? 'FREE' : fmt(deliveryTotal),
-                color: 'rgba(255,255,255,.7)',
-              },
-              { label: 'Promo (DRIP20)', value: `−${fmt(promoSavings)}`, color: G3 },
-              { label: 'Cashback Earned', value: `+${fmt(cashbackTotal)}`, color: G3 },
-            ].map((r) => (
+            {(realCart
+              ? [
+                  { label: 'Items Total', value: fmt(itemsTotal), color: 'rgba(255,255,255,.8)' },
+                  {
+                    label: 'Delivery Fees',
+                    value: deliveryTotal === 0 ? 'FREE' : fmt(deliveryTotal),
+                    color: 'rgba(255,255,255,.7)',
+                  },
+                  ...(discountTotal > 0
+                    ? [{ label: 'Discount', value: `−${fmt(discountTotal)}`, color: G3 }]
+                    : []),
+                  ...(taxTotal > 0
+                    ? [{ label: 'Tax', value: fmt(taxTotal), color: 'rgba(255,255,255,.7)' }]
+                    : []),
+                ]
+              : [
+                  { label: 'Items Total', value: fmt(itemsTotal), color: 'rgba(255,255,255,.8)' },
+                  {
+                    label: 'Delivery Fees',
+                    value: deliveryTotal === 0 ? 'FREE' : fmt(deliveryTotal),
+                    color: 'rgba(255,255,255,.7)',
+                  },
+                  { label: 'Promo (DRIP20)', value: `−${fmt(mockPromoSavings)}`, color: G3 },
+                  { label: 'Cashback Earned', value: `+${fmt(cashbackTotal)}`, color: G3 },
+                ]
+            ).map((r) => (
               <div key={r.label} className="flex items-center justify-between">
                 <span className="text-[13px]" style={{ color: MUTED }}>
                   {r.label}
@@ -1190,19 +1325,22 @@ export function CheckoutScreen({
           </div>
           <button
             onClick={handlePlaceOrder}
-            disabled={!termsChecked || placing}
+            disabled={!termsChecked || placing || cartEmpty}
             className="flex h-[52px] flex-1 items-center justify-center gap-2 rounded-2xl text-[15px] font-semibold text-white transition-all active:scale-[.97]"
             style={{
               background:
-                !termsChecked || placing
+                !termsChecked || placing || cartEmpty
                   ? 'rgba(255,255,255,.07)'
                   : `linear-gradient(135deg,${G0},${G2} 55%,${G3})`,
-              boxShadow: !termsChecked || placing ? 'none' : '0 10px 32px rgba(43,172,82,.36)',
-              color: !termsChecked || placing ? 'rgba(255,255,255,.25)' : 'white',
+              boxShadow:
+                !termsChecked || placing || cartEmpty ? 'none' : '0 10px 32px rgba(43,172,82,.36)',
+              color: !termsChecked || placing || cartEmpty ? 'rgba(255,255,255,.25)' : 'white',
               fontFamily: "'Poppins',sans-serif",
             }}
           >
-            {placing ? (
+            {cartEmpty ? (
+              <>Cart is empty</>
+            ) : placing ? (
               <>
                 <svg
                   width="18"

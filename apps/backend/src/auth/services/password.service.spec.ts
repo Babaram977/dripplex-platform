@@ -167,44 +167,27 @@ describe('PasswordService', () => {
   });
 
   describe('resetPassword', () => {
-    const resetToken = 'a'.repeat(64);
-    const tokenHash = service.hashToken(resetToken);
-
-    const storedToken = {
-      id: 'token-row-1',
-      userId: activeUser.id,
-      tokenHash,
-      expiresAt: new Date(Date.now() + 60_000),
-      consumedAt: null,
-    };
-
-    it('resets password, consumes token, and revokes all sessions', async () => {
-      (passwordResetTokenRepository.findByTokenHash as jest.Mock).mockResolvedValue(storedToken);
-      (usersService.findById as jest.Mock).mockResolvedValue(activeUser);
+    it('resets the password with a valid OTP and revokes all sessions', async () => {
+      (usersService.findByEmail as jest.Mock).mockResolvedValue(activeUser);
       (otpService.verify as jest.Mock).mockResolvedValue(undefined);
       (usersService.updatePassword as jest.Mock).mockResolvedValue(activeUser);
-      (passwordResetTokenRepository.markConsumed as jest.Mock).mockResolvedValue(storedToken);
       (authSessionRepository.revokeAllForUser as jest.Mock).mockResolvedValue(2);
 
       const result = await service.resetPassword(
-        {
-          email: 'ada@example.com',
-          resetToken,
-          otp: '123456',
-          password: 'NewSecure1',
-        },
+        { email: 'ada@example.com', otp: '123456', password: 'NewSecure1' },
         {},
       );
 
       expect(result).toEqual({ reset: true });
-      expect(usersService.updatePassword).toHaveBeenCalledWith(activeUser.id, 'hashed-new');
-      expect(passwordResetTokenRepository.markConsumed).toHaveBeenCalledWith(storedToken.id);
-      expect(authSessionRepository.revokeAllForUser).toHaveBeenCalledWith(activeUser.id);
-      expect(auditService.record).toHaveBeenCalledWith(
-        AUTH_AUDIT_ACTIONS.SESSIONS_REVOKED_PASSWORD,
+      expect(otpService.verify).toHaveBeenCalledWith(
+        'password_reset',
+        'ada@example.com',
+        '123456',
         expect.objectContaining({ userId: activeUser.id }),
-        expect.any(Object),
+        activeUser.id,
       );
+      expect(usersService.updatePassword).toHaveBeenCalledWith(activeUser.id, 'hashed-new');
+      expect(authSessionRepository.revokeAllForUser).toHaveBeenCalledWith(activeUser.id);
       expect(auditService.record).toHaveBeenCalledWith(
         AUTH_AUDIT_ACTIONS.PASSWORD_RESET_SUCCESS,
         expect.objectContaining({ userId: activeUser.id }),
@@ -212,61 +195,39 @@ describe('PasswordService', () => {
       );
     });
 
-    it('rejects invalid tokens', async () => {
-      (passwordResetTokenRepository.findByTokenHash as jest.Mock).mockResolvedValue(null);
+    it('rejects an unknown or inactive account without touching the password', async () => {
+      (usersService.findByEmail as jest.Mock).mockResolvedValue(null);
 
       await expect(
         service.resetPassword(
-          { email: 'ada@example.com', resetToken, otp: '123456', password: 'NewSecure1' },
+          { email: 'missing@example.com', otp: '123456', password: 'NewSecure1' },
           {},
         ),
       ).rejects.toBeInstanceOf(UnauthorizedDomainException);
 
+      expect(otpService.verify).not.toHaveBeenCalled();
+      expect(usersService.updatePassword).not.toHaveBeenCalled();
       expect(auditService.record).toHaveBeenCalledWith(
         AUTH_AUDIT_ACTIONS.PASSWORD_RESET_FAILED,
         expect.any(Object),
-        expect.objectContaining({ metadata: { reason: 'invalid_token' } }),
+        expect.objectContaining({ metadata: { reason: 'invalid_account' } }),
       );
     });
 
-    it('rejects expired tokens', async () => {
-      (passwordResetTokenRepository.findByTokenHash as jest.Mock).mockResolvedValue({
-        ...storedToken,
-        expiresAt: new Date(Date.now() - 1_000),
-      });
+    it('rejects an invalid or expired OTP', async () => {
+      (usersService.findByEmail as jest.Mock).mockResolvedValue(activeUser);
+      (otpService.verify as jest.Mock).mockRejectedValue(
+        new UnauthorizedDomainException('Invalid or expired code'),
+      );
 
       await expect(
         service.resetPassword(
-          { email: 'ada@example.com', resetToken, otp: '123456', password: 'NewSecure1' },
+          { email: 'ada@example.com', otp: '000000', password: 'NewSecure1' },
           {},
         ),
       ).rejects.toBeInstanceOf(UnauthorizedDomainException);
 
-      expect(auditService.record).toHaveBeenCalledWith(
-        AUTH_AUDIT_ACTIONS.PASSWORD_RESET_FAILED,
-        expect.any(Object),
-        expect.objectContaining({ metadata: { reason: 'token_expired' } }),
-      );
-    });
-
-    it('rejects reused tokens', async () => {
-      (passwordResetTokenRepository.findByTokenHash as jest.Mock).mockResolvedValue({
-        ...storedToken,
-        consumedAt: new Date(),
-      });
-
-      await expect(
-        service.resetPassword(
-          { email: 'ada@example.com', resetToken, otp: '123456', password: 'NewSecure1' },
-          {},
-        ),
-      ).rejects.toBeInstanceOf(UnauthorizedDomainException);
-
-      expect(auditService.record).toHaveBeenCalledWith(
-        AUTH_AUDIT_ACTIONS.PASSWORD_RESET_FAILED,
-        expect.any(Object),
-        expect.objectContaining({ metadata: { reason: 'token_reused' } }),
-      );
+      expect(usersService.updatePassword).not.toHaveBeenCalled();
     });
   });
 

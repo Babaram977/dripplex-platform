@@ -8,7 +8,6 @@ import {
   OTPScreen,
   ProfileSetupScreen,
   PermissionsScreen,
-  BiometricScreen,
   ReturningLoginScreen,
   RecoveryScreen,
   SignInScreen,
@@ -253,7 +252,6 @@ type Screen =
   | 'otp'
   | 'profile'
   | 'permissions'
-  | 'biometric'
   | 'returning'
   | 'recovery'
   | 'signin'
@@ -389,7 +387,7 @@ type Screen =
 
 function AppShell() {
   const [screen, setScreen] = useState<Screen>('splash');
-  const [rideDetailId, setRideDetailId] = useState<string>('RX-20241205-0012');
+  const [rideDetailId, setRideDetailId] = useState<string>('');
   const [fading, setFading] = useState(false);
   const [otpData, setOtpData] = useState<{
     phone: string;
@@ -409,6 +407,8 @@ function AppShell() {
   // Where the partner hub was opened from, so its back button returns there.
   // null when the hub is reached mid-onboarding (no back affordance then).
   const [partnerFrom, setPartnerFrom] = useState<Screen | null>(null);
+  // Which login the password-reset flow was opened from, so it returns there.
+  const [recoveryFrom, setRecoveryFrom] = useState<Screen>('returning');
   // Merchant's business fields from sign-up, pre-filled into the post-login
   // Business Details step (persisted via PATCH /merchant/business).
   const [merchantBiz, setMerchantBiz] = useState<{ businessName: string; category: string }>({
@@ -487,16 +487,9 @@ function AppShell() {
     ),
     permissions: (
       <PermissionsScreen
-        onContinue={() => go('biometric')}
-        onSkip={() => go('biometric')}
-        onBack={() => go('profile')}
-      />
-    ),
-    biometric: (
-      <BiometricScreen
-        onDone={() => go('consent')}
+        onContinue={() => go('consent')}
         onSkip={() => go('consent')}
-        onBack={() => go('permissions')}
+        onBack={() => go('profile')}
       />
     ),
     // "Returning" routes to the REAL email/password sign-in (the biometric
@@ -511,9 +504,15 @@ function AppShell() {
           setPartnerFrom('returning');
           go('partnerselect');
         }}
+        onForgot={() => {
+          setRecoveryFrom('returning');
+          go('recovery');
+        }}
       />
     ),
-    recovery: <RecoveryScreen onRecovered={() => go('returning')} onBack={() => go('returning')} />,
+    recovery: (
+      <RecoveryScreen onRecovered={() => go(recoveryFrom)} onBack={() => go(recoveryFrom)} />
+    ),
     signin: (
       <SignInScreen
         onBack={() => go('welcome')}
@@ -523,6 +522,10 @@ function AppShell() {
         onBecomePartner={() => {
           setPartnerFrom('signin');
           go('partnerselect');
+        }}
+        onForgot={() => {
+          setRecoveryFrom('signin');
+          go('recovery');
         }}
       />
     ),
@@ -780,6 +783,7 @@ function AppShell() {
         onBack={() => go('ridefare')}
         onArrived={() => go('ridearrived')}
         onCancel={() => go('ridehome')}
+        rideId={activeCustomerRideId}
       />
     ),
     ridearrived: (
@@ -787,6 +791,7 @@ function AppShell() {
         onBack={() => go('rideassigned')}
         onStart={() => go('rideinprogress')}
         onShare={() => go('rideshare')}
+        rideId={activeCustomerRideId}
       />
     ),
     rideinprogress: (
@@ -794,9 +799,16 @@ function AppShell() {
         onBack={() => go('ridearrived')}
         onComplete={() => go('ridecomplete')}
         onSOS={() => go('ridesos')}
+        rideId={activeCustomerRideId}
       />
     ),
-    ridecomplete: <TripCompletedScreen onRate={() => go('riderating')} onHome={() => go('home')} />,
+    ridecomplete: (
+      <TripCompletedScreen
+        onRate={() => go('riderating')}
+        onHome={() => go('home')}
+        rideId={activeCustomerRideId}
+      />
+    ),
     riderating: (
       <RateDriverScreen
         onBack={() => go('ridecomplete')}
@@ -929,6 +941,10 @@ function AppShell() {
           setPartnerPersona('driver');
           go('partnerdriver');
         }}
+        onForgot={() => {
+          setRecoveryFrom('drvlogin');
+          go('recovery');
+        }}
       />
     ),
     drvotp: <DriverOTPScreen onVerified={() => go('drvkyc')} onBack={() => go('drvlogin')} />,
@@ -1043,7 +1059,15 @@ function AppShell() {
     adminsettings: <AdminSettingsScreen />,
     adminaudit: <AdminAuditScreen />,
     adminprofile: <AdminProfileScreen />,
-    mxdash: <MerchantDashboardScreen onApply={() => go('partnermerchant')} />,
+    mxdash: (
+      <MerchantDashboardScreen
+        onApply={() => go('partnermerchant')}
+        onForgot={() => {
+          setRecoveryFrom('mxdash');
+          go('recovery');
+        }}
+      />
+    ),
     mxorders: <MerchantOrdersScreen />,
     mxproducts: <MerchantProductsScreen />,
     mxstore: <MerchantStoreScreen />,
@@ -1059,6 +1083,10 @@ function AppShell() {
         onApply={() => {
           setPartnerPersona('rider');
           go('partnerrider');
+        }}
+        onForgot={() => {
+          setRecoveryFrom('riderlogin');
+          go('recovery');
         }}
       />
     ),
@@ -1216,7 +1244,6 @@ function AppShell() {
         { label: 'Register', key: 'register' },
         { label: 'OTP', key: 'otp' },
         { label: 'Profile Setup', key: 'profile' },
-        { label: 'Biometric', key: 'biometric' },
         { label: 'Sign In', key: 'returning' },
         { label: 'Security', key: 'security' },
         { label: 'KYC', key: 'kyc' },
