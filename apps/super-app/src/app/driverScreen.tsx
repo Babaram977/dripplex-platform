@@ -9,7 +9,14 @@ import {
 } from '../tokens/colors';
 import { api, uploadFile } from '../lib/api';
 import { auth } from '../lib/auth';
-import type { RideOfferDto, RideOfferPreviewDto, RideDto, RideType } from '../lib/api';
+import type {
+  RideOfferDto,
+  RideOfferPreviewDto,
+  RideDto,
+  RideType,
+  WalletDto,
+  WalletLedgerEntryDto,
+} from '../lib/api';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DRIVER APP — DrippleX Ride Partner Platform
@@ -23,126 +30,46 @@ const PP = "'Poppins',sans-serif";
 const IT = "'Inter',sans-serif";
 const NAVY_BASE = '#0A1628';
 
-// ─── Driver data ─────────────────────────────────────────────────────────────
-const DRIVER = {
-  name: 'Adeyemi Okafor',
-  initials: 'AO',
-  phone: '+234 801 234 5678',
-  rating: 4.92,
-  trips: 3847,
-  plate: 'LAG 482 KA',
-  vehicle: 'Toyota Camry 2019 (White)',
-  level: 'Gold Driver',
-  online: false,
-  todayEarnings: 28400,
-  weekEarnings: 142600,
-  acceptance: 94,
-  completion: 98,
-};
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+// Real data only. No fabricated driver identity, earnings, trips, or documents.
+const naira = (n: number) => `₦${Math.round(n).toLocaleString()}`;
 
-const EARNINGS_DATA = [
-  { day: 'Mon', amount: 18200, trips: 12 },
-  { day: 'Tue', amount: 24500, trips: 16 },
-  { day: 'Wed', amount: 21000, trips: 14 },
-  { day: 'Thu', amount: 31200, trips: 20 },
-  { day: 'Fri', amount: 38900, trips: 25 },
-  { day: 'Sat', amount: 44100, trips: 28 },
-  { day: 'Sun', amount: 28400, trips: 18 },
-];
+function isToday(iso: string | null): boolean {
+  if (!iso) return false;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return false;
+  const now = new Date();
+  return (
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  );
+}
 
-const TRIP_HISTORY_D = [
-  {
-    id: 'DRX-4921',
-    time: '9:41 AM',
-    from: 'Ikeja GRA',
-    to: 'Victoria Island',
-    fare: '₦2,100',
-    duration: '22 min',
-    rating: 5,
-    status: 'completed',
-  },
-  {
-    id: 'DRX-4920',
-    time: '8:02 AM',
-    from: 'Surulere',
-    to: 'Lekki Phase 1',
-    fare: '₦3,400',
-    duration: '35 min',
-    rating: 5,
-    status: 'completed',
-  },
-  {
-    id: 'DRX-4919',
-    time: '6:45 AM',
-    from: 'Yaba',
-    to: 'Ikeja City Mall',
-    fare: '₦1,850',
-    duration: '18 min',
-    rating: 4,
-    status: 'completed',
-  },
-  {
-    id: 'DRX-4918',
-    time: 'Yesterday',
-    from: 'VI',
-    to: 'Maryland',
-    fare: '₦2,600',
-    duration: '28 min',
-    rating: 0,
-    status: 'cancelled',
-  },
-  {
-    id: 'DRX-4917',
-    time: 'Yesterday',
-    from: 'Agege',
-    to: 'Marina',
-    fare: '₦4,100',
-    duration: '45 min',
-    rating: 5,
-    status: 'completed',
-  },
-];
+function driverInitials(u: { firstName?: string; lastName?: string } | null): string {
+  if (!u) return '—';
+  const a = (u.firstName || '').trim()[0] || '';
+  const b = (u.lastName || '').trim()[0] || '';
+  const s = (a + b).toUpperCase();
+  return s || '—';
+}
 
-const WALLET_TXS = [
-  {
-    type: 'credit',
-    label: 'Trip earnings',
-    sub: 'DRX-4921 · 9:41 AM',
-    amount: '+₦2,100',
-    color: G3,
-  },
-  {
-    type: 'credit',
-    label: 'Trip earnings',
-    sub: 'DRX-4920 · 8:02 AM',
-    amount: '+₦3,400',
-    color: G3,
-  },
-  {
-    type: 'debit',
-    label: 'Withdrawal',
-    sub: 'GTBank •••• 1823',
-    amount: '−₦20,000',
-    color: COLOR_ERROR,
-  },
-  {
-    type: 'credit',
-    label: 'Trip earnings',
-    sub: 'DRX-4919 · 6:45 AM',
-    amount: '+₦1,850',
-    color: G3,
-  },
-  { type: 'debit', label: 'Platform fee', sub: '5% commission', amount: '−₦358', color: '#F59E0B' },
-];
+function driverFullName(u: { firstName?: string; lastName?: string } | null): string {
+  if (!u) return '—';
+  const name = `${u.firstName || ''} ${u.lastName || ''}`.trim();
+  return name || '—';
+}
 
-const DOC_ITEMS = [
-  { id: 'nin', label: 'NIN / National ID', icon: '🪪', status: 'verified' as const },
-  { id: 'drivers', label: "Driver's Licence", icon: '🪪', status: 'verified' as const },
-  { id: 'vehicle', label: 'Vehicle Paper', icon: '📄', status: 'verified' as const },
-  { id: 'insurance', label: 'Insurance Cert', icon: '📋', status: 'pending' as const },
-  { id: 'roadwort', label: 'Road Worthiness', icon: '📋', status: 'pending' as const },
-  { id: 'photo', label: 'Passport Photo', icon: '🖼', status: 'verified' as const },
-];
+function txWhen(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SHARED SUB-COMPONENTS
@@ -438,42 +365,6 @@ function StatusPill({ online }: { online: boolean }) {
   );
 }
 
-function EarningsBar({ data }: { data: typeof EARNINGS_DATA }) {
-  const max = Math.max(...data.map((d) => d.amount));
-  const today = data[data.length - 1];
-  return (
-    <div className="flex h-20 items-end gap-2">
-      {data.map((d, i) => {
-        const isToday = i === data.length - 1;
-        const pct = (d.amount / max) * 100;
-        return (
-          <div key={d.day} className="flex flex-1 flex-col items-center gap-1">
-            <div
-              className="w-full overflow-hidden rounded-lg"
-              style={{ height: 56, background: 'rgba(255,255,255,.04)' }}
-            >
-              <div
-                className="w-full rounded-lg transition-all duration-700"
-                style={{
-                  height: `${pct}%`,
-                  marginTop: `${100 - pct}%`,
-                  background: isToday
-                    ? `linear-gradient(180deg,${G3},${G0})`
-                    : `rgba(43,172,82,.25)`,
-                  boxShadow: isToday ? `0 0 12px rgba(43,172,82,.4)` : 'none',
-                }}
-              />
-            </div>
-            <p className="text-[10px]" style={{ fontFamily: IT, color: isToday ? G3 : MUTED }}>
-              {d.day}
-            </p>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 function DriverBottomNav({
   active,
   onChange,
@@ -716,27 +607,6 @@ export function DriverLoginScreen({
           </p>
         )}
 
-        {/* Stats highlight */}
-        <div
-          className="mb-8 flex gap-3 rounded-2xl p-4"
-          style={{ background: 'rgba(43,172,82,.06)', border: '1px solid rgba(43,172,82,.12)' }}
-        >
-          {[
-            ['₦142K', 'This Week'],
-            ['4.92★', 'Rating'],
-            ['94%', 'Acceptance'],
-          ].map(([v, l]) => (
-            <div key={l} className="flex-1 text-center">
-              <p className="text-[15px] font-bold" style={{ fontFamily: PP, color: G3 }}>
-                {v}
-              </p>
-              <p className="text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
-                {l}
-              </p>
-            </div>
-          ))}
-        </div>
-
         {onForgot && (
           <button
             type="button"
@@ -907,11 +777,9 @@ export function DriverKYCStatusScreen({
   onUpload: () => void;
   onBack: () => void;
 }) {
-  const verified = DOC_ITEMS.filter((d) => d.status === 'verified').length;
-  const total = DOC_ITEMS.length;
-  const pct = Math.round((verified / total) * 100);
-  const allDone = verified === total;
-
+  // There is no driver KYC-status GET endpoint, so we cannot know which
+  // individual documents are verified/pending or compute a completion %.
+  // Show an honest, generic "under review" state instead of fabricated data.
   return (
     <div
       className="absolute inset-0 flex flex-col overflow-hidden"
@@ -926,110 +794,43 @@ export function DriverKYCStatusScreen({
           </p>
         </div>
 
-        {/* Progress ring area */}
-        <div className="mb-6 flex flex-col items-center">
-          <div className="relative mb-4 h-28 w-28">
-            <svg width="112" height="112" viewBox="0 0 112 112">
-              <circle
-                cx="56"
-                cy="56"
-                r="48"
-                fill="none"
-                stroke="rgba(255,255,255,.06)"
-                strokeWidth="8"
-              />
-              <circle
-                cx="56"
-                cy="56"
-                r="48"
-                fill="none"
-                stroke={allDone ? G2 : '#F59E0B'}
-                strokeWidth="8"
-                strokeLinecap="round"
-                strokeDasharray={`${(pct / 100) * 301.6} 301.6`}
-                transform="rotate(-90 56 56)"
-                style={{
-                  transition: 'stroke-dasharray 1s ease',
-                  filter: `drop-shadow(0 0 8px ${allDone ? G2 : '#F59E0B'}60)`,
-                }}
-              />
-            </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <p className="text-[22px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
-                {pct}%
-              </p>
-              <p className="text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
-                Complete
-              </p>
-            </div>
-          </div>
-
+        {/* Generic status — no per-document state is available from the backend */}
+        <div className="mb-6 flex flex-col items-center text-center">
           <div
-            className={`rounded-full px-4 py-1.5 text-[12px] font-bold`}
+            className="mb-4 flex h-24 w-24 items-center justify-center rounded-full text-4xl"
             style={{
-              background: allDone ? 'rgba(43,172,82,.12)' : 'rgba(245,158,11,.1)',
-              color: allDone ? G3 : '#F59E0B',
-              fontFamily: IT,
+              background: 'rgba(245,158,11,.1)',
+              border: '1px solid rgba(245,158,11,.2)',
             }}
           >
-            {allDone ? '✅ All documents verified' : `⏳ ${total - verified} documents pending`}
+            ⏳
           </div>
-        </div>
-
-        {/* Doc checklist */}
-        <div className="mb-6 flex flex-col gap-2.5">
-          {DOC_ITEMS.map((doc) => (
-            <div
-              key={doc.id}
-              className="flex items-center gap-3 rounded-2xl p-3.5"
-              style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
-            >
-              <span style={{ fontSize: 22, flexShrink: 0 }}>{doc.icon}</span>
-              <p
-                className="flex-1 text-[14px] font-medium"
-                style={{ fontFamily: IT, color: '#fff' }}
-              >
-                {doc.label}
-              </p>
-              <div
-                className={`flex items-center gap-1.5 rounded-full px-2.5 py-1`}
-                style={{
-                  background:
-                    doc.status === 'verified' ? 'rgba(43,172,82,.1)' : 'rgba(245,158,11,.08)',
-                  border: `1px solid ${doc.status === 'verified' ? 'rgba(43,172,82,.2)' : 'rgba(245,158,11,.15)'}`,
-                }}
-              >
-                <span style={{ fontSize: 10 }}>{doc.status === 'verified' ? '✅' : '⏳'}</span>
-                <span
-                  className="text-[10px] font-bold capitalize"
-                  style={{ fontFamily: IT, color: doc.status === 'verified' ? G3 : '#F59E0B' }}
-                >
-                  {doc.status}
-                </span>
-              </div>
-            </div>
-          ))}
+          <p className="mb-2 text-[18px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
+            Your documents are under review
+          </p>
+          <p
+            className="max-w-[280px] text-[13px] leading-relaxed"
+            style={{ fontFamily: IT, color: MUTED }}
+          >
+            We’ll notify you once verification is complete. You can add or re-upload documents at
+            any time.
+          </p>
         </div>
 
         <div className="flex flex-col gap-3">
-          <DGreenBtn
-            label={allDone ? 'Proceed to Dashboard →' : 'Upload Missing Docs →'}
-            onClick={allDone ? onContinue : onUpload}
-          />
-          {!allDone && (
-            <button
-              onClick={onContinue}
-              className="flex h-12 w-full items-center justify-center rounded-2xl text-[14px] font-medium active:scale-[.97]"
-              style={{
-                background: NAVY_SURFACE,
-                border: `1px solid ${BORDER}`,
-                fontFamily: IT,
-                color: MUTED,
-              }}
-            >
-              Continue anyway (limited access)
-            </button>
-          )}
+          <DGreenBtn label="Upload / Update Documents →" onClick={onUpload} />
+          <button
+            onClick={onContinue}
+            className="flex h-12 w-full items-center justify-center rounded-2xl text-[14px] font-medium active:scale-[.97]"
+            style={{
+              background: NAVY_SURFACE,
+              border: `1px solid ${BORDER}`,
+              fontFamily: IT,
+              color: MUTED,
+            }}
+          >
+            Continue to Dashboard →
+          </button>
         </div>
       </div>
     </div>
@@ -1357,7 +1158,7 @@ export function DriverVehicleRegScreen({
   const [model, setModel] = useState('Camry');
   const [year, setYear] = useState('2019');
   const [colour, setColour] = useState('White');
-  const [plate, setPlate] = useState('LAG 482 KA');
+  const [plate, setPlate] = useState('');
   const [seats, setSeats] = useState('4');
   const [category, setCategory] = useState<RideType>('ECONOMY');
   const [loading, setLoading] = useState(false);
@@ -1552,6 +1353,26 @@ export function DriverDashboardScreen({
   const [toggling, setToggling] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Signed-in driver identity (may be null before auth resolves).
+  const [driver] = useState(() => auth.getUser());
+  // Real wallet + completed-trip data for the header stat block.
+  const [wallet, setWallet] = useState<WalletDto | null>(null);
+  const [tripsToday, setTripsToday] = useState<number | null>(null);
+
+  useEffect(() => {
+    api.driverRides
+      .getWallet()
+      .then((w) => setWallet(w))
+      .catch(() => {});
+    api.driverRides
+      .list({ status: 'COMPLETED', limit: 100 })
+      .then((r) => {
+        const items = (r as { items?: RideDto[] }).items ?? [];
+        setTripsToday(items.filter((t) => isToday(t.completedAt)).length);
+      })
+      .catch(() => {});
+  }, []);
+
   // Restore availability on mount (driver may already be online).
   useEffect(() => {
     api.driverRides
@@ -1662,14 +1483,14 @@ export function DriverDashboardScreen({
                     fontFamily: PP,
                   }}
                 >
-                  {DRIVER.initials}
+                  {driverInitials(driver)}
                 </div>
                 <div>
                   <p className="text-[13px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
-                    {DRIVER.name.split(' ')[0]}
+                    {driver?.firstName || '—'}
                   </p>
                   <p className="text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
-                    {DRIVER.level}
+                    Driver
                   </p>
                 </div>
               </div>
@@ -1709,16 +1530,18 @@ export function DriverDashboardScreen({
             <div className="mb-4 flex gap-3">
               {[
                 {
-                  v: `₦${DRIVER.todayEarnings.toLocaleString()}`,
-                  l: "Today's Earnings",
+                  // Available wallet balance — the real spendable earnings figure.
+                  v: wallet ? naira(wallet.availableBalance) : '—',
+                  l: 'Available Balance',
                   color: G3,
                 },
                 {
-                  v: TRIP_HISTORY_D.filter((t) => t.status === 'completed').length.toString(),
+                  v: tripsToday === null ? '—' : tripsToday.toString(),
                   l: 'Trips Today',
                   color: '#fff',
                 },
-                { v: `${DRIVER.rating}★`, l: 'Rating', color: COLOR_STAR },
+                // No driver-rating endpoint exists → honest em dash.
+                { v: '—', l: 'Rating', color: COLOR_STAR },
               ].map((s) => (
                 <div
                   key={s.l}
@@ -1800,38 +1623,24 @@ export function DriverDashboardScreen({
             )}
           </div>
 
-          {/* Performance */}
+          {/* Performance — no acceptance/completion endpoint exists yet. */}
           <div className="px-5 pb-5">
             <p className="mb-3 text-[13px] font-semibold" style={{ fontFamily: PP, color: MUTED }}>
               PERFORMANCE
             </p>
-            {[
-              { label: 'Acceptance Rate', value: DRIVER.acceptance, color: G2 },
-              { label: 'Completion Rate', value: DRIVER.completion, color: '#3B82F6' },
-            ].map((p) => (
-              <div key={p.label} className="mb-3">
-                <div className="mb-1.5 flex justify-between">
-                  <p className="text-[13px]" style={{ fontFamily: IT, color: TEXT_SECONDARY }}>
-                    {p.label}
-                  </p>
-                  <p
-                    className="text-[13px] font-semibold"
-                    style={{ fontFamily: IT, color: '#fff' }}
-                  >
-                    {p.value}%
-                  </p>
-                </div>
-                <div
-                  className="h-2 overflow-hidden rounded-full"
-                  style={{ background: 'rgba(255,255,255,.06)' }}
-                >
-                  <div
-                    className="h-full rounded-full"
-                    style={{ width: `${p.value}%`, background: p.color }}
-                  />
-                </div>
+            {['Acceptance Rate', 'Completion Rate'].map((label) => (
+              <div key={label} className="mb-3 flex items-center justify-between">
+                <p className="text-[13px]" style={{ fontFamily: IT, color: TEXT_SECONDARY }}>
+                  {label}
+                </p>
+                <p className="text-[13px] font-semibold" style={{ fontFamily: IT, color: MUTED }}>
+                  —
+                </p>
               </div>
             ))}
+            <p className="mt-1 text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
+              Performance stats aren’t available yet.
+            </p>
           </div>
         </div>
       </div>
@@ -2729,8 +2538,25 @@ export function DriverTripCompletedScreen({
 // DRIVER-013 — EARNINGS TAB  (also standalone screen)
 // ─────────────────────────────────────────────────────────────────────────────
 function DriverEarningsTab({ onBack }: { onBack: () => void }) {
-  const [period, setPeriod] = useState<'daily' | 'weekly' | 'monthly'>('weekly');
-  const total = EARNINGS_DATA.reduce((s, d) => s + d.amount, 0);
+  const [wallet, setWallet] = useState<WalletDto | null>(null);
+  const [txs, setTxs] = useState<WalletLedgerEntryDto[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      api.driverRides
+        .getWallet()
+        .then((w) => setWallet(w))
+        .catch(() => {}),
+      api.driverRides
+        .getWalletTransactions({ pageSize: 20 })
+        .then((r) => setTxs((r as { items?: WalletLedgerEntryDto[] }).items ?? []))
+        .catch(() => {}),
+    ]).finally(() => setLoading(false));
+  }, []);
+
+  // Only credits (trip earnings, cashback, etc.) count as money earned in.
+  const earnedIn = txs.filter((t) => t.direction === 'CREDIT').reduce((s, t) => s + t.amount, 0);
 
   return (
     <div
@@ -2746,26 +2572,7 @@ function DriverEarningsTab({ onBack }: { onBack: () => void }) {
           </p>
         </div>
 
-        {/* Period tabs */}
-        <div className="mb-5 flex gap-2">
-          {(['daily', 'weekly', 'monthly'] as const).map((p) => (
-            <button
-              key={p}
-              onClick={() => setPeriod(p)}
-              className="h-9 flex-1 rounded-xl text-[12px] font-semibold capitalize transition-all"
-              style={{
-                background: period === p ? G2 : NAVY_SURFACE,
-                color: period === p ? '#fff' : MUTED,
-                fontFamily: IT,
-                boxShadow: period === p ? `0 4px 16px rgba(43,172,82,.3)` : 'none',
-              }}
-            >
-              {p}
-            </button>
-          ))}
-        </div>
-
-        {/* Hero */}
+        {/* Hero — available wallet balance (real) */}
         <div
           className="mb-5 rounded-3xl p-5 text-center"
           style={{
@@ -2777,75 +2584,84 @@ function DriverEarningsTab({ onBack }: { onBack: () => void }) {
             className="mb-1 text-[13px] font-medium opacity-80"
             style={{ fontFamily: IT, color: '#fff' }}
           >
-            {period === 'daily' ? "Today's" : period === 'weekly' ? "This Week's" : "This Month's"}{' '}
-            Earnings
+            Available Balance
           </p>
           <p className="text-[36px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
-            ₦
-            {period === 'daily'
-              ? DRIVER.todayEarnings.toLocaleString()
-              : period === 'weekly'
-                ? total.toLocaleString()
-                : '612,400'}
+            {wallet ? naira(wallet.availableBalance) : '—'}
           </p>
-          <div className="mt-3 flex justify-center gap-4">
-            {[
-              [TRIP_HISTORY_D.length.toString(), 'Trips'],
-              [`${Math.round(total / TRIP_HISTORY_D.length).toLocaleString()}`, 'Avg/Trip'],
-              [`${DRIVER.acceptance}%`, 'Acceptance'],
-            ].map(([v, l]) => (
-              <div key={l} className="text-center">
-                <p className="text-[14px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
-                  {v}
-                </p>
-                <p className="text-[10px] opacity-70" style={{ fontFamily: IT, color: '#fff' }}>
-                  {l}
-                </p>
-              </div>
-            ))}
-          </div>
+          {wallet && wallet.pendingBalance > 0 && (
+            <p className="mt-1 text-[12px] opacity-80" style={{ fontFamily: IT, color: '#fff' }}>
+              + {naira(wallet.pendingBalance)} pending
+            </p>
+          )}
         </div>
 
-        {/* Bar chart */}
+        {/* Honest summary derived from the loaded transactions */}
         <div
-          className="mb-5 rounded-2xl p-4"
+          className="mb-5 flex gap-3 rounded-2xl p-4"
           style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
         >
-          <p className="mb-4 text-[13px] font-semibold" style={{ fontFamily: PP, color: MUTED }}>
-            DAILY BREAKDOWN
-          </p>
-          <EarningsBar data={EARNINGS_DATA} />
+          {[
+            [wallet ? naira(earnedIn) : '—', 'Recent Credits'],
+            [txs.length ? txs.length.toString() : '—', 'Transactions'],
+          ].map(([v, l]) => (
+            <div key={l} className="flex-1 text-center">
+              <p className="text-[15px] font-bold" style={{ fontFamily: PP, color: G3 }}>
+                {v}
+              </p>
+              <p className="text-[10px]" style={{ fontFamily: IT, color: MUTED }}>
+                {l}
+              </p>
+            </div>
+          ))}
         </div>
 
-        {/* Trip breakdown */}
+        {/* Transactions */}
         <p className="mb-3 text-[13px] font-semibold" style={{ fontFamily: PP, color: MUTED }}>
-          RECENT TRIPS
+          RECENT TRANSACTIONS
         </p>
-        {TRIP_HISTORY_D.filter((t) => t.status === 'completed').map((t) => (
-          <div
-            key={t.id}
-            className="flex items-center gap-3 border-b py-3"
-            style={{ borderColor: BORDER }}
-          >
+        {loading ? (
+          <p className="py-8 text-center text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
+            Loading…
+          </p>
+        ) : txs.length === 0 ? (
+          <p className="py-8 text-center text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
+            No transactions yet.
+          </p>
+        ) : (
+          txs.map((t) => (
             <div
-              className="flex h-8 w-8 items-center justify-center rounded-xl text-base"
-              style={{ background: 'rgba(43,172,82,.1)' }}
+              key={t.id}
+              className="flex items-center gap-3 border-b py-3"
+              style={{ borderColor: BORDER }}
             >
-              🚗
-            </div>
-            <div className="flex-1">
-              <p className="text-[13px] font-medium" style={{ fontFamily: IT, color: '#fff' }}>
-                {t.from} → {t.to}
+              <div
+                className="flex h-8 w-8 items-center justify-center rounded-xl text-base"
+                style={{
+                  background:
+                    t.direction === 'CREDIT' ? 'rgba(43,172,82,.1)' : 'rgba(239,68,68,.08)',
+                }}
+              >
+                {t.direction === 'CREDIT' ? '↙' : '↗'}
+              </div>
+              <div className="flex-1">
+                <p className="text-[13px] font-medium" style={{ fontFamily: IT, color: '#fff' }}>
+                  {t.description || t.type}
+                </p>
+                <p className="text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
+                  {txWhen(t.createdAt)}
+                </p>
+              </div>
+              <p
+                className="text-[14px] font-bold"
+                style={{ fontFamily: PP, color: t.direction === 'CREDIT' ? G3 : COLOR_ERROR }}
+              >
+                {t.direction === 'CREDIT' ? '+' : '−'}
+                {naira(t.amount)}
               </p>
-              <p className="text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
-                {t.time} · {t.duration}
-              </p>
             </div>
-            <p className="text-[14px] font-bold" style={{ fontFamily: PP, color: G3 }}>
-              {t.fare}
-            </p>
-          </div>
-        ))}
+          ))
+        )}
       </div>
     </div>
   );
@@ -2855,8 +2671,22 @@ function DriverEarningsTab({ onBack }: { onBack: () => void }) {
 // DRIVER-014 — WALLET TAB
 // ─────────────────────────────────────────────────────────────────────────────
 function DriverWalletTab({ onBack }: { onBack: () => void }) {
-  const [withdrawing, setWithdrawing] = useState(false);
-  const balance = 28640;
+  const [wallet, setWallet] = useState<WalletDto | null>(null);
+  const [txs, setTxs] = useState<WalletLedgerEntryDto[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      api.driverRides
+        .getWallet()
+        .then((w) => setWallet(w))
+        .catch(() => {}),
+      api.driverRides
+        .getWalletTransactions({ pageSize: 20 })
+        .then((r) => setTxs((r as { items?: WalletLedgerEntryDto[] }).items ?? []))
+        .catch(() => {}),
+    ]).finally(() => setLoading(false));
+  }, []);
 
   return (
     <div
@@ -2885,72 +2715,42 @@ function DriverWalletTab({ onBack }: { onBack: () => void }) {
             Available Balance
           </p>
           <p className="mb-4 text-[38px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
-            ₦{balance.toLocaleString()}
+            {wallet ? naira(wallet.availableBalance) : '—'}
           </p>
-          <div className="flex gap-2">
-            <button
-              onClick={() => {
-                setWithdrawing(true);
-                setTimeout(() => setWithdrawing(false), 2000);
-              }}
-              className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl text-[13px] font-semibold active:scale-[.97]"
-              style={{
-                background: `linear-gradient(135deg,${G0},${G2})`,
-                color: '#fff',
-                fontFamily: IT,
-                boxShadow: `0 6px 20px rgba(43,172,82,.3)`,
-              }}
-            >
-              {withdrawing ? 'Sending...' : '💸 Withdraw'}
-            </button>
-            <button
-              className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl text-[13px] font-semibold active:scale-[.97]"
-              style={{
-                background: 'rgba(255,255,255,.06)',
-                border: `1px solid ${BORDER}`,
-                color: TEXT_SECONDARY,
-                fontFamily: IT,
-              }}
-            >
-              📋 Statement
-            </button>
-          </div>
+          {/* No driver withdraw endpoint exists yet → honestly disabled. */}
+          <button
+            disabled
+            className="flex h-11 w-full items-center justify-center gap-2 rounded-xl text-[13px] font-semibold"
+            style={{
+              background: 'rgba(255,255,255,.06)',
+              border: `1px solid ${BORDER}`,
+              color: MUTED,
+              fontFamily: IT,
+              cursor: 'not-allowed',
+            }}
+          >
+            💸 Withdraw · Coming soon
+          </button>
         </div>
 
-        {/* Bank linked */}
+        {/* Linked bank — no bank-account endpoint for drivers yet. */}
         <div
           className="mb-5 flex items-center gap-3 rounded-2xl p-4"
           style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
         >
           <div
             className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl text-xl"
-            style={{ background: 'rgba(59,130,246,.12)' }}
+            style={{ background: 'rgba(255,255,255,.05)' }}
           >
             🏦
           </div>
           <div className="flex-1">
             <p className="text-[14px] font-semibold" style={{ fontFamily: PP, color: '#fff' }}>
-              GTBank •••• 1823
+              No bank account linked
             </p>
             <p className="text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
-              Linked bank · Instant withdrawal
+              Bank linking isn’t available yet.
             </p>
-          </div>
-          <div
-            className="flex h-5 w-5 items-center justify-center rounded-full"
-            style={{ background: G2 }}
-          >
-            <svg
-              width="10"
-              height="10"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#fff"
-              strokeWidth="3"
-              strokeLinecap="round"
-            >
-              <path d="M20 6L9 17l-5-5" />
-            </svg>
           </div>
         </div>
 
@@ -2958,33 +2758,48 @@ function DriverWalletTab({ onBack }: { onBack: () => void }) {
         <p className="mb-3 text-[13px] font-semibold" style={{ fontFamily: PP, color: MUTED }}>
           RECENT TRANSACTIONS
         </p>
-        {WALLET_TXS.map((tx, i) => (
-          <div
-            key={i}
-            className="flex items-center gap-3 border-b py-3.5"
-            style={{ borderColor: BORDER }}
-          >
+        {loading ? (
+          <p className="py-8 text-center text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
+            Loading…
+          </p>
+        ) : txs.length === 0 ? (
+          <p className="py-8 text-center text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
+            No transactions yet.
+          </p>
+        ) : (
+          txs.map((tx) => (
             <div
-              className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl"
-              style={{
-                background: tx.type === 'credit' ? 'rgba(43,172,82,.1)' : 'rgba(239,68,68,.08)',
-              }}
+              key={tx.id}
+              className="flex items-center gap-3 border-b py-3.5"
+              style={{ borderColor: BORDER }}
             >
-              <span style={{ fontSize: 18 }}>{tx.type === 'credit' ? '↙' : '↗'}</span>
-            </div>
-            <div className="flex-1">
-              <p className="text-[13px] font-medium" style={{ fontFamily: IT, color: '#fff' }}>
-                {tx.label}
+              <div
+                className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl"
+                style={{
+                  background:
+                    tx.direction === 'CREDIT' ? 'rgba(43,172,82,.1)' : 'rgba(239,68,68,.08)',
+                }}
+              >
+                <span style={{ fontSize: 18 }}>{tx.direction === 'CREDIT' ? '↙' : '↗'}</span>
+              </div>
+              <div className="flex-1">
+                <p className="text-[13px] font-medium" style={{ fontFamily: IT, color: '#fff' }}>
+                  {tx.description || tx.type}
+                </p>
+                <p className="text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
+                  {txWhen(tx.createdAt)}
+                </p>
+              </div>
+              <p
+                className="text-[14px] font-bold"
+                style={{ fontFamily: PP, color: tx.direction === 'CREDIT' ? G3 : COLOR_ERROR }}
+              >
+                {tx.direction === 'CREDIT' ? '+' : '−'}
+                {naira(tx.amount)}
               </p>
-              <p className="text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
-                {tx.sub}
-              </p>
             </div>
-            <p className="text-[14px] font-bold" style={{ fontFamily: PP, color: tx.color }}>
-              {tx.amount}
-            </p>
-          </div>
-        ))}
+          ))
+        )}
       </div>
     </div>
   );
@@ -2994,8 +2809,18 @@ function DriverWalletTab({ onBack }: { onBack: () => void }) {
 // DRIVER-015 — TRIP HISTORY TAB
 // ─────────────────────────────────────────────────────────────────────────────
 function DriverTripsTab({ onBack }: { onBack: () => void }) {
-  const [tab, setTab] = useState<'all' | 'completed' | 'cancelled'>('all');
-  const filtered = tab === 'all' ? TRIP_HISTORY_D : TRIP_HISTORY_D.filter((t) => t.status === tab);
+  const [trips, setTrips] = useState<RideDto[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.driverRides
+      .list({ status: 'COMPLETED', limit: 50 })
+      .then((r) => setTrips((r as { items?: RideDto[] }).items ?? []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const earned = trips.reduce((s, t) => s + (t.driverEarning || 0), 0);
 
   return (
     <div
@@ -3011,23 +2836,15 @@ function DriverTripsTab({ onBack }: { onBack: () => void }) {
           </p>
         </div>
 
-        {/* Summary */}
+        {/* Summary — completed count + earned are real; no rating endpoint. */}
         <div
           className="mb-4 flex gap-3 rounded-2xl p-4"
           style={{ background: 'rgba(43,172,82,.06)', border: '1px solid rgba(43,172,82,.12)' }}
         >
           {[
-            {
-              v: TRIP_HISTORY_D.filter((t) => t.status === 'completed').length.toString(),
-              l: 'Completed',
-            },
-            {
-              v: `₦${TRIP_HISTORY_D.filter((t) => t.status === 'completed')
-                .reduce((s, t) => s + parseInt(t.fare.replace(/[₦,]/g, '')), 0)
-                .toLocaleString()}`,
-              l: 'Earned',
-            },
-            { v: '4.92★', l: 'Rating' },
+            { v: trips.length.toString(), l: 'Completed' },
+            { v: naira(earned), l: 'Earned' },
+            { v: '—', l: 'Rating' },
           ].map((s) => (
             <div key={s.l} className="flex-1 text-center">
               <p className="text-[15px] font-bold" style={{ fontFamily: PP, color: G3 }}>
@@ -3040,103 +2857,68 @@ function DriverTripsTab({ onBack }: { onBack: () => void }) {
           ))}
         </div>
 
-        {/* Tabs */}
-        <div className="mb-4 flex gap-2">
-          {(['all', 'completed', 'cancelled'] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className="h-9 flex-1 rounded-xl text-[12px] font-semibold capitalize"
-              style={{
-                background: tab === t ? G2 : NAVY_SURFACE,
-                color: tab === t ? '#fff' : MUTED,
-                fontFamily: IT,
-              }}
+        {loading ? (
+          <p className="py-10 text-center text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
+            Loading…
+          </p>
+        ) : trips.length === 0 ? (
+          <p className="py-10 text-center text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
+            No completed trips yet.
+          </p>
+        ) : (
+          trips.map((trip) => (
+            <div
+              key={trip.id}
+              className="mb-3 rounded-2xl p-4"
+              style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
             >
-              {t}
-            </button>
-          ))}
-        </div>
-
-        {filtered.map((trip) => (
-          <div
-            key={trip.id}
-            className="mb-3 rounded-2xl p-4"
-            style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
-          >
-            <div className="mb-3 flex justify-between">
+              <div className="mb-3 flex justify-between">
+                <div className="flex items-center gap-2">
+                  <div
+                    className="flex h-8 w-8 items-center justify-center rounded-xl text-base"
+                    style={{ background: 'rgba(43,172,82,.1)' }}
+                  >
+                    🚗
+                  </div>
+                  <div>
+                    <p
+                      className="text-[12px] font-semibold"
+                      style={{ fontFamily: IT, color: '#fff' }}
+                    >
+                      #{trip.id.slice(0, 8)}
+                    </p>
+                    <p className="text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
+                      {txWhen(trip.completedAt || trip.createdAt)}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-[15px] font-bold" style={{ fontFamily: PP, color: G3 }}>
+                    {naira(trip.driverEarning || 0)}
+                  </p>
+                  <span className="text-[10px] font-bold" style={{ color: G3, fontFamily: IT }}>
+                    {trip.status}
+                  </span>
+                </div>
+              </div>
               <div className="flex items-center gap-2">
-                <div
-                  className="flex h-8 w-8 items-center justify-center rounded-xl text-base"
-                  style={{
-                    background:
-                      trip.status === 'completed' ? 'rgba(43,172,82,.1)' : 'rgba(239,68,68,.08)',
-                  }}
-                >
-                  {trip.status === 'completed' ? '🚗' : '❌'}
+                <div className="flex flex-col items-center gap-1">
+                  <div className="h-1.5 w-1.5 rounded-full" style={{ background: G2 }} />
+                  <div className="h-4 w-px" style={{ background: BORDER }} />
+                  <div className="h-1.5 w-1.5 rounded-full" style={{ background: '#EF4444' }} />
                 </div>
                 <div>
-                  <p
-                    className="text-[12px] font-semibold"
-                    style={{ fontFamily: IT, color: '#fff' }}
-                  >
-                    {trip.id}
+                  <p className="mb-1 text-[12px]" style={{ fontFamily: IT, color: TEXT_SECONDARY }}>
+                    {trip.pickupAddress || 'Pickup'}
                   </p>
-                  <p className="text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
-                    {trip.time}
+                  <p className="text-[12px]" style={{ fontFamily: IT, color: TEXT_SECONDARY }}>
+                    {trip.dropoffAddress || 'Dropoff'}
                   </p>
                 </div>
               </div>
-              <div className="text-right">
-                <p
-                  className="text-[15px] font-bold"
-                  style={{ fontFamily: PP, color: trip.status === 'completed' ? G3 : MUTED }}
-                >
-                  {trip.fare}
-                </p>
-                <span
-                  className="text-[10px] font-bold"
-                  style={{ color: trip.status === 'completed' ? G3 : COLOR_ERROR, fontFamily: IT }}
-                >
-                  {trip.status.toUpperCase()}
-                </span>
-              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="flex flex-col items-center gap-1">
-                <div className="h-1.5 w-1.5 rounded-full" style={{ background: G2 }} />
-                <div className="h-4 w-px" style={{ background: BORDER }} />
-                <div className="h-1.5 w-1.5 rounded-full" style={{ background: '#EF4444' }} />
-              </div>
-              <div>
-                <p className="mb-1 text-[12px]" style={{ fontFamily: IT, color: TEXT_SECONDARY }}>
-                  {trip.from}
-                </p>
-                <p className="text-[12px]" style={{ fontFamily: IT, color: TEXT_SECONDARY }}>
-                  {trip.to}
-                </p>
-              </div>
-            </div>
-            {trip.status === 'completed' && trip.rating > 0 && (
-              <div className="mt-3 flex gap-0.5 border-t pt-3" style={{ borderColor: BORDER }}>
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <span
-                    key={n}
-                    style={{
-                      fontSize: 12,
-                      filter: n <= trip.rating ? 'none' : 'grayscale(1) opacity(.3)',
-                    }}
-                  >
-                    ⭐
-                  </span>
-                ))}
-                <span className="ml-1.5 text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
-                  Passenger rated
-                </span>
-              </div>
-            )}
-          </div>
-        ))}
+          ))
+        )}
       </div>
     </div>
   );
@@ -3146,6 +2928,7 @@ function DriverTripsTab({ onBack }: { onBack: () => void }) {
 // DRIVER-016 — PROFILE TAB
 // ─────────────────────────────────────────────────────────────────────────────
 function DriverProfileTab({ onBack, onSettings }: { onBack: () => void; onSettings: () => void }) {
+  const driver = auth.getUser();
   return (
     <div
       className="absolute inset-0 flex flex-col overflow-hidden"
@@ -3176,40 +2959,27 @@ function DriverProfileTab({ onBack, onSettings }: { onBack: () => void; onSettin
                   boxShadow: `0 8px 32px rgba(43,172,82,.35)`,
                 }}
               >
-                {DRIVER.initials}
-              </div>
-              <div
-                className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full text-sm"
-                style={{ background: NAVY_BASE, border: `2px solid ${BORDER}` }}
-              >
-                📷
+                {driverInitials(driver)}
               </div>
             </div>
             <div className="text-center">
               <p className="text-[20px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
-                {DRIVER.name}
+                {driverFullName(driver)}
               </p>
               <div className="mt-1 flex items-center justify-center gap-2">
-                <span
-                  className="rounded-full px-3 py-0.5 text-[12px] font-bold"
-                  style={{ background: 'rgba(251,191,36,.12)', color: '#FBBF24', fontFamily: IT }}
-                >
-                  🏅 {DRIVER.level}
-                </span>
-                <div className="h-1 w-1 rounded-full" style={{ background: MUTED }} />
-                <span className="text-[12px]" style={{ fontFamily: IT, color: G3 }}>
-                  {DRIVER.rating}★
+                <span className="text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
+                  Driver
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Quick stats */}
+          {/* Quick stats — no lifetime-stats endpoint exists yet → honest em dash. */}
           <div className="mt-5 flex gap-3">
             {[
-              { v: DRIVER.trips.toLocaleString(), l: 'Total Trips' },
-              { v: `${DRIVER.acceptance}%`, l: 'Acceptance' },
-              { v: `${DRIVER.completion}%`, l: 'Completion' },
+              { v: '—', l: 'Total Trips' },
+              { v: '—', l: 'Acceptance' },
+              { v: '—', l: 'Completion' },
             ].map((s) => (
               <div
                 key={s.l}
@@ -3234,10 +3004,8 @@ function DriverProfileTab({ onBack, onSettings }: { onBack: () => void; onSettin
             style={{ border: `1px solid ${BORDER}` }}
           >
             {[
-              { icon: '📱', label: 'Phone', value: DRIVER.phone },
-              { icon: '🚗', label: 'Vehicle', value: DRIVER.vehicle },
-              { icon: '🔢', label: 'Plate', value: DRIVER.plate },
-              { icon: '📍', label: 'City', value: 'Lagos, Nigeria' },
+              { icon: '📱', label: 'Phone', value: driver?.phone || '—' },
+              { icon: '✉️', label: 'Email', value: driver?.email || '—' },
             ].map((item, i, arr) => (
               <div
                 key={item.label}
@@ -3260,11 +3028,10 @@ function DriverProfileTab({ onBack, onSettings }: { onBack: () => void; onSettin
             ))}
           </div>
 
-          {/* Actions */}
+          {/* Actions — only Settings is wired; document/bank management has no
+              backend yet, so those dead rows are omitted rather than faked. */}
           <div className="flex flex-col gap-2.5">
             {[
-              { icon: '📄', label: 'My Documents', sub: 'View & update KYC docs' },
-              { icon: '🏦', label: 'Bank Account', sub: 'Manage withdrawal bank' },
               {
                 icon: '⚙️',
                 label: 'Settings',
