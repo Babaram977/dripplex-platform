@@ -841,6 +841,7 @@ function DashboardPage({
 }) {
   const [recentOrders, setRecentOrders] = useState<MerchantOrderDto[]>([]);
   const [products, setProducts] = useState<MerchantProductDto[]>([]);
+  const [kyc, setKyc] = useState<MerchantKycStatusDto | null>(null);
 
   useEffect(() => {
     api.merchant
@@ -854,6 +855,10 @@ function DashboardPage({
       .getProducts()
       .then((r) => setProducts(r.items ?? []))
       .catch(() => {});
+    api.merchant
+      .getKyc()
+      .then((r) => setKyc(r))
+      .catch(() => {});
   }, []);
 
   const newCount = recentOrders.filter((o) => o.status === 'CONFIRMED').length;
@@ -861,8 +866,84 @@ function DashboardPage({
   const liveProd = products.filter((p) => p.published && p.inStock).length;
   const outStock = products.filter((p) => !p.inStock).length;
 
+  // Verification nudge: a merchant can't go live until Ops verifies the business,
+  // which needs KYC documents submitted first. Surface exactly what's outstanding
+  // right on the dashboard so a freshly-registered merchant knows to act. Hidden
+  // once the business is VERIFIED.
+  const kycLatest = kyc?.latest ?? null;
+  const hasKyc = (kyc?.items?.length ?? 0) > 0;
+  const kycRejected = kycLatest?.verificationStatus === 'REJECTED';
+  const businessVerified = business?.verificationStatus === 'VERIFIED';
+  const verifyNudge = businessVerified
+    ? null
+    : !hasKyc || kycRejected
+      ? {
+          bg: 'rgba(239,68,68,.08)',
+          bd: 'rgba(239,68,68,.25)',
+          icon: '🪪',
+          title: kycRejected ? 'Re-submit your KYC documents' : 'Submit your KYC to go live',
+          body: kycRejected
+            ? 'A document was rejected during review. Please check the notes and submit again.'
+            : 'Your store stays offline until DrippleX verifies your business. Upload your identity & business documents to enter the review queue.',
+          cta: kycRejected ? 'Re-submit documents →' : 'Submit KYC documents →',
+        }
+      : {
+          bg: 'rgba(245,158,11,.08)',
+          bd: 'rgba(245,158,11,.25)',
+          icon: '⏳',
+          title: 'KYC under review',
+          body: 'Your documents are with the DrippleX Operations team. This typically takes 1–2 business days.',
+          cta: 'View approval status →',
+        };
+
   return (
     <div className="mx-scroll" style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+      {verifyNudge && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 12,
+            padding: '14px 16px',
+            borderRadius: 10,
+            background: verifyNudge.bg,
+            border: `1px solid ${verifyNudge.bd}`,
+            marginBottom: 18,
+          }}
+        >
+          <span style={{ fontSize: 20, lineHeight: 1 }}>{verifyNudge.icon}</span>
+          <div style={{ flex: 1 }}>
+            <div
+              style={{
+                fontFamily: PP,
+                fontSize: 13,
+                fontWeight: 700,
+                color: WHITE,
+                marginBottom: 3,
+              }}
+            >
+              {verifyNudge.title}
+            </div>
+            <div
+              style={{
+                fontFamily: IT,
+                fontSize: 12,
+                color: MUTED,
+                lineHeight: 1.55,
+                marginBottom: 8,
+              }}
+            >
+              {verifyNudge.body}
+            </div>
+            <MxBtn
+              label={verifyNudge.cta}
+              variant="outline"
+              small
+              onClick={() => onNav(verifyNudge.cta.startsWith('View') ? 'approval' : 'kyc')}
+            />
+          </div>
+        </div>
+      )}
       <div
         style={{
           display: 'flex',
