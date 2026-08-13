@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { G0, G2, G3, NAVY_DEEP, NAVY_CARD, NAVY_SURFACE, BORDER, MUTED } from './shared';
 import {
-  COLOR_STAR,
   COLOR_SUCCESS,
   COLOR_WARNING,
   COLOR_ERROR,
@@ -10,7 +9,7 @@ import {
 } from '../tokens/colors';
 import { api } from '../lib/api';
 import { ws } from '../lib/ws';
-import type { RideDto, RideType } from '../lib/api';
+import type { RideDto, RideType, RideTypeCatalogEntryDto } from '../lib/api';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS
@@ -84,96 +83,73 @@ const POPULAR_PLACES = [
   { icon: '🛍', label: 'Balogun Market', sub: 'Lagos Island', lat: 6.4548, lng: 3.3899 },
 ];
 
-const RIDE_TYPES = [
-  {
-    id: 'economy',
-    name: 'Economy',
-    emoji: '🚗',
-    desc: 'Affordable everyday rides',
-    price: '₦2,100',
-    time: '4 min',
-    seats: 4,
-    selected: true,
-    color: G2,
-  },
-];
-
-const DRIVER_DATA = {
-  name: 'Adeyemi Okafor',
-  rating: 4.92,
-  trips: 3847,
-  plate: 'LAG 482 KA',
-  vehicle: 'Toyota Camry (White)',
-  eta: '3 min away',
-  avatar: 'AO',
-  phone: '+234 801 234 5678',
-  level: 'Gold Driver',
-  verified: true,
+// Display maps derived from the real `RideType` enum (decorative labels/icons
+// only — not fabricated data). The ride-type CATALOG (name/description/price)
+// comes from `api.rides.getRideTypes()` + `api.rides.estimate()`.
+const RIDE_TYPE_LABEL: Record<RideType, string> = {
+  ECONOMY: 'Economy',
+  COMFORT: 'Comfort',
+  XL: 'XL',
+  TRICYCLE: 'Tricycle',
+};
+const RIDE_TYPE_EMOJI: Record<RideType, string> = {
+  ECONOMY: '🚗',
+  COMFORT: '🚙',
+  XL: '🚐',
+  TRICYCLE: '🛺',
 };
 
+// Shared money formatter — backend money is numeric; format for display.
+const naira = (n: number) => `₦${Math.round(n).toLocaleString()}`;
+
+// Human-readable date for history/receipt rows from an ISO timestamp.
+const fmtDate = (iso?: string | null) => {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+// Payment options. Wallet balance is loaded live from `api.wallet.get()`;
+// card/cash carry no balance. No fabricated balances here.
 const PAYMENT_METHODS = [
-  { id: 'wallet', icon: '💳', label: 'DrippleX Wallet', balance: '₦24,500', color: G2 },
-  { id: 'card', icon: '💳', label: 'Visa •••• 4821', balance: '', color: '#3B82F6' },
-  { id: 'cash', icon: '💵', label: 'Cash', balance: '', color: '#F59E0B' },
+  { id: 'wallet', icon: '💳', label: 'DrippleX Wallet', color: G2 },
+  { id: 'card', icon: '💳', label: 'Card', color: '#3B82F6' },
+  { id: 'cash', icon: '💵', label: 'Cash', color: '#F59E0B' },
 ];
 
-const RIDE_HISTORY = [
-  {
-    id: 'RX-20241205-0012',
-    date: 'Today, 9:41 AM',
-    from: 'Ikeja, Lagos',
-    to: 'Victoria Island',
-    amount: '₦2,100',
-    status: 'completed',
-    driver: 'Adeyemi O.',
-    rating: 5,
-    type: 'Economy',
-  },
-  {
-    id: 'RX-20241204-0049',
-    date: 'Yesterday, 3:22 PM',
-    from: 'VI, Lagos',
-    to: 'Lekki Phase 1',
-    amount: '₦1,850',
-    status: 'completed',
-    driver: 'Chukwuemeka N.',
-    rating: 4,
-    type: 'Economy',
-  },
-  {
-    id: 'RX-20241203-0021',
-    date: 'Dec 3, 11:05 AM',
-    from: 'Surulere',
-    to: 'Ikeja City Mall',
-    amount: '₦3,400',
-    status: 'completed',
-    driver: 'Tunde B.',
-    rating: 5,
-    type: 'Comfort',
-  },
-  {
-    id: 'RX-20241201-0007',
-    date: 'Dec 1, 7:48 PM',
-    from: 'Lekki Phase 1',
-    to: 'Murtala Muhammed Airport',
-    amount: '₦5,200',
-    status: 'completed',
-    driver: 'Biodun A.',
-    rating: 4,
-    type: 'XL',
-  },
-  {
-    id: 'RX-20241130-0031',
-    date: 'Nov 30, 2:15 PM',
-    from: 'Ikeja',
-    to: 'Apapa Port',
-    amount: '₦4,100',
-    status: 'cancelled',
-    driver: '—',
-    rating: 0,
-    type: 'Economy',
-  },
-];
+// Live ride loader — polls `api.rides.get(id)` (same 3s cadence the
+// FindingDriver poll uses) and rides the ws status fast-path. Returns the
+// authoritative `RideDto` for the active-ride screens.
+function useLiveRide(rideId?: string) {
+  const [ride, setRide] = useState<RideDto | null>(null);
+  useEffect(() => {
+    if (!rideId) return;
+    let alive = true;
+    const load = () =>
+      api.rides
+        .get(rideId)
+        .then((r) => {
+          if (alive) setRide(r);
+        })
+        .catch(() => {});
+    ws.joinRide(rideId);
+    const offStatus = ws.onRideStatus(load);
+    const poll = setInterval(load, 3000);
+    load();
+    return () => {
+      alive = false;
+      clearInterval(poll);
+      offStatus();
+    };
+  }, [rideId]);
+  return ride;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SHARED SUB-COMPONENTS
@@ -1136,7 +1112,12 @@ export function FareEstimateScreen({
   rideType?: RideType;
 }) {
   const [payment, setPayment] = useState('cash');
-  const ride = RIDE_TYPES[0];
+
+  // Real ride-type catalog (label/description). Price is NOT taken from the
+  // catalog per route — the per-route fare comes from `api.rides.estimate()`.
+  const [catalog, setCatalog] = useState<RideTypeCatalogEntryDto[] | null>(null);
+  // Live wallet balance for the Wallet payment option.
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
 
   const [estimate, setEstimate] = useState<{
     baseFare: number;
@@ -1145,9 +1126,21 @@ export function FareEstimateScreen({
     totalFare: number;
     promoDiscount: number;
     distanceMeters: number;
+    durationSeconds: number;
   } | null>(null);
   const [booking, setBooking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.rides
+      .getRideTypes()
+      .then(setCatalog)
+      .catch(() => {});
+    api.wallet
+      .get()
+      .then((w) => setWalletBalance(w.availableBalance))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!dropoff) return;
@@ -1163,9 +1156,15 @@ export function FareEstimateScreen({
       .catch(() => {});
   }, [dropoff, rideType]);
 
-  const naira = (n: number) => `₦${Math.round(n).toLocaleString()}`;
-  const fareLabel = estimate ? naira(estimate.totalFare) : ride.price;
-  const kmLabel = estimate ? (estimate.distanceMeters / 1000).toFixed(0) : '14';
+  const entry = catalog?.find((c) => c.rideType === rideType) ?? null;
+  const typeName = entry?.label ?? RIDE_TYPE_LABEL[rideType];
+  const typeDesc = entry?.description ?? '';
+  const typeEmoji = RIDE_TYPE_EMOJI[rideType];
+  // GAP: backend ride catalog exposes no per-type "seats" field — omitted.
+  const durationMin = estimate ? Math.max(1, Math.round(estimate.durationSeconds / 60)) : null;
+  // Honest fallback: no fabricated flat price before the estimate resolves.
+  const fareLabel = estimate ? naira(estimate.totalFare) : '—';
+  const kmLabel = estimate ? (estimate.distanceMeters / 1000).toFixed(0) : '—';
 
   const handleBook = async () => {
     if (booking || !dropoff) return;
@@ -1214,12 +1213,12 @@ export function FareEstimateScreen({
               className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl text-3xl"
               style={{ background: 'rgba(43,172,82,.12)' }}
             >
-              {ride.emoji}
+              {typeEmoji}
             </div>
             <div className="flex-1">
               <div className="mb-0.5 flex items-center gap-2">
                 <p className="text-[17px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
-                  {ride.name}
+                  {typeName}
                 </p>
                 <span
                   className="rounded-full px-2 py-0.5 text-[10px] font-bold"
@@ -1229,7 +1228,7 @@ export function FareEstimateScreen({
                 </span>
               </div>
               <p className="text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
-                {ride.desc} · {ride.seats} seats · {ride.time}
+                {[typeDesc, durationMin ? `${durationMin} min` : null].filter(Boolean).join(' · ')}
               </p>
             </div>
             <div className="flex-shrink-0 text-right">
@@ -1271,9 +1270,9 @@ export function FareEstimateScreen({
                   >
                     {pm.id === 'wallet' ? 'Wallet' : pm.id === 'card' ? 'Card' : 'Cash'}
                   </p>
-                  {pm.balance && (
+                  {pm.id === 'wallet' && (
                     <p className="text-[10px]" style={{ fontFamily: IT, color: G2 }}>
-                      {pm.balance}
+                      {walletBalance != null ? naira(walletBalance) : '—'}
                     </p>
                   )}
                 </button>
@@ -1325,7 +1324,7 @@ export function FareEstimateScreen({
           )}
 
           <GreenButton
-            label={booking ? 'Booking…' : `Book Economy · ${fareLabel}`}
+            label={booking ? 'Booking…' : `Book ${typeName} · ${fareLabel}`}
             onClick={handleBook}
           />
 
@@ -1518,17 +1517,18 @@ export function DriverAssignedScreen({
   onBack,
   onArrived,
   onCancel,
+  rideId,
 }: {
   onBack: () => void;
   onArrived: () => void;
   onCancel?: () => void;
+  rideId?: string;
 }) {
-  const [eta, setEta] = useState(3);
-
-  useEffect(() => {
-    const t = setInterval(() => setEta((p) => Math.max(0, p - 1)), 8000);
-    return () => clearInterval(t);
-  }, []);
+  const ride = useLiveRide(rideId);
+  // Honest ETA from the backend's estimated trip duration (real field).
+  const eta = ride ? Math.max(0, Math.round(ride.estimatedDurationSeconds / 60)) : null;
+  const assigned = !!ride?.driverId;
+  const typeLabel = ride ? RIDE_TYPE_LABEL[ride.rideType] : null;
 
   return (
     <div
@@ -1561,10 +1561,10 @@ export function DriverAssignedScreen({
             </div>
             <div className="flex-1">
               <p className="text-[15px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
-                Driver on the way
+                {assigned ? 'Driver on the way' : 'Finding your driver'}
               </p>
               <p className="text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
-                Arriving in approximately {eta} min
+                {eta != null ? `Arriving in approximately ${eta} min` : 'Estimating arrival…'}
               </p>
             </div>
             <div className="text-center">
@@ -1572,7 +1572,7 @@ export function DriverAssignedScreen({
                 className="text-[22px] font-bold leading-none"
                 style={{ fontFamily: PP, color: G3 }}
               >
-                {eta}
+                {eta != null ? eta : '—'}
               </p>
               <p className="text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
                 min
@@ -1581,27 +1581,30 @@ export function DriverAssignedScreen({
           </div>
 
           {/* Driver card */}
+          {/* GAP: backend RideDto exposes only driverId; no plate/rating/live-name
+              endpoint. Driver name/vehicle become available only on the receipt
+              after the ride completes. We show an honest "Driver assigned" state. */}
           <div
             className="mb-4 rounded-2xl p-4"
             style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
           >
             <div className="mb-4 flex items-center gap-4">
               <div
-                className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl text-xl font-bold"
+                className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl text-2xl"
                 style={{
                   background: `linear-gradient(135deg,${G0},${G2})`,
                   color: '#fff',
                   fontFamily: PP,
                 }}
               >
-                {DRIVER_DATA.avatar}
+                🚗
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2">
                   <p className="text-[16px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
-                    {DRIVER_DATA.name}
+                    {assigned ? 'Driver assigned' : 'Assigning driver…'}
                   </p>
-                  {DRIVER_DATA.verified && (
+                  {assigned && (
                     <div
                       className="flex h-4 w-4 items-center justify-center rounded-full"
                       style={{ background: G2 }}
@@ -1621,30 +1624,28 @@ export function DriverAssignedScreen({
                   )}
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span style={{ color: COLOR_STAR, fontSize: 13 }}>★</span>
-                  <span
-                    className="text-[13px] font-medium"
-                    style={{ fontFamily: IT, color: '#fff' }}
-                  >
-                    {DRIVER_DATA.rating}
-                  </span>
+                  {/* GAP: no driver rating/trips endpoint — show ride status instead. */}
                   <span className="text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
-                    · {DRIVER_DATA.trips.toLocaleString()} trips
+                    Driver details shared after pickup
                   </span>
                 </div>
-                <span
-                  className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
-                  style={{ background: 'rgba(251,191,36,.1)', color: '#FBBF24', fontFamily: IT }}
-                >
-                  {DRIVER_DATA.level}
-                </span>
+                {typeLabel && (
+                  <span
+                    className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                    style={{ background: 'rgba(43,172,82,.12)', color: G3, fontFamily: IT }}
+                  >
+                    {typeLabel}
+                  </span>
+                )}
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-2 border-t pt-3" style={{ borderColor: BORDER }}>
               {[
-                ['🚗 Vehicle', DRIVER_DATA.vehicle],
-                ['🔢 Plate', DRIVER_DATA.plate],
+                // Vehicle class is real (RideDto.rideType); make/model is not exposed.
+                ['🚗 Vehicle class', typeLabel ?? '—'],
+                // GAP: backend never provides driver plate.
+                ['🔢 Plate', '—'],
               ].map(([l, v]) => (
                 <div key={l}>
                   <p className="mb-0.5 text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
@@ -1754,11 +1755,15 @@ export function DriverArrivedScreen({
   onBack,
   onStart,
   onShare,
+  rideId,
 }: {
   onBack: () => void;
   onStart: () => void;
   onShare?: () => void;
+  rideId?: string;
 }) {
+  const ride = useLiveRide(rideId);
+  const typeLabel = ride ? RIDE_TYPE_LABEL[ride.rideType] : null;
   const [pulse, setPulse] = useState(true);
   useEffect(() => {
     const t = setInterval(() => setPulse((p) => !p), 1200);
@@ -1806,35 +1811,36 @@ export function DriverArrivedScreen({
               <p className="text-[16px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
                 Your driver has arrived!
               </p>
+              {/* GAP: backend never provides vehicle make/model or plate live — show ride class only. */}
               <p className="text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
-                Look for a white Toyota Camry · {DRIVER_DATA.plate}
+                {typeLabel ? `Look for your ${typeLabel} ride` : 'Your ride is here'}
               </p>
             </div>
           </div>
 
           {/* Driver mini card */}
+          {/* GAP: RideDto exposes only driverId; no live driver name/rating/vehicle. */}
           <div
             className="flex items-center gap-3 rounded-2xl p-3"
             style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
           >
             <div
-              className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl text-lg font-bold"
+              className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl text-lg"
               style={{
                 background: `linear-gradient(135deg,${G0},${G2})`,
                 color: '#fff',
                 fontFamily: PP,
               }}
             >
-              {DRIVER_DATA.avatar}
+              🚗
             </div>
             <div className="flex-1">
               <p className="text-[14px] font-semibold" style={{ fontFamily: PP, color: '#fff' }}>
-                {DRIVER_DATA.name}
+                Driver assigned
               </p>
               <div className="flex items-center gap-1">
-                <span style={{ color: COLOR_STAR, fontSize: 12 }}>★</span>
                 <span className="text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
-                  {DRIVER_DATA.rating} · {DRIVER_DATA.vehicle}
+                  {typeLabel ?? '—'} · details after pickup
                 </span>
               </div>
             </div>
@@ -1913,11 +1919,15 @@ export function RideInProgressScreen({
   onBack,
   onComplete,
   onSOS,
+  rideId,
 }: {
   onBack: () => void;
   onComplete: () => void;
   onSOS?: () => void;
+  rideId?: string;
 }) {
+  const ride = useLiveRide(rideId);
+  const typeLabel = ride ? RIDE_TYPE_LABEL[ride.rideType] : null;
   const [progress, setProgress] = useState(0.15);
   const [elapsed, setElapsed] = useState(0);
   const [expanded, setExpanded] = useState(false);
@@ -1937,8 +1947,14 @@ export function RideInProgressScreen({
     return () => clearInterval(t);
   }, []);
 
-  const remaining = Math.max(0, Math.round(22 * (1 - progress)));
-  const distLeft = (14 * (1 - progress)).toFixed(1);
+  // Seed the countdown from the ride's real estimated duration/distance.
+  // NOTE: live position is WebSocket-only and out of scope; the % is a local
+  // animation, not a real GPS position.
+  const totalMin = ride ? Math.max(1, Math.round(ride.estimatedDurationSeconds / 60)) : 22;
+  const totalKm = ride ? ride.estimatedDistanceMeters / 1000 : 14;
+  const remaining = Math.max(0, Math.round(totalMin * (1 - progress)));
+  const distLeft = (totalKm * (1 - progress)).toFixed(1);
+  const fareLabel = ride ? naira(ride.totalFare) : '—';
 
   return (
     <div
@@ -1987,7 +2003,7 @@ export function RideInProgressScreen({
             {[
               { v: `${remaining}`, u: 'min left', icon: '⏱' },
               { v: distLeft, u: 'km left', icon: '📍' },
-              { v: '₦2,100', u: 'fare', icon: '💳' },
+              { v: fareLabel, u: 'fare', icon: '💳' },
             ].map((s) => (
               <div
                 key={s.u}
@@ -2011,22 +2027,23 @@ export function RideInProgressScreen({
             className="mb-3 flex w-full items-center gap-3 rounded-2xl p-3 transition-all"
             style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
           >
+            {/* GAP: RideDto exposes only driverId; no live driver name/plate/vehicle. */}
             <div
-              className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl text-sm font-bold"
+              className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl text-sm"
               style={{
                 background: `linear-gradient(135deg,${G0},${G2})`,
                 color: '#fff',
                 fontFamily: PP,
               }}
             >
-              {DRIVER_DATA.avatar}
+              🚗
             </div>
             <div className="flex-1 text-left">
               <p className="text-[13px] font-semibold" style={{ fontFamily: PP, color: '#fff' }}>
-                {DRIVER_DATA.name}
+                Driver assigned
               </p>
               <p className="text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
-                {DRIVER_DATA.plate} · {DRIVER_DATA.vehicle}
+                {typeLabel ?? '—'} · details after trip
               </p>
             </div>
             <svg
@@ -2084,10 +2101,10 @@ export function RideInProgressScreen({
             </div>
             <div className="flex-1">
               <p className="mb-2 text-[12px]" style={{ fontFamily: IT, color: TEXT_SECONDARY }}>
-                Ikeja GRA, Lagos
+                {ride?.pickupAddress ?? RIDE_PICKUP.address}
               </p>
               <p className="text-[12px]" style={{ fontFamily: IT, color: TEXT_SECONDARY }}>
-                Victoria Island, Lagos
+                {ride?.dropoffAddress ?? '—'}
               </p>
             </div>
           </div>
@@ -2103,10 +2120,33 @@ export function RideInProgressScreen({
 export function TripCompletedScreen({
   onRate,
   onHome,
+  rideId,
 }: {
   onRate: () => void;
   onHome: () => void;
+  rideId?: string;
 }) {
+  const ride = useLiveRide(rideId);
+  // The receipt is the ONLY place with driver identity (name) — post-ride.
+  const [receipt, setReceipt] = useState<Awaited<ReturnType<typeof api.rides.getReceipt>> | null>(
+    null,
+  );
+  useEffect(() => {
+    if (!rideId) return;
+    api.rides
+      .getReceipt(rideId)
+      .then(setReceipt)
+      .catch(() => {});
+  }, [rideId]);
+
+  const typeLabel = ride ? RIDE_TYPE_LABEL[ride.rideType] : null;
+  const durationLabel = ride
+    ? `${Math.max(1, Math.round(ride.estimatedDurationSeconds / 60))} min`
+    : '—';
+  const distanceLabel = ride ? `${(ride.estimatedDistanceMeters / 1000).toFixed(1)} km` : '—';
+  const routeLabel = ride ? `${ride.pickupAddress ?? '—'} → ${ride.dropoffAddress ?? '—'}` : '—';
+  const totalLabel = receipt ? naira(receipt.fare) : ride ? naira(ride.totalFare) : '—';
+
   return (
     <div
       className="absolute inset-0 flex flex-col overflow-hidden"
@@ -2149,7 +2189,7 @@ export function TripCompletedScreen({
             You have arrived!
           </p>
           <p className="text-[14px]" style={{ fontFamily: IT, color: MUTED }}>
-            Victoria Island, Lagos
+            {ride?.dropoffAddress ?? '—'}
           </p>
         </div>
 
@@ -2163,11 +2203,13 @@ export function TripCompletedScreen({
               TRIP SUMMARY
             </p>
             {[
-              ['Duration', '22 min'],
-              ['Distance', '14.2 km'],
-              ['Route', 'Ikeja GRA → Victoria Island'],
-              ['Driver', DRIVER_DATA.name],
-              ['Vehicle', `${DRIVER_DATA.vehicle} · ${DRIVER_DATA.plate}`],
+              ['Duration', durationLabel],
+              ['Distance', distanceLabel],
+              ['Route', routeLabel],
+              // Driver name is available post-ride from the receipt only.
+              ['Driver', receipt?.driver?.name ?? '—'],
+              // GAP: receipt exposes driver name only; no vehicle make/model or plate.
+              ['Vehicle', typeLabel ?? '—'],
             ].map(([l, v]) => (
               <div key={l} className="mb-2.5 flex items-start justify-between">
                 <p className="text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
@@ -2188,10 +2230,10 @@ export function TripCompletedScreen({
             </p>
             <div className="text-right">
               <p className="text-[22px] font-bold" style={{ fontFamily: PP, color: G3 }}>
-                ₦2,100
+                {totalLabel}
               </p>
               <p className="text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
-                DrippleX Wallet
+                {ride?.paymentMethod ?? '—'}
               </p>
             </div>
           </div>
@@ -2235,6 +2277,26 @@ export function RateDriverScreen({
   const [comment, setComment] = useState('');
   const [tip, setTip] = useState<number | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  // Driver name comes from the post-ride receipt (only source of driver identity).
+  const [receipt, setReceipt] = useState<Awaited<ReturnType<typeof api.rides.getReceipt>> | null>(
+    null,
+  );
+  useEffect(() => {
+    if (!rideId) return;
+    api.rides
+      .getReceipt(rideId)
+      .then(setReceipt)
+      .catch(() => {});
+  }, [rideId]);
+  const driverName = receipt?.driver?.name ?? null;
+  const driverInitials = driverName
+    ? driverName
+        .split(/\s+/)
+        .map((w) => w[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase()
+    : '🚗';
 
   const ALL_TAGS = [
     'Safe driving',
@@ -2314,13 +2376,14 @@ export function RateDriverScreen({
               boxShadow: `0 8px 32px rgba(43,172,82,.3)`,
             }}
           >
-            {DRIVER_DATA.avatar}
+            {driverInitials}
           </div>
           <p className="mb-0.5 text-[18px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
-            {DRIVER_DATA.name}
+            {driverName ?? 'Your driver'}
           </p>
+          {/* GAP: receipt exposes driver name only; no vehicle make/model. */}
           <p className="text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
-            {DRIVER_DATA.vehicle}
+            Thanks for riding with DrippleX
           </p>
         </div>
 
@@ -2421,13 +2484,30 @@ export function RideHistoryScreen({
   onDetail: (id: string) => void;
 }) {
   const [tab, setTab] = useState<'all' | 'completed' | 'cancelled'>('all');
+  const [rides, setRides] = useState<RideDto[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const filtered = tab === 'all' ? RIDE_HISTORY : RIDE_HISTORY.filter((r) => r.status === tab);
+  useEffect(() => {
+    setLoadError(null);
+    api.rides
+      .list({ limit: 50 })
+      .then((res) => setRides(res.items))
+      .catch((err: unknown) => {
+        setLoadError(err instanceof Error ? err.message : 'Failed to load rides');
+        setRides([]);
+      });
+  }, []);
 
-  const totalSpent = RIDE_HISTORY.filter((r) => r.status === 'completed').reduce(
-    (sum, r) => sum + parseInt(r.amount.replace(/[₦,]/g, '')),
-    0,
-  );
+  const all = rides ?? [];
+  const filtered =
+    tab === 'all'
+      ? all
+      : all.filter((r) =>
+          tab === 'completed' ? r.status === 'COMPLETED' : r.status === 'CANCELLED',
+        );
+
+  const completed = all.filter((r) => r.status === 'COMPLETED');
+  const totalSpent = completed.reduce((sum, r) => sum + r.totalFare, 0);
 
   return (
     <div
@@ -2450,12 +2530,10 @@ export function RideHistoryScreen({
           style={{ background: 'rgba(43,172,82,.06)', border: '1px solid rgba(43,172,82,.15)' }}
         >
           {[
-            {
-              v: RIDE_HISTORY.filter((r) => r.status === 'completed').length.toString(),
-              l: 'Completed',
-            },
-            { v: `₦${totalSpent.toLocaleString()}`, l: 'Total Spent' },
-            { v: '4.6★', l: 'Avg Rating' },
+            { v: completed.length.toString(), l: 'Completed' },
+            { v: naira(totalSpent), l: 'Total Spent' },
+            // GAP: RideDto carries no per-ride star rating; no average available.
+            { v: '—', l: 'Avg Rating' },
           ].map((s) => (
             <div key={s.l} className="flex-1 text-center">
               <p className="text-[16px] font-bold" style={{ fontFamily: PP, color: G3 }}>
@@ -2489,98 +2567,109 @@ export function RideHistoryScreen({
       </div>
 
       <div className="flex flex-1 flex-col gap-3 overflow-y-auto px-5 pb-4">
-        {filtered.map((ride) => (
-          <button
-            key={ride.id}
-            onClick={() => onDetail(ride.id)}
-            className="w-full rounded-2xl p-4 text-left transition-all active:scale-[.98]"
-            style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
-          >
-            <div className="mb-3 flex items-start justify-between">
-              <div className="flex items-center gap-2">
-                <div
-                  className="flex h-8 w-8 items-center justify-center rounded-xl text-base"
-                  style={{
-                    background:
-                      ride.status === 'completed' ? 'rgba(43,172,82,.12)' : 'rgba(239,68,68,.1)',
-                  }}
-                >
-                  {ride.status === 'completed' ? '🚗' : '❌'}
-                </div>
-                <div>
-                  <p
-                    className="text-[13px] font-semibold"
-                    style={{ fontFamily: PP, color: '#fff' }}
-                  >
-                    {ride.type} Ride
-                  </p>
-                  <p className="text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
-                    {ride.date}
-                  </p>
-                </div>
-              </div>
-              <div className="text-right">
-                <p
-                  className="text-[15px] font-bold"
-                  style={{ fontFamily: PP, color: ride.status === 'completed' ? '#fff' : MUTED }}
-                >
-                  {ride.amount}
-                </p>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-[10px] font-bold`}
-                  style={{
-                    background:
-                      ride.status === 'completed' ? 'rgba(43,172,82,.12)' : 'rgba(239,68,68,.1)',
-                    color: ride.status === 'completed' ? G3 : COLOR_ERROR,
-                    fontFamily: IT,
-                  }}
-                >
-                  {ride.status.toUpperCase()}
-                </span>
-              </div>
-            </div>
-
-            <div className="mb-2 flex items-center gap-2">
-              <div className="flex flex-col items-center gap-1">
-                <div className="h-1.5 w-1.5 rounded-full" style={{ background: G2 }} />
-                <div className="h-4 w-px" style={{ background: BORDER }} />
-                <div className="h-1.5 w-1.5 rounded-full" style={{ background: '#EF4444' }} />
-              </div>
-              <div className="flex-1">
-                <p className="mb-1 text-[12px]" style={{ fontFamily: IT, color: TEXT_SECONDARY }}>
-                  {ride.from}
-                </p>
-                <p className="text-[12px]" style={{ fontFamily: IT, color: TEXT_SECONDARY }}>
-                  {ride.to}
-                </p>
-              </div>
-            </div>
-
-            {ride.status === 'completed' && ride.rating > 0 && (
-              <div
-                className="flex items-center gap-1 border-t pt-2"
-                style={{ borderColor: BORDER }}
-              >
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <span
-                    key={n}
+        {filtered.map((ride) => {
+          const isCompleted = ride.status === 'COMPLETED';
+          return (
+            <button
+              key={ride.id}
+              onClick={() => onDetail(ride.id)}
+              className="w-full rounded-2xl p-4 text-left transition-all active:scale-[.98]"
+              style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
+            >
+              <div className="mb-3 flex items-start justify-between">
+                <div className="flex items-center gap-2">
+                  <div
+                    className="flex h-8 w-8 items-center justify-center rounded-xl text-base"
                     style={{
-                      fontSize: 12,
-                      filter: n <= ride.rating ? 'none' : 'grayscale(1) opacity(.3)',
+                      background: isCompleted ? 'rgba(43,172,82,.12)' : 'rgba(239,68,68,.1)',
                     }}
                   >
-                    ⭐
+                    {isCompleted ? '🚗' : '❌'}
+                  </div>
+                  <div>
+                    <p
+                      className="text-[13px] font-semibold"
+                      style={{ fontFamily: PP, color: '#fff' }}
+                    >
+                      {RIDE_TYPE_LABEL[ride.rideType]} Ride
+                    </p>
+                    <p className="text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
+                      {fmtDate(ride.createdAt)}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p
+                    className="text-[15px] font-bold"
+                    style={{ fontFamily: PP, color: isCompleted ? '#fff' : MUTED }}
+                  >
+                    {naira(ride.totalFare)}
+                  </p>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-bold`}
+                    style={{
+                      background: isCompleted ? 'rgba(43,172,82,.12)' : 'rgba(239,68,68,.1)',
+                      color: isCompleted ? G3 : COLOR_ERROR,
+                      fontFamily: IT,
+                    }}
+                  >
+                    {ride.status}
                   </span>
-                ))}
-                <span className="ml-1 text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
-                  {ride.driver}
-                </span>
+                </div>
               </div>
-            )}
-          </button>
-        ))}
 
-        {filtered.length === 0 && (
+              <div className="mb-2 flex items-center gap-2">
+                <div className="flex flex-col items-center gap-1">
+                  <div className="h-1.5 w-1.5 rounded-full" style={{ background: G2 }} />
+                  <div className="h-4 w-px" style={{ background: BORDER }} />
+                  <div className="h-1.5 w-1.5 rounded-full" style={{ background: '#EF4444' }} />
+                </div>
+                <div className="flex-1">
+                  <p className="mb-1 text-[12px]" style={{ fontFamily: IT, color: TEXT_SECONDARY }}>
+                    {ride.pickupAddress ?? '—'}
+                  </p>
+                  <p className="text-[12px]" style={{ fontFamily: IT, color: TEXT_SECONDARY }}>
+                    {ride.dropoffAddress ?? '—'}
+                  </p>
+                </div>
+              </div>
+              {/* GAP: RideDto has no driver name or star rating for a history row. */}
+            </button>
+          );
+        })}
+
+        {rides === null && !loadError && (
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 py-12">
+            <div
+              className="flex h-16 w-16 items-center justify-center rounded-full text-3xl"
+              style={{ background: NAVY_SURFACE }}
+            >
+              🚗
+            </div>
+            <p className="text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
+              Loading your rides…
+            </p>
+          </div>
+        )}
+
+        {loadError && (
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 py-12">
+            <div
+              className="flex h-16 w-16 items-center justify-center rounded-full text-3xl"
+              style={{ background: NAVY_SURFACE }}
+            >
+              ⚠️
+            </div>
+            <p className="text-[15px] font-semibold" style={{ fontFamily: PP, color: '#fff' }}>
+              Couldn't load rides
+            </p>
+            <p className="text-center text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
+              {loadError}
+            </p>
+          </div>
+        )}
+
+        {rides !== null && !loadError && filtered.length === 0 && (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 py-12">
             <div
               className="flex h-16 w-16 items-center justify-center rounded-full text-3xl"
@@ -2592,7 +2681,9 @@ export function RideHistoryScreen({
               No rides here
             </p>
             <p className="text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
-              Your {tab} rides will appear here
+              {all.length === 0
+                ? 'Your rides will appear here'
+                : `Your ${tab} rides will appear here`}
             </p>
           </div>
         )}
@@ -2615,8 +2706,64 @@ export function RideDetailScreen({
   onRebook?: () => void;
   onReport?: () => void;
 }) {
-  const ride = RIDE_HISTORY.find((r) => r.id === rideId) || RIDE_HISTORY[0];
+  const [ride, setRide] = useState<RideDto | null>(null);
+  const [receipt, setReceipt] = useState<Awaited<ReturnType<typeof api.rides.getReceipt>> | null>(
+    null,
+  );
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [shareVisible, setShareVisible] = useState(false);
+
+  useEffect(() => {
+    if (!rideId) return;
+    setLoadError(null);
+    api.rides
+      .get(rideId)
+      .then(setRide)
+      .catch((err: unknown) =>
+        setLoadError(err instanceof Error ? err.message : 'Failed to load ride'),
+      );
+    // Driver identity (name) is only on the post-ride receipt.
+    api.rides
+      .getReceipt(rideId)
+      .then(setReceipt)
+      .catch(() => {});
+  }, [rideId]);
+
+  if (!ride) {
+    return (
+      <div
+        className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-5"
+        style={{ background: NAVY_BASE }}
+      >
+        <div
+          className="flex h-16 w-16 items-center justify-center rounded-full text-3xl"
+          style={{ background: NAVY_SURFACE }}
+        >
+          {loadError ? '⚠️' : '🚗'}
+        </div>
+        <p className="text-[15px] font-semibold" style={{ fontFamily: PP, color: '#fff' }}>
+          {loadError ? "Couldn't load ride" : 'Loading ride…'}
+        </p>
+        {loadError && (
+          <p className="text-center text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
+            {loadError}
+          </p>
+        )}
+        <button
+          onClick={onBack}
+          className="mt-2 text-[14px] font-medium active:opacity-60"
+          style={{ fontFamily: IT, color: G3 }}
+        >
+          ← Back to history
+        </button>
+      </div>
+    );
+  }
+
+  const isCompleted = ride.status === 'COMPLETED';
+  const typeLabel = RIDE_TYPE_LABEL[ride.rideType];
+  const durationLabel = `${Math.max(1, Math.round(ride.estimatedDurationSeconds / 60))} min`;
+  const distanceLabel = `${(ride.estimatedDistanceMeters / 1000).toFixed(1)} km`;
 
   return (
     <div
@@ -2627,7 +2774,7 @@ export function RideDetailScreen({
 
       {/* Map snippet */}
       <div className="relative flex-shrink-0" style={{ height: 200 }}>
-        <MapCanvas variant={ride.status === 'completed' ? 'complete' : 'default'} progress={1} />
+        <MapCanvas variant={isCompleted ? 'complete' : 'default'} progress={1} />
         <div className="absolute inset-0">
           <div className="mt-[52px] flex items-center gap-3 px-5 pt-2">
             <BackArrow onClick={onBack} />
@@ -2646,7 +2793,7 @@ export function RideDetailScreen({
               className="mb-0.5 text-[12px] font-semibold"
               style={{ fontFamily: IT, color: MUTED }}
             >
-              {ride.date}
+              {fmtDate(ride.createdAt)}
             </p>
             <p className="text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
               ID: {ride.id}
@@ -2655,13 +2802,12 @@ export function RideDetailScreen({
           <span
             className="rounded-full px-3 py-1.5 text-[11px] font-bold"
             style={{
-              background:
-                ride.status === 'completed' ? 'rgba(43,172,82,.12)' : 'rgba(239,68,68,.1)',
-              color: ride.status === 'completed' ? G3 : COLOR_ERROR,
+              background: isCompleted ? 'rgba(43,172,82,.12)' : 'rgba(239,68,68,.1)',
+              color: isCompleted ? G3 : COLOR_ERROR,
               fontFamily: IT,
             }}
           >
-            {ride.status.toUpperCase()}
+            {ride.status}
           </span>
         </div>
 
@@ -2682,7 +2828,7 @@ export function RideDetailScreen({
                   PICKUP
                 </p>
                 <p className="text-[14px] font-semibold" style={{ fontFamily: PP, color: '#fff' }}>
-                  {ride.from}
+                  {ride.pickupAddress ?? '—'}
                 </p>
               </div>
               <div>
@@ -2690,16 +2836,16 @@ export function RideDetailScreen({
                   DROP-OFF
                 </p>
                 <p className="text-[14px] font-semibold" style={{ fontFamily: PP, color: '#fff' }}>
-                  {ride.to}
+                  {ride.dropoffAddress ?? '—'}
                 </p>
               </div>
             </div>
           </div>
           <div className="flex gap-3 border-t pt-3" style={{ borderColor: BORDER }}>
             {[
-              ['22 min', 'Duration'],
-              ['14.2 km', 'Distance'],
-              [ride.type, 'Ride Type'],
+              [durationLabel, 'Duration'],
+              [distanceLabel, 'Distance'],
+              [typeLabel, 'Ride Type'],
             ].map(([v, l]) => (
               <div key={l} className="flex-1 text-center">
                 <p className="text-[13px] font-bold" style={{ fontFamily: PP, color: G3 }}>
@@ -2714,7 +2860,9 @@ export function RideDetailScreen({
         </div>
 
         {/* Driver card */}
-        {ride.status === 'completed' && (
+        {/* GAP: driver identity is only the name from the receipt (post-ride);
+            no plate/rating/vehicle. Star rating the customer gave is not exposed. */}
+        {isCompleted && (
           <div
             className="mb-4 rounded-2xl p-4"
             style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
@@ -2724,35 +2872,22 @@ export function RideDetailScreen({
             </p>
             <div className="flex items-center gap-3">
               <div
-                className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl text-lg font-bold"
+                className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl text-lg"
                 style={{
                   background: `linear-gradient(135deg,${G0},${G2})`,
                   color: '#fff',
                   fontFamily: PP,
                 }}
               >
-                {DRIVER_DATA.avatar}
+                🚗
               </div>
               <div className="flex-1">
                 <p className="text-[14px] font-semibold" style={{ fontFamily: PP, color: '#fff' }}>
-                  {ride.driver}
+                  {receipt?.driver?.name ?? '—'}
                 </p>
-                <div className="flex items-center gap-1">
-                  {[1, 2, 3, 4, 5].map((n) => (
-                    <span
-                      key={n}
-                      style={{
-                        fontSize: 11,
-                        filter: n <= ride.rating ? 'none' : 'grayscale(1) opacity(.3)',
-                      }}
-                    >
-                      ⭐
-                    </span>
-                  ))}
-                  <span className="ml-1 text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
-                    You rated
-                  </span>
-                </div>
+                <span className="text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
+                  {typeLabel} ride
+                </span>
               </div>
             </div>
           </div>
@@ -2767,9 +2902,9 @@ export function RideDetailScreen({
             PAYMENT
           </p>
           {[
-            ['Base fare', '₦800'],
-            ['Distance', '₦1,120'],
-            ['Time fee', '₦180'],
+            ['Base fare', naira(ride.baseFare)],
+            ['Distance', naira(ride.distanceFare)],
+            ['Time fee', naira(ride.timeFare)],
           ].map(([l, v]) => (
             <div key={l} className="mb-2 flex justify-between">
               <p className="text-[13px]" style={{ fontFamily: IT, color: TEXT_SECONDARY }}>
@@ -2786,11 +2921,11 @@ export function RideDetailScreen({
               Total
             </p>
             <p className="text-[16px] font-bold" style={{ fontFamily: PP, color: G3 }}>
-              {ride.amount}
+              {naira(ride.totalFare)}
             </p>
           </div>
           <p className="mt-1 text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
-            Paid via DrippleX Wallet
+            {ride.paymentMethod ? `Paid via ${ride.paymentMethod}` : 'Payment method not recorded'}
           </p>
         </div>
 
@@ -4450,10 +4585,9 @@ export function EmergencySOSScreen({ onBack, onSOS }: { onBack?: () => void; onS
           >
             Current Trip
           </p>
-          <p style={{ fontSize: 13, color: '#fff', fontFamily: IT }}>Driver: {DRIVER_DATA.name}</p>
-          <p style={{ fontSize: 13, color: TEXT_SECONDARY, fontFamily: IT }}>
-            Plate: {DRIVER_DATA.plate}
-          </p>
+          {/* GAP: no live driver name/plate endpoint (RideDto exposes only driverId). */}
+          <p style={{ fontSize: 13, color: '#fff', fontFamily: IT }}>Driver: Assigned</p>
+          <p style={{ fontSize: 13, color: TEXT_SECONDARY, fontFamily: IT }}>Plate: —</p>
           <p style={{ fontSize: 13, color: TEXT_SECONDARY, fontFamily: IT }}>
             Location: Ozumba Mbadiwe Ave, VI
           </p>
@@ -5135,13 +5269,13 @@ export function LiveTrackingScreen({
             AO
           </div>
           <div className="flex-1">
+            {/* GAP: RideDto exposes only driverId; no live driver name/rating. */}
             <p style={{ fontFamily: PP, fontSize: 14, fontWeight: 600, color: '#fff' }}>
-              {DRIVER_DATA.name}
+              Driver assigned
             </p>
             <div className="flex items-center gap-1">
-              <StarRow rating={DRIVER_DATA.rating} size={11} />
-              <p style={{ fontSize: 11, color: TEXT_SECONDARY, fontFamily: IT, marginLeft: 2 }}>
-                {DRIVER_DATA.rating}
+              <p style={{ fontSize: 11, color: TEXT_SECONDARY, fontFamily: IT }}>
+                Details after pickup
               </p>
             </div>
           </div>
@@ -5277,16 +5411,14 @@ export function DriverEnRouteScreen({
             AO
           </div>
           <div className="flex-1">
+            {/* GAP: no live driver name/vehicle/plate/rating (RideDto exposes only driverId). */}
             <p style={{ fontFamily: PP, fontSize: 14, fontWeight: 600, color: '#fff' }}>
-              {DRIVER_DATA.name}
+              Driver assigned
             </p>
-            <p style={{ fontSize: 12, color: TEXT_SECONDARY, fontFamily: IT }}>
-              {DRIVER_DATA.vehicle} • {DRIVER_DATA.plate}
-            </p>
+            <p style={{ fontSize: 12, color: TEXT_SECONDARY, fontFamily: IT }}>—</p>
             <div className="mt-0.5 flex items-center gap-1">
-              <StarRow rating={DRIVER_DATA.rating} size={11} />
-              <p style={{ fontSize: 11, color: TEXT_SECONDARY, fontFamily: IT, marginLeft: 2 }}>
-                {DRIVER_DATA.rating}
+              <p style={{ fontSize: 11, color: TEXT_SECONDARY, fontFamily: IT }}>
+                Details after pickup
               </p>
             </div>
           </div>

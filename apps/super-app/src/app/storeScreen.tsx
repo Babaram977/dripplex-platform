@@ -42,6 +42,11 @@ export interface StoreProduct {
   inStock: boolean;
   isService?: boolean;
   duration?: string;
+  // Carried through for the real cart call (api.cart.addItem). Present on live
+  // products; absent on the design-preview mock, where add-to-cart is inert.
+  merchantId?: string;
+  unitPrice?: number;
+  imageUrl?: string | null;
 }
 
 interface StoreReview {
@@ -265,6 +270,9 @@ function dtoToStoreProduct(dto: ProductSummaryDto): StoreProduct {
     emoji: '🛍️',
     rating: dto.rating?.average ?? 0,
     inStock: dto.inStock,
+    merchantId: dto.merchantId,
+    unitPrice: dto.basePrice,
+    imageUrl: dto.primaryImageUrl,
   };
 }
 
@@ -685,13 +693,17 @@ function ProductGrid({
   products,
   loaded,
   onProduct,
+  onCartChange,
 }: {
   products: StoreProduct[];
   loaded: boolean;
   onProduct: (p: StoreProduct) => void;
+  onCartChange?: (count: number) => void;
 }) {
   const [wishlist, setWishlist] = useState<Set<string>>(new Set());
   const [cart, setCart] = useState<Set<string>>(new Set());
+  const [pending, setPending] = useState<Set<string>>(new Set());
+  const [cartError, setCartError] = useState<string | null>(null);
 
   const toggle = (id: string) =>
     setWishlist((w) => {
@@ -699,12 +711,46 @@ function ProductGrid({
       n.has(id) ? n.delete(id) : n.add(id);
       return n;
     });
-  const addCart = (id: string) =>
-    setCart((c) => {
-      const n = new Set(c);
-      n.add(id);
-      return n;
-    });
+
+  const addCart = (p: StoreProduct) => {
+    if (cart.has(p.id) || pending.has(p.id)) return;
+    // Design-preview mock products carry no merchantId/unitPrice, so there is no
+    // real cart to write to — flip the local "added" state only.
+    if (!p.merchantId || p.unitPrice == null) {
+      setCart((c) => new Set(c).add(p.id));
+      return;
+    }
+    setPending((s) => new Set(s).add(p.id));
+    setCartError(null);
+    api.cart
+      .addItem({
+        merchantId: p.merchantId,
+        productId: p.id,
+        productName: p.name,
+        unitPrice: p.unitPrice,
+        quantity: 1,
+        imageUrl: p.imageUrl ?? undefined,
+      })
+      .then((c) => {
+        setCart((s) => new Set(s).add(p.id));
+        onCartChange?.(c.items.reduce((n, it) => n + it.quantity, 0));
+      })
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : 'Could not add to cart';
+        setCartError(
+          /merchant/i.test(msg)
+            ? 'Your cart already has items from another store. Clear it to add from here.'
+            : msg,
+        );
+      })
+      .finally(() =>
+        setPending((s) => {
+          const n = new Set(s);
+          n.delete(p.id);
+          return n;
+        }),
+      );
+  };
 
   return (
     <div className="mb-5 px-4">
@@ -725,6 +771,19 @@ function ProductGrid({
           See all →
         </button>
       </div>
+      {cartError && (
+        <p
+          className="mb-3 rounded-xl px-3 py-2 text-[11.5px]"
+          style={{
+            background: 'rgba(239,68,68,.12)',
+            color: '#FCA5A5',
+            border: '1px solid rgba(239,68,68,.25)',
+            fontFamily: "'Inter',sans-serif",
+          }}
+        >
+          {cartError}
+        </p>
+      )}
       <div className="grid gap-3" style={{ gridTemplateColumns: '1fr 1fr' }}>
         {!loaded ? (
           [1, 2, 3, 4].map((i) => (
@@ -900,10 +959,10 @@ function ProductGrid({
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (p.inStock) addCart(p.id);
+                    if (p.inStock) addCart(p);
                   }}
                   className="h-[30px] w-full rounded-xl text-[10.5px] font-semibold transition-all active:scale-95"
-                  disabled={!p.inStock}
+                  disabled={!p.inStock || pending.has(p.id)}
                   style={{
                     background: cart.has(p.id)
                       ? 'rgba(43,172,82,.2)'
@@ -917,7 +976,13 @@ function ProductGrid({
                       !cart.has(p.id) && p.inStock ? `0 3px 10px rgba(43,172,82,.22)` : 'none',
                   }}
                 >
-                  {cart.has(p.id) ? '✓ Added' : p.isService ? 'Book Now' : 'Add to Cart'}
+                  {pending.has(p.id)
+                    ? 'Adding…'
+                    : cart.has(p.id)
+                      ? '✓ Added'
+                      : p.isService
+                        ? 'Book Now'
+                        : 'Add to Cart'}
                 </button>
               </div>
             </div>
@@ -1368,7 +1433,7 @@ export function StoreScreen({
   const [activeCat, setActiveCat] = useState('All');
   const [loaded, setLoaded] = useState(false);
   const [showAI, setShowAI] = useState(false);
-  const [cartCount] = useState(0);
+  const [cartCount, setCartCount] = useState(0);
 
   // Live merchant + products (from real backend when a merchantId is routed in).
   const [liveMerchant, setLiveMerchant] = useState<StoreMerchant | null>(null);
@@ -1384,6 +1449,11 @@ export function StoreScreen({
     }
     setLoaded(false);
     setLoadError(null);
+    // Reflect the customer's real (single, cross-store) cart in the header badge.
+    api.cart
+      .get()
+      .then((c) => setCartCount(c ? c.items.reduce((n, it) => n + it.quantity, 0) : 0))
+      .catch(() => {});
     // The merchant-detail endpoint returns storefront info + productCount but not
     // the product list itself, so the catalogue is fetched from /products.
     Promise.all([
@@ -1470,6 +1540,7 @@ export function StoreScreen({
             products={filteredProducts}
             loaded={loaded}
             onProduct={(p) => onProduct?.(p)}
+            onCartChange={setCartCount}
           />
         )}
         <ReviewsSection merchant={merchant} />

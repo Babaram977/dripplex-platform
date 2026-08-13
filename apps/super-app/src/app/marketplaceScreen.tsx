@@ -1,7 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { G0, G2, G3, NAVY_DEEP, NAVY_CARD, NAVY_SURFACE, BORDER, MUTED } from './shared';
 import { api } from '../lib/api';
-import type { MerchantSummaryDto } from '../lib/api';
+import type { MerchantSummaryDto, ProductSummaryDto } from '../lib/api';
+
+// Money formatter — backend prices are numeric (e.g. 4800). Mirrors storeScreen's
+// `₦${n.toLocaleString()}` convention. Do not invent a different format.
+const naira = (n: number) => `₦${n.toLocaleString()}`;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DATA
@@ -27,59 +31,6 @@ const AI_PROMPTS = [
   'Pharmacy open right now',
   'Phone under ₦300,000',
   'Find an electrician nearby',
-];
-
-const TRENDING_PRODUCTS = [
-  {
-    name: 'Basmati Rice 5kg',
-    price: '₦7,800',
-    was: '₦9,500',
-    emoji: '🍚',
-    rating: 4.7,
-    store: 'Shoprite',
-    badge: '-18%',
-    bc: '#EF4444',
-  },
-  {
-    name: 'Nike Air Force 1',
-    price: '₦48,000',
-    was: '₦65,000',
-    emoji: '👟',
-    rating: 4.8,
-    store: 'SportsDirect',
-    badge: '-26%',
-    bc: '#F97316',
-  },
-  {
-    name: 'Samsung A55 128GB',
-    price: '₦224,000',
-    was: '₦285,000',
-    emoji: '📱',
-    rating: 4.6,
-    store: 'Slot',
-    badge: '-21%',
-    bc: '#3B82F6',
-  },
-  {
-    name: 'Dove Body Wash 500ml',
-    price: '₦2,100',
-    was: '₦2,800',
-    emoji: '🧴',
-    rating: 4.5,
-    store: 'HealthPlus',
-    badge: '-25%',
-    bc: '#10B981',
-  },
-  {
-    name: 'Ankara 6 Yards',
-    price: '₦14,500',
-    was: '₦18,000',
-    emoji: '🧵',
-    rating: 4.9,
-    store: 'Ruff n Tumble',
-    badge: '-19%',
-    bc: '#8B5CF6',
-  },
 ];
 
 const DEALS = [
@@ -110,49 +61,6 @@ const DEALS = [
     title: 'Restaurant Specials',
     sub: 'Lunch deals from ₦1,500',
     cta: 'Order Now',
-  },
-];
-
-const NEARBY = [
-  {
-    name: 'Mr Biggs',
-    cat: 'Fast Food',
-    dist: '0.2 km',
-    eta: '8 min',
-    fee: '₦150',
-    rating: 4.4,
-    emoji: '🍔',
-    open: true,
-  },
-  {
-    name: 'FoodCo',
-    cat: 'Supermarket',
-    dist: '0.5 km',
-    eta: '14 min',
-    fee: 'Free',
-    rating: 4.7,
-    emoji: '🛒',
-    open: true,
-  },
-  {
-    name: 'Chi Farms',
-    cat: 'Wholesale',
-    dist: '0.8 km',
-    eta: '20 min',
-    fee: '₦400',
-    rating: 4.3,
-    emoji: '🥚',
-    open: true,
-  },
-  {
-    name: 'Dominos Pizza',
-    cat: 'Restaurant',
-    dist: '1.0 km',
-    eta: '22 min',
-    fee: '₦500',
-    rating: 4.5,
-    emoji: '🍕',
-    open: false,
   },
 ];
 
@@ -1013,8 +921,33 @@ function FeaturedMerchants({
 // ─────────────────────────────────────────────────────────────────────────────
 // TRENDING PRODUCTS
 // ─────────────────────────────────────────────────────────────────────────────
-function TrendingProducts({ loaded }: { loaded: boolean }) {
+function TrendingProducts() {
+  const [products, setProducts] = useState<ProductSummaryDto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [wishlist, setWishlist] = useState<Set<number>>(new Set());
+  const [pending, setPending] = useState<Set<string>>(new Set());
+  const [added, setAdded] = useState<Set<string>>(new Set());
+  const [cartError, setCartError] = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await api.marketplace.getTrendingProducts({ limit: 12 });
+      const r = res as { items?: ProductSummaryDto[] };
+      setProducts(r.items ?? []);
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load products');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
   const toggle = (i: number) =>
     setWishlist((w) => {
       const n = new Set(w);
@@ -1022,15 +955,108 @@ function TrendingProducts({ loaded }: { loaded: boolean }) {
       return n;
     });
 
+  // Single-merchant server cart. A cross-merchant add throws an error whose message
+  // contains "merchant" → surface a friendly note instead of swallowing it.
+  const addCart = (p: ProductSummaryDto) => {
+    if (pending.has(p.id) || added.has(p.id)) return;
+    setPending((s) => new Set(s).add(p.id));
+    setCartError('');
+    api.cart
+      .addItem({
+        merchantId: p.merchantId,
+        productId: p.id,
+        productName: p.name,
+        unitPrice: p.basePrice,
+        quantity: 1,
+        imageUrl: p.primaryImageUrl ?? undefined,
+      })
+      .then(() => setAdded((s) => new Set(s).add(p.id)))
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : 'Could not add to cart';
+        setCartError(
+          /merchant/i.test(msg)
+            ? 'Your cart already has items from another store. Clear it to add from here.'
+            : msg,
+        );
+      })
+      .finally(() =>
+        setPending((s) => {
+          const n = new Set(s);
+          n.delete(p.id);
+          return n;
+        }),
+      );
+  };
+
   return (
     <div className="mb-5">
       <SRow title="Trending Products 🔥" onAll={() => {}} />
-      <div className="flex gap-3 overflow-x-auto px-5" style={{ scrollbarWidth: 'none' }}>
-        {!loaded
-          ? [1, 2, 3, 4].map((i) => <Bone key={i} w={145} h={212} />)
-          : TRENDING_PRODUCTS.map((p, i) => (
+      {cartError && (
+        <div className="mb-2 px-5">
+          <p className="text-[10px]" style={{ color: '#FCA5A5', fontFamily: "'Inter',sans-serif" }}>
+            {cartError}
+          </p>
+        </div>
+      )}
+      {loading ? (
+        <div className="flex gap-3 overflow-x-auto px-5" style={{ scrollbarWidth: 'none' }}>
+          {[1, 2, 3, 4].map((i) => (
+            <Bone key={i} w={145} h={212} />
+          ))}
+        </div>
+      ) : error ? (
+        <div className="px-5">
+          <div
+            style={{
+              background: 'rgba(239,68,68,.07)',
+              border: '1px solid rgba(239,68,68,.18)',
+              borderRadius: 14,
+              padding: '14px 16px',
+            }}
+          >
+            <p
+              style={{
+                fontFamily: "'Inter',sans-serif",
+                fontSize: 13,
+                color: 'rgba(255,255,255,.5)',
+                marginBottom: 8,
+              }}
+            >
+              {error}
+            </p>
+            <button
+              onClick={load}
+              style={{
+                background: 'rgba(43,172,82,.1)',
+                border: '1px solid rgba(43,172,82,.25)',
+                borderRadius: 8,
+                padding: '6px 14px',
+                color: G3,
+                fontFamily: "'Inter',sans-serif",
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      ) : products.length === 0 ? (
+        <div style={{ padding: '24px 20px', textAlign: 'center' }}>
+          <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 13, color: MUTED }}>
+            No trending products right now.
+          </p>
+        </div>
+      ) : (
+        <div className="flex gap-3 overflow-x-auto px-5" style={{ scrollbarWidth: 'none' }}>
+          {products.map((p, i) => {
+            const rating = p.rating?.average ?? 0;
+            const isPending = pending.has(p.id);
+            const isAdded = added.has(p.id);
+            return (
               <div
-                key={i}
+                key={p.id}
                 className="flex-shrink-0 overflow-hidden rounded-3xl"
                 style={{ width: 145, background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
               >
@@ -1038,13 +1064,16 @@ function TrendingProducts({ loaded }: { loaded: boolean }) {
                   className="relative flex h-[82px] items-center justify-center"
                   style={{ background: 'linear-gradient(135deg,#0D1B2E,#1A2E45)' }}
                 >
-                  <span style={{ fontSize: 42 }}>{p.emoji}</span>
-                  <div
-                    className="absolute left-2 top-2 rounded-lg px-2 py-0.5 text-[9px] font-bold"
-                    style={{ background: p.bc, color: '#FFF', fontFamily: "'Inter',sans-serif" }}
-                  >
-                    {p.badge}
-                  </div>
+                  {p.primaryImageUrl ? (
+                    <img
+                      src={p.primaryImageUrl}
+                      alt={p.name}
+                      className="absolute inset-0 h-full w-full object-cover"
+                    />
+                  ) : (
+                    <span style={{ fontSize: 42 }}>🛍️</span>
+                  )}
+                  {/* GAP: backend product has no discount/original price → no "-%" badge. */}
                   <button
                     onClick={() => toggle(i)}
                     className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-xl transition-all active:scale-90"
@@ -1076,40 +1105,48 @@ function TrendingProducts({ loaded }: { loaded: boolean }) {
                     className="mb-1.5 text-[9.5px]"
                     style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
                   >
-                    {p.store}
+                    {p.merchantName}
                   </p>
                   <div className="mb-1 flex items-center gap-1.5">
                     <span className="text-[9.5px] font-bold" style={{ color: '#FBBF24' }}>
-                      ★ {p.rating}
+                      {rating > 0 ? `★ ${rating.toFixed(1)}` : '★ —'}
                     </span>
                   </div>
-                  <p
-                    className="mb-0.5 text-[10px] line-through"
-                    style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
-                  >
-                    {p.was}
-                  </p>
+                  {/* GAP: backend has no "was"/original price → line-through omitted. */}
                   <p
                     className="mb-2.5 text-[13px] font-bold"
                     style={{ fontFamily: "'Poppins',sans-serif", color: G3 }}
                   >
-                    {p.price}
+                    {naira(p.basePrice)}
                   </p>
                   <button
+                    onClick={() => addCart(p)}
+                    disabled={!p.inStock || isPending || isAdded}
                     className="h-[28px] w-full rounded-xl text-[10px] font-semibold transition-all active:scale-95"
                     style={{
-                      background: `linear-gradient(135deg,${G0},${G2})`,
-                      color: '#FFF',
+                      background:
+                        p.inStock && !isAdded
+                          ? `linear-gradient(135deg,${G0},${G2})`
+                          : 'rgba(255,255,255,.07)',
+                      color: p.inStock && !isAdded ? '#FFF' : 'rgba(255,255,255,.4)',
                       fontFamily: "'Inter',sans-serif",
-                      boxShadow: `0 3px 10px rgba(43,172,82,.22)`,
+                      boxShadow: p.inStock && !isAdded ? `0 3px 10px rgba(43,172,82,.22)` : 'none',
                     }}
                   >
-                    Add to Cart
+                    {!p.inStock
+                      ? 'Out of stock'
+                      : isPending
+                        ? 'Adding…'
+                        : isAdded
+                          ? 'Added ✓'
+                          : 'Add to Cart'}
                   </button>
                 </div>
               </div>
-            ))}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -1117,13 +1154,41 @@ function TrendingProducts({ loaded }: { loaded: boolean }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // NEARBY BUSINESSES
 // ─────────────────────────────────────────────────────────────────────────────
-function NearbyBusinesses({
-  loaded,
-  onStore,
-}: {
-  loaded: boolean;
-  onStore?: (merchantId: string) => void;
-}) {
+function NearbyBusinesses({ onStore }: { onStore?: (merchantId: string) => void }) {
+  const [merchants, setMerchants] = useState<MerchantSummaryDto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await api.marketplace.getMerchants({ limit: 8 });
+      const r = res as { items?: MerchantSummaryDto[] };
+      setMerchants(r.items ?? []);
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load businesses');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const EMOJI_POOL: Record<string, string> = {
+    Restaurant: '🍽',
+    Supermarket: '🛒',
+    Pharmacy: '💊',
+    Fashion: '👗',
+    Electronics: '📱',
+    Beauty: '💄',
+    Hotel: '🏨',
+    Hardware: '🔧',
+    default: '🏪',
+  };
+
   return (
     <div className="mb-5">
       <SRow title="Nearby Businesses" sub="Based on your location" onAll={() => {}} />
@@ -1132,31 +1197,74 @@ function NearbyBusinesses({
           className="overflow-hidden rounded-3xl"
           style={{ background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
         >
-          {!loaded
-            ? [1, 2, 3].map((i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-3 px-4 py-3.5"
-                  style={{ borderBottom: `1px solid ${BORDER}` }}
-                >
-                  <Bone w={40} h={40} r={14} />
-                  <div className="flex flex-1 flex-col gap-2">
-                    <Bone w="55%" h={11} r={6} />
-                    <Bone w="40%" h={9} r={6} />
-                  </div>
+          {loading ? (
+            [1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="flex items-center gap-3 px-4 py-3.5"
+                style={{ borderBottom: `1px solid ${BORDER}` }}
+              >
+                <Bone w={40} h={40} r={14} />
+                <div className="flex flex-1 flex-col gap-2">
+                  <Bone w="55%" h={11} r={6} />
+                  <Bone w="40%" h={9} r={6} />
                 </div>
-              ))
-            : NEARBY.map((b, i) => (
+              </div>
+            ))
+          ) : error ? (
+            <div style={{ padding: '16px' }}>
+              <p
+                style={{
+                  fontFamily: "'Inter',sans-serif",
+                  fontSize: 13,
+                  color: 'rgba(255,255,255,.5)',
+                  marginBottom: 8,
+                }}
+              >
+                {error}
+              </p>
+              <button
+                onClick={load}
+                style={{
+                  background: 'rgba(43,172,82,.1)',
+                  border: '1px solid rgba(43,172,82,.25)',
+                  borderRadius: 8,
+                  padding: '6px 14px',
+                  color: G3,
+                  fontFamily: "'Inter',sans-serif",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Retry
+              </button>
+            </div>
+          ) : merchants.length === 0 ? (
+            <div style={{ padding: '24px 20px', textAlign: 'center' }}>
+              <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 13, color: MUTED }}>
+                No nearby businesses found.
+              </p>
+            </div>
+          ) : (
+            merchants.map((m, i) => {
+              const isOpen = m.isOpenNow !== false;
+              const rating = m.rating?.average ?? 0;
+              const dist = m.distanceKm != null ? `${m.distanceKm.toFixed(1)} km` : '—';
+              const emoji = EMOJI_POOL[m.businessType ?? ''] ?? EMOJI_POOL.default;
+              return (
                 <div
-                  key={i}
+                  key={m.id}
                   className="flex items-center gap-3 px-4 py-3.5 transition-colors active:bg-white/[.025]"
-                  style={{ borderBottom: i < NEARBY.length - 1 ? `1px solid ${BORDER}` : 'none' }}
+                  style={{
+                    borderBottom: i < merchants.length - 1 ? `1px solid ${BORDER}` : 'none',
+                  }}
                 >
                   <div
                     className="flex h-[42px] w-[42px] flex-shrink-0 items-center justify-center rounded-2xl text-[20px]"
                     style={{ background: 'rgba(255,255,255,.06)' }}
                   >
-                    {b.emoji}
+                    {emoji}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
@@ -1164,12 +1272,12 @@ function NearbyBusinesses({
                         className="truncate text-[12.5px] font-semibold"
                         style={{
                           fontFamily: "'Poppins',sans-serif",
-                          color: b.open ? '#FFF' : 'rgba(255,255,255,.4)',
+                          color: isOpen ? '#FFF' : 'rgba(255,255,255,.4)',
                         }}
                       >
-                        {b.name}
+                        {m.businessName}
                       </p>
-                      {!b.open && (
+                      {m.isOpenNow === false && (
                         <span
                           className="flex-shrink-0 rounded-md px-1.5 py-0.5 text-[8px] font-bold"
                           style={{ background: 'rgba(239,68,68,.12)', color: '#FCA5A5' }}
@@ -1180,42 +1288,43 @@ function NearbyBusinesses({
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-[9.5px] font-bold" style={{ color: '#FBBF24' }}>
-                        ★ {b.rating}
+                        {rating > 0 ? `★ ${rating.toFixed(1)}` : '★ —'}
                       </span>
+                      {/* GAP: backend has no delivery ETA → "—". */}
                       <span
                         className="text-[9.5px]"
                         style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
                       >
-                        📍 {b.dist} · ⏱ {b.eta}
+                        📍 {dist} · ⏱ —
                       </span>
                     </div>
                   </div>
                   <div className="flex flex-shrink-0 flex-col items-end gap-1">
+                    {/* GAP: backend has no delivery fee → "—". */}
                     <p
                       className="text-[10px] font-semibold"
-                      style={{
-                        color: b.fee === 'Free' ? G3 : MUTED,
-                        fontFamily: "'Inter',sans-serif",
-                      }}
+                      style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
                     >
-                      {b.fee === 'Free' ? 'Free delivery' : b.fee}
+                      —
                     </p>
                     <button
-                      onClick={() => b.open && onStore?.(b.name)}
+                      onClick={() => isOpen && onStore?.(m.id)}
                       className="h-7 rounded-xl px-3 text-[10px] font-semibold transition-all active:scale-95"
                       style={{
-                        background: b.open
+                        background: isOpen
                           ? `linear-gradient(135deg,${G0},${G2})`
                           : 'rgba(255,255,255,.06)',
-                        color: b.open ? '#FFF' : 'rgba(255,255,255,.25)',
+                        color: isOpen ? '#FFF' : 'rgba(255,255,255,.25)',
                         fontFamily: "'Inter',sans-serif",
                       }}
                     >
-                      {b.open ? 'Order' : 'Closed'}
+                      {isOpen ? 'Order' : 'Closed'}
                     </button>
                   </div>
                 </div>
-              ))}
+              );
+            })
+          )}
         </div>
       </div>
     </div>
@@ -1619,8 +1728,8 @@ export function MarketplaceScreen({
         <AIDiscovery onAsk={() => setShowAI(true)} />
         <TodaysDeals />
         <FeaturedMerchants active={activecat} onStore={onStore} />
-        <TrendingProducts loaded={true} />
-        <NearbyBusinesses loaded={true} onStore={onStore} />
+        <TrendingProducts />
+        <NearbyBusinesses onStore={onStore} />
         <AIRecs loaded={true} />
         <ContinueShopping />
 

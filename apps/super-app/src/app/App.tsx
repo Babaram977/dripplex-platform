@@ -389,7 +389,7 @@ type Screen =
 
 function AppShell() {
   const [screen, setScreen] = useState<Screen>('splash');
-  const [rideDetailId, setRideDetailId] = useState<string>('RX-20241205-0012');
+  const [rideDetailId, setRideDetailId] = useState<string>('');
   const [fading, setFading] = useState(false);
   const [otpData, setOtpData] = useState<{
     phone: string;
@@ -792,6 +792,7 @@ function AppShell() {
         onBack={() => go('ridefare')}
         onArrived={() => go('ridearrived')}
         onCancel={() => go('ridehome')}
+        rideId={activeCustomerRideId}
       />
     ),
     ridearrived: (
@@ -799,6 +800,7 @@ function AppShell() {
         onBack={() => go('rideassigned')}
         onStart={() => go('rideinprogress')}
         onShare={() => go('rideshare')}
+        rideId={activeCustomerRideId}
       />
     ),
     rideinprogress: (
@@ -806,9 +808,16 @@ function AppShell() {
         onBack={() => go('ridearrived')}
         onComplete={() => go('ridecomplete')}
         onSOS={() => go('ridesos')}
+        rideId={activeCustomerRideId}
       />
     ),
-    ridecomplete: <TripCompletedScreen onRate={() => go('riderating')} onHome={() => go('home')} />,
+    ridecomplete: (
+      <TripCompletedScreen
+        onRate={() => go('riderating')}
+        onHome={() => go('home')}
+        rideId={activeCustomerRideId}
+      />
+    ),
     riderating: (
       <RateDriverScreen
         onBack={() => go('ridecomplete')}
