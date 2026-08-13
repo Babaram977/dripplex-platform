@@ -264,8 +264,10 @@ Batch: wire the customer account/security screens that have a real backend; make
 - **Wallet payment security** (`walletScreen`): Face ID + 2FA toggles were defaulting ON with no
   backend → now off + "Coming soon", non-functional. (Its "Trusted devices … not available in
   this pilot" note was already honest.)
-- Still fabricated / to revisit: `SecurityActivityScreen` login-history list (no backend for
-  login events).
+- **Security Activity** (`screensB SecurityActivityScreen`): the mock `ACTIVITY_LOG` feed (with
+  fake "Failed Login · Berlin" / "Suspicious Activity Detected" entries) was removed. There is no
+  login-event/audit backend, so it now shows the REAL active sessions (`api.auth.listSessions`)
+  as "devices currently signed in", with an honest note that a full login history is coming soon.
 
 ### AGENDA — backends to build (so the honest screens can become real)
 

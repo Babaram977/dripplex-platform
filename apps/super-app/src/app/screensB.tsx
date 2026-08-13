@@ -289,109 +289,6 @@ export function TrustedDevicesScreen({ onBack }: { onBack: () => void }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // AUTH-012  LOGIN HISTORY & SECURITY ACTIVITY
 // ═══════════════════════════════════════════════════════════════════════════
-export const ACTIVITY_LOG = [
-  {
-    id: 1,
-    type: 'login',
-    icon: '✅',
-    title: 'Successful Login',
-    sub: 'iPhone 16 Pro · Kano, Nigeria',
-    time: 'Today, 9:14 AM',
-    badge: 'success',
-    day: 'today',
-  },
-  {
-    id: 2,
-    type: 'security',
-    icon: '🔐',
-    title: '2FA Verification',
-    sub: 'SMS code verified',
-    time: 'Today, 9:14 AM',
-    badge: 'success',
-    day: 'today',
-  },
-  {
-    id: 3,
-    type: 'login',
-    icon: '⚠️',
-    title: 'Failed Login Attempt',
-    sub: 'Unknown Device · Berlin, Germany',
-    time: 'Today, 3:02 AM',
-    badge: 'warning',
-    day: 'today',
-  },
-  {
-    id: 4,
-    type: 'device',
-    icon: '📱',
-    title: 'New Device Added',
-    sub: 'iPad Pro · Abuja, Nigeria',
-    time: 'Yesterday, 6:45 PM',
-    badge: 'info',
-    day: 'week',
-  },
-  {
-    id: 5,
-    type: 'login',
-    icon: '✅',
-    title: 'Successful Login',
-    sub: 'Windows Laptop · Lagos, Nigeria',
-    time: 'Yesterday, 11:22 AM',
-    badge: 'success',
-    day: 'week',
-  },
-  {
-    id: 6,
-    type: 'security',
-    icon: '🔑',
-    title: 'Password Changed',
-    sub: 'Via account recovery flow',
-    time: '3 days ago',
-    badge: 'warning',
-    day: 'week',
-  },
-  {
-    id: 7,
-    type: 'login',
-    icon: '✅',
-    title: 'Successful Login',
-    sub: 'iPhone 16 Pro · Kano, Nigeria',
-    time: '5 days ago',
-    badge: 'success',
-    day: 'week',
-  },
-  {
-    id: 8,
-    type: 'device',
-    icon: '🗑',
-    title: 'Device Removed',
-    sub: 'Old Android Phone',
-    time: '12 days ago',
-    badge: 'info',
-    day: 'month',
-  },
-  {
-    id: 9,
-    type: 'security',
-    icon: '🛡',
-    title: 'Security Scan Passed',
-    sub: 'No threats detected',
-    time: '18 days ago',
-    badge: 'success',
-    day: 'month',
-  },
-  {
-    id: 10,
-    type: 'login',
-    icon: '⚠️',
-    title: 'Unusual Location Detected',
-    sub: 'Attempted from Dubai, UAE',
-    time: '22 days ago',
-    badge: 'alert',
-    day: 'month',
-  },
-];
-
 export function SecurityActivityScreen({
   onBack,
   onSecure,
@@ -399,30 +296,28 @@ export function SecurityActivityScreen({
   onBack: () => void;
   onSecure: () => void;
 }) {
-  const [filter, setFilter] = useState<'today' | 'week' | 'month' | 'all'>('all');
-  const filters: { key: typeof filter; label: string }[] = [
-    { key: 'today', label: 'Today' },
-    { key: 'week', label: 'Last 7 Days' },
-    { key: 'month', label: 'Last 30 Days' },
-    { key: 'all', label: 'All Activity' },
-  ];
-  const filtered =
-    filter === 'all'
-      ? ACTIVITY_LOG
-      : ACTIVITY_LOG.filter((a) => {
-          if (filter === 'today') return a.day === 'today';
-          if (filter === 'week') return a.day === 'today' || a.day === 'week';
-          return true;
-        });
+  // GAP: there is no login-event / audit-history backend. Rather than fabricate
+  // a feed (the old ACTIVITY_LOG had fake "Failed Login · Berlin" entries), show
+  // the REAL active sessions from api.auth.listSessions — the honest available
+  // signal. A full login history is a future feature.
+  const [sessions, setSessions] = useState<SessionDto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const badgeStyle: Record<string, { bg: string; color: string }> = {
-    success: { bg: 'rgba(43,172,82,.15)', color: G3 },
-    warning: { bg: 'rgba(251,191,36,.12)', color: '#FCD34D' },
-    info: { bg: 'rgba(96,165,250,.12)', color: '#60A5FA' },
-    alert: { bg: 'rgba(248,113,113,.12)', color: '#F87171' },
+  const load = () => {
+    if (!auth.isLoggedIn()) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    api.auth
+      .listSessions()
+      .then((r) => setSessions(r.items))
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Could not load activity.'))
+      .finally(() => setLoading(false));
   };
-
-  const hasAlert = filtered.some((a) => a.badge === 'alert' || a.badge === 'warning');
+  useEffect(load, []);
 
   return (
     <div
@@ -440,116 +335,114 @@ export function SecurityActivityScreen({
             Security Activity
           </p>
           <p className="text-[11px]" style={{ color: MUTED }}>
-            Login history & account events
+            Devices currently signed in
           </p>
         </div>
       </div>
 
-      {/* Suspicious alert card */}
-      {hasAlert && (
+      <div
+        className="mx-6 my-3 flex items-start gap-3 rounded-2xl p-4"
+        style={{ background: 'rgba(96,165,250,.05)', border: '1px solid rgba(96,165,250,.15)' }}
+      >
+        <span style={{ fontSize: 16, marginTop: 1 }}>&#8505;&#65039;</span>
+        <p className="text-[11px] leading-relaxed" style={{ color: 'rgba(255,255,255,.5)' }}>
+          A full login history is coming soon. For now, these are the devices currently signed in to
+          your account.
+        </p>
+      </div>
+
+      {error && (
         <div
-          className="mx-6 my-3 rounded-2xl p-4"
-          style={{
-            background: 'rgba(248,113,113,.08)',
-            border: '1.5px solid rgba(248,113,113,.25)',
-          }}
+          className="mx-6 mb-2 flex items-center justify-between gap-3 rounded-2xl p-4"
+          style={{ background: 'rgba(248,113,113,.08)', border: '1px solid rgba(248,113,113,.22)' }}
         >
-          <div className="mb-3 flex items-start gap-3">
-            <span style={{ fontSize: 20 }}>🚨</span>
-            <div>
-              <p
-                className="text-[14px] font-semibold"
-                style={{ color: '#F87171', fontFamily: "'Poppins',sans-serif" }}
-              >
-                Suspicious Activity Detected
-              </p>
-              <p className="mt-0.5 text-[12px]" style={{ color: 'rgba(255,255,255,.6)' }}>
-                Didn't recognize this activity?
-              </p>
-            </div>
-          </div>
+          <p className="text-[12px]" style={{ color: '#FCA5A5' }}>
+            {error}
+          </p>
           <button
-            onClick={onSecure}
-            className="flex h-[42px] w-full items-center justify-center gap-2 rounded-xl text-[13px] font-bold transition-all active:scale-[0.97]"
-            style={{
-              background: 'rgba(248,113,113,.2)',
-              border: '1px solid rgba(248,113,113,.35)',
-              color: '#F87171',
-            }}
+            onClick={load}
+            className="h-[30px] rounded-lg px-3 text-[11px] font-semibold"
+            style={{ background: 'rgba(255,255,255,.08)', color: '#FFF' }}
           >
-            🛡 Secure My Account
+            Retry
           </button>
         </div>
       )}
 
-      {/* Filter chips */}
-      <div className="flex gap-2 overflow-x-auto px-6 py-2" style={{ scrollbarWidth: 'none' }}>
-        {filters.map((f) => (
-          <button
-            key={f.key}
-            onClick={() => setFilter(f.key)}
-            className="h-[32px] flex-shrink-0 rounded-full px-4 text-[12px] font-semibold transition-all"
-            style={{
-              background: filter === f.key ? G2 : 'rgba(255,255,255,.06)',
-              border: `1px solid ${filter === f.key ? G2 : BORDER}`,
-              color: filter === f.key ? '#FFF' : MUTED,
-            }}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Activity feed */}
-      <div className="flex flex-col gap-2 px-6 pb-10 pt-1">
-        {filtered.map((a, idx) => (
-          <div
-            key={a.id}
-            className="flex items-start gap-3 rounded-2xl p-4"
-            style={{
-              background: NAVY_CARD,
-              border: `1.5px solid ${a.badge === 'alert' ? 'rgba(248,113,113,.25)' : BORDER}`,
-              animation: `fade-up .3s ease ${idx * 0.04}s both`,
-            }}
-          >
+      <div className="flex flex-col gap-2 px-6 pt-1">
+        {loading && (
+          <p className="py-6 text-center text-[12px]" style={{ color: MUTED }}>
+            Loading&#8230;
+          </p>
+        )}
+        {!loading &&
+          sessions.map((s, idx) => (
             <div
-              className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl text-xl"
-              style={{ background: badgeStyle[a.badge].bg }}
+              key={s.sessionId}
+              className="flex items-start gap-3 rounded-2xl p-4"
+              style={{
+                background: NAVY_CARD,
+                border: `1.5px solid ${s.current ? G2 + '55' : BORDER}`,
+                animation: `fade-up .3s ease ${idx * 0.04}s both`,
+              }}
             >
-              {a.icon}
-            </div>
-            <div className="flex-1">
-              <div className="flex items-start justify-between gap-2">
-                <p
-                  className="text-[13px] font-semibold"
-                  style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
-                >
-                  {a.title}
-                </p>
-                <span
-                  className="flex-shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold"
-                  style={{ background: badgeStyle[a.badge].bg, color: badgeStyle[a.badge].color }}
-                >
-                  {a.badge.toUpperCase()}
-                </span>
+              <div
+                className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl text-xl"
+                style={{ background: 'rgba(43,172,82,.12)' }}
+              >
+                {sessionIcon(s.deviceType)}
               </div>
-              <p className="mt-0.5 text-[11px]" style={{ color: MUTED }}>
-                {a.sub}
-              </p>
-              <p className="mt-1 text-[10px]" style={{ color: 'rgba(255,255,255,.3)' }}>
-                🕐 {a.time}
-              </p>
+              <div className="flex-1">
+                <div className="flex items-start justify-between gap-2">
+                  <p
+                    className="text-[13px] font-semibold"
+                    style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
+                  >
+                    {s.device || s.operatingSystem || 'Unknown device'}
+                  </p>
+                  {s.current && (
+                    <span
+                      className="flex-shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold"
+                      style={{ background: G2, color: '#FFF' }}
+                    >
+                      THIS DEVICE
+                    </span>
+                  )}
+                </div>
+                <p className="mt-0.5 text-[11px]" style={{ color: MUTED }}>
+                  {(s.browser || s.portal || 'DrippleX') + ' · ' + (s.location || s.ip || '—')}
+                </p>
+                <p className="mt-1 text-[10px]" style={{ color: 'rgba(255,255,255,.3)' }}>
+                  &#128336; {s.current ? 'Active now' : relTime(s.lastActiveAt)}
+                </p>
+              </div>
             </div>
-          </div>
-        ))}
-        {filtered.length === 0 && (
+          ))}
+        {!loading && sessions.length === 0 && !error && (
           <div className="flex flex-col items-center justify-center gap-2 py-12">
-            <span style={{ fontSize: 36 }}>📭</span>
+            <span style={{ fontSize: 36 }}>&#128237;</span>
             <p className="text-[13px]" style={{ color: MUTED }}>
-              No activity for this period
+              No active sessions to show
             </p>
           </div>
         )}
+      </div>
+
+      <div className="mx-6 mb-10 mt-3">
+        <button
+          onClick={onSecure}
+          className="flex h-[46px] w-full items-center justify-center gap-2 rounded-2xl text-[13px] font-bold transition-all active:scale-[0.97]"
+          style={{
+            background: 'rgba(248,113,113,.1)',
+            border: '1.5px solid rgba(248,113,113,.25)',
+            color: '#F87171',
+          }}
+        >
+          &#128737; Secure My Account
+        </button>
+        <p className="mt-2 text-center text-[10px]" style={{ color: 'rgba(255,255,255,.25)' }}>
+          Don&apos;t recognise a device? Secure your account to sign everyone out.
+        </p>
       </div>
     </div>
   );
