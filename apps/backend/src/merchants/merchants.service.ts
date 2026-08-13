@@ -507,7 +507,7 @@ export class MerchantsService {
             profile: item,
             user: item.user,
             business: item.business,
-            kyc: item.kycDocuments[0] ?? null,
+            kyc: this.representativeKyc(item.kycDocuments),
             bankAccounts: item.bankAccounts,
           }),
         ),
@@ -542,7 +542,7 @@ export class MerchantsService {
           profile: detail,
           user: detail.user,
           business: detail.business,
-          kyc: detail.kycDocuments[0] ?? null,
+          kyc: this.representativeKyc(detail.kycDocuments),
           bankAccounts: detail.bankAccounts,
         }),
       ),
@@ -624,8 +624,16 @@ export class MerchantsService {
       throw new ValidationDomainException('Business profile is required before approval');
     }
 
-    const latestKyc = detail.kycDocuments[0];
-    if (latestKyc?.verificationStatus !== KycVerificationStatus.VERIFIED) {
+    // KYC is multi-document: a merchant can hold several MerchantKyc records, and
+    // `orderBy createdAt desc` is not a stable single-record signal (documents
+    // submitted in the same batch can tie, and a fresh submission can outrank an
+    // already-verified one). Gate on whether *any* document has been verified —
+    // the same aggregate the Ops "KYC Verified" chip shows — rather than on
+    // whichever record happens to sort first, so Verify-then-Approve is reliable.
+    const hasVerifiedKyc = detail.kycDocuments.some(
+      (doc) => doc.verificationStatus === KycVerificationStatus.VERIFIED,
+    );
+    if (!hasVerifiedKyc) {
       throw new ValidationDomainException('KYC must be verified before approval');
     }
 
@@ -824,6 +832,20 @@ export class MerchantsService {
       throw new NotFoundDomainException('Merchant profile not found');
     }
     return profile;
+  }
+
+  // The single KYC record the admin views should represent should reflect the
+  // merchant's overall KYC standing, not just the newest submission: prefer a
+  // VERIFIED document (so the "KYC Verified" chip is stable and matches the
+  // approval gate), otherwise the newest record (already sorted createdAt desc).
+  private representativeKyc<T extends { verificationStatus: KycVerificationStatus }>(
+    kycDocuments: T[],
+  ): T | null {
+    return (
+      kycDocuments.find((doc) => doc.verificationStatus === KycVerificationStatus.VERIFIED) ??
+      kycDocuments[0] ??
+      null
+    );
   }
 
   private async requireAdminDetail(merchantUserId: string): Promise<MerchantAdminDetail> {

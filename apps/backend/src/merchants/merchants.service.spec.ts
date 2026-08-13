@@ -760,6 +760,19 @@ describe('MerchantsService', () => {
       );
     });
 
+    it('approves when a verified KYC exists even if it is not the first document', async () => {
+      // Multi-document KYC: a newer PENDING submission sorts ahead of the already
+      // VERIFIED one. Approval must gate on "any verified", not kycDocuments[0].
+      repository.getMerchantAdminDetail.mockResolvedValue({
+        ...adminDetail,
+        kycDocuments: [pendingKyc, verifiedKyc],
+      } as never);
+      repository.updateMerchantLifecycle.mockResolvedValue(adminDetail as never);
+
+      const result = await service.approveMerchant(merchantId, adminId, context);
+      expect(result.status).toBe('APPROVED');
+    });
+
     it('rejects approval without business', async () => {
       repository.getMerchantAdminDetail.mockResolvedValue({
         ...adminDetail,
