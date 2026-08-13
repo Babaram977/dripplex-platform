@@ -102,6 +102,7 @@ describe('ProductsService', () => {
       status: ProductStatus.PUBLISHED,
       isDeleted: false,
       trackInventory: false,
+      manuallyDisabled: false,
       availableQuantity: null,
     };
     expect(service.hasStock(entry, 999)).toBe(true);
@@ -119,10 +120,32 @@ describe('ProductsService', () => {
       status: ProductStatus.PUBLISHED,
       isDeleted: false,
       trackInventory: true,
+      manuallyDisabled: false,
       availableQuantity: 3,
     };
     expect(service.hasStock(entry, 4)).toBe(false);
     expect(service.hasStock(entry, 3)).toBe(true);
+  });
+
+  it('treats a manually-disabled product as out of stock and not sellable', () => {
+    const entry = {
+      productId: 'p1',
+      variantId: null,
+      merchantId: 'm1',
+      name: 'Rice',
+      sku: null,
+      imageUrl: null,
+      unitPrice: 100,
+      status: ProductStatus.PUBLISHED,
+      isDeleted: false,
+      trackInventory: false,
+      manuallyDisabled: true,
+      availableQuantity: null,
+    };
+    // Untracked would normally be "always in stock", but the merchant's manual
+    // out-of-stock switch overrides that and also blocks the sale.
+    expect(service.hasStock(entry, 1)).toBe(false);
+    expect(service.isSellable(entry)).toBe(false);
   });
 
   it('treats draft or deleted products as not sellable', () => {
@@ -137,6 +160,7 @@ describe('ProductsService', () => {
       status: ProductStatus.DRAFT,
       isDeleted: false,
       trackInventory: false,
+      manuallyDisabled: false,
       availableQuantity: null,
     };
     const deleted = { ...draft, status: ProductStatus.PUBLISHED, isDeleted: true };

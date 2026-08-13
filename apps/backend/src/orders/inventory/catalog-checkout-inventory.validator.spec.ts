@@ -16,6 +16,7 @@ describe('CatalogCheckoutInventoryValidator', () => {
     status: ProductStatus.PUBLISHED,
     isDeleted: false,
     trackInventory: true,
+    manuallyDisabled: false,
     availableQuantity: 5,
   };
 
@@ -29,23 +30,25 @@ describe('CatalogCheckoutInventoryValidator', () => {
 
   it('throws for a product that does not exist', async () => {
     const validator = buildValidator(new Map());
-    await expect(
-      validator.assertAvailable([{ productId: 'ghost', quantity: 1 }]),
-    ).rejects.toThrow('Product ghost is not available');
+    await expect(validator.assertAvailable([{ productId: 'ghost', quantity: 1 }])).rejects.toThrow(
+      'Product ghost is not available',
+    );
   });
 
   it('throws for an unpublished product', async () => {
-    const validator = buildValidator(new Map([['p1:', { ...published, status: ProductStatus.DRAFT }]]));
-    await expect(
-      validator.assertAvailable([{ productId: 'p1', quantity: 1 }]),
-    ).rejects.toThrow('Product p1 is not available');
+    const validator = buildValidator(
+      new Map([['p1:', { ...published, status: ProductStatus.DRAFT }]]),
+    );
+    await expect(validator.assertAvailable([{ productId: 'p1', quantity: 1 }])).rejects.toThrow(
+      'Product p1 is not available',
+    );
   });
 
   it('throws for insufficient tracked stock', async () => {
     const validator = buildValidator(new Map([['p1:', { ...published, availableQuantity: 1 }]]));
-    await expect(
-      validator.assertAvailable([{ productId: 'p1', quantity: 5 }]),
-    ).rejects.toThrow('Insufficient stock for product p1');
+    await expect(validator.assertAvailable([{ productId: 'p1', quantity: 5 }])).rejects.toThrow(
+      'Insufficient stock for product p1',
+    );
   });
 
   it('resolves without error for an available, in-stock product', async () => {

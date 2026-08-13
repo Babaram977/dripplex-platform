@@ -37,6 +37,7 @@ describe('CatalogCheckoutProductValidator', () => {
       status: ProductStatus.PUBLISHED,
       isDeleted: false,
       trackInventory: true,
+      manuallyDisabled: false,
       availableQuantity: 10,
     };
     const validator = buildValidator(new Map([['p1:', entry]]));
@@ -66,6 +67,7 @@ describe('CatalogCheckoutProductValidator', () => {
       status: ProductStatus.DRAFT,
       isDeleted: false,
       trackInventory: false,
+      manuallyDisabled: false,
       availableQuantity: null,
     };
     const validator = buildValidator(new Map([['p1:', entry]]));
