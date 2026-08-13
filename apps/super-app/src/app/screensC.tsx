@@ -2547,9 +2547,10 @@ export const SERVICES: Service[] = [
   {
     id: 'ai',
     icon: '🤖',
+    // GAP: no AI backend — was falsely 'active'; the assistant isn't available yet.
     label: 'AI Assistant',
     sub: 'Your smart DrippleX companion',
-    status: 'active',
+    status: 'coming_soon',
   },
   {
     id: 'property',
@@ -2990,47 +2991,9 @@ export function TrustCenterScreen({
         ))}
       </div>
 
-      {/* AI Security Assistant */}
-      <div
-        className="mx-6 mb-4 rounded-2xl p-5"
-        style={{
-          background: `linear-gradient(135deg,rgba(43,172,82,.1) 0%,rgba(22,55,84,.5) 100%)`,
-          border: `1.5px solid rgba(43,172,82,.22)`,
-        }}
-      >
-        <div className="mb-3 flex items-center gap-3">
-          <div
-            className="flex h-11 w-11 items-center justify-center rounded-2xl text-2xl"
-            style={{ background: `linear-gradient(135deg,${G0},${G3})` }}
-          >
-            🤖
-          </div>
-          <div>
-            <p
-              className="text-[14px] font-semibold"
-              style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
-            >
-              Security Assistant
-            </p>
-            <div className="mt-0.5 flex items-center gap-1.5">
-              <div
-                className="h-1.5 w-1.5 rounded-full"
-                style={{ background: G3, boxShadow: `0 0 5px ${G3}` }}
-              />
-              <p className="text-[10px]" style={{ color: G3 }}>
-                Monitoring · No threats detected
-              </p>
-            </div>
-          </div>
-        </div>
-        <div className="rounded-xl p-3" style={{ background: 'rgba(0,0,0,.2)' }}>
-          <p className="text-[12px] leading-relaxed" style={{ color: 'rgba(255,255,255,.65)' }}>
-            "I continuously monitor your account for unusual activity and will notify you
-            immediately if anything requires your attention. Your account currently shows no active
-            threats."
-          </p>
-        </div>
-      </div>
+      {/* GAP: no AI / threat-monitoring backend exists — the previous "Security
+          Assistant" card claimed live monitoring ("No threats detected") and an
+          AI monologue that were entirely fake, so it was removed. */}
 
       {/* CTAs */}
       <div className="px-6 pb-3">
