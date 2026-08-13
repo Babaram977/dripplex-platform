@@ -605,10 +605,12 @@ export function DriverLoginScreen({
   onContinue,
   onBack,
   onApply,
+  onForgot,
 }: {
   onContinue: () => void;
   onBack: () => void;
   onApply?: () => void;
+  onForgot?: () => void;
 }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -734,6 +736,17 @@ export function DriverLoginScreen({
             </div>
           ))}
         </div>
+
+        {onForgot && (
+          <button
+            type="button"
+            onClick={onForgot}
+            className="mb-3 ml-auto block active:opacity-70"
+            style={{ fontFamily: IT, fontSize: 13, fontWeight: 600, color: G3 }}
+          >
+            Forgot password?
+          </button>
+        )}
 
         <DGreenBtn label={loading ? '' : 'Continue →'} onClick={handleContinue} loading={loading} />
 

@@ -4142,7 +4142,15 @@ function SettingsPage() {
 // ─────────────────────────────────────────────────────────────────────────────
 // LOGIN SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
-function MerchantLoginScreen({ onLogin, onApply }: { onLogin: () => void; onApply?: () => void }) {
+function MerchantLoginScreen({
+  onLogin,
+  onApply,
+  onForgot,
+}: {
+  onLogin: () => void;
+  onApply?: () => void;
+  onForgot?: () => void;
+}) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -4242,6 +4250,26 @@ function MerchantLoginScreen({ onLogin, onApply }: { onLogin: () => void; onAppl
             disabled={loading || !email || !password}
             onClick={handleLogin}
           />
+          {onForgot && (
+            <button
+              type="button"
+              onClick={onForgot}
+              style={{
+                display: 'block',
+                marginLeft: 'auto',
+                marginTop: 12,
+                fontFamily: IT,
+                fontSize: 13,
+                fontWeight: 600,
+                color: G3,
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              Forgot password?
+            </button>
+          )}
         </MxCard>
         {onApply && (
           <div
@@ -4282,9 +4310,11 @@ function MerchantLoginScreen({ onLogin, onApply }: { onLogin: () => void; onAppl
 export function MerchantPortalScreen({
   initialPage = 'dashboard',
   onApply,
+  onForgot,
 }: {
   initialPage?: MerchantPage;
   onApply?: () => void;
+  onForgot?: () => void;
 }) {
   // Only treat the session as "signed in" when it's actually a MERCHANT. A
   // leftover customer/other session would otherwise skip the merchant login and
@@ -4348,7 +4378,13 @@ export function MerchantPortalScreen({
   };
 
   if (!isLoggedIn)
-    return <MerchantLoginScreen onLogin={() => setIsLoggedIn(true)} onApply={onApply} />;
+    return (
+      <MerchantLoginScreen
+        onLogin={() => setIsLoggedIn(true)}
+        onApply={onApply}
+        onForgot={onForgot}
+      />
+    );
 
   const businessName = business?.businessName ?? 'Merchant';
   const initials = businessName.slice(0, 2).toUpperCase();
@@ -4431,9 +4467,13 @@ export function MerchantPortalScreen({
 }
 
 // ─── Thin exports for App.tsx nav ─────────────────────────────────────────────
-export const MerchantDashboardScreen = ({ onApply }: { onApply?: () => void }) => (
-  <MerchantPortalScreen initialPage="dashboard" onApply={onApply} />
-);
+export const MerchantDashboardScreen = ({
+  onApply,
+  onForgot,
+}: {
+  onApply?: () => void;
+  onForgot?: () => void;
+}) => <MerchantPortalScreen initialPage="dashboard" onApply={onApply} onForgot={onForgot} />;
 export const MerchantOrdersScreen = () => <MerchantPortalScreen initialPage="orders" />;
 export const MerchantProductsScreen = () => <MerchantPortalScreen initialPage="products" />;
 export const MerchantStoreScreen = () => <MerchantPortalScreen initialPage="store" />;

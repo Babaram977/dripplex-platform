@@ -941,6 +941,10 @@ function AppShell() {
           setPartnerPersona('driver');
           go('partnerdriver');
         }}
+        onForgot={() => {
+          setRecoveryFrom('drvlogin');
+          go('recovery');
+        }}
       />
     ),
     drvotp: <DriverOTPScreen onVerified={() => go('drvkyc')} onBack={() => go('drvlogin')} />,
@@ -1055,7 +1059,15 @@ function AppShell() {
     adminsettings: <AdminSettingsScreen />,
     adminaudit: <AdminAuditScreen />,
     adminprofile: <AdminProfileScreen />,
-    mxdash: <MerchantDashboardScreen onApply={() => go('partnermerchant')} />,
+    mxdash: (
+      <MerchantDashboardScreen
+        onApply={() => go('partnermerchant')}
+        onForgot={() => {
+          setRecoveryFrom('mxdash');
+          go('recovery');
+        }}
+      />
+    ),
     mxorders: <MerchantOrdersScreen />,
     mxproducts: <MerchantProductsScreen />,
     mxstore: <MerchantStoreScreen />,
