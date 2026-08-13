@@ -1,45 +1,17 @@
 import { Transform } from 'class-transformer';
-import {
-  IsEmail,
-  IsOptional,
-  IsString,
-  Matches,
-  MaxLength,
-  MinLength,
-  registerDecorator,
-  type ValidationOptions,
-} from 'class-validator';
+import { IsEmail, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 
-function HasRegistrationIdentifier(validationOptions?: ValidationOptions) {
-  return function (object: object, propertyName: string): void {
-    registerDecorator({
-      name: 'hasRegistrationIdentifier',
-      target: object.constructor,
-      propertyName,
-      ...(validationOptions !== undefined ? { options: validationOptions } : {}),
-      validator: {
-        validate(_value: unknown, validationArguments) {
-          const dto = validationArguments?.object as PortalRegistrationDto;
-          const hasEmail = typeof dto.email === 'string' && dto.email.length > 0;
-          const hasPhone = typeof dto.phone === 'string' && dto.phone.length > 0;
-          return hasEmail || hasPhone;
-        },
-        defaultMessage() {
-          return 'Either email or phone is required';
-        },
-      },
-    });
-  };
-}
-
+// DPX — email is a required, persistent identifier on every registration
+// (customer, merchant, driver, rider), so it is `@IsEmail()` (not optional) on
+// all portal DTOs. Phone remains portal-specific: optional for merchants,
+// required for drivers/riders.
 export class PortalRegistrationDto {
-  @IsOptional()
   @IsEmail()
   @MaxLength(255)
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim().toLowerCase() : value,
   )
-  public email?: string;
+  public email!: string;
 
   @IsString()
   @MinLength(8)
@@ -65,7 +37,6 @@ export class PortalRegistrationDto {
   @IsString()
   @Matches(/^\+?[0-9]{7,15}$/, { message: 'phone must be a valid E.164-like number' })
   @Transform(({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value))
-  @HasRegistrationIdentifier()
   public phone?: string;
 
   @IsOptional()
@@ -80,13 +51,12 @@ export class PortalRegistrationDto {
 }
 
 export class RiderDriverRegistrationDto {
-  @IsOptional()
   @IsEmail()
   @MaxLength(255)
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim().toLowerCase() : value,
   )
-  public email?: string;
+  public email!: string;
 
   @IsString()
   @MinLength(8)
