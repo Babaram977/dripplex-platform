@@ -3438,16 +3438,84 @@ function BankAccountPage() {
 // PAGE 8 — APPROVAL STATUS
 // ─────────────────────────────────────────────────────────────────────────────
 function ApprovalStatusPage({ onNav }: { onNav: (p: MerchantPage) => void }) {
-  const steps = [
-    { label: 'Business Setup', sub: 'Store name, address, category', status: 'done' },
-    { label: 'KYC Documents', sub: 'Identity & business verification', status: 'done' },
-    { label: 'Bank Account', sub: 'Settlement destination account', status: 'done' },
+  // Onboarding/approval state is derived from real backend records — the
+  // business profile, the KYC submission history, the settlement bank account —
+  // so the checklist reflects what the merchant has actually done (and, most
+  // importantly, tells them when KYC documents still need to be submitted).
+  const [loading, setLoading] = useState(true);
+  const [business, setBusiness] = useState<MerchantBusinessDto | null>(null);
+  const [kyc, setKyc] = useState<MerchantKycStatusDto | null>(null);
+  const [banks, setBanks] = useState<MerchantBankAccountDto[]>([]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    // Each fetch is independent and a missing record is a valid "not done yet"
+    // state, so tolerate per-call failure instead of blanking the whole page.
+    const [b, k, acc] = await Promise.all([
+      api.merchant.getBusiness().catch(() => null),
+      api.merchant.getKyc().catch(() => null),
+      api.merchant.listBankAccounts().catch(() => [] as MerchantBankAccountDto[]),
+    ]);
+    setBusiness(b);
+    setKyc(k);
+    setBanks(acc ?? []);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const kycLatest = kyc?.latest ?? null;
+  const kycVerified = kycLatest?.verificationStatus === 'VERIFIED';
+  const kycPending = kycLatest?.verificationStatus === 'PENDING';
+  const kycRejected = kycLatest?.verificationStatus === 'REJECTED';
+  const hasKyc = (kyc?.items?.length ?? 0) > 0;
+  const businessSet = !!business;
+  const businessVerified = business?.verificationStatus === 'VERIFIED';
+  const hasBank = banks.length > 0;
+
+  const kycStepStatus = kycVerified
+    ? 'done'
+    : kycPending
+      ? 'review'
+      : kycRejected || !hasKyc
+        ? 'action'
+        : 'action';
+
+  const steps: { label: string; sub: string; status: string; nav?: MerchantPage }[] = [
+    {
+      label: 'Business Setup',
+      sub: 'Store name, address, category',
+      status: businessSet ? 'done' : 'action',
+      nav: 'store',
+    },
+    {
+      label: 'KYC Documents',
+      sub: kycRejected
+        ? 'A document was rejected — please re-submit'
+        : hasKyc
+          ? 'Identity & business verification'
+          : 'Upload your identity & business documents',
+      status: kycStepStatus,
+      nav: 'kyc',
+    },
+    {
+      label: 'Bank Account',
+      sub: 'Settlement destination account',
+      status: hasBank ? 'done' : 'action',
+      nav: 'bank',
+    },
     {
       label: 'Operations Approval',
       sub: 'DrippleX team reviews your application',
-      status: 'review',
+      status: businessVerified ? 'done' : businessSet && kycPending ? 'review' : 'locked',
     },
-    { label: 'Store Activation', sub: 'Begin accepting orders', status: 'locked' },
+    {
+      label: 'Store Activation',
+      sub: 'Begin accepting orders',
+      status: businessVerified ? 'done' : 'locked',
+    },
   ];
   const STATUS_MAP: Record<string, [string, string]> = {
     done: [C_OK, '✓'],
@@ -3456,6 +3524,50 @@ function ApprovalStatusPage({ onNav }: { onNav: (p: MerchantPage) => void }) {
     locked: [MUTED, '○'],
     rejected: [C_ERR, '✕'],
   };
+
+  // Banner reflects the merchant's real position in the funnel.
+  const banner = businessVerified
+    ? {
+        icon: '✅',
+        title: 'Approved',
+        body: 'Your business is verified. You can activate your store and start accepting orders.',
+        bg: 'rgba(16,185,129,.07)',
+        bd: 'rgba(16,185,129,.2)',
+      }
+    : !hasKyc
+      ? {
+          icon: '🪪',
+          title: 'Action required — submit KYC',
+          body: 'Your business must be verified before you can go live. Upload your KYC documents to enter the review queue.',
+          bg: 'rgba(239,68,68,.07)',
+          bd: 'rgba(239,68,68,.2)',
+        }
+      : kycRejected
+        ? {
+            icon: '⚠️',
+            title: 'Action required — re-submit KYC',
+            body: 'A KYC document was rejected. Please review the notes and submit again.',
+            bg: 'rgba(239,68,68,.07)',
+            bd: 'rgba(239,68,68,.2)',
+          }
+        : {
+            icon: '⏳',
+            title: 'Pending Approval',
+            body: 'Your application is under review by the DrippleX Operations team. This typically takes 1–2 business days.',
+            bg: 'rgba(245,158,11,.07)',
+            bd: 'rgba(245,158,11,.2)',
+          };
+
+  if (loading) {
+    return (
+      <div className="mx-scroll" style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+        <SectionHead title="Onboarding & Approval Status" />
+        <div style={{ fontFamily: IT, fontSize: 13, color: MUTED, padding: '20px 0' }}>
+          Loading your application status…
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-scroll" style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
@@ -3466,21 +3578,20 @@ function ApprovalStatusPage({ onNav }: { onNav: (p: MerchantPage) => void }) {
           gap: 14,
           padding: '14px 18px',
           borderRadius: 10,
-          background: 'rgba(245,158,11,.07)',
-          border: '1px solid rgba(245,158,11,.2)',
+          background: banner.bg,
+          border: `1px solid ${banner.bd}`,
           marginBottom: 20,
         }}
       >
-        <span style={{ fontSize: 22 }}>⏳</span>
+        <span style={{ fontSize: 22 }}>{banner.icon}</span>
         <div>
           <div
             style={{ fontFamily: PP, fontSize: 14, fontWeight: 700, color: WHITE, marginBottom: 3 }}
           >
-            Pending Approval
+            {banner.title}
           </div>
           <div style={{ fontFamily: IT, fontSize: 12, color: MUTED, lineHeight: 1.55 }}>
-            Your application is under review by the DrippleX Operations team. This typically takes
-            1–2 business days.
+            {banner.body}
           </div>
         </div>
       </div>
@@ -3556,8 +3667,21 @@ function ApprovalStatusPage({ onNav }: { onNav: (p: MerchantPage) => void }) {
                   />
                 </div>
                 <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>{step.sub}</div>
-                {step.status === 'action' && (
-                  <MxBtn label="Fix now →" variant="outline" small onClick={() => onNav('kyc')} />
+                {step.status === 'action' && step.nav && (
+                  <div style={{ marginTop: 8 }}>
+                    <MxBtn
+                      label={
+                        step.nav === 'kyc'
+                          ? 'Submit documents →'
+                          : step.nav === 'bank'
+                            ? 'Add bank account →'
+                            : 'Complete setup →'
+                      }
+                      variant="outline"
+                      small
+                      onClick={() => onNav(step.nav!)}
+                    />
+                  </div>
                 )}
               </div>
             </div>
