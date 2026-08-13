@@ -7,7 +7,6 @@ import {
   AccountSuspendedDomainException,
   EmailNotVerifiedDomainException,
   PhoneNotVerifiedDomainException,
-  UnauthorizedDomainException,
   WrongPortalDomainException,
 } from '../../common/exceptions/domain.exception';
 
@@ -174,12 +173,12 @@ describe('LoginService', () => {
     expect(result.user.roles).toContain('customer');
   });
 
-  it('rejects wrong password', async () => {
+  it('says the password is incorrect when the account exists', async () => {
     (bcrypt.compare as jest.Mock).mockResolvedValue(false);
 
     await expect(
       service.loginCustomer({ email: 'ada@example.com', password: 'WrongPass1' }, {}),
-    ).rejects.toBeInstanceOf(UnauthorizedDomainException);
+    ).rejects.toThrow('Incorrect password');
 
     expect(loginAttemptService.recordFailure).toHaveBeenCalled();
     expect(auditService.record).toHaveBeenCalledWith(
@@ -189,13 +188,13 @@ describe('LoginService', () => {
     );
   });
 
-  it('rejects unknown account with generic error', async () => {
+  it('says no account exists for an unknown email', async () => {
     (usersService.findByEmail as jest.Mock).mockResolvedValue(null);
     (bcrypt.compare as jest.Mock).mockResolvedValue(false);
 
     await expect(
       service.loginCustomer({ email: 'missing@example.com', password: 'Password1' }, {}),
-    ).rejects.toBeInstanceOf(UnauthorizedDomainException);
+    ).rejects.toThrow('No account found with this email');
   });
 
   it('rejects blocked accounts', async () => {
