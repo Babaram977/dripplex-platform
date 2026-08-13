@@ -668,6 +668,46 @@ export interface AdminDriverKycDto {
   createdAt: string;
 }
 
+// A merchant row for the Ops Console review desk (subset of MerchantProfileDto).
+// `business`/`kyc` are embedded, so the queue shows the business + KYC state
+// without an extra fetch.
+export interface AdminMerchantDto {
+  id: string;
+  merchantId: string;
+  email: string;
+  phone: string | null;
+  firstName: string;
+  lastName: string;
+  status: 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
+  isApproved: boolean;
+  rejectedReason: string | null;
+  createdAt: string;
+  business: {
+    businessName: string;
+    businessType: string;
+    verificationStatus: 'PENDING' | 'VERIFIED' | 'REJECTED' | 'UNDER_REVIEW';
+    city: string | null;
+    state: string | null;
+  } | null;
+  kyc: { verificationStatus: 'PENDING' | 'VERIFIED' | 'REJECTED' } | null;
+}
+
+// A rider row for the Ops Console review desk (subset of RiderProfileDto).
+export interface AdminRiderDto {
+  id: string;
+  riderId: string;
+  email: string;
+  phone: string | null;
+  firstName: string;
+  lastName: string;
+  status: 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
+  companyName: string | null;
+  isApproved: boolean;
+  rejectedReason: string | null;
+  createdAt: string;
+  kyc: { verificationStatus: 'PENDING' | 'VERIFIED' | 'REJECTED' }[];
+}
+
 // A driver row for the Ops Console (subset of backend DriverProfileDto). The
 // admin list embeds the driver's KYC documents, so the KYC review queue needs
 // no extra fetch.
@@ -1600,6 +1640,40 @@ export const api = {
         from,
         to,
       }),
+
+    // Merchants review desk. Pass a status to scope (e.g. 'PENDING'/'UNDER_REVIEW').
+    listMerchants: (status?: 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUSPENDED') =>
+      dx<{ items: AdminMerchantDto[]; meta: { total: number } }>(
+        'GET',
+        '/admin/merchants',
+        undefined,
+        status ? { status } : undefined,
+      ),
+    approveMerchant: (id: string) => dx<unknown>('POST', `/admin/merchant/${id}/approve`),
+    rejectMerchant: (id: string, reason: string) =>
+      dx<unknown>('POST', `/admin/merchant/${id}/reject`, { reason }),
+    verifyMerchantKyc: (id: string, remarks?: string) =>
+      dx<unknown>('POST', `/admin/merchant/${id}/kyc/verify`, remarks ? { remarks } : {}),
+    rejectMerchantKyc: (id: string, remarks: string) =>
+      dx<unknown>('POST', `/admin/merchant/${id}/kyc/reject`, { remarks }),
+    suspendMerchant: (id: string, reason: string) =>
+      dx<unknown>('POST', `/admin/merchant/${id}/suspend`, { reason }),
+    reactivateMerchant: (id: string) => dx<unknown>('POST', `/admin/merchant/${id}/reactivate`),
+
+    // Riders review desk. Pass a status to scope (e.g. 'PENDING'/'UNDER_REVIEW').
+    listRiders: (status?: 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUSPENDED') =>
+      dx<{ items: AdminRiderDto[]; meta: { total: number } }>(
+        'GET',
+        '/admin/riders',
+        undefined,
+        status ? { status } : undefined,
+      ),
+    approveRider: (id: string) => dx<unknown>('POST', `/admin/rider/${id}/approve`),
+    rejectRider: (id: string, reason: string) =>
+      dx<unknown>('POST', `/admin/rider/${id}/reject`, { reason }),
+    suspendRider: (id: string, reason: string) =>
+      dx<unknown>('POST', `/admin/rider/${id}/suspend`, { reason }),
+    reactivateRider: (id: string) => dx<unknown>('POST', `/admin/rider/${id}/reactivate`),
 
     // Customer roster (name/phone/email/status + trips/spend). Returns { items, meta }.
     listCustomers: (params?: {

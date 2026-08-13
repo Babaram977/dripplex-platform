@@ -9,6 +9,8 @@ import {
   type AdminFleetSummaryDto,
   type AdminLiveRideDto,
   type AdminCustomerDto,
+  type AdminMerchantDto,
+  type AdminRiderDto,
 } from '../lib/api';
 import { auth } from '../lib/auth';
 import {
@@ -53,6 +55,8 @@ export type AdminPage =
   | 'drivers'
   | 'drvkyc'
   | 'vehicles'
+  | 'merchants'
+  | 'riders'
   | 'customers'
   | 'pricing'
   | 'incidents'
@@ -278,6 +282,8 @@ const NAV_ITEMS: { page: AdminPage; icon: string; label: string }[] = [
   { page: 'drivers', icon: '🧑‍✈️', label: 'Drivers' },
   { page: 'drvkyc', icon: '🪪', label: 'Driver KYC' },
   { page: 'vehicles', icon: '🔑', label: 'Vehicles' },
+  { page: 'merchants', icon: '🏪', label: 'Merchants' },
+  { page: 'riders', icon: '🛵', label: 'Riders' },
   { page: 'customers', icon: '👥', label: 'Customers' },
   { page: 'pricing', icon: '💲', label: 'Pricing' },
   { page: 'incidents', icon: '⚠️', label: 'Incidents' },
@@ -2473,6 +2479,423 @@ function PageVehicles() {
       )}
       {vehicles?.map((v) => (
         <VehicleReviewCard key={v.id} v={v} onResolved={onResolved} />
+      ))}
+    </div>
+  );
+}
+
+// ─── Merchants & Riders review desks ─────────────────────────────────────────
+// Both personas share the same lifecycle status enum and KYC status shape, so
+// the status chips are shared. Pending/Under-review are actionable (approve/
+// reject); approved can be suspended; suspended can be reactivated.
+const PERSONA_STATUS: Record<string, { label: string; color: string }> = {
+  PENDING: { label: 'Pending', color: C_WARN },
+  UNDER_REVIEW: { label: 'Under Review', color: C_INFO },
+  APPROVED: { label: 'Approved', color: C_OK },
+  REJECTED: { label: 'Rejected', color: C_ERR },
+  SUSPENDED: { label: 'Suspended', color: C_ERR },
+};
+const personaStatus = (s: string) => PERSONA_STATUS[s] ?? { label: s, color: MUTED };
+const kycChip = (s?: string) =>
+  s === 'VERIFIED'
+    ? { label: 'KYC Verified', color: C_OK }
+    : s === 'REJECTED'
+      ? { label: 'KYC Rejected', color: C_ERR }
+      : s === 'PENDING'
+        ? { label: 'KYC Pending', color: C_WARN }
+        : { label: 'No KYC', color: MUTED };
+const isActionable = (s: string) => s === 'PENDING' || s === 'UNDER_REVIEW';
+
+// A small row of persona detail values.
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: 'flex', gap: 6, fontFamily: 'Inter, sans-serif' }}>
+      <span style={{ fontSize: 11, color: MUTED, minWidth: 64 }}>{label}</span>
+      <span style={{ fontSize: 11.5, color: WHITE }}>{value}</span>
+    </div>
+  );
+}
+
+// ─── Page: Merchants ──────────────────────────────────────────────────────────
+function MerchantReviewCard({ m, reload }: { m: AdminMerchantDto; reload: () => void }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [showReject, setShowReject] = useState(false);
+  const [reason, setReason] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+
+  const run = async (action: string, fn: () => Promise<unknown>) => {
+    setBusy(action);
+    setErr(null);
+    try {
+      await fn();
+      reload();
+    } catch (e: unknown) {
+      setErr((e as { message?: string }).message ?? 'Action failed. Try again.');
+      setBusy(null);
+    }
+  };
+  const reject = () => {
+    if (reason.trim().length < 5) {
+      setErr('Rejection reason must be at least 5 characters.');
+      return;
+    }
+    void run('reject', () => api.admin.rejectMerchant(m.merchantId, reason.trim()));
+  };
+  const st = personaStatus(m.status);
+  const kyc = kycChip(m.kyc?.verificationStatus);
+  const name = `${m.firstName} ${m.lastName}`.trim() || '—';
+
+  return (
+    <Card style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 18 }}>🏪</span>
+        <div
+          style={{ fontFamily: 'Poppins, sans-serif', fontSize: 13, fontWeight: 700, color: WHITE }}
+        >
+          {m.business?.businessName ?? 'Business not set'}
+        </div>
+        {m.business?.businessType && (
+          <Chip label={m.business.businessType.replace(/_/g, ' ')} color={C_INFO} />
+        )}
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+          <Chip {...kyc} />
+          <Chip {...st} />
+        </div>
+      </div>
+      <SEP />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <DetailRow label="Owner" value={name} />
+        <DetailRow label="Email" value={m.email} />
+        <DetailRow label="Phone" value={m.phone ?? '—'} />
+        <DetailRow
+          label="Location"
+          value={[m.business?.city, m.business?.state].filter(Boolean).join(', ') || '—'}
+        />
+        {m.status === 'REJECTED' && m.rejectedReason && (
+          <DetailRow label="Reason" value={m.rejectedReason} />
+        )}
+      </div>
+      {err && <span style={{ fontSize: 12, color: C_ERR }}>{err}</span>}
+      {showReject ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <input
+            className="dx-input"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Reason for rejection (min 5 characters)"
+          />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Btn
+              label={busy === 'reject' ? 'Rejecting…' : 'Confirm Reject'}
+              color={C_ERR}
+              onClick={reject}
+            />
+            <Btn
+              label="Cancel"
+              color={MUTED}
+              outline
+              onClick={() => {
+                setShowReject(false);
+                setErr(null);
+              }}
+            />
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {isActionable(m.status) && (
+            <>
+              {m.kyc?.verificationStatus === 'PENDING' && (
+                <Btn
+                  label={busy === 'kyc' ? 'Verifying…' : 'Verify KYC'}
+                  color={C_INFO}
+                  outline
+                  onClick={
+                    busy
+                      ? undefined
+                      : () => void run('kyc', () => api.admin.verifyMerchantKyc(m.merchantId))
+                  }
+                />
+              )}
+              <Btn
+                label={busy === 'approve' ? 'Approving…' : 'Approve Merchant'}
+                color={G2}
+                onClick={
+                  busy
+                    ? undefined
+                    : () => void run('approve', () => api.admin.approveMerchant(m.merchantId))
+                }
+              />
+              <Btn label="Reject" color={C_ERR} outline onClick={() => setShowReject(true)} />
+            </>
+          )}
+          {m.status === 'APPROVED' && (
+            <Btn
+              label={busy === 'suspend' ? 'Suspending…' : 'Suspend'}
+              color={C_ERR}
+              outline
+              onClick={
+                busy
+                  ? undefined
+                  : () =>
+                      void run('suspend', () =>
+                        api.admin.suspendMerchant(m.merchantId, 'Suspended by operations'),
+                      )
+              }
+            />
+          )}
+          {m.status === 'SUSPENDED' && (
+            <Btn
+              label={busy === 'reactivate' ? 'Reactivating…' : 'Reactivate'}
+              color={G2}
+              onClick={
+                busy
+                  ? undefined
+                  : () => void run('reactivate', () => api.admin.reactivateMerchant(m.merchantId))
+              }
+            />
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function PageMerchants() {
+  const [merchants, setMerchants] = useState<AdminMerchantDto[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      setMerchants((await api.admin.listMerchants()).items);
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load merchants.');
+      setMerchants([]);
+    }
+  }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const pending = (merchants ?? []).filter((m) => isActionable(m.status)).length;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div
+          style={{ fontFamily: 'Poppins, sans-serif', fontSize: 15, fontWeight: 700, color: WHITE }}
+        >
+          Merchant Approvals
+        </div>
+        <Chip label={`${pending} awaiting review`} color={C_WARN} />
+      </div>
+      {merchants === null && !error && (
+        <Card>
+          <span style={{ fontSize: 13, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+            Loading…
+          </span>
+        </Card>
+      )}
+      {error && (
+        <Card>
+          <span style={{ fontSize: 13, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>
+            {error}
+          </span>
+        </Card>
+      )}
+      {merchants && merchants.length === 0 && !error && (
+        <Card>
+          <span style={{ fontSize: 13, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+            No merchants have registered yet.
+          </span>
+        </Card>
+      )}
+      {merchants?.map((m) => (
+        <MerchantReviewCard key={m.id} m={m} reload={() => void load()} />
+      ))}
+    </div>
+  );
+}
+
+// ─── Page: Riders ─────────────────────────────────────────────────────────────
+function RiderReviewCard({ r, reload }: { r: AdminRiderDto; reload: () => void }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [showReject, setShowReject] = useState(false);
+  const [reason, setReason] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+
+  const run = async (action: string, fn: () => Promise<unknown>) => {
+    setBusy(action);
+    setErr(null);
+    try {
+      await fn();
+      reload();
+    } catch (e: unknown) {
+      setErr((e as { message?: string }).message ?? 'Action failed. Try again.');
+      setBusy(null);
+    }
+  };
+  const reject = () => {
+    if (reason.trim().length < 5) {
+      setErr('Rejection reason must be at least 5 characters.');
+      return;
+    }
+    void run('reject', () => api.admin.rejectRider(r.riderId, reason.trim()));
+  };
+  const st = personaStatus(r.status);
+  const kyc = kycChip(r.kyc?.[0]?.verificationStatus);
+  const name = `${r.firstName} ${r.lastName}`.trim() || '—';
+
+  return (
+    <Card style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <Avatar name={name} size={28} />
+        <div
+          style={{ fontFamily: 'Poppins, sans-serif', fontSize: 13, fontWeight: 700, color: WHITE }}
+        >
+          {name}
+        </div>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+          {r.kyc.length > 0 && <Chip {...kyc} />}
+          <Chip {...st} />
+        </div>
+      </div>
+      <SEP />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <DetailRow label="Company" value={r.companyName ?? '—'} />
+        <DetailRow label="Email" value={r.email} />
+        <DetailRow label="Phone" value={r.phone ?? '—'} />
+        {r.status === 'REJECTED' && r.rejectedReason && (
+          <DetailRow label="Reason" value={r.rejectedReason} />
+        )}
+      </div>
+      {err && <span style={{ fontSize: 12, color: C_ERR }}>{err}</span>}
+      {showReject ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <input
+            className="dx-input"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Reason for rejection (min 5 characters)"
+          />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Btn
+              label={busy === 'reject' ? 'Rejecting…' : 'Confirm Reject'}
+              color={C_ERR}
+              onClick={reject}
+            />
+            <Btn
+              label="Cancel"
+              color={MUTED}
+              outline
+              onClick={() => {
+                setShowReject(false);
+                setErr(null);
+              }}
+            />
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {isActionable(r.status) && (
+            <>
+              <Btn
+                label={busy === 'approve' ? 'Approving…' : 'Approve Rider'}
+                color={G2}
+                onClick={
+                  busy
+                    ? undefined
+                    : () => void run('approve', () => api.admin.approveRider(r.riderId))
+                }
+              />
+              <Btn label="Reject" color={C_ERR} outline onClick={() => setShowReject(true)} />
+            </>
+          )}
+          {r.status === 'APPROVED' && (
+            <Btn
+              label={busy === 'suspend' ? 'Suspending…' : 'Suspend'}
+              color={C_ERR}
+              outline
+              onClick={
+                busy
+                  ? undefined
+                  : () =>
+                      void run('suspend', () =>
+                        api.admin.suspendRider(r.riderId, 'Suspended by operations'),
+                      )
+              }
+            />
+          )}
+          {r.status === 'SUSPENDED' && (
+            <Btn
+              label={busy === 'reactivate' ? 'Reactivating…' : 'Reactivate'}
+              color={G2}
+              onClick={
+                busy
+                  ? undefined
+                  : () => void run('reactivate', () => api.admin.reactivateRider(r.riderId))
+              }
+            />
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function PageRiders() {
+  const [riders, setRiders] = useState<AdminRiderDto[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      setRiders((await api.admin.listRiders()).items);
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load riders.');
+      setRiders([]);
+    }
+  }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const pending = (riders ?? []).filter((r) => isActionable(r.status)).length;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div
+          style={{ fontFamily: 'Poppins, sans-serif', fontSize: 15, fontWeight: 700, color: WHITE }}
+        >
+          Rider Approvals
+        </div>
+        <Chip label={`${pending} awaiting review`} color={C_WARN} />
+      </div>
+      {riders === null && !error && (
+        <Card>
+          <span style={{ fontSize: 13, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+            Loading…
+          </span>
+        </Card>
+      )}
+      {error && (
+        <Card>
+          <span style={{ fontSize: 13, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>
+            {error}
+          </span>
+        </Card>
+      )}
+      {riders && riders.length === 0 && !error && (
+        <Card>
+          <span style={{ fontSize: 13, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+            No riders have registered yet.
+          </span>
+        </Card>
+      )}
+      {riders?.map((r) => (
+        <RiderReviewCard key={r.id} r={r} reload={() => void load()} />
       ))}
     </div>
   );
@@ -4783,6 +5206,10 @@ function renderPage(page: AdminPage) {
       return <PageDrvKYC />;
     case 'vehicles':
       return <PageVehicles />;
+    case 'merchants':
+      return <PageMerchants />;
+    case 'riders':
+      return <PageRiders />;
     case 'customers':
       return <PageCustomers />;
     case 'pricing':
