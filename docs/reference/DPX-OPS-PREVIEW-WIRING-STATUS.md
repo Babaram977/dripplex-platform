@@ -20,6 +20,7 @@ was not modified.
 | Vehicles      | `GET /admin/vehicles`, approve/reject                                                                            | Pending queue, Approve/Reject                                                                  |
 | Incidents/SOS | `GET /operations/queues/{incidents,sos}`, `PATCH /operations/cases/:id`                                          | Merged live queue, Resolve, Escalate (version-checked), Contact Driver (tel:)                  |
 | Support       | `GET /operations/queues/support`, `PATCH /operations/cases/:id`                                                  | Ticket queue, Resolve, Escalate                                                                |
+| Customers     | `GET /admin/customers`                                                                                           | Real roster (name/phone/email/status) + per-customer completed-trip count and spend            |
 | Profile       | `auth.getUser()`                                                                                                 | Real operator identity                                                                         |
 
 ## Genuine UI actions with **no** matching backend (documented gaps)
@@ -27,11 +28,14 @@ was not modified.
 These are surfaced honestly in the UI ("not available yet …") rather than
 faked. Each names the exact missing capability.
 
-1. **Customers screen** — there is no admin _customer roster_ endpoint. Only
-   `GET /admin/kyc/pending` and `GET /admin/kyc/user/:id` exist (KYC only, not a
-   directory). Missing: `GET /admin/customers` list (name/phone/email/status/
-   trips/spend) + `POST /admin/customers/:id/block`. Screen shows an empty
-   directory until then.
+1. **Customers screen** — ✅ roster now wired to `GET /admin/customers` (new,
+   gated by the existing `users:read` permission; lists name/phone/email/status
+   with each customer's completed-trip count and spend). Still missing: a
+   customer **rating** source (no customer-rating model — the Rating column shows
+   "—"), a **block** write (`POST /admin/customers/:id/block`; the `User.status`/
+   `blockedAt`/`blockedReason` fields exist but no endpoint sets them — the Block
+   button says so), and a **per-customer trip history** screen (the View-All-Trips
+   button says so).
 2. **Pricing — Fare Configuration** (base/distance/time/waiting) — no
    Ops-editable fare-config endpoint exists (fares are computed in the frozen
    Ride module). Missing: a ride fare-parameters settings resource. Note: the

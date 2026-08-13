@@ -8,6 +8,7 @@ import {
   type AdminFleetDriverDto,
   type AdminFleetSummaryDto,
   type AdminLiveRideDto,
+  type AdminCustomerDto,
 } from '../lib/api';
 import { auth } from '../lib/auth';
 import {
@@ -260,8 +261,6 @@ function Card({ children, style }: { children: React.ReactNode; style?: React.CS
 }
 
 const TRIPS: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
-
-const CUSTOMERS: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
 
 const REVENUE_DATA: Record<string, unknown>[] = []; // mock cleared — no revenue time-series feed yet
 
@@ -2476,12 +2475,60 @@ function PageVehicles() {
 }
 
 // ─── Page: Customers ──────────────────────────────────────────────────────────
+function customerName(c: AdminCustomerDto): string {
+  return `${c.firstName} ${c.lastName}`.trim() || '—';
+}
+function customerStatusChip(s: AdminCustomerDto['status']): { label: string; color: string } {
+  switch (s) {
+    case 'ACTIVE':
+      return { label: 'Active', color: C_OK };
+    case 'INACTIVE':
+      return { label: 'Inactive', color: MUTED };
+    case 'SUSPENDED':
+      return { label: 'Suspended', color: C_ERR };
+    case 'BLOCKED':
+      return { label: 'Blocked', color: C_ERR };
+    case 'PENDING_VERIFICATION':
+      return { label: 'Pending', color: C_WARN };
+    default:
+      return { label: s, color: MUTED };
+  }
+}
+const naira = (n: number) => `₦${Math.round(n).toLocaleString()}`;
+
 function PageCustomers() {
-  const [selected, setSelected] = useState<(typeof CUSTOMERS)[0] | null>(null);
+  const [customers, setCustomers] = useState<AdminCustomerDto[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<AdminCustomerDto | null>(null);
   const [search, setSearch] = useState('');
-  const filtered = CUSTOMERS.filter((c) =>
-    (c.name + c.email + c.phone).toLowerCase().includes(search.toLowerCase()),
-  );
+  const [statusFilter, setStatusFilter] = useState('All Status');
+  const [actionMsg, setActionMsg] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      // Pull a generous first page; refine client-side by search/status.
+      const res = await api.admin.listCustomers({ limit: 100 });
+      setCustomers(res.items);
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load customers.');
+      setCustomers([]);
+    }
+  }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const rows = (customers ?? []).filter((c) => {
+    const q = search.toLowerCase();
+    const matchesSearch = (customerName(c) + c.email + (c.phone ?? '')).toLowerCase().includes(q);
+    const matchesStatus =
+      statusFilter === 'All Status' ||
+      customerStatusChip(c.status).label.toLowerCase() === statusFilter.toLowerCase();
+    return matchesSearch && matchesStatus;
+  });
+  const sel = selected ? ((customers ?? []).find((c) => c.id === selected.id) ?? selected) : null;
+
   return (
     <div style={{ display: 'flex', gap: 14, height: '100%' }}>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -2493,7 +2540,12 @@ function PageCustomers() {
             onChange={(e) => setSearch(e.target.value)}
             style={{ width: 260 }}
           />
-          <select className="dx-select" style={{ color: MUTED }}>
+          <select
+            className="dx-select"
+            style={{ color: MUTED }}
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
             <option>All Status</option>
             <option>Active</option>
             <option>Inactive</option>
@@ -2532,49 +2584,54 @@ function PageCustomers() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((c, i) => (
-                <tr
-                  key={c.id}
-                  className="dx-row"
-                  style={{
-                    borderBottom: `1px solid rgba(255,255,255,.04)`,
-                    background:
-                      selected?.id === c.id
-                        ? 'rgba(71,207,114,.05)'
-                        : i % 2 === 1
-                          ? 'rgba(255,255,255,.01)'
-                          : 'transparent',
-                    cursor: 'pointer',
-                  }}
-                  onClick={() => setSelected(c)}
-                >
-                  <td style={{ padding: '8px 8px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <Avatar name={c.name} size={26} />
-                      <span style={{ fontSize: 12, fontWeight: 600, color: WHITE }}>{c.name}</span>
-                    </div>
-                  </td>
-                  <td style={{ padding: '8px 8px', fontSize: 11, color: MUTED }}>{c.phone}</td>
-                  <td style={{ padding: '8px 8px', fontSize: 11, color: MUTED }}>{c.email}</td>
-                  <td style={{ padding: '8px 8px', fontSize: 12, color: WHITE }}>{c.trips}</td>
-                  <td style={{ padding: '8px 8px' }}>
-                    <span style={{ color: C_WARN }}>★</span>
-                    <span style={{ fontSize: 12, color: WHITE, fontWeight: 600 }}> {c.rating}</span>
-                  </td>
-                  <td style={{ padding: '8px 8px', fontSize: 12, color: G3, fontWeight: 600 }}>
-                    {c.spent}
-                  </td>
-                  <td style={{ padding: '8px 8px' }}>
-                    <StatusChip status={c.status} />
-                  </td>
-                  <td style={{ padding: '8px 8px' }}>
-                    <Btn label="View" small outline color={G3} onClick={() => setSelected(c)} />
-                  </td>
-                </tr>
-              ))}
+              {rows.map((c, i) => {
+                const chip = customerStatusChip(c.status);
+                const name = customerName(c);
+                return (
+                  <tr
+                    key={c.id}
+                    className="dx-row"
+                    style={{
+                      borderBottom: `1px solid rgba(255,255,255,.04)`,
+                      background:
+                        sel?.id === c.id
+                          ? 'rgba(71,207,114,.05)'
+                          : i % 2 === 1
+                            ? 'rgba(255,255,255,.01)'
+                            : 'transparent',
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => setSelected(c)}
+                  >
+                    <td style={{ padding: '8px 8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Avatar name={name} size={26} />
+                        <span style={{ fontSize: 12, fontWeight: 600, color: WHITE }}>{name}</span>
+                      </div>
+                    </td>
+                    <td style={{ padding: '8px 8px', fontSize: 11, color: MUTED }}>
+                      {c.phone ?? '—'}
+                    </td>
+                    <td style={{ padding: '8px 8px', fontSize: 11, color: MUTED }}>{c.email}</td>
+                    <td style={{ padding: '8px 8px', fontSize: 12, color: WHITE }}>
+                      {c.tripsCount}
+                    </td>
+                    <td style={{ padding: '8px 8px', fontSize: 12, color: MUTED }}>—</td>
+                    <td style={{ padding: '8px 8px', fontSize: 12, color: G3, fontWeight: 600 }}>
+                      {naira(c.totalSpent)}
+                    </td>
+                    <td style={{ padding: '8px 8px' }}>
+                      <Chip label={chip.label} color={chip.color} />
+                    </td>
+                    <td style={{ padding: '8px 8px' }}>
+                      <Btn label="View" small outline color={G3} onClick={() => setSelected(c)} />
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
-          {filtered.length === 0 && (
+          {customers === null && !error && (
             <div
               style={{
                 padding: '8px 4px',
@@ -2583,13 +2640,36 @@ function PageCustomers() {
                 fontFamily: 'Inter, sans-serif',
               }}
             >
-              No customer directory is available yet — the Operations backend has no customer-roster
-              endpoint (see docs/reference/DPX-OPS-PREVIEW-WIRING-STATUS.md).
+              Loading…
+            </div>
+          )}
+          {error && (
+            <div
+              style={{
+                padding: '8px 4px',
+                fontSize: 12,
+                color: C_ERR,
+                fontFamily: 'Inter, sans-serif',
+              }}
+            >
+              {error}
+            </div>
+          )}
+          {customers !== null && !error && rows.length === 0 && (
+            <div
+              style={{
+                padding: '8px 4px',
+                fontSize: 12,
+                color: MUTED,
+                fontFamily: 'Inter, sans-serif',
+              }}
+            >
+              {customers.length === 0 ? 'No customers yet.' : 'No customers match this filter.'}
             </div>
           )}
         </Card>
       </div>
-      {selected && (
+      {sel && (
         <div style={{ width: 230, flexShrink: 0 }}>
           <Card style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -2604,7 +2684,10 @@ function PageCustomers() {
                 Customer Profile
               </span>
               <button
-                onClick={() => setSelected(null)}
+                onClick={() => {
+                  setSelected(null);
+                  setActionMsg(null);
+                }}
                 className="dx-btn"
                 style={{
                   background: 'none',
@@ -2618,7 +2701,7 @@ function PageCustomers() {
               </button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-              <Avatar name={selected.name} size={44} />
+              <Avatar name={customerName(sel)} size={44} />
               <div
                 style={{
                   fontFamily: 'Poppins, sans-serif',
@@ -2627,17 +2710,16 @@ function PageCustomers() {
                   color: WHITE,
                 }}
               >
-                {selected.name}
+                {customerName(sel)}
               </div>
-              <StatusChip status={selected.status} />
+              <Chip {...customerStatusChip(sel.status)} />
             </div>
             <SEP />
             {[
-              ['Phone', selected.phone],
-              ['Email', selected.email],
-              ['Trips', selected.trips.toString()],
-              ['Rating', `★ ${selected.rating}`],
-              ['Total Spent', selected.spent],
+              ['Phone', sel.phone ?? '—'],
+              ['Email', sel.email],
+              ['Trips', String(sel.tripsCount)],
+              ['Total Spent', naira(sel.totalSpent)],
             ].map(([k, v]) => (
               <div
                 key={k}
@@ -2651,10 +2733,32 @@ function PageCustomers() {
                 <span style={{ fontSize: 11.5, color: WHITE, fontWeight: 500 }}>{v}</span>
               </div>
             ))}
+            {actionMsg && (
+              <div style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+                {actionMsg}
+              </div>
+            )}
             <SEP />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-              <Btn label="Block Customer" color={C_ERR} outline />
-              <Btn label="View All Trips" color={G3} />
+              <Btn
+                label="Block Customer"
+                color={C_ERR}
+                outline
+                onClick={() =>
+                  setActionMsg(
+                    'Blocking a customer isn’t available yet — no backend endpoint sets a customer’s blocked status.',
+                  )
+                }
+              />
+              <Btn
+                label="View All Trips"
+                color={G3}
+                onClick={() =>
+                  setActionMsg(
+                    'A per-customer trip history screen isn’t wired yet — the roster shows the completed-trip count and spend.',
+                  )
+                }
+              />
             </div>
           </Card>
         </div>

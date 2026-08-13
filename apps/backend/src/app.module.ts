@@ -14,6 +14,7 @@ import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { AppConfigService } from './config/app-config.service';
 import { AppConfigModule } from './config/config.module';
+import { CustomersModule } from './customers/customers.module';
 import { DeliveryModule } from './delivery/delivery.module';
 import { DriversModule } from './drivers/drivers.module';
 import { EventsModule } from './events/events.module';
@@ -83,6 +84,7 @@ import { WishlistModule } from './wishlist/wishlist.module';
     FraudModule,
     HealthModule,
     OperationsModule,
+    CustomersModule,
     CommercialModule,
     KycModule,
     UploadsModule,

@@ -796,6 +796,20 @@ export interface AdminAnalyticsOverviewDto {
   averageTimeToFirstResponseSeconds: number | null;
 }
 
+// One customer row for the Ops Console roster (GET /admin/customers). tripsCount
+// and totalSpent are aggregated from the customer's COMPLETED rides.
+export interface AdminCustomerDto {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string | null;
+  status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'PENDING_VERIFICATION' | 'BLOCKED';
+  tripsCount: number;
+  totalSpent: number;
+  createdAt: string;
+}
+
 // Customer KYC
 export interface CustomerKycStatusDto {
   level: 'LEVEL_0' | 'LEVEL_1' | 'LEVEL_2';
@@ -1586,6 +1600,20 @@ export const api = {
         from,
         to,
       }),
+
+    // Customer roster (name/phone/email/status + trips/spend). Returns { items, meta }.
+    listCustomers: (params?: {
+      page?: number;
+      limit?: number;
+      status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'PENDING_VERIFICATION' | 'BLOCKED';
+      search?: string;
+    }) =>
+      dx<{ items: AdminCustomerDto[]; meta: { total: number } }>(
+        'GET',
+        '/admin/customers',
+        undefined,
+        params,
+      ),
   },
 
   // ── CUSTOMER KYC ───────────────────────────────────────────────────────────
