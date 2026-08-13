@@ -622,6 +622,8 @@ export function ChangePhoneScreen({ onBack, onDone }: { onBack: () => void; onDo
   const [phase, setPhase] = useState<'verify' | 'new' | 'otp' | 'success'>('verify');
   const [newPhone, setNewPhone] = useState('');
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
   const r0cp = useRef<HTMLInputElement>(null);
   const r1cp = useRef<HTMLInputElement>(null);
   const r2cp = useRef<HTMLInputElement>(null);
@@ -629,6 +631,11 @@ export function ChangePhoneScreen({ onBack, onDone }: { onBack: () => void; onDo
   const r4cp = useRef<HTMLInputElement>(null);
   const r5cp = useRef<HTMLInputElement>(null);
   const otpRefs = [r0cp, r1cp, r2cp, r3cp, r4cp, r5cp];
+
+  // Current phone comes from the signed-in user, not a hardcoded literal.
+  const currentPhone = auth.getUser()?.phone ?? '—';
+  // The backend's requestPhoneChange sends the OTP to the NEW number in E.164.
+  const newPhoneE164 = `+234${newPhone.replace(/\D/g, '')}`;
 
   useEffect(() => {
     if (phase === 'success') {
@@ -642,8 +649,39 @@ export function ChangePhoneScreen({ onBack, onDone }: { onBack: () => void; onDo
     const next = [...otp];
     next[i] = val;
     setOtp(next);
+    setError('');
     if (val && i < 5) otpRefs[i + 1].current?.focus();
-    if (next.every((d) => d) && val) setTimeout(() => setPhase('success'), 350);
+  };
+
+  // Step "enter new number" → request an OTP to the NEW number.
+  const sendOtp = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      await api.auth.requestPhoneChange({ newPhone: newPhoneE164 });
+      setOtp(['', '', '', '', '', '']);
+      setPhase('otp');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not send the code. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Step "enter OTP" → confirm the code; on success the backend returns the
+  // updated DxUser, which we persist so the app reflects the new number.
+  const confirmOtp = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      const updated = await api.auth.confirmPhoneChange({ otp: otp.join('') });
+      if (updated) auth.setUser(updated);
+      setPhase('success');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'That code was incorrect. Please try again.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   if (phase === 'success')
@@ -706,7 +744,7 @@ export function ChangePhoneScreen({ onBack, onDone }: { onBack: () => void; onDo
               className="text-[15px] font-semibold"
               style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
             >
-              +234 801 234 5678
+              {currentPhone}
             </p>
           </div>
           <span
@@ -719,9 +757,18 @@ export function ChangePhoneScreen({ onBack, onDone }: { onBack: () => void; onDo
         {phase === 'verify' && (
           <>
             <p className="text-[13px]" style={{ color: MUTED }}>
-              We'll first send a code to your current number to verify your identity.
+              Confirm this is your account, then enter your new number. We'll send a verification
+              code to the new number.
             </p>
-            <GreenBtn label="Verify Current Number" onClick={() => setPhase('new')} />
+            {/* Backend does NOT verify the current number — the OTP goes to the new
+                number on the next step, so this simply advances (no fake check). */}
+            <GreenBtn
+              label="Verify Current Number"
+              onClick={() => {
+                setError('');
+                setPhase('new');
+              }}
+            />
           </>
         )}
         {phase === 'new' && (
@@ -771,17 +818,22 @@ export function ChangePhoneScreen({ onBack, onDone }: { onBack: () => void; onDo
                 All linked services will be updated to your new number.
               </p>
             </div>
+            {error && (
+              <p className="text-[12px] font-medium" style={{ color: '#F87171' }}>
+                {error}
+              </p>
+            )}
             <GreenBtn
-              label="Send OTP to New Number"
-              onClick={() => setPhase('otp')}
-              disabled={newPhone.length < 8}
+              label={busy ? 'Sending…' : 'Send OTP to New Number'}
+              onClick={sendOtp}
+              disabled={newPhone.replace(/\D/g, '').length < 8 || busy}
             />
           </>
         )}
         {phase === 'otp' && (
           <>
             <p className="text-center text-[13px]" style={{ color: MUTED }}>
-              Enter the 6-digit code sent to <span style={{ color: G3 }}>+234 {newPhone}</span>
+              Enter the 6-digit code sent to <span style={{ color: G3 }}>{newPhoneE164}</span>
             </p>
             <div className="flex justify-center gap-2">
               {otp.map((d, i) => (
@@ -806,7 +858,16 @@ export function ChangePhoneScreen({ onBack, onDone }: { onBack: () => void; onDo
                 />
               ))}
             </div>
-            <GreenBtn label="Update Phone Number" onClick={() => setPhase('success')} />
+            {error && (
+              <p className="text-center text-[12px] font-medium" style={{ color: '#F87171' }}>
+                {error}
+              </p>
+            )}
+            <GreenBtn
+              label={busy ? 'Verifying…' : 'Update Phone Number'}
+              onClick={confirmOtp}
+              disabled={otp.some((d) => !d) || busy}
+            />
           </>
         )}
       </div>
@@ -1016,13 +1077,9 @@ export function UsernameManagementScreen({
 // AUTH-034  LOGIN APPROVALS
 // ═══════════════════════════════════════════════════════════════════════════
 export function LoginApprovalsScreen({ onBack }: { onBack: () => void }) {
-  const [decision, setDecision] = useState<'pending' | 'approved' | 'denied'>('pending');
-  const history = [
-    { device: 'MacBook Pro', location: 'Abuja, Nigeria', time: '2 hours ago', approved: true },
-    { device: 'Samsung Galaxy', location: 'Kano, Nigeria', time: 'Yesterday', approved: true },
-    { device: 'Unknown Device', location: 'Moscow, Russia', time: '3 days ago', approved: false },
-  ];
-
+  // GAP: no device-approval backend endpoint exists. There is no way to list
+  // pending device sign-in requests or approve/deny them, so this screen shows
+  // an honest "not available yet" state instead of fabricated requests/history.
   return (
     <div
       className="flex h-full w-full flex-col overflow-y-auto"
@@ -1043,128 +1100,25 @@ export function LoginApprovalsScreen({ onBack }: { onBack: () => void }) {
           </p>
         </div>
       </div>
-      {decision === 'pending' && (
+      <div className="flex flex-col gap-4 px-6 pt-3">
         <div
-          className="mx-6 my-3 overflow-hidden rounded-2xl"
-          style={{
-            background: 'rgba(251,191,36,.06)',
-            border: '1.5px solid rgba(251,191,36,.25)',
-            animation: 'fade-up .3s ease both',
-          }}
-        >
-          <div className="flex items-center gap-2 px-4 pb-3 pt-4">
-            <span style={{ fontSize: 16 }}>🔔</span>
-            <p
-              className="text-[13px] font-bold"
-              style={{ color: '#FCD34D', fontFamily: "'Poppins',sans-serif" }}
-            >
-              New Login Request
-            </p>
-          </div>
-          <div className="flex flex-col gap-2 px-4 pb-4">
-            <div
-              className="flex flex-col gap-1.5 rounded-xl p-3"
-              style={{ background: 'rgba(0,0,0,.2)' }}
-            >
-              <p className="text-[12px]" style={{ color: MUTED }}>
-                📱 Device: <span style={{ color: '#FFF' }}>iPad Pro</span>
-              </p>
-              <p className="text-[12px]" style={{ color: MUTED }}>
-                📍 Location: <span style={{ color: '#FFF' }}>Lagos, Nigeria</span>
-              </p>
-              <p className="text-[12px]" style={{ color: MUTED }}>
-                🌐 Browser: <span style={{ color: '#FFF' }}>Safari Mobile</span>
-              </p>
-              <p className="text-[12px]" style={{ color: MUTED }}>
-                🕐 Time: <span style={{ color: '#FFF' }}>Just now</span>
-              </p>
-            </div>
-            <div className="mt-1 flex gap-3">
-              <button
-                onClick={() => setDecision('denied')}
-                className="h-[42px] flex-1 rounded-xl text-[13px] font-bold transition-all active:scale-95"
-                style={{
-                  background: 'rgba(248,113,113,.12)',
-                  border: '1px solid rgba(248,113,113,.25)',
-                  color: '#F87171',
-                }}
-              >
-                Deny
-              </button>
-              <button
-                onClick={() => setDecision('approved')}
-                className="h-[42px] flex-1 rounded-xl text-[13px] font-bold transition-all active:scale-95"
-                style={{
-                  background: 'rgba(43,172,82,.15)',
-                  border: '1px solid rgba(43,172,82,.3)',
-                  color: G3,
-                }}
-              >
-                Approve
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {decision !== 'pending' && (
-        <div
-          className="mx-6 my-3 flex items-center gap-3 rounded-2xl p-4"
-          style={{
-            background: decision === 'approved' ? 'rgba(43,172,82,.1)' : 'rgba(248,113,113,.08)',
-            border: `1px solid ${decision === 'approved' ? 'rgba(43,172,82,.25)' : 'rgba(248,113,113,.25)'}`,
-            animation: 'fade-up .3s ease both',
-          }}
-        >
-          <span style={{ fontSize: 20 }}>{decision === 'approved' ? '✅' : '🚫'}</span>
-          <p
-            className="text-[13px] font-semibold"
-            style={{ color: decision === 'approved' ? G3 : '#F87171' }}
-          >
-            Login {decision === 'approved' ? 'approved' : 'denied'} for iPad Pro · Lagos
-          </p>
-        </div>
-      )}
-      <p
-        className="px-6 pb-2 pt-2 text-[11px] font-semibold uppercase tracking-widest"
-        style={{ color: MUTED }}
-      >
-        Approval History
-      </p>
-      {history.map((h, i) => (
-        <div
-          key={i}
-          className="mx-6 mb-3 flex items-center gap-3 rounded-2xl p-4"
+          className="flex flex-col items-center gap-3 rounded-2xl p-6 text-center"
           style={{ background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
         >
-          <div
-            className="flex h-10 w-10 items-center justify-center rounded-xl text-xl"
-            style={{ background: h.approved ? 'rgba(43,172,82,.1)' : 'rgba(248,113,113,.1)' }}
+          <span style={{ fontSize: 34 }}>🔔</span>
+          <p
+            className="text-[15px] font-bold"
+            style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
           >
-            {h.approved ? '✅' : '🚫'}
-          </div>
-          <div className="flex-1">
-            <p
-              className="text-[13px] font-semibold"
-              style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
-            >
-              {h.device}
-            </p>
-            <p className="text-[11px]" style={{ color: MUTED }}>
-              📍 {h.location} · 🕐 {h.time}
-            </p>
-          </div>
-          <span
-            className="rounded-full px-2 py-0.5 text-[9px] font-bold"
-            style={{
-              background: h.approved ? 'rgba(43,172,82,.15)' : 'rgba(248,113,113,.12)',
-              color: h.approved ? G3 : '#F87171',
-            }}
-          >
-            {h.approved ? 'Approved' : 'Denied'}
-          </span>
+            Not available yet
+          </p>
+          <p className="text-[12px] leading-relaxed" style={{ color: MUTED }}>
+            Approving sign-ins from new devices is coming soon. When it's ready, new login requests
+            will appear here for you to approve or deny.
+          </p>
         </div>
-      ))}
-      <div className="mt-2 px-6 pb-10">
+      </div>
+      <div className="mt-2 px-6 pb-10 pt-4">
         <GreenBtn label="Done" onClick={onBack} />
       </div>
     </div>
@@ -1174,29 +1128,10 @@ export function LoginApprovalsScreen({ onBack }: { onBack: () => void }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // AUTH-035  RECOVERY CODES
 // ═══════════════════════════════════════════════════════════════════════════
-export function makeCodes() {
-  return Array.from(
-    { length: 10 },
-    () =>
-      `${((Math.random() * 9999) | 0).toString().padStart(4, '0')}-${((Math.random() * 9999) | 0).toString().padStart(4, '0')}`,
-  );
-}
-
 export function RecoveryCodesScreen({ onBack }: { onBack: () => void }) {
-  const [codes, setCodes] = useState<string[]>([]);
-  const [generated, setGenerated] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [sheet, setSheet] = useState(false);
-
-  const generate = () => {
-    setCodes(makeCodes());
-    setGenerated(true);
-  };
-  const copy = () => {
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
+  // GAP: no recovery-code backend endpoint exists. There is no way to generate,
+  // store, or validate recovery codes, so this screen shows an honest "not
+  // available yet" state instead of fabricating codes with Math.random.
   return (
     <div
       className="flex h-full w-full flex-col overflow-y-auto"
@@ -1219,142 +1154,23 @@ export function RecoveryCodesScreen({ onBack }: { onBack: () => void }) {
       </div>
       <div className="flex flex-col gap-4 px-6 pt-2">
         <div
-          className="flex items-start gap-3 rounded-2xl p-4"
-          style={{ background: 'rgba(96,165,250,.06)', border: '1px solid rgba(96,165,250,.18)' }}
+          className="flex flex-col items-center gap-3 rounded-2xl p-6 text-center"
+          style={{ background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
         >
-          <span style={{ fontSize: 18 }}>ℹ️</span>
-          <p className="text-[12px] leading-relaxed" style={{ color: 'rgba(255,255,255,.6)' }}>
-            Recovery codes are one-time passwords. Store them safely. Regenerating invalidates all
-            previous codes.
+          <span style={{ fontSize: 34 }}>🔑</span>
+          <p
+            className="text-[15px] font-bold"
+            style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
+          >
+            Not available yet
+          </p>
+          <p className="text-[12px] leading-relaxed" style={{ color: MUTED }}>
+            Recovery codes aren't available yet. When they're ready, you'll be able to generate a
+            set of one-time emergency access codes here.
           </p>
         </div>
-        {!generated ? (
-          <GreenBtn label="Generate Recovery Codes" onClick={generate} />
-        ) : (
-          <>
-            <div
-              className="rounded-2xl p-4"
-              style={{ background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
-            >
-              <div className="mb-3 flex items-center justify-between">
-                <p
-                  className="text-[12px] font-semibold uppercase tracking-widest"
-                  style={{ color: MUTED }}
-                >
-                  10 Recovery Codes
-                </p>
-                {copied && (
-                  <span className="text-[11px]" style={{ color: G3 }}>
-                    Copied!
-                  </span>
-                )}
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {codes.map((code, i) => (
-                  <div
-                    key={i}
-                    className="rounded-xl px-3 py-2 text-center"
-                    style={{ background: 'rgba(255,255,255,.04)', border: `1px solid ${BORDER}` }}
-                  >
-                    <p className="font-mono text-[12px] font-semibold" style={{ color: G3 }}>
-                      {code}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={copy}
-                className="h-[44px] flex-1 rounded-2xl text-[13px] font-semibold transition-all active:scale-95"
-                style={{
-                  background: 'rgba(43,172,82,.1)',
-                  border: `1px solid rgba(43,172,82,.25)`,
-                  color: G3,
-                }}
-              >
-                📋 Copy All
-              </button>
-              <button
-                className="h-[44px] flex-1 rounded-2xl text-[13px] font-semibold transition-all active:scale-95"
-                style={{
-                  background: 'rgba(255,255,255,.05)',
-                  border: `1px solid ${BORDER}`,
-                  color: MUTED,
-                }}
-              >
-                🖨 Print
-              </button>
-            </div>
-            <button
-              onClick={() => setSheet(true)}
-              className="h-[44px] w-full rounded-2xl text-[13px] font-semibold transition-all active:scale-[.97]"
-              style={{
-                background: 'rgba(248,113,113,.08)',
-                border: '1px solid rgba(248,113,113,.2)',
-                color: '#F87171',
-              }}
-            >
-              🔄 Regenerate (Invalidates Previous)
-            </button>
-          </>
-        )}
         <div style={{ height: 32 }} />
       </div>
-      {sheet && (
-        <div
-          className="absolute inset-0 z-50 flex flex-col justify-end"
-          style={{ background: 'rgba(0,0,0,.72)' }}
-          onClick={() => setSheet(false)}
-        >
-          <div
-            className="rounded-t-3xl p-6"
-            style={{ background: NAVY_CARD, border: `1px solid ${BORDER}` }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div
-              className="mx-auto mb-5 h-1 w-10 rounded-full"
-              style={{ background: 'rgba(255,255,255,.2)' }}
-            />
-            <p
-              className="mb-2 text-[17px] font-bold"
-              style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
-            >
-              Regenerate Codes?
-            </p>
-            <p className="mb-5 text-[13px] leading-relaxed" style={{ color: MUTED }}>
-              All 10 previous codes will be immediately invalidated.
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setSheet(false)}
-                className="h-[46px] flex-1 rounded-2xl text-[14px] font-medium"
-                style={{
-                  background: 'rgba(255,255,255,.06)',
-                  border: `1px solid ${BORDER}`,
-                  color: MUTED,
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  setSheet(false);
-                  setCodes(makeCodes());
-                }}
-                className="h-[46px] flex-1 rounded-2xl text-[14px] font-bold"
-                style={{
-                  background: 'rgba(248,113,113,.18)',
-                  border: '1px solid rgba(248,113,113,.3)',
-                  color: '#F87171',
-                }}
-              >
-                Regenerate
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

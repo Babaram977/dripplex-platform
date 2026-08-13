@@ -21,103 +21,17 @@ import {
   CheckIcon,
   COUNTRIES,
 } from './shared';
-import { api } from '../lib/api';
+import { api, uploadFile } from '../lib/api';
+import type { CustomerKycStatusDto, SessionDto } from '../lib/api';
 import { auth } from '../lib/auth';
 
 // AUTH-010  TWO-FACTOR AUTHENTICATION
 // ═══════════════════════════════════════════════════════════════════════════
 export function TwoFactorScreen({ onBack, onDone }: { onBack: () => void; onDone: () => void }) {
-  const [activeMethod, setActiveMethod] = useState<'sms' | 'auth' | 'email'>('sms');
-  const [step, setStep] = useState<'choose' | 'verify' | 'success'>('choose');
-  const [code, setCode] = useState(['', '', '', '', '', '']);
-  const [error, setError] = useState('');
-  const [enabled, setEnabled] = useState({ sms: true, auth: false, email: false });
-  const r0 = useRef<HTMLInputElement>(null);
-  const r1 = useRef<HTMLInputElement>(null);
-  const r2 = useRef<HTMLInputElement>(null);
-  const r3 = useRef<HTMLInputElement>(null);
-  const r4 = useRef<HTMLInputElement>(null);
-  const r5 = useRef<HTMLInputElement>(null);
-  const refs = [r0, r1, r2, r3, r4, r5];
-
-  useEffect(() => {
-    if (step !== 'success') return;
-    const t = setTimeout(onDone, 2200);
-    return () => clearTimeout(t);
-  }, [step]);
-
-  const handleDigit = (i: number, val: string) => {
-    if (!/^\d?$/.test(val)) return;
-    const next = [...code];
-    next[i] = val;
-    setCode(next);
-    setError('');
-    if (val && i < 5) refs[i + 1].current?.focus();
-    if (next.every((d) => d) && val) {
-      const full = next.join('');
-      setTimeout(() => {
-        if (full === '111111') {
-          setError('Code expired. Request a new one.');
-          setCode(['', '', '', '', '', '']);
-          refs[0].current?.focus();
-        } else {
-          setStep('success');
-        }
-      }, 280);
-    }
-  };
-
-  const handleKey = (i: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Backspace' && !code[i] && i > 0) refs[i - 1].current?.focus();
-  };
-
-  const methodMeta: Record<string, { icon: string; label: string; sub: string }> = {
-    sms: { icon: '💬', label: 'SMS Authentication', sub: '+234 ●●● ●●● 5678' },
-    auth: { icon: '🔐', label: 'Authenticator App', sub: 'Google Authenticator / Authy' },
-    email: { icon: '📧', label: 'Email Authentication', sub: 's●●●●@gmail.com' },
-  };
-
-  if (step === 'success')
-    return (
-      <div
-        className="flex h-full w-full flex-col items-center justify-center gap-5"
-        style={{ background: NAVY_BASE }}
-      >
-        <StatusBar />
-        <div
-          className="relative flex items-center justify-center"
-          style={{ width: 120, height: 120 }}
-        >
-          <svg width="120" height="120" viewBox="0 0 120 120" style={{ position: 'absolute' }}>
-            <circle
-              cx="60"
-              cy="60"
-              r="54"
-              fill="none"
-              stroke={G2}
-              strokeWidth="3"
-              strokeDasharray="339"
-              strokeDashoffset="339"
-              style={{ animation: 'circle-draw 0.9s ease forwards' }}
-            />
-          </svg>
-          <span style={{ fontSize: 48 }}>🛡️</span>
-        </div>
-        <p
-          className="text-center text-[22px] font-bold"
-          style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
-        >
-          2FA Enabled!
-        </p>
-        <p className="px-10 text-center text-[13px]" style={{ color: MUTED }}>
-          Your account is now protected with two-factor authentication.
-        </p>
-        <p className="text-[11px] font-semibold tracking-widest" style={{ color: G3 }}>
-          life,Simplified
-        </p>
-      </div>
-    );
-
+  // GAP: no MFA/2FA backend exists — there are no setup/verify/disable endpoints
+  // and the login flow has no 2FA challenge. This screen is honest about that
+  // rather than faking a code check (the old flow accepted any 6 digits).
+  void onDone;
   return (
     <div
       className="flex h-full w-full flex-col overflow-y-auto"
@@ -131,150 +45,35 @@ export function TwoFactorScreen({ onBack, onDone }: { onBack: () => void; onDone
             className="text-[18px] font-bold"
             style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
           >
-            Two-Factor Auth
+            Two-Factor Authentication
           </p>
           <p className="text-[11px]" style={{ color: MUTED }}>
-            Add an extra layer of security
+            Extra security for your account
           </p>
         </div>
       </div>
 
-      {/* Security Badge */}
-      <div
-        className="mx-6 my-3 flex items-center gap-3 rounded-2xl p-4"
-        style={{ background: 'rgba(43,172,82,.1)', border: '1px solid rgba(43,172,82,.25)' }}
-      >
-        <span style={{ fontSize: 24 }}>🔒</span>
-        <div>
-          <p className="text-[13px] font-semibold" style={{ color: G3 }}>
-            2FA Active on This Account
-          </p>
-          <p className="text-[11px]" style={{ color: MUTED }}>
-            Last verified 2 hours ago
-          </p>
-        </div>
+      <div className="flex flex-1 flex-col items-center justify-center px-8 text-center">
         <div
-          className="ml-auto rounded-full px-2 py-1 text-[10px] font-bold"
-          style={{ background: G2, color: '#FFF' }}
+          className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl text-3xl"
+          style={{ background: 'rgba(255,255,255,.05)', border: `1px solid ${BORDER}` }}
         >
-          ON
+          🔒
         </div>
-      </div>
-
-      {/* Methods */}
-      <p
-        className="px-6 pb-2 pt-2 text-[11px] font-semibold uppercase tracking-widest"
-        style={{ color: MUTED }}
-      >
-        Authentication Methods
-      </p>
-      {(['sms', 'auth', 'email'] as const).map((m) => {
-        const meta = methodMeta[m];
-        const isOn = enabled[m];
-        return (
-          <div
-            key={m}
-            className="mx-6 mb-3 flex items-center gap-3 rounded-2xl p-4"
-            style={{
-              background: NAVY_CARD,
-              border: `1.5px solid ${activeMethod === m ? G2 + '55' : BORDER}`,
-            }}
-          >
-            <div
-              className="flex h-11 w-11 items-center justify-center rounded-xl text-2xl"
-              style={{ background: isOn ? 'rgba(43,172,82,.15)' : 'rgba(255,255,255,.04)' }}
-            >
-              {meta.icon}
-            </div>
-            <div className="flex-1">
-              <p
-                className="text-[14px] font-semibold"
-                style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
-              >
-                {meta.label}
-              </p>
-              <p className="text-[11px]" style={{ color: MUTED }}>
-                {meta.sub}
-              </p>
-            </div>
-            {/* toggle */}
-            <button
-              onClick={() => setEnabled((e) => ({ ...e, [m]: !e[m] }))}
-              className="relative h-6 w-12 flex-shrink-0 rounded-full transition-all duration-300"
-              style={{ background: isOn ? G2 : 'rgba(255,255,255,.1)' }}
-            >
-              <div
-                className="absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all duration-300"
-                style={{ left: isOn ? 'calc(100% - 22px)' : 2 }}
-              />
-            </button>
-          </div>
-        );
-      })}
-
-      {/* Verify with code */}
-      <div
-        className="mx-6 my-2 rounded-2xl p-5"
-        style={{ background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
-      >
         <p
-          className="mb-1 text-[14px] font-semibold"
+          className="mb-2 text-[16px] font-bold"
           style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
         >
-          Verify Identity
+          Not available yet
         </p>
-        <p className="mb-4 text-[12px]" style={{ color: MUTED }}>
-          Enter the 6-digit code sent to your phone to confirm changes.
+        <p className="text-[13px] leading-relaxed" style={{ color: MUTED }}>
+          Two-factor authentication is coming soon. When it&apos;s ready you&apos;ll be able to add
+          a second step to your logins from here.
         </p>
-        <div className="mb-3 flex justify-center gap-2">
-          {code.map((d, i) => (
-            <input
-              key={i}
-              ref={refs[i]}
-              maxLength={1}
-              value={d}
-              onChange={(e) => handleDigit(i, e.target.value)}
-              onKeyDown={(e) => handleKey(i, e)}
-              className="h-[48px] w-[42px] rounded-xl text-center text-[18px] font-bold outline-none transition-all"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              style={{
-                fontFamily: "'Poppins',sans-serif",
-                color: '#FFF',
-                background: d ? 'rgba(43,172,82,.15)' : 'rgba(255,255,255,.05)',
-                border: `1.5px solid ${error ? '#F87171' : d ? G2 : BORDER}`,
-              }}
-            />
-          ))}
-        </div>
-        {error && (
-          <p className="text-center text-[11px]" style={{ color: '#F87171' }}>
-            {error}
-          </p>
-        )}
-        <GreenBtn label="Confirm Changes" onClick={() => setStep('success')} />
       </div>
 
-      {/* Backup codes */}
-      <div
-        className="mx-6 my-2 mb-8 flex items-center gap-3 rounded-2xl p-4"
-        style={{ background: 'rgba(251,191,36,.06)', border: '1px solid rgba(251,191,36,.2)' }}
-      >
-        <span style={{ fontSize: 20 }}>🔑</span>
-        <div className="flex-1">
-          <p className="text-[13px] font-semibold" style={{ color: '#FCD34D' }}>
-            Backup Recovery Codes
-          </p>
-          <p className="text-[11px]" style={{ color: MUTED }}>
-            Download codes in case you lose access
-          </p>
-        </div>
-        <button
-          className="rounded-xl px-3 py-1.5 text-[11px] font-semibold"
-          style={{ background: 'rgba(251,191,36,.12)', color: '#FCD34D' }}
-        >
-          Download
-        </button>
+      <div className="px-6 pb-10">
+        <GreenBtn label="Back to Security" onClick={onBack} />
       </div>
     </div>
   );
@@ -1093,56 +892,94 @@ export function SecurityCenterScreen({
 // ═══════════════════════════════════════════════════════════════════════════
 // AUTH-014  SESSION MANAGEMENT
 // ═══════════════════════════════════════════════════════════════════════════
-export const SESSION_LIST = [
-  {
-    id: 's1',
-    icon: '📱',
-    device: 'iPhone 16 Pro',
-    browser: 'DrippleX App',
-    location: 'Kano, Nigeria',
-    lastActive: 'Active Now',
-    isCurrent: true,
-  },
-  {
-    id: 's2',
-    icon: '💻',
-    device: 'MacBook Pro',
-    browser: 'Chrome Browser',
-    location: 'Abuja, Nigeria',
-    lastActive: '2 hours ago',
-    isCurrent: false,
-  },
-  {
-    id: 's3',
-    icon: '📱',
-    device: 'Samsung Galaxy',
-    browser: 'DrippleX App',
-    location: 'Kano, Nigeria',
-    lastActive: 'Yesterday',
-    isCurrent: false,
-  },
-];
+type SessionRow = {
+  id: string;
+  icon: string;
+  device: string;
+  browser: string;
+  location: string;
+  lastActive: string;
+  isCurrent: boolean;
+};
+
+const sessionIcon = (t: string): string =>
+  t === 'mobile' || t === 'tablet' ? '📱' : t === 'desktop' ? '💻' : '🖥️';
+
+const relTime = (iso: string): string => {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return '—';
+  const mins = Math.max(0, Math.round((Date.now() - then) / 60000));
+  if (mins < 1) return 'Active now';
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs} hour${hrs === 1 ? '' : 's'} ago`;
+  const days = Math.round(hrs / 24);
+  return `${days} day${days === 1 ? '' : 's'} ago`;
+};
+
+const toSessionRow = (s: SessionDto): SessionRow => ({
+  id: s.sessionId,
+  icon: sessionIcon(s.deviceType),
+  device: s.device || s.operatingSystem || 'Unknown device',
+  browser: s.browser || s.portal || 'DrippleX',
+  location: s.location || s.ip || '—',
+  lastActive: s.current ? 'Active now' : relTime(s.lastActiveAt),
+  isCurrent: s.current,
+});
 
 export function SessionManagementScreen({ onBack }: { onBack: () => void }) {
-  const [sessions, setSessions] = useState(SESSION_LIST);
+  const [sessions, setSessions] = useState<SessionRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
   const [signOutSheet, setSignOutSheet] = useState(false);
   const [allDone, setAllDone] = useState(false);
 
+  const load = () => {
+    if (!auth.isLoggedIn()) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setLoadError(null);
+    api.auth
+      .listSessions()
+      .then((r) => setSessions(r.items.map(toSessionRow)))
+      .catch((e: unknown) =>
+        setLoadError(e instanceof Error ? e.message : 'Could not load your sessions.'),
+      )
+      .finally(() => setLoading(false));
+  };
+  useEffect(load, []);
+
   const signOut = (id: string) => {
     setRemoving(id);
-    setTimeout(() => {
-      setSessions((s) => s.filter((x) => x.id !== id));
-      setRemoving(null);
-      setExpanded(null);
-    }, 500);
+    setLoadError(null);
+    api.auth
+      .revokeSession(id)
+      .then(() => {
+        setSessions((s) => s.filter((x) => x.id !== id));
+        setExpanded(null);
+      })
+      .catch((e: unknown) =>
+        setLoadError(e instanceof Error ? e.message : 'Could not sign out that session.'),
+      )
+      .finally(() => setRemoving(null));
   };
 
   const signOutEverywhere = () => {
     setSignOutSheet(false);
-    setSessions((s) => s.filter((x) => x.isCurrent));
-    setAllDone(true);
+    setLoadError(null);
+    api.auth
+      .revokeOtherSessions()
+      .then(() => {
+        setSessions((s) => s.filter((x) => x.isCurrent));
+        setAllDone(true);
+      })
+      .catch((e: unknown) =>
+        setLoadError(e instanceof Error ? e.message : 'Could not sign out other sessions.'),
+      );
   };
 
   return (
@@ -1182,11 +1019,31 @@ export function SessionManagementScreen({ onBack }: { onBack: () => void }) {
         </div>
       )}
 
+      {loadError && (
+        <div
+          className="mx-6 my-2 flex items-center justify-between gap-3 rounded-2xl p-4"
+          style={{ background: 'rgba(248,113,113,.08)', border: '1px solid rgba(248,113,113,.22)' }}
+        >
+          <p className="text-[12px]" style={{ color: '#FCA5A5' }}>
+            {loadError}
+          </p>
+          <button
+            onClick={load}
+            className="h-[30px] rounded-lg px-3 text-[11px] font-semibold"
+            style={{ background: 'rgba(255,255,255,.08)', color: '#FFF' }}
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       <p
         className="px-6 pb-2 pt-2 text-[11px] font-semibold uppercase tracking-widest"
         style={{ color: MUTED }}
       >
-        {sessions.length} Active Session{sessions.length !== 1 ? 's' : ''}
+        {loading
+          ? 'Loading sessions…'
+          : `${sessions.length} Active Session${sessions.length !== 1 ? 's' : ''}`}
       </p>
 
       {sessions.map((sess) => {
@@ -1291,29 +1148,18 @@ export function SessionManagementScreen({ onBack }: { onBack: () => void }) {
                   </p>
                 </div>
                 {!sess.isCurrent && (
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => signOut(sess.id)}
-                      className="h-[38px] flex-1 rounded-xl text-[12px] font-semibold transition-all active:scale-95"
-                      style={{
-                        background: 'rgba(248,113,113,.12)',
-                        border: '1px solid rgba(248,113,113,.25)',
-                        color: '#F87171',
-                      }}
-                    >
-                      Sign Out
-                    </button>
-                    <button
-                      className="h-[38px] flex-1 rounded-xl text-[12px] font-semibold transition-all active:scale-95"
-                      style={{
-                        background: 'rgba(251,191,36,.08)',
-                        border: '1px solid rgba(251,191,36,.18)',
-                        color: '#FCD34D',
-                      }}
-                    >
-                      Report Device
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => signOut(sess.id)}
+                    disabled={removing === sess.id}
+                    className="h-[38px] w-full rounded-xl text-[12px] font-semibold transition-all active:scale-95 disabled:opacity-60"
+                    style={{
+                      background: 'rgba(248,113,113,.12)',
+                      border: '1px solid rgba(248,113,113,.25)',
+                      color: '#F87171',
+                    }}
+                  >
+                    {removing === sess.id ? 'Signing out…' : 'Sign Out'}
+                  </button>
                 )}
               </div>
             )}
@@ -1379,8 +1225,8 @@ export function SessionManagementScreen({ onBack }: { onBack: () => void }) {
               Sign Out Everywhere?
             </p>
             <p className="mb-5 text-[13px] leading-relaxed" style={{ color: MUTED }}>
-              This will immediately sign out all devices except your iPhone 16 Pro. You'll need to
-              log back in on those devices.
+              This will immediately sign out all devices except the one you're using now. You'll
+              need to log back in on those devices.
             </p>
             <div className="flex gap-3">
               <button
@@ -1707,37 +1553,121 @@ export function PrivacyControlsScreen({ onBack }: { onBack: () => void }) {
 export type KYCStatus = 'idle' | 'uploading' | 'review' | 'verified';
 
 export function IdentityVerificationScreen({ onBack }: { onBack: () => void }) {
-  const [kycStatus, setKycStatus] = useState<KYCStatus>('idle');
-  const [docType, setDocType] = useState<'nid' | 'dl' | 'passport'>('nid');
-  const [selfie, setSelfie] = useState(false);
-  const [address, setAddress] = useState(false);
+  const [kyc, setKyc] = useState<CustomerKycStatusDto | null>(null);
+  const [, setLoading] = useState(true);
+  const [docType, setDocType] = useState<'NATIONAL_ID' | 'DRIVER_LICENSE' | 'PASSPORT'>(
+    'NATIONAL_ID',
+  );
+  const [docNumber, setDocNumber] = useState('');
+  const [frontUrl, setFrontUrl] = useState<string | null>(null);
+  const [backUrl, setBackUrl] = useState<string | null>(null);
+  const [selfieUrl, setSelfieUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState<'front' | 'back' | 'selfie' | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const docLabels: Record<string, string> = {
-    nid: 'National ID',
-    dl: "Driver's License",
-    passport: 'International Passport',
+    NATIONAL_ID: 'National ID',
+    DRIVER_LICENSE: "Driver's License",
+    PASSPORT: 'International Passport',
   };
 
-  const statusBadge: Record<KYCStatus, { color: string; bg: string; label: string; icon: string }> =
-    {
-      idle: { color: MUTED, bg: 'rgba(255,255,255,.06)', label: 'Not Started', icon: '⏳' },
-      uploading: { color: '#60A5FA', bg: 'rgba(96,165,250,.1)', label: 'Uploading…', icon: '⬆️' },
-      review: { color: '#FCD34D', bg: 'rgba(251,191,36,.1)', label: 'In Review', icon: '🔍' },
-      verified: { color: G3, bg: 'rgba(43,172,82,.12)', label: 'Verified ✅', icon: '✅' },
-    };
-  const sb = statusBadge[kycStatus];
+  // Load the customer's REAL KYC record (GET /kyc/me). Logged-out design-preview
+  // just shows the empty form — the account section requires auth in the app.
+  const load = () => {
+    if (!auth.isLoggedIn()) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    api.kyc
+      .get()
+      .then((d) => {
+        setKyc(d);
+        setFrontUrl(d.frontImageUrl);
+        setBackUrl(d.backImageUrl);
+        setSelfieUrl(d.selfieUrl);
+        if (
+          d.documentType === 'NATIONAL_ID' ||
+          d.documentType === 'DRIVER_LICENSE' ||
+          d.documentType === 'PASSPORT'
+        )
+          setDocType(d.documentType);
+        if (d.documentNumber) setDocNumber(d.documentNumber);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  };
+  useEffect(load, []);
+
+  const status = kyc?.status ?? 'NOT_STARTED';
+  const locked = status === 'PENDING_REVIEW' || status === 'VERIFIED';
+
+  const statusBadge: Record<string, { color: string; bg: string; label: string; icon: string }> = {
+    NOT_STARTED: { color: MUTED, bg: 'rgba(255,255,255,.06)', label: 'Not Started', icon: '⏳' },
+    IN_PROGRESS: { color: '#60A5FA', bg: 'rgba(96,165,250,.1)', label: 'In Progress', icon: '✏️' },
+    PENDING_REVIEW: { color: '#FCD34D', bg: 'rgba(251,191,36,.1)', label: 'In Review', icon: '🔍' },
+    VERIFIED: { color: G3, bg: 'rgba(43,172,82,.12)', label: 'Verified ✅', icon: '✅' },
+    REJECTED: { color: '#F87171', bg: 'rgba(248,113,113,.1)', label: 'Rejected', icon: '⚠️' },
+    EXPIRED: { color: '#F87171', bg: 'rgba(248,113,113,.1)', label: 'Expired', icon: '⌛' },
+    REQUIRES_RESUBMISSION: {
+      color: '#FCD34D',
+      bg: 'rgba(251,191,36,.1)',
+      label: 'Resubmit needed',
+      icon: '🔁',
+    },
+  };
+  const sb = statusBadge[status] ?? statusBadge.NOT_STARTED;
 
   const kycSteps = [
-    { label: 'Phone Number', done: true },
-    { label: 'Profile Completed', done: true },
-    { label: 'Government ID', done: kycStatus === 'verified' },
-    { label: 'Selfie Verification', done: kycStatus === 'verified' && selfie },
-    { label: 'Address Verification', done: kycStatus === 'verified' && address },
+    { label: 'Phone Number', done: kyc?.levelAccess?.level0 ?? true },
+    { label: 'Profile Completed', done: kyc?.levelAccess?.level1 ?? false },
+    { label: 'Government ID', done: !!frontUrl },
+    { label: 'Selfie Verification', done: !!selfieUrl },
+    { label: 'Reviewed', done: status === 'VERIFIED' },
   ];
 
-  const startVerification = () => {
-    setKycStatus('uploading');
-    setTimeout(() => setKycStatus('review'), 1600);
+  const pickFile =
+    (slot: 'front' | 'back' | 'selfie') => async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = '';
+      if (!file) return;
+      setUploading(slot);
+      setError(null);
+      try {
+        const url = await uploadFile(file, 'kyc-documents');
+        if (slot === 'front') setFrontUrl(url);
+        else if (slot === 'back') setBackUrl(url);
+        else setSelfieUrl(url);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Upload failed. Please try again.');
+      } finally {
+        setUploading(null);
+      }
+    };
+
+  const submitKyc = async () => {
+    if (!frontUrl) {
+      setError('Upload your government ID first.');
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      if (status === 'NOT_STARTED') await api.kyc.start().catch(() => {});
+      const updated = await api.kyc.submit({
+        documentType: docType,
+        documentNumber: docNumber.trim() || undefined,
+        frontImageUrl: frontUrl,
+        backImageUrl: backUrl || undefined,
+        selfieUrl: selfieUrl || undefined,
+      });
+      setKyc(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not submit verification.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -1843,11 +1773,12 @@ export function IdentityVerificationScreen({ onBack }: { onBack: () => void }) {
           </div>
         </div>
         <div className="mb-3 flex flex-wrap gap-2">
-          {(['nid', 'dl', 'passport'] as const).map((t) => (
+          {(['NATIONAL_ID', 'DRIVER_LICENSE', 'PASSPORT'] as const).map((t) => (
             <button
               key={t}
               onClick={() => setDocType(t)}
-              className="h-[28px] rounded-full px-3 text-[11px] font-semibold transition-all"
+              disabled={locked}
+              className="h-[28px] rounded-full px-3 text-[11px] font-semibold transition-all disabled:opacity-50"
               style={{
                 background: docType === t ? G2 : 'rgba(255,255,255,.06)',
                 border: `1px solid ${docType === t ? G2 : BORDER}`,
@@ -1858,24 +1789,52 @@ export function IdentityVerificationScreen({ onBack }: { onBack: () => void }) {
             </button>
           ))}
         </div>
-        <div
+        <input
+          value={docNumber}
+          onChange={(e) => setDocNumber(e.target.value)}
+          disabled={locked}
+          placeholder="Document number (optional)"
+          className="mb-3 h-[38px] w-full rounded-xl px-3 text-[12px] outline-none disabled:opacity-50"
+          style={{
+            background: 'rgba(255,255,255,.04)',
+            border: `1px solid ${BORDER}`,
+            color: '#FFF',
+          }}
+        />
+        <label
           className="flex h-[86px] cursor-pointer flex-col items-center justify-center gap-1 rounded-xl transition-all active:scale-[.98]"
-          style={{ background: 'rgba(255,255,255,.03)', border: `1.5px dashed ${BORDER}` }}
+          style={{
+            background: frontUrl ? 'rgba(43,172,82,.06)' : 'rgba(255,255,255,.03)',
+            border: `1.5px dashed ${frontUrl ? G2 + '55' : BORDER}`,
+            opacity: locked ? 0.6 : 1,
+            pointerEvents: locked ? 'none' : 'auto',
+          }}
         >
-          <span style={{ fontSize: 24 }}>📎</span>
-          <p className="text-[12px]" style={{ color: MUTED }}>
-            Tap to upload {docLabels[docType]}
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp,application/pdf"
+            className="hidden"
+            disabled={locked || uploading === 'front'}
+            onChange={pickFile('front')}
+          />
+          <span style={{ fontSize: 24 }}>{frontUrl ? '✅' : '📎'}</span>
+          <p className="text-[12px]" style={{ color: frontUrl ? G3 : MUTED }}>
+            {uploading === 'front'
+              ? 'Uploading…'
+              : frontUrl
+                ? `${docLabels[docType]} uploaded`
+                : `Tap to upload ${docLabels[docType]}`}
           </p>
           <p className="text-[10px]" style={{ color: 'rgba(255,255,255,.22)' }}>
-            JPG, PNG or PDF · Max 5 MB
+            JPG, PNG, WEBP or PDF · Max 10 MB
           </p>
-        </div>
+        </label>
       </div>
 
       {/* Selfie */}
       <div
         className="mx-6 mb-3 rounded-2xl p-4"
-        style={{ background: NAVY_CARD, border: `1.5px solid ${selfie ? G2 + '44' : BORDER}` }}
+        style={{ background: NAVY_CARD, border: `1.5px solid ${selfieUrl ? G2 + '44' : BORDER}` }}
       >
         <div className="mb-3 flex items-center gap-3">
           <div
@@ -1895,59 +1854,82 @@ export function IdentityVerificationScreen({ onBack }: { onBack: () => void }) {
               Live face capture · Liveness detection
             </p>
           </div>
-          {selfie && <span style={{ fontSize: 18 }}>✅</span>}
+          {selfieUrl && <span style={{ fontSize: 18 }}>✅</span>}
         </div>
-        <button
-          onClick={() => setSelfie(true)}
-          className="h-[40px] w-full rounded-xl text-[13px] font-semibold transition-all active:scale-[.98]"
+        <label
+          className="flex h-[40px] w-full cursor-pointer items-center justify-center rounded-xl text-[13px] font-semibold transition-all active:scale-[.98]"
           style={{
-            background: selfie ? 'rgba(43,172,82,.1)' : 'rgba(255,255,255,.04)',
-            border: `1px solid ${selfie ? G2 + '40' : BORDER}`,
-            color: selfie ? G3 : MUTED,
+            background: selfieUrl ? 'rgba(43,172,82,.1)' : 'rgba(255,255,255,.04)',
+            border: `1px solid ${selfieUrl ? G2 + '40' : BORDER}`,
+            color: selfieUrl ? G3 : MUTED,
+            opacity: locked ? 0.6 : 1,
+            pointerEvents: locked ? 'none' : 'auto',
           }}
         >
-          {selfie ? 'Selfie Captured ✅' : 'Open Camera'}
-        </button>
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            capture="user"
+            className="hidden"
+            disabled={locked || uploading === 'selfie'}
+            onChange={pickFile('selfie')}
+          />
+          {uploading === 'selfie' ? 'Uploading…' : selfieUrl ? 'Selfie Captured ✅' : 'Take Selfie'}
+        </label>
       </div>
 
-      {/* Address */}
+      {/* Back of document (optional) — maps to the real backImageUrl field.
+          GAP: customer KYC has no separate proof-of-address field, so this card
+          collects the back of the ID (optional) rather than an address doc. */}
       <div
         className="mx-6 mb-3 rounded-2xl p-4"
-        style={{ background: NAVY_CARD, border: `1.5px solid ${address ? G2 + '44' : BORDER}` }}
+        style={{ background: NAVY_CARD, border: `1.5px solid ${backUrl ? G2 + '44' : BORDER}` }}
       >
         <div className="mb-3 flex items-center gap-3">
           <div
             className="flex h-10 w-10 items-center justify-center rounded-xl text-xl"
             style={{ background: 'rgba(43,172,82,.1)' }}
           >
-            🏠
+            🪪
           </div>
           <div className="flex-1">
             <p
               className="text-[14px] font-semibold"
               style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
             >
-              Address Verification
+              Back of Document
             </p>
             <p className="text-[11px]" style={{ color: MUTED }}>
-              Utility bill or bank statement (recent)
+              Optional — the reverse side of your ID
             </p>
           </div>
-          {address && <span style={{ fontSize: 18 }}>✅</span>}
+          {backUrl && <span style={{ fontSize: 18 }}>✅</span>}
         </div>
-        <div
-          onClick={() => setAddress(true)}
+        <label
           className="flex h-[72px] cursor-pointer flex-col items-center justify-center gap-1 rounded-xl transition-all active:scale-[.98]"
           style={{
-            background: address ? 'rgba(43,172,82,.06)' : 'rgba(255,255,255,.03)',
-            border: `1.5px dashed ${address ? G2 + '55' : BORDER}`,
+            background: backUrl ? 'rgba(43,172,82,.06)' : 'rgba(255,255,255,.03)',
+            border: `1.5px dashed ${backUrl ? G2 + '55' : BORDER}`,
+            opacity: locked ? 0.6 : 1,
+            pointerEvents: locked ? 'none' : 'auto',
           }}
         >
-          <span style={{ fontSize: 20 }}>{address ? '📄' : '📎'}</span>
-          <p className="text-[12px]" style={{ color: address ? G3 : MUTED }}>
-            {address ? 'Document uploaded ✅' : 'Tap to upload proof of address'}
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp,application/pdf"
+            className="hidden"
+            disabled={locked || uploading === 'back'}
+            onChange={pickFile('back')}
+          />
+          <span style={{ fontSize: 20 }}>{backUrl ? '📄' : '📎'}</span>
+          <p className="text-[12px]" style={{ color: backUrl ? G3 : MUTED }}>
+            {uploading === 'back'
+              ? 'Uploading…'
+              : backUrl
+                ? 'Uploaded ✅'
+                : 'Tap to upload (optional)'}
           </p>
-        </div>
+        </label>
       </div>
 
       {/* Security notice */}
@@ -1966,19 +1948,43 @@ export function IdentityVerificationScreen({ onBack }: { onBack: () => void }) {
       </div>
 
       <div className="px-6 pb-10">
+        {kyc?.remarks && (status === 'REJECTED' || status === 'REQUIRES_RESUBMISSION') && (
+          <div
+            className="mb-3 rounded-xl p-3"
+            style={{
+              background: 'rgba(248,113,113,.1)',
+              border: '1px solid rgba(248,113,113,.25)',
+            }}
+          >
+            <p className="text-[12px]" style={{ color: '#FCA5A5' }}>
+              {kyc.remarks}
+            </p>
+          </div>
+        )}
+        {error && (
+          <p className="mb-3 text-center text-[12px]" style={{ color: '#F87171' }}>
+            {error}
+          </p>
+        )}
         <GreenBtn
           label={
-            kycStatus === 'uploading'
-              ? 'Uploading…'
-              : kycStatus === 'review'
-                ? 'In Review · Submitted'
-                : 'Start Verification'
+            locked
+              ? status === 'VERIFIED'
+                ? 'Verified ✅'
+                : 'In Review · Submitted'
+              : submitting
+                ? 'Submitting…'
+                : status === 'REJECTED' ||
+                    status === 'REQUIRES_RESUBMISSION' ||
+                    status === 'EXPIRED'
+                  ? 'Resubmit for Verification'
+                  : 'Submit for Verification'
           }
-          loading={kycStatus === 'uploading'}
-          disabled={kycStatus === 'review'}
-          onClick={startVerification}
+          loading={submitting}
+          disabled={locked || submitting || !frontUrl}
+          onClick={submitKyc}
         />
-        {kycStatus === 'review' && (
+        {status === 'PENDING_REVIEW' && (
           <p className="mt-2 text-center text-[11px]" style={{ color: MUTED }}>
             Verification usually takes 1–3 business days.
           </p>
