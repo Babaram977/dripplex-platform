@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { G0, G2, G3, NAVY_BASE, NAVY_CARD, NAVY_SURFACE, BORDER, MUTED } from './shared';
 import { api } from '../lib/api';
 import type { CartDto } from '../lib/api';
+import { ImageWithFallback } from '@/app/components/figma/ImageWithFallback';
 import { BottomNavigation, FloatingAIButton } from '../components/navigation';
 import type { NavTabKey } from '../components/navigation/BottomNavigation';
 
@@ -18,6 +19,7 @@ export interface CartItem {
   productId: string;
   name: string;
   emoji: string;
+  imageUrl?: string | null;
   imageBg: string;
   unitPrice: number;
   qty: number;
@@ -189,12 +191,20 @@ function CartItemRow({
       }}
     >
       <div className="flex items-start gap-3 px-4 py-4">
-        {/* Emoji thumbnail */}
+        {/* Product thumbnail — real image when available, neutral icon otherwise */}
         <div
-          className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl"
+          className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl"
           style={{ background: item.imageBg }}
         >
-          <span style={{ fontSize: 32 }}>{item.emoji}</span>
+          {item.imageUrl ? (
+            <ImageWithFallback
+              src={item.imageUrl}
+              alt={item.name}
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <span style={{ fontSize: 32 }}>{item.emoji}</span>
+          )}
           {item.badge && (
             <span
               className="absolute -right-1 -top-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold"
@@ -615,7 +625,10 @@ function applyCart(cart: CartDto | null): CartMerchant[] {
       id: ci.id,
       productId: ci.productId,
       name: ci.productNameSnapshot ?? 'Item',
-      emoji: '🍽',
+      // Real product image captured at add-to-cart; neutral 🛍️ fallback when the
+      // product has no image (was a hardcoded 🍽 plate, wrong for non-food stores).
+      imageUrl: ci.imageSnapshot,
+      emoji: '🛍️',
       imageBg: 'linear-gradient(135deg,#0D2E18,#2BAC52)',
       unitPrice: ci.unitPriceSnapshot,
       qty: ci.quantity,
