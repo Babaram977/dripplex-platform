@@ -67,14 +67,6 @@ const PROMOS = [
   },
 ];
 
-const AI_PROMPTS = [
-  'Find the best shawarma near me',
-  'Book a ride to Victoria Island',
-  'Track my last order',
-  'Find a pharmacy open now',
-  'Show weekend deals near me',
-];
-
 const ACTIVITY = [
   {
     icon: '🚗',
@@ -656,24 +648,10 @@ function QuickActions({ onSelect }: { onSelect?: (label: string) => void }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // AI CARD
 // ─────────────────────────────────────────────────────────────────────────────
+// GAP: no AI backend exists. "Ask Drip" is not a live assistant — no chat/AI
+// endpoint is wired. This card is an honest "coming soon" entry to the sheet;
+// the fake typewriter + "Online" status were removed.
 function AICard({ onAsk }: { onAsk: () => void }) {
-  const [idx, setIdx] = useState(0);
-  const [chars, setChars] = useState(0);
-
-  useEffect(() => {
-    const t = setInterval(() => {
-      setIdx((i) => (i + 1) % AI_PROMPTS.length);
-      setChars(0);
-    }, 4000);
-    return () => clearInterval(t);
-  }, []);
-
-  useEffect(() => {
-    if (chars >= AI_PROMPTS[idx].length) return;
-    const t = setTimeout(() => setChars((c) => c + 1), 34);
-    return () => clearTimeout(t);
-  }, [chars, idx]);
-
   return (
     <div
       className="mx-5 mb-5 overflow-hidden rounded-3xl"
@@ -684,93 +662,40 @@ function AICard({ onAsk }: { onAsk: () => void }) {
       }}
     >
       <div className="p-4">
-        <div className="mb-3.5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div
-              className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl"
-              style={{
-                background: `linear-gradient(135deg,${G0},${G3})`,
-                boxShadow: `0 6px 20px rgba(43,172,82,.38)`,
-                animation: 'avatar-pulse 3s ease-in-out infinite',
-              }}
-            >
-              <span style={{ fontSize: 20 }}>✨</span>
-            </div>
-            <div>
-              <p
-                className="text-[15px] font-bold leading-tight"
-                style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
-              >
-                Ask Drip
-              </p>
-              <p className="text-[10px]" style={{ color: G3, fontFamily: "'Inter',sans-serif" }}>
-                AI · Your personal assistant
-              </p>
-            </div>
+        <div className="mb-3.5 flex items-center gap-3">
+          <div
+            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl"
+            style={{
+              background: `linear-gradient(135deg,${G0},${G3})`,
+              boxShadow: `0 6px 20px rgba(43,172,82,.38)`,
+            }}
+          >
+            <span style={{ fontSize: 20 }}>✨</span>
           </div>
-          <div className="flex items-center gap-1.5">
-            <div
-              className="h-1.5 w-1.5 rounded-full"
-              style={{ background: G3, animation: 'pulse-ring 1.8s ease-out infinite' }}
-            />
+          <div>
             <p
-              className="text-[9px] font-medium"
-              style={{ color: G3, fontFamily: "'Inter',sans-serif" }}
+              className="text-[15px] font-bold leading-tight"
+              style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
             >
-              Online
+              Ask Drip
+            </p>
+            <p className="text-[10px]" style={{ color: G3, fontFamily: "'Inter',sans-serif" }}>
+              Coming soon
             </p>
           </div>
         </div>
 
         <div
-          className="mb-3.5 flex min-h-[46px] items-center rounded-2xl px-4 py-3"
+          className="mb-4 rounded-2xl px-4 py-3"
           style={{ background: 'rgba(43,172,82,.07)', border: '1px solid rgba(43,172,82,.14)' }}
         >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke={G3}
-            strokeWidth="2"
-            strokeLinecap="round"
-            className="mr-2.5 flex-shrink-0 opacity-60"
-          >
-            <path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
-          </svg>
           <p
-            className="flex-1 text-[12px]"
+            className="text-[12px] leading-relaxed"
             style={{ color: 'rgba(255,255,255,.72)', fontFamily: "'Inter',sans-serif" }}
           >
-            {AI_PROMPTS[idx].slice(0, chars)}
-            <span
-              style={{
-                opacity: chars < AI_PROMPTS[idx].length ? 1 : 0,
-                animation:
-                  chars < AI_PROMPTS[idx].length ? 'fade-in .4s ease infinite alternate' : 'none',
-              }}
-            >
-              |
-            </span>
+            Our AI assistant isn't available yet. Soon you'll be able to ask Drip about products,
+            rides and orders.
           </p>
-        </div>
-
-        <div className="mb-4 flex flex-wrap gap-2">
-          {AI_PROMPTS.slice(0, 4).map((s, i) => (
-            <button
-              key={i}
-              onClick={onAsk}
-              className="rounded-full px-3 py-1.5 text-[10px] font-medium transition-all active:scale-95"
-              style={{
-                background: 'rgba(255,255,255,.055)',
-                color: 'rgba(255,255,255,.58)',
-                border: `1px solid ${BORDER}`,
-                fontFamily: "'Inter',sans-serif",
-              }}
-            >
-              {s.length > 22 ? s.slice(0, 20) + '…' : s}
-            </button>
-          ))}
         </div>
 
         <button
@@ -783,7 +708,7 @@ function AICard({ onAsk }: { onAsk: () => void }) {
             boxShadow: `0 8px 24px rgba(43,172,82,.3)`,
           }}
         >
-          <span>✨</span>Ask AI
+          Learn more
         </button>
       </div>
     </div>
@@ -1315,29 +1240,22 @@ function AISheet({ onClose }: { onClose: () => void }) {
               Ask Drip
             </p>
             <p className="text-[11px]" style={{ color: G3, fontFamily: "'Inter',sans-serif" }}>
-              AI · Ready to help you
+              Coming soon
             </p>
           </div>
         </div>
-        <div className="mb-5 flex flex-col gap-2.5">
-          {AI_PROMPTS.map((s, i) => (
-            <button
-              key={i}
-              onClick={onClose}
-              className="active:scale-98 flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-left text-[12.5px] transition-all"
-              style={{
-                background: 'rgba(255,255,255,.045)',
-                color: 'rgba(255,255,255,.78)',
-                fontFamily: "'Inter',sans-serif",
-                border: `1px solid ${BORDER}`,
-              }}
-            >
-              <span style={{ fontSize: 16, flexShrink: 0 }}>
-                {'✨🚗📦💊🏷'.slice(i * 2, i * 2 + 2)}
-              </span>
-              {s}
-            </button>
-          ))}
+        {/* GAP: no AI backend exists — honest "coming soon" panel, no answer-pretending chips. */}
+        <div
+          className="mb-5 rounded-2xl px-4 py-4"
+          style={{ background: 'rgba(255,255,255,.045)', border: `1px solid ${BORDER}` }}
+        >
+          <p
+            className="text-[13px] leading-relaxed"
+            style={{ color: 'rgba(255,255,255,.78)', fontFamily: "'Inter',sans-serif" }}
+          >
+            Ask Drip is coming soon. Our AI assistant isn't available yet — check back later to get
+            help with products, rides, orders and more.
+          </p>
         </div>
         <button
           onClick={onClose}
