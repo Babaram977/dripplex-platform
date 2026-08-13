@@ -2828,26 +2828,24 @@ export function SignInScreen({
   onDriver?: () => void;
   onBecomePartner?: () => void;
 }) {
-  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [focused, setFocused] = useState<string | null>(null);
   const [logging, setLogging] = useState(false);
   const [loginErr, setLoginErr] = useState('');
-  const ready = phone.replace(/\D/g, '').length >= 7 && password.length >= 6;
+  // Customers register with email (the required, persistent identifier), so a
+  // returning customer signs back in with email — not phone.
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const ready = emailValid && password.length >= 6;
 
   const handleLogin = async () => {
     setLogging(true);
     setLoginErr('');
     try {
-      // The "+234" shown beside the field is a display prefix; compose it into the
-      // value so the backend receives a full E.164 number (it stores +234…).
-      const digits = phone.replace(/\D/g, '');
-      const normalizedPhone = digits.startsWith('234')
-        ? `+${digits}`
-        : digits.startsWith('0')
-          ? `+234${digits.slice(1)}`
-          : `+234${digits}`;
-      const res = await api.auth.loginCustomer({ phone: normalizedPhone, password });
+      const res = await api.auth.loginCustomer({
+        email: email.trim().toLowerCase(),
+        password,
+      });
       const r = res as {
         accessToken?: string;
         refreshToken?: string;
@@ -2887,7 +2885,7 @@ export function SignInScreen({
             Welcome back
           </h2>
           <p className="text-sm" style={{ fontFamily: "'Inter',sans-serif", color: MUTED }}>
-            Enter your phone number to continue
+            Enter your email to continue
           </p>
         </div>
         <div className="flex flex-col gap-2">
@@ -2895,31 +2893,24 @@ export function SignInScreen({
             className="text-[11px] font-medium uppercase tracking-widest"
             style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.32)' }}
           >
-            Phone Number
+            Email
           </label>
           <div
             className="flex h-[56px] items-center gap-3 rounded-2xl px-4 transition-all duration-200"
             style={{
               background: 'rgba(255,255,255,.045)',
-              border: focused === 'phone' ? `1.5px solid ${G2}` : `1.5px solid ${BORDER}`,
-              boxShadow: focused === 'phone' ? `0 0 0 3px rgba(43,172,82,.12)` : 'none',
+              border: focused === 'email' ? `1.5px solid ${G2}` : `1.5px solid ${BORDER}`,
+              boxShadow: focused === 'email' ? `0 0 0 3px rgba(43,172,82,.12)` : 'none',
             }}
           >
-            <div className="flex shrink-0 items-center gap-2 border-r border-white/10 pr-3">
-              <span className="text-base">🌍</span>
-              <span
-                className="text-sm"
-                style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.5)' }}
-              >
-                +234
-              </span>
-            </div>
             <input
-              type="tel"
-              placeholder="Phone number"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              onFocus={() => setFocused('phone')}
+              type="email"
+              autoCapitalize="none"
+              autoCorrect="off"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onFocus={() => setFocused('email')}
               onBlur={() => setFocused(null)}
               className="flex-1 bg-transparent text-base text-white outline-none placeholder:text-white/20"
               style={{ fontFamily: "'Inter',sans-serif" }}

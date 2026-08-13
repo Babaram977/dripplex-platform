@@ -222,9 +222,7 @@ export function RiderLoginScreen({
           >
             Rider Portal
           </p>
-          <p style={{ fontFamily: IT, fontSize: 14, color: MUTED }}>
-            Drippo — DrippleX Delivery Partner
-          </p>
+          <p style={{ fontFamily: IT, fontSize: 14, color: MUTED }}>DrippleX Delivery Partner</p>
         </div>
 
         <div style={{ marginBottom: 14 }}>
@@ -317,6 +315,11 @@ export function RiderDashboardScreen({
   const [jobs, setJobs] = useState<DeliveryJobDto[]>([]);
   const [wallet, setWallet] = useState<WalletDto | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
+  // Show the signed-in rider, not a demo persona.
+  const riderName = (() => {
+    const u = auth.getUser();
+    return [u?.firstName, u?.lastName].filter(Boolean).join(' ').trim() || 'Rider';
+  })();
 
   const fetchJobs = useCallback(() => {
     api.rider
@@ -374,7 +377,9 @@ export function RiderDashboardScreen({
           }}
         >
           <div>
-            <p style={{ fontFamily: PP, fontSize: 18, fontWeight: 700, color: WHITE }}>🏍️ Drippo</p>
+            <p style={{ fontFamily: PP, fontSize: 18, fontWeight: 700, color: WHITE }}>
+              🏍️ {riderName}
+            </p>
             <p style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>DrippleX Delivery Rider</p>
           </div>
           <button

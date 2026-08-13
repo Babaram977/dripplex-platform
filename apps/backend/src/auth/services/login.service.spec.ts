@@ -7,7 +7,6 @@ import {
   AccountSuspendedDomainException,
   EmailNotVerifiedDomainException,
   PhoneNotVerifiedDomainException,
-  UnauthorizedDomainException,
   WrongPortalDomainException,
 } from '../../common/exceptions/domain.exception';
 
@@ -174,12 +173,12 @@ describe('LoginService', () => {
     expect(result.user.roles).toContain('customer');
   });
 
-  it('rejects wrong password', async () => {
+  it('rejects a wrong password with a generic credential error', async () => {
     (bcrypt.compare as jest.Mock).mockResolvedValue(false);
 
     await expect(
       service.loginCustomer({ email: 'ada@example.com', password: 'WrongPass1' }, {}),
-    ).rejects.toBeInstanceOf(UnauthorizedDomainException);
+    ).rejects.toThrow('Wrong login details input');
 
     expect(loginAttemptService.recordFailure).toHaveBeenCalled();
     expect(auditService.record).toHaveBeenCalledWith(
@@ -189,13 +188,13 @@ describe('LoginService', () => {
     );
   });
 
-  it('rejects unknown account with generic error', async () => {
+  it('rejects an unknown email with the same generic message (no enumeration)', async () => {
     (usersService.findByEmail as jest.Mock).mockResolvedValue(null);
     (bcrypt.compare as jest.Mock).mockResolvedValue(false);
 
     await expect(
       service.loginCustomer({ email: 'missing@example.com', password: 'Password1' }, {}),
-    ).rejects.toBeInstanceOf(UnauthorizedDomainException);
+    ).rejects.toThrow('Wrong login details input');
   });
 
   it('rejects blocked accounts', async () => {
@@ -240,6 +239,27 @@ describe('LoginService', () => {
     await expect(
       service.loginCustomer({ email: 'ada@example.com', password: 'Password1' }, {}),
     ).rejects.toBeInstanceOf(WrongPortalDomainException);
+  });
+
+  it('does not count a post-password rejection toward the account lockout', async () => {
+    // Correct password but wrong portal/role: the failure is audited but must
+    // NOT trip the brute-force lockout (that would lock a legitimate user out
+    // and hide the real reason).
+    (usersService.findByIdWithRbac as jest.Mock).mockResolvedValue({
+      ...activeUser,
+      roles: [{ role: { name: 'merchant', permissions: [] } }],
+    });
+
+    await expect(
+      service.loginCustomer({ email: 'ada@example.com', password: 'Password1' }, {}),
+    ).rejects.toBeInstanceOf(WrongPortalDomainException);
+
+    expect(loginAttemptService.recordFailure).not.toHaveBeenCalled();
+    expect(auditService.record).toHaveBeenCalledWith(
+      AUTH_AUDIT_ACTIONS.LOGIN_FAILED,
+      expect.any(Object),
+      expect.any(Object),
+    );
   });
 
   it('creates a session and stores refresh hash on successful login', async () => {
