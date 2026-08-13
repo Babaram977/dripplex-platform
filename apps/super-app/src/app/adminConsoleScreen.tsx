@@ -758,6 +758,10 @@ function PageDashboard() {
   // number until its metric is wired (revenue has no backend feed yet).
   const c = (n: number | undefined) => (n === undefined ? '—' : String(n));
   const activeTrips = rides === null ? undefined : rides.length;
+  // Naira axis/tooltip formatter for the revenue chart (₦, K/M abbreviated).
+  const fmt = (n: number) =>
+    '₦' +
+    (n >= 1000000 ? (n / 1000000).toFixed(1) + 'M' : n >= 1000 ? (n / 1000).toFixed(0) + 'K' : n);
 
   // Trip Status pie from the real live ride queue (status distribution).
   const pieData = (() => {
