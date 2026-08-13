@@ -8,7 +8,6 @@ import {
   OTPScreen,
   ProfileSetupScreen,
   PermissionsScreen,
-  BiometricScreen,
   ReturningLoginScreen,
   RecoveryScreen,
   SignInScreen,
@@ -253,7 +252,6 @@ type Screen =
   | 'otp'
   | 'profile'
   | 'permissions'
-  | 'biometric'
   | 'returning'
   | 'recovery'
   | 'signin'
@@ -489,16 +487,9 @@ function AppShell() {
     ),
     permissions: (
       <PermissionsScreen
-        onContinue={() => go('biometric')}
-        onSkip={() => go('biometric')}
-        onBack={() => go('profile')}
-      />
-    ),
-    biometric: (
-      <BiometricScreen
-        onDone={() => go('consent')}
+        onContinue={() => go('consent')}
         onSkip={() => go('consent')}
-        onBack={() => go('permissions')}
+        onBack={() => go('profile')}
       />
     ),
     // "Returning" routes to the REAL email/password sign-in (the biometric
@@ -1253,7 +1244,6 @@ function AppShell() {
         { label: 'Register', key: 'register' },
         { label: 'OTP', key: 'otp' },
         { label: 'Profile Setup', key: 'profile' },
-        { label: 'Biometric', key: 'biometric' },
         { label: 'Sign In', key: 'returning' },
         { label: 'Security', key: 'security' },
         { label: 'KYC', key: 'kyc' },

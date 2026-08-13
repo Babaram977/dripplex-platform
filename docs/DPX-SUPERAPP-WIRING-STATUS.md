@@ -105,7 +105,9 @@ All screens connect to real endpoints (no invented routes; DTO field names verif
 - Ride **Driver Assigned / En route / Arrived / In progress** still show placeholder driver
   identity + no live marker; the status _transitions_ are real. Needs `ws.onDriverLocation`
   wiring (queued as "Ride polish" in the master prompt).
-- Trusted Devices (empty), 2FA/Privacy/Consent/etc. = "Not available yet" (no backend).
+- Trusted Devices (empty), 2FA / recovery codes / login approvals / biometric / Privacy /
+  Consent / security questions / account PIN / transfer-suspension = "Not available yet"
+  (no backend). The security screens that DO have a backend are now wired — see §10.
 - PIN pad is a plain keypad (Figma's `PinPad` was missing; minimal one supplied).
 - `features/AUTH/index.ts` is a **dead/broken barrel** (references non-existent exports); not
   imported anywhere; ignore or delete later.
@@ -220,3 +222,50 @@ isApproved` is a schema stub nothing reads/writes.
   endpoints. Then surface merchant/driver/rider approvals in the **operations-console** app.
 - Dependencies still open: file-upload/storage for KYC doc images (URLs only today); Smile-ID →
   DrippleX-native IDV (task #15); wiring the Figma onboarding screens once designed.
+
+## 10. Account & security screens — wired vs. AGENDA (session 2026-08-13)
+
+Batch: wire the customer account/security screens that have a real backend; make the rest
+**honest** (no fabrication). On branch `claude/figma-connect-iugdbg` (PR #145).
+
+**Wired to real endpoints (done):**
+
+- **Customer KYC** (`screensB IdentityVerificationScreen`): `api.kyc.get/start/submit` + real
+  image uploads via `uploadFile(...,'kyc-documents')`; real `KycDocumentType`; honest status /
+  rejection remarks / resubmit / locked-while-review. (Removed the `setTimeout` fake.)
+- **Active sessions** (`screensB SessionManagementScreen`): `api.auth.listSessions` /
+  `revokeSession` / `revokeOtherSessions`. Removed the hardcoded device list + no-op "Report Device".
+- **Change phone** (`screensD ChangePhoneScreen`): `api.auth.requestPhoneChange` /
+  `confirmPhoneChange` (OTP to the new number); current number from `auth.getUser()`.
+- api.ts additions: `listSessions/revokeSession/revokeOtherSessions`, `request/confirmPhoneChange`,
+  `request/confirmEmailChange`, `SessionDto`. (`changePassword`, `kyc.*` already existed.)
+
+**Made honest — "Not available yet", no fabrication (was actively faking security):**
+
+- **2FA** (`screensB TwoFactorScreen`) — was accepting ANY 6-digit code as success.
+- **Recovery codes** (`screensD RecoveryCodesScreen`) — was generating codes with `Math.random()`.
+- **Login approvals** (`screensD LoginApprovalsScreen`) — was showing fabricated device requests.
+- **Biometric onboarding** (`screensA BiometricScreen`, step 5/5) — was a `setTimeout` fake
+  fingerprint scan. **Removed entirely** (founder decision): the component, its route, its
+  design-preview menu entry, and the dead `features/AUTH/index.ts` barrel are deleted;
+  onboarding now goes `permissions → consent` with no biometric step. Biometric login returns
+  as a real feature once the WebAuthn backend exists (agenda item 1).
+
+### AGENDA — backends to build (so the honest screens can become real)
+
+1. **Biometric + 2FA via WebAuthn/passkeys** (RECOMMENDED, covers BOTH). Needs: a
+   `WebAuthnCredential` table (userId, credentialId, publicKey, counter, transports); four
+   endpoints — registration options/verify, authentication options/verify — using
+   `@simplewebauthn/server`; wire authentication/verify into the login flow to mint the normal
+   tokens. Frontend: `@simplewebauthn/browser` `startRegistration()`/`startAuthentication()` in
+   place of the current "coming soon" screens. Passkeys double as the 2nd factor, so this single
+   build lights up biometric login AND 2FA. Est. ~2–3 days.
+2. **Recovery / backup codes**: generate N one-time codes server-side (hashed at rest), a verify
+   path in login, and a "regenerate" endpoint. Only meaningful once 2FA exists.
+3. **Login / device approval**: approve-new-device flow (challenge on unrecognised device +
+   approval from a trusted session). Depends on session/device identity (sessions now exist).
+4. **Change email** (endpoints already exist: `request/confirmEmailChange`) — wire an account
+   screen to them (no dedicated change-email screen yet; `EmailVerificationScreen` is verify-only).
+5. **Change password** (endpoint `api.auth.changePassword` exists) — wire an account screen.
+6. Lower priority / no backend at all: privacy-consent toggles, security questions, account PIN,
+   account transfer/suspension, trusted-device listing.
