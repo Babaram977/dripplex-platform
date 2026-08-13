@@ -569,43 +569,98 @@ export function SecurityCenterScreen({
 }) {
   const [lockSheet, setLockSheet] = useState(false);
   const [locked, setLocked] = useState(false);
-  const score = 92;
 
-  const segments = [
-    { label: '2FA Auth', icon: '🔐', status: 'Enabled', ok: true },
-    { label: 'Biometric', icon: '👆', status: 'Active', ok: true },
-    { label: 'Trusted Device', icon: '📱', status: '3 Devices', ok: true },
-    { label: 'PIN Lock', icon: '🔢', status: 'Set', ok: true },
-    { label: 'Recovery Email', icon: '📧', status: 'Verified', ok: true },
-    { label: 'Passcode', icon: '🗝', status: 'Enabled', ok: true },
+  // Honest protection overview from REAL signals — no fabricated "all green".
+  // 2FA / recovery codes / trusted devices / biometric have no backend yet, so
+  // they read "Coming soon", never "Enabled". Score is computed from what is
+  // actually configurable today, not a hardcoded 92.
+  const user = auth.getUser();
+  const [sessionCount, setSessionCount] = useState<number | null>(null);
+  const [kycStatus, setKycStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!auth.isLoggedIn()) return;
+    api.auth
+      .listSessions()
+      .then((r) => setSessionCount(r.items.length))
+      .catch(() => {});
+    api.kyc
+      .get()
+      .then((k) => setKycStatus(k.status))
+      .catch(() => {});
+  }, []);
+
+  const emailOnFile = !!user?.email;
+  const phoneOnFile = !!user?.phone;
+  const identityVerified = kycStatus === 'VERIFIED';
+  const identityWarn = kycStatus === 'REJECTED' || kycStatus === 'REQUIRES_RESUBMISSION';
+  const available = [true /* password */, emailOnFile, phoneOnFile, identityVerified];
+  const score = Math.round((available.filter(Boolean).length / available.length) * 100);
+  const scoreLabel =
+    score >= 75 ? 'Strong protection' : score >= 50 ? 'Good protection' : 'Basic protection';
+
+  const kycLabel =
+    kycStatus === 'VERIFIED'
+      ? 'Verified'
+      : kycStatus === 'PENDING_REVIEW'
+        ? 'In review'
+        : identityWarn
+          ? 'Action needed'
+          : kycStatus === 'IN_PROGRESS'
+            ? 'In progress'
+            : kycStatus == null
+              ? '—'
+              : 'Not started';
+
+  type SegTone = 'ok' | 'soon' | 'warn';
+  const segments: { label: string; icon: string; status: string; tone: SegTone }[] = [
+    { label: 'Password', icon: '🔑', status: 'Set', tone: 'ok' },
+    {
+      label: 'Sessions',
+      icon: '🖥️',
+      status: sessionCount == null ? '—' : `${sessionCount} active`,
+      tone: 'ok',
+    },
+    {
+      label: 'Identity',
+      icon: '🪪',
+      status: kycLabel,
+      tone: identityVerified ? 'ok' : identityWarn ? 'warn' : 'soon',
+    },
+    {
+      label: 'Email',
+      icon: '📧',
+      status: emailOnFile ? 'Added' : 'Not added',
+      tone: emailOnFile ? 'ok' : 'warn',
+    },
+    { label: '2FA', icon: '🔐', status: 'Coming soon', tone: 'soon' },
+    { label: 'Recovery', icon: '🧩', status: 'Coming soon', tone: 'soon' },
   ];
+  const toneColor: Record<SegTone, string> = { ok: G3, soon: MUTED, warn: '#F87171' };
+  const toneBorder: Record<SegTone, string> = {
+    ok: 'rgba(43,172,82,.2)',
+    soon: BORDER,
+    warn: 'rgba(248,113,113,.25)',
+  };
 
   const quickLinks = [
-    { icon: '🔐', label: 'Two-Factor Auth', sub: 'Manage 2FA methods', nav: 'twofa' as const },
-    { icon: '📱', label: 'Trusted Devices', sub: '3 devices authorized', nav: 'devices' as const },
-    { icon: '📋', label: 'Security Activity', sub: 'View login history', nav: 'activity' as const },
     {
       icon: '🖥️',
       label: 'Active Sessions',
-      sub: 'Manage signed-in devices',
+      sub: sessionCount == null ? 'Manage signed-in devices' : `${sessionCount} signed in`,
       nav: 'sessions' as const,
     },
     {
       icon: '🚨',
       label: 'Emergency Protection',
-      sub: 'Lock account, reset auth',
+      sub: 'Lock account, end all sessions',
       nav: 'emergency' as const,
     },
-    {
-      icon: '🏆',
-      label: 'Trust Center',
-      sub: '96% trusted · Full overview',
-      nav: 'trust' as const,
-    },
+    { icon: '🔐', label: 'Two-Factor Auth', sub: 'Coming soon', nav: 'twofa' as const },
     {
       icon: '🔔',
       label: 'Login Approvals',
-      sub: 'Review new device requests',
+      sub: 'Coming soon',
       nav: 'loginapproval' as const,
     },
   ];
@@ -728,13 +783,11 @@ export function SecurityCenterScreen({
             className="mb-1 text-[16px] font-bold"
             style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
           >
-            Excellent Security
+            {scoreLabel}
           </p>
           <p className="text-[11px] leading-relaxed" style={{ color: MUTED }}>
-            Your account is protected.
-          </p>
-          <p className="mt-1 text-[12px] font-semibold" style={{ color: G3 }}>
-            life,Simplified
+            Password and session controls are active. Two-factor and passkey sign-in are coming
+            soon.
           </p>
         </div>
       </div>
@@ -753,7 +806,7 @@ export function SecurityCenterScreen({
             className="rounded-2xl p-3 text-center"
             style={{
               background: NAVY_CARD,
-              border: `1px solid ${s.ok ? 'rgba(43,172,82,.2)' : BORDER}`,
+              border: `1px solid ${toneBorder[s.tone]}`,
             }}
           >
             <div className="mb-1 text-xl">{s.icon}</div>
@@ -763,7 +816,7 @@ export function SecurityCenterScreen({
             >
               {s.label}
             </p>
-            <p className="mt-0.5 text-[9px]" style={{ color: s.ok ? G3 : '#F87171' }}>
+            <p className="mt-0.5 text-[9px]" style={{ color: toneColor[s.tone] }}>
               {s.status}
             </p>
           </div>

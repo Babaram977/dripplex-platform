@@ -2771,8 +2771,6 @@ export function WalletSecurityScreen({
   onChangePIN?: () => void;
 }) {
   const [pinSet, setPinSet] = useState<boolean | null>(null);
-  const [biometric, setBiometric] = useState(true);
-  const [twoFA, setTwoFA] = useState(false);
 
   useEffect(() => {
     api.wallet
@@ -2923,19 +2921,21 @@ export function WalletSecurityScreen({
             }}
           >
             {[
+              // Face ID / 2FA for payments have no backend yet (no biometric or
+              // MFA service) → shown off + "Coming soon", not a working toggle.
               {
                 label: 'Face ID',
-                sub: 'Use Face ID to approve payments',
+                sub: 'Coming soon',
                 icon: '👤',
-                value: biometric,
-                toggle: () => setBiometric(!biometric),
+                value: false,
+                toggle: () => {},
               },
               {
                 label: 'Two-Factor Auth (2FA)',
-                sub: 'SMS code required for large transfers',
+                sub: 'Coming soon',
                 icon: '🔑',
-                value: twoFA,
-                toggle: () => setTwoFA(!twoFA),
+                value: false,
+                toggle: () => {},
               },
             ].map((row, i) => (
               <div key={row.label}>

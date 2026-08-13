@@ -1817,64 +1817,91 @@ export function AuthSummaryScreen({
   onRecoveryCodes?: () => void;
   onVerifyId?: () => void;
 }) {
-  const score = 78;
+  // Honest overview from REAL signals. Identity fields come from the user +
+  // real KYC; sessions from the real session list. Security features without a
+  // backend (2FA / passkey-biometric / recovery codes / trusted devices) are
+  // grouped under "Coming soon" — never shown as Enabled/Active. onRecoveryCodes
+  // is intentionally unused (no recovery-code backend yet).
+  void onRecoveryCodes;
   const dxUser = auth.getUser();
+  const [sessionCount, setSessionCount] = useState<number | null>(null);
+  const [kycStatus, setKycStatus] = useState<string | null>(null);
+  useEffect(() => {
+    if (!auth.isLoggedIn()) return;
+    api.auth
+      .listSessions()
+      .then((r) => setSessionCount(r.items.length))
+      .catch(() => {});
+    api.kyc
+      .get()
+      .then((k) => setKycStatus(k.status))
+      .catch(() => {});
+  }, []);
+
+  const emailOnFile = !!dxUser?.email;
+  const phoneOnFile = !!dxUser?.phone;
+  const identityVerified = kycStatus === 'VERIFIED';
+  const checks = [phoneOnFile, emailOnFile, identityVerified];
+  const score = Math.round((checks.filter(Boolean).length / checks.length) * 100);
+  const scoreLabel =
+    score >= 100 ? 'Fully set up' : score >= 66 ? 'Good progress' : 'Getting started';
+  const kycLabel =
+    kycStatus === 'VERIFIED'
+      ? 'Verified'
+      : kycStatus === 'PENDING_REVIEW'
+        ? 'In review'
+        : kycStatus === 'REJECTED' || kycStatus === 'REQUIRES_RESUBMISSION'
+          ? 'Action needed'
+          : kycStatus === 'IN_PROGRESS'
+            ? 'In progress'
+            : kycStatus == null
+              ? '—'
+              : 'Not started';
+
   const sections = [
     {
       title: 'Identity',
       icon: '👤',
       items: [
-        { label: 'Phone', value: dxUser?.phone ?? 'Not added', ok: !!dxUser?.phone },
-        {
-          label: 'Email',
-          value: dxUser?.email ?? 'Not verified',
-          ok: !!dxUser?.email,
-        },
-        { label: 'KYC', value: 'In Review', ok: false },
-      ],
-    },
-    {
-      title: 'Security',
-      icon: '🛡',
-      items: [
-        { label: 'Biometrics', value: 'Enabled', ok: true },
-        { label: 'PIN', value: 'Set', ok: true },
-        { label: '2FA', value: 'SMS Active', ok: true },
-        { label: 'Trusted Devices', value: '3 devices', ok: true },
+        { label: 'Phone', value: dxUser?.phone ?? 'Not added', ok: phoneOnFile },
+        { label: 'Email', value: dxUser?.email ?? 'Not added', ok: emailOnFile },
+        { label: 'Identity (KYC)', value: kycLabel, ok: identityVerified },
       ],
     },
     {
       title: 'Sessions',
       icon: '🖥️',
       items: [
-        { label: 'Active Sessions', value: '3 devices', ok: true },
-        { label: 'Login History', value: '12 events', ok: true },
+        {
+          label: 'Active sessions',
+          value: sessionCount == null ? '—' : `${sessionCount}`,
+          ok: (sessionCount ?? 0) > 0,
+        },
       ],
     },
     {
-      title: 'Privacy',
-      icon: '🔒',
+      title: 'Coming soon',
+      icon: '🛡',
       items: [
-        { label: 'Visibility', value: 'Friends only', ok: true },
-        { label: 'Data Sharing', value: 'Limited', ok: true },
-        { label: 'Consent', value: 'Accepted', ok: true },
-      ],
-    },
-    {
-      title: 'Recovery',
-      icon: '🔑',
-      items: [
-        { label: 'Recovery Codes', value: 'Not generated', ok: false },
-        { label: 'Recovery Email', value: 'Not set', ok: false },
+        { label: 'Two-factor authentication', value: 'Coming soon', ok: false },
+        { label: 'Passkey / biometric sign-in', value: 'Coming soon', ok: false },
+        { label: 'Recovery codes', value: 'Coming soon', ok: false },
       ],
     },
   ];
 
   const recs = [
-    { text: 'Verify your email address', action: 'Add Email', nav: onAddEmail },
-    { text: 'Generate recovery codes', action: 'Generate', nav: onRecoveryCodes },
-    { text: 'Complete identity verification', action: 'Verify ID', nav: onVerifyId },
-  ];
+    !emailOnFile && {
+      text: 'Add an email address for recovery',
+      action: 'Add Email',
+      nav: onAddEmail,
+    },
+    !identityVerified && {
+      text: 'Complete identity verification',
+      action: 'Verify ID',
+      nav: onVerifyId,
+    },
+  ].filter(Boolean) as { text: string; action: string; nav?: () => void }[];
 
   return (
     <div
@@ -1943,13 +1970,12 @@ export function AuthSummaryScreen({
             className="mb-1 text-[16px] font-bold"
             style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
           >
-            Good Progress
+            {scoreLabel}
           </p>
           <p className="mb-1.5 text-[11px]" style={{ color: MUTED }}>
-            {recs.length} recommendations to improve your score.
-          </p>
-          <p className="text-[11px] font-semibold" style={{ color: G3 }}>
-            life,Simplified
+            {recs.length === 0
+              ? 'Your identity details are complete.'
+              : `${recs.length} step${recs.length === 1 ? '' : 's'} to reach 100%.`}
           </p>
         </div>
       </div>

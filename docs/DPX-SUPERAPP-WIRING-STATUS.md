@@ -251,6 +251,22 @@ Batch: wire the customer account/security screens that have a real backend; make
   onboarding now goes `permissions → consent` with no biometric step. Biometric login returns
   as a real feature once the WebAuthn backend exists (agenda item 1).
 
+**Security dashboards swept to honest states (session 2026-08-13, follow-up):**
+
+- **Security Center** (`screensB`), **Trust Center** (`screensC`), **Auth Summary** (`screensD`),
+  **Verification Status** (`screensC`): replaced hardcoded scores (92/96/78) and fabricated
+  all-green segments ("2FA Enabled", "Biometric Active", "3 Trusted Devices", "Last biometric
+  auth 9:14 AM", "12 login events", etc.) with values computed from REAL signals —
+  `api.auth.listSessions()` (active-session count), `api.kyc.get()` (identity status), and the
+  user record (phone/email on file). The score is now `verified-signals / available-signals`, not
+  a constant. No-backend items (2FA, passkey/biometric, recovery codes, trusted devices, login
+  history, privacy toggles) read "Coming soon", never "Enabled".
+- **Wallet payment security** (`walletScreen`): Face ID + 2FA toggles were defaulting ON with no
+  backend → now off + "Coming soon", non-functional. (Its "Trusted devices … not available in
+  this pilot" note was already honest.)
+- Still fabricated / to revisit: `SecurityActivityScreen` login-history list (no backend for
+  login events).
+
 ### AGENDA — backends to build (so the honest screens can become real)
 
 1. **Biometric + 2FA via WebAuthn/passkeys** (RECOMMENDED, covers BOTH). Needs: a
