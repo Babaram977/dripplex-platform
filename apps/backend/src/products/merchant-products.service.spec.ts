@@ -74,7 +74,7 @@ describe('MerchantProductsService', () => {
     await prisma.$disconnect();
   });
 
-  it('creates a product with a default zero-quantity inventory row', async () => {
+  it('creates a product with default untracked inventory (in stock unless marked out)', async () => {
     if (!databaseAvailable) return;
 
     const product = await service.createProduct(
@@ -86,7 +86,16 @@ describe('MerchantProductsService', () => {
     expect(product.status).toBe('DRAFT');
     expect(product.slug).toBe('basmati-rice-5kg');
     expect(product.currency).toBe('NGN');
-    expect(product.inventory).toMatchObject({ quantity: 0, reserved: 0, available: 0 });
+    // trackInventory defaults to false so a minimal merchant's product is
+    // sellable on publish without setting a unit quantity; manuallyDisabled is
+    // the merchant's explicit "out of stock" switch.
+    expect(product.inventory).toMatchObject({
+      quantity: 0,
+      reserved: 0,
+      available: 0,
+      trackInventory: false,
+      manuallyDisabled: false,
+    });
   });
 
   it('disambiguates a duplicate slug for the same merchant with a suffix', async () => {

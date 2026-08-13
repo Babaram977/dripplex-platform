@@ -548,6 +548,7 @@ export interface RawMerchantProduct {
   inventory?: {
     available?: number;
     quantity?: number;
+    trackInventory?: boolean;
     manuallyDisabled?: boolean;
   } | null;
   variants?: {
@@ -1417,6 +1418,13 @@ export const api = {
       );
       const items: MerchantProductDto[] = (res.items ?? []).map((p) => {
         const qty = p.inventory?.available ?? p.inventory?.quantity ?? 0;
+        // Mirror the backend availability rule exactly (computeInStock /
+        // hasStock): the merchant's manual "out of stock" always wins; otherwise
+        // a product not tracking unit inventory is in stock, and a tracked one
+        // needs sellable quantity. Prevents the Dashboard and Products page from
+        // disagreeing about stock.
+        const tracks = p.inventory?.trackInventory ?? false;
+        const inStock = !p.inventory?.manuallyDisabled && (!tracks || qty > 0);
         return {
           id: p.id,
           name: p.name,
@@ -1428,9 +1436,7 @@ export const api = {
           categoryId: p.categoryId ?? null,
           sku: p.sku ?? null,
           imageUrl: p.images?.[0]?.url ?? null,
-          // A product only counts as in stock when it has sellable quantity and
-          // the merchant hasn't manually marked it out of stock.
-          inStock: qty > 0 && !p.inventory?.manuallyDisabled,
+          inStock,
           published: p.status === 'PUBLISHED' || !!p.publishedAt,
           status: p.status,
           stockQty: qty,

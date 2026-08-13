@@ -14,6 +14,7 @@ export interface ResolvedCatalogItem {
   status: ProductStatus;
   isDeleted: boolean;
   trackInventory: boolean;
+  manuallyDisabled: boolean;
   availableQuantity: number | null;
 }
 
@@ -30,9 +31,7 @@ export class ProductsService {
     return `${productId}:${variantId ?? ''}`;
   }
 
-  public async resolveMany(
-    items: CatalogLookupItem[],
-  ): Promise<Map<string, ResolvedCatalogItem>> {
+  public async resolveMany(items: CatalogLookupItem[]): Promise<Map<string, ResolvedCatalogItem>> {
     const resolved = new Map<string, ResolvedCatalogItem>();
     const productIds = [...new Set(items.map((item) => item.productId))];
     if (productIds.length === 0) {
@@ -70,6 +69,7 @@ export class ProductsService {
         status: product.status,
         isDeleted: product.isDeleted,
         trackInventory: product.inventory?.trackInventory ?? false,
+        manuallyDisabled: product.inventory?.manuallyDisabled ?? false,
         availableQuantity: product.inventory
           ? product.inventory.quantity - product.inventory.reserved
           : null,
@@ -85,10 +85,14 @@ export class ProductsService {
   }
 
   public isSellable(entry: ResolvedCatalogItem): boolean {
-    return entry.status === ProductStatus.PUBLISHED && !entry.isDeleted;
+    return entry.status === ProductStatus.PUBLISHED && !entry.isDeleted && !entry.manuallyDisabled;
   }
 
   public hasStock(entry: ResolvedCatalogItem, quantity: number): boolean {
+    // A merchant-forced "out of stock" blocks the sale regardless of quantity.
+    if (entry.manuallyDisabled) {
+      return false;
+    }
     if (!entry.trackInventory) {
       return true;
     }

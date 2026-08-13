@@ -69,7 +69,11 @@ export class MerchantProductsService {
         basePrice: new Prisma.Decimal(dto.basePrice),
         currency: (dto.currency ?? PRODUCT_CURRENCY_DEFAULT).toUpperCase(),
         sku: dto.sku?.trim() ?? null,
-        inventory: { create: { quantity: 0 } },
+        // Minimal merchants don't manage unit counts, so a new product is NOT
+        // inventory-tracked by default — it is sellable/in-stock unless the
+        // merchant explicitly flips "out of stock" (inventory.manuallyDisabled).
+        // Merchants who want unit tracking enable it via the inventory endpoint.
+        inventory: { create: { quantity: 0, trackInventory: false } },
       },
       include: PRODUCT_INCLUDE,
     });
@@ -449,7 +453,12 @@ export class MerchantProductsService {
 
     await this.prisma.productInventory.upsert({
       where: { productId: owned.id },
-      create: { productId: owned.id, quantity: 0, manuallyDisabled: outOfStock },
+      create: {
+        productId: owned.id,
+        quantity: 0,
+        trackInventory: false,
+        manuallyDisabled: outOfStock,
+      },
       update: { manuallyDisabled: outOfStock },
     });
 

@@ -288,41 +288,55 @@ export class CustomerProductsService {
       };
     }
 
+    // Conditions that must all hold, accumulated so multiple independent
+    // OR-groups (stock + search) coexist instead of overwriting each other.
+    const and: Prisma.ProductWhereInput[] = [];
+
     if (query.inStock) {
       // Coarse "looks in stock" filter (ignores reservations); the real
       // available-vs-reserved check happens at cart-add/checkout time.
-      where.OR = [
-        { inventory: { is: null } },
-        { inventory: { trackInventory: false } },
-        { inventory: { quantity: { gt: 0 } } },
-      ];
+      // A merchant-forced "out of stock" (manuallyDisabled) is excluded, and a
+      // product is otherwise in stock when it isn't inventory-tracked or has
+      // sellable quantity — matching computeInStock / hasStock.
+      and.push({
+        OR: [{ inventory: { is: null } }, { inventory: { is: { manuallyDisabled: false } } }],
+      });
+      and.push({
+        OR: [
+          { inventory: { is: null } },
+          { inventory: { is: { trackInventory: false } } },
+          { inventory: { is: { quantity: { gt: 0 } } } },
+        ],
+      });
     }
 
     const term = query.q?.trim();
     if (term && term.length > 0) {
-      where.AND = [
-        {
-          OR: [
-            { name: { contains: term, mode: 'insensitive' } },
-            { sku: { contains: term, mode: 'insensitive' } },
-            { brand: { is: { name: { contains: term, mode: 'insensitive' } } } },
-            { category: { is: { name: { contains: term, mode: 'insensitive' } } } },
-            {
-              merchant: {
-                is: {
-                  user: {
-                    is: {
-                      businesses: {
-                        some: { businessName: { contains: term, mode: 'insensitive' } },
-                      },
+      and.push({
+        OR: [
+          { name: { contains: term, mode: 'insensitive' } },
+          { sku: { contains: term, mode: 'insensitive' } },
+          { brand: { is: { name: { contains: term, mode: 'insensitive' } } } },
+          { category: { is: { name: { contains: term, mode: 'insensitive' } } } },
+          {
+            merchant: {
+              is: {
+                user: {
+                  is: {
+                    businesses: {
+                      some: { businessName: { contains: term, mode: 'insensitive' } },
                     },
                   },
                 },
               },
             },
-          ],
-        },
-      ];
+          },
+        ],
+      });
+    }
+
+    if (and.length > 0) {
+      where.AND = and;
     }
 
     if (query.minRating !== undefined) {

@@ -14,6 +14,12 @@ import type { Brand, Category } from '@prisma/client';
 export const ZERO_RATING: RatingSummaryDto = { average: 0, count: 0 };
 
 export function computeInStock(inventory: ProductWithRelations['inventory']): boolean {
+  // The merchant's explicit "out of stock" switch always wins, regardless of
+  // whether unit inventory is tracked.
+  if (inventory?.manuallyDisabled) {
+    return false;
+  }
+  // Not tracking unit inventory → in stock unless manually disabled (above).
   if (!inventory?.trackInventory) {
     return true;
   }

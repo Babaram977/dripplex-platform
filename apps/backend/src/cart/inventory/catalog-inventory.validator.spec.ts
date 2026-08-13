@@ -16,13 +16,16 @@ describe('CatalogInventoryValidator', () => {
     status: ProductStatus.PUBLISHED,
     isDeleted: false,
     trackInventory: true,
+    manuallyDisabled: false,
     availableQuantity: 5,
   };
 
   function buildValidator(entry: ResolvedCatalogItem | null): CatalogInventoryValidator {
     const productsService = {
       resolveOne: jest.fn().mockResolvedValue(entry),
-      isSellable: jest.fn((item: ResolvedCatalogItem) => item.status === ProductStatus.PUBLISHED && !item.isDeleted),
+      isSellable: jest.fn(
+        (item: ResolvedCatalogItem) => item.status === ProductStatus.PUBLISHED && !item.isDeleted,
+      ),
       hasStock: jest.fn(
         (item: ResolvedCatalogItem, quantity: number) =>
           !item.trackInventory || (item.availableQuantity ?? 0) >= quantity,
