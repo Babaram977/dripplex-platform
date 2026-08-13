@@ -285,8 +285,11 @@ export function RegisterScreen({
   // server-side rejection after submit.
   const pwValid =
     password.length >= 8 && /[a-z]/.test(password) && /[A-Z]/.test(password) && /\d/.test(password);
-  // At least one identifier is required; email is preferred while SMS is down.
-  const isValid = nameValid && pwValid && (emailValid || phoneValid);
+  // Email is a required, persistent identifier on every DrippleX registration
+  // (founder decision) and the customer backend enforces it — so require a valid
+  // email here rather than accepting phone-only, which the API would reject.
+  // Phone stays optional.
+  const isValid = nameValid && pwValid && emailValid;
 
   const handleContinue = async () => {
     if (!isValid) {
@@ -303,14 +306,15 @@ export function RegisterScreen({
     const lastName = parts.length > 1 ? parts.slice(1).join(' ') : parts[0];
     const trimmedEmail = email.trim().toLowerCase();
     const e164 = `${country.code}${phoneDigits}`;
-    // Prefer email verification (deliverable today); fall back to phone.
-    const verifyChannel: 'email' | 'phone' = emailValid ? 'email' : 'phone';
+    // Email is required and is the activation channel (email-first while SMS is
+    // pending); phone is recorded when provided.
+    const verifyChannel: 'email' | 'phone' = 'email';
     try {
       await api.auth.registerCustomer({
         firstName,
         lastName,
         password,
-        ...(emailValid ? { email: trimmedEmail } : {}),
+        email: trimmedEmail,
         ...(phoneValid ? { phone: e164 } : {}),
       });
       onContinue({ email: trimmedEmail, phone, country, password, verifyChannel });
