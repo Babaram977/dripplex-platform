@@ -840,7 +840,6 @@ export function TrackingScreen({
   const [loading, setLoading] = useState(true);
   const [itemsOpen, setItemsOpen] = useState(false);
   const [showAI, setShowAI] = useState(false);
-  const [aiPrompt, setAiPrompt] = useState('');
   const [activeTab, setActiveTab] = useState<NavTabKey>('market');
   const [showCancel, setShowCancel] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -965,6 +964,7 @@ export function TrackingScreen({
   const etaMin = eta ? Math.max(1, Math.ceil(eta.remainingSeconds / 60)) : 0;
   const totalDisplay = order ? `₦${order.total.toLocaleString()}` : '₦—';
   const orderNumber = order?.orderNumber ?? orderId?.slice(0, 8) ?? '—';
+  // GAP: no AI backend exists — these are non-interactive example prompts only.
   const AI_PROMPTS = ['Where is my order?', 'When will it arrive?', 'Report an issue'];
 
   // ── No orderId fallback ───────────────────────────────────────────────────
@@ -1340,19 +1340,19 @@ export function TrackingScreen({
                 Ask Drip
               </p>
               <p className="text-[11px]" style={{ color: MUTED }}>
-                Get updates on your delivery
+                Coming soon
               </p>
             </div>
           </div>
+          <p className="mb-2 text-[11px]" style={{ color: MUTED }}>
+            Soon you'll be able to ask:
+          </p>
+          {/* GAP: no AI backend exists — non-interactive example prompts, not working questions. */}
           <div className="flex flex-wrap gap-2">
             {AI_PROMPTS.map((p) => (
-              <button
+              <span
                 key={p}
-                onClick={() => {
-                  setAiPrompt(p);
-                  setShowAI(true);
-                }}
-                className="flex h-[28px] items-center gap-1 rounded-full px-3 text-[11px] font-medium transition-all active:scale-95"
+                className="flex h-[28px] items-center rounded-full px-3 text-[11px] font-medium"
                 style={{
                   background: 'rgba(43,172,82,.12)',
                   border: `1px solid rgba(43,172,82,.24)`,
@@ -1360,7 +1360,7 @@ export function TrackingScreen({
                 }}
               >
                 {p}
-              </button>
+              </span>
             ))}
           </div>
         </div>
@@ -1508,29 +1508,22 @@ export function TrackingScreen({
                 >
                   Ask Drip
                 </p>
-                {aiPrompt && (
-                  <p className="text-[12px]" style={{ color: G3 }}>
-                    "{aiPrompt}"
-                  </p>
-                )}
+                <p className="text-[12px]" style={{ color: MUTED }}>
+                  Coming soon
+                </p>
               </div>
             </div>
             <div
               className="rounded-2xl px-4 py-3"
               style={{ background: 'rgba(43,172,82,.07)', border: `1px solid rgba(43,172,82,.18)` }}
             >
+              {/* GAP: no AI backend exists — honest placeholder, no canned replies. */}
               <p
                 className="text-[13px] leading-relaxed"
                 style={{ color: 'rgba(255,255,255,.72)', fontFamily: "'Inter',sans-serif" }}
               >
-                {aiPrompt === 'Where is my order?' &&
-                  `Your order #${orderNumber} is currently ${uiStatus.replace(/_/g, ' ')}. ${etaMin > 0 ? `Estimated arrival in ${etaMin} minutes.` : ''} 🛵`}
-                {aiPrompt === 'When will it arrive?' &&
-                  `${etaMin > 0 ? `Your order should arrive in approximately ${etaMin} minutes.` : 'Calculating arrival time…'} ⚡`}
-                {aiPrompt === 'Report an issue' &&
-                  `I can help you report an issue. Common options: Wrong items, Missing item, Driver not found, or Order arrived damaged. Shall I connect you to support?`}
-                {!AI_PROMPTS.includes(aiPrompt) &&
-                  `I'm monitoring your order in real-time. ${etaMin > 0 ? `${etaMin} minutes away.` : ''} Ask me anything!`}
+                Ask Drip is coming soon. Our AI assistant isn't available yet — check back later.
+                You can still see live order status and ETA on this screen.
               </p>
             </div>
             <button
