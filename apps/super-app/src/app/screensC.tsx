@@ -1156,9 +1156,13 @@ export const PARTICLES = Array.from({ length: 22 }, (_, i) => ({
 export function WelcomeDrippleXScreen({
   onHome,
   onTour,
+  onQuickStart,
 }: {
   onHome: () => void;
   onTour: () => void;
+  // Route a Quick Start card into the app. Optional so the screen degrades
+  // gracefully (cards just no-op) if a caller doesn't wire it.
+  onQuickStart?: (key: 'marketplace' | 'ride' | 'wallet' | 'merchant') => void;
 }) {
   const [phase, setPhase] = useState<'celebrate' | 'ready'>('celebrate');
   const firstName = auth.getUser()?.firstName?.trim() || 'there';
@@ -1168,11 +1172,21 @@ export function WelcomeDrippleXScreen({
     return () => clearTimeout(t);
   }, []);
 
-  const quickStart = [
-    { icon: '🛍', label: 'Explore Marketplace', sub: 'Shop millions of products' },
-    { icon: '🚖', label: 'Book Your First Ride', sub: 'Safe, fast, affordable' },
-    { icon: '💳', label: 'Activate Wallet', sub: 'Send, receive & pay' },
-    { icon: '🏪', label: 'Become a Merchant', sub: 'Grow your business' },
+  const quickStart: {
+    icon: string;
+    label: string;
+    sub: string;
+    key: 'marketplace' | 'ride' | 'wallet' | 'merchant';
+  }[] = [
+    {
+      icon: '🛍',
+      label: 'Explore Marketplace',
+      sub: 'Shop millions of products',
+      key: 'marketplace',
+    },
+    { icon: '🚖', label: 'Book Your First Ride', sub: 'Safe, fast, affordable', key: 'ride' },
+    { icon: '💳', label: 'Activate Wallet', sub: 'Send, receive & pay', key: 'wallet' },
+    { icon: '🏪', label: 'Become a Merchant', sub: 'Grow your business', key: 'merchant' },
   ];
 
   const aiCapabilities = [
@@ -1284,6 +1298,9 @@ export function WelcomeDrippleXScreen({
         {quickStart.map((qs, i) => (
           <div
             key={qs.label}
+            role="button"
+            tabIndex={0}
+            onClick={() => onQuickStart?.(qs.key)}
             className="flex cursor-pointer flex-col gap-2 rounded-2xl p-4 transition-all active:scale-95"
             style={{
               background: NAVY_CARD,
@@ -1307,9 +1324,12 @@ export function WelcomeDrippleXScreen({
         ))}
       </div>
 
-      {/* AI Assistant card */}
+      {/* AI Assistant card — taps into Home, where the Ask Drip assistant lives */}
       <div
-        className="mx-6 mb-4 rounded-2xl p-5"
+        role="button"
+        tabIndex={0}
+        onClick={onHome}
+        className="mx-6 mb-4 cursor-pointer rounded-2xl p-5 transition-all active:scale-[.98]"
         style={{
           background: `linear-gradient(135deg,rgba(43,172,82,.12) 0%,rgba(22,55,84,.6) 100%)`,
           border: `1.5px solid rgba(43,172,82,.22)`,
