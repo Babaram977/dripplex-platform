@@ -1,4 +1,4 @@
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 
 import { Inject, Injectable } from '@nestjs/common';
 import { UserStatus } from '@prisma/client';
@@ -94,7 +94,7 @@ export class PasswordService {
   }
 
   public async resetPassword(
-    input: { email: string; resetToken: string; otp: string; password: string },
+    input: { email: string; otp: string; password: string },
     context: AuditContext,
   ): Promise<{ reset: true }> {
     const normalizedEmail = input.email.trim().toLowerCase();
@@ -106,42 +106,14 @@ export class PasswordService {
     try {
       this.passwordPolicy.assertValid(input.password);
 
-      const tokenHash = this.hashToken(input.resetToken);
-      const storedToken = await this.passwordResetTokenRepository.findByTokenHash(tokenHash);
-
-      if (!storedToken || !this.tokenHashesMatch(storedToken.tokenHash, input.resetToken)) {
-        await this.failReset(context, 'invalid_token');
-        throw new UnauthorizedDomainException('Invalid or expired reset token');
+      const user = await this.usersService.findByEmail(normalizedEmail);
+      if (!user || user.deletedAt || user.status !== UserStatus.ACTIVE) {
+        await this.failReset(context, 'invalid_account');
+        throw new UnauthorizedDomainException('Invalid or expired reset code');
       }
 
-      if (storedToken.consumedAt) {
-        await this.failReset(
-          { ...context, userId: storedToken.userId },
-          'token_reused',
-          storedToken.id,
-        );
-        throw new UnauthorizedDomainException('Invalid or expired reset token');
-      }
-
-      if (storedToken.expiresAt.getTime() <= Date.now()) {
-        await this.failReset(
-          { ...context, userId: storedToken.userId },
-          'token_expired',
-          storedToken.id,
-        );
-        throw new UnauthorizedDomainException('Invalid or expired reset token');
-      }
-
-      const user = await this.usersService.findById(storedToken.userId);
-      if (!user || user.deletedAt || user.email.toLowerCase() !== normalizedEmail) {
-        await this.failReset(
-          { ...context, userId: storedToken.userId },
-          'email_mismatch',
-          storedToken.id,
-        );
-        throw new UnauthorizedDomainException('Invalid or expired reset token');
-      }
-
+      // The emailed OTP is the reset factor — it proves control of the inbox.
+      // Throws on an invalid / expired / exhausted code.
       await this.otpService.verify(
         'password_reset',
         normalizedEmail,
@@ -152,7 +124,6 @@ export class PasswordService {
 
       const passwordHash = await bcrypt.hash(input.password, this.appConfig.bcryptSaltRounds);
       await this.usersService.updatePassword(user.id, passwordHash);
-      await this.passwordResetTokenRepository.markConsumed(storedToken.id);
 
       const revokedCount = await this.authSessionRepository.revokeAllForUser(user.id);
       await this.auditService.record(
@@ -266,16 +237,6 @@ export class PasswordService {
 
   public hashToken(token: string): string {
     return createHash('sha256').update(token).digest('hex');
-  }
-
-  public tokenHashesMatch(storedHash: string, presentedToken: string): boolean {
-    const presentedHash = this.hashToken(presentedToken);
-    const storedBuffer = Buffer.from(storedHash, 'hex');
-    const presentedBuffer = Buffer.from(presentedHash, 'hex');
-    if (storedBuffer.length !== presentedBuffer.length) {
-      return false;
-    }
-    return timingSafeEqual(storedBuffer, presentedBuffer);
   }
 
   private async failReset(

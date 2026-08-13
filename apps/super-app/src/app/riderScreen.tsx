@@ -158,10 +158,12 @@ export function RiderLoginScreen({
   onContinue,
   onBack,
   onApply,
+  onForgot,
 }: {
   onContinue: () => void;
   onBack: () => void;
   onApply?: () => void;
+  onForgot?: () => void;
 }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -280,6 +282,25 @@ export function RiderLoginScreen({
           >
             <p style={{ fontFamily: IT, fontSize: 12, color: C_ERR }}>{error}</p>
           </div>
+        )}
+
+        {onForgot && (
+          <button
+            type="button"
+            onClick={onForgot}
+            className="active:opacity-70"
+            style={{
+              display: 'block',
+              marginLeft: 'auto',
+              marginBottom: 14,
+              fontFamily: IT,
+              fontSize: 13,
+              fontWeight: 600,
+              color: G3,
+            }}
+          >
+            Forgot password?
+          </button>
         )}
 
         <RGreenBtn label={loading ? '' : 'Sign In →'} loading={loading} onClick={handleLogin} />

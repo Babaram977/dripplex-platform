@@ -409,6 +409,8 @@ function AppShell() {
   // Where the partner hub was opened from, so its back button returns there.
   // null when the hub is reached mid-onboarding (no back affordance then).
   const [partnerFrom, setPartnerFrom] = useState<Screen | null>(null);
+  // Which login the password-reset flow was opened from, so it returns there.
+  const [recoveryFrom, setRecoveryFrom] = useState<Screen>('returning');
   // Merchant's business fields from sign-up, pre-filled into the post-login
   // Business Details step (persisted via PATCH /merchant/business).
   const [merchantBiz, setMerchantBiz] = useState<{ businessName: string; category: string }>({
@@ -511,9 +513,15 @@ function AppShell() {
           setPartnerFrom('returning');
           go('partnerselect');
         }}
+        onForgot={() => {
+          setRecoveryFrom('returning');
+          go('recovery');
+        }}
       />
     ),
-    recovery: <RecoveryScreen onRecovered={() => go('returning')} onBack={() => go('returning')} />,
+    recovery: (
+      <RecoveryScreen onRecovered={() => go(recoveryFrom)} onBack={() => go(recoveryFrom)} />
+    ),
     signin: (
       <SignInScreen
         onBack={() => go('welcome')}
@@ -523,6 +531,10 @@ function AppShell() {
         onBecomePartner={() => {
           setPartnerFrom('signin');
           go('partnerselect');
+        }}
+        onForgot={() => {
+          setRecoveryFrom('signin');
+          go('recovery');
         }}
       />
     ),
@@ -1059,6 +1071,10 @@ function AppShell() {
         onApply={() => {
           setPartnerPersona('rider');
           go('partnerrider');
+        }}
+        onForgot={() => {
+          setRecoveryFrom('riderlogin');
+          go('recovery');
         }}
       />
     ),

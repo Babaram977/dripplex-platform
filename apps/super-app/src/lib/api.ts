@@ -975,10 +975,10 @@ export const api = {
       gender?: string;
     }) => dx<DxUser>('PATCH', '/auth/me', body),
 
-    // Password
-    forgotPassword: (body: { email?: string; phone?: string }) =>
-      dx<unknown>('POST', '/auth/password/forgot', body),
-    resetPassword: (body: { token: string; password: string }) =>
+    // Password reset: request an emailed OTP, then submit that code + a new
+    // password. (Reset is verified by the OTP — the email is the only channel.)
+    forgotPassword: (body: { email: string }) => dx<unknown>('POST', '/auth/password/forgot', body),
+    resetPassword: (body: { email: string; otp: string; password: string }) =>
       dx<unknown>('POST', '/auth/password/reset', body),
     changePassword: (body: { currentPassword: string; newPassword: string }) =>
       dx<unknown>('POST', '/auth/password/change', body),
