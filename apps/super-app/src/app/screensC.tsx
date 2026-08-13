@@ -1667,23 +1667,37 @@ export function VerificationStatusScreen({
   onBack: () => void;
   onContinue: () => void;
 }) {
+  // Real verification progress from the user record + real KYC status. No
+  // hardcoded "Phone Verified ✓"; steps with no backend (address, trusted score)
+  // are dropped rather than shown as pending forever.
+  const user = auth.getUser();
+  const [kycStatus, setKycStatus] = useState<string | null>(null);
+  useEffect(() => {
+    if (!auth.isLoggedIn()) return;
+    api.kyc
+      .get()
+      .then((k) => setKycStatus(k.status))
+      .catch(() => {});
+  }, []);
+  const phoneOnFile = !!user?.phone;
+  const emailOnFile = !!user?.email;
+  const profileDone = !!(user?.firstName && user?.lastName);
+  const identityVerified = kycStatus === 'VERIFIED';
+
   const steps = [
-    { label: 'Phone Verified', done: true, icon: '📱' },
-    { label: 'Profile Completed', done: true, icon: '👤' },
-    { label: 'Email Verification', done: false, icon: '📧' },
-    { label: 'Identity Verification', done: false, icon: '🪪' },
-    { label: 'Address Verification', done: false, icon: '🏠' },
-    { label: 'Trusted Account ⭐', done: false, icon: '🌟' },
+    { label: 'Phone number added', done: phoneOnFile, icon: '📱' },
+    { label: 'Profile completed', done: profileDone, icon: '👤' },
+    { label: 'Email address added', done: emailOnFile, icon: '📧' },
+    { label: 'Identity verified', done: identityVerified, icon: '🪪' },
   ];
   const doneCount = steps.filter((s) => s.done).length;
   const pct = Math.round((doneCount / steps.length) * 100);
 
   const benefits = [
-    { icon: '💳', label: 'Wallet limits', unlocked: true },
-    { icon: '🏪', label: 'Merchant services', unlocked: false },
-    { icon: '🚗', label: 'Driver registration', unlocked: false },
+    { icon: '💳', label: 'Wallet & payments', unlocked: true },
     { icon: '⚡', label: 'Faster support', unlocked: true },
-    { icon: '🏦', label: 'Financial services', unlocked: false },
+    { icon: '🏦', label: 'Higher wallet limits', unlocked: identityVerified },
+    { icon: '🏪', label: 'Full marketplace access', unlocked: identityVerified },
   ];
 
   return (
@@ -2533,9 +2547,10 @@ export const SERVICES: Service[] = [
   {
     id: 'ai',
     icon: '🤖',
+    // GAP: no AI backend — was falsely 'active'; the assistant isn't available yet.
     label: 'AI Assistant',
     sub: 'Your smart DrippleX companion',
-    status: 'active',
+    status: 'coming_soon',
   },
   {
     id: 'property',
@@ -2733,39 +2748,71 @@ export function TrustCenterScreen({
   onAddEmail?: () => void;
   onVerifyId?: () => void;
 }) {
-  const score = 96;
+  // Honest trust overview from REAL signals — no fabricated 96% / "biometrics
+  // enabled" / fake login timestamps. 2FA, passkeys, trusted devices and login
+  // history have no backend yet, so they are not shown as done/known.
+  const user = auth.getUser();
+  const [sessionCount, setSessionCount] = useState<number | null>(null);
+  const [kycStatus, setKycStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!auth.isLoggedIn()) return;
+    api.auth
+      .listSessions()
+      .then((r) => setSessionCount(r.items.length))
+      .catch(() => {});
+    api.kyc
+      .get()
+      .then((k) => setKycStatus(k.status))
+      .catch(() => {});
+  }, []);
+
+  const emailOnFile = !!user?.email;
+  const phoneOnFile = !!user?.phone;
+  const identityVerified = kycStatus === 'VERIFIED';
+  const checks = [phoneOnFile, emailOnFile, identityVerified];
+  const score = Math.round((checks.filter(Boolean).length / checks.length) * 100);
+  const scoreLabel =
+    score >= 100 ? 'Fully set up' : score >= 66 ? 'Well protected' : 'Getting started';
+
+  const kycLabel =
+    kycStatus === 'VERIFIED'
+      ? 'Verified'
+      : kycStatus === 'PENDING_REVIEW'
+        ? 'In review'
+        : kycStatus === 'REJECTED' || kycStatus === 'REQUIRES_RESUBMISSION'
+          ? 'Action needed'
+          : kycStatus === 'IN_PROGRESS'
+            ? 'In progress'
+            : kycStatus == null
+              ? '—'
+              : 'Not started';
 
   const trustIndicators = [
-    { label: 'Phone Verified', done: true },
-    { label: 'Biometrics Enabled', done: true },
-    { label: 'Two-Factor Authentication', done: true },
-    { label: 'Trusted Device', done: true },
-    { label: 'Email Verification', done: false },
-    { label: 'Identity Verification', done: false },
+    { label: 'Phone number added', done: phoneOnFile },
+    { label: 'Email address added', done: emailOnFile },
+    { label: 'Identity verified', done: identityVerified },
   ];
 
   const insights = [
-    { icon: '🔐', label: 'Last passwordless login', value: 'Today, 9:14 AM' },
-    { icon: '👆', label: 'Last biometric authentication', value: 'Today, 9:14 AM' },
-    { icon: '📱', label: 'Active devices', value: '3 devices' },
-    { icon: '⚠️', label: 'Recent security alerts', value: '1 this week' },
-    { icon: '🛡', label: 'Privacy settings', value: 'Friends only' },
+    { icon: '🖥️', label: 'Active sessions', value: sessionCount == null ? '—' : `${sessionCount}` },
+    { icon: '🪪', label: 'Identity verification', value: kycLabel },
   ];
 
   const recommendations = [
-    {
+    !emailOnFile && {
       icon: '📧',
       text: 'Add an email address to improve recovery options',
       action: 'Add Email',
       nav: onAddEmail,
     },
-    {
+    !identityVerified && {
       icon: '🪪',
       text: 'Complete identity verification to unlock all services',
       action: 'Verify ID',
       nav: onVerifyId,
     },
-  ];
+  ].filter(Boolean) as { icon: string; text: string; action: string; nav?: () => void }[];
 
   return (
     <div
@@ -2836,13 +2883,11 @@ export function TrustCenterScreen({
             className="mb-1 text-[17px] font-bold"
             style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
           >
-            Highly Trusted
+            {scoreLabel}
           </p>
           <p className="mb-2 text-[11px] leading-relaxed" style={{ color: MUTED }}>
-            Your account has strong security. Complete the remaining steps to reach 100%.
-          </p>
-          <p className="text-[11px] font-semibold" style={{ color: G3 }}>
-            life,Simplified
+            Based on your phone, email and identity verification. Complete the remaining steps to
+            reach 100%.
           </p>
         </div>
       </div>
@@ -2946,47 +2991,9 @@ export function TrustCenterScreen({
         ))}
       </div>
 
-      {/* AI Security Assistant */}
-      <div
-        className="mx-6 mb-4 rounded-2xl p-5"
-        style={{
-          background: `linear-gradient(135deg,rgba(43,172,82,.1) 0%,rgba(22,55,84,.5) 100%)`,
-          border: `1.5px solid rgba(43,172,82,.22)`,
-        }}
-      >
-        <div className="mb-3 flex items-center gap-3">
-          <div
-            className="flex h-11 w-11 items-center justify-center rounded-2xl text-2xl"
-            style={{ background: `linear-gradient(135deg,${G0},${G3})` }}
-          >
-            🤖
-          </div>
-          <div>
-            <p
-              className="text-[14px] font-semibold"
-              style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
-            >
-              Security Assistant
-            </p>
-            <div className="mt-0.5 flex items-center gap-1.5">
-              <div
-                className="h-1.5 w-1.5 rounded-full"
-                style={{ background: G3, boxShadow: `0 0 5px ${G3}` }}
-              />
-              <p className="text-[10px]" style={{ color: G3 }}>
-                Monitoring · No threats detected
-              </p>
-            </div>
-          </div>
-        </div>
-        <div className="rounded-xl p-3" style={{ background: 'rgba(0,0,0,.2)' }}>
-          <p className="text-[12px] leading-relaxed" style={{ color: 'rgba(255,255,255,.65)' }}>
-            "I continuously monitor your account for unusual activity and will notify you
-            immediately if anything requires your attention. Your account currently shows no active
-            threats."
-          </p>
-        </div>
-      </div>
+      {/* GAP: no AI / threat-monitoring backend exists — the previous "Security
+          Assistant" card claimed live monitoring ("No threats detected") and an
+          AI monologue that were entirely fake, so it was removed. */}
 
       {/* CTAs */}
       <div className="px-6 pb-3">

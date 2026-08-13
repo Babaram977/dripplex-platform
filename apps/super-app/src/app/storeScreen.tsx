@@ -226,14 +226,6 @@ const POLICIES = [
   },
 ];
 
-const AI_QUESTIONS = [
-  'What are the best sellers here?',
-  'Is there a meal under ₦3,000?',
-  'How long does delivery take?',
-  'Any promotions today?',
-  "What's the spiciest item?",
-];
-
 // ─────────────────────────────────────────────────────────────────────────────
 // LIVE DATA MAPPERS — backend DTO → screen shape (connect only, no invented data)
 // Fields the backend does not provide (eta, delivery fee, hours, phone…) render
@@ -1327,6 +1319,9 @@ function StoreInfo({ merchant }: { merchant: StoreMerchant }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // AI SHEET
 // ─────────────────────────────────────────────────────────────────────────────
+// GAP: no AI backend exists. "Ask Drip" is not a live assistant — no chat/AI
+// endpoint is wired. Honest "coming soon" panel; the canned AI_QUESTIONS chips
+// (which only closed the sheet) were removed.
 function StoreAISheet({ merchant, onClose }: { merchant: StoreMerchant; onClose: () => void }) {
   return (
     <div
@@ -1370,27 +1365,20 @@ function StoreAISheet({ merchant, onClose }: { merchant: StoreMerchant; onClose:
             >
               Ask Drip
             </p>
-            <p style={{ fontSize: 11, color: G3, fontFamily: "'Inter',sans-serif" }}>
-              About {merchant.name}
-            </p>
+            <p style={{ fontSize: 11, color: G3, fontFamily: "'Inter',sans-serif" }}>Coming soon</p>
           </div>
         </div>
-        <div className="mb-5 flex flex-col gap-2.5">
-          {AI_QUESTIONS.map((q, i) => (
-            <button
-              key={i}
-              onClick={onClose}
-              className="w-full rounded-2xl px-4 py-3.5 text-left text-[12.5px] transition-all active:scale-[.98]"
-              style={{
-                background: 'rgba(255,255,255,.045)',
-                color: 'rgba(255,255,255,.78)',
-                fontFamily: "'Inter',sans-serif",
-                border: `1px solid ${BORDER}`,
-              }}
-            >
-              {q}
-            </button>
-          ))}
+        <div
+          className="mb-5 rounded-2xl px-4 py-4"
+          style={{ background: 'rgba(255,255,255,.045)', border: `1px solid ${BORDER}` }}
+        >
+          <p
+            className="text-[12.5px] leading-relaxed"
+            style={{ color: 'rgba(255,255,255,.78)', fontFamily: "'Inter',sans-serif" }}
+          >
+            Ask Drip about {merchant.name} isn't available yet. Our AI assistant is coming soon —
+            check back later.
+          </p>
         </div>
         <button
           onClick={onClose}

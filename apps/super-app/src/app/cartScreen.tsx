@@ -644,7 +644,6 @@ export function CartScreen({
   const [useWallet, setUseWallet] = useState(false);
   const [clearSheet, setClearSheet] = useState(false);
   const [showAI, setShowAI] = useState(false);
-  const [aiPrompt, setAiPrompt] = useState('');
   const [savedOpen, setSavedOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<NavTabKey>('market');
 
@@ -755,6 +754,7 @@ export function CartScreen({
     [onHome, onAccount],
   );
 
+  // GAP: no AI backend exists — these are non-interactive example prompts only.
   const AI_PROMPTS = [
     'Find cheaper alternatives',
     'Combine deliveries',
@@ -979,19 +979,19 @@ export function CartScreen({
                     Ask Drip
                   </p>
                   <p className="text-[11px]" style={{ color: MUTED }}>
-                    Optimise your cart with AI
+                    Coming soon
                   </p>
                 </div>
               </div>
+              <p className="mb-2 text-[11px]" style={{ color: MUTED }}>
+                Soon you'll be able to ask:
+              </p>
+              {/* GAP: no AI backend exists — non-interactive example prompts, not working questions. */}
               <div className="flex flex-wrap gap-2">
                 {AI_PROMPTS.map((p) => (
-                  <button
+                  <span
                     key={p}
-                    onClick={() => {
-                      setAiPrompt(p);
-                      setShowAI(true);
-                    }}
-                    className="flex h-[28px] items-center gap-1 rounded-full px-3 text-[11px] font-medium transition-all active:scale-95"
+                    className="flex h-[28px] items-center rounded-full px-3 text-[11px] font-medium"
                     style={{
                       background: 'rgba(43,172,82,.12)',
                       border: `1px solid rgba(43,172,82,.24)`,
@@ -999,7 +999,7 @@ export function CartScreen({
                     }}
                   >
                     {p}
-                  </button>
+                  </span>
                 ))}
               </div>
             </div>
@@ -1447,33 +1447,21 @@ export function CartScreen({
                 >
                   Ask Drip
                 </p>
-                {aiPrompt && (
-                  <p className="text-[12px]" style={{ color: G3 }}>
-                    "{aiPrompt}"
-                  </p>
-                )}
+                <p className="text-[12px]" style={{ color: MUTED }}>
+                  Coming soon
+                </p>
               </div>
             </div>
             <div
               className="rounded-2xl px-4 py-3"
               style={{ background: 'rgba(43,172,82,.07)', border: `1px solid rgba(43,172,82,.18)` }}
             >
+              {/* GAP: no AI backend exists — honest placeholder, no canned replies. */}
               <p
                 className="text-[13px] leading-relaxed"
                 style={{ color: 'rgba(255,255,255,.72)', fontFamily: "'Inter',sans-serif" }}
               >
-                {aiPrompt === 'Find cheaper alternatives' &&
-                  'The Peak Milk in your Shoprite cart has a similar alternative — Cowbell Milk at ₦1,400 (₦400 cheaper). Loaded Fries can be replaced with Coleslaw to save ₦1,300.'}
-                {aiPrompt === 'Combine deliveries' &&
-                  "Your KFC and Shoprite orders can't be combined (different merchants), but scheduling both at the same time could save delivery wait time. KFC is fastest at 18–25 min."}
-                {aiPrompt === 'Apply best promo' &&
-                  "Use code DRIP20 for ₦500 off your order. Also, your wallet balance can cover up to 20% (₦2,440) of today's total. Combining both saves ₦2,940!"}
-                {aiPrompt === 'Complementary items' &&
-                  'Based on your KFC Zinger Meal, you might enjoy adding: Coleslaw (₦900) or Krusher Mango (₦1,600). Shoprite pairs well with Golden Morn Cereal for a breakfast bundle.'}
-                {aiPrompt === 'Optimize my order' &&
-                  `Your current cart is well-optimised! Tip: switch to Pickup for the KFC order to save ₦${merchant?.deliveryFee ?? 350} on delivery. Total savings potential today: ₦2,940.`}
-                {!AI_PROMPTS.includes(aiPrompt) &&
-                  'I can help you find cheaper alternatives, combine deliveries, apply the best promos, or recommend complementary items for your cart!'}
+                Ask Drip is coming soon. Our AI assistant isn't available yet — check back later.
               </p>
             </div>
             <button

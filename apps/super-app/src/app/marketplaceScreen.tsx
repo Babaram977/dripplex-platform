@@ -25,14 +25,6 @@ const CAT_CHIPS = [
   { label: 'Wholesale', icon: '📦' },
 ];
 
-const AI_PROMPTS = [
-  'Find the best shawarma near me',
-  'Groceries under ₦20,000',
-  'Pharmacy open right now',
-  'Phone under ₦300,000',
-  'Find an electrician nearby',
-];
-
 const DEALS = [
   {
     bg: 'linear-gradient(135deg,#064E3B,#065F46 42%,#10B981)',
@@ -62,31 +54,6 @@ const DEALS = [
     sub: 'Lunch deals from ₦1,500',
     cta: 'Order Now',
   },
-];
-
-const AI_RECS = [
-  {
-    type: 'product',
-    emoji: '🥑',
-    name: 'Avocado Facial Kit',
-    sub: 'HealthPlus · ₦8,400',
-    badge: 'Best Seller',
-  },
-  {
-    type: 'store',
-    emoji: '🍗',
-    name: 'Chicken Republic',
-    sub: 'Restaurant · 0.7 km',
-    badge: 'Trending',
-  },
-  {
-    type: 'product',
-    emoji: '🎧',
-    name: 'Wireless Earbuds Pro',
-    sub: 'Slot · ₦18,900',
-    badge: 'Hot Deal',
-  },
-  { type: 'store', emoji: '💆', name: 'Mane & Glam Spa', sub: 'Beauty · 1.3 km', badge: 'New' },
 ];
 
 const RECENT_VIEWS = [
@@ -449,24 +416,10 @@ function CategoryChips({ active, onChange }: { active: string; onChange: (s: str
 // ─────────────────────────────────────────────────────────────────────────────
 // AI DISCOVERY BANNER
 // ─────────────────────────────────────────────────────────────────────────────
+// GAP: no AI backend exists. "Ask Drip" is not a live shopping assistant — no
+// AI/search-chat endpoint is wired. Honest "coming soon" entry; the fake
+// typewriter + "Live" status were removed.
 function AIDiscovery({ onAsk }: { onAsk: () => void }) {
-  const [idx, setIdx] = useState(0);
-  const [chars, setChars] = useState(0);
-
-  useEffect(() => {
-    const t = setInterval(() => {
-      setIdx((i) => (i + 1) % AI_PROMPTS.length);
-      setChars(0);
-    }, 4000);
-    return () => clearInterval(t);
-  }, []);
-
-  useEffect(() => {
-    if (chars >= AI_PROMPTS[idx].length) return;
-    const t = setTimeout(() => setChars((c) => c + 1), 36);
-    return () => clearTimeout(t);
-  }, [chars, idx]);
-
   return (
     <div
       className="mx-5 mb-5 overflow-hidden rounded-3xl"
@@ -477,88 +430,40 @@ function AIDiscovery({ onAsk }: { onAsk: () => void }) {
       }}
     >
       <div className="p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div
-              className="flex h-9 w-9 items-center justify-center rounded-2xl"
-              style={{
-                background: `linear-gradient(135deg,${G0},${G3})`,
-                boxShadow: `0 4px 16px rgba(43,172,82,.35)`,
-                animation: 'avatar-pulse 3s ease-in-out infinite',
-              }}
-            >
-              <span style={{ fontSize: 18 }}>✨</span>
-            </div>
-            <div>
-              <p
-                className="text-[14px] font-bold"
-                style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
-              >
-                Ask Drip
-              </p>
-              <p className="text-[10px]" style={{ color: G3, fontFamily: "'Inter',sans-serif" }}>
-                Describe what you need
-              </p>
-            </div>
+        <div className="mb-3 flex items-center gap-2.5">
+          <div
+            className="flex h-9 w-9 items-center justify-center rounded-2xl"
+            style={{
+              background: `linear-gradient(135deg,${G0},${G3})`,
+              boxShadow: `0 4px 16px rgba(43,172,82,.35)`,
+            }}
+          >
+            <span style={{ fontSize: 18 }}>✨</span>
           </div>
-          <div className="flex items-center gap-1">
-            <div
-              className="h-1.5 w-1.5 rounded-full"
-              style={{ background: G3, animation: 'pulse-ring 1.8s ease-out infinite' }}
-            />
+          <div>
             <p
-              className="text-[9px] font-medium"
-              style={{ color: G3, fontFamily: "'Inter',sans-serif" }}
+              className="text-[14px] font-bold"
+              style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
             >
-              Live
+              Ask Drip
+            </p>
+            <p className="text-[10px]" style={{ color: G3, fontFamily: "'Inter',sans-serif" }}>
+              Coming soon
             </p>
           </div>
         </div>
 
-        {/* Typewriter */}
         <div
-          className="mb-3 flex min-h-[40px] items-center rounded-xl px-3.5 py-2.5"
+          className="mb-3.5 rounded-xl px-3.5 py-3"
           style={{ background: 'rgba(43,172,82,.07)', border: '1px solid rgba(43,172,82,.14)' }}
         >
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke={G3}
-            strokeWidth="2"
-            strokeLinecap="round"
-            className="mr-2 flex-shrink-0 opacity-55"
-          >
-            <circle cx="11" cy="11" r="8" />
-            <path d="M21 21l-4.35-4.35" />
-          </svg>
           <p
-            className="flex-1 text-[11.5px]"
+            className="text-[11.5px] leading-relaxed"
             style={{ color: 'rgba(255,255,255,.7)', fontFamily: "'Inter',sans-serif" }}
           >
-            {AI_PROMPTS[idx].slice(0, chars)}
-            <span style={{ opacity: chars < AI_PROMPTS[idx].length ? 1 : 0 }}>|</span>
+            Our AI shopping assistant isn't available yet. Soon you'll be able to describe what you
+            need and let Drip find it.
           </p>
-        </div>
-
-        {/* Suggestion chips */}
-        <div className="mb-3.5 flex flex-wrap gap-1.5">
-          {AI_PROMPTS.slice(0, 4).map((s, i) => (
-            <button
-              key={i}
-              onClick={onAsk}
-              className="rounded-full px-2.5 py-1.5 text-[10px] font-medium transition-all active:scale-95"
-              style={{
-                background: 'rgba(255,255,255,.055)',
-                color: 'rgba(255,255,255,.55)',
-                border: `1px solid ${BORDER}`,
-                fontFamily: "'Inter',sans-serif",
-              }}
-            >
-              {s.length > 24 ? s.slice(0, 22) + '…' : s}
-            </button>
-          ))}
         </div>
 
         <button
@@ -571,7 +476,7 @@ function AIDiscovery({ onAsk }: { onAsk: () => void }) {
             boxShadow: `0 6px 22px rgba(43,172,82,.28)`,
           }}
         >
-          <span>✨</span>Ask AI
+          Learn more
         </button>
       </div>
     </div>
@@ -1334,48 +1239,132 @@ function NearbyBusinesses({ onStore }: { onStore?: (merchantId: string) => void 
 // ─────────────────────────────────────────────────────────────────────────────
 // AI RECOMMENDATIONS
 // ─────────────────────────────────────────────────────────────────────────────
-function AIRecs({ loaded }: { loaded: boolean }) {
+// Was a fake "AI Picks for You / Personalised recommendations" section over a
+// hardcoded AI_RECS const. GAP: no AI backend exists — there is no personalisation
+// engine. Now wired to real featured products from the marketplace API and
+// honestly relabelled (no "AI" / "Personalised" claim).
+function AIRecs() {
+  const [products, setProducts] = useState<ProductSummaryDto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await api.marketplace.getFeaturedProducts({ limit: 8 });
+      const r = res as { items?: ProductSummaryDto[] };
+      setProducts(r.items ?? []);
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load recommendations');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
   return (
     <div className="mb-5">
-      <SRow title="✨ AI Picks for You" sub="Personalised recommendations" onAll={() => {}} />
-      <div className="flex gap-3 overflow-x-auto px-5" style={{ scrollbarWidth: 'none' }}>
-        {!loaded
-          ? [1, 2, 3, 4].map((i) => <Bone key={i} w={130} h={148} />)
-          : AI_RECS.map((r, i) => (
-              <button
-                key={i}
-                className="flex flex-shrink-0 flex-col items-center gap-2.5 rounded-2xl p-3.5 transition-all active:scale-95"
-                style={{ width: 130, background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
+      <SRow title="Recommended for You" sub="Popular picks in the marketplace" onAll={() => {}} />
+      {loading ? (
+        <div className="flex gap-3 overflow-x-auto px-5" style={{ scrollbarWidth: 'none' }}>
+          {[1, 2, 3, 4].map((i) => (
+            <Bone key={i} w={130} h={148} />
+          ))}
+        </div>
+      ) : error ? (
+        <div className="px-5">
+          <div
+            style={{
+              background: 'rgba(239,68,68,.07)',
+              border: '1px solid rgba(239,68,68,.18)',
+              borderRadius: 14,
+              padding: '14px 16px',
+            }}
+          >
+            <p
+              style={{
+                fontFamily: "'Inter',sans-serif",
+                fontSize: 13,
+                color: 'rgba(255,255,255,.5)',
+                marginBottom: 8,
+              }}
+            >
+              {error}
+            </p>
+            <button
+              onClick={load}
+              style={{
+                background: 'rgba(43,172,82,.1)',
+                border: '1px solid rgba(43,172,82,.25)',
+                borderRadius: 8,
+                padding: '6px 14px',
+                color: G3,
+                fontFamily: "'Inter',sans-serif",
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      ) : products.length === 0 ? (
+        <div style={{ padding: '24px 20px', textAlign: 'center' }}>
+          <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 13, color: MUTED }}>
+            No recommendations right now.
+          </p>
+        </div>
+      ) : (
+        <div className="flex gap-3 overflow-x-auto px-5" style={{ scrollbarWidth: 'none' }}>
+          {products.map((p) => (
+            <button
+              key={p.id}
+              className="flex flex-shrink-0 flex-col items-center gap-2.5 rounded-2xl p-3.5 transition-all active:scale-95"
+              style={{ width: 130, background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
+            >
+              <div
+                className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl text-[26px]"
+                style={{ background: 'rgba(255,255,255,.06)' }}
               >
-                <div
-                  className="flex h-12 w-12 items-center justify-center rounded-2xl text-[26px]"
-                  style={{ background: 'rgba(255,255,255,.06)' }}
+                {p.primaryImageUrl ? (
+                  <img
+                    src={p.primaryImageUrl}
+                    alt={p.name}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <span>🛍️</span>
+                )}
+              </div>
+              <div className="w-full text-center">
+                <p
+                  className="truncate text-[11.5px] font-bold"
+                  style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
                 >
-                  {r.emoji}
-                </div>
-                <div className="w-full text-center">
-                  <p
-                    className="truncate text-[11.5px] font-bold"
-                    style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
-                  >
-                    {r.name}
-                  </p>
-                  <p
-                    className="mt-0.5 truncate text-[9.5px]"
-                    style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
-                  >
-                    {r.sub}
-                  </p>
-                </div>
-                <span
-                  className="rounded-full px-2.5 py-1 text-[9px] font-bold"
-                  style={{ background: G2 + '20', color: G3, border: `1px solid ${G2}30` }}
+                  {p.name}
+                </p>
+                <p
+                  className="mt-0.5 truncate text-[9.5px]"
+                  style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
                 >
-                  {r.badge}
-                </span>
-              </button>
-            ))}
-      </div>
+                  {p.merchantName}
+                </p>
+              </div>
+              <span
+                className="text-[11px] font-bold"
+                style={{ color: G3, fontFamily: "'Poppins',sans-serif" }}
+              >
+                {naira(p.basePrice)}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1641,26 +1630,22 @@ function AISheet({ onClose }: { onClose: () => void }) {
               Ask Drip
             </p>
             <p className="text-[11px]" style={{ color: G3, fontFamily: "'Inter',sans-serif" }}>
-              AI Shopping Assistant
+              Coming soon
             </p>
           </div>
         </div>
-        <div className="mb-5 flex flex-col gap-2.5">
-          {AI_PROMPTS.map((s, i) => (
-            <button
-              key={i}
-              onClick={onClose}
-              className="active:scale-98 w-full rounded-2xl px-4 py-3.5 text-left text-[12.5px] transition-all"
-              style={{
-                background: 'rgba(255,255,255,.045)',
-                color: 'rgba(255,255,255,.78)',
-                fontFamily: "'Inter',sans-serif",
-                border: `1px solid ${BORDER}`,
-              }}
-            >
-              {s}
-            </button>
-          ))}
+        {/* GAP: no AI backend exists — honest "coming soon" panel, no answer-pretending chips. */}
+        <div
+          className="mb-5 rounded-2xl px-4 py-4"
+          style={{ background: 'rgba(255,255,255,.045)', border: `1px solid ${BORDER}` }}
+        >
+          <p
+            className="text-[13px] leading-relaxed"
+            style={{ color: 'rgba(255,255,255,.78)', fontFamily: "'Inter',sans-serif" }}
+          >
+            Ask Drip is coming soon. Our AI shopping assistant isn't available yet — check back
+            later to find products, stores and deals by just describing what you need.
+          </p>
         </div>
         <button
           onClick={onClose}
@@ -1730,7 +1715,7 @@ export function MarketplaceScreen({
         <FeaturedMerchants active={activecat} onStore={onStore} />
         <TrendingProducts />
         <NearbyBusinesses onStore={onStore} />
-        <AIRecs loaded={true} />
+        <AIRecs />
         <ContinueShopping />
 
         <div style={{ height: 104 }} />

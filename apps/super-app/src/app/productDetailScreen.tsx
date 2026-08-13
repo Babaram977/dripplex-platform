@@ -820,7 +820,6 @@ export function ProductDetailScreen({
   const [cartSheet, setCartSheet] = useState(false);
   const [showAI, setShowAI] = useState(false);
   const [specExpanded, setSpecExpanded] = useState(false);
-  const [aiPrompt, setAiPrompt] = useState('');
   const [activeTab, setActiveTab] = useState<NavTabKey>('market');
   const [cartCount, setCartCount] = useState(0);
   const [liveProduct, setLiveProduct] = useState<ProductDetail | null>(null);
@@ -890,6 +889,7 @@ export function ProductDetailScreen({
     [onHome, onAccount],
   );
 
+  // GAP: no AI backend exists — these are non-interactive example prompts only.
   const AI_PROMPTS = [
     'Is this a good choice?',
     'Compare with similar products',
@@ -1291,38 +1291,27 @@ export function ProductDetailScreen({
                 Ask Drip ✨
               </p>
               <p className="text-[11px]" style={{ color: MUTED }}>
-                Your AI shopping assistant
+                Coming soon
               </p>
             </div>
           </div>
+          <p className="mb-2 text-[11px]" style={{ color: MUTED }}>
+            Soon you'll be able to ask:
+          </p>
+          {/* GAP: no AI backend exists — non-interactive example prompts, not working questions. */}
           <div className="flex flex-wrap gap-2">
             {AI_PROMPTS.map((p) => (
-              <button
+              <span
                 key={p}
-                onClick={() => {
-                  setAiPrompt(p);
-                  setShowAI(true);
-                }}
-                className="flex h-[30px] items-center gap-1.5 rounded-full px-3 text-[11px] font-medium transition-all active:scale-95"
+                className="flex h-[30px] items-center rounded-full px-3 text-[11px] font-medium"
                 style={{
                   background: 'rgba(43,172,82,.12)',
                   border: `1px solid rgba(43,172,82,.24)`,
                   color: G3,
                 }}
               >
-                <svg
-                  width="9"
-                  height="9"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                >
-                  <path d="M5 12h14M12 5l7 7-7 7" />
-                </svg>
                 {p}
-              </button>
+              </span>
             ))}
           </div>
         </div>
@@ -1610,33 +1599,22 @@ export function ProductDetailScreen({
                 >
                   Ask Drip
                 </p>
-                {aiPrompt && (
-                  <p className="text-[12px]" style={{ color: G3 }}>
-                    "{aiPrompt}"
-                  </p>
-                )}
+                <p className="text-[12px]" style={{ color: MUTED }}>
+                  Coming soon
+                </p>
               </div>
             </div>
             <div
               className="rounded-2xl px-4 py-3"
               style={{ background: 'rgba(43,172,82,.07)', border: `1px solid rgba(43,172,82,.18)` }}
             >
+              {/* GAP: no AI backend exists — honest placeholder, no canned replies. */}
               <p
                 className="text-[13px] leading-relaxed"
                 style={{ color: 'rgba(255,255,255,.7)', fontFamily: "'Inter',sans-serif" }}
               >
-                {aiPrompt === 'Is this a good choice?' &&
-                  `The ${product.name} has a ${product.rating}⭐ rating from ${product.reviewCount} customers. 89% of recent buyers rated it 4+ stars. Based on your order history, this matches your taste preferences — a solid choice! 🍔`}
-                {aiPrompt === 'Compare with similar products' &&
-                  `Compared to Tower Burger (₦3,900 · 4.5⭐), the Zinger Meal at ₦4,800 offers better value with a drink + fries included. The Bucket ×8 is ideal for groups. Zinger Meal wins on value-per-item.`}
-                {aiPrompt === 'Show cheaper alternatives' &&
-                  `You might enjoy: Twister Wrap at ₦2,800 (4.4⭐) or Coleslaw Large at ₦900. For a full meal under ₦4,000, consider the Tower Burger combo deal.`}
-                {aiPrompt === 'What do customers say?' &&
-                  `Most customers love the crunch and spice balance. Common praise: "perfectly cooked fillet", "great value". One common feedback: longer delivery times during peak hours. Overall very positive!`}
-                {aiPrompt === 'Nutrition & ingredients' &&
-                  `Zinger Meal: ~780 kcal. Contains gluten, dairy. The fillet is marinated in 11 herbs & spices. No artificial preservatives. Not suitable for strict vegetarians.`}
-                {!AI_PROMPTS.includes(aiPrompt) &&
-                  `I'm here to help you with ${product.name}. You can ask me about nutrition, compare alternatives, check reviews, or get personalised recommendations!`}
+                Ask Drip is coming soon. Our AI shopping assistant isn't available yet — check back
+                later.
               </p>
             </div>
             <button
