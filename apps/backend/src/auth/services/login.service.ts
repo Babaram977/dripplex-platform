@@ -136,17 +136,14 @@ export class LoginService {
     const user = await this.resolveUser(dto);
     const passwordHash = user?.passwordHash ?? TIMING_SAFE_DUMMY_HASH;
     // Always run the bcrypt comparison (against a dummy hash when there is no
-    // user) so the two branches below take the same time — the distinct
-    // messages are a product decision, but we don't add a timing side-channel.
+    // user) so a wrong email and a wrong password take the same time — no
+    // timing side-channel, and one generic message so login never reveals
+    // whether an email is registered.
     const passwordValid = await bcrypt.compare(dto.password, passwordHash);
 
-    if (!user) {
-      await this.handleFailedLogin(identifier, context, portal, 'no_account');
-      throw new UnauthorizedDomainException('No account found with this email');
-    }
-    if (!passwordValid) {
-      await this.handleFailedLogin(identifier, context, portal, 'invalid_password', user.id);
-      throw new UnauthorizedDomainException('Incorrect password');
+    if (!user || !passwordValid) {
+      await this.handleFailedLogin(identifier, context, portal, 'invalid_credentials', user?.id);
+      throw new UnauthorizedDomainException('Wrong login details input');
     }
 
     try {

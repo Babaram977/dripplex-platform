@@ -173,12 +173,12 @@ describe('LoginService', () => {
     expect(result.user.roles).toContain('customer');
   });
 
-  it('says the password is incorrect when the account exists', async () => {
+  it('rejects a wrong password with a generic credential error', async () => {
     (bcrypt.compare as jest.Mock).mockResolvedValue(false);
 
     await expect(
       service.loginCustomer({ email: 'ada@example.com', password: 'WrongPass1' }, {}),
-    ).rejects.toThrow('Incorrect password');
+    ).rejects.toThrow('Wrong login details input');
 
     expect(loginAttemptService.recordFailure).toHaveBeenCalled();
     expect(auditService.record).toHaveBeenCalledWith(
@@ -188,13 +188,13 @@ describe('LoginService', () => {
     );
   });
 
-  it('says no account exists for an unknown email', async () => {
+  it('rejects an unknown email with the same generic message (no enumeration)', async () => {
     (usersService.findByEmail as jest.Mock).mockResolvedValue(null);
     (bcrypt.compare as jest.Mock).mockResolvedValue(false);
 
     await expect(
       service.loginCustomer({ email: 'missing@example.com', password: 'Password1' }, {}),
-    ).rejects.toThrow('No account found with this email');
+    ).rejects.toThrow('Wrong login details input');
   });
 
   it('rejects blocked accounts', async () => {
