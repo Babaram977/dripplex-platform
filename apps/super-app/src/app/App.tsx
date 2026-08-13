@@ -570,7 +570,23 @@ function AppShell() {
     accessibility: (
       <AccessibilityScreen onBack={() => go('langregion')} onApply={() => go('onboarddone')} />
     ),
-    onboarddone: <WelcomeDrippleXScreen onHome={() => go('home')} onTour={() => go('home')} />,
+    onboarddone: (
+      <WelcomeDrippleXScreen
+        onHome={() => go('home')}
+        onTour={() => go('home')}
+        onQuickStart={(key) =>
+          go(
+            key === 'marketplace'
+              ? 'marketplace'
+              : key === 'ride'
+                ? 'ridehome'
+                : key === 'wallet'
+                  ? 'wallethome'
+                  : 'partnerselect',
+          )
+        }
+      />
+    ),
     linked: <LinkedAccountsScreen onBack={() => go('account')} />,
     verifstatus: (
       <VerificationStatusScreen onBack={() => go('account')} onContinue={() => go('kyc')} />
