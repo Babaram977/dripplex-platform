@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { G0, G2, G3, NAVY_DEEP, NAVY_CARD, NAVY_SURFACE, BORDER, MUTED } from './shared';
 import { api } from '../lib/api';
+import { ImageWithFallback } from './components/figma/ImageWithFallback';
 import type { MerchantSummaryDto, ProductSummaryDto } from '../lib/api';
 
 // Money formatter — backend prices are numeric (e.g. 4800). Mirrors storeScreen's
@@ -705,15 +706,12 @@ function FeaturedMerchants({
                   className="relative flex h-[88px] items-center justify-center"
                   style={{ background: m.coverPhotoUrl ? undefined : bg }}
                 >
-                  {m.coverPhotoUrl ? (
-                    <img
-                      src={m.coverPhotoUrl}
-                      alt={m.businessName}
-                      className="absolute inset-0 h-full w-full object-cover"
-                    />
-                  ) : (
-                    <span style={{ fontSize: 44 }}>{emoji}</span>
-                  )}
+                  <ImageWithFallback
+                    src={m.coverPhotoUrl ?? undefined}
+                    alt={m.businessName}
+                    className="absolute inset-0 h-full w-full object-cover"
+                    fallbackEmoji={emoji}
+                  />
                   <div className="absolute left-3 top-3">
                     {verified && (
                       <span
@@ -962,15 +960,11 @@ function TrendingProducts() {
                   className="relative flex h-[82px] items-center justify-center"
                   style={{ background: 'linear-gradient(135deg,#0D1B2E,#1A2E45)' }}
                 >
-                  {p.primaryImageUrl ? (
-                    <img
-                      src={p.primaryImageUrl}
-                      alt={p.name}
-                      className="absolute inset-0 h-full w-full object-cover"
-                    />
-                  ) : (
-                    <span style={{ fontSize: 42 }}>🛍️</span>
-                  )}
+                  <ImageWithFallback
+                    src={p.primaryImageUrl ?? undefined}
+                    alt={p.name}
+                    className="absolute inset-0 h-full w-full object-cover"
+                  />
                   {/* GAP: backend product has no discount/original price → no "-%" badge. */}
                   <button
                     onClick={() => toggle(i)}
@@ -1324,15 +1318,11 @@ function AIRecs() {
                 className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl text-[26px]"
                 style={{ background: 'rgba(255,255,255,.06)' }}
               >
-                {p.primaryImageUrl ? (
-                  <img
-                    src={p.primaryImageUrl}
-                    alt={p.name}
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <span>🛍️</span>
-                )}
+                <ImageWithFallback
+                  src={p.primaryImageUrl ?? undefined}
+                  alt={p.name}
+                  className="h-full w-full object-cover"
+                />
               </div>
               <div className="w-full text-center">
                 <p
