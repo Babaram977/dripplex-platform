@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service';
 
 import { createPresignedUrl } from './sigv4.util';
+import { isPublicUploadKey } from './uploads.constants';
 
 import type {
   ObjectStorageProvider,
@@ -35,7 +36,17 @@ export class S3CompatibleStorageProvider implements ObjectStorageProvider {
     }
 
     const endpoint = new URL(this.config.objectStorageEndpoint);
-    const bucket = this.config.objectStorageBucket;
+
+    // Public, shopper-facing assets (product images, avatars) go to the separate
+    // PUBLIC-read bucket and are served from the public base URL. Sensitive
+    // objects (KYC, identity, vehicle, delivery proofs) stay in the private
+    // bucket. Public routing only activates when BOTH the public bucket and base
+    // URL are configured — otherwise everything behaves exactly as before.
+    const publicBase = this.config.objectStoragePublicBaseUrl.replace(/\/$/, '');
+    const publicBucket = this.config.objectStoragePublicBucket;
+    const routePublic = isPublicUploadKey(input.key) && publicBucket !== '' && publicBase !== '';
+
+    const bucket = routePublic ? publicBucket : this.config.objectStorageBucket;
     const path = `/${bucket}/${input.key}`;
 
     const signed = createPresignedUrl({
@@ -57,11 +68,11 @@ export class S3CompatibleStorageProvider implements ObjectStorageProvider {
       },
     });
 
-    const publicBase = this.config.objectStoragePublicBaseUrl;
-    const publicUrl =
-      publicBase !== ''
-        ? `${publicBase.replace(/\/$/, '')}/${input.key}`
-        : `${endpoint.origin}/${bucket}/${input.key}`;
+    // Public objects → stable public URL. Private objects keep the (non-public)
+    // canonical endpoint/bucket path; they are only ever read via a signed GET.
+    const publicUrl = routePublic
+      ? `${publicBase}/${input.key}`
+      : `${endpoint.origin}/${bucket}/${input.key}`;
 
     return Promise.resolve({
       uploadUrl: signed.url,
