@@ -9,6 +9,8 @@ import {
 } from '../tokens/colors';
 import { api } from '../lib/api';
 import { ws } from '../lib/ws';
+import { addressPredictions, geocodeAddress } from '../lib/maps';
+import type { AddressPrediction } from '../lib/maps';
 import type { RideDto, RideType, RideTypeCatalogEntryDto } from '../lib/api';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -32,56 +34,6 @@ export interface RideDestination {
   address: string;
   label: string;
 }
-
-const RECENT_PLACES = [
-  {
-    icon: '🏠',
-    label: 'Home',
-    sub: '12 Adewale Close, Ikeja',
-    type: 'saved',
-    lat: 6.6018,
-    lng: 3.3515,
-  },
-  {
-    icon: '💼',
-    label: 'Work',
-    sub: 'Plot 4, Victoria Island',
-    type: 'saved',
-    lat: 6.4281,
-    lng: 3.4219,
-  },
-  {
-    icon: '🏥',
-    label: 'Reddington Hospital',
-    sub: '12 Mosley Rd, Ikoyi',
-    type: 'recent',
-    lat: 6.4478,
-    lng: 3.4341,
-  },
-  {
-    icon: '✈️',
-    label: 'Murtala Airport',
-    sub: 'Ikeja, Lagos State',
-    type: 'recent',
-    lat: 6.5774,
-    lng: 3.3212,
-  },
-  {
-    icon: '🛒',
-    label: 'Shoprite Ikeja',
-    sub: '400 Ikorodu Rd, Ikeja',
-    type: 'recent',
-    lat: 6.6146,
-    lng: 3.3586,
-  },
-];
-
-const POPULAR_PLACES = [
-  { icon: '🏖', label: 'Bar Beach', sub: 'Victoria Island', lat: 6.4207, lng: 3.4215 },
-  { icon: '🏟', label: 'National Stadium', sub: 'Surulere, Lagos', lat: 6.4998, lng: 3.3628 },
-  { icon: '🏛', label: 'Eko Hotel', sub: 'Plot 1415, VI', lat: 6.4331, lng: 3.4271 },
-  { icon: '🛍', label: 'Balogun Market', sub: 'Lagos Island', lat: 6.4548, lng: 3.3899 },
-];
 
 // Display maps derived from the real `RideType` enum (decorative labels/icons
 // only — not fabricated data). The ride-type CATALOG (name/description/price)
@@ -693,47 +645,6 @@ export function RideHomeScreen({
               </button>
             ))}
           </div>
-
-          {/* Recent */}
-          <p className="mb-3 text-[13px] font-semibold" style={{ fontFamily: PP, color: MUTED }}>
-            RECENT
-          </p>
-          <div className="flex flex-col gap-1">
-            {RECENT_PLACES.slice(2, 5).map((p) => (
-              <button
-                key={p.label}
-                onClick={onSearch}
-                className="flex items-center gap-3 rounded-xl px-1 py-3 transition-all active:bg-white/[.03]"
-              >
-                <div
-                  className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl text-lg"
-                  style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
-                >
-                  {p.icon}
-                </div>
-                <div className="min-w-0 flex-1 text-left">
-                  <p className="text-[14px] font-medium" style={{ fontFamily: PP, color: '#fff' }}>
-                    {p.label}
-                  </p>
-                  <p className="truncate text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
-                    {p.sub}
-                  </p>
-                </div>
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke={MUTED}
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M5 12h14M12 5l7 7-7 7" />
-                </svg>
-              </button>
-            ))}
-          </div>
         </div>
       </BottomSheet>
     </div>
@@ -753,30 +664,72 @@ export function DestinationSearchScreen({
   const [query, setQuery] = useState('');
   const [focused, setFocused] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Real destination search via Google Places. Previously this searched a
+  // hardcoded list of demo places ("Home · 12 Adewale Close, Ikeja") that carried
+  // real coordinates, so picking one would route a ride to a stranger's address.
+  const [placeResults, setPlaceResults] = useState<AddressPrediction[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [pickErr, setPickErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 3) {
+      setPlaceResults([]);
+      return;
+    }
+    let alive = true;
+    setSearching(true);
+    const timer = setTimeout(() => {
+      void addressPredictions(q)
+        .then((r) => {
+          if (alive) setPlaceResults(r);
+        })
+        .finally(() => {
+          if (alive) setSearching(false);
+        });
+    }, 300);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [query]);
 
   const pick = (p: { label: string; sub: string; lat?: number; lng?: number }) => {
-    // Places without coordinates fall back to a central Lagos point so booking
-    // still produces a real route.
+    if (p.lat === undefined || p.lng === undefined) return;
     onSelect({
-      latitude: p.lat ?? 6.4541,
-      longitude: p.lng ?? 3.3947,
+      latitude: p.lat,
+      longitude: p.lng,
       address: `${p.label} · ${p.sub}`,
       label: p.label,
     });
+  };
+
+  // Resolve a Places suggestion to real coordinates before selecting it — a ride
+  // must never be booked to a guessed location.
+  const pickPrediction = async (pred: AddressPrediction) => {
+    setPickErr(null);
+    const resolved = await geocodeAddress({ placeId: pred.placeId });
+    if (!resolved) {
+      setPickErr("We couldn't locate that place. Try another search.");
+      return;
+    }
+    const [head, ...rest] = pred.description.split(',');
+    onSelect({
+      latitude: resolved.latitude,
+      longitude: resolved.longitude,
+      address: pred.description,
+      label: head?.trim() || pred.description,
+    });
+    void rest;
   };
 
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
-  const filtered =
-    query.length > 0
-      ? [...RECENT_PLACES, ...POPULAR_PLACES].filter(
-          (p) =>
-            p.label.toLowerCase().includes(query.toLowerCase()) ||
-            p.sub.toLowerCase().includes(query.toLowerCase()),
-        )
-      : RECENT_PLACES;
+  // No fabricated "saved places" — DrippleX has no saved-places API yet, so an
+  // empty search shows an empty state rather than someone else's addresses.
+  const filtered: { icon: string; label: string; sub: string; lat?: number; lng?: number }[] = [];
 
   return (
     <div
@@ -855,88 +808,53 @@ export function DestinationSearchScreen({
       </div>
 
       <div className="flex-1 overflow-y-auto px-5">
-        {query.length === 0 && (
-          <>
-            <p
-              className="mb-3 text-[12px] font-semibold"
-              style={{ fontFamily: IT, color: MUTED, letterSpacing: '0.08em' }}
+        {query.trim().length < 3 && (
+          <div className="flex flex-col items-center justify-center gap-3 py-12">
+            <div
+              className="flex h-16 w-16 items-center justify-center rounded-full text-3xl"
+              style={{ background: NAVY_SURFACE }}
             >
-              SAVED PLACES
+              📍
+            </div>
+            <p className="text-[15px] font-semibold" style={{ fontFamily: PP, color: '#fff' }}>
+              Where are you going?
             </p>
-            {RECENT_PLACES.slice(0, 2).map((p) => (
-              <button
-                key={p.label}
-                onClick={() => pick(p)}
-                className="flex w-full items-center gap-3 rounded-xl px-1 py-3.5 transition-all active:bg-white/[.03]"
-              >
-                <div
-                  className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl text-lg"
-                  style={{
-                    background: 'rgba(43,172,82,.12)',
-                    border: `1px solid rgba(43,172,82,.2)`,
-                  }}
-                >
-                  {p.icon}
-                </div>
-                <div className="flex-1 text-left">
-                  <p
-                    className="text-[14px] font-semibold"
-                    style={{ fontFamily: PP, color: '#fff' }}
-                  >
-                    {p.label}
-                  </p>
-                  <p className="text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
-                    {p.sub}
-                  </p>
-                </div>
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke={MUTED}
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M5 12h14M12 5l7 7-7 7" />
-                </svg>
-              </button>
-            ))}
-            <div className="my-3 h-px" style={{ background: BORDER }} />
-            <p
-              className="mb-3 text-[12px] font-semibold"
-              style={{ fontFamily: IT, color: MUTED, letterSpacing: '0.08em' }}
-            >
-              RECENT TRIPS
+            <p className="text-center text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
+              Start typing an address or place name
             </p>
-          </>
+          </div>
         )}
 
-        {(query.length > 0 ? filtered : RECENT_PLACES.slice(2)).map((p, i) => (
+        {placeResults.map((pred) => (
           <button
-            key={i}
-            onClick={() => pick(p)}
+            key={pred.placeId}
+            onClick={() => void pickPrediction(pred)}
             className="flex w-full items-center gap-3 rounded-xl px-1 py-3.5 transition-all active:bg-white/[.03]"
           >
             <div
               className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl text-lg"
               style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
             >
-              {p.icon}
+              📍
             </div>
             <div className="flex-1 text-left">
               <p className="text-[14px] font-medium" style={{ fontFamily: PP, color: '#fff' }}>
-                {p.label}
+                {pred.description.split(',')[0]}
               </p>
               <p className="text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
-                {p.sub}
+                {pred.description}
               </p>
             </div>
           </button>
         ))}
 
-        {query.length > 0 && filtered.length === 0 && (
+        {pickErr && (
+          <p className="px-1 py-2 text-[12px]" style={{ fontFamily: IT, color: '#F87171' }}>
+            {pickErr}
+          </p>
+        )}
+
+        {query.trim().length >= 3 && !searching && placeResults.length === 0 && (
           <div className="flex flex-col items-center justify-center gap-3 py-12">
             <div
               className="flex h-16 w-16 items-center justify-center rounded-full text-3xl"
@@ -3824,10 +3742,9 @@ export function ReportTripScreen({
 // 7. SavedPlacesScreen
 export function SavedPlacesScreen({ onBack, onAdd }: { onBack?: () => void; onAdd?: () => void }) {
   const [editingId, setEditingId] = useState<string | null>(null);
-  const pinned = [
-    { id: 'home', icon: '🏠', label: 'Home', sub: '12 Adewale Close, Ikeja' },
-    { id: 'work', icon: '💼', label: 'Work', sub: 'Plot 4, Victoria Island' },
-  ];
+  // DrippleX has no saved-places API yet (documented gap) — start empty rather
+  // than presenting demo addresses as the customer's own saved places.
+  const pinned: { id: string; icon: string; label: string; sub: string }[] = [];
   return (
     <div
       className="relative flex h-full w-full flex-col overflow-hidden"
@@ -3920,19 +3837,11 @@ export function SavedPlacesScreen({ onBack, onAdd }: { onBack?: () => void; onAd
         >
           RECENT PLACES
         </p>
-        {RECENT_PLACES.filter((r) => r.type === 'recent').map((r) => (
-          <div
-            key={r.label}
-            className="mb-2 flex items-center gap-3 rounded-xl p-3.5"
-            style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
-          >
-            <span style={{ fontSize: 18 }}>{r.icon}</span>
-            <div className="flex-1">
-              <p style={{ fontSize: 13, fontFamily: IT, color: '#fff' }}>{r.label}</p>
-              <p style={{ fontSize: 11, color: MUTED, fontFamily: IT }}>{r.sub}</p>
-            </div>
-          </div>
-        ))}
+        {/* No recent-places API exists yet (documented gap) — show an honest
+            empty state rather than demo addresses with real coordinates. */}
+        <p style={{ fontSize: 12, color: MUTED, fontFamily: IT, marginBottom: 8 }}>
+          No recent places yet.
+        </p>
         {/* Add place CTA */}
         <button
           className="mb-6 mt-4 flex h-14 w-full items-center justify-center gap-2 rounded-2xl transition-all active:scale-[.98]"
@@ -3981,12 +3890,12 @@ export function ScheduleRideScreen({
           style={{ background: NAVY_CARD, border: `1px solid ${BORDER}` }}
         >
           <p style={{ fontSize: 12, color: MUTED, fontFamily: IT }}>From</p>
-          <p style={{ fontSize: 14, color: '#fff', fontFamily: IT, marginBottom: 6 }}>
-            12 Adewale Close, Ikeja
+          <p style={{ fontSize: 14, color: MUTED, fontFamily: IT, marginBottom: 6 }}>
+            Set your pickup
           </p>
           <div className="h-px" style={{ background: BORDER }} />
           <p style={{ fontSize: 12, color: MUTED, fontFamily: IT, marginTop: 6 }}>To</p>
-          <p style={{ fontSize: 14, color: '#fff', fontFamily: IT }}>Plot 4, Victoria Island</p>
+          <p style={{ fontSize: 14, color: MUTED, fontFamily: IT }}>Set your destination</p>
         </div>
         {/* Day picker */}
         <p

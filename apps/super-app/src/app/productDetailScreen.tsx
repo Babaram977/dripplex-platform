@@ -54,188 +54,6 @@ export interface ProductDetail extends StoreProduct {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MOCK DATA
-// ─────────────────────────────────────────────────────────────────────────────
-const MOCK_MERCHANT: StoreMerchant = {
-  id: 'kfc-ikeja',
-  name: 'KFC Nigeria',
-  category: 'Restaurant',
-  coverBg: 'linear-gradient(135deg,#7C2D12,#B45309 42%,#F97316)',
-  emoji: '🍗',
-  tagline: "It's finger lickin' good.",
-  rating: 4.6,
-  reviewCount: 1284,
-  distance: '0.9 km',
-  eta: '18 min',
-  deliveryFee: '₦350',
-  minOrder: '₦2,000',
-  isOpen: true,
-  isVerified: true,
-  isFollowed: false,
-  hours: '8:00 AM – 11:00 PM daily',
-  phone: '+234 800 532 0000',
-  address: 'KFC Ikeja City Mall, Alausa, Lagos',
-};
-
-const MOCK_PRODUCT: ProductDetail = {
-  id: 'p1',
-  name: 'Zinger Meal',
-  description:
-    'Our signature spicy fillet burger served with crispy seasoned fries and your choice of drink. Made with 100% fresh chicken, marinated in our secret 11 herbs and spices blend.',
-  price: '₦4,800',
-  originalPrice: '₦5,500',
-  emoji: '🍔',
-  rating: 4.8,
-  badge: '-13%',
-  badgeColor: '#EF4444',
-  inStock: true,
-  category: 'Meals',
-  images: ['🍔', '🍟', '🥤', '🍗'],
-  imageBgs: [
-    'linear-gradient(145deg,#7C2D12,#EA580C)',
-    'linear-gradient(145deg,#92400E,#D97706)',
-    'linear-gradient(145deg,#1D4ED8,#0EA5E9)',
-    'linear-gradient(145deg,#7C2D12,#DC2626)',
-  ],
-  cashback: '₦240',
-  sku: 'KFC-ZM-001',
-  availability: 'In Stock',
-  soldCount: '3.2k sold',
-  specs: [
-    { label: 'Calories', value: '780 kcal' },
-    { label: 'Protein', value: '42g' },
-    { label: 'Allergens', value: 'Gluten, Dairy' },
-    { label: 'Prep Time', value: '8–12 min' },
-  ],
-  variantGroups: [
-    {
-      key: 'size',
-      label: 'Meal Size',
-      required: true,
-      options: [
-        { id: 'regular', label: 'Regular', price: '₦4,800', available: true },
-        { id: 'large', label: 'Large +', price: '₦5,800', available: true },
-        { id: 'sharing', label: 'Sharing', price: '₦8,500', available: true },
-      ],
-    },
-    {
-      key: 'spice',
-      label: 'Spice Level',
-      required: true,
-      options: [
-        { id: 'mild', label: 'Mild 🌶', available: true },
-        { id: 'medium', label: 'Medium 🌶🌶', available: true },
-        { id: 'hot', label: 'Hot 🌶🌶🌶', available: true },
-        { id: 'xhot', label: 'Extra Hot 🔥', available: false },
-      ],
-    },
-    {
-      key: 'drink',
-      label: 'Choose Drink',
-      required: false,
-      options: [
-        { id: 'pepsi', label: 'Pepsi', available: true },
-        { id: '7up', label: '7UP', available: true },
-        { id: 'mirinda', label: 'Mirinda', available: true },
-        { id: 'water', label: 'Water', available: true },
-      ],
-    },
-  ],
-  ratingBreakdown: [612, 498, 104, 48, 22],
-  reviews: [
-    {
-      id: 'r1',
-      author: 'Amara O.',
-      initials: 'AO',
-      avatarBg: `linear-gradient(135deg,${G0},${G2})`,
-      rating: 5,
-      date: '2 days ago',
-      comment:
-        "Absolutely incredible! The spicy fillet was perfectly cooked and the fries were still hot on delivery. Best meal I've had this week.",
-      reply: "Thank you, Amara! We're delighted you enjoyed it. See you again soon! 🍗",
-    },
-    {
-      id: 'r2',
-      author: 'Emeka J.',
-      initials: 'EJ',
-      avatarBg: 'linear-gradient(135deg,#1D4ED8,#7C3AED)',
-      rating: 4,
-      date: '5 days ago',
-      comment:
-        'Great taste but delivery took a bit longer than expected. The burger itself was 10/10 though.',
-      reply: undefined,
-    },
-    {
-      id: 'r3',
-      author: 'Fatima B.',
-      initials: 'FB',
-      avatarBg: 'linear-gradient(135deg,#DB2777,#9333EA)',
-      rating: 5,
-      date: '1 week ago',
-      comment: 'Ordered large size — worth every naira! The Zinger remains my go-to comfort meal.',
-      reply: 'We love hearing that, Fatima! The Large size is always a crowd pleaser 😊',
-    },
-    {
-      id: 'r4',
-      author: 'Chidi N.',
-      initials: 'CN',
-      avatarBg: 'linear-gradient(135deg,#D97706,#DC2626)',
-      rating: 4,
-      date: '2 weeks ago',
-      comment:
-        'Solid meal, consistent quality as always with KFC. Would like more drink options though.',
-      reply: undefined,
-    },
-  ],
-  deliveryEta: '18–25 min',
-  deliveryFee: '₦350',
-  pickupAvailable: true,
-  returnPolicy: 'Fresh quality guaranteed. Report issues within 30 min.',
-  related: [
-    {
-      id: 'p2',
-      name: 'Bucket ×8',
-      description: '8 pcs + coleslaw',
-      price: '₦12,500',
-      emoji: '🍗',
-      rating: 4.9,
-      badge: 'Best Seller',
-      badgeColor: '#F97316',
-      inStock: true,
-    },
-    {
-      id: 'p3',
-      name: 'Tower Burger',
-      description: 'Double cheese',
-      price: '₦3,900',
-      emoji: '🥪',
-      rating: 4.5,
-      inStock: true,
-    },
-    {
-      id: 'p8',
-      name: 'Loaded Fries',
-      description: 'Cheese & jalapeño',
-      price: '₦2,200',
-      emoji: '🍟',
-      rating: 4.6,
-      badge: 'New',
-      badgeColor: '#10B981',
-      inStock: true,
-    },
-    {
-      id: 'p4',
-      name: 'Twister Wrap',
-      description: 'Crispy + salsa',
-      price: '₦2,800',
-      emoji: '🌯',
-      rating: 4.4,
-      inStock: true,
-    },
-  ],
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
 // GALLERY
 // ─────────────────────────────────────────────────────────────────────────────
 function Gallery({
@@ -646,7 +464,7 @@ function ReviewsSection({ product }: { product: ProductDetail }) {
                 </div>
                 <div>
                   <p className="mb-0.5 text-[10px] font-semibold" style={{ color: G3 }}>
-                    KFC Nigeria replied
+                    Seller replied
                   </p>
                   <p
                     className="text-[12px] leading-relaxed"
@@ -902,8 +720,8 @@ export function ProductDetailScreen({
   onNotifications,
   onCart,
   onCheckout,
-  product: productProp = MOCK_PRODUCT,
-  merchant: merchantProp = MOCK_MERCHANT,
+  product: productProp,
+  merchant: merchantProp,
   productId,
   merchantId,
 }: ProductDetailScreenProps) {
@@ -943,9 +761,12 @@ export function ProductDetailScreen({
       .catch(() => {});
   }, [productId, merchantId]);
 
-  // Real path (a productId is routed): never fall back to the mock product/merchant.
-  const product = liveProduct ?? (productId ? NEUTRAL_PRODUCT : productProp);
-  const merchant = liveMerchant ?? (productId ? NEUTRAL_MERCHANT : merchantProp);
+  // Never fabricate a product. Live backend data wins; an explicitly supplied
+  // prop is next; otherwise render the neutral empty state. Previously the mock
+  // KFC "Zinger Meal" was the DEFAULT PROP, so any route that reached this
+  // screen without a productId showed a fake product to a real customer.
+  const product = liveProduct ?? productProp ?? NEUTRAL_PRODUCT;
+  const merchant = liveMerchant ?? merchantProp ?? NEUTRAL_MERCHANT;
   const isOutOfStock = product.availability === 'Out of Stock';
 
   const handleAddToCart = async () => {

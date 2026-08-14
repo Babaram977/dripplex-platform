@@ -5,7 +5,14 @@ import type { OrderDto, CustomerAddressDto, CartDto } from '../lib/api';
 import { BottomNavigation } from '../components/navigation';
 import type { NavTabKey } from '../components/navigation/BottomNavigation';
 import { auth } from '../lib/auth';
-import { getCurrentPosition, reverseGeocode } from '../lib/maps';
+import {
+  getCurrentPosition,
+  reverseGeocode,
+  addressPredictions,
+  geocodeAddress,
+  mapsEnabled,
+} from '../lib/maps';
+import type { AddressPrediction } from '../lib/maps';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -695,6 +702,19 @@ export function CheckoutScreen({
   const [addrBusy, setAddrBusy] = useState(false);
   const [addrError, setAddrError] = useState<string | null>(null);
 
+  // "Add New Address" form — lets a customer type their own delivery address
+  // instead of only being able to use device location. The typed address is
+  // resolved through Google (Places autocomplete → geocode) because the backend
+  // requires latitude/longitude on every saved address.
+  const [showAddAddr, setShowAddAddr] = useState(false);
+  const [addrQuery, setAddrQuery] = useState('');
+  const [addrPicked, setAddrPicked] = useState<AddressPrediction | null>(null);
+  const [addrSuggestions, setAddrSuggestions] = useState<AddressPrediction[]>([]);
+  const [addrLabel, setAddrLabel] = useState<'HOME' | 'WORK' | 'OTHER'>('HOME');
+  const [addrLine2, setAddrLine2] = useState('');
+  const [addrPhone, setAddrPhone] = useState(auth.getUser()?.phone ?? '');
+  const [addrName, setAddrName] = useState(recipientName || '');
+
   // Real server-side cart — the single source of truth for what is being bought
   // and every money figure shown here. The mock MERCHANTS array below is used
   // ONLY by the logged-out design-preview navigator (no real cart to read).
@@ -788,6 +808,104 @@ export function CheckoutScreen({
     }
   }, [recipientName, realAddresses, loadAddresses]);
 
+  // Address-bar autocomplete (debounced). Silently yields nothing when Google
+  // Maps isn't activated — the form then falls back to plain typed entry.
+  useEffect(() => {
+    if (!showAddAddr || addrPicked) return;
+    const q = addrQuery;
+    if (q.trim().length < 3) {
+      setAddrSuggestions([]);
+      return;
+    }
+    let alive = true;
+    const timer = setTimeout(() => {
+      void addressPredictions(q).then((s) => {
+        if (alive) setAddrSuggestions(s);
+      });
+    }, 300);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [addrQuery, showAddAddr, addrPicked]);
+
+  const resetAddAddrForm = useCallback(() => {
+    setShowAddAddr(false);
+    setAddrQuery('');
+    setAddrPicked(null);
+    setAddrSuggestions([]);
+    setAddrLine2('');
+    setAddrLabel('HOME');
+  }, []);
+
+  // Save a typed address: resolve it to structured fields + coordinates through
+  // Google, then create it via the real customer-addresses API. Coordinates are
+  // required by the backend, so if the address can't be resolved we say so
+  // instead of saving a wrong/placeholder location.
+  const saveTypedAddress = useCallback(async () => {
+    setAddrBusy(true);
+    setAddrError(null);
+    try {
+      if (!addrName.trim()) {
+        setAddrError('Enter the recipient name.');
+        return;
+      }
+      if (!/^\+?[0-9]{7,15}$/.test(addrPhone.replace(/[\s-]/g, ''))) {
+        setAddrError('Enter a valid phone number (7–15 digits).');
+        return;
+      }
+      if (addrQuery.trim().length < 3) {
+        setAddrError('Enter your delivery address.');
+        return;
+      }
+
+      const resolved = await geocodeAddress(
+        addrPicked ? { placeId: addrPicked.placeId } : { query: addrQuery },
+      );
+      if (!resolved) {
+        setAddrError(
+          mapsEnabled()
+            ? "We couldn't locate that address. Pick a suggestion from the list, or use “Use My Location”."
+            : 'Address lookup is unavailable right now — use “Use My Location” instead.',
+        );
+        return;
+      }
+
+      const created = await api.addresses.create({
+        label: addrLabel,
+        recipientName: addrName.trim(),
+        phone: addrPhone.replace(/[\s-]/g, ''),
+        addressLine1: resolved.addressLine1 || addrQuery.trim(),
+        addressLine2: addrLine2.trim() || undefined,
+        city: resolved.city || resolved.state || 'Unknown',
+        state: resolved.state || resolved.city || 'Unknown',
+        country: resolved.country || 'Nigeria',
+        postalCode: resolved.postalCode,
+        latitude: resolved.latitude,
+        longitude: resolved.longitude,
+        isDefault: !(realAddresses && realAddresses.length > 0),
+      });
+      setSelectedAddressId(created.id);
+      await loadAddresses();
+      resetAddAddrForm();
+      setShowAddrSheet(false);
+    } catch (e: unknown) {
+      setAddrError(e instanceof Error ? e.message : 'Could not save this address.');
+    } finally {
+      setAddrBusy(false);
+    }
+  }, [
+    addrName,
+    addrPhone,
+    addrQuery,
+    addrPicked,
+    addrLabel,
+    addrLine2,
+    realAddresses,
+    loadAddresses,
+    resetAddAddrForm,
+  ]);
+
   // Mock fallback only for the standalone design-preview (logged-out) navigator.
   const addresses = useMemo(
     () => ADDRESSES.map((a) => ({ ...a, name: recipientName || a.name })),
@@ -800,6 +918,18 @@ export function CheckoutScreen({
     WORK: 'Work',
     OTHER: 'Other',
   };
+  // A logged-in customer with no saved address must NOT be shown a mock address
+  // as though it were theirs (that's what made the delivery address look
+  // pre-filled and uneditable) — show an explicit empty state instead. The mock
+  // list stays only for the logged-out design preview.
+  const emptyAddress: Address = {
+    id: 'none',
+    label: 'Home',
+    name: recipientName || 'No delivery address yet',
+    phone: '',
+    line1: 'Add your delivery address to continue',
+    line2: 'Tap “Change Address” or “Use My Location”',
+  };
   const address: Address = selectedRealAddress
     ? {
         id: selectedRealAddress.id,
@@ -809,7 +939,9 @@ export function CheckoutScreen({
         line1: selectedRealAddress.addressLine1,
         line2: `${selectedRealAddress.city}, ${selectedRealAddress.state}`,
       }
-    : addresses[addressIdx];
+    : auth.isLoggedIn()
+      ? emptyAddress
+      : addresses[addressIdx];
   // ── Money: real cart totals when logged in; mock only for the design preview.
   const mockItemsTotal = MERCHANTS.reduce((s, m) => s + m.subtotal, 0);
   const mockDeliveryTotal = MERCHANTS.reduce((s, m) => {
@@ -819,14 +951,24 @@ export function CheckoutScreen({
   const mockPromoSavings = 500;
 
   const t = realCart?.totals ?? null;
-  const itemsTotal = t ? t.subtotal : mockItemsTotal;
-  const deliveryTotal = t ? t.deliveryFee : mockDeliveryTotal;
-  const discountTotal = t ? t.discount : mockPromoSavings;
+  // The demo figures belong to the logged-out design preview ONLY. Gating them on
+  // `realCart` was wrong: a signed-in customer whose cart is empty (or whose cart
+  // request failed) got the demo cart back — KFC + Shoprite, ₦26,000, a "DRIP20"
+  // discount and cashback that do not exist. A signed-in customer now sees zeros
+  // until a real cart loads.
+  const showDemoMoney = !auth.isLoggedIn();
+  const itemsTotal = t ? t.subtotal : showDemoMoney ? mockItemsTotal : 0;
+  const deliveryTotal = t ? t.deliveryFee : showDemoMoney ? mockDeliveryTotal : 0;
+  const discountTotal = t ? t.discount : showDemoMoney ? mockPromoSavings : 0;
   const taxTotal = t ? t.tax : 0;
   // GAP: the backend has no "cashback" concept (CartTotalsDto = subtotal/discount/
-  // tax/deliveryFee/total). Never fabricated for a real cart — mock preview only.
-  const cashbackTotal = t ? 0 : MERCHANTS.reduce((s, m) => s + m.cashback, 0);
-  const grandTotal = t ? t.total : mockItemsTotal + mockDeliveryTotal - mockPromoSavings;
+  // tax/deliveryFee/total). Never fabricated for a real customer — preview only.
+  const cashbackTotal = t || !showDemoMoney ? 0 : MERCHANTS.reduce((s, m) => s + m.cashback, 0);
+  const grandTotal = t
+    ? t.total
+    : showDemoMoney
+      ? mockItemsTotal + mockDeliveryTotal - mockPromoSavings
+      : 0;
 
   const cartItems = realCart?.items ?? [];
   const cartEmpty = auth.isLoggedIn() && cartLoaded && cartItems.length === 0;
@@ -1055,7 +1197,7 @@ export function CheckoutScreen({
         </div>
 
         <div className="mb-4">
-          {realCart ? (
+          {realCart || auth.isLoggedIn() ? (
             <>
               <SectionLabel>Order Details</SectionLabel>
               <div
@@ -1190,9 +1332,9 @@ export function CheckoutScreen({
           )}
         </div>
 
-        {/* Promo & Rewards — for a real cart, only when a real discount applies.
-            The mock DRIP20/cashback block is design-preview only. */}
-        {realCart ? (
+        {/* Promo & Rewards — for a real customer, only when a real discount
+            applies. The mock DRIP20/cashback block is design-preview only. */}
+        {realCart || auth.isLoggedIn() ? (
           discountTotal > 0 && (
             <div
               className="mb-4 rounded-2xl p-4"
@@ -1551,63 +1693,226 @@ export function CheckoutScreen({
               className="text-[16px] font-bold text-white"
               style={{ fontFamily: "'Poppins',sans-serif" }}
             >
-              Select Address
+              {showAddAddr ? 'Add New Address' : 'Select Address'}
             </p>
-            {addresses.map((addr, i) => (
-              <button
-                key={addr.id}
-                onClick={() => {
-                  setAddressIdx(i);
-                  setShowAddrSheet(false);
-                }}
-                className="flex items-start gap-3 rounded-2xl p-3.5 text-left transition-all"
-                style={{
-                  background: addressIdx === i ? 'rgba(43,172,82,.1)' : 'rgba(255,255,255,.03)',
-                  border: `1.5px solid ${addressIdx === i ? G2 : BORDER}`,
-                }}
-              >
-                <span className="mt-0.5 text-xl">📍</span>
-                <div>
-                  <p className="text-[13px] font-semibold text-white">
-                    {addr.name}{' '}
-                    <span className="font-normal" style={{ color: G3 }}>
-                      ({addr.label})
-                    </span>
+
+            {/* Saved addresses. Logged in → the customer's REAL addresses from the
+                backend; the mock list is only for the logged-out design preview. */}
+            {!showAddAddr &&
+              (auth.isLoggedIn() ? (
+                realAddresses === null ? (
+                  <p className="text-[12px]" style={{ color: MUTED }}>
+                    Loading your addresses…
                   </p>
-                  <p className="mt-0.5 text-[11px]" style={{ color: MUTED }}>
-                    {addr.line1}, {addr.line2}
+                ) : realAddresses.length === 0 ? (
+                  <p className="text-[12px]" style={{ color: MUTED }}>
+                    No saved addresses yet — add one below.
                   </p>
+                ) : (
+                  realAddresses.map((addr) => {
+                    const active = (selectedAddressId ?? realAddresses[0]?.id) === addr.id;
+                    return (
+                      <button
+                        key={addr.id}
+                        onClick={() => {
+                          setSelectedAddressId(addr.id);
+                          setShowAddrSheet(false);
+                        }}
+                        className="flex items-start gap-3 rounded-2xl p-3.5 text-left transition-all"
+                        style={{
+                          background: active ? 'rgba(43,172,82,.1)' : 'rgba(255,255,255,.03)',
+                          border: `1.5px solid ${active ? G2 : BORDER}`,
+                        }}
+                      >
+                        <span className="mt-0.5 text-xl">📍</span>
+                        <div>
+                          <p className="text-[13px] font-semibold text-white">
+                            {addr.recipientName}{' '}
+                            <span className="font-normal" style={{ color: G3 }}>
+                              ({labelMap[addr.label] ?? 'Home'})
+                            </span>
+                          </p>
+                          <p className="mt-0.5 text-[11px]" style={{ color: MUTED }}>
+                            {addr.addressLine1}
+                            {addr.city ? `, ${addr.city}` : ''}
+                            {addr.state ? `, ${addr.state}` : ''}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })
+                )
+              ) : (
+                addresses.map((addr, i) => (
+                  <button
+                    key={addr.id}
+                    onClick={() => {
+                      setAddressIdx(i);
+                      setShowAddrSheet(false);
+                    }}
+                    className="flex items-start gap-3 rounded-2xl p-3.5 text-left transition-all"
+                    style={{
+                      background: addressIdx === i ? 'rgba(43,172,82,.1)' : 'rgba(255,255,255,.03)',
+                      border: `1.5px solid ${addressIdx === i ? G2 : BORDER}`,
+                    }}
+                  >
+                    <span className="mt-0.5 text-xl">📍</span>
+                    <div>
+                      <p className="text-[13px] font-semibold text-white">
+                        {addr.name}{' '}
+                        <span className="font-normal" style={{ color: G3 }}>
+                          ({addr.label})
+                        </span>
+                      </p>
+                      <p className="mt-0.5 text-[11px]" style={{ color: MUTED }}>
+                        {addr.line1}, {addr.line2}
+                      </p>
+                    </div>
+                  </button>
+                ))
+              ))}
+
+            {/* Add-address form: type the address, pick a Google suggestion (which
+                supplies the coordinates the backend requires), then save. */}
+            {showAddAddr && (
+              <div className="flex flex-col gap-2.5">
+                <input
+                  value={addrName}
+                  onChange={(e) => setAddrName(e.target.value)}
+                  placeholder="Recipient name"
+                  className="rounded-xl px-3.5 py-3 text-[13px] text-white outline-none"
+                  style={{ background: 'rgba(255,255,255,.05)', border: `1px solid ${BORDER}` }}
+                />
+                <input
+                  value={addrPhone}
+                  onChange={(e) => setAddrPhone(e.target.value)}
+                  inputMode="tel"
+                  placeholder="Phone number"
+                  className="rounded-xl px-3.5 py-3 text-[13px] text-white outline-none"
+                  style={{ background: 'rgba(255,255,255,.05)', border: `1px solid ${BORDER}` }}
+                />
+                <div className="relative">
+                  <input
+                    value={addrQuery}
+                    onChange={(e) => {
+                      setAddrQuery(e.target.value);
+                      setAddrPicked(null);
+                    }}
+                    placeholder="Street address, area, city"
+                    className="w-full rounded-xl px-3.5 py-3 text-[13px] text-white outline-none"
+                    style={{ background: 'rgba(255,255,255,.05)', border: `1px solid ${BORDER}` }}
+                  />
+                  {addrSuggestions.length > 0 && (
+                    <div
+                      className="absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-xl"
+                      style={{ background: NAVY_CARD, border: `1px solid ${BORDER}` }}
+                    >
+                      {addrSuggestions.slice(0, 5).map((s) => (
+                        <button
+                          key={s.placeId}
+                          onClick={() => {
+                            setAddrPicked(s);
+                            setAddrQuery(s.description);
+                            setAddrSuggestions([]);
+                          }}
+                          className="block w-full px-3.5 py-2.5 text-left text-[12px] text-white"
+                          style={{ borderBottom: `1px solid ${BORDER}` }}
+                        >
+                          📍 {s.description}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              </button>
-            ))}
-            <button
-              className="flex items-center gap-3 rounded-2xl p-3.5"
-              style={{
-                background: 'rgba(43,172,82,.08)',
-                border: '1.5px dashed rgba(43,172,82,.35)',
-              }}
-            >
-              <div
-                className="flex h-8 w-8 items-center justify-center rounded-xl"
-                style={{ background: 'rgba(43,172,82,.2)' }}
-              >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke={G3}
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                >
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
+                <input
+                  value={addrLine2}
+                  onChange={(e) => setAddrLine2(e.target.value)}
+                  placeholder="Apartment, suite, landmark (optional)"
+                  className="rounded-xl px-3.5 py-3 text-[13px] text-white outline-none"
+                  style={{ background: 'rgba(255,255,255,.05)', border: `1px solid ${BORDER}` }}
+                />
+                <div className="flex gap-2">
+                  {(['HOME', 'WORK', 'OTHER'] as const).map((l) => (
+                    <button
+                      key={l}
+                      onClick={() => setAddrLabel(l)}
+                      className="flex-1 rounded-xl py-2.5 text-[12px] font-semibold"
+                      style={{
+                        background:
+                          addrLabel === l ? 'rgba(43,172,82,.15)' : 'rgba(255,255,255,.04)',
+                        border: `1.5px solid ${addrLabel === l ? G2 : BORDER}`,
+                        color: addrLabel === l ? G3 : MUTED,
+                      }}
+                    >
+                      {labelMap[l] ?? l}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={resetAddAddrForm}
+                    disabled={addrBusy}
+                    className="flex-1 rounded-xl py-3 text-[13px] font-semibold"
+                    style={{ background: 'rgba(255,255,255,.05)', color: MUTED }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => void saveTypedAddress()}
+                    disabled={addrBusy}
+                    className="flex-1 rounded-xl py-3 text-[13px] font-bold text-white"
+                    style={{
+                      background: addrBusy
+                        ? 'rgba(43,172,82,.4)'
+                        : `linear-gradient(135deg,${G0},${G2})`,
+                    }}
+                  >
+                    {addrBusy ? 'Saving…' : 'Save Address'}
+                  </button>
+                </div>
               </div>
-              <span className="text-[13px] font-semibold" style={{ color: G3 }}>
-                Add New Address
-              </span>
-            </button>
+            )}
+
+            {addrError && (
+              <p className="text-[11px]" style={{ color: '#F87171' }}>
+                {addrError}
+              </p>
+            )}
+
+            {!showAddAddr && (
+              <button
+                onClick={() => {
+                  setAddrError(null);
+                  setShowAddAddr(true);
+                }}
+                className="flex items-center gap-3 rounded-2xl p-3.5"
+                style={{
+                  background: 'rgba(43,172,82,.08)',
+                  border: '1.5px dashed rgba(43,172,82,.35)',
+                }}
+              >
+                <div
+                  className="flex h-8 w-8 items-center justify-center rounded-xl"
+                  style={{ background: 'rgba(43,172,82,.2)' }}
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke={G3}
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                  >
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                </div>
+                <span className="text-[13px] font-semibold" style={{ color: G3 }}>
+                  Add New Address
+                </span>
+              </button>
+            )}
           </div>
         </div>
       )}

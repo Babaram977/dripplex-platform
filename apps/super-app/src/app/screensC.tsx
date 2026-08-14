@@ -1411,8 +1411,9 @@ export const LINKED_ACCOUNTS_DATA: LinkedAccount[] = [
     id: 'phone',
     icon: '📱',
     label: 'Phone Number',
-    sub: '+234 801 234 5678 · Primary',
-    status: 'connected',
+    // Filled from the signed-in user at render time (see buildLinkedAccounts).
+    sub: 'Not connected',
+    status: 'disconnected',
   },
   { id: 'email', icon: '📧', label: 'Email Address', sub: 'Not connected', status: 'disconnected' },
   { id: 'apple', icon: '🍎', label: 'Apple ID', sub: 'Not connected', status: 'disconnected' },
@@ -1439,8 +1440,23 @@ export const LINKED_ACCOUNTS_DATA: LinkedAccount[] = [
   },
 ];
 
+// Seeds the phone/email rows from the REAL signed-in user instead of showing a
+// hardcoded number as the customer's own primary identity.
+function buildLinkedAccounts(): LinkedAccount[] {
+  const user = auth.getUser();
+  return LINKED_ACCOUNTS_DATA.map((row) => {
+    if (row.id === 'phone' && user?.phone) {
+      return { ...row, sub: `${user.phone} · Primary`, status: 'connected' as const };
+    }
+    if (row.id === 'email' && user?.email) {
+      return { ...row, sub: user.email, status: 'connected' as const };
+    }
+    return row;
+  });
+}
+
 export function LinkedAccountsScreen({ onBack }: { onBack: () => void }) {
-  const [accounts, setAccounts] = useState(LINKED_ACCOUNTS_DATA);
+  const [accounts, setAccounts] = useState(buildLinkedAccounts);
   const [saved, setSaved] = useState(false);
   const [sheet, setSheet] = useState<string | null>(null);
 
@@ -2120,74 +2136,6 @@ export function EmergencyProtectionScreen({ onBack }: { onBack: () => void }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // AUTH-026  ACCOUNT ACTIVITY DASHBOARD
 // ═══════════════════════════════════════════════════════════════════════════
-export const ACTIVITY_CARDS = [
-  {
-    id: 'login',
-    icon: '🔐',
-    label: 'Login Activity',
-    last: 'Today, 9:14 AM',
-    device: 'iPhone 16 Pro',
-    location: 'Kano, NG',
-    count: 12,
-    color: G3,
-    bg: 'rgba(43,172,82,.1)',
-  },
-  {
-    id: 'ride',
-    icon: '🚖',
-    label: 'Ride Activity',
-    last: 'Yesterday, 3:22 PM',
-    device: 'iPhone 16 Pro',
-    location: 'Kano, NG',
-    count: 4,
-    color: '#60A5FA',
-    bg: 'rgba(96,165,250,.1)',
-  },
-  {
-    id: 'orders',
-    icon: '🛍',
-    label: 'Marketplace Orders',
-    last: '3 days ago',
-    device: 'MacBook Pro',
-    location: 'Abuja, NG',
-    count: 7,
-    color: '#FCD34D',
-    bg: 'rgba(251,191,36,.1)',
-  },
-  {
-    id: 'wallet',
-    icon: '💳',
-    label: 'Wallet Transactions',
-    last: 'Today, 7:45 AM',
-    device: 'iPhone 16 Pro',
-    location: 'Kano, NG',
-    count: 23,
-    color: '#C084FC',
-    bg: 'rgba(192,132,252,.1)',
-  },
-  {
-    id: 'merchant',
-    icon: '🏪',
-    label: 'Merchant Activity',
-    last: '5 days ago',
-    device: 'Windows PC',
-    location: 'Lagos, NG',
-    count: 2,
-    color: '#FB923C',
-    bg: 'rgba(251,146,60,.1)',
-  },
-  {
-    id: 'security',
-    icon: '🛡',
-    label: 'Security Events',
-    last: 'Today, 3:02 AM',
-    device: 'Unknown',
-    location: 'Berlin, DE',
-    count: 1,
-    color: '#F87171',
-    bg: 'rgba(248,113,113,.1)',
-  },
-];
 
 export type ActivityFilter = 'today' | 'week' | 'month' | 'custom';
 
@@ -2379,120 +2327,6 @@ export function ActivityDashboardScreen({ onBack }: { onBack: () => void }) {
               </div>
             </button>
           ))}
-        </>
-      )}
-
-      {/* Activity summary (below notifications) */}
-      {notifications.length > 0 && (
-        <>
-          <div
-            className="mx-6 my-2 flex items-center justify-between rounded-2xl px-4 py-3"
-            style={{ background: 'rgba(43,172,82,.07)', border: '1px solid rgba(43,172,82,.18)' }}
-          >
-            <p className="text-[12px] font-semibold" style={{ color: G3 }}>
-              {ACTIVITY_CARDS.reduce((s, c) => s + c.count, 0)} account events
-            </p>
-            <p className="text-[11px]" style={{ color: MUTED }}>
-              {filter === 'today'
-                ? 'Today'
-                : filter === 'week'
-                  ? 'Last 7 days'
-                  : filter === 'month'
-                    ? 'Last 30 days'
-                    : 'Custom range'}
-            </p>
-          </div>
-          <p
-            className="px-6 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-widest"
-            style={{ color: MUTED }}
-          >
-            Activity Categories
-          </p>
-          {ACTIVITY_CARDS.map((card) => {
-            const isOpen = expanded === card.id;
-            return (
-              <div
-                key={card.id}
-                className="mx-6 mb-3 overflow-hidden rounded-2xl transition-all"
-                style={{
-                  background: NAVY_CARD,
-                  border: `1.5px solid ${isOpen ? card.color + '44' : BORDER}`,
-                }}
-              >
-                <button
-                  className="flex w-full items-center gap-3 p-4 text-left"
-                  onClick={() => setExpanded(isOpen ? null : card.id)}
-                >
-                  <div
-                    className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl text-2xl"
-                    style={{ background: card.bg }}
-                  >
-                    {card.icon}
-                  </div>
-                  <div className="flex-1">
-                    <p
-                      className="text-[14px] font-semibold"
-                      style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
-                    >
-                      {card.label}
-                    </p>
-                    <p className="text-[11px]" style={{ color: MUTED }}>
-                      Last: {card.last}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="rounded-full px-2.5 py-0.5 text-[12px] font-bold"
-                      style={{ background: card.bg, color: card.color }}
-                    >
-                      {card.count}
-                    </span>
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke={MUTED}
-                      strokeWidth="2.2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      style={{
-                        transform: isOpen ? 'rotate(180deg)' : 'none',
-                        transition: 'transform .25s',
-                      }}
-                    >
-                      <polyline points="6 9 12 15 18 9" />
-                    </svg>
-                  </div>
-                </button>
-                {isOpen && (
-                  <div
-                    className="flex flex-col gap-1.5 px-4 pb-4"
-                    style={{ borderTop: `1px solid ${BORDER}` }}
-                  >
-                    <p
-                      className="mb-1 pt-3 text-[10px] font-semibold uppercase tracking-widest"
-                      style={{ color: MUTED }}
-                    >
-                      Details
-                    </p>
-                    <p className="text-[12px]" style={{ color: MUTED }}>
-                      📱 Device: {card.device}
-                    </p>
-                    <p className="text-[12px]" style={{ color: MUTED }}>
-                      📍 Location: {card.location}
-                    </p>
-                    <p className="text-[12px]" style={{ color: MUTED }}>
-                      🕐 Last: {card.last}
-                    </p>
-                    <p className="text-[12px]" style={{ color: MUTED }}>
-                      📊 Events this period: {card.count}
-                    </p>
-                  </div>
-                )}
-              </div>
-            );
-          })}
         </>
       )}
 

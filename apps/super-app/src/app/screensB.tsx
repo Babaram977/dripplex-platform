@@ -2169,17 +2169,15 @@ export function AccountManagementScreen({
             style={{ background: 'rgba(255,255,255,.03)', border: `1.5px solid ${BORDER}` }}
           >
             <span style={{ fontSize: 16 }}>🇳🇬</span>
+            {/* The customer's REAL phone (identity is phone + optional email +
+                name). This was a hardcoded number shown to everyone as their
+                own. No verification flag exists on the session user, so no
+                "Verified" badge is asserted here. */}
             <span
               className="text-[14px]"
               style={{ color: 'rgba(255,255,255,.55)', fontFamily: "'Inter',sans-serif" }}
             >
-              +234 801 234 5678
-            </span>
-            <span
-              className="ml-auto rounded-full px-2 py-0.5 text-[9px] font-bold"
-              style={{ background: 'rgba(43,172,82,.15)', color: G3 }}
-            >
-              Verified
+              {dxUser?.phone ?? 'Not set'}
             </span>
           </div>
         </div>
