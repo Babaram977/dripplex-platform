@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { api, uploadFile } from '../lib/api';
 import { auth } from '../lib/auth';
+import { ImageWithFallback } from './components/figma/ImageWithFallback';
 import type {
   MerchantBusinessDto,
   MerchantProductDto,
@@ -2235,21 +2236,16 @@ function ProductsPage() {
               key={p.id}
               style={{ padding: 0, overflow: 'hidden', opacity: p.published ? 1 : 0.7 }}
             >
-              <div
+              <ImageWithFallback
+                src={p.imageUrl ?? undefined}
+                alt={p.name}
                 style={{
                   height: 80,
-                  background: p.imageUrl ? 'transparent' : NAVY_SURFACE,
-                  backgroundImage: p.imageUrl ? `url(${p.imageUrl})` : undefined,
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 32,
+                  width: '100%',
+                  objectFit: 'cover',
+                  display: 'block',
                 }}
-              >
-                {!p.imageUrl && '🍛'}
-              </div>
+              />
               <div style={{ padding: '12px 14px' }}>
                 <div
                   style={{
@@ -2377,25 +2373,18 @@ function ProductsPage() {
                 gap: 12,
               }}
             >
-              <div
+              <ImageWithFallback
+                src={editing?.imageUrl ?? undefined}
+                alt="Product photo"
                 style={{
                   width: 56,
                   height: 56,
                   borderRadius: 8,
                   flexShrink: 0,
-                  background: editing?.imageUrl ? 'transparent' : NAVY_CARD,
-                  backgroundImage: editing?.imageUrl ? `url(${editing.imageUrl})` : undefined,
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 22,
+                  objectFit: 'cover',
                   border: `1px solid ${BORDER}`,
                 }}
-              >
-                {!editing?.imageUrl && '🍛'}
-              </div>
+              />
               <div style={{ flex: 1 }}>
                 <div style={{ fontFamily: PP, fontSize: 13, fontWeight: 700, color: WHITE }}>
                   Product photo

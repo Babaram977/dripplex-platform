@@ -1017,15 +1017,12 @@ function Merchants({
                   background: MERCHANT_BG_FALLBACKS[idx % MERCHANT_BG_FALLBACKS.length],
                 }}
               >
-                {m.logoUrl ? (
-                  <img
-                    src={m.logoUrl}
-                    alt={m.businessName}
-                    className="h-14 w-14 rounded-xl object-cover"
-                  />
-                ) : (
-                  <span style={{ fontSize: 40 }}>🏪</span>
-                )}
+                <ImageWithFallback
+                  src={m.logoUrl ?? undefined}
+                  alt={m.businessName}
+                  className="h-14 w-14 rounded-xl object-cover"
+                  fallbackEmoji="🏪"
+                />
                 <div
                   className="absolute right-2.5 top-2.5 rounded-xl px-2 py-1 text-[9px] font-bold"
                   style={{
