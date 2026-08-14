@@ -117,6 +117,11 @@ export const envSchema = z.object({
   // Optional public/CDN base URL objects are served from; falls back to the
   // endpoint/bucket path when unset. Validated as a URL when non-empty.
   OBJECT_STORAGE_PUBLIC_BASE_URL: emptyOrUrl,
+  // Separate PUBLIC-read bucket for catalog/public assets (product images).
+  // Sensitive objects (KYC, identity) stay in OBJECT_STORAGE_BUCKET, which must
+  // remain private. Public routing only activates when BOTH this and
+  // OBJECT_STORAGE_PUBLIC_BASE_URL are set; otherwise behaviour is unchanged.
+  OBJECT_STORAGE_PUBLIC_BUCKET: z.string().default(''),
   // Merchant activation flag (staged launch). The Merchant module is fully
   // built but stays deployed-but-disabled until the controlled merchant pilot:
   // when 'false' (default) every merchant-facing endpoint is rejected by

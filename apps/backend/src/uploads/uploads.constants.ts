@@ -78,6 +78,25 @@ export const UPLOAD_FOLDER_PERMISSIONS: Record<UploadFolder, readonly string[]> 
   'delivery-proofs': ['rider:delivery:manage'],
 };
 
+/**
+ * Folders whose objects are PUBLIC-read (served from the public bucket + public
+ * base URL) rather than private (signed GET). Only non-sensitive, shopper-facing
+ * assets belong here. Everything NOT listed stays in the private bucket:
+ * kyc-documents, identity-verification, vehicle-photos, delivery-proofs must
+ * never be public. Public routing additionally requires OBJECT_STORAGE_PUBLIC_BUCKET
+ * + OBJECT_STORAGE_PUBLIC_BASE_URL to be configured (else these fall back to
+ * private, unchanged behaviour).
+ */
+export const PUBLIC_UPLOAD_FOLDERS: ReadonlySet<UploadFolder> = new Set<UploadFolder>([
+  'product-images',
+  'profile-photos',
+]);
+
+export function isPublicUploadKey(key: string): boolean {
+  const folder = key.split('/')[0] as UploadFolder;
+  return PUBLIC_UPLOAD_FOLDERS.has(folder);
+}
+
 /** File extension chosen server-side from the validated content type. */
 export const CONTENT_TYPE_EXTENSION: Record<UploadContentType, string> = {
   'image/jpeg': 'jpg',

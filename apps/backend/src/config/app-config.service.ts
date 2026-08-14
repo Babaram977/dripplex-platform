@@ -341,6 +341,13 @@ export class AppConfigService {
     return this.configService.get('OBJECT_STORAGE_PUBLIC_BASE_URL', { infer: true });
   }
 
+  // Separate PUBLIC-read bucket for catalog/public assets (product images, etc.).
+  // The default (private) bucket holds sensitive objects (KYC, identity) and must
+  // never be public — so public assets get their own bucket + public base URL.
+  public get objectStoragePublicBucket(): string {
+    return this.configService.get('OBJECT_STORAGE_PUBLIC_BUCKET', { infer: true });
+  }
+
   public get objectStorageConfigured(): boolean {
     return (
       this.objectStorageEndpoint !== '' &&
