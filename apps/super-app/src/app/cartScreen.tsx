@@ -762,7 +762,7 @@ export function CartScreen({
       {/* ── Scrollable body ── */}
       <div
         className="flex-1 overflow-y-auto px-4"
-        style={{ scrollbarWidth: 'none', paddingBottom: 120 }}
+        style={{ scrollbarWidth: 'none', paddingBottom: 180 }}
       >
         {isEmpty ? (
           <>
@@ -1210,7 +1210,14 @@ export function CartScreen({
       {!isEmpty && (
         <div
           className="absolute bottom-0 left-0 right-0 z-30"
-          style={{ background: `linear-gradient(to top,${NAVY_BASE} 80%,transparent)` }}
+          style={{
+            background: `linear-gradient(to top,${NAVY_BASE} 80%,transparent)`,
+            // Reserve space for the absolutely-positioned BottomNavigation (~91px)
+            // so the "Proceed to Checkout" row sits ABOVE it instead of being
+            // hidden behind it (the nav is position:absolute bottom-0 and would
+            // otherwise overlap the button).
+            paddingBottom: 92,
+          }}
         >
           <div className="flex items-center gap-3 px-5 pb-2 pt-2">
             <div className="flex flex-col">
