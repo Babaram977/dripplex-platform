@@ -170,10 +170,10 @@ import type { DeliveryJobDto, RideOfferDto, RideDto } from '../lib/api';
 function DesktopFrame({ children }: { children: React.ReactNode }) {
   return (
     <div
-      className="relative overflow-hidden"
+      className="relative flex flex-col overflow-hidden"
       style={{
         width: 1100,
-        height: 700,
+        height: 'min(700px, 100dvh - 24px)',
         borderRadius: 16,
         boxShadow: `0 0 0 1.5px rgba(255,255,255,.09),0 0 0 10px #07080F,0 0 0 11.5px rgba(255,255,255,.05),0 60px 140px rgba(0,0,0,.85),0 0 120px rgba(43,172,82,.07)`,
       }}
@@ -208,7 +208,7 @@ function DesktopFrame({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </div>
-      <div style={{ height: 664, overflow: 'hidden' }}>{children}</div>
+      <div className="flex-1 overflow-hidden">{children}</div>
     </div>
   );
 }
@@ -221,11 +221,15 @@ function PhoneFrame({ children }: { children: React.ReactNode }) {
       className="relative overflow-hidden"
       style={{
         width: 390,
-        height: 844,
+        // Single definite height so the child screen's `h-full` resolves to the
+        // SAME value the frame is clipped to. Previously height:844 + a separate
+        // maxHeight:90dvh let the screen render 844px tall inside a shorter
+        // clipped frame, pushing the sticky "Proceed to Checkout" bar below the
+        // frame's overflow:hidden edge (it disappeared on short viewports).
+        height: 'min(844px, 100dvh - 24px)',
         borderRadius: 52,
         background: NAVY_BASE,
         boxShadow: `0 0 0 1.5px rgba(255,255,255,.09),0 0 0 12px #07080F,0 0 0 13.5px rgba(255,255,255,.055),0 60px 140px rgba(0,0,0,.85),0 0 120px rgba(43,172,82,.07)`,
-        maxHeight: '90dvh',
       }}
     >
       <div
@@ -1432,8 +1436,9 @@ function AppShell() {
 
   return (
     <div
-      className="flex min-h-screen gap-0"
+      className="flex gap-0 overflow-hidden"
       style={{
+        height: '100dvh',
         background: `radial-gradient(ellipse at 50% 0%,#0D1E33 0%,#050A12 65%,#030709 100%)`,
       }}
     >
@@ -1441,10 +1446,10 @@ function AppShell() {
 
       {/* ── Module Navigator sidebar ─────────────────────────────────────── */}
       <div
-        className="flex flex-shrink-0 flex-col"
+        className="flex min-h-0 flex-shrink-0 flex-col"
         style={{
           width: navOpen ? 220 : 36,
-          minHeight: '100vh',
+          height: '100%',
           transition: 'width .25s ease',
           overflow: 'hidden',
         }}
@@ -1575,7 +1580,7 @@ function AppShell() {
       </div>
 
       {/* ── Canvas ───────────────────────────────────────────────────────── */}
-      <div className="flex flex-1 items-center justify-center overflow-auto py-10">
+      <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto py-3">
         <div
           style={{
             opacity: fading ? 0 : 1,
