@@ -2140,16 +2140,29 @@ function ProductsPage() {
     }
   };
 
-  // Upload a product photo: file → signed R2 upload → attach its URL.
+  // Upload a product photo: file → signed R2 upload → attach its URL, then make
+  // it the product's ONLY image so it becomes the primary (displayed) photo.
+  // The catalogue's primary image is the lowest-`position` one, but addImage
+  // appends at the end — so without this cleanup a freshly uploaded photo sits
+  // *behind* any older (often broken) image and never shows. This slot is a
+  // single-photo slot, so replace rather than append: keep the new image, drop
+  // the rest. Best-effort deletes — a failed delete just leaves an extra image.
   const uploadImage = async (file: File | undefined) => {
     if (!editId || !file) return;
     setSaveErr('');
     setImgBusy(true);
     try {
       const url = await uploadFile(file, 'product-images');
-      await api.merchant.addProductImage(editId, url);
+      const updated = await api.merchant.addProductImage(editId, url);
+      const imgs = updated.images ?? [];
+      const keep = imgs.find((i) => i.url === url) ?? imgs[imgs.length - 1];
+      await Promise.all(
+        imgs
+          .filter((i) => keep && i.id !== keep.id)
+          .map((i) => api.merchant.removeProductImage(editId, i.id).catch(() => undefined)),
+      );
       await fetchProducts();
-      flash('Photo added');
+      flash('Photo updated');
     } catch (e: unknown) {
       setSaveErr((e as { message?: string }).message ?? 'Image upload failed. Try again.');
     } finally {

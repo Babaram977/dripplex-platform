@@ -544,7 +544,7 @@ export interface RawMerchantProduct {
   sku?: string | null;
   status: string;
   publishedAt: string | null;
-  images?: { url: string }[];
+  images?: { id: string; url: string; position: number }[];
   inventory?: {
     available?: number;
     quantity?: number;
