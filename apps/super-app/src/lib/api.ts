@@ -902,6 +902,25 @@ export interface LoyaltyLedgerEntryDto {
   expiresAt: string | null;
   createdAt: string;
 }
+/**
+ * A live campaign from the promotions engine (GET /customer/promotions/active).
+ * Only the fields the app needs to describe an offer honestly — the discount
+ * itself is calculated server-side at pricing time, never here.
+ */
+export interface PromotionActiveDto {
+  id: string;
+  code: string | null;
+  name: string;
+  type: string;
+  domains: string[];
+  percentOff: number | null;
+  amountOff: number | null;
+  maxDiscount: number | null;
+  minOrderAmount: number | null;
+  perUserLimit: number | null;
+  endsAt: string | null;
+}
+
 export interface LoyaltyOverviewDto {
   account: {
     id: string;
@@ -1795,6 +1814,15 @@ export const api = {
   },
 
   // ── LOYALTY (customer) ──────────────────────────────────────────────────────
+  // ── PROMOTIONS (customer) ───────────────────────────────────────────────────
+  // Real campaigns from the promotions engine. Codeless campaigns apply
+  // automatically at pricing time (cart totals / ride estimate already carry the
+  // discount) — this is only for SHOWING customers what is currently on offer,
+  // so the app never advertises a discount the backend would not actually give.
+  promotions: {
+    active: () => dx<PromotionActiveDto[]>('GET', '/customer/promotions/active'),
+  },
+
   // Points accrue automatically server-side on domain events (order paid +50,
   // delivery completed +25, registration +100, coupon +10). The app only reads.
   loyalty: {

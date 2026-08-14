@@ -193,8 +193,26 @@ export class RidesService {
     subtotal: number,
     couponCode: string | undefined,
   ): Promise<{ promotionId: string | null; promoDiscount: number }> {
+    // No coupon typed → fall back to automatic (codeless) RIDE promotions, the
+    // same way the marketplace already does via PricingService.evaluateForCart.
+    // This is what makes an automatic campaign such as "Free First Ride"
+    // (perUserLimit: 1) apply without the rider having to know a code.
     if (!couponCode) {
-      return { promotionId: null, promoDiscount: 0 };
+      const auto = await this.promotionsService.previewPromotion({
+        userId: customerId,
+        domain: PromotionDomain.RIDE,
+        subtotal,
+        eligibility: { rideType },
+      });
+      // A ride records ONE promotionId, so only a single promotion may be
+      // attached. Take the best (selectDiscounts orders by priority) and use
+      // that promotion's own discount — never the stacked total, which would
+      // credit one promotion with another's savings at redemption time.
+      const best = auto.discounts[0];
+      if (!best || best.discountAmount <= 0) {
+        return { promotionId: null, promoDiscount: 0 };
+      }
+      return { promotionId: best.promotionId, promoDiscount: best.discountAmount };
     }
     const preview = await this.promotionsService.previewSinglePromotion({
       userId: customerId,

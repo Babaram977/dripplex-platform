@@ -684,6 +684,14 @@ async function main() {
   // spawns preDeployCommand as a single argv with no shell, so it must remain
   // the one command: `node prisma/seed-rbac.cjs`.
   execFileSync('node', ['prisma/seed-admin.cjs'], { stdio: 'inherit' });
+
+  // Commercial launch campaigns (prisma/seed-promotions.cjs). Chained for the
+  // same reason as seed-admin: preDeployCommand must stay a single command.
+  // Safe on every deploy — it only ever creates campaigns in DRAFT (inert until
+  // a human activates them in the Ops Console) and never touches a campaign
+  // that is already ACTIVE/PAUSED or has redemptions, so an approved budget
+  // can't be silently reset.
+  execFileSync('node', ['prisma/seed-promotions.cjs'], { stdio: 'inherit' });
 }
 
 main()

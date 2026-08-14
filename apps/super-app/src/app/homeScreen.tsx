@@ -3,6 +3,7 @@ import { G0, G2, G3, NAVY_DEEP, NAVY_CARD, NAVY_SURFACE, BORDER, MUTED } from '.
 import { api } from '../lib/api';
 import { auth } from '../lib/auth';
 import type {
+  PromotionActiveDto,
   MerchantSummaryDto,
   ProductSummaryDto,
   CategoryDto,
@@ -806,6 +807,90 @@ function PartnerEntryCard({
 // ─────────────────────────────────────────────────────────────────────────────
 // CATEGORIES
 // ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Live campaigns from the promotions engine. Every line is derived from the
+ * campaign's real configuration (percent/amount off, cap, per-user limit), so
+ * the app can never advertise a discount the backend would not actually apply.
+ * Renders nothing when there are no ACTIVE campaigns — a DRAFT or paused
+ * campaign is invisible here, which is what makes it safe to ship campaigns
+ * inert and switch them on later from the Ops Console.
+ */
+function LiveOffers() {
+  const [offers, setOffers] = useState<PromotionActiveDto[] | null>(null);
+
+  useEffect(() => {
+    if (!auth.isLoggedIn()) return;
+    let alive = true;
+    void api.promotions
+      .active()
+      .then((list) => {
+        if (alive) setOffers(list);
+      })
+      .catch(() => {
+        if (alive) setOffers([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  if (!offers || offers.length === 0) return null;
+
+  const naira = (n: number) => `₦${n.toLocaleString()}`;
+  const headline = (p: PromotionActiveDto): string => {
+    if (p.percentOff !== null) return `${p.percentOff}% off`;
+    if (p.amountOff !== null) return `${naira(p.amountOff)} off`;
+    return 'Offer';
+  };
+  const terms = (p: PromotionActiveDto): string => {
+    const parts: string[] = [];
+    if (p.maxDiscount !== null) parts.push(`up to ${naira(p.maxDiscount)}`);
+    if (p.minOrderAmount !== null) parts.push(`on orders over ${naira(p.minOrderAmount)}`);
+    if (p.perUserLimit === 1) parts.push('once per customer');
+    if (p.code) parts.push(`code ${p.code}`);
+    else parts.push('applied automatically');
+    return parts.join(' · ');
+  };
+
+  return (
+    <div className="mb-5">
+      <Row title="Offers" />
+      <div className="flex gap-3 overflow-x-auto px-5" style={{ scrollbarWidth: 'none' }}>
+        {offers.map((p) => (
+          <div
+            key={p.id}
+            className="shrink-0 rounded-2xl p-4"
+            style={{
+              minWidth: 232,
+              background: 'linear-gradient(135deg,#0B2317,#123A22)',
+              border: `1px solid rgba(43,172,82,.28)`,
+            }}
+          >
+            <p
+              className="text-[18px] font-bold"
+              style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
+            >
+              {headline(p)}
+            </p>
+            <p
+              className="mt-0.5 text-[12px] font-semibold"
+              style={{ color: G3, fontFamily: "'Inter',sans-serif" }}
+            >
+              {p.name}
+            </p>
+            <p
+              className="mt-1.5 text-[10px] leading-relaxed"
+              style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
+            >
+              {terms(p)}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function Categories() {
   const [active, setActive] = useState('Supermarkets');
   return (
@@ -1467,6 +1552,7 @@ export function HomeScreen({
           <QuickActions onSelect={handleQuickAction} />
         </div>
 
+        <LiveOffers />
         <AICard onAsk={() => setShowAI(true)} />
         {onBecomePartner && <PartnerEntryCard onOpen={onBecomePartner} />}
         <Categories />
