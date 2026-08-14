@@ -1438,6 +1438,33 @@ function AppShell() {
   const [openGroup, setOpenGroup] = useState<string | null>('Driver App');
   const [navOpen, setNavOpen] = useState(true);
 
+  // ── Design Preview gate ──────────────────────────────────────────────────
+  // The module-navigator sidebar lists every screen in the platform, including
+  // preview-only screens that are not part of any real user journey. It used to
+  // render unconditionally, so a signed-in customer could open it and land on
+  // demo data. It is now OFF by default and only shown when deliberately
+  // enabled, so the team keeps it and customers never see it:
+  //   • VITE_DESIGN_PREVIEW=true   — build/env flag (e.g. a preview deployment)
+  //   • ?preview=1 in the URL      — remembered for the session on this device
+  //   • ?preview=0                 — turns it back off
+  // Local `pnpm dev` keeps it on automatically so day-to-day work is unchanged.
+  const showDesignPreview = React.useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    const params = new URLSearchParams(window.location.search);
+    const param = params.get('preview');
+    if (param === '1') {
+      window.sessionStorage.setItem('dx.designPreview', '1');
+      return true;
+    }
+    if (param === '0') {
+      window.sessionStorage.removeItem('dx.designPreview');
+      return false;
+    }
+    if (window.sessionStorage.getItem('dx.designPreview') === '1') return true;
+    if (import.meta.env.DEV) return true;
+    return String(import.meta.env.VITE_DESIGN_PREVIEW ?? '') === 'true';
+  }, []);
+
   return (
     <div
       className="flex gap-0 overflow-hidden"
@@ -1448,140 +1475,142 @@ function AppShell() {
     >
       <style>{GLOBAL_STYLES}</style>
 
-      {/* ── Module Navigator sidebar ─────────────────────────────────────── */}
-      <div
-        className="flex min-h-0 flex-shrink-0 flex-col"
-        style={{
-          width: navOpen ? 220 : 36,
-          height: '100%',
-          transition: 'width .25s ease',
-          overflow: 'hidden',
-        }}
-      >
-        {/* collapse toggle */}
-        <div className="flex justify-end px-2 pb-2 pt-4">
-          <button
-            onClick={() => setNavOpen((o) => !o)}
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 8,
-              border: '1px solid rgba(255,255,255,.12)',
-              background: '#0D1B2E',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              flexShrink: 0,
-            }}
-          >
-            <span style={{ color: 'rgba(255,255,255,.6)', fontSize: 13 }}>
-              {navOpen ? '‹' : '›'}
-            </span>
-          </button>
-        </div>
-
+      {/* ── Module Navigator sidebar (Design Preview only) ───────────────── */}
+      {showDesignPreview && (
         <div
-          className="flex flex-1 flex-col gap-2 overflow-y-auto pb-8 pl-4 pr-2"
-          style={{ scrollbarWidth: 'none', opacity: navOpen ? 1 : 0, transition: 'opacity .2s' }}
+          className="flex min-h-0 flex-shrink-0 flex-col"
+          style={{
+            width: navOpen ? 220 : 36,
+            height: '100%',
+            transition: 'width .25s ease',
+            overflow: 'hidden',
+          }}
         >
-          {/* Brand */}
-          <div className="mb-4">
-            <p
+          {/* collapse toggle */}
+          <div className="flex justify-end px-2 pb-2 pt-4">
+            <button
+              onClick={() => setNavOpen((o) => !o)}
               style={{
-                fontFamily: "'Poppins',sans-serif",
-                fontSize: 16,
-                fontWeight: 700,
-                color: '#fff',
-                letterSpacing: '-0.02em',
+                width: 28,
+                height: 28,
+                borderRadius: 8,
+                border: '1px solid rgba(255,255,255,.12)',
+                background: '#0D1B2E',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                flexShrink: 0,
               }}
             >
-              DrippleX
-            </p>
-            <p
-              style={{
-                fontFamily: "'Inter',sans-serif",
-                fontSize: 11,
-                color: 'rgba(255,255,255,.35)',
-                marginTop: 2,
-              }}
-            >
-              {MODULE_GROUPS.reduce((s, g) => s + g.screens.length, 0)} screens · Design Preview
-            </p>
+              <span style={{ color: 'rgba(255,255,255,.6)', fontSize: 13 }}>
+                {navOpen ? '‹' : '›'}
+              </span>
+            </button>
           </div>
 
-          {MODULE_GROUPS.map((group) => {
-            const isOpen = openGroup === group.label;
-            return (
-              <div key={group.label}>
-                {/* Group header */}
-                <button
-                  onClick={() => setOpenGroup(isOpen ? null : group.label)}
-                  className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 transition-all"
-                  style={{
-                    background: isOpen ? `${group.color}14` : 'transparent',
-                    border: `1px solid ${isOpen ? `${group.color}30` : 'transparent'}`,
-                  }}
-                >
-                  <span style={{ fontSize: 14 }}>{group.emoji}</span>
-                  <span
-                    style={{
-                      fontFamily: "'Inter',sans-serif",
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: isOpen ? group.color : 'rgba(255,255,255,.5)',
-                      flex: 1,
-                      textAlign: 'left',
-                    }}
-                  >
-                    {group.label}
-                  </span>
-                  <span
-                    style={{
-                      fontFamily: "'Inter',sans-serif",
-                      fontSize: 10,
-                      color: 'rgba(255,255,255,.25)',
-                    }}
-                  >
-                    {isOpen ? '▲' : '▼'}
-                  </span>
-                </button>
+          <div
+            className="flex flex-1 flex-col gap-2 overflow-y-auto pb-8 pl-4 pr-2"
+            style={{ scrollbarWidth: 'none', opacity: navOpen ? 1 : 0, transition: 'opacity .2s' }}
+          >
+            {/* Brand */}
+            <div className="mb-4">
+              <p
+                style={{
+                  fontFamily: "'Poppins',sans-serif",
+                  fontSize: 16,
+                  fontWeight: 700,
+                  color: '#fff',
+                  letterSpacing: '-0.02em',
+                }}
+              >
+                DrippleX
+              </p>
+              <p
+                style={{
+                  fontFamily: "'Inter',sans-serif",
+                  fontSize: 11,
+                  color: 'rgba(255,255,255,.35)',
+                  marginTop: 2,
+                }}
+              >
+                {MODULE_GROUPS.reduce((s, g) => s + g.screens.length, 0)} screens · Design Preview
+              </p>
+            </div>
 
-                {/* Screen list */}
-                {isOpen && (
-                  <div className="ml-2 mt-1 flex flex-col gap-0.5">
-                    {group.screens.map((s) => {
-                      const active = screen === s.key;
-                      return (
-                        <button
-                          key={s.key}
-                          onClick={() => go(s.key)}
-                          className="w-full rounded-lg px-3 py-2 text-left transition-all active:scale-[.97]"
-                          style={{
-                            background: active ? `${group.color}20` : 'transparent',
-                            borderLeft: `2px solid ${active ? group.color : 'transparent'}`,
-                          }}
-                        >
-                          <span
+            {MODULE_GROUPS.map((group) => {
+              const isOpen = openGroup === group.label;
+              return (
+                <div key={group.label}>
+                  {/* Group header */}
+                  <button
+                    onClick={() => setOpenGroup(isOpen ? null : group.label)}
+                    className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 transition-all"
+                    style={{
+                      background: isOpen ? `${group.color}14` : 'transparent',
+                      border: `1px solid ${isOpen ? `${group.color}30` : 'transparent'}`,
+                    }}
+                  >
+                    <span style={{ fontSize: 14 }}>{group.emoji}</span>
+                    <span
+                      style={{
+                        fontFamily: "'Inter',sans-serif",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: isOpen ? group.color : 'rgba(255,255,255,.5)',
+                        flex: 1,
+                        textAlign: 'left',
+                      }}
+                    >
+                      {group.label}
+                    </span>
+                    <span
+                      style={{
+                        fontFamily: "'Inter',sans-serif",
+                        fontSize: 10,
+                        color: 'rgba(255,255,255,.25)',
+                      }}
+                    >
+                      {isOpen ? '▲' : '▼'}
+                    </span>
+                  </button>
+
+                  {/* Screen list */}
+                  {isOpen && (
+                    <div className="ml-2 mt-1 flex flex-col gap-0.5">
+                      {group.screens.map((s) => {
+                        const active = screen === s.key;
+                        return (
+                          <button
+                            key={s.key}
+                            onClick={() => go(s.key)}
+                            className="w-full rounded-lg px-3 py-2 text-left transition-all active:scale-[.97]"
                             style={{
-                              fontFamily: "'Inter',sans-serif",
-                              fontSize: 12,
-                              color: active ? group.color : 'rgba(255,255,255,.45)',
-                              fontWeight: active ? 600 : 400,
+                              background: active ? `${group.color}20` : 'transparent',
+                              borderLeft: `2px solid ${active ? group.color : 'transparent'}`,
                             }}
                           >
-                            {s.label}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                            <span
+                              style={{
+                                fontFamily: "'Inter',sans-serif",
+                                fontSize: 12,
+                                color: active ? group.color : 'rgba(255,255,255,.45)',
+                                fontWeight: active ? 600 : 400,
+                              }}
+                            >
+                              {s.label}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ── Canvas ───────────────────────────────────────────────────────── */}
       <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto py-3">
