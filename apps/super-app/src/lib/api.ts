@@ -891,6 +891,44 @@ export interface SessionDto {
   expiresAt: string;
 }
 
+// Loyalty (customer). Points accrue automatically on domain events; balance is
+// `account.pointsBalance`, lifetime is `account.lifetimePoints`.
+export interface LoyaltyLedgerEntryDto {
+  id: string;
+  points: number;
+  reason: string;
+  referenceType: string | null;
+  referenceId: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+}
+export interface LoyaltyOverviewDto {
+  account: {
+    id: string;
+    userId: string;
+    pointsBalance: number;
+    lifetimePoints: number;
+    tier: string;
+    createdAt: string;
+    updatedAt: string;
+  };
+  nextTier: { tier: string; pointsRequired: number } | null;
+  achievements: {
+    id: string;
+    earnedAt: string;
+    achievement: {
+      id: string;
+      code: string;
+      name: string;
+      description: string | null;
+      pointsReward: number;
+      active: boolean;
+      createdAt: string;
+      updatedAt: string;
+    };
+  }[];
+}
+
 // Notifications
 export interface NotificationDto {
   id: string;
@@ -1754,6 +1792,22 @@ export const api = {
       ),
     markRead: (id: string) => dx<void>('PATCH', `/customer/notifications/${id}/read`),
     markAllRead: () => dx<void>('POST', '/customer/notifications/mark-all-read'),
+  },
+
+  // ── LOYALTY (customer) ──────────────────────────────────────────────────────
+  // Points accrue automatically server-side on domain events (order paid +50,
+  // delivery completed +25, registration +100, coupon +10). The app only reads.
+  loyalty: {
+    get: () => dx<LoyaltyOverviewDto>('GET', '/customer/loyalty'),
+    history: (params?: { page?: number; pageSize?: number }) =>
+      dx<PaginatedResult<LoyaltyLedgerEntryDto>>(
+        'GET',
+        '/customer/loyalty/history',
+        undefined,
+        params,
+      ),
+    redeem: (points: number) =>
+      dx<LoyaltyOverviewDto>('POST', '/customer/loyalty/redeem', { points }),
   },
 };
 
