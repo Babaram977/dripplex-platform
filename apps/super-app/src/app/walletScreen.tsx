@@ -1,7 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../lib/api';
 import { auth } from '../lib/auth';
-import type { WalletDto, WalletLedgerEntryDto, CustomerBankAccountDto } from '../lib/api';
+import type {
+  WalletDto,
+  WalletLedgerEntryDto,
+  CustomerBankAccountDto,
+  LoyaltyOverviewDto,
+  LoyaltyLedgerEntryDto,
+} from '../lib/api';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DESIGN TOKENS
@@ -2345,35 +2351,55 @@ export function PaymentMethodsScreen({
 // ─────────────────────────────────────────────────────────────────────────────
 // 7. REWARDS SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
-const REWARD_CATEGORIES = [
+// The real DrippleX loyalty accrual rules (backend LOYALTY_EVENT_POINTS) — these
+// points already accumulate automatically on these events.
+const EARN_RULES = [
   {
-    id: 'ride',
-    label: 'Ride Cashback',
-    amount: 0,
-    icon: '🚗',
-    color: INFO,
-    desc: '2% on every ride',
-  },
-  {
-    id: 'referral',
-    label: 'Referral Bonus',
-    amount: 0,
-    icon: '👥',
+    id: 'order',
+    label: 'Complete an order',
+    desc: 'Earned when your order is paid',
+    points: 50,
+    icon: '🛍️',
     color: G2,
-    desc: '₦350 per friend',
   },
   {
-    id: 'welcome',
-    label: 'Welcome Bonus',
-    amount: 0,
+    id: 'delivery',
+    label: 'Delivery completed',
+    desc: 'When a delivery is finished',
+    points: 25,
+    icon: '🛵',
+    color: INFO,
+  },
+  {
+    id: 'signup',
+    label: 'Sign-up bonus',
+    desc: 'One-time, on registration',
+    points: 100,
     icon: '🎁',
     color: WARNING,
-    desc: 'One-time signup',
+  },
+  {
+    id: 'coupon',
+    label: 'Use a promo code',
+    desc: 'When a coupon is redeemed',
+    points: 10,
+    icon: '🏷️',
+    color: STAR,
   },
 ];
 
+const fmtLoyaltyDate = (iso: string): string => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? ''
+    : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+};
+
 export function RewardsScreen({ onBack }: { onBack?: () => void }) {
   const [copied, setCopied] = useState(false);
+  const [loyalty, setLoyalty] = useState<LoyaltyOverviewDto | null>(null);
+  const [history, setHistory] = useState<LoyaltyLedgerEntryDto[]>([]);
+  const [loading, setLoading] = useState(true);
   const user = auth.getUser();
   const referralCode = `DRPX-${(user?.firstName ?? 'USER').toUpperCase().slice(0, 5)}`;
   const handleCopy = () => {
@@ -2381,6 +2407,30 @@ export function RewardsScreen({ onBack }: { onBack?: () => void }) {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  useEffect(() => {
+    if (!auth.isLoggedIn()) {
+      setLoading(false);
+      return;
+    }
+    api.loyalty
+      .get()
+      .then(setLoyalty)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+    api.loyalty
+      .history({ pageSize: 8 })
+      .then((r) => setHistory(r.items ?? []))
+      .catch(() => {});
+  }, []);
+
+  const points = loyalty?.account.pointsBalance ?? 0;
+  const tier = loyalty?.account.tier ?? 'BRONZE';
+  const lifetime = loyalty?.account.lifetimePoints ?? 0;
+  const nextTier = loyalty?.nextTier ?? null;
+  const progressPct = nextTier
+    ? Math.min(100, Math.round((lifetime / nextTier.pointsRequired) * 100))
+    : 100;
 
   return (
     <Screen>
@@ -2425,7 +2475,7 @@ export function RewardsScreen({ onBack }: { onBack?: () => void }) {
               textTransform: 'uppercase',
             }}
           >
-            Rewards
+            DrippleX Points
           </div>
           <div
             style={{
@@ -2436,17 +2486,42 @@ export function RewardsScreen({ onBack }: { onBack?: () => void }) {
               marginBottom: 2,
             }}
           >
-            Coming soon
+            {loading ? '—' : `${points.toLocaleString()} pts`}
           </div>
-          <div style={{ fontFamily: IT, fontSize: 13, color: 'rgba(255,255,255,.45)' }}>
-            Cashback and referral rewards are launching in V2
+          <div style={{ fontFamily: IT, fontSize: 13, color: 'rgba(255,255,255,.55)' }}>
+            {tier.charAt(0) + tier.slice(1).toLowerCase()} tier
+            {nextTier
+              ? ` · ${Math.max(0, nextTier.pointsRequired - lifetime).toLocaleString()} pts to ${
+                  nextTier.tier.charAt(0) + nextTier.tier.slice(1).toLowerCase()
+                }`
+              : ' · Top tier'}
           </div>
+          {nextTier && (
+            <div
+              style={{
+                marginTop: 12,
+                height: 6,
+                borderRadius: 3,
+                background: 'rgba(255,255,255,.15)',
+                overflow: 'hidden',
+              }}
+            >
+              <div
+                style={{
+                  width: `${progressPct}%`,
+                  height: '100%',
+                  borderRadius: 3,
+                  background: G3,
+                }}
+              />
+            </div>
+          )}
         </div>
 
         <div className="px-4" style={{ marginBottom: 20 }}>
-          <SectionLabel>Reward categories</SectionLabel>
+          <SectionLabel>How you earn points</SectionLabel>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
-            {REWARD_CATEGORIES.map((r) => (
+            {EARN_RULES.map((r) => (
               <div
                 key={r.id}
                 style={{
@@ -2457,7 +2532,6 @@ export function RewardsScreen({ onBack }: { onBack?: () => void }) {
                   display: 'flex',
                   alignItems: 'center',
                   gap: 14,
-                  opacity: 0.6,
                 }}
               >
                 <IconCircle bg={`${r.color}22`} size={44}>
@@ -2469,11 +2543,70 @@ export function RewardsScreen({ onBack }: { onBack?: () => void }) {
                   </div>
                   <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>{r.desc}</div>
                 </div>
-                <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>Coming V2</div>
+                <div style={{ fontFamily: PP, fontSize: 13, fontWeight: 700, color: G3 }}>
+                  +{r.points}
+                </div>
               </div>
             ))}
           </div>
         </div>
+
+        {history.length > 0 && (
+          <div className="px-4" style={{ marginBottom: 20 }}>
+            <SectionLabel>Recent activity</SectionLabel>
+            <div
+              style={{
+                marginTop: 10,
+                background: NAVY_CARD,
+                borderRadius: 14,
+                border: `1px solid ${BORDER}`,
+                overflow: 'hidden',
+              }}
+            >
+              {history.map((h, i) => (
+                <div
+                  key={h.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    padding: '13px 16px',
+                    borderTop: i > 0 ? `1px solid ${BORDER}` : 'none',
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontFamily: IT,
+                        fontSize: 13,
+                        color: '#fff',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {h.reason}
+                    </div>
+                    <div style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>
+                      {fmtLoyaltyDate(h.createdAt)}
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: PP,
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: h.points >= 0 ? G3 : '#F87171',
+                    }}
+                  >
+                    {h.points >= 0 ? '+' : ''}
+                    {h.points.toLocaleString()}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="px-4" style={{ marginBottom: 8 }}>
           <SectionLabel>Your referral code</SectionLabel>
