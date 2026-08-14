@@ -98,8 +98,6 @@ const NEUTRAL_MERCHANT: StoreMerchant = {
   address: '—',
 };
 
-const STORE_CATS = ['All', 'Featured', 'Meals', 'Burgers', 'Sides', 'Drinks', 'Promotions'];
-
 const PRODUCTS: StoreProduct[] = [
   {
     id: 'p1',
@@ -184,29 +182,6 @@ const PRODUCTS: StoreProduct[] = [
     badge: 'New',
     badgeColor: '#10B981',
     inStock: true,
-  },
-];
-
-const POLICIES = [
-  {
-    title: 'Delivery Policy',
-    icon: '🚚',
-    body: 'Standard delivery within 5 km radius. Orders above ₦10,000 qualify for free delivery. Delivery time may vary due to traffic and order volume.',
-  },
-  {
-    title: 'Returns & Refunds',
-    icon: '↩',
-    body: 'Food items cannot be returned once prepared. If your order is incorrect or of poor quality, contact support within 30 minutes of delivery.',
-  },
-  {
-    title: 'Order Cancellation',
-    icon: '✕',
-    body: 'Orders may be cancelled within 2 minutes of placement. After preparation has started, cancellations are not accepted.',
-  },
-  {
-    title: 'Allergen Notice',
-    icon: '⚠',
-    body: 'Our products may contain gluten, dairy, eggs, and soy. Please inform us of any allergies before ordering.',
   },
 ];
 
@@ -649,13 +624,23 @@ function StoreSearch({ storeName }: { storeName: string }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // CATEGORY CHIPS
 // ─────────────────────────────────────────────────────────────────────────────
-function StoreCats({ active, onChange }: { active: string; onChange: (s: string) => void }) {
+function StoreCats({
+  active,
+  onChange,
+  cats,
+}: {
+  active: string;
+  onChange: (s: string) => void;
+  cats: string[];
+}) {
+  // Nothing to filter by when a store's products carry no categories.
+  if (cats.length <= 1) return null;
   return (
     <div
       className="flex gap-2 overflow-x-auto px-4 pb-1"
       style={{ scrollbarWidth: 'none', marginTop: 10 }}
     >
-      {STORE_CATS.map((c) => {
+      {cats.map((c) => {
         const on = active === c;
         return (
           <button
@@ -1086,93 +1071,6 @@ function ReviewsSection({ merchant }: { merchant: StoreMerchant }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// STORE POLICIES
-// ─────────────────────────────────────────────────────────────────────────────
-function StorePolicies() {
-  const [open, setOpen] = useState<number | null>(null);
-
-  return (
-    <div className="mb-5 px-4">
-      <p
-        style={{
-          fontSize: 15,
-          fontWeight: 700,
-          color: '#FFF',
-          fontFamily: "'Poppins',sans-serif",
-          marginBottom: 12,
-        }}
-      >
-        Store Policies
-      </p>
-      <div
-        className="overflow-hidden rounded-3xl"
-        style={{ border: `1.5px solid ${BORDER}`, background: NAVY_CARD }}
-      >
-        {POLICIES.map((p, i) => (
-          <div key={i}>
-            <button
-              className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors active:bg-white/[.025]"
-              onClick={() => setOpen(open === i ? null : i)}
-            >
-              <div
-                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl text-[15px]"
-                style={{ background: 'rgba(255,255,255,.06)' }}
-              >
-                {p.icon}
-              </div>
-              <p
-                style={{
-                  flex: 1,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: '#FFF',
-                  fontFamily: "'Poppins',sans-serif",
-                }}
-              >
-                {p.title}
-              </p>
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="rgba(255,255,255,.35)"
-                strokeWidth="2"
-                strokeLinecap="round"
-                style={{
-                  transition: 'transform .2s ease',
-                  transform: open === i ? 'rotate(180deg)' : 'none',
-                }}
-              >
-                <path d="M6 9l6 6 6-6" />
-              </svg>
-            </button>
-            {open === i && (
-              <div className="px-4 pb-4" style={{ animation: 'fade-in .15s ease' }}>
-                <p
-                  style={{
-                    fontSize: 12,
-                    color: 'rgba(255,255,255,.58)',
-                    fontFamily: "'Inter',sans-serif",
-                    lineHeight: 1.65,
-                    paddingLeft: 44,
-                  }}
-                >
-                  {p.body}
-                </p>
-              </div>
-            )}
-            {i < POLICIES.length - 1 && (
-              <div style={{ height: 1, background: BORDER, marginLeft: 56, marginRight: 16 }} />
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // STORE INFO FOOTER
 // ─────────────────────────────────────────────────────────────────────────────
 function StoreInfo({ merchant }: { merchant: StoreMerchant }) {
@@ -1391,6 +1289,12 @@ export function StoreScreen({
 
   const merchant = liveMerchant ?? (merchantId ? NEUTRAL_MERCHANT : merchantProp);
   const products = liveProducts ?? (merchantId ? [] : PRODUCTS);
+  // Category tabs come from THIS store's real products, not a hardcoded food menu
+  // ("Meals / Burgers / Sides / Drinks") that was shown on every merchant.
+  const storeCats = React.useMemo(() => {
+    const seen = products.map((p) => p.category).filter((c): c is string => Boolean(c));
+    return ['All', ...Array.from(new Set(seen))];
+  }, [products]);
   const [followed, setFollowed] = useState(false);
 
   const filteredProducts =
@@ -1423,7 +1327,7 @@ export function StoreScreen({
 
       <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
         <StoreSearch storeName={merchant.name} />
-        <StoreCats active={activeCat} onChange={setActiveCat} />
+        <StoreCats active={activeCat} onChange={setActiveCat} cats={storeCats} />
 
         <div style={{ height: 16 }} />
         {loadError ? (
@@ -1454,7 +1358,9 @@ export function StoreScreen({
           />
         )}
         <ReviewsSection merchant={merchant} />
-        <StorePolicies />
+        {/* Per-merchant policies are a documented gap — there is no policies API,
+            and the previous hardcoded block showed restaurant terms (5 km
+            delivery, "food cannot be returned") on every store. */}
         <StoreInfo merchant={merchant} />
 
         <div style={{ height: 104 }} />

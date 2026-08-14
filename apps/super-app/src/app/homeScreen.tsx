@@ -61,37 +61,6 @@ const QUICK = [
   { icon: '⋯', label: 'More', color: '#6B7280' },
 ];
 
-const PROMOS = [
-  {
-    bg: 'linear-gradient(135deg,#064E3B,#065F46 40%,#10B981)',
-    icon: '🎁',
-    title: '5% Weekend Cashback',
-    sub: 'On all DrippleX spends',
-    cta: 'Claim',
-  },
-  {
-    bg: 'linear-gradient(135deg,#1E3A5F,#1D4ED8 40%,#60A5FA)',
-    icon: '🚗',
-    title: 'Free First Ride',
-    sub: 'New users ride free today',
-    cta: 'Book',
-  },
-  {
-    bg: 'linear-gradient(135deg,#3B0764,#7C3AED 40%,#C084FC)',
-    icon: '💎',
-    title: 'Upgrade to Premium',
-    sub: 'Unlock all exclusive perks',
-    cta: 'Unlock',
-  },
-  {
-    bg: 'linear-gradient(135deg,#431407,#B45309 40%,#FCD34D)',
-    icon: '🛒',
-    title: 'Free Delivery Week',
-    sub: 'All marketplace orders',
-    cta: 'Shop',
-  },
-];
-
 // ─────────────────────────────────────────────────────────────────────────────
 // PRIMITIVES
 // ─────────────────────────────────────────────────────────────────────────────
@@ -833,97 +802,6 @@ function PartnerEntryCard({
 // ─────────────────────────────────────────────────────────────────────────────
 // PROMO CAROUSEL
 // ─────────────────────────────────────────────────────────────────────────────
-function PromoCarousel() {
-  const [i, setI] = useState(0);
-  const [fade, setFade] = useState(false);
-
-  useEffect(() => {
-    const t = setInterval(() => {
-      setFade(true);
-      setTimeout(() => {
-        setI((n) => (n + 1) % PROMOS.length);
-        setFade(false);
-      }, 200);
-    }, 4800);
-    return () => clearInterval(t);
-  }, []);
-
-  const p = PROMOS[i];
-  return (
-    <div className="mx-5 mb-5">
-      <div
-        className="relative overflow-hidden rounded-3xl p-5"
-        style={{
-          background: p.bg,
-          minHeight: 116,
-          boxShadow: '0 12px 40px rgba(0,0,0,.38)',
-          transition: 'opacity .2s ease',
-          opacity: fade ? 0 : 1,
-        }}
-      >
-        <div
-          className="pointer-events-none absolute inset-0"
-          style={{
-            backgroundImage:
-              'radial-gradient(circle at 80% 50%,rgba(255,255,255,.08) 0%,transparent 50%)',
-          }}
-        />
-        <div
-          className="absolute right-5 top-1/2 -translate-y-1/2 text-[64px]"
-          style={{ opacity: 0.1 }}
-        >
-          {p.icon}
-        </div>
-        <div className="relative z-10 flex items-center gap-4">
-          <div
-            className="flex h-[52px] w-[52px] flex-shrink-0 items-center justify-center rounded-2xl"
-            style={{ background: 'rgba(255,255,255,.14)', backdropFilter: 'blur(12px)' }}
-          >
-            <span style={{ fontSize: 26 }}>{p.icon}</span>
-          </div>
-          <div className="flex-1">
-            <p
-              className="mb-0.5 text-[17px] font-bold"
-              style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
-            >
-              {p.title}
-            </p>
-            <p
-              className="mb-3 text-[11px]"
-              style={{ color: 'rgba(255,255,255,.68)', fontFamily: "'Inter',sans-serif" }}
-            >
-              {p.sub}
-            </p>
-            <button
-              className="rounded-xl px-4 py-1.5 text-[11px] font-bold transition-all active:scale-95"
-              style={{
-                background: 'rgba(255,255,255,.2)',
-                color: '#FFF',
-                backdropFilter: 'blur(8px)',
-                fontFamily: "'Inter',sans-serif",
-              }}
-            >
-              {p.cta} →
-            </button>
-          </div>
-        </div>
-        <div className="mt-4 flex gap-1.5">
-          {PROMOS.map((_, j) => (
-            <button
-              key={j}
-              onClick={() => setI(j)}
-              className="h-1.5 rounded-full transition-all"
-              style={{
-                width: j === i ? 24 : 6,
-                background: j === i ? '#FFF' : 'rgba(255,255,255,.28)',
-              }}
-            />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CATEGORIES
@@ -1591,7 +1469,6 @@ export function HomeScreen({
 
         <AICard onAsk={() => setShowAI(true)} />
         {onBecomePartner && <PartnerEntryCard onOpen={onBecomePartner} />}
-        <PromoCarousel />
         <Categories />
         <Merchants loaded={loaded} liveMerchants={liveMerchants} onStore={onStore} />
         <Recs

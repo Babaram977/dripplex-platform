@@ -404,7 +404,8 @@ function AppShell() {
     // (default) for consumer signup; a partner persona for partner onboarding.
     persona?: 'customer' | 'merchant' | 'driver' | 'rider';
   }>({
-    phone: '801 234 5678',
+    // Never pre-fill a demo phone number — the customer types their own.
+    phone: '',
     country: COUNTRIES[0],
   });
   const [partnerPersona, setPartnerPersona] = useState<PartnerPersona>('merchant');
@@ -706,7 +707,10 @@ function AppShell() {
     ),
     cart: (
       <CartScreen
-        onBack={() => go('productdetail')}
+        // Back to browsing, not to Product Detail — the cart is reachable from
+        // the bottom nav/home, where there is no active product, and routing
+        // there without a productId used to render an empty/placeholder product.
+        onBack={() => go('marketplace')}
         onHome={() => go('home')}
         onAccount={() => go('account')}
         onNotifications={() => go('activitydash')}

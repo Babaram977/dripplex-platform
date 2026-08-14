@@ -26,37 +26,6 @@ const CAT_CHIPS = [
   { label: 'Wholesale', icon: '📦' },
 ];
 
-const DEALS = [
-  {
-    bg: 'linear-gradient(135deg,#064E3B,#065F46 42%,#10B981)',
-    icon: '🚚',
-    title: 'Free Delivery All Day',
-    sub: 'On orders over ₦5,000',
-    cta: 'Shop Now',
-  },
-  {
-    bg: 'linear-gradient(135deg,#431407,#B45309 42%,#FCD34D)',
-    icon: '🏷',
-    title: 'Weekend Flash Sale',
-    sub: 'Up to 40% off — ends Sunday',
-    cta: 'View Deals',
-  },
-  {
-    bg: 'linear-gradient(135deg,#1E3A5F,#1D4ED8 42%,#60A5FA)',
-    icon: '💳',
-    title: 'Wallet 5% Cashback',
-    sub: 'Pay with DrippleX Wallet',
-    cta: 'Activate',
-  },
-  {
-    bg: 'linear-gradient(135deg,#3B0764,#7C3AED 42%,#C084FC)',
-    icon: '🍽',
-    title: 'Restaurant Specials',
-    sub: 'Lunch deals from ₦1,500',
-    cta: 'Order Now',
-  },
-];
-
 // ─────────────────────────────────────────────────────────────────────────────
 // SHARED PRIMITIVES
 // ─────────────────────────────────────────────────────────────────────────────
@@ -480,98 +449,6 @@ function AIDiscovery({ onAsk }: { onAsk: () => void }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // TODAY'S DEALS SLIDER
 // ─────────────────────────────────────────────────────────────────────────────
-function TodaysDeals() {
-  const [i, setI] = useState(0);
-  const [fade, setFade] = useState(false);
-
-  useEffect(() => {
-    const t = setInterval(() => {
-      setFade(true);
-      setTimeout(() => {
-        setI((n) => (n + 1) % DEALS.length);
-        setFade(false);
-      }, 200);
-    }, 5000);
-    return () => clearInterval(t);
-  }, []);
-
-  const d = DEALS[i];
-  return (
-    <div className="mx-5 mb-5">
-      <div
-        className="relative overflow-hidden rounded-3xl p-5"
-        style={{
-          background: d.bg,
-          minHeight: 108,
-          boxShadow: '0 12px 40px rgba(0,0,0,.38)',
-          transition: 'opacity .2s ease',
-          opacity: fade ? 0 : 1,
-        }}
-      >
-        <div
-          className="pointer-events-none absolute inset-0"
-          style={{
-            backgroundImage:
-              'radial-gradient(circle at 78% 50%,rgba(255,255,255,.09) 0%,transparent 50%)',
-          }}
-        />
-        <div
-          className="absolute right-4 top-1/2 -translate-y-1/2 text-[62px]"
-          style={{ opacity: 0.1 }}
-        >
-          {d.icon}
-        </div>
-
-        <div className="relative z-10 flex items-center gap-3.5">
-          <div
-            className="flex h-[50px] w-[50px] flex-shrink-0 items-center justify-center rounded-2xl"
-            style={{ background: 'rgba(255,255,255,.14)', backdropFilter: 'blur(12px)' }}
-          >
-            <span style={{ fontSize: 25 }}>{d.icon}</span>
-          </div>
-          <div className="flex-1">
-            <p
-              className="mb-0.5 text-[16px] font-bold"
-              style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
-            >
-              {d.title}
-            </p>
-            <p
-              className="mb-3 text-[11px]"
-              style={{ color: 'rgba(255,255,255,.65)', fontFamily: "'Inter',sans-serif" }}
-            >
-              {d.sub}
-            </p>
-            <button
-              className="rounded-xl px-4 py-1.5 text-[11px] font-bold transition-all active:scale-95"
-              style={{
-                background: 'rgba(255,255,255,.2)',
-                color: '#FFF',
-                backdropFilter: 'blur(8px)',
-                fontFamily: "'Inter',sans-serif",
-              }}
-            >
-              {d.cta} →
-            </button>
-          </div>
-        </div>
-        <div className="mt-4 flex gap-1.5">
-          {DEALS.map((_, j) => (
-            <button
-              key={j}
-              onClick={() => setI(j)}
-              className="h-1.5 rounded-full transition-all"
-              style={{
-                width: j === i ? 22 : 6,
-                background: j === i ? '#FFF' : 'rgba(255,255,255,.28)',
-              }}
-            />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FEATURED MERCHANTS
@@ -1664,7 +1541,6 @@ export function MarketplaceScreen({
       >
         <CategoryChips active={activecat} onChange={setActivecat} />
         <AIDiscovery onAsk={() => setShowAI(true)} />
-        <TodaysDeals />
         <FeaturedMerchants active={activecat} onStore={onStore} />
         <TrendingProducts />
         <NearbyBusinesses onStore={onStore} />

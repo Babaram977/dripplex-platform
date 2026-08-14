@@ -951,14 +951,24 @@ export function CheckoutScreen({
   const mockPromoSavings = 500;
 
   const t = realCart?.totals ?? null;
-  const itemsTotal = t ? t.subtotal : mockItemsTotal;
-  const deliveryTotal = t ? t.deliveryFee : mockDeliveryTotal;
-  const discountTotal = t ? t.discount : mockPromoSavings;
+  // The demo figures belong to the logged-out design preview ONLY. Gating them on
+  // `realCart` was wrong: a signed-in customer whose cart is empty (or whose cart
+  // request failed) got the demo cart back — KFC + Shoprite, ₦26,000, a "DRIP20"
+  // discount and cashback that do not exist. A signed-in customer now sees zeros
+  // until a real cart loads.
+  const showDemoMoney = !auth.isLoggedIn();
+  const itemsTotal = t ? t.subtotal : showDemoMoney ? mockItemsTotal : 0;
+  const deliveryTotal = t ? t.deliveryFee : showDemoMoney ? mockDeliveryTotal : 0;
+  const discountTotal = t ? t.discount : showDemoMoney ? mockPromoSavings : 0;
   const taxTotal = t ? t.tax : 0;
   // GAP: the backend has no "cashback" concept (CartTotalsDto = subtotal/discount/
-  // tax/deliveryFee/total). Never fabricated for a real cart — mock preview only.
-  const cashbackTotal = t ? 0 : MERCHANTS.reduce((s, m) => s + m.cashback, 0);
-  const grandTotal = t ? t.total : mockItemsTotal + mockDeliveryTotal - mockPromoSavings;
+  // tax/deliveryFee/total). Never fabricated for a real customer — preview only.
+  const cashbackTotal = t || !showDemoMoney ? 0 : MERCHANTS.reduce((s, m) => s + m.cashback, 0);
+  const grandTotal = t
+    ? t.total
+    : showDemoMoney
+      ? mockItemsTotal + mockDeliveryTotal - mockPromoSavings
+      : 0;
 
   const cartItems = realCart?.items ?? [];
   const cartEmpty = auth.isLoggedIn() && cartLoaded && cartItems.length === 0;
@@ -1187,7 +1197,7 @@ export function CheckoutScreen({
         </div>
 
         <div className="mb-4">
-          {realCart ? (
+          {realCart || auth.isLoggedIn() ? (
             <>
               <SectionLabel>Order Details</SectionLabel>
               <div
@@ -1322,9 +1332,9 @@ export function CheckoutScreen({
           )}
         </div>
 
-        {/* Promo & Rewards — for a real cart, only when a real discount applies.
-            The mock DRIP20/cashback block is design-preview only. */}
-        {realCart ? (
+        {/* Promo & Rewards — for a real customer, only when a real discount
+            applies. The mock DRIP20/cashback block is design-preview only. */}
+        {realCart || auth.isLoggedIn() ? (
           discountTotal > 0 && (
             <div
               className="mb-4 rounded-2xl p-4"
