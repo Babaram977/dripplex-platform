@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { G0, G2, G3, NAVY_BASE, NAVY_CARD, NAVY_SURFACE, BORDER, MUTED } from './shared';
 import { api } from '../lib/api';
 import type { CartDto } from '../lib/api';
+import { ImageWithFallback } from '@/app/components/figma/ImageWithFallback';
 import { BottomNavigation, FloatingAIButton } from '../components/navigation';
 import type { NavTabKey } from '../components/navigation/BottomNavigation';
 
@@ -18,6 +19,7 @@ export interface CartItem {
   productId: string;
   name: string;
   emoji: string;
+  imageUrl?: string | null;
   imageBg: string;
   unitPrice: number;
   qty: number;
@@ -189,12 +191,20 @@ function CartItemRow({
       }}
     >
       <div className="flex items-start gap-3 px-4 py-4">
-        {/* Emoji thumbnail */}
+        {/* Product thumbnail — real image when available, neutral icon otherwise */}
         <div
-          className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl"
+          className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl"
           style={{ background: item.imageBg }}
         >
-          <span style={{ fontSize: 32 }}>{item.emoji}</span>
+          {item.imageUrl ? (
+            <ImageWithFallback
+              src={item.imageUrl}
+              alt={item.name}
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <span style={{ fontSize: 32 }}>{item.emoji}</span>
+          )}
           {item.badge && (
             <span
               className="absolute -right-1 -top-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold"
@@ -615,7 +625,10 @@ function applyCart(cart: CartDto | null): CartMerchant[] {
       id: ci.id,
       productId: ci.productId,
       name: ci.productNameSnapshot ?? 'Item',
-      emoji: '🍽',
+      // Real product image captured at add-to-cart; neutral 🛍️ fallback when the
+      // product has no image (was a hardcoded 🍽 plate, wrong for non-food stores).
+      imageUrl: ci.imageSnapshot,
+      emoji: '🛍️',
       imageBg: 'linear-gradient(135deg,#0D2E18,#2BAC52)',
       unitPrice: ci.unitPriceSnapshot,
       qty: ci.quantity,
@@ -641,46 +654,48 @@ export function CartScreen({
   const [promoCode, setPromoCode] = useState('');
   const [promoApplied, setPromoApplied] = useState(false);
   const [promoError, setPromoError] = useState(false);
-  const [useWallet, setUseWallet] = useState(false);
   const [clearSheet, setClearSheet] = useState(false);
   const [showAI, setShowAI] = useState(false);
   const [savedOpen, setSavedOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<NavTabKey>('market');
+
+  const [cartTotals, setCartTotals] = useState<CartDto['totals'] | null>(null);
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
 
   useEffect(() => {
     api.cart
       .get()
       .then((cart) => {
         setMerchants(applyCart(cart));
+        setCartTotals(cart?.totals ?? null);
         setCartLoading(false);
       })
       .catch(() => {
         setMerchants(MOCK_CART);
         setCartLoading(false);
       });
+    // Real wallet balance — never a hardcoded number.
+    api.wallet
+      .get()
+      .then((w) => setWalletBalance(w.availableBalance))
+      .catch(() => {});
   }, []);
 
-  const WALLET_BALANCE = 12500;
-  const PROMO_DISCOUNT = promoApplied ? 500 : 0;
-  const PROMO_CODE_VALID = 'DRIP20';
-
-  // Aggregated totals
+  // Totals: the REAL server-computed cart totals when available; client sums only
+  // for the logged-out design-preview mock. The wallet is a payment method, not a
+  // cart discount, so it no longer reduces the total here (was faked as items*0.2
+  // against a hardcoded ₦12,500 balance).
   const allItems = merchants.flatMap((m) => m.items);
   const itemCount = allItems.reduce((s, i) => s + i.qty, 0);
-  const itemsTotal = allItems.reduce((s, i) => s + i.unitPrice * i.qty, 0);
-  const deliveryTotal = merchants.reduce(
-    (s, m) =>
-      s +
-      (deliveryMode === 'pickup'
-        ? 0
-        : deliveryMode === 'express'
-          ? m.deliveryFee * 2
-          : m.deliveryFee),
-    0,
-  );
-  const cashbackTotal = merchants.reduce((s, m) => s + m.cashback, 0);
-  const walletApplied = useWallet ? Math.min(WALLET_BALANCE, itemsTotal * 0.2) : 0;
-  const grandTotal = itemsTotal + deliveryTotal - PROMO_DISCOUNT - walletApplied;
+  const clientItemsTotal = allItems.reduce((s, i) => s + i.unitPrice * i.qty, 0);
+  const itemsTotal = cartTotals ? cartTotals.subtotal : clientItemsTotal;
+  const realDelivery = cartTotals
+    ? cartTotals.deliveryFee
+    : merchants.reduce((s, m) => s + m.deliveryFee, 0);
+  const deliveryTotal = deliveryMode === 'pickup' ? 0 : realDelivery;
+  const discountTotal = cartTotals ? cartTotals.discount : 0;
+  const taxTotal = cartTotals ? cartTotals.tax : 0;
+  const grandTotal = itemsTotal - discountTotal + taxTotal + deliveryTotal;
 
   const updateQty = useCallback((itemId: string, qty: number) => {
     // Optimistic update
@@ -730,14 +745,17 @@ export function CartScreen({
     [savedLater],
   );
 
+  // No client-side coupon validation/discount exists (there is no cart-coupon
+  // endpoint). The code is collected here and validated + applied server-side at
+  // checkout; the cart no longer fakes a "₦500 off / invalid code" result.
   const applyPromo = () => {
-    if (promoCode.toUpperCase() === PROMO_CODE_VALID) {
-      setPromoApplied(true);
-      setPromoError(false);
-    } else {
+    if (!promoCode.trim()) {
       setPromoError(true);
       setPromoApplied(false);
+      return;
     }
+    setPromoApplied(true);
+    setPromoError(false);
   };
 
   const clearCart = () => {
@@ -1040,7 +1058,7 @@ export function CartScreen({
                       <path d="M20 6L9 17l-5-5" />
                     </svg>
                     <span className="text-[13px] font-semibold" style={{ color: G3 }}>
-                      DRIP20 — ₦500 off
+                      {promoCode || 'Code'} — applied at checkout
                     </span>
                   </div>
                   <button
@@ -1086,25 +1104,23 @@ export function CartScreen({
               )}
               {promoError && (
                 <p className="mt-1.5 text-[11px]" style={{ color: '#F87171' }}>
-                  Invalid code. Try DRIP20 🎁
+                  Enter a promo code.
                 </p>
               )}
             </div>
 
-            {/* Wallet toggle */}
+            {/* DrippleX Wallet — REAL balance (informational). The wallet is a
+                payment method, not a cart discount; paying an order with the
+                wallet at checkout is a follow-up (checkout offers Cash / bank
+                transfer today). Was a hardcoded ₦12,500 with a faked discount. */}
             <div
               className="mb-4 rounded-2xl p-4"
-              style={{
-                background: NAVY_CARD,
-                border: `1.5px solid ${useWallet ? 'rgba(43,172,82,.35)' : BORDER}`,
-              }}
+              style={{ background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
             >
               <div className="flex items-center gap-3">
                 <div
                   className="flex h-10 w-10 items-center justify-center rounded-xl text-xl"
-                  style={{
-                    background: useWallet ? 'rgba(43,172,82,.18)' : 'rgba(255,255,255,.05)',
-                  }}
+                  style={{ background: 'rgba(255,255,255,.05)' }}
                 >
                   💳
                 </div>
@@ -1115,32 +1131,14 @@ export function CartScreen({
                   >
                     DrippleX Wallet
                   </p>
-                  <p className="text-[12px]" style={{ color: useWallet ? G3 : MUTED }}>
-                    Balance: {fmt(WALLET_BALANCE)}
+                  <p className="text-[12px]" style={{ color: MUTED }}>
+                    Balance: {walletBalance == null ? '—' : fmt(walletBalance)}
                   </p>
                 </div>
-                <button
-                  onClick={() => setUseWallet((v) => !v)}
-                  className="relative h-6 w-12 rounded-full transition-all duration-300"
-                  style={{ background: useWallet ? G2 : 'rgba(255,255,255,.12)' }}
-                >
-                  <div
-                    className="absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all duration-300"
-                    style={{ left: useWallet ? 'calc(100% - 22px)' : 2 }}
-                  />
-                </button>
               </div>
-              {useWallet && (
-                <div
-                  className="mt-2 flex items-center justify-between pt-2.5 text-[12px]"
-                  style={{ borderTop: `1px solid rgba(43,172,82,.18)` }}
-                >
-                  <span style={{ color: G3 }}>Applying wallet</span>
-                  <span className="font-semibold" style={{ color: G3 }}>
-                    −{fmt(Math.round(walletApplied))}
-                  </span>
-                </div>
-              )}
+              <p className="mt-2 text-[11px]" style={{ color: 'rgba(255,255,255,.4)' }}>
+                Paying with your wallet at checkout is coming soon.
+              </p>
             </div>
 
             {/* Order Summary */}
@@ -1162,19 +1160,12 @@ export function CartScreen({
                     value: deliveryTotal === 0 ? 'FREE' : fmt(deliveryTotal),
                     color: 'rgba(255,255,255,.7)',
                   },
-                  ...(PROMO_DISCOUNT > 0
-                    ? [{ label: `Promo (DRIP20)`, value: `−${fmt(PROMO_DISCOUNT)}`, color: G3 }]
+                  ...(discountTotal > 0
+                    ? [{ label: 'Discount', value: `−${fmt(discountTotal)}`, color: G3 }]
                     : []),
-                  ...(useWallet && walletApplied > 0
-                    ? [
-                        {
-                          label: 'Wallet Applied',
-                          value: `−${fmt(Math.round(walletApplied))}`,
-                          color: G3,
-                        },
-                      ]
+                  ...(taxTotal > 0
+                    ? [{ label: 'Tax', value: fmt(taxTotal), color: 'rgba(255,255,255,.7)' }]
                     : []),
-                  { label: 'Wallet Cashback', value: `+${fmt(cashbackTotal)}`, color: G3 },
                 ].map((row) => (
                   <div key={row.label} className="flex items-center justify-between">
                     <span className="text-[13px]" style={{ color: MUTED }}>
