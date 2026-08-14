@@ -45,24 +45,6 @@ interface CheckoutMerchant {
 // ─────────────────────────────────────────────────────────────────────────────
 // MOCK DATA
 // ─────────────────────────────────────────────────────────────────────────────
-const ADDRESSES: Address[] = [
-  {
-    id: 'a1',
-    label: 'Home',
-    name: '',
-    phone: '+234 801 234 5678',
-    line1: '12 Murtala Way, GRA',
-    line2: 'Kano, Kano State',
-  },
-  {
-    id: 'a2',
-    label: 'Work',
-    name: '',
-    phone: '+234 801 234 5678',
-    line1: 'DrippleX HQ, 4 Tech Crescent',
-    line2: 'Abuja, FCT',
-  },
-];
 
 const MERCHANTS: CheckoutMerchant[] = [
   {
@@ -906,11 +888,10 @@ export function CheckoutScreen({
     resetAddAddrForm,
   ]);
 
-  // Mock fallback only for the standalone design-preview (logged-out) navigator.
-  const addresses = useMemo(
-    () => ADDRESSES.map((a) => ({ ...a, name: recipientName || a.name })),
-    [recipientName],
-  );
+  // No demo addresses exist any more. A delivery address is either one the
+  // customer really saved (GET /customer/addresses) or none at all — a fake
+  // address must never be presented as somewhere we will deliver to.
+  const addresses: Address[] = useMemo(() => [], []);
   const selectedRealAddress =
     realAddresses?.find((a) => a.id === selectedAddressId) ?? realAddresses?.[0] ?? null;
   const labelMap: Record<string, Address['label']> = {
@@ -939,9 +920,7 @@ export function CheckoutScreen({
         line1: selectedRealAddress.addressLine1,
         line2: `${selectedRealAddress.city}, ${selectedRealAddress.state}`,
       }
-    : auth.isLoggedIn()
-      ? emptyAddress
-      : addresses[addressIdx];
+    : emptyAddress;
   // ── Money: real cart totals when logged in; mock only for the design preview.
   const mockItemsTotal = MERCHANTS.reduce((s, m) => s + m.subtotal, 0);
   const mockDeliveryTotal = MERCHANTS.reduce((s, m) => {
@@ -1182,7 +1161,7 @@ export function CheckoutScreen({
       {/* Scrollable body */}
       <div
         className="flex-1 overflow-y-auto px-5"
-        style={{ scrollbarWidth: 'none', paddingBottom: 120 }}
+        style={{ scrollbarWidth: 'none', paddingBottom: 180 }}
       >
         {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
 
@@ -1481,6 +1460,33 @@ export function CheckoutScreen({
             I have reviewed my order and agree to the merchant terms and{' '}
             <span style={{ color: G3 }}>DrippleX Terms of Service</span>.
           </p>
+        </button>
+
+        {/* Inline Place Order — the sticky bar below can be clipped by mobile
+            browser chrome (iOS Safari's bottom toolbar overlays the viewport),
+            which leaves a customer with no way to finish the order. This button
+            scrolls with the content, so completing checkout never depends on the
+            floating bar being visible. Same handler, same guards. */}
+        <button
+          onClick={handlePlaceOrder}
+          disabled={!termsChecked || placing || cartEmpty}
+          className="mb-4 mt-2 flex h-[52px] w-full items-center justify-center rounded-2xl text-[15px] font-semibold transition-all active:scale-[.97]"
+          style={{
+            background:
+              !termsChecked || placing || cartEmpty
+                ? 'rgba(255,255,255,.07)'
+                : `linear-gradient(135deg,${G0},${G2} 55%,${G3})`,
+            color: !termsChecked || placing || cartEmpty ? 'rgba(255,255,255,.35)' : 'white',
+            fontFamily: "'Poppins',sans-serif",
+          }}
+        >
+          {cartEmpty
+            ? 'Cart is empty'
+            : placing
+              ? 'Placing Order…'
+              : !termsChecked
+                ? 'Accept the terms above to continue'
+                : `Place Order · ${fmt(Math.round(grandTotal))}`}
         </button>
       </div>
 
