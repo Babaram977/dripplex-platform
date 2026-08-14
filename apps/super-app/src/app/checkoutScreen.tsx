@@ -45,24 +45,6 @@ interface CheckoutMerchant {
 // ─────────────────────────────────────────────────────────────────────────────
 // MOCK DATA
 // ─────────────────────────────────────────────────────────────────────────────
-const ADDRESSES: Address[] = [
-  {
-    id: 'a1',
-    label: 'Home',
-    name: '',
-    phone: '+234 801 234 5678',
-    line1: '12 Murtala Way, GRA',
-    line2: 'Kano, Kano State',
-  },
-  {
-    id: 'a2',
-    label: 'Work',
-    name: '',
-    phone: '+234 801 234 5678',
-    line1: 'DrippleX HQ, 4 Tech Crescent',
-    line2: 'Abuja, FCT',
-  },
-];
 
 const MERCHANTS: CheckoutMerchant[] = [
   {
@@ -906,11 +888,10 @@ export function CheckoutScreen({
     resetAddAddrForm,
   ]);
 
-  // Mock fallback only for the standalone design-preview (logged-out) navigator.
-  const addresses = useMemo(
-    () => ADDRESSES.map((a) => ({ ...a, name: recipientName || a.name })),
-    [recipientName],
-  );
+  // No demo addresses exist any more. A delivery address is either one the
+  // customer really saved (GET /customer/addresses) or none at all — a fake
+  // address must never be presented as somewhere we will deliver to.
+  const addresses: Address[] = useMemo(() => [], []);
   const selectedRealAddress =
     realAddresses?.find((a) => a.id === selectedAddressId) ?? realAddresses?.[0] ?? null;
   const labelMap: Record<string, Address['label']> = {
@@ -939,9 +920,7 @@ export function CheckoutScreen({
         line1: selectedRealAddress.addressLine1,
         line2: `${selectedRealAddress.city}, ${selectedRealAddress.state}`,
       }
-    : auth.isLoggedIn()
-      ? emptyAddress
-      : addresses[addressIdx];
+    : emptyAddress;
   // ── Money: real cart totals when logged in; mock only for the design preview.
   const mockItemsTotal = MERCHANTS.reduce((s, m) => s + m.subtotal, 0);
   const mockDeliveryTotal = MERCHANTS.reduce((s, m) => {
@@ -1182,7 +1161,7 @@ export function CheckoutScreen({
       {/* Scrollable body */}
       <div
         className="flex-1 overflow-y-auto px-5"
-        style={{ scrollbarWidth: 'none', paddingBottom: 120 }}
+        style={{ scrollbarWidth: 'none', paddingBottom: 180 }}
       >
         {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
 
@@ -1487,7 +1466,16 @@ export function CheckoutScreen({
       {/* Sticky bottom bar */}
       <div
         className="absolute bottom-0 left-0 right-0 z-30"
-        style={{ background: `linear-gradient(to top,${NAVY_BASE} 80%,transparent)` }}
+        style={{
+          background: `linear-gradient(to top,${NAVY_BASE} 80%,transparent)`,
+          // Reserve space for the absolutely-positioned BottomNavigation (~91px).
+          // BottomNavigation is `position:absolute; bottom:0`, so inside this bar
+          // it pins to the bar's own bottom edge and rendered directly ON TOP of
+          // the "Final Total / Place Order" row — the button was there but fully
+          // covered by the nav, leaving a customer with no way to finish the
+          // order. Same fix already applied to the cart's checkout bar.
+          paddingBottom: 92,
+        }}
       >
         <div className="flex items-center gap-3 px-5 pb-2 pt-2">
           <div className="flex shrink-0 flex-col">
@@ -1518,6 +1506,8 @@ export function CheckoutScreen({
           >
             {cartEmpty ? (
               <>Cart is empty</>
+            ) : !termsChecked ? (
+              <>Accept the terms to continue</>
             ) : placing ? (
               <>
                 <svg
