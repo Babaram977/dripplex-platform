@@ -2,7 +2,39 @@ import React, { useState, useEffect } from 'react';
 import { G0, G2, G3, NAVY_DEEP, NAVY_CARD, NAVY_SURFACE, BORDER, MUTED } from './shared';
 import { api } from '../lib/api';
 import { auth } from '../lib/auth';
-import type { MerchantSummaryDto, CategoryDto, WalletDto, WalletLedgerEntryDto } from '../lib/api';
+import type {
+  MerchantSummaryDto,
+  ProductSummaryDto,
+  CategoryDto,
+  WalletDto,
+  WalletLedgerEntryDto,
+} from '../lib/api';
+import { ImageWithFallback } from '@/app/components/figma/ImageWithFallback';
+
+// Relative time for real wallet activity timestamps.
+function relTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  const now = new Date().getTime();
+  const s = Math.max(0, Math.floor((now - then) / 1000));
+  if (s < 60) return 'Just now';
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m} min ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} hr ago`;
+  const d = Math.floor(h / 24);
+  if (d === 1) return 'Yesterday';
+  return `${d} days ago`;
+}
+
+const TXN_ICON: Record<WalletLedgerEntryDto['type'], string> = {
+  CREDIT: '↙',
+  DEBIT: '↗',
+  REFUND: '↩',
+  SETTLEMENT: '🏦',
+  CASHBACK: '🎁',
+  WITHDRAWAL: '🏧',
+  TRANSFER: '🔁',
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DATA
@@ -27,13 +59,6 @@ const QUICK = [
   { icon: '🍔', label: 'Food', color: '#F97316' },
   { icon: '🏥', label: 'Health', color: '#10B981' },
   { icon: '⋯', label: 'More', color: '#6B7280' },
-];
-
-const RECS = [
-  { emoji: '📱', name: 'iPhone 15 Pro', price: '₦890K', badge: 'Trending', bc: '#EF4444' },
-  { emoji: '🍛', name: 'Jollof + Protein', price: '₦4,200', badge: 'Popular', bc: '#F97316' },
-  { emoji: '👘', name: 'Adire Set', price: '₦18K', badge: 'New In', bc: '#8B5CF6' },
-  { emoji: '🎧', name: 'Wireless Buds', price: '₦45K', badge: 'Hot', bc: '#2BAC52' },
 ];
 
 const PROMOS = [
@@ -64,31 +89,6 @@ const PROMOS = [
     title: 'Free Delivery Week',
     sub: 'All marketplace orders',
     cta: 'Shop',
-  },
-];
-
-const ACTIVITY = [
-  {
-    icon: '🚗',
-    label: 'DrippleX Ride',
-    sub: 'Lagos Island · 2 min ago',
-    amount: '-₦2,800',
-    credit: false,
-  },
-  {
-    icon: '🛒',
-    label: 'Shoprite Ikeja',
-    sub: 'Shopping · 1 hr ago',
-    amount: '-₦12,500',
-    credit: false,
-  },
-  { icon: '↙', label: 'From Yusuf', sub: 'Transfer · 3 hrs ago', amount: '+₦50,000', credit: true },
-  {
-    icon: '🍔',
-    label: 'Chicken Republic',
-    sub: 'Food · Yesterday',
-    amount: '-₦4,350',
-    credit: false,
   },
 ];
 
@@ -1093,45 +1093,69 @@ function Merchants({
 // ─────────────────────────────────────────────────────────────────────────────
 // RECOMMENDATIONS
 // ─────────────────────────────────────────────────────────────────────────────
-function Recs({ loaded }: { loaded: boolean }) {
+function Recs({
+  loaded,
+  products,
+  onProduct,
+}: {
+  loaded: boolean;
+  products: ProductSummaryDto[];
+  onProduct?: (productId: string, merchantId: string) => void;
+}) {
+  if (loaded && products.length === 0) return null;
   return (
     <div className="mb-5">
       <Row title="Recommended for You" onAll={() => {}} />
       <div className="flex gap-3 overflow-x-auto px-5" style={{ scrollbarWidth: 'none' }}>
         {!loaded
           ? [1, 2, 3, 4].map((i) => <Bone key={i} w={130} h={148} />)
-          : RECS.map((r) => (
+          : products.map((p) => (
               <button
-                key={r.name}
+                key={p.id}
+                onClick={() => onProduct?.(p.id, p.merchantId)}
                 className="flex flex-shrink-0 flex-col items-center gap-2.5 rounded-2xl p-3.5 transition-all active:scale-95"
                 style={{ width: 130, background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
               >
                 <div
-                  className="flex h-[52px] w-[52px] items-center justify-center rounded-2xl text-[28px]"
+                  className="flex h-[52px] w-[52px] items-center justify-center overflow-hidden rounded-2xl text-[28px]"
                   style={{ background: 'rgba(255,255,255,.06)' }}
                 >
-                  {r.emoji}
+                  {p.primaryImageUrl ? (
+                    <ImageWithFallback
+                      src={p.primaryImageUrl}
+                      alt={p.name}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    '🛍️'
+                  )}
                 </div>
                 <div className="w-full text-center">
                   <p
                     className="truncate text-[11.5px] font-bold"
                     style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
                   >
-                    {r.name}
+                    {p.name}
                   </p>
                   <p
                     className="mt-0.5 text-[11px] font-bold"
                     style={{ color: G3, fontFamily: "'Poppins',sans-serif" }}
                   >
-                    {r.price}
+                    ₦{p.basePrice.toLocaleString()}
                   </p>
                 </div>
-                <span
-                  className="rounded-full px-2.5 py-1 text-[9px] font-bold"
-                  style={{ background: r.bc + '20', color: r.bc, border: `1px solid ${r.bc}35` }}
-                >
-                  {r.badge}
-                </span>
+                {p.isFeatured && (
+                  <span
+                    className="rounded-full px-2.5 py-1 text-[9px] font-bold"
+                    style={{
+                      background: '#8B5CF620',
+                      color: '#8B5CF6',
+                      border: '1px solid #8B5CF635',
+                    }}
+                  >
+                    Featured
+                  </span>
+                )}
               </button>
             ))}
       </div>
@@ -1142,7 +1166,8 @@ function Recs({ loaded }: { loaded: boolean }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // RECENT ACTIVITY
 // ─────────────────────────────────────────────────────────────────────────────
-function ActivityList({ loaded }: { loaded: boolean }) {
+function ActivityList({ loaded, txns }: { loaded: boolean; txns: WalletLedgerEntryDto[] }) {
+  const recent = txns.slice(0, 5);
   return (
     <div className="mb-4 px-5">
       <Row title="Recent Activity" onAll={() => {}} />
@@ -1152,45 +1177,68 @@ function ActivityList({ loaded }: { loaded: boolean }) {
             <Bone key={i} w="100%" h={64} r={20} />
           ))}
         </div>
+      ) : recent.length === 0 ? (
+        <div
+          className="rounded-3xl px-4 py-8 text-center"
+          style={{ background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
+        >
+          <p style={{ fontSize: 26 }}>🧾</p>
+          <p
+            className="mt-2 text-[13px] font-semibold"
+            style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
+          >
+            No activity yet
+          </p>
+          <p
+            className="mt-1 text-[11px]"
+            style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
+          >
+            Your wallet transactions will appear here.
+          </p>
+        </div>
       ) : (
         <div
           className="overflow-hidden rounded-3xl"
           style={{ background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
         >
-          {ACTIVITY.map((a, i) => (
-            <div
-              key={i}
-              className="flex items-center gap-3.5 px-4 py-3.5"
-              style={{ borderBottom: i < ACTIVITY.length - 1 ? `1px solid ${BORDER}` : 'none' }}
-            >
+          {recent.map((t, i) => {
+            const credit = t.direction === 'CREDIT';
+            const label = t.description ?? t.type.charAt(0) + t.type.slice(1).toLowerCase();
+            return (
               <div
-                className="flex h-[42px] w-[42px] flex-shrink-0 items-center justify-center rounded-2xl text-[18px]"
-                style={{ background: a.credit ? 'rgba(43,172,82,.12)' : 'rgba(255,255,255,.06)' }}
+                key={t.id}
+                className="flex items-center gap-3.5 px-4 py-3.5"
+                style={{ borderBottom: i < recent.length - 1 ? `1px solid ${BORDER}` : 'none' }}
               >
-                {a.icon}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p
-                  className="truncate text-[13px] font-semibold"
-                  style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
+                <div
+                  className="flex h-[42px] w-[42px] flex-shrink-0 items-center justify-center rounded-2xl text-[18px]"
+                  style={{ background: credit ? 'rgba(43,172,82,.12)' : 'rgba(255,255,255,.06)' }}
                 >
-                  {a.label}
-                </p>
+                  {TXN_ICON[t.type] ?? (credit ? '↙' : '↗')}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p
+                    className="truncate text-[13px] font-semibold"
+                    style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
+                  >
+                    {label}
+                  </p>
+                  <p
+                    className="text-[10px]"
+                    style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
+                  >
+                    {relTime(t.createdAt)}
+                  </p>
+                </div>
                 <p
-                  className="text-[10px]"
-                  style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
+                  className="flex-shrink-0 text-[14px] font-bold"
+                  style={{ fontFamily: "'Poppins',sans-serif", color: credit ? G3 : '#FFF' }}
                 >
-                  {a.sub}
+                  {credit ? '+' : '-'}₦{t.amount.toLocaleString()}
                 </p>
               </div>
-              <p
-                className="flex-shrink-0 text-[14px] font-bold"
-                style={{ fontFamily: "'Poppins',sans-serif", color: a.credit ? G3 : '#FFF' }}
-              >
-                {a.amount}
-              </p>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -1425,6 +1473,10 @@ export function HomeScreen({
   // Live API state
   const [wallet, setWallet] = useState<WalletDto | null>(null);
   const [liveMerchants, setLiveMerchants] = useState<MerchantSummaryDto[]>([]);
+  // Recommended products carry their real uploaded image (primaryImageUrl).
+  const [liveProducts, setLiveProducts] = useState<ProductSummaryDto[]>([]);
+  // Recent Activity is the customer's real wallet ledger — never hardcoded rows.
+  const [txns, setTxns] = useState<WalletLedgerEntryDto[]>([]);
   // Income / Spent are summed from real wallet transactions (JOB 6).
   const [flows, setFlows] = useState<{ income: number; spent: number } | null>(null);
 
@@ -1438,7 +1490,8 @@ export function HomeScreen({
       api.wallet.get(),
       api.marketplace.getMerchants({ sort: 'recommended', limit: 6 }),
       api.wallet.getTransactions({ page: 1, pageSize: 100 }),
-    ]).then(([walletRes, merchantsRes, txRes]) => {
+      api.marketplace.getFeaturedProducts({ limit: 10 }),
+    ]).then(([walletRes, merchantsRes, txRes, productsRes]) => {
       if (walletRes.status === 'fulfilled') setWallet(walletRes.value);
       if (merchantsRes.status === 'fulfilled') {
         const result = merchantsRes.value as
@@ -1451,11 +1504,18 @@ export function HomeScreen({
           | { data?: WalletLedgerEntryDto[]; items?: WalletLedgerEntryDto[] }
           | WalletLedgerEntryDto[];
         const txs = Array.isArray(raw) ? raw : (raw.data ?? raw.items ?? []);
+        setTxns(txs);
         const income = txs
           .filter((t) => t.direction === 'CREDIT')
           .reduce((s, t) => s + t.amount, 0);
         const spent = txs.filter((t) => t.direction === 'DEBIT').reduce((s, t) => s + t.amount, 0);
         setFlows({ income, spent });
+      }
+      if (productsRes.status === 'fulfilled') {
+        const raw = productsRes.value as
+          { data?: ProductSummaryDto[]; items?: ProductSummaryDto[] } | ProductSummaryDto[];
+        const list = Array.isArray(raw) ? raw : (raw.data ?? raw.items ?? []);
+        setLiveProducts(list);
       }
       setLoaded(true);
     });
@@ -1537,8 +1597,12 @@ export function HomeScreen({
         <PromoCarousel />
         <Categories />
         <Merchants loaded={loaded} liveMerchants={liveMerchants} onStore={onStore} />
-        <Recs loaded={loaded} />
-        <ActivityList loaded={loaded} />
+        <Recs
+          loaded={loaded}
+          products={liveProducts}
+          onProduct={(_productId, merchantId) => onStore?.(merchantId)}
+        />
+        <ActivityList loaded={loaded} txns={txns} />
 
         <div style={{ height: 104 }} />
       </div>

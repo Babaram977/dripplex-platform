@@ -46,116 +46,6 @@ export interface CartMerchant {
 type DeliveryMode = 'standard' | 'express' | 'pickup';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MOCK DATA
-// ─────────────────────────────────────────────────────────────────────────────
-const MOCK_CART: CartMerchant[] = [
-  {
-    id: 'kfc',
-    name: 'KFC Nigeria',
-    emoji: '🍗',
-    coverBg: 'linear-gradient(135deg,#7C2D12,#F97316)',
-    isVerified: true,
-    isOpen: true,
-    deliveryFee: 350,
-    eta: '18–25 min',
-    cashback: 240,
-    items: [
-      {
-        id: 'ci1',
-        productId: 'p1',
-        name: 'Zinger Meal',
-        emoji: '🍔',
-        imageBg: 'linear-gradient(145deg,#7C2D12,#EA580C)',
-        unitPrice: 4800,
-        qty: 2,
-        variants: [
-          { label: 'Size', value: 'Large' },
-          { label: 'Spice', value: 'Medium 🌶🌶' },
-          { label: 'Drink', value: 'Pepsi' },
-        ],
-        badge: '-13%',
-        badgeColor: '#EF4444',
-        inStock: true,
-      },
-      {
-        id: 'ci2',
-        productId: 'p8',
-        name: 'Loaded Fries',
-        emoji: '🍟',
-        imageBg: 'linear-gradient(145deg,#92400E,#D97706)',
-        unitPrice: 2200,
-        qty: 1,
-        variants: [{ label: 'Size', value: 'Regular' }],
-        badge: 'New',
-        badgeColor: '#10B981',
-        inStock: true,
-      },
-      {
-        id: 'ci3',
-        productId: 'p7',
-        name: 'Coleslaw',
-        emoji: '🥗',
-        imageBg: 'linear-gradient(145deg,#166534,#22C55E)',
-        unitPrice: 900,
-        qty: 1,
-        variants: [],
-        inStock: true,
-      },
-    ],
-  },
-  {
-    id: 'shoprite',
-    name: 'Shoprite Kano',
-    emoji: '🛒',
-    coverBg: 'linear-gradient(135deg,#1D4ED8,#06B6D4)',
-    isVerified: true,
-    isOpen: true,
-    deliveryFee: 500,
-    eta: '35–50 min',
-    cashback: 180,
-    items: [
-      {
-        id: 'ci4',
-        productId: 's1',
-        name: 'Golden Penny Rice 5kg',
-        emoji: '🍚',
-        imageBg: 'linear-gradient(145deg,#B45309,#FCD34D)',
-        unitPrice: 5500,
-        qty: 1,
-        variants: [{ label: 'Size', value: '5 kg bag' }],
-        inStock: true,
-      },
-      {
-        id: 'ci5',
-        productId: 's2',
-        name: 'Peak Milk 400g',
-        emoji: '🥛',
-        imageBg: 'linear-gradient(145deg,#1E3A5F,#0EA5E9)',
-        unitPrice: 1800,
-        qty: 3,
-        variants: [{ label: 'Pack', value: '400g × 3' }],
-        inStock: true,
-        priceChanged: true,
-      },
-    ],
-  },
-];
-
-const SAVED_LATER: CartItem[] = [
-  {
-    id: 'sl1',
-    productId: 'p5',
-    name: 'KFC Family Feast',
-    emoji: '🍽',
-    imageBg: 'linear-gradient(145deg,#7C2D12,#F97316)',
-    unitPrice: 28000,
-    qty: 1,
-    variants: [{ label: 'Size', value: '14 pcs' }],
-    inStock: true,
-  },
-];
-
-// ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 const fmt = (n: number) => `₦${n.toLocaleString()}`;
@@ -649,7 +539,7 @@ export function CartScreen({
   const [merchants, setMerchants] = useState<CartMerchant[]>([]);
   const [cartLoading, setCartLoading] = useState(true);
   const [cartError, setCartError] = useState<string | null>(null);
-  const [savedLater, setSavedLater] = useState<CartItem[]>(SAVED_LATER);
+  const [savedLater, setSavedLater] = useState<CartItem[]>([]);
   const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>('standard');
   const [promoCode, setPromoCode] = useState('');
   const [promoApplied, setPromoApplied] = useState(false);
@@ -671,7 +561,9 @@ export function CartScreen({
         setCartLoading(false);
       })
       .catch(() => {
-        setMerchants(MOCK_CART);
+        // Honest failure: show an empty/error cart, never fake KFC/Shoprite items.
+        setMerchants([]);
+        setCartError('We could not load your cart. Pull to refresh or try again.');
         setCartLoading(false);
       });
     // Real wallet balance — never a hardcoded number.
@@ -873,7 +765,21 @@ export function CartScreen({
         style={{ scrollbarWidth: 'none', paddingBottom: 120 }}
       >
         {isEmpty ? (
-          <EmptyCart onBrowse={onBack} />
+          <>
+            {cartError && (
+              <div
+                className="mx-4 mt-4 rounded-2xl px-4 py-3 text-[13px]"
+                style={{
+                  background: 'rgba(239,68,68,.12)',
+                  border: '1px solid rgba(239,68,68,.35)',
+                  color: '#FCA5A5',
+                }}
+              >
+                {cartError}
+              </div>
+            )}
+            <EmptyCart onBrowse={onBack} />
+          </>
         ) : (
           <>
             {/* Merchant groups */}
@@ -1255,10 +1161,18 @@ export function CartScreen({
                         style={{ borderBottom: `1px solid ${BORDER}` }}
                       >
                         <div
-                          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-2xl"
+                          className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl text-2xl"
                           style={{ background: item.imageBg }}
                         >
-                          {item.emoji}
+                          {item.imageUrl ? (
+                            <ImageWithFallback
+                              src={item.imageUrl}
+                              alt={item.name}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            item.emoji
+                          )}
                         </div>
                         <div className="min-w-0 flex-1">
                           <p

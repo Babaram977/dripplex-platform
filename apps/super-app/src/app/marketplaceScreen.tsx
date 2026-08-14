@@ -56,13 +56,6 @@ const DEALS = [
   },
 ];
 
-const RECENT_VIEWS = [
-  { emoji: '📱', name: 'iPhone 15 Pro', price: '₦890K', store: 'Slot' },
-  { emoji: '👟', name: 'Air Max 270', price: '₦65K', store: 'SportsDirect' },
-  { emoji: '🛋', name: 'Sofa 3-Seater', price: '₦185K', store: 'FurniturePlus' },
-  { emoji: '🍛', name: 'Jollof Combo', price: '₦4,200', store: 'Mr Biggs' },
-];
-
 // ─────────────────────────────────────────────────────────────────────────────
 // SHARED PRIMITIVES
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1370,45 +1363,6 @@ function AIRecs() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CONTINUE SHOPPING
-// ─────────────────────────────────────────────────────────────────────────────
-function ContinueShopping() {
-  return (
-    <div className="mb-5">
-      <SRow title="Continue Shopping" sub="Recently viewed" />
-      <div className="flex gap-2.5 overflow-x-auto px-5" style={{ scrollbarWidth: 'none' }}>
-        {RECENT_VIEWS.map((r, i) => (
-          <button
-            key={i}
-            className="flex flex-shrink-0 flex-col gap-2 rounded-2xl p-3 transition-all active:scale-95"
-            style={{ width: 110, background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
-          >
-            <div
-              className="flex h-[52px] w-full items-center justify-center rounded-xl text-[28px]"
-              style={{ background: 'rgba(255,255,255,.06)' }}
-            >
-              {r.emoji}
-            </div>
-            <p
-              className="truncate text-[11px] font-bold"
-              style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
-            >
-              {r.name}
-            </p>
-            <p
-              className="text-[11px] font-bold"
-              style={{ color: G3, fontFamily: "'Poppins',sans-serif" }}
-            >
-              {r.price}
-            </p>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // EMPTY STATE
 // ─────────────────────────────────────────────────────────────────────────────
 function EmptyState({
@@ -1683,7 +1637,16 @@ export function MarketplaceScreen({
 }) {
   const [activecat, setActivecat] = useState('All');
   const [showAI, setShowAI] = useState(false);
-  const [cartCount] = useState(3);
+  // Real cart badge — reflects the customer's actual server-side cart, never a
+  // hardcoded number. 0 when the cart is empty or the fetch fails.
+  const [cartCount, setCartCount] = useState(0);
+
+  useEffect(() => {
+    api.cart
+      .get()
+      .then((c) => setCartCount(c ? c.items.reduce((n, it) => n + it.quantity, 0) : 0))
+      .catch(() => {});
+  }, []);
 
   const handleNav = (t: NavTab) => {
     if (t === 'home') onHome();
@@ -1716,7 +1679,6 @@ export function MarketplaceScreen({
         <TrendingProducts />
         <NearbyBusinesses onStore={onStore} />
         <AIRecs />
-        <ContinueShopping />
 
         <div style={{ height: 104 }} />
       </div>

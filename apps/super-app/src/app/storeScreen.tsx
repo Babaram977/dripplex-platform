@@ -4,6 +4,7 @@ import { BottomNavigation, FloatingAIButton } from '../components/navigation';
 import type { NavTabKey } from '../components/navigation/BottomNavigation';
 import { api } from '../lib/api';
 import type { MerchantSummaryDto, ProductSummaryDto } from '../lib/api';
+import { ImageWithFallback } from '@/app/components/figma/ImageWithFallback';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -27,6 +28,8 @@ export interface StoreMerchant {
   hours: string;
   phone: string;
   address: string;
+  logoUrl?: string | null;
+  coverPhotoUrl?: string | null;
 }
 
 export interface StoreProduct {
@@ -47,16 +50,6 @@ export interface StoreProduct {
   merchantId?: string;
   unitPrice?: number;
   imageUrl?: string | null;
-}
-
-interface StoreReview {
-  name: string;
-  initials: string;
-  rating: number;
-  date: string;
-  comment: string;
-  reply?: string;
-  avatarBg: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -81,6 +74,28 @@ const DEFAULT_MERCHANT: StoreMerchant = {
   hours: '8:00 AM – 11:00 PM daily',
   phone: '+234 800 532 0000',
   address: 'KFC Ikeja City Mall, Alausa, Lagos',
+};
+
+// Neutral placeholder shown for a real (routed) store while it loads or if the
+// fetch fails — never the KFC mock, which would leak fake identity onto a real store.
+const NEUTRAL_MERCHANT: StoreMerchant = {
+  id: '',
+  name: 'Store',
+  category: '',
+  coverBg: 'linear-gradient(135deg,#0D2E18,#123B22 42%,#1B5E33)',
+  emoji: '🏪',
+  tagline: '',
+  rating: 0,
+  reviewCount: 0,
+  distance: '',
+  eta: '—',
+  deliveryFee: '—',
+  minOrder: '—',
+  isOpen: true,
+  isVerified: false,
+  hours: '—',
+  phone: '—',
+  address: '—',
 };
 
 const STORE_CATS = ['All', 'Featured', 'Meals', 'Burgers', 'Sides', 'Drinks', 'Promotions'];
@@ -172,37 +187,6 @@ const PRODUCTS: StoreProduct[] = [
   },
 ];
 
-const REVIEWS: StoreReview[] = [
-  {
-    name: 'Adaeze O.',
-    initials: 'AO',
-    rating: 5,
-    date: '2 days ago',
-    comment: 'Always consistent quality. The Zinger Meal never disappoints. Fast delivery too!',
-    reply: "Thank you Adaeze! 🍗 We're glad you enjoyed it. See you next time!",
-    avatarBg: 'linear-gradient(135deg,#7C3AED,#C084FC)',
-  },
-  {
-    name: 'Chukwudi M.',
-    initials: 'CM',
-    rating: 4,
-    date: '5 days ago',
-    comment:
-      'Great food, packaging was intact. Took 22 minutes which is slightly longer than usual but still acceptable.',
-    avatarBg: 'linear-gradient(135deg,#0C4A6E,#06B6D4)',
-  },
-  {
-    name: 'Fatima B.',
-    initials: 'FB',
-    rating: 5,
-    date: '1 week ago',
-    comment:
-      'Ordered the Family Feast for a birthday — everyone loved it. Will definitely order again.',
-    reply: 'Happy birthday to the family! 🎉 We appreciate your order.',
-    avatarBg: 'linear-gradient(135deg,#831843,#EC4899)',
-  },
-];
-
 const POLICIES = [
   {
     title: 'Delivery Policy',
@@ -250,6 +234,8 @@ function dtoToStoreMerchant(dto: MerchantSummaryDto): StoreMerchant {
     hours: '—',
     phone: '—',
     address: [dto.city, dto.state].filter(Boolean).join(', ') || '—',
+    logoUrl: dto.logoUrl,
+    coverPhotoUrl: dto.coverPhotoUrl,
   };
 }
 
@@ -331,6 +317,13 @@ function StoreHeader({
     <div className="relative flex-shrink-0 overflow-hidden">
       {/* Cover */}
       <div className="relative" style={{ height: 200, background: merchant.coverBg }}>
+        {merchant.coverPhotoUrl && (
+          <ImageWithFallback
+            src={merchant.coverPhotoUrl}
+            alt={merchant.name}
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        )}
         <StoreStatusBar />
         {/* Glare */}
         <div
@@ -462,10 +455,18 @@ function StoreHeader({
         <div className="flex items-start gap-3">
           {/* Logo */}
           <div
-            className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl text-[32px]"
+            className="flex h-14 w-14 flex-shrink-0 items-center justify-center overflow-hidden rounded-2xl text-[32px]"
             style={{ background: merchant.coverBg, boxShadow: '0 4px 14px rgba(0,0,0,.35)' }}
           >
-            {merchant.emoji}
+            {merchant.logoUrl ? (
+              <ImageWithFallback
+                src={merchant.logoUrl}
+                alt={merchant.name}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              merchant.emoji
+            )}
           </div>
           <div className="min-w-0 flex-1">
             <div className="mb-0.5 flex flex-wrap items-center gap-1.5">
@@ -839,10 +840,18 @@ function ProductGrid({
             >
               {/* Image area */}
               <div
-                className="relative flex items-center justify-center"
+                className="relative flex items-center justify-center overflow-hidden"
                 style={{ height: 88, background: 'linear-gradient(135deg,#0D1B2E,#1A2E45)' }}
               >
-                <span style={{ fontSize: 44 }}>{p.emoji}</span>
+                {p.imageUrl ? (
+                  <ImageWithFallback
+                    src={p.imageUrl}
+                    alt={p.name}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <span style={{ fontSize: 44 }}>{p.emoji}</span>
+                )}
                 {p.badge && (
                   <div
                     className="absolute left-2 top-2 rounded-lg px-2 py-0.5 text-[9px] font-bold"
@@ -989,9 +998,7 @@ function ProductGrid({
 // REVIEWS
 // ─────────────────────────────────────────────────────────────────────────────
 function ReviewsSection({ merchant }: { merchant: StoreMerchant }) {
-  const [expanded, setExpanded] = useState(false);
-  const visible = expanded ? REVIEWS : REVIEWS.slice(0, 2);
-
+  const hasRatings = merchant.reviewCount > 0;
   return (
     <div className="mb-5 px-4">
       <div className="mb-3 flex items-center justify-between">
@@ -1007,22 +1014,17 @@ function ReviewsSection({ merchant }: { merchant: StoreMerchant }) {
             Reviews
           </p>
           <p style={{ fontSize: 10, color: MUTED, fontFamily: "'Inter',sans-serif", marginTop: 1 }}>
-            ★ {merchant.rating} · {merchant.reviewCount.toLocaleString()} ratings
+            {hasRatings
+              ? `★ ${merchant.rating} · ${merchant.reviewCount.toLocaleString()} ratings`
+              : 'No ratings yet'}
           </p>
         </div>
-        <button
-          onClick={() => setExpanded((e) => !e)}
-          style={{ fontSize: 12, fontWeight: 600, color: G3, fontFamily: "'Inter',sans-serif" }}
-        >
-          {expanded ? 'Show less' : 'See all →'}
-        </button>
       </div>
-      {/* Rating bar summary */}
-      <div
-        className="mb-3 rounded-2xl p-4"
-        style={{ background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
-      >
-        <div className="flex items-center gap-4">
+      {hasRatings ? (
+        <div
+          className="mb-3 flex items-center gap-4 rounded-2xl p-4"
+          style={{ background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
+        >
           <div className="flex flex-col items-center">
             <p
               style={{
@@ -1035,130 +1037,50 @@ function ReviewsSection({ merchant }: { merchant: StoreMerchant }) {
             >
               {merchant.rating}
             </p>
-            <p style={{ fontSize: 10, color: '#FBBF24', marginTop: 2 }}>★★★★★</p>
+            <p style={{ fontSize: 10, color: '#FBBF24', marginTop: 2 }}>
+              {'★'.repeat(Math.round(merchant.rating))}
+              {'☆'.repeat(5 - Math.round(merchant.rating))}
+            </p>
             <p
               style={{ fontSize: 9, color: MUTED, fontFamily: "'Inter',sans-serif", marginTop: 1 }}
             >
-              {merchant.reviewCount.toLocaleString()}
+              {merchant.reviewCount.toLocaleString()} ratings
             </p>
           </div>
-          <div className="flex flex-1 flex-col gap-1.5">
-            {[5, 4, 3, 2, 1].map((n) => (
-              <div key={n} className="flex items-center gap-2">
-                <p
-                  style={{ fontSize: 9, color: MUTED, fontFamily: "'Inter',sans-serif", width: 8 }}
-                >
-                  {n}
-                </p>
-                <div
-                  className="flex-1 overflow-hidden rounded-full"
-                  style={{ height: 5, background: 'rgba(255,255,255,.08)' }}
-                >
-                  <div
-                    className="h-full rounded-full"
-                    style={{
-                      width:
-                        n === 5 ? '65%' : n === 4 ? '22%' : n === 3 ? '8%' : n === 2 ? '3%' : '2%',
-                      background: n >= 4 ? G2 : n === 3 ? '#F59E0B' : '#EF4444',
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-      {/* Review cards */}
-      <div className="flex flex-col gap-3">
-        {visible.map((r, i) => (
-          <div
-            key={i}
-            className="rounded-2xl p-3.5"
-            style={{ background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
+          <p
+            style={{
+              flex: 1,
+              fontSize: 11.5,
+              color: MUTED,
+              fontFamily: "'Inter',sans-serif",
+              lineHeight: 1.6,
+            }}
           >
-            <div className="mb-2 flex items-start gap-3">
-              <div
-                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-2xl"
-                style={{ background: r.avatarBg }}
-              >
-                <p
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color: '#FFF',
-                    fontFamily: "'Poppins',sans-serif",
-                  }}
-                >
-                  {r.initials}
-                </p>
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center justify-between">
-                  <p
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: '#FFF',
-                      fontFamily: "'Poppins',sans-serif",
-                    }}
-                  >
-                    {r.name}
-                  </p>
-                  <p style={{ fontSize: 9.5, color: MUTED, fontFamily: "'Inter',sans-serif" }}>
-                    {r.date}
-                  </p>
-                </div>
-                <p style={{ fontSize: 10, color: '#FBBF24' }}>
-                  {'★'.repeat(r.rating)}
-                  {'☆'.repeat(5 - r.rating)}
-                </p>
-              </div>
-            </div>
-            <p
-              style={{
-                fontSize: 11.5,
-                color: 'rgba(255,255,255,.72)',
-                fontFamily: "'Inter',sans-serif",
-                lineHeight: 1.6,
-                marginBottom: r.reply ? 10 : 0,
-              }}
-            >
-              {r.comment}
-            </p>
-            {r.reply && (
-              <div
-                className="mt-2 rounded-xl p-2.5"
-                style={{
-                  background: 'rgba(43,172,82,.07)',
-                  border: `1px solid rgba(43,172,82,.15)`,
-                }}
-              >
-                <p
-                  style={{
-                    fontSize: 9,
-                    fontWeight: 700,
-                    color: G3,
-                    fontFamily: "'Inter',sans-serif",
-                    marginBottom: 3,
-                  }}
-                >
-                  💬 Merchant Reply
-                </p>
-                <p
-                  style={{
-                    fontSize: 11,
-                    color: 'rgba(255,255,255,.6)',
-                    fontFamily: "'Inter',sans-serif",
-                    lineHeight: 1.55,
-                  }}
-                >
-                  {r.reply}
-                </p>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+            Written customer reviews will appear here as shoppers rate this store.
+          </p>
+        </div>
+      ) : (
+        <div
+          className="rounded-2xl p-5 text-center"
+          style={{ background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
+        >
+          <p style={{ fontSize: 26 }}>⭐</p>
+          <p
+            style={{
+              fontSize: 12.5,
+              fontWeight: 600,
+              color: '#FFF',
+              fontFamily: "'Poppins',sans-serif",
+              marginTop: 6,
+            }}
+          >
+            No reviews yet
+          </p>
+          <p style={{ fontSize: 11, color: MUTED, fontFamily: "'Inter',sans-serif", marginTop: 3 }}>
+            Be the first to order and rate this store.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -1467,7 +1389,7 @@ export function StoreScreen({
 
   useEffect(load, [merchantId]);
 
-  const merchant = liveMerchant ?? merchantProp;
+  const merchant = liveMerchant ?? (merchantId ? NEUTRAL_MERCHANT : merchantProp);
   const products = liveProducts ?? (merchantId ? [] : PRODUCTS);
   const [followed, setFollowed] = useState(false);
 

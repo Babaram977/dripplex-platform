@@ -4,7 +4,12 @@ import { BottomNavigation, FloatingAIButton } from '../components/navigation';
 import type { NavTabKey } from '../components/navigation/BottomNavigation';
 import type { StoreMerchant, StoreProduct } from './storeScreen';
 import { api } from '../lib/api';
-import type { ProductSummaryDto } from '../lib/api';
+import type { ProductSummaryDto, MerchantSummaryDto } from '../lib/api';
+import { ImageWithFallback } from '@/app/components/figma/ImageWithFallback';
+
+// A gallery/thumbnail entry is a real uploaded image when it looks like a URL;
+// otherwise it is an emoji placeholder rendered as text.
+const isImageUrl = (s: string) => /^(https?:|\/|data:)/.test(s);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // EXTENDED PRODUCT TYPE
@@ -263,19 +268,27 @@ function Gallery({
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
     >
-      {/* Slides */}
-      {product.images.map((emoji, i) => (
+      {/* Slides — real uploaded image when available, emoji placeholder otherwise */}
+      {product.images.map((img, i) => (
         <div
           key={i}
-          className="absolute inset-0 flex items-center justify-center transition-opacity duration-300"
+          className="absolute inset-0 flex items-center justify-center overflow-hidden transition-opacity duration-300"
           style={{
             background: product.imageBgs[i] ?? product.imageBgs[0],
             opacity: idx === i ? 1 : 0,
           }}
         >
-          <span style={{ fontSize: 96, filter: 'drop-shadow(0 16px 32px rgba(0,0,0,.35))' }}>
-            {emoji}
-          </span>
+          {isImageUrl(img) ? (
+            <ImageWithFallback
+              src={img}
+              alt={product.name}
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <span style={{ fontSize: 96, filter: 'drop-shadow(0 16px 32px rgba(0,0,0,.35))' }}>
+              {img}
+            </span>
+          )}
         </div>
       ))}
 
@@ -686,10 +699,18 @@ function CartSheet({
         />
         <div className="flex items-center gap-4">
           <div
-            className="flex h-16 w-16 items-center justify-center rounded-2xl text-4xl"
+            className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl text-4xl"
             style={{ background: product.imageBgs[0] }}
           >
-            {product.images[0]}
+            {isImageUrl(product.images[0]) ? (
+              <ImageWithFallback
+                src={product.images[0]}
+                alt={product.name}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              product.images[0]
+            )}
           </div>
           <div className="flex-1">
             <p
@@ -760,30 +781,106 @@ function CartSheet({
 // ─────────────────────────────────────────────────────────────────────────────
 // ─── DTO → ProductDetail converter ───────────────────────────────────────────
 function dtoToProductDetail(dto: ProductSummaryDto & { description?: string }): ProductDetail {
+  // Real uploaded image identifies the product; the neutral 🛍️ shows only when the
+  // merchant hasn't uploaded one. No invented ratings, delivery fees, or copy.
+  const hasImage = !!dto.primaryImageUrl;
   return {
     id: dto.id,
     name: dto.name,
-    description: dto.description ?? `From ${dto.merchantName}`,
+    description: dto.description ?? '',
     price: `₦${dto.basePrice.toLocaleString()}`,
-    emoji: '🍽',
-    rating: dto.rating?.average ?? 4.5,
+    emoji: '🛍️',
+    imageUrl: dto.primaryImageUrl,
+    merchantId: dto.merchantId,
+    unitPrice: dto.basePrice,
+    rating: dto.rating?.average ?? 0,
     inStock: dto.inStock,
     badge: dto.isFeatured ? 'Featured' : undefined,
     badgeColor: dto.isFeatured ? '#8B5CF6' : undefined,
-    images: ['🍽'],
+    images: [hasImage ? (dto.primaryImageUrl as string) : '🛍️'],
     imageBgs: ['linear-gradient(135deg,#0D2E18,#176B30)'],
-    category: 'Food',
+    category: '',
     availability: dto.inStock ? 'In Stock' : 'Out of Stock',
     variantGroups: [],
     reviews: [],
     ratingBreakdown: [0, 0, 0, 0, 0],
-    deliveryEta: '20–35 min',
-    deliveryFee: '₦350',
+    deliveryEta: '—',
+    deliveryFee: '—',
     pickupAvailable: false,
-    returnPolicy: 'Non-refundable once prepared.',
+    returnPolicy: '',
     related: [],
   };
 }
+
+// Minimal MerchantSummaryDto → StoreMerchant for the product-detail merchant card.
+// Only real fields; unknowns render as "—" rather than fabricated values.
+function dtoToDetailMerchant(dto: MerchantSummaryDto): StoreMerchant {
+  return {
+    id: dto.id,
+    name: dto.businessName,
+    category: dto.businessType,
+    coverBg: 'linear-gradient(135deg,#0D2E18,#123B22 42%,#1B5E33)',
+    emoji: '🏪',
+    tagline: dto.businessType,
+    rating: dto.rating?.average ?? 0,
+    reviewCount: dto.rating?.count ?? 0,
+    distance: dto.distanceKm != null ? `${dto.distanceKm.toFixed(1)} km` : dto.city,
+    eta: '—',
+    deliveryFee: '—',
+    minOrder: '—',
+    isOpen: dto.isOpenNow ?? true,
+    isVerified: dto.verificationStatus === 'VERIFIED' || dto.verificationStatus === 'APPROVED',
+    hours: '—',
+    phone: '—',
+    address: [dto.city, dto.state].filter(Boolean).join(', ') || '—',
+    logoUrl: dto.logoUrl,
+    coverPhotoUrl: dto.coverPhotoUrl,
+  };
+}
+
+// Neutral placeholders for the real (routed) path — never the KFC/Zinger mock,
+// which would leak fake identity onto a real product while it loads or on error.
+const NEUTRAL_MERCHANT: StoreMerchant = {
+  id: '',
+  name: 'Store',
+  category: '',
+  coverBg: 'linear-gradient(135deg,#0D2E18,#123B22 42%,#1B5E33)',
+  emoji: '🏪',
+  tagline: '',
+  rating: 0,
+  reviewCount: 0,
+  distance: '',
+  eta: '—',
+  deliveryFee: '—',
+  minOrder: '—',
+  isOpen: true,
+  isVerified: false,
+  hours: '—',
+  phone: '—',
+  address: '—',
+};
+
+const NEUTRAL_PRODUCT: ProductDetail = {
+  id: '',
+  name: '',
+  description: '',
+  price: '—',
+  emoji: '🛍️',
+  rating: 0,
+  inStock: true,
+  images: ['🛍️'],
+  imageBgs: ['linear-gradient(135deg,#0D2E18,#176B30)'],
+  category: '',
+  availability: 'In Stock',
+  variantGroups: [],
+  reviews: [],
+  ratingBreakdown: [0, 0, 0, 0, 0],
+  deliveryEta: '—',
+  deliveryFee: '—',
+  pickupAvailable: false,
+  returnPolicy: '',
+  related: [],
+};
 
 export interface ProductDetailScreenProps {
   onBack: () => void;
@@ -823,6 +920,7 @@ export function ProductDetailScreen({
   const [activeTab, setActiveTab] = useState<NavTabKey>('market');
   const [cartCount, setCartCount] = useState(0);
   const [liveProduct, setLiveProduct] = useState<ProductDetail | null>(null);
+  const [liveMerchant, setLiveMerchant] = useState<StoreMerchant | null>(null);
   const [adding, setAdding] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -832,12 +930,22 @@ export function ProductDetailScreen({
       .getProduct(productId)
       .then((dto) => {
         setLiveProduct(dtoToProductDetail(dto));
+        // Fetch the real merchant behind this product so the storefront card and
+        // reviews header show the actual seller — not the KFC mock.
+        const mid = merchantId ?? dto.merchantId;
+        if (mid) {
+          api.marketplace
+            .getMerchant(mid)
+            .then((m) => setLiveMerchant(dtoToDetailMerchant(m)))
+            .catch(() => {});
+        }
       })
       .catch(() => {});
-  }, [productId]);
+  }, [productId, merchantId]);
 
-  const product = liveProduct ?? productProp;
-  const merchant = merchantProp;
+  // Real path (a productId is routed): never fall back to the mock product/merchant.
+  const product = liveProduct ?? (productId ? NEUTRAL_PRODUCT : productProp);
+  const merchant = liveMerchant ?? (productId ? NEUTRAL_MERCHANT : merchantProp);
   const isOutOfStock = product.availability === 'Out of Stock';
 
   const handleAddToCart = async () => {
@@ -848,7 +956,7 @@ export function ProductDetailScreen({
         merchantId: merchantId ?? merchant.id,
         productId: productId ?? product.id,
         productName: product.name,
-        unitPrice: parseInt(product.price.replace(/[₦,]/g, ''), 10) || 0,
+        unitPrice: product.unitPrice ?? (parseInt(product.price.replace(/[₦,]/g, ''), 10) || 0),
         quantity: qty,
       });
     } catch {
@@ -869,7 +977,7 @@ export function ProductDetailScreen({
         merchantId: merchantId ?? merchant.id,
         productId: productId ?? product.id,
         productName: product.name,
-        unitPrice: parseInt(product.price.replace(/[₦,]/g, ''), 10) || 0,
+        unitPrice: product.unitPrice ?? (parseInt(product.price.replace(/[₦,]/g, ''), 10) || 0),
         quantity: qty,
       });
     } catch {
@@ -1373,10 +1481,18 @@ export function ProductDetailScreen({
         >
           <div className="flex items-center gap-3">
             <div
-              className="flex h-12 w-12 items-center justify-center rounded-2xl text-2xl"
+              className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl text-2xl"
               style={{ background: merchant.coverBg }}
             >
-              {merchant.emoji}
+              {merchant.logoUrl ? (
+                <ImageWithFallback
+                  src={merchant.logoUrl}
+                  alt={merchant.name}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                merchant.emoji
+              )}
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-1.5">
