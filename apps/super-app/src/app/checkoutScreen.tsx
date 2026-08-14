@@ -18,7 +18,7 @@ interface Address {
   line1: string;
   line2: string;
 }
-type PaymentKey = 'CASH' | 'MERCHANT_DIRECT';
+type PaymentKey = 'CASH' | 'MERCHANT_DIRECT' | 'WALLET';
 type DeliveryMode = 'standard' | 'express' | 'pickup';
 type ScheduleMode = 'now' | 'later';
 
@@ -701,6 +701,7 @@ export function CheckoutScreen({
   const [realCart, setRealCart] = useState<CartDto | null>(null);
   const [cartLoaded, setCartLoaded] = useState(false);
   const [cartMerchantName, setCartMerchantName] = useState<string | null>(null);
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
 
   useEffect(() => {
     if (!auth.isLoggedIn()) {
@@ -722,6 +723,11 @@ export function CheckoutScreen({
       })
       .catch(() => {})
       .finally(() => alive && setCartLoaded(true));
+    // Real wallet balance — enables the "Pay with Wallet" option.
+    api.wallet
+      .get()
+      .then((w) => alive && setWalletBalance(w.availableBalance))
+      .catch(() => {});
     return () => {
       alive = false;
     };
@@ -825,6 +831,32 @@ export function CheckoutScreen({
   const cartItems = realCart?.items ?? [];
   const cartEmpty = auth.isLoggedIn() && cartLoaded && cartItems.length === 0;
 
+  // Payment options: Cash / merchant-bank (existing) + real DrippleX Wallet.
+  // Wallet is disabled when the balance can't cover the order; the backend also
+  // rejects it with "Insufficient wallet balance", but we guard in the UI too.
+  const walletInsufficient = walletBalance != null && walletBalance < grandTotal;
+  const paymentMethods: {
+    key: PaymentKey;
+    icon: string;
+    label: string;
+    sub: string;
+    disabled?: boolean;
+  }[] = [
+    ...PAYMENT_METHODS,
+    {
+      key: 'WALLET',
+      icon: '👛',
+      label: 'DrippleX Wallet',
+      sub:
+        walletBalance == null
+          ? 'Loading balance…'
+          : walletInsufficient
+            ? `Balance ${fmt(walletBalance)} — not enough for this order`
+            : `Balance ${fmt(walletBalance)}`,
+      disabled: walletBalance == null || walletInsufficient,
+    },
+  ];
+
   // Step 1: cart → order, then branch on payment method
   const handlePlaceOrder = async () => {
     if (!termsChecked) return;
@@ -860,8 +892,11 @@ export function CheckoutScreen({
         return;
       }
 
-      // CASH: pay immediately
-      await api.orders.pay(order.id, { provider: 'CASH' });
+      // WALLET: debit the wallet and mark the order paid in one synchronous call
+      // (no verify step). Insufficient balance surfaces as the backend's 400
+      // "Insufficient wallet balance", caught below.
+      // CASH: record cash-on-delivery. Both pay in a single call here.
+      await api.orders.pay(order.id, { provider: paymentKey === 'WALLET' ? 'WALLET' : 'CASH' });
       setConfirmedOrderId(order.id);
       setConfirmedOrderNum(order.orderNumber);
       setSuccess(true);
@@ -1094,14 +1129,15 @@ export function CheckoutScreen({
             className="overflow-hidden rounded-2xl"
             style={{ background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
           >
-            {PAYMENT_METHODS.map((pm, i) => (
+            {paymentMethods.map((pm, i) => (
               <button
                 key={pm.key}
-                onClick={() => setPaymentKey(pm.key)}
-                className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-all"
+                onClick={() => !pm.disabled && setPaymentKey(pm.key)}
+                disabled={pm.disabled}
+                className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-all disabled:opacity-50"
                 style={{
                   background: paymentKey === pm.key ? 'rgba(43,172,82,.08)' : 'transparent',
-                  borderBottom: i < PAYMENT_METHODS.length - 1 ? `1px solid ${BORDER}` : 'none',
+                  borderBottom: i < paymentMethods.length - 1 ? `1px solid ${BORDER}` : 'none',
                 }}
               >
                 <div
