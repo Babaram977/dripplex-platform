@@ -1461,39 +1461,21 @@ export function CheckoutScreen({
             <span style={{ color: G3 }}>DrippleX Terms of Service</span>.
           </p>
         </button>
-
-        {/* Inline Place Order — the sticky bar below can be clipped by mobile
-            browser chrome (iOS Safari's bottom toolbar overlays the viewport),
-            which leaves a customer with no way to finish the order. This button
-            scrolls with the content, so completing checkout never depends on the
-            floating bar being visible. Same handler, same guards. */}
-        <button
-          onClick={handlePlaceOrder}
-          disabled={!termsChecked || placing || cartEmpty}
-          className="mb-4 mt-2 flex h-[52px] w-full items-center justify-center rounded-2xl text-[15px] font-semibold transition-all active:scale-[.97]"
-          style={{
-            background:
-              !termsChecked || placing || cartEmpty
-                ? 'rgba(255,255,255,.07)'
-                : `linear-gradient(135deg,${G0},${G2} 55%,${G3})`,
-            color: !termsChecked || placing || cartEmpty ? 'rgba(255,255,255,.35)' : 'white',
-            fontFamily: "'Poppins',sans-serif",
-          }}
-        >
-          {cartEmpty
-            ? 'Cart is empty'
-            : placing
-              ? 'Placing Order…'
-              : !termsChecked
-                ? 'Accept the terms above to continue'
-                : `Place Order · ${fmt(Math.round(grandTotal))}`}
-        </button>
       </div>
 
       {/* Sticky bottom bar */}
       <div
         className="absolute bottom-0 left-0 right-0 z-30"
-        style={{ background: `linear-gradient(to top,${NAVY_BASE} 80%,transparent)` }}
+        style={{
+          background: `linear-gradient(to top,${NAVY_BASE} 80%,transparent)`,
+          // Reserve space for the absolutely-positioned BottomNavigation (~91px).
+          // BottomNavigation is `position:absolute; bottom:0`, so inside this bar
+          // it pins to the bar's own bottom edge and rendered directly ON TOP of
+          // the "Final Total / Place Order" row — the button was there but fully
+          // covered by the nav, leaving a customer with no way to finish the
+          // order. Same fix already applied to the cart's checkout bar.
+          paddingBottom: 92,
+        }}
       >
         <div className="flex items-center gap-3 px-5 pb-2 pt-2">
           <div className="flex shrink-0 flex-col">
@@ -1524,6 +1506,8 @@ export function CheckoutScreen({
           >
             {cartEmpty ? (
               <>Cart is empty</>
+            ) : !termsChecked ? (
+              <>Accept the terms to continue</>
             ) : placing ? (
               <>
                 <svg
