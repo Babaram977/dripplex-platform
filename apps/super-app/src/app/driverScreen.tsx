@@ -1391,6 +1391,10 @@ export function DriverUploadDocsScreen({
 // ─────────────────────────────────────────────────────────────────────────────
 // DRIVER-006 — VEHICLE REGISTRATION
 // ─────────────────────────────────────────────────────────────────────────────
+/** The four angles the Operations Console vehicle desk renders, in the order it
+ * reads Vehicle.photos. Keep in step with ANGLES in adminConsoleScreen.tsx. */
+const VEHICLE_PHOTO_ANGLES = ['Front', 'Rear', 'Left Side', 'Right Side'];
+
 export function DriverVehicleRegScreen({
   onBack,
   onSave,
@@ -1407,6 +1411,13 @@ export function DriverVehicleRegScreen({
   const [category, setCategory] = useState<RideType>('ECONOMY');
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
+  // The Operations Console vehicle desk shows four fixed angles and reads them
+  // from Vehicle.photos in that order. Nothing in the app ever captured them,
+  // so every vehicle reached inspection with four empty placeholders.
+  const [photos, setPhotos] = useState<(string | null)[]>([null, null, null, null]);
+  const [uploadingAngle, setUploadingAngle] = useState<number | null>(null);
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
+  const pendingAngleRef = useRef<number>(0);
 
   const CATEGORIES: { value: RideType; label: string }[] = [
     { value: 'ECONOMY', label: 'Economy' },
@@ -1438,6 +1449,10 @@ export function DriverVehicleRegScreen({
     }
     setLoading(true);
     try {
+      // Only real URLs. Guarding on `!== null` alone let an undefined through
+      // when an upload resolved without a URL, and the vehicle was created with
+      // a null entry in photos.
+      const uploaded = photos.filter((p): p is string => typeof p === 'string' && p.length > 0);
       await api.driver.createVehicle({
         plateNumber: plate.trim(),
         make: make.trim(),
@@ -1446,6 +1461,7 @@ export function DriverVehicleRegScreen({
         year: yearNum,
         rideCategory: category,
         seats: seatsNum,
+        ...(uploaded.length > 0 ? { photos: uploaded } : {}),
       });
       onSave();
     } catch (e: unknown) {
@@ -1472,6 +1488,78 @@ export function DriverVehicleRegScreen({
             <p className="text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
               Your ride partner vehicle
             </p>
+          </div>
+        </div>
+
+        {/* Vehicle photos — the four angles the Operations Console shows, in the
+            order it reads them from Vehicle.photos. Without these an inspector
+            has nothing to look at before the physical check. */}
+        <input
+          ref={photoInputRef}
+          type="file"
+          accept="image/*"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = '';
+            if (!file) return;
+            const angle = pendingAngleRef.current;
+            setUploadingAngle(angle);
+            setErr('');
+            void uploadFile(file, 'product-images')
+              .then((url) => {
+                setPhotos((prev) => prev.map((p, i) => (i === angle ? url : p)));
+              })
+              .catch((uploadError: unknown) =>
+                setErr(
+                  (uploadError as { message?: string }).message ??
+                    'Could not upload that photo. Try again.',
+                ),
+              )
+              .finally(() => setUploadingAngle(null));
+          }}
+        />
+        <div className="mb-6">
+          <p className="mb-1 text-[14px] font-semibold" style={{ fontFamily: PP, color: '#fff' }}>
+            Vehicle photos
+          </p>
+          <p className="mb-3 text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
+            One clear photo per angle, in daylight. Your inspector reviews these before the physical
+            check.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            {VEHICLE_PHOTO_ANGLES.map((angle, idx) => {
+              const url = photos[idx];
+              const busy = uploadingAngle === idx;
+              return (
+                <button
+                  key={angle}
+                  onClick={() => {
+                    pendingAngleRef.current = idx;
+                    photoInputRef.current?.click();
+                  }}
+                  disabled={busy}
+                  className="relative flex h-28 flex-col items-center justify-center gap-1 overflow-hidden rounded-2xl active:scale-[.98]"
+                  style={{
+                    background: url ? `center / cover no-repeat url(${url})` : NAVY_SURFACE,
+                    border: `1px ${url ? 'solid' : 'dashed'} ${url ? G2 : BORDER}`,
+                    cursor: busy ? 'default' : 'pointer',
+                  }}
+                >
+                  {!url && <span style={{ fontSize: 22 }}>📷</span>}
+                  <span
+                    className="rounded px-2 py-0.5 text-[11.5px] font-medium"
+                    style={{
+                      fontFamily: IT,
+                      color: url ? '#fff' : MUTED,
+                      background: url ? 'rgba(0,0,0,.55)' : 'transparent',
+                    }}
+                  >
+                    {busy ? 'Uploading…' : url ? `${angle} ✓` : angle}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
 

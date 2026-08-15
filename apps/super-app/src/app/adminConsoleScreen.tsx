@@ -10,6 +10,7 @@ import {
   type AdminLiveRideDto,
   type AdminCustomerDto,
   type AdminMerchantDto,
+  type AdminInspectionDto,
   type AdminRiderDto,
   type DeliveryJobDto,
 } from '../lib/api';
@@ -56,6 +57,7 @@ export type AdminPage =
   | 'drivers'
   | 'drvkyc'
   | 'vehicles'
+  | 'inspections'
   | 'merchants'
   | 'riders'
   | 'customers'
@@ -283,6 +285,7 @@ const NAV_ITEMS: { page: AdminPage; icon: string; label: string }[] = [
   { page: 'drivers', icon: '🧑‍✈️', label: 'Drivers' },
   { page: 'drvkyc', icon: '🪪', label: 'Driver KYC' },
   { page: 'vehicles', icon: '🔑', label: 'Vehicles' },
+  { page: 'inspections', icon: '🔧', label: 'Inspections' },
   { page: 'merchants', icon: '🏪', label: 'Merchants' },
   { page: 'riders', icon: '🛵', label: 'Riders' },
   { page: 'customers', icon: '👥', label: 'Customers' },
@@ -432,6 +435,11 @@ const PAGE_LABELS: Record<AdminPage, string> = {
   drivers: 'Drivers',
   drvkyc: 'Driver KYC',
   vehicles: 'Vehicles',
+  // merchants/riders were missing since those desks shipped, so their header
+  // title rendered blank; inspections would have joined them.
+  inspections: 'Vehicle Inspections',
+  merchants: 'Merchants',
+  riders: 'Riders',
   customers: 'Customers',
   pricing: 'Pricing & Fares',
   incidents: 'Incidents',
@@ -2423,6 +2431,250 @@ function VehicleReviewCard({
         </div>
       )}
     </Card>
+  );
+}
+
+// ─── Page: Inspections ────────────────────────────────────────────────────────
+/**
+ * The physical vehicle inspection desk (DPX-DRIVER-002 Phase 3).
+ *
+ * The backend has had /admin/inspections since the inspection module shipped —
+ * list, checklist, decide — but nothing in the console ever called it, so a
+ * DrippleX officer had no way to record a walkthrough and a supervisor no way
+ * to pass or fail one. `inspectionPassed` is one of the six conditions in the
+ * driver activation gate, so with no desk no driver could ever be activated.
+ *
+ * The role split is the backend's, not a new idea: recording the checklist
+ * needs INSPECTION_CHECKLIST_MANAGE, deciding needs INSPECTION_APPROVE.
+ */
+const INSPECTION_STATUS_CHIP: Record<string, { label: string; color: string }> = {
+  SCHEDULED: { label: 'Scheduled', color: C_WARN },
+  PASSED: { label: 'Passed', color: C_OK },
+  FAILED: { label: 'Failed', color: C_ERR },
+  CANCELLED: { label: 'Cancelled', color: MUTED },
+};
+
+function InspectionCard({
+  inspection,
+  reload,
+}: {
+  inspection: AdminInspectionDto;
+  reload: () => void;
+}) {
+  const [busy, setBusy] = useState<null | 'pass' | 'fail'>(null);
+  const [notes, setNotes] = useState('');
+  const [showFail, setShowFail] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const chip = INSPECTION_STATUS_CHIP[inspection.status] ?? {
+    label: inspection.status,
+    color: MUTED,
+  };
+  const decided = inspection.status === 'PASSED' || inspection.status === 'FAILED';
+  const checklist = inspection.checklist ?? [];
+  const failedItems = checklist.filter((item) => !item.passed);
+
+  const decide = async (passed: boolean): Promise<void> => {
+    setBusy(passed ? 'pass' : 'fail');
+    setErr(null);
+    try {
+      await api.admin.decideInspection(inspection.id, passed, notes.trim() || undefined);
+      setShowFail(false);
+      setNotes('');
+      reload();
+    } catch (e: unknown) {
+      setErr((e as { message?: string }).message ?? 'Could not record the decision.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <Card style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 18 }}>🔧</span>
+        <div
+          style={{ fontFamily: 'Poppins, sans-serif', fontSize: 13, fontWeight: 700, color: WHITE }}
+        >
+          Inspection {inspection.id.slice(0, 8)}
+        </div>
+        {inspection.reinspectionOfId && <Chip label="Re-inspection" color={C_INFO} />}
+        <div style={{ marginLeft: 'auto' }}>
+          <Chip {...chip} />
+        </div>
+      </div>
+      <SEP />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <DetailRow label="Driver" value={inspection.driverId.slice(0, 8)} />
+        <DetailRow label="Vehicle" value={inspection.vehicleId.slice(0, 8)} />
+        <DetailRow label="Scheduled" value={new Date(inspection.scheduledAt).toLocaleString()} />
+        {inspection.completedAt && (
+          <DetailRow label="Decided" value={new Date(inspection.completedAt).toLocaleString()} />
+        )}
+        {inspection.notes && <DetailRow label="Notes" value={inspection.notes} />}
+      </div>
+
+      {/* The officer's walkthrough. Empty until the checklist is recorded. */}
+      {checklist.length > 0 ? (
+        <div
+          style={{
+            padding: 10,
+            borderRadius: 8,
+            background: 'rgba(255,255,255,.03)',
+            border: `1px solid ${BORDER}`,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 6,
+          }}
+        >
+          <span style={{ fontSize: 11, fontWeight: 700, color: WHITE }}>
+            Walkthrough ({checklist.length - failedItems.length}/{checklist.length} passed)
+          </span>
+          {checklist.map((item) => (
+            <div key={item.key} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+              <span style={{ fontSize: 11, color: item.passed ? C_OK : C_ERR }}>
+                {item.passed ? '✓' : '✕'}
+              </span>
+              <span style={{ fontSize: 11.5, color: WHITE }}>{item.label}</span>
+              {item.notes && <span style={{ fontSize: 11, color: MUTED }}>— {item.notes}</span>}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <span style={{ fontSize: 11.5, color: C_WARN, fontFamily: 'Inter, sans-serif' }}>
+          No walkthrough recorded yet — an officer records the checklist on site before a supervisor
+          can decide.
+        </span>
+      )}
+
+      {inspection.photos.length > 0 && (
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {inspection.photos.map((photo, i) => (
+            <a
+              key={photo}
+              href={photo}
+              target="_blank"
+              rel="noreferrer"
+              style={{ fontSize: 11.5, color: G2 }}
+            >
+              Photo {i + 1} ↗
+            </a>
+          ))}
+        </div>
+      )}
+
+      {err && <span style={{ fontSize: 12, color: C_ERR }}>{err}</span>}
+
+      {!decided &&
+        (showFail ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <input
+              className="dx-input"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="What failed? The driver sees this."
+            />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Btn
+                label={busy === 'fail' ? 'Recording…' : 'Confirm Fail'}
+                color={C_ERR}
+                onClick={busy ? undefined : () => void decide(false)}
+              />
+              <Btn
+                label="Cancel"
+                color={MUTED}
+                outline
+                onClick={() => {
+                  setShowFail(false);
+                  setErr(null);
+                }}
+              />
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Btn
+              label={busy === 'pass' ? 'Recording…' : 'Pass Inspection'}
+              color={G2}
+              onClick={busy ? undefined : () => void decide(true)}
+            />
+            <Btn label="Fail Inspection" color={C_ERR} outline onClick={() => setShowFail(true)} />
+          </div>
+        ))}
+    </Card>
+  );
+}
+
+function PageInspections() {
+  const [inspections, setInspections] = useState<AdminInspectionDto[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<'SCHEDULED' | 'PASSED' | 'FAILED' | 'CANCELLED' | 'ALL'>(
+    'SCHEDULED',
+  );
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      const res = await api.admin.listInspections(filter === 'ALL' ? undefined : filter);
+      setInspections(res.items);
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load inspections.');
+      setInspections([]);
+    }
+  }, [filter]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const awaiting = (inspections ?? []).filter((i) => i.status === 'SCHEDULED').length;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div
+          style={{ fontFamily: 'Poppins, sans-serif', fontSize: 15, fontWeight: 700, color: WHITE }}
+        >
+          Vehicle Inspections
+        </div>
+        <Chip label={`${awaiting} awaiting decision`} color={C_WARN} />
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {(['SCHEDULED', 'PASSED', 'FAILED', 'CANCELLED', 'ALL'] as const).map((f) => (
+          <Btn
+            key={f}
+            label={f === 'ALL' ? 'All' : (INSPECTION_STATUS_CHIP[f]?.label ?? f)}
+            color={filter === f ? G2 : MUTED}
+            outline={filter !== f}
+            onClick={() => setFilter(f)}
+          />
+        ))}
+      </div>
+
+      {inspections === null && !error && (
+        <Card>
+          <span style={{ fontSize: 13, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+            Loading…
+          </span>
+        </Card>
+      )}
+      {error && (
+        <Card>
+          <span style={{ fontSize: 13, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>
+            {error}
+          </span>
+        </Card>
+      )}
+      {inspections && inspections.length === 0 && !error && (
+        <Card>
+          <span style={{ fontSize: 13, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+            No inspections in this state.
+          </span>
+        </Card>
+      )}
+      {inspections?.map((inspection) => (
+        <InspectionCard key={inspection.id} inspection={inspection} reload={() => void load()} />
+      ))}
+    </div>
   );
 }
 
@@ -5608,6 +5860,8 @@ function renderPage(page: AdminPage) {
       return <PageDrvKYC />;
     case 'vehicles':
       return <PageVehicles />;
+    case 'inspections':
+      return <PageInspections />;
     case 'merchants':
       return <PageMerchants />;
     case 'riders':
