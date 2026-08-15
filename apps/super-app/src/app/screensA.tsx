@@ -737,7 +737,7 @@ export function RegisterScreen({
 // ═══════════════════════════════════════════════════════════════════════════
 // AUTH-004 — OTP VERIFICATION (enhanced)
 // ═══════════════════════════════════════════════════════════════════════════
-export type OTPError = 'invalid' | 'expired' | 'attempts' | 'network' | null;
+export type OTPError = 'invalid' | 'expired' | 'attempts' | 'network' | 'signin' | null;
 export type OTPStatus = 'idle' | 'verifying' | 'success';
 
 export const ERROR_CONFIG: Record<
@@ -771,6 +771,18 @@ export const ERROR_CONFIG: Record<
     title: 'Connection Error',
     message: "We couldn't verify your code. Please check your connection and try again.",
     action: 'Retry',
+  },
+  // The code WAS right and the account IS verified — only the automatic
+  // sign-in that follows it failed. Reporting this as a bad code (which is
+  // what happened in production) is doubly wrong: it blames the user for a
+  // correct code, and the code is now spent, so every retry genuinely fails
+  // and they can never get past this screen.
+  signin: {
+    icon: '✓',
+    color: '#F59E0B',
+    title: 'Account Verified',
+    message: "Your account is verified. We couldn't sign you in automatically — please sign in.",
+    action: 'Continue to sign in',
   },
 };
 
@@ -878,21 +890,50 @@ export function OTPScreen({
   const emailId = (email ?? '').trim().toLowerCase();
   const useEmail = verifyChannel === 'email' && emailId.length > 0;
 
+  /**
+   * Turn a failed request into the state that actually describes it. Every
+   * failure used to collapse into 'invalid' ("Incorrect Code"), which is how a
+   * rate-limited rider was told their correct code was wrong.
+   */
+  const errorFor = (e: unknown): NonNullable<OTPError> => {
+    const status = (e as { status?: number }).status;
+    const code = (e as { errorCode?: string }).errorCode ?? '';
+    if (status === 429) return 'attempts';
+    if (status === undefined || status === 0) return 'network';
+    if (status >= 500) return 'network';
+    if (/EXPIRED/i.test(code)) return 'expired';
+    return 'invalid';
+  };
+
   const handleVerify = async () => {
     if (!filled) {
       triggerShake();
       return;
     }
     setStatus('verifying');
+
+    // Step 1 — confirm the OTP. This activates the account
+    // (PENDING_VERIFICATION → ACTIVE) and CONSUMES the code.
+    // Email code: POST /auth/verify/email { email, otp }.
+    // Phone code: POST /auth/phone/verify { phone, otp }.
     try {
-      // Confirm the OTP → activates the account (PENDING_VERIFICATION → ACTIVE).
-      // Email code: POST /auth/verify/email { email, otp }.
-      // Phone code: POST /auth/phone/verify { phone, otp }.
       if (useEmail) {
         await api.auth.verifyEmailOtp({ email: emailId, otp: otp.join('') });
       } else {
         await api.auth.verifyPhoneOtp({ phone: e164, otp: otp.join('') });
       }
+    } catch (e) {
+      setStatus('idle');
+      setError(errorFor(e));
+      triggerShake();
+      return;
+    }
+
+    // Step 2 — the code is now spent and the account is verified, so nothing
+    // below may report a bad code. A failure here is a sign-in problem, and
+    // the user must be sent onward rather than stranded on a screen whose
+    // code can never work again.
+    try {
       // Registration path: the account is now ACTIVE, so log in and persist the
       // session so the user lands authenticated (Home works, orders can be
       // placed). Login uses the same identifier + password from registration.
@@ -915,9 +956,10 @@ export function OTPScreen({
       setStatus('success');
       setTimeout(onVerified, 1600);
     } catch {
+      // Verified, not signed in. Say exactly that and offer the way forward;
+      // the portal's own sign-in screen takes it from here.
       setStatus('idle');
-      setError('invalid');
-      triggerShake();
+      setError('signin');
     }
   };
 
@@ -933,7 +975,10 @@ export function OTPScreen({
     void resendReq.catch(() => {});
   };
   const handleErrorAction = (err: NonNullable<OTPError>) => {
-    if (err === 'expired' || err === 'network') handleResend();
+    // Verified-but-not-signed-in: the code is spent, so clearing the boxes
+    // would only invite a retry that cannot succeed. Move them on instead.
+    if (err === 'signin') onVerified();
+    else if (err === 'expired' || err === 'network') handleResend();
     else {
       setError(null);
       setOtp(['', '', '', '', '', '']);
@@ -1021,7 +1066,7 @@ export function OTPScreen({
               className="text-[26px] font-bold text-white"
               style={{ fontFamily: "'Poppins',sans-serif", letterSpacing: '-0.02em' }}
             >
-              Phone Number Verified
+              {useEmail ? 'Email Verified' : 'Phone Number Verified'}
             </h2>
             <p className="text-[15px]" style={{ fontFamily: "'Inter',sans-serif", color: G3 }}>
               Welcome to DrippleX
@@ -1084,7 +1129,7 @@ export function OTPScreen({
             className="text-[26px] font-bold leading-tight text-white"
             style={{ fontFamily: "'Poppins',sans-serif", letterSpacing: '-0.022em' }}
           >
-            Verify Your Phone Number
+            {useEmail ? 'Verify Your Email' : 'Verify Your Phone Number'}
           </h1>
           <div>
             <p
@@ -1278,8 +1323,8 @@ export function OTPScreen({
             style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.4)' }}
           >
             <span className="font-semibold text-white/60">Your security is important.</span> We use
-            one-time passwords to securely verify your phone number. Never share your verification
-            code with anyone.
+            one-time passwords to securely verify your {useEmail ? 'email address' : 'phone number'}
+            . Never share your verification code with anyone.
           </p>
         </div>
 

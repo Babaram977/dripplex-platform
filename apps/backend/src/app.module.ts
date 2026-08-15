@@ -1,6 +1,6 @@
 import { Module, ValidationPipe } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
 
 import { AddressesModule } from './addresses/addresses.module';
 import { AnalyticsModule } from './analytics/analytics.module';
@@ -11,6 +11,7 @@ import { CartModule } from './cart/cart.module';
 import { CmsModule } from './cms/cms.module';
 import { CommercialModule } from './commercial/commercial.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { ProxyAwareThrottlerGuard } from './common/guards/proxy-aware-throttler.guard';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { AppConfigService } from './config/app-config.service';
 import { AppConfigModule } from './config/config.module';
@@ -109,8 +110,10 @@ import { WishlistModule } from './wishlist/wishlist.module';
       useClass: LoggingInterceptor,
     },
     {
+      // Keys rate limits on the real client, not on Railway's edge address —
+      // the stock guard put every DrippleX user in one shared bucket.
       provide: APP_GUARD,
-      useClass: ThrottlerGuard,
+      useClass: ProxyAwareThrottlerGuard,
     },
     {
       provide: APP_GUARD,
