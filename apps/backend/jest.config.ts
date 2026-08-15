@@ -6,6 +6,10 @@ const config: Config = {
   // Fails the run in CI (or with DATABASE_REQUIRED=true) if the database is
   // unreachable, so DB-backed integration specs cannot silently skip and pass.
   globalSetup: '<rootDir>/test/jest-global-setup.ts',
+  // Runs in every worker before a spec is imported. Supplies the environment
+  // ConfigModule validates at import time, so AppModule-importing specs do not
+  // depend on a gitignored .env being present.
+  setupFiles: ['<rootDir>/test/jest-setup-env.ts'],
   // Run suites serially. Most backend specs are real-Postgres integration tests
   // that share one database and reset global/singleton tables with unscoped
   // deleteMany({}) between tests (e.g. commercial_credit_settings — unique on
