@@ -21,6 +21,7 @@
 import React, { useState, useRef } from 'react';
 
 import { api, ApiError, uploadFile } from '../lib/api';
+import { auth } from '../lib/auth';
 
 import {
   G0,
@@ -1973,24 +1974,31 @@ export function BusinessDetailsScreen({
 // ─────────────────────────────────────────────────────────────────────────────
 type ReviewStep = { label: string; done: boolean; active?: boolean };
 
-const MERCHANT_STEPS: ReviewStep[] = [
-  { label: 'Business details submitted', done: true },
-  { label: 'KYC verification', done: false, active: true },
-  { label: 'Account approved', done: false },
-];
-
+/**
+ * Partner onboarding checklist.
+ *
+ * These used to be hardcoded as "Business details submitted ✓ / KYC verification
+ * IN PROGRESS — 24–48 hours", which told every brand-new partner that documents
+ * they had never uploaded were already being reviewed, with no way to act. The
+ * merchant checklist is now derived from the real backend state; the driver and
+ * rider lists stay as plain outstanding steps (no self-status endpoint is
+ * exposed to the app yet) rather than claiming fake progress.
+ */
 const DRIVER_STEPS: ReviewStep[] = [
-  { label: 'Identity check', done: true },
-  { label: 'Document review', done: true },
-  { label: 'Vehicle inspection', done: false, active: true },
-  { label: 'Inspection & test', done: false },
+  { label: 'Identity documents', done: false },
+  { label: 'Vehicle registration', done: false },
   { label: 'Agreement signing', done: false },
-  { label: 'Account standing', done: false },
 ];
 
 const RIDER_STEPS: ReviewStep[] = [
   { label: 'Application submitted', done: true },
-  { label: 'Under review', done: false, active: true },
+  { label: 'Identity documents', done: false },
+];
+
+const MERCHANT_STEPS: ReviewStep[] = [
+  { label: 'Business details submitted', done: true },
+  { label: 'Identity documents', done: false },
+  { label: 'Account approved', done: false },
 ];
 
 const STEP_MAP: Record<PartnerPersona, ReviewStep[]> = {
@@ -2009,19 +2017,77 @@ export function PendingReviewScreen({
   persona,
   onHome,
   onRefresh,
+  onUploadDocuments,
 }: {
   persona: PartnerPersona;
   onHome: () => void;
   onRefresh: () => void;
+  /** Opens the portal page where this partner actually uploads documents. */
+  onUploadDocuments?: () => void;
 }) {
   const [refreshing, setRefreshing] = useState(false);
-  const steps = STEP_MAP[persona];
+  const [liveSteps, setLiveSteps] = useState<ReviewStep[] | null>(null);
+  // null = unknown (not a merchant, or not loaded yet)
+  const [kycState, setKycState] = useState<'NONE' | 'PENDING' | 'VERIFIED' | 'REJECTED' | null>(
+    null,
+  );
   const meta = PERSONA_META[persona];
+
+  /**
+   * Read the merchant's REAL onboarding state. Previously this screen showed a
+   * fixed checklist claiming KYC was already under review, so a merchant who had
+   * uploaded nothing was told to wait 24–48 hours for a review that would never
+   * happen.
+   */
+  const loadMerchantState = React.useCallback(async () => {
+    if (persona !== 'merchant' || !auth.isLoggedIn()) return;
+    try {
+      const [business, kyc] = await Promise.all([
+        api.merchant.getBusiness().catch(() => null),
+        api.merchant.getKyc().catch(() => null),
+      ]);
+      const latest = kyc?.latest ?? null;
+      const state: 'NONE' | 'PENDING' | 'VERIFIED' | 'REJECTED' = !latest
+        ? 'NONE'
+        : latest.verificationStatus === 'VERIFIED'
+          ? 'VERIFIED'
+          : latest.verificationStatus === 'REJECTED'
+            ? 'REJECTED'
+            : 'PENDING';
+      const approved = business?.approvalStatus === 'APPROVED';
+      setKycState(state);
+      setLiveSteps([
+        { label: 'Business details submitted', done: Boolean(business) },
+        {
+          label:
+            state === 'REJECTED'
+              ? 'Identity documents — rejected, re-upload'
+              : state === 'NONE'
+                ? 'Identity documents — not uploaded yet'
+                : 'Identity documents',
+          done: state === 'VERIFIED',
+          active: state === 'PENDING',
+        },
+        { label: 'Account approved', done: approved },
+      ]);
+    } catch {
+      // Leave the neutral default checklist rather than inventing progress.
+    }
+  }, [persona]);
+
+  React.useEffect(() => {
+    void loadMerchantState();
+  }, [loadMerchantState]);
+
+  const steps = liveSteps ?? STEP_MAP[persona];
   const doneCount = steps.filter((s) => s.done).length;
+  // Only a document that is genuinely awaiting review is "in review".
+  const awaitingReview = kycState === 'PENDING';
+  const needsUpload = kycState === 'NONE' || kycState === 'REJECTED';
 
   const handleRefresh = () => {
     setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 1500);
+    void loadMerchantState().finally(() => setRefreshing(false));
     onRefresh();
   };
 
@@ -2090,13 +2156,15 @@ export function PendingReviewScreen({
             className="text-center text-[24px] font-bold"
             style={{ fontFamily: PP, color: '#fff', letterSpacing: '-0.02em' }}
           >
-            Application received
+            {needsUpload ? 'One more step' : 'Application received'}
           </h1>
           <p
             className="mt-2.5 text-center text-[14px] leading-relaxed"
             style={{ fontFamily: IT, color: MUTED, maxWidth: 290 }}
           >
-            Your application is with the DrippleX team — we'll notify you the moment you're approved
+            {needsUpload
+              ? 'Your account is created. Upload your identity or business document to finish and go live.'
+              : "Your application is with the DrippleX team — we'll notify you the moment you're approved"}
           </p>
 
           <div
@@ -2197,7 +2265,7 @@ export function PendingReviewScreen({
                       className="mt-0.5 text-[12px]"
                       style={{ fontFamily: IT, color: 'rgba(251,191,36,.6)' }}
                     >
-                      In progress — estimated 24–48 hours
+                      {awaitingReview ? 'In review — estimated 24–48 hours' : 'Waiting on you'}
                     </p>
                   )}
                   {step.done && (
@@ -2270,6 +2338,19 @@ export function PendingReviewScreen({
             </svg>
             {refreshing ? 'Checking…' : 'Refresh status'}
           </button>
+
+          {/* The screen used to offer only a (non-functional) refresh and "Back
+              to Home", so a partner who still had to upload documents had no way
+              to proceed. */}
+          {needsUpload && onUploadDocuments && (
+            <button
+              onClick={onUploadDocuments}
+              className="mt-3 flex h-[52px] w-full items-center justify-center rounded-2xl text-[15px] font-bold text-white transition-transform active:scale-[.97]"
+              style={{ background: `linear-gradient(135deg,${G2},${G3})`, fontFamily: PP }}
+            >
+              Upload documents
+            </button>
+          )}
 
           <button
             onClick={onHome}
