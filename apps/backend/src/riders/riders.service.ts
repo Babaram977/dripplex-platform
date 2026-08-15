@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import {
   KycVerificationStatus,
   OnboardingStatus,
@@ -12,6 +12,11 @@ import {
   NotFoundDomainException,
   ValidationDomainException,
 } from '../common/exceptions/domain.exception';
+import {
+  NOTIFICATION_SERVICE,
+  type NotificationService,
+  type RiderLifecycleEvent,
+} from '../notifications/notification.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageAssetService } from '../uploads/storage-asset.service';
 
@@ -27,8 +32,12 @@ import type { RiderKyc, RiderProfile, User } from '@prisma/client';
 /**
  * DPX-RIDER-001 — delivery-rider approval workflow. Mirrors DriversService's
  * approve/reject/suspend/reactivate, minus the driver-only KYC/vehicle/
- * inspection activation gate (riders have no such requirement). Lifecycle
- * notification emails are a follow-up (no notifyRiderLifecycle port yet).
+ * inspection activation gate (riders have no such requirement).
+ *
+ * DPX-RIDER-005: riders now send lifecycle emails like every other partner.
+ * They were the only persona with no notification port at all, so a rejected
+ * rider was simply never told — the reason sat in the database and on the
+ * Operations desk and never reached them.
  */
 @Injectable()
 export class RidersService {
@@ -36,6 +45,8 @@ export class RidersService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly storageAssets: StorageAssetService,
+    @Inject(NOTIFICATION_SERVICE)
+    private readonly notifications: NotificationService,
   ) {}
 
   public async listRiders(query: ListRidersQueryDto): Promise<{
@@ -141,6 +152,11 @@ export class RidersService {
       { resource: 'rider_kyc', resourceId: kyc.id, metadata: { documentType: kyc.documentType } },
     );
 
+    await this.notifyRiderById(riderUserId, {
+      event: 'kyc_submitted',
+      documentType: dto.documentType,
+    });
+
     return await this.signRiderKyc(toRiderKycDto(kyc));
   }
 
@@ -178,7 +194,7 @@ export class RidersService {
     adminUserId: string,
     context: AuditContext,
   ): Promise<RiderApprovalDto> {
-    const { profile } = await this.requireRiderProfile(riderUserId);
+    const { profile, user } = await this.requireRiderProfile(riderUserId);
 
     if (profile.status === RiderStatus.APPROVED) {
       throw new ConflictDomainException('Rider is already approved');
@@ -209,6 +225,12 @@ export class RidersService {
       { resource: 'rider', resourceId: riderUserId, metadata: { approvedBy: adminUserId } },
     );
 
+    await this.notifications.notifyRiderLifecycle({
+      email: user.email,
+      event: 'rider_approved',
+      riderId: riderUserId,
+    });
+
     return toRiderApprovalDto(updated);
   }
 
@@ -218,7 +240,7 @@ export class RidersService {
     reason: string,
     context: AuditContext,
   ): Promise<RiderApprovalDto> {
-    const { profile } = await this.requireRiderProfile(riderUserId);
+    const { profile, user } = await this.requireRiderProfile(riderUserId);
 
     const updated = await this.prisma.riderProfile.update({
       where: { userId: riderUserId },
@@ -242,6 +264,15 @@ export class RidersService {
       { resource: 'rider', resourceId: riderUserId, metadata: { reason } },
     );
 
+    // The rejection reason is the whole point of the email: without it the
+    // rider only knows they were turned down, not what to fix.
+    await this.notifications.notifyRiderLifecycle({
+      email: user.email,
+      event: 'rider_rejected',
+      riderId: riderUserId,
+      reason,
+    });
+
     return toRiderApprovalDto(updated, { rejectedReason: reason });
   }
 
@@ -251,7 +282,7 @@ export class RidersService {
     reason: string,
     context: AuditContext,
   ): Promise<RiderApprovalDto> {
-    const { profile } = await this.requireRiderProfile(riderUserId);
+    const { profile, user } = await this.requireRiderProfile(riderUserId);
     if (profile.status !== RiderStatus.APPROVED) {
       throw new ValidationDomainException('Only approved riders can be suspended');
     }
@@ -272,6 +303,13 @@ export class RidersService {
       { resource: 'rider', resourceId: riderUserId, metadata: { reason } },
     );
 
+    await this.notifications.notifyRiderLifecycle({
+      email: user.email,
+      event: 'rider_suspended',
+      riderId: riderUserId,
+      reason,
+    });
+
     return toRiderApprovalDto(updated, { rejectedReason: reason });
   }
 
@@ -280,7 +318,7 @@ export class RidersService {
     adminUserId: string,
     context: AuditContext,
   ): Promise<RiderApprovalDto> {
-    const { profile } = await this.requireRiderProfile(riderUserId);
+    const { profile, user } = await this.requireRiderProfile(riderUserId);
     if (profile.status !== RiderStatus.SUSPENDED) {
       throw new ValidationDomainException('Only suspended riders can be reactivated');
     }
@@ -302,6 +340,12 @@ export class RidersService {
       { ...context, userId: adminUserId },
       { resource: 'rider', resourceId: riderUserId },
     );
+
+    await this.notifications.notifyRiderLifecycle({
+      email: user.email,
+      event: 'rider_reactivated',
+      riderId: riderUserId,
+    });
 
     return toRiderApprovalDto(updated);
   }
@@ -350,6 +394,11 @@ export class RidersService {
       { resource: 'rider_kyc', resourceId: kyc.id, metadata: { documentType: kyc.documentType } },
     );
 
+    await this.notifyRiderById(kyc.riderId, {
+      event: 'kyc_verified',
+      documentType: kyc.documentType,
+    });
+
     return await this.signRiderKyc(toRiderKycDto(updated));
   }
 
@@ -377,7 +426,34 @@ export class RidersService {
       { resource: 'rider_kyc', resourceId: kyc.id, metadata: { documentType: kyc.documentType } },
     );
 
+    // Name the document AND the reason — a rider who is told only "rejected"
+    // cannot know which of their two documents to replace.
+    await this.notifyRiderById(kyc.riderId, {
+      event: 'kyc_rejected',
+      documentType: kyc.documentType,
+      reason: remarks,
+    });
+
     return await this.signRiderKyc(toRiderKycDto(updated));
+  }
+
+  /**
+   * Email a rider looked up by id. KYC review is keyed by document, not by
+   * rider, so the address is not already in hand at those call sites.
+   */
+  private async notifyRiderById(
+    riderUserId: string,
+    input: { event: RiderLifecycleEvent; documentType?: string; reason?: string },
+  ): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { id: riderUserId } });
+    if (!user?.email) {
+      return;
+    }
+    await this.notifications.notifyRiderLifecycle({
+      email: user.email,
+      riderId: riderUserId,
+      ...input,
+    });
   }
 
   private async requireRiderKyc(kycId: string): Promise<RiderKyc> {

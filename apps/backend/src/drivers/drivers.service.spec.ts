@@ -59,6 +59,7 @@ describe('DriversService', () => {
       notifyPaymentResult: jest.fn(),
       notifyDeliveryLifecycle: jest.fn(),
       notifyDriverLifecycle: jest.fn().mockResolvedValue(undefined),
+      notifyRiderLifecycle: jest.fn().mockResolvedValue(undefined),
       notifyRideLifecycle: jest.fn(),
       notifyRideEarning: jest.fn(),
     };
@@ -203,6 +204,7 @@ describe('DriversService', () => {
       new AuditService({ create: jest.fn().mockResolvedValue(undefined) }),
       {
         notifyDriverLifecycle: jest.fn().mockResolvedValue(undefined),
+        notifyRiderLifecycle: jest.fn().mockResolvedValue(undefined),
       } as unknown as NotificationService,
       new DriverActivationService(prisma),
       new StorageAssetService(

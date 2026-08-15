@@ -30,6 +30,11 @@ export interface PhoneOtpNotificationInput {
 export type MerchantLifecycleEvent =
   | 'business_submitted'
   | 'kyc_submitted'
+  // A decision on ONE submitted document. Distinct from merchant_approved /
+  // merchant_rejected, which decide the whole account: a merchant whose NIN is
+  // rejected has to know which document failed and why, or they cannot fix it.
+  | 'kyc_verified'
+  | 'kyc_rejected'
   | 'merchant_approved'
   | 'merchant_rejected'
   | 'merchant_suspended'
@@ -89,6 +94,8 @@ export interface DeliveryLifecycleNotificationInput {
 
 export type DriverLifecycleEvent =
   | 'kyc_submitted'
+  | 'kyc_verified'
+  | 'kyc_rejected'
   | 'driver_approved'
   | 'driver_rejected'
   | 'driver_suspended'
@@ -98,6 +105,29 @@ export interface DriverLifecycleNotificationInput {
   email: string;
   event: DriverLifecycleEvent;
   driverId: string;
+  documentType?: string;
+  reason?: string;
+}
+
+/**
+ * DPX-RIDER-005 — delivery-rider lifecycle emails. Riders were the only partner
+ * persona with no notification port at all, so a rejected rider was told
+ * nothing: the reason sat in the database and on the Operations desk, and the
+ * rider just never heard back.
+ */
+export type RiderLifecycleEvent =
+  | 'kyc_submitted'
+  | 'kyc_verified'
+  | 'kyc_rejected'
+  | 'rider_approved'
+  | 'rider_rejected'
+  | 'rider_suspended'
+  | 'rider_reactivated';
+
+export interface RiderLifecycleNotificationInput {
+  email: string;
+  event: RiderLifecycleEvent;
+  riderId: string;
   documentType?: string;
   reason?: string;
 }
@@ -143,6 +173,7 @@ export interface NotificationService {
   notifyPaymentResult(input: PaymentResultNotificationInput): Promise<void>;
   notifyDeliveryLifecycle(input: DeliveryLifecycleNotificationInput): Promise<void>;
   notifyDriverLifecycle(input: DriverLifecycleNotificationInput): Promise<void>;
+  notifyRiderLifecycle(input: RiderLifecycleNotificationInput): Promise<void>;
   notifyRideLifecycle(input: RideLifecycleNotificationInput): Promise<void>;
   notifyRideEarning(input: RideEarningNotificationInput): Promise<void>;
 }

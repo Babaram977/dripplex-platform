@@ -801,6 +801,25 @@ describe('MerchantsService', () => {
       );
     });
 
+    it('emails the merchant which document was rejected and why', async () => {
+      repository.findActivePendingKyc.mockResolvedValue(pendingKyc);
+      repository.rejectKyc.mockResolvedValue({
+        ...pendingKyc,
+        verificationStatus: KycVerificationStatus.REJECTED,
+        remarks: 'Photo is blurred',
+      });
+
+      await service.rejectKyc(merchantId, adminId, 'Photo is blurred', context);
+
+      expect(notifications.notifyMerchantLifecycle).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'kyc_rejected',
+          documentType: KycDocumentType.CAC_CERTIFICATE,
+          reason: 'Photo is blurred',
+        }),
+      );
+    });
+
     it('refuses approval while a required document is unverified', async () => {
       // The old rule passed on ANY verified document, so a merchant could go
       // live with only the CAC while the portal still marked the NIN Required.

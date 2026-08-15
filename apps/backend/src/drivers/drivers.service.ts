@@ -306,6 +306,11 @@ export class DriversService {
       { resource: 'driver_kyc', resourceId: kyc.id, metadata: { documentType: kyc.documentType } },
     );
 
+    await this.notifyDriverKycDecision(kyc.driverId, {
+      event: 'kyc_verified',
+      documentType: kyc.documentType,
+    });
+
     return await this.signDriverKyc(toDriverKycDto(updated));
   }
 
@@ -333,7 +338,34 @@ export class DriversService {
       { resource: 'driver_kyc', resourceId: kyc.id, metadata: { documentType: kyc.documentType } },
     );
 
+    // Name the document AND the reason. A driver uploads several documents, so
+    // "your KYC was rejected" tells them nothing they can act on.
+    await this.notifyDriverKycDecision(kyc.driverId, {
+      event: 'kyc_rejected',
+      documentType: kyc.documentType,
+      reason: remarks,
+    });
+
     return await this.signDriverKyc(toDriverKycDto(updated));
+  }
+
+  /**
+   * Email a driver about a decision on ONE of their documents. KYC review is
+   * keyed by document, so the driver's address is not in hand at those sites.
+   */
+  private async notifyDriverKycDecision(
+    driverUserId: string,
+    input: { event: 'kyc_verified' | 'kyc_rejected'; documentType: string; reason?: string },
+  ): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { id: driverUserId } });
+    if (!user?.email) {
+      return;
+    }
+    await this.notifications.notifyDriverLifecycle({
+      email: user.email,
+      driverId: driverUserId,
+      ...input,
+    });
   }
 
   public async approveDriver(

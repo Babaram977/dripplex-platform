@@ -22,6 +22,7 @@ import type {
   PhoneOtpNotificationInput,
   RideEarningNotificationInput,
   RideLifecycleNotificationInput,
+  RiderLifecycleNotificationInput,
 } from './notification.service';
 
 /**
@@ -173,6 +174,13 @@ export class ProductionNotificationService implements NotificationService {
     );
   }
 
+  public async notifyRiderLifecycle(input: RiderLifecycleNotificationInput): Promise<void> {
+    const { subject, body } = this.riderLifecycleContent(input);
+    await this.sendEmail(input.email, subject, this.wrapEmail(subject, body), () =>
+      this.fallback.notifyRiderLifecycle(input),
+    );
+  }
+
   public async notifyRideLifecycle(input: RideLifecycleNotificationInput): Promise<void> {
     const { subject, body } = this.rideLifecycleContent(input);
     await this.sendEmail(input.email, subject, this.wrapEmail(subject, body), () =>
@@ -234,6 +242,16 @@ export class ProductionNotificationService implements NotificationService {
 
   // ---- content builders -------------------------------------------------
 
+  /** "GUARANTOR_ID" -> "Guarantor ID", so emails name the document a partner
+   * actually uploaded rather than an enum. */
+  private documentLabel(documentType?: string): string {
+    if (!documentType) return 'Your document';
+    return documentType
+      .split('_')
+      .map((part) => part.charAt(0) + part.slice(1).toLowerCase())
+      .join(' ');
+  }
+
   private merchantLifecycleContent(input: MerchantLifecycleNotificationInput): {
     subject: string;
     body: string;
@@ -249,6 +267,16 @@ export class ProductionNotificationService implements NotificationService {
         return {
           subject: 'KYC documents submitted',
           body: `<p>Your KYC submission is under review.</p>`,
+        };
+      case 'kyc_verified':
+        return {
+          subject: `${this.documentLabel(input.documentType)} verified`,
+          body: `<p>${this.documentLabel(input.documentType)} has been verified. Any remaining required documents still need to be reviewed before ${name} can go live.</p>`,
+        };
+      case 'kyc_rejected':
+        return {
+          subject: `${this.documentLabel(input.documentType)} was rejected`,
+          body: `<p>${this.documentLabel(input.documentType)} was rejected.${input.reason ? ` Reason: ${input.reason}` : ''} Please upload a clear, unobstructed replacement in your merchant portal.</p>`,
         };
       case 'merchant_approved':
         return {
@@ -351,6 +379,16 @@ export class ProductionNotificationService implements NotificationService {
           subject: 'Driver KYC submitted',
           body: `<p>Your driver KYC submission is under review.</p>`,
         };
+      case 'kyc_verified':
+        return {
+          subject: `${this.documentLabel(input.documentType)} verified`,
+          body: `<p>${this.documentLabel(input.documentType)} has been verified.</p>`,
+        };
+      case 'kyc_rejected':
+        return {
+          subject: `${this.documentLabel(input.documentType)} was rejected`,
+          body: `<p>${this.documentLabel(input.documentType)} was rejected.${input.reason ? ` Reason: ${input.reason}` : ''} Please upload a clear, unobstructed replacement.</p>`,
+        };
       case 'driver_approved':
         return {
           subject: 'You are approved to drive',
@@ -370,6 +408,49 @@ export class ProductionNotificationService implements NotificationService {
         return {
           subject: 'Your driver account is active again',
           body: `<p>Your driver account has been reactivated.</p>`,
+        };
+    }
+  }
+
+  private riderLifecycleContent(input: RiderLifecycleNotificationInput): {
+    subject: string;
+    body: string;
+  } {
+    switch (input.event) {
+      case 'kyc_submitted':
+        return {
+          subject: 'Rider documents submitted',
+          body: `<p>Your documents are under review. We will email you as soon as they have been checked.</p>`,
+        };
+      case 'kyc_verified':
+        return {
+          subject: `${this.documentLabel(input.documentType)} verified`,
+          body: `<p>${this.documentLabel(input.documentType)} has been verified. You can start receiving deliveries once your approval and every required document are complete.</p>`,
+        };
+      case 'kyc_rejected':
+        return {
+          subject: `${this.documentLabel(input.documentType)} was rejected`,
+          body: `<p>${this.documentLabel(input.documentType)} was rejected.${input.reason ? ` Reason: ${input.reason}` : ''} Please upload a clear, unobstructed replacement in the rider app.</p>`,
+        };
+      case 'rider_approved':
+        return {
+          subject: 'You are approved to deliver',
+          body: `<p>Congratulations! Your delivery-rider application has been approved. Go online in the rider app to start receiving deliveries.</p>`,
+        };
+      case 'rider_rejected':
+        return {
+          subject: 'Delivery rider application update',
+          body: `<p>Your delivery-rider application was not approved.${input.reason ? ` Reason: ${input.reason}` : ''}</p>`,
+        };
+      case 'rider_suspended':
+        return {
+          subject: 'Your rider account has been suspended',
+          body: `<p>Your rider account has been suspended.${input.reason ? ` Reason: ${input.reason}` : ''} Contact support for details.</p>`,
+        };
+      case 'rider_reactivated':
+        return {
+          subject: 'Your rider account is active again',
+          body: `<p>Your rider account has been reactivated. Go online in the rider app to start receiving deliveries.</p>`,
         };
     }
   }

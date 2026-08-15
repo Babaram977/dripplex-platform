@@ -582,6 +582,11 @@ export class MerchantsService {
       },
     );
 
+    await this.notifyMerchantKycDecision(merchantUserId, {
+      event: 'kyc_verified',
+      documentType: verified.documentType,
+    });
+
     return await this.signMerchantKyc(toMerchantKycDto(verified));
   }
 
@@ -616,7 +621,35 @@ export class MerchantsService {
       },
     );
 
+    // Name the document AND the reason — "your KYC was rejected" leaves a
+    // merchant with two required documents guessing which one to replace.
+    await this.notifyMerchantKycDecision(merchantUserId, {
+      event: 'kyc_rejected',
+      documentType: rejected.documentType,
+      reason: remarks,
+    });
+
     return await this.signMerchantKyc(toMerchantKycDto(rejected));
+  }
+
+  /**
+   * Email a merchant about a decision on ONE of their documents. KYC review is
+   * keyed by merchant, but the address lives on the profile, so it is fetched
+   * here rather than threaded through every call site.
+   */
+  private async notifyMerchantKycDecision(
+    merchantUserId: string,
+    input: { event: 'kyc_verified' | 'kyc_rejected'; documentType: string; reason?: string },
+  ): Promise<void> {
+    const profile = await this.merchantsRepository.findMerchantProfileByUserId(merchantUserId);
+    if (!profile?.user.email) {
+      return;
+    }
+    await this.notifications.notifyMerchantLifecycle({
+      email: profile.user.email,
+      merchantId: merchantUserId,
+      ...input,
+    });
   }
 
   public async approveMerchant(

@@ -64,6 +64,7 @@ describe('RideDispatchService', () => {
       notifyPaymentResult: jest.fn(),
       notifyDeliveryLifecycle: jest.fn(),
       notifyDriverLifecycle: jest.fn(),
+      notifyRiderLifecycle: jest.fn(),
       notifyRideLifecycle: jest.fn().mockResolvedValue(undefined),
       notifyRideEarning: jest.fn().mockResolvedValue(undefined),
     };
