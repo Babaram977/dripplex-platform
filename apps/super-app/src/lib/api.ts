@@ -1457,6 +1457,10 @@ export const api = {
     // Record acceptance of the driver agreement (version string).
     acceptAgreement: (agreementVersion: string) =>
       dx<unknown>('POST', '/driver/onboarding/agreement', { agreementVersion }),
+    // The driver's OWN submitted documents with review state — so the app can
+    // show what is verified, pending or rejected instead of relisting every
+    // document as outstanding on every visit.
+    getKyc: () => dx<AdminDriverKycDto[]>('GET', '/driver/kyc'),
     // The six conditions the backend requires before a driver can be Active
     // (DriverActivationService is the single platform-wide gate). This is the
     // driver's own read-only view of what is still blocking them.

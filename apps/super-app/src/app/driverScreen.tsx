@@ -1073,7 +1073,40 @@ export function DriverUploadDocsScreen({
   // Documents submitted this session. There is no GET /driver/kyc, so prior
   // submissions can't be re-hydrated on reload — the data is still saved
   // server-side; this only tracks what was uploaded in this visit.
+  // Real review state per document, read from GET /driver/kyc. This used to be
+  // a session-only list, so a driver who had already submitted at sign-up was
+  // shown every document as outstanding again — which is what read as a second,
+  // duplicate upload page.
   const [submitted, setSubmitted] = useState<string[]>([]);
+  const [docState, setDocState] = useState<
+    Record<string, { status: 'PENDING' | 'VERIFIED' | 'REJECTED'; remarks: string | null }>
+  >({});
+  const [loadingDocs, setLoadingDocs] = useState(true);
+
+  const loadDocs = useCallback(() => {
+    setLoadingDocs(true);
+    api.driver
+      .getKyc()
+      .then((docs) => {
+        // Newest first from the backend, so the first entry per type wins.
+        const byType: Record<
+          string,
+          { status: 'PENDING' | 'VERIFIED' | 'REJECTED'; remarks: string | null }
+        > = {};
+        for (const doc of docs) {
+          byType[doc.documentType] ??= {
+            status: doc.verificationStatus,
+            remarks: doc.remarks,
+          };
+        }
+        setDocState(byType);
+      })
+      .catch(() => {
+        /* Leave the list empty rather than claiming a document was submitted. */
+      })
+      .finally(() => setLoadingDocs(false));
+  }, []);
+  useEffect(() => loadDocs(), [loadDocs]);
   const [reviewing, setReviewing] = useState(false);
   const [reviewErr, setReviewErr] = useState('');
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -1107,6 +1140,9 @@ export function DriverUploadDocsScreen({
       setOpenType(null);
       setDocNumber('');
       setFile(null);
+      // Re-read from the server so a replacement of a REJECTED document flips
+      // back to "under review" rather than keeping the old rejection on screen.
+      loadDocs();
     } catch (e: unknown) {
       setFormErr(
         (e as { message?: string }).message ?? 'Could not submit the document. Please try again.',
@@ -1133,7 +1169,13 @@ export function DriverUploadDocsScreen({
     }
   };
 
-  const canReview = submitted.length > 0;
+  // Real counts now that the server state is available.
+  const requiredDocs = DRIVER_KYC_DOCS.filter((d) => d.required);
+  const requiredDone = requiredDocs.filter((d) => {
+    const st = docState[d.type]?.status ?? (submitted.includes(d.type) ? 'PENDING' : null);
+    return st === 'VERIFIED' || st === 'PENDING';
+  }).length;
+  const canReview = submitted.length > 0 || Object.keys(docState).length > 0;
 
   return (
     <div
@@ -1149,9 +1191,9 @@ export function DriverUploadDocsScreen({
               Add or replace a document
             </p>
             <p className="text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
-              {submitted.length > 0
-                ? `${String(submitted.length)} sent in this session`
-                : 'Documents you sent at sign-up are already with Operations'}
+              {loadingDocs
+                ? 'Loading your documents…'
+                : `${String(requiredDone)}/${String(requiredDocs.length)} required documents sent`}
             </p>
           </div>
         </div>
@@ -1179,7 +1221,10 @@ export function DriverUploadDocsScreen({
 
         <div className="mb-6 flex flex-col gap-4">
           {DRIVER_KYC_DOCS.map((doc) => {
-            const done = submitted.includes(doc.type);
+            // Server state wins; a document sent in this session counts too.
+            const state = docState[doc.type];
+            const status = state?.status ?? (submitted.includes(doc.type) ? 'PENDING' : null);
+            const done = status !== null && status !== 'REJECTED';
             const isOpen = openType === doc.type;
             return (
               <div
@@ -1204,12 +1249,29 @@ export function DriverUploadDocsScreen({
                     >
                       {doc.label}
                     </p>
-                    <p className="text-[12px]" style={{ fontFamily: IT, color: done ? G3 : MUTED }}>
-                      {done
-                        ? 'Submitted — under review'
-                        : doc.required
-                          ? 'Required · PDF or image'
-                          : 'Optional · PDF or image'}
+                    <p
+                      className="text-[12px]"
+                      style={{
+                        fontFamily: IT,
+                        color:
+                          status === 'VERIFIED'
+                            ? G3
+                            : status === 'REJECTED'
+                              ? COLOR_ERROR
+                              : status === 'PENDING'
+                                ? COLOR_WARNING
+                                : MUTED,
+                      }}
+                    >
+                      {status === 'VERIFIED'
+                        ? 'Verified ✓'
+                        : status === 'PENDING'
+                          ? 'Submitted — under review'
+                          : status === 'REJECTED'
+                            ? `Rejected — please replace${state?.remarks ? `: ${state.remarks}` : ''}`
+                            : doc.required
+                              ? 'Required · PDF or image'
+                              : 'Optional · PDF or image'}
                     </p>
                   </div>
                   {!done && !isOpen && (

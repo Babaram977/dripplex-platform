@@ -106,6 +106,27 @@ export class DriversService {
     return await this.signDriverKyc(toDriverKycDto(kyc));
   }
 
+  /**
+   * DPX-DRIVER-006 — the driver's own KYC documents, newest first.
+   *
+   * Merchants and riders could already read their own submissions; drivers
+   * could not, so the driver app had no way to show which document was
+   * verified, still pending, or rejected and why. It listed every document as
+   * outstanding on every visit, which read as a second, duplicate upload page
+   * to a driver who had already submitted at sign-up.
+   *
+   * Images are signed for the same reason as everywhere else: KYC lives in the
+   * private bucket and is never publicly readable.
+   */
+  public async listOwnKyc(driverUserId: string): Promise<DriverKycDto[]> {
+    await this.requireDriverProfile(driverUserId);
+    const kyc = await this.prisma.driverKyc.findMany({
+      where: { driverId: driverUserId },
+      orderBy: { createdAt: 'desc' },
+    });
+    return await Promise.all(kyc.map((doc) => this.signDriverKyc(toDriverKycDto(doc))));
+  }
+
   public async getOwnProfile(driverUserId: string): Promise<DriverProfileDto> {
     const profile = await this.requireDriverProfile(driverUserId);
     const kyc = await this.prisma.driverKyc.findMany({
