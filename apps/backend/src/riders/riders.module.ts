@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { AuditModule } from '../audit/audit.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { UploadsModule } from '../uploads/uploads.module';
 
@@ -15,7 +16,10 @@ import { RidersService } from './riders.service';
  * backed by RidersService.
  */
 @Module({
-  imports: [PrismaModule, AuditModule, UploadsModule],
+  // NotificationsModule provides NOTIFICATION_SERVICE, which RidersService
+  // injects to send rider lifecycle emails (DPX-RIDER-005). Without it Nest
+  // cannot resolve the provider and the whole API fails to boot.
+  imports: [PrismaModule, AuditModule, UploadsModule, NotificationsModule],
   controllers: [AdminRidersController, RiderController],
   providers: [RidersService],
   exports: [RidersService],
