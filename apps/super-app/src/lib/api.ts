@@ -706,7 +706,16 @@ export interface AdminRiderDto {
   isApproved: boolean;
   rejectedReason: string | null;
   createdAt: string;
-  kyc: { verificationStatus: 'PENDING' | 'VERIFIED' | 'REJECTED' }[];
+  kyc: {
+    id: string;
+    documentType: string;
+    documentNumber: string;
+    // Signed, short-lived GET URLs — a reviewer must be able to open the image.
+    frontImage: string;
+    backImage: string | null;
+    verificationStatus: 'PENDING' | 'VERIFIED' | 'REJECTED';
+    remarks: string | null;
+  }[];
 }
 
 // A driver row for the Ops Console (subset of backend DriverProfileDto). The
@@ -1771,6 +1780,12 @@ export const api = {
     suspendRider: (id: string, reason: string) =>
       dx<unknown>('POST', `/admin/rider/${id}/suspend`, { reason }),
     reactivateRider: (id: string) => dx<unknown>('POST', `/admin/rider/${id}/reactivate`),
+    // DPX-RIDER-003 — review a rider's submitted KYC document. Keyed by the KYC
+    // document id (not the rider id), mirroring the driver KYC routes.
+    verifyRiderKyc: (kycId: string, remarks?: string) =>
+      dx<unknown>('POST', `/admin/rider/kyc/${kycId}/verify`, remarks ? { remarks } : {}),
+    rejectRiderKyc: (kycId: string, remarks: string) =>
+      dx<unknown>('POST', `/admin/rider/kyc/${kycId}/reject`, { remarks }),
 
     // Customer roster (name/phone/email/status + trips/spend). Returns { items, meta }.
     listCustomers: (params?: {

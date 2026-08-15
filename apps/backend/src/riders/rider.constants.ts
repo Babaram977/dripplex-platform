@@ -1,6 +1,11 @@
 // DPX-RIDER-001 — delivery-rider approval workflow. Mirrors the driver
-// approval constants; riders have no KYC/vehicle gate, so the audit set and
-// permissions are limited to the lifecycle transitions.
+// approval constants.
+//
+// DPX-RIDER-003: riders DO have a KYC gate (added by DPX-RIDER-002, which let a
+// rider submit an identity document) — the note that they don't predates it.
+// The admin review half was never built, so submitted documents were shown as
+// "KYC Pending" in the Operations Console with no way to verify or reject them.
+// The KYC_VERIFIED/KYC_REJECTED audit actions below close that gap.
 
 export const RIDER_AUDIT_ACTIONS = {
   APPROVED: 'rider.approved',
@@ -10,6 +15,11 @@ export const RIDER_AUDIT_ACTIONS = {
   // DPX-RIDER-002 — self-service actions.
   KYC_SUBMITTED: 'rider.kyc_submitted',
   PROFILE_UPDATED: 'rider.profile_updated',
+  // DPX-RIDER-003 — admin review of a submitted rider KYC document. Riders could
+  // submit KYC but operations had no way to act on it, so documents sat as
+  // "KYC Pending" forever. Mirrors the driver KYC review actions.
+  KYC_VERIFIED: 'rider.kyc_verified',
+  KYC_REJECTED: 'rider.kyc_rejected',
 } as const;
 
 /**

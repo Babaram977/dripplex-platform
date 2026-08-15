@@ -13,14 +13,19 @@ import {
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
-import { RejectRiderDto, SuspendRiderDto } from '../dto/admin-rider-actions.dto';
+import {
+  RejectRiderDto,
+  RejectRiderKycDto,
+  ReviewRiderKycDto,
+  SuspendRiderDto,
+} from '../dto/admin-rider-actions.dto';
 import { ListRidersQueryDto } from '../dto/list-riders-query.dto';
 import { RIDER_PERMISSIONS } from '../rider.constants';
 import { RidersService } from '../riders.service';
 
 import type { AuthenticatedUser } from '../../auth/auth.types';
 import type { ApiSuccessResponse } from '../../common/dto/api-response.dto';
-import type { RiderApprovalDto, RiderProfileDto } from '@dripplex/types';
+import type { RiderApprovalDto, RiderKycDto, RiderProfileDto } from '@dripplex/types';
 import type { Request } from 'express';
 
 /**
@@ -117,6 +122,48 @@ export class AdminRidersController {
     const data = await this.ridersService.reactivateRider(
       id,
       admin.id,
+      this.auditContext(request, admin.id),
+    );
+    return { success: true, data };
+  }
+
+  /**
+   * DPX-RIDER-003 — review a rider's submitted KYC document. Riders could submit
+   * KYC (DPX-RIDER-002) but there was no admin route to act on it, so documents
+   * stayed "KYC Pending" forever. Mirrors the driver KYC review routes,
+   * including reusing the approve/reject permissions.
+   */
+  @Post('rider/kyc/:kycId/verify')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(RIDER_PERMISSIONS.APPROVE)
+  public async verifyRiderKyc(
+    @CurrentUser() admin: AuthenticatedUser,
+    @Param('kycId', ParseUUIDPipe) kycId: string,
+    @Body() dto: ReviewRiderKycDto,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<RiderKycDto>> {
+    const data = await this.ridersService.verifyKyc(
+      kycId,
+      admin.id,
+      dto.remarks,
+      this.auditContext(request, admin.id),
+    );
+    return { success: true, data };
+  }
+
+  @Post('rider/kyc/:kycId/reject')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(RIDER_PERMISSIONS.REJECT)
+  public async rejectRiderKyc(
+    @CurrentUser() admin: AuthenticatedUser,
+    @Param('kycId', ParseUUIDPipe) kycId: string,
+    @Body() dto: RejectRiderKycDto,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<RiderKycDto>> {
+    const data = await this.ridersService.rejectKyc(
+      kycId,
+      admin.id,
+      dto.remarks,
       this.auditContext(request, admin.id),
     );
     return { success: true, data };
