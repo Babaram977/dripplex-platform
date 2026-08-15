@@ -2083,9 +2083,54 @@ export function PendingReviewScreen({
     }
   }, [persona]);
 
+  /**
+   * Read the RIDER's real state. Riders were never loaded here, so kycState
+   * stayed null and the screen kept offering "Upload documents" to a rider who
+   * had already submitted both — which read as a second, duplicate upload page.
+   * The driver flow is deliberately untouched: it keeps its own six-stage
+   * checklist (identity, documents, vehicle inspection, test, agreement,
+   * standing) and its upload route.
+   */
+  const loadRiderState = React.useCallback(async () => {
+    if (persona !== 'rider' || !auth.isLoggedIn()) return;
+    try {
+      const profile = await api.rider.getProfile();
+      const docs = profile.kyc;
+      const state: 'NONE' | 'PENDING' | 'VERIFIED' | 'REJECTED' =
+        docs.length === 0
+          ? 'NONE'
+          : docs.some((d) => d.verificationStatus === 'REJECTED')
+            ? 'REJECTED'
+            : docs.every((d) => d.verificationStatus === 'VERIFIED')
+              ? 'VERIFIED'
+              : 'PENDING';
+      setKycState(state);
+      setLiveSteps([
+        { label: 'Application submitted', done: true },
+        {
+          label:
+            state === 'REJECTED'
+              ? 'Documents — rejected, re-upload'
+              : state === 'NONE'
+                ? 'Documents — not uploaded yet'
+                : 'Identity & guarantor documents',
+          done: state === 'VERIFIED',
+          active: state === 'PENDING',
+        },
+        { label: 'Account approved', done: profile.status === 'APPROVED' },
+      ]);
+    } catch {
+      // Leave the neutral default checklist rather than inventing progress.
+    }
+  }, [persona]);
+
+  const loadPartnerState = React.useCallback(async () => {
+    await Promise.all([loadMerchantState(), loadRiderState()]);
+  }, [loadMerchantState, loadRiderState]);
+
   React.useEffect(() => {
-    void loadMerchantState();
-  }, [loadMerchantState]);
+    void loadPartnerState();
+  }, [loadPartnerState]);
 
   const steps = liveSteps ?? STEP_MAP[persona];
   const doneCount = steps.filter((s) => s.done).length;
@@ -2100,7 +2145,7 @@ export function PendingReviewScreen({
 
   const handleRefresh = () => {
     setRefreshing(true);
-    void loadMerchantState().finally(() => setRefreshing(false));
+    void loadPartnerState().finally(() => setRefreshing(false));
     onRefresh();
   };
 

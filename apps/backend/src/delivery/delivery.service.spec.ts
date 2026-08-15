@@ -1173,4 +1173,19 @@ describe('DeliveryService', () => {
       longitude: 3.38,
     });
   });
+
+  it('returns the rider’s stored availability so the app need not assume offline', async () => {
+    deliveryRepository.findRiderAvailability.mockResolvedValue(makeRiderAvailability());
+
+    const result = await service.getOwnRiderAvailability(riderId);
+
+    expect(deliveryRepository.findRiderAvailability).toHaveBeenCalledWith(riderId);
+    expect(result).toMatchObject({ riderId, online: true, latitude: 6.53, longitude: 3.38 });
+  });
+
+  it('reports null availability for a rider who has never gone online', async () => {
+    deliveryRepository.findRiderAvailability.mockResolvedValue(null);
+
+    expect(await service.getOwnRiderAvailability(riderId)).toBeNull();
+  });
 });

@@ -11,6 +11,7 @@ import {
   type AdminCustomerDto,
   type AdminMerchantDto,
   type AdminRiderDto,
+  type DeliveryJobDto,
 } from '../lib/api';
 import { auth } from '../lib/auth';
 import {
@@ -3072,6 +3073,121 @@ function RiderReviewCard({ r, reload }: { r: AdminRiderDto; reload: () => void }
   );
 }
 
+/**
+ * Deliveries that auto-assignment could not place. Dispatch runs exactly once —
+ * when the merchant marks the order ready — and only considers riders that are
+ * online, accepting, and have coordinates on record. If nobody qualified at
+ * that moment the job stays PENDING with no rider and nothing retries it, so
+ * the order silently never reaches anyone. This panel is the manual fallback:
+ * it calls POST /admin/delivery/:id/assign, which the backend already exposed.
+ */
+function UnassignedDeliveries({ riders }: { riders: AdminRiderDto[] }) {
+  const [jobs, setJobs] = useState<DeliveryJobDto[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [choice, setChoice] = useState<Record<string, string>>({});
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      setJobs((await api.admin.listDeliveryJobs('PENDING')).items);
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load deliveries.');
+      setJobs([]);
+    }
+  }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  // Only approved riders can be handed a delivery.
+  const assignable = riders.filter((r) => r.status === 'APPROVED');
+  const unassigned = (jobs ?? []).filter((j) => j.riderId === null);
+
+  if (unassigned.length === 0) return null;
+
+  const assign = async (jobId: string) => {
+    const riderId = choice[jobId] ?? assignable[0]?.riderId;
+    if (!riderId) return;
+    setBusy(jobId);
+    setError(null);
+    try {
+      await api.admin.assignDeliveryRider(jobId, riderId);
+      await load();
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not assign this delivery.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <Card style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span
+          style={{ fontFamily: 'Poppins, sans-serif', fontSize: 13, fontWeight: 700, color: WHITE }}
+        >
+          Deliveries waiting for a rider
+        </span>
+        <div style={{ marginLeft: 'auto' }}>
+          <Chip label={`${unassigned.length} unassigned`} color={C_WARN} />
+        </div>
+      </div>
+      <span style={{ fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+        These orders are ready but no rider was online and sharing location when they were
+        dispatched. Assign one by hand.
+      </span>
+      {error && <span style={{ fontSize: 12, color: C_ERR }}>{error}</span>}
+      {assignable.length === 0 && (
+        <span style={{ fontSize: 12, color: C_WARN }}>
+          No approved riders yet — approve a rider before assigning.
+        </span>
+      )}
+      {unassigned.map((j) => (
+        <div
+          key={j.id}
+          style={{
+            display: 'flex',
+            gap: 8,
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            padding: 10,
+            borderRadius: 8,
+            background: 'rgba(255,255,255,.03)',
+            border: `1px solid ${BORDER}`,
+          }}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 180 }}>
+            <span style={{ fontSize: 11.5, color: WHITE }}>Order {j.orderId.slice(0, 8)}</span>
+            <span style={{ fontSize: 11, color: MUTED }}>
+              ₦{Math.round(j.deliveryFee).toLocaleString()} ·{' '}
+              {(j.estimatedDistanceMeters / 1000).toFixed(1)} km
+            </span>
+          </div>
+          <select
+            className="dx-input"
+            style={{ flex: 1, minWidth: 160 }}
+            value={choice[j.id] ?? assignable[0]?.riderId ?? ''}
+            onChange={(e) => setChoice((c) => ({ ...c, [j.id]: e.target.value }))}
+            disabled={assignable.length === 0}
+          >
+            {assignable.map((r) => (
+              <option key={r.riderId} value={r.riderId}>
+                {`${r.firstName} ${r.lastName}`.trim() || r.email}
+              </option>
+            ))}
+          </select>
+          <Btn
+            label={busy === j.id ? 'Assigning…' : 'Assign rider'}
+            color={G2}
+            onClick={busy || assignable.length === 0 ? undefined : () => void assign(j.id)}
+          />
+        </div>
+      ))}
+    </Card>
+  );
+}
+
 function PageRiders() {
   const [riders, setRiders] = useState<AdminRiderDto[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -3101,6 +3217,7 @@ function PageRiders() {
         </div>
         <Chip label={`${pending} awaiting review`} color={C_WARN} />
       </div>
+      {riders && <UnassignedDeliveries riders={riders} />}
       {riders === null && !error && (
         <Card>
           <span style={{ fontSize: 13, color: MUTED, fontFamily: 'Inter, sans-serif' }}>

@@ -218,6 +218,22 @@ export class RiderDeliveryController {
     return { success: true, data };
   }
 
+  /**
+   * The rider's stored availability. Without this the rider app assumes offline
+   * on every load, so its "You are live" banner could contradict the server —
+   * and a rider who believed they were online would never be dispatched.
+   * Mirrors GET /driver/rides/availability. Null until the rider first goes
+   * online.
+   */
+  @Get('availability')
+  @RequirePermissions(DELIVERY_PERMISSIONS.RIDER_MANAGE)
+  public async getAvailability(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ApiSuccessResponse<RiderLocationDto | null>> {
+    const data = await this.deliveryService.getOwnRiderAvailability(user.id);
+    return { success: true, data };
+  }
+
   private auditContext(
     request: Request,
     userId?: string,

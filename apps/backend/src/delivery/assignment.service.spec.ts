@@ -78,6 +78,17 @@ describe('AssignmentService', () => {
     await expect(service.findNearestRider(6.5244, 3.3792)).resolves.toEqual(withCoordinates);
   });
 
+  it('returns null when the only online rider has no coordinates', async () => {
+    // The live failure: the rider app went online without sending a position,
+    // so the one approved rider was online and accepting but invisible to
+    // dispatch — the job was created and never assigned to anyone.
+    deliveryRepository.listAvailableRiders.mockResolvedValue([
+      makeAvailability('online-but-unlocated', null, null),
+    ]);
+
+    await expect(service.findNearestRider(6.5244, 3.3792)).resolves.toBeNull();
+  });
+
   it('excludes riders that already rejected a job', async () => {
     const excluded = makeAvailability('excluded-rider', 6.5245, 3.3793);
     const nextBest = makeAvailability('next-best-rider', 6.53, 3.39);

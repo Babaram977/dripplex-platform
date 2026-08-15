@@ -569,6 +569,16 @@ export class DeliveryService {
     return toRiderLocationDto(availability);
   }
 
+  /**
+   * The rider's own availability record, so the rider app can show whether it
+   * is really online instead of assuming offline on every load. Null before the
+   * rider has ever gone online. Mirrors GET /driver/rides/availability.
+   */
+  public async getOwnRiderAvailability(riderId: string): Promise<RiderLocationDto | null> {
+    const availability = await this.deliveryRepository.findRiderAvailability(riderId);
+    return availability ? toRiderLocationDto(availability) : null;
+  }
+
   private async tryAutoAssign(
     job: DeliveryJob,
     order: OrderWithItems,

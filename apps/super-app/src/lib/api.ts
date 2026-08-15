@@ -697,6 +697,44 @@ export interface AdminMerchantDto {
   kyc: MerchantKycDto | null;
 }
 
+// The rider's own profile (GET /rider/profile). `kyc` carries every document
+// the rider submitted with its review state, which is what the pending-review
+// screen needs to know whether documents are still outstanding.
+export interface RiderProfileDto {
+  id: string;
+  riderId: string;
+  email: string;
+  phone: string | null;
+  firstName: string;
+  lastName: string;
+  status: 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
+  companyName: string | null;
+  isApproved: boolean;
+  rejectedReason: string | null;
+  createdAt: string;
+  kyc: {
+    id: string;
+    documentType: string;
+    documentNumber: string;
+    verificationStatus: 'PENDING' | 'VERIFIED' | 'REJECTED';
+    remarks: string | null;
+    createdAt: string;
+  }[];
+}
+
+// The rider's dispatch availability (RiderAvailability). latitude/longitude are
+// null until the rider goes online with a device position — and dispatch skips
+// riders without coordinates.
+export interface RiderAvailabilityDto {
+  riderId: string;
+  online: boolean;
+  acceptingOrders: boolean;
+  latitude: number | null;
+  longitude: number | null;
+  activeJobCount: number;
+  updatedAt: string;
+}
+
 // A rider row for the Ops Console review desk (subset of RiderProfileDto).
 export interface AdminRiderDto {
   id: string;
@@ -1441,12 +1479,20 @@ export const api = {
       id: string,
       body: { latitude: number; longitude: number; heading?: number; speed?: number },
     ) => dx<DeliveryTrackingDto>('POST', `/rider/jobs/${id}/location`, body),
+    // Going online without coordinates makes the rider invisible to dispatch:
+    // AssignmentService drops every candidate whose latitude/longitude is null,
+    // so always send the device position here.
     setAvailability: (body: {
       online: boolean;
       acceptingOrders: boolean;
       latitude?: number;
       longitude?: number;
-    }) => dx<unknown>('POST', '/rider/availability', body),
+    }) => dx<RiderAvailabilityDto>('POST', '/rider/availability', body),
+    // Stored availability, so the app shows the server's truth instead of
+    // assuming offline on every load. Null until the rider first goes online.
+    getAvailability: () => dx<RiderAvailabilityDto | null>('GET', '/rider/availability'),
+    // Own profile — includes the submitted KYC documents and their review state.
+    getProfile: () => dx<RiderProfileDto>('GET', '/rider/profile'),
     getWallet: () => dx<WalletDto>('GET', '/rider/wallet'),
 
     // ── Onboarding: KYC docs (ID + Guarantor ID) + company name ───────────────
@@ -1790,6 +1836,20 @@ export const api = {
       dx<unknown>('POST', `/admin/rider/kyc/${kycId}/verify`, remarks ? { remarks } : {}),
     rejectRiderKyc: (kycId: string, remarks: string) =>
       dx<unknown>('POST', `/admin/rider/kyc/${kycId}/reject`, { remarks }),
+
+    // Delivery dispatch. Auto-assignment runs once, when the merchant marks the
+    // order ready; if no rider was online and located at that moment the job
+    // sits PENDING with no rider forever. These give Operations the manual
+    // fallback the backend already exposed but nothing called.
+    listDeliveryJobs: (status?: DeliveryStatus) =>
+      dx<{ items: DeliveryJobDto[]; meta: { total: number } }>(
+        'GET',
+        '/admin/delivery',
+        undefined,
+        status ? { status } : undefined,
+      ),
+    assignDeliveryRider: (jobId: string, riderId: string) =>
+      dx<DeliveryJobDto>('POST', `/admin/delivery/${jobId}/assign`, { riderId }),
 
     // Customer roster (name/phone/email/status + trips/spend). Returns { items, meta }.
     listCustomers: (params?: {
