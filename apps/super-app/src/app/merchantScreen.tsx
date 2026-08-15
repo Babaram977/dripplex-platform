@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { api, uploadFile } from '../lib/api';
 import { auth } from '../lib/auth';
+import { addressPredictions, geocodeAddress, getCurrentPosition } from '../lib/maps';
 import { ImageWithFallback } from './components/figma/ImageWithFallback';
 import type {
   MerchantBusinessDto,
@@ -2620,6 +2621,24 @@ function StoreSetupPage({
 
   const [description, setDescription] = useState(business?.description ?? '');
   const [address, setAddress] = useState(business?.address ?? '');
+  // Real pickup coordinates. Dispatch measures every delivery from here, so an
+  // address typed as free text is not enough — a business saved without
+  // coordinates falls back to a default city point and quotes the wrong
+  // distance, fee and ETA for every order.
+  const [city, setCity] = useState(business?.city ?? '');
+  const [stateName, setStateName] = useState(business?.state ?? '');
+  const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(
+    business &&
+      business.latitude !== null &&
+      business.longitude !== null &&
+      business.latitude !== 0 &&
+      business.longitude !== 0
+      ? { latitude: business.latitude, longitude: business.longitude }
+      : null,
+  );
+  const [suggestions, setSuggestions] = useState<{ placeId: string; description: string }[]>([]);
+  const [locating, setLocating] = useState(false);
+  const [locationNote, setLocationNote] = useState('');
   const [openTime, setOpenTime] = useState(firstDayHours?.open ?? '08:00');
   const [closeTime, setCloseTime] = useState(firstDayHours?.close ?? '21:00');
   const [logoUrl, setLogoUrl] = useState(business?.logoUrl ?? '');
@@ -2644,6 +2663,9 @@ function StoreSetupPage({
       await api.merchant.updateBusiness({
         description: description || undefined,
         address: address || undefined,
+        city: city || undefined,
+        state: stateName || undefined,
+        ...(coords ? { latitude: coords.latitude, longitude: coords.longitude } : {}),
         logoUrl: logoUrl || undefined,
         coverPhotoUrl: coverUrl || undefined,
         operatingHours,
@@ -2768,32 +2790,144 @@ function StoreSetupPage({
           <SectionHead title="Store Location & Hours" />
           <MxInput
             label="Store Address *"
-            placeholder="Full address"
+            placeholder="Start typing your address…"
             value={address}
-            onChange={setAddress}
+            onChange={(v) => {
+              setAddress(v);
+              // Typing invalidates a previously pinned point — the text and the
+              // coordinates must not drift apart.
+              setCoords(null);
+              setLocationNote('');
+              void addressPredictions(v).then(setSuggestions);
+            }}
           />
+          {suggestions.length > 0 && (
+            <div
+              style={{
+                marginTop: -8,
+                marginBottom: 14,
+                borderRadius: 8,
+                background: NAVY_SURFACE,
+                border: `1px solid ${BORDER}`,
+                overflow: 'hidden',
+              }}
+            >
+              {suggestions.slice(0, 5).map((sug) => (
+                <button
+                  key={sug.placeId}
+                  onClick={() => {
+                    setSuggestions([]);
+                    setLocating(true);
+                    setLocationNote('');
+                    void geocodeAddress({ placeId: sug.placeId })
+                      .then((res) => {
+                        if (!res) {
+                          setLocationNote('Could not pin that address. Try another one.');
+                          return;
+                        }
+                        setAddress(sug.description);
+                        setCity(res.city);
+                        setStateName(res.state);
+                        setCoords({ latitude: res.latitude, longitude: res.longitude });
+                      })
+                      .finally(() => setLocating(false));
+                  }}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '10px 14px',
+                    background: 'transparent',
+                    border: 'none',
+                    borderBottom: `1px solid ${BORDER}`,
+                    color: WHITE,
+                    fontFamily: IT,
+                    fontSize: 12.5,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {sug.description}
+                </button>
+              ))}
+            </div>
+          )}
+          {/* The pickup point every delivery is measured from. Saved without it,
+              the store falls back to a default city point and every order is
+              quoted the wrong distance, fee and ETA. */}
           <div
             style={{
               padding: '10px 14px',
               borderRadius: 8,
               background: NAVY_SURFACE,
-              border: `1px solid ${BORDER}`,
+              border: `1px solid ${coords ? 'rgba(43,172,82,.35)' : 'rgba(245,158,11,.35)'}`,
               marginBottom: 14,
               display: 'flex',
               alignItems: 'center',
               gap: 10,
+              flexWrap: 'wrap',
             }}
           >
             <span style={{ fontSize: 20 }}>📍</span>
-            <div>
+            <div style={{ flex: 1, minWidth: 180 }}>
               <div style={{ fontFamily: IT, fontSize: 12, color: WHITE, fontWeight: 600 }}>
-                Map pin
+                {coords ? 'Pickup point set' : 'Pickup point not set'}
               </div>
-              <div style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>
-                {address || 'No address set'}
+              <div style={{ fontFamily: IT, fontSize: 11, color: coords ? MUTED : C_WARN }}>
+                {locating
+                  ? 'Finding your location…'
+                  : coords
+                    ? `${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)}${city ? ` · ${city}` : ''}`
+                    : 'Riders and delivery fees are measured from your store. Pick a suggestion above or use your current location.'}
               </div>
             </div>
+            <MxBtn
+              label={locating ? 'Locating…' : 'Use my location'}
+              variant="outline"
+              small
+              disabled={locating}
+              onClick={() => {
+                setLocating(true);
+                setLocationNote('');
+                void getCurrentPosition()
+                  .then(async (pos) => {
+                    if (!pos) {
+                      setLocationNote(
+                        'We could not read your location. Allow location access, or pick your address from the suggestions.',
+                      );
+                      return;
+                    }
+                    setCoords(pos);
+                    // Fill the address text from the pin when it is still empty,
+                    // so the saved address and the pin describe the same place.
+                    if (!address.trim()) {
+                      const res = await geocodeAddress({
+                        query: `${String(pos.latitude)},${String(pos.longitude)}`,
+                      });
+                      if (res) {
+                        setAddress(res.addressLine1);
+                        setCity(res.city);
+                        setStateName(res.state);
+                      }
+                    }
+                  })
+                  .finally(() => setLocating(false));
+              }}
+            />
           </div>
+          {locationNote && (
+            <div
+              style={{
+                marginTop: -6,
+                marginBottom: 14,
+                padding: '8px 12px',
+                borderRadius: 7,
+                background: 'rgba(245,158,11,.07)',
+                border: '1px solid rgba(245,158,11,.25)',
+              }}
+            >
+              <span style={{ fontFamily: IT, fontSize: 12, color: C_WARN }}>{locationNote}</span>
+            </div>
+          )}
           <div
             style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}
           >
