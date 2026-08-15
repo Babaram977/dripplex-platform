@@ -735,6 +735,34 @@ export interface RiderAvailabilityDto {
   updatedAt: string;
 }
 
+// One physical vehicle inspection (DPX-DRIVER-002 Phase 3). An officer records
+// the walkthrough checklist; a supervisor then passes or fails it. `inspectionPassed`
+// in the driver activation gate reads the latest DECIDED inspection per vehicle.
+export interface InspectionChecklistItemDto {
+  key: string;
+  label: string;
+  passed: boolean;
+  notes?: string;
+}
+
+export interface AdminInspectionDto {
+  id: string;
+  driverId: string;
+  vehicleId: string;
+  centreId: string;
+  inspectorId: string | null;
+  decidedBy: string | null;
+  status: 'SCHEDULED' | 'PASSED' | 'FAILED' | 'CANCELLED';
+  scheduledAt: string;
+  completedAt: string | null;
+  checklist: InspectionChecklistItemDto[] | null;
+  notes: string | null;
+  photos: string[];
+  reinspectionOfId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // The driver activation gate (DriverActivationService). Every condition the
 // backend checks before a driver may go Active — the driver app shows this as
 // its onboarding checklist instead of guessing at progress.
@@ -1866,6 +1894,30 @@ export const api = {
       dx<unknown>('POST', `/admin/rider/kyc/${kycId}/verify`, remarks ? { remarks } : {}),
     rejectRiderKyc: (kycId: string, remarks: string) =>
       dx<unknown>('POST', `/admin/rider/kyc/${kycId}/reject`, { remarks }),
+
+    // Physical vehicle inspections (DPX-DRIVER-002 Phase 3). The backend has
+    // had these routes since the inspection module shipped; nothing called them,
+    // so Operations had no way to record or decide an inspection.
+    listInspections: (status?: 'SCHEDULED' | 'PASSED' | 'FAILED' | 'CANCELLED') =>
+      dx<{ items: AdminInspectionDto[]; meta: { total: number } }>(
+        'GET',
+        '/admin/inspections',
+        undefined,
+        status ? { status } : undefined,
+      ),
+    getInspection: (id: string) => dx<AdminInspectionDto>('GET', `/admin/inspections/${id}`),
+    // Officer records the walkthrough (INSPECTION_CHECKLIST_MANAGE).
+    recordInspectionChecklist: (
+      id: string,
+      body: { checklist: InspectionChecklistItemDto[]; notes?: string; photos?: string[] },
+    ) => dx<AdminInspectionDto>('POST', `/admin/inspections/${id}/checklist`, body),
+    // Supervisor decides pass/fail (INSPECTION_APPROVE) — a separate permission
+    // on purpose: officers record, supervisors decide.
+    decideInspection: (id: string, passed: boolean, notes?: string) =>
+      dx<AdminInspectionDto>('POST', `/admin/inspections/${id}/decide`, {
+        passed,
+        ...(notes ? { notes } : {}),
+      }),
 
     // Delivery dispatch. Auto-assignment runs once, when the merchant marks the
     // order ready; if no rider was online and located at that moment the job
