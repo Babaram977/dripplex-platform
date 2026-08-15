@@ -1980,19 +1980,27 @@ type ReviewStep = { label: string; done: boolean; active?: boolean };
  * These used to be hardcoded as "Business details submitted ✓ / KYC verification
  * IN PROGRESS — 24–48 hours", which told every brand-new partner that documents
  * they had never uploaded were already being reviewed, with no way to act. The
- * merchant checklist is now derived from the real backend state; the driver and
- * rider lists stay as plain outstanding steps (no self-status endpoint is
- * exposed to the app yet) rather than claiming fake progress.
+ * merchant checklist is now derived from the real backend state.
+ *
+ * The DRIVER and RIDER stages are the real onboarding stages for those personas
+ * (driver includes the vehicle inspection stages) and must NOT be trimmed — only
+ * the fabricated `done: true` / `active` flags were removed, so the stages are
+ * listed as outstanding instead of claiming progress the app cannot verify.
+ * Wiring them to real per-persona status is a follow-up, not a reason to drop
+ * stages from the list.
  */
 const DRIVER_STEPS: ReviewStep[] = [
-  { label: 'Identity documents', done: false },
-  { label: 'Vehicle registration', done: false },
+  { label: 'Identity check', done: false },
+  { label: 'Document review', done: false },
+  { label: 'Vehicle inspection', done: false },
+  { label: 'Inspection & test', done: false },
   { label: 'Agreement signing', done: false },
+  { label: 'Account standing', done: false },
 ];
 
 const RIDER_STEPS: ReviewStep[] = [
   { label: 'Application submitted', done: true },
-  { label: 'Identity documents', done: false },
+  { label: 'Under review', done: false },
 ];
 
 const MERCHANT_STEPS: ReviewStep[] = [
@@ -2083,7 +2091,12 @@ export function PendingReviewScreen({
   const doneCount = steps.filter((s) => s.done).length;
   // Only a document that is genuinely awaiting review is "in review".
   const awaitingReview = kycState === 'PENDING';
-  const needsUpload = kycState === 'NONE' || kycState === 'REJECTED';
+  // Offer the upload route unless we have POSITIVE evidence a document is
+  // already pending review or verified. kycState is null when the status could
+  // not be read — most importantly right after signup, before the partner has
+  // logged in — and hiding the button in that case left them with no way
+  // forward at all, which is the very dead end this screen was meant to fix.
+  const needsUpload = kycState !== 'PENDING' && kycState !== 'VERIFIED';
 
   const handleRefresh = () => {
     setRefreshing(true);
