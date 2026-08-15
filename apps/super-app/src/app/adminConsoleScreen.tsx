@@ -2534,6 +2534,11 @@ function MerchantReviewCard({ m, reload }: { m: AdminMerchantDto; reload: () => 
       reload();
     } catch (e: unknown) {
       setErr((e as { message?: string }).message ?? 'Action failed. Try again.');
+    } finally {
+      // Always clear the spinner. Clearing it only on failure left a button
+      // reading "Verifying…"/"Approving…" forever after a SUCCESSFUL action,
+      // because reload() refreshes the data but React keeps this component
+      // instance — and its busy state — mounted.
       setBusy(null);
     }
   };
@@ -2814,15 +2819,147 @@ function PageMerchants() {
 }
 
 // ─── Page: Riders ─────────────────────────────────────────────────────────────
+/**
+ * One reviewable rider document, with its own Verify / Reject.
+ *
+ * A rider submits several documents (their own ID and a guarantor's), and the
+ * card used to render only `kyc[0]` — so the second document could never be
+ * actioned from the console. That is now a hard blocker rather than a cosmetic
+ * one: dispatch requires EVERY required document verified before a rider is
+ * offered work, so a rider whose guarantor ID could not be reached would never
+ * become eligible. Each document gets its own panel and its own remarks box.
+ */
+function RiderKycDocPanel({
+  doc,
+  reload,
+}: {
+  doc: AdminRiderDto['kyc'][number];
+  reload: () => void;
+}) {
+  const [busy, setBusy] = useState<null | 'verify' | 'reject'>(null);
+  const [showReject, setShowReject] = useState(false);
+  const [remarks, setRemarks] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+  const chip = kycChip(doc.verificationStatus);
+
+  const run = async (action: 'verify' | 'reject', fn: () => Promise<unknown>): Promise<void> => {
+    setBusy(action);
+    setErr(null);
+    try {
+      await fn();
+      setShowReject(false);
+      setRemarks('');
+      reload();
+    } catch (e: unknown) {
+      setErr((e as { message?: string }).message ?? 'Action failed. Try again.');
+    } finally {
+      // Always clear the spinner. Leaving it set left the button reading
+      // "Verifying…" forever, because reload() replaces the data but React
+      // keeps this component instance (and its state) mounted.
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+        padding: 10,
+        borderRadius: 8,
+        background: 'rgba(255,255,255,.03)',
+        border: `1px solid ${BORDER}`,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: WHITE }}>
+          {kycDocLabel(doc.documentType)}
+        </span>
+        <div style={{ marginLeft: 'auto' }}>
+          <Chip {...chip} />
+        </div>
+      </div>
+      <DetailRow label="Number" value={doc.documentNumber} />
+      {doc.remarks && <DetailRow label="Remarks" value={doc.remarks} />}
+      <div style={{ display: 'flex', gap: 10 }}>
+        <a
+          href={doc.frontImage}
+          target="_blank"
+          rel="noreferrer"
+          style={{ fontSize: 11.5, color: G2 }}
+        >
+          View front ↗
+        </a>
+        {doc.backImage && (
+          <a
+            href={doc.backImage}
+            target="_blank"
+            rel="noreferrer"
+            style={{ fontSize: 11.5, color: G2 }}
+          >
+            View back ↗
+          </a>
+        )}
+      </div>
+      {err && <span style={{ fontSize: 12, color: C_ERR }}>{err}</span>}
+      {doc.verificationStatus === 'PENDING' &&
+        (showReject ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <input
+              className="dx-input"
+              value={remarks}
+              onChange={(e) => setRemarks(e.target.value)}
+              placeholder="Why is this document rejected? (min 3 characters)"
+            />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Btn
+                label={busy === 'reject' ? 'Rejecting…' : 'Confirm Reject KYC'}
+                color={C_ERR}
+                onClick={
+                  busy
+                    ? undefined
+                    : () => {
+                        if (remarks.trim().length < 3) {
+                          setErr('Rejection remarks must be at least 3 characters.');
+                          return;
+                        }
+                        void run('reject', () => api.admin.rejectRiderKyc(doc.id, remarks.trim()));
+                      }
+                }
+              />
+              <Btn
+                label="Cancel"
+                color={MUTED}
+                outline
+                onClick={() => {
+                  setShowReject(false);
+                  setErr(null);
+                }}
+              />
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Btn
+              label={busy === 'verify' ? 'Verifying…' : 'Verify KYC'}
+              color={G2}
+              onClick={
+                busy ? undefined : () => void run('verify', () => api.admin.verifyRiderKyc(doc.id))
+              }
+            />
+            <Btn label="Reject KYC" color={C_ERR} outline onClick={() => setShowReject(true)} />
+          </div>
+        ))}
+    </div>
+  );
+}
+
 function RiderReviewCard({ r, reload }: { r: AdminRiderDto; reload: () => void }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [showReject, setShowReject] = useState(false);
   const [reason, setReason] = useState('');
   const [err, setErr] = useState<string | null>(null);
-  // DPX-RIDER-003 — rider KYC review. Riders could submit an identity document
-  // but operations had no way to act on it, so it sat as "KYC Pending" forever.
-  const [showKycReject, setShowKycReject] = useState(false);
-  const [kycRemarks, setKycRemarks] = useState('');
   const [showSuspend, setShowSuspend] = useState(false);
   const [suspendReason, setSuspendReason] = useState('');
 
@@ -2834,6 +2971,11 @@ function RiderReviewCard({ r, reload }: { r: AdminRiderDto; reload: () => void }
       reload();
     } catch (e: unknown) {
       setErr((e as { message?: string }).message ?? 'Action failed. Try again.');
+    } finally {
+      // Always clear the spinner. Clearing it only on failure left a button
+      // reading "Verifying…"/"Approving…" forever after a SUCCESSFUL action,
+      // because reload() refreshes the data but React keeps this component
+      // instance — and its busy state — mounted.
       setBusy(null);
     }
   };
@@ -2845,18 +2987,10 @@ function RiderReviewCard({ r, reload }: { r: AdminRiderDto; reload: () => void }
     void run('reject', () => api.admin.rejectRider(r.riderId, reason.trim()));
   };
   const st = personaStatus(r.status);
-  const kycDoc = r.kyc?.[0];
-  const kyc = kycChip(kycDoc?.verificationStatus);
+  // Every submitted document, each reviewable on its own — dispatch needs them
+  // all verified, so none of them can be unreachable.
+  const kycDocs = r.kyc ?? [];
   const name = `${r.firstName} ${r.lastName}`.trim() || '—';
-
-  const rejectKyc = () => {
-    if (!kycDoc) return;
-    if (kycRemarks.trim().length < 3) {
-      setErr('Rejection remarks must be at least 3 characters.');
-      return;
-    }
-    void run('kyc-reject', () => api.admin.rejectRiderKyc(kycDoc.id, kycRemarks.trim()));
-  };
 
   return (
     <Card style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -2880,93 +3014,16 @@ function RiderReviewCard({ r, reload }: { r: AdminRiderDto; reload: () => void }
           <DetailRow label="Reason" value={r.rejectedReason} />
         )}
       </div>
-      {/* DPX-RIDER-003 — identity document review. */}
-      {kycDoc && (
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 8,
-            padding: 10,
-            borderRadius: 8,
-            background: 'rgba(255,255,255,.03)',
-            border: `1px solid ${BORDER}`,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: WHITE }}>Identity document</span>
-            <div style={{ marginLeft: 'auto' }}>
-              <Chip {...kyc} />
-            </div>
-          </div>
-          <DetailRow label="Type" value={kycDoc.documentType.replace(/_/g, ' ')} />
-          <DetailRow label="Number" value={kycDoc.documentNumber} />
-          {kycDoc.remarks && <DetailRow label="Remarks" value={kycDoc.remarks} />}
-          <div style={{ display: 'flex', gap: 10 }}>
-            <a
-              href={kycDoc.frontImage}
-              target="_blank"
-              rel="noreferrer"
-              style={{ fontSize: 11.5, color: G2 }}
-            >
-              View front ↗
-            </a>
-            {kycDoc.backImage && (
-              <a
-                href={kycDoc.backImage}
-                target="_blank"
-                rel="noreferrer"
-                style={{ fontSize: 11.5, color: G2 }}
-              >
-                View back ↗
-              </a>
-            )}
-          </div>
-          {kycDoc.verificationStatus === 'PENDING' &&
-            (showKycReject ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <input
-                  className="dx-input"
-                  value={kycRemarks}
-                  onChange={(e) => setKycRemarks(e.target.value)}
-                  placeholder="Why is this document rejected? (min 3 characters)"
-                />
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <Btn
-                    label={busy === 'kyc-reject' ? 'Rejecting…' : 'Confirm Reject KYC'}
-                    color={C_ERR}
-                    onClick={rejectKyc}
-                  />
-                  <Btn
-                    label="Cancel"
-                    color={MUTED}
-                    outline
-                    onClick={() => {
-                      setShowKycReject(false);
-                      setErr(null);
-                    }}
-                  />
-                </div>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', gap: 8 }}>
-                <Btn
-                  label={busy === 'kyc-verify' ? 'Verifying…' : 'Verify KYC'}
-                  color={G2}
-                  onClick={
-                    busy
-                      ? undefined
-                      : () => void run('kyc-verify', () => api.admin.verifyRiderKyc(kycDoc.id))
-                  }
-                />
-                <Btn
-                  label="Reject KYC"
-                  color={C_ERR}
-                  outline
-                  onClick={() => setShowKycReject(true)}
-                />
-              </div>
-            ))}
+      {/* DPX-RIDER-003 — identity document review, one panel per document. */}
+      {kycDocs.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: WHITE }}>
+            Identity documents ({kycDocs.filter((d) => d.verificationStatus === 'VERIFIED').length}/
+            {kycDocs.length} verified)
+          </span>
+          {kycDocs.map((doc) => (
+            <RiderKycDocPanel key={doc.id} doc={doc} reload={reload} />
+          ))}
         </div>
       )}
 
