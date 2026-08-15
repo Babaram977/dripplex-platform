@@ -389,8 +389,41 @@ type Screen =
   | 'partnerbusiness'
   | 'partnerreview';
 
+/**
+ * Front doors for the non-customer surfaces.
+ *
+ * Everything lives in one super-app, but only the customer journey had a way in:
+ * the Ops Console, Merchant Portal, Rider and Driver apps were reachable solely
+ * through the Design Preview sidebar, which is a developer affordance and is off
+ * in production. Operations staff and partners get a real link instead.
+ *
+ * Each target is the surface's own front door and carries its own sign-in gate
+ * (the Ops Console checks for the operations role before it renders anything),
+ * so a URL grants no access by itself.
+ */
+const PORTAL_ROUTES: Record<string, Screen> = {
+  ops: 'admindash',
+  merchant: 'mxdash',
+  rider: 'riderlogin',
+  driver: 'drvlogin',
+};
+
+/**
+ * The portal a visitor asked for, from the path (/ops) or the query (?app=ops).
+ * The query form exists for hosts that do not rewrite unknown paths to
+ * index.html; this one does (`serve -s`), so /ops is the link to share.
+ */
+function initialScreenFromLocation(): Screen | null {
+  if (typeof window === 'undefined') return null;
+  const fromPath = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
+  const fromQuery = (new URLSearchParams(window.location.search).get('app') ?? '').toLowerCase();
+  return PORTAL_ROUTES[fromPath] ?? PORTAL_ROUTES[fromQuery] ?? null;
+}
+
 function AppShell() {
-  const [screen, setScreen] = useState<Screen>('splash');
+  // A portal link opens that portal; everything else starts the customer journey
+  // at the splash screen exactly as before.
+  const [screen, setScreen] = useState<Screen>(() => initialScreenFromLocation() ?? 'splash');
   const [rideDetailId, setRideDetailId] = useState<string>('');
   const [fading, setFading] = useState(false);
   const [otpData, setOtpData] = useState<{
