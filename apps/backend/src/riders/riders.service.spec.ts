@@ -9,6 +9,7 @@ import {
 import { RidersService } from './riders.service';
 
 import type { AuditService } from '../audit/audit.service';
+import type { NotificationService } from '../notifications/notification.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { StorageAssetService } from '../uploads/storage-asset.service';
 
@@ -32,6 +33,11 @@ describe('RidersService', () => {
       findMany: jest.fn().mockResolvedValue([]),
       findUnique: jest.fn().mockResolvedValue(null),
     },
+    // DPX-RIDER-005 — KYC decisions look the rider's address up by id to email
+    // them, since document review is keyed by document, not by rider.
+    user: {
+      findUnique: jest.fn().mockResolvedValue({ email: 'rider@dripplex.test' }),
+    },
   } as unknown as jest.Mocked<PrismaService>;
 
   const auditService = {
@@ -47,7 +53,12 @@ describe('RidersService', () => {
     ),
   } as unknown as jest.Mocked<StorageAssetService>;
 
-  const service = new RidersService(prisma, auditService, storageAssets);
+  // DPX-RIDER-005 — riders now receive lifecycle emails; assert on this mock.
+  const notifications = {
+    notifyRiderLifecycle: jest.fn().mockResolvedValue(undefined),
+  } as unknown as jest.Mocked<NotificationService>;
+
+  const service = new RidersService(prisma, auditService, storageAssets, notifications);
 
   const ADMIN_ID = '99999999-9999-9999-9999-999999999999';
   const RIDER_ID = '11111111-1111-1111-1111-111111111111';
@@ -139,6 +150,15 @@ describe('RidersService', () => {
 
     expect(result.status).toBe(RiderStatus.REJECTED);
     expect(result.rejectedReason).toBe('Incomplete documents');
+    // DPX-RIDER-005 — the rider must be TOLD, with the reason. Before this the
+    // reason only ever reached the database and the Operations desk.
+    expect(notifications.notifyRiderLifecycle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'rider_rejected',
+        reason: 'Incomplete documents',
+        email: 'rider@example.com',
+      }),
+    );
   });
 
   it('suspends only an approved rider', async () => {
@@ -327,6 +347,15 @@ describe('RidersService', () => {
         'rider.kyc_rejected',
         expect.objectContaining({ userId: ADMIN_ID }),
         expect.any(Object),
+      );
+      // The email names the document as well as the reason — a rider holds two
+      // of them, so "rejected" alone is not actionable.
+      expect(notifications.notifyRiderLifecycle).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'kyc_rejected',
+          documentType: baseKyc.documentType,
+          reason: 'ID photo is blurred',
+        }),
       );
     });
 

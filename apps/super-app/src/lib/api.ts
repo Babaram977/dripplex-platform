@@ -735,6 +735,27 @@ export interface RiderAvailabilityDto {
   updatedAt: string;
 }
 
+// The driver activation gate (DriverActivationService). Every condition the
+// backend checks before a driver may go Active — the driver app shows this as
+// its onboarding checklist instead of guessing at progress.
+export interface DriverActivationChecks {
+  identityVerified: boolean;
+  requiredDocumentsApproved: boolean;
+  vehicleApproved: boolean;
+  inspectionPassed: boolean;
+  agreementAccepted: boolean;
+  accountNotLocked: boolean;
+}
+
+export interface DriverActivationEligibilityDto {
+  driverId: string;
+  eligible: boolean;
+  checks: DriverActivationChecks;
+  /** Human-readable reason per unmet check; empty when eligible. */
+  missingReasons: string[];
+  qualifyingVehicleId: string | null;
+}
+
 // A rider row for the Ops Console review desk (subset of RiderProfileDto).
 export interface AdminRiderDto {
   id: string;
@@ -1436,6 +1457,15 @@ export const api = {
     // Record acceptance of the driver agreement (version string).
     acceptAgreement: (agreementVersion: string) =>
       dx<unknown>('POST', '/driver/onboarding/agreement', { agreementVersion }),
+    // The driver's OWN submitted documents with review state — so the app can
+    // show what is verified, pending or rejected instead of relisting every
+    // document as outstanding on every visit.
+    getKyc: () => dx<AdminDriverKycDto[]>('GET', '/driver/kyc'),
+    // The six conditions the backend requires before a driver can be Active
+    // (DriverActivationService is the single platform-wide gate). This is the
+    // driver's own read-only view of what is still blocking them.
+    getActivationEligibility: () =>
+      dx<DriverActivationEligibilityDto>('GET', '/driver/activation-eligibility'),
     // Submit the completed onboarding for Ops review (moves to pending review).
     submitOnboarding: () => dx<unknown>('POST', '/driver/onboarding/submit'),
   },

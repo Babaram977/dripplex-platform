@@ -79,6 +79,15 @@ export class DriverController {
     return { success: true, data };
   }
 
+  @Get('kyc')
+  @RequirePermissions(DRIVER_PERMISSIONS.KYC_MANAGE)
+  public async listOwnKyc(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ApiSuccessResponse<DriverKycDto[]>> {
+    const data = await this.driversService.listOwnKyc(user.id);
+    return { success: true, data };
+  }
+
   @Get('onboarding')
   @RequirePermissions(DRIVER_PERMISSIONS.ONBOARDING_MANAGE)
   public async getOwnOnboarding(

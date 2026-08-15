@@ -328,9 +328,11 @@ export function RiderLoginScreen({
 export function RiderDashboardScreen({
   onJob,
   onEarnings,
+  onSignIn,
 }: {
   onJob: (job: DeliveryJobDto) => void;
   onEarnings: () => void;
+  onSignIn?: () => void;
 }) {
   const [online, setOnline] = useState(false);
   const [toggling, setToggling] = useState(false);
@@ -347,6 +349,12 @@ export function RiderDashboardScreen({
     const u = auth.getUser();
     return [u?.firstName, u?.lastName].filter(Boolean).join(' ').trim() || 'Rider';
   })();
+  // One browser session is shared across every portal, so signing into the
+  // Operations Console replaces the rider's session. Without this check the
+  // dashboard rendered the ADMIN's name as the rider and then sent every job
+  // action under the admin's id — which the backend rightly refused with
+  // "Delivery job is not assigned to this rider". Mirrors the driver app gate.
+  const isRider = auth.hasRole('rider');
 
   const fetchJobs = useCallback(() => {
     api.rider
@@ -433,6 +441,42 @@ export function RiderDashboardScreen({
 
   const activeJobs = jobs.filter((j) => !['DELIVERED', 'FAILED', 'CANCELLED'].includes(j.status));
   const pastJobs = jobs.filter((j) => ['DELIVERED', 'FAILED', 'CANCELLED'].includes(j.status));
+
+  // Only a rider session can use this app. Rendering it for anyone else showed
+  // their name as the rider and sent job actions under the wrong id.
+  if (!isRider) {
+    return (
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background: NAVY_BASE,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 14,
+          padding: '0 32px',
+          textAlign: 'center',
+        }}
+      >
+        <div style={{ fontSize: 34 }}>🏍️</div>
+        <div style={{ fontFamily: PP, fontSize: 18, fontWeight: 700, color: WHITE }}>
+          Sign in as a rider
+        </div>
+        <div style={{ fontFamily: IT, fontSize: 13, color: MUTED }}>
+          {auth.isLoggedIn()
+            ? `You are signed in as ${riderName}, which is not a delivery-rider account. Sign in to your rider account to go online and accept deliveries.`
+            : 'Sign in to your rider account to go online and accept deliveries.'}
+        </div>
+        {onSignIn && (
+          <div style={{ marginTop: 8, width: '100%', maxWidth: 240 }}>
+            <RGreenBtn label="Go to rider sign-in" onClick={onSignIn} />
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div

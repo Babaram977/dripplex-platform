@@ -106,6 +106,27 @@ export class DriversService {
     return await this.signDriverKyc(toDriverKycDto(kyc));
   }
 
+  /**
+   * DPX-DRIVER-006 — the driver's own KYC documents, newest first.
+   *
+   * Merchants and riders could already read their own submissions; drivers
+   * could not, so the driver app had no way to show which document was
+   * verified, still pending, or rejected and why. It listed every document as
+   * outstanding on every visit, which read as a second, duplicate upload page
+   * to a driver who had already submitted at sign-up.
+   *
+   * Images are signed for the same reason as everywhere else: KYC lives in the
+   * private bucket and is never publicly readable.
+   */
+  public async listOwnKyc(driverUserId: string): Promise<DriverKycDto[]> {
+    await this.requireDriverProfile(driverUserId);
+    const kyc = await this.prisma.driverKyc.findMany({
+      where: { driverId: driverUserId },
+      orderBy: { createdAt: 'desc' },
+    });
+    return await Promise.all(kyc.map((doc) => this.signDriverKyc(toDriverKycDto(doc))));
+  }
+
   public async getOwnProfile(driverUserId: string): Promise<DriverProfileDto> {
     const profile = await this.requireDriverProfile(driverUserId);
     const kyc = await this.prisma.driverKyc.findMany({
@@ -306,6 +327,11 @@ export class DriversService {
       { resource: 'driver_kyc', resourceId: kyc.id, metadata: { documentType: kyc.documentType } },
     );
 
+    await this.notifyDriverKycDecision(kyc.driverId, {
+      event: 'kyc_verified',
+      documentType: kyc.documentType,
+    });
+
     return await this.signDriverKyc(toDriverKycDto(updated));
   }
 
@@ -333,7 +359,34 @@ export class DriversService {
       { resource: 'driver_kyc', resourceId: kyc.id, metadata: { documentType: kyc.documentType } },
     );
 
+    // Name the document AND the reason. A driver uploads several documents, so
+    // "your KYC was rejected" tells them nothing they can act on.
+    await this.notifyDriverKycDecision(kyc.driverId, {
+      event: 'kyc_rejected',
+      documentType: kyc.documentType,
+      reason: remarks,
+    });
+
     return await this.signDriverKyc(toDriverKycDto(updated));
+  }
+
+  /**
+   * Email a driver about a decision on ONE of their documents. KYC review is
+   * keyed by document, so the driver's address is not in hand at those sites.
+   */
+  private async notifyDriverKycDecision(
+    driverUserId: string,
+    input: { event: 'kyc_verified' | 'kyc_rejected'; documentType: string; reason?: string },
+  ): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { id: driverUserId } });
+    if (!user?.email) {
+      return;
+    }
+    await this.notifications.notifyDriverLifecycle({
+      email: user.email,
+      driverId: driverUserId,
+      ...input,
+    });
   }
 
   public async approveDriver(

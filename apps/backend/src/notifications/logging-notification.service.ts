@@ -16,6 +16,7 @@ import type {
   PhoneOtpNotificationInput,
   RideEarningNotificationInput,
   RideLifecycleNotificationInput,
+  RiderLifecycleNotificationInput,
 } from './notification.service';
 
 /**
@@ -191,6 +192,21 @@ export class LoggingNotificationService implements NotificationService {
         reason: input.reason,
       },
       'Driver lifecycle notification dispatched',
+    );
+    return Promise.resolve();
+  }
+
+  public notifyRiderLifecycle(input: RiderLifecycleNotificationInput): Promise<void> {
+    this.logger.log(
+      {
+        channel: 'email',
+        template: `rider_${input.event}`,
+        email: input.email,
+        riderId: input.riderId,
+        documentType: input.documentType,
+        reason: input.reason,
+      },
+      'Rider lifecycle notification dispatched',
     );
     return Promise.resolve();
   }

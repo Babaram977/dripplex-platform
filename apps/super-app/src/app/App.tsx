@@ -994,6 +994,11 @@ function AppShell() {
         onContinue={() => go('drvdash')}
         onUpload={() => go('drvuploaddocs')}
         onBack={() => go('drvotp')}
+        // Vehicle registration and the agreement were unreachable: nothing
+        // routed into them outside the Design Preview navigator, so a driver
+        // could never accept the terms the activation gate requires.
+        onVehicle={() => go('drvvehicle')}
+        onAgreement={() => go('drvagree')}
       />
     ),
     drvuploaddocs: (
@@ -1138,6 +1143,7 @@ function AppShell() {
           go('riderjob');
         }}
         onEarnings={() => go('riderearnings')}
+        onSignIn={() => go('riderlogin')}
       />
     ),
     riderjob: activeRiderJob ? (

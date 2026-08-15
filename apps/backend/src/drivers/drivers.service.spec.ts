@@ -59,6 +59,7 @@ describe('DriversService', () => {
       notifyPaymentResult: jest.fn(),
       notifyDeliveryLifecycle: jest.fn(),
       notifyDriverLifecycle: jest.fn().mockResolvedValue(undefined),
+      notifyRiderLifecycle: jest.fn().mockResolvedValue(undefined),
       notifyRideLifecycle: jest.fn(),
       notifyRideEarning: jest.fn(),
     };
@@ -195,6 +196,49 @@ describe('DriversService', () => {
     expect(kyc.verificationStatus).toBe('PENDING');
   });
 
+  it('returns the driver their OWN documents with review state, newest first', async () => {
+    if (!databaseAvailable) return;
+    // Drivers could not read their own submissions, so the app relisted every
+    // document as outstanding on every visit — which read as a duplicate
+    // upload page to a driver who had already submitted at sign-up.
+    await service.submitKyc(
+      driverId,
+      {
+        documentType: 'DRIVER_LICENSE',
+        documentNumber: 'LIC-001',
+        frontImage: 'https://example.com/licence.jpg',
+      },
+      context,
+    );
+
+    const own = await service.listOwnKyc(driverId);
+
+    expect(own.length).toBeGreaterThan(0);
+    expect(own.every((doc) => doc.driverId === driverId)).toBe(true);
+    expect(own[0]?.documentType).toBe('DRIVER_LICENSE');
+    expect(own[0]?.verificationStatus).toBe('PENDING');
+  });
+
+  it('shows a rejected document with the reviewer’s remarks so it can be replaced', async () => {
+    if (!databaseAvailable) return;
+    const submitted = await service.submitKyc(
+      driverId,
+      {
+        documentType: 'VEHICLE_REGISTRATION',
+        documentNumber: 'VR-001',
+        frontImage: 'https://example.com/vr.jpg',
+      },
+      context,
+    );
+    await service.rejectKyc(submitted.id, adminId, 'Plate number is unreadable', context);
+
+    const own = await service.listOwnKyc(driverId);
+    const rejected = own.find((doc) => doc.id === submitted.id);
+
+    expect(rejected?.verificationStatus).toBe('REJECTED');
+    expect(rejected?.remarks).toBe('Plate number is unreadable');
+  });
+
   it('(DPX-STORAGE-001 D) rejects a KYC / avatar URL that is foreign or cross-user', async () => {
     if (!databaseAvailable) return;
     // A drivers service wired with configured storage so the ownership guard runs.
@@ -203,6 +247,7 @@ describe('DriversService', () => {
       new AuditService({ create: jest.fn().mockResolvedValue(undefined) }),
       {
         notifyDriverLifecycle: jest.fn().mockResolvedValue(undefined),
+        notifyRiderLifecycle: jest.fn().mockResolvedValue(undefined),
       } as unknown as NotificationService,
       new DriverActivationService(prisma),
       new StorageAssetService(

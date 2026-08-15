@@ -27,6 +27,7 @@ describe('ProductionNotificationService', () => {
       notifyPaymentResult: jest.fn().mockResolvedValue(undefined),
       notifyDeliveryLifecycle: jest.fn().mockResolvedValue(undefined),
       notifyDriverLifecycle: jest.fn().mockResolvedValue(undefined),
+      notifyRiderLifecycle: jest.fn().mockResolvedValue(undefined),
       notifyRideLifecycle: jest.fn().mockResolvedValue(undefined),
       notifyRideEarning: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<LoggingNotificationService>;
@@ -177,6 +178,95 @@ describe('ProductionNotificationService', () => {
         'merchant@b.com',
         'New order DPX-1 received',
         expect.any(String),
+      );
+    });
+
+    it('puts the rejection reason in the merchant email a partner actually reads', async () => {
+      const { service, emailSender } = buildService({
+        termiiConfigured: false,
+        resendConfigured: true,
+      });
+      emailSender.send.mockResolvedValue({ success: true, providerMessageId: 'email-4' });
+
+      await service.notifyMerchantLifecycle({
+        email: 'merchant@b.com',
+        event: 'merchant_rejected',
+        merchantId: 'm1',
+        businessName: 'Ara Table Water',
+        reason: 'Incomplete documentation',
+      });
+
+      expect(emailSender.send).toHaveBeenCalledWith(
+        'merchant@b.com',
+        'Ara Table Water was not approved',
+        expect.stringContaining('Incomplete documentation'),
+      );
+    });
+
+    it('names the document and the reason when ONE document is rejected', async () => {
+      // A merchant holds several required documents, so a bare "KYC rejected"
+      // leaves them guessing which one to replace.
+      const { service, emailSender } = buildService({
+        termiiConfigured: false,
+        resendConfigured: true,
+      });
+      emailSender.send.mockResolvedValue({ success: true, providerMessageId: 'email-5' });
+
+      await service.notifyMerchantLifecycle({
+        email: 'merchant@b.com',
+        event: 'kyc_rejected',
+        merchantId: 'm1',
+        documentType: 'NATIONAL_ID',
+        reason: 'Photo is blurred',
+      });
+
+      expect(emailSender.send).toHaveBeenCalledWith(
+        'merchant@b.com',
+        'National Id was rejected',
+        expect.stringContaining('Photo is blurred'),
+      );
+    });
+
+    it('emails a rejected rider the reason — riders previously got nothing', async () => {
+      const { service, emailSender } = buildService({
+        termiiConfigured: false,
+        resendConfigured: true,
+      });
+      emailSender.send.mockResolvedValue({ success: true, providerMessageId: 'email-6' });
+
+      await service.notifyRiderLifecycle({
+        email: 'rider@b.com',
+        event: 'rider_rejected',
+        riderId: 'r1',
+        reason: 'Guarantor ID unreadable',
+      });
+
+      expect(emailSender.send).toHaveBeenCalledWith(
+        'rider@b.com',
+        'Delivery rider application update',
+        expect.stringContaining('Guarantor ID unreadable'),
+      );
+    });
+
+    it('emails a rejected driver document with its type and reason', async () => {
+      const { service, emailSender } = buildService({
+        termiiConfigured: false,
+        resendConfigured: true,
+      });
+      emailSender.send.mockResolvedValue({ success: true, providerMessageId: 'email-7' });
+
+      await service.notifyDriverLifecycle({
+        email: 'driver@b.com',
+        event: 'kyc_rejected',
+        driverId: 'd1',
+        documentType: 'DRIVER_LICENSE',
+        reason: 'Expired',
+      });
+
+      expect(emailSender.send).toHaveBeenCalledWith(
+        'driver@b.com',
+        'Driver License was rejected',
+        expect.stringContaining('Expired'),
       );
     });
   });
