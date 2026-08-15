@@ -23,7 +23,7 @@ import {
 } from '../notifications/notification.service';
 import { StorageAssetService } from '../uploads/storage-asset.service';
 
-import { MERCHANT_AUDIT_ACTIONS } from './merchant.constants';
+import { MERCHANT_AUDIT_ACTIONS, REQUIRED_MERCHANT_KYC_DOCUMENT_TYPES } from './merchant.constants';
 import {
   toBankAccountDto,
   toBusinessDto,
@@ -629,17 +629,28 @@ export class MerchantsService {
       throw new ValidationDomainException('Business profile is required before approval');
     }
 
-    // KYC is multi-document: a merchant can hold several MerchantKyc records, and
-    // `orderBy createdAt desc` is not a stable single-record signal (documents
-    // submitted in the same batch can tie, and a fresh submission can outrank an
-    // already-verified one). Gate on whether *any* document has been verified —
-    // the same aggregate the Ops "KYC Verified" chip shows — rather than on
-    // whichever record happens to sort first, so Verify-then-Approve is reliable.
-    const hasVerifiedKyc = detail.kycDocuments.some(
-      (doc) => doc.verificationStatus === KycVerificationStatus.VERIFIED,
+    // KYC is multi-document: a merchant holds one MerchantKyc record per document
+    // type, so this aggregates over all of them rather than trusting whichever
+    // record happens to sort first (documents submitted in the same batch tie on
+    // createdAt). EVERY required document must be verified — approving on any
+    // single verified document let a merchant go live with only the CAC while
+    // the portal still marked the director's NIN Required. Founder decision
+    // 2026-08-15.
+    const missing = REQUIRED_MERCHANT_KYC_DOCUMENT_TYPES.filter(
+      (type) =>
+        !detail.kycDocuments.some(
+          (doc) =>
+            doc.documentType === type && doc.verificationStatus === KycVerificationStatus.VERIFIED,
+        ),
     );
-    if (!hasVerifiedKyc) {
-      throw new ValidationDomainException('KYC must be verified before approval');
+    if (missing.length > 0) {
+      // Name what is outstanding — "KYC must be verified" gave an operator no
+      // clue which document was still holding the approval up.
+      throw new ValidationDomainException(
+        `Verify every required document before approval. Outstanding: ${missing
+          .map((type) => type.replace(/_/g, ' ').toLowerCase())
+          .join(', ')}`,
+      );
     }
 
     if (detail.status === MerchantStatus.APPROVED) {

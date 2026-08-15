@@ -35,6 +35,8 @@ describe('AssignmentService', () => {
     confirmCash: jest.fn(),
     assignRider: jest.fn(),
     clearRider: jest.fn(),
+    listUnassignedJobs: jest.fn(),
+    listRejectedRiderIds: jest.fn(),
     createTracking: jest.fn(),
     findLatestTracking: jest.fn(),
     findTrackingHistory: jest.fn(),
@@ -43,6 +45,7 @@ describe('AssignmentService', () => {
     upsertRiderAvailability: jest.fn(),
     findRiderAvailability: jest.fn(),
     listAvailableRiders: jest.fn(),
+    isRiderEligibleForDelivery: jest.fn(),
     incrementRiderActiveJobCount: jest.fn(),
     decrementRiderActiveJobCount: jest.fn(),
   };

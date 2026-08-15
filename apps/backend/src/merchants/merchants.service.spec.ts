@@ -770,12 +770,20 @@ describe('MerchantsService', () => {
   });
 
   describe('admin approval workflow', () => {
+    // Approval requires EVERY document in REQUIRED_MERCHANT_KYC_DOCUMENT_TYPES
+    // verified (CAC certificate + director's NIN), so the approvable fixture
+    // carries both.
+    const verifiedNin = {
+      ...verifiedKyc,
+      id: 'kyc-nin-verified',
+      documentType: KycDocumentType.NATIONAL_ID,
+    } as MerchantKyc;
     const adminDetail = {
       ...profile,
       status: MerchantStatus.UNDER_REVIEW,
       user: verifiedUser,
       business,
-      kycDocuments: [verifiedKyc],
+      kycDocuments: [verifiedKyc, verifiedNin],
       bankAccounts: [bankAccount],
       onboarding: { id: 'o1', status: OnboardingStatus.SUBMITTED },
     };
@@ -790,6 +798,45 @@ describe('MerchantsService', () => {
         MERCHANT_AUDIT_ACTIONS.KYC_VERIFIED,
         expect.any(Object),
         expect.any(Object),
+      );
+    });
+
+    it('refuses approval while a required document is unverified', async () => {
+      // The old rule passed on ANY verified document, so a merchant could go
+      // live with only the CAC while the portal still marked the NIN Required.
+      repository.getMerchantAdminDetail.mockResolvedValue({
+        ...adminDetail,
+        kycDocuments: [verifiedKyc],
+      } as never);
+
+      await expect(service.approveMerchant(merchantId, adminId, context)).rejects.toBeInstanceOf(
+        ValidationDomainException,
+      );
+      expect(repository.updateMerchantLifecycle).not.toHaveBeenCalled();
+    });
+
+    it('names the outstanding document so the operator knows what is missing', async () => {
+      repository.getMerchantAdminDetail.mockResolvedValue({
+        ...adminDetail,
+        kycDocuments: [verifiedNin],
+      } as never);
+
+      await expect(service.approveMerchant(merchantId, adminId, context)).rejects.toThrow(
+        /cac certificate/i,
+      );
+    });
+
+    it('refuses approval when a required document is submitted but still pending', async () => {
+      repository.getMerchantAdminDetail.mockResolvedValue({
+        ...adminDetail,
+        kycDocuments: [
+          verifiedKyc,
+          { ...verifiedNin, verificationStatus: KycVerificationStatus.PENDING },
+        ],
+      } as never);
+
+      await expect(service.approveMerchant(merchantId, adminId, context)).rejects.toBeInstanceOf(
+        ValidationDomainException,
       );
     });
 
@@ -827,12 +874,14 @@ describe('MerchantsService', () => {
       );
     });
 
-    it('approves when a verified KYC exists even if it is not the first document', async () => {
-      // Multi-document KYC: a newer PENDING submission sorts ahead of the already
-      // VERIFIED one. Approval must gate on "any verified", not kycDocuments[0].
+    it('approves when every required document is verified, whatever the sort order', async () => {
+      // Multi-document KYC: a newer PENDING re-submission of the CAC sorts ahead
+      // of the already VERIFIED one. Approval aggregates per document type, so
+      // position must not decide it — and the pending re-submission must not
+      // mask the CAC that was already verified.
       repository.getMerchantAdminDetail.mockResolvedValue({
         ...adminDetail,
-        kycDocuments: [pendingKyc, verifiedKyc],
+        kycDocuments: [pendingKyc, verifiedNin, verifiedKyc],
       } as never);
       repository.updateMerchantLifecycle.mockResolvedValue(adminDetail as never);
 

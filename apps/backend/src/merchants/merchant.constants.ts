@@ -1,3 +1,5 @@
+import { KycDocumentType } from '@prisma/client';
+
 export const MERCHANT_AUDIT_ACTIONS = {
   BUSINESS_CREATED: 'merchant.business.created',
   BUSINESS_UPDATED: 'merchant.business.updated',
@@ -24,6 +26,21 @@ export const MERCHANT_PERMISSIONS = {
   SUSPEND: 'admin:merchants:suspend',
   REACTIVATE: 'admin:merchants:reactivate',
 } as const;
+
+/**
+ * Documents a merchant must have VERIFIED before Operations can approve them.
+ *
+ * These are exactly the two the merchant portal's KYC page marks "Required"
+ * (KYC_DOCS in merchantScreen.tsx): the business's CAC certificate and the
+ * director's NIN. Approval previously passed on ANY single verified document,
+ * so a merchant could go live with the CAC alone while the portal still told
+ * them the NIN was required — the check now matches what the merchant was
+ * asked for. Founder decision 2026-08-15.
+ */
+export const REQUIRED_MERCHANT_KYC_DOCUMENT_TYPES = [
+  KycDocumentType.CAC_CERTIFICATE,
+  KycDocumentType.NATIONAL_ID,
+] as const;
 
 export const BANK_ACCOUNT_NUMBER_MIN_LENGTH = 8;
 export const BANK_ACCOUNT_NUMBER_MAX_LENGTH = 20;

@@ -1,3 +1,5 @@
+import { KycDocumentType } from '@prisma/client';
+
 // DPX-RIDER-001 — delivery-rider approval workflow. Mirrors the driver
 // approval constants.
 //
@@ -6,6 +8,22 @@
 // The admin review half was never built, so submitted documents were shown as
 // "KYC Pending" in the Operations Console with no way to verify or reject them.
 // The KYC_VERIFIED/KYC_REJECTED audit actions below close that gap.
+
+/**
+ * Documents a rider must have VERIFIED before dispatch will offer them a
+ * delivery. These are exactly the two the rider onboarding collects
+ * (RiderDocumentsScreen): the rider's own ID and a guarantor's ID.
+ *
+ * Until DPX-RIDER-004 dispatch ignored rider state entirely — AssignmentService
+ * filtered on online/accepting/active-job-count only — so approving a rider
+ * gated nothing and an unapproved rider who toggled online was auto-assigned
+ * real customer orders. Founder decision 2026-08-15: APPROVED **and** every
+ * required document verified.
+ */
+export const REQUIRED_RIDER_KYC_DOCUMENT_TYPES = [
+  KycDocumentType.NATIONAL_ID,
+  KycDocumentType.GUARANTOR_ID,
+] as const;
 
 export const RIDER_AUDIT_ACTIONS = {
   APPROVED: 'rider.approved',

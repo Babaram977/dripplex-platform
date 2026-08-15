@@ -186,6 +186,8 @@ describe('DeliveryService', () => {
     confirmCash: jest.fn(),
     assignRider: jest.fn(),
     clearRider: jest.fn(),
+    listUnassignedJobs: jest.fn(),
+    listRejectedRiderIds: jest.fn(),
     createTracking: jest.fn(),
     findLatestTracking: jest.fn(),
     findTrackingHistory: jest.fn(),
@@ -194,6 +196,7 @@ describe('DeliveryService', () => {
     upsertRiderAvailability: jest.fn(),
     findRiderAvailability: jest.fn(),
     listAvailableRiders: jest.fn(),
+    isRiderEligibleForDelivery: jest.fn(),
     incrementRiderActiveJobCount: jest.fn(),
     decrementRiderActiveJobCount: jest.fn(),
   };
@@ -324,6 +327,9 @@ describe('DeliveryService', () => {
       items: [makeJob({ status: DeliveryStatus.ACCEPTED })],
       total: 13,
     });
+    // Default: the rider passes the approval gate. Tests that exercise the
+    // gate override this explicitly.
+    deliveryRepository.isRiderEligibleForDelivery.mockResolvedValue(true);
     deliveryRepository.upsertRiderAvailability.mockResolvedValue(makeRiderAvailability());
     deliveryRepository.incrementRiderActiveJobCount.mockResolvedValue(makeRiderAvailability());
     deliveryRepository.decrementRiderActiveJobCount.mockResolvedValue(
@@ -1181,6 +1187,105 @@ describe('DeliveryService', () => {
 
     expect(deliveryRepository.findRiderAvailability).toHaveBeenCalledWith(riderId);
     expect(result).toMatchObject({ riderId, online: true, latitude: 6.53, longitude: 3.38 });
+  });
+
+  it('refuses a manual assignment to a rider who is not approved and verified', async () => {
+    // The Operations Console can hand a job to a named rider; without this the
+    // approval gate would be one click away from being bypassed.
+    deliveryRepository.findJobById.mockResolvedValue(makeJob());
+    ordersRepository.findById.mockResolvedValue(makeOrder());
+    deliveryRepository.isRiderEligibleForDelivery.mockResolvedValue(false);
+
+    await expect(
+      service.assignRider(jobId, riderId, AssignmentMethod.MANUAL, {}),
+    ).rejects.toBeInstanceOf(ValidationDomainException);
+    expect(deliveryRepository.assignRider).not.toHaveBeenCalled();
+  });
+
+  it('refuses a manual reassignment to an ineligible rider', async () => {
+    deliveryRepository.findJobById.mockResolvedValue(
+      makeJob({ riderId, status: DeliveryStatus.ASSIGNED }),
+    );
+    ordersRepository.findById.mockResolvedValue(makeOrder());
+    deliveryRepository.isRiderEligibleForDelivery.mockResolvedValue(false);
+
+    await expect(service.reassignRider(jobId, nextRiderId, {})).rejects.toBeInstanceOf(
+      ValidationDomainException,
+    );
+    expect(deliveryRepository.assignRider).not.toHaveBeenCalled();
+  });
+
+  describe('re-dispatch sweep (DPX-RIDER-004)', () => {
+    // Auto-assignment used to run once, at ORDER_READY. A rider who came online
+    // afterwards was never considered and the job sat PENDING forever.
+    beforeEach(() => {
+      deliveryRepository.listRejectedRiderIds.mockResolvedValue([]);
+      ordersRepository.findById.mockResolvedValue(makeOrder());
+    });
+
+    it('assigns a waiting job once a rider becomes eligible', async () => {
+      const waiting = makeJob();
+      deliveryRepository.listUnassignedJobs.mockResolvedValue([waiting]);
+      deliveryRepository.findJobById.mockResolvedValue(waiting);
+      assignmentService.findNearestRider.mockResolvedValue(makeRiderAvailability());
+      deliveryRepository.assignRider.mockResolvedValue(
+        makeJob({ riderId, status: DeliveryStatus.ASSIGNED, assignedAt: now }),
+      );
+
+      await expect(service.redispatchUnassignedJobs(25)).resolves.toBe(1);
+      expect(deliveryRepository.assignRider).toHaveBeenCalledTimes(1);
+    });
+
+    it('reports zero when no rider is eligible, leaving the job for the next tick', async () => {
+      const waiting = makeJob();
+      deliveryRepository.listUnassignedJobs.mockResolvedValue([waiting]);
+      deliveryRepository.findJobById.mockResolvedValue(waiting);
+      assignmentService.findNearestRider.mockResolvedValue(null);
+
+      await expect(service.redispatchUnassignedJobs(25)).resolves.toBe(0);
+      expect(deliveryRepository.assignRider).not.toHaveBeenCalled();
+    });
+
+    it('never re-offers a job a rider already rejected', async () => {
+      const waiting = makeJob();
+      deliveryRepository.listUnassignedJobs.mockResolvedValue([waiting]);
+      deliveryRepository.findJobById.mockResolvedValue(waiting);
+      deliveryRepository.listRejectedRiderIds.mockResolvedValue([riderId]);
+      assignmentService.findNearestRider.mockResolvedValue(null);
+
+      await service.redispatchUnassignedJobs(25);
+
+      // The rejecting rider is passed through as an exclusion, so dispatch
+      // cannot hand them back the same delivery.
+      expect(assignmentService.findNearestRider).toHaveBeenCalledWith(
+        expect.any(Number),
+        expect.any(Number),
+        [riderId],
+      );
+    });
+
+    it('skips a job that gained a rider between the batch read and the retry', async () => {
+      // The batch is a snapshot; a rider may accept in between. Re-reading the
+      // row is what stops a second, duplicate assignment.
+      deliveryRepository.listUnassignedJobs.mockResolvedValue([makeJob()]);
+      deliveryRepository.findJobById.mockResolvedValue(
+        makeJob({ riderId, status: DeliveryStatus.ASSIGNED }),
+      );
+
+      await expect(service.redispatchUnassignedJobs(25)).resolves.toBe(0);
+      expect(assignmentService.findNearestRider).not.toHaveBeenCalled();
+      expect(deliveryRepository.assignRider).not.toHaveBeenCalled();
+    });
+
+    it('leaves a job alone when its order is no longer READY', async () => {
+      const waiting = makeJob();
+      deliveryRepository.listUnassignedJobs.mockResolvedValue([waiting]);
+      deliveryRepository.findJobById.mockResolvedValue(waiting);
+      ordersRepository.findById.mockResolvedValue(makeOrder({ status: OrderStatus.CANCELLED }));
+
+      await expect(service.redispatchUnassignedJobs(25)).resolves.toBe(0);
+      expect(assignmentService.findNearestRider).not.toHaveBeenCalled();
+    });
   });
 
   it('reports null availability for a rider who has never gone online', async () => {

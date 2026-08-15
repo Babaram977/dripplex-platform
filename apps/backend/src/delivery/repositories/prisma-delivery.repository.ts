@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
-import { DeliveryStatus } from '@prisma/client';
+import { DeliveryStatus, KycVerificationStatus, RiderStatus } from '@prisma/client';
 
 import { PrismaService } from '../../prisma/prisma.service';
+import { REQUIRED_RIDER_KYC_DOCUMENT_TYPES } from '../../riders/rider.constants';
+import { DELIVERY_AUDIT_ACTIONS } from '../delivery.constants';
 
 import type {
   CreateDeliveryJobInput,
@@ -163,6 +165,38 @@ export class PrismaDeliveryRepository implements DeliveryRepository {
     });
   }
 
+  public async listUnassignedJobs(limit: number): Promise<DeliveryJob[]> {
+    return await this.prisma.deliveryJob.findMany({
+      where: {
+        status: DeliveryStatus.PENDING,
+        riderId: null,
+      },
+      orderBy: { createdAt: 'asc' },
+      take: limit,
+    });
+  }
+
+  public async listRejectedRiderIds(jobId: string): Promise<string[]> {
+    const rows = await this.prisma.auditLog.findMany({
+      where: {
+        action: DELIVERY_AUDIT_ACTIONS.REJECTED,
+        resource: 'delivery_job',
+        resourceId: jobId,
+      },
+      select: { metadata: true },
+    });
+
+    const riderIds = new Set<string>();
+    for (const row of rows) {
+      const metadata = row.metadata as Record<string, unknown> | null;
+      const riderId = metadata?.['riderId'];
+      if (typeof riderId === 'string' && riderId !== '') {
+        riderIds.add(riderId);
+      }
+    }
+    return [...riderIds];
+  }
+
   public async createTracking(input: CreateDeliveryTrackingInput): Promise<DeliveryTracking> {
     return await this.prisma.deliveryTracking.create({
       data: {
@@ -238,14 +272,67 @@ export class PrismaDeliveryRepository implements DeliveryRepository {
     return await this.prisma.riderAvailability.findUnique({ where: { riderId } });
   }
 
+  /**
+   * Riders dispatch may offer a delivery to.
+   *
+   * Availability (online / accepting / under the job cap) is necessary but not
+   * sufficient: the rider must also be APPROVED and hold a VERIFIED document
+   * for every type in REQUIRED_RIDER_KYC_DOCUMENT_TYPES. Before DPX-RIDER-004
+   * this filtered on availability alone, so approving a rider gated nothing and
+   * an unapproved rider who toggled online was auto-assigned real orders.
+   *
+   * The KYC condition is one AND-ed relation filter per required type — "has at
+   * least one VERIFIED document of this type" for each — which is how "all
+   * required documents verified" is expressed without loading the documents.
+   */
   public async listAvailableRiders(maxActiveJobs: number): Promise<RiderAvailability[]> {
     return await this.prisma.riderAvailability.findMany({
       where: {
         online: true,
         acceptingOrders: true,
         activeJobCount: { lt: maxActiveJobs },
+        rider: {
+          deletedAt: null,
+          riderProfile: {
+            status: RiderStatus.APPROVED,
+            isApproved: true,
+            deletedAt: null,
+          },
+          AND: REQUIRED_RIDER_KYC_DOCUMENT_TYPES.map((documentType) => ({
+            riderKycDocuments: {
+              some: {
+                documentType,
+                verificationStatus: KycVerificationStatus.VERIFIED,
+              },
+            },
+          })),
+        },
       },
     });
+  }
+
+  public async isRiderEligibleForDelivery(riderId: string): Promise<boolean> {
+    const eligible = await this.prisma.user.findFirst({
+      where: {
+        id: riderId,
+        deletedAt: null,
+        riderProfile: {
+          status: RiderStatus.APPROVED,
+          isApproved: true,
+          deletedAt: null,
+        },
+        AND: REQUIRED_RIDER_KYC_DOCUMENT_TYPES.map((documentType) => ({
+          riderKycDocuments: {
+            some: {
+              documentType,
+              verificationStatus: KycVerificationStatus.VERIFIED,
+            },
+          },
+        })),
+      },
+      select: { id: true },
+    });
+    return eligible !== null;
   }
 
   public async incrementRiderActiveJobCount(riderId: string): Promise<RiderAvailability> {

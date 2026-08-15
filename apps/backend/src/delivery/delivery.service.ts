@@ -200,6 +200,7 @@ export class DeliveryService {
   ): Promise<DeliveryJobDto> {
     const job = await this.requireJob(jobId);
     const order = await this.requireOrder(job.orderId);
+    await this.assertRiderEligible(riderId);
     const updated = await this.assignRiderToJob(job, riderId, method, order, context);
     return toDeliveryJobDto(updated);
   }
@@ -211,6 +212,7 @@ export class DeliveryService {
   ): Promise<DeliveryJobDto> {
     const job = await this.requireJob(jobId);
     const order = await this.requireOrder(job.orderId);
+    await this.assertRiderEligible(riderId);
     const updated = await this.assignRiderToJob(
       job,
       riderId,
@@ -219,6 +221,21 @@ export class DeliveryService {
       context,
     );
     return toDeliveryJobDto(updated);
+  }
+
+  /**
+   * DPX-RIDER-004 — a manual assignment from the Operations Console must obey
+   * the same approval gate as auto-dispatch, otherwise the gate is one click
+   * away from being bypassed. Auto-assignment does not need this: its candidate
+   * query already selects only eligible riders.
+   */
+  private async assertRiderEligible(riderId: string): Promise<void> {
+    const eligible = await this.deliveryRepository.isRiderEligibleForDelivery(riderId);
+    if (!eligible) {
+      throw new ValidationDomainException(
+        'Rider must be approved with all required KYC documents verified before taking deliveries',
+      );
+    }
   }
 
   public async acceptJob(
@@ -577,6 +594,54 @@ export class DeliveryService {
   public async getOwnRiderAvailability(riderId: string): Promise<RiderLocationDto | null> {
     const availability = await this.deliveryRepository.findRiderAvailability(riderId);
     return availability ? toRiderLocationDto(availability) : null;
+  }
+
+  /**
+   * DPX-RIDER-004 — re-dispatch deliveries nobody is carrying.
+   *
+   * Auto-assignment used to run once, at ORDER_READY. A rider who came online a
+   * minute later was never considered, so the job sat PENDING with no rider and
+   * the customer's order silently went nowhere. This retries those jobs and
+   * returns how many found a rider.
+   *
+   * Idempotency, so a retry never produces a duplicate offer:
+   *  - only jobs that are still PENDING with a null riderId are candidates, so
+   *    an already-assigned job is never re-offered;
+   *  - each job re-reads its own row before assigning, because a rider may have
+   *    accepted between the batch read and this iteration;
+   *  - riders who already rejected that job are excluded, so nobody is handed
+   *    back a delivery they turned down.
+   */
+  public async redispatchUnassignedJobs(
+    limit: number,
+    context: AuditContext = {},
+  ): Promise<number> {
+    const candidates = await this.deliveryRepository.listUnassignedJobs(limit);
+    let assignedCount = 0;
+
+    for (const candidate of candidates) {
+      // Re-read: the batch is a snapshot, and a rider may have been assigned
+      // (or the job cancelled) since it was taken.
+      const job = await this.deliveryRepository.findJobById(candidate.id);
+      if (job?.riderId !== null || job.status !== DeliveryStatus.PENDING) {
+        continue;
+      }
+
+      const order = await this.ordersRepository.findById(job.orderId);
+      if (order?.status !== OrderStatus.READY) {
+        // The order moved on (cancelled, or already being carried). Nothing to
+        // dispatch — leave the job for Operations rather than guessing.
+        continue;
+      }
+
+      const excluded = await this.deliveryRepository.listRejectedRiderIds(job.id);
+      const result = await this.tryAutoAssign(job, order, context, excluded);
+      if (result.riderId !== null) {
+        assignedCount += 1;
+      }
+    }
+
+    return assignedCount;
   }
 
   private async tryAutoAssign(
