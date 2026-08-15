@@ -1138,6 +1138,7 @@ function AppShell() {
           go('riderjob');
         }}
         onEarnings={() => go('riderearnings')}
+        onSignIn={() => go('riderlogin')}
       />
     ),
     riderjob: activeRiderJob ? (

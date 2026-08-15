@@ -1216,6 +1216,33 @@ describe('DeliveryService', () => {
     expect(deliveryRepository.assignRider).not.toHaveBeenCalled();
   });
 
+  it('ignores a 0/0 business location instead of quoting a cross-country delivery', async () => {
+    // Minimal merchant onboarding writes 0/0 until the merchant sets an
+    // address. Treated as real it put pickup in the Gulf of Guinea and quoted
+    // 1,634 km / 3,271 min for a local drop.
+    ordersRepository.findById.mockResolvedValue(makeOrder());
+    deliveryRepository.findJobByOrderId.mockResolvedValue(null);
+    addressRepository.findByIdForCustomer.mockResolvedValue(makeAddress());
+    (prisma.business.findUnique as jest.Mock).mockResolvedValue({ latitude: 0, longitude: 0 });
+    (prisma.merchantProfile.findUnique as jest.Mock).mockResolvedValue({ userId: merchantId });
+    deliveryFeeService.estimate.mockReturnValue({
+      fee: 1400,
+      distanceMeters: 9200,
+      durationSeconds: 1105,
+    });
+    deliveryRepository.createJob.mockResolvedValue(makeJob());
+    assignmentService.findNearestRider.mockResolvedValue(null);
+
+    await service.createDeliveryJob(orderId);
+
+    // Falls back to the city default, so the quoted distance stays local.
+    const [distanceArg] = deliveryFeeService.estimate.mock.calls[0] ?? [];
+    expect(distanceArg).toBeLessThan(100_000);
+    expect(deliveryRepository.createJob).toHaveBeenCalledWith(
+      expect.objectContaining({ pickupLatitude: 6.5244, pickupLongitude: 3.3792 }),
+    );
+  });
+
   describe('re-dispatch sweep (DPX-RIDER-004)', () => {
     // Auto-assignment used to run once, at ORDER_READY. A rider who came online
     // afterwards was never considered and the job sat PENDING forever.

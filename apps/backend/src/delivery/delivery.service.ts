@@ -158,8 +158,20 @@ export class DeliveryService {
     const business = await this.prisma.business.findUnique({
       where: { merchantId: merchantUserId },
     });
-    const pickupLatitude = business ? Number(business.latitude) : DEFAULT_PICKUP_LATITUDE;
-    const pickupLongitude = business ? Number(business.longitude) : DEFAULT_PICKUP_LONGITUDE;
+    // Minimal merchant onboarding stores 0/0 when the merchant has not supplied
+    // a location yet (createBusiness defaults latitude/longitude to 0), and a
+    // record that exists with 0/0 is NOT a pickup point — it is the Gulf of
+    // Guinea. Treating it as real produced a 1,634 km / 3,271 min estimate on a
+    // local delivery. Fall back to the city default until the merchant sets a
+    // real address.
+    const hasBusinessLocation =
+      business !== null && Number(business.latitude) !== 0 && Number(business.longitude) !== 0;
+    const pickupLatitude = hasBusinessLocation
+      ? Number(business.latitude)
+      : DEFAULT_PICKUP_LATITUDE;
+    const pickupLongitude = hasBusinessLocation
+      ? Number(business.longitude)
+      : DEFAULT_PICKUP_LONGITUDE;
     const dropoffLatitude = Number(address.latitude);
     const dropoffLongitude = Number(address.longitude);
     const distanceMeters = haversineMeters(
