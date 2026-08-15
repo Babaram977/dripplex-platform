@@ -25,6 +25,8 @@ describe('RidersService', () => {
     },
     riderKyc: {
       create: jest.fn(),
+      findUnique: jest.fn(),
+      update: jest.fn(),
     },
     reviewAggregate: {
       findMany: jest.fn().mockResolvedValue([]),
@@ -261,5 +263,92 @@ describe('RidersService', () => {
       expect.objectContaining({ userId: RIDER_ID }),
       expect.any(Object),
     );
+  });
+
+  // ── DPX-RIDER-003: admin review of a submitted rider KYC document ───────────
+  describe('rider KYC review', () => {
+    const KYC_ID = '11111111-2222-3333-4444-555555555555';
+    const baseKyc = {
+      id: KYC_ID,
+      riderId: RIDER_ID,
+      documentType: 'NATIONAL_ID',
+      documentNumber: 'A1234567',
+      frontImage: 'https://cdn.test/kyc-documents/front.jpg',
+      backImage: null,
+      verificationStatus: 'PENDING',
+      reviewedBy: null,
+      reviewedAt: null,
+      remarks: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    };
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it('verifies a pending document and records who reviewed it', async () => {
+      (prisma.riderKyc.findUnique as jest.Mock).mockResolvedValue(baseKyc);
+      (prisma.riderKyc.update as jest.Mock).mockImplementation(({ data }: { data: object }) =>
+        Promise.resolve({ ...baseKyc, ...data }),
+      );
+
+      const result = await service.verifyKyc(KYC_ID, ADMIN_ID, 'Looks good', {});
+
+      expect(result.verificationStatus).toBe('VERIFIED');
+      expect(prisma.riderKyc.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: KYC_ID },
+          data: expect.objectContaining({
+            verificationStatus: 'VERIFIED',
+            reviewedBy: ADMIN_ID,
+            remarks: 'Looks good',
+          }),
+        }),
+      );
+      expect(auditService.record).toHaveBeenCalledWith(
+        'rider.kyc_verified',
+        expect.objectContaining({ userId: ADMIN_ID }),
+        expect.any(Object),
+      );
+    });
+
+    it('rejects a document with the reason the rider will see', async () => {
+      (prisma.riderKyc.findUnique as jest.Mock).mockResolvedValue(baseKyc);
+      (prisma.riderKyc.update as jest.Mock).mockImplementation(({ data }: { data: object }) =>
+        Promise.resolve({ ...baseKyc, ...data }),
+      );
+
+      const result = await service.rejectKyc(KYC_ID, ADMIN_ID, 'ID photo is blurred', {});
+
+      expect(result.verificationStatus).toBe('REJECTED');
+      expect(result.remarks).toBe('ID photo is blurred');
+      expect(auditService.record).toHaveBeenCalledWith(
+        'rider.kyc_rejected',
+        expect.objectContaining({ userId: ADMIN_ID }),
+        expect.any(Object),
+      );
+    });
+
+    it('404s for an unknown document instead of silently succeeding', async () => {
+      (prisma.riderKyc.findUnique as jest.Mock).mockResolvedValue(null);
+
+      await expect(service.verifyKyc(KYC_ID, ADMIN_ID, undefined, {})).rejects.toBeInstanceOf(
+        NotFoundDomainException,
+      );
+      expect(prisma.riderKyc.update).not.toHaveBeenCalled();
+    });
+
+    it('signs the document images in the review response', async () => {
+      (prisma.riderKyc.findUnique as jest.Mock).mockResolvedValue(baseKyc);
+      (prisma.riderKyc.update as jest.Mock).mockImplementation(({ data }: { data: object }) =>
+        Promise.resolve({ ...baseKyc, ...data }),
+      );
+
+      const result = await service.verifyKyc(KYC_ID, ADMIN_ID, undefined, {});
+
+      // A reviewer must be able to actually open the image from a private bucket.
+      expect(result.frontImage).toContain('?signed');
+    });
   });
 });

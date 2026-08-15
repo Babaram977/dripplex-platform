@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { OnboardingStatus, ReviewTargetType, RiderStatus } from '@prisma/client';
+import {
+  KycVerificationStatus,
+  OnboardingStatus,
+  ReviewTargetType,
+  RiderStatus,
+} from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../audit/audit.service';
 import {
@@ -314,6 +319,73 @@ export class RidersService {
     const { user, ...rest } = profile;
     const { riderKycDocuments, ...userRest } = user;
     return { profile: rest, user: userRest, kyc: riderKycDocuments };
+  }
+
+  /**
+   * DPX-RIDER-003 — admin review of a submitted rider KYC document. Mirrors
+   * DriversService.verifyKyc/rejectKyc exactly; without these a rider's document
+   * stayed "KYC Pending" forever because operations had no way to act on it.
+   */
+  public async verifyKyc(
+    kycId: string,
+    adminUserId: string,
+    remarks: string | undefined,
+    context: AuditContext,
+  ): Promise<RiderKycDto> {
+    const kyc = await this.requireRiderKyc(kycId);
+
+    const updated = await this.prisma.riderKyc.update({
+      where: { id: kyc.id },
+      data: {
+        verificationStatus: KycVerificationStatus.VERIFIED,
+        reviewedBy: adminUserId,
+        reviewedAt: new Date(),
+        ...(remarks !== undefined ? { remarks } : {}),
+      },
+    });
+
+    await this.auditService.record(
+      RIDER_AUDIT_ACTIONS.KYC_VERIFIED,
+      { ...context, userId: adminUserId },
+      { resource: 'rider_kyc', resourceId: kyc.id, metadata: { documentType: kyc.documentType } },
+    );
+
+    return await this.signRiderKyc(toRiderKycDto(updated));
+  }
+
+  public async rejectKyc(
+    kycId: string,
+    adminUserId: string,
+    remarks: string,
+    context: AuditContext,
+  ): Promise<RiderKycDto> {
+    const kyc = await this.requireRiderKyc(kycId);
+
+    const updated = await this.prisma.riderKyc.update({
+      where: { id: kyc.id },
+      data: {
+        verificationStatus: KycVerificationStatus.REJECTED,
+        reviewedBy: adminUserId,
+        reviewedAt: new Date(),
+        remarks,
+      },
+    });
+
+    await this.auditService.record(
+      RIDER_AUDIT_ACTIONS.KYC_REJECTED,
+      { ...context, userId: adminUserId },
+      { resource: 'rider_kyc', resourceId: kyc.id, metadata: { documentType: kyc.documentType } },
+    );
+
+    return await this.signRiderKyc(toRiderKycDto(updated));
+  }
+
+  private async requireRiderKyc(kycId: string): Promise<RiderKyc> {
+    const kyc = await this.prisma.riderKyc.findUnique({ where: { id: kycId } });
+    if (!kyc) {
+      throw new NotFoundDomainException('Rider KYC document not found');
+    }
+    return kyc;
   }
 
   /** Sign a single rider KYC document's images into short-lived GET URLs. */

@@ -6,10 +6,10 @@ import { DomainEventBus } from '../events/domain-event-bus';
 
 import { PromotionsService } from './promotions.service';
 
+import type { PromotionEvaluationDto } from './promotion.mapper';
 import type { AuditService } from '../audit/audit.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { WalletService } from '../wallet/wallet.service';
-import type { PromotionEvaluationDto } from '@dripplex/types';
 
 /**
  * Money rules for the two founder-approved launch campaigns seeded by
@@ -26,7 +26,7 @@ import type { PromotionEvaluationDto } from '@dripplex/types';
  * configured, matching the convention in rides.service.spec.ts.
  */
 describe('launch campaigns (Free First Ride / 40% Off Marketplace)', () => {
-  const databaseUrl = process.env.DATABASE_URL ?? '';
+  const databaseUrl = process.env['DATABASE_URL'] ?? '';
   let prisma: PrismaClient;
   let service: PromotionsService;
   let databaseAvailable = false;

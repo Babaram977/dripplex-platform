@@ -2724,6 +2724,12 @@ function RiderReviewCard({ r, reload }: { r: AdminRiderDto; reload: () => void }
   const [showReject, setShowReject] = useState(false);
   const [reason, setReason] = useState('');
   const [err, setErr] = useState<string | null>(null);
+  // DPX-RIDER-003 — rider KYC review. Riders could submit an identity document
+  // but operations had no way to act on it, so it sat as "KYC Pending" forever.
+  const [showKycReject, setShowKycReject] = useState(false);
+  const [kycRemarks, setKycRemarks] = useState('');
+  const [showSuspend, setShowSuspend] = useState(false);
+  const [suspendReason, setSuspendReason] = useState('');
 
   const run = async (action: string, fn: () => Promise<unknown>) => {
     setBusy(action);
@@ -2744,8 +2750,18 @@ function RiderReviewCard({ r, reload }: { r: AdminRiderDto; reload: () => void }
     void run('reject', () => api.admin.rejectRider(r.riderId, reason.trim()));
   };
   const st = personaStatus(r.status);
-  const kyc = kycChip(r.kyc?.[0]?.verificationStatus);
+  const kycDoc = r.kyc?.[0];
+  const kyc = kycChip(kycDoc?.verificationStatus);
   const name = `${r.firstName} ${r.lastName}`.trim() || '—';
+
+  const rejectKyc = () => {
+    if (!kycDoc) return;
+    if (kycRemarks.trim().length < 3) {
+      setErr('Rejection remarks must be at least 3 characters.');
+      return;
+    }
+    void run('kyc-reject', () => api.admin.rejectRiderKyc(kycDoc.id, kycRemarks.trim()));
+  };
 
   return (
     <Card style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -2757,7 +2773,6 @@ function RiderReviewCard({ r, reload }: { r: AdminRiderDto; reload: () => void }
           {name}
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-          {r.kyc.length > 0 && <Chip {...kyc} />}
           <Chip {...st} />
         </div>
       </div>
@@ -2770,8 +2785,132 @@ function RiderReviewCard({ r, reload }: { r: AdminRiderDto; reload: () => void }
           <DetailRow label="Reason" value={r.rejectedReason} />
         )}
       </div>
+      {/* DPX-RIDER-003 — identity document review. */}
+      {kycDoc && (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            padding: 10,
+            borderRadius: 8,
+            background: 'rgba(255,255,255,.03)',
+            border: `1px solid ${BORDER}`,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: WHITE }}>Identity document</span>
+            <div style={{ marginLeft: 'auto' }}>
+              <Chip {...kyc} />
+            </div>
+          </div>
+          <DetailRow label="Type" value={kycDoc.documentType.replace(/_/g, ' ')} />
+          <DetailRow label="Number" value={kycDoc.documentNumber} />
+          {kycDoc.remarks && <DetailRow label="Remarks" value={kycDoc.remarks} />}
+          <div style={{ display: 'flex', gap: 10 }}>
+            <a
+              href={kycDoc.frontImage}
+              target="_blank"
+              rel="noreferrer"
+              style={{ fontSize: 11.5, color: G2 }}
+            >
+              View front ↗
+            </a>
+            {kycDoc.backImage && (
+              <a
+                href={kycDoc.backImage}
+                target="_blank"
+                rel="noreferrer"
+                style={{ fontSize: 11.5, color: G2 }}
+              >
+                View back ↗
+              </a>
+            )}
+          </div>
+          {kycDoc.verificationStatus === 'PENDING' &&
+            (showKycReject ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <input
+                  className="dx-input"
+                  value={kycRemarks}
+                  onChange={(e) => setKycRemarks(e.target.value)}
+                  placeholder="Why is this document rejected? (min 3 characters)"
+                />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Btn
+                    label={busy === 'kyc-reject' ? 'Rejecting…' : 'Confirm Reject KYC'}
+                    color={C_ERR}
+                    onClick={rejectKyc}
+                  />
+                  <Btn
+                    label="Cancel"
+                    color={MUTED}
+                    outline
+                    onClick={() => {
+                      setShowKycReject(false);
+                      setErr(null);
+                    }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Btn
+                  label={busy === 'kyc-verify' ? 'Verifying…' : 'Verify KYC'}
+                  color={G2}
+                  onClick={
+                    busy
+                      ? undefined
+                      : () => void run('kyc-verify', () => api.admin.verifyRiderKyc(kycDoc.id))
+                  }
+                />
+                <Btn
+                  label="Reject KYC"
+                  color={C_ERR}
+                  outline
+                  onClick={() => setShowKycReject(true)}
+                />
+              </div>
+            ))}
+        </div>
+      )}
+
       {err && <span style={{ fontSize: 12, color: C_ERR }}>{err}</span>}
-      {showReject ? (
+      {showSuspend ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span style={{ fontSize: 12, color: MUTED }}>
+            Suspend {name}? They stop receiving delivery jobs until reactivated.
+          </span>
+          <input
+            className="dx-input"
+            value={suspendReason}
+            onChange={(e) => setSuspendReason(e.target.value)}
+            placeholder="Reason for suspension (min 5 characters)"
+          />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Btn
+              label={busy === 'suspend' ? 'Suspending…' : 'Confirm Suspend'}
+              color={C_ERR}
+              onClick={() => {
+                if (suspendReason.trim().length < 5) {
+                  setErr('Suspension reason must be at least 5 characters.');
+                  return;
+                }
+                void run('suspend', () => api.admin.suspendRider(r.riderId, suspendReason.trim()));
+              }}
+            />
+            <Btn
+              label="Cancel"
+              color={MUTED}
+              outline
+              onClick={() => {
+                setShowSuspend(false);
+                setErr(null);
+              }}
+            />
+          </div>
+        </div>
+      ) : showReject ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <input
             className="dx-input"
@@ -2814,17 +2953,12 @@ function RiderReviewCard({ r, reload }: { r: AdminRiderDto; reload: () => void }
           )}
           {r.status === 'APPROVED' && (
             <Btn
-              label={busy === 'suspend' ? 'Suspending…' : 'Suspend'}
+              label="Suspend"
               color={C_ERR}
               outline
-              onClick={
-                busy
-                  ? undefined
-                  : () =>
-                      void run('suspend', () =>
-                        api.admin.suspendRider(r.riderId, 'Suspended by operations'),
-                      )
-              }
+              // Confirm first: this used to suspend on a single click, which is
+              // easy to hit by mistake next to the status chips.
+              onClick={() => setShowSuspend(true)}
             />
           )}
           {r.status === 'SUSPENDED' && (
