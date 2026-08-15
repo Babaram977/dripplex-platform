@@ -84,6 +84,18 @@ export interface DeliveryRepository {
     assignmentMethod: AssignmentMethod,
   ): Promise<DeliveryJob>;
   clearRider(id: string): Promise<DeliveryJob>;
+  /**
+   * DPX-RIDER-004 — deliveries that are ready but still have nobody assigned
+   * (PENDING with a null riderId), oldest first, for the re-dispatch sweep.
+   */
+  listUnassignedJobs(limit: number): Promise<DeliveryJob[]>;
+  /**
+   * DPX-RIDER-004 — riders who already rejected THIS job, read from the
+   * `delivery.rejected` audit records the reject path already writes. The sweep
+   * excludes them so a re-dispatch never hands a rider back a delivery they
+   * have already turned down.
+   */
+  listRejectedRiderIds(jobId: string): Promise<string[]>;
   createTracking(input: CreateDeliveryTrackingInput): Promise<DeliveryTracking>;
   findLatestTracking(deliveryJobId: string): Promise<DeliveryTracking | null>;
   findTrackingHistory(deliveryJobId: string): Promise<DeliveryTracking[]>;
@@ -92,6 +104,13 @@ export interface DeliveryRepository {
   upsertRiderAvailability(input: UpsertRiderAvailabilityInput): Promise<RiderAvailability>;
   findRiderAvailability(riderId: string): Promise<RiderAvailability | null>;
   listAvailableRiders(maxActiveJobs: number): Promise<RiderAvailability[]>;
+  /**
+   * DPX-RIDER-004 — whether this rider may be given a delivery at all:
+   * APPROVED and every required KYC document VERIFIED. Same rule
+   * `listAvailableRiders` applies, minus the availability half, so a manual
+   * assignment from the Operations Console cannot bypass the approval gate.
+   */
+  isRiderEligibleForDelivery(riderId: string): Promise<boolean>;
   incrementRiderActiveJobCount(riderId: string): Promise<RiderAvailability>;
   decrementRiderActiveJobCount(riderId: string): Promise<RiderAvailability>;
 }

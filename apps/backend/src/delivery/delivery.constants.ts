@@ -21,6 +21,24 @@ export const DELIVERY_PERMISSIONS = {
 
 export const TRACKING_THROTTLE_MS = 5000;
 export const MAX_RIDER_ACTIVE_JOBS = 3;
+
+/**
+ * DPX-RIDER-004 — how often unassigned deliveries are re-dispatched.
+ *
+ * Auto-assignment previously ran exactly once, when the merchant marked the
+ * order ready. If no eligible rider was online and located at that instant the
+ * job sat PENDING with no rider forever, and a rider coming online a minute
+ * later was never considered. Same plain-setInterval sweep pattern as
+ * RideOfferSweepService / ReservationCleanupService (no @nestjs/schedule
+ * dependency in this codebase).
+ */
+export const DELIVERY_DISPATCH_SWEEP_INTERVAL_MS = 30_000;
+
+/**
+ * Most unassigned jobs re-dispatched per sweep. A bound keeps one sweep's work
+ * predictable; anything left over is picked up by the next tick.
+ */
+export const DELIVERY_DISPATCH_SWEEP_BATCH_SIZE = 25;
 export const DEFAULT_SPEED_MPS = 8.33;
 export const MIN_DELIVERY_FEE = 500;
 export const FEE_PER_KM = 150;

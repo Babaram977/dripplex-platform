@@ -11,6 +11,7 @@ import {
   type AdminCustomerDto,
   type AdminMerchantDto,
   type AdminRiderDto,
+  type DeliveryJobDto,
 } from '../lib/api';
 import { auth } from '../lib/auth';
 import {
@@ -2521,6 +2522,8 @@ function MerchantReviewCard({ m, reload }: { m: AdminMerchantDto; reload: () => 
   const [busy, setBusy] = useState<string | null>(null);
   const [showReject, setShowReject] = useState(false);
   const [reason, setReason] = useState('');
+  const [showKycReject, setShowKycReject] = useState(false);
+  const [kycRemarks, setKycRemarks] = useState('');
   const [err, setErr] = useState<string | null>(null);
 
   const run = async (action: string, fn: () => Promise<unknown>) => {
@@ -2541,8 +2544,19 @@ function MerchantReviewCard({ m, reload }: { m: AdminMerchantDto; reload: () => 
     }
     void run('reject', () => api.admin.rejectMerchant(m.merchantId, reason.trim()));
   };
+  const rejectKyc = () => {
+    if (kycRemarks.trim().length < 3) {
+      setErr('Say why the document is rejected (at least 3 characters).');
+      return;
+    }
+    void run('kyc-reject', () => api.admin.rejectMerchantKyc(m.merchantId, kycRemarks.trim()));
+  };
   const st = personaStatus(m.status);
-  const kyc = kycChip(m.kyc?.verificationStatus);
+  // The backend surfaces the document Operations must act on next — the oldest
+  // PENDING one — so this panel drains a multi-document submission (CAC, then
+  // director's NIN) one review at a time.
+  const kycDoc = m.kyc;
+  const kyc = kycChip(kycDoc?.verificationStatus);
   const name = `${m.firstName} ${m.lastName}`.trim() || '—';
 
   return (
@@ -2575,6 +2589,98 @@ function MerchantReviewCard({ m, reload }: { m: AdminMerchantDto; reload: () => 
           <DetailRow label="Reason" value={m.rejectedReason} />
         )}
       </div>
+      {/* Business document review. A merchant submits several documents (CAC
+          certificate, director's NIN, …); this panel shows the one awaiting
+          review and re-renders with the next one after each decision. */}
+      {kycDoc && (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            padding: 10,
+            borderRadius: 8,
+            background: 'rgba(255,255,255,.03)',
+            border: `1px solid ${BORDER}`,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: WHITE }}>Business document</span>
+            <div style={{ marginLeft: 'auto' }}>
+              <Chip {...kyc} />
+            </div>
+          </div>
+          <DetailRow label="Type" value={kycDocLabel(kycDoc.documentType)} />
+          <DetailRow label="Number" value={kycDoc.documentNumber ?? '—'} />
+          {kycDoc.remarks && <DetailRow label="Remarks" value={kycDoc.remarks} />}
+          <div style={{ display: 'flex', gap: 10 }}>
+            <a
+              href={kycDoc.frontImage}
+              target="_blank"
+              rel="noreferrer"
+              style={{ fontSize: 11.5, color: G2 }}
+            >
+              View document ↗
+            </a>
+            {kycDoc.backImage && (
+              <a
+                href={kycDoc.backImage}
+                target="_blank"
+                rel="noreferrer"
+                style={{ fontSize: 11.5, color: G2 }}
+              >
+                View back ↗
+              </a>
+            )}
+          </div>
+          {kycDoc.verificationStatus === 'PENDING' &&
+            (showKycReject ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <input
+                  className="dx-input"
+                  value={kycRemarks}
+                  onChange={(e) => setKycRemarks(e.target.value)}
+                  placeholder="Why is this document rejected? (min 3 characters)"
+                />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Btn
+                    label={busy === 'kyc-reject' ? 'Rejecting…' : 'Confirm Reject KYC'}
+                    color={C_ERR}
+                    onClick={rejectKyc}
+                  />
+                  <Btn
+                    label="Cancel"
+                    color={MUTED}
+                    outline
+                    onClick={() => {
+                      setShowKycReject(false);
+                      setErr(null);
+                    }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Btn
+                  label={busy === 'kyc-verify' ? 'Verifying…' : 'Verify KYC'}
+                  color={G2}
+                  onClick={
+                    busy
+                      ? undefined
+                      : () =>
+                          void run('kyc-verify', () => api.admin.verifyMerchantKyc(m.merchantId))
+                  }
+                />
+                <Btn
+                  label="Reject KYC"
+                  color={C_ERR}
+                  outline
+                  onClick={() => setShowKycReject(true)}
+                />
+              </div>
+            ))}
+        </div>
+      )}
       {err && <span style={{ fontSize: 12, color: C_ERR }}>{err}</span>}
       {showReject ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -2605,18 +2711,7 @@ function MerchantReviewCard({ m, reload }: { m: AdminMerchantDto; reload: () => 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {isActionable(m.status) && (
             <>
-              {m.kyc?.verificationStatus === 'PENDING' && (
-                <Btn
-                  label={busy === 'kyc' ? 'Verifying…' : 'Verify KYC'}
-                  color={C_INFO}
-                  outline
-                  onClick={
-                    busy
-                      ? undefined
-                      : () => void run('kyc', () => api.admin.verifyMerchantKyc(m.merchantId))
-                  }
-                />
-              )}
+              {/* KYC verify/reject live in the Business document panel above. */}
               <Btn
                 label={busy === 'approve' ? 'Approving…' : 'Approve Merchant'}
                 color={G2}
@@ -2978,6 +3073,121 @@ function RiderReviewCard({ r, reload }: { r: AdminRiderDto; reload: () => void }
   );
 }
 
+/**
+ * Deliveries that auto-assignment could not place. Dispatch runs exactly once —
+ * when the merchant marks the order ready — and only considers riders that are
+ * online, accepting, and have coordinates on record. If nobody qualified at
+ * that moment the job stays PENDING with no rider and nothing retries it, so
+ * the order silently never reaches anyone. This panel is the manual fallback:
+ * it calls POST /admin/delivery/:id/assign, which the backend already exposed.
+ */
+function UnassignedDeliveries({ riders }: { riders: AdminRiderDto[] }) {
+  const [jobs, setJobs] = useState<DeliveryJobDto[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [choice, setChoice] = useState<Record<string, string>>({});
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      setJobs((await api.admin.listDeliveryJobs('PENDING')).items);
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load deliveries.');
+      setJobs([]);
+    }
+  }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  // Only approved riders can be handed a delivery.
+  const assignable = riders.filter((r) => r.status === 'APPROVED');
+  const unassigned = (jobs ?? []).filter((j) => j.riderId === null);
+
+  if (unassigned.length === 0) return null;
+
+  const assign = async (jobId: string) => {
+    const riderId = choice[jobId] ?? assignable[0]?.riderId;
+    if (!riderId) return;
+    setBusy(jobId);
+    setError(null);
+    try {
+      await api.admin.assignDeliveryRider(jobId, riderId);
+      await load();
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not assign this delivery.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <Card style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span
+          style={{ fontFamily: 'Poppins, sans-serif', fontSize: 13, fontWeight: 700, color: WHITE }}
+        >
+          Deliveries waiting for a rider
+        </span>
+        <div style={{ marginLeft: 'auto' }}>
+          <Chip label={`${unassigned.length} unassigned`} color={C_WARN} />
+        </div>
+      </div>
+      <span style={{ fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+        These orders are ready but no rider was online and sharing location when they were
+        dispatched. Assign one by hand.
+      </span>
+      {error && <span style={{ fontSize: 12, color: C_ERR }}>{error}</span>}
+      {assignable.length === 0 && (
+        <span style={{ fontSize: 12, color: C_WARN }}>
+          No approved riders yet — approve a rider before assigning.
+        </span>
+      )}
+      {unassigned.map((j) => (
+        <div
+          key={j.id}
+          style={{
+            display: 'flex',
+            gap: 8,
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            padding: 10,
+            borderRadius: 8,
+            background: 'rgba(255,255,255,.03)',
+            border: `1px solid ${BORDER}`,
+          }}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 180 }}>
+            <span style={{ fontSize: 11.5, color: WHITE }}>Order {j.orderId.slice(0, 8)}</span>
+            <span style={{ fontSize: 11, color: MUTED }}>
+              ₦{Math.round(j.deliveryFee).toLocaleString()} ·{' '}
+              {(j.estimatedDistanceMeters / 1000).toFixed(1)} km
+            </span>
+          </div>
+          <select
+            className="dx-input"
+            style={{ flex: 1, minWidth: 160 }}
+            value={choice[j.id] ?? assignable[0]?.riderId ?? ''}
+            onChange={(e) => setChoice((c) => ({ ...c, [j.id]: e.target.value }))}
+            disabled={assignable.length === 0}
+          >
+            {assignable.map((r) => (
+              <option key={r.riderId} value={r.riderId}>
+                {`${r.firstName} ${r.lastName}`.trim() || r.email}
+              </option>
+            ))}
+          </select>
+          <Btn
+            label={busy === j.id ? 'Assigning…' : 'Assign rider'}
+            color={G2}
+            onClick={busy || assignable.length === 0 ? undefined : () => void assign(j.id)}
+          />
+        </div>
+      ))}
+    </Card>
+  );
+}
+
 function PageRiders() {
   const [riders, setRiders] = useState<AdminRiderDto[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -3007,6 +3217,7 @@ function PageRiders() {
         </div>
         <Chip label={`${pending} awaiting review`} color={C_WARN} />
       </div>
+      {riders && <UnassignedDeliveries riders={riders} />}
       {riders === null && !error && (
         <Card>
           <span style={{ fontSize: 13, color: MUTED, fontFamily: 'Inter, sans-serif' }}>

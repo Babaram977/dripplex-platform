@@ -9,6 +9,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { AdminDeliveryController } from './admin-delivery.controller';
 import { AssignmentService } from './assignment.service';
 import { CustomerDeliveryController } from './customer-delivery.controller';
+import { DeliveryDispatchSweepService } from './delivery-dispatch-sweep.service';
 import { DeliveryFeeService } from './delivery-fee.service';
 import { DeliveryService } from './delivery.service';
 import { OrderReadySubscriber } from './order-ready.subscriber';
@@ -26,6 +27,7 @@ import { TrackingService } from './tracking.service';
     AssignmentService,
     TrackingService,
     OrderReadySubscriber,
+    DeliveryDispatchSweepService,
     {
       provide: DELIVERY_REPOSITORY,
       useClass: PrismaDeliveryRepository,

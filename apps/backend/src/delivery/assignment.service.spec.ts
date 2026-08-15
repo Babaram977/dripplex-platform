@@ -35,6 +35,8 @@ describe('AssignmentService', () => {
     confirmCash: jest.fn(),
     assignRider: jest.fn(),
     clearRider: jest.fn(),
+    listUnassignedJobs: jest.fn(),
+    listRejectedRiderIds: jest.fn(),
     createTracking: jest.fn(),
     findLatestTracking: jest.fn(),
     findTrackingHistory: jest.fn(),
@@ -43,6 +45,7 @@ describe('AssignmentService', () => {
     upsertRiderAvailability: jest.fn(),
     findRiderAvailability: jest.fn(),
     listAvailableRiders: jest.fn(),
+    isRiderEligibleForDelivery: jest.fn(),
     incrementRiderActiveJobCount: jest.fn(),
     decrementRiderActiveJobCount: jest.fn(),
   };
@@ -76,6 +79,17 @@ describe('AssignmentService', () => {
     ]);
 
     await expect(service.findNearestRider(6.5244, 3.3792)).resolves.toEqual(withCoordinates);
+  });
+
+  it('returns null when the only online rider has no coordinates', async () => {
+    // The live failure: the rider app went online without sending a position,
+    // so the one approved rider was online and accepting but invisible to
+    // dispatch — the job was created and never assigned to anyone.
+    deliveryRepository.listAvailableRiders.mockResolvedValue([
+      makeAvailability('online-but-unlocated', null, null),
+    ]);
+
+    await expect(service.findNearestRider(6.5244, 3.3792)).resolves.toBeNull();
   });
 
   it('excludes riders that already rejected a job', async () => {

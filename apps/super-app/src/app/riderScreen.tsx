@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { api, uploadFile } from '../lib/api';
 import { auth } from '../lib/auth';
+import { getCurrentPosition } from '../lib/maps';
 import type { DeliveryJobDto, WalletDto } from '../lib/api';
 
 const PP = "'Poppins',sans-serif";
@@ -336,6 +337,11 @@ export function RiderDashboardScreen({
   const [jobs, setJobs] = useState<DeliveryJobDto[]>([]);
   const [wallet, setWallet] = useState<WalletDto | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
+  // Dispatch only considers riders that have coordinates on record
+  // (AssignmentService drops null-location candidates), so track whether the
+  // server actually has our position and say so instead of claiming "live".
+  const [located, setLocated] = useState(false);
+  const [locationErr, setLocationErr] = useState<string | null>(null);
   // Show the signed-in rider, not a demo persona.
   const riderName = (() => {
     const u = auth.getUser();
@@ -354,19 +360,72 @@ export function RiderDashboardScreen({
       .getWallet()
       .then(setWallet)
       .catch(() => {});
+    // Read the server's availability instead of assuming offline: a rider who
+    // was online before a reload is still online for dispatch.
+    api.rider
+      .getAvailability()
+      .then((a) => {
+        if (!a) return;
+        setOnline(a.online && a.acceptingOrders);
+        setLocated(a.latitude !== null && a.longitude !== null);
+      })
+      .catch(() => {});
     fetchJobs();
     const t = setInterval(fetchJobs, 8000);
     return () => clearInterval(t);
   }, [fetchJobs]);
 
+  // Push the current position while online. Riders move, and dispatch picks the
+  // nearest one to the pickup point, so a stale fix costs the rider jobs.
+  useEffect(() => {
+    if (!online) return;
+    const push = () => {
+      void getCurrentPosition().then((pos) => {
+        if (!pos) return;
+        void api.rider
+          .setAvailability({
+            online: true,
+            acceptingOrders: true,
+            latitude: pos.latitude,
+            longitude: pos.longitude,
+          })
+          .then(() => setLocated(true))
+          .catch(() => {});
+      });
+    };
+    const t = setInterval(push, 60000);
+    return () => clearInterval(t);
+  }, [online]);
+
   const handleToggle = async () => {
     setToggling(true);
+    setLocationErr(null);
     try {
       const next = !online;
-      await api.rider.setAvailability({ online: next, acceptingOrders: next });
+      if (next) {
+        // Going online without coordinates makes the rider invisible to
+        // dispatch — the job is created but never assigned to anyone — so
+        // refuse to claim "live" when the device won't share a position.
+        const pos = await getCurrentPosition();
+        if (!pos) {
+          setLocationErr(
+            'DrippleX needs your location to send you nearby deliveries. Allow location access, then try again.',
+          );
+          return;
+        }
+        await api.rider.setAvailability({
+          online: true,
+          acceptingOrders: true,
+          latitude: pos.latitude,
+          longitude: pos.longitude,
+        });
+        setLocated(true);
+      } else {
+        await api.rider.setAvailability({ online: false, acceptingOrders: false });
+      }
       setOnline(next);
-    } catch {
-      /* keep state */
+    } catch (e) {
+      setLocationErr((e as { message?: string }).message ?? 'Could not update your status.');
     } finally {
       setToggling(false);
     }
@@ -473,6 +532,20 @@ export function RiderDashboardScreen({
           {toggling ? '...' : online ? '⏹ Go Offline' : '▶ Go Online — Accept Deliveries'}
         </button>
 
+        {locationErr && (
+          <div
+            style={{
+              padding: '10px 16px',
+              borderRadius: 12,
+              background: 'rgba(239,68,68,.07)',
+              border: '1px solid rgba(239,68,68,.2)',
+              marginBottom: 20,
+            }}
+          >
+            <p style={{ fontFamily: IT, fontSize: 12.5, color: C_ERR }}>{locationErr}</p>
+          </div>
+        )}
+
         {online && (
           <div
             style={{
@@ -481,14 +554,24 @@ export function RiderDashboardScreen({
               gap: 8,
               padding: '10px 16px',
               borderRadius: 12,
-              background: 'rgba(43,172,82,.06)',
-              border: '1px solid rgba(43,172,82,.12)',
+              background: located ? 'rgba(43,172,82,.06)' : 'rgba(245,158,11,.07)',
+              border: located ? '1px solid rgba(43,172,82,.12)' : '1px solid rgba(245,158,11,.25)',
               marginBottom: 20,
             }}
           >
-            <div style={{ width: 8, height: 8, borderRadius: '50%', background: G2 }} />
-            <p style={{ fontFamily: IT, fontSize: 13, color: G3 }}>
-              You are live · Waiting for delivery jobs...
+            <div
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                background: located ? G2 : C_WARN,
+                flexShrink: 0,
+              }}
+            />
+            <p style={{ fontFamily: IT, fontSize: 13, color: located ? G3 : C_WARN }}>
+              {located
+                ? 'You are live · Waiting for delivery jobs...'
+                : 'Online, but we do not have your location — deliveries are sent to the nearest rider, so you will not be offered any until location sharing is on.'}
             </p>
           </div>
         )}

@@ -3051,7 +3051,15 @@ function MerchantKYCPage() {
   const latestFor = (type: string): MerchantKycDto | undefined =>
     (status?.items ?? []).find((it) => it.documentType === type);
 
-  const anyPending = (status?.items ?? []).some((it) => it.verificationStatus === 'PENDING');
+  // Documents waiting on Operations. Each document type has its own review
+  // slot, so a pending CAC certificate does not block the director's NIN.
+  const pendingCount = KYC_DOCS.filter(
+    (d) => latestFor(d.type)?.verificationStatus === 'PENDING',
+  ).length;
+  const outstandingCount = KYC_DOCS.filter((d) => {
+    const st = latestFor(d.type)?.verificationStatus;
+    return st !== 'PENDING' && st !== 'VERIFIED';
+  }).length;
 
   const openForm = (type: string) => {
     setOpenType(type);
@@ -3138,10 +3146,14 @@ function MerchantKYCPage() {
             </div>
           </MxCard>
 
-          {anyPending && (
+          {pendingCount > 0 && (
             <InfoBanner
               icon="⏳"
-              text="A document is in review. You can submit the next one once the Operations team has reviewed it."
+              text={
+                outstandingCount > 0
+                  ? `${pendingCount} document${pendingCount === 1 ? ' is' : 's are'} with the Operations team. You can submit the remaining ${outstandingCount === 1 ? 'document' : `${outstandingCount} documents`} now — you do not have to wait.`
+                  : `${pendingCount === 1 ? 'Your document is' : 'Your documents are'} with the Operations team. We will let you know as soon as ${pendingCount === 1 ? 'it has' : 'they have'} been reviewed.`
+              }
               color="#3B82F6"
             />
           )}
