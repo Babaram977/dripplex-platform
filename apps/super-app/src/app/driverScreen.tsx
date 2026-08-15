@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { G0, G2, G3, NAVY_DEEP, NAVY_CARD, NAVY_SURFACE, BORDER, MUTED } from './shared';
 import {
   COLOR_STAR,
@@ -10,6 +10,7 @@ import {
 import { api, uploadFile } from '../lib/api';
 import { auth } from '../lib/auth';
 import type {
+  DriverActivationEligibilityDto,
   RideOfferDto,
   RideOfferPreviewDto,
   RideDto,
@@ -768,18 +769,101 @@ export function DriverOTPScreen({
 // ─────────────────────────────────────────────────────────────────────────────
 // DRIVER-004 — KYC STATUS
 // ─────────────────────────────────────────────────────────────────────────────
+/**
+ * DPX-DRIVER-006 — the driver's onboarding hub.
+ *
+ * DriverActivationService is the single platform-wide gate: a driver goes Active
+ * only when all six of its checks pass. This screen shows those six, read from
+ * GET /driver/activation-eligibility, and routes each unmet one to the page that
+ * fixes it.
+ *
+ * Previously it showed a fixed "your documents are under review" with two
+ * buttons and no real state — its own comment said no status endpoint existed,
+ * which is no longer true. Worse, the only route out was the document upload
+ * page, so vehicle registration, the emergency contact and AGREEMENT ACCEPTANCE
+ * were unreachable in the running app: a driver could never accept the terms,
+ * and therefore could never satisfy the agreementAccepted check.
+ */
 export function DriverKYCStatusScreen({
   onContinue,
   onUpload,
   onBack,
+  onVehicle,
+  onAgreement,
 }: {
   onContinue: () => void;
   onUpload: () => void;
   onBack: () => void;
+  onVehicle?: () => void;
+  onAgreement?: () => void;
 }) {
-  // There is no driver KYC-status GET endpoint, so we cannot know which
-  // individual documents are verified/pending or compute a completion %.
-  // Show an honest, generic "under review" state instead of fabricated data.
+  const [eligibility, setEligibility] = useState<DriverActivationEligibilityDto | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    api.driver
+      .getActivationEligibility()
+      .then((e) => {
+        setEligibility(e);
+        setLoadErr(null);
+      })
+      .catch((e: unknown) =>
+        setLoadErr((e as { message?: string }).message ?? 'Could not load your progress.'),
+      )
+      .finally(() => setLoading(false));
+  }, []);
+  useEffect(() => load(), [load]);
+
+  const checks = eligibility?.checks;
+  // Same order and wording as the six backend checks, so what a driver reads
+  // here is exactly what the platform gate measures. `action` is present only
+  // where the driver can do something themselves — an inspection is booked by
+  // Operations, and identity/account standing are not self-service.
+  const STEPS: {
+    key: keyof NonNullable<typeof checks>;
+    label: string;
+    blurb: string;
+    action?: { label: string; onClick?: () => void };
+  }[] = [
+    {
+      key: 'identityVerified',
+      label: 'Identity check',
+      blurb: 'Your identity has been confirmed.',
+    },
+    {
+      key: 'requiredDocumentsApproved',
+      label: 'Document review',
+      blurb: "Driver's licence, vehicle paper and guarantor ID, all verified.",
+      action: { label: 'Upload / update documents', onClick: onUpload },
+    },
+    {
+      key: 'vehicleApproved',
+      label: 'Vehicle registration',
+      blurb: 'A registered vehicle approved by Operations.',
+      ...(onVehicle ? { action: { label: 'Register your vehicle', onClick: onVehicle } } : {}),
+    },
+    {
+      key: 'inspectionPassed',
+      label: 'Inspection & test',
+      blurb: 'Operations books and records your vehicle inspection.',
+    },
+    {
+      key: 'agreementAccepted',
+      label: 'Agreement signing',
+      blurb: 'Accept the DrippleX driver terms.',
+      ...(onAgreement ? { action: { label: 'Read and accept terms', onClick: onAgreement } } : {}),
+    },
+    {
+      key: 'accountNotLocked',
+      label: 'Account standing',
+      blurb: 'Your account is in good standing.',
+    },
+  ];
+
+  const doneCount = checks ? STEPS.filter((s) => checks[s.key]).length : 0;
+
   return (
     <div
       className="absolute inset-0 flex flex-col overflow-hidden"
@@ -790,35 +874,111 @@ export function DriverKYCStatusScreen({
         <div className="mb-6 flex items-center gap-3 pt-4">
           <DBackBtn onClick={onBack} />
           <p className="text-[17px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
-            KYC Verification
+            Your onboarding
           </p>
         </div>
 
-        {/* Generic status — no per-document state is available from the backend */}
-        <div className="mb-6 flex flex-col items-center text-center">
+        {loading && (
+          <p className="text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
+            Loading your progress…
+          </p>
+        )}
+        {loadErr && !loading && (
           <div
-            className="mb-4 flex h-24 w-24 items-center justify-center rounded-full text-4xl"
-            style={{
-              background: 'rgba(245,158,11,.1)',
-              border: '1px solid rgba(245,158,11,.2)',
-            }}
+            className="mb-4 rounded-xl px-4 py-3"
+            style={{ background: 'rgba(239,68,68,.07)', border: '1px solid rgba(239,68,68,.2)' }}
           >
-            ⏳
+            <p className="text-[12.5px]" style={{ fontFamily: IT, color: COLOR_ERROR }}>
+              {loadErr}
+            </p>
           </div>
-          <p className="mb-2 text-[18px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
-            Your documents are under review
-          </p>
-          <p
-            className="max-w-[280px] text-[13px] leading-relaxed"
-            style={{ fontFamily: IT, color: MUTED }}
-          >
-            We’ll notify you once verification is complete. You can add or re-upload documents at
-            any time.
-          </p>
-        </div>
+        )}
+
+        {checks && (
+          <>
+            <div className="mb-5 flex flex-col items-center text-center">
+              <div
+                className="mb-4 flex h-24 w-24 items-center justify-center rounded-full text-4xl"
+                style={{
+                  background: eligibility?.eligible ? 'rgba(43,172,82,.1)' : 'rgba(245,158,11,.1)',
+                  border: eligibility?.eligible
+                    ? '1px solid rgba(43,172,82,.25)'
+                    : '1px solid rgba(245,158,11,.2)',
+                }}
+              >
+                {eligibility?.eligible ? '✅' : '⏳'}
+              </div>
+              <p className="mb-2 text-[18px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
+                {eligibility?.eligible
+                  ? 'You are ready to drive'
+                  : `${String(doneCount)} of ${String(STEPS.length)} steps complete`}
+              </p>
+              <p
+                className="max-w-[300px] text-[13px] leading-relaxed"
+                style={{ fontFamily: IT, color: MUTED }}
+              >
+                {eligibility?.eligible
+                  ? 'Operations will activate your account shortly.'
+                  : 'Finish the steps below. We will email you as each one is reviewed.'}
+              </p>
+            </div>
+
+            <div className="mb-5 flex flex-col gap-2.5">
+              {STEPS.map((step) => {
+                const done = checks[step.key];
+                return (
+                  <div
+                    key={step.key}
+                    className="rounded-2xl px-4 py-3"
+                    style={{
+                      background: NAVY_SURFACE,
+                      border: `1px solid ${done ? 'rgba(43,172,82,.25)' : BORDER}`,
+                    }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[12px]"
+                        style={{
+                          background: done ? G2 : 'rgba(255,255,255,.06)',
+                          color: done ? '#fff' : MUTED,
+                        }}
+                      >
+                        {done ? '✓' : '•'}
+                      </div>
+                      <div className="flex-1">
+                        <p
+                          className="text-[13.5px] font-semibold"
+                          style={{ fontFamily: PP, color: '#fff' }}
+                        >
+                          {step.label}
+                        </p>
+                        <p className="text-[11.5px]" style={{ fontFamily: IT, color: MUTED }}>
+                          {step.blurb}
+                        </p>
+                      </div>
+                    </div>
+                    {!done && step.action?.onClick && (
+                      <button
+                        onClick={step.action.onClick}
+                        className="mt-2.5 h-9 w-full rounded-xl text-[12.5px] font-semibold active:scale-[.97]"
+                        style={{
+                          background: 'rgba(43,172,82,.12)',
+                          border: '1px solid rgba(43,172,82,.3)',
+                          fontFamily: IT,
+                          color: G3,
+                        }}
+                      >
+                        {step.action.label} →
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
 
         <div className="flex flex-col gap-3">
-          <DGreenBtn label="Upload / Update Documents →" onClick={onUpload} />
           <button
             onClick={onContinue}
             className="flex h-12 w-full items-center justify-center rounded-2xl text-[14px] font-medium active:scale-[.97]"
@@ -851,6 +1011,11 @@ const DRIVER_KYC_DOCS: {
   icon: string;
   numberLabel: string;
   numberPlaceholder: string;
+  /** Required by DriverActivationService (REQUIRED_DRIVER_KYC_DOCUMENT_TYPES).
+   * Without all three verified a driver can never be activated — the list used
+   * to omit the guarantor ID entirely, so completing this page still left the
+   * driver blocked with nothing on screen explaining why. */
+  required?: boolean;
 }[] = [
   {
     type: 'NATIONAL_ID',
@@ -861,6 +1026,7 @@ const DRIVER_KYC_DOCS: {
   },
   {
     type: 'DRIVER_LICENSE',
+    required: true,
     label: "Driver's Licence",
     icon: '🪪',
     numberLabel: 'Licence number',
@@ -868,10 +1034,19 @@ const DRIVER_KYC_DOCS: {
   },
   {
     type: 'VEHICLE_REGISTRATION',
+    required: true,
     label: 'Vehicle Paper',
     icon: '📄',
     numberLabel: 'Registration / plate number',
     numberPlaceholder: 'e.g. LAG 482 KA',
+  },
+  {
+    type: 'GUARANTOR_ID',
+    required: true,
+    label: 'Guarantor ID',
+    icon: '🧑‍🤝‍🧑',
+    numberLabel: "Guarantor's ID number",
+    numberPlaceholder: 'e.g. 12345678901',
   },
   {
     type: 'INSURANCE',
@@ -971,10 +1146,12 @@ export function DriverUploadDocsScreen({
           <DBackBtn onClick={onBack} />
           <div>
             <p className="text-[17px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
-              Upload Documents
+              Add or replace a document
             </p>
             <p className="text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
-              {submitted.length}/{DRIVER_KYC_DOCS.length} submitted
+              {submitted.length > 0
+                ? `${String(submitted.length)} sent in this session`
+                : 'Documents you sent at sign-up are already with Operations'}
             </p>
           </div>
         </div>
@@ -986,8 +1163,9 @@ export function DriverUploadDocsScreen({
         >
           <span style={{ fontSize: 20, flexShrink: 0 }}>💡</span>
           <p style={{ fontFamily: IT, fontSize: 13, color: TEXT_SECONDARY, lineHeight: 1.5 }}>
-            Documents should be clear, unblurred photos or PDFs. All 4 corners must be visible.
-            Files must be under 10MB.
+            Anything you sent when you signed up is already with Operations — you only need this
+            page to add a missing document or replace one that was rejected. Documents should be
+            clear, unblurred photos or PDFs with all 4 corners visible, under 10MB.
           </p>
         </div>
 
@@ -1027,7 +1205,11 @@ export function DriverUploadDocsScreen({
                       {doc.label}
                     </p>
                     <p className="text-[12px]" style={{ fontFamily: IT, color: done ? G3 : MUTED }}>
-                      {done ? 'Submitted — under review' : 'Required · PDF or image'}
+                      {done
+                        ? 'Submitted — under review'
+                        : doc.required
+                          ? 'Required · PDF or image'
+                          : 'Optional · PDF or image'}
                     </p>
                   </div>
                   {!done && !isOpen && (
