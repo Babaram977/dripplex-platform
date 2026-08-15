@@ -1229,7 +1229,18 @@ function AppShell() {
       <PendingReviewScreen
         persona={partnerPersona}
         onHome={() => go('home')}
+        // The screen reloads its own real status; nothing extra to do here.
         onRefresh={() => {}}
+        // Send the partner to the page where documents are actually uploaded.
+        onUploadDocuments={() =>
+          go(
+            partnerPersona === 'merchant'
+              ? 'mxkyc'
+              : partnerPersona === 'rider'
+                ? 'riderlogin'
+                : 'drvuploaddocs',
+          )
+        }
       />
     ),
   };
