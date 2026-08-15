@@ -1404,6 +1404,17 @@ model DeliveryJob {
   /// docs/DPX-COMMERCIAL-001-SLICE-3-COD-CORRECTION.md §5.6.
   cashCollectedAmount      Decimal?           @map("cash_collected_amount") @db.Decimal(12, 2)
   cashConfirmedAt          DateTime?          @map("cash_confirmed_at")
+  /// DPX-RIDER-006 — what the rider earned from this delivery and what
+  /// DrippleX kept, both derived from deliveryFee at settlement time and
+  /// frozen here. Founder decision 2026-08-15: the rider earns the delivery
+  /// fee minus the platform commission rate (10% by default, Ops-adjustable).
+  /// Null until settled. Before this, a completed delivery paid the rider
+  /// nothing at all — the fee was collected and attributed to no one.
+  riderEarning             Decimal?           @map("rider_earning") @db.Decimal(12, 2)
+  platformCommission       Decimal?           @map("platform_commission") @db.Decimal(12, 2)
+  /// Set once, by the settlement path. Its presence is the idempotency guard:
+  /// a re-fired completion event must never pay a rider twice.
+  settledAt                DateTime?          @map("settled_at")
   createdAt                DateTime           @default(now()) @map("created_at")
   updatedAt                DateTime           @updatedAt @map("updated_at")
   order                    Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
