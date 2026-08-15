@@ -690,7 +690,11 @@ export interface AdminMerchantDto {
     city: string | null;
     state: string | null;
   } | null;
-  kyc: { verificationStatus: 'PENDING' | 'VERIFIED' | 'REJECTED' } | null;
+  // The document Operations must act on next (oldest PENDING first), or the
+  // representative one when nothing is pending. The backend returns the full
+  // record with signed image URLs, so the approvals desk can show the document
+  // itself rather than just a status chip.
+  kyc: MerchantKycDto | null;
 }
 
 // A rider row for the Ops Console review desk (subset of RiderProfileDto).

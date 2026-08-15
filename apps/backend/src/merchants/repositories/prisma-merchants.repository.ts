@@ -22,7 +22,7 @@ import type {
   SetBusinessPauseStateInput,
   UpdateBusinessInput,
 } from './merchants.repository';
-import type { BankAccount, Business, MerchantKyc } from '@prisma/client';
+import type { BankAccount, Business, KycDocumentType, MerchantKyc } from '@prisma/client';
 
 const adminDetailInclude = {
   user: true,
@@ -172,13 +172,30 @@ export class PrismaMerchantsRepository implements MerchantsRepository {
     });
   }
 
-  public async findActivePendingKyc(merchantId: string): Promise<MerchantKyc | null> {
+  /**
+   * The pending submission Operations should act on next — OLDEST first, so
+   * repeated admin verify/reject calls drain the queue in submission order
+   * instead of re-picking the same document.
+   *
+   * Pass `documentType` to scope the lookup to one document. That scoping is
+   * deliberate: a merchant must provide several different documents (e.g. a CAC
+   * certificate AND a director's NIN), and blocking on *any* pending document
+   * meant the second could not be submitted until Operations had reviewed the
+   * first — so a merchant could not finish KYC in one sitting even though the
+   * portal marks both as Required. The guard still stops a duplicate pending
+   * submission of the SAME document.
+   */
+  public async findActivePendingKyc(
+    merchantId: string,
+    documentType?: KycDocumentType,
+  ): Promise<MerchantKyc | null> {
     return await this.prisma.merchantKyc.findFirst({
       where: {
         merchantId,
         verificationStatus: KycVerificationStatus.PENDING,
+        ...(documentType !== undefined ? { documentType } : {}),
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: 'asc' },
     });
   }
 

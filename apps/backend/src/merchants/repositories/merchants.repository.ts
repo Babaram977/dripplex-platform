@@ -121,7 +121,16 @@ export interface MerchantsRepository {
   setBusinessPauseState(id: string, input: SetBusinessPauseStateInput): Promise<Business>;
   createKyc(input: CreateKycInput): Promise<MerchantKyc>;
   findLatestKycByMerchantId(merchantId: string): Promise<MerchantKyc | null>;
-  findActivePendingKyc(merchantId: string): Promise<MerchantKyc | null>;
+  /**
+   * The PENDING submission to act on next (oldest first). Pass `documentType`
+   * to scope the lookup to one document — a merchant submits several different
+   * documents (CAC certificate, director's NIN, …) and each has its own
+   * pending slot.
+   */
+  findActivePendingKyc(
+    merchantId: string,
+    documentType?: KycDocumentType,
+  ): Promise<MerchantKyc | null>;
   listKycByMerchantId(merchantId: string): Promise<MerchantKyc[]>;
   verifyKyc(id: string, reviewedBy: string, remarks?: string): Promise<MerchantKyc>;
   rejectKyc(id: string, reviewedBy: string, remarks: string): Promise<MerchantKyc>;

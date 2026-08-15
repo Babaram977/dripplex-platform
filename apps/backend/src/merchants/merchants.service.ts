@@ -349,9 +349,14 @@ export class MerchantsService {
       throw new NotFoundDomainException('Create a business before submitting KYC');
     }
 
-    const pending = await this.merchantsRepository.findActivePendingKyc(merchantUserId);
+    // Only block a duplicate pending submission of the SAME document type — a
+    // merchant legitimately submits several different documents back to back.
+    const pending = await this.merchantsRepository.findActivePendingKyc(
+      merchantUserId,
+      dto.documentType,
+    );
     if (pending) {
-      throw new ConflictDomainException('An active KYC submission is already pending review');
+      throw new ConflictDomainException('This document is already submitted and awaiting review');
     }
 
     // DPX-STORAGE-001 (D) — only DrippleX-controlled URLs owned by this merchant.
@@ -838,10 +843,25 @@ export class MerchantsService {
   // merchant's overall KYC standing, not just the newest submission: prefer a
   // VERIFIED document (so the "KYC Verified" chip is stable and matches the
   // approval gate), otherwise the newest record (already sorted createdAt desc).
-  private representativeKyc<T extends { verificationStatus: KycVerificationStatus }>(
-    kycDocuments: T[],
-  ): T | null {
+  /**
+   * The one document that stands for the merchant on the approvals desk.
+   *
+   * A merchant submits several documents, and a PENDING one is the only state
+   * that needs an operator. Surfacing a VERIFIED document first hid the fact
+   * that another was still awaiting review — the desk showed "KYC Verified"
+   * with no action left, and the outstanding document could never be actioned.
+   * Pending therefore wins, oldest first, matching the order
+   * `findActivePendingKyc` hands to verifyKyc/rejectKyc.
+   */
+  private representativeKyc<
+    T extends { verificationStatus: KycVerificationStatus; createdAt: Date },
+  >(kycDocuments: T[]): T | null {
+    const oldestPending = kycDocuments
+      .filter((doc) => doc.verificationStatus === KycVerificationStatus.PENDING)
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())[0];
+
     return (
+      oldestPending ??
       kycDocuments.find((doc) => doc.verificationStatus === KycVerificationStatus.VERIFIED) ??
       kycDocuments[0] ??
       null

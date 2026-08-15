@@ -2521,6 +2521,8 @@ function MerchantReviewCard({ m, reload }: { m: AdminMerchantDto; reload: () => 
   const [busy, setBusy] = useState<string | null>(null);
   const [showReject, setShowReject] = useState(false);
   const [reason, setReason] = useState('');
+  const [showKycReject, setShowKycReject] = useState(false);
+  const [kycRemarks, setKycRemarks] = useState('');
   const [err, setErr] = useState<string | null>(null);
 
   const run = async (action: string, fn: () => Promise<unknown>) => {
@@ -2541,8 +2543,19 @@ function MerchantReviewCard({ m, reload }: { m: AdminMerchantDto; reload: () => 
     }
     void run('reject', () => api.admin.rejectMerchant(m.merchantId, reason.trim()));
   };
+  const rejectKyc = () => {
+    if (kycRemarks.trim().length < 3) {
+      setErr('Say why the document is rejected (at least 3 characters).');
+      return;
+    }
+    void run('kyc-reject', () => api.admin.rejectMerchantKyc(m.merchantId, kycRemarks.trim()));
+  };
   const st = personaStatus(m.status);
-  const kyc = kycChip(m.kyc?.verificationStatus);
+  // The backend surfaces the document Operations must act on next — the oldest
+  // PENDING one — so this panel drains a multi-document submission (CAC, then
+  // director's NIN) one review at a time.
+  const kycDoc = m.kyc;
+  const kyc = kycChip(kycDoc?.verificationStatus);
   const name = `${m.firstName} ${m.lastName}`.trim() || '—';
 
   return (
@@ -2575,6 +2588,98 @@ function MerchantReviewCard({ m, reload }: { m: AdminMerchantDto; reload: () => 
           <DetailRow label="Reason" value={m.rejectedReason} />
         )}
       </div>
+      {/* Business document review. A merchant submits several documents (CAC
+          certificate, director's NIN, …); this panel shows the one awaiting
+          review and re-renders with the next one after each decision. */}
+      {kycDoc && (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            padding: 10,
+            borderRadius: 8,
+            background: 'rgba(255,255,255,.03)',
+            border: `1px solid ${BORDER}`,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: WHITE }}>Business document</span>
+            <div style={{ marginLeft: 'auto' }}>
+              <Chip {...kyc} />
+            </div>
+          </div>
+          <DetailRow label="Type" value={kycDocLabel(kycDoc.documentType)} />
+          <DetailRow label="Number" value={kycDoc.documentNumber ?? '—'} />
+          {kycDoc.remarks && <DetailRow label="Remarks" value={kycDoc.remarks} />}
+          <div style={{ display: 'flex', gap: 10 }}>
+            <a
+              href={kycDoc.frontImage}
+              target="_blank"
+              rel="noreferrer"
+              style={{ fontSize: 11.5, color: G2 }}
+            >
+              View document ↗
+            </a>
+            {kycDoc.backImage && (
+              <a
+                href={kycDoc.backImage}
+                target="_blank"
+                rel="noreferrer"
+                style={{ fontSize: 11.5, color: G2 }}
+              >
+                View back ↗
+              </a>
+            )}
+          </div>
+          {kycDoc.verificationStatus === 'PENDING' &&
+            (showKycReject ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <input
+                  className="dx-input"
+                  value={kycRemarks}
+                  onChange={(e) => setKycRemarks(e.target.value)}
+                  placeholder="Why is this document rejected? (min 3 characters)"
+                />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Btn
+                    label={busy === 'kyc-reject' ? 'Rejecting…' : 'Confirm Reject KYC'}
+                    color={C_ERR}
+                    onClick={rejectKyc}
+                  />
+                  <Btn
+                    label="Cancel"
+                    color={MUTED}
+                    outline
+                    onClick={() => {
+                      setShowKycReject(false);
+                      setErr(null);
+                    }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Btn
+                  label={busy === 'kyc-verify' ? 'Verifying…' : 'Verify KYC'}
+                  color={G2}
+                  onClick={
+                    busy
+                      ? undefined
+                      : () =>
+                          void run('kyc-verify', () => api.admin.verifyMerchantKyc(m.merchantId))
+                  }
+                />
+                <Btn
+                  label="Reject KYC"
+                  color={C_ERR}
+                  outline
+                  onClick={() => setShowKycReject(true)}
+                />
+              </div>
+            ))}
+        </div>
+      )}
       {err && <span style={{ fontSize: 12, color: C_ERR }}>{err}</span>}
       {showReject ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -2605,18 +2710,7 @@ function MerchantReviewCard({ m, reload }: { m: AdminMerchantDto; reload: () => 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {isActionable(m.status) && (
             <>
-              {m.kyc?.verificationStatus === 'PENDING' && (
-                <Btn
-                  label={busy === 'kyc' ? 'Verifying…' : 'Verify KYC'}
-                  color={C_INFO}
-                  outline
-                  onClick={
-                    busy
-                      ? undefined
-                      : () => void run('kyc', () => api.admin.verifyMerchantKyc(m.merchantId))
-                  }
-                />
-              )}
+              {/* KYC verify/reject live in the Business document panel above. */}
               <Btn
                 label={busy === 'approve' ? 'Approving…' : 'Approve Merchant'}
                 color={G2}
