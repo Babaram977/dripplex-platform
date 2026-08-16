@@ -165,6 +165,7 @@ import {
   PendingReviewScreen,
 } from './onboardingScreen';
 import type { PartnerPersona } from './onboardingScreen';
+import { ChatScreen } from './chatScreen';
 import { api } from '../lib/api';
 import type { DeliveryJobDto, RideOfferDto, RideDto } from '../lib/api';
 import { endSession } from '../lib/auth';
@@ -385,6 +386,7 @@ type Screen =
   | 'riderjob'
   | 'riderearnings'
   | 'rideraccount'
+  | 'chat'
   | 'partnerselect'
   | 'partnermerchant'
   | 'partnerdriver'
@@ -456,6 +458,14 @@ function AppShell() {
   // the onboarding hub and the document screen that refuses to submit without
   // them — so remember where the driver came from and put them back there.
   const [driverStepReturn, setDriverStepReturn] = useState<Screen>('drvkyc');
+  // DPX-CHAT-001 — which conversation is open, and who it is with. A thread is
+  // always anchored to a live delivery or ride; there is no inbox.
+  const [chat, setChat] = useState<{
+    context: 'delivery' | 'ride';
+    contextId: string;
+    title: string;
+    back: Screen;
+  } | null>(null);
   // Merchant's business fields from sign-up, pre-filled into the post-login
   // Business Details step (persisted via PATCH /merchant/business).
   const [merchantBiz, setMerchantBiz] = useState<{ businessName: string; category: string }>({
@@ -783,7 +793,32 @@ function AppShell() {
         onAccount={() => go('account')}
         onNotifications={() => go('activitydash')}
         onHistory={() => go('orderhistory')}
+        onMessageRider={(deliveryJobId, riderName) => {
+          setChat({
+            context: 'delivery',
+            contextId: deliveryJobId,
+            title: riderName,
+            back: 'ordertracking',
+          });
+          go('chat');
+        }}
         orderId={activeOrderId ?? undefined}
+      />
+    ),
+    chat: chat ? (
+      <ChatScreen
+        context={chat.context}
+        contextId={chat.contextId}
+        title={chat.title}
+        subtitle={chat.context === 'delivery' ? 'About your delivery' : 'About your trip'}
+        onBack={() => go(chat.back)}
+      />
+    ) : (
+      <HomeScreen
+        onSearch={() => go('marketplace')}
+        onCart={() => go('cart')}
+        onAccount={() => go('account')}
+        onNotifications={() => go('activitydash')}
       />
     ),
     orderhistory: (
@@ -1209,6 +1244,15 @@ function AppShell() {
         job={activeRiderJob}
         onBack={() => go('riderdash')}
         onDone={() => go('riderdash')}
+        onMessageCustomer={(deliveryJobId) => {
+          setChat({
+            context: 'delivery',
+            contextId: deliveryJobId,
+            title: 'Customer',
+            back: 'riderjob',
+          });
+          go('chat');
+        }}
       />
     ) : (
       <RiderLoginScreen

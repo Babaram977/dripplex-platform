@@ -349,9 +349,13 @@ function OrderTimeline({
 function DriverCard({
   riderName,
   riderPhone,
+  onMessage,
 }: {
   riderName: string | null;
   riderPhone: string | null;
+  // The Message button was a dead <button> with no handler — Call dialled the
+  // carrier, but there was no way to type anything to the person at the door.
+  onMessage?: () => void;
 }) {
   const initials = riderName
     ? riderName
@@ -445,11 +449,14 @@ function DriverCard({
           Call
         </a>
         <button
+          onClick={onMessage}
+          disabled={!onMessage}
           className="flex h-[44px] flex-1 items-center justify-center gap-2 rounded-xl text-[13px] font-semibold transition-all active:scale-95"
           style={{
             background: 'rgba(255,255,255,.06)',
             border: `1.5px solid ${BORDER}`,
             color: 'rgba(255,255,255,.75)',
+            cursor: onMessage ? 'pointer' : 'default',
           }}
         >
           <svg
@@ -848,6 +855,8 @@ export interface TrackingScreenProps {
   onAccount: () => void;
   onNotifications: () => void;
   onHistory?: () => void;
+  /** Opens the conversation with the rider carrying this order. */
+  onMessageRider?: (deliveryJobId: string, riderName: string) => void;
   orderId?: string;
 }
 
@@ -857,6 +866,7 @@ export function TrackingScreen({
   onAccount,
   onNotifications,
   onHistory,
+  onMessageRider,
   orderId,
 }: TrackingScreenProps) {
   const [order, setOrder] = useState<OrderDto | null>(null);
@@ -1234,6 +1244,12 @@ export function TrackingScreen({
             <DriverCard
               riderName={delivery?.riderName ?? null}
               riderPhone={delivery?.riderPhone ?? null}
+              {...(delivery?.id && onMessageRider
+                ? {
+                    onMessage: () =>
+                      onMessageRider(delivery.id, delivery.riderName ?? 'your rider'),
+                  }
+                : {})}
             />
           </div>
         )}

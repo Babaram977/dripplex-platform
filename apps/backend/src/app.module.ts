@@ -25,6 +25,7 @@ import { KycModule } from './kyc/kyc.module';
 import { AppLoggerModule } from './logger/logger.module';
 import { LoyaltyModule } from './loyalty/loyalty.module';
 import { MerchantsModule } from './merchants/merchants.module';
+import { MessagingModule } from './messaging/messaging.module';
 import { NotificationCenterModule } from './notification-center/notification-center.module';
 import { OperationsModule } from './operations/operations.module';
 import { OrdersModule } from './orders/orders.module';
@@ -63,6 +64,7 @@ import { WishlistModule } from './wishlist/wishlist.module';
     AuthModule,
     UsersModule,
     MerchantsModule,
+    MessagingModule,
     AddressesModule,
     CartModule,
     OrdersModule,

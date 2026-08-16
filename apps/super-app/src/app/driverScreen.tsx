@@ -10,6 +10,8 @@ import {
 import { api, uploadFile } from '../lib/api';
 import { auth } from '../lib/auth';
 import { getCurrentPosition } from '../lib/maps';
+// Same cadence for both couriers — see the constant's note for why 30s.
+import { LOCATION_PUSH_INTERVAL_MS } from './riderScreen';
 import type {
   DriverActivationEligibilityDto,
   RideOfferDto,
@@ -1871,7 +1873,7 @@ export function DriverDashboardScreen({
         });
       });
     };
-    const iv = setInterval(push, 60000);
+    const iv = setInterval(push, LOCATION_PUSH_INTERVAL_MS);
     return () => clearInterval(iv);
   }, [online, resolveVehicleType]);
 

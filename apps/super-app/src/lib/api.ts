@@ -497,6 +497,23 @@ export interface DeliveryEtaDto {
   remainingSeconds: number;
 }
 
+// ── Messaging (DPX-CHAT-001) ────────────────────────────────────────────────
+// A thread belongs to a delivery or a ride; the backend resolves who may read
+// it from that job's own parties, so there is no thread id to manage here.
+export interface MessageDto {
+  id: string;
+  contextType: 'DELIVERY' | 'RIDE';
+  contextId: string;
+  senderId: string;
+  senderName: string;
+  recipientId: string;
+  body: string;
+  /** True when the signed-in user sent it — drives which side it renders on. */
+  mine: boolean;
+  readAt: string | null;
+  createdAt: string;
+}
+
 // Merchant types
 export interface MerchantOrderDto extends OrderDto {}
 
@@ -1500,6 +1517,18 @@ export const api = {
       dx<DriverActivationEligibilityDto>('GET', '/driver/activation-eligibility'),
     // Submit the completed onboarding for Ops review (moves to pending review).
     submitOnboarding: () => dx<unknown>('POST', '/driver/onboarding/submit'),
+  },
+
+  // ── In-app messaging ────────────────────────────────────────────────────────
+  messages: {
+    listForDelivery: (deliveryJobId: string) =>
+      dx<MessageDto[]>('GET', `/messages/delivery/${deliveryJobId}`),
+    sendForDelivery: (deliveryJobId: string, body: string) =>
+      dx<MessageDto>('POST', `/messages/delivery/${deliveryJobId}`, { body }),
+    listForRide: (rideId: string) => dx<MessageDto[]>('GET', `/messages/ride/${rideId}`),
+    sendForRide: (rideId: string, body: string) =>
+      dx<MessageDto>('POST', `/messages/ride/${rideId}`, { body }),
+    unreadCount: () => dx<{ unread: number }>('GET', '/messages/unread-count'),
   },
 
   // ── Signed uploads (R2 object storage) ──────────────────────────────────────

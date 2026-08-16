@@ -69,6 +69,9 @@ import { RidesService } from './rides.service';
     RideReceiptService,
     RideProblemReportService,
     RideTrackingReadService,
+    // MessagingModule pushes a new message to the recipient's socket
+    // (DPX-CHAT-001), so it needs the gateway itself.
+    RideGateway,
   ],
 })
 export class RidesModule {}
