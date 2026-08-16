@@ -99,6 +99,25 @@ export class MerchantOrdersController {
     return { success: true, data };
   }
 
+  /** DPX-ORDER-B — the merchant confirms a "Pay to Merchant Bank" transfer
+   * reached their own account, which is the only way a MERCHANT_DIRECT order
+   * can become PAID (DrippleX never sees the transfer). Same
+   * `merchant:orders:manage` permission and ownership check as every other
+   * action on this controller. */
+  @Patch(':id/payment-received')
+  public async confirmPaymentReceived(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<OrderDto>> {
+    const data = await this.merchantOrdersService.confirmPaymentReceived(
+      user.id,
+      id,
+      this.auditContext(request, user.id),
+    );
+    return { success: true, data };
+  }
+
   @Patch(':id/delay')
   public async delay(
     @CurrentUser() user: AuthenticatedUser,

@@ -1,5 +1,5 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
-import { OrderStatus, PaymentStatus, WalletOwnerType } from '@prisma/client';
+import { OrderPaymentMethod, OrderStatus, PaymentStatus, WalletOwnerType } from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../audit/audit.service';
 import {
@@ -174,6 +174,102 @@ export class MerchantOrdersService {
     return await this.refreshed(order.id);
   }
 
+  /**
+   * DPX-ORDER-B — the merchant confirms the customer's bank transfer landed in
+   * their own account.
+   *
+   * "Pay to Merchant Bank" (MERCHANT_DIRECT) deliberately leaves the order
+   * PENDING at checkout: the money goes to the merchant, so only the merchant
+   * can say it arrived. Nothing could say it, though — the merchant order
+   * actions were accept/reject/ready/delay/cancel and nothing else — so a
+   * MERCHANT_DIRECT order could never become PAID.
+   *
+   * That stranded real orders. `createDeliveryJob` dispatches an unpaid order
+   * only when it is CASH, so a merchant who marked a bank-transfer order READY
+   * got "Order must be paid before delivery can be created", the subscriber
+   * logged it, and the customer watched "Pending rider" forever with no
+   * delivery job in existence. Confirming payment here re-emits ORDER_READY for
+   * an order that is already READY, so the delivery is dispatched the moment
+   * the money is confirmed rather than being lost.
+   *
+   * Founder decision, 2026-08-16: option (B) — the merchant approves receipt
+   * using their own account. DrippleX never sees the transfer, so this is the
+   * merchant's word, exactly as cash is the rider's word. It is not
+   * unprotected: MerchantSettlementService already treats MERCHANT_DIRECT as
+   * mode B and accrues the commission the merchant owes DrippleX, so a false
+   * confirmation puts them in debt against their credit limit.
+   */
+  public async confirmPaymentReceived(
+    merchantId: string,
+    orderId: string,
+    context: AuditContext,
+  ): Promise<OrderDto> {
+    const order = await this.requireOrder(merchantId, orderId);
+
+    if (order.paymentMethod !== OrderPaymentMethod.MERCHANT_DIRECT) {
+      throw new ValidationDomainException(
+        'Only bank-transfer orders paid directly to your account can be confirmed here',
+      );
+    }
+
+    // Idempotent: confirming twice is a merchant tapping again, not an error.
+    if (order.paymentStatus === PaymentStatus.PAID) {
+      return toOrderDto(order);
+    }
+
+    // Payment status only — the order keeps whatever lifecycle status it has,
+    // the same shape markCashPaymentReceived uses for the cash equivalent.
+    await this.ordersRepository.transition(order.id, {
+      status: order.status,
+      paymentStatus: PaymentStatus.PAID,
+    });
+
+    await this.auditService.record(
+      ORDER_AUDIT_ACTIONS.PAYMENT_CONFIRMED,
+      { ...context, userId: merchantId },
+      {
+        resource: 'order',
+        resourceId: order.id,
+        metadata: { method: OrderPaymentMethod.MERCHANT_DIRECT, amount: Number(order.total) },
+      },
+    );
+
+    await this.eventBus?.emit(
+      DOMAIN_EVENTS.ORDER_PAID,
+      {
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        customerId: order.customerId,
+        merchantId: order.merchantId,
+        amount: Number(order.total),
+        currency: order.currency,
+        method: OrderPaymentMethod.MERCHANT_DIRECT,
+      },
+      { actorUserId: merchantId },
+    );
+
+    // The order may already have been marked ready while it was still unpaid —
+    // that is exactly how orders got stranded. Re-emitting ORDER_READY asks
+    // delivery to try again now that the payment gate passes; createDeliveryJob
+    // returns the existing job if one somehow exists, so this cannot duplicate.
+    if (order.status === OrderStatus.READY) {
+      await this.eventBus?.emit(
+        DOMAIN_EVENTS.ORDER_READY,
+        {
+          orderId: order.id,
+          customerId: order.customerId,
+          merchantId,
+          fulfillmentType: order.fulfillmentType,
+        },
+        { actorUserId: merchantId },
+      );
+    }
+
+    await this.notifyCustomerPaymentConfirmed(order);
+
+    return await this.refreshed(order.id);
+  }
+
   public async delayOrder(
     merchantId: string,
     orderId: string,
@@ -309,6 +405,26 @@ export class MerchantOrdersService {
       throw new NotFoundDomainException('Order not found after update');
     }
     return toOrderDto(order);
+  }
+
+  /** Reuses the existing customer "Payment received" email rather than
+   * inventing a template — from the customer's side this IS their payment
+   * being confirmed, and the reference records who confirmed it. */
+  private async notifyCustomerPaymentConfirmed(order: OrderWithItems): Promise<void> {
+    const customer = await this.prisma.user.findUnique({ where: { id: order.customerId } });
+    if (!customer?.email) {
+      return;
+    }
+    await this.notifications.notifyPaymentResult({
+      audience: 'customer',
+      email: customer.email,
+      success: true,
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      amount: Number(order.total),
+      currency: order.currency,
+      reference: `MERCHANT-DIRECT-${order.orderNumber}`,
+    });
   }
 
   private async notifyCustomer(

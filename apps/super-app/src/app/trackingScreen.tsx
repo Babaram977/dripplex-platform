@@ -1,6 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../lib/api';
-import type { OrderDto, CustomerDeliveryDto, DeliveryEtaDto, PaymentStatus } from '../lib/api';
+import type {
+  OrderDto,
+  CustomerDeliveryDto,
+  DeliveryEtaDto,
+  OrderPaymentMethod,
+  PaymentStatus,
+} from '../lib/api';
 import { G0, G2, G3, NAVY_BASE, NAVY_CARD, NAVY_DEEP, NAVY_SURFACE, BORDER, MUTED } from './shared';
 import { BottomNavigation, FloatingAIButton } from '../components/navigation';
 import type { NavTabKey } from '../components/navigation/BottomNavigation';
@@ -243,8 +249,29 @@ function LiveMap({ progress, etaMin }: { progress: number; etaMin: number }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // ORDER TIMELINE
 // ─────────────────────────────────────────────────────────────────────────────
-function OrderTimeline({ currentStatus }: { currentStatus: UIStatus }) {
+function OrderTimeline({
+  currentStatus,
+  paymentStatus,
+  paymentMethod,
+}: {
+  currentStatus: UIStatus;
+  paymentStatus: PaymentStatus | null;
+  paymentMethod: OrderPaymentMethod | null;
+}) {
   const currentIdx = STATUS_ORDER.indexOf(currentStatus);
+
+  // "Payment received" was printed unconditionally, so an order whose transfer
+  // had NOT been confirmed still told the customer their money had arrived —
+  // while the same unpaid state was quietly preventing any rider from being
+  // dispatched. Say what is actually true.
+  const subFor = (step: (typeof STATUS_STEPS)[number]): string => {
+    if (step.key !== 'confirmed' || paymentStatus === 'PAID') {
+      return step.sub;
+    }
+    return paymentMethod === 'MERCHANT_DIRECT'
+      ? 'Waiting for the store to confirm your transfer'
+      : 'Awaiting payment';
+  };
   return (
     <div className="flex flex-col gap-0">
       {STATUS_STEPS.map((step, i) => {
@@ -306,7 +333,7 @@ function OrderTimeline({ currentStatus }: { currentStatus: UIStatus }) {
                 className="mt-0.5 text-[11px]"
                 style={{ color: pending ? 'rgba(255,255,255,.18)' : MUTED }}
               >
-                {step.sub}
+                {subFor(step)}
               </p>
             </div>
           </div>
@@ -1222,7 +1249,11 @@ export function TrackingScreen({
           >
             Order Progress
           </p>
-          <OrderTimeline currentStatus={uiStatus} />
+          <OrderTimeline
+            currentStatus={uiStatus}
+            paymentStatus={paymentStatus}
+            paymentMethod={order?.paymentMethod ?? null}
+          />
         </div>
 
         {/* Ordered items (collapsible) */}

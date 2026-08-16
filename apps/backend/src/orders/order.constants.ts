@@ -6,6 +6,10 @@ export const ORDER_AUDIT_ACTIONS = {
   ACCEPTED: 'order.accepted',
   REJECTED: 'order.rejected',
   READY: 'order.ready',
+  /// DPX-ORDER-B — the merchant confirmed a "Pay to Merchant Bank" transfer
+  /// landed in their own account. DrippleX never sees the transfer, so this
+  /// audit record is the only trace of who asserted it and when.
+  PAYMENT_CONFIRMED: 'order.payment_confirmed',
   DELAYED: 'order.delayed',
   COMPLETED: 'order.completed',
   REFUNDED: 'order.refunded',
