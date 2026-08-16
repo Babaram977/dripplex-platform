@@ -449,6 +449,10 @@ function AppShell() {
   const [partnerFrom, setPartnerFrom] = useState<Screen | null>(null);
   // Which login the password-reset flow was opened from, so it returns there.
   const [recoveryFrom, setRecoveryFrom] = useState<Screen>('returning');
+  // Emergency contact and the driver agreement are reachable from two places —
+  // the onboarding hub and the document screen that refuses to submit without
+  // them — so remember where the driver came from and put them back there.
+  const [driverStepReturn, setDriverStepReturn] = useState<Screen>('drvkyc');
   // Merchant's business fields from sign-up, pre-filled into the post-login
   // Business Details step (persisted via PATCH /merchant/business).
   const [merchantBiz, setMerchantBiz] = useState<{ businessName: string; category: string }>({
@@ -978,7 +982,13 @@ function AppShell() {
     drvsplash: <DriverSplashScreen onDone={() => go('drvlogin')} />,
     drvlogin: (
       <DriverLoginScreen
-        onContinue={() => go('drvdash')}
+        // Land on the onboarding hub, not the dashboard. `drvkyc` was reachable
+        // ONLY from the registration OTP screen, so a driver who signed in on a
+        // later day — the normal case — could never get back to documents,
+        // vehicle registration, emergency contact or the agreement, and so
+        // could never finish registering. The hub always offers "Continue to
+        // Dashboard", so a driver who IS finished loses nothing.
+        onContinue={() => go('drvkyc')}
         onBack={() => go('home')}
         onApply={() => {
           setPartnerPersona('driver');
@@ -1000,22 +1010,48 @@ function AppShell() {
         // routed into them outside the Design Preview navigator, so a driver
         // could never accept the terms the activation gate requires.
         onVehicle={() => go('drvvehicle')}
-        onAgreement={() => go('drvagree')}
+        onAgreement={() => {
+          setDriverStepReturn('drvkyc');
+          go('drvagree');
+        }}
       />
     ),
     drvuploaddocs: (
-      <DriverUploadDocsScreen onBack={() => go('drvkyc')} onSave={() => go('drvkyc')} />
+      <DriverUploadDocsScreen
+        onBack={() => go('drvkyc')}
+        onSave={() => go('drvkyc')}
+        // Submitting for review is refused without these two, and this screen
+        // is where a driver reads that refusal — so it must also be where they
+        // can act on it.
+        onEmergencyContact={() => {
+          setDriverStepReturn('drvuploaddocs');
+          go('drvemergency');
+        }}
+        onAgreement={() => {
+          setDriverStepReturn('drvuploaddocs');
+          go('drvagree');
+        }}
+      />
     ),
     drvvehicle: (
-      <DriverVehicleRegScreen onBack={() => go('drvkyc')} onSave={() => go('drvemergency')} />
+      <DriverVehicleRegScreen
+        onBack={() => go('drvkyc')}
+        onSave={() => {
+          setDriverStepReturn('drvkyc');
+          go('drvemergency');
+        }}
+      />
     ),
     drvemergency: (
-      <EmergencyContactScreen onBack={() => go('drvvehicle')} onContinue={() => go('drvagree')} />
+      <EmergencyContactScreen
+        onBack={() => go(driverStepReturn)}
+        onContinue={() => go('drvagree')}
+      />
     ),
     drvagree: (
       <AgreementAcceptanceScreen
-        onBack={() => go('drvemergency')}
-        onContinue={() => go('drvkyc')}
+        onBack={() => go(driverStepReturn)}
+        onContinue={() => go(driverStepReturn)}
       />
     ),
     drvdash: (
