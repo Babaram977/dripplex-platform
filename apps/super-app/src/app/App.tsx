@@ -150,6 +150,7 @@ import {
   RiderLoginScreen,
   RiderDashboardScreen,
   RiderJobScreen,
+  RiderAccountScreen,
   RiderEarningsScreen,
 } from './riderScreen';
 import {
@@ -380,6 +381,7 @@ type Screen =
   | 'riderdash'
   | 'riderjob'
   | 'riderearnings'
+  | 'rideraccount'
   | 'partnerselect'
   | 'partnermerchant'
   | 'partnerdriver'
@@ -1143,6 +1145,7 @@ function AppShell() {
           go('riderjob');
         }}
         onEarnings={() => go('riderearnings')}
+        onAccount={() => go('rideraccount')}
         onSignIn={() => go('riderlogin')}
       />
     ),
@@ -1163,6 +1166,9 @@ function AppShell() {
       />
     ),
     riderearnings: <RiderEarningsScreen onBack={() => go('riderdash')} />,
+    rideraccount: (
+      <RiderAccountScreen onBack={() => go('riderdash')} onSignedOut={() => go('riderlogin')} />
+    ),
 
     // ── Partner Onboarding (merchant / driver / rider self-registration) ──────
     partnerselect: (
@@ -1454,6 +1460,7 @@ function AppShell() {
         { label: 'Dashboard', key: 'riderdash' },
         { label: 'Job Detail', key: 'riderjob' },
         { label: 'Earnings', key: 'riderearnings' },
+        { label: 'Account', key: 'rideraccount' },
       ],
     },
   ];
