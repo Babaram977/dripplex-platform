@@ -59,6 +59,23 @@ export interface RideDto {
   updatedAt: string;
 }
 
+/** A ride as its **driver** sees it, plus the passenger's display name.
+ *
+ * Name only, no phone number — the same rule as `RiderDeliveryJobDto`, for the
+ * same reason: a name lets the driver greet the right person and address a
+ * chat thread; a phone number is permanent, leaves the platform, and cannot be
+ * taken back. (Founder decision, 2026-08-16.) */
+export interface DriverRideDto extends RideDto {
+  customerName: string | null;
+}
+
+/** A ride as its **customer** sees it, plus the assigned driver's display
+ * name — the mirror of `CustomerDeliveryDto.riderName`, so the passenger can
+ * see and message a named person rather than a UUID. */
+export interface CustomerRideDto extends RideDto {
+  driverName: string | null;
+}
+
 export interface InitiateRidePaymentRequest {
   method: RidePaymentMethod;
   callbackUrl?: string;

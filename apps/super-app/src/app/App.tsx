@@ -853,7 +853,12 @@ function AppShell() {
       />
     ),
     ridepickup: (
-      <PickupConfirmScreen onBack={() => go('ridesearch')} onConfirm={() => go('ridefare')} />
+      <PickupConfirmScreen
+        onBack={() => go('ridesearch')}
+        onConfirm={() => go('ridefare')}
+        pickup={ridePickup.pickup}
+        dropoff={rideDest}
+      />
     ),
     ridefare: (
       <FareEstimateScreen
@@ -880,6 +885,15 @@ function AppShell() {
         onArrived={() => go('ridearrived')}
         onCancel={() => go('ridehome')}
         rideId={activeCustomerRideId}
+        onMessageDriver={(rideId, driverName) => {
+          setChat({
+            context: 'ride',
+            contextId: rideId,
+            title: driverName ?? 'Your driver',
+            back: 'rideassigned',
+          });
+          go('chat');
+        }}
       />
     ),
     ridearrived: (
@@ -975,8 +989,19 @@ function AppShell() {
     ridedriver: (
       <DriverProfileSheet
         onBack={() => go('rideassigned')}
-        onCall={() => go('rideassigned')}
-        onMessage={() => go('rideassigned')}
+        onMessage={() => {
+          if (activeCustomerRideId) {
+            setChat({
+              context: 'ride',
+              contextId: activeCustomerRideId,
+              title: 'Your driver',
+              back: 'ridedriver',
+            });
+            go('chat');
+          } else {
+            go('rideassigned');
+          }
+        }}
       />
     ),
     ridepayment: (
@@ -1133,6 +1158,15 @@ function AppShell() {
         rideId={activeDriverRide?.id}
         onArrived={() => go('drvverify')}
         onBack={() => go('drvdash')}
+        onMessagePassenger={(rideId, passengerName) => {
+          setChat({
+            context: 'ride',
+            contextId: rideId,
+            title: passengerName ?? 'Your passenger',
+            back: 'drvtopickup',
+          });
+          go('chat');
+        }}
       />
     ),
     drvverify: (
@@ -1244,11 +1278,11 @@ function AppShell() {
         job={activeRiderJob}
         onBack={() => go('riderdash')}
         onDone={() => go('riderdash')}
-        onMessageCustomer={(deliveryJobId) => {
+        onMessageCustomer={(deliveryJobId, customerName) => {
           setChat({
             context: 'delivery',
             contextId: deliveryJobId,
-            title: 'Customer',
+            title: customerName ?? 'Your customer',
             back: 'riderjob',
           });
           go('chat');

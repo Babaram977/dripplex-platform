@@ -46,6 +46,7 @@ import {
   type DeliveryJobDto,
   type EtaDto,
   type ProofDto,
+  type RiderDeliveryJobDto,
   type RiderLocationDto,
   type TrackingDto,
 } from './delivery.mapper';
@@ -536,14 +537,43 @@ export class DeliveryService {
     return toEtaDto(job, latest);
   }
 
-  public async listRiderJobs(riderId: string): Promise<DeliveryJobDto[]> {
+  public async listRiderJobs(riderId: string): Promise<RiderDeliveryJobDto[]> {
     const jobs = await this.deliveryRepository.listRiderJobs(riderId);
-    return jobs.map(toDeliveryJobDto);
+    const names = await this.resolveDisplayNames(jobs.map((job) => job.customerId));
+    return jobs.map((job) => ({
+      ...toDeliveryJobDto(job),
+      customerName: names.get(job.customerId) ?? null,
+    }));
   }
 
-  public async getRiderJob(riderId: string, jobId: string): Promise<DeliveryJobDto> {
+  public async getRiderJob(riderId: string, jobId: string): Promise<RiderDeliveryJobDto> {
     const job = await this.requireRiderJob(riderId, jobId);
-    return toDeliveryJobDto(job);
+    const names = await this.resolveDisplayNames([job.customerId]);
+    return {
+      ...toDeliveryJobDto(job),
+      customerName: names.get(job.customerId) ?? null,
+    };
+  }
+
+  /**
+   * Display names for the people on a job — name only, never phone.
+   *
+   * One query for the whole page rather than one per job: a rider's job list
+   * is small, but a per-row lookup is the kind of thing that quietly becomes
+   * N+1 the first time someone raises the page size.
+   */
+  private async resolveDisplayNames(userIds: string[]): Promise<Map<string, string>> {
+    const unique = [...new Set(userIds)];
+    if (unique.length === 0) {
+      return new Map();
+    }
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: unique } },
+      select: { id: true, firstName: true, lastName: true },
+    });
+    return new Map(
+      users.map((user) => [user.id, `${user.firstName} ${user.lastName}`.trim()] as const),
+    );
   }
 
   public async listAdminJobs(

@@ -33,7 +33,9 @@ import type { ListRidesQueryDto } from './dto/list-rides-query.dto';
 import type { CancelRideDto, EstimateRideFareDto, RequestRideDto } from './dto/request-ride.dto';
 import type { UpdateDriverAvailabilityDto } from './dto/update-driver-availability.dto';
 import type {
+  CustomerRideDto,
   DriverAvailabilityDto,
+  DriverRideDto,
   EstimateRideFareResponse,
   RideDto,
   RideTypeCatalogEntryDto,
@@ -231,9 +233,12 @@ export class RidesService {
     return Math.round((amount + Number.EPSILON) * 100) / 100;
   }
 
-  public async getOwnRide(customerId: string, rideId: string): Promise<RideDto> {
+  public async getOwnRide(customerId: string, rideId: string): Promise<CustomerRideDto> {
     const ride = await this.requireOwnedRide(customerId, rideId);
-    return toRideDto(ride);
+    return {
+      ...toRideDto(ride),
+      driverName: await this.displayName(ride.driverId),
+    };
   }
 
   public async listOwnRides(
@@ -428,12 +433,38 @@ export class RidesService {
   /** Lets the dashboard recover "you have a trip in progress" after a page
    * refresh — acceptOffer/arrive/start all return the updated RideDto
    * directly, but nothing persists that reference client-side. */
-  public async getActiveRide(driverId: string): Promise<RideDto | null> {
+  public async getActiveRide(driverId: string): Promise<DriverRideDto | null> {
     const ride = await this.prisma.ride.findFirst({
       where: { driverId, status: { in: ACTIVE_DRIVER_RIDE_STATUSES } },
       orderBy: { assignedAt: 'desc' },
     });
-    return ride ? toRideDto(ride) : null;
+    if (!ride) {
+      return null;
+    }
+    return {
+      ...toRideDto(ride),
+      customerName: await this.displayName(ride.customerId),
+    };
+  }
+
+  /**
+   * The display name of the other party on a ride — name only, never phone.
+   *
+   * A driver and a passenger in the same car should be able to address each
+   * other by name and open a chat thread that says who is on the other end.
+   * Neither needs the other's phone number to do that, and a number, once
+   * given, cannot be taken back when the trip ends. (Founder decision,
+   * 2026-08-16.)
+   */
+  private async displayName(userId: string | null): Promise<string | null> {
+    if (userId === null) {
+      return null;
+    }
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { firstName: true, lastName: true },
+    });
+    return user ? `${user.firstName} ${user.lastName}`.trim() : null;
   }
 
   private async requireOwnedRide(customerId: string, rideId: string): Promise<Ride> {

@@ -263,10 +263,13 @@ describe('DeliveryService', () => {
 
   const businessFindUnique = jest.fn();
   const userFindUnique = jest.fn();
+  // Rider-facing job payloads now carry the customer's display name, which the
+  // service resolves in one batched lookup.
+  const userFindMany = jest.fn();
   const merchantProfileFindUnique = jest.fn();
   const prisma = {
     business: { findUnique: businessFindUnique },
-    user: { findUnique: userFindUnique },
+    user: { findUnique: userFindUnique, findMany: userFindMany },
     merchantProfile: { findUnique: merchantProfileFindUnique },
   } as unknown as PrismaService;
 
@@ -351,6 +354,9 @@ describe('DeliveryService', () => {
       latitude: 6.5244,
       longitude: 3.3792,
     });
+    userFindMany.mockImplementation(({ where }: { where: { id: { in: string[] } } }) =>
+      Promise.resolve(where.id.in.map((id) => ({ id, firstName: 'Mamman', lastName: 'Isa' }))),
+    );
     userFindUnique.mockImplementation(({ where }: { where: { id: string } }) => {
       const emails: Record<string, string> = {
         [customerId]: 'customer@example.com',
@@ -1091,17 +1097,22 @@ describe('DeliveryService', () => {
     expect(result.lastKnownLocation).toMatchObject({ deliveryJobId: jobId });
   });
 
-  it('lists rider jobs', async () => {
+  it('lists rider jobs, each naming its customer', async () => {
     const result = await service.listRiderJobs(riderId);
 
     expect(result).toHaveLength(1);
-    expect(result[0]).toMatchObject({ riderId, status: DeliveryStatus.ACCEPTED });
+    expect(result[0]).toMatchObject({
+      riderId,
+      status: DeliveryStatus.ACCEPTED,
+      customerName: 'Mamman Isa',
+    });
   });
 
   it('gets a rider job assigned to that rider', async () => {
     const result = await service.getRiderJob(riderId, jobId);
 
     expect(result.riderId).toBe(riderId);
+    expect(result.customerName).toBe('Mamman Isa');
   });
 
   it('rejects getRiderJob for the wrong rider', async () => {

@@ -2403,14 +2403,29 @@ export function DriverNavToPickupScreen({
   onArrived,
   onBack,
   rideId,
+  onMessagePassenger,
 }: {
   onArrived: () => void;
   onBack: () => void;
   rideId?: string;
+  // A driver on the way to a pickup could not reach their passenger at all:
+  // this card carried a hard-coded name and a call button wired to nothing.
+  onMessagePassenger?: (rideId: string, passengerName: string | null) => void;
 }) {
   const [eta, setEta] = useState(3);
   const [dist, setDist] = useState(1.2);
   const [busy, setBusy] = useState(false);
+  // The passenger's NAME, from the active ride — never their phone number.
+  const [passengerName, setPassengerName] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.driverRides
+      .getActive()
+      .then((ride) => setPassengerName(ride?.customerName ?? null))
+      .catch(() => {
+        /* Leave it unnamed rather than showing someone else's name. */
+      });
+  }, [rideId]);
 
   const handleArrived = async () => {
     if (busy) return;
@@ -2515,33 +2530,34 @@ export function DriverNavToPickupScreen({
             className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl font-bold"
             style={{ background: 'rgba(59,130,246,.15)', color: '#fff', fontFamily: PP }}
           >
-            C
+            {passengerName?.trim().charAt(0).toUpperCase() ?? '·'}
           </div>
           <div className="flex-1">
             <p className="text-[14px] font-semibold" style={{ fontFamily: PP, color: '#fff' }}>
-              Chidi O.
+              {passengerName ?? 'Your passenger'}
             </p>
             <p className="text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
               Passenger · {eta} min ETA
             </p>
           </div>
-          <button
-            className="flex h-10 w-10 items-center justify-center rounded-xl"
-            style={{ background: 'rgba(43,172,82,.1)', border: '1px solid rgba(43,172,82,.2)' }}
-          >
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke={G2}
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+          {/* Chat, not a phone call. The driver never receives the passenger's
+              number, so the only channel is the one that ends with the trip. */}
+          {onMessagePassenger && rideId && (
+            <button
+              onClick={() => onMessagePassenger(rideId, passengerName)}
+              aria-label="Message passenger"
+              className="flex h-10 items-center justify-center gap-1.5 rounded-xl px-3"
+              style={{
+                background: 'rgba(43,172,82,.1)',
+                border: '1px solid rgba(43,172,82,.2)',
+                fontFamily: IT,
+                fontSize: 12,
+                color: G3,
+              }}
             >
-              <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 014.95 13 19.79 19.79 0 011.87 4.4 2 2 0 013.86 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" />
-            </svg>
-          </button>
+              💬 Message
+            </button>
+          )}
         </div>
 
         <DGreenBtn

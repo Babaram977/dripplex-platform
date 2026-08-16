@@ -387,6 +387,18 @@ export interface RideDto {
   updatedAt: string;
 }
 
+/** A ride as its driver sees it — plus the passenger's name. Name only: the
+ * driver reaches the passenger through in-app chat, not their phone book. */
+export interface DriverRideDto extends RideDto {
+  customerName: string | null;
+}
+
+/** A ride as its passenger sees it — plus the assigned driver's name, the
+ * mirror of CustomerDeliveryDto.riderName. */
+export interface CustomerRideDto extends RideDto {
+  driverName: string | null;
+}
+
 // Driver ride offers (dispatch)
 export interface RideOfferDto {
   id: string;
@@ -482,6 +494,12 @@ export interface DeliveryJobDto {
 export interface CustomerDeliveryDto extends DeliveryJobDto {
   riderName: string | null;
   riderPhone: string | null;
+}
+
+/** What the rider sees of the person they are delivering to: a name, and
+ * deliberately no phone number — in-app chat is the channel. */
+export interface RiderDeliveryJobDto extends DeliveryJobDto {
+  customerName: string | null;
 }
 
 export interface DeliveryTrackingDto {
@@ -1391,7 +1409,7 @@ export const api = {
     }) => dx<RideDto>('POST', '/customer/rides', body),
     list: (params?: { page?: number; limit?: number; status?: RideStatus }) =>
       dx<PaginatedResult<RideDto>>('GET', '/customer/rides', undefined, params),
-    get: (id: string) => dx<RideDto>('GET', `/customer/rides/${id}`),
+    get: (id: string) => dx<CustomerRideDto>('GET', `/customer/rides/${id}`),
     getNearbyDrivers: (params: {
       latitude: number;
       longitude: number;
@@ -1445,7 +1463,7 @@ export const api = {
       deviceId?: string;
     }) => dx<unknown>('POST', '/driver/rides/availability', body),
     getAvailability: () => dx<unknown | null>('GET', '/driver/rides/availability'),
-    getActive: () => dx<RideDto | null>('GET', '/driver/rides/active'),
+    getActive: () => dx<DriverRideDto | null>('GET', '/driver/rides/active'),
     getOffers: () => dx<RideOfferDto[]>('GET', '/driver/rides/offers'),
     getOfferPreview: (offerId: string) =>
       dx<RideOfferPreviewDto>('GET', `/driver/rides/offers/${offerId}`),
@@ -1554,8 +1572,8 @@ export const api = {
 
   // ── RIDER (delivery) ────────────────────────────────────────────────────────
   rider: {
-    getJobs: () => dx<DeliveryJobDto[]>('GET', '/rider/jobs'),
-    getJob: (id: string) => dx<DeliveryJobDto>('GET', `/rider/jobs/${id}`),
+    getJobs: () => dx<RiderDeliveryJobDto[]>('GET', '/rider/jobs'),
+    getJob: (id: string) => dx<RiderDeliveryJobDto>('GET', `/rider/jobs/${id}`),
     acceptJob: (id: string) => dx<DeliveryJobDto>('POST', `/rider/jobs/${id}/accept`),
     rejectJob: (id: string) => dx<DeliveryJobDto>('POST', `/rider/jobs/${id}/reject`),
     pickup: (id: string) => dx<DeliveryJobDto>('POST', `/rider/jobs/${id}/pickup`),
