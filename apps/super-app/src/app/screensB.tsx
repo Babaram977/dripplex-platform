@@ -23,7 +23,7 @@ import {
 } from './shared';
 import { api, uploadFile } from '../lib/api';
 import type { CustomerKycStatusDto, SessionDto } from '../lib/api';
-import { auth } from '../lib/auth';
+import { auth, endSession } from '../lib/auth';
 
 // AUTH-010  TWO-FACTOR AUTHENTICATION
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1983,6 +1983,8 @@ export function AccountManagementScreen({
   onAccTransfer?: () => void;
   onSuspension?: () => void;
   onAuthSummary?: () => void;
+  /** Where to land after ending the session (the app's front door). */
+  onSignOut?: () => void;
 }) {
   const dxUser = auth.getUser();
   const [name, setName] = useState(auth.displayName(dxUser));
@@ -2330,6 +2332,39 @@ export function AccountManagementScreen({
             <ArrowIcon />
           </button>
         ))}
+      </div>
+
+      {/* End session — customers had no way out of the app at all. Refreshing
+          the page looked like a sign-out but left the session intact. */}
+      <div
+        className="mx-6 mb-3 overflow-hidden rounded-2xl"
+        style={{ background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
+      >
+        <button
+          onClick={() => {
+            void endSession(() => api.auth.logout()).then(() => onSignOut?.());
+          }}
+          className="flex w-full items-center gap-3 px-4 py-3 text-left transition-all active:scale-[.98]"
+        >
+          <div
+            className="flex h-9 w-9 items-center justify-center rounded-xl text-lg"
+            style={{ background: 'rgba(255,255,255,.06)' }}
+          >
+            ⏻
+          </div>
+          <div className="flex-1">
+            <p
+              className="text-[13px] font-semibold"
+              style={{ fontFamily: "'Poppins',sans-serif", color: '#fff' }}
+            >
+              Sign Out
+            </p>
+            <p className="text-[11px]" style={{ color: MUTED }}>
+              End this session on this device
+            </p>
+          </div>
+          <ArrowIcon />
+        </button>
       </div>
 
       {/* Delete account */}

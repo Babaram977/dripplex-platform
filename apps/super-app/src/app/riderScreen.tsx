@@ -4,6 +4,17 @@ import { auth } from '../lib/auth';
 import { getCurrentPosition } from '../lib/maps';
 import type { DeliveryJobDto, RiderAvailabilityDto, RiderProfileDto, WalletDto } from '../lib/api';
 
+/**
+ * How often a rider/driver's position is pushed while they are online.
+ *
+ * Founder decision, 2026-08-16: 30s, "at least it will be lively". Dispatch
+ * picks the NEAREST candidate and the customer's live map interpolates between
+ * fixes, so a slower cadence both costs the courier work and makes tracking
+ * look frozen. Faster than this starts to cost battery and mobile data for no
+ * visible gain at city speeds.
+ */
+export const LOCATION_PUSH_INTERVAL_MS = 30_000;
+
 const PP = "'Poppins',sans-serif";
 const IT = "'Inter',sans-serif";
 const NAVY_BASE = '#0A1628';
@@ -403,7 +414,7 @@ export function RiderDashboardScreen({
           .catch(() => {});
       });
     };
-    const t = setInterval(push, 60000);
+    const t = setInterval(push, LOCATION_PUSH_INTERVAL_MS);
     return () => clearInterval(t);
   }, [online]);
 
@@ -773,10 +784,15 @@ export function RiderJobScreen({
   job: initialJob,
   onBack,
   onDone,
+  onMessageCustomer,
 }: {
   job: DeliveryJobDto;
   onBack: () => void;
   onDone: () => void;
+  // A rider at the door had no way to reach the customer — the delivery job
+  // carries no customer phone, so before in-app messaging there was no channel
+  // in this direction at all.
+  onMessageCustomer?: (deliveryJobId: string) => void;
 }) {
   const [job, setJob] = useState(initialJob);
   const [acting, setActing] = useState(false);
@@ -847,6 +863,24 @@ export function RiderJobScreen({
             </p>
             <JobStatusChip status={job.status} />
           </div>
+          {onMessageCustomer && (
+            <button
+              onClick={() => onMessageCustomer(job.id)}
+              style={{
+                marginLeft: 'auto',
+                background: NAVY_SURFACE,
+                border: `1px solid ${BORDER}`,
+                borderRadius: 10,
+                padding: '8px 14px',
+                fontFamily: IT,
+                fontSize: 12,
+                color: G3,
+                cursor: 'pointer',
+              }}
+            >
+              💬 Message
+            </button>
+          )}
         </div>
 
         {/* Job info */}

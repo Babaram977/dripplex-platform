@@ -63,6 +63,7 @@ import {
   FareEstimateScreen,
   FindingDriverScreen,
   type RideDestination,
+  useDevicePickup,
   DriverAssignedScreen,
   DriverArrivedScreen,
   RideInProgressScreen,
@@ -164,7 +165,10 @@ import {
   PendingReviewScreen,
 } from './onboardingScreen';
 import type { PartnerPersona } from './onboardingScreen';
+import { ChatScreen } from './chatScreen';
+import { api } from '../lib/api';
 import type { DeliveryJobDto, RideOfferDto, RideDto } from '../lib/api';
+import { endSession } from '../lib/auth';
 
 // DESKTOP FRAME — for admin operations console
 // ═══════════════════════════════════════════════════════════════════════════
@@ -382,6 +386,7 @@ type Screen =
   | 'riderjob'
   | 'riderearnings'
   | 'rideraccount'
+  | 'chat'
   | 'partnerselect'
   | 'partnermerchant'
   | 'partnerdriver'
@@ -453,6 +458,14 @@ function AppShell() {
   // the onboarding hub and the document screen that refuses to submit without
   // them — so remember where the driver came from and put them back there.
   const [driverStepReturn, setDriverStepReturn] = useState<Screen>('drvkyc');
+  // DPX-CHAT-001 — which conversation is open, and who it is with. A thread is
+  // always anchored to a live delivery or ride; there is no inbox.
+  const [chat, setChat] = useState<{
+    context: 'delivery' | 'ride';
+    contextId: string;
+    title: string;
+    back: Screen;
+  } | null>(null);
   // Merchant's business fields from sign-up, pre-filled into the post-login
   // Business Details step (persisted via PATCH /merchant/business).
   const [merchantBiz, setMerchantBiz] = useState<{ businessName: string; category: string }>({
@@ -466,6 +479,10 @@ function AppShell() {
   const [activeDriverOffer, setActiveDriverOffer] = useState<RideOfferDto | null>(null);
   const [activeDriverRide, setActiveDriverRide] = useState<RideDto | null>(null);
   const [rideDest, setRideDest] = useState<RideDestination | undefined>(undefined);
+  // The passenger's REAL pickup, resolved from the device. Every ride used to
+  // be booked from a hardcoded "Ikeja GRA, Lagos" regardless of where the
+  // passenger stood, and the pickup row could not be changed.
+  const ridePickup = useDevicePickup();
   const [activeCustomerRideId, setActiveCustomerRideId] = useState<string | undefined>(undefined);
 
   const go = (to: Screen) => {
@@ -586,6 +603,7 @@ function AppShell() {
     kyc: <IdentityVerificationScreen onBack={() => go('account')} />,
     account: (
       <AccountManagementScreen
+        onSignOut={() => go('welcome')}
         onBack={() => go('returning')}
         onKYC={() => go('kyc')}
         onSecurity={() => go('security')}
@@ -775,7 +793,32 @@ function AppShell() {
         onAccount={() => go('account')}
         onNotifications={() => go('activitydash')}
         onHistory={() => go('orderhistory')}
+        onMessageRider={(deliveryJobId, riderName) => {
+          setChat({
+            context: 'delivery',
+            contextId: deliveryJobId,
+            title: riderName,
+            back: 'ordertracking',
+          });
+          go('chat');
+        }}
         orderId={activeOrderId ?? undefined}
+      />
+    ),
+    chat: chat ? (
+      <ChatScreen
+        context={chat.context}
+        contextId={chat.contextId}
+        title={chat.title}
+        subtitle={chat.context === 'delivery' ? 'About your delivery' : 'About your trip'}
+        onBack={() => go(chat.back)}
+      />
+    ) : (
+      <HomeScreen
+        onSearch={() => go('marketplace')}
+        onCart={() => go('cart')}
+        onAccount={() => go('account')}
+        onNotifications={() => go('activitydash')}
       />
     ),
     orderhistory: (
@@ -802,6 +845,11 @@ function AppShell() {
           setRideDest(dest);
           go('ridepickup');
         }}
+        pickup={ridePickup.pickup}
+        onPickupChange={ridePickup.setPickup}
+        pickupResolving={ridePickup.resolving}
+        pickupError={ridePickup.error}
+        onLocateMe={ridePickup.locate}
       />
     ),
     ridepickup: (
@@ -811,6 +859,7 @@ function AppShell() {
       <FareEstimateScreen
         onBack={() => go('ridepickup')}
         dropoff={rideDest}
+        pickup={ridePickup.pickup}
         rideType="ECONOMY"
         onBook={(rideId) => {
           setActiveCustomerRideId(rideId);
@@ -853,6 +902,7 @@ function AppShell() {
       <TripCompletedScreen
         onRate={() => go('riderating')}
         onHome={() => go('home')}
+        onTip={() => go('ridetip')}
         rideId={activeCustomerRideId}
       />
     ),
@@ -951,6 +1001,7 @@ function AppShell() {
         onBack={() => go('ridecomplete')}
         onSubmit={() => go('riderating')}
         onSkip={() => go('riderating')}
+        rideId={activeCustomerRideId}
       />
     ),
     ridereport: (
@@ -1061,6 +1112,9 @@ function AppShell() {
           go('drvrequest');
         }}
         onSettings={() => go('drvsettings')}
+        onSignOut={() => {
+          void endSession(() => api.auth.logout()).then(() => go('drvlogin'));
+        }}
         onSignIn={() => go('drvlogin')}
       />
     ),
@@ -1190,6 +1244,15 @@ function AppShell() {
         job={activeRiderJob}
         onBack={() => go('riderdash')}
         onDone={() => go('riderdash')}
+        onMessageCustomer={(deliveryJobId) => {
+          setChat({
+            context: 'delivery',
+            contextId: deliveryJobId,
+            title: 'Customer',
+            back: 'riderjob',
+          });
+          go('chat');
+        }}
       />
     ) : (
       <RiderLoginScreen

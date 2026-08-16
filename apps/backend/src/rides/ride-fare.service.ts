@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { RideType } from '@prisma/client';
 
-import { DEFAULT_RIDE_SPEED_MPS, RIDE_FARE_RATES } from './ride.constants';
+import { DEFAULT_RIDE_SPEED_MPS, RIDE_FARE_RATES, RIDE_MINIMUM_FARE } from './ride.constants';
 
 export interface RideFareEstimate {
   distanceMeters: number;
@@ -45,7 +45,11 @@ export class RideFareService {
     const rates = RIDE_FARE_RATES[rideType];
     const distanceFare = Math.round(distanceKm * rates.perKmRate);
     const timeFare = Math.round(durationMinutes * rates.perMinuteRate);
-    const totalFare = rates.baseFare + distanceFare + timeFare;
+    // The platform minimum is a floor, not an addition: a sub-kilometre trip
+    // that computes to less than RIDE_MINIMUM_FARE is charged the minimum, and
+    // anything above it is unaffected (founder decision, 2026-08-16).
+    const computedFare = rates.baseFare + distanceFare + timeFare;
+    const totalFare = Math.max(computedFare, RIDE_MINIMUM_FARE);
 
     return {
       distanceMeters,

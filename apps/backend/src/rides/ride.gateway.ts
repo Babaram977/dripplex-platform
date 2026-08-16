@@ -73,6 +73,10 @@ export class RideGateway implements OnGatewayConnection, OnGatewayDisconnect, Ri
     }
 
     socketData(socket).user = user;
+    // Everyone gets a personal room. Only drivers had one, which was fine while
+    // the socket carried nothing but ride offers — in-app messages (DPX-CHAT-001)
+    // are addressed to a PERSON, and the recipient may be a customer or a rider.
+    await socket.join(`user:${user.id}`);
     if (user.role === 'driver') {
       await socket.join(`driver:${user.id}`);
     }
@@ -158,6 +162,15 @@ export class RideGateway implements OnGatewayConnection, OnGatewayDisconnect, Ri
       this.server.to(`ride:${rideId}`).emit(event, payload);
     } catch (error) {
       this.logger.warn(`Failed to publish ${event} to ride:${rideId}: ${String(error)}`);
+    }
+  }
+
+  /** Push to one person, whichever portal they are signed into. */
+  public publishToUser(userId: string, event: string, payload: unknown): void {
+    try {
+      this.server.to(`user:${userId}`).emit(event, payload);
+    } catch (error) {
+      this.logger.warn(`Failed to publish ${event} to user:${userId}: ${String(error)}`);
     }
   }
 

@@ -2,6 +2,9 @@
 export {
   // Core journey
   RideHomeScreen,
+  // Resolves the passenger's real pickup from the device — replaced the
+  // hardcoded Lagos address every ride used to be booked from.
+  useDevicePickup,
   DestinationSearchScreen,
   PickupConfirmScreen,
   FareEstimateScreen,

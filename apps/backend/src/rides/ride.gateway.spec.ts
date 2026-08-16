@@ -107,15 +107,21 @@ describe('RideGateway', () => {
 
       expect(socket.disconnect).not.toHaveBeenCalled();
       expect(socket.join).toHaveBeenCalledWith('driver:user-1');
+      // A driver is also a person who can be messaged.
+      expect(socket.join).toHaveBeenCalledWith('user:user-1');
       expect(socket.data['user']).toMatchObject({ id: 'user-1', role: 'driver' });
     });
 
-    it('does not auto-join a room for a customer connection', async () => {
+    it('gives a customer their own room, but never a driver room', async () => {
       const socket = fakeSocket({ token: 'a.b.c' });
 
       await gateway.handleConnection(socket as never);
 
-      expect(socket.join).not.toHaveBeenCalled();
+      // Everyone gets a personal room since DPX-CHAT-001: an in-app message is
+      // addressed to a PERSON, and the recipient is as often a customer or a
+      // rider as a driver. The driver room stays driver-only.
+      expect(socket.join).toHaveBeenCalledWith('user:user-1');
+      expect(socket.join).not.toHaveBeenCalledWith('driver:user-1');
     });
   });
 
