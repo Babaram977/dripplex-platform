@@ -217,6 +217,8 @@ export type {
   InitiateRidePaymentResponse,
   NearbyDriverDto,
   RateRideRequest,
+  CustomerRideDto,
+  DriverRideDto,
   ReportRideProblemRequest,
   RequestRideRequest,
   RideAuditAction,
@@ -390,6 +392,7 @@ export type {
   DeliveryStatus,
   DeliveryTrackingDto,
   ProofType,
+  RiderDeliveryJobDto,
   RiderLocationDto,
   UpdateRiderAvailabilityDto,
 } from './delivery/index.js';

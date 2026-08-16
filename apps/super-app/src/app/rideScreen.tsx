@@ -16,7 +16,7 @@ import {
   reverseGeocode,
 } from '../lib/maps';
 import type { AddressPrediction } from '../lib/maps';
-import type { RideDto, RideType, RideTypeCatalogEntryDto } from '../lib/api';
+import type { CustomerRideDto, RideDto, RideType, RideTypeCatalogEntryDto } from '../lib/api';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS
@@ -73,12 +73,23 @@ export function useDevicePickup(): {
           return;
         }
         const resolved = await reverseGeocode(pos);
+        // `ResolvedAddress` has no `formattedAddress` field — reading one meant
+        // this always fell through to "Your current location" even when the
+        // geocoder had returned a perfectly good street and city. Build the
+        // label from the fields that actually exist.
+        // Lagos city inside Lagos state is a real address, and "Ikeja, Lagos,
+        // Lagos" is not how anyone writes it — drop repeats.
+        const label = resolved
+          ? [...new Set([resolved.addressLine1, resolved.city, resolved.state])]
+              .filter((part) => part.length > 0)
+              .join(', ')
+          : '';
         setPickup({
           latitude: pos.latitude,
           longitude: pos.longitude,
           // A coordinate with no street name is still a true pickup; showing it
           // beats naming somewhere the passenger is not.
-          address: resolved?.formattedAddress ?? 'Your current location',
+          address: label.length > 0 ? label : 'Your current location',
         });
       })
       .catch(() => setError('Could not read your location. Set your pickup point by hand.'))
@@ -141,7 +152,7 @@ const PAYMENT_METHODS = [
 // FindingDriver poll uses) and rides the ws status fast-path. Returns the
 // authoritative `RideDto` for the active-ride screens.
 function useLiveRide(rideId?: string) {
-  const [ride, setRide] = useState<RideDto | null>(null);
+  const [ride, setRide] = useState<CustomerRideDto | null>(null);
   useEffect(() => {
     if (!rideId) return;
     let alive = true;
@@ -997,11 +1008,47 @@ export function DestinationSearchScreen({
 export function PickupConfirmScreen({
   onBack,
   onConfirm,
+  pickup,
+  dropoff,
 }: {
   onBack: () => void;
   onConfirm: () => void;
+  // This screen used to read "Ikeja GRA, Lagos → Victoria Island, Lagos" for
+  // every passenger on earth, next to a fabricated "~14 km · ~22 min · Fast
+  // Route". It is the step where someone confirms where they are going, so it
+  // now shows where they are actually going.
+  pickup?: RidePickup | null;
+  dropoff?: RideDestination | null;
 }) {
   const [note, setNote] = useState('');
+  const [leg, setLeg] = useState<{ distanceMeters: number; durationSeconds: number } | null>(null);
+
+  // Real distance/duration from the fare estimator — the same numbers the fare
+  // is built from. Nothing is guessed locally.
+  useEffect(() => {
+    if (!pickup || !dropoff) return;
+    let alive = true;
+    void api.rides
+      .estimate({
+        rideType: 'ECONOMY',
+        pickupLatitude: pickup.latitude,
+        pickupLongitude: pickup.longitude,
+        dropoffLatitude: dropoff.latitude,
+        dropoffLongitude: dropoff.longitude,
+      })
+      .then((e) => {
+        if (!alive) return;
+        // EstimateRideFareResponse calls these `distanceMeters`/`durationSeconds`
+        // — the `estimated*` prefix belongs to RideDto, not to the estimator.
+        setLeg({ distanceMeters: e.distanceMeters, durationSeconds: e.durationSeconds });
+      })
+      .catch(() => {
+        /* Leave the figures blank rather than inventing a trip length. */
+      });
+    return () => {
+      alive = false;
+    };
+  }, [pickup?.latitude, pickup?.longitude, dropoff?.latitude, dropoff?.longitude]);
 
   return (
     <div
@@ -1064,7 +1111,7 @@ export function PickupConfirmScreen({
                     className="text-[14px] font-semibold"
                     style={{ fontFamily: PP, color: '#fff' }}
                   >
-                    Ikeja GRA, Lagos
+                    {pickup?.address ?? 'Locating you…'}
                   </p>
                 </div>
                 <div>
@@ -1078,16 +1125,20 @@ export function PickupConfirmScreen({
                     className="text-[14px] font-semibold"
                     style={{ fontFamily: PP, color: '#fff' }}
                   >
-                    Victoria Island, Lagos
+                    {dropoff?.address ?? 'Choose a destination'}
                   </p>
                 </div>
               </div>
             </div>
             <div className="flex gap-3 border-t pt-3" style={{ borderColor: BORDER }}>
+              {/* "Traffic: Fast Route" is gone — DrippleX has no traffic feed,
+                  so there was nothing behind it to be right or wrong. */}
               {[
-                ['~14 km', 'Distance'],
-                ['~22 min', 'Est. time'],
-                ['Fast Route', 'Traffic'],
+                [leg ? `${(leg.distanceMeters / 1000).toFixed(1)} km` : '—', 'Distance'],
+                [
+                  leg ? `${Math.max(1, Math.round(leg.durationSeconds / 60))} min` : '—',
+                  'Est. time',
+                ],
               ].map(([v, l]) => (
                 <div key={l} className="flex-1 text-center">
                   <p className="text-[13px] font-bold" style={{ fontFamily: PP, color: G3 }}>
@@ -1561,11 +1612,13 @@ export function DriverAssignedScreen({
   onArrived,
   onCancel,
   rideId,
+  onMessageDriver,
 }: {
   onBack: () => void;
   onArrived: () => void;
   onCancel?: () => void;
   rideId?: string;
+  onMessageDriver?: (rideId: string, driverName: string | null) => void;
 }) {
   const ride = useLiveRide(rideId);
   // Honest ETA from the backend's estimated trip duration (real field).
@@ -1624,9 +1677,11 @@ export function DriverAssignedScreen({
           </div>
 
           {/* Driver card */}
-          {/* GAP: backend RideDto exposes only driverId; no plate/rating/live-name
-              endpoint. Driver name/vehicle become available only on the receipt
-              after the ride completes. We show an honest "Driver assigned" state. */}
+          {/* The driver's NAME is now on the ride (CustomerRideDto.driverName),
+              so this no longer has to say "details shared after pickup" while a
+              stranger drives towards you. Vehicle make/model, plate and rating
+              are still not exposed by any endpoint — those stay honest gaps
+              rather than invented values. */}
           <div
             className="mb-4 rounded-2xl p-4"
             style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
@@ -1645,7 +1700,7 @@ export function DriverAssignedScreen({
               <div className="flex-1">
                 <div className="flex items-center gap-2">
                   <p className="text-[16px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
-                    {assigned ? 'Driver assigned' : 'Assigning driver…'}
+                    {assigned ? (ride?.driverName ?? 'Driver assigned') : 'Assigning driver…'}
                   </p>
                   {assigned && (
                     <div
@@ -1669,7 +1724,7 @@ export function DriverAssignedScreen({
                 <div className="flex items-center gap-1.5">
                   {/* GAP: no driver rating/trips endpoint — show ride status instead. */}
                   <span className="text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
-                    Driver details shared after pickup
+                    {assigned ? 'Your driver' : 'Driver details shared once assigned'}
                   </span>
                 </div>
                 {typeLabel && (
@@ -1703,32 +1758,18 @@ export function DriverAssignedScreen({
           </div>
 
           {/* Actions */}
+          {/* "Call Driver" lived here and did nothing — and it cannot be made to
+              work without handing the passenger the driver's personal number,
+              which is exactly what DrippleX has decided not to do. The channel
+              between these two people is in-app chat, so that is the control
+              that remains, and it is now wired. */}
           <div className="mb-4 flex gap-3">
             <button
-              className="flex h-12 flex-1 items-center justify-center gap-2 rounded-2xl font-semibold transition-all active:scale-[.97]"
-              style={{
-                background: NAVY_SURFACE,
-                border: `1px solid ${BORDER}`,
-                fontFamily: IT,
-                fontSize: 14,
-                color: '#fff',
+              onClick={() => {
+                if (rideId) onMessageDriver?.(rideId, ride?.driverName ?? null);
               }}
-            >
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke={G2}
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 014.95 13 19.79 19.79 0 011.87 4.4 2 2 0 013.86 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" />
-              </svg>
-              Call Driver
-            </button>
-            <button
+              disabled={!assigned || !rideId || !onMessageDriver}
+              aria-label="Message driver"
               className="flex h-12 flex-1 items-center justify-center gap-2 rounded-2xl font-semibold transition-all active:scale-[.97]"
               style={{
                 background: NAVY_SURFACE,
@@ -1736,6 +1777,7 @@ export function DriverAssignedScreen({
                 fontFamily: IT,
                 fontSize: 14,
                 color: '#fff',
+                opacity: assigned && rideId && onMessageDriver ? 1 : 0.45,
               }}
             >
               <svg
@@ -1750,7 +1792,7 @@ export function DriverAssignedScreen({
               >
                 <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
               </svg>
-              Message
+              Message {ride?.driverName ? ride.driverName.split(' ')[0] : 'driver'}
             </button>
             <button
               onClick={onCancel}
@@ -3055,11 +3097,9 @@ export function RideDetailScreen({
 // 1. DriverProfileSheet
 export function DriverProfileSheet({
   onBack,
-  onCall,
   onMessage,
 }: {
   onBack?: () => void;
-  onCall?: () => void;
   onMessage?: () => void;
 }) {
   const reviews = [
@@ -3205,8 +3245,10 @@ export function DriverProfileSheet({
         </div>
       </div>
       {/* Buttons */}
+      {/* Same rule as the assigned screen: no phone call, because DrippleX does
+          not hand a passenger their driver's personal number. Chat is the
+          channel, so it is the only action offered here. */}
       <div className="flex gap-3 px-5 pb-8 pt-3">
-        <GreenButton label="📞 Call Driver" onClick={onCall || (() => {})} />
         <button
           className="h-12 flex-1 rounded-2xl text-[14px] font-medium transition-all active:scale-[.97]"
           style={{

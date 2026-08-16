@@ -2,7 +2,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { api, uploadFile } from '../lib/api';
 import { auth } from '../lib/auth';
 import { getCurrentPosition } from '../lib/maps';
-import type { DeliveryJobDto, RiderAvailabilityDto, RiderProfileDto, WalletDto } from '../lib/api';
+import type {
+  RiderAvailabilityDto,
+  RiderDeliveryJobDto,
+  RiderProfileDto,
+  WalletDto,
+} from '../lib/api';
 
 /**
  * How often a rider/driver's position is pushed while they are online.
@@ -342,14 +347,14 @@ export function RiderDashboardScreen({
   onAccount,
   onSignIn,
 }: {
-  onJob: (job: DeliveryJobDto) => void;
+  onJob: (job: RiderDeliveryJobDto) => void;
   onEarnings: () => void;
   onAccount: () => void;
   onSignIn?: () => void;
 }) {
   const [online, setOnline] = useState(false);
   const [toggling, setToggling] = useState(false);
-  const [jobs, setJobs] = useState<DeliveryJobDto[]>([]);
+  const [jobs, setJobs] = useState<RiderDeliveryJobDto[]>([]);
   const [wallet, setWallet] = useState<WalletDto | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   // Dispatch only considers riders that have coordinates on record
@@ -786,13 +791,13 @@ export function RiderJobScreen({
   onDone,
   onMessageCustomer,
 }: {
-  job: DeliveryJobDto;
+  job: RiderDeliveryJobDto;
   onBack: () => void;
   onDone: () => void;
-  // A rider at the door had no way to reach the customer — the delivery job
-  // carries no customer phone, so before in-app messaging there was no channel
-  // in this direction at all.
-  onMessageCustomer?: (deliveryJobId: string) => void;
+  // A rider at the door had no way to reach the customer. The job now carries
+  // the customer's NAME — never their phone number — and in-app chat is the
+  // channel, so the thread opens with a person on it rather than "Customer".
+  onMessageCustomer?: (deliveryJobId: string, customerName: string | null) => void;
 }) {
   const [job, setJob] = useState(initialJob);
   const [acting, setActing] = useState(false);
@@ -828,7 +833,7 @@ export function RiderJobScreen({
     return () => clearInterval(t);
   }, [job.id]);
 
-  const act = async (fn: () => Promise<DeliveryJobDto>) => {
+  const act = async (fn: () => Promise<RiderDeliveryJobDto>) => {
     setActing(true);
     setError(null);
     try {
@@ -861,11 +866,16 @@ export function RiderJobScreen({
             <p style={{ fontFamily: PP, fontSize: 15, fontWeight: 700, color: WHITE }}>
               Job #{job.orderId.slice(-6).toUpperCase()}
             </p>
+            {/* Who this delivery is for. A rider looking for one person among
+                several at a gate needs a name, not an order number. */}
+            <p style={{ fontFamily: IT, fontSize: 12, color: MUTED, marginTop: 2 }}>
+              For {job.customerName ?? 'your customer'}
+            </p>
             <JobStatusChip status={job.status} />
           </div>
           {onMessageCustomer && (
             <button
-              onClick={() => onMessageCustomer(job.id)}
+              onClick={() => onMessageCustomer(job.id, job.customerName)}
               style={{
                 marginLeft: 'auto',
                 background: NAVY_SURFACE,

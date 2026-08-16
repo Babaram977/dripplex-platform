@@ -57,6 +57,19 @@ export interface CustomerDeliveryDto extends DeliveryJobDto {
   riderPhone: string | null;
 }
 
+/** Rider-facing delivery detail, enriched with the customer's display name.
+ *
+ * Deliberately **name only, no phone number**. The rider needs to know who
+ * they are delivering to — to greet them, to open a chat thread with a human
+ * name on it — and that is what a name gives them. A phone number is a
+ * different thing: it outlives the job, leaves the platform, and cannot be
+ * withdrawn once handed over. In-app chat covers the "I need to reach them"
+ * case without publishing the customer's number to every rider who is briefly
+ * assigned to them. (Founder decision, 2026-08-16.) */
+export interface RiderDeliveryJobDto extends DeliveryJobDto {
+  customerName: string | null;
+}
+
 export interface DeliveryTrackingDto {
   id: string;
   deliveryJobId: string;

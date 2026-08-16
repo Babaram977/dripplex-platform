@@ -31,6 +31,7 @@ import { RidesService } from '../rides.service';
 import type { AuthenticatedUser } from '../../auth/auth.types';
 import type { ApiSuccessResponse } from '../../common/dto/api-response.dto';
 import type {
+  CustomerRideDto,
   EstimateRideFareResponse,
   InitiateRidePaymentResponse,
   NearbyDriverDto,
@@ -115,7 +116,7 @@ export class CustomerRidesController {
   public async getOwnRide(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<ApiSuccessResponse<RideDto>> {
+  ): Promise<ApiSuccessResponse<CustomerRideDto>> {
     const data = await this.ridesService.getOwnRide(user.id, id);
     return { success: true, data };
   }

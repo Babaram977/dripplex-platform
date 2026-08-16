@@ -14,7 +14,12 @@ import {
 } from './dto/delivery.dto';
 import { TrackingService } from './tracking.service';
 
-import type { DeliveryJobDto, RiderLocationDto, TrackingDto } from './delivery.mapper';
+import type {
+  DeliveryJobDto,
+  RiderDeliveryJobDto,
+  RiderLocationDto,
+  TrackingDto,
+} from './delivery.mapper';
 import type { AuthenticatedUser } from '../auth/auth.types';
 import type { ApiSuccessResponse } from '../common/dto/api-response.dto';
 import type { Request } from 'express';
@@ -30,7 +35,7 @@ export class RiderDeliveryController {
   @RequirePermissions(DELIVERY_PERMISSIONS.RIDER_MANAGE)
   public async listJobs(
     @CurrentUser() user: AuthenticatedUser,
-  ): Promise<ApiSuccessResponse<DeliveryJobDto[]>> {
+  ): Promise<ApiSuccessResponse<RiderDeliveryJobDto[]>> {
     const data = await this.deliveryService.listRiderJobs(user.id);
     return { success: true, data };
   }
@@ -40,7 +45,7 @@ export class RiderDeliveryController {
   public async getJob(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<ApiSuccessResponse<DeliveryJobDto>> {
+  ): Promise<ApiSuccessResponse<RiderDeliveryJobDto>> {
     const data = await this.deliveryService.getRiderJob(user.id, id);
     return { success: true, data };
   }

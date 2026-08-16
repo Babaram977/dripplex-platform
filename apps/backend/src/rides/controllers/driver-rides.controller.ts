@@ -28,6 +28,7 @@ import type { AuthenticatedUser } from '../../auth/auth.types';
 import type { ApiSuccessResponse } from '../../common/dto/api-response.dto';
 import type {
   DriverAvailabilityDto,
+  DriverRideDto,
   RideDto,
   RideOfferDto,
   RideOfferPreviewDto,
@@ -67,7 +68,7 @@ export class DriverRidesController {
   @Get('active')
   public async getActiveRide(
     @CurrentUser() user: AuthenticatedUser,
-  ): Promise<ApiSuccessResponse<RideDto | null>> {
+  ): Promise<ApiSuccessResponse<DriverRideDto | null>> {
     const data = await this.ridesService.getActiveRide(user.id);
     return { success: true, data };
   }

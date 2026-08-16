@@ -17,7 +17,12 @@ import type {
   RiderAvailability,
 } from '@prisma/client';
 
-export type { CustomerDeliveryDto, DeliveryJobDto, RiderLocationDto } from '@dripplex/types';
+export type {
+  CustomerDeliveryDto,
+  DeliveryJobDto,
+  RiderDeliveryJobDto,
+  RiderLocationDto,
+} from '@dripplex/types';
 export type EtaDto = DeliveryEtaDto;
 export type ProofDto = DeliveryProofDto;
 export type TrackingDto = DeliveryTrackingDto;
