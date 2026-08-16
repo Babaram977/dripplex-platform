@@ -33,9 +33,25 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      # Real Redis for the same reason. Specs that boot the whole AppModule
+      # (moduleRef.init(), not just compile()) start RedisService, whose
+      # onModuleInit awaits a connection that ioredis retries forever — with no
+      # Redis here the run does not fail, it *hangs* until the 45-minute job
+      # timeout, which reads as an infrastructure flake rather than a missing
+      # service. The guard in jest-global-setup now names it in seconds.
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       # GitHub Actions sets CI=true, which arms the DB-integrity globalSetup.
       DATABASE_URL: postgresql://dripplex:dripplex@localhost:5432/dripplex?schema=public
+      REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
