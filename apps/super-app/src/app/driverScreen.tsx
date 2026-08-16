@@ -1060,9 +1060,17 @@ const DRIVER_KYC_DOCS: {
 export function DriverUploadDocsScreen({
   onBack,
   onSave,
+  onEmergencyContact,
+  onAgreement,
 }: {
   onBack: () => void;
   onSave: () => void;
+  // Submitting for review needs an emergency contact and an accepted driver
+  // agreement as well as documents. The backend named both in its refusal, but
+  // this screen had no route to either, so a driver who reached it with
+  // documents uploaded could read what was missing and still not get there.
+  onEmergencyContact?: () => void;
+  onAgreement?: () => void;
 }) {
   // Inline upload form state (one document at a time).
   const [openType, setOpenType] = useState<string | null>(null);
@@ -1176,6 +1184,12 @@ export function DriverUploadDocsScreen({
     return st === 'VERIFIED' || st === 'PENDING';
   }).length;
   const canReview = submitted.length > 0 || Object.keys(docState).length > 0;
+
+  // The backend names precisely what is outstanding
+  // ("Onboarding is incomplete (missing: emergency contact, driver agreement
+  // acceptance)"), so read its own words rather than second-guessing state.
+  const needsEmergencyContact = /emergency contact/i.test(reviewErr);
+  const needsAgreement = /agreement/i.test(reviewErr);
 
   return (
     <div
@@ -1374,6 +1388,46 @@ export function DriverUploadDocsScreen({
             style={{ background: 'rgba(239,68,68,.07)', border: '1px solid rgba(239,68,68,.2)' }}
           >
             <p style={{ fontFamily: IT, fontSize: 12, color: '#F87171' }}>{reviewErr}</p>
+            {/* Turn the refusal into the steps it names. Reading "missing:
+                emergency contact, driver agreement acceptance" with no way to
+                supply either is a dead end — which is exactly where driver
+                registration stopped. */}
+            {(needsEmergencyContact || needsAgreement) && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {needsEmergencyContact && onEmergencyContact && (
+                  <button
+                    onClick={onEmergencyContact}
+                    className="rounded-xl px-3 py-2 active:opacity-70"
+                    style={{
+                      background: 'rgba(255,255,255,.06)',
+                      border: '1px solid rgba(255,255,255,.14)',
+                      fontFamily: IT,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: '#fff',
+                    }}
+                  >
+                    Add emergency contact →
+                  </button>
+                )}
+                {needsAgreement && onAgreement && (
+                  <button
+                    onClick={onAgreement}
+                    className="rounded-xl px-3 py-2 active:opacity-70"
+                    style={{
+                      background: 'rgba(255,255,255,.06)',
+                      border: '1px solid rgba(255,255,255,.14)',
+                      fontFamily: IT,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: '#fff',
+                    }}
+                  >
+                    Accept driver agreement →
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
 

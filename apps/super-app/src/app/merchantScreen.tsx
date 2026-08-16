@@ -1282,6 +1282,19 @@ function OrdersPage({ onDetail }: { onDetail: (id: string) => void }) {
     } catch {}
     setActionId(null);
   };
+  // DPX-ORDER-B — bank-transfer money arrives in the merchant's OWN account, so
+  // DrippleX never sees it and only the merchant can confirm it landed. Until
+  // they do the order stays unpaid, and an unpaid non-cash order is never
+  // dispatched to a rider — which is exactly how an order sat at "Pending
+  // rider" while three riders were online.
+  const doConfirmPayment = async (id: string) => {
+    setActionId(id);
+    try {
+      await api.merchant.confirmPaymentReceived(id);
+      fetchOrders(activeTab);
+    } catch {}
+    setActionId(null);
+  };
 
   return (
     <div
@@ -1424,6 +1437,17 @@ function OrdersPage({ onDetail }: { onDetail: (id: string) => void }) {
                           onClick={() => doMarkReady(o.id)}
                         />
                       )}
+                      {o.paymentMethod === 'MERCHANT_DIRECT' &&
+                        o.paymentStatus !== 'PAID' &&
+                        o.status !== 'CANCELLED' && (
+                          <MxBtn
+                            label={busy ? '…' : 'Confirm payment received'}
+                            variant="primary"
+                            small
+                            disabled={busy}
+                            onClick={() => doConfirmPayment(o.id)}
+                          />
+                        )}
                       <MxBtn label="View" variant="ghost" small onClick={() => onDetail(o.id)} />
                     </div>
                   </div>

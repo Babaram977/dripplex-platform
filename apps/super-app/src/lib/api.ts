@@ -1729,6 +1729,11 @@ export const api = {
     rejectOrder: (id: string, reason: string) =>
       dx<MerchantOrderDto>('PATCH', `/merchant/orders/${id}/reject`, { reason }),
     markReady: (id: string) => dx<MerchantOrderDto>('PATCH', `/merchant/orders/${id}/ready`),
+    // DPX-ORDER-B — "Pay to Merchant Bank" money lands in the merchant's own
+    // account, so only they can confirm it arrived. Until they do, the order
+    // stays PENDING and no rider is dispatched.
+    confirmPaymentReceived: (id: string) =>
+      dx<MerchantOrderDto>('PATCH', `/merchant/orders/${id}/payment-received`),
     delayOrder: (id: string, body: { estimatedReadyAt: string }) =>
       dx<MerchantOrderDto>('PATCH', `/merchant/orders/${id}/delay`, body),
     cancelOrder: (id: string, reason?: string) =>

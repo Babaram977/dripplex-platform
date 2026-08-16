@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { api, uploadFile } from '../lib/api';
 import { auth } from '../lib/auth';
 import { getCurrentPosition } from '../lib/maps';
-import type { DeliveryJobDto, WalletDto } from '../lib/api';
+import type { DeliveryJobDto, RiderAvailabilityDto, RiderProfileDto, WalletDto } from '../lib/api';
 
 const PP = "'Poppins',sans-serif";
 const IT = "'Inter',sans-serif";
@@ -328,10 +328,12 @@ export function RiderLoginScreen({
 export function RiderDashboardScreen({
   onJob,
   onEarnings,
+  onAccount,
   onSignIn,
 }: {
   onJob: (job: DeliveryJobDto) => void;
   onEarnings: () => void;
+  onAccount: () => void;
   onSignIn?: () => void;
 }) {
   const [online, setOnline] = useState(false);
@@ -506,21 +508,41 @@ export function RiderDashboardScreen({
             </p>
             <p style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>DrippleX Delivery Rider</p>
           </div>
-          <button
-            onClick={onEarnings}
-            style={{
-              background: NAVY_SURFACE,
-              border: `1px solid ${BORDER}`,
-              borderRadius: 10,
-              padding: '8px 14px',
-              fontFamily: IT,
-              fontSize: 12,
-              color: G3,
-              cursor: 'pointer',
-            }}
-          >
-            Earnings
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={onEarnings}
+              style={{
+                background: NAVY_SURFACE,
+                border: `1px solid ${BORDER}`,
+                borderRadius: 10,
+                padding: '8px 14px',
+                fontFamily: IT,
+                fontSize: 12,
+                color: G3,
+                cursor: 'pointer',
+              }}
+            >
+              Earnings
+            </button>
+            {/* The portal had no way out and no way in: no sign-out, and no
+                view of the rider's own approval/KYC state. */}
+            <button
+              onClick={onAccount}
+              aria-label="Account"
+              style={{
+                background: NAVY_SURFACE,
+                border: `1px solid ${BORDER}`,
+                borderRadius: 10,
+                padding: '8px 14px',
+                fontFamily: IT,
+                fontSize: 12,
+                color: WHITE,
+                cursor: 'pointer',
+              }}
+            >
+              Account
+            </button>
+          </div>
         </div>
 
         {/* Wallet */}
@@ -1138,6 +1160,253 @@ export function RiderEarningsScreen({ onBack }: { onBack: () => void }) {
           </>
         ) : (
           <p style={{ fontFamily: IT, color: MUTED, textAlign: 'center' }}>Unable to load wallet</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The rider's own account — identity, application state, and sign-out.
+ *
+ * The portal had none of this: a rider could see Earnings and nothing else,
+ * could not sign out (the session is shared across portals, so they were stuck
+ * as whoever logged in last), and had no way to find out why they were sitting
+ * idle. Everything here reads endpoints that already exist — GET /rider/profile
+ * and GET /rider/availability — so nothing about approval or KYC is invented.
+ */
+export function RiderAccountScreen({
+  onBack,
+  onSignedOut,
+}: {
+  onBack: () => void;
+  onSignedOut: () => void;
+}) {
+  const [profile, setProfile] = useState<RiderProfileDto | null>(null);
+  const [availability, setAvailability] = useState<RiderAvailabilityDto | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void Promise.all([
+      api.rider.getProfile().catch((e: { message?: string }) => {
+        setError(e.message ?? 'Could not load your profile.');
+        return null;
+      }),
+      api.rider.getAvailability().catch(() => null),
+    ])
+      .then(([p, a]) => {
+        if (p) setProfile(p);
+        setAvailability(a);
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  const signOut = () => {
+    // Best-effort server-side revoke; the local session is cleared either way,
+    // so a network failure can never leave the rider signed in.
+    void api.auth
+      .logout()
+      .catch(() => {})
+      .finally(() => {
+        auth.clear();
+        onSignedOut();
+      });
+  };
+
+  const user = auth.getUser();
+  const fullName =
+    [profile?.firstName ?? user?.firstName, profile?.lastName ?? user?.lastName]
+      .filter(Boolean)
+      .join(' ')
+      .trim() || 'Rider';
+
+  const docStatus = (documentType: string): 'VERIFIED' | 'PENDING' | 'REJECTED' | 'MISSING' =>
+    profile?.kyc.find((d) => d.documentType === documentType)?.verificationStatus ?? 'MISSING';
+
+  // Mirrors the backend's dispatch gate exactly (listAvailableRiders): approved
+  // profile + a VERIFIED document of every required type + online, accepting,
+  // and sharing a position. Any one of these missing means no job is ever
+  // offered — which used to be completely invisible from inside the app.
+  const checks: { label: string; ok: boolean; detail: string }[] = [
+    {
+      label: 'Approved by DrippleX',
+      ok: profile?.status === 'APPROVED' && profile.isApproved,
+      detail:
+        profile?.status === 'REJECTED'
+          ? (profile.rejectedReason ?? 'Your application was rejected.')
+          : profile?.status === 'SUSPENDED'
+            ? 'Your account is suspended.'
+            : 'Operations still has your application under review.',
+    },
+    {
+      label: 'National ID verified',
+      ok: docStatus('NATIONAL_ID') === 'VERIFIED',
+      detail:
+        docStatus('NATIONAL_ID') === 'MISSING'
+          ? 'Not submitted yet.'
+          : docStatus('NATIONAL_ID') === 'REJECTED'
+            ? 'Rejected — submit a new one.'
+            : 'Submitted, awaiting review.',
+    },
+    {
+      label: 'Guarantor ID verified',
+      ok: docStatus('GUARANTOR_ID') === 'VERIFIED',
+      detail:
+        docStatus('GUARANTOR_ID') === 'MISSING'
+          ? 'Not submitted yet.'
+          : docStatus('GUARANTOR_ID') === 'REJECTED'
+            ? 'Rejected — submit a new one.'
+            : 'Submitted, awaiting review.',
+    },
+    {
+      label: 'Online and accepting jobs',
+      ok: (availability?.online ?? false) && (availability?.acceptingOrders ?? false),
+      detail: 'Use the Go Online button on your dashboard.',
+    },
+    {
+      label: 'Sharing your location',
+      ok: availability?.latitude !== null && availability?.longitude !== null,
+      detail: 'Dispatch picks the nearest rider, so it skips riders with no position.',
+    },
+  ];
+  const blocked = checks.filter((c) => !c.ok);
+
+  const row = (label: string, value: string) => (
+    <div
+      key={label}
+      style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '10px 0' }}
+    >
+      <span style={{ fontFamily: IT, fontSize: 13, color: MUTED }}>{label}</span>
+      <span
+        style={{
+          fontFamily: IT,
+          fontSize: 13,
+          color: WHITE,
+          textAlign: 'right',
+          wordBreak: 'break-word',
+        }}
+      >
+        {value}
+      </span>
+    </div>
+  );
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        inset: 0,
+        background: NAVY_BASE,
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+      }}
+    >
+      <RStatusBar />
+      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 20px 32px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+          <RBackBtn onClick={onBack} />
+          <p style={{ fontFamily: PP, fontSize: 17, fontWeight: 700, color: WHITE }}>Account</p>
+        </div>
+
+        {loading ? (
+          <p style={{ fontFamily: IT, color: MUTED, textAlign: 'center' }}>Loading…</p>
+        ) : (
+          <>
+            <div
+              style={{
+                borderRadius: 16,
+                padding: '18px 20px',
+                marginBottom: 16,
+                background: NAVY_CARD,
+                border: `1px solid ${BORDER}`,
+              }}
+            >
+              <p style={{ fontFamily: PP, fontSize: 18, fontWeight: 700, color: WHITE }}>
+                🏍️ {fullName}
+              </p>
+              <p style={{ fontFamily: IT, fontSize: 12, color: MUTED, marginTop: 2 }}>
+                DrippleX Delivery Rider
+              </p>
+              {error && (
+                <p style={{ fontFamily: IT, fontSize: 12, color: C_ERR, marginTop: 10 }}>{error}</p>
+              )}
+              {profile && (
+                <div style={{ marginTop: 12, borderTop: `1px solid ${BORDER}` }}>
+                  {row('Email', profile.email)}
+                  {row('Phone', profile.phone ?? 'Not provided')}
+                  {profile.companyName ? row('Company', profile.companyName) : null}
+                  {row('Application', profile.status)}
+                  {row('Joined', new Date(profile.createdAt).toLocaleDateString())}
+                </div>
+              )}
+            </div>
+
+            {profile && (
+              <div
+                style={{
+                  borderRadius: 16,
+                  padding: '18px 20px',
+                  marginBottom: 16,
+                  background: NAVY_CARD,
+                  border: `1px solid ${blocked.length > 0 ? 'rgba(245,158,11,.35)' : BORDER}`,
+                }}
+              >
+                <p style={{ fontFamily: PP, fontSize: 14, fontWeight: 700, color: WHITE }}>
+                  {blocked.length === 0 ? 'You can receive jobs' : 'Why you are not getting jobs'}
+                </p>
+                <p style={{ fontFamily: IT, fontSize: 12, color: MUTED, marginTop: 4 }}>
+                  {blocked.length === 0
+                    ? 'Everything DrippleX checks before offering a delivery is in place.'
+                    : 'Every item must be met before dispatch will offer you a delivery.'}
+                </p>
+                <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {checks.map((c) => (
+                    <div key={c.label} style={{ display: 'flex', gap: 10 }}>
+                      <span style={{ fontSize: 13, color: c.ok ? G3 : C_WARN }}>
+                        {c.ok ? '✓' : '•'}
+                      </span>
+                      <div style={{ flex: 1 }}>
+                        <p
+                          style={{
+                            fontFamily: IT,
+                            fontSize: 13,
+                            color: c.ok ? WHITE : 'rgba(255,255,255,.75)',
+                          }}
+                        >
+                          {c.label}
+                        </p>
+                        {!c.ok && (
+                          <p style={{ fontFamily: IT, fontSize: 11.5, color: MUTED, marginTop: 2 }}>
+                            {c.detail}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={signOut}
+              style={{
+                width: '100%',
+                height: 48,
+                borderRadius: 14,
+                background: 'rgba(239,68,68,.06)',
+                border: '1px solid rgba(239,68,68,.18)',
+                fontFamily: IT,
+                fontSize: 14,
+                fontWeight: 600,
+                color: C_ERR,
+                cursor: 'pointer',
+              }}
+            >
+              Sign Out
+            </button>
+          </>
         )}
       </div>
     </div>

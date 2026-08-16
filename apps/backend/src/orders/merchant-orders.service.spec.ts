@@ -1,4 +1,10 @@
-import { FulfillmentType, OrderStatus, PaymentStatus, WalletOwnerType } from '@prisma/client';
+import {
+  FulfillmentType,
+  OrderPaymentMethod,
+  OrderStatus,
+  PaymentStatus,
+  WalletOwnerType,
+} from '@prisma/client';
 
 import {
   NotFoundDomainException,
@@ -73,6 +79,7 @@ describe('MerchantOrdersService', () => {
 
   const notifications = {
     notifyOrderLifecycle: jest.fn().mockResolvedValue(undefined),
+    notifyPaymentResult: jest.fn().mockResolvedValue(undefined),
   } as unknown as jest.Mocked<NotificationService>;
 
   const walletService = {
@@ -289,6 +296,118 @@ describe('MerchantOrdersService', () => {
       await expect(
         service.cancelOrder(merchantId, orderId, undefined, context),
       ).rejects.toBeInstanceOf(ValidationDomainException);
+    });
+  });
+
+  /**
+   * DPX-ORDER-B — "Pay to Merchant Bank" money lands in the MERCHANT's account,
+   * so only they can confirm it. Until this existed a MERCHANT_DIRECT order
+   * could never become PAID, which stranded a real order: the merchant marked
+   * it READY, createDeliveryJob refused an unpaid non-cash order, the failure
+   * was swallowed into a log line, and the customer watched "Pending rider"
+   * with no delivery job in existence.
+   */
+  describe('confirmPaymentReceived', () => {
+    const bankTransferOrder = (overrides: Partial<OrderWithItems> = {}): OrderWithItems =>
+      makeOrder({
+        paymentMethod: OrderPaymentMethod.MERCHANT_DIRECT,
+        paymentStatus: PaymentStatus.PENDING,
+        ...overrides,
+      });
+
+    it('marks a bank-transfer order paid without touching its lifecycle status', async () => {
+      ordersRepository.findByIdForMerchant.mockResolvedValue(
+        bankTransferOrder({ status: OrderStatus.PREPARING }),
+      );
+
+      await service.confirmPaymentReceived(merchantId, orderId, context);
+
+      expect(ordersRepository.transition).toHaveBeenCalledWith(orderId, {
+        status: OrderStatus.PREPARING,
+        paymentStatus: PaymentStatus.PAID,
+      });
+      expect(auditService.record).toHaveBeenCalledWith(
+        ORDER_AUDIT_ACTIONS.PAYMENT_CONFIRMED,
+        expect.objectContaining({ userId: merchantId }),
+        expect.objectContaining({ resource: 'order', resourceId: orderId }),
+      );
+      expect(eventBus.emit).toHaveBeenCalledWith(
+        DOMAIN_EVENTS.ORDER_PAID,
+        expect.objectContaining({ orderId, method: OrderPaymentMethod.MERCHANT_DIRECT }),
+        expect.anything(),
+      );
+    });
+
+    it('dispatches the delivery for an order already marked ready — the stranded case', async () => {
+      ordersRepository.findByIdForMerchant.mockResolvedValue(
+        bankTransferOrder({ status: OrderStatus.READY }),
+      );
+
+      await service.confirmPaymentReceived(merchantId, orderId, context);
+
+      // Re-emitting ORDER_READY is what rescues the order: dispatch refused it
+      // the first time only because payment had not landed.
+      expect(eventBus.emit).toHaveBeenCalledWith(
+        DOMAIN_EVENTS.ORDER_READY,
+        expect.objectContaining({ orderId, fulfillmentType: FulfillmentType.DELIVERY }),
+        expect.anything(),
+      );
+    });
+
+    it('does not ask for dispatch when the order is not ready yet', async () => {
+      ordersRepository.findByIdForMerchant.mockResolvedValue(
+        bankTransferOrder({ status: OrderStatus.CONFIRMED }),
+      );
+
+      await service.confirmPaymentReceived(merchantId, orderId, context);
+
+      const readyEmits = eventBus.emit.mock.calls.filter(
+        ([event]) => event === DOMAIN_EVENTS.ORDER_READY,
+      );
+      expect(readyEmits).toHaveLength(0);
+    });
+
+    it('tells the customer their payment was confirmed', async () => {
+      ordersRepository.findByIdForMerchant.mockResolvedValue(bankTransferOrder());
+
+      await service.confirmPaymentReceived(merchantId, orderId, context);
+
+      expect(notifications.notifyPaymentResult).toHaveBeenCalledWith(
+        expect.objectContaining({ audience: 'customer', success: true, orderId }),
+      );
+    });
+
+    it('is idempotent — a second confirmation changes nothing', async () => {
+      ordersRepository.findByIdForMerchant.mockResolvedValue(
+        bankTransferOrder({ paymentStatus: PaymentStatus.PAID }),
+      );
+
+      await service.confirmPaymentReceived(merchantId, orderId, context);
+
+      expect(ordersRepository.transition).not.toHaveBeenCalled();
+      expect(eventBus.emit).not.toHaveBeenCalled();
+    });
+
+    it("refuses any other payment method — wallet and card are already paid, cash is the rider's", async () => {
+      ordersRepository.findByIdForMerchant.mockResolvedValue(
+        makeOrder({
+          paymentMethod: OrderPaymentMethod.CASH,
+          paymentStatus: PaymentStatus.PENDING,
+        }),
+      );
+
+      await expect(
+        service.confirmPaymentReceived(merchantId, orderId, context),
+      ).rejects.toBeInstanceOf(ValidationDomainException);
+      expect(ordersRepository.transition).not.toHaveBeenCalled();
+    });
+
+    it('refuses an order belonging to another merchant', async () => {
+      ordersRepository.findByIdForMerchant.mockResolvedValue(null);
+
+      await expect(
+        service.confirmPaymentReceived(merchantId, orderId, context),
+      ).rejects.toBeInstanceOf(NotFoundDomainException);
     });
   });
 
