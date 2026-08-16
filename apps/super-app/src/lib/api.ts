@@ -1463,6 +1463,10 @@ export const api = {
       frontImage: string;
       backImage?: string;
     }) => dx<unknown>('POST', '/driver/kyc', body),
+    // The driver's own vehicles — dispatch matches a ride's type against
+    // DriverAvailability.vehicleType, so going online has to send the category
+    // of the vehicle they actually drive.
+    listVehicles: () => dx<AdminVehicleDto[]>('GET', '/driver/vehicles'),
     createVehicle: (body: {
       plateNumber: string;
       make: string;

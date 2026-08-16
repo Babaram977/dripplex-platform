@@ -63,6 +63,7 @@ import {
   FareEstimateScreen,
   FindingDriverScreen,
   type RideDestination,
+  useDevicePickup,
   DriverAssignedScreen,
   DriverArrivedScreen,
   RideInProgressScreen,
@@ -466,6 +467,10 @@ function AppShell() {
   const [activeDriverOffer, setActiveDriverOffer] = useState<RideOfferDto | null>(null);
   const [activeDriverRide, setActiveDriverRide] = useState<RideDto | null>(null);
   const [rideDest, setRideDest] = useState<RideDestination | undefined>(undefined);
+  // The passenger's REAL pickup, resolved from the device. Every ride used to
+  // be booked from a hardcoded "Ikeja GRA, Lagos" regardless of where the
+  // passenger stood, and the pickup row could not be changed.
+  const ridePickup = useDevicePickup();
   const [activeCustomerRideId, setActiveCustomerRideId] = useState<string | undefined>(undefined);
 
   const go = (to: Screen) => {
@@ -802,6 +807,11 @@ function AppShell() {
           setRideDest(dest);
           go('ridepickup');
         }}
+        pickup={ridePickup.pickup}
+        onPickupChange={ridePickup.setPickup}
+        pickupResolving={ridePickup.resolving}
+        pickupError={ridePickup.error}
+        onLocateMe={ridePickup.locate}
       />
     ),
     ridepickup: (
@@ -811,6 +821,7 @@ function AppShell() {
       <FareEstimateScreen
         onBack={() => go('ridepickup')}
         dropoff={rideDest}
+        pickup={ridePickup.pickup}
         rideType="ECONOMY"
         onBook={(rideId) => {
           setActiveCustomerRideId(rideId);
@@ -853,6 +864,7 @@ function AppShell() {
       <TripCompletedScreen
         onRate={() => go('riderating')}
         onHome={() => go('home')}
+        onTip={() => go('ridetip')}
         rideId={activeCustomerRideId}
       />
     ),
@@ -951,6 +963,7 @@ function AppShell() {
         onBack={() => go('ridecomplete')}
         onSubmit={() => go('riderating')}
         onSkip={() => go('riderating')}
+        rideId={activeCustomerRideId}
       />
     ),
     ridereport: (

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { G0, G2, G3, NAVY_DEEP, NAVY_CARD, NAVY_SURFACE, BORDER, MUTED } from './shared';
 import {
   COLOR_SUCCESS,
@@ -9,7 +9,12 @@ import {
 } from '../tokens/colors';
 import { api } from '../lib/api';
 import { ws } from '../lib/ws';
-import { addressPredictions, geocodeAddress } from '../lib/maps';
+import {
+  addressPredictions,
+  geocodeAddress,
+  getCurrentPosition,
+  reverseGeocode,
+} from '../lib/maps';
 import type { AddressPrediction } from '../lib/maps';
 import type { RideDto, RideType, RideTypeCatalogEntryDto } from '../lib/api';
 
@@ -20,13 +25,70 @@ const NAVY_BASE = '#0A1628';
 const PP = "'Poppins',sans-serif";
 const IT = "'Inter',sans-serif";
 
-// Demo geo — real Lagos coordinates so a booked ride carries a real route.
-// Pickup is the rider's "current location" shown across the ride screens.
-export const RIDE_PICKUP = {
+/**
+ * Fallback map centre only — NEVER a booked pickup.
+ *
+ * This used to be the pickup for every ride in the product: a hardcoded "Ikeja
+ * GRA, Lagos" that was sent to POST /customer/rides no matter where the
+ * passenger actually stood, while the pickup row on Set Destination was a dead
+ * label they could not change. A passenger in Kano booked a ride from Lagos.
+ * The real pickup now comes from the device (see useDevicePickup) or from the
+ * passenger picking one, and booking is refused without it.
+ */
+export const RIDE_MAP_FALLBACK_CENTRE = {
   latitude: 6.5833,
   longitude: 3.35,
-  address: 'Ikeja GRA, Lagos',
 };
+
+/** Where the passenger is being collected from. */
+export interface RidePickup {
+  latitude: number;
+  longitude: number;
+  address: string;
+}
+
+/**
+ * Resolves the passenger's real pickup: device position, reverse-geocoded to a
+ * readable address. Returns null while unresolved and on refusal — callers must
+ * treat "no pickup" as "cannot book", not as "use a default".
+ */
+export function useDevicePickup(): {
+  pickup: RidePickup | null;
+  setPickup: (p: RidePickup) => void;
+  resolving: boolean;
+  error: string | null;
+  locate: () => void;
+} {
+  const [pickup, setPickup] = useState<RidePickup | null>(null);
+  const [resolving, setResolving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const locate = useCallback(() => {
+    setResolving(true);
+    setError(null);
+    void getCurrentPosition()
+      .then(async (pos) => {
+        if (!pos) {
+          setError('Allow location access, or set your pickup point by hand.');
+          return;
+        }
+        const resolved = await reverseGeocode(pos);
+        setPickup({
+          latitude: pos.latitude,
+          longitude: pos.longitude,
+          // A coordinate with no street name is still a true pickup; showing it
+          // beats naming somewhere the passenger is not.
+          address: resolved?.formattedAddress ?? 'Your current location',
+        });
+      })
+      .catch(() => setError('Could not read your location. Set your pickup point by hand.'))
+      .finally(() => setResolving(false));
+  }, []);
+
+  useEffect(() => locate(), [locate]);
+
+  return { pickup, setPickup, resolving, error, locate };
+}
 
 export interface RideDestination {
   latitude: number;
@@ -657,10 +719,25 @@ export function RideHomeScreen({
 export function DestinationSearchScreen({
   onBack,
   onSelect,
+  pickup,
+  onPickupChange,
+  pickupResolving,
+  pickupError,
+  onLocateMe,
 }: {
   onBack: () => void;
   onSelect: (dest: RideDestination) => void;
+  // The pickup row was a dead label reading "Ikeja GRA, Lagos" for every
+  // passenger. It now shows where they actually are and can be changed.
+  pickup?: RidePickup | null;
+  onPickupChange?: (p: RidePickup) => void;
+  pickupResolving?: boolean;
+  pickupError?: string | null;
+  onLocateMe?: () => void;
 }) {
+  // Which field the search box is filling. Tapping the pickup row switches the
+  // same Places search over to it instead of leaving it inert.
+  const [editing, setEditing] = useState<'destination' | 'pickup'>('destination');
   const [query, setQuery] = useState('');
   const [focused, setFocused] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -714,6 +791,17 @@ export function DestinationSearchScreen({
       return;
     }
     const [head, ...rest] = pred.description.split(',');
+    if (editing === 'pickup') {
+      onPickupChange?.({
+        latitude: resolved.latitude,
+        longitude: resolved.longitude,
+        address: pred.description,
+      });
+      setEditing('destination');
+      setQuery('');
+      setPlaceResults([]);
+      return;
+    }
     onSelect({
       latitude: resolved.latitude,
       longitude: resolved.longitude,
@@ -746,22 +834,50 @@ export function DestinationSearchScreen({
           </p>
         </div>
 
-        {/* Pickup row */}
-        <div
-          className="mb-2 flex items-center gap-3 rounded-2xl px-4 py-3"
-          style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
+        {/* Pickup row — tappable, and showing the passenger's real position */}
+        <button
+          onClick={() => {
+            setEditing('pickup');
+            setQuery('');
+            setPlaceResults([]);
+            inputRef.current?.focus();
+          }}
+          className="mb-2 flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left active:opacity-70"
+          style={{
+            background: NAVY_SURFACE,
+            border: `1px solid ${editing === 'pickup' ? G2 : BORDER}`,
+          }}
         >
           <div className="h-2.5 w-2.5 flex-shrink-0 rounded-full" style={{ background: G2 }} />
           <span className="flex-1 text-[14px]" style={{ fontFamily: IT, color: TEXT_SECONDARY }}>
-            Ikeja GRA, Lagos
+            {pickupResolving
+              ? 'Finding your location…'
+              : (pickup?.address ?? 'Set your pickup point')}
           </span>
           <span
             className="rounded-full px-2 py-0.5 text-[11px] font-medium"
             style={{ background: 'rgba(43,172,82,.12)', color: G3 }}
           >
-            Now
+            {editing === 'pickup' ? 'Editing' : 'Change'}
           </span>
-        </div>
+        </button>
+
+        {pickupError && !pickup && (
+          <div className="mb-2 flex items-center gap-2">
+            <span className="text-[11.5px]" style={{ fontFamily: IT, color: '#F59E0B' }}>
+              {pickupError}
+            </span>
+            {onLocateMe && (
+              <button
+                onClick={onLocateMe}
+                className="text-[11.5px] font-semibold underline active:opacity-60"
+                style={{ fontFamily: IT, color: G3 }}
+              >
+                Retry
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Destination input */}
         <div
@@ -781,7 +897,7 @@ export function DestinationSearchScreen({
             onChange={(e) => setQuery(e.target.value)}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
-            placeholder="Enter destination..."
+            placeholder={editing === 'pickup' ? 'Search a pickup point…' : 'Enter destination...'}
             className="flex-1 bg-transparent outline-none"
             style={{ fontFamily: IT, fontSize: 15, color: '#fff' }}
           />
@@ -1022,11 +1138,16 @@ export function FareEstimateScreen({
   onBack,
   onBook,
   dropoff,
+  pickup,
   rideType = 'ECONOMY',
 }: {
   onBack: () => void;
   onBook: (rideId: string) => void;
   dropoff?: RideDestination;
+  // The passenger's REAL pickup. Absent means we do not know where they are,
+  // and a ride must not be booked from a guess — this used to be a hardcoded
+  // Lagos address sent for every passenger everywhere.
+  pickup?: RidePickup | null;
   rideType?: RideType;
 }) {
   const [payment, setPayment] = useState('cash');
@@ -1061,18 +1182,18 @@ export function FareEstimateScreen({
   }, []);
 
   useEffect(() => {
-    if (!dropoff) return;
+    if (!dropoff || !pickup) return;
     api.rides
       .estimate({
         rideType,
-        pickupLatitude: RIDE_PICKUP.latitude,
-        pickupLongitude: RIDE_PICKUP.longitude,
+        pickupLatitude: pickup.latitude,
+        pickupLongitude: pickup.longitude,
         dropoffLatitude: dropoff.latitude,
         dropoffLongitude: dropoff.longitude,
       })
       .then((e) => setEstimate(e))
       .catch(() => {});
-  }, [dropoff, rideType]);
+  }, [dropoff, pickup, rideType]);
 
   const entry = catalog?.find((c) => c.rideType === rideType) ?? null;
   const typeName = entry?.label ?? RIDE_TYPE_LABEL[rideType];
@@ -1086,14 +1207,18 @@ export function FareEstimateScreen({
 
   const handleBook = async () => {
     if (booking || !dropoff) return;
+    if (!pickup) {
+      setError('We need your pickup point before booking. Go back and set it.');
+      return;
+    }
     setBooking(true);
     setError(null);
     try {
       const created = await api.rides.book({
         rideType,
-        pickupLatitude: RIDE_PICKUP.latitude,
-        pickupLongitude: RIDE_PICKUP.longitude,
-        pickupAddress: RIDE_PICKUP.address,
+        pickupLatitude: pickup.latitude,
+        pickupLongitude: pickup.longitude,
+        pickupAddress: pickup.address,
         dropoffLatitude: dropoff.latitude,
         dropoffLongitude: dropoff.longitude,
         dropoffAddress: dropoff.address,
@@ -2019,7 +2144,7 @@ export function RideInProgressScreen({
             </div>
             <div className="flex-1">
               <p className="mb-2 text-[12px]" style={{ fontFamily: IT, color: TEXT_SECONDARY }}>
-                {ride?.pickupAddress ?? RIDE_PICKUP.address}
+                {ride?.pickupAddress ?? '—'}
               </p>
               <p className="text-[12px]" style={{ fontFamily: IT, color: TEXT_SECONDARY }}>
                 {ride?.dropoffAddress ?? '—'}
@@ -2038,10 +2163,14 @@ export function RideInProgressScreen({
 export function TripCompletedScreen({
   onRate,
   onHome,
+  onTip,
   rideId,
 }: {
   onRate: () => void;
   onHome: () => void;
+  // Founder request, 2026-08-16: a passenger who feels like adding something
+  // for the driver should be able to. 100% of a tip goes to the driver.
+  onTip?: () => void;
   rideId?: string;
 }) {
   const ride = useLiveRide(rideId);
@@ -2160,6 +2289,20 @@ export function TripCompletedScreen({
         {/* Safety rating prompt */}
         <div className="flex w-full flex-col gap-3">
           <GreenButton label="Rate Your Ride ★" onClick={onRate} />
+          {onTip && (
+            <button
+              onClick={onTip}
+              className="flex h-12 w-full items-center justify-center rounded-2xl text-[14px] font-semibold transition-all active:scale-[.97]"
+              style={{
+                background: 'rgba(34,197,94,.10)',
+                border: `1px solid rgba(34,197,94,.28)`,
+                fontFamily: IT,
+                color: G3,
+              }}
+            >
+              💚 Add a tip for {receipt?.driver?.name ?? 'your driver'}
+            </button>
+          )}
           <button
             onClick={onHome}
             className="flex h-12 w-full items-center justify-center rounded-2xl text-[14px] font-medium transition-all active:scale-[.97]"
@@ -3498,14 +3641,62 @@ export function TipDriverScreen({
   onBack,
   onSubmit,
   onSkip,
+  rideId,
 }: {
   onBack?: () => void;
   onSubmit?: () => void;
   onSkip?: () => void;
+  // Which ride is being tipped. Without it this screen was a mock: preset
+  // chips, a made-up driver called "Adeyemi Okafor", and a Send Tip button
+  // that charged nothing and paid nobody.
+  rideId?: string | null;
 }) {
-  const presets = ['₦100', '₦200', '₦500', '₦1,000', 'Custom'];
-  const [selected, setSelected] = useState('₦200');
+  const PRESETS = [100, 200, 500, 1000] as const;
+  const [selected, setSelected] = useState<number | 'custom'>(200);
   const [custom, setCustom] = useState('');
+  const [ride, setRide] = useState<RideDto | null>(null);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
+
+  useEffect(() => {
+    if (!rideId) return;
+    api.rides
+      .get(rideId)
+      .then(setRide)
+      .catch(() => {});
+  }, [rideId]);
+
+  const amount = selected === 'custom' ? Number(custom.replace(/[^\d.]/g, '')) : selected;
+  const amountValid = Number.isFinite(amount) && amount > 0;
+  const alreadyTipped = (ride?.tipAmount ?? 0) > 0;
+
+  const handleSend = async () => {
+    if (!rideId) {
+      setError('This trip cannot be tipped.');
+      return;
+    }
+    if (!amountValid) {
+      setError('Enter an amount greater than zero.');
+      return;
+    }
+    setSending(true);
+    setError(null);
+    try {
+      // 100% of a tip goes to the driver — RidePaymentService.tipDriver takes
+      // no platform commission, unlike the fare.
+      await api.rides.tip(rideId, amount);
+      setSent(true);
+      onSubmit?.();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Could not send the tip.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const driverName = ride?.driverName ?? 'your driver';
+
   return (
     <div
       className="relative flex h-full w-full flex-col overflow-hidden"
@@ -3532,18 +3723,20 @@ export function TipDriverScreen({
               fontSize: 16,
             }}
           >
-            AO
+            {driverName
+              .split(' ')
+              .map((part) => part[0] ?? '')
+              .join('')
+              .slice(0, 2)
+              .toUpperCase() || '🚗'}
           </div>
           <div className="flex-1">
             <p style={{ fontFamily: PP, fontSize: 15, fontWeight: 600, color: '#fff' }}>
-              Adeyemi Okafor
+              {driverName}
             </p>
-            <div className="mt-0.5 flex items-center gap-1">
-              <StarRow rating={4.92} size={12} />
-              <p style={{ fontSize: 12, color: TEXT_SECONDARY, fontFamily: IT, marginLeft: 4 }}>
-                4.92
-              </p>
-            </div>
+            <p style={{ fontSize: 12, color: TEXT_SECONDARY, fontFamily: IT, marginTop: 2 }}>
+              {ride ? `Trip fare ${naira(ride.totalFare ?? 0)}` : 'Loading your trip…'}
+            </p>
           </div>
         </div>
         {/* Preset chips */}
@@ -3553,9 +3746,9 @@ export function TipDriverScreen({
           Select tip amount
         </p>
         <div className="mb-4 flex flex-wrap gap-2">
-          {presets.map((p) => (
+          {[...PRESETS, 'custom' as const].map((p) => (
             <button
-              key={p}
+              key={String(p)}
               className="rounded-full px-4 py-2 text-sm font-semibold transition-all active:scale-95"
               style={{
                 background: selected === p ? G3 : NAVY_CARD,
@@ -3566,11 +3759,11 @@ export function TipDriverScreen({
               }}
               onClick={() => setSelected(p)}
             >
-              {p}
+              {p === 'custom' ? 'Custom' : naira(p)}
             </button>
           ))}
         </div>
-        {selected === 'Custom' && (
+        {selected === 'custom' && (
           <div className="mb-4">
             <input
               type="number"
@@ -3597,9 +3790,19 @@ export function TipDriverScreen({
         </div>
       </div>
       <div className="flex flex-col gap-2 px-5 pb-8 pt-3">
+        {error && (
+          <p style={{ fontFamily: IT, fontSize: 12.5, color: '#F87171' }} className="text-center">
+            {error}
+          </p>
+        )}
+        {alreadyTipped && !sent && (
+          <p style={{ fontFamily: IT, fontSize: 12.5, color: G3 }} className="text-center">
+            You already tipped {naira(ride?.tipAmount ?? 0)} on this trip.
+          </p>
+        )}
         <GreenButton
-          label={`Send Tip${selected !== 'Custom' ? ` (${selected})` : custom ? ` (₦${custom})` : ''}`}
-          onClick={onSubmit || (() => {})}
+          label={sending ? 'Sending…' : `Send Tip${amountValid ? ` (${naira(amount)})` : ''}`}
+          onClick={sending || alreadyTipped ? () => {} : () => void handleSend()}
         />
         <button
           onClick={onSkip}

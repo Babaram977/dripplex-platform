@@ -123,6 +123,17 @@ export const RIDE_START_PROXIMITY_METERS = 50;
  * business sign-off before the Kano pilot goes live. Tracked as a follow-up,
  * not blocking RIDE-002.3's ride-request mechanism.
  */
+/**
+ * Founder decision, 2026-08-16: "make the minimum trip charge per trip order to
+ * be 1500, that is a distance of less than a km."
+ *
+ * A floor under the computed fare, applied to every ride type. A short hop that
+ * prices out below this is charged this instead, so a sub-kilometre trip is
+ * still worth a driver's time. Applied AFTER base + distance + time, so longer
+ * trips are unaffected.
+ */
+export const RIDE_MINIMUM_FARE = 1500;
+
 export const RIDE_FARE_RATES: Record<
   RideType,
   { baseFare: number; perKmRate: number; perMinuteRate: number }

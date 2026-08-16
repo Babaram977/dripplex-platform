@@ -9,6 +9,7 @@ import {
 } from '../tokens/colors';
 import { api, uploadFile } from '../lib/api';
 import { auth } from '../lib/auth';
+import { getCurrentPosition } from '../lib/maps';
 import type {
   DriverActivationEligibilityDto,
   RideOfferDto,
@@ -1792,16 +1793,53 @@ export function DriverDashboardScreen({
     };
   }, [online, onRequest]);
 
+  // Dispatch ranks candidates by distance from the pickup point and DROPS any
+  // driver whose availability row has no coordinates
+  // (RideDispatchService.findNearestEligibleDriver), and it matches
+  // DriverAvailability.vehicleType against the ride type the passenger chose.
+  // Going online used to send neither a position nor the driver's real vehicle
+  // category — it hardcoded ECONOMY — so an approved, online, waiting driver
+  // was invisible to every ride except an ECONOMY one, and invisible to that
+  // too for want of a location. That is why a verified driver sat online and
+  // no request ever arrived.
+  const resolveVehicleType = useCallback(async (): Promise<RideType> => {
+    try {
+      const vehicles = await api.driver.listVehicles();
+      const approved = vehicles.find((v) => v.approvalStatus === 'APPROVED' && v.isActive);
+      const chosen = approved ?? vehicles[0];
+      return (chosen?.rideCategory as RideType | undefined) ?? 'ECONOMY';
+    } catch {
+      return 'ECONOMY';
+    }
+  }, []);
+
   const handleToggle = async () => {
     setToggling(true);
     setError(null);
     const next = !online;
     try {
-      await api.driverRides.setAvailability({
-        online: next,
-        acceptingRides: next,
-        vehicleType: 'ECONOMY',
-      });
+      if (next) {
+        const pos = await getCurrentPosition();
+        if (!pos) {
+          setError(
+            'DrippleX needs your location to send you ride requests. Allow location access, then try again.',
+          );
+          return;
+        }
+        await api.driverRides.setAvailability({
+          online: true,
+          acceptingRides: true,
+          vehicleType: await resolveVehicleType(),
+          latitude: pos.latitude,
+          longitude: pos.longitude,
+        });
+      } else {
+        await api.driverRides.setAvailability({
+          online: false,
+          acceptingRides: false,
+          vehicleType: await resolveVehicleType(),
+        });
+      }
       setOnline(next);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Could not update availability');
@@ -1809,6 +1847,30 @@ export function DriverDashboardScreen({
       setToggling(false);
     }
   };
+
+  // Drivers move. Dispatch picks the nearest one, so a stale fix costs the
+  // driver trips and sends passengers a driver who is no longer close.
+  useEffect(() => {
+    if (!online) return;
+    const push = () => {
+      void getCurrentPosition().then((pos) => {
+        if (!pos) return;
+        void resolveVehicleType().then((vehicleType) => {
+          void api.driverRides
+            .setAvailability({
+              online: true,
+              acceptingRides: true,
+              vehicleType,
+              latitude: pos.latitude,
+              longitude: pos.longitude,
+            })
+            .catch(() => {});
+        });
+      });
+    };
+    const iv = setInterval(push, 60000);
+    return () => clearInterval(iv);
+  }, [online, resolveVehicleType]);
 
   const handleTabChange = (t: typeof tab) => setTab(t);
 
