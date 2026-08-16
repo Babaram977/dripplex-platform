@@ -64,3 +64,24 @@ export const auth = {
     return `${user.firstName} ${user.lastName}`.trim();
   },
 };
+
+/**
+ * End the session, everywhere, the same way.
+ *
+ * Every portal had rolled its own — or, for customers and drivers, none at all:
+ * the only way out was to refresh the page, which dumped you on the splash
+ * screen still signed in. Riders had no exit either until the Account screen
+ * shipped. This revokes the session server-side and clears the device
+ * regardless, so a network failure can never strand someone signed in.
+ *
+ * `logout` is passed in rather than imported to keep this module free of a
+ * dependency on the API client (which imports auth).
+ */
+export async function endSession(logout?: () => Promise<unknown>): Promise<void> {
+  try {
+    await logout?.();
+  } catch {
+    // Best effort: the local session is cleared either way.
+  }
+  auth.clear();
+}

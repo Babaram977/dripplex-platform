@@ -1729,10 +1729,13 @@ export function DriverVehicleRegScreen({
 export function DriverDashboardScreen({
   onRequest,
   onSettings,
+  onSignOut,
   onSignIn,
 }: {
   onRequest: (offer: RideOfferDto) => void;
   onSettings: () => void;
+  /** Ends the session and returns the driver to the portal's front door. */
+  onSignOut?: () => void;
   onSignIn?: () => void;
 }) {
   const [online, setOnline] = useState(false);
@@ -1906,7 +1909,13 @@ export function DriverDashboardScreen({
   if (tab === 'earnings') return <DriverEarningsTab onBack={() => setTab('dash')} />;
   if (tab === 'wallet') return <DriverWalletTab onBack={() => setTab('dash')} />;
   if (tab === 'profile')
-    return <DriverProfileTab onBack={() => setTab('dash')} onSettings={onSettings} />;
+    return (
+      <DriverProfileTab
+        onBack={() => setTab('dash')}
+        onSettings={onSettings}
+        onSignOut={onSignOut}
+      />
+    );
 
   return (
     <div
@@ -3375,7 +3384,17 @@ function DriverTripsTab({ onBack }: { onBack: () => void }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // DRIVER-016 — PROFILE TAB
 // ─────────────────────────────────────────────────────────────────────────────
-function DriverProfileTab({ onBack, onSettings }: { onBack: () => void; onSettings: () => void }) {
+function DriverProfileTab({
+  onBack,
+  onSettings,
+  onSignOut,
+}: {
+  onBack: () => void;
+  onSettings: () => void;
+  // Drivers had no visible way out: Sign Out existed only inside Settings,
+  // so the app looked like it could not be left except by refreshing.
+  onSignOut?: () => void;
+}) {
   const driver = auth.getUser();
   return (
     <div
@@ -3486,6 +3505,16 @@ function DriverProfileTab({ onBack, onSettings }: { onBack: () => void; onSettin
                 sub: 'Notifications, security & more',
                 action: onSettings,
               },
+              ...(onSignOut
+                ? [
+                    {
+                      icon: '⏻',
+                      label: 'Sign Out',
+                      sub: 'End this session on this device',
+                      action: onSignOut,
+                    },
+                  ]
+                : []),
             ].map((item) => (
               <button
                 key={item.label}

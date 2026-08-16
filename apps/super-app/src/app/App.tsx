@@ -165,7 +165,9 @@ import {
   PendingReviewScreen,
 } from './onboardingScreen';
 import type { PartnerPersona } from './onboardingScreen';
+import { api } from '../lib/api';
 import type { DeliveryJobDto, RideOfferDto, RideDto } from '../lib/api';
+import { endSession } from '../lib/auth';
 
 // DESKTOP FRAME — for admin operations console
 // ═══════════════════════════════════════════════════════════════════════════
@@ -591,6 +593,7 @@ function AppShell() {
     kyc: <IdentityVerificationScreen onBack={() => go('account')} />,
     account: (
       <AccountManagementScreen
+        onSignOut={() => go('welcome')}
         onBack={() => go('returning')}
         onKYC={() => go('kyc')}
         onSecurity={() => go('security')}
@@ -1074,6 +1077,9 @@ function AppShell() {
           go('drvrequest');
         }}
         onSettings={() => go('drvsettings')}
+        onSignOut={() => {
+          void endSession(() => api.auth.logout()).then(() => go('drvlogin'));
+        }}
         onSignIn={() => go('drvlogin')}
       />
     ),
