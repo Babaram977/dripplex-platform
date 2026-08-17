@@ -150,7 +150,7 @@ describe('CommissionAccountService', () => {
     );
   });
 
-  it('recordPayment() reduces the balance and unblocks once at/below the credit limit', async () => {
+  it('recordPayment() reduces the balance but only unblocks at zero', async () => {
     if (!databaseAvailable) return;
     await service.accrue({
       ownerType: CommissionOwnerType.MERCHANT,
@@ -167,8 +167,21 @@ describe('CommissionAccountService', () => {
       recordedBy: ADMIN_ID,
     });
 
+    // Back under the limit, still blocked — blocking is a latch for every
+    // commission-carrying party (founder decision, 2026-08-17). Paying just
+    // under the ceiling no longer buys another limit's worth of cash business.
     expect(Number(paidDown.outstandingBalance)).toBe(4_000);
-    expect(paidDown.blocked).toBe(false);
+    expect(paidDown.blocked).toBe(true);
+
+    const settled = await service.recordPayment({
+      ownerType: CommissionOwnerType.MERCHANT,
+      ownerId: MERCHANT_ID,
+      amount: 4_000,
+      recordedBy: ADMIN_ID,
+    });
+
+    expect(Number(settled.outstandingBalance)).toBe(0);
+    expect(settled.blocked).toBe(false);
     expect(auditRecord).toHaveBeenCalledWith(
       COMMERCIAL_AUDIT_ACTIONS.PAYMENT_RECORDED,
       expect.objectContaining({ userId: ADMIN_ID }),

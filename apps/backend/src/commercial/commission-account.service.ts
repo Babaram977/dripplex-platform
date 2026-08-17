@@ -366,24 +366,21 @@ export class CommissionAccountService {
     const balance = new Prisma.Decimal(account.outstandingBalance);
     const creditLimit = new Prisma.Decimal(setting.creditLimit);
 
-    // Founder decision (2026-08-17): "driver/rider who exceeds his credit limit
-    // cannot go online until he settle his credit back to zero."
+    // Blocking is a latch, not a threshold, for every commission-carrying party.
+    // You cross your credit limit to get blocked, and only clearing the balance
+    // to zero releases you.
     //
-    // For those two, blocking is a latch rather than a threshold: you cross the
-    // credit limit to get blocked, but dropping back under it does not release
-    // you — only clearing to zero does. Before this, paying ₦1 below the limit
-    // bought another full limit's worth of cash jobs, and a courier could ride
-    // the ceiling indefinitely without ever settling.
+    // Founder decisions, both 2026-08-17: riders and drivers first ("cannot go
+    // online until he settle his credit back to zero"), then merchants on the
+    // same rule with a ₦50,000 threshold rather than a courier's ₦10,000.
     //
-    // MERCHANTS are deliberately left on the original threshold rule. The
-    // decision named riders and drivers, a merchant's block stops them trading
-    // rather than stops them working a shift, and holding a shop closed after
-    // they have paid back under their limit is not a change anyone asked for.
-    const latchUntilZero =
-      account.ownerType === CommissionOwnerType.DRIVER ||
-      account.ownerType === CommissionOwnerType.RIDER;
-    const shouldBeBlocked =
-      account.blocked && latchUntilZero ? balance.greaterThan(0) : balance.greaterThan(creditLimit);
+    // What this replaced recomputed `blocked` as `balance > creditLimit` on
+    // every write, so paying ₦1 under the ceiling released you instantly — and
+    // bought another full limit's worth of cash business. Someone could ride
+    // the limit indefinitely and never settle.
+    const shouldBeBlocked = account.blocked
+      ? balance.greaterThan(0)
+      : balance.greaterThan(creditLimit);
 
     if (shouldBeBlocked === account.blocked && creditLimit.equals(account.creditLimit)) {
       return;

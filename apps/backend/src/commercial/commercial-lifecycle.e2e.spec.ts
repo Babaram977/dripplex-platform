@@ -270,8 +270,10 @@ describe('DPX-COMMERCIAL-001 Slice 6 — Full Commercial Lifecycle E2E', () => {
       expect(Number(account.outstandingBalance)).toBe(16_000);
       expect(account.blocked).toBe(true);
 
-      // Step 3 — Manual payment recording (admin action): brings the
-      // balance back under the limit.
+      // Step 3 — Manual payment recording (admin action): brings the balance
+      // back under the limit, but does NOT unblock. Blocking is a latch for
+      // merchants too (founder decision, 2026-08-17) — only zero releases them,
+      // which Step 4's automatic deduction goes on to do.
       account = await commissionAccounts.recordPayment({
         ownerType: CommissionOwnerType.MERCHANT,
         ownerId: merchantUserId,
@@ -281,7 +283,7 @@ describe('DPX-COMMERCIAL-001 Slice 6 — Full Commercial Lifecycle E2E', () => {
         context: { userId: ADMIN_ID },
       });
       expect(Number(account.outstandingBalance)).toBe(6_000);
-      expect(account.blocked).toBe(false);
+      expect(account.blocked).toBe(true);
 
       // Step 4 — Marketplace Mode A (escrow/gateway): commission is
       // captured directly (net-of-commission Wallet credit), and
