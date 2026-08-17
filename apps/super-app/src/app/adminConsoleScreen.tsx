@@ -2732,10 +2732,22 @@ function InspectionCard({
     <Card style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 18 }}>🔧</span>
-        <div
-          style={{ fontFamily: 'Poppins, sans-serif', fontSize: 13, fontWeight: 700, color: WHITE }}
-        >
-          Inspection {inspection.id.slice(0, 8)}
+        <div>
+          {/* The driver leads: this desk is a queue of people to inspect, and
+              "Inspection ae0b509c" told the inspector nothing about who. */}
+          <div
+            style={{
+              fontFamily: 'Poppins, sans-serif',
+              fontSize: 13,
+              fontWeight: 700,
+              color: WHITE,
+            }}
+          >
+            {inspection.driverName ?? 'Unknown driver'}
+          </div>
+          <div style={{ fontSize: 10, color: MUTED }}>
+            {inspection.vehiclePlate ?? `Inspection ${inspection.id.slice(0, 8)}`}
+          </div>
         </div>
         {inspection.reinspectionOfId && <Chip label="Re-inspection" color={C_INFO} />}
         <div style={{ marginLeft: 'auto' }}>
@@ -2744,8 +2756,21 @@ function InspectionCard({
       </div>
       <SEP />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <DetailRow label="Driver" value={inspection.driverId.slice(0, 8)} />
-        <DetailRow label="Vehicle" value={inspection.vehicleId.slice(0, 8)} />
+        {/* Named, not referenced. This printed `driverId.slice(0, 8)` and
+            `vehicleId.slice(0, 8)` — an inspector standing in a yard cannot
+            match "ae0b509c" to the person in front of them or the car on the
+            ramp, which is the one thing a physical inspection depends on. */}
+        <DetailRow label="Driver" value={inspection.driverName ?? 'Unknown driver'} />
+        {inspection.driverPhone !== null && (
+          <DetailRow label="Phone" value={inspection.driverPhone} />
+        )}
+        <DetailRow
+          label="Vehicle"
+          value={
+            [inspection.vehiclePlate, inspection.vehicleLabel].filter(Boolean).join(' · ') ||
+            'Unknown vehicle'
+          }
+        />
         <DetailRow label="Scheduled" value={new Date(inspection.scheduledAt).toLocaleString()} />
         {inspection.completedAt && (
           <DetailRow label="Decided" value={new Date(inspection.completedAt).toLocaleString()} />

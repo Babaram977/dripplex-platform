@@ -783,7 +783,14 @@ export interface InspectionChecklistItemDto {
 export interface AdminInspectionDto {
   id: string;
   driverId: string;
+  /** The driver's full name — an inspector cannot match "ae0b509c" to a person. */
+  driverName: string | null;
+  driverPhone: string | null;
   vehicleId: string;
+  /** Plate number: how a vehicle is identified in a yard. */
+  vehiclePlate: string | null;
+  /** "Toyota Corolla · Blue", when the vehicle record carries it. */
+  vehicleLabel: string | null;
   centreId: string;
   inspectorId: string | null;
   decidedBy: string | null;

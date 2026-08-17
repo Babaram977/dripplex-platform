@@ -829,41 +829,58 @@ export function DriverKYCStatusScreen({
   const STEPS: {
     key: keyof NonNullable<typeof checks>;
     label: string;
-    blurb: string;
+    /** Shown once the check passes. */
+    done: string;
+    /** Shown while it has not — `done` read as a claim the tick contradicted. */
+    pending: string;
+    /** Who has to move next. Operations-owned rows are not the driver's to do. */
+    owner: 'you' | 'ops';
     action?: { label: string; onClick?: () => void };
   }[] = [
     {
       key: 'identityVerified',
       label: 'Identity check',
-      blurb: 'Your identity has been confirmed.',
+      done: 'Your identity has been confirmed.',
+      pending: 'Your identity has not been confirmed yet.',
+      owner: 'ops',
     },
     {
       key: 'requiredDocumentsApproved',
       label: 'Document review',
-      blurb: "Driver's licence, vehicle paper and guarantor ID, all verified.",
+      done: "Driver's licence, vehicle paper and guarantor ID, all verified.",
+      pending: "Driver's licence, vehicle paper or guarantor ID is missing or not yet verified.",
+      owner: 'you',
       action: { label: 'Upload / update documents', onClick: onUpload },
     },
     {
       key: 'vehicleApproved',
       label: 'Vehicle registration',
-      blurb: 'A registered vehicle approved by Operations.',
+      done: 'A registered vehicle approved by Operations.',
+      pending: 'No approved vehicle on file yet.',
+      owner: 'you',
       ...(onVehicle ? { action: { label: 'Register your vehicle', onClick: onVehicle } } : {}),
     },
     {
       key: 'inspectionPassed',
       label: 'Inspection & test',
-      blurb: 'Operations books and records your vehicle inspection.',
+      done: 'Your vehicle passed its physical inspection.',
+      pending: 'Your vehicle has not passed a physical inspection yet.',
+      owner: 'ops',
     },
     {
       key: 'agreementAccepted',
       label: 'Agreement signing',
-      blurb: 'Accept the DrippleX driver terms.',
+      done: 'You have accepted the DrippleX driver terms.',
+      pending: 'You have not accepted the DrippleX driver terms yet.',
+      owner: 'you',
       ...(onAgreement ? { action: { label: 'Read and accept terms', onClick: onAgreement } } : {}),
     },
     {
       key: 'accountNotLocked',
       label: 'Account standing',
-      blurb: 'Your account is in good standing.',
+      done: 'Your account is in good standing.',
+      pending: 'Your account is locked pending a support review.',
+      owner: 'ops',
     },
   ];
 
@@ -922,9 +939,11 @@ export function DriverKYCStatusScreen({
                 className="max-w-[300px] text-[13px] leading-relaxed"
                 style={{ fontFamily: IT, color: MUTED }}
               >
+                {/* Identity here is phone-primary and email is optional, so
+                    promising an email is a promise DrippleX cannot keep. */}
                 {eligibility?.eligible
                   ? 'Operations will activate your account shortly.'
-                  : 'Finish the steps below. We will email you as each one is reviewed.'}
+                  : 'Steps marked “With Operations” are being handled for you — the rest are yours to finish.'}
               </p>
             </div>
 
@@ -951,14 +970,32 @@ export function DriverKYCStatusScreen({
                         {done ? '✓' : '•'}
                       </div>
                       <div className="flex-1">
-                        <p
-                          className="text-[13.5px] font-semibold"
-                          style={{ fontFamily: PP, color: '#fff' }}
-                        >
-                          {step.label}
-                        </p>
+                        <div className="flex items-center gap-2">
+                          <p
+                            className="text-[13.5px] font-semibold"
+                            style={{ fontFamily: PP, color: '#fff' }}
+                          >
+                            {step.label}
+                          </p>
+                          {/* A driver cannot book their own inspection, verify
+                              their own identity, or unlock their own account.
+                              Listing those as "steps" with nothing to tap is
+                              what made the counter read as a stalled to-do. */}
+                          {!done && step.owner === 'ops' && (
+                            <span
+                              className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                              style={{
+                                fontFamily: IT,
+                                background: 'rgba(245,158,11,.10)',
+                                color: COLOR_WARNING,
+                              }}
+                            >
+                              With Operations
+                            </span>
+                          )}
+                        </div>
                         <p className="text-[11.5px]" style={{ fontFamily: IT, color: MUTED }}>
-                          {step.blurb}
+                          {done ? step.done : step.pending}
                         </p>
                       </div>
                     </div>
@@ -1017,18 +1054,17 @@ const DRIVER_KYC_DOCS: {
   numberLabel: string;
   numberPlaceholder: string;
   /** Required by DriverActivationService (REQUIRED_DRIVER_KYC_DOCUMENT_TYPES).
-   * Without all three verified a driver can never be activated — the list used
-   * to omit the guarantor ID entirely, so completing this page still left the
-   * driver blocked with nothing on screen explaining why. */
+   * Without all three verified a driver can never be activated. */
   required?: boolean;
 }[] = [
-  {
-    type: 'NATIONAL_ID',
-    label: 'NIN / National ID',
-    icon: '🪪',
-    numberLabel: 'NIN / ID number',
-    numberPlaceholder: 'e.g. 12345678901',
-  },
+  // Order matters, and it was wrong. This list opened with the optional
+  // National ID and buried the three documents that actually gate activation
+  // in the middle, with nothing on any row saying which was which. A driver
+  // working top-down did an optional document first and could finish the page
+  // believing they were done while still blocked.
+  //
+  // Required first, in the order DriverActivationService checks them, then the
+  // optional two — and every row now says which it is.
   {
     type: 'DRIVER_LICENSE',
     required: true,
@@ -1051,6 +1087,13 @@ const DRIVER_KYC_DOCS: {
     label: 'Guarantor ID',
     icon: '🧑‍🤝‍🧑',
     numberLabel: "Guarantor's ID number",
+    numberPlaceholder: 'e.g. 12345678901',
+  },
+  {
+    type: 'NATIONAL_ID',
+    label: 'NIN / National ID',
+    icon: '🪪',
+    numberLabel: 'NIN / ID number',
     numberPlaceholder: 'e.g. 12345678901',
   },
   {
@@ -1224,9 +1267,10 @@ export function DriverUploadDocsScreen({
         >
           <span style={{ fontSize: 20, flexShrink: 0 }}>💡</span>
           <p style={{ fontFamily: IT, fontSize: 13, color: TEXT_SECONDARY, lineHeight: 1.5 }}>
-            Anything you sent when you signed up is already with Operations — you only need this
-            page to add a missing document or replace one that was rejected. Documents should be
-            clear, unblurred photos or PDFs with all 4 corners visible, under 10MB.
+            Steps 1–3 are the documents DrippleX must verify before you can go online. Steps 4 and 5
+            are optional. Anything you sent when you signed up is already with Operations — you only
+            need this page to add a missing document or replace one that was rejected. Photos or
+            PDFs, unblurred, all 4 corners visible, under 10MB.
           </p>
         </div>
 
@@ -1239,7 +1283,7 @@ export function DriverUploadDocsScreen({
         />
 
         <div className="mb-6 flex flex-col gap-4">
-          {DRIVER_KYC_DOCS.map((doc) => {
+          {DRIVER_KYC_DOCS.map((doc, index) => {
             // Server state wins; a document sent in this session counts too.
             const state = docState[doc.type];
             const status = state?.status ?? (submitted.includes(doc.type) ? 'PENDING' : null);
@@ -1255,19 +1299,41 @@ export function DriverUploadDocsScreen({
                 }}
               >
                 <div className="flex items-center gap-3 p-4">
+                  {/* Numbered, so "in order" is visible rather than implied. */}
                   <div
-                    className="flex h-12 w-12 items-center justify-center rounded-2xl text-xl"
-                    style={{ background: done ? 'rgba(43,172,82,.12)' : 'rgba(255,255,255,.04)' }}
+                    className="flex h-12 w-12 items-center justify-center rounded-2xl text-xl font-bold"
+                    style={{
+                      background: done ? 'rgba(43,172,82,.12)' : 'rgba(255,255,255,.04)',
+                      fontFamily: PP,
+                      fontSize: done ? 20 : 15,
+                      color: done ? undefined : MUTED,
+                    }}
                   >
-                    {done ? '✅' : doc.icon}
+                    {done ? '✅' : index + 1}
                   </div>
                   <div className="flex-1">
-                    <p
-                      className="text-[14px] font-semibold"
-                      style={{ fontFamily: PP, color: '#fff' }}
-                    >
-                      {doc.label}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p
+                        className="text-[14px] font-semibold"
+                        style={{ fontFamily: PP, color: '#fff' }}
+                      >
+                        {doc.icon} {doc.label}
+                      </p>
+                      {/* Which rows actually gate activation. Without this a
+                          driver could complete the optional ones and believe
+                          they were finished. */}
+                      <span
+                        className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                        style={{
+                          fontFamily: IT,
+                          background:
+                            doc.required === true ? 'rgba(239,68,68,.10)' : 'rgba(255,255,255,.05)',
+                          color: doc.required === true ? '#F87171' : MUTED,
+                        }}
+                      >
+                        {doc.required === true ? 'Required' : 'Optional'}
+                      </span>
+                    </div>
                     <p
                       className="text-[12px]"
                       style={{
@@ -1288,9 +1354,9 @@ export function DriverUploadDocsScreen({
                           ? 'Submitted — under review'
                           : status === 'REJECTED'
                             ? `Rejected — please replace${state?.remarks ? `: ${state.remarks}` : ''}`
-                            : doc.required
-                              ? 'Required · PDF or image'
-                              : 'Optional · PDF or image'}
+                            : // The chip above already says required/optional —
+                              // repeating it here just crowded the row.
+                              'PDF or image'}
                     </p>
                   </div>
                   {!done && !isOpen && (

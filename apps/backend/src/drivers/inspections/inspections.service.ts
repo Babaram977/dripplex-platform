@@ -10,13 +10,13 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { DRIVER_AUDIT_ACTIONS } from '../driver.constants';
 
-import { toInspectionDto } from './inspection.mapper';
+import { toAdminInspectionDto, toInspectionDto } from './inspection.mapper';
 
 import type { DecideInspectionDto } from '../dto/decide-inspection.dto';
 import type { ListInspectionsQueryDto } from '../dto/list-inspections-query.dto';
 import type { RecordInspectionChecklistDto } from '../dto/record-inspection-checklist.dto';
 import type { ScheduleInspectionDto } from '../dto/schedule-inspection.dto';
-import type { InspectionDto } from '@dripplex/types';
+import type { AdminInspectionDto, InspectionDto } from '@dripplex/types';
 import type { Inspection } from '@prisma/client';
 
 /** DPX-DRIVER-002 Phase 3 — appointment booking + checklist recording +
@@ -133,8 +133,18 @@ export class InspectionsService {
     return toInspectionDto(updated);
   }
 
+  /**
+   * The Operations inspections desk.
+   *
+   * Returns each inspection with its driver and vehicle NAMED. The desk was
+   * showing `driverId.slice(0, 8)` — an inspector in a yard cannot match a
+   * truncated UUID to the person in front of them, which is the one thing a
+   * physical inspection depends on.
+   *
+   * Two batched lookups for the whole page rather than one pair per row.
+   */
   public async listInspections(query: ListInspectionsQueryDto): Promise<{
-    items: InspectionDto[];
+    items: AdminInspectionDto[];
     meta: { page: number; limit: number; total: number; totalPages: number };
   }> {
     const where = {
@@ -151,8 +161,27 @@ export class InspectionsService {
       this.prisma.inspection.count({ where }),
     ]);
 
+    const [drivers, vehicles] = await Promise.all([
+      this.prisma.user.findMany({
+        where: { id: { in: [...new Set(inspections.map((row) => row.driverId))] } },
+        select: { id: true, firstName: true, lastName: true, phone: true },
+      }),
+      this.prisma.vehicle.findMany({
+        where: { id: { in: [...new Set(inspections.map((row) => row.vehicleId))] } },
+        select: { id: true, plateNumber: true, make: true, model: true, color: true },
+      }),
+    ]);
+    const driverById = new Map(drivers.map((driver) => [driver.id, driver] as const));
+    const vehicleById = new Map(vehicles.map((vehicle) => [vehicle.id, vehicle] as const));
+
     return {
-      items: inspections.map(toInspectionDto),
+      items: inspections.map((inspection) =>
+        toAdminInspectionDto(
+          inspection,
+          driverById.get(inspection.driverId) ?? null,
+          vehicleById.get(inspection.vehicleId) ?? null,
+        ),
+      ),
       meta: {
         page: query.page,
         limit: query.limit,
