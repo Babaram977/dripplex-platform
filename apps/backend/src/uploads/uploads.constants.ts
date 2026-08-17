@@ -45,6 +45,7 @@ export const UPLOAD_FOLDERS = [
   'identity-verification',
   'product-images',
   'delivery-proofs',
+  'payment-proofs',
 ] as const;
 
 export type UploadFolder = (typeof UPLOAD_FOLDERS)[number];
@@ -76,14 +77,17 @@ export const UPLOAD_FOLDER_PERMISSIONS: Record<UploadFolder, readonly string[]> 
   'product-images': ['merchant:products:manage'],
   // Riders upload proof-of-delivery photos for their own jobs.
   'delivery-proofs': ['rider:delivery:manage'],
+  // Customers upload the bank receipt for their own MERCHANT_DIRECT order.
+  'payment-proofs': ['customer:orders'],
 };
 
 /**
  * Folders whose objects are PUBLIC-read (served from the public bucket + public
  * base URL) rather than private (signed GET). Only non-sensitive, shopper-facing
  * assets belong here. Everything NOT listed stays in the private bucket:
- * kyc-documents, identity-verification, vehicle-photos, delivery-proofs must
- * never be public. Public routing additionally requires OBJECT_STORAGE_PUBLIC_BUCKET
+ * kyc-documents, identity-verification, vehicle-photos, delivery-proofs and
+ * payment-proofs must never be public — a bank receipt carries account details
+ * and is financial evidence. Public routing additionally requires OBJECT_STORAGE_PUBLIC_BUCKET
  * + OBJECT_STORAGE_PUBLIC_BASE_URL to be configured (else these fall back to
  * private, unchanged behaviour).
  */

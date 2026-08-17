@@ -353,6 +353,7 @@ export type {
   OrderDto,
   OrderItemDto,
   OrderPaymentMethod,
+  OrderPaymentProofDto,
   OrderSettlementDto,
   OrderSettlementStatus,
   OrderStatus,

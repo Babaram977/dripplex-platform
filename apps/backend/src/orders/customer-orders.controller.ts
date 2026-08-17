@@ -21,6 +21,8 @@ import {
   CustomerOrderListQueryDto,
   RaiseOrderDisputeDto,
 } from './dto/order.dto';
+import { SubmitPaymentProofDto } from './dto/submit-payment-proof.dto';
+import { OrderPaymentProofService } from './order-payment-proof.service';
 import { ORDER_PERMISSIONS } from './order.constants';
 
 import type { AuthenticatedUser } from '../auth/auth.types';
@@ -29,13 +31,17 @@ import type {
   CheckoutResponseDto,
   CustomerMerchantBankDto,
   OrderDto,
+  OrderPaymentProofDto,
   PaginatedResult,
 } from '@dripplex/types';
 import type { Request } from 'express';
 
 @Controller('customer')
 export class CustomerOrdersController {
-  constructor(private readonly checkoutService: CheckoutService) {}
+  constructor(
+    private readonly checkoutService: CheckoutService,
+    private readonly paymentProofs: OrderPaymentProofService,
+  ) {}
 
   @Post('checkout')
   @HttpCode(HttpStatus.CREATED)
@@ -119,6 +125,39 @@ export class CustomerOrdersController {
       dto.reason,
       this.auditContext(request, user.id),
     );
+    return { success: true, data };
+  }
+
+  /**
+   * DPX-ORDER-PROOF-001 — file the bank receipt for a "Pay to Merchant Bank"
+   * order. This does NOT mark the order paid: the merchant still confirms
+   * receipt into their own account. It puts the customer's evidence on file.
+   */
+  @Post('orders/:id/payment-proof')
+  @HttpCode(HttpStatus.CREATED)
+  @RequirePermissions(ORDER_PERMISSIONS.ORDERS)
+  public async submitPaymentProof(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SubmitPaymentProofDto,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<OrderPaymentProofDto>> {
+    const data = await this.paymentProofs.submit(
+      user.id,
+      id,
+      dto,
+      this.auditContext(request, user.id),
+    );
+    return { success: true, data };
+  }
+
+  @Get('orders/:id/payment-proofs')
+  @RequirePermissions(ORDER_PERMISSIONS.ORDERS)
+  public async listPaymentProofs(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ApiSuccessResponse<OrderPaymentProofDto[]>> {
+    const data = await this.paymentProofs.listForCustomer(user.id, id);
     return { success: true, data };
   }
 

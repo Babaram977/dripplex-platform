@@ -5,16 +5,20 @@ import { RequirePermissions } from '../common/decorators/permissions.decorator';
 
 import { CheckoutService } from './checkout.service';
 import { AdminOrderListQueryDto, ResolveOrderDisputeDto } from './dto/order.dto';
+import { OrderPaymentProofService } from './order-payment-proof.service';
 import { ORDER_PERMISSIONS } from './order.constants';
 
 import type { AuthenticatedUser } from '../auth/auth.types';
 import type { ApiSuccessResponse } from '../common/dto/api-response.dto';
-import type { OrderDto, PaginatedResult } from '@dripplex/types';
+import type { OrderDto, OrderPaymentProofDto, PaginatedResult } from '@dripplex/types';
 import type { Request } from 'express';
 
 @Controller('admin/orders')
 export class AdminOrdersController {
-  constructor(private readonly checkoutService: CheckoutService) {}
+  constructor(
+    private readonly checkoutService: CheckoutService,
+    private readonly paymentProofs: OrderPaymentProofService,
+  ) {}
 
   @Get()
   @RequirePermissions(ORDER_PERMISSIONS.ADMIN_READ)
@@ -40,6 +44,19 @@ export class AdminOrdersController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<ApiSuccessResponse<OrderDto>> {
     const data = await this.checkoutService.getAdminOrder(id);
+    return { success: true, data };
+  }
+
+  /** DPX-ORDER-PROOF-001 — the customer's bank receipts for this order. The
+   * reason the founder asked for receipts at all: when a MERCHANT_DIRECT order
+   * is disputed, this is the customer's side of "I paid" and the merchant's
+   * confirmation is theirs. Read-only, and never editable by anyone. */
+  @Get(':id/payment-proofs')
+  @RequirePermissions(ORDER_PERMISSIONS.ADMIN_READ)
+  public async listPaymentProofs(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ApiSuccessResponse<OrderPaymentProofDto[]>> {
+    const data = await this.paymentProofs.listForAdmin(id);
     return { success: true, data };
   }
 

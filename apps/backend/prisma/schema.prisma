@@ -1102,6 +1102,7 @@ model Order {
   paymentTransactions PaymentTransaction[]
   deliveryJobs        DeliveryJob[]
   disputes            OrderDispute[]
+  paymentProofs       OrderPaymentProof[]
   settlement          OrderSettlement?
 
   @@index([customerId])
@@ -1132,6 +1133,50 @@ model OrderDispute {
   @@index([orderId])
   @@index([status])
   @@map("order_disputes")
+}
+
+/// DPX-ORDER-PROOF-001 — the customer's evidence that they made the bank
+/// transfer on a MERCHANT_DIRECT order.
+///
+/// Founder decision (2026-08-17): "when an order is paid to merchant customer
+/// should have an option to upload receipt of payment which will go to merchant
+/// for confirmation and in case of dispute it can be referenced."
+///
+/// DrippleX never sees the money on a MERCHANT_DIRECT order — it lands in the
+/// merchant's own account — so confirmation stays the merchant's word
+/// (MerchantOrdersService.confirmPaymentReceived). This does not change that.
+/// What it changes is that the customer's side of the story is now on file:
+/// before this, a customer who had genuinely paid had nothing to point at.
+///
+/// Append-only on purpose. A row is never edited or deleted, so a dispute
+/// raised later reads exactly what was submitted and when — an editable record
+/// is worth nothing as evidence. A customer who uploaded the wrong image adds
+/// another row rather than rewriting the first.
+///
+/// Receipts are financial documents: `receipt_url` lives in the PRIVATE bucket
+/// (see PUBLIC_UPLOAD_FOLDERS — `payment-proofs` is deliberately absent) and is
+/// only ever read through a short-lived signed GET.
+model OrderPaymentProof {
+  id          String   @id @default(uuid()) @db.Uuid
+  orderId     String   @map("order_id") @db.Uuid
+  /// The customer who submitted it. Kept even though it is derivable from the
+  /// order, so the audit trail survives any later change to order ownership.
+  submittedBy String   @map("submitted_by") @db.Uuid
+  receiptUrl  String   @map("receipt_url") @db.VarChar(2048)
+  /// The bank's transfer reference, as the customer typed it. Optional: a
+  /// screenshot alone is still evidence, and blocking on a field the customer
+  /// cannot find would simply stop them submitting anything.
+  reference   String?  @db.VarChar(100)
+  /// What the customer says they sent. Not assumed equal to order.total — a
+  /// mismatch is exactly the kind of thing a dispute needs to be able to see.
+  amount      Decimal? @db.Decimal(12, 2)
+  note        String?  @db.VarChar(500)
+  createdAt   DateTime @default(now()) @map("created_at")
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([submittedBy])
+  @@map("order_payment_proofs")
 }
 
 model OrderItem {

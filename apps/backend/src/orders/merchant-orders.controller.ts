@@ -22,18 +22,22 @@ import {
   RejectOrderDto,
 } from './dto/merchant-order.dto';
 import { MerchantOrdersService } from './merchant-orders.service';
+import { OrderPaymentProofService } from './order-payment-proof.service';
 import { ORDER_PERMISSIONS } from './order.constants';
 
 import type { AuthenticatedUser } from '../auth/auth.types';
 import type { ApiSuccessResponse } from '../common/dto/api-response.dto';
-import type { OrderDto, PaginatedResult } from '@dripplex/types';
+import type { OrderDto, OrderPaymentProofDto, PaginatedResult } from '@dripplex/types';
 import type { Request } from 'express';
 
 @Controller('merchant/orders')
 @RequirePermissions(ORDER_PERMISSIONS.MERCHANT_MANAGE)
 @UseGuards(MerchantModuleEnabledGuard)
 export class MerchantOrdersController {
-  constructor(private readonly merchantOrdersService: MerchantOrdersService) {}
+  constructor(
+    private readonly merchantOrdersService: MerchantOrdersService,
+    private readonly paymentProofs: OrderPaymentProofService,
+  ) {}
 
   @Get()
   public async list(
@@ -104,6 +108,19 @@ export class MerchantOrdersController {
    * can become PAID (DrippleX never sees the transfer). Same
    * `merchant:orders:manage` permission and ownership check as every other
    * action on this controller. */
+  /** DPX-ORDER-PROOF-001 — the receipts the customer filed for this order.
+   * What the merchant looks at before confirming the transfer landed, and the
+   * record Operations reads if the order is later disputed. Receipts are
+   * private objects; each read returns a short-lived signed URL. */
+  @Get(':id/payment-proofs')
+  public async listPaymentProofs(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ApiSuccessResponse<OrderPaymentProofDto[]>> {
+    const data = await this.paymentProofs.listForMerchant(user.id, id);
+    return { success: true, data };
+  }
+
   @Patch(':id/payment-received')
   public async confirmPaymentReceived(
     @CurrentUser() user: AuthenticatedUser,

@@ -304,6 +304,21 @@ export interface OrderItemDto {
   createdAt: string;
 }
 
+// DPX-ORDER-PROOF-001 — a customer's bank receipt for a MERCHANT_DIRECT order.
+// `receiptUrl` is a SHORT-LIVED SIGNED URL minted per read (receipts live in the
+// private bucket) — render it, never cache or store it.
+export interface OrderPaymentProofDto {
+  id: string;
+  orderId: string;
+  submittedBy: string;
+  receiptUrl: string;
+  reference: string | null;
+  /** What the customer says they sent; may differ from the order total. */
+  amount: number | null;
+  note: string | null;
+  createdAt: string;
+}
+
 export interface OrderDto {
   id: string;
   customerId: string;
@@ -1478,6 +1493,18 @@ export const api = {
         'GET',
         `/customer/orders/${orderId}/merchant-bank`,
       ),
+    // DPX-ORDER-PROOF-001 — file the bank receipt for a "Pay to Merchant Bank"
+    // order. Does NOT mark the order paid: the merchant still confirms the
+    // money reached their own account. This puts the customer's evidence on
+    // file so a later dispute has something to reference.
+    submitPaymentProof: (
+      orderId: string,
+      body: { receiptUrl: string; reference?: string; amount?: number; note?: string },
+    ) => dx<OrderPaymentProofDto>('POST', `/customer/orders/${orderId}/payment-proof`, body),
+    // Receipts already filed. `receiptUrl` on each is a short-lived signed URL
+    // minted for this read — display it, never persist it.
+    getPaymentProofs: (orderId: string) =>
+      dx<OrderPaymentProofDto[]>('GET', `/customer/orders/${orderId}/payment-proofs`),
   },
 
   // ── RIDES (customer) ───────────────────────────────────────────────────────
@@ -1897,6 +1924,10 @@ export const api = {
     // stays PENDING and no rider is dispatched.
     confirmPaymentReceived: (id: string) =>
       dx<MerchantOrderDto>('PATCH', `/merchant/orders/${id}/payment-received`),
+    // The receipts the customer filed for this order — what the merchant should
+    // look at before confirming the transfer landed.
+    getOrderPaymentProofs: (id: string) =>
+      dx<OrderPaymentProofDto[]>('GET', `/merchant/orders/${id}/payment-proofs`),
     delayOrder: (id: string, body: { estimatedReadyAt: string }) =>
       dx<MerchantOrderDto>('PATCH', `/merchant/orders/${id}/delay`, body),
     cancelOrder: (id: string, reason?: string) =>

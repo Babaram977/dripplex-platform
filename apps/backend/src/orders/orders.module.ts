@@ -8,6 +8,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { PricingModule } from '../pricing/pricing.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { ProductsModule } from '../products/products.module';
+import { UploadsModule } from '../uploads/uploads.module';
 import { WalletModule } from '../wallet/wallet.module';
 
 import { AdminOrdersController } from './admin-orders.controller';
@@ -23,6 +24,7 @@ import { MerchantOrdersController } from './merchant-orders.controller';
 import { MerchantOrdersService } from './merchant-orders.service';
 import { MerchantSettlementService } from './merchant-settlement.service';
 import { OrderCompletionSweepService } from './order-completion-sweep.service';
+import { OrderPaymentProofService } from './order-payment-proof.service';
 import { CatalogCheckoutProductValidator } from './pricing/catalog-checkout-product.validator';
 import { CHECKOUT_PRODUCT_VALIDATOR } from './pricing/checkout-product.validator';
 import { ORDERS_REPOSITORY } from './repositories/orders.repository';
@@ -40,6 +42,7 @@ import { ReservationCleanupService } from './reservation-cleanup.service';
     WalletModule,
     PricingModule,
     CommercialModule,
+    UploadsModule,
   ],
   controllers: [
     CustomerOrdersController,
@@ -56,6 +59,7 @@ import { ReservationCleanupService } from './reservation-cleanup.service';
     OrderCompletionSweepService,
     MerchantCommissionSettingsService,
     MerchantSettlementService,
+    OrderPaymentProofService,
     { provide: ORDERS_REPOSITORY, useClass: PrismaOrdersRepository },
     { provide: CHECKOUT_PRODUCT_VALIDATOR, useClass: CatalogCheckoutProductValidator },
     {
