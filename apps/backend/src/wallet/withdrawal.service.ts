@@ -70,8 +70,19 @@ export class WithdrawalService {
     private readonly eventBus: DomainEventBus,
   ) {}
 
+  /**
+   * A payout request from any wallet-holding party.
+   *
+   * `ownerType` used to be hard-coded to CUSTOMER, which meant a driver or
+   * rider requesting a payout would have had their (empty) *customer* wallet
+   * debited while their earnings sat untouched in the DRIVER/RIDER wallet the
+   * settlement services actually credit. Every caller now states whose wallet
+   * this is, and the reversal path below resolves it from the debited wallet
+   * itself rather than assuming.
+   */
   public async create(
     userId: string,
+    ownerType: WalletOwnerType,
     input: { amount: number; bankAccountId: string; pin: string },
     context?: AuditContext,
   ): Promise<WithdrawalRequestDto> {
@@ -84,11 +95,11 @@ export class WithdrawalService {
       );
     }
 
-    await this.walletService.assertWithinLimits(WalletOwnerType.CUSTOMER, userId, input.amount);
+    await this.walletService.assertWithinLimits(ownerType, userId, input.amount);
     await this.walletPinService.verify(userId, input.pin);
     await this.bankAccountsService.assertOwned(userId, input.bankAccountId);
 
-    const wallet = await this.walletService.getWallet(WalletOwnerType.CUSTOMER, userId);
+    const wallet = await this.walletService.getWallet(ownerType, userId);
 
     const created = await this.prisma.withdrawalRequest.create({
       data: {
@@ -103,7 +114,7 @@ export class WithdrawalService {
 
     try {
       await this.walletService.withdrawal({
-        ownerType: WalletOwnerType.CUSTOMER,
+        ownerType,
         ownerId: userId,
         amount: input.amount,
         currency: wallet.currency,
@@ -260,9 +271,17 @@ export class WithdrawalService {
       },
     });
 
+    // Credit back the wallet that was actually debited — read from the request's
+    // own walletId. Assuming CUSTOMER here would silently move a failed driver
+    // payout into the wrong wallet and leave the driver short.
+    const debitedWallet = await this.prisma.wallet.findUnique({ where: { id: row.walletId } });
+    if (!debitedWallet) {
+      throw new NotFoundDomainException('Wallet for this withdrawal no longer exists');
+    }
+
     await this.walletService.credit({
-      ownerType: WalletOwnerType.CUSTOMER,
-      ownerId: row.userId,
+      ownerType: debitedWallet.ownerType,
+      ownerId: debitedWallet.ownerId,
       amount: Number(row.amount),
       currency: row.currency,
       referenceType: WALLET_WITHDRAWAL_REVERSAL_REFERENCE_TYPE,

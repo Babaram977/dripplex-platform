@@ -2,11 +2,13 @@ import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Req } from '@
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
+import { ValidationDomainException } from '../../common/exceptions/domain.exception';
 import {
   AdminWithdrawalCompleteDto,
   AdminWithdrawalFailDto,
   WithdrawalHistoryQueryDto,
 } from '../dto/withdrawal.dto';
+import { SettlementReportService, type SettlementReportDto } from '../settlement-report.service';
 import { WALLET_PERMISSIONS } from '../wallet.constants';
 import { WithdrawalService, type WithdrawalRequestDto } from '../withdrawal.service';
 
@@ -23,7 +25,28 @@ import type { Request } from 'express';
  */
 @Controller('admin/wallet/withdrawals')
 export class AdminWithdrawalController {
-  constructor(private readonly withdrawalService: WithdrawalService) {}
+  constructor(
+    private readonly withdrawalService: WithdrawalService,
+    private readonly settlementReportService: SettlementReportService,
+  ) {}
+
+  /**
+   * The Monday payout run, as one page: who is waiting, how much, and the
+   * account to send it to. Read-only — paying is still the per-request
+   * `complete` action below, so generating this twice changes nothing.
+   */
+  @Get('settlement-report')
+  @RequirePermissions(WALLET_PERMISSIONS.ADMIN_WITHDRAWALS_MANAGE)
+  public async settlementReport(
+    @Query('weekOf') weekOf?: string,
+  ): Promise<ApiSuccessResponse<SettlementReportDto>> {
+    const at = weekOf !== undefined && weekOf !== '' ? new Date(weekOf) : new Date();
+    if (Number.isNaN(at.getTime())) {
+      throw new ValidationDomainException('weekOf must be a valid date');
+    }
+    const data = await this.settlementReportService.weekly(at);
+    return { success: true, data };
+  }
 
   @Get()
   @RequirePermissions(WALLET_PERMISSIONS.ADMIN_WITHDRAWALS_MANAGE)

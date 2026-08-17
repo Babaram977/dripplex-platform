@@ -9,12 +9,17 @@ import { AdminWithdrawalController } from './controllers/admin-withdrawal.contro
 import { CustomerBankAccountsController } from './controllers/customer-bank-accounts.controller';
 import { CustomerWalletPinController } from './controllers/customer-wallet-pin.controller';
 import { CustomerWithdrawalController } from './controllers/customer-withdrawal.controller';
+import {
+  DriverPayoutController,
+  RiderPayoutController,
+} from './controllers/partner-payout.controller';
 import { CustomerWalletController } from './customer-wallet.controller';
 import { DriverWalletController } from './driver-wallet.controller';
 import { MerchantWalletController } from './merchant-wallet.controller';
 import { PAYOUT_PROVIDERS } from './payout/payout-provider.adapter';
 import { PaystackTransferProvider } from './payout/paystack-transfer.provider';
 import { RiderWalletController } from './rider-wallet.controller';
+import { SettlementReportService } from './settlement-report.service';
 import { WalletEventsSubscriber } from './wallet-events.subscriber';
 import { WalletPinService } from './wallet-pin.service';
 import { WalletRecipientsService } from './wallet-recipients.service';
@@ -33,12 +38,15 @@ import { WithdrawalService } from './withdrawal.service';
     DriverWalletController,
     AdminWalletController,
     AdminWithdrawalController,
+    RiderPayoutController,
+    DriverPayoutController,
   ],
   providers: [
     WalletService,
     WalletEventsSubscriber,
     WalletRecipientsService,
     BankAccountsService,
+    SettlementReportService,
     WalletPinService,
     WithdrawalService,
     PaystackTransferProvider,

@@ -6,6 +6,11 @@ export const WALLET_PERMISSIONS = {
   MERCHANT_READ: 'merchant:wallet:read',
   RIDER_READ: 'rider:wallet:read',
   DRIVER_READ: 'driver:wallet:read',
+  /// A rider or driver asking for their earnings to be paid out. Separate
+  /// permissions from the customer's so a partner payout can be withdrawn
+  /// from a role without touching consumer wallets.
+  RIDER_WITHDRAW: 'rider:wallet:withdraw',
+  DRIVER_WITHDRAW: 'driver:wallet:withdraw',
   ADMIN_MANAGE: 'admin:wallet:manage',
   ADMIN_WITHDRAWALS_MANAGE: 'admin:wallet:withdrawals:manage',
 } as const;
