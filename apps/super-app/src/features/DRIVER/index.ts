@@ -6,6 +6,7 @@ export {
   DriverOTPScreen,
   DriverKYCStatusScreen,
   DriverUploadDocsScreen,
+  DriverInspectionScreen,
   DriverVehicleRegScreen,
   DriverDashboardScreen,
   DriverIncomingRequestScreen,

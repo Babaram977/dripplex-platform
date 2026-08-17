@@ -820,6 +820,39 @@ export interface AdminInspectionDto {
   updatedAt: string;
 }
 
+// A driver's own inspection (the subset of AdminInspectionDto without the
+// Operations-only enrichment). Same rows, read through the driver's endpoint.
+export interface DriverInspectionDto {
+  id: string;
+  driverId: string;
+  vehicleId: string;
+  centreId: string;
+  inspectorId: string | null;
+  decidedBy: string | null;
+  status: 'SCHEDULED' | 'PASSED' | 'FAILED' | 'CANCELLED';
+  scheduledAt: string;
+  completedAt: string | null;
+  checklist: InspectionChecklistItemDto[] | null;
+  notes: string | null;
+  photos: string[];
+  /** Set when this booking replaces a FAILED inspection. */
+  reinspectionOfId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InspectionCentreDto {
+  id: string;
+  name: string;
+  address: string;
+  city: string;
+  latitude: number | null;
+  longitude: number | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // The driver activation gate (DriverActivationService). Every condition the
 // backend checks before a driver may go Active — the driver app shows this as
 // its onboarding checklist instead of guessing at progress.
@@ -1666,6 +1699,25 @@ export const api = {
     // show what is verified, pending or rejected instead of relisting every
     // document as outstanding on every visit.
     getKyc: () => dx<AdminDriverKycDto[]>('GET', '/driver/kyc'),
+    // ── Physical vehicle inspection (DPX-DRIVER-002 Phase 3) ─────────────────
+    // These routes shipped with the inspection module and nothing in the app
+    // ever called them, so a driver could not see or book an inspection — and
+    // Operations has no scheduling endpoint at all, which makes booking the
+    // driver's to do and nobody else's.
+    listInspectionCentres: () => dx<InspectionCentreDto[]>('GET', '/driver/inspections/centres'),
+    listInspections: () => dx<DriverInspectionDto[]>('GET', '/driver/inspections'),
+    // `reinspectionOfId` is how a failed inspection is retried. The backend
+    // accepts it ONLY when the referenced inspection is FAILED, which is the
+    // founder's rule ("it should be re-inspection") already enforced server-side.
+    scheduleInspection: (body: {
+      vehicleId: string;
+      centreId: string;
+      scheduledAt: string;
+      reinspectionOfId?: string;
+      notes?: string;
+    }) => dx<DriverInspectionDto>('POST', '/driver/inspections', body),
+    cancelInspection: (id: string) =>
+      dx<DriverInspectionDto>('POST', `/driver/inspections/${id}/cancel`),
     // The six conditions the backend requires before a driver can be Active
     // (DriverActivationService is the single platform-wide gate). This is the
     // driver's own read-only view of what is still blocking them.

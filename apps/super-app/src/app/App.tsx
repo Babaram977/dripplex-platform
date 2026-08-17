@@ -97,6 +97,7 @@ import {
   DriverOTPScreen,
   DriverKYCStatusScreen,
   DriverUploadDocsScreen,
+  DriverInspectionScreen,
   DriverVehicleRegScreen,
   DriverDashboardScreen,
   DriverIncomingRequestScreen,
@@ -339,6 +340,7 @@ type Screen =
   | 'drvkyc'
   | 'drvuploaddocs'
   | 'drvvehicle'
+  | 'drvinspection'
   | 'drvemergency'
   | 'drvagree'
   | 'drvdash'
@@ -1135,6 +1137,7 @@ function AppShell() {
         // routed into them outside the Design Preview navigator, so a driver
         // could never accept the terms the activation gate requires.
         onVehicle={() => go('drvvehicle')}
+        onInspection={() => go('drvinspection')}
         onAgreement={() => {
           setDriverStepReturn('drvkyc');
           go('drvagree');
@@ -1158,6 +1161,7 @@ function AppShell() {
         }}
       />
     ),
+    drvinspection: <DriverInspectionScreen onBack={() => go('drvkyc')} />,
     drvvehicle: (
       <DriverVehicleRegScreen
         onBack={() => go('drvkyc')}
@@ -1574,6 +1578,7 @@ function AppShell() {
         { label: 'KYC Status', key: 'drvkyc' },
         { label: 'Upload Docs', key: 'drvuploaddocs' },
         { label: 'Vehicle Reg.', key: 'drvvehicle' },
+        { label: 'Inspection', key: 'drvinspection' },
         { label: 'Emergency Contact', key: 'drvemergency' },
         { label: 'Agreement', key: 'drvagree' },
         { label: 'Driver Dashboard', key: 'drvdash' },
