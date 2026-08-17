@@ -65,6 +65,7 @@ function RBackBtn({ onClick }: { onClick: () => void }) {
   return (
     <button
       onClick={onClick}
+      aria-label="Back"
       style={{
         display: 'flex',
         alignItems: 'center',

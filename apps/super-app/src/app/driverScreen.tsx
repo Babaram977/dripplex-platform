@@ -120,6 +120,7 @@ function DBackBtn({ onClick }: { onClick: () => void }) {
   return (
     <button
       onClick={onClick}
+      aria-label="Back"
       className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl transition-all active:scale-95"
       style={{ background: 'rgba(255,255,255,.06)', border: `1px solid ${BORDER}` }}
     >
