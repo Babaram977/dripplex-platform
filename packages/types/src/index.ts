@@ -150,6 +150,7 @@ export type {
   IdentityVerificationStatusDto,
   InspectionChecklistItem,
   InspectionCentreDto,
+  AdminInspectionDto,
   InspectionDto,
   CreateDriverSupportTicketRequest,
   CreateIncidentReportRequest,

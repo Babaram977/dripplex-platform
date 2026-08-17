@@ -21,7 +21,7 @@ import { InspectionsService } from '../inspections/inspections.service';
 
 import type { AuthenticatedUser } from '../../auth/auth.types';
 import type { ApiSuccessResponse } from '../../common/dto/api-response.dto';
-import type { InspectionDto } from '@dripplex/types';
+import type { AdminInspectionDto, InspectionDto } from '@dripplex/types';
 import type { Request } from 'express';
 
 /** DPX-DRIVER-002 Phase 3 — inspection management within the existing
@@ -36,7 +36,7 @@ export class OperationsInspectionsController {
   @RequirePermissions(DRIVER_PERMISSIONS.INSPECTION_CHECKLIST_MANAGE)
   public async list(@Query() query: ListInspectionsQueryDto): Promise<
     ApiSuccessResponse<{
-      items: InspectionDto[];
+      items: AdminInspectionDto[];
       meta: { page: number; limit: number; total: number; totalPages: number };
     }>
   > {

@@ -22,6 +22,7 @@ describe('InspectionsService', () => {
   let driverId: string;
   let vehicleId: string;
   let centreId: string;
+  let plateNumber: string;
   let officerId: string;
   let supervisorId: string;
   const context = {};
@@ -71,6 +72,7 @@ describe('InspectionsService', () => {
       },
     });
     vehicleId = vehicle.id;
+    plateNumber = vehicle.plateNumber;
 
     const centre = await centresService.create(
       {
@@ -185,6 +187,20 @@ describe('InspectionsService', () => {
 
     const vehicle = await prisma.vehicle.findUniqueOrThrow({ where: { id: vehicleId } });
     expect(vehicle.approvalStatus).toBe('APPROVED');
+  });
+
+  it('names the driver and vehicle on the Operations list instead of raw ids', async () => {
+    if (!databaseAvailable) return;
+
+    const { items } = await service.listInspections({ page: 1, limit: 100 });
+    const mine = items.filter((row) => row.driverId === driverId);
+    expect(mine.length).toBeGreaterThan(0);
+
+    const [row] = mine;
+    if (!row) throw new Error('expected at least one inspection for the test driver');
+    expect(row.driverName).toBe('Test Driver');
+    expect(row.vehiclePlate).toBe(plateNumber);
+    expect(row.vehicleLabel).toBe('Toyota Camry · Black');
   });
 
   it('lets a driver cancel their own SCHEDULED inspection but not a decided one', async () => {

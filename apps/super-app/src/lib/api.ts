@@ -783,7 +783,14 @@ export interface InspectionChecklistItemDto {
 export interface AdminInspectionDto {
   id: string;
   driverId: string;
+  /** The driver's full name — an inspector cannot match "ae0b509c" to a person. */
+  driverName: string | null;
+  driverPhone: string | null;
   vehicleId: string;
+  /** Plate number: how a vehicle is identified in a yard. */
+  vehiclePlate: string | null;
+  /** "Toyota Corolla · Blue", when the vehicle record carries it. */
+  vehicleLabel: string | null;
   centreId: string;
   inspectorId: string | null;
   decidedBy: string | null;
@@ -1600,6 +1607,22 @@ export const api = {
       seats: number;
       photos?: string[];
     }) => dx<unknown>('POST', '/driver/vehicles', body),
+    // Amend a vehicle the driver already registered. Photos-only updates do not
+    // reset an approval (VehiclesService.updateOwnVehicle), so adding the four
+    // inspection angles to an existing vehicle is safe — and is what the driver
+    // needs, rather than registering the same car a second time.
+    updateVehicle: (
+      id: string,
+      body: {
+        make?: string;
+        model?: string;
+        color?: string;
+        year?: number;
+        rideCategory?: RideType;
+        seats?: number;
+        photos?: string[];
+      },
+    ) => dx<unknown>('PATCH', `/driver/vehicles/${id}`, body),
     // Onboarding: persist the driver's emergency contact. relationship must be one
     // of the fixed backend set (Spouse | Parent | Sibling | Child | Relative |
     // Friend | Other).

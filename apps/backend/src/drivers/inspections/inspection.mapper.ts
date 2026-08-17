@@ -1,5 +1,10 @@
-import type { InspectionCentreDto, InspectionChecklistItem, InspectionDto } from '@dripplex/types';
-import type { Inspection, InspectionCentre, Prisma } from '@prisma/client';
+import type {
+  AdminInspectionDto,
+  InspectionCentreDto,
+  InspectionChecklistItem,
+  InspectionDto,
+} from '@dripplex/types';
+import type { Inspection, InspectionCentre, Prisma, User, Vehicle } from '@prisma/client';
 
 export function toInspectionCentreDto(centre: InspectionCentre): InspectionCentreDto {
   return {
@@ -40,4 +45,32 @@ function toChecklist(value: Prisma.JsonValue | null): InspectionChecklistItem[] 
     return null;
   }
   return value as unknown as InspectionChecklistItem[];
+}
+
+/**
+ * The Operations view: the same inspection with the driver and vehicle named.
+ *
+ * Nulls are deliberate rather than defensive — a driver or vehicle row that has
+ * since been removed should read as unknown, never as somebody else.
+ */
+export function toAdminInspectionDto(
+  inspection: Inspection,
+  driver: Pick<User, 'firstName' | 'lastName' | 'phone'> | null,
+  vehicle: Pick<Vehicle, 'plateNumber' | 'make' | 'model' | 'color'> | null,
+): AdminInspectionDto {
+  // make/model/color are non-nullable on Vehicle, so the only case worth
+  // guarding is an empty string — a blank part would leave a dangling separator.
+  const label = vehicle
+    ? [[vehicle.make, vehicle.model].filter((part) => part !== '').join(' '), vehicle.color]
+        .filter((part) => part !== '')
+        .join(' · ')
+    : '';
+
+  return {
+    ...toInspectionDto(inspection),
+    driverName: driver ? `${driver.firstName} ${driver.lastName}`.trim() : null,
+    driverPhone: driver?.phone ?? null,
+    vehiclePlate: vehicle?.plateNumber ?? null,
+    vehicleLabel: label.length > 0 ? label : null,
+  };
 }

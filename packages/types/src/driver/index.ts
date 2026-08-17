@@ -119,6 +119,26 @@ export interface InspectionDto {
   updatedAt: string;
 }
 
+/**
+ * An inspection as the Operations desk sees it, with the people and the vehicle
+ * named rather than referenced.
+ *
+ * The desk used to print `driverId.slice(0, 8)` — "ae0b509c" — next to
+ * `vehicleId.slice(0, 8)`. An inspector standing in a yard cannot match a
+ * truncated UUID to the person in front of them or the car on the ramp, so a
+ * physical inspection was being recorded against an identifier nobody could
+ * verify. Full name, not first name: several drivers share a first name, which
+ * is exactly when identification matters.
+ */
+export interface AdminInspectionDto extends InspectionDto {
+  driverName: string | null;
+  driverPhone: string | null;
+  /** Plate number — how a vehicle is identified in a yard. */
+  vehiclePlate: string | null;
+  /** "Toyota Corolla · Blue", when the vehicle record carries it. */
+  vehicleLabel: string | null;
+}
+
 export interface ScheduleInspectionRequest {
   vehicleId: string;
   centreId: string;

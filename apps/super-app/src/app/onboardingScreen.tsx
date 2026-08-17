@@ -1087,10 +1087,14 @@ export function RiderSignUpScreen(props: {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SCREEN 5 — DRIVER DOCUMENTS + VEHICLE DETAILS
-// Visual only: KYC document IMAGES require a file-upload/storage service that
-// does not exist yet, so this screen is not backend-wired. The driver already
-// created the account at sign-up and reaches pending review; document capture is
-// wired once storage ships. (Documented gap — not faked.)
+// Backend-wired: uploads each image to storage, submits the three required KYC
+// documents and registers the vehicle. (The note that used to sit here said the
+// screen was visual-only pending a storage service — storage shipped and this
+// was wired with it, but the note was left behind.)
+//
+// This is the ONLY place a driver is asked for these at sign-up. The driver app
+// then shows them back as already-sent rather than asking again — see
+// DriverKYCStatusScreen and DriverVehicleRegScreen.
 // ─────────────────────────────────────────────────────────────────────────────
 type DocStatus = 'pending' | 'verified' | 'rejected';
 
