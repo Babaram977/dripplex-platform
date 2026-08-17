@@ -3,6 +3,7 @@ import { WalletOwnerType } from '@prisma/client';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
+import { ValidationDomainException } from '../../common/exceptions/domain.exception';
 import { CreateWithdrawalRequestDto, WithdrawalHistoryQueryDto } from '../dto/withdrawal.dto';
 import { WALLET_PERMISSIONS } from '../wallet.constants';
 import { WithdrawalService, type WithdrawalRequestDto } from '../withdrawal.service';
@@ -23,13 +24,19 @@ export class CustomerWithdrawalController {
     @Body() dto: CreateWithdrawalRequestDto,
     @Req() request: Request,
   ): Promise<ApiSuccessResponse<WithdrawalRequestDto>> {
-    const data = await this.withdrawalService.create(
+    const result = await this.withdrawalService.create(
       user.id,
       WalletOwnerType.CUSTOMER,
       dto,
       this.auditContext(request, user.id),
     );
-    return { success: true, data };
+    // A customer carries no commission account, so nothing can be netted off
+    // and a payout is always produced. If that ever stops being true this
+    // should fail loudly rather than return an empty success.
+    if (result.payout === null) {
+      throw new ValidationDomainException('Withdrawal could not be created');
+    }
+    return { success: true, data: result.payout };
   }
 
   @Get()

@@ -9,6 +9,7 @@ import {
   ProofType,
 } from '@prisma/client';
 
+import { type CommissionAccountService } from '../commercial/commission-account.service';
 import {
   ForbiddenDomainException,
   NotFoundDomainException,
@@ -273,6 +274,12 @@ describe('DeliveryService', () => {
     merchantProfile: { findUnique: merchantProfileFindUnique },
   } as unknown as PrismaService;
 
+  // Riders may not go online while blocked over their credit limit; these
+  // specs exercise everything else, so the account reads clear by default.
+  const commissionAccounts = {
+    getOrCreateAccount: jest.fn().mockResolvedValue({ blocked: false, outstandingBalance: 0 }),
+  } as unknown as CommissionAccountService;
+
   const service = new DeliveryService(
     deliveryRepository,
     ordersRepository,
@@ -282,6 +289,7 @@ describe('DeliveryService', () => {
     deliveryFeeService,
     auditService,
     prisma,
+    commissionAccounts,
   );
 
   beforeEach(() => {

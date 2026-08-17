@@ -1,5 +1,6 @@
 import { WalletOwnerType, WithdrawalRequestStatus } from '@prisma/client';
 
+import { type CommissionAccountService } from '../commercial/commission-account.service';
 import {
   ForbiddenDomainException,
   NotFoundDomainException,
@@ -65,6 +66,7 @@ describe('WithdrawalService', () => {
   let walletPinService: { verify: jest.Mock };
   let auditService: { record: jest.Mock };
   let eventBus: { emit: jest.Mock };
+  let commissionAccounts: { getOrCreateAccount: jest.Mock; recordPayment: jest.Mock };
   let service: WithdrawalService;
 
   beforeEach(() => {
@@ -97,6 +99,14 @@ describe('WithdrawalService', () => {
     auditService = { record: jest.fn().mockResolvedValue(undefined) };
     eventBus = { emit: jest.fn().mockResolvedValue(undefined) };
 
+    // A customer carries no commission account, so nothing is ever netted off
+    // in these specs — the netting itself is pinned in partner-payout.spec.ts
+    // against a real database.
+    commissionAccounts = {
+      getOrCreateAccount: jest.fn().mockResolvedValue({ outstandingBalance: 0 }),
+      recordPayment: jest.fn().mockResolvedValue(undefined),
+    };
+
     service = new WithdrawalService(
       prisma as unknown as PrismaService,
       walletService as unknown as WalletService,
@@ -104,6 +114,7 @@ describe('WithdrawalService', () => {
       walletPinService as unknown as WalletPinService,
       auditService as unknown as AuditService,
       eventBus as unknown as DomainEventBus,
+      commissionAccounts as unknown as CommissionAccountService,
     );
   });
 

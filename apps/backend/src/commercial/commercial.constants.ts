@@ -52,7 +52,11 @@ export const DEFAULT_PLATFORM_COMMISSION_RATE = 0.1;
 /// that owner type. Every subsequent read comes from the database row; an
 /// admin can change the limit from the Admin Portal without a code change
 /// or deploy. Never referenced directly by accrual/blocking logic.
-export const DEFAULT_MERCHANT_CREDIT_LIMIT = 10_000;
+/// Founder decision (2026-08-17): merchants carry a ₦50,000 cash threshold,
+/// five times a courier's. A merchant's exposure builds from order volume
+/// rather than one shift's collections, and blocking a shop is a heavier
+/// consequence than standing a rider down.
+export const DEFAULT_MERCHANT_CREDIT_LIMIT = 50_000;
 export const DEFAULT_DRIVER_CREDIT_LIMIT = 10_000;
 
 /// CommissionLedgerEntry.referenceType values used by real accrual call

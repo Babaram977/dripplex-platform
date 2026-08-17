@@ -53,6 +53,13 @@ export const WALLET_WITHDRAWAL_REFERENCE_TYPE = 'wallet_withdrawal';
  * (walletId, referenceType, referenceId) uniqueness constraint. */
 export const WALLET_WITHDRAWAL_REVERSAL_REFERENCE_TYPE = 'wallet_withdrawal_reversal';
 
+/// DPX-PAYOUT-002 — the slice of a payout request that goes to clearing what a
+/// rider or driver owes DrippleX on cash jobs, rather than to their bank. Its
+/// own reference type so the wallet ledger shows plainly where the money went:
+/// a partner reading their statement sees "settled against commission owed",
+/// not a payout that silently shrank.
+export const WALLET_COMMISSION_SETTLEMENT_REFERENCE_TYPE = 'wallet_commission_settlement';
+
 /** Minimum/maximum withdrawal amounts — same order of magnitude as Top Up's
  * bounds (apps/customer-web's TopUpScreen), not yet founder-approved as a
  * final policy. */

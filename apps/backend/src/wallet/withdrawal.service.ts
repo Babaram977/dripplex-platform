@@ -1,7 +1,10 @@
+import { randomUUID } from 'node:crypto';
+
 import { Injectable } from '@nestjs/common';
-import { WalletOwnerType, WithdrawalRequestStatus } from '@prisma/client';
+import { CommissionOwnerType, WalletOwnerType, WithdrawalRequestStatus } from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../audit/audit.service';
+import { CommissionAccountService } from '../commercial/commission-account.service';
 import {
   ForbiddenDomainException,
   NotFoundDomainException,
@@ -17,6 +20,7 @@ import {
   WALLET_AUDIT_ACTIONS,
   WALLET_WITHDRAWAL_MAX_AMOUNT,
   WALLET_WITHDRAWAL_MIN_AMOUNT,
+  WALLET_COMMISSION_SETTLEMENT_REFERENCE_TYPE,
   WALLET_WITHDRAWAL_REFERENCE_TYPE,
   WALLET_WITHDRAWAL_REVERSAL_REFERENCE_TYPE,
 } from './wallet.constants';
@@ -24,6 +28,16 @@ import { WalletService } from './wallet.service';
 
 import type { PaginatedResult } from '@dripplex/types';
 import type { WithdrawalRequest } from '@prisma/client';
+
+/**
+ * What came of a payout request: how much went to clearing commission owed,
+ * and the bank transfer that remains — `null` when the whole request was
+ * absorbed by the debt and there is nothing left to send.
+ */
+export interface PayoutResultDto {
+  commissionSettled: number;
+  payout: WithdrawalRequestDto | null;
+}
 
 export interface WithdrawalRequestDto {
   id: string;
@@ -59,6 +73,15 @@ function toDto(row: WithdrawalRequest): WithdrawalRequestDto {
  * admin queue (see AdminWithdrawalController) fulfills requests manually
  * until Phase 2's PayoutProvider is wired to real credentials.
  */
+/**
+ * Which commission ledger a wallet belongs to. Customers have none — they owe
+ * DrippleX nothing on a payout of their own topped-up balance.
+ */
+const COMMISSION_OWNER_BY_WALLET_OWNER: Partial<Record<WalletOwnerType, CommissionOwnerType>> = {
+  [WalletOwnerType.RIDER]: CommissionOwnerType.RIDER,
+  [WalletOwnerType.DRIVER]: CommissionOwnerType.DRIVER,
+};
+
 @Injectable()
 export class WithdrawalService {
   constructor(
@@ -68,6 +91,7 @@ export class WithdrawalService {
     private readonly walletPinService: WalletPinService,
     private readonly auditService: AuditService,
     private readonly eventBus: DomainEventBus,
+    private readonly commissionAccounts: CommissionAccountService,
   ) {}
 
   /**
@@ -85,7 +109,7 @@ export class WithdrawalService {
     ownerType: WalletOwnerType,
     input: { amount: number; bankAccountId: string; pin: string },
     context?: AuditContext,
-  ): Promise<WithdrawalRequestDto> {
+  ): Promise<PayoutResultDto> {
     if (
       input.amount < WALLET_WITHDRAWAL_MIN_AMOUNT ||
       input.amount > WALLET_WITHDRAWAL_MAX_AMOUNT
@@ -101,12 +125,37 @@ export class WithdrawalService {
 
     const wallet = await this.walletService.getWallet(ownerType, userId);
 
+    // DPX-PAYOUT-002 — what a rider or driver owes DrippleX on cash jobs comes
+    // out of their payout before anything reaches their bank. Founder decision
+    // (2026-08-17): "commission should be subtracted before pay out."
+    //
+    // Deliberately settled here rather than merely displayed on the Ops report:
+    // a debt that depends on somebody remembering to subtract it by hand is a
+    // debt that quietly stops being collected. Settling at the moment money
+    // moves also means a partner who clears to zero is unblocked immediately,
+    // by the same write.
+    const commissionSettled = await this.settleCommissionFromPayout(
+      userId,
+      ownerType,
+      input.amount,
+      wallet.currency,
+      context,
+    );
+    const payable = Number((input.amount - commissionSettled).toFixed(2));
+
+    if (payable <= 0) {
+      // The whole request went to clearing what they owed. No bank transfer to
+      // make, so no line on the settlement run — telling Operations to send ₦0
+      // would be worse than telling them nothing.
+      return { commissionSettled, payout: null };
+    }
+
     const created = await this.prisma.withdrawalRequest.create({
       data: {
         userId,
         walletId: wallet.id,
         bankAccountId: input.bankAccountId,
-        amount: input.amount,
+        amount: payable,
         currency: wallet.currency,
         status: WithdrawalRequestStatus.PENDING,
       },
@@ -116,7 +165,7 @@ export class WithdrawalService {
       await this.walletService.withdrawal({
         ownerType,
         ownerId: userId,
-        amount: input.amount,
+        amount: payable,
         currency: wallet.currency,
         referenceType: WALLET_WITHDRAWAL_REFERENCE_TYPE,
         referenceId: created.id,
@@ -141,17 +190,80 @@ export class WithdrawalService {
       {
         resource: 'withdrawal_request',
         resourceId: created.id,
-        metadata: { amount: input.amount },
+        metadata: { requested: input.amount, commissionSettled, amount: payable },
       },
     );
 
     await this.eventBus.emit(
       DOMAIN_EVENTS.WITHDRAWAL_REQUESTED,
-      { withdrawalId: created.id, userId, amount: String(input.amount) },
+      { withdrawalId: created.id, userId, amount: String(payable) },
       { actorUserId: userId },
     );
 
-    return toDto(created);
+    return { commissionSettled, payout: toDto(created) };
+  }
+
+  /**
+   * Take what this partner owes DrippleX out of the payout, up to the amount
+   * they asked for, and return how much was taken.
+   *
+   * Only riders and drivers carry a commission account — a customer paying
+   * their own topped-up balance out owes DrippleX nothing, so their payout is
+   * never touched.
+   *
+   * The wallet debit and the commission credit are two separate, individually
+   * meaningful movements: the ledger shows the partner what left their balance
+   * and why, and the commission account shows the debt going down. Ordered
+   * wallet-first so a failure to record the payment cannot leave a partner
+   * credited for money that never left their balance.
+   */
+  private async settleCommissionFromPayout(
+    userId: string,
+    ownerType: WalletOwnerType,
+    requested: number,
+    currency: string,
+    context?: AuditContext,
+  ): Promise<number> {
+    const commissionOwner = COMMISSION_OWNER_BY_WALLET_OWNER[ownerType];
+    if (commissionOwner === undefined) {
+      return 0;
+    }
+
+    const account = await this.commissionAccounts.getOrCreateAccount(commissionOwner, userId);
+    const outstanding = Number(account.outstandingBalance);
+    if (outstanding <= 0) {
+      return 0;
+    }
+
+    const settled = Number(Math.min(outstanding, requested).toFixed(2));
+    if (settled <= 0) {
+      return 0;
+    }
+
+    const reference = randomUUID();
+    await this.walletService.debit({
+      ownerType,
+      ownerId: userId,
+      amount: settled,
+      currency,
+      referenceType: WALLET_COMMISSION_SETTLEMENT_REFERENCE_TYPE,
+      referenceId: reference,
+      description: 'Settled against commission owed on cash jobs',
+      ...(context !== undefined ? { context } : {}),
+    });
+
+    await this.commissionAccounts.recordPayment({
+      ownerType: commissionOwner,
+      ownerId: userId,
+      amount: settled,
+      referenceType: WALLET_COMMISSION_SETTLEMENT_REFERENCE_TYPE,
+      referenceId: reference,
+      description: 'Deducted from a payout request',
+      recordedBy: userId,
+      ...(context !== undefined ? { context } : {}),
+    });
+
+    return settled;
   }
 
   public async listForUser(

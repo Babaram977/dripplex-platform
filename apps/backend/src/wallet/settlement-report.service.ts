@@ -20,10 +20,10 @@ export interface SettlementLineDto {
    * What this partner still owes DrippleX on cash jobs they collected — from
    * their CommissionAccount, which is a separate ledger from their wallet.
    *
-   * It is shown, never subtracted. Whether a payout is reduced by outstanding
-   * commission is a policy decision, not an arithmetic one, and no such
-   * decision has been recorded — so this reports the fact and leaves the call
-   * to whoever signs the transfer.
+   * Commission is now netted off at the moment the payout is requested
+   * (founder decision, 2026-08-17), so `amount` is already the figure to
+   * transfer. A non-zero number here means their earnings were not enough to
+   * clear the debt — not that Operations should subtract it again.
    */
   outstandingCommission: number;
 }

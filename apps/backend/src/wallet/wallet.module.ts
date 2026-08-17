@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { AuditModule } from '../audit/audit.module';
+import { CommercialModule } from '../commercial/commercial.module';
 import { PrismaModule } from '../prisma/prisma.module';
 
 import { AdminWalletController } from './admin-wallet.controller';
@@ -27,7 +28,7 @@ import { WalletService } from './wallet.service';
 import { WithdrawalService } from './withdrawal.service';
 
 @Module({
-  imports: [PrismaModule, AuditModule],
+  imports: [PrismaModule, AuditModule, CommercialModule],
   controllers: [
     CustomerWalletController,
     CustomerBankAccountsController,

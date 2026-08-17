@@ -270,8 +270,10 @@ describe('DPX-COMMERCIAL-001 Slice 6 — Full Commercial Lifecycle E2E', () => {
       expect(Number(account.outstandingBalance)).toBe(16_000);
       expect(account.blocked).toBe(true);
 
-      // Step 3 — Manual payment recording (admin action): brings the
-      // balance back under the limit.
+      // Step 3 — Manual payment recording (admin action): brings the balance
+      // back under the limit, but does NOT unblock. Blocking is a latch for
+      // merchants too (founder decision, 2026-08-17) — only zero releases them,
+      // which Step 4's automatic deduction goes on to do.
       account = await commissionAccounts.recordPayment({
         ownerType: CommissionOwnerType.MERCHANT,
         ownerId: merchantUserId,
@@ -281,7 +283,7 @@ describe('DPX-COMMERCIAL-001 Slice 6 — Full Commercial Lifecycle E2E', () => {
         context: { userId: ADMIN_ID },
       });
       expect(Number(account.outstandingBalance)).toBe(6_000);
-      expect(account.blocked).toBe(false);
+      expect(account.blocked).toBe(true);
 
       // Step 4 — Marketplace Mode A (escrow/gateway): commission is
       // captured directly (net-of-commission Wallet credit), and
@@ -452,8 +454,11 @@ describe('DPX-COMMERCIAL-001 Slice 6 — Full Commercial Lifecycle E2E', () => {
       expect(Number(account.outstandingBalance)).toBeCloseTo(13_500);
       expect(account.blocked).toBe(true);
 
-      // Step 3 — Manual payment recording (admin action): brings the
-      // driver back under the limit, unblocking them.
+      // Step 3 — Manual payment recording (admin action). A partial payment
+      // brings the driver back under the limit but does NOT unblock them:
+      // founder decision (2026-08-17) is that a blocked driver or rider stays
+      // blocked until the balance is zero, so paying just under the ceiling
+      // cannot buy another limit's worth of cash work.
       account = await commissionAccounts.recordPayment({
         ownerType: CommissionOwnerType.DRIVER,
         ownerId: driverId,
@@ -463,6 +468,18 @@ describe('DPX-COMMERCIAL-001 Slice 6 — Full Commercial Lifecycle E2E', () => {
         context: { userId: ADMIN_ID },
       });
       expect(Number(account.outstandingBalance)).toBeCloseTo(8_500);
+      expect(account.blocked).toBe(true);
+
+      // Settling in full is what releases them.
+      account = await commissionAccounts.recordPayment({
+        ownerType: CommissionOwnerType.DRIVER,
+        ownerId: driverId,
+        amount: 8_500,
+        description: 'Settled in full',
+        recordedBy: ADMIN_ID,
+        context: { userId: ADMIN_ID },
+      });
+      expect(Number(account.outstandingBalance)).toBeCloseTo(0);
       expect(account.blocked).toBe(false);
 
       // Step 4 — Ledger integrity: both ride accruals plus the manual
@@ -485,9 +502,11 @@ describe('DPX-COMMERCIAL-001 Slice 6 — Full Commercial Lifecycle E2E', () => {
         .filter((entry) => entry.type === 'PAYMENT')
         .reduce((sum, entry) => sum + Number(entry.amount), 0);
       expect(accrued).toBeCloseTo(13_500);
-      expect(paid).toBe(5_000);
+      // Two payments now: the partial one that did not release them, and the
+      // settlement that did.
+      expect(paid).toBe(13_500);
       expect(accrued - paid).toBeCloseTo(Number(account.outstandingBalance));
-      expect(ledger).toHaveLength(3);
+      expect(ledger).toHaveLength(4);
     });
   });
 });

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { CommissionEntryType, Prisma } from '@prisma/client';
+import { CommissionEntryType, CommissionOwnerType, Prisma } from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../audit/audit.service';
 import {
@@ -11,7 +11,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CommercialCreditSettingsService } from './commercial-credit-settings.service';
 import { COMMERCIAL_AUDIT_ACTIONS } from './commercial.constants';
 
-import type { CommissionAccount, CommissionLedgerEntry, CommissionOwnerType } from '@prisma/client';
+import type { CommissionAccount, CommissionLedgerEntry } from '@prisma/client';
 
 type CommercialTx = Prisma.TransactionClient;
 
@@ -365,7 +365,22 @@ export class CommissionAccountService {
     const setting = await this.creditSettings.getEffective(account.ownerType);
     const balance = new Prisma.Decimal(account.outstandingBalance);
     const creditLimit = new Prisma.Decimal(setting.creditLimit);
-    const shouldBeBlocked = balance.greaterThan(creditLimit);
+
+    // Blocking is a latch, not a threshold, for every commission-carrying party.
+    // You cross your credit limit to get blocked, and only clearing the balance
+    // to zero releases you.
+    //
+    // Founder decisions, both 2026-08-17: riders and drivers first ("cannot go
+    // online until he settle his credit back to zero"), then merchants on the
+    // same rule with a ₦50,000 threshold rather than a courier's ₦10,000.
+    //
+    // What this replaced recomputed `blocked` as `balance > creditLimit` on
+    // every write, so paying ₦1 under the ceiling released you instantly — and
+    // bought another full limit's worth of cash business. Someone could ride
+    // the limit indefinitely and never settle.
+    const shouldBeBlocked = account.blocked
+      ? balance.greaterThan(0)
+      : balance.greaterThan(creditLimit);
 
     if (shouldBeBlocked === account.blocked && creditLimit.equals(account.creditLimit)) {
       return;

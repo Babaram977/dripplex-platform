@@ -143,17 +143,30 @@ describe('DPX-COMMERCIAL-001 Slice 5 — Commercial Reconciliation Verification'
       recordedBy: ADMIN_ID,
       context: {},
     });
+    // Back under the ₦20,000 limit, still blocked: blocking is a latch for
+    // merchants too now (founder decision, 2026-08-17).
     expect(Number(afterPayment.outstandingBalance)).toBe(5_500);
-    expect(afterPayment.blocked).toBe(false);
+    expect(afterPayment.blocked).toBe(true);
+
+    const afterFullPayment = await service.recordPayment({
+      ownerType: CommissionOwnerType.MERCHANT,
+      ownerId: MERCHANT_ID,
+      amount: 5_500,
+      description: 'Settled in full',
+      recordedBy: ADMIN_ID,
+      context: {},
+    });
+    expect(Number(afterFullPayment.outstandingBalance)).toBe(0);
+    expect(afterFullPayment.blocked).toBe(false);
 
     const result = await reconcile(CommissionOwnerType.MERCHANT, MERCHANT_ID);
 
     expect(result.accrued).toBe(20_500);
-    expect(result.paid).toBe(15_000);
+    expect(result.paid).toBe(20_500);
     expect(result.ledgerNet).toBe(result.outstandingBalance);
-    expect(result.outstandingBalance).toBe(5_500);
+    expect(result.outstandingBalance).toBe(0);
     expect(result.creditLimit).toBe(20_000);
-    expect(result.availableCredit).toBe(14_500);
+    expect(result.availableCredit).toBe(20_000);
     expect(result.blocked).toBe(false);
     expect(result.blocked).toBe(result.recomputedBlocked);
   });
@@ -197,16 +210,31 @@ describe('DPX-COMMERCIAL-001 Slice 5 — Commercial Reconciliation Verification'
       context: {},
     });
     expect(Number(afterPayment.outstandingBalance)).toBe(8_500);
-    expect(afterPayment.blocked).toBe(false);
+    // ₦8,500 is back under the ₦10,000 limit, but a blocked DRIVER stays
+    // blocked until the balance is zero — founder decision, 2026-08-17.
+    // Paying just under the limit no longer buys another limit's worth of
+    // cash work. (Merchants keep the original at-or-below-limit release.)
+    expect(afterPayment.blocked).toBe(true);
+
+    const afterFullPayment = await service.recordPayment({
+      ownerType: CommissionOwnerType.DRIVER,
+      ownerId: DRIVER_ID,
+      amount: 8_500,
+      description: 'Settled in full',
+      recordedBy: ADMIN_ID,
+      context: {},
+    });
+    expect(Number(afterFullPayment.outstandingBalance)).toBe(0);
+    expect(afterFullPayment.blocked).toBe(false);
 
     const result = await reconcile(CommissionOwnerType.DRIVER, DRIVER_ID);
 
     expect(result.accrued).toBe(10_500);
-    expect(result.paid).toBe(2_000);
+    expect(result.paid).toBe(10_500);
     expect(result.ledgerNet).toBe(result.outstandingBalance);
-    expect(result.outstandingBalance).toBe(8_500);
+    expect(result.outstandingBalance).toBe(0);
     expect(result.creditLimit).toBe(10_000);
-    expect(result.availableCredit).toBe(1_500);
+    expect(result.availableCredit).toBe(10_000);
     expect(result.blocked).toBe(false);
     expect(result.blocked).toBe(result.recomputedBlocked);
   });

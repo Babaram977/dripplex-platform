@@ -1,6 +1,7 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
   AssignmentMethod,
+  CommissionOwnerType,
   DeliveryStatus,
   FulfillmentType,
   OrderPaymentMethod,
@@ -14,6 +15,7 @@ import {
   type AddressRepository,
 } from '../addresses/repositories/address.repository';
 import { AuditService, type AuditContext } from '../audit/audit.service';
+import { CommissionAccountService } from '../commercial/commission-account.service';
 import {
   ForbiddenDomainException,
   NotFoundDomainException,
@@ -105,6 +107,7 @@ export class DeliveryService {
     private readonly deliveryFeeService: DeliveryFeeService,
     private readonly auditService: AuditService,
     private readonly prisma: PrismaService,
+    private readonly commissionAccounts: CommissionAccountService,
     @Optional()
     private readonly eventBus?: DomainEventBus,
   ) {}
@@ -618,6 +621,24 @@ export class DeliveryService {
       longitude?: number;
     },
   ): Promise<RiderLocationDto> {
+    // A rider who owes DrippleX more than their credit limit on cash deliveries
+    // cannot take new work until they have settled back to zero — the same gate
+    // drivers have had since DPX-COMMERCIAL-001 Slice 4, which riders were
+    // simply missing. Going *offline* is never blocked, and a delivery already
+    // in hand always finishes: this stops new work only.
+    if (input.online) {
+      const commissionAccount = await this.commissionAccounts.getOrCreateAccount(
+        CommissionOwnerType.RIDER,
+        riderId,
+      );
+      if (commissionAccount.blocked) {
+        throw new ValidationDomainException(
+          'You cannot go online until you have settled the cash you owe DrippleX. ' +
+            'Request a payout to clear it, or pay it in at the office.',
+        );
+      }
+    }
+
     const availability = await this.deliveryRepository.upsertRiderAvailability({
       riderId,
       online: input.online,
