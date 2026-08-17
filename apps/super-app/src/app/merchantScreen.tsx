@@ -12,6 +12,7 @@ import type {
   MerchantKycDto,
   MerchantKycStatusDto,
   MerchantBankAccountDto,
+  OrderPaymentProofDto,
   WalletLedgerEntryDto,
 } from '../lib/api';
 
@@ -1230,6 +1231,11 @@ function OrdersPage({ onDetail }: { onDetail: (id: string) => void }) {
   const [orders, setOrders] = useState<MerchantOrderDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionId, setActionId] = useState<string | null>(null);
+  // DPX-ORDER-PROOF-001 — which order's receipts are open, and what they are.
+  // `null` proofs with an id set means "still loading".
+  const [proofsOrderId, setProofsOrderId] = useState<string | null>(null);
+  const [proofs, setProofs] = useState<OrderPaymentProofDto[] | null>(null);
+  const [proofsErr, setProofsErr] = useState('');
   const [showRejectId, setShowRejectId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -1296,6 +1302,20 @@ function OrdersPage({ onDetail }: { onDetail: (id: string) => void }) {
     setActionId(null);
   };
 
+  // DPX-ORDER-PROOF-001 — the receipts the customer filed for this transfer.
+  // The merchant's confirmation is still their own judgement; this just means
+  // they are no longer making it with nothing in front of them.
+  const openProofs = async (id: string) => {
+    setProofsOrderId(id);
+    setProofs(null);
+    setProofsErr('');
+    try {
+      setProofs(await api.merchant.getOrderPaymentProofs(id));
+    } catch (e: unknown) {
+      setProofsErr(e instanceof Error ? e.message : 'Could not load the receipts.');
+    }
+  };
+
   return (
     <div
       className="mx-scroll"
@@ -1360,8 +1380,17 @@ function OrdersPage({ onDetail }: { onDetail: (id: string) => void }) {
           {orders.map((o) => {
             const mxStatus = apiStatusToMx(o.status);
             const busy = actionId === o.id;
+            // Every non-cash unpaid order used to read "CARD", including a bank
+            // transfer to the merchant's own account — misleading on the very
+            // card where they decide whether that transfer arrived.
             const payLabel =
-              o.paymentMethod === 'CASH' ? 'CASH' : o.paymentStatus === 'PAID' ? 'PAID' : 'CARD';
+              o.paymentMethod === 'CASH'
+                ? 'CASH'
+                : o.paymentStatus === 'PAID'
+                  ? 'PAID'
+                  : o.paymentMethod === 'MERCHANT_DIRECT'
+                    ? 'BANK TRANSFER'
+                    : 'CARD';
             const payColor =
               o.paymentMethod === 'CASH' ? C_WARN : o.paymentStatus === 'PAID' ? C_OK : '#3B82F6';
             return (
@@ -1440,13 +1469,22 @@ function OrdersPage({ onDetail }: { onDetail: (id: string) => void }) {
                       {o.paymentMethod === 'MERCHANT_DIRECT' &&
                         o.paymentStatus !== 'PAID' &&
                         o.status !== 'CANCELLED' && (
-                          <MxBtn
-                            label={busy ? '…' : 'Confirm payment received'}
-                            variant="primary"
-                            small
-                            disabled={busy}
-                            onClick={() => doConfirmPayment(o.id)}
-                          />
+                          <>
+                            {/* Look before you confirm. */}
+                            <MxBtn
+                              label="Customer receipt"
+                              variant="outline"
+                              small
+                              onClick={() => void openProofs(o.id)}
+                            />
+                            <MxBtn
+                              label={busy ? '…' : 'Confirm payment received'}
+                              variant="primary"
+                              small
+                              disabled={busy}
+                              onClick={() => doConfirmPayment(o.id)}
+                            />
+                          </>
                         )}
                       <MxBtn label="View" variant="ghost" small onClick={() => onDetail(o.id)} />
                     </div>
@@ -1456,6 +1494,79 @@ function OrdersPage({ onDetail }: { onDetail: (id: string) => void }) {
             );
           })}
         </div>
+      )}
+
+      {proofsOrderId !== null && (
+        <Modal
+          title="Customer's payment receipt"
+          onClose={() => {
+            setProofsOrderId(null);
+            setProofs(null);
+            setProofsErr('');
+          }}
+        >
+          {proofsErr !== '' && <p style={{ fontSize: 13, color: '#F87171' }}>{proofsErr}</p>}
+          {proofsErr === '' && proofs === null && (
+            <p style={{ fontSize: 13, color: MUTED }}>Loading…</p>
+          )}
+          {proofs !== null && proofs.length === 0 && (
+            <p style={{ fontSize: 13, color: MUTED, lineHeight: 1.5 }}>
+              The customer has not attached a receipt. That is not proof they did not pay —
+              attaching one is optional. Check your own account before confirming.
+            </p>
+          )}
+          {(proofs ?? []).map((proof) => (
+            <div
+              key={proof.id}
+              style={{
+                border: `1px solid ${BORDER}`,
+                borderRadius: 10,
+                padding: 12,
+                marginBottom: 10,
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                <span style={{ fontSize: 12, color: MUTED }}>Sent</span>
+                <span style={{ fontSize: 12, color: '#fff' }}>
+                  {new Date(proof.createdAt).toLocaleString()}
+                </span>
+              </div>
+              {proof.reference !== null && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                  <span style={{ fontSize: 12, color: MUTED }}>Reference</span>
+                  <span style={{ fontSize: 12, color: '#fff' }}>{proof.reference}</span>
+                </div>
+              )}
+              {proof.amount !== null && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                  <span style={{ fontSize: 12, color: MUTED }}>Amount stated</span>
+                  <span style={{ fontSize: 12, color: '#fff' }}>
+                    ₦{proof.amount.toLocaleString()}
+                  </span>
+                </div>
+              )}
+              {proof.note !== null && (
+                <p style={{ fontSize: 12, color: MUTED, marginTop: 6 }}>{proof.note}</p>
+              )}
+              {/* Receipts are private objects — this is a short-lived signed URL,
+                  so open it now rather than bookmarking it. */}
+              <a
+                href={proof.receiptUrl}
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  display: 'inline-block',
+                  marginTop: 8,
+                  fontSize: 12.5,
+                  color: G3,
+                  textDecoration: 'underline',
+                }}
+              >
+                Open receipt
+              </a>
+            </div>
+          ))}
+        </Modal>
       )}
 
       {showRejectId && (
@@ -1616,7 +1727,13 @@ function OrderDetailPage({ orderId, onBack }: { orderId: string; onBack: () => v
           </span>
           <span style={{ marginLeft: 6 }}>
             <MxChip
-              label={order.paymentMethod === 'CASH' ? 'CASH' : 'CARD'}
+              label={
+                order.paymentMethod === 'CASH'
+                  ? 'CASH'
+                  : order.paymentMethod === 'MERCHANT_DIRECT'
+                    ? 'BANK TRANSFER'
+                    : 'CARD'
+              }
               color={order.paymentMethod === 'CASH' ? C_WARN : '#3B82F6'}
             />
           </span>

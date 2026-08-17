@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { G0, G2, G3, NAVY_BASE, NAVY_CARD, NAVY_DEEP, NAVY_SURFACE, BORDER, MUTED } from './shared';
-import { api } from '../lib/api';
+import { api, uploadFile } from '../lib/api';
 import type { OrderDto, CustomerAddressDto, CartDto } from '../lib/api';
 import { BottomNavigation } from '../components/navigation';
 import type { NavTabKey } from '../components/navigation/BottomNavigation';
@@ -663,6 +663,14 @@ export function CheckoutScreen({
   } | null>(null);
   const [showBankSheet, setShowBankSheet] = useState(false);
   const [paying, setPaying] = useState(false);
+  // DPX-ORDER-PROOF-001 — the receipt the customer attaches to the transfer.
+  // Optional by founder decision: a customer who has paid should always be able
+  // to put something on file, and demanding a reference they cannot find would
+  // simply stop them attaching the screenshot they do have.
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptRef, setReceiptRef] = useState('');
+  const [receiptErr, setReceiptErr] = useState('');
+  const receiptInputRef = useRef<HTMLInputElement | null>(null);
   const [confirmedOrderId, setConfirmedOrderId] = useState<string | null>(null);
   const [confirmedOrderNum, setConfirmedOrderNum] = useState<string>('#DRX-XXXX');
 
@@ -1032,8 +1040,30 @@ export function CheckoutScreen({
   const handleConfirmBankTransfer = async () => {
     if (!pendingOrder) return;
     setPaying(true);
+    setReceiptErr('');
     try {
       await api.orders.pay(pendingOrder.id, { provider: 'MERCHANT_DIRECT' });
+
+      // File the receipt after the order is placed, and never let a failure
+      // here lose the order the customer already paid for. A receipt that
+      // didn't upload is recoverable — they can add it from the order later —
+      // whereas an order rolled back because of an image is not.
+      if (receiptFile) {
+        try {
+          const receiptUrl = await uploadFile(receiptFile, 'payment-proofs');
+          await api.orders.submitPaymentProof(pendingOrder.id, {
+            receiptUrl,
+            ...(receiptRef.trim() ? { reference: receiptRef.trim() } : {}),
+          });
+        } catch (proofError: unknown) {
+          setReceiptErr(
+            proofError instanceof Error
+              ? `Order placed, but the receipt did not upload: ${proofError.message}`
+              : 'Order placed, but the receipt did not upload.',
+          );
+        }
+      }
+
       setConfirmedOrderId(pendingOrder.id);
       setConfirmedOrderNum(pendingOrder.orderNumber);
       setShowBankSheet(false);
@@ -1593,6 +1623,85 @@ export function CheckoutScreen({
                 </div>
               ))}
             </div>
+
+            {/* DPX-ORDER-PROOF-001 — attach the bank receipt. Optional, and
+                deliberately so: the point is that a customer who has paid can
+                always put something on file. Kept above the warning because it
+                is part of "what to do", not a caveat. */}
+            <input
+              ref={receiptInputRef}
+              type="file"
+              accept="image/*,application/pdf"
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const picked = e.target.files?.[0] ?? null;
+                e.target.value = '';
+                setReceiptFile(picked);
+                setReceiptErr('');
+              }}
+            />
+            <div
+              className="flex flex-col gap-2.5 rounded-xl px-4 py-3.5"
+              style={{ background: 'rgba(255,255,255,.03)', border: `1px solid ${BORDER}` }}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p
+                    className="text-[13px] font-semibold text-white"
+                    style={{ fontFamily: "'Poppins',sans-serif" }}
+                  >
+                    Attach your receipt
+                  </p>
+                  <p className="text-[11px]" style={{ color: MUTED }}>
+                    Optional — but it is what you point to if this payment is ever queried.
+                  </p>
+                </div>
+                <button
+                  onClick={() => receiptInputRef.current?.click()}
+                  disabled={paying}
+                  className="h-9 shrink-0 rounded-xl px-3.5 text-[12px] font-semibold active:scale-[.97]"
+                  style={{
+                    background: 'rgba(43,172,82,.12)',
+                    border: '1px solid rgba(43,172,82,.3)',
+                    color: G3,
+                    fontFamily: "'Poppins',sans-serif",
+                  }}
+                >
+                  {receiptFile ? 'Change' : 'Choose file'}
+                </button>
+              </div>
+              {receiptFile && (
+                <p className="text-[11.5px]" style={{ color: G3 }}>
+                  ✓ {receiptFile.name}
+                </p>
+              )}
+              <input
+                value={receiptRef}
+                onChange={(e) => setReceiptRef(e.target.value)}
+                placeholder="Transfer reference (optional)"
+                disabled={paying}
+                className="h-10 w-full rounded-xl px-3 text-[13px] text-white outline-none"
+                style={{
+                  background: 'rgba(255,255,255,.04)',
+                  border: `1px solid ${BORDER}`,
+                  fontFamily: "'Inter',sans-serif",
+                }}
+              />
+            </div>
+
+            {receiptErr !== '' && (
+              <div
+                className="rounded-xl px-4 py-3"
+                style={{
+                  background: 'rgba(239,68,68,.07)',
+                  border: '1px solid rgba(239,68,68,.2)',
+                }}
+              >
+                <p className="text-[11.5px]" style={{ color: '#F87171' }}>
+                  {receiptErr}
+                </p>
+              </div>
+            )}
 
             <div
               className="flex items-start gap-2.5 rounded-xl px-4 py-3"

@@ -69,6 +69,26 @@ export interface OrderDisputeDto {
   resolvedAt: string | null;
 }
 
+/**
+ * DPX-ORDER-PROOF-001 — the customer's receipt for a MERCHANT_DIRECT bank
+ * transfer, shown to the merchant before they confirm receipt and referenced
+ * if the order is later disputed.
+ *
+ * `receiptUrl` is a short-lived SIGNED GET url minted per read, not a durable
+ * link — receipts live in the private bucket. Do not cache or persist it.
+ */
+export interface OrderPaymentProofDto {
+  id: string;
+  orderId: string;
+  submittedBy: string;
+  receiptUrl: string;
+  reference: string | null;
+  /** What the customer says they transferred; may differ from order.total. */
+  amount: number | null;
+  note: string | null;
+  createdAt: string;
+}
+
 export interface OrderDto {
   id: string;
   customerId: string;

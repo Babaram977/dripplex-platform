@@ -13,6 +13,10 @@ export const ORDER_AUDIT_ACTIONS = {
   DELAYED: 'order.delayed',
   COMPLETED: 'order.completed',
   REFUNDED: 'order.refunded',
+  /// DPX-ORDER-PROOF-001 — the customer filed a bank receipt for a
+  /// MERCHANT_DIRECT transfer. Recorded separately from PAYMENT_CONFIRMED:
+  /// this is the customer's claim, that is the merchant's acknowledgement.
+  PAYMENT_PROOF_SUBMITTED: 'order.payment_proof_submitted',
   DISPUTE_RAISED: 'order.dispute_raised',
   DISPUTE_RESOLVED: 'order.dispute_resolved',
   SETTLEMENT_COMPLETED: 'order.settlement.completed',

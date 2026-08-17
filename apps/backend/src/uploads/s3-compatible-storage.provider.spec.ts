@@ -54,6 +54,16 @@ describe('S3CompatibleStorageProvider bucket routing', () => {
     expect(res.publicUrl).toContain('/dripplex-uploads/');
   });
 
+  // DPX-ORDER-PROOF-001 — a bank receipt carries account details and is the
+  // evidence a dispute turns on. It must never be served from a public URL.
+  it('keeps payment-proofs on the PRIVATE bucket, never public', async () => {
+    const res = await put('payment-proofs/u1/receipt.png', makeConfig());
+    expect(res.uploadUrl).toContain('/dripplex-uploads/payment-proofs/u1/receipt.png');
+    expect(res.uploadUrl).not.toContain('dripplex-public');
+    expect(res.publicUrl).not.toContain('pub-abc123.r2.dev');
+    expect(res.publicUrl).toContain('/dripplex-uploads/');
+  });
+
   it('keeps identity-verification on the PRIVATE bucket', async () => {
     const res = await put('identity-verification/u1/doc.jpg', makeConfig());
     expect(res.uploadUrl).toContain('/dripplex-uploads/');

@@ -16,6 +16,8 @@ import { LOCATION_PUSH_INTERVAL_MS } from './riderScreen';
 import type {
   AdminVehicleDto,
   DriverActivationEligibilityDto,
+  DriverInspectionDto,
+  InspectionCentreDto,
   RideOfferDto,
   RideOfferPreviewDto,
   RideDto,
@@ -796,12 +798,14 @@ export function DriverKYCStatusScreen({
   onBack,
   onVehicle,
   onAgreement,
+  onInspection,
 }: {
   onContinue: () => void;
   onUpload: () => void;
   onBack: () => void;
   onVehicle?: () => void;
   onAgreement?: () => void;
+  onInspection?: () => void;
 }) {
   const [eligibility, setEligibility] = useState<DriverActivationEligibilityDto | null>(null);
   const [loading, setLoading] = useState(true);
@@ -814,6 +818,10 @@ export function DriverKYCStatusScreen({
   // both when nothing was sent and when all three are sitting in the review
   // queue, and the row prompted for an upload either way.
   const [allRequiredDocsSent, setAllRequiredDocsSent] = useState<boolean | null>(null);
+  // Is there an appointment already in the diary? Booking is the DRIVER's job —
+  // there is no Operations scheduling endpoint — so this row is only "with
+  // Operations" once a slot exists and the inspector has yet to decide.
+  const [inspectionBooked, setInspectionBooked] = useState<boolean | null>(null);
 
   useEffect(() => {
     api.driver
@@ -832,6 +840,10 @@ export function DriverKYCStatusScreen({
         setAllRequiredDocsSent(REQUIRED_DRIVER_KYC_TYPES.every((type) => live.has(type)));
       })
       .catch(() => setAllRequiredDocsSent(null));
+    api.driver
+      .listInspections()
+      .then((rows) => setInspectionBooked(rows.some((row) => row.status === 'SCHEDULED')))
+      .catch(() => setInspectionBooked(null));
   }, []);
 
   const load = useCallback(() => {
@@ -914,8 +926,23 @@ export function DriverKYCStatusScreen({
       key: 'inspectionPassed',
       label: 'Inspection & test',
       done: 'Your vehicle passed its physical inspection.',
-      pending: 'Your vehicle has not passed a physical inspection yet.',
-      owner: 'ops',
+      // This row used to read "With Operations" and offer nothing, on the
+      // assumption Operations books the appointment. They cannot — the backend
+      // exposes scheduling to the driver only. So an unbooked inspection is the
+      // driver's move, and it is theirs again after a failure.
+      pending:
+        inspectionBooked === true
+          ? 'Your appointment is booked — the inspector decides on the day.'
+          : 'Book your vehicle in for its physical inspection.',
+      owner: inspectionBooked === true ? 'ops' : 'you',
+      ...(onInspection
+        ? {
+            action: {
+              label: inspectionBooked === true ? 'View your appointment' : 'Book an inspection',
+              onClick: onInspection,
+            },
+          }
+        : {}),
     },
     {
       key: 'agreementAccepted',
@@ -1575,6 +1602,416 @@ export function DriverUploadDocsScreen({
 /** The four angles the Operations Console vehicle desk renders, in the order it
  * reads Vehicle.photos. Keep in step with ANGLES in adminConsoleScreen.tsx. */
 const VEHICLE_PHOTO_ANGLES = ['Front', 'Rear', 'Left Side', 'Right Side'];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DRIVER — VEHICLE INSPECTION
+//
+// Founder decision (2026-08-17): a vehicle that needs work is a FAILED
+// inspection followed by a re-inspection, not a separate "upgrade" state.
+// The backend already enforces exactly that — `scheduleInspection` accepts
+// `reinspectionOfId` ONLY when the referenced inspection is FAILED.
+//
+// What was missing was any way to act on it. GET/POST /driver/inspections have
+// existed since the inspection module shipped and nothing called them, so a
+// driver whose inspection failed had no route back: Operations has no
+// scheduling endpoint either, which makes booking the driver's own job.
+// ─────────────────────────────────────────────────────────────────────────────
+export function DriverInspectionScreen({ onBack }: { onBack: () => void }) {
+  const [inspections, setInspections] = useState<DriverInspectionDto[] | null>(null);
+  const [centres, setCentres] = useState<InspectionCentreDto[]>([]);
+  const [vehicles, setVehicles] = useState<AdminVehicleDto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadErr, setLoadErr] = useState('');
+
+  // Booking form. `retryOf` is set when this booking replaces a failed one.
+  const [booking, setBooking] = useState(false);
+  const [retryOf, setRetryOf] = useState<DriverInspectionDto | null>(null);
+  const [centreId, setCentreId] = useState('');
+  const [vehicleId, setVehicleId] = useState('');
+  const [slot, setSlot] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [formErr, setFormErr] = useState('');
+
+  const load = useCallback(() => {
+    setLoading(true);
+    Promise.all([
+      api.driver.listInspections(),
+      api.driver.listInspectionCentres(),
+      api.driver.listVehicles(),
+    ])
+      .then(([rows, centreRows, vehicleRows]) => {
+        setInspections(rows);
+        setCentres(centreRows);
+        setVehicles(vehicleRows);
+        setLoadErr('');
+      })
+      .catch((e: unknown) =>
+        setLoadErr((e as { message?: string }).message ?? 'Could not load your inspections.'),
+      )
+      .finally(() => setLoading(false));
+  }, []);
+  useEffect(() => load(), [load]);
+
+  const openBooking = (failed: DriverInspectionDto | null) => {
+    setRetryOf(failed);
+    // A re-inspection is for the same vehicle by definition; a first booking
+    // defaults to the driver's only vehicle when they have just the one.
+    setVehicleId(failed?.vehicleId ?? (vehicles.length === 1 ? (vehicles[0]?.id ?? '') : ''));
+    setCentreId('');
+    setSlot('');
+    setFormErr('');
+    setBooking(true);
+  };
+
+  const submit = async () => {
+    setFormErr('');
+    if (vehicleId === '') {
+      setFormErr('Choose which vehicle is being inspected.');
+      return;
+    }
+    if (centreId === '') {
+      setFormErr('Choose an inspection centre.');
+      return;
+    }
+    if (slot === '') {
+      setFormErr('Choose the date and time of your appointment.');
+      return;
+    }
+    const when = new Date(slot);
+    if (Number.isNaN(when.getTime()) || when.getTime() <= Date.now()) {
+      setFormErr('Choose a date and time in the future.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.driver.scheduleInspection({
+        vehicleId,
+        centreId,
+        scheduledAt: when.toISOString(),
+        ...(retryOf ? { reinspectionOfId: retryOf.id } : {}),
+      });
+      setBooking(false);
+      setRetryOf(null);
+      load();
+    } catch (e: unknown) {
+      setFormErr((e as { message?: string }).message ?? 'Could not book that appointment.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const cancel = async (id: string) => {
+    try {
+      await api.driver.cancelInspection(id);
+      load();
+    } catch (e: unknown) {
+      setLoadErr((e as { message?: string }).message ?? 'Could not cancel that appointment.');
+    }
+  };
+
+  const vehicleLabel = (id: string): string => {
+    const vehicle = vehicles.find((v) => v.id === id);
+    return vehicle ? `${vehicle.make} ${vehicle.model} · ${vehicle.plateNumber}` : 'Your vehicle';
+  };
+  const centreLabel = (id: string): string => centres.find((c) => c.id === id)?.name ?? 'Centre';
+
+  const rows = inspections ?? [];
+  const scheduled = rows.filter((row) => row.status === 'SCHEDULED');
+  // Only the most recent failure is worth offering a retry on — an older one is
+  // already answered by whatever was booked after it.
+  const latestFailed = rows
+    .filter((row) => row.status === 'FAILED')
+    .sort((a, b) => (a.scheduledAt < b.scheduledAt ? 1 : -1))[0];
+  const passed = rows.some((row) => row.status === 'PASSED');
+  const retryAlreadyBooked =
+    latestFailed !== undefined &&
+    rows.some((row) => row.reinspectionOfId === latestFailed.id && row.status === 'SCHEDULED');
+
+  const STATUS_STYLE: Record<string, { label: string; color: string }> = {
+    SCHEDULED: { label: 'Booked', color: COLOR_WARNING },
+    PASSED: { label: 'Passed', color: G3 },
+    FAILED: { label: 'Failed', color: COLOR_ERROR },
+    CANCELLED: { label: 'Cancelled', color: MUTED },
+  };
+
+  return (
+    <div
+      className="absolute inset-0 flex flex-col overflow-hidden"
+      style={{ background: NAVY_BASE }}
+    >
+      <DStatusBar />
+      <div className="flex-1 overflow-y-auto px-5 pb-8">
+        <div className="mb-6 flex items-center gap-3 pt-4">
+          <DBackBtn onClick={onBack} />
+          <div>
+            <p className="text-[17px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
+              Vehicle inspection
+            </p>
+            <p className="text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
+              {passed
+                ? 'Your vehicle has passed'
+                : scheduled.length > 0
+                  ? 'Appointment booked'
+                  : 'Book your physical check'}
+            </p>
+          </div>
+        </div>
+
+        {loading && (
+          <p className="text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
+            Loading…
+          </p>
+        )}
+        {loadErr !== '' && (
+          <div
+            className="mb-4 rounded-xl px-4 py-3"
+            style={{ background: 'rgba(239,68,68,.07)', border: '1px solid rgba(239,68,68,.2)' }}
+          >
+            <p className="text-[12.5px]" style={{ fontFamily: IT, color: COLOR_ERROR }}>
+              {loadErr}
+            </p>
+          </div>
+        )}
+
+        {/* A failed inspection is not a dead end — it is a re-inspection. */}
+        {latestFailed !== undefined && !passed && !retryAlreadyBooked && (
+          <div
+            className="mb-4 rounded-2xl px-4 py-3.5"
+            style={{ background: 'rgba(239,68,68,.07)', border: '1px solid rgba(239,68,68,.2)' }}
+          >
+            <p className="text-[13px] font-semibold" style={{ fontFamily: PP, color: '#fff' }}>
+              Your vehicle did not pass
+            </p>
+            <p
+              className="mt-1 text-[12px] leading-relaxed"
+              style={{ fontFamily: IT, color: MUTED }}
+            >
+              {latestFailed.notes !== null && latestFailed.notes !== ''
+                ? latestFailed.notes
+                : 'Put right what the inspector listed, then book a re-inspection.'}
+            </p>
+            <button
+              onClick={() => openBooking(latestFailed)}
+              className="mt-3 h-10 w-full rounded-xl text-[13px] font-semibold active:scale-[.97]"
+              style={{
+                background: `linear-gradient(135deg,${G0},${G2})`,
+                color: '#fff',
+                fontFamily: IT,
+              }}
+            >
+              Book a re-inspection →
+            </button>
+          </div>
+        )}
+
+        {!loading && rows.length === 0 && (
+          <p
+            className="mb-4 text-[12.5px] leading-relaxed"
+            style={{ fontFamily: IT, color: MUTED }}
+          >
+            Your vehicle has to pass a physical inspection before you can go online. Book a slot at
+            one of the centres below — take the vehicle and your papers with you.
+          </p>
+        )}
+
+        {rows.map((row) => {
+          const style = STATUS_STYLE[row.status] ?? { label: row.status, color: MUTED };
+          return (
+            <div
+              key={row.id}
+              className="mb-2.5 rounded-2xl px-4 py-3.5"
+              style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <p
+                      className="text-[13.5px] font-semibold"
+                      style={{ fontFamily: PP, color: '#fff' }}
+                    >
+                      {centreLabel(row.centreId)}
+                    </p>
+                    {row.reinspectionOfId !== null && (
+                      <span
+                        className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                        style={{
+                          fontFamily: IT,
+                          background: 'rgba(59,130,246,.12)',
+                          color: '#60A5FA',
+                        }}
+                      >
+                        Re-inspection
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11.5px]" style={{ fontFamily: IT, color: MUTED }}>
+                    {new Date(row.scheduledAt).toLocaleString()} · {vehicleLabel(row.vehicleId)}
+                  </p>
+                  {row.notes !== null && row.notes !== '' && (
+                    <p className="mt-1 text-[11.5px]" style={{ fontFamily: IT, color: MUTED }}>
+                      {row.notes}
+                    </p>
+                  )}
+                </div>
+                <span
+                  className="shrink-0 rounded-full px-2.5 py-1 text-[10.5px] font-semibold"
+                  style={{
+                    fontFamily: IT,
+                    background: 'rgba(255,255,255,.05)',
+                    color: style.color,
+                  }}
+                >
+                  {style.label}
+                </span>
+              </div>
+              {row.status === 'SCHEDULED' && (
+                <button
+                  onClick={() => void cancel(row.id)}
+                  className="mt-2.5 h-9 w-full rounded-xl text-[12.5px] font-semibold active:scale-[.97]"
+                  style={{
+                    background: 'rgba(255,255,255,.04)',
+                    border: `1px solid ${BORDER}`,
+                    color: MUTED,
+                    fontFamily: IT,
+                  }}
+                >
+                  Cancel this appointment
+                </button>
+              )}
+            </div>
+          );
+        })}
+
+        {!loading && !booking && scheduled.length === 0 && !passed && (
+          <DGreenBtn
+            label={latestFailed !== undefined ? 'Book a re-inspection →' : 'Book an inspection →'}
+            onClick={() => openBooking(latestFailed ?? null)}
+          />
+        )}
+
+        {booking && (
+          <div
+            className="mt-2 rounded-2xl px-4 py-4"
+            style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
+          >
+            <p className="mb-3 text-[14px] font-semibold" style={{ fontFamily: PP, color: '#fff' }}>
+              {retryOf ? 'Book a re-inspection' : 'Book an inspection'}
+            </p>
+
+            {vehicles.length === 0 && (
+              <p className="mb-3 text-[12px]" style={{ fontFamily: IT, color: COLOR_WARNING }}>
+                Register your vehicle first — there is nothing to inspect yet.
+              </p>
+            )}
+
+            {vehicles.length > 1 && (
+              <>
+                <p className="mb-2 text-[12.5px]" style={{ fontFamily: IT, color: TEXT_SECONDARY }}>
+                  Vehicle
+                </p>
+                <div className="mb-3 flex flex-col gap-2">
+                  {vehicles.map((vehicle) => (
+                    <button
+                      key={vehicle.id}
+                      onClick={() => setVehicleId(vehicle.id)}
+                      disabled={retryOf !== null}
+                      className="h-11 rounded-xl px-3 text-left text-[12.5px] active:scale-[.99]"
+                      style={{
+                        background:
+                          vehicleId === vehicle.id
+                            ? 'rgba(43,172,82,.12)'
+                            : 'rgba(255,255,255,.04)',
+                        border: `1px solid ${vehicleId === vehicle.id ? G2 : BORDER}`,
+                        color: vehicleId === vehicle.id ? '#fff' : MUTED,
+                        fontFamily: IT,
+                      }}
+                    >
+                      {vehicle.make} {vehicle.model} · {vehicle.plateNumber}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            <p className="mb-2 text-[12.5px]" style={{ fontFamily: IT, color: TEXT_SECONDARY }}>
+              Inspection centre
+            </p>
+            {centres.length === 0 ? (
+              <p className="mb-3 text-[12px]" style={{ fontFamily: IT, color: COLOR_WARNING }}>
+                No inspection centre is open for booking yet. Operations adds these — check back, or
+                contact support.
+              </p>
+            ) : (
+              <div className="mb-3 flex flex-col gap-2">
+                {centres.map((centre) => (
+                  <button
+                    key={centre.id}
+                    onClick={() => setCentreId(centre.id)}
+                    className="rounded-xl px-3 py-2.5 text-left active:scale-[.99]"
+                    style={{
+                      background:
+                        centreId === centre.id ? 'rgba(43,172,82,.12)' : 'rgba(255,255,255,.04)',
+                      border: `1px solid ${centreId === centre.id ? G2 : BORDER}`,
+                      fontFamily: IT,
+                    }}
+                  >
+                    <p
+                      className="text-[12.5px] font-semibold"
+                      style={{ color: centreId === centre.id ? '#fff' : MUTED }}
+                    >
+                      {centre.name}
+                    </p>
+                    <p className="text-[11px]" style={{ color: MUTED }}>
+                      {centre.address}, {centre.city}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <p className="mb-2 text-[12.5px]" style={{ fontFamily: IT, color: TEXT_SECONDARY }}>
+              Date and time
+            </p>
+            <input
+              type="datetime-local"
+              value={slot}
+              onChange={(e) => setSlot(e.target.value)}
+              className="mb-3 h-11 w-full rounded-xl px-3 text-[13px] text-white outline-none"
+              style={{
+                background: 'rgba(255,255,255,.04)',
+                border: `1px solid ${BORDER}`,
+                fontFamily: IT,
+              }}
+            />
+
+            {formErr !== '' && (
+              <p className="mb-3 text-[12px]" style={{ fontFamily: IT, color: COLOR_ERROR }}>
+                {formErr}
+              </p>
+            )}
+
+            <DGreenBtn label="Confirm booking →" onClick={() => void submit()} loading={saving} />
+            <button
+              onClick={() => {
+                setBooking(false);
+                setRetryOf(null);
+              }}
+              className="mt-2 h-10 w-full rounded-xl text-[12.5px] font-medium active:scale-[.97]"
+              style={{
+                background: 'transparent',
+                border: `1px solid ${BORDER}`,
+                color: MUTED,
+                fontFamily: IT,
+              }}
+            >
+              Not now
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function DriverVehicleRegScreen({
   onBack,

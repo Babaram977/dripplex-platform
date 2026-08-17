@@ -304,6 +304,21 @@ export interface OrderItemDto {
   createdAt: string;
 }
 
+// DPX-ORDER-PROOF-001 — a customer's bank receipt for a MERCHANT_DIRECT order.
+// `receiptUrl` is a SHORT-LIVED SIGNED URL minted per read (receipts live in the
+// private bucket) — render it, never cache or store it.
+export interface OrderPaymentProofDto {
+  id: string;
+  orderId: string;
+  submittedBy: string;
+  receiptUrl: string;
+  reference: string | null;
+  /** What the customer says they sent; may differ from the order total. */
+  amount: number | null;
+  note: string | null;
+  createdAt: string;
+}
+
 export interface OrderDto {
   id: string;
   customerId: string;
@@ -801,6 +816,39 @@ export interface AdminInspectionDto {
   notes: string | null;
   photos: string[];
   reinspectionOfId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// A driver's own inspection (the subset of AdminInspectionDto without the
+// Operations-only enrichment). Same rows, read through the driver's endpoint.
+export interface DriverInspectionDto {
+  id: string;
+  driverId: string;
+  vehicleId: string;
+  centreId: string;
+  inspectorId: string | null;
+  decidedBy: string | null;
+  status: 'SCHEDULED' | 'PASSED' | 'FAILED' | 'CANCELLED';
+  scheduledAt: string;
+  completedAt: string | null;
+  checklist: InspectionChecklistItemDto[] | null;
+  notes: string | null;
+  photos: string[];
+  /** Set when this booking replaces a FAILED inspection. */
+  reinspectionOfId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InspectionCentreDto {
+  id: string;
+  name: string;
+  address: string;
+  city: string;
+  latitude: number | null;
+  longitude: number | null;
+  isActive: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -1478,6 +1526,18 @@ export const api = {
         'GET',
         `/customer/orders/${orderId}/merchant-bank`,
       ),
+    // DPX-ORDER-PROOF-001 — file the bank receipt for a "Pay to Merchant Bank"
+    // order. Does NOT mark the order paid: the merchant still confirms the
+    // money reached their own account. This puts the customer's evidence on
+    // file so a later dispute has something to reference.
+    submitPaymentProof: (
+      orderId: string,
+      body: { receiptUrl: string; reference?: string; amount?: number; note?: string },
+    ) => dx<OrderPaymentProofDto>('POST', `/customer/orders/${orderId}/payment-proof`, body),
+    // Receipts already filed. `receiptUrl` on each is a short-lived signed URL
+    // minted for this read — display it, never persist it.
+    getPaymentProofs: (orderId: string) =>
+      dx<OrderPaymentProofDto[]>('GET', `/customer/orders/${orderId}/payment-proofs`),
   },
 
   // ── RIDES (customer) ───────────────────────────────────────────────────────
@@ -1639,6 +1699,25 @@ export const api = {
     // show what is verified, pending or rejected instead of relisting every
     // document as outstanding on every visit.
     getKyc: () => dx<AdminDriverKycDto[]>('GET', '/driver/kyc'),
+    // ── Physical vehicle inspection (DPX-DRIVER-002 Phase 3) ─────────────────
+    // These routes shipped with the inspection module and nothing in the app
+    // ever called them, so a driver could not see or book an inspection — and
+    // Operations has no scheduling endpoint at all, which makes booking the
+    // driver's to do and nobody else's.
+    listInspectionCentres: () => dx<InspectionCentreDto[]>('GET', '/driver/inspections/centres'),
+    listInspections: () => dx<DriverInspectionDto[]>('GET', '/driver/inspections'),
+    // `reinspectionOfId` is how a failed inspection is retried. The backend
+    // accepts it ONLY when the referenced inspection is FAILED, which is the
+    // founder's rule ("it should be re-inspection") already enforced server-side.
+    scheduleInspection: (body: {
+      vehicleId: string;
+      centreId: string;
+      scheduledAt: string;
+      reinspectionOfId?: string;
+      notes?: string;
+    }) => dx<DriverInspectionDto>('POST', '/driver/inspections', body),
+    cancelInspection: (id: string) =>
+      dx<DriverInspectionDto>('POST', `/driver/inspections/${id}/cancel`),
     // The six conditions the backend requires before a driver can be Active
     // (DriverActivationService is the single platform-wide gate). This is the
     // driver's own read-only view of what is still blocking them.
@@ -1897,6 +1976,10 @@ export const api = {
     // stays PENDING and no rider is dispatched.
     confirmPaymentReceived: (id: string) =>
       dx<MerchantOrderDto>('PATCH', `/merchant/orders/${id}/payment-received`),
+    // The receipts the customer filed for this order — what the merchant should
+    // look at before confirming the transfer landed.
+    getOrderPaymentProofs: (id: string) =>
+      dx<OrderPaymentProofDto[]>('GET', `/merchant/orders/${id}/payment-proofs`),
     delayOrder: (id: string, body: { estimatedReadyAt: string }) =>
       dx<MerchantOrderDto>('PATCH', `/merchant/orders/${id}/delay`, body),
     cancelOrder: (id: string, reason?: string) =>
