@@ -1626,10 +1626,40 @@ function PageTrips() {
 }
 
 // ─── Page: Drivers ─────────────────────────────────────────────────────────────
+/**
+ * The three documents DrippleX actually requires of a driver, mirroring
+ * REQUIRED_DRIVER_KYC_DOCUMENT_TYPES in the backend's driver.constants.ts. The
+ * activation gate demands all three VERIFIED; anything less does not activate
+ * anyone, so nothing less may be labelled "Verified" on this desk.
+ */
+const REQUIRED_DRIVER_KYC_DOCS = ['DRIVER_LICENSE', 'VEHICLE_REGISTRATION', 'GUARANTOR_ID'];
+
+/**
+ * This read "any one document verified → Verified", which is why every driver
+ * on the desk showed **KYC Verified** next to **Status Pending** and looked
+ * like a platform bug. It was not: one verified licence out of three required
+ * documents is a driver who cannot be activated, being described as done.
+ *
+ * "Verified" now means what the activation gate means by it — every required
+ * document verified. Partial progress reads as "pending", which is the truth.
+ */
 const driverKycState = (d: AdminDriverDto): 'verified' | 'pending' | 'unverified' => {
-  if (d.kyc.some((k) => k.verificationStatus === 'PENDING')) return 'pending';
-  if (d.kyc.some((k) => k.verificationStatus === 'VERIFIED')) return 'verified';
+  const verified = REQUIRED_DRIVER_KYC_DOCS.filter((type) =>
+    d.kyc.some((k) => k.documentType === type && k.verificationStatus === 'VERIFIED'),
+  );
+  if (verified.length === REQUIRED_DRIVER_KYC_DOCS.length) return 'verified';
+  if (verified.length > 0 || d.kyc.some((k) => k.verificationStatus === 'PENDING'))
+    return 'pending';
   return 'unverified';
+};
+
+/** "2 of 3 documents verified" — so the desk says how far along, not just that
+ * something is outstanding. */
+const driverKycProgress = (d: AdminDriverDto): string => {
+  const verified = REQUIRED_DRIVER_KYC_DOCS.filter((type) =>
+    d.kyc.some((k) => k.documentType === type && k.verificationStatus === 'VERIFIED'),
+  ).length;
+  return `${verified}/${REQUIRED_DRIVER_KYC_DOCS.length} docs`;
 };
 const driverStatusChip = (s: string) => (s === 'UNDER_REVIEW' ? 'in review' : s.toLowerCase());
 
@@ -1697,6 +1727,26 @@ function PageDrivers() {
       await load();
     } catch (e: unknown) {
       setNote((e as { message?: string }).message ?? 'Could not reactivate.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  // The sixth activation condition nobody could satisfy: `identityVerified` is
+  // set only by an automated IDV provider (not yet chosen) or by this manual
+  // review, which had a backend endpoint and no caller anywhere in the console.
+  const verifyIdentity = async () => {
+    if (!selected) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      await api.admin.verifyDriverIdentity(
+        selected.driverId,
+        'Reviewed against submitted documents in Operations Console',
+      );
+      setNote('Identity verified. The driver can now be approved once their other steps pass.');
+      await load();
+    } catch (e: unknown) {
+      setNote((e as { message?: string }).message ?? 'Could not verify identity.');
     } finally {
       setBusy(false);
     }
@@ -1810,7 +1860,12 @@ function PageDrivers() {
                       <StatusChip status={driverStatusChip(d.status)} />
                     </td>
                     <td style={{ padding: '8px 8px' }}>
-                      <StatusChip status={driverKycState(d)} />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <StatusChip status={driverKycState(d)} />
+                        {driverKycState(d) !== 'verified' && (
+                          <span style={{ fontSize: 10, color: MUTED }}>{driverKycProgress(d)}</span>
+                        )}
+                      </div>
                     </td>
                     <td style={{ padding: '8px 8px' }}>
                       <div style={{ display: 'flex', gap: 4 }}>
@@ -1909,6 +1964,12 @@ function PageDrivers() {
             <SEP />
             {note && <span style={{ fontSize: 11, color: C_WARN }}>{note}</span>}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              <Btn
+                label={busy ? 'Verifying…' : 'Mark Identity Verified'}
+                color={G3}
+                outline
+                onClick={() => void verifyIdentity()}
+              />
               {selected.status === 'SUSPENDED' ? (
                 <Btn
                   label={busy ? 'Reactivating…' : 'Reactivate Driver'}

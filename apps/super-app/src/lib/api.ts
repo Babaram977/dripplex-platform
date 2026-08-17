@@ -1848,6 +1848,20 @@ export const api = {
       ),
     rejectDriverKyc: (kycId: string, remarks: string) =>
       dx<AdminDriverKycDto>('POST', `/admin/driver/kyc/${kycId}/reject`, { remarks }),
+    /**
+     * Mark a driver's identity verified after an operations reviewer has matched
+     * them against their documents. This endpoint has existed since DPX-DS-001
+     * but nothing in the Ops Console called it, so `identityVerified` — one of
+     * the six activation conditions — could never be satisfied and every driver
+     * sat at "5 of 6 steps" forever. Until an automated IDV provider is chosen
+     * (task #15), this manual review is the only way it is ever set.
+     */
+    verifyDriverIdentity: (driverId: string, remarks?: string) =>
+      dx<unknown>(
+        'POST',
+        `/admin/drivers/${driverId}/identity-verification/verify`,
+        remarks ? { remarks } : {},
+      ),
 
     // Operations queue counters (for the dashboard tiles + sidebar badges).
     getOpsCounters: () =>
