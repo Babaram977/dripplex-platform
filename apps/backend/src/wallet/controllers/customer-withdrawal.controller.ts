@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Req } from '@nestjs/common';
+import { WalletOwnerType } from '@prisma/client';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
@@ -24,6 +25,7 @@ export class CustomerWithdrawalController {
   ): Promise<ApiSuccessResponse<WithdrawalRequestDto>> {
     const data = await this.withdrawalService.create(
       user.id,
+      WalletOwnerType.CUSTOMER,
       dto,
       this.auditContext(request, user.id),
     );

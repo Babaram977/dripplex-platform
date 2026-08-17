@@ -9,6 +9,7 @@ import {
 } from '../tokens/colors';
 import { api, uploadFile } from '../lib/api';
 import { auth } from '../lib/auth';
+import { PayoutPanel } from './payoutPanel';
 import { getCurrentPosition } from '../lib/maps';
 // Same cadence for both couriers — see the constant's note for why 30s.
 import { LOCATION_PUSH_INTERVAL_MS } from './riderScreen';
@@ -119,6 +120,7 @@ function DBackBtn({ onClick }: { onClick: () => void }) {
   return (
     <button
       onClick={onClick}
+      aria-label="Back"
       className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl transition-all active:scale-95"
       style={{ background: 'rgba(255,255,255,.06)', border: `1px solid ${BORDER}` }}
     >
@@ -3192,42 +3194,25 @@ function DriverWalletTab({ onBack }: { onBack: () => void }) {
           <p className="mb-4 text-[38px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
             {wallet ? naira(wallet.availableBalance) : '—'}
           </p>
-          {/* No driver withdraw endpoint exists yet → honestly disabled. */}
-          <button
-            disabled
-            className="flex h-11 w-full items-center justify-center gap-2 rounded-xl text-[13px] font-semibold"
-            style={{
-              background: 'rgba(255,255,255,.06)',
-              border: `1px solid ${BORDER}`,
-              color: MUTED,
-              fontFamily: IT,
-              cursor: 'not-allowed',
-            }}
-          >
-            💸 Withdraw · Coming soon
-          </button>
+          <p className="text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
+            Paid out every Monday by bank transfer.
+          </p>
         </div>
 
-        {/* Linked bank — no bank-account endpoint for drivers yet. */}
-        <div
-          className="mb-5 flex items-center gap-3 rounded-2xl p-4"
-          style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
-        >
-          <div
-            className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl text-xl"
-            style={{ background: 'rgba(255,255,255,.05)' }}
-          >
-            🏦
-          </div>
-          <div className="flex-1">
-            <p className="text-[14px] font-semibold" style={{ fontFamily: PP, color: '#fff' }}>
-              No bank account linked
-            </p>
-            <p className="text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
-              Bank linking isn’t available yet.
-            </p>
-          </div>
-        </div>
+        {/* Bank linking + payout requests. This was "Withdraw · Coming soon"
+            next to "Bank linking isn't available yet" — both true at the time,
+            because the withdrawal machinery was bolted to customer wallets
+            only. It now reaches the DRIVER wallet these earnings live in. */}
+        <PayoutPanel
+          client={api.driverRides}
+          availableBalance={wallet ? Number(wallet.availableBalance) : null}
+          onChanged={() => {
+            api.driverRides
+              .getWallet()
+              .then((w) => setWallet(w))
+              .catch(() => {});
+          }}
+        />
 
         {/* Transactions */}
         <p className="mb-3 text-[13px] font-semibold" style={{ fontFamily: PP, color: MUTED }}>

@@ -11,6 +11,7 @@ import {
   type AdminCustomerDto,
   type AdminMerchantDto,
   type AdminInspectionDto,
+  type SettlementReportDto,
   type AdminRiderDto,
   type DeliveryJobDto,
 } from '../lib/api';
@@ -58,6 +59,7 @@ export type AdminPage =
   | 'drvkyc'
   | 'vehicles'
   | 'inspections'
+  | 'settlements'
   | 'merchants'
   | 'riders'
   | 'customers'
@@ -286,6 +288,7 @@ const NAV_ITEMS: { page: AdminPage; icon: string; label: string }[] = [
   { page: 'drvkyc', icon: '🪪', label: 'Driver KYC' },
   { page: 'vehicles', icon: '🔑', label: 'Vehicles' },
   { page: 'inspections', icon: '🔧', label: 'Inspections' },
+  { page: 'settlements', icon: '💰', label: 'Settlements' },
   { page: 'merchants', icon: '🏪', label: 'Merchants' },
   { page: 'riders', icon: '🛵', label: 'Riders' },
   { page: 'customers', icon: '👥', label: 'Customers' },
@@ -438,6 +441,7 @@ const PAGE_LABELS: Record<AdminPage, string> = {
   // merchants/riders were missing since those desks shipped, so their header
   // title rendered blank; inspections would have joined them.
   inspections: 'Vehicle Inspections',
+  settlements: 'Weekly Settlements',
   merchants: 'Merchants',
   riders: 'Riders',
   customers: 'Customers',
@@ -1626,10 +1630,40 @@ function PageTrips() {
 }
 
 // ─── Page: Drivers ─────────────────────────────────────────────────────────────
+/**
+ * The three documents DrippleX actually requires of a driver, mirroring
+ * REQUIRED_DRIVER_KYC_DOCUMENT_TYPES in the backend's driver.constants.ts. The
+ * activation gate demands all three VERIFIED; anything less does not activate
+ * anyone, so nothing less may be labelled "Verified" on this desk.
+ */
+const REQUIRED_DRIVER_KYC_DOCS = ['DRIVER_LICENSE', 'VEHICLE_REGISTRATION', 'GUARANTOR_ID'];
+
+/**
+ * This read "any one document verified → Verified", which is why every driver
+ * on the desk showed **KYC Verified** next to **Status Pending** and looked
+ * like a platform bug. It was not: one verified licence out of three required
+ * documents is a driver who cannot be activated, being described as done.
+ *
+ * "Verified" now means what the activation gate means by it — every required
+ * document verified. Partial progress reads as "pending", which is the truth.
+ */
 const driverKycState = (d: AdminDriverDto): 'verified' | 'pending' | 'unverified' => {
-  if (d.kyc.some((k) => k.verificationStatus === 'PENDING')) return 'pending';
-  if (d.kyc.some((k) => k.verificationStatus === 'VERIFIED')) return 'verified';
+  const verified = REQUIRED_DRIVER_KYC_DOCS.filter((type) =>
+    d.kyc.some((k) => k.documentType === type && k.verificationStatus === 'VERIFIED'),
+  );
+  if (verified.length === REQUIRED_DRIVER_KYC_DOCS.length) return 'verified';
+  if (verified.length > 0 || d.kyc.some((k) => k.verificationStatus === 'PENDING'))
+    return 'pending';
   return 'unverified';
+};
+
+/** "2 of 3 documents verified" — so the desk says how far along, not just that
+ * something is outstanding. */
+const driverKycProgress = (d: AdminDriverDto): string => {
+  const verified = REQUIRED_DRIVER_KYC_DOCS.filter((type) =>
+    d.kyc.some((k) => k.documentType === type && k.verificationStatus === 'VERIFIED'),
+  ).length;
+  return `${verified}/${REQUIRED_DRIVER_KYC_DOCS.length} docs`;
 };
 const driverStatusChip = (s: string) => (s === 'UNDER_REVIEW' ? 'in review' : s.toLowerCase());
 
@@ -1697,6 +1731,26 @@ function PageDrivers() {
       await load();
     } catch (e: unknown) {
       setNote((e as { message?: string }).message ?? 'Could not reactivate.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  // The sixth activation condition nobody could satisfy: `identityVerified` is
+  // set only by an automated IDV provider (not yet chosen) or by this manual
+  // review, which had a backend endpoint and no caller anywhere in the console.
+  const verifyIdentity = async () => {
+    if (!selected) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      await api.admin.verifyDriverIdentity(
+        selected.driverId,
+        'Reviewed against submitted documents in Operations Console',
+      );
+      setNote('Identity verified. The driver can now be approved once their other steps pass.');
+      await load();
+    } catch (e: unknown) {
+      setNote((e as { message?: string }).message ?? 'Could not verify identity.');
     } finally {
       setBusy(false);
     }
@@ -1810,7 +1864,12 @@ function PageDrivers() {
                       <StatusChip status={driverStatusChip(d.status)} />
                     </td>
                     <td style={{ padding: '8px 8px' }}>
-                      <StatusChip status={driverKycState(d)} />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <StatusChip status={driverKycState(d)} />
+                        {driverKycState(d) !== 'verified' && (
+                          <span style={{ fontSize: 10, color: MUTED }}>{driverKycProgress(d)}</span>
+                        )}
+                      </div>
                     </td>
                     <td style={{ padding: '8px 8px' }}>
                       <div style={{ display: 'flex', gap: 4 }}>
@@ -1909,6 +1968,12 @@ function PageDrivers() {
             <SEP />
             {note && <span style={{ fontSize: 11, color: C_WARN }}>{note}</span>}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              <Btn
+                label={busy ? 'Verifying…' : 'Mark Identity Verified'}
+                color={G3}
+                outline
+                onClick={() => void verifyIdentity()}
+              />
               {selected.status === 'SUSPENDED' ? (
                 <Btn
                   label={busy ? 'Reactivating…' : 'Reactivate Driver'}
@@ -2431,6 +2496,181 @@ function VehicleReviewCard({
         </div>
       )}
     </Card>
+  );
+}
+
+// ─── Page: Weekly Settlements ─────────────────────────────────────────────────
+/**
+ * DPX-PAYOUT-001 — the Monday payout run.
+ *
+ * Founder decision (2026-08-16): Operations transfers manually and works from
+ * a generated report. So this page is the report: who is waiting, how much,
+ * and the account to send it to. It does not move money — marking a line paid
+ * is the same per-request action the withdrawal queue has always used, so
+ * opening this page twice changes nothing.
+ */
+function PageSettlements() {
+  const [report, setReport] = useState<SettlementReportDto | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    api.admin
+      .getSettlementReport()
+      .then((r) => {
+        setReport(r);
+        setError(null);
+      })
+      .catch((e: unknown) =>
+        setError((e as { message?: string }).message ?? 'Could not load the settlement report.'),
+      );
+  }, []);
+  useEffect(() => load(), [load]);
+
+  const markPaid = async (withdrawalId: string, name: string) => {
+    setBusyId(withdrawalId);
+    setNote(null);
+    try {
+      await api.admin.completeWithdrawal(withdrawalId, 'Paid by bank transfer (weekly run)');
+      setNote(`Marked ${name} as paid.`);
+      load();
+    } catch (e: unknown) {
+      setNote((e as { message?: string }).message ?? 'Could not mark that one paid.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const money = (n: number) => `₦${Math.round(n).toLocaleString()}`;
+  const day = (iso: string) =>
+    new Date(iso).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' });
+
+  if (error !== null) {
+    return (
+      <Card>
+        <span style={{ color: C_WARN, fontSize: 12 }}>{error}</span>
+      </Card>
+    );
+  }
+  if (report === null) {
+    return (
+      <Card>
+        <span style={{ color: MUTED, fontSize: 12 }}>Loading the settlement report…</span>
+      </Card>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <Card>
+        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+          {[
+            ['Week of', day(report.weekStart)],
+            ['Riders', String(report.totals.riderCount)],
+            ['Drivers', String(report.totals.driverCount)],
+            ['Rider total', money(report.totals.riderAmount)],
+            ['Driver total', money(report.totals.driverAmount)],
+            ['To transfer', money(report.totals.totalAmount)],
+          ].map(([label, value]) => (
+            <div key={label}>
+              <p style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>{label}</p>
+              <p
+                style={{
+                  fontSize: 17,
+                  fontWeight: 700,
+                  color: label === 'To transfer' ? G3 : WHITE,
+                  fontFamily: 'Poppins, sans-serif',
+                }}
+              >
+                {value}
+              </p>
+            </div>
+          ))}
+        </div>
+        {note !== null && <p style={{ marginTop: 10, fontSize: 11, color: G3 }}>{note}</p>}
+      </Card>
+
+      <Card>
+        {report.lines.length === 0 ? (
+          <span style={{ color: MUTED, fontSize: 12 }}>
+            Nobody is waiting to be paid. Payout requests appear here as riders and drivers make
+            them, and are transferred on Monday.
+          </span>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ textAlign: 'left', color: MUTED, fontSize: 11 }}>
+                  {[
+                    'Partner',
+                    'Phone',
+                    'Bank',
+                    'Account',
+                    'Requested',
+                    'Owes DrippleX',
+                    'Amount',
+                    '',
+                  ].map((h) => (
+                    <th key={h} style={{ padding: '8px 8px', fontWeight: 500 }}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {report.lines.map((line) => (
+                  <tr key={line.withdrawalId} style={{ borderTop: `1px solid ${BORDER}` }}>
+                    <td style={{ padding: '10px 8px' }}>
+                      <div style={{ fontSize: 13, color: WHITE, fontWeight: 600 }}>{line.name}</div>
+                      <div style={{ fontSize: 10, color: MUTED }}>
+                        {line.partnerType === 'RIDER' ? 'Rider' : 'Driver'}
+                      </div>
+                    </td>
+                    <td style={{ padding: '10px 8px', fontSize: 12, color: MUTED }}>
+                      {line.phone ?? '—'}
+                    </td>
+                    <td style={{ padding: '10px 8px', fontSize: 12, color: WHITE }}>
+                      {line.bankName}
+                    </td>
+                    <td style={{ padding: '10px 8px', fontSize: 12, color: WHITE }}>
+                      <div>{line.accountNumber}</div>
+                      <div style={{ fontSize: 10, color: MUTED }}>{line.accountName}</div>
+                    </td>
+                    <td style={{ padding: '10px 8px', fontSize: 12, color: MUTED }}>
+                      {day(line.requestedAt)}
+                    </td>
+                    {/* Shown, never subtracted — netting a payout against cash
+                        owed is a policy decision nobody has recorded. */}
+                    <td
+                      style={{
+                        padding: '10px 8px',
+                        fontSize: 12,
+                        color: line.outstandingCommission > 0 ? C_WARN : MUTED,
+                      }}
+                    >
+                      {line.outstandingCommission > 0 ? money(line.outstandingCommission) : '—'}
+                    </td>
+                    <td style={{ padding: '10px 8px', fontSize: 13, color: G3, fontWeight: 700 }}>
+                      {money(line.amount)}
+                    </td>
+                    <td style={{ padding: '10px 8px' }}>
+                      <Btn
+                        label={busyId === line.withdrawalId ? 'Marking…' : 'Mark paid'}
+                        small
+                        outline
+                        color={G3}
+                        onClick={() => void markPaid(line.withdrawalId, line.name)}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
   );
 }
 
@@ -5862,6 +6102,8 @@ function renderPage(page: AdminPage) {
       return <PageVehicles />;
     case 'inspections':
       return <PageInspections />;
+    case 'settlements':
+      return <PageSettlements />;
     case 'merchants':
       return <PageMerchants />;
     case 'riders':

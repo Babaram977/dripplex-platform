@@ -5,6 +5,7 @@ import { auth } from '../lib/auth';
 import type {
   PromotionActiveDto,
   MerchantSummaryDto,
+  OrderDto,
   ProductSummaryDto,
   CategoryDto,
   WalletDto,
@@ -611,6 +612,105 @@ function QuickActions({ onSelect }: { onSelect?: (label: string) => void }) {
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LIVE ORDER CARD
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * A customer with an order in flight had no sign of it anywhere on this
+ * screen. "Recent Activity" is wallet transactions, not orders, and the only
+ * route to a live order was the "Orders" icon among eight in Quick Actions —
+ * so anyone who came back to the app after a reload or a re-login had, from
+ * where they were standing, lost their order.
+ *
+ * Real data, existing endpoint, existing tracking screen: this only surfaces
+ * what the app already knew, in the place the customer actually lands.
+ */
+const LIVE_ORDER_STATUSES = [
+  'PENDING',
+  'CONFIRMED',
+  'PREPARING',
+  'READY',
+  'PICKED_UP',
+  'IN_TRANSIT',
+];
+
+function LiveOrderCard({ onTrack }: { onTrack: (orderId: string) => void }) {
+  const [order, setOrder] = useState<OrderDto | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    const load = () => {
+      api.orders
+        .list({ page: 1, pageSize: 10 })
+        .then((res) => {
+          if (!alive) return;
+          const items =
+            (res as { items?: OrderDto[] }).items ??
+            (Array.isArray(res) ? (res as OrderDto[]) : []);
+          setOrder(items.find((o) => LIVE_ORDER_STATUSES.includes(o.status)) ?? null);
+        })
+        .catch(() => {
+          // No card rather than a wrong one.
+        });
+    };
+    load();
+    const timer = setInterval(load, 30_000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, []);
+
+  if (!order) return null;
+
+  const label: Record<string, string> = {
+    PENDING: 'Waiting for the store to accept',
+    CONFIRMED: 'Accepted by the store',
+    PREPARING: 'Being prepared',
+    READY: 'Ready — waiting for a rider',
+    PICKED_UP: 'Picked up',
+    IN_TRANSIT: 'On the way to you',
+  };
+
+  return (
+    <div className="mb-5 px-5">
+      <button
+        onClick={() => onTrack(order.id)}
+        aria-label="Track your order"
+        className="flex w-full items-center gap-3 rounded-2xl p-4 text-left transition-all active:scale-[.98]"
+        style={{
+          background: 'rgba(43,172,82,.08)',
+          border: '1px solid rgba(43,172,82,.25)',
+        }}
+      >
+        <div
+          className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl text-xl"
+          style={{ background: 'rgba(43,172,82,.14)' }}
+        >
+          📦
+        </div>
+        <div className="min-w-0 flex-1">
+          <p
+            className="truncate text-[14px] font-semibold text-white"
+            style={{ fontFamily: "'Poppins',sans-serif" }}
+          >
+            Order #{order.orderNumber}
+          </p>
+          <p
+            className="truncate text-[12px]"
+            style={{ fontFamily: "'Inter',sans-serif", color: G3 }}
+          >
+            {label[order.status] ?? 'In progress'}
+          </p>
+        </div>
+        <span className="text-[12px] font-semibold" style={{ color: G3 }}>
+          Track →
+        </span>
+      </button>
     </div>
   );
 }
@@ -1410,6 +1510,7 @@ export function HomeScreen({
   onWallet,
   onWalletAction,
   onOrders,
+  onTrackOrder,
   onBecomePartner,
 }: {
   onAccount: () => void;
@@ -1422,6 +1523,8 @@ export function HomeScreen({
   onWallet?: () => void;
   onWalletAction?: (a: 'send' | 'receive' | 'topup' | 'pay') => void;
   onOrders?: () => void;
+  /** Open live tracking for an order the customer already has in flight. */
+  onTrackOrder?: (orderId: string) => void;
   onBecomePartner?: () => void;
 }) {
   const [navTab, setNavTab] = useState<NavTab>('home');
@@ -1552,6 +1655,7 @@ export function HomeScreen({
           <QuickActions onSelect={handleQuickAction} />
         </div>
 
+        {onTrackOrder && <LiveOrderCard onTrack={onTrackOrder} />}
         <LiveOffers />
         <AICard onAsk={() => setShowAI(true)} />
         {onBecomePartner && <PartnerEntryCard onOpen={onBecomePartner} />}

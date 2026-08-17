@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { api, uploadFile } from '../lib/api';
+import { PayoutPanel } from './payoutPanel';
 import { auth } from '../lib/auth';
 import { getCurrentPosition } from '../lib/maps';
 import type {
@@ -64,6 +65,7 @@ function RBackBtn({ onClick }: { onClick: () => void }) {
   return (
     <button
       onClick={onClick}
+      aria-label="Back"
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -1201,6 +1203,19 @@ export function RiderEarningsScreen({ onBack }: { onBack: () => void }) {
                 </div>
               ))}
             </div>
+
+            {/* Earnings were visible but unreachable — the rider portal had no
+                bank account, no payout request, no way to be paid at all. */}
+            <PayoutPanel
+              client={api.rider}
+              availableBalance={Number(wallet.availableBalance)}
+              onChanged={() => {
+                api.rider
+                  .getWallet()
+                  .then(setWallet)
+                  .catch(() => {});
+              }}
+            />
           </>
         ) : (
           <p style={{ fontFamily: IT, color: MUTED, textAlign: 'center' }}>Unable to load wallet</p>

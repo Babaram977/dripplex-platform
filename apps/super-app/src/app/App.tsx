@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { ApiProvider } from '../lib/ApiProvider';
 import { GLOBAL_STYLES, NAVY_BASE, COUNTRIES } from './shared';
 import {
@@ -485,12 +485,57 @@ function AppShell() {
   const ridePickup = useDevicePickup();
   const [activeCustomerRideId, setActiveCustomerRideId] = useState<string | undefined>(undefined);
 
-  const go = (to: Screen) => {
+  /**
+   * Where the user came from.
+   *
+   * The app is a screen-key state machine with no history, so every Back
+   * button used to be a hard-coded guess at the previous screen — and several
+   * of those guesses were auth screens. A signed-in customer tapping Back on
+   * Manage Account landed on "Welcome back — sign in"; a signed-in driver
+   * tapping Back on their onboarding hub landed on an OTP screen with no code
+   * to enter. Neither was logged out, but both were stranded outside the app
+   * with no way in, which is indistinguishable from being logged out.
+   *
+   * A ref rather than state: the stack must never trigger a re-render, and it
+   * is only ever read inside an event handler.
+   */
+  const historyRef = useRef<Screen[]>([]);
+
+  const navigate = (to: Screen) => {
     setFading(true);
     setTimeout(() => {
       setScreen(to);
       setFading(false);
     }, 220);
+  };
+
+  const go = (to: Screen) => {
+    if (screen !== to) {
+      historyRef.current.push(screen);
+      // A wandering session should not grow without bound.
+      if (historyRef.current.length > 50) historyRef.current.shift();
+    }
+    navigate(to);
+  };
+
+  /**
+   * Back: return where they actually came from, falling back to a sensible
+   * home for this persona when there is no history (a deep link, or a reload).
+   */
+  const goBack = (fallback: Screen) => {
+    const previous = historyRef.current.pop();
+    navigate(previous ?? fallback);
+  };
+
+  /**
+   * Cross an authentication boundary. Signing in or out makes the previous
+   * history meaningless and, worse, walkable: without this, Back from the
+   * home screen would return to the sign-in form, and Back after signing out
+   * would walk into the signed-in app.
+   */
+  const goAfterAuthChange = (to: Screen) => {
+    historyRef.current = [];
+    navigate(to);
   };
 
   const screens: Record<Screen, React.ReactNode> = {
@@ -557,8 +602,8 @@ function AppShell() {
     // ReturningLoginScreen is a mock with no backend — do not use it for auth).
     returning: (
       <SignInScreen
-        onBack={() => go('welcome')}
-        onSuccess={() => go('home')}
+        onBack={() => goBack('welcome')}
+        onSuccess={() => goAfterAuthChange('home')}
         onMerchant={() => go('mxdash')}
         onDriver={() => go('drvlogin')}
         onBecomePartner={() => {
@@ -576,8 +621,8 @@ function AppShell() {
     ),
     signin: (
       <SignInScreen
-        onBack={() => go('welcome')}
-        onSuccess={() => go('home')}
+        onBack={() => goBack('welcome')}
+        onSuccess={() => goAfterAuthChange('home')}
         onMerchant={() => go('mxdash')}
         onDriver={() => go('drvlogin')}
         onBecomePartner={() => {
@@ -596,15 +641,15 @@ function AppShell() {
       <SecurityActivityScreen onBack={() => go('security')} onSecure={() => go('security')} />
     ),
     security: (
-      <SecurityCenterScreen onBack={() => go('returning')} onNav={(s) => go(s as Screen)} />
+      <SecurityCenterScreen onBack={() => goBack('account')} onNav={(s) => go(s as Screen)} />
     ),
     sessions: <SessionManagementScreen onBack={() => go('security')} />,
     privacy: <PrivacyControlsScreen onBack={() => go('account')} />,
     kyc: <IdentityVerificationScreen onBack={() => go('account')} />,
     account: (
       <AccountManagementScreen
-        onSignOut={() => go('welcome')}
-        onBack={() => go('returning')}
+        onSignOut={() => goAfterAuthChange('welcome')}
+        onBack={() => goBack('home')}
         onKYC={() => go('kyc')}
         onSecurity={() => go('security')}
         onPrivacy={() => go('privacy')}
@@ -661,7 +706,7 @@ function AppShell() {
     services: <ConnectedServicesScreen onBack={() => go('account')} />,
     trust: (
       <TrustCenterScreen
-        onBack={() => go('welcome')}
+        onBack={() => goBack('account')}
         onSecurity={() => go('security')}
         onAddEmail={() => go('emailverify')}
         onVerifyId={() => go('kyc')}
@@ -706,6 +751,10 @@ function AppShell() {
         }}
         onWallet={() => go('wallethome')}
         onOrders={() => go('orderhistory')}
+        onTrackOrder={(id) => {
+          setActiveOrderId(id);
+          go('ordertracking');
+        }}
         onBecomePartner={() => {
           setPartnerFrom('home');
           go('partnerselect');
@@ -1081,7 +1130,7 @@ function AppShell() {
       <DriverKYCStatusScreen
         onContinue={() => go('drvdash')}
         onUpload={() => go('drvuploaddocs')}
-        onBack={() => go('drvotp')}
+        onBack={() => goBack('drvdash')}
         // Vehicle registration and the agreement were unreachable: nothing
         // routed into them outside the Design Preview navigator, so a driver
         // could never accept the terms the activation gate requires.
@@ -1138,7 +1187,7 @@ function AppShell() {
         }}
         onSettings={() => go('drvsettings')}
         onSignOut={() => {
-          void endSession(() => api.auth.logout()).then(() => go('drvlogin'));
+          void endSession(() => api.auth.logout()).then(() => goAfterAuthChange('drvlogin'));
         }}
         onSignIn={() => go('drvlogin')}
       />
@@ -1188,7 +1237,10 @@ function AppShell() {
     ),
     drvtripdone: <DriverTripCompletedScreen ride={activeDriverRide} onDone={() => go('drvdash')} />,
     drvsettings: (
-      <DriverSettingsScreen onBack={() => go('drvdash')} onLogout={() => go('drvlogin')} />
+      <DriverSettingsScreen
+        onBack={() => goBack('drvdash')}
+        onLogout={() => goAfterAuthChange('drvlogin')}
+      />
     ),
     // ── WALLET module ────────────────────────────────────────────────────────
     wallethome: (
@@ -1300,7 +1352,10 @@ function AppShell() {
     ),
     riderearnings: <RiderEarningsScreen onBack={() => go('riderdash')} />,
     rideraccount: (
-      <RiderAccountScreen onBack={() => go('riderdash')} onSignedOut={() => go('riderlogin')} />
+      <RiderAccountScreen
+        onBack={() => goBack('riderdash')}
+        onSignedOut={() => goAfterAuthChange('riderlogin')}
+      />
     ),
 
     // ── Partner Onboarding (merchant / driver / rider self-registration) ──────

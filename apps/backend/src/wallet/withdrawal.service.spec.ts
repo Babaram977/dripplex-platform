@@ -1,4 +1,4 @@
-import { WithdrawalRequestStatus } from '@prisma/client';
+import { WalletOwnerType, WithdrawalRequestStatus } from '@prisma/client';
 
 import {
   ForbiddenDomainException,
@@ -29,6 +29,9 @@ interface WithdrawalPrismaMock {
     count: jest.Mock;
     findUnique: jest.Mock;
   };
+  // A reversal credits back the wallet that was actually debited, read from
+  // the request's walletId rather than assumed to be the customer's.
+  wallet: { findUnique: jest.Mock };
 }
 
 function request(overrides: Partial<Record<string, unknown>> = {}): Record<string, unknown> {
@@ -66,6 +69,13 @@ describe('WithdrawalService', () => {
 
   beforeEach(() => {
     prisma = {
+      wallet: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: walletId,
+          ownerType: WalletOwnerType.CUSTOMER,
+          ownerId: userId,
+        }),
+      },
       withdrawalRequest: {
         create: jest.fn(),
         update: jest.fn(),
@@ -100,7 +110,7 @@ describe('WithdrawalService', () => {
   describe('create', () => {
     it('rejects an amount below the minimum', async () => {
       await expect(
-        service.create(userId, { amount: 1, bankAccountId, pin: '1234' }),
+        service.create(userId, WalletOwnerType.CUSTOMER, { amount: 1, bankAccountId, pin: '1234' }),
       ).rejects.toThrow(ValidationDomainException);
       expect(walletPinService.verify).not.toHaveBeenCalled();
     });
@@ -109,7 +119,11 @@ describe('WithdrawalService', () => {
       prisma.withdrawalRequest.create.mockResolvedValue(request());
       walletService.withdrawal.mockResolvedValue({ id: walletId });
 
-      await service.create(userId, { amount: 5000, bankAccountId, pin: '1234' });
+      await service.create(userId, WalletOwnerType.CUSTOMER, {
+        amount: 5000,
+        bankAccountId,
+        pin: '1234',
+      });
 
       expect(walletPinService.verify).toHaveBeenCalledWith(userId, '1234');
       expect(bankAccountsService.assertOwned).toHaveBeenCalledWith(userId, bankAccountId);
@@ -133,7 +147,11 @@ describe('WithdrawalService', () => {
       );
 
       await expect(
-        service.create(userId, { amount: 5000, bankAccountId, pin: '1234' }),
+        service.create(userId, WalletOwnerType.CUSTOMER, {
+          amount: 5000,
+          bankAccountId,
+          pin: '1234',
+        }),
       ).rejects.toThrow(ValidationDomainException);
 
       expect(prisma.withdrawalRequest.update).toHaveBeenCalledWith(

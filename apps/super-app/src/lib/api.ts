@@ -847,6 +847,61 @@ export interface AdminRiderDto {
 // A driver row for the Ops Console (subset of backend DriverProfileDto). The
 // admin list embeds the driver's KYC documents, so the KYC review queue needs
 // no extra fetch.
+/** A bank account a partner has linked for payouts. */
+export interface PartnerBankAccountDto {
+  id: string;
+  bankName: string;
+  bankCode: string | null;
+  accountName: string;
+  accountNumber: string;
+  isDefault: boolean;
+  createdAt: string;
+}
+
+/** A payout request. The money leaves the wallet the moment this is created;
+ * Operations pays it out by bank transfer on the weekly Monday run. */
+export interface PayoutRequestDto {
+  id: string;
+  amount: number;
+  currency: string;
+  status: 'PENDING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+  bankAccountId: string;
+  failureReason: string | null;
+  adminNote: string | null;
+  processedAt: string | null;
+  createdAt: string;
+}
+
+/** One line of the Monday settlement run, as Operations sees it. */
+export interface SettlementLineDto {
+  withdrawalId: string;
+  userId: string;
+  partnerType: 'RIDER' | 'DRIVER';
+  name: string;
+  phone: string | null;
+  bankName: string;
+  accountName: string;
+  accountNumber: string;
+  amount: number;
+  currency: string;
+  requestedAt: string;
+  outstandingCommission: number;
+}
+
+export interface SettlementReportDto {
+  weekStart: string;
+  weekEnd: string;
+  generatedAt: string;
+  lines: SettlementLineDto[];
+  totals: {
+    riderCount: number;
+    driverCount: number;
+    riderAmount: number;
+    driverAmount: number;
+    totalAmount: number;
+  };
+}
+
 export interface AdminDriverDto {
   id: string;
   driverId: string;
@@ -1095,6 +1150,30 @@ export interface NotificationDto {
 }
 
 // ─── API Namespaces ───────────────────────────────────────────────────────────
+
+/**
+ * Payout surface shared by riders and drivers — identical routes under a
+ * different prefix, because the backend exposes the same withdrawal machinery
+ * to both. Built once so the two cannot drift apart.
+ */
+const partnerPayouts = (prefix: 'rider' | 'driver') => ({
+  listBankAccounts: () => dx<PartnerBankAccountDto[]>('GET', `/${prefix}/wallet/bank-accounts`),
+  addBankAccount: (body: {
+    bankName: string;
+    accountName: string;
+    accountNumber: string;
+    bankCode?: string;
+  }) => dx<PartnerBankAccountDto>('POST', `/${prefix}/wallet/bank-accounts`, body),
+  setDefaultBankAccount: (id: string) =>
+    dx<PartnerBankAccountDto>('PATCH', `/${prefix}/wallet/bank-accounts/${id}/default`),
+  removeBankAccount: (id: string) =>
+    dx<{ removed: boolean }>('DELETE', `/${prefix}/wallet/bank-accounts/${id}`),
+  hasPin: () => dx<{ set: boolean }>('GET', `/${prefix}/wallet/pin`),
+  setPin: (pin: string) => dx<{ set: true }>('POST', `/${prefix}/wallet/pin`, { pin }),
+  requestPayout: (body: { amount: number; bankAccountId: string; pin: string }) =>
+    dx<PayoutRequestDto>('POST', `/${prefix}/wallet/payouts`, body),
+  listPayouts: () => dx<PaginatedResult<PayoutRequestDto>>('GET', `/${prefix}/wallet/payouts`),
+});
 
 export const api = {
   // ── AUTH ───────────────────────────────────────────────────────────────────
@@ -1452,6 +1531,7 @@ export const api = {
 
   // ── RIDES (driver) ─────────────────────────────────────────────────────────
   driverRides: {
+    ...partnerPayouts('driver'),
     list: (params?: { page?: number; limit?: number; status?: string }) =>
       dx<PaginatedResult<RideDto>>('GET', '/driver/rides', undefined, params),
     setAvailability: (body: {
@@ -1572,6 +1652,7 @@ export const api = {
 
   // ── RIDER (delivery) ────────────────────────────────────────────────────────
   rider: {
+    ...partnerPayouts('rider'),
     getJobs: () => dx<RiderDeliveryJobDto[]>('GET', '/rider/jobs'),
     getJob: (id: string) => dx<RiderDeliveryJobDto>('GET', `/rider/jobs/${id}`),
     acceptJob: (id: string) => dx<DeliveryJobDto>('POST', `/rider/jobs/${id}/accept`),
@@ -1848,6 +1929,34 @@ export const api = {
       ),
     rejectDriverKyc: (kycId: string, remarks: string) =>
       dx<AdminDriverKycDto>('POST', `/admin/driver/kyc/${kycId}/reject`, { remarks }),
+    /**
+     * Mark a driver's identity verified after an operations reviewer has matched
+     * them against their documents. This endpoint has existed since DPX-DS-001
+     * but nothing in the Ops Console called it, so `identityVerified` — one of
+     * the six activation conditions — could never be satisfied and every driver
+     * sat at "5 of 6 steps" forever. Until an automated IDV provider is chosen
+     * (task #15), this manual review is the only way it is ever set.
+     */
+    /** The Monday payout run: everyone waiting to be paid, and where to send it. */
+    getSettlementReport: (weekOf?: string) =>
+      dx<SettlementReportDto>(
+        'GET',
+        '/admin/wallet/withdrawals/settlement-report',
+        undefined,
+        weekOf ? { weekOf } : undefined,
+      ),
+    completeWithdrawal: (id: string, adminNote?: string) =>
+      dx<PayoutRequestDto>(
+        'POST',
+        `/admin/wallet/withdrawals/${id}/complete`,
+        adminNote ? { adminNote } : {},
+      ),
+    verifyDriverIdentity: (driverId: string, remarks?: string) =>
+      dx<unknown>(
+        'POST',
+        `/admin/drivers/${driverId}/identity-verification/verify`,
+        remarks ? { remarks } : {},
+      ),
 
     // Operations queue counters (for the dashboard tiles + sidebar badges).
     getOpsCounters: () =>
