@@ -14,6 +14,7 @@ import { getCurrentPosition } from '../lib/maps';
 // Same cadence for both couriers — see the constant's note for why 30s.
 import { LOCATION_PUSH_INTERVAL_MS } from './riderScreen';
 import type {
+  AdminVehicleDto,
   DriverActivationEligibilityDto,
   RideOfferDto,
   RideOfferPreviewDto,
@@ -805,6 +806,33 @@ export function DriverKYCStatusScreen({
   const [eligibility, setEligibility] = useState<DriverActivationEligibilityDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadErr, setLoadErr] = useState<string | null>(null);
+  // `vehicleApproved` is about approval, not existence — so on its own it cannot
+  // tell "you have not registered a car" from "yours is waiting for review". The
+  // screen said the former in both cases and offered to register another one.
+  const [vehicleCount, setVehicleCount] = useState<number | null>(null);
+  // Same problem on the documents row: `requiredDocumentsApproved` is false
+  // both when nothing was sent and when all three are sitting in the review
+  // queue, and the row prompted for an upload either way.
+  const [allRequiredDocsSent, setAllRequiredDocsSent] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    api.driver
+      .listVehicles()
+      .then((rows) => setVehicleCount(rows.length))
+      .catch(() => setVehicleCount(null));
+    api.driver
+      .getKyc()
+      .then((docs) => {
+        // A REJECTED document is outstanding again — it has to be replaced.
+        const live = new Set(
+          docs
+            .filter((doc) => doc.verificationStatus !== 'REJECTED')
+            .map((doc) => doc.documentType),
+        );
+        setAllRequiredDocsSent(REQUIRED_DRIVER_KYC_TYPES.every((type) => live.has(type)));
+      })
+      .catch(() => setAllRequiredDocsSent(null));
+  }, []);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -848,17 +876,39 @@ export function DriverKYCStatusScreen({
       key: 'requiredDocumentsApproved',
       label: 'Document review',
       done: "Driver's licence, vehicle paper and guarantor ID, all verified.",
-      pending: "Driver's licence, vehicle paper or guarantor ID is missing or not yet verified.",
-      owner: 'you',
-      action: { label: 'Upload / update documents', onClick: onUpload },
+      pending:
+        allRequiredDocsSent === true
+          ? 'All three documents are with Operations and waiting to be verified.'
+          : "Driver's licence, vehicle paper or guarantor ID is missing or not yet verified.",
+      owner: allRequiredDocsSent === true ? 'ops' : 'you',
+      action: {
+        label: allRequiredDocsSent === true ? 'View your documents' : 'Upload / update documents',
+        onClick: onUpload,
+      },
     },
     {
       key: 'vehicleApproved',
       label: 'Vehicle registration',
       done: 'A registered vehicle approved by Operations.',
-      pending: 'No approved vehicle on file yet.',
-      owner: 'you',
-      ...(onVehicle ? { action: { label: 'Register your vehicle', onClick: onVehicle } } : {}),
+      pending:
+        vehicleCount !== null && vehicleCount > 0
+          ? 'Your vehicle is registered and waiting for Operations to approve it.'
+          : 'No vehicle registered yet.',
+      // Once a vehicle is on file the wait is Operations', not the driver's.
+      owner: vehicleCount !== null && vehicleCount > 0 ? 'ops' : 'you',
+      ...(onVehicle
+        ? {
+            action: {
+              // Not "Register your vehicle" when they already did — that is the
+              // prompt that had drivers registering the same car twice.
+              label:
+                vehicleCount !== null && vehicleCount > 0
+                  ? 'View your vehicle'
+                  : 'Register your vehicle',
+              onClick: onVehicle,
+            },
+          }
+        : {}),
     },
     {
       key: 'inspectionPassed',
@@ -1104,6 +1154,12 @@ const DRIVER_KYC_DOCS: {
     numberPlaceholder: 'e.g. POL-000123',
   },
 ];
+
+/** The three the activation gate actually waits on — derived from the list
+ *  above so the two can never drift apart. */
+const REQUIRED_DRIVER_KYC_TYPES = DRIVER_KYC_DOCS.filter((doc) => doc.required === true).map(
+  (doc) => doc.type,
+);
 
 export function DriverUploadDocsScreen({
   onBack,
@@ -1527,20 +1583,53 @@ export function DriverVehicleRegScreen({
   onBack: () => void;
   onSave: () => void;
 }) {
-  const [make, setMake] = useState('Toyota');
-  const [model, setModel] = useState('Camry');
-  const [year, setYear] = useState('2019');
-  const [colour, setColour] = useState('White');
+  // Blank, not pre-filled. "Toyota / Camry / 2019 / White" was demo data sitting
+  // in a real submission form — a driver who tapped through registered a car
+  // that was not theirs.
+  const [make, setMake] = useState('');
+  const [model, setModel] = useState('');
+  const [year, setYear] = useState('');
+  const [colour, setColour] = useState('');
   const [plate, setPlate] = useState('');
-  const [seats, setSeats] = useState('4');
+  const [seats, setSeats] = useState('');
   const [category, setCategory] = useState<RideType>('ECONOMY');
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
+
+  // What the driver already registered — at sign-up, most of the time. Without
+  // this the screen was a blank create form every visit, so a driver arriving
+  // from the onboarding hub was asked to register the same car a second time.
+  const [existing, setExisting] = useState<AdminVehicleDto[] | null>(null);
+  const [loadingExisting, setLoadingExisting] = useState(true);
+  // Only true once the driver explicitly asks to add another vehicle.
+  const [addingAnother, setAddingAnother] = useState(false);
+
+  const loadVehicles = useCallback(() => {
+    setLoadingExisting(true);
+    api.driver
+      .listVehicles()
+      .then((rows) => setExisting(rows))
+      .catch(() => setExisting(null))
+      .finally(() => setLoadingExisting(false));
+  }, []);
+  useEffect(() => loadVehicles(), [loadVehicles]);
+
+  // The vehicle the photo grid edits: the one already on file, if any.
+  const target = existing?.[0] ?? null;
+  const showCreateForm = !loadingExisting && (addingAnother || (existing?.length ?? 0) === 0);
+
+  // Show the photos already on the registered vehicle, so a driver who added
+  // two angles last time is not asked for all four again.
+  useEffect(() => {
+    if (!target) return;
+    setPhotos([0, 1, 2, 3].map((i) => target.photos[i] ?? null));
+  }, [target]);
   // The Operations Console vehicle desk shows four fixed angles and reads them
   // from Vehicle.photos in that order. Nothing in the app ever captured them,
   // so every vehicle reached inspection with four empty placeholders.
   const [photos, setPhotos] = useState<(string | null)[]>([null, null, null, null]);
   const [uploadingAngle, setUploadingAngle] = useState<number | null>(null);
+  const [photoNote, setPhotoNote] = useState('');
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const pendingAngleRef = useRef<number>(0);
 
@@ -1588,6 +1677,7 @@ export function DriverVehicleRegScreen({
         seats: seatsNum,
         ...(uploaded.length > 0 ? { photos: uploaded } : {}),
       });
+      setAddingAnother(false);
       onSave();
     } catch (e: unknown) {
       setErr(
@@ -1631,9 +1721,21 @@ export function DriverVehicleRegScreen({
             const angle = pendingAngleRef.current;
             setUploadingAngle(angle);
             setErr('');
+            setPhotoNote('');
             void uploadFile(file, 'product-images')
-              .then((url) => {
-                setPhotos((prev) => prev.map((p, i) => (i === angle ? url : p)));
+              .then(async (url) => {
+                const next = photos.map((p, i) => (i === angle ? url : p));
+                setPhotos(next);
+                // A vehicle already on file gets the photo straight away.
+                // Otherwise it rides along with the create below. Photos-only
+                // updates do not reset an approval, so this is safe to do
+                // against a vehicle Operations has already reviewed.
+                if (target) {
+                  await api.driver.updateVehicle(target.id, {
+                    photos: next.filter((p): p is string => typeof p === 'string' && p.length > 0),
+                  });
+                  setPhotoNote('Saved to your registered vehicle.');
+                }
               })
               .catch((uploadError: unknown) =>
                 setErr(
@@ -1651,7 +1753,13 @@ export function DriverVehicleRegScreen({
           <p className="mb-3 text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
             One clear photo per angle, in daylight. Your inspector reviews these before the physical
             check.
+            {target ? ' These are saved to the vehicle you already registered.' : ''}
           </p>
+          {photoNote !== '' && (
+            <p className="mb-3 text-[12px]" style={{ fontFamily: IT, color: G3 }}>
+              {photoNote}
+            </p>
+          )}
           <div className="grid grid-cols-2 gap-3">
             {VEHICLE_PHOTO_ANGLES.map((angle, idx) => {
               const url = photos[idx];
@@ -1688,95 +1796,145 @@ export function DriverVehicleRegScreen({
           </div>
         </div>
 
-        {/* Vehicle preview card */}
-        <div
-          className="mb-6 flex items-center gap-4 rounded-2xl p-4"
-          style={{ background: 'rgba(43,172,82,.06)', border: '1px solid rgba(43,172,82,.14)' }}
-        >
+        {/* What is already registered. This used to be a preview of the form
+            fields above it — with the demo defaults in place it showed
+            "Toyota Camry 2019" to every driver, including one whose real car
+            was already on file. */}
+        {(existing ?? []).map((vehicle) => (
           <div
-            className="flex h-16 w-16 items-center justify-center rounded-2xl text-3xl"
-            style={{ background: 'rgba(43,172,82,.1)' }}
+            key={vehicle.id}
+            className="mb-3 flex items-center gap-4 rounded-2xl p-4"
+            style={{ background: 'rgba(43,172,82,.06)', border: '1px solid rgba(43,172,82,.14)' }}
           >
-            🚗
-          </div>
-          <div>
-            <p className="text-[16px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
-              {make} {model} {year}
-            </p>
-            <p className="text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
-              {colour} · {plate || 'No plate yet'}
-            </p>
-            <div className="mt-1 flex items-center gap-1.5">
-              <div className="h-1.5 w-1.5 rounded-full" style={{ background: G2 }} />
-              <p className="text-[11px]" style={{ fontFamily: IT, color: G3 }}>
-                Economy Class
+            <div
+              className="flex h-16 w-16 items-center justify-center rounded-2xl text-3xl"
+              style={{ background: 'rgba(43,172,82,.1)' }}
+            >
+              🚗
+            </div>
+            <div>
+              <p className="text-[16px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
+                {vehicle.make} {vehicle.model} {vehicle.year}
               </p>
+              <p className="text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
+                {vehicle.color} · {vehicle.plateNumber}
+              </p>
+              <div className="mt-1 flex items-center gap-1.5">
+                <div
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{
+                    background: vehicle.approvalStatus === 'APPROVED' ? G2 : COLOR_WARNING,
+                  }}
+                />
+                <p
+                  className="text-[11px]"
+                  style={{
+                    fontFamily: IT,
+                    color: vehicle.approvalStatus === 'APPROVED' ? G3 : COLOR_WARNING,
+                  }}
+                >
+                  {vehicle.approvalStatus === 'APPROVED'
+                    ? 'Approved by Operations'
+                    : vehicle.approvalStatus === 'REJECTED'
+                      ? 'Rejected — register a replacement'
+                      : 'Registered — waiting for Operations to approve it'}
+                </p>
+              </div>
             </div>
           </div>
-        </div>
+        ))}
 
-        <DInput label="Make (Brand)" placeholder="e.g. Toyota" value={make} onChange={setMake} />
-        <DInput label="Model" placeholder="e.g. Camry" value={model} onChange={setModel} />
-        <DInput
-          label="Year"
-          placeholder="e.g. 2019"
-          value={year}
-          onChange={setYear}
-          type="number"
-        />
-        <DInput label="Colour" placeholder="e.g. White" value={colour} onChange={setColour} />
-        <DInput
-          label="Plate Number"
-          placeholder="e.g. LAG 482 KA"
-          value={plate}
-          onChange={setPlate}
-        />
-        <DInput
-          label="Passenger Seats"
-          placeholder="e.g. 4"
-          value={seats}
-          onChange={setSeats}
-          type="number"
-        />
+        {/* A driver may genuinely run a second car, so this is offered — but
+            never assumed. */}
+        {!showCreateForm && (
+          <button
+            onClick={() => setAddingAnother(true)}
+            className="mb-6 h-11 w-full rounded-xl text-[13px] font-semibold active:scale-[.97]"
+            style={{
+              background: 'rgba(43,172,82,.12)',
+              border: '1px solid rgba(43,172,82,.3)',
+              fontFamily: IT,
+              color: G3,
+            }}
+          >
+            Register another vehicle →
+          </button>
+        )}
 
-        {/* Ride category */}
-        <p
-          className="mb-2 text-[13px] font-medium"
-          style={{ fontFamily: IT, color: TEXT_SECONDARY }}
-        >
-          Ride Category
-        </p>
-        <div className="mb-6 grid grid-cols-4 gap-2">
-          {CATEGORIES.map((c) => {
-            const active = category === c.value;
-            return (
-              <button
-                key={c.value}
-                onClick={() => setCategory(c.value)}
-                className="h-11 rounded-xl text-[13px] font-semibold active:scale-[.97]"
-                style={{
-                  background: active ? `linear-gradient(135deg,${G0},${G2})` : NAVY_SURFACE,
-                  border: `1px solid ${active ? 'transparent' : BORDER}`,
-                  color: active ? '#fff' : MUTED,
-                  fontFamily: IT,
-                }}
-              >
-                {c.label}
-              </button>
-            );
-          })}
-        </div>
+        {showCreateForm && (
+          <>
+            <DInput
+              label="Make (Brand)"
+              placeholder="e.g. Toyota"
+              value={make}
+              onChange={setMake}
+            />
+            <DInput label="Model" placeholder="e.g. Camry" value={model} onChange={setModel} />
+            <DInput
+              label="Year"
+              placeholder="e.g. 2019"
+              value={year}
+              onChange={setYear}
+              type="number"
+            />
+            <DInput label="Colour" placeholder="e.g. White" value={colour} onChange={setColour} />
+            <DInput
+              label="Plate Number"
+              placeholder="e.g. LAG 482 KA"
+              value={plate}
+              onChange={setPlate}
+            />
+            <DInput
+              label="Passenger Seats"
+              placeholder="e.g. 4"
+              value={seats}
+              onChange={setSeats}
+              type="number"
+            />
 
-        <div
-          className="mb-6 flex gap-3 rounded-2xl p-4"
-          style={{ background: 'rgba(245,158,11,.06)', border: '1px solid rgba(245,158,11,.12)' }}
-        >
-          <span style={{ fontSize: 18, flexShrink: 0 }}>⚠️</span>
-          <p style={{ fontFamily: IT, fontSize: 12, color: TEXT_SECONDARY, lineHeight: 1.5 }}>
-            Vehicle must not be older than 12 years. Ensure all details match your vehicle paper
-            exactly.
-          </p>
-        </div>
+            {/* Ride category */}
+            <p
+              className="mb-2 text-[13px] font-medium"
+              style={{ fontFamily: IT, color: TEXT_SECONDARY }}
+            >
+              Ride Category
+            </p>
+            <div className="mb-6 grid grid-cols-4 gap-2">
+              {CATEGORIES.map((c) => {
+                const active = category === c.value;
+                return (
+                  <button
+                    key={c.value}
+                    onClick={() => setCategory(c.value)}
+                    className="h-11 rounded-xl text-[13px] font-semibold active:scale-[.97]"
+                    style={{
+                      background: active ? `linear-gradient(135deg,${G0},${G2})` : NAVY_SURFACE,
+                      border: `1px solid ${active ? 'transparent' : BORDER}`,
+                      color: active ? '#fff' : MUTED,
+                      fontFamily: IT,
+                    }}
+                  >
+                    {c.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div
+              className="mb-6 flex gap-3 rounded-2xl p-4"
+              style={{
+                background: 'rgba(245,158,11,.06)',
+                border: '1px solid rgba(245,158,11,.12)',
+              }}
+            >
+              <span style={{ fontSize: 18, flexShrink: 0 }}>⚠️</span>
+              <p style={{ fontFamily: IT, fontSize: 12, color: TEXT_SECONDARY, lineHeight: 1.5 }}>
+                Vehicle must not be older than 12 years. Ensure all details match your vehicle paper
+                exactly.
+              </p>
+            </div>
+          </>
+        )}
 
         {err && (
           <div
@@ -1787,7 +1945,11 @@ export function DriverVehicleRegScreen({
           </div>
         )}
 
-        <DGreenBtn label="Save Vehicle →" onClick={handleSave} loading={loading} />
+        {showCreateForm ? (
+          <DGreenBtn label="Save Vehicle →" onClick={handleSave} loading={loading} />
+        ) : (
+          <DGreenBtn label="Done →" onClick={onSave} />
+        )}
       </div>
     </div>
   );
