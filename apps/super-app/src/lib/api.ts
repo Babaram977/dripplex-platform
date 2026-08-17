@@ -872,6 +872,14 @@ export interface PayoutRequestDto {
   createdAt: string;
 }
 
+/** What came of a payout request: how much went to clearing commission owed on
+ * cash jobs, and the bank transfer that remains. `payout` is null when the debt
+ * absorbed the whole request and there is nothing left to send. */
+export interface PayoutResultDto {
+  commissionSettled: number;
+  payout: PayoutRequestDto | null;
+}
+
 /** One line of the Monday settlement run, as Operations sees it. */
 export interface SettlementLineDto {
   withdrawalId: string;
@@ -1171,7 +1179,7 @@ const partnerPayouts = (prefix: 'rider' | 'driver') => ({
   hasPin: () => dx<{ set: boolean }>('GET', `/${prefix}/wallet/pin`),
   setPin: (pin: string) => dx<{ set: true }>('POST', `/${prefix}/wallet/pin`, { pin }),
   requestPayout: (body: { amount: number; bankAccountId: string; pin: string }) =>
-    dx<PayoutRequestDto>('POST', `/${prefix}/wallet/payouts`, body),
+    dx<PayoutResultDto>('POST', `/${prefix}/wallet/payouts`, body),
   listPayouts: () => dx<PaginatedResult<PayoutRequestDto>>('GET', `/${prefix}/wallet/payouts`),
 });
 

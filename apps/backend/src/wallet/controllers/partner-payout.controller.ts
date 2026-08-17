@@ -23,7 +23,11 @@ import {
 } from '../dto/withdrawal.dto';
 import { WalletPinService } from '../wallet-pin.service';
 import { WALLET_PERMISSIONS } from '../wallet.constants';
-import { WithdrawalService, type WithdrawalRequestDto } from '../withdrawal.service';
+import {
+  WithdrawalService,
+  type PayoutResultDto,
+  type WithdrawalRequestDto,
+} from '../withdrawal.service';
 
 import type { AuthenticatedUser } from '../../auth/auth.types';
 import type { ApiSuccessResponse } from '../../common/dto/api-response.dto';
@@ -111,7 +115,7 @@ abstract class PartnerPayoutController {
     user: AuthenticatedUser,
     dto: CreateWithdrawalRequestDto,
     request: Request,
-  ): Promise<ApiSuccessResponse<WithdrawalRequestDto>> {
+  ): Promise<ApiSuccessResponse<PayoutResultDto>> {
     const data = await this.withdrawalService.create(
       user.id,
       this.ownerType(),
@@ -211,7 +215,7 @@ export class RiderPayoutController extends PartnerPayoutController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateWithdrawalRequestDto,
     @Req() request: Request,
-  ): Promise<ApiSuccessResponse<WithdrawalRequestDto>> {
+  ): Promise<ApiSuccessResponse<PayoutResultDto>> {
     return await super.requestPayout(user, dto, request);
   }
 
@@ -292,7 +296,7 @@ export class DriverPayoutController extends PartnerPayoutController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateWithdrawalRequestDto,
     @Req() request: Request,
-  ): Promise<ApiSuccessResponse<WithdrawalRequestDto>> {
+  ): Promise<ApiSuccessResponse<PayoutResultDto>> {
     return await super.requestPayout(user, dto, request);
   }
 

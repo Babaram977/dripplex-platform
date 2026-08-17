@@ -9,6 +9,9 @@ import {
 } from '@prisma/client';
 
 import { AppModule } from '../app.module';
+import { CommercialCreditSettingsService } from '../commercial/commercial-credit-settings.service';
+import { CommissionAccountService } from '../commercial/commission-account.service';
+import { DeliveryService } from '../delivery/delivery.service';
 
 import { SettlementReportService, lagosWeekStart } from './settlement-report.service';
 import { WalletPinService } from './wallet-pin.service';
@@ -34,6 +37,15 @@ describe('partner payouts (real database)', () => {
   let wallets: WalletService;
   let pins: WalletPinService;
   let settlement: SettlementReportService;
+  let commissions: CommissionAccountService;
+
+  /** The module, or a clear failure — never a silent non-null assertion. */
+  const app = (): TestingModule => {
+    if (!moduleRef) {
+      throw new Error('testing module was not created');
+    }
+    return moduleRef;
+  };
   let databaseAvailable = false;
 
   const createdUserIds: string[] = [];
@@ -71,6 +83,7 @@ describe('partner payouts (real database)', () => {
     wallets = moduleRef.get(WalletService);
     pins = moduleRef.get(WalletPinService);
     settlement = moduleRef.get(SettlementReportService);
+    commissions = moduleRef.get(CommissionAccountService);
 
     riderId = await makeUser('Tunde');
     driverId = await makeUser('Sani');
@@ -150,7 +163,8 @@ describe('partner payouts (real database)', () => {
       pin: PIN,
     });
 
-    expect(request.status).toBe(WithdrawalRequestStatus.PENDING);
+    expect(request.payout?.status).toBe(WithdrawalRequestStatus.PENDING);
+    expect(request.commissionSettled).toBe(0);
 
     const after = await wallets.getWallet(WalletOwnerType.RIDER, riderId);
     expect(after.availableBalance).toBe(before.availableBalance - 5_000);
@@ -235,25 +249,202 @@ describe('partner payouts (real database)', () => {
     });
   });
 
-  it('reports outstanding cash commission beside the payout, without deducting it', async () => {
+  it('subtracts commission owed before anything reaches the bank', async () => {
     if (!databaseAvailable) return;
 
-    await prisma.commissionAccount.create({
-      data: {
+    // The account already exists — the earlier payout created it on the way
+    // past — so set the balance rather than assuming this test creates it.
+    await prisma.commissionAccount.upsert({
+      where: {
+        ownerType_ownerId: { ownerType: CommissionOwnerType.RIDER, ownerId: riderId },
+      },
+      create: {
         ownerType: CommissionOwnerType.RIDER,
         ownerId: riderId,
         outstandingBalance: 1_500,
         creditLimit: 20_000,
       },
+      update: { outstandingBalance: 1_500, creditLimit: 20_000, blocked: false },
     });
 
-    const report = await settlement.weekly();
-    const rider = report.lines.find((line) => line.userId === riderId);
+    const balanceBefore = (await wallets.getWallet(WalletOwnerType.RIDER, riderId))
+      .availableBalance;
+    const result = await withdrawals.create(riderId, WalletOwnerType.RIDER, {
+      amount: 4_000,
+      bankAccountId: riderBankAccountId,
+      pin: PIN,
+    });
 
-    expect(rider?.outstandingCommission).toBe(1_500);
-    // Still the full amount requested — netting off is a policy decision that
-    // has not been made, so the report states both numbers and decides neither.
-    expect(rider?.amount).toBe(5_000);
+    // ₦4,000 asked for, ₦1,500 owed → ₦2,500 to the bank.
+    expect(result.commissionSettled).toBe(1_500);
+    expect(result.payout?.amount).toBe(2_500);
+
+    // The debt is actually cleared, not merely reported.
+    const account = await prisma.commissionAccount.findFirstOrThrow({
+      where: { ownerType: CommissionOwnerType.RIDER, ownerId: riderId },
+    });
+    expect(Number(account.outstandingBalance)).toBe(0);
+
+    // And the wallet is down by the whole ₦4,000 — the settled part left the
+    // balance too, it did not vanish from the books.
+    const balanceAfter = (await wallets.getWallet(WalletOwnerType.RIDER, riderId)).availableBalance;
+    expect(balanceAfter).toBe(balanceBefore - 4_000);
+  });
+
+  it('creates no bank transfer when the debt swallows the whole request', async () => {
+    if (!databaseAvailable) return;
+
+    await prisma.commissionAccount.updateMany({
+      where: { ownerType: CommissionOwnerType.RIDER, ownerId: riderId },
+      data: { outstandingBalance: 3_000 },
+    });
+
+    const result = await withdrawals.create(riderId, WalletOwnerType.RIDER, {
+      amount: 1_000,
+      bankAccountId: riderBankAccountId,
+      pin: PIN,
+    });
+
+    expect(result.commissionSettled).toBe(1_000);
+    // Nothing to send, so no line telling Operations to transfer ₦0.
+    expect(result.payout).toBeNull();
+
+    const account = await prisma.commissionAccount.findFirstOrThrow({
+      where: { ownerType: CommissionOwnerType.RIDER, ownerId: riderId },
+    });
+    expect(Number(account.outstandingBalance)).toBe(2_000);
+  });
+
+  it('leaves a customer payout alone — they owe DrippleX nothing', async () => {
+    if (!databaseAvailable) return;
+
+    const customerId = await makeUser('Mamman');
+    await pins.set(customerId, PIN);
+    const bank = await prisma.customerBankAccount.create({
+      data: {
+        userId: customerId,
+        bankName: 'Zenith',
+        accountName: 'Mamman Payout',
+        accountNumber: '1122334455',
+        isDefault: true,
+      },
+    });
+    await wallets.credit({
+      ownerType: WalletOwnerType.CUSTOMER,
+      ownerId: customerId,
+      amount: 4_000,
+      currency: 'NGN',
+      referenceType: 'test_seed',
+      referenceId: randomUUID(),
+      description: 'Top-up',
+    });
+
+    const result = await withdrawals.create(customerId, WalletOwnerType.CUSTOMER, {
+      amount: 3_000,
+      bankAccountId: bank.id,
+      pin: PIN,
+    });
+
+    expect(result.commissionSettled).toBe(0);
+    expect(result.payout?.amount).toBe(3_000);
+  });
+
+  it('stays blocked until the balance is zero, not merely under the limit', async () => {
+    if (!databaseAvailable) return;
+
+    const settings = app().get(CommercialCreditSettingsService);
+    const creditLimit = Number(
+      (await settings.getEffective(CommissionOwnerType.DRIVER)).creditLimit,
+    );
+
+    // Cross the limit — that is what blocks them.
+    await commissions.accrue({
+      ownerType: CommissionOwnerType.DRIVER,
+      ownerId: driverId,
+      amount: creditLimit + 1_000,
+      referenceType: 'test_accrual',
+      referenceId: randomUUID(),
+      description: 'Cash collected on DrippleX behalf',
+    });
+    let account = await prisma.commissionAccount.findFirstOrThrow({
+      where: { ownerType: CommissionOwnerType.DRIVER, ownerId: driverId },
+    });
+    expect(account.blocked).toBe(true);
+
+    // Pay down to just under the limit. Before this change that released them,
+    // which let a driver ride the ceiling forever without ever settling.
+    await commissions.recordPayment({
+      ownerType: CommissionOwnerType.DRIVER,
+      ownerId: driverId,
+      amount: 1_001,
+      referenceType: 'test_payment',
+      referenceId: randomUUID(),
+      description: 'Partial settlement',
+    });
+    account = await prisma.commissionAccount.findFirstOrThrow({
+      where: { ownerType: CommissionOwnerType.DRIVER, ownerId: driverId },
+    });
+    expect(Number(account.outstandingBalance)).toBeLessThan(creditLimit);
+    expect(account.blocked).toBe(true);
+
+    // Only zero releases them.
+    await commissions.recordPayment({
+      ownerType: CommissionOwnerType.DRIVER,
+      ownerId: driverId,
+      amount: Number(account.outstandingBalance),
+      referenceType: 'test_payment',
+      referenceId: randomUUID(),
+      description: 'Final settlement',
+    });
+    account = await prisma.commissionAccount.findFirstOrThrow({
+      where: { ownerType: CommissionOwnerType.DRIVER, ownerId: driverId },
+    });
+    expect(Number(account.outstandingBalance)).toBe(0);
+    expect(account.blocked).toBe(false);
+  });
+
+  it('will not let a blocked rider go online, and lets them back once settled', async () => {
+    if (!databaseAvailable) return;
+
+    const deliveries = app().get(DeliveryService);
+    const settings = app().get(CommercialCreditSettingsService);
+    const creditLimit = Number(
+      (await settings.getEffective(CommissionOwnerType.RIDER)).creditLimit,
+    );
+
+    await commissions.accrue({
+      ownerType: CommissionOwnerType.RIDER,
+      ownerId: riderId,
+      amount: creditLimit + 500,
+      referenceType: 'test_accrual',
+      referenceId: randomUUID(),
+      description: 'Cash collected on DrippleX behalf',
+    });
+
+    await expect(
+      deliveries.updateRiderAvailability(riderId, { online: true, acceptingOrders: true }),
+    ).rejects.toThrow(/settled the cash you owe/i);
+
+    // Going OFFLINE is never blocked — a rider must always be able to stop.
+    await expect(
+      deliveries.updateRiderAvailability(riderId, { online: false, acceptingOrders: false }),
+    ).resolves.toBeDefined();
+
+    const account = await prisma.commissionAccount.findFirstOrThrow({
+      where: { ownerType: CommissionOwnerType.RIDER, ownerId: riderId },
+    });
+    await commissions.recordPayment({
+      ownerType: CommissionOwnerType.RIDER,
+      ownerId: riderId,
+      amount: Number(account.outstandingBalance),
+      referenceType: 'test_payment',
+      referenceId: randomUUID(),
+      description: 'Settled in full',
+    });
+
+    await expect(
+      deliveries.updateRiderAvailability(riderId, { online: true, acceptingOrders: true }),
+    ).resolves.toBeDefined();
   });
 
   it('does not put a paid request back on next week’s report', async () => {

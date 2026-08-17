@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import type { PartnerBankAccountDto, PayoutRequestDto } from '../lib/api';
+import type { PartnerBankAccountDto, PayoutRequestDto, PayoutResultDto } from '../lib/api';
 
 const IT = "'Inter',sans-serif";
 const PP = "'Poppins',sans-serif";
@@ -32,7 +32,7 @@ export interface PayoutClient {
     amount: number;
     bankAccountId: string;
     pin: string;
-  }) => Promise<PayoutRequestDto>;
+  }) => Promise<PayoutResultDto>;
   listPayouts: () => Promise<{ items?: PayoutRequestDto[] }>;
 }
 
@@ -108,6 +108,43 @@ export function PayoutPanel({
     try {
       await fn();
       setNotice(done);
+      reset();
+      load();
+      onChanged?.();
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'That did not go through. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /**
+   * A payout can come back smaller than it was asked for: cash a rider or
+   * driver collected on DrippleX's behalf is settled out of it first. Saying
+   * "payout requested" and leaving them to discover a different number in
+   * their bank would be the kind of surprise that costs trust, so the exact
+   * split is reported back.
+   */
+  const runPayout = async (fn: () => Promise<PayoutResultDto>) => {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await fn();
+      const settled = result.commissionSettled;
+      if (result.payout === null) {
+        setNotice(
+          `${naira(settled)} went to clearing the cash you owe DrippleX. ` +
+            'Nothing is left to transfer this time.',
+        );
+      } else if (settled > 0) {
+        setNotice(
+          `${naira(settled)} settled the cash you owe DrippleX. ` +
+            `${naira(result.payout.amount)} is queued for Monday's payout.`,
+        );
+      } else {
+        setNotice('Payout requested. Operations pays out on Monday.');
+      }
       reset();
       load();
       onChanged?.();
@@ -308,19 +345,18 @@ export function PayoutPanel({
           })}
           <p className="mb-2 text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
             Payouts are transferred every Monday. The amount leaves your balance now and is sent to{' '}
-            {defaultAccount?.bankName ?? 'your bank'} on the next run.
+            {defaultAccount?.bankName ?? 'your bank'} on the next run. Any cash you owe DrippleX is
+            settled out of this first.
           </p>
           {button(
             busy ? 'Requesting…' : 'Request payout',
             () =>
-              void run(
-                () =>
-                  client.requestPayout({
-                    amount: Number(amount),
-                    bankAccountId: defaultAccount?.id ?? '',
-                    pin,
-                  }),
-                'Payout requested. Operations pays out on Monday.',
+              void runPayout(() =>
+                client.requestPayout({
+                  amount: Number(amount),
+                  bankAccountId: defaultAccount?.id ?? '',
+                  pin,
+                }),
               ),
             {
               primary: true,

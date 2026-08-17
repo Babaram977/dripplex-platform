@@ -12,6 +12,8 @@ import {
   RiderStatus,
 } from '@prisma/client';
 
+import { type CommissionAccountService } from '../commercial/commission-account.service';
+
 import { AssignmentService } from './assignment.service';
 import { DeliveryFeeService } from './delivery-fee.service';
 import { DELIVERY_DISPATCH_SWEEP_BATCH_SIZE } from './delivery.constants';
@@ -96,6 +98,9 @@ describe('delivery dispatch flow (real database)', () => {
       new DeliveryFeeService(),
       audit,
       prisma as unknown as PrismaService,
+      {
+        getOrCreateAccount: jest.fn().mockResolvedValue({ blocked: false, outstandingBalance: 0 }),
+      } as unknown as CommissionAccountService,
     );
 
     customerId = await makeUser('Customer');
