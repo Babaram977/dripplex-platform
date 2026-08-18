@@ -14,6 +14,7 @@ import {
   ForbiddenDomainException,
   NotFoundDomainException,
 } from '../../common/exceptions/domain.exception';
+import { AppConfigService } from '../../config/app-config.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DRIVER_AUDIT_ACTIONS, GPS_ANOMALY_MIN_INTERVAL_MS } from '../driver.constants';
 
@@ -69,6 +70,7 @@ export class DriverIdentityVerificationService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly securitySettings: DriverSecuritySettingsService,
+    private readonly config: AppConfigService,
     @Inject(IDENTITY_VERIFICATION_PROVIDER)
     private readonly provider: IdentityVerificationProvider,
   ) {}
@@ -125,6 +127,34 @@ export class DriverIdentityVerificationService {
         required: true,
         reason: DriverVerificationTrigger.ONBOARDING,
         lastVerifiedAt: null,
+        locked: false,
+      };
+    }
+
+    // ── Periodic re-verification ────────────────────────────────────────
+    // Everything below this line asks an ALREADY-verified driver to prove
+    // themselves again — first login of the day, an idle gap, a new device.
+    // Two things switch it off, and both matter.
+    //
+    // 1. No biometric provider is configured. The only provider wired is
+    //    Smile ID, which throws without credentials, so the driver is shown a
+    //    selfie step that can never succeed and is locked out of going online
+    //    with no way forward. A check that cannot be satisfied is not a
+    //    control, it is a locked door. (Onboarding is unaffected: a driver who
+    //    has never been verified is still required to be, and an operator
+    //    clears that by manual review.)
+    // 2. Ops switched it off. The periodic checks are the expensive ones — a
+    //    vendor charges per snap, and re-checking the whole fleet every
+    //    morning multiplies that by every driver, every day. The platform may
+    //    reasonably want the check at onboarding only.
+    if (
+      !this.config.biometricIdentityVerificationAvailable ||
+      !settings.periodicVerificationEnabled
+    ) {
+      return {
+        required: false,
+        reason: null,
+        lastVerifiedAt: profile.lastIdentityVerifiedAt,
         locked: false,
       };
     }
