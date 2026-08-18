@@ -1,1 +1,56 @@
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap');
+/*
+ * Poppins and Inter are linked from index.html, not imported here.
+ *
+ * An `@import` in this file could only be discovered after the browser had
+ * fetched and parsed index.css and then this file — two round trips before a
+ * font was even requested, so text rendered in the fallback sans first and
+ * reflowed once the real faces arrived. The <link> in index.html is picked up
+ * by the preload scanner instead, before any CSS is parsed.
+ *
+ * This file is kept as the place font-face concerns live, and for the
+ * rendering rules below that go with them.
+ */
+
+/*
+ * Antialiased rather than the default subpixel smoothing. On the dark
+ * DrippleX surfaces subpixel rendering thickens light-on-dark glyphs and
+ * fringes them with colour; greyscale antialiasing is what keeps small labels
+ * legible on a dark UI. `font-optical-sizing` lets Inter and Poppins pick the
+ * right optical size at caption sizes.
+ */
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-optical-sizing: auto;
+}
+
+/*
+ * The interface icons are inline SVG with fractional stroke widths (1.5, 1.8,
+ * 2.2). Left to the default `auto`, the renderer is free to trade accuracy for
+ * speed and those strokes land between pixels. `geometricPrecision` keeps them
+ * consistent across the app.
+ */
+svg {
+  shape-rendering: geometricPrecision;
+}
+
+/*
+ * ImageWithFallback's placeholder emoji. It was a fixed 2.25rem in every slot,
+ * so the same glyph overflowed a 40px avatar and sat undersized in an 82px
+ * card banner. Sizing it against the container makes it look deliberate at
+ * both ends. `inline-size` (not `size`) so boxes with auto height are
+ * unaffected; the fixed size stays as the fallback where cqw is unsupported.
+ */
+.dx-img-fallback {
+  container-type: inline-size;
+}
+
+.dx-img-fallback > span {
+  font-size: 2.25rem;
+}
+
+@supports (font-size: 1cqw) {
+  .dx-img-fallback > span {
+    font-size: 55cqw;
+  }
+}

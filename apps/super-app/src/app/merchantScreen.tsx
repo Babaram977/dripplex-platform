@@ -39,7 +39,11 @@ if (typeof document !== 'undefined' && !document.getElementById(STYLE_ID)) {
   const s = document.createElement('style');
   s.id = STYLE_ID;
   s.textContent = `
-    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&family=Inter:wght@400;500;600&display=swap');
+    /* Poppins and Inter come from the <link> in index.html. Re-importing them
+       from a <style> injected at mount cost a third round trip for faces the
+       page already had, and this copy asked for a narrower weight range than
+       the app uses — so merchant screens re-fetched fonts only to end up with
+       fewer weights than the customer app. */
     .mx-scroll::-webkit-scrollbar { width: 4px; }
     .mx-scroll::-webkit-scrollbar-track { background: transparent; }
     .mx-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,.12); border-radius: 4px; }

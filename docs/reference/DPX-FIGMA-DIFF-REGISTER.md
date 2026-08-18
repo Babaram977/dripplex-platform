@@ -305,3 +305,36 @@ search input is real and editable, typing reaches smart-search, merchant and pro
 render and navigate, a category chip fills the box and returns its own results, clearing
 restores the browse view, the three unbuilt tiles are marked SOON while the built ones stay
 live, Recent Activity shows the real ledger, and its "See all" reaches the Wallet.
+
+---
+
+### Type and icon rendering — sharpening pass (DPX-HOME-002) — logged 2026-08-18
+
+Founder asked for sharper, cleaner icons and type ("Talabat standard"), and confirmed the
+scope as **polish only — no Figma drift**: no layout, colour or component changes. Everything
+below is rendering quality, not design.
+
+**What was actually wrong** (measured in a browser against the built bundle, not assumed):
+
+| Defect                                                                                                          | Effect                                                                                   | Fix                                                                                                                                  |
+| --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `Inter` was loaded at weights 300;400;500;600 while ~295 elements ask for `font-bold` (700)                     | Browser synthesised bold by smearing the 400 weight — the single biggest source of blur  | Weight list now `400;500;600;700;800` for Inter, `400;500;600;700;800;900` for Poppins (matches actual use, incl. the 900 ride fare) |
+| Fonts pulled by `@import` from `src/styles/fonts.css`, itself `@import`-ed from `index.css`                     | Two round trips before the first font byte; text painted in fallback sans, then reflowed | One `<link rel="stylesheet">` plus `preconnect` in `index.html`, seen by the preload scanner                                         |
+| `merchantScreen.tsx` and `adminConsoleScreen.tsx` each `@import`-ed Google Fonts again from a runtime `<style>` | Third round trip on mount, for a _narrower_ weight range than the app uses               | Removed; both now use the single document-level link                                                                                 |
+| `-webkit-font-smoothing: auto`                                                                                  | Subpixel rendering thickens and colour-fringes light-on-dark glyphs                      | `antialiased` / `grayscale` on `html`, plus `font-optical-sizing: auto`                                                              |
+| `shape-rendering: auto` on inline SVG with fractional strokes (1.5 / 1.8 / 2.2)                                 | Strokes land between pixels inconsistently                                               | `shape-rendering: geometricPrecision`                                                                                                |
+| `ImageWithFallback` placeholder emoji fixed at `2.25rem`                                                        | Overflowed a 40px avatar slot, sat undersized in an 82px card banner                     | Scales to its container (`55cqw`, `container-type: inline-size`), fixed size kept as the `@supports` fallback                        |
+| Merchant/product `<img>` decoded on the main thread                                                             | A large logo could stall the frame it appears in                                         | `decoding="async"` (caller-overridable)                                                                                              |
+
+**Verified in a browser:** one Google Fonts request instead of three, the request now includes
+`Inter:wght@…700…`, `document.fonts.check('700 16px Inter')` passes, `html` computes
+`antialiased`, SVG computes `geometricprecision`, the fallback emoji renders 30.8px inside a
+56px box (was a flat 36px), and opening the Merchant portal triggers no further font request.
+
+**Ceiling, and the founder decision behind it.** The interface icons are **emoji** (🛒 🍽 💊
+in Categories, 🛍 🚖 💳 in Quick Actions). Emoji are supplied by the platform, so how sharp
+they look is decided by the device, not by us — no amount of CSS changes that. Talabat's
+crispness comes from a **commissioned vector icon set**, which is a design deliverable, not a
+rendering setting. Replacing emoji with SVG icons would change components and drift from the
+Figma, so it is **not** done here. Raising the ceiling needs an icon set added to the Figma
+first — flagged for founder decision.

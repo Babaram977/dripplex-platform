@@ -24,8 +24,12 @@ export function ImageWithFallback(
 
   if (didError || !hasSrc) {
     return (
+      // dx-img-fallback scales the emoji to the box it lands in. It used to be
+      // a flat 2.25rem everywhere, which overflowed a 40px avatar slot and
+      // floated undersized in an 82px banner — the same glyph looking wrong at
+      // both ends. See styles/fonts.css for the container rule.
       <div
-        className={className}
+        className={['dx-img-fallback', className].filter(Boolean).join(' ')}
         style={{
           ...style,
           display: 'flex',
@@ -36,7 +40,7 @@ export function ImageWithFallback(
         role="img"
         aria-label={typeof alt === 'string' && alt ? alt : 'No image available'}
       >
-        <span style={{ fontSize: '2.25rem', lineHeight: 1, opacity: 0.9 }} aria-hidden="true">
+        <span style={{ lineHeight: 1, opacity: 0.9 }} aria-hidden="true">
           {fallbackEmoji}
         </span>
       </div>
@@ -49,6 +53,9 @@ export function ImageWithFallback(
       alt={alt}
       className={className}
       style={style}
+      // Decode off the main thread so a large merchant logo cannot stall the
+      // frame it appears in. Callers can still override via props.
+      decoding="async"
       {...rest}
       onError={() => setDidError(true)}
     />
