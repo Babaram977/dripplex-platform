@@ -467,3 +467,63 @@ minimum fare, surcharge zones, cash and wallet payment, driver verification and 
 and each ends with a section stating plainly that it awaits legal review. They must be reviewed
 and approved by counsel, and checked against the Nigeria Data Protection Act, before DrippleX
 relies on them publicly.
+
+---
+
+### Notification sounds across the platform (DPX-SOUND-001) — logged 2026-08-18
+
+Founder request: _"sounds and alert system for order and delivery, and successful transaction
+either booking or order or delivery — a sound for notification should be introduced to the whole
+system. Every service or activity that requires attention should come with a sound notification
+that can be turned ON and off. Also it can be chosen from different sound list."_
+
+**Where a sound now plays**
+
+| Who       | When                                                        | Event         |
+| --------- | ----------------------------------------------------------- | ------------- |
+| Driver    | A ride offer arrives                                        | `new-request` |
+| Rider     | A delivery job arrives                                      | `new-request` |
+| Merchant  | The new-order count rises                                   | `new-request` |
+| Passenger | A driver is found for their ride                            | `success`     |
+| Customer  | An order is placed and paid (wallet, cash or bank transfer) | `success`     |
+
+Each site guards against repetition, because every one of them is a **poll**, not a push:
+the driver keys on the offer id (5s poll, 15s offer life — otherwise one request chimes three
+times), the rider keys on a set of seen job ids, the merchant sounds only on a _rise_ in the
+count, and the passenger and customer paths already run once by construction.
+
+**Sounds are synthesised, not audio files.** Five deliberately distinguishable tones — Chime,
+Ping, Bell, Alert, Drop — generated with the Web Audio API. No binary assets, nothing to fetch
+at the moment it needs to play (a driver on a weak connection would otherwise hear the alert
+late or not at all), and they work offline. `play()` is the single place to change if the
+founder later commissions real audio.
+
+**The preference is device-local, deliberately.** The backend's `NotificationPreference` model
+is channel × type — whether to _send_ you something. Which sound a handset makes, and whether
+it makes one, is a property of the handset: a driver may want alerts loud on the work phone and
+silent on the one at home. So it is localStorage, per device. Making it follow the account
+across devices is a backend field and a deliberate decision, not an oversight.
+
+**Sound is ON by default.** A driver who misses a job because the platform chose to start silent
+has been failed by the default.
+
+**Autoplay is handled honestly.** Browsers hold audio back until the user has interacted with
+the page. `installUnlockListener()` arms the context on the first tap anywhere in the app, long
+before a job arrives; until then `play()` is a no-op rather than an error, and the settings
+screen says "tap any sound above to enable it" rather than showing a working-looking toggle that
+produces silence. A browser with no Web Audio at all is told so plainly.
+
+**Removed:** the driver settings screen's "Sound Alerts" toggle. It flipped local state that was
+written and never read, and forgot itself on reload — it changed nothing. The real control
+replaces it.
+
+**Not covered yet, and not faked:** sound while the app is in the background or closed. That
+needs push notifications with a notification-channel sound on the device, which is a native/PWA
+concern (`DeviceRegistry` exists; the push provider wiring does not). Flagged rather than
+implied — the current sounds only play while the app is open.
+
+**Verification:** driven in Chromium with `createOscillator` instrumented, since a headless run
+cannot hear anything. The control renders on the driver settings screen, the old fake toggle is
+gone, all five sounds are listed, selecting one plays it (0 → 2 oscillators for the two-tone
+Bell) and persists `{"enabled":true,"sound":"bell"}`, switching off persists `enabled:false`,
+hides the list and produces no oscillator, and switching back on persists again.

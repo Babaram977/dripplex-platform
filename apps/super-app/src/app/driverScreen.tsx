@@ -20,6 +20,8 @@ import {
 import { api, uploadFile } from '../lib/api';
 import { auth } from '../lib/auth';
 import { AccountPageHost, AccountRows, type AccountPage } from './accountPages';
+import { playNotificationSound } from '../lib/sound';
+import { SoundSettings } from './soundSettings';
 import { PayoutPanel } from './payoutPanel';
 import { getCurrentPosition } from '../lib/maps';
 // Same cadence for both couriers — see the constant's note for why 30s.
@@ -2481,13 +2483,23 @@ export function DriverDashboardScreen({
   useEffect(() => {
     if (!online) return;
     let cancelled = false;
+    // Only the *first* sighting of a given offer makes a sound. The poll runs
+    // every 5s and an offer lives for 15s, so without this the same request
+    // would chime three times and read as three jobs.
+    let announcedOfferId: string | null = null;
     const poll = () => {
       api.driverRides
         .getOffers()
         .then((offers) => {
           if (cancelled) return;
           const pending = offers.find((o) => o.status === 'PENDING' || o.status === 'OFFERED');
-          if (pending) onRequest(pending);
+          if (pending) {
+            if (pending.id !== announcedOfferId) {
+              announcedOfferId = pending.id;
+              playNotificationSound('new-request');
+            }
+            onRequest(pending);
+          }
         })
         .catch(() => {});
     };
@@ -4266,7 +4278,6 @@ export function DriverSettingsScreen({
   const [notifTrips, setNotifTrips] = useState(true);
   const [notifEarnings, setNotifEarnings] = useState(true);
   const [notifPromos, setNotifPromos] = useState(false);
-  const [soundAlerts, setSoundAlerts] = useState(true);
   const [vibration, setVibration] = useState(true);
   const [navApp, setNavApp] = useState('Google Maps');
   // Which ACCOUNT page is open. Kept local so this does not need a new route
@@ -4317,12 +4328,10 @@ export function DriverSettingsScreen({
     {
       title: 'ALERTS',
       items: [
-        {
-          label: 'Sound Alerts',
-          sub: 'Audio on new requests',
-          value: soundAlerts,
-          onChange: () => setSoundAlerts(!soundAlerts),
-        },
+        // "Sound Alerts" used to be here as a toggle over local state that was
+        // written and never read — flipping it changed nothing and it forgot
+        // itself on reload. The real control is <SoundSettings /> below, which
+        // persists the choice and lets the driver hear each sound first.
         {
           label: 'Vibration',
           sub: 'Haptic feedback',
@@ -4446,6 +4455,8 @@ export function DriverSettingsScreen({
               privacy policy cannot drift between the two. */}
           <AccountRows onOpen={setAccountPage} />
         </div>
+
+        <SoundSettings />
 
         {/* Logout */}
         <button

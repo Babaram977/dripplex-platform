@@ -1,6 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { api, uploadFile } from '../lib/api';
 import { AccountPageHost, AccountRows, type AccountPage } from './accountPages';
+import { playNotificationSound } from '../lib/sound';
+import { SoundSettings } from './soundSettings';
 import { PayoutPanel } from './payoutPanel';
 import { auth } from '../lib/auth';
 import { getCurrentPosition } from '../lib/maps';
@@ -377,10 +379,22 @@ export function RiderDashboardScreen({
   // "Delivery job is not assigned to this rider". Mirrors the driver app gate.
   const isRider = auth.hasRole('rider');
 
+  // Ids we have already chimed for. The poll runs every 8s, so comparing
+  // against the previous set is what separates a job arriving from the same
+  // job still sitting there unaccepted.
+  const announcedJobIds = useRef<Set<string>>(new Set());
+
   const fetchJobs = useCallback(() => {
     api.rider
       .getJobs()
-      .then(setJobs)
+      .then((next) => {
+        const fresh = next.filter((job) => !announcedJobIds.current.has(job.id));
+        if (fresh.length > 0) {
+          playNotificationSound('new-request');
+          for (const job of fresh) announcedJobIds.current.add(job.id);
+        }
+        setJobs(next);
+      })
       .catch((e) => setLoadErr(e.message));
   }, []);
 
@@ -1469,6 +1483,8 @@ export function RiderAccountScreen({
             <div style={{ marginBottom: 16 }}>
               <AccountRows onOpen={setAccountPage} />
             </div>
+
+            <SoundSettings />
 
             <button
               onClick={signOut}
