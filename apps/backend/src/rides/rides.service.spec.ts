@@ -148,6 +148,10 @@ describe('RidesService', () => {
         vehicleType: 'ECONOMY',
         latitude: pickup.pickupLatitude,
         longitude: pickup.pickupLongitude,
+        // Dispatch ignores a driver whose position is older than
+        // DRIVER_LOCATION_MAX_AGE_MS, so a fixture that omits this is
+        // a driver who has not reported in — not an available one.
+        locationUpdatedAt: new Date(),
       },
     });
   });
@@ -481,5 +485,76 @@ describe('RidesService', () => {
     expect(mine.items.every((item) => item.driverId === driverId)).toBe(true);
 
     await service.cancelRide(customerId, ride.id, {}, context);
+  });
+
+  describe('listRideTypesWithAvailability', () => {
+    it('reports the catalog with no availability claim when given no pickup', () => {
+      // Without coordinates there is no "in range" to answer, so the endpoint
+      // must not imply one either way — the fare screen has to be able to tell
+      // "not checked" apart from "checked, nobody there".
+      const types = service.listRideTypes();
+
+      expect(types.length).toBeGreaterThan(0);
+      for (const entry of types) {
+        expect(entry.availableNow).toBeUndefined();
+        expect(entry.nearestDriverMeters).toBeUndefined();
+      }
+    });
+
+    it('marks the type the online driver drives as available, and the others not', async () => {
+      if (!databaseAvailable) return;
+
+      // The suite's one driver is ECONOMY, sitting on the pickup point.
+      const types = await service.listRideTypesWithAvailability(
+        pickup.pickupLatitude,
+        pickup.pickupLongitude,
+      );
+
+      const economy = types.find((entry) => entry.type === 'ECONOMY');
+      expect(economy?.availableNow).toBe(true);
+      expect(economy?.nearestDriverMeters).toBeLessThan(100);
+
+      // Nobody drives these, so booking one would have meant waiting through
+      // every dispatch attempt to be told so. This is the field that lets the
+      // passenger be told first.
+      const comfort = types.find((entry) => entry.type === 'COMFORT');
+      expect(comfort?.availableNow).toBe(false);
+      expect(comfort?.nearestDriverMeters).toBeNull();
+    });
+
+    it('reports nothing available from a pickup outside the widest search ring', async () => {
+      if (!databaseAvailable) return;
+
+      // ~55km north of the driver — past the outermost ring dispatch searches,
+      // so the honest answer is that no type can be served from here.
+      const types = await service.listRideTypesWithAvailability(
+        pickup.pickupLatitude + 0.5,
+        pickup.pickupLongitude,
+      );
+
+      expect(types.every((entry) => entry.availableNow === false)).toBe(true);
+      expect(types.every((entry) => entry.nearestDriverMeters === null)).toBe(true);
+    });
+
+    it('treats a driver whose location has gone stale as unavailable', async () => {
+      if (!databaseAvailable) return;
+
+      await prisma.driverAvailability.update({
+        where: { driverId },
+        data: { locationUpdatedAt: new Date(Date.now() - 60 * 60_000) },
+      });
+
+      const types = await service.listRideTypesWithAvailability(
+        pickup.pickupLatitude,
+        pickup.pickupLongitude,
+      );
+      expect(types.find((entry) => entry.type === 'ECONOMY')?.availableNow).toBe(false);
+
+      // Restore, so ordering between tests in this file cannot matter.
+      await prisma.driverAvailability.update({
+        where: { driverId },
+        data: { locationUpdatedAt: new Date() },
+      });
+    });
   });
 });

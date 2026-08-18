@@ -4,7 +4,8 @@ import { DriverStatus } from '@prisma/client';
 import { NotFoundDomainException } from '../common/exceptions/domain.exception';
 import { PrismaService } from '../prisma/prisma.service';
 
-import { haversineMeters } from './ride-fare.service';
+import { boundingBox, haversineMeters } from './ride-fare.service';
+import { DRIVER_LOCATION_MAX_AGE_MS } from './ride.constants';
 
 import type { NearbyDriversQueryDto } from './dto/nearby-drivers-query.dto';
 import type { NearbyDriverDto, RideTrackingPointDto } from '@dripplex/types';
@@ -28,14 +29,20 @@ export class RideTrackingReadService {
   constructor(private readonly prisma: PrismaService) {}
 
   public async getNearbyDrivers(query: NearbyDriversQueryDto): Promise<NearbyDriverDto[]> {
+    // Same freshness rule and same bounding-box narrowing as dispatch — a pin
+    // the map shows must be a driver dispatch would actually consider, or the
+    // map is promising a car that will never be offered the trip.
+    const box = boundingBox(query.latitude, query.longitude, query.radiusMeters);
+
     const candidates = await this.prisma.driverAvailability.findMany({
       where: {
         online: true,
         acceptingRides: true,
         vehicleType: query.rideType,
         activeRideCount: 0,
-        latitude: { not: null },
-        longitude: { not: null },
+        locationUpdatedAt: { gte: new Date(Date.now() - DRIVER_LOCATION_MAX_AGE_MS) },
+        latitude: { gte: box.minLat, lte: box.maxLat },
+        longitude: { gte: box.minLng, lte: box.maxLng },
         driver: { driverProfile: { status: DriverStatus.APPROVED } },
       },
     });

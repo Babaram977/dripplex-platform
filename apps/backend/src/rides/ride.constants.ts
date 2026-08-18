@@ -89,6 +89,51 @@ export const RIDE_OFFER_SWEEP_INTERVAL_MS = 5_000;
 /** Matches delivery's TRACKING_THROTTLE_MS — reused, not reinvented. */
 export const RIDE_LOCATION_THROTTLE_MS = 5_000;
 
+/**
+ * Founder decision, 2026-08-18: dispatch searches in expanding rings rather
+ * than over the whole platform.
+ *
+ * Before this, `findNearestEligibleDriver` had no distance filter at all — it
+ * ranked every online, accepting, approved driver of the right vehicle type
+ * anywhere in the database and offered the ride to the closest. Nearest-first
+ * was correct; unbounded was not. With two cities live, a Lagos driver was a
+ * valid candidate for a Kano pickup.
+ *
+ * Dispatch now tries the nearest un-offered driver inside 5km, and only widens
+ * when that ring is exhausted — so a passenger is matched to somebody close
+ * whenever somebody close exists, and the wider rings are a fallback for a
+ * thin fleet rather than the normal path.
+ *
+ * The customer-facing map already defaults to 5,000m and the Ops Console
+ * dispatch-candidates view bounds at 10,000m; these bands are the same order,
+ * with 15km as the outer limit.
+ */
+export const RIDE_DISPATCH_RADIUS_BANDS_METERS: readonly number[] = [5_000, 10_000, 15_000];
+
+/**
+ * The widest ring dispatch will ever reach. Exported so the customer-facing
+ * availability check asks the same question dispatch will — if these two ever
+ * disagree, the fare screen promises a driver dispatch will not look for, or
+ * hides one it would have found.
+ *
+ * Derived with Math.max rather than by index so reordering or adding a band
+ * cannot silently leave this pointing at the wrong ring.
+ */
+export const RIDE_DISPATCH_MAX_RADIUS_METERS = Math.max(...RIDE_DISPATCH_RADIUS_BANDS_METERS);
+
+/**
+ * How old a driver's last location ping may be before dispatch stops treating
+ * it as where they are.
+ *
+ * Derived from RIDE_LOCATION_THROTTLE_MS, not a business decision: an online
+ * driver's app pushes `driver:location` at most every 5 seconds, so a gap of
+ * five minutes is sixty missed pings — the connection is gone, not slow.
+ * Without this, a driver who went online in the morning and drove home kept
+ * advertising their morning coordinates and stayed the "nearest" candidate
+ * forever, taking an offer they could never reach.
+ */
+export const DRIVER_LOCATION_MAX_AGE_MS = 5 * 60_000;
+
 /** Statuses a ride can still be cancelled from — once IN_PROGRESS or later, it's too late. */
 export const CANCELLABLE_RIDE_STATUSES: readonly string[] = [
   'REQUESTED',

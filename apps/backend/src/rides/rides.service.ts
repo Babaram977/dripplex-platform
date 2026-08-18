@@ -1,5 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { CommissionOwnerType, PromotionDomain, RideCancelledBy, RideStatus } from '@prisma/client';
+import {
+  CommissionOwnerType,
+  DriverStatus,
+  PromotionDomain,
+  RideCancelledBy,
+  RideStatus,
+} from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../audit/audit.service';
 import { CommissionAccountService } from '../commercial/commission-account.service';
@@ -19,11 +25,18 @@ import { PromotionsService } from '../promotions/promotions.service';
 
 import { RideDispatchService } from './ride-dispatch.service';
 import { RIDE_EVENTS_PUBLISHER, type RideEventsPublisher } from './ride-events.publisher';
-import { type RideFareEstimate, RideFareService } from './ride-fare.service';
+import {
+  boundingBox,
+  haversineMeters,
+  type RideFareEstimate,
+  RideFareService,
+} from './ride-fare.service';
 import {
   ACTIVE_DRIVER_RIDE_STATUSES,
   CANCELLABLE_RIDE_STATUSES,
+  DRIVER_LOCATION_MAX_AGE_MS,
   RIDE_AUDIT_ACTIONS,
+  RIDE_DISPATCH_MAX_RADIUS_METERS,
   RIDE_PROMOTION_REFERENCE_TYPE,
   RIDE_TYPE_CATALOG,
 } from './ride.constants';
@@ -68,6 +81,70 @@ export class RidesService {
       type,
       ...RIDE_TYPE_CATALOG[type],
     }));
+  }
+
+  /**
+   * The catalog, plus whether each type can actually be served from a pickup.
+   *
+   * A passenger could pick Dx Comfort with no Comfort driver anywhere near
+   * them, book, and sit on "Finding your driver" through five offer attempts
+   * before the ride ended NO_DRIVERS_FOUND — with nothing on screen saying
+   * why. This answers the question up front, and answers it the same way
+   * dispatch will: same vehicle type, same freshness rule, same outer radius.
+   *
+   * One query for the whole catalog rather than one per type — the fare screen
+   * asks on every pickup change, and four round trips per change is the kind
+   * of thing that stops scaling at a few hundred concurrent passengers.
+   */
+  public async listRideTypesWithAvailability(
+    latitude: number,
+    longitude: number,
+  ): Promise<RideTypeCatalogEntryDto[]> {
+    const box = boundingBox(latitude, longitude, RIDE_DISPATCH_MAX_RADIUS_METERS);
+
+    const drivers = await this.prisma.driverAvailability.findMany({
+      where: {
+        online: true,
+        acceptingRides: true,
+        activeRideCount: 0,
+        locationUpdatedAt: { gte: new Date(Date.now() - DRIVER_LOCATION_MAX_AGE_MS) },
+        latitude: { gte: box.minLat, lte: box.maxLat },
+        longitude: { gte: box.minLng, lte: box.maxLng },
+        driver: { driverProfile: { status: DriverStatus.APPROVED } },
+      },
+      select: { vehicleType: true, latitude: true, longitude: true },
+    });
+
+    // Nearest driver per vehicle type. The box over-selects at its corners, so
+    // the haversine check is what decides who is genuinely within reach.
+    const nearestByType = new Map<RideType, number>();
+    for (const driver of drivers) {
+      if (driver.latitude === null || driver.longitude === null) {
+        continue;
+      }
+      const distanceMeters = haversineMeters(
+        latitude,
+        longitude,
+        Number(driver.latitude),
+        Number(driver.longitude),
+      );
+      if (distanceMeters > RIDE_DISPATCH_MAX_RADIUS_METERS) {
+        continue;
+      }
+      const best = nearestByType.get(driver.vehicleType);
+      if (best === undefined || distanceMeters < best) {
+        nearestByType.set(driver.vehicleType, distanceMeters);
+      }
+    }
+
+    return this.listRideTypes().map((entry) => {
+      const nearest = nearestByType.get(entry.type);
+      return {
+        ...entry,
+        availableNow: nearest !== undefined,
+        nearestDriverMeters: nearest ?? null,
+      };
+    });
   }
 
   /** Read-only preview — does not redeem or lock anything. Used by the
@@ -404,6 +481,14 @@ export class RidesService {
       }
     }
 
+    // Going online carries a position, so it counts as a location ping. Stamp
+    // locationUpdatedAt only when coordinates actually arrive — a driver
+    // flipping "accepting rides" off and on must not refresh a stale position.
+    const locationStamp =
+      dto.latitude !== undefined && dto.longitude !== undefined
+        ? { locationUpdatedAt: new Date() }
+        : {};
+
     const availability = await this.prisma.driverAvailability.upsert({
       where: { driverId },
       create: {
@@ -413,6 +498,7 @@ export class RidesService {
         vehicleType: dto.vehicleType,
         ...(dto.latitude !== undefined ? { latitude: dto.latitude } : {}),
         ...(dto.longitude !== undefined ? { longitude: dto.longitude } : {}),
+        ...locationStamp,
       },
       update: {
         online: dto.online,
@@ -420,6 +506,7 @@ export class RidesService {
         vehicleType: dto.vehicleType,
         ...(dto.latitude !== undefined ? { latitude: dto.latitude } : {}),
         ...(dto.longitude !== undefined ? { longitude: dto.longitude } : {}),
+        ...locationStamp,
       },
     });
     return toDriverAvailabilityDto(availability);

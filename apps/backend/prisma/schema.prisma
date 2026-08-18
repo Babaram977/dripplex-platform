@@ -1746,17 +1746,30 @@ model RideTracking {
 }
 
 model DriverAvailability {
-  driverId        String   @id @map("driver_id") @db.Uuid
-  online          Boolean  @default(false)
-  acceptingRides  Boolean  @default(false) @map("accepting_rides")
-  vehicleType     RideType @map("vehicle_type")
-  latitude        Decimal? @db.Decimal(10, 7)
-  longitude       Decimal? @db.Decimal(10, 7)
+  driverId       String   @id @map("driver_id") @db.Uuid
+  online         Boolean  @default(false)
+  acceptingRides Boolean  @default(false) @map("accepting_rides")
+  vehicleType    RideType @map("vehicle_type")
+  latitude       Decimal? @db.Decimal(10, 7)
+  longitude      Decimal? @db.Decimal(10, 7)
+
+  /// When latitude/longitude were last written. Distinct from `updatedAt`,
+  /// which Prisma bumps on ANY write to this row — including activeRideCount
+  /// changes at accept and completion — and so reports a location as fresh
+  /// when only the ride counter moved. Dispatch needs to know how old the
+  /// *position* is, so it reads this and nothing else.
+  locationUpdatedAt DateTime? @map("location_updated_at")
+
   activeRideCount Int      @default(0) @map("active_ride_count")
   updatedAt       DateTime @updatedAt @map("updated_at")
   driver          User     @relation(fields: [driverId], references: [id], onDelete: Cascade)
 
   @@index([online, acceptingRides, vehicleType])
+  /// Dispatch filters on these four together before ranking by distance.
+  /// Named explicitly: Prisma's generated name for four columns this long
+  /// exceeds Postgres's 63-character identifier limit and gets truncated,
+  /// which would drift from the name the migration creates.
+  @@index([online, acceptingRides, vehicleType, locationUpdatedAt], map: "driver_availability_online_accepting_vehicle_location_idx")
   @@map("driver_availability")
 }
 

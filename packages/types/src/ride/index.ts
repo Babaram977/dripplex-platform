@@ -5,6 +5,26 @@ export interface RideTypeCatalogEntryDto {
   displayName: string;
   description: string;
   emoji: string;
+
+  /**
+   * Whether a driver of this type is currently reachable from the pickup
+   * point, and how far the nearest one is.
+   *
+   * Only present when the caller passes `latitude`/`longitude` to
+   * `GET /customer/rides/types`. Without a pickup there is no "in range" to
+   * answer, so both fields stay undefined and the UI must not claim either
+   * way.
+   *
+   * `availableNow: false` means dispatch would search all the way out to its
+   * widest ring and find nobody — the passenger would wait through every
+   * offer attempt and end at NO_DRIVERS_FOUND. Saying so before they book is
+   * the whole point of this field.
+   */
+  availableNow?: boolean;
+  /** Straight-line metres to the nearest eligible driver, or null when there
+   * is none. Not a road distance and not an ETA — it is what dispatch ranks
+   * on, so it is what we can honestly report. */
+  nearestDriverMeters?: number | null;
 }
 
 export type RideStatus =

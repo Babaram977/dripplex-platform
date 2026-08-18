@@ -1226,15 +1226,22 @@ export function FareEstimateScreen({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.rides
-      .getRideTypes()
-      .then(setCatalog)
-      .catch(() => {});
     api.wallet
       .get()
       .then((w) => setWalletBalance(w.availableBalance))
       .catch(() => {});
   }, []);
+
+  // The catalog is re-fetched with the pickup point so each type carries
+  // whether a driver of that type is reachable from *here*. Without a pickup
+  // we still load the catalog — the passenger needs the labels either way —
+  // but every entry comes back with no availability claim.
+  useEffect(() => {
+    api.rides
+      .getRideTypes(pickup ? { latitude: pickup.latitude, longitude: pickup.longitude } : undefined)
+      .then(setCatalog)
+      .catch(() => {});
+  }, [pickup?.latitude, pickup?.longitude]);
 
   useEffect(() => {
     if (!dropoff || !pickup) return;
@@ -1262,10 +1269,17 @@ export function FareEstimateScreen({
       );
   }, [dropoff, pickup, rideType]);
 
-  const entry = catalog?.find((c) => c.rideType === rideType) ?? null;
-  const typeName = entry?.label ?? RIDE_TYPE_LABEL[rideType];
+  // `type` / `displayName` / `emoji` are the backend's field names. This read
+  // `.rideType` / `.label`, which the API has never sent, so every lookup here
+  // was undefined and the local maps below silently covered for it.
+  const entry = catalog?.find((c) => c.type === rideType) ?? null;
+  const typeName = entry?.displayName ?? RIDE_TYPE_LABEL[rideType];
   const typeDesc = entry?.description ?? '';
-  const typeEmoji = RIDE_TYPE_EMOJI[rideType];
+  const typeEmoji = entry?.emoji ?? RIDE_TYPE_EMOJI[rideType];
+  // undefined means the catalog was fetched without a pickup, so availability
+  // was never asked — distinct from `false`, which means asked and nobody
+  // there. Only `false` may be shown to the passenger as "none nearby".
+  const selectedUnavailable = entry?.availableNow === false;
   // GAP: backend ride catalog exposes no per-type "seats" field — omitted.
   const durationMin = estimate ? Math.max(1, Math.round(estimate.durationSeconds / 60)) : null;
   // Honest fallback: no fabricated flat price before the estimate resolves.
@@ -1319,20 +1333,26 @@ export function FareEstimateScreen({
           {(catalog?.length ?? 0) > 1 && (
             <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
               {(catalog ?? []).map((option) => {
-                const active = option.rideType === rideType;
+                const active = option.type === rideType;
+                // Still selectable when nobody is nearby — the passenger may
+                // want to try anyway, and dispatch will widen its search. It
+                // is dimmed so the choice is informed, not blocked.
+                const none = option.availableNow === false;
                 return (
                   <button
-                    key={option.rideType}
-                    onClick={() => setRideType(option.rideType)}
+                    key={option.type}
+                    onClick={() => setRideType(option.type)}
                     className="flex-shrink-0 rounded-xl px-3.5 py-2 text-[12.5px] font-semibold active:scale-[.97]"
                     style={{
                       background: active ? 'rgba(43,172,82,.16)' : NAVY_SURFACE,
                       border: `1px solid ${active ? G2 : BORDER}`,
                       color: active ? '#fff' : MUTED,
                       fontFamily: IT,
+                      opacity: none && !active ? 0.45 : 1,
                     }}
                   >
-                    {RIDE_TYPE_EMOJI[option.rideType]} {option.label}
+                    {option.emoji} {option.displayName}
+                    {none ? ' · none nearby' : ''}
                   </button>
                 );
               })}
@@ -1378,6 +1398,32 @@ export function FareEstimateScreen({
               </p>
             </div>
           </div>
+
+          {/* Nobody of this type is in reach. Said before booking rather than
+              after five silent dispatch attempts end in NO_DRIVERS_FOUND —
+              which is what the passenger used to get, with nothing on screen
+              explaining the wait. Booking is still allowed: dispatch widens
+              its search, and a driver may come online while they wait. */}
+          {selectedUnavailable && (
+            <div
+              className="mb-4 rounded-2xl p-3.5"
+              style={{
+                background: 'rgba(245,158,11,.08)',
+                border: '1px solid rgba(245,158,11,.28)',
+              }}
+            >
+              <p
+                className="mb-1 text-[12.5px] font-semibold"
+                style={{ fontFamily: PP, color: '#F59E0B' }}
+              >
+                No {typeName} nearby right now
+              </p>
+              <p className="text-[11.5px] leading-relaxed" style={{ fontFamily: IT, color: MUTED }}>
+                You can still request one — we will keep looking, and widen the search. Another type
+                above may get you moving sooner.
+              </p>
+            </div>
+          )}
 
           {/* Payment */}
           <div className="mb-4">

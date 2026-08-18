@@ -150,6 +150,10 @@ describe('OperationsFleetService', () => {
         vehicleType: RideType.ECONOMY,
         latitude: 6.5244,
         longitude: 3.3792,
+        // Dispatch ignores a driver whose position is older than
+        // DRIVER_LOCATION_MAX_AGE_MS, so a fixture that omits this is
+        // a driver who has not reported in — not an available one.
+        locationUpdatedAt: new Date(),
       },
     });
     const vehicle = await prisma.vehicle.create({

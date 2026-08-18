@@ -455,12 +455,31 @@ export interface EstimateRideFareResponse {
   finalFare: number;
 }
 
+/**
+ * Mirrors the backend's RideTypeCatalogEntryDto exactly.
+ *
+ * This declared `{ rideType, label, description, basePrice, currency }` — none
+ * of which the API sends. `GET /customer/rides/types` returns `type`,
+ * `displayName`, `description` and `emoji`, and has no price field at all
+ * (fares are per-route, from `/rides/estimate`). Every consumer reading
+ * `.rideType` or `.label` was reading `undefined`, so the ride-type chips
+ * rendered blank and selecting one set the type to undefined.
+ *
+ * Keep this in step with packages/types/src/ride/index.ts — that is the
+ * contract, this is a copy of it.
+ */
 export interface RideTypeCatalogEntryDto {
-  rideType: RideType;
-  label: string;
-  description: string | null;
-  basePrice: number;
-  currency: string;
+  type: RideType;
+  displayName: string;
+  description: string;
+  emoji: string;
+  /** Present only when `getRideTypes` is called with a pickup point. Undefined
+   * means "not checked", which is not the same as "nobody available" — the UI
+   * must not render an availability claim it was never given. */
+  availableNow?: boolean;
+  /** Straight-line metres to the nearest eligible driver of this type, or null
+   * when there is none in range. */
+  nearestDriverMeters?: number | null;
 }
 
 export interface NearbyDriverDto {
@@ -1544,7 +1563,13 @@ export const api = {
 
   // ── RIDES (customer) ───────────────────────────────────────────────────────
   rides: {
-    getRideTypes: () => dx<RideTypeCatalogEntryDto[]>('GET', '/customer/rides/types'),
+    /** Pass a pickup point to have each entry also report whether a driver of
+     * that type is actually reachable from it — so the fare screen can say so
+     * before the passenger books, instead of after five failed dispatch
+     * attempts. Without coordinates the catalog comes back with no
+     * availability claim, exactly as before. */
+    getRideTypes: (params?: { latitude: number; longitude: number }) =>
+      dx<RideTypeCatalogEntryDto[]>('GET', '/customer/rides/types', undefined, params),
     estimate: (body: {
       rideType: RideType;
       pickupLatitude: number;

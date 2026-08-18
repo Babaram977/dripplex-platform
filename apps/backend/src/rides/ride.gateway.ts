@@ -135,7 +135,13 @@ export class RideGateway implements OnGatewayConnection, OnGatewayDisconnect, Ri
 
     await this.prisma.driverAvailability.updateMany({
       where: { driverId: user.id },
-      data: { latitude: body.latitude, longitude: body.longitude },
+      // locationUpdatedAt is stamped with the coordinates, never separately —
+      // that pairing is what lets dispatch trust the position's age.
+      data: {
+        latitude: body.latitude,
+        longitude: body.longitude,
+        locationUpdatedAt: new Date(),
+      },
     });
 
     const activeRide = await this.prisma.ride.findFirst({
