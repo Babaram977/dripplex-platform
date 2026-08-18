@@ -11,6 +11,7 @@ import { WalletModule } from '../wallet/wallet.module';
 
 import { AdminPaymentsController } from './admin-payments.controller';
 import { CashSettlementSubscriber } from './cash-settlement.subscriber';
+import { CustomerPaymentProvidersController } from './customer-payment-providers.controller';
 import { CustomerPaymentsController } from './customer-payments.controller';
 import {
   INVENTORY_DEDUCTION_SERVICE,
@@ -37,7 +38,12 @@ import { PrismaPaymentTransactionRepository } from './repositories/prisma-paymen
     AppConfigModule,
     WalletModule,
   ],
-  controllers: [CustomerPaymentsController, PaymentWebhooksController, AdminPaymentsController],
+  controllers: [
+    CustomerPaymentsController,
+    CustomerPaymentProvidersController,
+    PaymentWebhooksController,
+    AdminPaymentsController,
+  ],
   providers: [
     PaymentService,
     CashSettlementSubscriber,

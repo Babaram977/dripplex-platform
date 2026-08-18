@@ -242,6 +242,21 @@ export class AppConfigService {
   }
 
   /**
+   * Every card gateway that can actually take a payment right now.
+   *
+   * Founder decision (2026-08-18): keep BOTH Paystack and Flutterwave live and
+   * let the customer choose, because one can be down while the other is fine.
+   * So this is a list, not a winner — the client renders one option per entry
+   * and a gateway with no secret key simply never appears.
+   */
+  public get availableCardProviders(): ('PAYSTACK' | 'FLUTTERWAVE')[] {
+    const providers: ('PAYSTACK' | 'FLUTTERWAVE')[] = [];
+    if (this.paystackConfigured) providers.push('PAYSTACK');
+    if (this.flutterwaveConfigured) providers.push('FLUTTERWAVE');
+    return providers;
+  }
+
+  /**
    * The gateway a plain "pay by card" should use.
    *
    * PAYMENT_DEFAULT_PROVIDER wins when that provider is actually configured;

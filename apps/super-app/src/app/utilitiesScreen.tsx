@@ -4,6 +4,7 @@ import { api, ApiError } from '../lib/api';
 import { playNotificationSound } from '../lib/sound';
 
 import type {
+  CardProviderOptionDto,
   UtilityCablePlanDto,
   UtilityCatalogueDto,
   UtilityDataPlanDto,
@@ -359,6 +360,10 @@ export function UtilityPurchaseScreen({
   const [amount, setAmount] = useState('');
   const [meterType, setMeterType] = useState<'prepaid' | 'postpaid'>('prepaid');
   const [paymentMethod, setPaymentMethod] = useState<UtilityPaymentMethod | 'CARD'>('WALLET');
+  // Which gateways can take money right now. Read from the server rather than
+  // listed here: the customer chooses between them (founder, 2026-08-18), and a
+  // hardcoded list would show a dead button the day a key is rotated.
+  const [cardProviders, setCardProviders] = useState<CardProviderOptionDto[]>([]);
 
   const [verifiedName, setVerifiedName] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
@@ -399,6 +404,23 @@ export function UtilityPurchaseScreen({
   useEffect(() => {
     void loadProviders();
   }, [loadProviders]);
+
+  useEffect(() => {
+    if (!cardEnabled) return;
+    let live = true;
+    api.payments
+      .providers()
+      .then((config) => {
+        if (live) setCardProviders(config.cardProviders);
+      })
+      .catch(() => {
+        // Card simply does not appear if we cannot confirm what is live.
+        if (live) setCardProviders([]);
+      });
+    return () => {
+      live = false;
+    };
+  }, [cardEnabled]);
 
   // Plans belong to a provider, so they are refetched whenever the provider
   // changes rather than cached across a switch — a GOtv package list shown
@@ -688,10 +710,12 @@ export function UtilityPurchaseScreen({
       <div className="mb-4 flex gap-2">
         {[
           { method: 'WALLET' as const, label: 'DrippleX Wallet' },
-          // 'CARD', not a named gateway. Which one takes the money is the
-          // server's decision, and hardcoding one here is what would break the
-          // day its keys changed.
-          ...(cardEnabled ? [{ method: 'CARD' as const, label: 'Card' }] : []),
+          // One button per gateway the SERVER says is live. Naming them is
+          // deliberate now — the founder wants the customer to choose, because
+          // one gateway can be down while the other works. The list is still
+          // never hardcoded, so a rotated key removes the option rather than
+          // leaving a button that fails.
+          ...cardProviders.map((entry) => ({ method: entry.provider, label: entry.label })),
         ].map((option) => {
           const on = option.method === paymentMethod;
           return (
