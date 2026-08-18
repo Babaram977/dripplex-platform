@@ -612,6 +612,10 @@ function dtoToProductDetail(dto: ProductSummaryDto & { description?: string }): 
     merchantId: dto.merchantId,
     unitPrice: dto.basePrice,
     rating: dto.rating?.average ?? 0,
+    // The count behind the star, from the same real `rating` object the merchant
+    // card already reads. Without it the page always said "(0)" next to a live
+    // rating average.
+    reviewCount: dto.rating?.count ?? 0,
     inStock: dto.inStock,
     badge: dto.isFeatured ? 'Featured' : undefined,
     badgeColor: dto.isFeatured ? '#8B5CF6' : undefined,

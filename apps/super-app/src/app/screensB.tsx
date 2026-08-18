@@ -1963,6 +1963,7 @@ export function AccountManagementScreen({
   onAccTransfer,
   onSuspension,
   onAuthSummary,
+  onSignOut,
 }: {
   onBack: () => void;
   onKYC: () => void;

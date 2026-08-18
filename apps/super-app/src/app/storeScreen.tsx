@@ -50,6 +50,14 @@ export interface StoreProduct {
   merchantId?: string;
   unitPrice?: number;
   imageUrl?: string | null;
+  /** How many people have rated it — `ProductSummaryDto.rating.count`. */
+  reviewCount?: number;
+  /** Category *name*, for this store's tab strip. Optional because the backend
+   * does not supply one: `ProductSummaryDto` carries `categoryId` (a UUID) and
+   * nothing else, so live products have no category name to group by and the
+   * strip shows "All" alone. Resolving ids to `CategoryDto.name` is unbuilt
+   * wiring, not a value to invent here. */
+  category?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1283,6 +1291,7 @@ export function StoreScreen({
         setLoadError(err instanceof Error ? err.message : 'Failed to load store');
         setLoaded(true);
       });
+    return undefined;
   };
 
   useEffect(load, [merchantId]);

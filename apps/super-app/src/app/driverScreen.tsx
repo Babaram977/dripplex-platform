@@ -679,6 +679,7 @@ export function DriverOTPScreen({
       const t = setTimeout(() => setCountdown((c) => c - 1), 1000);
       return () => clearTimeout(t);
     }
+    return undefined;
   }, [countdown]);
 
   const handleChange = (i: number, v: string) => {

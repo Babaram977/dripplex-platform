@@ -94,6 +94,7 @@ export function PinSetupScreen({ onBack, onDone }: { onBack: () => void; onDone:
       const t = setTimeout(onDone, 2000);
       return () => clearTimeout(t);
     }
+    return undefined;
   }, [phase]);
 
   const strength = pin.length < 3 ? 'Weak' : pin.length < 5 ? 'Fair' : 'Strong';
@@ -255,6 +256,7 @@ export function ChangePinScreen({ onBack, onDone }: { onBack: () => void; onDone
       const t = setTimeout(onDone, 2000);
       return () => clearTimeout(t);
     }
+    return undefined;
   }, [phase]);
 
   const active = phase === 'current' ? current : phase === 'new' ? newPin : confirmPin;
@@ -642,6 +644,7 @@ export function ChangePhoneScreen({ onBack, onDone }: { onBack: () => void; onDo
       const t = setTimeout(onDone, 2200);
       return () => clearTimeout(t);
     }
+    return undefined;
   }, [phase]);
 
   const handleOtp = (i: number, val: string) => {

@@ -7,6 +7,7 @@ import { PayoutPanel } from './payoutPanel';
 import { auth } from '../lib/auth';
 import { getCurrentPosition } from '../lib/maps';
 import type {
+  DeliveryJobDto,
   RiderAvailabilityDto,
   RiderDeliveryJobDto,
   RiderProfileDto,
@@ -850,11 +851,17 @@ export function RiderJobScreen({
     return () => clearInterval(t);
   }, [job.id]);
 
-  const act = async (fn: () => Promise<RiderDeliveryJobDto>) => {
+  // The job *actions* return a plain DeliveryJobDto — only GET /rider/jobs and
+  // GET /rider/jobs/:id carry `customerName`. Replacing the whole job with an
+  // action's result therefore dropped the customer's name, and the "Message
+  // customer" button fell back to "Your customer" for the rest of the delivery.
+  // Merge instead, and keep the name we already have.
+  const act = async (fn: () => Promise<DeliveryJobDto>) => {
     setActing(true);
     setError(null);
     try {
-      setJob(await fn());
+      const updated = await fn();
+      setJob((prev) => ({ ...updated, customerName: prev.customerName }));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Action failed');
     } finally {
@@ -863,6 +870,9 @@ export function RiderJobScreen({
   };
 
   const isTerminal = ['DELIVERED', 'FAILED', 'CANCELLED'].includes(job.status);
+  // A delivered cash job still owes one action — confirming what was collected —
+  // so it gets the cash panel instead of the finished-job panel below.
+  const awaitingCashConfirm = job.status === 'DELIVERED' && job.cashCollectedAmount !== null;
 
   return (
     <div
@@ -1034,7 +1044,7 @@ export function RiderJobScreen({
         )}
 
         {/* Cash confirm after delivered */}
-        {job.status === 'DELIVERED' && job.cashCollectedAmount !== null && (
+        {awaitingCashConfirm && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <p
               style={{
@@ -1078,7 +1088,11 @@ export function RiderJobScreen({
           </div>
         )}
 
-        {isTerminal && job.status !== 'DELIVERED' && (
+        {/* Excluding DELIVERED here left a rider who finished a non-cash job with
+            no "Done" button and no confirmation — stranded on the job screen —
+            and made the "✅ Delivered" branch below unreachable. Only the cash
+            panel above should replace this one. */}
+        {isTerminal && !awaitingCashConfirm && (
           <div style={{ textAlign: 'center', padding: '20px 0' }}>
             <p
               style={{

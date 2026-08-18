@@ -3768,7 +3768,10 @@ export function TipDriverScreen({
   const PRESETS = [100, 200, 500, 1000] as const;
   const [selected, setSelected] = useState<number | 'custom'>(200);
   const [custom, setCustom] = useState('');
-  const [ride, setRide] = useState<RideDto | null>(null);
+  // GET /customer/rides/:id returns CustomerRideDto — RideDto plus the driver's
+  // name. Typing this as the bare RideDto meant `ride.driverName` was never
+  // there and the passenger was always tipping "your driver".
+  const [ride, setRide] = useState<CustomerRideDto | null>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);

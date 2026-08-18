@@ -5,6 +5,7 @@ import type { OrderDto, CustomerAddressDto, CartDto } from '../lib/api';
 import { BottomNavigation } from '../components/navigation';
 import type { NavTabKey } from '../components/navigation/BottomNavigation';
 import { auth } from '../lib/auth';
+import { playNotificationSound } from '../lib/sound';
 import {
   getCurrentPosition,
   reverseGeocode,

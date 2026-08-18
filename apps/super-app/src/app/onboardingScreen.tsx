@@ -2066,7 +2066,11 @@ export function PendingReviewScreen({
           : latest.verificationStatus === 'REJECTED'
             ? 'REJECTED'
             : 'PENDING';
-      const approved = business?.approvalStatus === 'APPROVED';
+      // The backend field is `verificationStatus`
+      // (BusinessVerificationStatus: PENDING | UNDER_REVIEW | VERIFIED | REJECTED).
+      // There is no `approvalStatus` and no `APPROVED` — the old comparison was
+      // always false, so a verified merchant was never shown as approved.
+      const approved = business?.verificationStatus === 'VERIFIED';
       setKycState(state);
       setLiveSteps([
         { label: 'Business details submitted', done: Boolean(business) },
