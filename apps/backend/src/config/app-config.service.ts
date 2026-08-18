@@ -221,6 +221,43 @@ export class AppConfigService {
     return this.configService.get('PEYFLEX_FLOAT_LOW_BALANCE_THRESHOLD', { infer: true });
   }
 
+  /**
+   * Whether a card gateway can actually take a payment.
+   *
+   * A secret key is what makes a provider real — the public key alone only
+   * renders a form. Checked so the client can hide a Card button rather than
+   * offer one that fails after the customer has chosen what to buy, the same
+   * deployed-but-disabled pattern the utilities provider uses.
+   */
+  public get paystackConfigured(): boolean {
+    return this.paystackSecretKey.trim().length > 0;
+  }
+
+  public get flutterwaveConfigured(): boolean {
+    return this.flutterwaveSecretKey.trim().length > 0;
+  }
+
+  public get cardPaymentsEnabled(): boolean {
+    return this.paystackConfigured || this.flutterwaveConfigured;
+  }
+
+  /**
+   * The gateway a plain "pay by card" should use.
+   *
+   * PAYMENT_DEFAULT_PROVIDER wins when that provider is actually configured;
+   * otherwise the other configured one is used, so a default left pointing at
+   * a gateway with no key does not silently disable card payments. OPay is
+   * excluded — it is safe-disabled platform-wide (DPX-D1).
+   */
+  public get defaultCardProvider(): 'PAYSTACK' | 'FLUTTERWAVE' | null {
+    const preferred = this.paymentDefaultProvider;
+    if (preferred === 'PAYSTACK' && this.paystackConfigured) return 'PAYSTACK';
+    if (preferred === 'FLUTTERWAVE' && this.flutterwaveConfigured) return 'FLUTTERWAVE';
+    if (this.flutterwaveConfigured) return 'FLUTTERWAVE';
+    if (this.paystackConfigured) return 'PAYSTACK';
+    return null;
+  }
+
   public get paymentDefaultProvider(): EnvConfig['PAYMENT_DEFAULT_PROVIDER'] {
     return this.configService.get('PAYMENT_DEFAULT_PROVIDER', { infer: true });
   }

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import {
+  PaymentProvider,
   PrismaClient,
   UtilityPaymentMethod,
   UtilityPurchaseStatus,
@@ -105,16 +106,27 @@ describe('UtilitiesService', () => {
     wallets = walletService;
     const config = {
       peyflexFloatLowBalanceThreshold: 50_000,
+      cardPaymentsEnabled: true,
+      defaultCardProvider: 'FLUTTERWAVE',
     } as unknown as AppConfigService;
 
-    service = new UtilitiesService(
-      prisma,
-      walletService,
-      auditService,
-      config,
-      provider,
-      [] as PaymentProviderAdapter[],
-    );
+    // A stub gateway so the card path can be exercised end to end. It stands
+    // in for Flutterwave specifically, because the point of the test is that
+    // the SERVER chose that gateway from its own config.
+    const flutterwave = {
+      provider: PaymentProvider.FLUTTERWAVE,
+      initializePayment: jest.fn().mockResolvedValue({
+        provider: PaymentProvider.FLUTTERWAVE,
+        reference: 'FLW-TEST-REF',
+        authorizationUrl: 'https://checkout.flutterwave.test/pay/FLW-TEST-REF',
+      }),
+      verifyPayment: jest.fn(),
+      handleWebhook: jest.fn(),
+    } as unknown as PaymentProviderAdapter;
+
+    service = new UtilitiesService(prisma, walletService, auditService, config, provider, [
+      flutterwave,
+    ]);
   });
 
   /** A customer with a funded wallet. */
@@ -524,6 +536,70 @@ describe('UtilitiesService', () => {
       { userId: owner },
     );
     await expect(service.getCustomerPurchase(stranger, purchase.id)).rejects.toThrow();
+  });
+
+  it('lets the server pick the card gateway, so the client never names one', async () => {
+    if (!databaseAvailable) return;
+    const customerId = await fundedCustomer(5_000);
+    provider.purchaseAirtime.mockResolvedValue(success);
+
+    const result = await service.initiatePurchase(
+      customerId,
+      {
+        serviceType: UtilityServiceType.AIRTIME,
+        provider: 'mtn',
+        customerIdentifier: '08144216361',
+        amount: 100,
+        // The client asks for "card". It does not, and must not, know which
+        // gateway is live — hardcoding PAYSTACK here is the bug this replaces.
+        paymentMethod: 'CARD',
+      },
+      { userId: customerId },
+    );
+
+    // The client said "CARD"; the server resolved it to the configured
+    // gateway and recorded which one actually ran.
+    expect(result.purchase.paymentMethod).toBe(UtilityPaymentMethod.FLUTTERWAVE);
+    expect(result.authorizationUrl).toContain('flutterwave');
+    // Nothing is bought until the gateway confirms, so an abandoned checkout
+    // costs nothing and needs no operator attention.
+    expect(result.purchase.status).toBe(UtilityPurchaseStatus.AWAITING_PAYMENT);
+    expect(provider.purchaseAirtime).not.toHaveBeenCalled();
+    expect(await balanceOf(customerId)).toBe(5_000);
+  });
+
+  it('refuses a card purchase outright when no gateway is configured', async () => {
+    if (!databaseAvailable) return;
+    const customerId = await fundedCustomer(5_000);
+    Object.defineProperty(service, 'config', {
+      value: { cardPaymentsEnabled: false, defaultCardProvider: null },
+    });
+
+    await expect(
+      service.initiatePurchase(
+        customerId,
+        {
+          serviceType: UtilityServiceType.AIRTIME,
+          provider: 'mtn',
+          customerIdentifier: '08144216361',
+          amount: 100,
+          paymentMethod: 'CARD',
+        },
+        { userId: customerId },
+      ),
+    ).rejects.toThrow(/Card payments are not available/);
+
+    // Nothing was charged and no float was spent on a payment route that
+    // cannot complete.
+    expect(await balanceOf(customerId)).toBe(5_000);
+    expect(provider.purchaseAirtime).not.toHaveBeenCalled();
+  });
+
+  it('tells the client whether card is on, so it can hide the option', () => {
+    // Guarded like every sibling — `service` is only built inside the
+    // database-gated beforeEach.
+    if (!databaseAvailable) return;
+    expect(service.getCatalogue().cardEnabled).toBe(true);
   });
 
   it('splits read from purchase, so browsing prices is not the same grant as spending', () => {
