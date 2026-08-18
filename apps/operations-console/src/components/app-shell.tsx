@@ -52,6 +52,7 @@ const NAV: NavEntry[] = [
       { href: '/queues/support', label: 'Driver Support' },
     ],
   },
+  { href: '/pricing', label: 'Ride Pricing' },
   { href: '/analytics', label: 'Analytics' },
 ];
 

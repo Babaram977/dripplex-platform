@@ -60,6 +60,10 @@ export class RideReceiptService {
         baseFare: Number(ride.baseFare),
         distanceFare: Number(ride.distanceFare),
         timeFare: Number(ride.timeFare),
+        // Its own line on the receipt: a passenger charged extra for an
+        // airport run is entitled to see which zone did it and for how much.
+        surchargeAmount: Number(ride.surchargeAmount),
+        surchargeZoneName: ride.surchargeZoneName,
         totalFare: Number(ride.totalFare),
         tipAmount: ride.tipAmount !== null ? Number(ride.tipAmount) : null,
         platformCommission:

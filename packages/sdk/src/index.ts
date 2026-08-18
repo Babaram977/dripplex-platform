@@ -28,6 +28,12 @@ export {
   type NearbyDriversQuery,
 } from './rides/customer-ride-client.js';
 export {
+  AdminRidePricingClient,
+  type CreateRideSurchargeZoneRequest,
+  type UpdateRideFareRateRequest,
+  type UpdateRideSurchargeZoneRequest,
+} from './rides/admin-ride-pricing-client.js';
+export {
   AdminCmsClient,
   AdminDriverCampaignClient,
   AdminFraudClient,

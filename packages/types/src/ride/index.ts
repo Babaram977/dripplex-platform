@@ -27,6 +27,41 @@ export interface RideTypeCatalogEntryDto {
   nearestDriverMeters?: number | null;
 }
 
+// ── Pricing console ─────────────────────────────────────────────────────────
+
+export type RideSurchargeType = 'FLAT' | 'MULTIPLIER';
+export type RideSurchargeTrigger = 'PICKUP' | 'DROPOFF' | 'EITHER';
+
+/** One row of the Ops-editable fare table. Amounts are naira. */
+export interface RideFareRateDto {
+  rideType: RideType;
+  /** "Dx Comfort" — from the same catalog the passenger app reads, so the
+   * console and the app can never disagree about a service name. */
+  displayName: string;
+  baseFare: number;
+  perKmRate: number;
+  perMinuteRate: number;
+  /** A floor under the computed fare, not an addition. */
+  minimumFare: number;
+}
+
+/** A named circle where trips cost more — the airport being the case that
+ * prompted it. A centre and a radius rather than a polygon, so an operator can
+ * set one up from a map pin and a distance. */
+export interface RideSurchargeZoneDto {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  radiusMeters: number;
+  surchargeType: RideSurchargeType;
+  /** Naira when FLAT, a factor when MULTIPLIER (1.25 = a quarter more). */
+  amount: number;
+  appliesTo: RideSurchargeTrigger;
+  active: boolean;
+  updatedAt: string;
+}
+
 export type RideStatus =
   | 'REQUESTED'
   | 'SEARCHING'
@@ -59,6 +94,12 @@ export interface RideDto {
   baseFare: number;
   distanceFare: number;
   timeFare: number;
+  /** Naira a surcharge zone added to this trip, and which zone did it. The
+   * name is snapshotted so a receipt still reads "Airport" after the zone has
+   * been renamed or switched off. Zero and null mean no zone applied. */
+  surchargeAmount: number;
+  surchargeZoneId: string | null;
+  surchargeZoneName: string | null;
   totalFare: number;
   promotionId: string | null;
   promoDiscount: number;
@@ -184,6 +225,10 @@ export interface RideReceiptDto {
     baseFare: number;
     distanceFare: number;
     timeFare: number;
+    /** Shown as its own line rather than folded into the total — a passenger
+     * charged extra for an airport run is entitled to see why. */
+    surchargeAmount: number;
+    surchargeZoneName: string | null;
     totalFare: number;
     tipAmount: number | null;
     platformCommission: number | null;

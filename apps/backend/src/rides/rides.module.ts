@@ -11,6 +11,7 @@ import { PromotionsModule } from '../promotions/promotions.module';
 import { WalletModule } from '../wallet/wallet.module';
 
 import { AdminRidePaymentsController } from './controllers/admin-ride-payments.controller';
+import { AdminRidePricingController } from './controllers/admin-ride-pricing.controller';
 import { AdminRideReportsController } from './controllers/admin-ride-reports.controller';
 import { CustomerRidesController } from './controllers/customer-rides.controller';
 import { DriverRidesController } from './controllers/driver-rides.controller';
@@ -19,6 +20,7 @@ import { RIDE_EVENTS_PUBLISHER } from './ride-events.publisher';
 import { RideFareService } from './ride-fare.service';
 import { RideOfferSweepService } from './ride-offer-sweep.service';
 import { RidePaymentService } from './ride-payment.service';
+import { RidePricingService } from './ride-pricing.service';
 import { RideProblemReportService } from './ride-problem-report.service';
 import { RideRatingService } from './ride-rating.service';
 import { RideReceiptService } from './ride-receipt.service';
@@ -44,10 +46,12 @@ import { RidesService } from './rides.service';
     DriverRidesController,
     AdminRideReportsController,
     AdminRidePaymentsController,
+    AdminRidePricingController,
   ],
   providers: [
     RidesService,
     RideFareService,
+    RidePricingService,
     RideDispatchService,
     RideOfferSweepService,
     RideTripService,
@@ -62,6 +66,7 @@ import { RidesService } from './rides.service';
   exports: [
     RidesService,
     RideFareService,
+    RidePricingService,
     RideDispatchService,
     RideTripService,
     RidePaymentService,

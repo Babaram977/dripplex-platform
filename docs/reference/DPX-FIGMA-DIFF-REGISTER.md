@@ -338,3 +338,62 @@ crispness comes from a **commissioned vector icon set**, which is a design deliv
 rendering setting. Replacing emoji with SVG icons would change components and drift from the
 Figma, so it is **not** done here. Raising the ceiling needs an icon set added to the Figma
 first — flagged for founder decision.
+
+---
+
+### Ride pricing console — fares out of code, airport surcharge zones (DPX-PRICING-001) — logged 2026-08-18
+
+Founder direction (2026-08-18): _"trip to airport is more expensive it should be determine in
+pricing console"_, scoped to the **full Ops-editable console**.
+
+**What was there before.** Ride fares were `RIDE_FARE_RATES`, a hardcoded constant in
+`apps/backend/src/rides/ride.constants.ts` that still carried its own warning that it was
+_"not a founder-approved fare table"_. Changing any price meant a code change and a deploy.
+There was no surcharge, zone, venue or surge concept of any kind, and no pricing screen
+anywhere in the Ops Console.
+
+**What exists now.**
+
+| Piece                  | Detail                                                                                                                                                                                                                                                                                                                                 |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ride_fare_rates`      | One row per ride type — base, per-km, per-minute, minimum. Seeded from the constants that were in force, so the first fare quoted after the migration matches the last one quoted before it.                                                                                                                                           |
+| `ride_surcharge_zones` | Named circle (centre + radius). `FLAT` naira or `MULTIPLIER` factor; triggers on `PICKUP`, `DROPOFF` or `EITHER`; deactivatable.                                                                                                                                                                                                       |
+| Ride snapshot          | `surcharge_amount`, `surcharge_zone_id`, `surcharge_zone_name` on `rides`. The **name** is snapshotted so a receipt still reads "Airport" after the zone is renamed or switched off. FK is `ON DELETE SET NULL` — deleting a zone must never delete the trips it priced.                                                               |
+| Ops Console            | `/pricing` — edit the fare table per type, create zones, switch them on and off.                                                                                                                                                                                                                                                       |
+| Permission             | `admin:rides:pricing:manage`, granted to `administrator` and `super_administrator` **only**. Deliberately _not_ a reuse of `admin:rides:support`, which `operations_staff` holds: refunding a trip must not also grant repricing the platform. Asserted in `ride.permissions.spec.ts` against the controller's own decorator metadata. |
+| Audit                  | Every rate change and zone create/update records the actor and the before/after. A fare change is a commercial act.                                                                                                                                                                                                                    |
+
+**Fare order of operations** — metered = base + distance + time; the surcharge applies to the
+metered fare; the minimum is a **floor under the result**, never an addition. A short surcharged
+trip still lands on the ₦1,500 minimum.
+
+**Founder-locked ₦1,500 minimum** is preserved exactly: the migration seeds it for every ride
+type. The column is per-type so a rate can be varied later without another migration; the value
+shipped is the single locked figure applied across the board.
+
+**⚠️ Engineering choice awaiting founder confirmation — overlapping zones do not stack.** When
+a trip falls inside more than one active zone, **only the zone that adds the most is applied**.
+The reasoning: a passenger crossing two overlapping zones should not be charged twice for one
+journey, and a single predictable line is easier to explain on a receipt than an arithmetic
+chain. This is not a founder decision and is easy to change to "sum the flats, compound the
+multipliers" if that is the commercial intent. Flagged here rather than left implicit.
+
+**No zones are seeded.** Where the Kano airport boundary sits and what the run should cost are
+commercial decisions; inventing a radius and a price would put a number on a customer's receipt
+that nobody chose. The console creates them.
+
+**Known cost:** `resolveSurcharge` runs one indexed query against active zones per fare
+estimate. With a handful of zones this is negligible; if the zone count ever grows into the
+hundreds it should be cached, and the bounding-box narrowing already used for driver search
+applied to zones too. Noted rather than pre-optimised.
+
+**Not in scope, and not invented:** surge/demand pricing, time-of-day pricing, per-city rate
+tables, and polygon zones. A circle was chosen because an operator can set one up from a map pin
+and a distance without a GIS tool. Any of these can follow a founder decision.
+
+**Verification:** backend suite **207 suites / 1684 tests** green against real Postgres and
+Redis, including flat and multiplier surcharges, pickup-only and dropoff-only triggers, inactive
+zones ignored, a zone the trip never touches ignored, overlapping zones resolving to the larger
+alone, a surcharged short trip still floored at the minimum, the rate table seeding from the
+constants, rejection of a multiplier below 1 (which would discount every trip through the zone),
+and the permission-catalog count guard updated deliberately from 121 to 122.

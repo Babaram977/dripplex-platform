@@ -70,6 +70,7 @@ import {
 } from '../platform/platform-client.js';
 import { CustomerProductsApi } from '../product/product-api.js';
 import { AdminRidersClient } from '../riders/admin-riders-client.js';
+import { AdminRidePricingClient } from '../rides/admin-ride-pricing-client.js';
 import { AdminRideReportsClient } from '../rides/admin-ride-reports-client.js';
 import { CustomerRideClient } from '../rides/customer-ride-client.js';
 import { DriverRideClient } from '../rides/driver-ride-client.js';
@@ -114,6 +115,7 @@ export class DripplexClient {
   public readonly driverOnboarding: DriverOnboardingClient;
   public readonly driverInspections: DriverInspectionsClient;
   public readonly adminInspectionCentres: AdminInspectionCentresClient;
+  public readonly adminRidePricing: AdminRidePricingClient;
   public readonly operationsInspections: OperationsInspectionsClient;
   public readonly operationsFleet: OperationsFleetClient;
   public readonly adminCommercialCreditSettings: AdminCommercialCreditSettingsClient;
@@ -191,6 +193,7 @@ export class DripplexClient {
     this.driverOnboarding = new DriverOnboardingClient(this.http);
     this.driverInspections = new DriverInspectionsClient(this.http);
     this.adminInspectionCentres = new AdminInspectionCentresClient(this.http);
+    this.adminRidePricing = new AdminRidePricingClient(this.http);
     this.operationsInspections = new OperationsInspectionsClient(this.http);
     this.operationsFleet = new OperationsFleetClient(this.http);
     this.adminCommercialCreditSettings = new AdminCommercialCreditSettingsClient(this.http);
@@ -249,6 +252,7 @@ export { DeliveryClient } from '../delivery/delivery-client.js';
 export { RiderDeliveryClient } from '../delivery/rider-delivery-client.js';
 export { OrderClient } from '../order/order-client.js';
 export { PaymentClient } from '../payment/payment-client.js';
+export { AdminRidePricingClient } from '../rides/admin-ride-pricing-client.js';
 export { CustomerRideClient } from '../rides/customer-ride-client.js';
 export { UploadsClient } from '../uploads/uploads-client.js';
 export {

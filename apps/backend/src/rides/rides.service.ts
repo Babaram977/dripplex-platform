@@ -154,7 +154,7 @@ export class RidesService {
     customerId: string,
     dto: EstimateRideFareDto,
   ): Promise<EstimateRideFareResponse> {
-    const estimate = this.fareService.estimate(
+    const estimate = await this.fareService.estimate(
       dto.rideType,
       { lat: dto.pickupLatitude, lng: dto.pickupLongitude },
       { lat: dto.dropoffLatitude, lng: dto.dropoffLongitude },
@@ -178,7 +178,7 @@ export class RidesService {
     dto: RequestRideDto,
     context: AuditContext,
   ): Promise<RideDto> {
-    const estimate = this.fareService.estimate(
+    const estimate = await this.fareService.estimate(
       dto.rideType,
       { lat: dto.pickupLatitude, lng: dto.pickupLongitude },
       { lat: dto.dropoffLatitude, lng: dto.dropoffLongitude },
@@ -206,6 +206,15 @@ export class RidesService {
         baseFare: estimate.baseFare,
         distanceFare: estimate.distanceFare,
         timeFare: estimate.timeFare,
+        // Snapshotted, not looked up later: editing a rate or a zone in the
+        // pricing console must never re-price a trip that has already
+        // happened, and the zone name has to survive the zone being renamed
+        // or deactivated so the receipt keeps explaining itself.
+        surchargeAmount: estimate.surchargeAmount,
+        ...(estimate.surchargeZoneId !== null ? { surchargeZoneId: estimate.surchargeZoneId } : {}),
+        ...(estimate.surchargeZoneName !== null
+          ? { surchargeZoneName: estimate.surchargeZoneName }
+          : {}),
         totalFare: finalFare,
         ...(promotionId !== null ? { promotionId } : {}),
         promoDiscount,

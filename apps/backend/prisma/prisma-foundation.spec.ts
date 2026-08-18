@@ -62,7 +62,15 @@ describe('Prisma schema foundation (S1-C1)', () => {
   it('defines the DPX-013 Sprint 1 role and permission catalog sizes', () => {
     expect(ROLE_SEEDS).toHaveLength(9);
     expect(PERMISSION_SEEDS.length).toBeGreaterThanOrEqual(37);
-    expect(PERMISSION_SEEDS).toHaveLength(121);
+    // 122 as of 2026-08-18: `admin:rides:pricing:manage` was added for the
+    // pricing console. Deliberately its own permission rather than a reuse of
+    // `admin:rides:support` — refunding a trip must not also grant repricing
+    // the platform. Bump this only alongside a permission you meant to add;
+    // an unexplained bump is a permission that arrived without review.
+    expect(PERMISSION_SEEDS).toHaveLength(122);
+    expect(PERMISSION_SEEDS.map((permission) => permission.code)).toContain(
+      'admin:rides:pricing:manage',
+    );
     expect(ROLE_SEEDS.map((role: RoleSeed) => role.name)).toEqual(
       expect.arrayContaining([
         'customer',
