@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { api, uploadFile } from '../lib/api';
+import { AccountPageHost, AccountRows, type AccountPage } from './accountPages';
 import { PayoutPanel } from './payoutPanel';
 import { auth } from '../lib/auth';
 import { getCurrentPosition } from '../lib/maps';
@@ -1245,6 +1246,7 @@ export function RiderAccountScreen({
   const [availability, setAvailability] = useState<RiderAvailabilityDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [accountPage, setAccountPage] = useState<AccountPage | null>(null);
 
   useEffect(() => {
     void Promise.all([
@@ -1448,6 +1450,26 @@ export function RiderAccountScreen({
               </div>
             )}
 
+            {/* A rider needs the same four things a driver does — a payout
+                PIN, the two legal documents, and a way to reach support. The
+                rider screen had none of them; the driver's were dead buttons.
+                Both now share one implementation. */}
+            <p
+              style={{
+                fontFamily: IT,
+                fontSize: 12,
+                fontWeight: 600,
+                color: MUTED,
+                letterSpacing: '0.08em',
+                margin: '4px 0 10px 4px',
+              }}
+            >
+              ACCOUNT
+            </p>
+            <div style={{ marginBottom: 16 }}>
+              <AccountRows onOpen={setAccountPage} />
+            </div>
+
             <button
               onClick={signOut}
               style={{
@@ -1468,6 +1490,8 @@ export function RiderAccountScreen({
           </>
         )}
       </div>
+
+      <AccountPageHost page={accountPage} audience="rider" onClose={() => setAccountPage(null)} />
     </div>
   );
 }

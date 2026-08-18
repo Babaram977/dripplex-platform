@@ -271,15 +271,26 @@ export class DriversService {
       orderBy: { createdAt: 'desc' },
     });
 
+    // Why each driver is still Pending, computed for the whole page at once.
+    // Without this the roster is a column of identical "Pending" badges and
+    // the operator has to open every driver to find the one unmet check —
+    // which is exactly the confusion this answers.
+    const eligibility = await this.activationService.checkEligibilityBulk(
+      profiles.map((profile) => profile.userId),
+    );
+
     const items = await Promise.all(
       profiles.map((profile) =>
-        this.signDriverProfile(
-          toDriverProfileDto({
+        this.signDriverProfile({
+          ...toDriverProfileDto({
             profile,
             user: profile.user,
             kyc: kycByDriver.filter((k) => k.driverId === profile.userId),
           }),
-        ),
+          // Empty array means "nothing blocking, waiting on an operator" —
+          // a different statement from "not checked", which is undefined.
+          activationBlockers: eligibility.get(profile.userId)?.missingReasons ?? [],
+        }),
       ),
     );
 

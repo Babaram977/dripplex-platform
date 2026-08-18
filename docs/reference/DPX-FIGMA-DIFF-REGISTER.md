@@ -397,3 +397,73 @@ zones ignored, a zone the trip never touches ignored, overlapping zones resolvin
 alone, a surcharged short trip still floored at the minimum, the rate table seeding from the
 constants, rejection of a multiplier below 1 (which would discount every trip through the zone),
 and the permission-catalog count guard updated deliberately from 121 to 122.
+
+---
+
+### Partner account rows + why a driver is still pending (DPX-PARTNER-001) — logged 2026-08-18
+
+Two things from founder testing on 2026-08-18.
+
+#### 1. "Drivers that have taken inspection and submitted all documents are still showing pending"
+
+**Not a bug in the approval flow — a gap in what the roster tells you.** Driver approval is a
+manual admin action (`DriversService.approveDriver`) behind a six-check gate
+(`DriverActivationService`): identity verified, required documents verified, an approved active
+vehicle, that vehicle's latest _decided_ inspection passed, agreement accepted, account not
+locked. The Ops roster showed a column of identical `Pending` badges and nothing about which
+check was outstanding, so an operator had to open every driver in turn to find out.
+
+The roster now carries `activationBlockers` per driver, computed for the whole page in four
+queries via a new `DriverActivationService.checkEligibilityBulk`. An **empty array** means
+"nothing outstanding, waiting only on an operator's click" and the row says exactly that.
+
+A spec pins the bulk path to the single-driver path check-for-check: the roster reads one and
+the detail page reads the other, and if they ever diverge the roster is telling an operator
+something the Approve button will contradict.
+
+**⚠️ Likely blocker for the founder's specific drivers, flagged not assumed:** `identityVerified`
+is set only by (a) an admin marking identity verified in the console, or (b) an IDV provider
+result. **No IDV provider is built** (task #15 — Smile ID was removed as a launch dependency and
+the DrippleX-native replacement is not built). So on a fresh driver that check can only be
+cleared by hand today. This cannot be confirmed from the build sandbox — production is
+egress-restricted — so it is stated as the most likely cause, not as fact. Opening any pending
+driver in the console shows the real answer.
+
+#### 2. Dead rows on the driver and rider profiles
+
+`Change PIN`, `Privacy Policy`, `Terms of Service` and `Help & Support` were `<button>`s with no
+`onClick` on the driver settings screen. The rider account screen had none of the four at all.
+
+| Row              | Now                                                                                                                                                                                                                                                                               |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Change PIN       | Sets or replaces the payout PIN via the existing `POST /{driver\|rider}/wallet/pin`, with `GET .../pin` deciding whether the copy reads "Set" or "Change". Rejects a mismatch, a non-4-digit PIN, four identical digits and a straight sequence, all before any request goes out. |
+| Privacy Policy   | `GET /cms/pages/privacy-policy`                                                                                                                                                                                                                                                   |
+| Terms of Service | `GET /cms/pages/terms-of-service`                                                                                                                                                                                                                                                 |
+| Help & Support   | WhatsApp deep link to the founder-provided support line, plus a real support ticket posting to `POST /driver/support-tickets`                                                                                                                                                     |
+
+Implemented once in `accountPages.tsx` and rendered by both partner apps — two copies of a
+privacy screen is two places for the wording to drift.
+
+**Riders cannot raise tickets.** The support-ticket endpoint is driver-only. Rather than show a
+rider a form that posts nowhere, the screen says plainly that in-app tickets are not open to
+riders yet and points them at WhatsApp. Recorded here as a backend gap.
+
+**⚠️ Change PIN has no old-PIN challenge.** The backend exposes one `POST .../wallet/pin` for
+both setting and replacing, with no verification of the current PIN. For a control that
+authorises payouts to a bank account, that is a real weakness — anyone with a live session can
+silently replace it. Not faked over in the UI; recorded here as needing a backend change
+(challenge the old PIN, or re-authenticate) before launch.
+
+#### Legal documents
+
+Privacy Policy and Terms of Service are seeded as **published CMS pages**, not hardcoded in the
+bundle, so Ops can revise them without a deploy — a privacy notice nobody can correct in a hurry
+is worse than none.
+
+**⚠️ BOTH ARE DRAFTS AND HAVE NOT BEEN REVIEWED BY A LAWYER.** They were written to describe
+what the platform actually does — phone-primary identity with no usernames, what location is
+collected and when, that drivers never see a customer's phone number, commission, the ₦1,500
+minimum fare, surcharge zones, cash and wallet payment, driver verification and inspection —
+and each ends with a section stating plainly that it awaits legal review. They must be reviewed
+and approved by counsel, and checked against the Nigeria Data Protection Act, before DrippleX
+relies on them publicly.

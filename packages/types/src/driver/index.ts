@@ -213,6 +213,22 @@ export interface DriverProfileDto {
   createdAt: string;
   updatedAt: string;
   kyc: DriverKycDto[];
+
+  /**
+   * Why this driver cannot be approved yet — present on the admin roster.
+   *
+   * Driver approval is a manual action behind a six-check gate, and the roster
+   * showed only a "Pending" badge. An operator looking at a screen of Pending
+   * drivers, all with verified documents, had no way to tell that (say) the
+   * identity check was the one thing missing without opening each driver in
+   * turn. This is that answer, in the row.
+   *
+   * `undefined` means the caller did not ask for it — the driver's own profile
+   * endpoint does not compute it. An **empty array** is the meaningful case:
+   * every check passes and the driver is waiting on nothing but an operator's
+   * click.
+   */
+  activationBlockers?: string[];
 }
 
 /** Driver Slice 2 item 9 — self-service edit of the fields the founder

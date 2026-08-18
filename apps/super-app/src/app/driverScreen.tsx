@@ -19,6 +19,7 @@ import {
 } from '../tokens/colors';
 import { api, uploadFile } from '../lib/api';
 import { auth } from '../lib/auth';
+import { AccountPageHost, AccountRows, type AccountPage } from './accountPages';
 import { PayoutPanel } from './payoutPanel';
 import { getCurrentPosition } from '../lib/maps';
 // Same cadence for both couriers — see the constant's note for why 30s.
@@ -4268,6 +4269,9 @@ export function DriverSettingsScreen({
   const [soundAlerts, setSoundAlerts] = useState(true);
   const [vibration, setVibration] = useState(true);
   const [navApp, setNavApp] = useState('Google Maps');
+  // Which ACCOUNT page is open. Kept local so this does not need a new route
+  // in App.tsx — the four pages are only ever reached from here.
+  const [accountPage, setAccountPage] = useState<AccountPage | null>(null);
 
   const Toggle = ({ value, onChange }: { value: boolean; onChange: () => void }) => (
     <button
@@ -4436,38 +4440,11 @@ export function DriverSettingsScreen({
           >
             ACCOUNT
           </p>
-          <div className="overflow-hidden rounded-2xl" style={{ border: `1px solid ${BORDER}` }}>
-            {['Change PIN', 'Privacy Policy', 'Terms of Service', 'Help & Support'].map(
-              (item, i, arr) => (
-                <button
-                  key={item}
-                  className="flex w-full items-center gap-3 px-4 py-4 active:scale-[.98]"
-                  style={{
-                    background: NAVY_SURFACE,
-                    borderBottom: i < arr.length - 1 ? `1px solid ${BORDER}` : 'none',
-                  }}
-                >
-                  <p
-                    className="flex-1 text-left text-[14px]"
-                    style={{ fontFamily: IT, color: '#fff' }}
-                  >
-                    {item}
-                  </p>
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke={MUTED}
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  >
-                    <path d="M5 12h14M12 5l7 7-7 7" />
-                  </svg>
-                </button>
-              ),
-            )}
-          </div>
+          {/* These four were <button>s with no onClick — they looked tappable
+              and swallowed every tap. AccountRows carries the handlers, and
+              the pages are shared with the rider app so the wording of a
+              privacy policy cannot drift between the two. */}
+          <AccountRows onOpen={setAccountPage} />
         </div>
 
         {/* Logout */}
@@ -4489,6 +4466,10 @@ export function DriverSettingsScreen({
           Sign Out
         </button>
       </div>
+
+      {/* Rendered over the settings list rather than replacing it, so backing
+          out lands the driver exactly where they were. */}
+      <AccountPageHost page={accountPage} audience="driver" onClose={() => setAccountPage(null)} />
     </div>
   );
 }
