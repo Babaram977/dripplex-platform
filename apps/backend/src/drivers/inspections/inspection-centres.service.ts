@@ -29,7 +29,9 @@ export class InspectionCentresService {
     const centre = await this.prisma.inspectionCentre.create({
       data: {
         name: dto.name.trim(),
-        address: dto.address.trim(),
+        // Optional (founder decision, 2026-08-17). Stored as NULL rather than an
+        // empty string so "has no address" is one state, not two.
+        address: dto.address === undefined ? null : dto.address.trim(),
         city: dto.city.trim(),
         ...(dto.latitude !== undefined ? { latitude: dto.latitude } : {}),
         ...(dto.longitude !== undefined ? { longitude: dto.longitude } : {}),

@@ -19,6 +19,15 @@ import {
 } from '../tokens/colors';
 export { G0, G2, G3, NAVY_DEEP, NAVY_BASE, NAVY_CARD, NAVY_SURFACE, BORDER, MUTED };
 
+/**
+ * DrippleX support WhatsApp line (founder-provided, 2026-08-17).
+ *
+ * Kept here rather than typed into each screen so there is one number to change
+ * — a stale support number is worse than none, because a blocked user believes
+ * they have reached somebody.
+ */
+export const DRIPPLEX_SUPPORT_WHATSAPP = '+2349061616116';
+
 export const GLOBAL_STYLES = `
   @keyframes orbit-cw       { from{transform:rotate(0deg);}    to{transform:rotate(360deg);}   }
   @keyframes orbit-ccw      { from{transform:rotate(0deg);}    to{transform:rotate(-360deg);}  }

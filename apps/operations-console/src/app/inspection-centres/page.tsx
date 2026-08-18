@@ -34,20 +34,31 @@ function CreateCentreForm(): React.JSX.Element {
   };
 
   const onSubmit = (): void => {
-    if (
-      form.name.trim().length < 2 ||
-      form.address.trim().length < 5 ||
-      form.city.trim().length < 2
-    ) {
+    // Address is optional (founder decision, 2026-08-17) — DrippleX's own
+    // centres have no published street address. It is still validated when
+    // given, because a 2-character address helps nobody.
+    const address = (form.address ?? '').trim();
+    if (form.name.trim().length < 2 || form.city.trim().length < 2) {
       toast({
-        title: 'Name, address and city are required',
-        description: 'Address needs at least 5 characters.',
+        title: 'Name and city are required',
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (address !== '' && address.length < 5) {
+      toast({
+        title: 'That address is too short',
+        description: 'Give at least 5 characters, or leave it blank.',
         variant: 'destructive',
       });
       return;
     }
     create.mutate(
-      { name: form.name.trim(), address: form.address.trim(), city: form.city.trim() },
+      {
+        name: form.name.trim(),
+        city: form.city.trim(),
+        ...(address !== '' ? { address } : {}),
+      },
       {
         onSuccess: () => {
           toast({ title: 'Inspection centre created' });
@@ -79,8 +90,8 @@ function CreateCentreForm(): React.JSX.Element {
             }}
           />
           <Input
-            placeholder="Address"
-            value={form.address}
+            placeholder="Address (optional)"
+            value={form.address ?? ''}
             onChange={(event) => {
               set('address', event.target.value);
             }}
@@ -160,7 +171,11 @@ export default function InspectionCentresPage(): React.JSX.Element {
                     <div>
                       <p className="font-medium">{centre.name}</p>
                       <p className="text-muted-foreground">
-                        {centre.address} · {centre.city}
+                        {/* Most DrippleX centres carry no address — showing a
+                            dangling separator reads as missing data. */}
+                        {centre.address !== null && centre.address !== ''
+                          ? `${centre.address} · ${centre.city}`
+                          : centre.city}
                       </p>
                     </div>
                     <div className="flex items-center gap-3">

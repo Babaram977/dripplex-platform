@@ -1,5 +1,15 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { G0, G2, G3, NAVY_DEEP, NAVY_CARD, NAVY_SURFACE, BORDER, MUTED } from './shared';
+import {
+  G0,
+  G2,
+  G3,
+  NAVY_DEEP,
+  NAVY_CARD,
+  NAVY_SURFACE,
+  BORDER,
+  MUTED,
+  DRIPPLEX_SUPPORT_WHATSAPP,
+} from './shared';
 import {
   COLOR_STAR,
   COLOR_SUCCESS,
@@ -1938,8 +1948,8 @@ export function DriverInspectionScreen({ onBack }: { onBack: () => void }) {
             </p>
             {centres.length === 0 ? (
               <p className="mb-3 text-[12px]" style={{ fontFamily: IT, color: COLOR_WARNING }}>
-                No inspection centre is open for booking yet. Operations adds these — check back, or
-                contact support.
+                No inspection centre is open for booking yet. Message DrippleX support on WhatsApp{' '}
+                {DRIPPLEX_SUPPORT_WHATSAPP}.
               </p>
             ) : (
               <div className="mb-3 flex flex-col gap-2">
@@ -1962,12 +1972,35 @@ export function DriverInspectionScreen({ onBack }: { onBack: () => void }) {
                       {centre.name}
                     </p>
                     <p className="text-[11px]" style={{ color: MUTED }}>
-                      {centre.address}, {centre.city}
+                      {/* Most DrippleX centres have no published street address
+                          yet — showing "null, Kano" or a stray comma would look
+                          like a data fault to the driver. */}
+                      {centre.address !== null && centre.address !== ''
+                        ? `${centre.address}, ${centre.city}`
+                        : centre.city}
                     </p>
                   </button>
                 ))}
               </div>
             )}
+
+            {/* Centres carry no address for now (founder decision), so the way
+                a driver asks "where exactly?" is support. */}
+            <p
+              className="mb-3 text-[11.5px] leading-relaxed"
+              style={{ fontFamily: IT, color: MUTED }}
+            >
+              Not sure where to go? Message DrippleX support on WhatsApp{' '}
+              <a
+                href={`https://wa.me/${DRIPPLEX_SUPPORT_WHATSAPP.replace('+', '')}`}
+                target="_blank"
+                rel="noreferrer"
+                style={{ color: G3, textDecoration: 'underline' }}
+              >
+                {DRIPPLEX_SUPPORT_WHATSAPP}
+              </a>
+              .
+            </p>
 
             <p className="mb-2 text-[12.5px]" style={{ fontFamily: IT, color: TEXT_SECONDARY }}>
               Date and time

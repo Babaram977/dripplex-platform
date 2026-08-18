@@ -844,7 +844,9 @@ export interface DriverInspectionDto {
 export interface InspectionCentreDto {
   id: string;
   name: string;
-  address: string;
+  /** Null when the centre has no published street address — show the city
+   *  alone rather than an empty line. */
+  address: string | null;
   city: string;
   latitude: number | null;
   longitude: number | null;

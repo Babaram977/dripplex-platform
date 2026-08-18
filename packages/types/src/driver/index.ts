@@ -60,7 +60,9 @@ export interface RejectVehicleRequest {
 export interface InspectionCentreDto {
   id: string;
   name: string;
-  address: string;
+  /** Null when the centre has no published street address (founder decision,
+   *  2026-08-17). Render the city alone rather than a blank line. */
+  address: string | null;
   city: string;
   latitude: number | null;
   longitude: number | null;
@@ -71,7 +73,7 @@ export interface InspectionCentreDto {
 
 export interface CreateInspectionCentreRequest {
   name: string;
-  address: string;
+  address?: string;
   city: string;
   latitude?: number;
   longitude?: number;
