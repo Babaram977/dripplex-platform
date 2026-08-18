@@ -59,6 +59,20 @@ export const envSchema = z.object({
   FLUTTERWAVE_BASE_URL: z.string().url().default('https://api.flutterwave.com'),
   OPAY_API_KEY: z.string().default(''),
   PAYMENT_DEFAULT_PROVIDER: z.enum(['PAYSTACK', 'FLUTTERWAVE', 'OPAY']).default('PAYSTACK'),
+  // Peyflex — the utilities aggregator behind the Utilities tab
+  // (DPX-UTILITIES-002). The token is a static Django REST Framework token
+  // from the Peyflex dashboard and spends a prefunded DrippleX float, so it
+  // belongs in a Railway environment variable and nowhere else. Empty by
+  // default: the Utilities feature ships deployed-but-disabled and the
+  // not-configured adapter refuses every call with a clear message, the same
+  // pattern the payment providers use.
+  PEYFLEX_BASE_URL: z.string().url().default('https://client.peyflex.com.ng'),
+  PEYFLEX_API_TOKEN: z.string().default(''),
+  // The float is shared by every utility purchase on the platform, so it
+  // running dry is not one unlucky customer — it is a total outage of all
+  // four services at once. Ops needs to hear about it on a threshold, not on
+  // zero (DPX-UTILITIES-001 §1.2).
+  PEYFLEX_FLOAT_LOW_BALANCE_THRESHOLD: z.coerce.number().nonnegative().default(50_000),
   FIREBASE_PROJECT_ID: z.string().default(''),
   FIREBASE_CLIENT_EMAIL: z.string().default(''),
   FIREBASE_PRIVATE_KEY: z.string().default(''),

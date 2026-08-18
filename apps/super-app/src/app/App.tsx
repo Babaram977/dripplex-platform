@@ -50,6 +50,12 @@ import {
 } from './screensD';
 // Feature modules — new screens import via src/features/<MODULE>/index.ts
 import { HomeScreen } from '../features/HOME';
+import {
+  UtilitiesHomeScreen,
+  UtilityHistoryScreen,
+  UtilityPurchaseScreen,
+  UtilityReceiptScreen,
+} from './utilitiesScreen';
 import { MarketplaceScreen } from '../features/MARKETPLACE';
 import { StoreScreen } from '../features/STORE';
 import { ProductDetailScreen } from '../features/PRODUCT';
@@ -168,7 +174,13 @@ import {
 import type { PartnerPersona } from './onboardingScreen';
 import { ChatScreen } from './chatScreen';
 import { api } from '../lib/api';
-import type { DeliveryJobDto, RideOfferDto, RideDto } from '../lib/api';
+import type {
+  DeliveryJobDto,
+  RideOfferDto,
+  RideDto,
+  UtilityPurchaseDto,
+  UtilityServiceType,
+} from '../lib/api';
 import { endSession } from '../lib/auth';
 import { installUnlockListener } from '../lib/sound';
 
@@ -352,6 +364,10 @@ type Screen =
   | 'drvtripdone'
   | 'drvsettings'
   | 'wallethome'
+  | 'utilities'
+  | 'utilitybuy'
+  | 'utilityreceipt'
+  | 'utilityhistory'
   | 'wallettx'
   | 'wallettopup'
   | 'walletwithdraw'
@@ -493,6 +509,16 @@ function AppShell() {
   // passenger stood, and the pickup row could not be changed.
   const ridePickup = useDevicePickup();
   const [activeCustomerRideId, setActiveCustomerRideId] = useState<string | undefined>(undefined);
+
+  // Utilities. `activeUtilityService` is which of the four the customer
+  // picked; `activeUtilityPurchase` is the receipt they are looking at —
+  // reachable both straight after paying and from history, because an
+  // electricity token that can only be seen once is money lost when the app
+  // is closed.
+  const [activeUtilityService, setActiveUtilityService] = useState<UtilityServiceType>('AIRTIME');
+  const [activeUtilityPurchase, setActiveUtilityPurchase] = useState<UtilityPurchaseDto | null>(
+    null,
+  );
 
   /**
    * Where the user came from.
@@ -759,6 +785,7 @@ function AppShell() {
           go('store');
         }}
         onWallet={() => go('wallethome')}
+        onUtilities={() => go('utilities')}
         onOrders={() => go('orderhistory')}
         onTrackOrder={(id) => {
           setActiveOrderId(id);
@@ -1266,6 +1293,51 @@ function AppShell() {
         onRewards={() => go('walletrewards')}
       />
     ),
+    utilities: (
+      <UtilitiesHomeScreen
+        onBack={() => goBack('home')}
+        onService={(service) => {
+          setActiveUtilityService(service);
+          go('utilitybuy');
+        }}
+        onHistory={() => go('utilityhistory')}
+      />
+    ),
+    utilitybuy: (
+      <UtilityPurchaseScreen
+        service={activeUtilityService}
+        onBack={() => goBack('utilities')}
+        onDone={(purchase) => {
+          setActiveUtilityPurchase(purchase);
+          go('utilityreceipt');
+        }}
+      />
+    ),
+    utilityreceipt: activeUtilityPurchase ? (
+      <UtilityReceiptScreen
+        purchase={activeUtilityPurchase}
+        onBack={() => goBack('utilities')}
+        onDone={() => go('utilities')}
+      />
+    ) : (
+      <UtilitiesHomeScreen
+        onBack={() => goBack('home')}
+        onService={(service) => {
+          setActiveUtilityService(service);
+          go('utilitybuy');
+        }}
+        onHistory={() => go('utilityhistory')}
+      />
+    ),
+    utilityhistory: (
+      <UtilityHistoryScreen
+        onBack={() => goBack('utilities')}
+        onOpen={(purchase) => {
+          setActiveUtilityPurchase(purchase);
+          go('utilityreceipt');
+        }}
+      />
+    ),
     wallettx: <TransactionHistoryScreen onBack={() => go('wallethome')} />,
     wallettopup: <TopUpScreen onBack={() => go('wallethome')} onConfirm={() => go('wallethome')} />,
     walletwithdraw: (
@@ -1613,6 +1685,17 @@ function AppShell() {
         { label: 'Statement', key: 'walletstatement' },
         { label: 'Security', key: 'walletsecurity' },
         { label: 'Settings', key: 'walletsettings' },
+      ],
+    },
+    {
+      label: 'Utilities',
+      color: '#06B6D4',
+      emoji: '⚡',
+      screens: [
+        { label: 'Utilities Home', key: 'utilities' },
+        { label: 'Buy Utility', key: 'utilitybuy' },
+        { label: 'Utility Receipt', key: 'utilityreceipt' },
+        { label: 'Utility History', key: 'utilityhistory' },
       ],
     },
     {

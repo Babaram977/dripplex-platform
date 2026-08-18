@@ -224,6 +224,20 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
     description:
       'View the Operations Console analytics dashboard — driver utilization, shift, ride, dispatch, response-time, and geographic-demand analytics',
   },
+  {
+    code: 'customer:utilities:read',
+    description:
+      'Browse the bill-payment catalogues (airtime, data, electricity, cable) and verify a meter or smartcard',
+  },
+  {
+    code: 'customer:utilities:purchase',
+    description: 'Buy airtime, data, electricity or a cable subscription',
+  },
+  {
+    code: 'admin:utilities:manage',
+    description:
+      'View the bill-payment register and provider float balance, and resolve purchases the provider never answered for',
+  },
   { code: 'users:read', description: 'Read user records' },
   { code: 'users:write', description: 'Update user records' },
   { code: 'users:delete', description: 'Soft-delete user records' },

@@ -40,6 +40,7 @@ import { RidesModule } from './rides/rides.module';
 import { SearchModule } from './search/search.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { UsersModule } from './users/users.module';
+import { UtilitiesModule } from './utilities/utilities.module';
 import { WalletFundingModule } from './wallet/wallet-funding.module';
 import { WalletModule } from './wallet/wallet.module';
 import { WishlistModule } from './wishlist/wishlist.module';
@@ -91,6 +92,7 @@ import { WishlistModule } from './wishlist/wishlist.module';
     CommercialModule,
     KycModule,
     UploadsModule,
+    UtilitiesModule,
   ],
   providers: [
     {

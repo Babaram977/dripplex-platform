@@ -343,6 +343,8 @@ model User {
   operationsCaseEvents        OperationsCaseEvent[]        @relation("OperationsCaseEventActor")
   sentMessages                Message[]                    @relation("MessageSender")
   receivedMessages            Message[]                    @relation("MessageRecipient")
+  /// DPX-UTILITIES-001
+  utilityPurchases            UtilityPurchase[]            @relation("UtilityPurchaseCustomer")
   rideOffers                  RideOffer[]
   notifications               Notification[]
   notificationPreferences     NotificationPreference[]
@@ -1651,23 +1653,23 @@ enum RidePaymentStatus {
 }
 
 model Ride {
-  id                       String                   @id @default(uuid()) @db.Uuid
-  customerId               String                   @map("customer_id") @db.Uuid
-  driverId                 String?                  @map("driver_id") @db.Uuid
-  rideType                 RideType                 @map("ride_type")
-  status                   RideStatus               @default(REQUESTED)
-  pickupLatitude           Decimal                  @map("pickup_latitude") @db.Decimal(10, 7)
-  pickupLongitude          Decimal                  @map("pickup_longitude") @db.Decimal(10, 7)
-  pickupAddress            String?                  @map("pickup_address") @db.VarChar(500)
-  dropoffLatitude          Decimal                  @map("dropoff_latitude") @db.Decimal(10, 7)
-  dropoffLongitude         Decimal                  @map("dropoff_longitude") @db.Decimal(10, 7)
-  dropoffAddress           String?                  @map("dropoff_address") @db.VarChar(500)
-  estimatedDistanceMeters  Int?                     @map("estimated_distance_meters")
-  estimatedDurationSeconds Int?                     @map("estimated_duration_seconds")
-  baseFare                 Decimal                  @default(0) @map("base_fare") @db.Decimal(12, 2)
-  distanceFare             Decimal                  @default(0) @map("distance_fare") @db.Decimal(12, 2)
-  timeFare                 Decimal                  @default(0) @map("time_fare") @db.Decimal(12, 2)
-  totalFare                Decimal                  @default(0) @map("total_fare") @db.Decimal(12, 2)
+  id                       String     @id @default(uuid()) @db.Uuid
+  customerId               String     @map("customer_id") @db.Uuid
+  driverId                 String?    @map("driver_id") @db.Uuid
+  rideType                 RideType   @map("ride_type")
+  status                   RideStatus @default(REQUESTED)
+  pickupLatitude           Decimal    @map("pickup_latitude") @db.Decimal(10, 7)
+  pickupLongitude          Decimal    @map("pickup_longitude") @db.Decimal(10, 7)
+  pickupAddress            String?    @map("pickup_address") @db.VarChar(500)
+  dropoffLatitude          Decimal    @map("dropoff_latitude") @db.Decimal(10, 7)
+  dropoffLongitude         Decimal    @map("dropoff_longitude") @db.Decimal(10, 7)
+  dropoffAddress           String?    @map("dropoff_address") @db.VarChar(500)
+  estimatedDistanceMeters  Int?       @map("estimated_distance_meters")
+  estimatedDurationSeconds Int?       @map("estimated_duration_seconds")
+  baseFare                 Decimal    @default(0) @map("base_fare") @db.Decimal(12, 2)
+  distanceFare             Decimal    @default(0) @map("distance_fare") @db.Decimal(12, 2)
+  timeFare                 Decimal    @default(0) @map("time_fare") @db.Decimal(12, 2)
+  totalFare                Decimal    @default(0) @map("total_fare") @db.Decimal(12, 2)
 
   /// What a surcharge zone added, in naira, and which zone did it.
   ///
@@ -1679,34 +1681,34 @@ model Ride {
   surchargeZoneId   String? @map("surcharge_zone_id") @db.Uuid
   surchargeZoneName String? @map("surcharge_zone_name") @db.VarChar(120)
 
-  promotionId              String?                  @map("promotion_id") @db.Uuid
-  promoDiscount            Decimal                  @default(0) @map("promo_discount") @db.Decimal(12, 2)
-  paymentMethod            RidePaymentMethod?       @map("payment_method")
-  paymentStatus            RidePaymentStatus        @default(PENDING) @map("payment_status")
-  platformCommission       Decimal?                 @map("platform_commission") @db.Decimal(12, 2)
-  platformCommissionRate   Decimal?                 @map("platform_commission_rate") @db.Decimal(5, 4)
-  driverEarning            Decimal?                 @map("driver_earning") @db.Decimal(12, 2)
-  tipAmount                Decimal?                 @map("tip_amount") @db.Decimal(12, 2)
-  requestedAt              DateTime                 @default(now()) @map("requested_at")
-  assignedAt               DateTime?                @map("assigned_at")
-  arrivedAt                DateTime?                @map("arrived_at")
-  startedAt                DateTime?                @map("started_at")
-  completedAt              DateTime?                @map("completed_at")
-  cancelledAt              DateTime?                @map("cancelled_at")
-  cancelledBy              RideCancelledBy?         @map("cancelled_by")
-  cancellationReason       String?                  @map("cancellation_reason") @db.VarChar(500)
-  createdAt                DateTime                 @default(now()) @map("created_at")
-  updatedAt                DateTime                 @updatedAt @map("updated_at")
-  customer                 User                     @relation("RideCustomer", fields: [customerId], references: [id], onDelete: Cascade)
-  driver                   User?                    @relation("RideDriver", fields: [driverId], references: [id], onDelete: SetNull)
+  promotionId            String?                  @map("promotion_id") @db.Uuid
+  promoDiscount          Decimal                  @default(0) @map("promo_discount") @db.Decimal(12, 2)
+  paymentMethod          RidePaymentMethod?       @map("payment_method")
+  paymentStatus          RidePaymentStatus        @default(PENDING) @map("payment_status")
+  platformCommission     Decimal?                 @map("platform_commission") @db.Decimal(12, 2)
+  platformCommissionRate Decimal?                 @map("platform_commission_rate") @db.Decimal(5, 4)
+  driverEarning          Decimal?                 @map("driver_earning") @db.Decimal(12, 2)
+  tipAmount              Decimal?                 @map("tip_amount") @db.Decimal(12, 2)
+  requestedAt            DateTime                 @default(now()) @map("requested_at")
+  assignedAt             DateTime?                @map("assigned_at")
+  arrivedAt              DateTime?                @map("arrived_at")
+  startedAt              DateTime?                @map("started_at")
+  completedAt            DateTime?                @map("completed_at")
+  cancelledAt            DateTime?                @map("cancelled_at")
+  cancelledBy            RideCancelledBy?         @map("cancelled_by")
+  cancellationReason     String?                  @map("cancellation_reason") @db.VarChar(500)
+  createdAt              DateTime                 @default(now()) @map("created_at")
+  updatedAt              DateTime                 @updatedAt @map("updated_at")
+  customer               User                     @relation("RideCustomer", fields: [customerId], references: [id], onDelete: Cascade)
+  driver                 User?                    @relation("RideDriver", fields: [driverId], references: [id], onDelete: SetNull)
   /// SetNull, not Cascade: deleting a zone must never delete the rides it
   /// priced. surchargeZoneName carries the label on regardless.
-  surchargeZone            RideSurchargeZone?       @relation(fields: [surchargeZoneId], references: [id], onDelete: SetNull)
-  trackingPoints           RideTracking[]
-  offers                   RideOffer[]
-  paymentTransactions      RidePaymentTransaction[]
-  ratings                  RideRating[]
-  problemReports           RideProblemReport[]
+  surchargeZone          RideSurchargeZone?       @relation(fields: [surchargeZoneId], references: [id], onDelete: SetNull)
+  trackingPoints         RideTracking[]
+  offers                 RideOffer[]
+  paymentTransactions    RidePaymentTransaction[]
+  ratings                RideRating[]
+  problemReports         RideProblemReport[]
 
   @@index([customerId])
   @@index([driverId])
@@ -1936,27 +1938,27 @@ model RiderKyc {
 ///                        expiry job -- no such job exists yet, see design
 ///                        doc's "explicitly not built this round")
 model CustomerKyc {
-  id              String                @id @default(uuid()) @db.Uuid
-  userId          String                @map("user_id") @db.Uuid
-  level           CustomerKycLevel      @default(LEVEL_0)
-  status          CustomerKycStatus     @default(NOT_STARTED)
-  documentType    KycDocumentType?      @map("document_type")
-  documentNumber  String?               @map("document_number") @db.VarChar(100)
-  frontImageUrl   String?               @map("front_image_url") @db.VarChar(2048)
-  backImageUrl    String?               @map("back_image_url") @db.VarChar(2048)
-  selfieUrl       String?               @map("selfie_url") @db.VarChar(2048)
-  reviewedBy      String?               @map("reviewed_by") @db.Uuid
-  reviewedAt      DateTime?             @map("reviewed_at")
-  remarks         String?               @db.VarChar(1000)
-  startedAt       DateTime?             @map("started_at")
-  submittedAt     DateTime?             @map("submitted_at")
-  reviewStartedAt DateTime?             @map("review_started_at")
-  verifiedAt      DateTime?             @map("verified_at")
-  rejectedAt      DateTime?             @map("rejected_at")
-  expiresAt       DateTime?             @map("expires_at")
-  createdAt       DateTime              @default(now()) @map("created_at")
-  updatedAt       DateTime              @updatedAt @map("updated_at")
-  user            User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id              String            @id @default(uuid()) @db.Uuid
+  userId          String            @map("user_id") @db.Uuid
+  level           CustomerKycLevel  @default(LEVEL_0)
+  status          CustomerKycStatus @default(NOT_STARTED)
+  documentType    KycDocumentType?  @map("document_type")
+  documentNumber  String?           @map("document_number") @db.VarChar(100)
+  frontImageUrl   String?           @map("front_image_url") @db.VarChar(2048)
+  backImageUrl    String?           @map("back_image_url") @db.VarChar(2048)
+  selfieUrl       String?           @map("selfie_url") @db.VarChar(2048)
+  reviewedBy      String?           @map("reviewed_by") @db.Uuid
+  reviewedAt      DateTime?         @map("reviewed_at")
+  remarks         String?           @db.VarChar(1000)
+  startedAt       DateTime?         @map("started_at")
+  submittedAt     DateTime?         @map("submitted_at")
+  reviewStartedAt DateTime?         @map("review_started_at")
+  verifiedAt      DateTime?         @map("verified_at")
+  rejectedAt      DateTime?         @map("rejected_at")
+  expiresAt       DateTime?         @map("expires_at")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([status])
@@ -2009,14 +2011,14 @@ model Vehicle {
 /// DPX-DRIVER-002 Phase 3 — a physical location a driver books a mandatory
 /// inspection appointment at.
 model InspectionCentre {
-  id   String @id @default(uuid()) @db.Uuid
-  name String @db.VarChar(150)
+  id          String       @id @default(uuid()) @db.Uuid
+  name        String       @db.VarChar(150)
   /// Optional (founder decision, 2026-08-17: "no address needed for now").
   /// DrippleX's own centres are identified by name and city; drivers who need
   /// directions are pointed at the support WhatsApp line on the booking screen.
   /// A centre with no address must never render as a blank or "null" line.
-  address String? @db.VarChar(500)
-  city    String  @db.VarChar(100)
+  address     String?      @db.VarChar(500)
+  city        String       @db.VarChar(100)
   latitude    Decimal?     @db.Decimal(10, 7)
   longitude   Decimal?     @db.Decimal(10, 7)
   isActive    Boolean      @default(true) @map("is_active")
@@ -3680,4 +3682,104 @@ model Message {
   @@index([contextType, contextId, createdAt])
   @@index([recipientId, readAt])
   @@map("messages")
+}
+
+// ── Utilities (DPX-UTILITIES-001 / -002) ────────────────────────────────────
+
+/// The four bill-payment services launched with the Utilities tab. Peyflex
+/// also sells betting, education pins, recharge-card printing and rented
+/// phone numbers; those are deliberately out of scope
+/// (DPX-UTILITIES-002 §5) and must not be added here without a founder
+/// decision.
+enum UtilityServiceType {
+  AIRTIME
+  DATA
+  ELECTRICITY
+  CABLE_TV
+}
+
+/// How the customer paid for a utility purchase. Deliberately its own enum
+/// rather than reusing OrderPaymentMethod: utilities have no cash and no
+/// pay-the-merchant path, and a shared enum would offer both.
+enum UtilityPaymentMethod {
+  WALLET
+  PAYSTACK
+  FLUTTERWAVE
+}
+
+/// PENDING is not a transient implementation detail — it is the state a row
+/// is deliberately left in when the provider call times out. Peyflex accepts
+/// no client idempotency key and exposes no status lookup for these four
+/// services (DPX-UTILITIES-002 G1/G2), so after a timeout there is no
+/// programmatic way to learn whether the float was spent. The row stays
+/// PENDING with the customer's money still reserved, and an operator
+/// resolves it by hand against the Peyflex dashboard.
+enum UtilityPurchaseStatus {
+  /// Card path only: the row exists, the gateway checkout has been opened,
+  /// and no money has moved yet. Distinct from PENDING so the operator queue
+  /// is not full of abandoned checkouts that need no action at all.
+  AWAITING_PAYMENT
+  PENDING
+  SUCCESSFUL
+  FAILED
+  /// Terminal failure whose reservation has been given back — wallet
+  /// credited, or a card refund initiated.
+  REVERSED
+}
+
+/// One utility purchase. One table, not four: every service identifies its
+/// target by a single string (a phone number, a meter number, a smartcard
+/// number), so four nullable columns would be three-quarters empty on every
+/// row.
+model UtilityPurchase {
+  id                 String                @id @default(uuid()) @db.Uuid
+  serviceType        UtilityServiceType    @map("service_type")
+  customerId         String                @map("customer_id") @db.Uuid
+  /// Phone, meter or smartcard number — the thing being topped up.
+  customerIdentifier String                @map("customer_identifier") @db.VarChar(64)
+  /// Network or disco code taken from the provider catalogue, never
+  /// free-typed by the client.
+  providerCode       String                @map("provider_code") @db.VarChar(64)
+  /// Data bundle or cable package. Null for airtime and for electricity,
+  /// which are priced by amount rather than by plan.
+  planCode           String?               @map("plan_code") @db.VarChar(64)
+  /// What the customer was charged — face value.
+  amountCharged      Decimal               @map("amount_charged") @db.Decimal(12, 2)
+  /// What Peyflex debited from the DrippleX float. Null until the provider
+  /// answers. The spread between this and amountCharged is DrippleX's margin
+  /// (founder decision, DPX-UTILITIES-001 §2), and it is only auditable
+  /// because both numbers are stored.
+  providerCost       Decimal?              @map("provider_cost") @db.Decimal(12, 2)
+  paymentMethod      UtilityPaymentMethod  @map("payment_method")
+  /// The gateway reference for a card-paid purchase — null when paid from
+  /// the wallet. Kept here rather than in a PaymentTransaction row because a
+  /// utility purchase is not an order and PaymentTransaction is anchored to
+  /// one.
+  paymentReference   String?               @unique @map("payment_reference") @db.VarChar(100)
+  status             UtilityPurchaseStatus @default(PENDING)
+  /// Peyflex's own reference, for reconciliation and disputes. Peyflex
+  /// generates it and returns it in the response — it cannot be supplied
+  /// up front, which is the root of G1.
+  providerReference  String?               @map("provider_reference") @db.VarChar(100)
+  /// The electricity token or recharge PIN. This is the thing the customer
+  /// bought; a customer who closes the app and loses it has lost the money,
+  /// so it is stored and re-displayable rather than shown once.
+  deliveredToken     String?               @map("delivered_token") @db.VarChar(255)
+  /// Shown to the customer and kept for support. Never carries the
+  /// provider's own "Insufficient wallet balance" — that means the DrippleX
+  /// float is dry, not the customer's, and reads as an accusation.
+  failureReason      String?               @map("failure_reason") @db.VarChar(500)
+  /// The raw provider response, for reconciling a disputed purchase against
+  /// the Peyflex dashboard.
+  providerResponse   Json?                 @map("provider_response")
+  createdAt          DateTime              @default(now()) @map("created_at")
+  updatedAt          DateTime              @updatedAt @map("updated_at")
+  completedAt        DateTime?             @map("completed_at")
+  customer           User                  @relation("UtilityPurchaseCustomer", fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId, createdAt])
+  @@index([status])
+  @@index([serviceType, createdAt])
+  @@index([providerReference])
+  @@map("utility_purchases")
 }

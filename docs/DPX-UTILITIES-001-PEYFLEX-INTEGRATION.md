@@ -1,7 +1,8 @@
 # DPX-UTILITIES-001 — Utilities tab, Peyflex integration
 
-**Status:** Design locked. Auth and transport **confirmed**; build still blocked on four
-endpoint groups and — critically — on a single successful response example.
+**Status:** **Built** (2026-08-18). The design below stood; §7 records what shipped and where
+the implementation deliberately differs. The endpoint contract is transcribed in
+**DPX-UTILITIES-002**, which supersedes §1.4 and §6.2 of this document.
 **Founder decisions:** 2026-08-18.
 
 ---
@@ -227,10 +228,76 @@ and the adapter will need to reach a sandbox to be tested at all.
 
 ---
 
-## 7. Current state of the code
+## 7. What shipped
 
-Verified 2026-08-18: **no utilities scaffolding exists anywhere.** No Prisma models, no
-endpoints, no shared types, no screens. The only trace is the `Utilities` quick-action tile on
-the customer home screen, marked `ready: false` and badged SOON.
+Built 2026-08-18. The design above stood; three things resolved differently once the contract
+was read (DPX-UTILITIES-002), and they are stated here rather than left as drift.
 
-That tile stays as it is until the adapter is real.
+### 7.1 Where it lives
+
+| Piece                  | Path                                                                      |
+| ---------------------- | ------------------------------------------------------------------------- |
+| Provider port          | `apps/backend/src/utilities/providers/utility-provider.port.ts`           |
+| Peyflex adapter        | `apps/backend/src/utilities/providers/peyflex.provider.ts`                |
+| Not-configured adapter | `apps/backend/src/utilities/providers/not-configured-utility.provider.ts` |
+| Money path             | `apps/backend/src/utilities/utilities.service.ts`                         |
+| Customer API           | `apps/backend/src/utilities/customer-utilities.controller.ts`             |
+| Ops API                | `apps/backend/src/utilities/admin-utilities.controller.ts`                |
+| Schema                 | `UtilityPurchase`, migration `20260818120000_utilities_peyflex`           |
+| Customer screens       | `apps/super-app/src/app/utilitiesScreen.tsx`                              |
+| Ops Console            | `apps/operations-console/src/app/utilities/page.tsx`                      |
+
+### 7.2 Three resolutions the design did not settle
+
+**A provider outcome is three-valued, not two.** `SUCCESS`, `FAILED`, `UNKNOWN`. A provider that
+says no is not the same as a provider that never answered: the first is safe to reverse, the
+second is not, because with no idempotency key and no status lookup (G1/G2) the float may or may
+not already be spent. An `UNKNOWN` therefore leaves the purchase `PENDING` with the customer's
+money still reserved, and an operator resolves it by hand from the Ops Console. Collapsing the two
+is how a customer gets refunded for electricity they actually received.
+
+**HTTP status is not the outcome.** Electricity returns HTTP 200 carrying `status: FAILED`; cable
+returns HTTP 400. The adapter reads the body's `status` field only, and a purchase POST
+deliberately does _not_ throw on a non-2xx — throwing would turn a perfectly readable failure into
+an unresolvable `UNKNOWN` and strand the customer's money in a manual queue for no reason.
+
+**Card reversal credits the DrippleX wallet, not the card.** §3 said a card refund is slow and can
+fail. The platform already has a founder decision covering exactly this — DPX-D4: _"gateway rides
+refund to the Dx Wallet, never the PSP"_ — and no gateway refund adapter exists. That decision was
+followed rather than a second refund path invented. **Worth confirming this is what the founder
+wants for utilities too**, since it means a card-paid purchase that fails at the provider returns
+the money as DrippleX credit rather than to the card.
+
+### 7.3 Two decisions that were mine, not the founder's
+
+- **`AWAITING_PAYMENT` is a distinct status** from `PENDING`. Without it the operator queue fills
+  with abandoned card checkouts that need no action at all, hiding the purchases that do.
+- **Airtime is bounded at ₦50–₦50,000.** Peyflex publishes no airtime limits (unlike electricity,
+  which returns per-disco min/max). These are DrippleX's own guard rails against a fat-fingered
+  amount, not a provider contract, and the founder may want them elsewhere.
+
+### 7.4 Still open
+
+- **G1/G2 remain.** No idempotency key, no status lookup. The `PENDING` state and the Ops resolve
+  endpoint are the mitigation, not a fix. Worth asking Peyflex for both.
+- **G6 remains: no sandbox.** The adapter's specs drive it against fixtures transcribed from the
+  published examples; nothing in CI touches the real provider, and nothing can until a sandbox
+  exists.
+- **G3/G4 remain:** no successful electricity or cable response has been seen. The adapter reads
+  `token` where the electricity example puts it, and rejects the `"Please contact Admin for Token"`
+  prose the failure example carries. **The first real electricity purchase should be watched.**
+- **Q7 (negative spread) is not implemented.** Peyflex returns `charged` only _after_ the purchase,
+  so there is no quote to compare against beforehand. Both numbers are recorded on every row, so a
+  negative spread is visible in the Ops register — but nothing refuses the sale. That needs either
+  a founder rule or a pre-purchase quote endpoint Peyflex does not currently expose.
+- **The float alarm logs and shows; it does not page anyone.** `GET /admin/utilities/float` drives
+  a panel that polls every 60s and a `WARN` in the API logs. There is no alerting integration to
+  hang a page off.
+
+### 7.5 It is deployed but disabled
+
+`PEYFLEX_API_TOKEN` is empty by default, so the not-configured adapter answers, every call is
+refused with one honest message, and the customer's Utilities tab says it is not switched on
+rather than failing after a bundle is chosen. **The token must be rotated before it is set** — see
+§1.5; the one pasted into chat, and four others, are readable in Peyflex's own published
+documentation.

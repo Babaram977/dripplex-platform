@@ -25,6 +25,8 @@ export const ROLE_PERMISSION_GRANTS: Record<string, string[]> = {
     'customer:referrals:use',
     'customer:cms:read',
     'customer:kyc:manage',
+    'customer:utilities:read',
+    'customer:utilities:purchase',
   ],
   merchant: [
     'profile:read',
@@ -186,6 +188,7 @@ export const ROLE_PERMISSION_GRANTS: Record<string, string[]> = {
     'admin:commercial:credit-settings:manage',
     'admin:commercial:commission-settings:manage',
     'admin:rides:pricing:manage',
+    'admin:utilities:manage',
     'admin:commercial:account:manage',
     'admin:drivers:vehicles:manage',
     'admin:drivers:support-ticket:manage',
