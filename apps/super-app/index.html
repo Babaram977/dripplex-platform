@@ -8,6 +8,31 @@
       <title>DrippleX Super App Design (Copy)</title>
       <meta name="description" content="An all-in-one super app offering seamless ride-hailing, unified marketplace shopping, digital wallet, and merchant management for a simplified daily life." />
       <meta name="robots" content="noindex, nofollow" />
+
+      <!--
+        Fonts are linked here, not @import-ed from a stylesheet.
+
+        They used to be pulled by `@import` from src/styles/fonts.css, which the
+        browser can only discover after downloading and parsing index.css and
+        then fonts.css — two round trips before the first byte of a font is
+        requested. Until those land, every label renders in the fallback sans
+        and then reflows, which is most of why the type looked soft.
+
+        The preload scanner sees these <link>s in the first chunk of HTML, so
+        the fonts start downloading immediately, in parallel with the CSS.
+
+        Weights match what the app actually uses (400/500/600/700/800, plus
+        Poppins 900 on the ride fare). Inter 700 was previously *not* loaded
+        while ~295 elements asked for bold — the browser was faking those by
+        smearing the 400 weight, which is exactly the blur it looks like.
+      -->
+      <link rel="preconnect" href="https://fonts.googleapis.com" />
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700;800&display=swap"
+      />
+
       <style>html, body { height: 100%; margin: 0; } #root { height: 100%; }</style>
       
     </head>

@@ -8,6 +8,7 @@ import {
   TEXT_SECONDARY,
 } from '../tokens/colors';
 import { api } from '../lib/api';
+import { auth } from '../lib/auth';
 import { ws } from '../lib/ws';
 import {
   addressPredictions,
@@ -547,12 +548,18 @@ export function RideHomeScreen({
   onBack,
   onSearch,
   onHistory,
+  pickup,
 }: {
   onBack: () => void;
   onSearch: () => void;
   onHistory: () => void;
+  /** The passenger's real resolved pickup, so this screen stops announcing a
+   *  city they may be a thousand kilometres from. */
+  pickup?: RidePickup | null;
 }) {
   const [inputFocused, setInputFocused] = useState(false);
+  // The signed-in passenger — the greeting used to name "Chidi" to everyone.
+  const firstName = auth.getUser()?.firstName ?? '';
 
   return (
     <div
@@ -650,11 +657,14 @@ export function RideHomeScreen({
         <div className="flex-1 overflow-y-auto px-5 pb-4 pt-2">
           {/* Greeting */}
           <div className="mb-4">
+            {/* Was "Where to, Chidi?" above "Ikeja GRA, Lagos" for every
+                passenger on the platform — a name nobody has and a city most
+                of them are not in. */}
             <p className="mb-0.5 text-[18px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
-              Where to, Chidi?
+              {firstName ? `Where to, ${firstName}?` : 'Where to?'}
             </p>
             <p className="text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
-              Your current location: Ikeja GRA, Lagos
+              {pickup ? `Your current location: ${pickup.address}` : 'Finding your location…'}
             </p>
           </div>
 
@@ -686,38 +696,11 @@ export function RideHomeScreen({
             </div>
           </button>
 
-          {/* Saved places */}
-          <div className="mb-5 flex gap-3">
-            {[
-              { icon: '🏠', label: 'Home', sub: 'Ikeja, Lagos' },
-              { icon: '💼', label: 'Work', sub: 'Victoria Island' },
-            ].map((p) => (
-              <button
-                key={p.label}
-                onClick={onSearch}
-                className="flex flex-1 items-center gap-2.5 rounded-2xl px-3 py-3 transition-all active:scale-[.97]"
-                style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
-              >
-                <div
-                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl text-base"
-                  style={{ background: 'rgba(43,172,82,.12)' }}
-                >
-                  {p.icon}
-                </div>
-                <div className="min-w-0">
-                  <p
-                    className="truncate text-[13px] font-semibold"
-                    style={{ fontFamily: PP, color: '#fff' }}
-                  >
-                    {p.label}
-                  </p>
-                  <p className="truncate text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
-                    {p.sub}
-                  </p>
-                </div>
-              </button>
-            ))}
-          </div>
+          {/* Saved places removed: DrippleX has no saved-places API, so
+              "Home · Ikeja, Lagos" and "Work · Victoria Island" were invented
+              addresses shown to every passenger, and tapping either just
+              opened the search box anyway. The search above is the real way
+              to set a destination. */}
         </div>
       </BottomSheet>
     </div>
@@ -1204,7 +1187,7 @@ export function FareEstimateScreen({
   onBook,
   dropoff,
   pickup,
-  rideType = 'ECONOMY',
+  rideType: initialRideType = 'ECONOMY',
 }: {
   onBack: () => void;
   onBook: (rideId: string) => void;
@@ -1216,6 +1199,13 @@ export function FareEstimateScreen({
   rideType?: RideType;
 }) {
   const [payment, setPayment] = useState('cash');
+  // Dispatch matches DriverAvailability.vehicleType against the ride type the
+  // passenger asked for, exactly. The driver app sends the real category of the
+  // car they drive, but this screen hardcoded ECONOMY and offered no choice —
+  // so a Comfort, XL or Keke driver could be approved, online, waiting and
+  // metres away, and was unmatchable for every ride ever requested. That is the
+  // "searching for 4 minutes and never matched" case.
+  const [rideType, setRideType] = useState<RideType>(initialRideType);
 
   // Real ride-type catalog (label/description). Price is NOT taken from the
   // catalog per route — the per-route fare comes from `api.rides.estimate()`.
@@ -1324,7 +1314,32 @@ export function FareEstimateScreen({
 
       <BottomSheet peek title="Fare Estimate">
         <div className="flex-1 overflow-y-auto px-5 pb-5">
-          {/* Economy ride card */}
+          {/* Ride type — every type the catalog offers, because dispatch only
+              matches drivers whose vehicle category equals the one chosen. */}
+          {(catalog?.length ?? 0) > 1 && (
+            <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
+              {(catalog ?? []).map((option) => {
+                const active = option.rideType === rideType;
+                return (
+                  <button
+                    key={option.rideType}
+                    onClick={() => setRideType(option.rideType)}
+                    className="flex-shrink-0 rounded-xl px-3.5 py-2 text-[12.5px] font-semibold active:scale-[.97]"
+                    style={{
+                      background: active ? 'rgba(43,172,82,.16)' : NAVY_SURFACE,
+                      border: `1px solid ${active ? G2 : BORDER}`,
+                      color: active ? '#fff' : MUTED,
+                      fontFamily: IT,
+                    }}
+                  >
+                    {RIDE_TYPE_EMOJI[option.rideType]} {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Selected ride card */}
           <div
             className="mb-4 flex items-center gap-4 rounded-2xl p-4"
             style={{ background: 'rgba(43,172,82,.08)', border: '1.5px solid rgba(43,172,82,.3)' }}
@@ -1580,31 +1595,12 @@ export function FindingDriverScreen({
               Matching you with the best driver nearby
             </p>
           </div>
-
-          {/* Searching indicators */}
-          <div className="flex w-full gap-3">
-            {[
-              ['4', 'Drivers nearby'],
-              ['~3 min', 'Est. pickup'],
-              ['4.8★', 'Avg rating'],
-            ].map(([v, l]) => (
-              <div
-                key={l}
-                className="flex flex-1 flex-col items-center gap-1 rounded-2xl py-3"
-                style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
-              >
-                <p className="text-[15px] font-bold" style={{ fontFamily: PP, color: G3 }}>
-                  {v}
-                </p>
-                <p
-                  className="text-center text-[11px] leading-tight"
-                  style={{ fontFamily: IT, color: MUTED }}
-                >
-                  {l}
-                </p>
-              </div>
-            ))}
-          </div>
+          {/* The three tiles here read "4 Drivers nearby · ~3 min Est. pickup
+              · 4.8★ Avg rating" — none of it measured, all of it constant, on
+              a screen a passenger stares at while nothing is happening.
+              DrippleX exposes no nearby-driver count or ETA to a customer
+              mid-search, so there is nothing honest to put here. Removed
+              rather than kept as decoration. */}
 
           {/* Progress bar */}
           <div
