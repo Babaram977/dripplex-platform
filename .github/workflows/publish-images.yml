@@ -1,8 +1,17 @@
 name: Publish Docker Images
 
+# Run this by hand (Actions → Publish Docker Images → Run workflow), not on
+# every push to main.
+#
+# Founder decision, 2026-08-18. It used to trigger on push, but the file failed
+# validation (see "Set image tags" below), so every merge created a run that
+# died before starting a job — a permanently red check that hid real failures.
+# Fixing that alone would have switched on a pipeline that has never once
+# executed: five images pushed to GHCR, a Trivy CRITICAL/HIGH gate that can fail
+# a build, and a force-pushed `build-<sha>` tag, on every merge. Nothing consumes
+# these images today — Railway builds from source — so publishing is a
+# deliberate act, not a side effect of merging.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       tag:
@@ -66,10 +75,19 @@ jobs:
 
       - name: Set image tags
         id: meta
+        env:
+          # This is what broke the workflow. A GitHub expression is evaluated
+          # before the shell ever runs, so `SHA_SHORT` written inside one was
+          # never the variable set below — it read as an unrecognized
+          # named-value and failed the whole file's validation. The run was
+          # created and killed with zero jobs and zero billable minutes, which
+          # looks like a failing build but is a syntax error. The fallback
+          # belongs in the shell, where SHA_SHORT actually exists.
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
           SHA_SHORT="${GITHUB_SHA::12}"
           echo "sha=${SHA_SHORT}" >> "$GITHUB_OUTPUT"
-          echo "version=${{ github.event.inputs.tag || SHA_SHORT }}" >> "$GITHUB_OUTPUT"
+          echo "version=${INPUT_TAG:-$SHA_SHORT}" >> "$GITHUB_OUTPUT"
 
       - name: Login to GHCR
         uses: docker/login-action@v3
