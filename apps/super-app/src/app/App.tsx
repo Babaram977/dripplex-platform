@@ -887,6 +887,7 @@ function AppShell() {
         onBack={() => go('home')}
         onSearch={() => go('ridesearch')}
         onHistory={() => go('ridehistory')}
+        pickup={ridePickup.pickup}
       />
     ),
     ridesearch: (
