@@ -254,3 +254,54 @@ screens shows 0 pageerrors). End-to-end write-path verification against a live b
 **pending** — it could not be run from the build sandbox (the local stack was reclaimed and the
 production backend is egress-restricted). The endpoint paths/payloads are grounded in the real
 backend controller/DTO source, so this is a live-smoke gap, not a contract guess.
+
+---
+
+### Customer home — dead controls activated (DPX-HOME-001) — logged 2026-08-18
+
+Founder testing (2026-08-18, customer Abdullahi) found a set of controls on the customer home
+screen that looked tappable and did nothing. The pass below activates what has a real
+destination, and marks what does not so no control silently swallows a tap.
+
+**Activated against real endpoints / real screens:**
+
+| Control                      | Was                                                      | Now                                                                                                                                                                                              |
+| ---------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Search bar                   | A `<p>` with placeholder text — not typable              | A real `<input>`. Debounced 350ms into `GET /merchants/smart-search` + `GET /products/smart-search`, results listed inline; Enter searches immediately; a clear button restores the browse view. |
+| Category chips               | `setActive` only — moved a highlight, filtered nothing   | A chip writes its label into the same search box and runs the same search. Chips and the bar are one mechanism, which is what makes both of them do something. Tapping the lit chip clears it.   |
+| Search / category results    | Did not exist                                            | Merchant and product rows; both open the merchant's store (`onStore`), the only destination that exists for both today. Loading, empty and error states with Retry.                              |
+| "See all" — Nearby Merchants | `onAll={() => {}}`                                       | Marketplace.                                                                                                                                                                                     |
+| "See all" — Recommended      | `onAll={() => {}}`                                       | Marketplace.                                                                                                                                                                                     |
+| "See all" — Recent Activity  | `onAll={() => {}}`                                       | Wallet.                                                                                                                                                                                          |
+| Recent Activity rows         | Inert `<div>`s (data itself was already the real ledger) | Buttons opening Wallet, where the full ledger lives. There is no per-transaction detail screen to route to, so all rows go to the one place that can show more.                                  |
+
+**Marked "SOON" rather than invented** — Quick Actions `Utilities`, `Health`, `More` have no
+screen and no endpoint. They are dimmed, `disabled`, and carry a SOON badge (absolutely
+positioned so the 4×2 grid does not shift). No destination was invented for them; they need a
+founder decision on scope before anything is built.
+
+**Removed — no contract to build against:** the mic and QR-scanner buttons that flanked the
+search bar. Both were `<button>`s with no handler, and there is no voice-search or QR endpoint.
+Recorded here as a gap; they return when there is a contract, not before.
+
+**Also in this pass (founder request, same session):**
+
+- The full-bleed wallet balance card was moved off home. The Wallet screen already owns the
+  balance, income, spend and the Send / Receive / Top Up / Pay actions, so nothing is lost.
+- The Marketplace · Ride · Wallet service switcher was removed: its `svcTab` state was written
+  and never read anywhere in the file, so the tabs only moved a highlight while the page below
+  never changed. Quick Actions and the bottom navigation are the real routes.
+- Merchant header: the red/fire colouring was dissolved to brand green (`G0`/`G2`/`G3`) on the
+  live pulse dot, the order-card strip, the dashboard banner and the New Order badge. `C_ERR`
+  is now used only where something is genuinely wrong — rejected, suspended, action-required,
+  errors.
+
+**Browse-mode section order is unchanged from the Figma.** Search results replace the browse
+sections rather than being inserted among them, so the default screen — the one compared
+against the design — does not move.
+
+**Verification:** super-app builds clean; a Playwright pass over the built bundle confirms the
+search input is real and editable, typing reaches smart-search, merchant and product results
+render and navigate, a category chip fills the box and returns its own results, clearing
+restores the browse view, the three unbuilt tiles are marked SOON while the built ones stay
+live, Recent Activity shows the real ledger, and its "See all" reaches the Wallet.

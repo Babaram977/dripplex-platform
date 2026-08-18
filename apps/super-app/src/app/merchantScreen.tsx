@@ -204,7 +204,8 @@ function MxChip({ label, color, bg }: { label: string; color: string; bg?: strin
 
 function OrderStatusChip({ status }: { status: MxStatus | string }) {
   const map: Record<string, [string, string]> = {
-    new: [C_ERR, 'New Order'],
+    // Green: an incoming order is work arriving, not an error.
+    new: [G3, 'New Order'],
     preparing: [C_WARN, 'Preparing'],
     ready: [G3, 'Ready'],
     completed: [C_OK, 'Completed'],
@@ -609,7 +610,7 @@ function MxSidebar({
               {badge && (
                 <span
                   style={{
-                    background: C_ERR,
+                    background: G2,
                     color: WHITE,
                     borderRadius: 99,
                     fontSize: 10,
@@ -780,15 +781,16 @@ function MxHeader({
                 position: 'absolute',
                 inset: 0,
                 borderRadius: '50%',
-                background: C_ERR,
+                background: G3,
                 opacity: 0.7,
               }}
             />
-            <div
-              style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: C_ERR }}
-            />
+            <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: G3 }} />
           </div>
-          <span style={{ fontFamily: IT, fontSize: 12, color: C_ERR, fontWeight: 600 }}>
+          {/* A new order is good news, not a fault. This pulsed red — the same
+              colour the portal uses for rejected, suspended and action-required
+              — so a busy shop looked like a shop in trouble. */}
+          <span style={{ fontFamily: IT, fontSize: 12, color: G3, fontWeight: 600 }}>
             {orderBadge} new order{orderBadge > 1 ? 's' : ''}
           </span>
         </div>
@@ -995,8 +997,8 @@ function DashboardPage({
             gap: 12,
             padding: '12px 16px',
             borderRadius: 10,
-            background: 'rgba(239,68,68,.07)',
-            border: '1.5px solid rgba(239,68,68,.3)',
+            background: 'rgba(43,172,82,.07)',
+            border: '1.5px solid rgba(43,172,82,.3)',
             marginBottom: 18,
             cursor: 'pointer',
           }}
@@ -1008,13 +1010,11 @@ function DashboardPage({
                 position: 'absolute',
                 inset: 0,
                 borderRadius: '50%',
-                background: C_ERR,
+                background: G3,
                 opacity: 0.7,
               }}
             />
-            <div
-              style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: C_ERR }}
-            />
+            <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: G3 }} />
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontFamily: PP, fontSize: 13, fontWeight: 700, color: WHITE }}>
@@ -1024,7 +1024,7 @@ function DashboardPage({
               Tap to review and accept
             </div>
           </div>
-          <span style={{ fontFamily: IT, fontSize: 12, color: C_ERR }}>View →</span>
+          <span style={{ fontFamily: IT, fontSize: 12, color: G3 }}>View →</span>
         </div>
       )}
 
@@ -1417,7 +1417,7 @@ function OrdersPage({ onDetail }: { onDetail: (id: string) => void }) {
             return (
               <MxCard key={o.id} style={{ padding: 0, overflow: 'hidden' }}>
                 {mxStatus === 'new' && (
-                  <div style={{ height: 3, background: `linear-gradient(90deg,${G0},${C_ERR})` }} />
+                  <div style={{ height: 3, background: `linear-gradient(90deg,${G0},${G3})` }} />
                 )}
                 <div
                   style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14 }}

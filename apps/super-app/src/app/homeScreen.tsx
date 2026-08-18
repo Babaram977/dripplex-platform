@@ -52,15 +52,21 @@ const CATS = [
   { icon: '🔧', label: 'Hardware' },
 ];
 
+/**
+ * `ready: false` means the destination does not exist yet. Those tiles are
+ * dimmed and marked "Soon" rather than left looking tappable — a tile that
+ * swallows a tap silently is worse than one that says it is not built. No
+ * screen is invented to fill them; the gap is recorded in the diff register.
+ */
 const QUICK = [
-  { icon: '🛍', label: 'Marketplace', color: '#2BAC52' },
-  { icon: '🚖', label: 'Ride', color: '#3B82F6' },
-  { icon: '💳', label: 'Wallet', color: '#8B5CF6' },
-  { icon: '📦', label: 'Orders', color: '#F59E0B' },
-  { icon: '⚡', label: 'Utilities', color: '#06B6D4' },
-  { icon: '🍔', label: 'Food', color: '#F97316' },
-  { icon: '🏥', label: 'Health', color: '#10B981' },
-  { icon: '⋯', label: 'More', color: '#6B7280' },
+  { icon: '🛍', label: 'Marketplace', color: '#2BAC52', ready: true },
+  { icon: '🚖', label: 'Ride', color: '#3B82F6', ready: true },
+  { icon: '💳', label: 'Wallet', color: '#8B5CF6', ready: true },
+  { icon: '📦', label: 'Orders', color: '#F59E0B', ready: true },
+  { icon: '⚡', label: 'Utilities', color: '#06B6D4', ready: false },
+  { icon: '🍔', label: 'Food', color: '#F97316', ready: true },
+  { icon: '🏥', label: 'Health', color: '#10B981', ready: false },
+  { icon: '⋯', label: 'More', color: '#6B7280', ready: false },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -151,11 +157,17 @@ function Header({
   name,
   onNotif,
   onProfile,
+  query,
+  onQuery,
+  onSubmit,
 }: {
   greeting: string;
   name: string;
   onNotif: () => void;
   onProfile: () => void;
+  query: string;
+  onQuery: (v: string) => void;
+  onSubmit: () => void;
 }) {
   return (
     <div
@@ -243,7 +255,14 @@ function Header({
         </div>
       </div>
 
-      {/* Search */}
+      {/* Search — a real <input>, not the <p> that used to sit here. Typing
+          searches merchants and products against /merchants/smart-search and
+          /products/smart-search; Enter searches immediately.
+
+          The mic and QR buttons that flanked it are gone. Both were <button>s
+          with no handler, and there is no voice-search or QR endpoint to give
+          them — inventing one would be guessing at a contract. Recorded as a
+          gap rather than faked. */}
       <div className="relative z-10 mx-5 mt-4">
         <div
           className="flex items-center gap-3 rounded-2xl px-4"
@@ -257,328 +276,74 @@ function Header({
             className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-xl"
             style={{ background: `linear-gradient(135deg,${G0},${G2})` }}
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="white">
-              <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z" />
-            </svg>
-          </div>
-          <p
-            className="flex-1 text-[12.5px]"
-            style={{ color: 'rgba(255,255,255,.32)', fontFamily: "'Inter',sans-serif" }}
-          >
-            Search products, rides, pharmacies…
-          </p>
-          <button
-            className="flex h-8 w-8 items-center justify-center rounded-xl"
-            style={{ background: 'rgba(255,255,255,.06)' }}
-          >
             <svg
               width="13"
               height="13"
               viewBox="0 0 24 24"
               fill="none"
-              stroke="rgba(255,255,255,.55)"
-              strokeWidth="2"
+              stroke="white"
+              strokeWidth="2.4"
               strokeLinecap="round"
             >
-              <rect x="9" y="2" width="6" height="11" rx="3" />
-              <path d="M5 10a7 7 0 0014 0M12 19v3M9 22h6" />
+              <circle cx="11" cy="11" r="7" />
+              <path d="M20 20l-3.6-3.6" />
             </svg>
-          </button>
-          <button
-            className="flex h-8 w-8 items-center justify-center rounded-xl"
-            style={{ background: 'rgba(255,255,255,.06)' }}
-          >
-            <svg
-              width="13"
-              height="13"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="rgba(255,255,255,.55)"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <rect x="3" y="3" width="7" height="7" rx="1" />
-              <rect x="14" y="3" width="7" height="7" rx="1" />
-              <rect x="3" y="14" width="7" height="7" rx="1" />
-              <path d="M14 14h2v2h-2zM18 14h3M14 18v3M18 18h3v3h-3z" />
-            </svg>
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SERVICE SWITCHER
-// ─────────────────────────────────────────────────────────────────────────────
-type SvcKey = 'market' | 'ride' | 'wallet';
-const SVC_TABS: { key: SvcKey; icon: string; label: string; dot: string }[] = [
-  { key: 'market', icon: '🛍', label: 'Marketplace', dot: '#2BAC52' },
-  { key: 'ride', icon: '🚖', label: 'Ride', dot: '#3B82F6' },
-  { key: 'wallet', icon: '💳', label: 'Wallet', dot: '#8B5CF6' },
-];
-
-function ServiceSwitcher({ active, onChange }: { active: SvcKey; onChange: (k: SvcKey) => void }) {
-  return (
-    <div className="mx-5 mb-4 mt-4">
-      <div
-        className="flex gap-1 rounded-2xl p-1"
-        style={{ background: 'rgba(255,255,255,.05)', border: '1.5px solid rgba(255,255,255,.07)' }}
-      >
-        {SVC_TABS.map((t) => {
-          const on = active === t.key;
-          return (
-            <button
-              key={t.key}
-              onClick={() => onChange(t.key)}
-              className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl transition-all active:scale-95"
-              style={{
-                background: on ? 'rgba(255,255,255,.10)' : 'transparent',
-                border: on ? '1px solid rgba(255,255,255,.12)' : '1px solid transparent',
-                boxShadow: on ? '0 2px 12px rgba(0,0,0,.28)' : 'none',
-              }}
-            >
-              <span style={{ fontSize: 15 }}>{t.icon}</span>
-              <p
-                className="text-[11.5px] font-semibold"
-                style={{
-                  fontFamily: "'Inter',sans-serif",
-                  color: on ? '#FFF' : 'rgba(255,255,255,.35)',
-                  transition: 'color .2s ease',
-                }}
-              >
-                {t.label}
-              </p>
-              {on && (
-                <div
-                  className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
-                  style={{ background: t.dot }}
-                />
-              )}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// BALANCE CARD — conditional on wallet activation
-// ─────────────────────────────────────────────────────────────────────────────
-function ActivateWalletCard({ onActivate }: { onActivate: () => void }) {
-  return (
-    <div
-      className="relative mx-5 mb-5 overflow-hidden rounded-3xl p-5"
-      style={{
-        background: 'linear-gradient(135deg,#0D1B2E 0%,#112238 100%)',
-        border: '1.5px dashed rgba(43,172,82,.28)',
-        boxShadow: '0 4px 24px rgba(0,0,0,.3)',
-      }}
-    >
-      <div
-        className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full"
-        style={{ background: 'radial-gradient(circle,rgba(43,172,82,.1) 0%,transparent 70%)' }}
-      />
-      <div className="relative z-10">
-        <div className="mb-4 flex items-center gap-4">
-          <div
-            className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl"
-            style={{ background: 'rgba(43,172,82,.10)', border: '1.5px solid rgba(43,172,82,.22)' }}
-          >
-            <span style={{ fontSize: 28 }}>💳</span>
           </div>
-          <div>
-            <p
-              className="mb-0.5 text-[15px] font-bold"
-              style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
-            >
-              Activate your Wallet
-            </p>
-            <p
-              className="text-[11px]"
-              style={{ color: 'rgba(255,255,255,.45)', fontFamily: "'Inter',sans-serif" }}
-            >
-              Send, receive and pay — all in one place.
-            </p>
-          </div>
-        </div>
-        <button
-          onClick={onActivate}
-          className="active:scale-97 flex h-11 w-full items-center justify-center gap-2 rounded-2xl text-[13px] font-semibold transition-all"
-          style={{
-            background: 'linear-gradient(135deg,#176B30,#2BAC52)',
-            color: '#FFF',
-            fontFamily: "'Poppins',sans-serif",
-            boxShadow: '0 6px 20px rgba(43,172,82,.28)',
-          }}
-        >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="white"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-          >
-            <path d="M12 5v14M5 12l7-7 7 7" />
-          </svg>
-          Activate Wallet
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function BalanceCard({
-  activated,
-  onActivate,
-  wallet,
-  flows,
-  onWalletAction,
-}: {
-  activated: boolean;
-  onActivate: () => void;
-  wallet?: WalletDto | null;
-  flows?: { income: number; spent: number } | null;
-  onWalletAction?: (a: 'send' | 'receive' | 'topup' | 'pay') => void;
-}) {
-  const [show, setShow] = useState(true);
-  if (!activated) return <ActivateWalletCard onActivate={onActivate} />;
-
-  // Compact naira (₦320K / ₦4,200). Savings + USD have no backend → "—".
-  const compact = (n: number) =>
-    n >= 1000 ? `₦${(n / 1000).toFixed(n >= 100000 ? 0 : 1)}K` : `₦${Math.round(n)}`;
-  const incomeLabel = flows ? `+${compact(flows.income)}` : '—';
-  const spentLabel = flows ? `-${compact(flows.spent)}` : '—';
-  return (
-    <div
-      className="relative mx-5 mb-5 overflow-hidden rounded-3xl p-5"
-      style={{
-        background: 'linear-gradient(135deg,#0E3320 0%,#155C31 45%,#1E8A49 80%,#2BAC52 100%)',
-        boxShadow: '0 16px 48px rgba(43,172,82,.28), 0 4px 16px rgba(0,0,0,.4)',
-      }}
-    >
-      <div
-        className="pointer-events-none absolute inset-0"
-        style={{
-          backgroundImage:
-            'linear-gradient(rgba(255,255,255,.028) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.028) 1px,transparent 1px)',
-          backgroundSize: '24px 24px',
-        }}
-      />
-      <div
-        className="pointer-events-none absolute -right-12 -top-12 h-40 w-40 rounded-full"
-        style={{ background: 'radial-gradient(circle,rgba(71,207,114,.22) 0%,transparent 65%)' }}
-      />
-      <div className="relative z-10">
-        <div className="mb-1 flex items-center justify-between">
-          <p
-            className="text-[10px] font-semibold uppercase tracking-widest"
-            style={{ color: 'rgba(255,255,255,.55)', fontFamily: "'Inter',sans-serif" }}
-          >
-            Total Balance
-          </p>
-          <button
-            onClick={() => setShow((v) => !v)}
-            className="flex h-7 w-7 items-center justify-center rounded-lg transition-all active:scale-90"
-            style={{ background: 'rgba(255,255,255,.12)' }}
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="rgba(255,255,255,.8)"
-              strokeWidth="2"
-              strokeLinecap="round"
-            >
-              {show ? (
-                <>
-                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                  <circle cx="12" cy="12" r="3" />
-                </>
-              ) : (
-                <>
-                  <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19M1 1l22 22" />
-                </>
-              )}
-            </svg>
-          </button>
-        </div>
-        <p
-          className="mb-0.5 text-[36px] font-bold leading-tight tracking-tight"
-          style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
-        >
-          {show ? (wallet ? `₦${wallet.availableBalance.toLocaleString()}` : '₦—') : '₦ •••,•••'}
-          <span className="text-[20px]">{show && wallet ? '.00' : ''}</span>
-        </p>
-        <p
-          className="mb-5 text-[11px]"
-          style={{ color: 'rgba(255,255,255,.45)', fontFamily: "'Inter',sans-serif" }}
-        >
-          {show ? '≈ — USD' : 'Hidden'}
-        </p>
-        <div className="mb-4 flex gap-2.5">
-          {[
-            ['↑ Income', incomeLabel, 'rgba(255,255,255,.12)'],
-            ['↓ Spent', spentLabel, 'rgba(0,0,0,.15)'],
-            ['⊙ Savings', '—', 'rgba(255,255,255,.09)'],
-          ].map(([l, v, bg]) => (
-            <div
-              key={l}
-              className="flex-1 rounded-xl px-2.5 py-2"
-              style={{ background: bg as string }}
-            >
-              <p
-                className="mb-0.5 text-[8.5px]"
-                style={{ color: 'rgba(255,255,255,.5)', fontFamily: "'Inter',sans-serif" }}
-              >
-                {l}
-              </p>
-              <p
-                className="text-[13px] font-bold"
-                style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
-              >
-                {show ? v : '••••'}
-              </p>
-            </div>
-          ))}
-        </div>
-        <div className="flex gap-2">
-          {(
-            [
-              ['↑', 'Send', 'send'],
-              ['↓', 'Receive', 'receive'],
-              ['⊕', 'Top Up', 'topup'],
-              ['≡', 'Pay', 'pay'],
-            ] as const
-          ).map(([ico, lbl, action]) => (
+          <input
+            value={query}
+            onChange={(e) => onQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') onSubmit();
+            }}
+            placeholder="Search products, rides, pharmacies…"
+            aria-label="Search DrippleX"
+            className="flex-1 bg-transparent text-[12.5px] outline-none"
+            style={{
+              color: '#FFF',
+              fontFamily: "'Inter',sans-serif",
+              minWidth: 0,
+            }}
+          />
+          {query.length > 0 && (
             <button
-              key={lbl}
-              onClick={() => onWalletAction?.(action)}
-              className="flex flex-1 flex-col items-center gap-1 rounded-2xl py-2 transition-all active:scale-90"
-              style={{ background: 'rgba(255,255,255,.10)' }}
+              onClick={() => onQuery('')}
+              aria-label="Clear search"
+              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl transition-all active:scale-90"
+              style={{ background: 'rgba(255,255,255,.06)' }}
             >
-              <span className="text-[15px] font-bold" style={{ color: '#FFF' }}>
-                {ico}
-              </span>
-              <p
-                className="text-[9px] font-semibold"
-                style={{ color: 'rgba(255,255,255,.65)', fontFamily: "'Inter',sans-serif" }}
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="rgba(255,255,255,.6)"
+                strokeWidth="2.2"
+                strokeLinecap="round"
               >
-                {lbl}
-              </p>
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
             </button>
-          ))}
+          )}
         </div>
       </div>
     </div>
   );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REMOVED (founder, 2026-08-18)
+//
+// ServiceSwitcher / SVC_TABS / SvcKey — the Marketplace · Ride · Wallet tabs.
+// `svcTab` was written and never read, so the tabs only moved a highlight and
+// the page below never changed.
+//
+// BalanceCard / ActivateWalletCard — the full-bleed balance card. It duplicated
+// the Wallet screen, which owns the balance, income, spend and the
+// Send / Receive / Top Up / Pay actions. Home is simpler without it.
+//
+// Deleted rather than left unreachable: dead components are what make the next
+// change harder to reason about.
+// ─────────────────────────────────────────────────────────────────────────────
 
 // ─────────────────────────────────────────────────────────────────────────────
 // QUICK ACTIONS
@@ -590,18 +355,37 @@ function QuickActions({ onSelect }: { onSelect?: (label: string) => void }) {
         {QUICK.map((q) => (
           <button
             key={q.label}
-            onClick={() => onSelect?.(q.label)}
+            onClick={() => q.ready && onSelect?.(q.label)}
+            disabled={!q.ready}
+            aria-label={q.ready ? q.label : `${q.label} — coming soon`}
             className="flex flex-col items-center gap-1.5 transition-all active:scale-90"
+            style={{ opacity: q.ready ? 1 : 0.42, cursor: q.ready ? 'pointer' : 'default' }}
           >
             <div
-              className="flex h-[56px] w-[56px] items-center justify-center rounded-2xl text-[24px]"
+              className="relative flex h-[56px] w-[56px] items-center justify-center rounded-2xl text-[24px]"
               style={{
                 background: q.color + '18',
                 border: `1.5px solid ${q.color}28`,
-                boxShadow: `0 4px 16px ${q.color}12`,
+                boxShadow: q.ready ? `0 4px 16px ${q.color}12` : 'none',
               }}
             >
               {q.icon}
+              {!q.ready && (
+                // Absolutely positioned so the unbuilt tiles stay the same size
+                // as the built ones and the 4×2 grid does not shift.
+                <span
+                  className="absolute -top-1 right-[-6px] rounded-full px-1.5 py-[1px] text-[7.5px] font-bold"
+                  style={{
+                    background: 'rgba(255,255,255,.10)',
+                    border: '1px solid rgba(255,255,255,.14)',
+                    color: 'rgba(255,255,255,.62)',
+                    fontFamily: "'Inter',sans-serif",
+                    letterSpacing: '.04em',
+                  }}
+                >
+                  SOON
+                </span>
+              )}
             </div>
             <p
               className="text-center text-[10px] font-medium"
@@ -991,8 +775,190 @@ function LiveOffers() {
   );
 }
 
-function Categories() {
-  const [active, setActive] = useState('Supermarkets');
+/**
+ * Results for whatever is in the search bar. Merchants and products come back
+ * from the two smart-search endpoints; tapping either opens the merchant's
+ * store, which is the only destination that exists for both today.
+ *
+ * A category chip writes its label into the same search box, so the chips and
+ * the bar are one mechanism rather than two — that is what makes both of them
+ * do something.
+ */
+function SearchResults({
+  term,
+  busy,
+  error,
+  merchants,
+  products,
+  onStore,
+  onRetry,
+}: {
+  term: string;
+  busy: boolean;
+  error: string;
+  merchants: MerchantSummaryDto[];
+  products: ProductSummaryDto[];
+  onStore?: (id: string) => void;
+  onRetry: () => void;
+}) {
+  const total = merchants.length + products.length;
+  return (
+    <div className="mb-5">
+      <Row title={`Results for “${term}”`} />
+      <div className="px-5">
+        {busy ? (
+          <div className="flex flex-col gap-2">
+            {[1, 2, 3].map((i) => (
+              <Bone key={i} w="100%" h={56} r={18} />
+            ))}
+          </div>
+        ) : error ? (
+          <div
+            className="rounded-2xl px-4 py-4"
+            style={{
+              background: 'rgba(239,68,68,.07)',
+              border: '1px solid rgba(239,68,68,.18)',
+            }}
+          >
+            <p
+              className="mb-2 text-[12.5px]"
+              style={{ color: 'rgba(255,255,255,.55)', fontFamily: "'Inter',sans-serif" }}
+            >
+              {error}
+            </p>
+            <button
+              onClick={onRetry}
+              className="rounded-lg px-3.5 py-1.5 text-[12px] font-semibold transition-all active:scale-95"
+              style={{
+                background: 'rgba(43,172,82,.1)',
+                border: '1px solid rgba(43,172,82,.25)',
+                color: G3,
+                fontFamily: "'Inter',sans-serif",
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        ) : total === 0 ? (
+          <div
+            className="rounded-3xl px-4 py-8 text-center"
+            style={{ background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
+          >
+            <p style={{ fontSize: 26 }}>🔍</p>
+            <p
+              className="mt-2 text-[13px] font-semibold"
+              style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
+            >
+              Nothing matched “{term}”
+            </p>
+            <p
+              className="mt-1 text-[11px]"
+              style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
+            >
+              Try a shorter word, or a different category.
+            </p>
+          </div>
+        ) : (
+          <div
+            className="overflow-hidden rounded-3xl"
+            style={{ background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
+          >
+            {merchants.map((m, i) => (
+              <button
+                key={`m-${m.id}`}
+                onClick={() => onStore?.(m.id)}
+                className="flex w-full items-center gap-3.5 px-4 py-3.5 text-left transition-all active:opacity-70"
+                style={{
+                  borderBottom:
+                    i < merchants.length - 1 || products.length > 0
+                      ? `1px solid ${BORDER}`
+                      : 'none',
+                }}
+              >
+                <div
+                  className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl text-[18px]"
+                  style={{ background: 'rgba(255,255,255,.06)' }}
+                >
+                  <ImageWithFallback
+                    src={m.logoUrl ?? undefined}
+                    alt={m.businessName}
+                    className="h-full w-full object-cover"
+                    fallbackEmoji="🏪"
+                  />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p
+                    className="truncate text-[13px] font-bold"
+                    style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
+                  >
+                    {m.businessName}
+                  </p>
+                  <p
+                    className="mt-0.5 truncate text-[10.5px]"
+                    style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
+                  >
+                    Store · {m.businessType}
+                    {m.distanceKm != null ? ` · ${m.distanceKm.toFixed(1)} km` : ''}
+                  </p>
+                </div>
+                <span className="flex-shrink-0 text-[13px]" style={{ color: G3 }}>
+                  →
+                </span>
+              </button>
+            ))}
+            {products.map((p, i) => (
+              <button
+                key={`p-${p.id}`}
+                onClick={() => onStore?.(p.merchantId)}
+                className="flex w-full items-center gap-3.5 px-4 py-3.5 text-left transition-all active:opacity-70"
+                style={{
+                  borderBottom: i < products.length - 1 ? `1px solid ${BORDER}` : 'none',
+                }}
+              >
+                <div
+                  className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl text-[18px]"
+                  style={{ background: 'rgba(255,255,255,.06)' }}
+                >
+                  {p.primaryImageUrl ? (
+                    <ImageWithFallback
+                      src={p.primaryImageUrl}
+                      alt={p.name}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    '🛍️'
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p
+                    className="truncate text-[13px] font-bold"
+                    style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
+                  >
+                    {p.name}
+                  </p>
+                  <p
+                    className="mt-0.5 text-[10.5px]"
+                    style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
+                  >
+                    Product
+                  </p>
+                </div>
+                <span
+                  className="flex-shrink-0 text-[12px] font-bold"
+                  style={{ color: G3, fontFamily: "'Poppins',sans-serif" }}
+                >
+                  ₦{p.basePrice.toLocaleString()}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Categories({ active, onPick }: { active: string; onPick: (label: string) => void }) {
   return (
     <div className="mb-5">
       <Row title="Categories" />
@@ -1002,7 +968,7 @@ function Categories() {
           return (
             <button
               key={c.label}
-              onClick={() => setActive(c.label)}
+              onClick={() => onPick(on ? '' : c.label)}
               className="flex flex-shrink-0 flex-col items-center gap-1.5 transition-all active:scale-90"
             >
               <div
@@ -1050,15 +1016,17 @@ function Merchants({
   loaded,
   liveMerchants,
   onStore,
+  onAll,
 }: {
   loaded: boolean;
   liveMerchants?: MerchantSummaryDto[];
   onStore?: (id: string) => void;
+  onAll?: () => void;
 }) {
   const showLive = liveMerchants && liveMerchants.length > 0;
   return (
     <div className="mb-5">
-      <Row title="Nearby Merchants" onAll={() => {}} />
+      <Row title="Nearby Merchants" onAll={onAll} />
       <div className="flex gap-3 overflow-x-auto px-5" style={{ scrollbarWidth: 'none' }}>
         {!loaded ? (
           [1, 2, 3].map((i) => <Bone key={i} w={155} h={188} />)
@@ -1157,15 +1125,17 @@ function Recs({
   loaded,
   products,
   onProduct,
+  onAll,
 }: {
   loaded: boolean;
   products: ProductSummaryDto[];
   onProduct?: (productId: string, merchantId: string) => void;
+  onAll?: () => void;
 }) {
   if (loaded && products.length === 0) return null;
   return (
     <div className="mb-5">
-      <Row title="Recommended for You" onAll={() => {}} />
+      <Row title="Recommended for You" onAll={onAll} />
       <div className="flex gap-3 overflow-x-auto px-5" style={{ scrollbarWidth: 'none' }}>
         {!loaded
           ? [1, 2, 3, 4].map((i) => <Bone key={i} w={130} h={148} />)
@@ -1226,11 +1196,25 @@ function Recs({
 // ─────────────────────────────────────────────────────────────────────────────
 // RECENT ACTIVITY
 // ─────────────────────────────────────────────────────────────────────────────
-function ActivityList({ loaded, txns }: { loaded: boolean; txns: WalletLedgerEntryDto[] }) {
+/**
+ * Real wallet ledger — never hardcoded rows. Both "See all" and the rows
+ * themselves open the Wallet screen, which is where the full ledger lives;
+ * there is no per-transaction detail screen to send them to, so they all go to
+ * the one place that can actually show more.
+ */
+function ActivityList({
+  loaded,
+  txns,
+  onAll,
+}: {
+  loaded: boolean;
+  txns: WalletLedgerEntryDto[];
+  onAll?: () => void;
+}) {
   const recent = txns.slice(0, 5);
   return (
     <div className="mb-4 px-5">
-      <Row title="Recent Activity" onAll={() => {}} />
+      <Row title="Recent Activity" onAll={onAll} />
       {!loaded ? (
         <div className="flex flex-col gap-2">
           {[1, 2, 3].map((i) => (
@@ -1265,9 +1249,11 @@ function ActivityList({ loaded, txns }: { loaded: boolean; txns: WalletLedgerEnt
             const credit = t.direction === 'CREDIT';
             const label = t.description ?? t.type.charAt(0) + t.type.slice(1).toLowerCase();
             return (
-              <div
+              <button
                 key={t.id}
-                className="flex items-center gap-3.5 px-4 py-3.5"
+                onClick={onAll}
+                disabled={!onAll}
+                className="flex w-full items-center gap-3.5 px-4 py-3.5 text-left transition-all active:opacity-70"
                 style={{ borderBottom: i < recent.length - 1 ? `1px solid ${BORDER}` : 'none' }}
               >
                 <div
@@ -1296,7 +1282,7 @@ function ActivityList({ loaded, txns }: { loaded: boolean; txns: WalletLedgerEnt
                 >
                   {credit ? '+' : '-'}₦{t.amount.toLocaleString()}
                 </p>
-              </div>
+              </button>
             );
           })}
         </div>
@@ -1528,8 +1514,6 @@ export function HomeScreen({
   onBecomePartner?: () => void;
 }) {
   const [navTab, setNavTab] = useState<NavTab>('home');
-  const [svcTab, setSvcTab] = useState<SvcKey>('market');
-  const [walletActivated, setWalletActivated] = useState(true);
   const [showAI, setShowAI] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
@@ -1543,10 +1527,67 @@ export function HomeScreen({
   // Income / Spent are summed from real wallet transactions (JOB 6).
   const [flows, setFlows] = useState<{ income: number; spent: number } | null>(null);
 
+  // Search: `query` is what is in the box, `term` is what has actually been
+  // searched for. They differ for the 350ms it takes typing to settle, which is
+  // what stops every keystroke becoming a request.
+  const [query, setQuery] = useState('');
+  const [term, setTerm] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState('');
+  const [foundMerchants, setFoundMerchants] = useState<MerchantSummaryDto[]>([]);
+  const [foundProducts, setFoundProducts] = useState<ProductSummaryDto[]>([]);
+  const [searchNonce, setSearchNonce] = useState(0);
+
   const [greeting] = useState(() => {
     const h = new Date().getHours();
     return h < 12 ? 'Good Morning' : h < 17 ? 'Good Afternoon' : 'Good Evening';
   });
+
+  // Debounce the box into the committed term.
+  useEffect(() => {
+    const q = query.trim();
+    const t = setTimeout(() => setTerm(q), 350);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  // Run the search whenever the committed term changes. `cancelled` keeps a
+  // slow earlier response from overwriting a faster later one.
+  useEffect(() => {
+    if (!term) {
+      setFoundMerchants([]);
+      setFoundProducts([]);
+      setSearchError('');
+      setSearching(false);
+      return;
+    }
+    let cancelled = false;
+    setSearching(true);
+    setSearchError('');
+    Promise.allSettled([
+      api.marketplace.searchMerchants(term, { limit: 8 }),
+      api.marketplace.searchProducts(term, { limit: 12 }),
+    ]).then(([mRes, pRes]) => {
+      if (cancelled) return;
+      const list = <T,>(v: unknown): T[] => {
+        const raw = v as { data?: T[]; items?: T[] } | T[];
+        return Array.isArray(raw) ? raw : (raw?.data ?? raw?.items ?? []);
+      };
+      const merchants = mRes.status === 'fulfilled' ? list<MerchantSummaryDto>(mRes.value) : [];
+      const products = pRes.status === 'fulfilled' ? list<ProductSummaryDto>(pRes.value) : [];
+      setFoundMerchants(merchants);
+      setFoundProducts(products);
+      // Only an error if *both* halves failed — one working half is a result.
+      if (mRes.status === 'rejected' && pRes.status === 'rejected') {
+        setSearchError(
+          (mRes.reason as { message?: string })?.message ?? 'Search is unavailable right now.',
+        );
+      }
+      setSearching(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [term, searchNonce]);
 
   useEffect(() => {
     Promise.allSettled([
@@ -1584,6 +1625,11 @@ export function HomeScreen({
     });
   }, []);
 
+  // A category chip is lit only when the search box holds exactly its label —
+  // so typing over it clears the highlight rather than leaving a chip claiming
+  // to filter something it no longer filters.
+  const activeCategory = CATS.some((c) => c.label === query) ? query : '';
+
   const handleNav = (t: NavTab) => {
     setNavTab(t);
     if (t === 'profile') onAccount();
@@ -1608,7 +1654,8 @@ export function HomeScreen({
         onOrders?.();
         break;
       default:
-        // Utilities / Health / More are not built yet — documented gap, no destination.
+        // Utilities / Health / More have no screen yet. They are marked `ready:
+        // false` above so they never reach here — this stays as the backstop.
         break;
     }
   };
@@ -1627,6 +1674,9 @@ export function HomeScreen({
         })()}
         onNotif={onNotifications}
         onProfile={onAccount}
+        query={query}
+        onQuery={setQuery}
+        onSubmit={() => setTerm(query.trim())}
       />
 
       {/* Scrollable body */}
@@ -1638,16 +1688,15 @@ export function HomeScreen({
         }}
       >
         {/* Service switcher — first thing below search */}
-        <ServiceSwitcher active={svcTab} onChange={setSvcTab} />
+        {/* Marketplace / Ride / Wallet switcher removed (founder, 2026-08-18):
+            `svcTab` was written and never read anywhere in this file, so the
+            three tabs only moved a highlight — the page below never changed.
+            Quick Actions and the bottom navigation are the real routes. */}
 
-        {/* Wallet balance card (or activate CTA) */}
-        <BalanceCard
-          activated={walletActivated}
-          onActivate={() => setWalletActivated(true)}
-          wallet={wallet}
-          flows={flows}
-          onWalletAction={onWalletAction}
-        />
+        {/* The full-bleed balance card lived here, duplicating the Wallet
+            screen's own balance. Moved off home (founder, 2026-08-18) to make
+            this page simpler; Wallet still shows the balance, income, spend
+            and the Send / Receive / Top Up / Pay actions. */}
 
         {/* Quick actions 4×2 grid */}
         <div className="mb-1">
@@ -1655,18 +1704,46 @@ export function HomeScreen({
           <QuickActions onSelect={handleQuickAction} />
         </div>
 
-        {onTrackOrder && <LiveOrderCard onTrack={onTrackOrder} />}
-        <LiveOffers />
-        <AICard onAsk={() => setShowAI(true)} />
-        {onBecomePartner && <PartnerEntryCard onOpen={onBecomePartner} />}
-        <Categories />
-        <Merchants loaded={loaded} liveMerchants={liveMerchants} onStore={onStore} />
-        <Recs
-          loaded={loaded}
-          products={liveProducts}
-          onProduct={(_productId, merchantId) => onStore?.(merchantId)}
-        />
-        <ActivityList loaded={loaded} txns={txns} />
+        {/* Searching swaps the browse sections for results. The browse order is
+            left exactly as the Figma has it, so the default screen — the one
+            that gets compared against the design — does not move. Categories
+            ride along with the results because they are how you change the
+            search; hiding them would strand you inside a result set. */}
+        {term ? (
+          <>
+            <Categories active={activeCategory} onPick={setQuery} />
+            <SearchResults
+              term={term}
+              busy={searching}
+              error={searchError}
+              merchants={foundMerchants}
+              products={foundProducts}
+              onStore={onStore}
+              onRetry={() => setSearchNonce((n) => n + 1)}
+            />
+          </>
+        ) : (
+          <>
+            {onTrackOrder && <LiveOrderCard onTrack={onTrackOrder} />}
+            <LiveOffers />
+            <AICard onAsk={() => setShowAI(true)} />
+            {onBecomePartner && <PartnerEntryCard onOpen={onBecomePartner} />}
+            <Categories active={activeCategory} onPick={setQuery} />
+            <Merchants
+              loaded={loaded}
+              liveMerchants={liveMerchants}
+              onStore={onStore}
+              onAll={onMarketplace}
+            />
+            <Recs
+              loaded={loaded}
+              products={liveProducts}
+              onProduct={(_productId, merchantId) => onStore?.(merchantId)}
+              onAll={onMarketplace}
+            />
+            <ActivityList loaded={loaded} txns={txns} onAll={onWallet} />
+          </>
+        )}
 
         <div style={{ height: 104 }} />
       </div>
