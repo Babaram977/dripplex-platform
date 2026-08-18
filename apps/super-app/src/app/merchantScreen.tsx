@@ -4481,14 +4481,12 @@ function MerchantLoginScreen({
     setLoading(true);
     setError('');
     try {
+      // Every portal login returns tokens and the user unconditionally
+      // (PortalLoginResponse) — there is no challenge branch — so the old
+      // "maybe present" cast only hid the real shape.
       const res = await api.auth.loginMerchant({ email, password });
-      const r = res as {
-        accessToken?: string;
-        refreshToken?: string;
-        user?: Record<string, unknown>;
-      };
-      if (r.accessToken && r.refreshToken) auth.setTokens(r.accessToken, r.refreshToken);
-      if (r.user) auth.setUser(r.user as Parameters<typeof auth.setUser>[0]);
+      auth.setTokens(res.accessToken, res.refreshToken);
+      auth.setUser(res.user);
       onLogin();
     } catch (e: unknown) {
       setError((e as { message?: string }).message ?? 'Login failed. Check your credentials.');

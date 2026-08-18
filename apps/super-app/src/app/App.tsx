@@ -176,6 +176,7 @@ import { ChatScreen } from './chatScreen';
 import { api } from '../lib/api';
 import type {
   DeliveryJobDto,
+  RiderDeliveryJobDto,
   RideOfferDto,
   RideDto,
   UtilityPurchaseDto,
@@ -497,7 +498,9 @@ function AppShell() {
     businessName: '',
     category: '',
   });
-  const [activeRiderJob, setActiveRiderJob] = useState<DeliveryJobDto | null>(null);
+  // The rider's own job list returns RiderDeliveryJobDto — DeliveryJobDto plus
+  // `customerName`, which the job screen needs to title the chat.
+  const [activeRiderJob, setActiveRiderJob] = useState<RiderDeliveryJobDto | null>(null);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [activeMerchantId, setActiveMerchantId] = useState<string | undefined>(undefined);
   const [activeProductId, setActiveProductId] = useState<string | undefined>(undefined);
@@ -573,6 +576,48 @@ function AppShell() {
     historyRef.current = [];
     navigate(to);
   };
+
+  // Hoisted because two routes render it: `home` itself, and `chat` when there
+  // is no conversation to show. That second one had drifted to a prop set
+  // HomeScreen no longer takes — `onSearch`/`onCart` did nothing and the
+  // required `onSecurity` was absent — so the fallback landed on a half-wired
+  // home. One definition, no drift.
+  const homeScreen = (
+    <HomeScreen
+      onAccount={() => go('account')}
+      onSecurity={() => go('security')}
+      onNotifications={() => go('activitydash')}
+      onMarketplace={() => go('marketplace')}
+      onRide={() => go('ridehome')}
+      onDriverApp={() => go('drvsplash')}
+      onStore={(id) => {
+        setActiveMerchantId(id);
+        go('store');
+      }}
+      onWallet={() => go('wallethome')}
+      onUtilities={() => go('utilities')}
+      onOrders={() => go('orderhistory')}
+      onTrackOrder={(id) => {
+        setActiveOrderId(id);
+        go('ordertracking');
+      }}
+      onBecomePartner={() => {
+        setPartnerFrom('home');
+        go('partnerselect');
+      }}
+      onWalletAction={(a) =>
+        go(
+          a === 'send'
+            ? 'wallettransfer'
+            : a === 'topup'
+              ? 'wallettopup'
+              : a === 'pay'
+                ? 'walletpay'
+                : 'wallethome',
+        )
+      }
+    />
+  );
 
   const screens: Record<Screen, React.ReactNode> = {
     splash: <SplashScreen onDone={() => go('welcome')} />,
@@ -773,42 +818,7 @@ function AppShell() {
         onVerifyId={() => go('kyc')}
       />
     ),
-    home: (
-      <HomeScreen
-        onAccount={() => go('account')}
-        onSecurity={() => go('security')}
-        onNotifications={() => go('activitydash')}
-        onMarketplace={() => go('marketplace')}
-        onRide={() => go('ridehome')}
-        onDriverApp={() => go('drvsplash')}
-        onStore={(id) => {
-          setActiveMerchantId(id);
-          go('store');
-        }}
-        onWallet={() => go('wallethome')}
-        onUtilities={() => go('utilities')}
-        onOrders={() => go('orderhistory')}
-        onTrackOrder={(id) => {
-          setActiveOrderId(id);
-          go('ordertracking');
-        }}
-        onBecomePartner={() => {
-          setPartnerFrom('home');
-          go('partnerselect');
-        }}
-        onWalletAction={(a) =>
-          go(
-            a === 'send'
-              ? 'wallettransfer'
-              : a === 'topup'
-                ? 'wallettopup'
-                : a === 'pay'
-                  ? 'walletpay'
-                  : 'wallethome',
-          )
-        }
-      />
-    ),
+    home: homeScreen,
     marketplace: (
       <MarketplaceScreen
         onBack={() => go('home')}
@@ -900,12 +910,7 @@ function AppShell() {
         onBack={() => go(chat.back)}
       />
     ) : (
-      <HomeScreen
-        onSearch={() => go('marketplace')}
-        onCart={() => go('cart')}
-        onAccount={() => go('account')}
-        onNotifications={() => go('activitydash')}
-      />
+      homeScreen
     ),
     orderhistory: (
       <OrderHistoryScreen

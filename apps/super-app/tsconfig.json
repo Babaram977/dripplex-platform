@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "@dripplex/config/typescript/react-library",
+  "compilerOptions": {
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    "types": ["node", "vite/client", "google.maps"],
+    "allowSyntheticDefaultImports": true,
+    "allowImportingTsExtensions": true,
+    "declaration": false,
+    "declarationMap": false,
+
+    // This app is Figma-generated and was never typechecked before. The gate is
+    // set where it catches bugs a driver or customer would hit — a missing
+    // property, a null dereference, a wrong argument — and not where it would
+    // demand a stylistic rewrite of 68k lines of generated JSX. Each relaxation
+    // below is a style rule, never a correctness rule; `strict` stays on.
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    // Same as customer-web: distinguishing "absent" from "explicitly undefined"
+    // is not a distinction generated prop-passing code makes.
+    "exactOptionalPropertyTypes": false,
+    // Requires obj['key'] over obj.key on index signatures. Style only.
+    "noPropertyAccessFromIndexSignature": false,
+    // The one *correctness* rule deferred rather than dropped. It accounts for 97
+    // of the 146 errors this gate first reported, nearly all of them `arr[0]` on
+    // an array literal declared a few lines above. Fixing them means 97
+    // unverifiable edits to screens with no test coverage — more risk than the
+    // out-of-bounds reads it would catch. Turn it back on as its own pass; see
+    // docs/ops/DPX-SUPERAPP-TYPECHECK.md.
+    "noUncheckedIndexedAccess": false
+  },
+  "include": ["src/**/*", "vite.config.ts"],
+  "exclude": ["node_modules", "dist", ".turbo"]
+}

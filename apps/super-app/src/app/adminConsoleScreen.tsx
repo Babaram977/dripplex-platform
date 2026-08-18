@@ -254,10 +254,21 @@ function SectionHeader({ title, action }: { title: string; action?: React.ReactN
   );
 }
 
-function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+function Card({
+  children,
+  style,
+  onClick,
+}: {
+  children: React.ReactNode;
+  style?: React.CSSProperties;
+  // Three queue rows pass an onClick and set `cursor: pointer`. Card silently
+  // dropped it, so those rows looked clickable and selected nothing.
+  onClick?: () => void;
+}) {
   return (
     <div
       className="dx-card"
+      onClick={onClick}
       style={{
         background: NAVY_CARD,
         border: `1px solid ${BORDER}`,
@@ -279,7 +290,63 @@ const WEEKLY_DATA: Record<string, unknown>[] = []; // mock cleared — wired to 
 
 const DRIVER_GROWTH: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
 
-const AUDIT_LOGS: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
+/**
+ * Shapes for the Ops screens that still have no backend feed.
+ *
+ * Each list below stays **empty** — nothing is invented, and the gaps remain
+ * recorded in docs/reference/DPX-OPS-PREVIEW-WIRING-STATUS.md. What changes is
+ * that the row is named instead of `Record<string, unknown>`: the render code
+ * then typechecks, and the type states exactly which fields an endpoint has to
+ * return before the screen can light up. An untyped bag documents nothing and
+ * silently renders `undefined` the day something half-shaped is wired in.
+ */
+interface AuditLogRow {
+  admin: string;
+  action: string;
+  target: string;
+  role: string;
+  ts: string;
+  ip: string;
+}
+
+interface PromoRow {
+  code: string;
+  discount: string;
+  usage: string;
+  expires: string;
+  status: string;
+}
+
+interface GeneratedReportRow {
+  name: string;
+  format: string;
+  size: string;
+  date: string;
+}
+
+interface RoleRow {
+  name: string;
+  members: number;
+  perms: string[];
+}
+
+interface IntegrationRow {
+  name: string;
+  icon: string;
+  desc: string;
+  /** Enabled, as the toggle reads it. */
+  status: boolean;
+}
+
+interface AdminSessionRow {
+  device: string;
+  location: string;
+  time: string;
+  /** The session the operator is looking at it from. */
+  current: boolean;
+}
+
+const AUDIT_LOGS: AuditLogRow[] = []; // mock cleared — no ops audit-log feed yet
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 const NAV_ITEMS: { page: AdminPage; icon: string; label: string }[] = [
@@ -4313,7 +4380,7 @@ function PagePricing() {
     const m = surge ? parseFloat(mult) || 1 : 1;
     return ((b + d * DIST_KM + t * TIME_MIN) * m).toFixed(0);
   };
-  const promos = [] as Record<string, unknown>[]; // no ops-facing promo feed (see wiring-status doc)
+  const promos: PromoRow[] = []; // no ops-facing promo feed (see wiring-status doc)
   const [msg, setMsg] = useState<string | null>(null);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -5389,7 +5456,12 @@ function PageSupport() {
 }
 
 // ─── Page: Analytics ──────────────────────────────────────────────────────────
-const PEAK_HOURS: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
+interface PeakHourRow {
+  hour: string;
+  demand: number;
+}
+
+const PEAK_HOURS: PeakHourRow[] = []; // mock cleared — no demand-series endpoint yet
 
 function PageAnalytics() {
   const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -5558,6 +5630,9 @@ function PageAnalytics() {
                 return (
                   <div
                     key={h}
+                    // `title` is an attribute, not a CSS property — inside style
+                    // it did nothing and the heatmap had no hover readout.
+                    title={`${d} ${h}:00 — ${Math.round(v)}%`}
                     style={{
                       width: 18,
                       height: 18,
@@ -5568,7 +5643,6 @@ function PageAnalytics() {
                           : v < 40
                             ? `rgba(245,158,11,${alpha})`
                             : `rgba(43,172,82,${alpha})`,
-                      title: `${d} ${h}:00 — ${Math.round(v)}%`,
                     }}
                   />
                 );
@@ -5593,7 +5667,7 @@ function PageReports() {
     { icon: '⚠️', label: 'Incident Report', desc: 'Incident frequency, resolution time' },
     { icon: '🎧', label: 'Support Report', desc: 'Ticket volume, CSAT scores' },
   ];
-  const generated = [] as Record<string, unknown>[]; // no report-generation endpoint yet
+  const generated: GeneratedReportRow[] = []; // no report-generation endpoint yet
   const [msg, setMsg] = useState<string | null>(null);
   const notAvailable = () =>
     setMsg(
@@ -5740,8 +5814,8 @@ function PageSettings() {
     sos: true,
     maintenance: false,
   });
-  const integrations = [] as Record<string, unknown>[]; // mock cleared
-  const roles = [] as Record<string, unknown>[]; // mock cleared
+  const integrations: IntegrationRow[] = []; // mock cleared — no integrations endpoint yet
+  const roles: RoleRow[] = []; // mock cleared — no ops role-catalogue endpoint yet
   const notifEvents = [
     ['New trip request', true, true, false],
     ['Driver SOS alert', true, true, true],
@@ -6103,7 +6177,7 @@ function PageProfile() {
   const [phone, setPhone] = useState(u?.phone ?? '');
   const roleLabel =
     u?.roles?.[0]?.replace(/_/g, ' ').replace(/\b\w/g, (ch) => ch.toUpperCase()) ?? 'Operations';
-  const sessions = [] as Record<string, unknown>[]; // mock cleared
+  const sessions: AdminSessionRow[] = []; // mock cleared — no admin-session endpoint yet
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
       {/* Profile card */}

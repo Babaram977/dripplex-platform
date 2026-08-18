@@ -2360,13 +2360,10 @@ export function SignInScreen({
         email: email.trim().toLowerCase(),
         password,
       });
-      const r = res as {
-        accessToken?: string;
-        refreshToken?: string;
-        user?: Record<string, unknown>;
-      };
-      if (r.accessToken && r.refreshToken) auth.setTokens(r.accessToken, r.refreshToken);
-      if (r.user) auth.setUser(r.user as Parameters<typeof auth.setUser>[0]);
+      // PortalLoginResponse always carries both tokens and the user; the old
+      // optional cast was weaker than the real contract.
+      auth.setTokens(res.accessToken, res.refreshToken);
+      auth.setUser(res.user);
       (onSuccess ?? onBack)();
     } catch (e: unknown) {
       setLoginErr((e as { message?: string }).message ?? 'Login failed. Check your credentials.');
