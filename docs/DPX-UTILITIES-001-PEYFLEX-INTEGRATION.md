@@ -1,33 +1,73 @@
 # DPX-UTILITIES-001 — Utilities tab, Peyflex integration
 
-**Status:** Design locked, build **blocked** on the Peyflex API contract.
+**Status:** Design locked. Auth and transport **confirmed**; build still blocked on four
+endpoint groups and — critically — on a single successful response example.
 **Founder decisions:** 2026-08-18.
 
 ---
 
-## 1. Why this document exists rather than code
+## 1. What is confirmed, and what is still missing
 
-The founder supplied two Peyflex references:
+The two Peyflex URLs are **blocked by this environment's network egress policy** — the proxy
+answers `403` to the CONNECT for `client.peyflex.com.ng` and `documenter.getpostman.com` before
+the request leaves the sandbox, so the API cannot be read or called from here. The founder
+pasted an extract of the documentation instead (2026-08-18). Everything in §1.1 comes from that
+extract verbatim; nothing is inferred.
 
-- `https://documenter.getpostman.com/view/17835214/2sB34imLMn`
-- `https://client.peyflex.com.ng/api/user/profile/`
+### 1.1 Confirmed
 
-**Both are blocked by this environment's network egress policy.** The proxy answers `403` to
-the CONNECT for each host before the request leaves the sandbox:
+|                       |                                                                                                                                         |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| **Base URL**          | `https://client.peyflex.com.ng`                                                                                                         |
+| **Auth**              | `Authorization: Token <token>` — a static token generated from the Peyflex user dashboard. Not OAuth, no refresh, no expiry documented. |
+| **Content type**      | `application/json`                                                                                                                      |
+| **Cable TV purchase** | `POST /api/cable/subscribe/` — body `{ identifier, plan, iuc, phone }`; the curl example also carries `amount`                          |
+| **Failure shape**     | HTTP `400` with `{ "status": "FAILED", "message": "Insufficient wallet balance" }`                                                      |
 
-```
-documenter.getpostman.com:443 — gateway answered 403 to CONNECT (policy denial)
-client.peyflex.com.ng:443     — gateway answered 403 to CONNECT (policy denial)
-```
+### 1.2 The most important thing the extract revealed
 
-So the wire contract — paths, auth header, field names, error codes, whether a meter is
-verified in a separate call — cannot be read from here.
+> _"Charges the user's wallet and processes the Cable TV recharge…"_
+>
+> `{ "status": "FAILED", "message": "Insufficient wallet balance" }`
 
-**Nothing about the Peyflex wire format is guessed in this document, and no schema migration
-has been written.** A bill-payment integration invented against an imagined contract is how a
-customer gets charged for an electricity token that never arrives, and a migration shipped
-against the wrong shape is expensive to unwind in production. The design below covers only what
-the founder's own decisions determine; §6 lists precisely what is still needed.
+**Peyflex debits a DrippleX-held Peyflex wallet.** This is a **prefunded float**, not
+pay-as-you-go billing. Three consequences, none of them optional:
+
+1. **A dry float fails every purchase at once.** Not a degraded service — a total outage of all
+   four utilities, presenting to customers as a generic failure.
+2. **Float balance is an operational alarm**, and it belongs in the Ops Console _before_ launch,
+   not after the first outage. The alarm has to fire on a threshold, not on zero.
+3. **It answers Q10** from the previous revision of this document, and it partly answers the
+   pricing question: the discount will appear as the float being debited _less_ than the face
+   value charged to the customer — which is exactly the pair of numbers §2 says must both be
+   recorded.
+
+### 1.3 Not relevant
+
+The extract includes `/api/otp/status/`, `/api/otp/cancel/` and `/api/otp/history/`. These
+belong to Peyflex's **phone-number activation** product (rented numbers for receiving SMS
+codes), not to bill payments. They are not part of this integration and are noted here only so
+nobody wires them up by mistake.
+
+### 1.4 Still blocking
+
+**No successful response body has been seen for any endpoint** — only the `400` failure. Without
+it there is no way to know what a purchase returns: the provider's reference, the electricity
+token, whether the status is terminal or pending. That single gap is enough to stop the build on
+its own, because guessing it is how a pending purchase gets recorded as a failure and the
+customer's money disappears.
+
+**Nothing about the Peyflex wire format is guessed in this document, and no schema migration has
+been written.** §6 lists exactly what is still needed.
+
+### 1.5 ⚠️ Credential exposure
+
+The pasted extract contains what appears to be a live 40-character API token
+(`7301f73…`, the Django REST Framework token format). It is **deliberately not reproduced here
+and has not been committed anywhere in this repository.** If that token is real rather than a
+documentation placeholder, it should be **rotated from the Peyflex dashboard**, because anyone
+holding it can spend the DrippleX float. The replacement belongs in a Railway environment
+variable — never in code, a document, or a chat message.
 
 ---
 
@@ -84,6 +124,14 @@ existing ride refund path (DPX-D4) is the model.
 customer bought. It has to be stored and re-displayable — a customer who closes the app and
 loses the token has lost the money. This is not optional and is not a UI nicety.
 
+**There is a third balance in this path, and it is not the customer's.** Peyflex debits a
+DrippleX-held float (§1.2), so a purchase can fail for a reason that has nothing to do with the
+customer — `Insufficient wallet balance` means _DrippleX_ is out of money, not them. Two things
+follow. The customer must never be shown that message, because it is not about them and reads as
+an accusation. And the float needs a low-balance alarm in the Ops Console **before** launch: the
+failure mode is not one customer being unlucky, it is every utility purchase on the platform
+failing at the same moment.
+
 ---
 
 ## 4. Data model (shape, not yet a migration)
@@ -129,25 +177,53 @@ Credentials go in Railway environment variables, never in code.
 
 ---
 
-## 6. What is still needed — blocking questions
+## 6. What is still needed
 
-**Everything below needs the Peyflex documentation.** Any one of these unblocks it: allowing
-`client.peyflex.com.ng` and `documenter.getpostman.com` through the environment's network
-policy (best — testing needs it too), exporting the Postman collection to JSON, or pasting the
-endpoint list.
+**Answered by the 2026-08-18 extract:** Q1 (auth — static `Authorization: Token`), Q2 (base URL,
+though a sandbox is still unknown) and Q10 (yes, prefunded float — see §1.2).
 
-| #   | Question                                                                                                                                                                                               |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Q1  | **Auth.** Header name, token format, and how a token is obtained — static API key, or login returning a bearer token that expires?                                                                     |
-| Q2  | **Base URL and sandbox.** Is there a test environment, and does it differ by host or by key?                                                                                                           |
-| Q3  | **Catalogue endpoints.** How are networks, data plans, discos and cable packages listed, and how often do they change?                                                                                 |
-| Q4  | **Verification.** Are meter and smartcard verified in a separate call before purchase, and does that call cost anything or expire?                                                                     |
-| Q5  | **Purchase response.** Is it synchronous, or does it return pending with a webhook or a status endpoint to poll? A pending purchase we treat as failed is money lost.                                  |
-| Q6  | **Pricing visibility.** Does the API return DrippleX's cost as well as face value? If not, the margin cannot be computed per transaction and the "keep the discount" decision needs another mechanism. |
-| Q7  | **Negative-spread rule.** If Peyflex's cost comes back _above_ face value, should the purchase be refused, or completed at a loss? (Founder decision needed — not an engineering choice.)              |
-| Q8  | **Idempotency.** Does Peyflex accept a client reference to deduplicate a retried purchase? Without one, a network timeout on our side cannot be safely retried.                                        |
-| Q9  | **Failure semantics.** Which error codes mean "definitely not charged" versus "unknown"? Reversal is only safe on the first kind.                                                                      |
-| Q10 | **Float / funding.** Is the DrippleX Peyflex account prefunded? If so, a low balance is an operational alarm that needs surfacing in the Ops Console before purchases start failing.                   |
+### 6.1 The one that blocks everything
+
+**A successful response body, for any endpoint.** The extract shows only the `400` failure
+shape. Until one success is seen there is no way to know what a purchase returns — the provider
+reference, the electricity token, and above all whether the status is terminal or pending.
+
+A single real example is enough to unblock most of the build:
+
+```
+curl -X POST https://client.peyflex.com.ng/api/cable/subscribe/ \
+  -H 'Authorization: Token <token>' -H 'Content-Type: application/json' \
+  -d '{"identifier":"startimes","plan":"nova","iuc":"...","phone":"...","amount":"..."}'
+```
+
+…and the body it returns on success.
+
+### 6.2 Endpoints not yet supplied
+
+| Service         | Needed                                                                                                                                                  |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Airtime**     | Purchase path + request body + success response                                                                                                         |
+| **Data**        | Purchase path + request body + success response, **and** the plan-listing endpoint per network                                                          |
+| **Electricity** | The docs say providers/plan types can be fetched, meters verified, and meters recharged — **but no paths or bodies were supplied for any of the three** |
+| **Cable TV**    | Request shape is known; still needed are the package-listing endpoint and the IUC verification endpoint                                                 |
+| **Wallet**      | A float-balance endpoint, for the low-balance alarm §1.2 requires                                                                                       |
+
+### 6.3 Behavioural questions the paths alone will not answer
+
+| #   | Question                                                                                                                                                                                                                  |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Q5  | **Is a purchase response synchronous or pending?** A pending purchase recorded as failed is money lost. This is the highest-risk unknown.                                                                                 |
+| Q6  | **Does the response expose DrippleX's cost as well as face value?** Without it the per-transaction margin cannot be computed and "keep the discount" needs another mechanism — most likely reconciling against the float. |
+| Q7  | **Negative-spread rule.** If Peyflex's cost comes back _above_ face value, refuse the sale or complete it at a loss? **Founder decision — not an engineering choice.**                                                    |
+| Q8  | **Idempotency.** Does Peyflex accept a client reference so a timed-out retry cannot double-spend the float? Without one, a network timeout on our side is unrecoverable without a manual check.                           |
+| Q9  | **Failure semantics.** Which errors mean "definitely not charged" versus "unknown"? `Insufficient wallet balance` is clearly the first kind; a timeout is the second. Reversal is only safe on the first.                 |
+| Q11 | **Sandbox.** Is there a test environment, or does every integration test spend real float? This decides whether the adapter can be exercised in CI at all.                                                                |
+
+### 6.4 Still the best unblock
+
+Allowing `client.peyflex.com.ng` and `documenter.getpostman.com` through this environment's
+network policy. The remaining gaps are mostly answerable by reading the documentation directly,
+and the adapter will need to reach a sandbox to be tested at all.
 
 ---
 
