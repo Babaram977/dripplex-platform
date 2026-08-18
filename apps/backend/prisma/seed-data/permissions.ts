@@ -225,6 +225,19 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
       'View the Operations Console analytics dashboard — driver utilization, shift, ride, dispatch, response-time, and geographic-demand analytics',
   },
   {
+    code: 'messaging:use',
+    description:
+      'Read and send messages on a delivery or ride the caller is a party to (DPX-CHAT-001)',
+  },
+  {
+    code: 'rider:wallet:withdraw',
+    description: 'Request a payout of own rider earnings (DPX-PAYOUT-002)',
+  },
+  {
+    code: 'driver:wallet:withdraw',
+    description: 'Request a payout of own driver earnings (DPX-PAYOUT-002)',
+  },
+  {
     code: 'customer:utilities:read',
     description:
       'Browse the bill-payment catalogues (airtime, data, electricity, cable) and verify a meter or smartcard',

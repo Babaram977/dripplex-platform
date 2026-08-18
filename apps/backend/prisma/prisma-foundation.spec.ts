@@ -62,14 +62,17 @@ describe('Prisma schema foundation (S1-C1)', () => {
   it('defines the DPX-013 Sprint 1 role and permission catalog sizes', () => {
     expect(ROLE_SEEDS).toHaveLength(9);
     expect(PERMISSION_SEEDS.length).toBeGreaterThanOrEqual(37);
-    // 125 as of 2026-08-18: three more for the Utilities tab —
+    // 128 as of 2026-08-18. Three are the Utilities tab —
     // `customer:utilities:read` and `customer:utilities:purchase` are split so
     // a restricted customer can still see what a bundle costs without being
     // able to spend, and `admin:utilities:manage` gates the float balance and
-    // the manual resolution of purchases Peyflex never answered for. Bump this
-    // only alongside a permission you meant to add; an unexplained bump is a
-    // permission that arrived without review.
-    expect(PERMISSION_SEEDS).toHaveLength(125);
+    // the manual resolution of purchases Peyflex never answered for. The other
+    // three (`messaging:use`, `rider:wallet:withdraw`, `driver:wallet:withdraw`)
+    // were already live in production's own catalogue but had never been added
+    // here — see rbac-seed-parity.spec.ts, which now stops the two lists
+    // drifting at all. Bump this only alongside a permission you meant to add;
+    // an unexplained bump is a permission that arrived without review.
+    expect(PERMISSION_SEEDS).toHaveLength(128);
     expect(PERMISSION_SEEDS.map((permission) => permission.code)).toEqual(
       expect.arrayContaining([
         'admin:rides:pricing:manage',

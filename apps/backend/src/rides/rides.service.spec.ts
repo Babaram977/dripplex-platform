@@ -490,6 +490,10 @@ describe('RidesService', () => {
 
   describe('listRideTypesWithAvailability', () => {
     it('reports the catalog with no availability claim when given no pickup', () => {
+      // Guarded like every sibling: `service` is only constructed inside the
+      // database-gated beforeAll, so without this the one test in the file
+      // that lacks the guard crashes on `undefined` instead of skipping.
+      if (!databaseAvailable) return;
       // Without coordinates there is no "in range" to answer, so the endpoint
       // must not imply one either way — the fare screen has to be able to tell
       // "not checked" apart from "checked, nobody there".
