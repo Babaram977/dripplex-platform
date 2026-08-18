@@ -2687,6 +2687,31 @@ function PageSettlements() {
  * The role split is the backend's, not a new idea: recording the checklist
  * needs INSPECTION_CHECKLIST_MANAGE, deciding needs INSPECTION_APPROVE.
  */
+/**
+ * DPX-DRIVER-002 — the walkthrough an officer works through on site.
+ *
+ * ⚠️ PROVISIONAL — awaiting founder sign-off. The API takes the checklist as
+ * free-form items (key/label/passed/notes, 1–50), and nothing in this codebase
+ * or in docs/ defines DrippleX's official roadworthiness list. These are
+ * ordinary vehicle-safety checks, not a standard anyone has approved, so they
+ * are a starting point rather than the specification. The officer can edit,
+ * remove or add rows on site, and replacing this array replaces the default
+ * everywhere.
+ */
+const DEFAULT_INSPECTION_CHECKLIST: { key: string; label: string }[] = [
+  { key: 'tyres', label: 'Tyres — tread depth and condition' },
+  { key: 'brakes', label: 'Brakes — response and handbrake' },
+  { key: 'lights', label: 'Lights — head, brake, indicators, hazards' },
+  { key: 'mirrors_glass', label: 'Mirrors and windscreen — intact, clear view' },
+  { key: 'seatbelts', label: 'Seatbelts — all seats, latch and retract' },
+  { key: 'horn_wipers', label: 'Horn and wipers — working' },
+  { key: 'fluid_leaks', label: 'No visible oil, fuel or coolant leak' },
+  { key: 'body_doors', label: 'Body and doors — open, close and lock' },
+  { key: 'interior', label: 'Interior — clean, seats secure' },
+  { key: 'fire_extinguisher', label: 'Fire extinguisher and warning triangle on board' },
+  { key: 'plate_matches', label: 'Plate number matches the registered vehicle' },
+];
+
 const INSPECTION_STATUS_CHIP: Record<string, { label: string; color: string }> = {
   SCHEDULED: { label: 'Scheduled', color: C_WARN },
   PASSED: { label: 'Passed', color: C_OK },
@@ -2701,10 +2726,20 @@ function InspectionCard({
   inspection: AdminInspectionDto;
   reload: () => void;
 }) {
-  const [busy, setBusy] = useState<null | 'pass' | 'fail'>(null);
+  const [busy, setBusy] = useState<null | 'pass' | 'fail' | 'checklist'>(null);
   const [notes, setNotes] = useState('');
   const [showFail, setShowFail] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // The officer's walkthrough, filled in on site. `POST /admin/inspections/:id
+  // /checklist` has existed since the inspection module shipped and nothing
+  // called it, so there was no way to record one — and the backend refuses a
+  // decision until a checklist exists, which left every inspection stuck.
+  const [recording, setRecording] = useState(false);
+  const [items, setItems] = useState<
+    { key: string; label: string; passed: boolean; note: string }[]
+  >(() => DEFAULT_INSPECTION_CHECKLIST.map((item) => ({ ...item, passed: true, note: '' })));
+  const [newItem, setNewItem] = useState('');
   const chip = INSPECTION_STATUS_CHIP[inspection.status] ?? {
     label: inspection.status,
     color: MUTED,
@@ -2712,6 +2747,27 @@ function InspectionCard({
   const decided = inspection.status === 'PASSED' || inspection.status === 'FAILED';
   const checklist = inspection.checklist ?? [];
   const failedItems = checklist.filter((item) => !item.passed);
+
+  const saveChecklist = async (): Promise<void> => {
+    setBusy('checklist');
+    setErr(null);
+    try {
+      await api.admin.recordInspectionChecklist(inspection.id, {
+        checklist: items.map((item) => ({
+          key: item.key,
+          label: item.label,
+          passed: item.passed,
+          ...(item.note.trim() ? { notes: item.note.trim() } : {}),
+        })),
+      });
+      setRecording(false);
+      reload();
+    } catch (e: unknown) {
+      setErr((e as { message?: string }).message ?? 'Could not save the walkthrough.');
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const decide = async (passed: boolean): Promise<void> => {
     setBusy(passed ? 'pass' : 'fail');
@@ -2804,11 +2860,131 @@ function InspectionCard({
             </div>
           ))}
         </div>
+      ) : recording ? (
+        <div
+          style={{
+            padding: 12,
+            borderRadius: 8,
+            background: 'rgba(255,255,255,.03)',
+            border: `1px solid ${BORDER}`,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
+          }}
+        >
+          <span style={{ fontSize: 11, fontWeight: 700, color: WHITE }}>
+            Record the walkthrough — tap an item to mark it failed
+          </span>
+          {items.map((item, index) => (
+            <div key={item.key} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <button
+                  onClick={() => {
+                    setItems((prev) =>
+                      prev.map((row, i) => (i === index ? { ...row, passed: !row.passed } : row)),
+                    );
+                  }}
+                  style={{
+                    width: 22,
+                    height: 22,
+                    borderRadius: 6,
+                    flexShrink: 0,
+                    cursor: 'pointer',
+                    background: item.passed ? 'rgba(43,172,82,.16)' : 'rgba(239,68,68,.16)',
+                    border: `1px solid ${item.passed ? G2 : C_ERR}`,
+                    color: item.passed ? C_OK : C_ERR,
+                    fontSize: 12,
+                  }}
+                >
+                  {item.passed ? '✓' : '✕'}
+                </button>
+                <span style={{ fontSize: 11.5, color: WHITE, flex: 1 }}>{item.label}</span>
+                <button
+                  onClick={() => {
+                    setItems((prev) => prev.filter((_, i) => i !== index));
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: MUTED,
+                    fontSize: 11,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Remove
+                </button>
+              </div>
+              {/* A failure that says only "failed" tells the driver nothing
+                  about what to put right before the re-inspection. */}
+              {!item.passed && (
+                <input
+                  className="dx-input"
+                  value={item.note}
+                  onChange={(e) => {
+                    const { value } = e.target;
+                    setItems((prev) =>
+                      prev.map((row, i) => (i === index ? { ...row, note: value } : row)),
+                    );
+                  }}
+                  placeholder="What exactly is wrong? The driver sees this."
+                />
+              )}
+            </div>
+          ))}
+
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              className="dx-input"
+              value={newItem}
+              onChange={(e) => setNewItem(e.target.value)}
+              placeholder="Add another check…"
+              style={{ flex: 1 }}
+            />
+            <Btn
+              label="Add"
+              color={MUTED}
+              outline
+              onClick={() => {
+                const label = newItem.trim();
+                if (label === '' || items.length >= 50) return;
+                setItems((prev) => [
+                  ...prev,
+                  { key: `custom_${String(prev.length + 1)}`, label, passed: true, note: '' },
+                ]);
+                setNewItem('');
+              }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Btn
+              label={busy === 'checklist' ? 'Saving…' : 'Save walkthrough'}
+              color={G2}
+              onClick={busy || items.length === 0 ? undefined : () => void saveChecklist()}
+            />
+            <Btn
+              label="Cancel"
+              color={MUTED}
+              outline
+              onClick={() => {
+                setRecording(false);
+                setErr(null);
+              }}
+            />
+          </div>
+        </div>
       ) : (
-        <span style={{ fontSize: 11.5, color: C_WARN, fontFamily: 'Inter, sans-serif' }}>
-          No walkthrough recorded yet — an officer records the checklist on site before a supervisor
-          can decide.
-        </span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span style={{ fontSize: 11.5, color: C_WARN, fontFamily: 'Inter, sans-serif' }}>
+            No walkthrough recorded yet — an officer records the checklist on site before a
+            supervisor can decide.
+          </span>
+          {!decided && (
+            <div>
+              <Btn label="Record walkthrough" color={G2} onClick={() => setRecording(true)} />
+            </div>
+          )}
+        </div>
       )}
 
       {inspection.photos.length > 0 && (
@@ -2829,7 +3005,12 @@ function InspectionCard({
 
       {err && <span style={{ fontSize: 12, color: C_ERR }}>{err}</span>}
 
+      {/* Pass/Fail only once a walkthrough exists. The backend refuses a
+          decision without one ("Checklist must be recorded before a decision
+          can be made"), so offering the buttons first just produced an error
+          the supervisor could do nothing about. */}
       {!decided &&
+        checklist.length > 0 &&
         (showFail ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <input
