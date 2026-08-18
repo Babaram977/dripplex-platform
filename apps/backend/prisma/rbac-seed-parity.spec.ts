@@ -32,6 +32,16 @@ import { ROLE_SEEDS } from './seed-data/roles';
  * parses the CommonJS file as text rather than importing it — importing would
  * pull in `@prisma/client` and try to connect — and compares all three
  * catalogues code-for-code.
+ *
+ * Two is the number of catalogues in the repository, and this test is why that
+ * stays true. It was briefly not the number that existed: a Railway service
+ * called `seed-permissions-roles` held a **third** copy, base64-encoded into a
+ * dashboard start-command field, 29 permissions behind and holding
+ * `DATABASE_URL` for production. It never ran — it could not — and it has been
+ * deleted (docs/ops/DPX-RBAC-001-THIRD-CATALOGUE.md). The lesson worth keeping:
+ * this test can only see files in the repository. A catalogue pasted into a
+ * hosting dashboard is invisible to `grep` and to every test here, so the place
+ * to seed RBAC is the backend's own deploy step and nowhere else.
  */
 
 const SEED_RBAC_PATH = join(__dirname, 'seed-rbac.cjs');
