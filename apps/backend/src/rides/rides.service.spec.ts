@@ -12,6 +12,7 @@ import { WalletService } from '../wallet/wallet.service';
 
 import { RideDispatchService } from './ride-dispatch.service';
 import { RideFareService } from './ride-fare.service';
+import { RidePricingService } from './ride-pricing.service';
 import { RidesService } from './rides.service';
 
 import type { RideEventsPublisher } from './ride-events.publisher';
@@ -97,7 +98,7 @@ describe('RidesService', () => {
     );
     service = new RidesService(
       prisma,
-      new RideFareService(),
+      new RideFareService(new RidePricingService(prisma, auditService)),
       auditService,
       dispatchService,
       notifications,

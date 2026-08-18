@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ApiProvider } from '../lib/ApiProvider';
 import { GLOBAL_STYLES, NAVY_BASE, COUNTRIES } from './shared';
 import {
@@ -170,6 +170,7 @@ import { ChatScreen } from './chatScreen';
 import { api } from '../lib/api';
 import type { DeliveryJobDto, RideOfferDto, RideDto } from '../lib/api';
 import { endSession } from '../lib/auth';
+import { installUnlockListener } from '../lib/sound';
 
 // DESKTOP FRAME — for admin operations console
 // ═══════════════════════════════════════════════════════════════════════════
@@ -430,6 +431,12 @@ function initialScreenFromLocation(): Screen | null {
 }
 
 function AppShell() {
+  // Browsers hold audio back until the user has interacted with the page, so
+  // the very first alert of a session would otherwise be silent. This arms the
+  // audio context on the first tap or key anywhere in the app — long before a
+  // job or an order arrives.
+  useEffect(() => installUnlockListener(), []);
+
   // A portal link opens that portal; everything else starts the customer journey
   // at the splash screen exactly as before.
   const [screen, setScreen] = useState<Screen>(() => initialScreenFromLocation() ?? 'splash');

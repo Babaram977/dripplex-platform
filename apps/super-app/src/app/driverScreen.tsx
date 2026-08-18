@@ -19,6 +19,9 @@ import {
 } from '../tokens/colors';
 import { api, uploadFile } from '../lib/api';
 import { auth } from '../lib/auth';
+import { AccountPageHost, AccountRows, type AccountPage } from './accountPages';
+import { playNotificationSound } from '../lib/sound';
+import { SoundSettings } from './soundSettings';
 import { PayoutPanel } from './payoutPanel';
 import { getCurrentPosition } from '../lib/maps';
 // Same cadence for both couriers — see the constant's note for why 30s.
@@ -2480,13 +2483,23 @@ export function DriverDashboardScreen({
   useEffect(() => {
     if (!online) return;
     let cancelled = false;
+    // Only the *first* sighting of a given offer makes a sound. The poll runs
+    // every 5s and an offer lives for 15s, so without this the same request
+    // would chime three times and read as three jobs.
+    let announcedOfferId: string | null = null;
     const poll = () => {
       api.driverRides
         .getOffers()
         .then((offers) => {
           if (cancelled) return;
           const pending = offers.find((o) => o.status === 'PENDING' || o.status === 'OFFERED');
-          if (pending) onRequest(pending);
+          if (pending) {
+            if (pending.id !== announcedOfferId) {
+              announcedOfferId = pending.id;
+              playNotificationSound('new-request');
+            }
+            onRequest(pending);
+          }
         })
         .catch(() => {});
     };
@@ -4265,9 +4278,11 @@ export function DriverSettingsScreen({
   const [notifTrips, setNotifTrips] = useState(true);
   const [notifEarnings, setNotifEarnings] = useState(true);
   const [notifPromos, setNotifPromos] = useState(false);
-  const [soundAlerts, setSoundAlerts] = useState(true);
   const [vibration, setVibration] = useState(true);
   const [navApp, setNavApp] = useState('Google Maps');
+  // Which ACCOUNT page is open. Kept local so this does not need a new route
+  // in App.tsx — the four pages are only ever reached from here.
+  const [accountPage, setAccountPage] = useState<AccountPage | null>(null);
 
   const Toggle = ({ value, onChange }: { value: boolean; onChange: () => void }) => (
     <button
@@ -4313,12 +4328,10 @@ export function DriverSettingsScreen({
     {
       title: 'ALERTS',
       items: [
-        {
-          label: 'Sound Alerts',
-          sub: 'Audio on new requests',
-          value: soundAlerts,
-          onChange: () => setSoundAlerts(!soundAlerts),
-        },
+        // "Sound Alerts" used to be here as a toggle over local state that was
+        // written and never read — flipping it changed nothing and it forgot
+        // itself on reload. The real control is <SoundSettings /> below, which
+        // persists the choice and lets the driver hear each sound first.
         {
           label: 'Vibration',
           sub: 'Haptic feedback',
@@ -4436,39 +4449,14 @@ export function DriverSettingsScreen({
           >
             ACCOUNT
           </p>
-          <div className="overflow-hidden rounded-2xl" style={{ border: `1px solid ${BORDER}` }}>
-            {['Change PIN', 'Privacy Policy', 'Terms of Service', 'Help & Support'].map(
-              (item, i, arr) => (
-                <button
-                  key={item}
-                  className="flex w-full items-center gap-3 px-4 py-4 active:scale-[.98]"
-                  style={{
-                    background: NAVY_SURFACE,
-                    borderBottom: i < arr.length - 1 ? `1px solid ${BORDER}` : 'none',
-                  }}
-                >
-                  <p
-                    className="flex-1 text-left text-[14px]"
-                    style={{ fontFamily: IT, color: '#fff' }}
-                  >
-                    {item}
-                  </p>
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke={MUTED}
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  >
-                    <path d="M5 12h14M12 5l7 7-7 7" />
-                  </svg>
-                </button>
-              ),
-            )}
-          </div>
+          {/* These four were <button>s with no onClick — they looked tappable
+              and swallowed every tap. AccountRows carries the handlers, and
+              the pages are shared with the rider app so the wording of a
+              privacy policy cannot drift between the two. */}
+          <AccountRows onOpen={setAccountPage} />
         </div>
+
+        <SoundSettings />
 
         {/* Logout */}
         <button
@@ -4489,6 +4477,10 @@ export function DriverSettingsScreen({
           Sign Out
         </button>
       </div>
+
+      {/* Rendered over the settings list rather than replacing it, so backing
+          out lands the driver exactly where they were. */}
+      <AccountPageHost page={accountPage} audience="driver" onClose={() => setAccountPage(null)} />
     </div>
   );
 }

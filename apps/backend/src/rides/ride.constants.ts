@@ -34,12 +34,20 @@ export const RIDE_AUDIT_ACTIONS = {
   PROBLEM_REPORTED: 'ride.problem_reported',
   PROBLEM_RESOLVED: 'ride.problem_resolved',
   REFUNDED: 'ride.refunded',
+  /// Pricing-console edits. A fare change is a commercial act, so who changed
+  /// what, from what to what, is recorded the same way a refund is.
+  FARE_RATE_UPDATED: 'ride.fare_rate_updated',
+  SURCHARGE_ZONE_CREATED: 'ride.surcharge_zone_created',
+  SURCHARGE_ZONE_UPDATED: 'ride.surcharge_zone_updated',
 } as const;
 
 export const RIDE_PERMISSIONS = {
   MANAGE: 'customer:ride:manage',
   DRIVER_MANAGE: 'driver:ride:manage',
   ADMIN_SUPPORT: 'admin:rides:support',
+  /// Editing what a ride costs is separate from supporting a ride. An operator
+  /// who can refund a trip should not thereby be able to reprice the platform.
+  ADMIN_PRICING: 'admin:rides:pricing:manage',
 } as const;
 
 /**

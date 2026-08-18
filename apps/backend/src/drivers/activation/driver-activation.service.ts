@@ -109,6 +109,98 @@ export class DriverActivationService {
     };
   }
 
+  /**
+   * The same six checks, for a page of drivers at once.
+   *
+   * The Ops driver roster shows a column of "Pending" badges and nothing about
+   * why — an operator had to open each driver in turn to find the one unmet
+   * check. Calling `checkEligibility` per row would be four queries per driver;
+   * this is four queries for the whole page, whatever its size.
+   *
+   * Deliberately re-derives the checks from the same fields and the same rules
+   * rather than sharing a helper with `checkEligibility`: if the two ever
+   * disagree the roster is lying, so they are covered by a spec that asserts
+   * they agree driver-for-driver.
+   */
+  public async checkEligibilityBulk(
+    driverUserIds: string[],
+  ): Promise<Map<string, DriverActivationEligibilityDto>> {
+    const results = new Map<string, DriverActivationEligibilityDto>();
+    if (driverUserIds.length === 0) {
+      return results;
+    }
+
+    const [profiles, kyc, vehicles] = await Promise.all([
+      this.prisma.driverProfile.findMany({ where: { userId: { in: driverUserIds } } }),
+      this.prisma.driverKyc.findMany({ where: { driverId: { in: driverUserIds } } }),
+      this.prisma.vehicle.findMany({
+        where: {
+          driverId: { in: driverUserIds },
+          approvalStatus: VehicleApprovalStatus.APPROVED,
+          isActive: true,
+        },
+      }),
+    ]);
+
+    const decidedInspections =
+      vehicles.length === 0
+        ? []
+        : await this.prisma.inspection.findMany({
+            where: {
+              vehicleId: { in: vehicles.map((vehicle) => vehicle.id) },
+              status: { in: [InspectionStatus.PASSED, InspectionStatus.FAILED] },
+            },
+            orderBy: { completedAt: 'desc' },
+          });
+
+    for (const profile of profiles) {
+      const driverKyc = kyc.filter((doc) => doc.driverId === profile.userId);
+      const driverVehicles = vehicles.filter((vehicle) => vehicle.driverId === profile.userId);
+
+      let inspectionPassed = false;
+      let qualifyingVehicleId: string | null = null;
+      for (const vehicle of driverVehicles) {
+        // Latest *decided* inspection per vehicle — an old pass followed by a
+        // fail must not keep a driver activated.
+        const latest = decidedInspections.find((inspection) => inspection.vehicleId === vehicle.id);
+        if (latest?.status === InspectionStatus.PASSED) {
+          inspectionPassed = true;
+          qualifyingVehicleId = vehicle.id;
+          break;
+        }
+      }
+
+      const checks: DriverActivationChecks = {
+        identityVerified: profile.lastIdentityVerifiedAt !== null,
+        requiredDocumentsApproved: REQUIRED_DRIVER_KYC_DOCUMENT_TYPES.every((type) =>
+          driverKyc.some(
+            (doc) =>
+              doc.documentType === type &&
+              doc.verificationStatus === KycVerificationStatus.VERIFIED,
+          ),
+        ),
+        vehicleApproved: driverVehicles.length > 0,
+        inspectionPassed,
+        agreementAccepted: profile.agreementAcceptedAt !== null,
+        accountNotLocked: profile.identityVerificationLockedAt === null,
+      };
+
+      const missingReasons = (Object.keys(checks) as (keyof DriverActivationChecks)[])
+        .filter((key) => !checks[key])
+        .map((key) => MISSING_REASON_BY_CHECK[key]);
+
+      results.set(profile.userId, {
+        driverId: profile.userId,
+        eligible: missingReasons.length === 0,
+        checks,
+        missingReasons,
+        qualifyingVehicleId,
+      });
+    }
+
+    return results;
+  }
+
   /** Throws with the full list of unmet conditions if the driver isn't
    * eligible; returns the (eligible) result otherwise. The only entry point
    * `DriversService` should use before flipping a driver to `APPROVED`. */

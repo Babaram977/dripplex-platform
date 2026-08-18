@@ -14,6 +14,7 @@ import { WalletService } from '../wallet/wallet.service';
 import { RideDispatchService } from './ride-dispatch.service';
 import { RideFareService } from './ride-fare.service';
 import { RidePaymentService } from './ride-payment.service';
+import { RidePricingService } from './ride-pricing.service';
 import { RideProblemReportService } from './ride-problem-report.service';
 import { RideRatingService } from './ride-rating.service';
 import { RideReceiptService } from './ride-receipt.service';
@@ -119,7 +120,10 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
     // adapter is registered, matching production where GATEWAY_METHODS excludes it.
     const providers = [fakeAdapter('PAYSTACK'), fakeAdapter('FLUTTERWAVE')];
 
-    const fareService = new RideFareService();
+    // Fares now come from the Ops-editable table, so the fare service needs
+    // the pricing service that reads it. Rates seed themselves from the
+    // constants on first touch, so this prices exactly as it did before.
+    const fareService = new RideFareService(new RidePricingService(prisma, auditService));
     dispatchService = new RideDispatchService(
       prisma,
       auditService,

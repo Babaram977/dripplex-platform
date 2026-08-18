@@ -1276,6 +1276,71 @@ model MerchantCommissionSetting {
 /// ride snapshots the rate it settled at into Ride.platformCommissionRate
 /// (and the resulting platformCommission/driverEarning amounts), so
 /// refunds/reversals always use the rate that applied when the ride settled.
+/// Ops-editable fare table, one row per ride type.
+///
+/// Fares used to live in RIDE_FARE_RATES, a hardcoded constant that still
+/// carried its own warning that it was "not a founder-approved fare table".
+/// Changing a price meant a code change and a deploy. The row is the source of
+/// truth from first creation onward; the constant only seeds it.
+///
+/// A ride snapshots the amounts it was priced at, so editing this never
+/// re-prices a trip that has already happened.
+model RideFareRate {
+  rideType RideType @id @map("ride_type")
+
+  baseFare      Decimal @default(0) @map("base_fare") @db.Decimal(12, 2)
+  perKmRate     Decimal @default(0) @map("per_km_rate") @db.Decimal(12, 2)
+  perMinuteRate Decimal @default(0) @map("per_minute_rate") @db.Decimal(12, 2)
+
+  /// Floor under the computed fare, not an addition — a short hop that prices
+  /// below this is charged this instead, and longer trips are unaffected.
+  /// Founder-locked at ₦1,500 (2026-08-16); every type is seeded with that
+  /// figure, and the per-type column exists so a rate can be varied later
+  /// without another migration.
+  minimumFare Decimal @default(0) @map("minimum_fare") @db.Decimal(12, 2)
+
+  updatedBy String?  @map("updated_by") @db.Uuid
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("ride_fare_rates")
+}
+
+/// A named circle where trips cost more — the airport being the case that
+/// prompted it.
+///
+/// Deliberately a centre plus a radius rather than a polygon: an operator can
+/// set one up from a map pin and a distance without a GIS tool, and it is the
+/// same maths dispatch already runs. Polygons can come later if a zone ever
+/// needs a shape a circle cannot express.
+model RideSurchargeZone {
+  id   String @id @default(uuid()) @db.Uuid
+  name String @db.VarChar(120)
+
+  latitude     Decimal @db.Decimal(10, 7)
+  longitude    Decimal @db.Decimal(10, 7)
+  radiusMeters Int     @map("radius_meters")
+
+  surchargeType RideSurchargeType    @map("surcharge_type")
+  /// Naira when surchargeType is FLAT; a factor (1.25 = a quarter more) when
+  /// it is MULTIPLIER.
+  amount        Decimal              @db.Decimal(12, 4)
+  appliesTo     RideSurchargeTrigger @default(EITHER) @map("applies_to")
+
+  /// Deactivating keeps the zone and its name available to rides that already
+  /// reference it, which deleting would not.
+  active Boolean @default(true)
+
+  updatedBy String?  @map("updated_by") @db.Uuid
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  rides Ride[]
+
+  @@index([active])
+  @@map("ride_surcharge_zones")
+}
+
 model PlatformCommissionSetting {
   id             String   @id @default(uuid()) @db.Uuid
   commissionRate Decimal  @default(0.10) @map("commission_rate") @db.Decimal(5, 4)
@@ -1535,6 +1600,24 @@ enum RideType {
   TRICYCLE
 }
 
+/// How a surcharge zone adds to a fare. FLAT adds a fixed amount in naira;
+/// MULTIPLIER scales the metered fare (base + distance + time) by a factor, so
+/// 1.25 charges a quarter more. Either way the ride records the resulting
+/// naira amount, because that is what a receipt has to show.
+enum RideSurchargeType {
+  FLAT
+  MULTIPLIER
+}
+
+/// Which end of the trip puts it inside a zone. An airport surcharge is
+/// usually EITHER — the run out and the run back both carry the cost — but
+/// PICKUP and DROPOFF exist because that is a commercial choice, not ours.
+enum RideSurchargeTrigger {
+  PICKUP
+  DROPOFF
+  EITHER
+}
+
 enum RideStatus {
   REQUESTED
   SEARCHING
@@ -1585,6 +1668,17 @@ model Ride {
   distanceFare             Decimal                  @default(0) @map("distance_fare") @db.Decimal(12, 2)
   timeFare                 Decimal                  @default(0) @map("time_fare") @db.Decimal(12, 2)
   totalFare                Decimal                  @default(0) @map("total_fare") @db.Decimal(12, 2)
+
+  /// What a surcharge zone added, in naira, and which zone did it.
+  ///
+  /// The name is snapshotted alongside the id so a receipt still reads
+  /// "Airport" after the zone has been renamed or deactivated — a settled trip
+  /// must keep explaining itself even when the pricing behind it has moved on.
+  /// Zero and null mean no zone applied, which is the normal case.
+  surchargeAmount   Decimal @default(0) @map("surcharge_amount") @db.Decimal(12, 2)
+  surchargeZoneId   String? @map("surcharge_zone_id") @db.Uuid
+  surchargeZoneName String? @map("surcharge_zone_name") @db.VarChar(120)
+
   promotionId              String?                  @map("promotion_id") @db.Uuid
   promoDiscount            Decimal                  @default(0) @map("promo_discount") @db.Decimal(12, 2)
   paymentMethod            RidePaymentMethod?       @map("payment_method")
@@ -1605,6 +1699,9 @@ model Ride {
   updatedAt                DateTime                 @updatedAt @map("updated_at")
   customer                 User                     @relation("RideCustomer", fields: [customerId], references: [id], onDelete: Cascade)
   driver                   User?                    @relation("RideDriver", fields: [driverId], references: [id], onDelete: SetNull)
+  /// SetNull, not Cascade: deleting a zone must never delete the rides it
+  /// priced. surchargeZoneName carries the label on regardless.
+  surchargeZone            RideSurchargeZone?       @relation(fields: [surchargeZoneId], references: [id], onDelete: SetNull)
   trackingPoints           RideTracking[]
   offers                   RideOffer[]
   paymentTransactions      RidePaymentTransaction[]

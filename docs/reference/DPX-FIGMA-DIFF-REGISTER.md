@@ -338,3 +338,192 @@ crispness comes from a **commissioned vector icon set**, which is a design deliv
 rendering setting. Replacing emoji with SVG icons would change components and drift from the
 Figma, so it is **not** done here. Raising the ceiling needs an icon set added to the Figma
 first — flagged for founder decision.
+
+---
+
+### Ride pricing console — fares out of code, airport surcharge zones (DPX-PRICING-001) — logged 2026-08-18
+
+Founder direction (2026-08-18): _"trip to airport is more expensive it should be determine in
+pricing console"_, scoped to the **full Ops-editable console**.
+
+**What was there before.** Ride fares were `RIDE_FARE_RATES`, a hardcoded constant in
+`apps/backend/src/rides/ride.constants.ts` that still carried its own warning that it was
+_"not a founder-approved fare table"_. Changing any price meant a code change and a deploy.
+There was no surcharge, zone, venue or surge concept of any kind, and no pricing screen
+anywhere in the Ops Console.
+
+**What exists now.**
+
+| Piece                  | Detail                                                                                                                                                                                                                                                                                                                                 |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ride_fare_rates`      | One row per ride type — base, per-km, per-minute, minimum. Seeded from the constants that were in force, so the first fare quoted after the migration matches the last one quoted before it.                                                                                                                                           |
+| `ride_surcharge_zones` | Named circle (centre + radius). `FLAT` naira or `MULTIPLIER` factor; triggers on `PICKUP`, `DROPOFF` or `EITHER`; deactivatable.                                                                                                                                                                                                       |
+| Ride snapshot          | `surcharge_amount`, `surcharge_zone_id`, `surcharge_zone_name` on `rides`. The **name** is snapshotted so a receipt still reads "Airport" after the zone is renamed or switched off. FK is `ON DELETE SET NULL` — deleting a zone must never delete the trips it priced.                                                               |
+| Ops Console            | `/pricing` — edit the fare table per type, create zones, switch them on and off.                                                                                                                                                                                                                                                       |
+| Permission             | `admin:rides:pricing:manage`, granted to `administrator` and `super_administrator` **only**. Deliberately _not_ a reuse of `admin:rides:support`, which `operations_staff` holds: refunding a trip must not also grant repricing the platform. Asserted in `ride.permissions.spec.ts` against the controller's own decorator metadata. |
+| Audit                  | Every rate change and zone create/update records the actor and the before/after. A fare change is a commercial act.                                                                                                                                                                                                                    |
+
+**Fare order of operations** — metered = base + distance + time; the surcharge applies to the
+metered fare; the minimum is a **floor under the result**, never an addition. A short surcharged
+trip still lands on the ₦1,500 minimum.
+
+**Founder-locked ₦1,500 minimum** is preserved exactly: the migration seeds it for every ride
+type. The column is per-type so a rate can be varied later without another migration; the value
+shipped is the single locked figure applied across the board.
+
+**⚠️ Engineering choice awaiting founder confirmation — overlapping zones do not stack.** When
+a trip falls inside more than one active zone, **only the zone that adds the most is applied**.
+The reasoning: a passenger crossing two overlapping zones should not be charged twice for one
+journey, and a single predictable line is easier to explain on a receipt than an arithmetic
+chain. This is not a founder decision and is easy to change to "sum the flats, compound the
+multipliers" if that is the commercial intent. Flagged here rather than left implicit.
+
+**No zones are seeded.** Where the Kano airport boundary sits and what the run should cost are
+commercial decisions; inventing a radius and a price would put a number on a customer's receipt
+that nobody chose. The console creates them.
+
+**Known cost:** `resolveSurcharge` runs one indexed query against active zones per fare
+estimate. With a handful of zones this is negligible; if the zone count ever grows into the
+hundreds it should be cached, and the bounding-box narrowing already used for driver search
+applied to zones too. Noted rather than pre-optimised.
+
+**Not in scope, and not invented:** surge/demand pricing, time-of-day pricing, per-city rate
+tables, and polygon zones. A circle was chosen because an operator can set one up from a map pin
+and a distance without a GIS tool. Any of these can follow a founder decision.
+
+**Verification:** backend suite **207 suites / 1684 tests** green against real Postgres and
+Redis, including flat and multiplier surcharges, pickup-only and dropoff-only triggers, inactive
+zones ignored, a zone the trip never touches ignored, overlapping zones resolving to the larger
+alone, a surcharged short trip still floored at the minimum, the rate table seeding from the
+constants, rejection of a multiplier below 1 (which would discount every trip through the zone),
+and the permission-catalog count guard updated deliberately from 121 to 122.
+
+---
+
+### Partner account rows + why a driver is still pending (DPX-PARTNER-001) — logged 2026-08-18
+
+Two things from founder testing on 2026-08-18.
+
+#### 1. "Drivers that have taken inspection and submitted all documents are still showing pending"
+
+**Not a bug in the approval flow — a gap in what the roster tells you.** Driver approval is a
+manual admin action (`DriversService.approveDriver`) behind a six-check gate
+(`DriverActivationService`): identity verified, required documents verified, an approved active
+vehicle, that vehicle's latest _decided_ inspection passed, agreement accepted, account not
+locked. The Ops roster showed a column of identical `Pending` badges and nothing about which
+check was outstanding, so an operator had to open every driver in turn to find out.
+
+The roster now carries `activationBlockers` per driver, computed for the whole page in four
+queries via a new `DriverActivationService.checkEligibilityBulk`. An **empty array** means
+"nothing outstanding, waiting only on an operator's click" and the row says exactly that.
+
+A spec pins the bulk path to the single-driver path check-for-check: the roster reads one and
+the detail page reads the other, and if they ever diverge the roster is telling an operator
+something the Approve button will contradict.
+
+**⚠️ Likely blocker for the founder's specific drivers, flagged not assumed:** `identityVerified`
+is set only by (a) an admin marking identity verified in the console, or (b) an IDV provider
+result. **No IDV provider is built** (task #15 — Smile ID was removed as a launch dependency and
+the DrippleX-native replacement is not built). So on a fresh driver that check can only be
+cleared by hand today. This cannot be confirmed from the build sandbox — production is
+egress-restricted — so it is stated as the most likely cause, not as fact. Opening any pending
+driver in the console shows the real answer.
+
+#### 2. Dead rows on the driver and rider profiles
+
+`Change PIN`, `Privacy Policy`, `Terms of Service` and `Help & Support` were `<button>`s with no
+`onClick` on the driver settings screen. The rider account screen had none of the four at all.
+
+| Row              | Now                                                                                                                                                                                                                                                                               |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Change PIN       | Sets or replaces the payout PIN via the existing `POST /{driver\|rider}/wallet/pin`, with `GET .../pin` deciding whether the copy reads "Set" or "Change". Rejects a mismatch, a non-4-digit PIN, four identical digits and a straight sequence, all before any request goes out. |
+| Privacy Policy   | `GET /cms/pages/privacy-policy`                                                                                                                                                                                                                                                   |
+| Terms of Service | `GET /cms/pages/terms-of-service`                                                                                                                                                                                                                                                 |
+| Help & Support   | WhatsApp deep link to the founder-provided support line, plus a real support ticket posting to `POST /driver/support-tickets`                                                                                                                                                     |
+
+Implemented once in `accountPages.tsx` and rendered by both partner apps — two copies of a
+privacy screen is two places for the wording to drift.
+
+**Riders cannot raise tickets.** The support-ticket endpoint is driver-only. Rather than show a
+rider a form that posts nowhere, the screen says plainly that in-app tickets are not open to
+riders yet and points them at WhatsApp. Recorded here as a backend gap.
+
+**⚠️ Change PIN has no old-PIN challenge.** The backend exposes one `POST .../wallet/pin` for
+both setting and replacing, with no verification of the current PIN. For a control that
+authorises payouts to a bank account, that is a real weakness — anyone with a live session can
+silently replace it. Not faked over in the UI; recorded here as needing a backend change
+(challenge the old PIN, or re-authenticate) before launch.
+
+#### Legal documents
+
+Privacy Policy and Terms of Service are seeded as **published CMS pages**, not hardcoded in the
+bundle, so Ops can revise them without a deploy — a privacy notice nobody can correct in a hurry
+is worse than none.
+
+**⚠️ BOTH ARE DRAFTS AND HAVE NOT BEEN REVIEWED BY A LAWYER.** They were written to describe
+what the platform actually does — phone-primary identity with no usernames, what location is
+collected and when, that drivers never see a customer's phone number, commission, the ₦1,500
+minimum fare, surcharge zones, cash and wallet payment, driver verification and inspection —
+and each ends with a section stating plainly that it awaits legal review. They must be reviewed
+and approved by counsel, and checked against the Nigeria Data Protection Act, before DrippleX
+relies on them publicly.
+
+---
+
+### Notification sounds across the platform (DPX-SOUND-001) — logged 2026-08-18
+
+Founder request: _"sounds and alert system for order and delivery, and successful transaction
+either booking or order or delivery — a sound for notification should be introduced to the whole
+system. Every service or activity that requires attention should come with a sound notification
+that can be turned ON and off. Also it can be chosen from different sound list."_
+
+**Where a sound now plays**
+
+| Who       | When                                                        | Event         |
+| --------- | ----------------------------------------------------------- | ------------- |
+| Driver    | A ride offer arrives                                        | `new-request` |
+| Rider     | A delivery job arrives                                      | `new-request` |
+| Merchant  | The new-order count rises                                   | `new-request` |
+| Passenger | A driver is found for their ride                            | `success`     |
+| Customer  | An order is placed and paid (wallet, cash or bank transfer) | `success`     |
+
+Each site guards against repetition, because every one of them is a **poll**, not a push:
+the driver keys on the offer id (5s poll, 15s offer life — otherwise one request chimes three
+times), the rider keys on a set of seen job ids, the merchant sounds only on a _rise_ in the
+count, and the passenger and customer paths already run once by construction.
+
+**Sounds are synthesised, not audio files.** Five deliberately distinguishable tones — Chime,
+Ping, Bell, Alert, Drop — generated with the Web Audio API. No binary assets, nothing to fetch
+at the moment it needs to play (a driver on a weak connection would otherwise hear the alert
+late or not at all), and they work offline. `play()` is the single place to change if the
+founder later commissions real audio.
+
+**The preference is device-local, deliberately.** The backend's `NotificationPreference` model
+is channel × type — whether to _send_ you something. Which sound a handset makes, and whether
+it makes one, is a property of the handset: a driver may want alerts loud on the work phone and
+silent on the one at home. So it is localStorage, per device. Making it follow the account
+across devices is a backend field and a deliberate decision, not an oversight.
+
+**Sound is ON by default.** A driver who misses a job because the platform chose to start silent
+has been failed by the default.
+
+**Autoplay is handled honestly.** Browsers hold audio back until the user has interacted with
+the page. `installUnlockListener()` arms the context on the first tap anywhere in the app, long
+before a job arrives; until then `play()` is a no-op rather than an error, and the settings
+screen says "tap any sound above to enable it" rather than showing a working-looking toggle that
+produces silence. A browser with no Web Audio at all is told so plainly.
+
+**Removed:** the driver settings screen's "Sound Alerts" toggle. It flipped local state that was
+written and never read, and forgot itself on reload — it changed nothing. The real control
+replaces it.
+
+**Not covered yet, and not faked:** sound while the app is in the background or closed. That
+needs push notifications with a notification-channel sound on the device, which is a native/PWA
+concern (`DeviceRegistry` exists; the push provider wiring does not). Flagged rather than
+implied — the current sounds only play while the app is open.
+
+**Verification:** driven in Chromium with `createOscillator` instrumented, since a headless run
+cannot hear anything. The control renders on the driver settings screen, the old fake toggle is
+gone, all five sounds are listed, selecting one plays it (0 → 2 oscillators for the two-tone
+Bell) and persists `{"enabled":true,"sound":"bell"}`, switching off persists `enabled:false`,
+hides the list and produces no oscillator, and switching back on persists again.

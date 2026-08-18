@@ -101,6 +101,19 @@ export default function DriverApprovalsPage(): React.JSX.Element {
                       <span className="text-muted-foreground">{driver.phone ?? '—'}</span>
                       <span>
                         <Badge variant={statusBadgeVariant(driver.status)}>{driver.status}</Badge>
+                        {/* Why this one is still Pending. A screen of identical
+                            "Pending" badges gave no way to tell a driver whose
+                            documents are all verified but whose identity check
+                            is outstanding from one who is simply waiting on a
+                            click — you had to open each in turn. An empty
+                            blockers array is the good case and says so. */}
+                        {driver.status === 'PENDING' && driver.activationBlockers ? (
+                          <span className="text-muted-foreground mt-1 block text-[11px] leading-snug">
+                            {driver.activationBlockers.length === 0
+                              ? 'Ready to approve — nothing outstanding'
+                              : driver.activationBlockers.join(' · ')}
+                          </span>
+                        ) : null}
                       </span>
                       <span className="text-muted-foreground text-xs">
                         {driver.kyc.length} docs

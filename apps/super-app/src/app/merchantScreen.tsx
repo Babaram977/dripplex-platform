@@ -3,6 +3,8 @@ import { api, uploadFile } from '../lib/api';
 import { auth } from '../lib/auth';
 import { addressPredictions, geocodeAddress, getCurrentPosition } from '../lib/maps';
 import { ImageWithFallback } from './components/figma/ImageWithFallback';
+import { playNotificationSound } from '../lib/sound';
+import { SoundSettings } from './soundSettings';
 import type {
   MerchantBusinessDto,
   MerchantProductDto,
@@ -4388,6 +4390,10 @@ function SettingsPage() {
     <div className="mx-scroll" style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
       <SectionHead title="Settings" sub="Account and notification preferences" />
       <div style={{ maxWidth: 480 }}>
+        {/* The sound a new order makes, and whether it makes one. The two
+            toggles below are notification *channel* preferences and are a
+            separate concern — this is what the shop actually hears. */}
+        <SoundSettings />
         <MxCard style={{ marginBottom: 14 }}>
           <SectionHead title="Notifications" />
           {[
@@ -4660,7 +4666,15 @@ export function MerchantPortalScreen({
     try {
       const r = await api.merchant.getOrders({ status: 'CONFIRMED', pageSize: 1 });
       const res = r as { total?: number; items?: unknown[] };
-      setNewOrderCount(res.total ?? res.items?.length ?? 0);
+      const count = res.total ?? res.items?.length ?? 0;
+      setNewOrderCount((previous) => {
+        // Only on a rise. The badge is polled every 8s, so comparing against
+        // the last count is what separates "a new order arrived" from "the
+        // same order is still waiting" — otherwise the shop would chime
+        // continuously until someone accepted.
+        if (count > previous) playNotificationSound('new-request');
+        return count;
+      });
     } catch {}
   }, []);
 

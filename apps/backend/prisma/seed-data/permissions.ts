@@ -127,6 +127,11 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
     description: 'View and edit the Ops-configurable platform (ride) commission rate',
   },
   {
+    code: 'admin:rides:pricing:manage',
+    description:
+      'View and edit the ride fare table and surcharge zones (pricing console). Separate from admin:rides:support — refunding a trip must not also grant repricing the platform',
+  },
+  {
     code: 'admin:commercial:account:manage',
     description: 'View a commission account/ledger and record manual external payments against it',
   },

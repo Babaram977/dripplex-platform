@@ -230,4 +230,42 @@ describe('DriverActivationService', () => {
       'Driver profile not found',
     );
   });
+
+  describe('checkEligibilityBulk', () => {
+    it('agrees with checkEligibility, check for check, for the same driver', async () => {
+      if (!databaseAvailable) return;
+
+      // The roster reads the bulk path and the detail page reads the single
+      // one. If they ever disagree the roster is telling an operator something
+      // the approve button will contradict — so this pins them together rather
+      // than testing the bulk path in isolation.
+      const single = await service.checkEligibility(driverId);
+      const bulk = await service.checkEligibilityBulk([driverId]);
+
+      const mine = bulk.get(driverId);
+      expect(mine).toBeDefined();
+      expect(mine?.checks).toEqual(single.checks);
+      expect(mine?.eligible).toBe(single.eligible);
+      expect(mine?.missingReasons).toEqual(single.missingReasons);
+      expect(mine?.qualifyingVehicleId).toBe(single.qualifyingVehicleId);
+    });
+
+    it('returns an empty map for no drivers, without querying', async () => {
+      if (!databaseAvailable) return;
+
+      const bulk = await service.checkEligibilityBulk([]);
+      expect(bulk.size).toBe(0);
+    });
+
+    it('omits a driver id that has no profile rather than inventing checks for it', async () => {
+      if (!databaseAvailable) return;
+
+      // A roster row can only exist for a real profile, but an absent entry
+      // must read as "unknown" upstream, never as "eligible".
+      const bulk = await service.checkEligibilityBulk([driverId, randomUUID()]);
+
+      expect(bulk.size).toBe(1);
+      expect(bulk.has(driverId)).toBe(true);
+    });
+  });
 });

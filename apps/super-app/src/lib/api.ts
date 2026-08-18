@@ -482,6 +482,34 @@ export interface RideTypeCatalogEntryDto {
   nearestDriverMeters?: number | null;
 }
 
+/**
+ * A published CMS page — Privacy Policy, Terms of Service.
+ *
+ * `body` is `unknown` on the backend DTO because the CMS stores arbitrary
+ * JSON. Legal pages use the narrow shape below; `renderCmsBody` in
+ * accountPages.tsx is the only place that interprets it, and it degrades to a
+ * plain message rather than throwing when a page carries something else.
+ */
+export interface CmsPageDto {
+  id: string;
+  slug: string;
+  title: string;
+  body: unknown;
+  publishedAt: string | null;
+  updatedAt: string;
+}
+
+export type DriverSupportCategory = 'PAYOUT' | 'ACCOUNT' | 'APP_BUG' | 'KYC' | 'OTHER';
+
+export interface DriverSupportTicketDto {
+  id: string;
+  category: DriverSupportCategory;
+  subject: string;
+  description: string;
+  status: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
+  createdAt: string;
+}
+
 export interface NearbyDriverDto {
   latitude: number;
   longitude: number;
@@ -1253,6 +1281,9 @@ const partnerPayouts = (prefix: 'rider' | 'driver') => ({
   removeBankAccount: (id: string) =>
     dx<{ removed: boolean }>('DELETE', `/${prefix}/wallet/bank-accounts/${id}`),
   hasPin: () => dx<{ set: boolean }>('GET', `/${prefix}/wallet/pin`),
+  /** Sets or replaces the payout PIN. The backend has one endpoint for both —
+   * there is no separate "change" call and no old-PIN challenge, which is a
+   * gap worth closing, recorded in the diff register rather than faked here. */
   setPin: (pin: string) => dx<{ set: true }>('POST', `/${prefix}/wallet/pin`, { pin }),
   requestPayout: (body: { amount: number; bankAccountId: string; pin: string }) =>
     dx<PayoutResultDto>('POST', `/${prefix}/wallet/payouts`, body),
@@ -1260,6 +1291,20 @@ const partnerPayouts = (prefix: 'rider' | 'driver') => ({
 });
 
 export const api = {
+  // ── CMS (public, no auth) ──────────────────────────────────────────────────
+  // Legal pages live in the CMS so Ops can revise them without a deploy — a
+  // privacy policy hardcoded in a bundle is one nobody can correct in a hurry.
+  cms: {
+    getPage: (slug: string) => dx<CmsPageDto>('GET', `/cms/pages/${encodeURIComponent(slug)}`),
+  },
+
+  // ── DRIVER SUPPORT TICKETS ─────────────────────────────────────────────────
+  driverSupport: {
+    list: () => dx<DriverSupportTicketDto[]>('GET', '/driver/support-tickets'),
+    create: (body: { category: DriverSupportCategory; subject: string; description: string }) =>
+      dx<DriverSupportTicketDto>('POST', '/driver/support-tickets', body),
+  },
+
   // ── AUTH ───────────────────────────────────────────────────────────────────
   auth: {
     // Registration

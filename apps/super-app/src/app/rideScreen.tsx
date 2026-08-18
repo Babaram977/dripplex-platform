@@ -8,6 +8,7 @@ import {
   TEXT_SECONDARY,
 } from '../tokens/colors';
 import { api } from '../lib/api';
+import { playNotificationSound } from '../lib/sound';
 import { auth } from '../lib/auth';
 import { ws } from '../lib/ws';
 import {
@@ -1553,6 +1554,9 @@ export function FindingDriverScreen({
         ['DRIVER_ASSIGNED', 'ARRIVED', 'IN_PROGRESS', 'COMPLETED'].includes(ride.status);
       if (assigned) {
         foundRef.current = true;
+        // foundRef already guarantees this runs once, so the passenger who
+        // has been watching "Finding your driver" hears it exactly once.
+        playNotificationSound('success');
         onFound(ride);
       }
     };

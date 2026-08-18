@@ -1,5 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { api, uploadFile } from '../lib/api';
+import { AccountPageHost, AccountRows, type AccountPage } from './accountPages';
+import { playNotificationSound } from '../lib/sound';
+import { SoundSettings } from './soundSettings';
 import { PayoutPanel } from './payoutPanel';
 import { auth } from '../lib/auth';
 import { getCurrentPosition } from '../lib/maps';
@@ -376,10 +379,22 @@ export function RiderDashboardScreen({
   // "Delivery job is not assigned to this rider". Mirrors the driver app gate.
   const isRider = auth.hasRole('rider');
 
+  // Ids we have already chimed for. The poll runs every 8s, so comparing
+  // against the previous set is what separates a job arriving from the same
+  // job still sitting there unaccepted.
+  const announcedJobIds = useRef<Set<string>>(new Set());
+
   const fetchJobs = useCallback(() => {
     api.rider
       .getJobs()
-      .then(setJobs)
+      .then((next) => {
+        const fresh = next.filter((job) => !announcedJobIds.current.has(job.id));
+        if (fresh.length > 0) {
+          playNotificationSound('new-request');
+          for (const job of fresh) announcedJobIds.current.add(job.id);
+        }
+        setJobs(next);
+      })
       .catch((e) => setLoadErr(e.message));
   }, []);
 
@@ -1245,6 +1260,7 @@ export function RiderAccountScreen({
   const [availability, setAvailability] = useState<RiderAvailabilityDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [accountPage, setAccountPage] = useState<AccountPage | null>(null);
 
   useEffect(() => {
     void Promise.all([
@@ -1448,6 +1464,28 @@ export function RiderAccountScreen({
               </div>
             )}
 
+            {/* A rider needs the same four things a driver does — a payout
+                PIN, the two legal documents, and a way to reach support. The
+                rider screen had none of them; the driver's were dead buttons.
+                Both now share one implementation. */}
+            <p
+              style={{
+                fontFamily: IT,
+                fontSize: 12,
+                fontWeight: 600,
+                color: MUTED,
+                letterSpacing: '0.08em',
+                margin: '4px 0 10px 4px',
+              }}
+            >
+              ACCOUNT
+            </p>
+            <div style={{ marginBottom: 16 }}>
+              <AccountRows onOpen={setAccountPage} />
+            </div>
+
+            <SoundSettings />
+
             <button
               onClick={signOut}
               style={{
@@ -1468,6 +1506,8 @@ export function RiderAccountScreen({
           </>
         )}
       </div>
+
+      <AccountPageHost page={accountPage} audience="rider" onClose={() => setAccountPage(null)} />
     </div>
   );
 }

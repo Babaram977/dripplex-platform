@@ -1028,6 +1028,9 @@ export function CheckoutScreen({
       await api.orders.pay(order.id, { provider: paymentKey === 'WALLET' ? 'WALLET' : 'CASH' });
       setConfirmedOrderId(order.id);
       setConfirmedOrderNum(order.orderNumber);
+      // A completed order is the moment the founder asked to be audible —
+      // the customer has just parted with money and needs to know it landed.
+      playNotificationSound('success');
       setSuccess(true);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Checkout failed. Please try again.');
@@ -1067,6 +1070,9 @@ export function CheckoutScreen({
       setConfirmedOrderId(pendingOrder.id);
       setConfirmedOrderNum(pendingOrder.orderNumber);
       setShowBankSheet(false);
+      // A completed order is the moment the founder asked to be audible —
+      // the customer has just parted with money and needs to know it landed.
+      playNotificationSound('success');
       setSuccess(true);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Payment confirmation failed.');
