@@ -1899,10 +1899,14 @@ model Vehicle {
 /// DPX-DRIVER-002 Phase 3 — a physical location a driver books a mandatory
 /// inspection appointment at.
 model InspectionCentre {
-  id          String       @id @default(uuid()) @db.Uuid
-  name        String       @db.VarChar(150)
-  address     String       @db.VarChar(500)
-  city        String       @db.VarChar(100)
+  id   String @id @default(uuid()) @db.Uuid
+  name String @db.VarChar(150)
+  /// Optional (founder decision, 2026-08-17: "no address needed for now").
+  /// DrippleX's own centres are identified by name and city; drivers who need
+  /// directions are pointed at the support WhatsApp line on the booking screen.
+  /// A centre with no address must never render as a blank or "null" line.
+  address String? @db.VarChar(500)
+  city    String  @db.VarChar(100)
   latitude    Decimal?     @db.Decimal(10, 7)
   longitude   Decimal?     @db.Decimal(10, 7)
   isActive    Boolean      @default(true) @map("is_active")

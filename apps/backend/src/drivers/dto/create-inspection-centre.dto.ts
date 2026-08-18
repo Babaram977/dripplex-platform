@@ -13,10 +13,13 @@ export class CreateInspectionCentreDto {
   @MaxLength(150)
   public name!: string;
 
+  /** Optional — a DrippleX centre is identified by name and city, and a
+   *  placeholder street line would read to a driver as a real one. */
+  @IsOptional()
   @IsString()
   @MinLength(5)
   @MaxLength(500)
-  public address!: string;
+  public address?: string;
 
   @IsString()
   @MinLength(2)
