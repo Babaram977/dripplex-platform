@@ -117,8 +117,16 @@ export class CreateUtilityPurchaseDto {
   @MaxLength(20)
   public contactPhone?: string;
 
-  @IsEnum(UtilityPaymentMethod)
-  public paymentMethod!: UtilityPaymentMethod;
+  /**
+   * `CARD` rather than a named gateway is what a client should send. Which
+   * gateway actually takes the money is a server decision (PAYMENT_DEFAULT_-
+   * PROVIDER, falling back to whichever is configured), so a client that named
+   * one would break the day that gateway's keys change — which is exactly what
+   * happened: the Utilities screen hardcoded PAYSTACK. The stored row still
+   * records the gateway that was really used.
+   */
+  @IsIn([...Object.values(UtilityPaymentMethod), 'CARD'])
+  public paymentMethod!: UtilityPaymentMethod | 'CARD';
 }
 
 export class UtilityPurchaseHistoryQueryDto {

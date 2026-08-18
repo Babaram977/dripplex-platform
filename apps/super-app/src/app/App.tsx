@@ -516,6 +516,7 @@ function AppShell() {
   // electricity token that can only be seen once is money lost when the app
   // is closed.
   const [activeUtilityService, setActiveUtilityService] = useState<UtilityServiceType>('AIRTIME');
+  const [utilityCardEnabled, setUtilityCardEnabled] = useState(false);
   const [activeUtilityPurchase, setActiveUtilityPurchase] = useState<UtilityPurchaseDto | null>(
     null,
   );
@@ -1296,8 +1297,9 @@ function AppShell() {
     utilities: (
       <UtilitiesHomeScreen
         onBack={() => goBack('home')}
-        onService={(service) => {
+        onService={(service, cardEnabled) => {
           setActiveUtilityService(service);
+          setUtilityCardEnabled(cardEnabled);
           go('utilitybuy');
         }}
         onHistory={() => go('utilityhistory')}
@@ -1306,6 +1308,7 @@ function AppShell() {
     utilitybuy: (
       <UtilityPurchaseScreen
         service={activeUtilityService}
+        cardEnabled={utilityCardEnabled}
         onBack={() => goBack('utilities')}
         onDone={(purchase) => {
           setActiveUtilityPurchase(purchase);
@@ -1322,8 +1325,9 @@ function AppShell() {
     ) : (
       <UtilitiesHomeScreen
         onBack={() => goBack('home')}
-        onService={(service) => {
+        onService={(service, cardEnabled) => {
           setActiveUtilityService(service);
+          setUtilityCardEnabled(cardEnabled);
           go('utilitybuy');
         }}
         onHistory={() => go('utilityhistory')}

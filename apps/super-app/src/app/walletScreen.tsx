@@ -1128,7 +1128,10 @@ export function TopUpScreen({
     setLoading(true);
     setError('');
     try {
-      const res = await api.wallet.fund({ amount: raw, provider: 'paystack' });
+      // No provider named. It used to send 'paystack' in lower case, which the
+      // backend's enum rejected outright — every card top-up returned 422.
+      // Omitted entirely so the server uses whichever gateway is configured.
+      const res = await api.wallet.fund({ amount: raw });
       const r = res as { authorizationUrl?: string; reference?: string };
       refRef.current = r.reference ?? null;
       if (r.authorizationUrl) {

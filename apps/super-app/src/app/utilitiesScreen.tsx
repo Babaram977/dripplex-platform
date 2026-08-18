@@ -239,7 +239,9 @@ export function UtilitiesHomeScreen({
   onHistory,
 }: {
   onBack: () => void;
-  onService: (service: UtilityServiceType) => void;
+  /** `cardEnabled` is passed on from the catalogue this screen already
+   * fetches, so the purchase screen does not have to ask again. */
+  onService: (service: UtilityServiceType, cardEnabled: boolean) => void;
   onHistory: () => void;
 }) {
   const [catalogue, setCatalogue] = useState<UtilityCatalogueDto | null>(null);
@@ -303,7 +305,7 @@ export function UtilitiesHomeScreen({
           <button
             key={service.type}
             onClick={() => {
-              onService(service.type);
+              onService(service.type, catalogue?.cardEnabled ?? false);
             }}
             disabled={loading || unavailable}
             className="flex flex-col items-start gap-2 rounded-2xl p-4 text-left active:scale-[.98]"
@@ -336,10 +338,15 @@ interface PurchaseState {
 
 export function UtilityPurchaseScreen({
   service,
+  cardEnabled,
   onBack,
   onDone,
 }: {
   service: UtilityServiceType;
+  /** False when no card gateway is configured server-side. The Card option is
+   * then not offered at all, rather than offered and failing after the
+   * customer has chosen what to buy. */
+  cardEnabled: boolean;
   onBack: () => void;
   onDone: (purchase: UtilityPurchaseDto) => void;
 }) {
@@ -351,7 +358,7 @@ export function UtilityPurchaseScreen({
   const [identifier, setIdentifier] = useState('');
   const [amount, setAmount] = useState('');
   const [meterType, setMeterType] = useState<'prepaid' | 'postpaid'>('prepaid');
-  const [paymentMethod, setPaymentMethod] = useState<UtilityPaymentMethod>('WALLET');
+  const [paymentMethod, setPaymentMethod] = useState<UtilityPaymentMethod | 'CARD'>('WALLET');
 
   const [verifiedName, setVerifiedName] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
@@ -681,7 +688,10 @@ export function UtilityPurchaseScreen({
       <div className="mb-4 flex gap-2">
         {[
           { method: 'WALLET' as const, label: 'DrippleX Wallet' },
-          { method: 'PAYSTACK' as const, label: 'Card' },
+          // 'CARD', not a named gateway. Which one takes the money is the
+          // server's decision, and hardcoding one here is what would break the
+          // day its keys changed.
+          ...(cardEnabled ? [{ method: 'CARD' as const, label: 'Card' }] : []),
         ].map((option) => {
           const on = option.method === paymentMethod;
           return (

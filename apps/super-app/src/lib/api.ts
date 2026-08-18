@@ -1266,6 +1266,8 @@ export interface UtilityCatalogueDto {
   /** False until Peyflex credentials exist. The tile badges itself from this
    * rather than looking live and failing after a bundle is chosen. */
   available: boolean;
+  /** Whether a card gateway is configured server-side. */
+  cardEnabled: boolean;
   services: UtilityServiceType[];
   airtimeMinAmount: number;
   airtimeMaxAmount: number;
@@ -1338,7 +1340,9 @@ export interface CreateUtilityPurchaseRequest {
   amount?: number;
   meterType?: 'prepaid' | 'postpaid';
   contactPhone?: string;
-  paymentMethod: UtilityPaymentMethod;
+  /** Send 'CARD', never a named gateway — which gateway takes the money is a
+   * server decision, so a client naming one breaks when its keys change. */
+  paymentMethod: UtilityPaymentMethod | 'CARD';
 }
 
 export interface UtilityFloatStatusDto {

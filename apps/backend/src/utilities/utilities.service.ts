@@ -52,6 +52,9 @@ export interface UtilityCatalogueDto {
    * this rather than discovering the outage after a customer has chosen a
    * bundle. */
   available: boolean;
+  /** Whether a card gateway is configured. False hides the Card option
+   * instead of offering a button that fails after a bundle is chosen. */
+  cardEnabled: boolean;
   services: UtilityServiceType[];
   airtimeMinAmount: number;
   airtimeMaxAmount: number;
@@ -136,6 +139,7 @@ export class UtilitiesService {
   public getCatalogue(): UtilityCatalogueDto {
     return {
       available: this.provider.configured,
+      cardEnabled: this.config.cardPaymentsEnabled,
       services: [
         UtilityServiceType.AIRTIME,
         UtilityServiceType.DATA,
@@ -199,13 +203,17 @@ export class UtilitiesService {
     }
 
     const resolved = await this.resolvePurchase(dto);
+    // The client asks for "card"; the server decides which gateway. Resolved
+    // once, here, so the stored row records the gateway that actually ran.
+    const paymentMethod = this.resolvePaymentMethod(dto.paymentMethod);
 
-    if (dto.paymentMethod === UtilityPaymentMethod.WALLET) {
+    if (paymentMethod === UtilityPaymentMethod.WALLET) {
       const purchase = await this.createPurchaseRow(
         customerId,
         dto,
         resolved,
         UtilityPurchaseStatus.PENDING,
+        paymentMethod,
       );
       await this.auditService.record(UTILITIES_AUDIT_ACTIONS.PURCHASE_INITIATED, context, {
         resource: 'utility_purchase',
@@ -232,7 +240,7 @@ export class UtilitiesService {
     // Card. The row is created AWAITING_PAYMENT and the provider is not
     // touched until the gateway confirms — so an abandoned checkout costs
     // nothing and needs no operator attention.
-    const provider = this.resolvePaymentProvider(dto.paymentMethod);
+    const provider = this.resolvePaymentProvider(paymentMethod);
     const adapter = this.getPaymentAdapter(provider);
 
     const customer = await this.prisma.user.findUnique({ where: { id: customerId } });
@@ -256,6 +264,7 @@ export class UtilitiesService {
       dto,
       resolved,
       UtilityPurchaseStatus.AWAITING_PAYMENT,
+      paymentMethod,
       init.reference,
     );
 
@@ -744,6 +753,7 @@ export class UtilitiesService {
     dto: CreateUtilityPurchaseDto,
     resolved: { amount: number; planCode: string | null },
     status: UtilityPurchaseStatus,
+    paymentMethod: UtilityPaymentMethod,
     paymentReference?: string,
   ): Promise<UtilityPurchase> {
     return await this.prisma.utilityPurchase.create({
@@ -754,7 +764,7 @@ export class UtilitiesService {
         providerCode: dto.provider,
         planCode: resolved.planCode,
         amountCharged: resolved.amount,
-        paymentMethod: dto.paymentMethod,
+        paymentMethod,
         status,
         ...(paymentReference !== undefined ? { paymentReference } : {}),
       },
@@ -791,6 +801,24 @@ export class UtilitiesService {
       case UtilityServiceType.ELECTRICITY:
         return await this.provider.purchaseElectricity(request);
     }
+  }
+
+  /**
+   * Turn the client's choice into a concrete stored payment method.
+   *
+   * `CARD` means "whatever gateway this platform is running", which is the
+   * server's business. A client that named a gateway would break the moment
+   * that gateway's keys changed.
+   */
+  private resolvePaymentMethod(requested: UtilityPaymentMethod | 'CARD'): UtilityPaymentMethod {
+    if (requested !== 'CARD') return requested;
+    const provider = this.config.defaultCardProvider;
+    if (provider === null) {
+      throw new ValidationDomainException('Card payments are not available yet');
+    }
+    return provider === 'PAYSTACK'
+      ? UtilityPaymentMethod.PAYSTACK
+      : UtilityPaymentMethod.FLUTTERWAVE;
   }
 
   private resolvePaymentProvider(method: UtilityPaymentMethod): PaymentProvider {
