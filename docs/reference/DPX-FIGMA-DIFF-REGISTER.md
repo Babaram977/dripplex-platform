@@ -527,3 +527,49 @@ cannot hear anything. The control renders on the driver settings screen, the old
 gone, all five sounds are listed, selecting one plays it (0 → 2 oscillators for the two-tone
 Bell) and persists `{"enabled":true,"sound":"bell"}`, switching off persists `enabled:false`,
 hides the list and produces no oscillator, and switching back on persists again.
+
+---
+
+## Utilities tab — four new screens with no Figma source (2026-08-18)
+
+**Founder request:** _"Get ready to build a utility tab activate it and connect it to peyflex
+hub."_
+
+**Divergence, stated plainly:** the production Figma has **no Utilities screens**. The
+`⚡ Utilities` quick-action tile exists on the customer home screen and has always led nowhere.
+Four screens were built without a design source:
+
+| Screen               | Key              | What it does                                        |
+| -------------------- | ---------------- | --------------------------------------------------- |
+| Utilities home       | `utilities`      | Picks one of the four services; states availability |
+| Buy utility          | `utilitybuy`     | Provider → identifier → verify → plan/amount → pay  |
+| Receipt              | `utilityreceipt` | Outcome, the delivered token, the reference         |
+| Bill payment history | `utilityhistory` | Past purchases; reopens any receipt                 |
+
+They follow the existing partner-account chrome (`accountPages.tsx`) — same navy palette, same
+back button, same section labels — rather than inventing a new visual language. **This is
+implementation ahead of design, and it should be reconciled against Figma when Utilities screens
+are drawn.** Logged here rather than left for someone to discover.
+
+**Three decisions that are product behaviour, not styling:**
+
+- **The tile only goes live when the server says the provider is configured.** `GET
+/customer/utilities` returns `available`, and the four service buttons are disabled with a
+  plain explanation when it is false. A tab that looks live and fails after the customer has
+  chosen a bundle is worse than one that says it is off.
+- **Per-disco electricity bounds are shown before payment**, read from the provider (Kaduna
+  1,100–100,000; Kano 500–500,000). Without them the customer meets a provider rejection _after_
+  their money has moved.
+- **The electricity token is re-displayable from history.** It is the thing the customer bought;
+  a token shown once and lost with the app is money lost.
+
+**Verification:** driven in Chromium against doubles built from the **backend** controller and
+service DTOs (not from the super-app's own interface — that mistake is what shipped the
+`RideTypeCatalogEntryDto` mismatch). 21 checks, zero runtime errors: the tile routes; all four
+services render; discos come from the server; the ₦1,100–₦100,000 bounds show before paying;
+meter verification returns the account name; the purchase POST carries
+`{serviceType, provider, customerIdentifier, amount, meterType, paymentMethod}`; the receipt shows
+the token and reference; a success sound plays; history speaks plain words ("Delivered", not
+`SUCCESSFUL`) and reopening a row shows the token again; both ₦800 and ₦1,505 `M2GBS` bundles list
+separately and the composite `M2GBS:1505` id is sent rather than the bare code; and an
+unconfigured provider is stated with the services untappable.

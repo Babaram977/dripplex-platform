@@ -203,6 +203,24 @@ export class AppConfigService {
     return this.configService.get('OPAY_API_KEY', { infer: true });
   }
 
+  public get peyflexBaseUrl(): string {
+    return this.configService.get('PEYFLEX_BASE_URL', { infer: true });
+  }
+
+  public get peyflexApiToken(): string {
+    return this.configService.get('PEYFLEX_API_TOKEN', { infer: true });
+  }
+
+  /** True once a Peyflex token exists. Until then the Utilities feature is
+   * deployed but disabled, and the not-configured adapter answers. */
+  public get peyflexConfigured(): boolean {
+    return this.peyflexApiToken.trim().length > 0;
+  }
+
+  public get peyflexFloatLowBalanceThreshold(): number {
+    return this.configService.get('PEYFLEX_FLOAT_LOW_BALANCE_THRESHOLD', { infer: true });
+  }
+
   public get paymentDefaultProvider(): EnvConfig['PAYMENT_DEFAULT_PROVIDER'] {
     return this.configService.get('PAYMENT_DEFAULT_PROVIDER', { infer: true });
   }

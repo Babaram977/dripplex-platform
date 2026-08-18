@@ -53,6 +53,7 @@ const NAV: NavEntry[] = [
     ],
   },
   { href: '/pricing', label: 'Ride Pricing' },
+  { href: '/utilities', label: 'Bill Payments' },
   { href: '/analytics', label: 'Analytics' },
 ];
 

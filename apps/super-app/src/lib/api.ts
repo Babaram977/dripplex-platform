@@ -1250,6 +1250,111 @@ export interface LoyaltyOverviewDto {
   }[];
 }
 
+// ── UTILITIES (bill payments, DPX-UTILITIES-001/-002) ────────────────────────
+// Mirrors the BACKEND contract (apps/backend/src/utilities/*), not the shape
+// this screen would find convenient. A client-shaped interface that drifts
+// from the server is how a screen ends up rendering `undefined` for every
+// field while the build stays green — this app has no tsconfig, so nothing
+// would catch it but a browser.
+
+export type UtilityServiceType = 'AIRTIME' | 'DATA' | 'ELECTRICITY' | 'CABLE_TV';
+export type UtilityPaymentMethod = 'WALLET' | 'PAYSTACK' | 'FLUTTERWAVE';
+export type UtilityPurchaseStatus =
+  'AWAITING_PAYMENT' | 'PENDING' | 'SUCCESSFUL' | 'FAILED' | 'REVERSED';
+
+export interface UtilityCatalogueDto {
+  /** False until Peyflex credentials exist. The tile badges itself from this
+   * rather than looking live and failing after a bundle is chosen. */
+  available: boolean;
+  services: UtilityServiceType[];
+  airtimeMinAmount: number;
+  airtimeMaxAmount: number;
+}
+
+export interface UtilityNetworkDto {
+  code: string;
+  name: string;
+}
+
+export interface UtilityDataPlanDto {
+  /** `plan_code:amount`, not the bare plan code — the provider publishes the
+   * same code at two different prices. */
+  id: string;
+  planCode: string;
+  amount: number;
+  label: string;
+}
+
+export interface UtilityCablePlanDto {
+  id: string;
+  planCode: string;
+  amount: number;
+  label: string;
+  description?: string;
+}
+
+export interface UtilityElectricityDiscoDto {
+  code: string;
+  name: string;
+  minAmount: number;
+  maxAmount: number;
+}
+
+export interface UtilityCustomerLookupDto {
+  customerName: string;
+  identifier: string;
+  providerName?: string;
+}
+
+export interface UtilityPurchaseDto {
+  id: string;
+  serviceType: UtilityServiceType;
+  customerIdentifier: string;
+  providerCode: string;
+  planCode: string | null;
+  amountCharged: number;
+  paymentMethod: UtilityPaymentMethod;
+  status: UtilityPurchaseStatus;
+  providerReference: string | null;
+  /** The electricity token or recharge PIN. Re-displayable, because a
+   * customer who closes the app and loses it has lost the money. */
+  deliveredToken: string | null;
+  failureReason: string | null;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export interface InitiateUtilityPurchaseResult {
+  purchase: UtilityPurchaseDto;
+  /** Card path only. */
+  authorizationUrl?: string;
+}
+
+export interface CreateUtilityPurchaseRequest {
+  serviceType: UtilityServiceType;
+  provider: string;
+  customerIdentifier: string;
+  planId?: string;
+  amount?: number;
+  meterType?: 'prepaid' | 'postpaid';
+  contactPhone?: string;
+  paymentMethod: UtilityPaymentMethod;
+}
+
+export interface UtilityFloatStatusDto {
+  configured: boolean;
+  balance: number | null;
+  currency: string;
+  threshold: number;
+  low: boolean;
+  error?: string;
+}
+
+export interface AdminUtilityPurchaseDto extends UtilityPurchaseDto {
+  customerId: string;
+  providerCost: number | null;
+}
+
 // Notifications
 export interface NotificationDto {
   id: string;
@@ -2323,6 +2428,71 @@ export const api = {
       ),
     markRead: (id: string) => dx<void>('PATCH', `/customer/notifications/${id}/read`),
     markAllRead: () => dx<void>('POST', '/customer/notifications/mark-all-read'),
+  },
+
+  // ── UTILITIES (customer bill payments) ──────────────────────────────────────
+  // The catalogues are read from the provider on every call rather than
+  // hardcoded: a stale plan list is how a customer pays for a bundle that no
+  // longer exists.
+  utilities: {
+    getCatalogue: () => dx<UtilityCatalogueDto>('GET', '/customer/utilities'),
+    airtimeNetworks: () => dx<UtilityNetworkDto[]>('GET', '/customer/utilities/airtime/networks'),
+    dataNetworks: () => dx<UtilityNetworkDto[]>('GET', '/customer/utilities/data/networks'),
+    dataPlans: (provider: string) =>
+      dx<UtilityDataPlanDto[]>('GET', '/customer/utilities/data/plans', undefined, { provider }),
+    cableProviders: () => dx<UtilityNetworkDto[]>('GET', '/customer/utilities/cable/providers'),
+    cablePlans: (provider: string) =>
+      dx<UtilityCablePlanDto[]>('GET', '/customer/utilities/cable/plans', undefined, { provider }),
+    electricityProviders: () =>
+      dx<UtilityElectricityDiscoDto[]>('GET', '/customer/utilities/electricity/providers'),
+    verifyCable: (body: { provider: string; smartcardNumber: string }) =>
+      dx<UtilityCustomerLookupDto>('POST', '/customer/utilities/cable/verify', body),
+    verifyElectricity: (body: {
+      provider: string;
+      meterNumber: string;
+      meterType: 'prepaid' | 'postpaid';
+    }) => dx<UtilityCustomerLookupDto>('POST', '/customer/utilities/electricity/verify', body),
+    purchase: (body: CreateUtilityPurchaseRequest) =>
+      dx<InitiateUtilityPurchaseResult>('POST', '/customer/utilities/purchase', body),
+    confirm: (id: string) =>
+      dx<UtilityPurchaseDto>('POST', `/customer/utilities/purchase/${id}/confirm`),
+    history: (params?: { page?: number; pageSize?: number; serviceType?: UtilityServiceType }) =>
+      dx<PaginatedResult<UtilityPurchaseDto>>(
+        'GET',
+        '/customer/utilities/purchases',
+        undefined,
+        params,
+      ),
+    receipt: (id: string) => dx<UtilityPurchaseDto>('GET', `/customer/utilities/purchases/${id}`),
+  },
+
+  // ── UTILITIES (ops) ─────────────────────────────────────────────────────────
+  adminUtilities: {
+    /** The provider float. It is shared by every utility purchase on the
+     * platform, so it running dry fails all four services at once. */
+    float: () => dx<UtilityFloatStatusDto>('GET', '/admin/utilities/float'),
+    purchases: (params?: {
+      page?: number;
+      pageSize?: number;
+      serviceType?: UtilityServiceType;
+      status?: UtilityPurchaseStatus;
+    }) =>
+      dx<PaginatedResult<AdminUtilityPurchaseDto>>(
+        'GET',
+        '/admin/utilities/purchases',
+        undefined,
+        params,
+      ),
+    resolve: (
+      id: string,
+      body: {
+        outcome: 'SUCCESSFUL' | 'REVERSED';
+        note: string;
+        providerReference?: string;
+        deliveredToken?: string;
+        providerCost?: number;
+      },
+    ) => dx<AdminUtilityPurchaseDto>('PATCH', `/admin/utilities/purchases/${id}/resolve`, body),
   },
 
   // ── LOYALTY (customer) ──────────────────────────────────────────────────────

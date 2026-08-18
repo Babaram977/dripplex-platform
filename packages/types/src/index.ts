@@ -571,6 +571,26 @@ export type {
 
 export { COMMERCIAL_AUDIT_ACTIONS } from './commercial/index.js';
 
+export type {
+  AdminUtilityPurchaseDto,
+  CreateUtilityPurchaseRequest,
+  InitiateUtilityPurchaseResult,
+  ResolveUtilityPurchaseRequest,
+  UtilityCablePlanDto,
+  UtilityCatalogueDto,
+  UtilityCustomerLookupDto,
+  UtilityDataPlanDto,
+  UtilityElectricityDiscoDto,
+  UtilityFloatStatusDto,
+  UtilityNetworkDto,
+  UtilityPaymentMethod,
+  UtilityPurchaseDto,
+  UtilityPurchaseStatus,
+  UtilityServiceType,
+  VerifyCableCustomerRequest,
+  VerifyElectricityCustomerRequest,
+} from './utilities/index.js';
+
 export {
   changePasswordSchema,
   contactSchema,

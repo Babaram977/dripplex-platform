@@ -63,7 +63,7 @@ const QUICK = [
   { icon: '🚖', label: 'Ride', color: '#3B82F6', ready: true },
   { icon: '💳', label: 'Wallet', color: '#8B5CF6', ready: true },
   { icon: '📦', label: 'Orders', color: '#F59E0B', ready: true },
-  { icon: '⚡', label: 'Utilities', color: '#06B6D4', ready: false },
+  { icon: '⚡', label: 'Utilities', color: '#06B6D4', ready: true },
   { icon: '🍔', label: 'Food', color: '#F97316', ready: true },
   { icon: '🏥', label: 'Health', color: '#10B981', ready: false },
   { icon: '⋯', label: 'More', color: '#6B7280', ready: false },
@@ -1495,6 +1495,7 @@ export function HomeScreen({
   onStore,
   onWallet,
   onWalletAction,
+  onUtilities,
   onOrders,
   onTrackOrder,
   onBecomePartner,
@@ -1508,6 +1509,8 @@ export function HomeScreen({
   onStore?: (id: string) => void;
   onWallet?: () => void;
   onWalletAction?: (a: 'send' | 'receive' | 'topup' | 'pay') => void;
+  /** Bill payments — airtime, data, electricity, cable TV. */
+  onUtilities?: () => void;
   onOrders?: () => void;
   /** Open live tracking for an order the customer already has in flight. */
   onTrackOrder?: (orderId: string) => void;
@@ -1653,9 +1656,12 @@ export function HomeScreen({
       case 'Orders':
         onOrders?.();
         break;
+      case 'Utilities':
+        onUtilities?.();
+        break;
       default:
-        // Utilities / Health / More have no screen yet. They are marked `ready:
-        // false` above so they never reach here — this stays as the backstop.
+        // Health / More have no screen yet. They are marked `ready: false`
+        // above so they never reach here — this stays as the backstop.
         break;
     }
   };

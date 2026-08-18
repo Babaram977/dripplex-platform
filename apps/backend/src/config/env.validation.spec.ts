@@ -18,6 +18,12 @@ describe('validateEnv', () => {
     expect(env.PAYMENT_DEFAULT_PROVIDER).toBe('PAYSTACK');
     expect(env.PAYSTACK_SECRET_KEY).toBe('');
     expect(env.FIREBASE_PROJECT_ID).toBe('');
+    // Utilities default to OFF. An empty token is what keeps the feature
+    // deployed-but-disabled rather than deployed-and-broken, so a default that
+    // ever became non-empty would silently switch on real spending.
+    expect(env.PEYFLEX_API_TOKEN).toBe('');
+    expect(env.PEYFLEX_BASE_URL).toBe('https://client.peyflex.com.ng');
+    expect(env.PEYFLEX_FLOAT_LOW_BALANCE_THRESHOLD).toBe(50_000);
   });
 
   it('rejects short JWT secrets', () => {

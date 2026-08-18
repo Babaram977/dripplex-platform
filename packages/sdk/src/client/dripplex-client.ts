@@ -75,6 +75,7 @@ import { AdminRideReportsClient } from '../rides/admin-ride-reports-client.js';
 import { CustomerRideClient } from '../rides/customer-ride-client.js';
 import { DriverRideClient } from '../rides/driver-ride-client.js';
 import { UploadsClient } from '../uploads/uploads-client.js';
+import { AdminUtilitiesClient } from '../utilities/admin-utilities-client.js';
 
 import type { SdkConfig } from '../config/sdk-config.js';
 
@@ -116,6 +117,7 @@ export class DripplexClient {
   public readonly driverInspections: DriverInspectionsClient;
   public readonly adminInspectionCentres: AdminInspectionCentresClient;
   public readonly adminRidePricing: AdminRidePricingClient;
+  public readonly adminUtilities: AdminUtilitiesClient;
   public readonly operationsInspections: OperationsInspectionsClient;
   public readonly operationsFleet: OperationsFleetClient;
   public readonly adminCommercialCreditSettings: AdminCommercialCreditSettingsClient;
@@ -194,6 +196,7 @@ export class DripplexClient {
     this.driverInspections = new DriverInspectionsClient(this.http);
     this.adminInspectionCentres = new AdminInspectionCentresClient(this.http);
     this.adminRidePricing = new AdminRidePricingClient(this.http);
+    this.adminUtilities = new AdminUtilitiesClient(this.http);
     this.operationsInspections = new OperationsInspectionsClient(this.http);
     this.operationsFleet = new OperationsFleetClient(this.http);
     this.adminCommercialCreditSettings = new AdminCommercialCreditSettingsClient(this.http);
