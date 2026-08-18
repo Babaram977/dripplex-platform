@@ -15,8 +15,14 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 
 import { RIDE_EVENTS_PUBLISHER, type RideEventsPublisher } from './ride-events.publisher';
-import { haversineMeters } from './ride-fare.service';
-import { MAX_DISPATCH_ATTEMPTS, RIDE_AUDIT_ACTIONS, RIDE_OFFER_TIMEOUT_MS } from './ride.constants';
+import { boundingBox, haversineMeters } from './ride-fare.service';
+import {
+  DRIVER_LOCATION_MAX_AGE_MS,
+  MAX_DISPATCH_ATTEMPTS,
+  RIDE_AUDIT_ACTIONS,
+  RIDE_DISPATCH_RADIUS_BANDS_METERS,
+  RIDE_OFFER_TIMEOUT_MS,
+} from './ride.constants';
 import { toRideDto, toRideOfferDto, toRideOfferPreviewDto } from './ride.mapper';
 
 import type { RideDto, RideOfferDto, RideOfferPreviewDto } from '@dripplex/types';
@@ -201,40 +207,73 @@ export class RideDispatchService {
     return stale.length;
   }
 
+  /**
+   * Nearest un-offered driver, searched in expanding rings.
+   *
+   * Ranking was always nearest-first; what was missing was any bound. This
+   * walks RIDE_DISPATCH_RADIUS_BANDS_METERS outward and returns from the first
+   * ring that still holds a candidate, so the wider rings are only reached
+   * once the nearer ones are exhausted — a passenger gets somebody close
+   * whenever somebody close exists, and a thin fleet still gets served rather
+   * than failing at the 5km edge.
+   *
+   * The database query is bounded by a bounding box before any distance maths
+   * happens. Loading every online driver in the country and ranking them in
+   * Node ran on every dispatch attempt — up to five per ride, plus again on
+   * each decline and each expiry sweep — which is exactly the shape that stops
+   * scaling at a few hundred concurrent passengers.
+   */
   private async findNearestEligibleDriver(
     rideType: Ride['rideType'],
     pickupLat: number,
     pickupLng: number,
     excludedDriverIds: string[],
   ): Promise<DriverAvailability | null> {
-    const candidates = await this.prisma.driverAvailability.findMany({
-      where: {
-        online: true,
-        acceptingRides: true,
-        vehicleType: rideType,
-        activeRideCount: 0,
-        driverId: { notIn: excludedDriverIds },
-        driver: {
-          driverProfile: { status: DriverStatus.APPROVED },
-          rideOffers: { none: { status: RideOfferStatus.PENDING } },
+    const freshSince = new Date(Date.now() - DRIVER_LOCATION_MAX_AGE_MS);
+
+    for (const radiusMeters of RIDE_DISPATCH_RADIUS_BANDS_METERS) {
+      const box = boundingBox(pickupLat, pickupLng, radiusMeters);
+
+      const candidates = await this.prisma.driverAvailability.findMany({
+        where: {
+          online: true,
+          acceptingRides: true,
+          vehicleType: rideType,
+          activeRideCount: 0,
+          driverId: { notIn: excludedDriverIds },
+          // A driver whose app stopped reporting is not where the row says.
+          locationUpdatedAt: { gte: freshSince },
+          latitude: { gte: box.minLat, lte: box.maxLat },
+          longitude: { gte: box.minLng, lte: box.maxLng },
+          driver: {
+            driverProfile: { status: DriverStatus.APPROVED },
+            rideOffers: { none: { status: RideOfferStatus.PENDING } },
+          },
         },
-      },
-    });
+      });
 
-    const ranked = candidates
-      .filter((driver) => driver.latitude !== null && driver.longitude !== null)
-      .map((driver) => ({
-        driver,
-        distanceMeters: haversineMeters(
-          pickupLat,
-          pickupLng,
-          Number(driver.latitude),
-          Number(driver.longitude),
-        ),
-      }))
-      .sort((left, right) => left.distanceMeters - right.distanceMeters);
+      // The box is a square around the circle, so it over-selects at the
+      // corners; haversine is what actually decides who is inside the ring.
+      const ranked = candidates
+        .filter((driver) => driver.latitude !== null && driver.longitude !== null)
+        .map((driver) => ({
+          driver,
+          distanceMeters: haversineMeters(
+            pickupLat,
+            pickupLng,
+            Number(driver.latitude),
+            Number(driver.longitude),
+          ),
+        }))
+        .filter((entry) => entry.distanceMeters <= radiusMeters)
+        .sort((left, right) => left.distanceMeters - right.distanceMeters);
 
-    return ranked[0]?.driver ?? null;
+      if (ranked[0]) {
+        return ranked[0].driver;
+      }
+    }
+
+    return null;
   }
 
   private async giveUp(ride: Ride): Promise<RideDto> {

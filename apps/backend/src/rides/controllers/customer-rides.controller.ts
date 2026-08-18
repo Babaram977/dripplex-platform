@@ -20,6 +20,7 @@ import { InitiateRidePaymentDto, VerifyRidePaymentDto } from '../dto/ride-paymen
 import { ReportRideProblemDto } from '../dto/ride-problem-report.dto';
 import { RateRideDto } from '../dto/ride-rating.dto';
 import { TipDriverDto } from '../dto/ride-tip.dto';
+import { RideTypesQueryDto } from '../dto/ride-types-query.dto';
 import { RidePaymentService } from '../ride-payment.service';
 import { RideProblemReportService } from '../ride-problem-report.service';
 import { RideRatingService } from '../ride-rating.service';
@@ -59,7 +60,21 @@ export class CustomerRidesController {
   /** Registered before `:id` — otherwise "types" would be captured as a
    * ride id by that route. */
   @Get('types')
-  public listRideTypes(): ApiSuccessResponse<RideTypeCatalogEntryDto[]> {
+  public async listRideTypes(
+    @Query() query: RideTypesQueryDto,
+  ): Promise<ApiSuccessResponse<RideTypeCatalogEntryDto[]>> {
+    // Coordinates are optional and only meaningful together: with a pickup the
+    // response also says which types have a driver in reach, so the fare
+    // screen can grey out a type instead of letting the passenger book into a
+    // ride that will end NO_DRIVERS_FOUND. Without one, the catalog is
+    // returned exactly as it always was — no availability claim either way.
+    if (query.latitude !== undefined && query.longitude !== undefined) {
+      const data = await this.ridesService.listRideTypesWithAvailability(
+        query.latitude,
+        query.longitude,
+      );
+      return { success: true, data };
+    }
     return { success: true, data: this.ridesService.listRideTypes() };
   }
 

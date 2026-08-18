@@ -260,6 +260,10 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
         vehicleType: 'ECONOMY',
         latitude: location.lat,
         longitude: location.lng,
+        // Dispatch ignores a driver whose position is older than
+        // DRIVER_LOCATION_MAX_AGE_MS, so a fixture that omits this is
+        // a driver who has not reported in — not an available one.
+        locationUpdatedAt: new Date(),
       },
     });
     return user.id;

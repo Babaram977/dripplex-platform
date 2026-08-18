@@ -110,6 +110,10 @@ describe('OperationsDispatchSupportService', () => {
         activeRideCount: overrides.activeRideCount ?? 0,
         latitude: overrides.latitude === undefined ? PICKUP_LAT : overrides.latitude,
         longitude: overrides.longitude === undefined ? PICKUP_LON : overrides.longitude,
+        // Dispatch ignores a driver whose position is older than
+        // DRIVER_LOCATION_MAX_AGE_MS, so a fixture that omits this is
+        // a driver who has not reported in — not an available one.
+        locationUpdatedAt: new Date(),
       },
     });
     return user.id;

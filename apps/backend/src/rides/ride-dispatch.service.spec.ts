@@ -20,12 +20,19 @@ const databaseUrl =
 
 // Deliberately far from other spec files' fixture coordinates (e.g.
 // rides.service.spec.ts uses Lagos-area 6.60/3.35) — real-DB dispatch tests
-// share one live database, and "nearest driver" queries have no radius cap,
-// so overlapping coordinates across concurrently-run spec files can leak a
-// foreign fixture in as the "nearest" candidate.
+// share one live database, so overlapping coordinates across concurrently-run
+// spec files could otherwise leak a foreign fixture in as the "nearest"
+// candidate. Dispatch is radius-bounded now, which makes that much harder, but
+// the separation is still the thing keeping these tests independent.
 const PICKUP = { lat: 12.0, lng: 8.5 };
+/** ~250m — inside the first 5km ring. */
 const NEARBY = { lat: 12.002, lng: 8.5005 };
+/** ~12km — outside the 5km ring, inside the 15km one. Reaching this driver
+ * means dispatch widened, which is the behaviour, not an accident. */
 const FARTHER = { lat: 12.05, lng: 8.6 };
+/** ~22km north — beyond the widest ring dispatch will ever search. One degree
+ * of latitude is ~111.2km, so 0.2° is comfortably past 15km at any longitude. */
+const OUT_OF_RANGE = { lat: 12.2, lng: 8.5 };
 
 describe('RideDispatchService', () => {
   let databaseAvailable = false;
@@ -122,6 +129,10 @@ describe('RideDispatchService', () => {
   async function createDriver(
     location: { lat: number; lng: number },
     status: DriverStatus = 'APPROVED',
+    /** How long ago this driver last reported their position. Defaults to
+     * "just now"; pass a larger value to model a driver whose app has stopped
+     * pinging. */
+    locationAgeMs = 0,
   ): Promise<string> {
     const user = await prisma.user.create({
       data: {
@@ -143,6 +154,10 @@ describe('RideDispatchService', () => {
         vehicleType: 'ECONOMY',
         latitude: location.lat,
         longitude: location.lng,
+        // Dispatch ignores a driver whose position is older than
+        // DRIVER_LOCATION_MAX_AGE_MS, so a fixture that omits this is
+        // a driver who has not reported in — not an available one.
+        locationUpdatedAt: new Date(Date.now() - locationAgeMs),
       },
     });
     return user.id;
@@ -183,6 +198,79 @@ describe('RideDispatchService', () => {
     expect(offers).toHaveLength(1);
     expect(offers[0]?.driverId).toBe(nearDriverId);
     expect(offers[0]?.driverId).not.toBe(farDriverId);
+  });
+
+  it('never offers a driver beyond the widest search ring', async () => {
+    if (!databaseAvailable) return;
+
+    // Approved, online, accepting, idle, right vehicle type — eligible on
+    // every count except distance. Before dispatch was bounded this driver was
+    // the "nearest" candidate and got the offer, which is how a Lagos driver
+    // could be sent a Kano pickup.
+    const distantDriverId = await createDriver(OUT_OF_RANGE);
+    const ride = await createRide();
+
+    const dispatched = await service.dispatchRide(ride.id);
+
+    expect(dispatched.status).toBe('NO_DRIVERS_FOUND');
+    const offers = await prisma.rideOffer.findMany({ where: { rideId: ride.id } });
+    expect(offers).toHaveLength(0);
+    expect(offers.map((offer) => offer.driverId)).not.toContain(distantDriverId);
+  });
+
+  it('only widens past the first ring once the nearer drivers are exhausted', async () => {
+    if (!databaseAvailable) return;
+
+    const nearDriverId = await createDriver(NEARBY);
+    const farDriverId = await createDriver(FARTHER);
+    const ride = await createRide();
+
+    // First pass: the ~250m driver, not the ~12km one, even though both are
+    // within the outermost ring.
+    await service.dispatchRide(ride.id);
+    const firstOffer = await prisma.rideOffer.findFirstOrThrow({ where: { rideId: ride.id } });
+    expect(firstOffer.driverId).toBe(nearDriverId);
+
+    // Once the near ring holds nobody un-offered, the search widens rather
+    // than giving up — a thin fleet still gets served.
+    await service.declineOffer(nearDriverId, firstOffer.id, {});
+    const offers = await prisma.rideOffer.findMany({
+      where: { rideId: ride.id },
+      orderBy: { offeredAt: 'asc' },
+    });
+    expect(offers).toHaveLength(2);
+    expect(offers[1]?.driverId).toBe(farDriverId);
+  });
+
+  it('ignores a driver whose last location ping is stale', async () => {
+    if (!databaseAvailable) return;
+
+    // Right beside the pickup on paper, but the app stopped reporting an hour
+    // ago — so the row says "here" and the driver is anywhere. Offering this
+    // ride would strand the passenger while the offer times out.
+    const staleDriverId = await createDriver(NEARBY, 'APPROVED', 60 * 60_000);
+    const ride = await createRide();
+
+    const dispatched = await service.dispatchRide(ride.id);
+
+    expect(dispatched.status).toBe('NO_DRIVERS_FOUND');
+    const offers = await prisma.rideOffer.findMany({ where: { rideId: ride.id } });
+    expect(offers.map((offer) => offer.driverId)).not.toContain(staleDriverId);
+  });
+
+  it('prefers a fresh farther driver over a stale nearer one', async () => {
+    if (!databaseAvailable) return;
+
+    const staleNearDriverId = await createDriver(NEARBY, 'APPROVED', 60 * 60_000);
+    const freshFarDriverId = await createDriver(FARTHER);
+    const ride = await createRide();
+
+    await service.dispatchRide(ride.id);
+
+    const offers = await prisma.rideOffer.findMany({ where: { rideId: ride.id } });
+    expect(offers).toHaveLength(1);
+    expect(offers[0]?.driverId).toBe(freshFarDriverId);
+    expect(offers[0]?.driverId).not.toBe(staleNearDriverId);
   });
 
   it('excludes drivers whose DriverProfile is not APPROVED', async () => {

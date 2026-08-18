@@ -97,6 +97,10 @@ describe('RideTripService', () => {
         // gate needs the driver's last-known location to be within 50m.
         latitude: 6.6,
         longitude: 3.35,
+        // Dispatch ignores a driver whose position is older than
+        // DRIVER_LOCATION_MAX_AGE_MS, so a fixture that omits this is
+        // a driver who has not reported in — not an available one.
+        locationUpdatedAt: new Date(),
       },
     });
   });

@@ -170,9 +170,17 @@ describe('RideGateway', () => {
 
       await gateway.handleDriverLocation(socket as never, { latitude: 6.5, longitude: 3.4 });
 
+      // locationUpdatedAt must be written in the same call as the
+      // coordinates. If a ping could land the position without the timestamp,
+      // dispatch would keep reading the driver as stale and skip a driver who
+      // is right there — so this asserts the pairing, not just the position.
       expect(prisma.driverAvailability.updateMany).toHaveBeenCalledWith({
         where: { driverId: 'driver-1' },
-        data: { latitude: 6.5, longitude: 3.4 },
+        data: {
+          latitude: 6.5,
+          longitude: 3.4,
+          locationUpdatedAt: expect.any(Date),
+        },
       });
       expect(prisma.rideTracking.create).not.toHaveBeenCalled();
     });
