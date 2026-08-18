@@ -262,6 +262,24 @@ const PERMISSION_SEEDS = [
     description:
       'View the Operations Console analytics dashboard — driver utilization, shift, ride, dispatch, response-time, and geographic-demand analytics',
   },
+  {
+    code: 'admin:rides:pricing:manage',
+    description: 'Edit the ride fare table and surcharge zones in the Operations Console',
+  },
+  {
+    code: 'customer:utilities:read',
+    description:
+      'Browse the bill-payment catalogues (airtime, data, electricity, cable) and verify a meter or smartcard',
+  },
+  {
+    code: 'customer:utilities:purchase',
+    description: 'Buy airtime, data, electricity or a cable subscription',
+  },
+  {
+    code: 'admin:utilities:manage',
+    description:
+      'View the bill-payment register and provider float balance, and resolve purchases the provider never answered for',
+  },
   { code: 'users:read', description: 'Read user records' },
   { code: 'users:write', description: 'Update user records' },
   { code: 'users:delete', description: 'Soft-delete user records' },
@@ -299,6 +317,8 @@ const ROLE_SEEDS = [
 const ROLE_PERMISSION_GRANTS = {
   customer: [
     'customer:kyc:manage',
+    'customer:utilities:read',
+    'customer:utilities:purchase',
     'profile:read',
     'profile:write',
     'auth:sessions:read',
@@ -488,6 +508,8 @@ const ROLE_PERMISSION_GRANTS = {
     'admin:merchant-settlement:commission:manage',
     'admin:commercial:credit-settings:manage',
     'admin:commercial:commission-settings:manage',
+    'admin:rides:pricing:manage',
+    'admin:utilities:manage',
     'admin:commercial:account:manage',
     'admin:drivers:vehicles:manage',
     'admin:drivers:support-ticket:manage',
@@ -603,6 +625,8 @@ const ROLE_PERMISSION_GRANTS = {
     'admin:merchant-settlement:commission:manage',
     'admin:commercial:credit-settings:manage',
     'admin:commercial:commission-settings:manage',
+    'admin:rides:pricing:manage',
+    'admin:utilities:manage',
     'admin:commercial:account:manage',
     'admin:drivers:vehicles:manage',
     'admin:drivers:support-ticket:manage',
