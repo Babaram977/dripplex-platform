@@ -43,12 +43,48 @@ export interface GeoPoint {
   longitude: number;
 }
 
+/**
+ * Coordinate precision the platform accepts: 7 decimal places.
+ *
+ * Every coordinate DTO on the backend is `@IsNumber({ maxDecimalPlaces: 7 })`
+ * and every column is `Decimal(10,7)`. Both the browser geolocation API and the
+ * Google geocoder hand back full double precision — 8.516700799999999, not
+ * 8.5167008 — so a raw coordinate is REJECTED by the API with
+ * "pickupLongitude must be a number conforming to the specified constraints".
+ *
+ * That is what made rides unbookable: the fare estimate and the booking both
+ * sent raw geocoder output, and whether a ride worked came down to how many
+ * decimals Google happened to return. It affects every geolocated party —
+ * customers, drivers, riders and merchant addresses — because they all end up
+ * in the same 7-decimal DTOs.
+ *
+ * 7 decimal places is ~1.1 cm at the equator, far finer than any dispatch,
+ * fare or ETA decision needs, so rounding here costs nothing.
+ */
+const COORDINATE_DECIMALS = 7;
+
+/** Round one coordinate to the precision the API accepts. */
+export function toApiCoordinate(value: number): number {
+  return Number(value.toFixed(COORDINATE_DECIMALS));
+}
+
+/** `toApiCoordinate` for a whole point. */
+export function toApiPoint<T extends GeoPoint>(point: T): T {
+  return {
+    ...point,
+    latitude: toApiCoordinate(point.latitude),
+    longitude: toApiCoordinate(point.longitude),
+  };
+}
+
 // Browser geolocation → coordinates (works with or without Google Maps).
 export function getCurrentPosition(): Promise<GeoPoint | null> {
   return new Promise((resolve) => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) return resolve(null);
     navigator.geolocation.getCurrentPosition(
-      (p) => resolve({ latitude: p.coords.latitude, longitude: p.coords.longitude }),
+      // Rounded here so no caller can accidentally ship raw device precision
+      // to an API that refuses it.
+      (p) => resolve(toApiPoint({ latitude: p.coords.latitude, longitude: p.coords.longitude })),
       () => resolve(null),
       { enableHighAccuracy: true, timeout: 8000 },
     );
@@ -104,8 +140,9 @@ function toResolved(r: google.maps.GeocoderResult): ResolvedAddress & GeoPoint {
     state: comp('administrative_area_level_1') || '',
     country: comp('country') || 'Nigeria',
     postalCode: comp('postal_code') || undefined,
-    latitude: r.geometry.location.lat(),
-    longitude: r.geometry.location.lng(),
+    // Google returns full double precision; the API accepts 7 decimals.
+    latitude: toApiCoordinate(r.geometry.location.lat()),
+    longitude: toApiCoordinate(r.geometry.location.lng()),
   };
 }
 

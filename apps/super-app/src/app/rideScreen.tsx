@@ -1022,12 +1022,14 @@ export function PickupConfirmScreen({
 }) {
   const [note, setNote] = useState('');
   const [leg, setLeg] = useState<{ distanceMeters: number; durationSeconds: number } | null>(null);
+  const [legError, setLegError] = useState<string | null>(null);
 
   // Real distance/duration from the fare estimator — the same numbers the fare
   // is built from. Nothing is guessed locally.
   useEffect(() => {
     if (!pickup || !dropoff) return;
     let alive = true;
+    setLegError(null);
     void api.rides
       .estimate({
         rideType: 'ECONOMY',
@@ -1042,8 +1044,12 @@ export function PickupConfirmScreen({
         // — the `estimated*` prefix belongs to RideDto, not to the estimator.
         setLeg({ distanceMeters: e.distanceMeters, durationSeconds: e.durationSeconds });
       })
-      .catch(() => {
-        /* Leave the figures blank rather than inventing a trip length. */
+      .catch((e: unknown) => {
+        // Blank figures rather than an invented trip length — but say why,
+        // instead of leaving the passenger staring at two dashes.
+        if (alive) {
+          setLegError(e instanceof Error ? e.message : 'Could not measure this trip right now.');
+        }
       });
     return () => {
       alive = false;
@@ -1130,6 +1136,14 @@ export function PickupConfirmScreen({
                 </div>
               </div>
             </div>
+            {legError !== null && (
+              <p
+                className="mb-2 text-[11.5px] leading-relaxed"
+                style={{ fontFamily: IT, color: '#F87171' }}
+              >
+                {legError}
+              </p>
+            )}
             <div className="flex gap-3 border-t pt-3" style={{ borderColor: BORDER }}>
               {/* "Traffic: Fast Route" is gone — DrippleX has no traffic feed,
                   so there was nothing behind it to be right or wrong. */}
@@ -1242,8 +1256,20 @@ export function FareEstimateScreen({
         dropoffLatitude: dropoff.latitude,
         dropoffLongitude: dropoff.longitude,
       })
-      .then((e) => setEstimate(e))
-      .catch(() => {});
+      .then((e) => {
+        setEstimate(e);
+        setError(null);
+      })
+      // Swallowing this is what made the coordinate-precision bug invisible:
+      // the fare, distance and time simply read "—" with no reason given, on
+      // every ride, for anyone whose coordinates had too many decimals.
+      .catch((e: unknown) =>
+        setError(
+          e instanceof Error
+            ? `We could not price this trip: ${e.message}`
+            : 'We could not price this trip.',
+        ),
+      );
   }, [dropoff, pickup, rideType]);
 
   const entry = catalog?.find((c) => c.rideType === rideType) ?? null;
