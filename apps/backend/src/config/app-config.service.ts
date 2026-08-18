@@ -343,6 +343,19 @@ export class AppConfigService {
     return this.smileIdPartnerId !== '' && this.smileIdApiKey !== '';
   }
 
+  /**
+   * Whether ANY biometric identity provider can actually run a check.
+   *
+   * Smile ID is the only one wired today, and it throws "Smile ID is not
+   * configured" without credentials. Nothing may *demand* a biometric check
+   * while this is false: a check that cannot be satisfied is not a control,
+   * it is a locked door. Onboarding still requires identity — an operator
+   * clears it by manual review.
+   */
+  public get biometricIdentityVerificationAvailable(): boolean {
+    return this.smileIdConfigured;
+  }
+
   public get identityVerificationIdleHours(): number {
     return this.configService.get('IDENTITY_VERIFICATION_IDLE_HOURS', { infer: true });
   }

@@ -799,6 +799,15 @@ model DriverSecuritySettings {
   spotCheckDenominator          Int      @map("spot_check_denominator")
   newDeviceVerificationEnabled  Boolean  @default(true) @map("new_device_verification_enabled")
   adminForceVerificationEnabled Boolean  @default(true) @map("admin_force_verification_enabled")
+  /// Whether a VERIFIED driver is asked to re-verify periodically — first
+  /// login of the day, after an idle gap, or on a new device. Onboarding is
+  /// never affected: a driver who has never been verified is always required
+  /// to be, and an operator can clear that by manual review.
+  ///
+  /// Switchable because the periodic checks are the expensive ones: a
+  /// biometric vendor charges per snap, and re-checking every driver every
+  /// morning multiplies that by the whole fleet, every day.
+  periodicVerificationEnabled   Boolean  @default(true) @map("periodic_verification_enabled")
   updatedBy                     String?  @map("updated_by") @db.Uuid
   updatedAt                     DateTime @updatedAt @map("updated_at")
   createdAt                     DateTime @default(now()) @map("created_at")

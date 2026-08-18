@@ -27,6 +27,7 @@ jest.mock('node:crypto', () => ({
 import type { DriverSecuritySettingsService } from './driver-security-settings.service';
 import type { IdentityVerificationProvider } from './identity-verification-provider.adapter';
 import type { AuditLogRepository } from '../../audit/repositories/audit-log.repository';
+import type { AppConfigService } from '../../config/app-config.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { DriverSecuritySettings } from '@prisma/client';
 
@@ -35,6 +36,13 @@ const databaseUrl =
   'postgresql://dripplex:dripplex@localhost:5432/dripplex?schema=public';
 
 const IDLE_HOURS = 8;
+
+/** These specs cover the PERIODIC checks (daily, idle, new device), which only
+ * apply when a biometric provider can actually run one. A separate suite
+ * covers what happens when none is configured. */
+const BIOMETRIC_AVAILABLE = {
+  biometricIdentityVerificationAvailable: true,
+} as unknown as AppConfigService;
 
 function makeSecuritySettings(
   overrides: Partial<DriverSecuritySettings> = {},
@@ -47,6 +55,7 @@ function makeSecuritySettings(
     spotCheckDenominator: DEFAULT_RANDOM_SPOT_CHECK_DENOMINATOR,
     newDeviceVerificationEnabled: true,
     adminForceVerificationEnabled: true,
+    periodicVerificationEnabled: true,
     updatedBy: null,
     updatedAt: new Date(),
     createdAt: new Date(),
@@ -109,6 +118,9 @@ describe('DriverIdentityVerificationService', () => {
       prisma,
       auditService,
       securitySettings,
+      // These specs cover the periodic checks, which only apply when a
+      // biometric provider can actually run one.
+      BIOMETRIC_AVAILABLE,
       provider,
     );
     // Never-zero by default so the 1-in-20 random spot-check never
@@ -247,6 +259,7 @@ describe('DriverIdentityVerificationService', () => {
       prisma,
       new AuditService({ create: jest.fn().mockResolvedValue(undefined) }),
       tinySecuritySettings,
+      BIOMETRIC_AVAILABLE,
       provider,
     );
     const idleMs = tinyIdleHours * 60 * 60 * 1000;
@@ -316,6 +329,7 @@ describe('DriverIdentityVerificationService', () => {
       prisma,
       new AuditService({ create: jest.fn().mockResolvedValue(undefined) }),
       disabledSettings,
+      BIOMETRIC_AVAILABLE,
       provider,
     );
     const driverId = await createDriver();
@@ -526,6 +540,7 @@ describe('DriverIdentityVerificationService', () => {
       prisma,
       localAudit,
       tinySecuritySettings,
+      BIOMETRIC_AVAILABLE,
       provider,
     );
     const idleMs = tinyIdleHours * 60 * 60 * 1000;
@@ -696,6 +711,7 @@ describe('DriverIdentityVerificationService', () => {
       prisma,
       new AuditService({ create: jest.fn().mockResolvedValue(undefined) }),
       disabledSettings,
+      BIOMETRIC_AVAILABLE,
       provider,
     );
     const driverId = await createDriver();

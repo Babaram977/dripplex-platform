@@ -14,6 +14,9 @@ export interface DriverSecuritySettingsUpdateInput {
   spotCheckDenominator?: number;
   newDeviceVerificationEnabled?: boolean;
   adminForceVerificationEnabled?: boolean;
+  /** Periodic re-verification of an already-verified driver. Onboarding is
+   * never affected by this. */
+  periodicVerificationEnabled?: boolean;
 }
 
 /**
@@ -73,6 +76,9 @@ export class DriverSecuritySettingsService {
         ...(input.newDeviceVerificationEnabled !== undefined
           ? { newDeviceVerificationEnabled: input.newDeviceVerificationEnabled }
           : {}),
+        ...(input.periodicVerificationEnabled !== undefined
+          ? { periodicVerificationEnabled: input.periodicVerificationEnabled }
+          : {}),
         ...(input.adminForceVerificationEnabled !== undefined
           ? { adminForceVerificationEnabled: input.adminForceVerificationEnabled }
           : {}),
@@ -104,6 +110,7 @@ export class DriverSecuritySettingsService {
       spotCheckDenominator: settings.spotCheckDenominator,
       newDeviceVerificationEnabled: settings.newDeviceVerificationEnabled,
       adminForceVerificationEnabled: settings.adminForceVerificationEnabled,
+      periodicVerificationEnabled: settings.periodicVerificationEnabled,
     };
   }
 }
