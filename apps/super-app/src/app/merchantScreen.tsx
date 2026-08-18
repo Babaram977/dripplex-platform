@@ -1211,12 +1211,28 @@ function DashboardPage({
 // ─────────────────────────────────────────────────────────────────────────────
 // PAGE 2 — ORDERS
 // ─────────────────────────────────────────────────────────────────────────────
-const TAB_STATUS: Record<string, string | undefined> = {
-  new: 'CONFIRMED',
-  preparing: 'PREPARING',
-  ready: 'READY',
-  completed: 'COMPLETED',
-  all: undefined,
+/**
+ * Which backend order statuses belong under each tab.
+ *
+ * This used to be a single status per tab passed to the server as a filter,
+ * while the status CHIP was rendered from apiStatusToMx() — two different
+ * opinions about the same thing, and they disagreed. The moment dispatch
+ * assigned a rider, a READY order became DRIVER_ASSIGNED: the Ready tab asked
+ * the server for READY and no longer matched it, and Completed asked for
+ * COMPLETED and did not match it either, so an order the merchant had just
+ * marked ready vanished from every tab except All. Same for DELIVERED, which
+ * sat in no tab until the completion sweep moved it to COMPLETED.
+ *
+ * So the tabs now filter on exactly the statuses they claim, and this map is
+ * the only place that decides. Nothing is filtered server-side, which is what
+ * let the two views drift apart in the first place.
+ */
+const TAB_STATUSES: Record<string, readonly string[]> = {
+  new: ['CONFIRMED'],
+  preparing: ['PREPARING'],
+  ready: ['READY', 'DRIVER_ASSIGNED'],
+  completed: ['PICKED_UP', 'IN_TRANSIT', 'DELIVERED', 'COMPLETED'],
+  all: [],
 };
 
 function OrdersPage({ onDetail }: { onDetail: (id: string) => void }) {
@@ -1242,8 +1258,13 @@ function OrdersPage({ onDetail }: { onDetail: (id: string) => void }) {
 
   const fetchOrders = useCallback(async (tab: MxStatus | 'all') => {
     try {
-      const res = await api.merchant.getOrders({ status: TAB_STATUS[tab], pageSize: 30 });
-      setOrders((res as { items?: MerchantOrderDto[] }).items ?? []);
+      // One unfiltered read, filtered here. The list query takes a single
+      // status (max pageSize 100), and a tab like Ready spans two — asking the
+      // server for one of them is exactly how orders went missing.
+      const res = await api.merchant.getOrders({ pageSize: 100 });
+      const items = (res as { items?: MerchantOrderDto[] }).items ?? [];
+      const wanted = TAB_STATUSES[tab] ?? [];
+      setOrders(wanted.length === 0 ? items : items.filter((o) => wanted.includes(o.status)));
     } catch {
       setOrders([]);
     } finally {
