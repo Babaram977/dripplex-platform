@@ -1262,6 +1262,18 @@ export type UtilityPaymentMethod = 'WALLET' | 'PAYSTACK' | 'FLUTTERWAVE';
 export type UtilityPurchaseStatus =
   'AWAITING_PAYMENT' | 'PENDING' | 'SUCCESSFUL' | 'FAILED' | 'REVERSED';
 
+export interface CardProviderOptionDto {
+  provider: 'PAYSTACK' | 'FLUTTERWAVE';
+  label: string;
+}
+
+/** Which gateways can take a payment right now. Read from the server so a
+ * rotated key never leaves a dead button on screen. */
+export interface CustomerPaymentProvidersDto {
+  cardProviders: CardProviderOptionDto[];
+  defaultCardProvider: 'PAYSTACK' | 'FLUTTERWAVE' | null;
+}
+
 export interface UtilityCatalogueDto {
   /** False until Peyflex credentials exist. The tile badges itself from this
    * rather than looking live and failing after a bundle is chosen. */
@@ -2438,6 +2450,12 @@ export const api = {
   // The catalogues are read from the provider on every call rather than
   // hardcoded: a stale plan list is how a customer pays for a bundle that no
   // longer exists.
+  payments: {
+    /** Both Paystack and Flutterwave stay configured and the customer picks
+     * (founder, 2026-08-18) — one gateway can be down while the other works. */
+    providers: () => dx<CustomerPaymentProvidersDto>('GET', '/customer/payments/providers'),
+  },
+
   utilities: {
     getCatalogue: () => dx<UtilityCatalogueDto>('GET', '/customer/utilities'),
     airtimeNetworks: () => dx<UtilityNetworkDto[]>('GET', '/customer/utilities/airtime/networks'),

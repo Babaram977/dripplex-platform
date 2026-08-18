@@ -47,7 +47,21 @@ their dashboard and in `FLUTTERWAVE_WEBHOOK_HASH`. The backend compares the inco
 `verif-hash` header against it and rejects anything that does not match, so if the two differ
 every webhook is silently discarded and payments appear stuck rather than failing loudly.
 
-## 3. Which gateway actually runs
+## 3. The customer chooses — both stay live
+
+**Founder decision, 2026-08-18:** keep Paystack and Flutterwave both configured and let the
+customer pick at payment time, because one gateway can be down while the other is working.
+
+`GET /customer/payments/providers` reports which gateways can actually take money right now, and
+the client renders one option per entry. A gateway is only listed if it has a **secret key** — so
+rotating or removing a key removes the option rather than leaving a button that fails after the
+customer has chosen what to buy. If a client names a gateway that cannot charge, the backend
+refuses with "That payment method is unavailable right now. Please choose another." rather than
+failing deeper.
+
+A caller with no reason to prefer one can still send `CARD` and get the default below.
+
+## 4. Which gateway is the default
 
 | Variable                   | Value                       |
 | -------------------------- | --------------------------- |
@@ -73,7 +87,7 @@ When neither gateway is configured, the client is told so and does not offer the
 
 ---
 
-## 4. Test first
+## 5. Test first
 
 Use test credentials (`sk_test_…` / `FLWSECK_TEST-…`) and run one ₦100 wallet top-up end to end
 before switching to live keys. The webhook is the part that most often needs a second look,
@@ -81,7 +95,7 @@ because a mismatched Flutterwave secret hash fails quietly.
 
 ---
 
-## 5. Why keys alone were not enough
+## 6. Why keys alone were not enough
 
 Two client-side bugs meant card payments could not have worked whatever was configured. Both are
 fixed; recorded here because they explain why the client no longer names a gateway at all.
@@ -93,10 +107,14 @@ server's configured default applies.
 **The Utilities Card button hardcoded `PAYSTACK`** in its own source, so it would have failed the
 moment Flutterwave became the default.
 
-**Clients now send `CARD`, never a gateway name.** Which gateway takes the money is a server
-decision — the alternative is a client that breaks every time a key changes, which is exactly
-what both bugs were. The stored `UtilityPurchase.paymentMethod` still records the gateway that
-really ran, so reconciliation is unaffected.
+**A client never hardcodes a gateway.** It either names one the _server_ said is live, or sends
+`CARD` and lets the server pick. The alternative is a client that breaks every time a key
+changes, which is exactly what both bugs were. The stored `UtilityPurchase.paymentMethod` always
+records the gateway that really ran, so reconciliation is unaffected.
+
+**The Top Up screen's Card / Bank Transfer / USSD rows were theatre** — all three ran the same
+call and opened the same gateway checkout, where the customer chose card/transfer/USSD anyway.
+They are replaced by the real choice: which gateway.
 
 `GET /customer/utilities` reports `cardEnabled` so the client can hide the Card option rather
 than offer one that fails after the customer has chosen what to buy — the same

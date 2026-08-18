@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../lib/api';
 import { auth } from '../lib/auth';
 import type {
+  CardProviderOptionDto,
   WalletDto,
   WalletLedgerEntryDto,
   CustomerBankAccountDto,
@@ -1099,11 +1100,16 @@ export function TransactionHistoryScreen({ onBack }: { onBack?: () => void }) {
 // 3. TOP-UP SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
 const AMOUNT_PRESETS = ['500', '1,000', '2,000', '5,000', '10,000', '20,000'];
-const PAYMENT_METHODS_LIST = [
-  { id: 'card', label: 'Debit / Credit Card', icon: '💳', sub: 'Instant, no fee' },
-  { id: 'bank', label: 'Bank Transfer', icon: '🏦', sub: '1–3 mins' },
-  { id: 'ussd', label: 'USSD', icon: '📱', sub: 'All networks' },
-];
+/**
+ * The three rows that used to sit here — Card, Bank Transfer, USSD — were
+ * theatre. Whichever you picked, the same call ran and the same gateway
+ * checkout opened, where the customer chose card/transfer/USSD anyway. The
+ * real choice is WHICH GATEWAY, and the founder wants the customer to make it
+ * (2026-08-18) because one can be down while the other is fine. The list is
+ * read from the server so a rotated key removes an option instead of leaving a
+ * button that fails.
+ */
+const GATEWAY_ICONS: Record<string, string> = { PAYSTACK: '💳', FLUTTERWAVE: '🏦' };
 
 export function TopUpScreen({
   onBack,
@@ -1113,11 +1119,30 @@ export function TopUpScreen({
   onConfirm?: () => void;
 }) {
   const [amount, setAmount] = useState('5,000');
-  const [method, setMethod] = useState('card');
+  const [providers, setProviders] = useState<CardProviderOptionDto[]>([]);
+  const [method, setMethod] = useState<'PAYSTACK' | 'FLUTTERWAVE' | ''>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [verifying, setVerifying] = useState(false);
   const refRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    api.payments
+      .providers()
+      .then((config) => {
+        if (!live) return;
+        setProviders(config.cardProviders);
+        // Preselect the platform default so the common case is one tap.
+        setMethod(config.defaultCardProvider ?? config.cardProviders[0]?.provider ?? '');
+      })
+      .catch(() => {
+        if (live) setProviders([]);
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
 
   const handleTopUp = async () => {
     const raw = Number(amount.replace(/,/g, ''));
@@ -1125,13 +1150,21 @@ export function TopUpScreen({
       setError('Minimum top-up is ₦100');
       return;
     }
+    if (providers.length === 0) {
+      setError('Card top-up is not available right now. Please try again shortly.');
+      return;
+    }
     setLoading(true);
     setError('');
     try {
-      // No provider named. It used to send 'paystack' in lower case, which the
-      // backend's enum rejected outright — every card top-up returned 422.
-      // Omitted entirely so the server uses whichever gateway is configured.
-      const res = await api.wallet.fund({ amount: raw });
+      // The gateway the customer picked. Sent in the backend's own casing —
+      // this used to send 'paystack' in lower case, which the enum rejected
+      // outright, so every card top-up returned 422. Omitted entirely when
+      // nothing is selected, which lets the server fall back to its default.
+      const res = await api.wallet.fund({
+        amount: raw,
+        ...(method !== '' ? { provider: method } : {}),
+      });
       const r = res as { authorizationUrl?: string; reference?: string };
       refRef.current = r.reference ?? null;
       if (r.authorizationUrl) {
@@ -1317,13 +1350,18 @@ export function TopUpScreen({
             <div className="px-4" style={{ marginBottom: 20 }}>
               <SectionLabel>Payment method</SectionLabel>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
-                {PAYMENT_METHODS_LIST.map((pm) => (
+                {providers.length === 0 ? (
+                  <div style={{ fontFamily: IT, fontSize: 13, color: MUTED }}>
+                    Card top-up is not available right now.
+                  </div>
+                ) : null}
+                {providers.map((pm) => (
                   <button
-                    key={pm.id}
-                    onClick={() => setMethod(pm.id)}
+                    key={pm.provider}
+                    onClick={() => setMethod(pm.provider)}
                     style={{
-                      background: method === pm.id ? `rgba(43,172,82,.08)` : NAVY_SURFACE,
-                      border: `1.5px solid ${method === pm.id ? G2 : BORDER}`,
+                      background: method === pm.provider ? `rgba(43,172,82,.08)` : NAVY_SURFACE,
+                      border: `1.5px solid ${method === pm.provider ? G2 : BORDER}`,
                       borderRadius: 14,
                       padding: '14px 16px',
                       cursor: 'pointer',
@@ -1333,25 +1371,27 @@ export function TopUpScreen({
                       textAlign: 'left',
                     }}
                   >
-                    <span style={{ fontSize: 22 }}>{pm.icon}</span>
+                    <span style={{ fontSize: 22 }}>{GATEWAY_ICONS[pm.provider] ?? '💳'}</span>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontFamily: IT, fontSize: 14, fontWeight: 600, color: '#fff' }}>
                         {pm.label}
                       </div>
-                      <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>{pm.sub}</div>
+                      <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>
+                        Card, bank transfer or USSD
+                      </div>
                     </div>
                     <div
                       style={{
                         width: 18,
                         height: 18,
                         borderRadius: 9,
-                        border: `2px solid ${method === pm.id ? G2 : BORDER}`,
+                        border: `2px solid ${method === pm.provider ? G2 : BORDER}`,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                       }}
                     >
-                      {method === pm.id && (
+                      {method === pm.provider && (
                         <div style={{ width: 9, height: 9, borderRadius: 4.5, background: G2 }} />
                       )}
                     </div>

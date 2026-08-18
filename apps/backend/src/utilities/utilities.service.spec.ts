@@ -108,6 +108,7 @@ describe('UtilitiesService', () => {
       peyflexFloatLowBalanceThreshold: 50_000,
       cardPaymentsEnabled: true,
       defaultCardProvider: 'FLUTTERWAVE',
+      availableCardProviders: ['PAYSTACK', 'FLUTTERWAVE'],
     } as unknown as AppConfigService;
 
     // A stub gateway so the card path can be exercised end to end. It stands
@@ -124,8 +125,22 @@ describe('UtilitiesService', () => {
       handleWebhook: jest.fn(),
     } as unknown as PaymentProviderAdapter;
 
+    // Both gateways registered, because the founder's decision is that both
+    // stay live and the customer picks between them.
+    const paystack = {
+      provider: PaymentProvider.PAYSTACK,
+      initializePayment: jest.fn().mockResolvedValue({
+        provider: PaymentProvider.PAYSTACK,
+        reference: 'PSK-TEST-REF',
+        authorizationUrl: 'https://checkout.paystack.test/pay/PSK-TEST-REF',
+      }),
+      verifyPayment: jest.fn(),
+      handleWebhook: jest.fn(),
+    } as unknown as PaymentProviderAdapter;
+
     service = new UtilitiesService(prisma, walletService, auditService, config, provider, [
       flutterwave,
+      paystack,
     ]);
   });
 
@@ -593,6 +608,55 @@ describe('UtilitiesService', () => {
     // cannot complete.
     expect(await balanceOf(customerId)).toBe(5_000);
     expect(provider.purchaseAirtime).not.toHaveBeenCalled();
+  });
+
+  it('honours the gateway the customer picked, not just the default', async () => {
+    if (!databaseAvailable) return;
+    const customerId = await fundedCustomer(5_000);
+    provider.purchaseAirtime.mockResolvedValue(success);
+
+    // The default is FLUTTERWAVE, but the customer chose PAYSTACK — because one
+    // gateway can be down while the other works. The choice must survive.
+    const result = await service.initiatePurchase(
+      customerId,
+      {
+        serviceType: UtilityServiceType.AIRTIME,
+        provider: 'mtn',
+        customerIdentifier: '08144216361',
+        amount: 100,
+        paymentMethod: UtilityPaymentMethod.PAYSTACK,
+      },
+      { userId: customerId },
+    );
+    expect(result.purchase.paymentMethod).toBe(UtilityPaymentMethod.PAYSTACK);
+    expect(result.authorizationUrl).toContain('paystack');
+  });
+
+  it('refuses a gateway the customer picked that cannot actually charge', async () => {
+    if (!databaseAvailable) return;
+    const customerId = await fundedCustomer(5_000);
+    Object.defineProperty(service, 'config', {
+      value: {
+        cardPaymentsEnabled: true,
+        defaultCardProvider: 'FLUTTERWAVE',
+        availableCardProviders: ['FLUTTERWAVE'],
+      },
+    });
+
+    await expect(
+      service.initiatePurchase(
+        customerId,
+        {
+          serviceType: UtilityServiceType.AIRTIME,
+          provider: 'mtn',
+          customerIdentifier: '08144216361',
+          amount: 100,
+          paymentMethod: UtilityPaymentMethod.PAYSTACK,
+        },
+        { userId: customerId },
+      ),
+    ).rejects.toThrow(/unavailable right now/);
+    expect(await balanceOf(customerId)).toBe(5_000);
   });
 
   it('tells the client whether card is on, so it can hide the option', () => {

@@ -811,14 +811,30 @@ export class UtilitiesService {
    * that gateway's keys changed.
    */
   private resolvePaymentMethod(requested: UtilityPaymentMethod | 'CARD'): UtilityPaymentMethod {
-    if (requested !== 'CARD') return requested;
-    const provider = this.config.defaultCardProvider;
-    if (provider === null) {
-      throw new ValidationDomainException('Card payments are not available yet');
+    if (requested === UtilityPaymentMethod.WALLET) return requested;
+
+    if (requested === 'CARD') {
+      // "Card, you pick." Used when the client has no reason to prefer one.
+      const provider = this.config.defaultCardProvider;
+      if (provider === null) {
+        throw new ValidationDomainException('Card payments are not available yet');
+      }
+      return provider === 'PAYSTACK'
+        ? UtilityPaymentMethod.PAYSTACK
+        : UtilityPaymentMethod.FLUTTERWAVE;
     }
-    return provider === 'PAYSTACK'
-      ? UtilityPaymentMethod.PAYSTACK
-      : UtilityPaymentMethod.FLUTTERWAVE;
+
+    // The customer named a gateway (founder decision: both stay live and the
+    // customer chooses, because one can be down while the other works). Honour
+    // it — but only if it can actually take money. A gateway whose key has been
+    // removed must be refused here, plainly, rather than failing deeper with a
+    // message about adapters.
+    if (!this.config.availableCardProviders.includes(requested)) {
+      throw new ValidationDomainException(
+        'That payment method is unavailable right now. Please choose another.',
+      );
+    }
+    return requested;
   }
 
   private resolvePaymentProvider(method: UtilityPaymentMethod): PaymentProvider {
