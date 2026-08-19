@@ -38,6 +38,45 @@ export function loadGoogleMaps(): Promise<typeof google | null> {
   return window.__dxMapsPromise;
 }
 
+/**
+ * Await one Maps library before touching anything inside it.
+ *
+ * `loading=async` (above) means the script tag bootstraps a *loader*, not the
+ * whole API: `google.maps` exists the moment `onload` fires but is nearly
+ * empty, and every library has to be pulled in through `importLibrary`. So
+ * `new google.maps.Geocoder()` straight after load threw
+ *
+ *     google.maps.Geocoder is not a constructor
+ *
+ * — minified to "t.maps.Geocoder is not a constructor", which is what a
+ * customer saw instead of being able to add a delivery address at checkout.
+ * `google.maps.places` was undefined for the same reason, which is why address
+ * autocomplete had been quietly returning nothing.
+ *
+ * Cached per library: importLibrary is idempotent but there is no reason to
+ * pay for the round trip on every keystroke.
+ */
+const libraryCache = new Map<string, Promise<unknown>>();
+
+export async function mapsLibrary<K extends keyof google.maps.ImportLibraryMap>(
+  name: K,
+): Promise<google.maps.ImportLibraryMap[K] | null> {
+  const g = await loadGoogleMaps();
+  if (!g?.maps?.importLibrary) return null;
+  let pending = libraryCache.get(name);
+  if (!pending) {
+    pending = g.maps.importLibrary(name);
+    libraryCache.set(name, pending);
+  }
+  try {
+    return (await pending) as google.maps.ImportLibraryMap[K];
+  } catch {
+    // A failed import must not poison every later call.
+    libraryCache.delete(name);
+    return null;
+  }
+}
+
 export interface GeoPoint {
   latitude: number;
   longitude: number;
@@ -113,10 +152,10 @@ export interface AddressPrediction {
 export async function addressPredictions(query: string): Promise<AddressPrediction[]> {
   const trimmed = query.trim();
   if (trimmed.length < 3) return [];
-  const g = await loadGoogleMaps();
-  if (!g?.maps?.places) return [];
+  const places = await mapsLibrary('places');
+  if (!places) return [];
   try {
-    const service = new g.maps.places.AutocompleteService();
+    const service = new places.AutocompleteService();
     const res = await service.getPlacePredictions({
       input: trimmed,
       componentRestrictions: { country: 'ng' },
@@ -157,10 +196,12 @@ export async function geocodeAddress(input: {
   placeId?: string;
   query?: string;
 }): Promise<(ResolvedAddress & GeoPoint) | null> {
-  const g = await loadGoogleMaps();
-  if (!g?.maps) return null;
-  const geocoder = new g.maps.Geocoder();
+  const geocoding = await mapsLibrary('geocoding');
+  if (!geocoding) return null;
   try {
+    // Constructed inside the try: it threw here, and the throw escaped the
+    // catch below and surfaced raw in the Select Address sheet.
+    const geocoder = new geocoding.Geocoder();
     const request = input.placeId
       ? { placeId: input.placeId }
       : { address: (input.query ?? '').trim(), componentRestrictions: { country: 'NG' } };
@@ -175,10 +216,10 @@ export async function geocodeAddress(input: {
 
 // Reverse-geocode coordinates → structured address via Google (when activated).
 export async function reverseGeocode(point: GeoPoint): Promise<ResolvedAddress | null> {
-  const g = await loadGoogleMaps();
-  if (!g?.maps) return null;
-  const geocoder = new g.maps.Geocoder();
+  const geocoding = await mapsLibrary('geocoding');
+  if (!geocoding) return null;
   try {
+    const geocoder = new geocoding.Geocoder();
     const { results } = await geocoder.geocode({
       location: { lat: point.latitude, lng: point.longitude },
     });

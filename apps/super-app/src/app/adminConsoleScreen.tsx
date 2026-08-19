@@ -14,6 +14,7 @@ import {
   type AdminLiveRideDto,
   type AdminCommissionAccountDto,
   type AdminCustomerDto,
+  type CommercialCreditSettingDto,
   type CommissionLedgerEntryDto,
   type CommissionOwnerType,
   type AdminMerchantDto,
@@ -31,7 +32,7 @@ import {
   type RideType,
 } from '../lib/api';
 import { auth } from '../lib/auth';
-import { addressPredictions, geocodeAddress, loadGoogleMaps, mapsEnabled } from '../lib/maps';
+import { addressPredictions, geocodeAddress, mapsEnabled, mapsLibrary } from '../lib/maps';
 
 import type { AddressPrediction } from '../lib/maps';
 import {
@@ -4508,6 +4509,28 @@ function PageCommissions() {
   const [payNote, setPayNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
+  // The policy dial behind every block on this page.
+  const [limitFor, setLimitFor] = useState<CommissionOwnerType>('MERCHANT');
+  const [limit, setLimit] = useState<CommercialCreditSettingDto | null>(null);
+  const [limitInput, setLimitInput] = useState('');
+  const [limitMsg, setLimitMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    api.admin
+      .getCreditSetting(limitFor)
+      .then((setting) => {
+        if (!alive) return;
+        setLimit(setting);
+        setLimitInput(String(setting.creditLimit));
+      })
+      .catch(() => {
+        if (alive) setLimit(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [limitFor]);
 
   const load = useCallback(async () => {
     setError(null);
@@ -4574,6 +4597,25 @@ function PageCommissions() {
     }
   };
 
+  const saveLimit = async () => {
+    const value = Number(limitInput);
+    if (!Number.isFinite(value) || value < 0) {
+      setLimitMsg('Enter the new limit in naira.');
+      return;
+    }
+    setLimitMsg(null);
+    try {
+      const updated = await api.admin.updateCreditSetting(limitFor, value);
+      setLimit(updated);
+      setLimitMsg(
+        `Saved. New ${limitFor.toLowerCase()} limit is ${naira(updated.creditLimit)}. It applies from the next accrual — already-blocked partners stay blocked until their balance clears.`,
+      );
+      await load();
+    } catch (e: unknown) {
+      setLimitMsg((e as { message?: string }).message ?? 'Could not save that limit.');
+    }
+  };
+
   const rows = accounts ?? [];
   const blockedCount = rows.filter((a) => a.blocked).length;
   const owed = rows.reduce((sum, a) => sum + a.outstandingBalance, 0);
@@ -4629,6 +4671,50 @@ function PageCommissions() {
             <span style={{ fontSize: 12, color: '#F87171' }}>{error}</span>
           </Card>
         )}
+
+        {/* The credit limit is what decides who gets blocked, so it belongs on
+            the page where blocks are read. A flat naira ceiling bites hard on
+            high-value merchants: at a 10% platform commission, one ₦650,000
+            furniture order accrues ₦65,000 and blocks a shop whose limit is
+            ₦50,000 — on its first sale. Raising the limit is the lever; whether
+            a flat ceiling is the right shape for every category is a founder
+            decision, not one to change here. */}
+        <Card>
+          <SectionHeader title="Credit limit policy" />
+          <p style={{ fontSize: 11, color: MUTED, marginBottom: 10, lineHeight: 1.5 }}>
+            A partner is blocked once their outstanding commission goes over this ceiling, and stays
+            blocked until the balance reaches zero — crossing back under the line is not enough.
+          </p>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <select
+              className="dx-select"
+              style={{ color: MUTED }}
+              value={limitFor}
+              onChange={(e) => setLimitFor(e.target.value as CommissionOwnerType)}
+            >
+              <option value="MERCHANT">Merchants</option>
+              <option value="DRIVER">Drivers</option>
+              <option value="RIDER">Riders</option>
+            </select>
+            <input
+              className="dx-input"
+              inputMode="decimal"
+              placeholder="Limit (₦)"
+              value={limitInput}
+              onChange={(e) => setLimitInput(e.target.value)}
+              style={{ width: 160 }}
+            />
+            <Btn label="Save limit" onClick={() => void saveLimit()} />
+            {limit && (
+              <span style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+                Currently {naira(limit.creditLimit)}
+              </span>
+            )}
+          </div>
+          {limitMsg && (
+            <p style={{ fontSize: 11, color: MUTED, marginTop: 10, lineHeight: 1.5 }}>{limitMsg}</p>
+          )}
+        </Card>
 
         <Card style={{ padding: '12px 16px' }}>
           <table
@@ -4866,22 +4952,26 @@ function SurchargeZoneEditor({
   // Build the map once. The marker carries the centre; the circle follows it.
   useEffect(() => {
     let cancelled = false;
-    void loadGoogleMaps().then((g) => {
+    // `loading=async` means google.maps is an almost-empty namespace at load:
+    // Map, Marker and Circle only exist once their libraries are imported, so
+    // constructing them straight from `g.maps` threw the same
+    // "is not a constructor" that broke checkout's address picker.
+    void Promise.all([mapsLibrary('maps'), mapsLibrary('marker')]).then(([maps, markerLib]) => {
       if (cancelled) return;
-      if (!g?.maps || !mapHostRef.current) {
+      if (!maps || !markerLib || !mapHostRef.current) {
         setMapLive(false);
         return;
       }
       const centre = { lat, lng };
-      const map = new g.maps.Map(mapHostRef.current, {
+      const map = new maps.Map(mapHostRef.current, {
         center: centre,
         zoom: 13,
         disableDefaultUI: true,
         zoomControl: true,
         clickableIcons: false,
       });
-      const marker = new g.maps.Marker({ map, position: centre, draggable: true });
-      const circle = new g.maps.Circle({
+      const marker = new markerLib.Marker({ map, position: centre, draggable: true });
+      const circle = new maps.Circle({
         map,
         center: centre,
         radius,
