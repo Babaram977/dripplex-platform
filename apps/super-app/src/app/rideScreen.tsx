@@ -1277,10 +1277,6 @@ export function FareEstimateScreen({
   const typeName = entry?.displayName ?? RIDE_TYPE_LABEL[rideType];
   const typeDesc = entry?.description ?? '';
   const typeEmoji = entry?.emoji ?? RIDE_TYPE_EMOJI[rideType];
-  // undefined means the catalog was fetched without a pickup, so availability
-  // was never asked — distinct from `false`, which means asked and nobody
-  // there. Only `false` may be shown to the passenger as "none nearby".
-  const selectedUnavailable = entry?.availableNow === false;
   // GAP: backend ride catalog exposes no per-type "seats" field — omitted.
   const durationMin = estimate ? Math.max(1, Math.round(estimate.durationSeconds / 60)) : null;
   // Honest fallback: no fabricated flat price before the estimate resolves.
@@ -1317,7 +1313,10 @@ export function FareEstimateScreen({
       className="absolute inset-0 flex flex-col overflow-hidden"
       style={{ background: NAVY_DEEP }}
     >
-      <div className="relative flex-shrink-0" style={{ height: 260 }}>
+      {/* 260px of map left roughly a third of a phone for the fare, the
+          payment choice, the breakdown and the button. The route is already
+          drawn on the previous screen; here the sheet is the screen. */}
+      <div className="relative flex-shrink-0" style={{ height: 200 }}>
         <MapCanvas variant="default" />
         <div className="absolute inset-0">
           <RideStatusBar />
@@ -1333,12 +1332,16 @@ export function FareEstimateScreen({
               matches drivers whose vehicle category equals the one chosen. */}
           {(catalog?.length ?? 0) > 1 && (
             <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
+              {/* Founder decision, 2026-08-19: no "none nearby" label and no
+                  dimming. Announcing an empty road before the passenger has even
+                  asked reads as "try another app", and it was shown on every
+                  type at once — so the screen talked them out of all of them.
+                  Dispatch widens its search 5→10→15km and drivers come online
+                  while a request is live, so the honest moment to say nobody
+                  came is after the search has actually run, on the finding
+                  screen — not before it starts. */}
               {(catalog ?? []).map((option) => {
                 const active = option.type === rideType;
-                // Still selectable when nobody is nearby — the passenger may
-                // want to try anyway, and dispatch will widen its search. It
-                // is dimmed so the choice is informed, not blocked.
-                const none = option.availableNow === false;
                 return (
                   <button
                     key={option.type}
@@ -1349,11 +1352,9 @@ export function FareEstimateScreen({
                       border: `1px solid ${active ? G2 : BORDER}`,
                       color: active ? '#fff' : MUTED,
                       fontFamily: IT,
-                      opacity: none && !active ? 0.45 : 1,
                     }}
                   >
                     {option.emoji} {option.displayName}
-                    {none ? ' · none nearby' : ''}
                   </button>
                 );
               })}
@@ -1399,32 +1400,6 @@ export function FareEstimateScreen({
               </p>
             </div>
           </div>
-
-          {/* Nobody of this type is in reach. Said before booking rather than
-              after five silent dispatch attempts end in NO_DRIVERS_FOUND —
-              which is what the passenger used to get, with nothing on screen
-              explaining the wait. Booking is still allowed: dispatch widens
-              its search, and a driver may come online while they wait. */}
-          {selectedUnavailable && (
-            <div
-              className="mb-4 rounded-2xl p-3.5"
-              style={{
-                background: 'rgba(245,158,11,.08)',
-                border: '1px solid rgba(245,158,11,.28)',
-              }}
-            >
-              <p
-                className="mb-1 text-[12.5px] font-semibold"
-                style={{ fontFamily: PP, color: '#F59E0B' }}
-              >
-                No {typeName} nearby right now
-              </p>
-              <p className="text-[11.5px] leading-relaxed" style={{ fontFamily: IT, color: MUTED }}>
-                You can still request one — we will keep looking, and widen the search. Another type
-                above may get you moving sooner.
-              </p>
-            </div>
-          )}
 
           {/* Payment */}
           <div className="mb-4">
@@ -1495,10 +1470,20 @@ export function FareEstimateScreen({
               </p>
             </div>
           </div>
+        </div>
 
+        {/* The Book button used to sit at the end of the scrolling content,
+            below the price breakdown — so on a phone the one action the screen
+            exists for was under the fold, and the passenger could not confirm
+            the ride at all. It is pinned to the bottom of the sheet now: the
+            fare details scroll behind it, the button never moves. */}
+        <div
+          className="flex-shrink-0 px-5 pb-5 pt-3"
+          style={{ borderTop: `1px solid ${BORDER}`, background: NAVY_BASE }}
+        >
           {error && (
             <p
-              className="mb-3 text-center text-[12px]"
+              className="mb-2.5 text-center text-[12px]"
               style={{ fontFamily: IT, color: COLOR_ERROR }}
             >
               {error}
@@ -1510,7 +1495,7 @@ export function FareEstimateScreen({
             onClick={handleBook}
           />
 
-          <p className="mt-3 text-center text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
+          <p className="mt-2 text-center text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
             Price may vary with traffic · Ride protected by DrippleX Safe
           </p>
         </div>
