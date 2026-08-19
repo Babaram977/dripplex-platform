@@ -92,28 +92,27 @@ export const RIDE_OFFER_TIMEOUT_MS = 15_000;
 export const MAX_DISPATCH_ATTEMPTS = 5;
 
 /**
- * How long a ride keeps looking for a driver before it is given up.
+ * How long a ride keeps looking before dispatch stops on its own.
+ *
+ * Founder decision, 2026-08-19: a request must not close itself and tell the
+ * passenger DrippleX could not arrange their ride. That is the same mistake as
+ * the "no driver nearby" label removed from the fare screen — it hands the
+ * passenger to a competitor at the moment they are ready to travel. A request
+ * keeps looking, and the passenger decides when to stop by cancelling.
+ *
+ * So this is a backstop against unbounded SEARCHING rows, not a moment the
+ * passenger is meant to reach. Thirty minutes is far longer than any real
+ * wait; a passenger who is still there has cancelled long before, and one who
+ * closed the app leaves a row the sweep should eventually stop re-dispatching.
  *
  * Dispatch used to be a single shot: `dispatchRide` ran once inside the
  * booking request, and if nobody was eligible in that instant the ride was
- * marked NO_DRIVERS_FOUND immediately and never looked again. The retry chain
- * only fired on a decline or an offer expiry, and with no offer ever made
- * there was nothing to expire.
- *
- * On 2026-08-19 a passenger booked at 03:45:53 and the first driver came
- * online at 03:46:13 — twenty seconds later, then sat polling for offers for
- * five minutes while the ride had already been dead for the whole of it. That
- * is the normal shape of a thin fleet: the driver opens the app *because*
- * demand exists.
- *
- * Two minutes is long enough to cover a driver reacting to a request and the
- * five expanding-ring attempts (5 x RIDE_OFFER_TIMEOUT_MS = 75s) inside the
- * same window, and short enough that a passenger is told the truth rather
- * than left watching a spinner. Founder confirmation welcome on the exact
- * number — the behaviour it replaces (give up instantly) was not a decision,
- * it was a gap.
+ * marked NO_DRIVERS_FOUND immediately and never looked again. On 2026-08-19 a
+ * passenger booked at 03:45:53 and the first driver came online at 03:46:13 —
+ * twenty seconds later. That is the normal shape of a thin fleet: the driver
+ * opens the app *because* demand exists.
  */
-export const RIDE_SEARCH_WINDOW_MS = 2 * 60_000;
+export const RIDE_SEARCH_WINDOW_MS = 30 * 60_000;
 
 /** How often the background sweep checks for expired offers. */
 export const RIDE_OFFER_SWEEP_INTERVAL_MS = 5_000;

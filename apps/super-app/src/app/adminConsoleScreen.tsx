@@ -1751,6 +1751,32 @@ const driverKycProgress = (d: AdminDriverDto): string => {
 };
 const driverStatusChip = (s: string) => (s === 'UNDER_REVIEW' ? 'in review' : s.toLowerCase());
 
+/**
+ * Whether this driver can actually be handed a trip right now.
+ *
+ * Dispatch offers a ride only to a driver whose DriverProfile.status is
+ * APPROVED (RideDispatchService.findNearestEligibleDriver), and approval is
+ * itself gated on the six activation checks the backend already reports per
+ * row as `activationBlockers`. So "Ready" here means the same thing dispatch
+ * means, rather than a second opinion that could drift from it.
+ *
+ * It deliberately does NOT claim the driver is online — that is a choice they
+ * make minute to minute, and the Live Map answers it. This column answers the
+ * different question: if they went online now, could work reach them.
+ */
+function driverReadyToWork(d: AdminDriverDto): boolean {
+  return d.status === 'APPROVED' && (d.activationBlockers ?? []).length === 0;
+}
+
+function driverNotReadyReason(d: AdminDriverDto): string {
+  const blockers = d.activationBlockers ?? [];
+  if (blockers.length > 0) return blockers.join(' · ');
+  if (d.status === 'REJECTED') return 'Application rejected';
+  if (d.status === 'SUSPENDED') return 'Suspended';
+  // Nothing blocking and still not approved: it is sitting on an operator.
+  return 'Waiting on approval — nothing else is blocking';
+}
+
 function PageDrivers() {
   const [drivers, setDrivers] = useState<AdminDriverDto[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1774,6 +1800,11 @@ function PageDrivers() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // The question an operator actually asks before a shift: how many of these
+  // people can be given a trip at all.
+  const readyCount = (drivers ?? []).filter(driverReadyToWork).length;
+  const totalCount = (drivers ?? []).length;
 
   const rows = (drivers ?? []).filter((d) => {
     const q = search.toLowerCase();
@@ -1869,6 +1900,17 @@ function PageDrivers() {
           </select>
         </div>
         <Card style={{ padding: '12px 16px', flex: 1 }}>
+          {drivers !== null && !error && (
+            <SectionHeader
+              title={`${String(readyCount)} of ${String(totalCount)} drivers ready to work`}
+              action={
+                <Chip
+                  label={readyCount === 0 ? 'Nobody can be dispatched' : 'Dispatchable'}
+                  color={readyCount === 0 ? C_ERR : C_OK}
+                />
+              }
+            />
+          )}
           {drivers === null && !error ? (
             <div style={{ fontSize: 13, color: MUTED, padding: 8 }}>Loading…</div>
           ) : error ? (
@@ -1889,6 +1931,7 @@ function PageDrivers() {
                     'Trips',
                     'Status',
                     'KYC',
+                    'Ready to work',
                     'Actions',
                   ].map((h) => (
                     <th
@@ -1954,6 +1997,18 @@ function PageDrivers() {
                           <span style={{ fontSize: 10, color: MUTED }}>{driverKycProgress(d)}</span>
                         )}
                       </div>
+                    </td>
+                    <td style={{ padding: '8px 8px', maxWidth: 260 }}>
+                      {driverReadyToWork(d) ? (
+                        <Chip label="Ready" color={C_OK} />
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <Chip label="Not ready" color={C_WARN} />
+                          <span style={{ fontSize: 10.5, color: MUTED }}>
+                            {driverNotReadyReason(d)}
+                          </span>
+                        </div>
+                      )}
                     </td>
                     <td style={{ padding: '8px 8px' }}>
                       <div style={{ display: 'flex', gap: 4 }}>

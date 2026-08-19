@@ -1016,6 +1016,33 @@ export interface AdminRiderDto {
   }[];
 }
 
+/** The subset of GET /driver/profile the driver's own app needs. */
+export type DriverApprovalStatus =
+  'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
+
+export interface DriverOwnProfileDto {
+  driverId: string;
+  firstName: string;
+  lastName: string;
+  status: DriverApprovalStatus;
+  isApproved: boolean;
+  rejectedReason: string | null;
+  suspendedAt: string | null;
+}
+
+/** What GET /driver/rides/availability returns. Was typed `unknown`, so the
+ * app could not read back the position and vehicle type it had sent. */
+export interface DriverAvailabilityDto {
+  driverId: string;
+  online: boolean;
+  acceptingRides: boolean;
+  vehicleType: RideType | null;
+  latitude: number | null;
+  longitude: number | null;
+  activeRideCount: number;
+  updatedAt: string;
+}
+
 // A driver row for the Ops Console (subset of backend DriverProfileDto). The
 // admin list embeds the driver's KYC documents, so the KYC review queue needs
 // no extra fetch.
@@ -1094,6 +1121,12 @@ export interface AdminDriverDto {
   createdAt: string;
   updatedAt: string;
   kyc: AdminDriverKycDto[];
+  /** Which of the six activation checks this driver still fails, as
+   * human-readable reasons. The backend has computed these per row since the
+   * roster work; the client was dropping them, so the console showed a column
+   * of identical badges and no way to tell who could actually take a trip.
+   * Empty means nothing is blocking. */
+  activationBlockers?: string[];
 }
 
 // A single Operations work-queue case (SOS alert or incident report), as
@@ -1943,7 +1976,7 @@ export const api = {
       longitude?: number;
       deviceId?: string;
     }) => dx<unknown>('POST', '/driver/rides/availability', body),
-    getAvailability: () => dx<unknown | null>('GET', '/driver/rides/availability'),
+    getAvailability: () => dx<DriverAvailabilityDto | null>('GET', '/driver/rides/availability'),
     getActive: () => dx<DriverRideDto | null>('GET', '/driver/rides/active'),
     getOffers: () => dx<RideOfferDto[]>('GET', '/driver/rides/offers'),
     getOfferPreview: (offerId: string) =>
@@ -1979,6 +2012,10 @@ export const api = {
       frontImage: string;
       backImage?: string;
     }) => dx<unknown>('POST', '/driver/kyc', body),
+    /** The driver's own approval state. Dispatch will only offer a ride to a
+     * driver whose DriverProfile.status is APPROVED, so this is the difference
+     * between "waiting for work" and "structurally unable to receive it". */
+    getProfile: () => dx<DriverOwnProfileDto>('GET', '/driver/profile'),
     // The driver's own vehicles — dispatch matches a ride's type against
     // DriverAvailability.vehicleType, so going online has to send the category
     // of the vehicle they actually drive.

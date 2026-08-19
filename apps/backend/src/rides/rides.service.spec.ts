@@ -356,6 +356,107 @@ describe('RidesService', () => {
     }
   });
 
+  // Founder decision, 2026-08-19. Dispatch only ever offers a ride to a driver
+  // whose DriverProfile.status is APPROVED, but going online never checked it
+  // — so a PENDING driver toggled Online, read "You are live · Waiting for ride
+  // requests…", and was structurally unreachable with nothing saying so.
+  describe('approval gate on go-online', () => {
+    const makeDriver = async (
+      status: 'PENDING' | 'UNDER_REVIEW' | 'SUSPENDED' | 'APPROVED',
+    ): Promise<string> => {
+      const user = await prisma.user.create({
+        data: {
+          email: `ride-service-${status.toLowerCase()}-driver-${randomUUID()}@dripplex.test`,
+          passwordHash: 'not-a-real-hash',
+          firstName: 'Unapproved',
+          lastName: 'Driver',
+        },
+      });
+      await prisma.driverProfile.create({
+        data: {
+          userId: user.id,
+          status,
+          isApproved: status === 'APPROVED',
+          lastIdentityVerifiedAt: new Date(),
+        },
+      });
+      return user.id;
+    };
+
+    const cleanup = async (driverId: string): Promise<void> => {
+      await prisma.driverAvailability.delete({ where: { driverId } }).catch(() => undefined);
+      await prisma.driverProfile.delete({ where: { userId: driverId } }).catch(() => undefined);
+      await prisma.user.delete({ where: { id: driverId } }).catch(() => undefined);
+    };
+
+    it.each(['PENDING', 'UNDER_REVIEW'] as const)(
+      'refuses to put a %s driver online',
+      async (status) => {
+        if (!databaseAvailable) return;
+        const driverId = await makeDriver(status);
+        try {
+          await expect(
+            service.updateDriverAvailability(driverId, {
+              online: true,
+              acceptingRides: true,
+              vehicleType: 'ECONOMY',
+              latitude: 9.05,
+              longitude: 7.49,
+            }),
+          ).rejects.toThrow(/cannot go online until Operations approves it/);
+
+          // And nothing was written, so dispatch cannot see a row either.
+          const availability = await prisma.driverAvailability.findUnique({ where: { driverId } });
+          expect(availability).toBeNull();
+        } finally {
+          await cleanup(driverId);
+        }
+      },
+    );
+
+    it('tells a suspended driver why, and still lets anyone go offline', async () => {
+      if (!databaseAvailable) return;
+      const driverId = await makeDriver('SUSPENDED');
+      try {
+        await expect(
+          service.updateDriverAvailability(driverId, {
+            online: true,
+            acceptingRides: true,
+            vehicleType: 'ECONOMY',
+          }),
+        ).rejects.toThrow(/suspended/);
+
+        // Going offline is never blocked — same shape as the identity
+        // verification and commission gates beside it.
+        const offline = await service.updateDriverAvailability(driverId, {
+          online: false,
+          acceptingRides: false,
+          vehicleType: 'ECONOMY',
+        });
+        expect(offline.online).toBe(false);
+      } finally {
+        await cleanup(driverId);
+      }
+    });
+
+    it('lets an approved driver online exactly as before', async () => {
+      if (!databaseAvailable) return;
+      const driverId = await makeDriver('APPROVED');
+      try {
+        const online = await service.updateDriverAvailability(driverId, {
+          online: true,
+          acceptingRides: true,
+          vehicleType: 'ECONOMY',
+          latitude: 9.05,
+          longitude: 7.49,
+        });
+        expect(online.online).toBe(true);
+      } finally {
+        await cleanup(driverId);
+      }
+    });
+  });
+
   describe('DPX-COMMERCIAL-001 Slice 4 — driver blocking on go-online', () => {
     it('rejects going online for a driver whose CommissionAccount is blocked, but never blocks going offline', async () => {
       if (!databaseAvailable) return;
