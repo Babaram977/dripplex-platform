@@ -1291,6 +1291,68 @@ export interface PromotionActiveDto {
   endsAt: string | null;
 }
 
+/** The statuses a campaign moves through, from the Prisma enum. */
+export type PromotionStatus =
+  'DRAFT' | 'SCHEDULED' | 'ACTIVE' | 'PAUSED' | 'EXPIRED' | 'ARCHIVED' | 'CANCELLED';
+
+/** Which side of the platform a campaign applies to. */
+export type PromotionDomain = 'RIDE' | 'MARKETPLACE' | 'DELIVERY' | 'WALLET' | 'MERCHANT';
+
+/**
+ * The full campaign as the admin API returns it. The engine supports far more
+ * (BOGO, happy hour, referral, per-device limits, rule trees); the console
+ * form below deliberately exposes the subset an operator can set safely
+ * without a rules editor, and everything else is left to the API.
+ */
+export type PromotionType =
+  | 'PERCENTAGE'
+  | 'FIXED'
+  | 'BOGO'
+  | 'FLASH_SALE'
+  | 'HAPPY_HOUR'
+  | 'MERCHANT_CAMPAIGN'
+  | 'PLATFORM_CAMPAIGN'
+  | 'REFERRAL'
+  | 'COUPON'
+  | 'AUTOMATIC'
+  | 'WALLET_CREDIT'
+  | 'CASHBACK';
+
+export interface AdminPromotionDto {
+  id: string;
+  code: string | null;
+  name: string;
+  type: string;
+  status: string;
+  domains: string[];
+  percentOff: number | null;
+  amountOff: number | null;
+  maxDiscount: number | null;
+  minOrderAmount: number | null;
+  usageLimit: number | null;
+  usageCount: number;
+  perUserLimit: number | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  createdAt: string;
+}
+
+export interface CreatePromotionRequest {
+  code?: string;
+  name: string;
+  type: PromotionType;
+  status?: PromotionStatus;
+  domains?: PromotionDomain[];
+  percentOff?: number;
+  amountOff?: number;
+  maxDiscount?: number;
+  minOrderAmount?: number;
+  usageLimit?: number;
+  perUserLimit?: number;
+  startsAt?: string;
+  endsAt?: string;
+}
+
 export interface LoyaltyOverviewDto {
   account: {
     id: string;
@@ -2441,6 +2503,23 @@ export const api = {
         active: boolean;
       }>,
     ) => dx<RideSurchargeZoneDto>('PATCH', `/admin/rides/pricing/zones/${id}`, body),
+
+    // Promo campaigns. The engine and its admin API have existed all along
+    // (POST/GET/PATCH /admin/promotions, promotions:admin:manage); the console
+    // simply never called them and told the operator to go somewhere else —
+    // somewhere that does not exist. Founder decision, 2026-08-19: promos are
+    // created here.
+    listPromotions: (params?: { status?: PromotionStatus; domain?: PromotionDomain }) =>
+      dx<AdminPromotionDto[]>('GET', '/admin/promotions', undefined, params),
+    createPromotion: (body: CreatePromotionRequest) =>
+      dx<AdminPromotionDto>('POST', '/admin/promotions', body),
+    updatePromotion: (id: string, body: Partial<CreatePromotionRequest>) =>
+      dx<AdminPromotionDto>('PATCH', `/admin/promotions/${id}`, body),
+    pausePromotion: (id: string) => dx<AdminPromotionDto>('POST', `/admin/promotions/${id}/pause`),
+    resumePromotion: (id: string) =>
+      dx<AdminPromotionDto>('POST', `/admin/promotions/${id}/resume`),
+    expirePromotion: (id: string) =>
+      dx<AdminPromotionDto>('POST', `/admin/promotions/${id}/force-expire`),
 
     // Merchants review desk. Pass a status to scope (e.g. 'PENDING'/'UNDER_REVIEW').
     listMerchants: (status?: 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUSPENDED') =>

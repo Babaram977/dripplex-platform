@@ -3731,16 +3731,22 @@ function DriverEarningsTab({ onBack }: { onBack: () => void }) {
   const [txs, setTxs] = useState<WalletLedgerEntryDto[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
     Promise.all([
       api.driverRides
         .getWallet()
         .then((w) => setWallet(w))
-        .catch(() => {}),
+        .catch((cause: unknown) => {
+          setError(cause instanceof Error ? cause.message : 'Could not load your earnings');
+        }),
       api.driverRides
         .getWalletTransactions({ pageSize: 20 })
         .then((r) => setTxs((r as { items?: WalletLedgerEntryDto[] }).items ?? []))
-        .catch(() => {}),
+        .catch(() => {
+          // Reported by the list's own empty state, not by blanking the hero.
+        }),
     ]).finally(() => setLoading(false));
   }, []);
 
@@ -3776,8 +3782,13 @@ function DriverEarningsTab({ onBack }: { onBack: () => void }) {
             Available Balance
           </p>
           <p className="text-[36px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
-            {wallet ? naira(wallet.availableBalance) : '—'}
+            {wallet ? naira(wallet.availableBalance) : loading ? '…' : '—'}
           </p>
+          {error !== null && (
+            <p className="mt-1 text-[12px] opacity-90" style={{ fontFamily: IT, color: '#fff' }}>
+              {error}
+            </p>
+          )}
           {wallet && wallet.pendingBalance > 0 && (
             <p className="mt-1 text-[12px] opacity-80" style={{ fontFamily: IT, color: '#fff' }}>
               + {naira(wallet.pendingBalance)} pending
@@ -3863,17 +3874,26 @@ function DriverWalletTab({ onBack }: { onBack: () => void }) {
   const [wallet, setWallet] = useState<WalletDto | null>(null);
   const [txs, setTxs] = useState<WalletLedgerEntryDto[]>([]);
   const [loading, setLoading] = useState(true);
+  // A swallowed error left this screen showing a dash where the balance goes
+  // and nothing else — a driver cannot tell "you have earned nothing yet" from
+  // "we could not reach the server". Whatever went wrong now says so.
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
       api.driverRides
         .getWallet()
         .then((w) => setWallet(w))
-        .catch(() => {}),
+        .catch((cause: unknown) => {
+          setError(cause instanceof Error ? cause.message : 'Could not load your wallet');
+        }),
       api.driverRides
         .getWalletTransactions({ pageSize: 20 })
         .then((r) => setTxs((r as { items?: WalletLedgerEntryDto[] }).items ?? []))
-        .catch(() => {}),
+        .catch(() => {
+          // The balance is the headline; a failed history is reported by the
+          // list's own empty state rather than by blanking the screen.
+        }),
     ]).finally(() => setLoading(false));
   }, []);
 
@@ -3904,10 +3924,13 @@ function DriverWalletTab({ onBack }: { onBack: () => void }) {
             Available Balance
           </p>
           <p className="mb-4 text-[38px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
-            {wallet ? naira(wallet.availableBalance) : '—'}
+            {wallet ? naira(wallet.availableBalance) : loading ? '…' : '—'}
           </p>
-          <p className="text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
-            Paid out every Monday by bank transfer.
+          <p
+            className="text-[12px]"
+            style={{ fontFamily: IT, color: error === null ? MUTED : COLOR_ERROR }}
+          >
+            {error ?? 'Paid out every Monday by bank transfer.'}
           </p>
         </div>
 
