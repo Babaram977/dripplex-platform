@@ -363,6 +363,19 @@ export type RideStatus =
   | 'NO_DRIVERS_FOUND';
 
 export type RideType = 'ECONOMY' | 'COMFORT' | 'XL' | 'TRICYCLE';
+
+/** One row of the Ops pricing table — GET/PUT /admin/rides/pricing/rates. */
+export interface RideFareRateDto {
+  rideType: RideType;
+  /** From the same catalogue the passenger app reads, so the console and the
+   * app can never disagree about a service name. */
+  displayName: string;
+  baseFare: number;
+  perKmRate: number;
+  perMinuteRate: number;
+  /** A floor under the computed fare, not an addition. */
+  minimumFare: number;
+}
 export type RidePaymentMethod = 'WALLET' | 'PAYSTACK' | 'FLUTTERWAVE' | 'OPAY' | 'CASH';
 
 export interface RideDto {
@@ -2326,6 +2339,20 @@ export const api = {
         from,
         to,
       }),
+
+    // Ride fare rates, one row per ride type. Behind
+    // `admin:rides:pricing:manage` — the permission that went missing from the
+    // production catalogue in #182 and 403'd this whole page.
+    getRideFareRates: () => dx<RideFareRateDto[]>('GET', '/admin/rides/pricing/rates'),
+    updateRideFareRate: (
+      rideType: RideType,
+      body: {
+        baseFare: number;
+        perKmRate: number;
+        perMinuteRate: number;
+        minimumFare: number;
+      },
+    ) => dx<RideFareRateDto>('PUT', `/admin/rides/pricing/rates/${rideType}`, body),
 
     // Merchants review desk. Pass a status to scope (e.g. 'PENDING'/'UNDER_REVIEW').
     listMerchants: (status?: 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUSPENDED') =>

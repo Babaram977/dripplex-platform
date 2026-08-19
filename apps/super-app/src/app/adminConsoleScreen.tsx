@@ -14,6 +14,8 @@ import {
   type SettlementReportDto,
   type AdminRiderDto,
   type DeliveryJobDto,
+  type RideFareRateDto,
+  type RideType,
 } from '../lib/api';
 import { auth } from '../lib/auth';
 import {
@@ -203,21 +205,26 @@ function Btn({
   outline = false,
   small = false,
   onClick,
+  disabled = false,
 }: {
   label: string;
   color?: string;
   outline?: boolean;
   small?: boolean;
   onClick?: () => void;
+  /** So an action that is mid-flight cannot be fired twice. */
+  disabled?: boolean;
 }) {
   return (
     <button
       className="dx-btn"
       onClick={onClick}
+      disabled={disabled}
       style={{
         border: outline ? `1px solid ${color}` : 'none',
         borderRadius: 6,
-        cursor: 'pointer',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.5 : 1,
         fontFamily: 'Inter, sans-serif',
         fontWeight: 600,
         letterSpacing: 0.2,
@@ -4364,24 +4371,93 @@ function PageCustomers() {
 }
 
 // ─── Page: Pricing ─────────────────────────────────────────────────────────────
+/**
+ * Fares, against the real pricing endpoint.
+ *
+ * This page used to hold four hardcoded numbers and a Save button whose only
+ * job was to say "the Operations backend has no fare-config endpoint". That
+ * stopped being true: `/admin/rides/pricing/rates` (GET and PUT per ride type)
+ * has existed since the pricing work, guarded by `admin:rides:pricing:manage`,
+ * and the SDK has had a client for it — nothing had connected this screen to
+ * it, so the founder could not change a price.
+ *
+ * The fourth field was "Waiting Fee (₦/min)", which the backend has never had.
+ * The real fourth number is `minimumFare`, a floor under the computed fare
+ * rather than an addition — a different thing that happens to sit in the same
+ * corner of the form. Editing it here changes the founder-locked ₦1,500 floor.
+ */
 function PagePricing() {
-  const [base, setBase] = useState('500');
-  const [dist, setDist] = useState('120');
-  const [time, setTime] = useState('40');
-  const [wait, setWait] = useState('35');
-  const [surge, setSurge] = useState(false);
-  const [mult, setMult] = useState('1.5');
+  const [rates, setRates] = useState<RideFareRateDto[]>([]);
+  const [rideType, setRideType] = useState<RideType | null>(null);
+  const [base, setBase] = useState('');
+  const [dist, setDist] = useState('');
+  const [time, setTime] = useState('');
+  const [minimum, setMinimum] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
   const DIST_KM = 14,
     TIME_MIN = 22;
-  const calcFare = () => {
-    const b = parseFloat(base) || 0;
-    const d = parseFloat(dist) || 0;
-    const t = parseFloat(time) || 0;
-    const m = surge ? parseFloat(mult) || 1 : 1;
-    return ((b + d * DIST_KM + t * TIME_MIN) * m).toFixed(0);
+
+  const applyRate = (rate: RideFareRateDto): void => {
+    setRideType(rate.rideType);
+    setBase(String(rate.baseFare));
+    setDist(String(rate.perKmRate));
+    setTime(String(rate.perMinuteRate));
+    setMinimum(String(rate.minimumFare));
   };
+
+  const load = useCallback(async (keepType: RideType | null) => {
+    setLoading(true);
+    try {
+      const list = await api.admin.getRideFareRates();
+      setRates(list);
+      const chosen = list.find((rate) => rate.rideType === keepType) ?? list[0];
+      if (chosen) applyRate(chosen);
+    } catch (cause) {
+      setMsg(cause instanceof Error ? cause.message : 'Could not load fare rates');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load(null);
+  }, [load]);
+
+  const save = async (): Promise<void> => {
+    if (rideType === null) return;
+    setSaving(true);
+    setMsg(null);
+    try {
+      const updated = await api.admin.updateRideFareRate(rideType, {
+        baseFare: Number(base),
+        perKmRate: Number(dist),
+        perMinuteRate: Number(time),
+        minimumFare: Number(minimum),
+      });
+      setRates((previous) =>
+        previous.map((rate) => (rate.rideType === updated.rideType ? updated : rate)),
+      );
+      applyRate(updated);
+      setMsg(`Saved. ${updated.displayName} fares are live for new rides.`);
+    } catch (cause) {
+      setMsg(cause instanceof Error ? cause.message : 'Could not save these fares');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const selected = rates.find((rate) => rate.rideType === rideType) ?? null;
+  // The fare the passenger would be quoted for this trip, by the same shape the
+  // Ride module computes: base + distance + time, floored at the minimum.
+  const previewFare = Math.max(
+    (parseFloat(base) || 0) +
+      (parseFloat(dist) || 0) * DIST_KM +
+      (parseFloat(time) || 0) * TIME_MIN,
+    parseFloat(minimum) || 0,
+  );
   const promos: PromoRow[] = []; // no ops-facing promo feed (see wiring-status doc)
-  const [msg, setMsg] = useState<string | null>(null);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {msg && (
@@ -4395,15 +4471,47 @@ function PagePricing() {
         {/* Fare config */}
         <Card style={{ flex: 1 }}>
           <SectionHeader
-            title="Fare Configuration · Sedan"
-            action={<Chip label="Editing" color={C_WARN} />}
+            title={`Fare Configuration · ${selected?.displayName ?? '—'}`}
+            action={
+              loading ? <Chip label="Loading" color={MUTED} /> : <Chip label="Live" color={C_OK} />
+            }
           />
+          {/* One row per ride type, named by the same catalogue the passenger
+              app reads. "Sedan" was hardcoded and is not a DrippleX ride type. */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+            {rates.map((rate) => {
+              const on = rate.rideType === rideType;
+              return (
+                <button
+                  key={rate.rideType}
+                  onClick={() => {
+                    applyRate(rate);
+                    setMsg(null);
+                  }}
+                  style={{
+                    background: on ? `${G3}22` : NAVY_SURFACE,
+                    border: `1px solid ${on ? G3 : BORDER}`,
+                    borderRadius: 8,
+                    padding: '6px 12px',
+                    fontSize: 12,
+                    fontFamily: 'Inter, sans-serif',
+                    color: on ? WHITE : MUTED,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {rate.displayName}
+                </button>
+              );
+            })}
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
             {[
               ['Base Fare (₦)', base, setBase],
               ['Distance Rate (₦/km)', dist, setDist],
               ['Time Rate (₦/min)', time, setTime],
-              ['Waiting Fee (₦/min)', wait, setWait],
+              // Not "Waiting Fee" — the backend has never had one. This is the
+              // floor under the computed fare, founder-locked at ₦1,500.
+              ['Minimum Fare (₦)', minimum, setMinimum],
             ].map(([label, val, setter]) => (
               <div key={label as string}>
                 <div
@@ -4427,32 +4535,33 @@ function PagePricing() {
           </div>
           <div style={{ marginTop: 14, display: 'flex', gap: 8 }}>
             <Btn
-              label="Save Configuration"
+              label={saving ? 'Saving…' : 'Save Configuration'}
               color={G2}
-              onClick={() =>
-                setMsg(
-                  'Saving fare parameters isn’t available yet — the Operations backend has no fare-config endpoint (fares live in the Ride module). See docs/reference/DPX-OPS-PREVIEW-WIRING-STATUS.md.',
-                )
-              }
+              disabled={saving || loading || rideType === null}
+              onClick={() => void save()}
             />
+            {/* "Reset to Default" used to write four invented numbers into the
+                form. There is no default to reset to — the saved rates are the
+                truth — so this discards edits by reloading them. */}
             <Btn
-              label="Reset to Default"
+              label="Discard Changes"
               color={MUTED}
               outline
+              disabled={saving || loading}
               onClick={() => {
-                setBase('500');
-                setDist('120');
-                setTime('40');
-                setWait('35');
-                setSurge(false);
-                setMult('1.5');
-                setMsg('Preview values reset (local only — not persisted).');
+                setMsg(null);
+                void load(rideType);
               }}
             />
           </div>
         </Card>
         {/* Surge + preview */}
         <div style={{ width: 240, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {/* Surge has no field on RideFareRateDto and no endpoint behind it.
+              The toggle used to flip local state and multiply the preview, so
+              the console showed a surge price the Ride module would never
+              charge. Left visible and switched off rather than deleted: it is a
+              real gap in the pricing model, not a feature to fake. */}
           <Card>
             <SectionHeader title="Surge Pricing" />
             <div
@@ -4460,40 +4569,18 @@ function PagePricing() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                marginBottom: 12,
+                marginBottom: 8,
               }}
             >
               <span style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
                 Enable Surge
               </span>
-              <input
-                type="checkbox"
-                className="dx-toggle"
-                checked={surge}
-                onChange={(e) => setSurge(e.target.checked)}
-              />
+              <input type="checkbox" className="dx-toggle" checked={false} disabled readOnly />
             </div>
-            {surge && (
-              <div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: MUTED,
-                    fontFamily: 'Inter, sans-serif',
-                    marginBottom: 5,
-                  }}
-                >
-                  Multiplier
-                </div>
-                <input
-                  className="dx-input"
-                  type="number"
-                  step="0.1"
-                  value={mult}
-                  onChange={(e) => setMult(e.target.value)}
-                />
-              </div>
-            )}
+            <span style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              Not available — fares have no surge multiplier yet. Nothing here would reach a
+              passenger.
+            </span>
           </Card>
           <Card style={{ background: `linear-gradient(135deg,${G0}22,${NAVY_CARD})` }}>
             <div
@@ -4524,9 +4611,11 @@ function PagePricing() {
                 color: G3,
               }}
             >
-              ₦{parseInt(calcFare()).toLocaleString()}
+              ₦{Math.round(previewFare).toLocaleString()}
             </div>
-            {surge && <Chip label={`${mult}× Surge Applied`} color={C_WARN} />}
+            {previewFare > 0 && previewFare === (parseFloat(minimum) || 0) ? (
+              <Chip label="At minimum fare" color={C_WARN} />
+            ) : null}
           </Card>
         </div>
       </div>
