@@ -1,6 +1,14 @@
 # syntax=docker/dockerfile:1.7
-# DrippleX Super App — Vite SPA (self-contained, no workspace deps).
+# DrippleX Super App — Vite SPA.
 # VITE_* values are read by Vite at BUILD time, so they are baked here via ARG/ENV.
+#
+# It has exactly one workspace dependency: @dripplex/config, for the tsconfig the
+# app extends. Vite resolves that tsconfig during the build, so the package has
+# to be in the image — leaving it out fails the build with "Tsconfig not found
+# @dripplex/config/typescript/react-library", which is what happened when the
+# app gained a tsconfig and this file still said it had no workspace deps.
+# `pnpm build` at the repo root cannot catch that: the workspace is present
+# there and absent here, so the Docker build is its own gate.
 
 FROM node:22-bookworm-slim AS base
 ENV PNPM_HOME="/pnpm"
@@ -10,6 +18,7 @@ WORKDIR /app
 
 FROM base AS build
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
+COPY packages/config packages/config
 COPY apps/super-app/package.json apps/super-app/
 RUN pnpm install --filter @dripplex/super-app... --no-frozen-lockfile
 COPY apps/super-app apps/super-app
