@@ -16,6 +16,9 @@ async function dx<T>(
   path: string,
   body?: unknown,
   params?: Record<string, string | number | boolean | undefined>,
+  // Set on the one retry a 401 is allowed. An endpoint that answers 401 for a
+  // reason a fresh token cannot fix would otherwise refresh-and-retry forever.
+  retried = false,
 ): Promise<T> {
   const url = new URL(`${BASE}${path}`);
   if (params) {
@@ -35,9 +38,11 @@ async function dx<T>(
   });
 
   // 401 → try silent refresh once
-  if (res.status === 401) {
+  if (res.status === 401 && !retried) {
     const refreshed = await tryRefresh();
-    if (refreshed) return dx(method, path, body, params);
+    if (refreshed) return await dx(method, path, body, params, true);
+  }
+  if (res.status === 401) {
     auth.clear();
     window.dispatchEvent(new Event('dx:session-expired'));
     throw new ApiError(401, 'Session expired — please log in again.', 'SESSION_EXPIRED');
@@ -59,8 +64,34 @@ async function dx<T>(
   return ('data' in json ? json.data : json) as T;
 }
 
-// Silent token refresh
+/**
+ * Silent token refresh — at most one in flight at a time.
+ *
+ * The backend rotates the refresh token on every refresh and treats a second
+ * use of the old one as a stolen-token breach: it revokes the whole session
+ * (RefreshService.handleReuseDetected). So two requests that 401 at the same
+ * moment and each call refresh with the same token do not race harmlessly —
+ * the first rotates, the second is read as reuse, and the user is signed out
+ * for good.
+ *
+ * The driver app is the case that proves it: it polls for ride offers every
+ * five seconds and pushes its location on its own timer, so the instant the
+ * access token expires several requests 401 together. That is a driver being
+ * logged out while sitting online waiting for work.
+ *
+ * Every caller now awaits the same refresh and then retries with whatever it
+ * produced.
+ */
+let refreshInFlight: Promise<boolean> | null = null;
+
 async function tryRefresh(): Promise<boolean> {
+  refreshInFlight ??= performRefresh().finally(() => {
+    refreshInFlight = null;
+  });
+  return await refreshInFlight;
+}
+
+async function performRefresh(): Promise<boolean> {
   const refreshToken = auth.getRefreshToken();
   if (!refreshToken) return false;
   try {

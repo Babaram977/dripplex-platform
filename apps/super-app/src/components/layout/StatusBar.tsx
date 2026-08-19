@@ -12,7 +12,7 @@ export function StatusBar({ light = true, style }: StatusBarProps) {
   const color = light ? 'rgba(255,255,255,.35)' : 'rgba(0,0,0,.3)';
   return (
     <div
-      className="flex items-center justify-between px-5"
+      className="dx-status-mock flex items-center justify-between px-5"
       style={{
         paddingTop: STATUS_BAR_H,
         paddingBottom: 4,

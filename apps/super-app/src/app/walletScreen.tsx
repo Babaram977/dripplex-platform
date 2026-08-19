@@ -40,7 +40,7 @@ const HERO_GRAD = `linear-gradient(145deg,#0D2E1A 0%,#143D22 35%,#1A5230 65%,#0F
 function StatusBar() {
   return (
     <div
-      className="flex items-center justify-between px-5"
+      className="dx-status-mock flex items-center justify-between px-5"
       style={{ paddingTop: 14, paddingBottom: 4 }}
     >
       <span

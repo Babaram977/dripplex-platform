@@ -98,7 +98,7 @@ function txWhen(iso: string): string {
 function DStatusBar({ light }: { light?: boolean }) {
   return (
     <div
-      className="relative z-10 flex w-full items-center justify-between px-5 pt-[52px]"
+      className="dx-status-mock relative z-10 flex w-full items-center justify-between px-5 pt-[52px]"
       style={{
         fontFamily: IT,
         fontSize: 11,

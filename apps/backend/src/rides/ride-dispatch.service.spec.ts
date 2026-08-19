@@ -6,7 +6,7 @@ import { AuditService } from '../audit/audit.service';
 import { DomainEventBus } from '../events/domain-event-bus';
 
 import { RideDispatchService } from './ride-dispatch.service';
-import { MAX_DISPATCH_ATTEMPTS } from './ride.constants';
+import { MAX_DISPATCH_ATTEMPTS, RIDE_SEARCH_WINDOW_MS } from './ride.constants';
 
 import type { RideEventsPublisher } from './ride-events.publisher';
 import type { AuditLogRepository } from '../audit/repositories/audit-log.repository';
@@ -163,10 +163,13 @@ describe('RideDispatchService', () => {
     return user.id;
   }
 
-  async function createRide(): Promise<Ride> {
+  /** `requestedAgoMs` models a ride that has been looking for a while — the
+   * search window is measured from requestedAt. */
+  async function createRide(requestedAgoMs = 0): Promise<Ride> {
     const ride = await prisma.ride.create({
       data: {
         customerId,
+        ...(requestedAgoMs > 0 ? { requestedAt: new Date(Date.now() - requestedAgoMs) } : {}),
         rideType: 'ECONOMY',
         pickupLatitude: PICKUP.lat,
         pickupLongitude: PICKUP.lng,
@@ -288,10 +291,47 @@ describe('RideDispatchService', () => {
     expect(offers[0]?.driverId).not.toBe(unapprovedDriverId);
   });
 
-  it('marks the ride NO_DRIVERS_FOUND when no eligible driver is available', async () => {
+  // Dispatch used to run once, inside the booking request, and mark the ride
+  // NO_DRIVERS_FOUND the moment nobody was eligible. On 2026-08-19 a passenger
+  // booked twenty seconds before the first driver came online; the ride was
+  // already dead and three drivers sat polling for work that was never
+  // offered. Nobody free *now* is not the same as nobody at all.
+  it('keeps searching when no driver is available yet', async () => {
     if (!databaseAvailable) return;
 
     const ride = await createRide();
+
+    const dispatched = await service.dispatchRide(ride.id);
+
+    expect(dispatched.status).toBe('SEARCHING');
+    const offers = await prisma.rideOffer.findMany({ where: { rideId: ride.id } });
+    expect(offers).toHaveLength(0);
+  });
+
+  it('offers the ride to a driver who comes online after it was booked', async () => {
+    if (!databaseAvailable) return;
+
+    const ride = await createRide();
+    await service.dispatchRide(ride.id);
+    expect(await prisma.rideOffer.count({ where: { rideId: ride.id } })).toBe(0);
+
+    // The driver opens the app after the passenger has already asked.
+    const lateDriverId = await createDriver(NEARBY);
+
+    // The sweep looks again — including at rides that never got an offer, and
+    // so had nothing to expire.
+    const retried = await service.retryStalledSearches();
+    expect(retried).toBeGreaterThan(0);
+
+    const offers = await prisma.rideOffer.findMany({ where: { rideId: ride.id } });
+    expect(offers).toHaveLength(1);
+    expect(offers[0]?.driverId).toBe(lateDriverId);
+  });
+
+  it('gives up once the search window has passed', async () => {
+    if (!databaseAvailable) return;
+
+    const ride = await createRide(RIDE_SEARCH_WINDOW_MS + 1_000);
 
     const dispatched = await service.dispatchRide(ride.id);
 

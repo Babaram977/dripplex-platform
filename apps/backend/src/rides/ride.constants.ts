@@ -91,6 +91,30 @@ export const RIDE_OFFER_TIMEOUT_MS = 15_000;
 /** Give up and mark a ride NO_DRIVERS_FOUND after this many declined/expired offers. */
 export const MAX_DISPATCH_ATTEMPTS = 5;
 
+/**
+ * How long a ride keeps looking for a driver before it is given up.
+ *
+ * Dispatch used to be a single shot: `dispatchRide` ran once inside the
+ * booking request, and if nobody was eligible in that instant the ride was
+ * marked NO_DRIVERS_FOUND immediately and never looked again. The retry chain
+ * only fired on a decline or an offer expiry, and with no offer ever made
+ * there was nothing to expire.
+ *
+ * On 2026-08-19 a passenger booked at 03:45:53 and the first driver came
+ * online at 03:46:13 — twenty seconds later, then sat polling for offers for
+ * five minutes while the ride had already been dead for the whole of it. That
+ * is the normal shape of a thin fleet: the driver opens the app *because*
+ * demand exists.
+ *
+ * Two minutes is long enough to cover a driver reacting to a request and the
+ * five expanding-ring attempts (5 x RIDE_OFFER_TIMEOUT_MS = 75s) inside the
+ * same window, and short enough that a passenger is told the truth rather
+ * than left watching a spinner. Founder confirmation welcome on the exact
+ * number — the behaviour it replaces (give up instantly) was not a decision,
+ * it was a gap.
+ */
+export const RIDE_SEARCH_WINDOW_MS = 2 * 60_000;
+
 /** How often the background sweep checks for expired offers. */
 export const RIDE_OFFER_SWEEP_INTERVAL_MS = 5_000;
 

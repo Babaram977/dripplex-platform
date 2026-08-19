@@ -241,10 +241,14 @@ function DesktopFrame({ children }: { children: React.ReactNode }) {
 
 // PHONE FRAME
 // ═══════════════════════════════════════════════════════════════════════════
+// The bezel, the notch and the 390px width are a desktop preview of a phone.
+// On a real handset they are not chrome around the app — they are the app, and
+// a fixed 390px overflows a 360px screen sideways. The `dx-phone-*` classes let
+// GLOBAL_STYLES drop all of it below 480px so the app renders full bleed.
 function PhoneFrame({ children }: { children: React.ReactNode }) {
   return (
     <div
-      className="relative overflow-hidden"
+      className="dx-phone-frame relative overflow-hidden"
       style={{
         width: 390,
         // Single definite height so the child screen's `h-full` resolves to the
@@ -259,7 +263,7 @@ function PhoneFrame({ children }: { children: React.ReactNode }) {
       }}
     >
       <div
-        className="absolute left-1/2 top-3.5 z-50 -translate-x-1/2 rounded-full"
+        className="dx-phone-notch absolute left-1/2 top-3.5 z-50 -translate-x-1/2 rounded-full"
         style={{
           width: 120,
           height: 36,
@@ -2041,7 +2045,7 @@ function AppShell() {
       )}
 
       {/* ── Canvas ───────────────────────────────────────────────────────── */}
-      <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto py-3">
+      <div className="dx-canvas flex min-h-0 flex-1 items-center justify-center overflow-auto py-3">
         <div
           style={{
             opacity: fading ? 0 : 1,
