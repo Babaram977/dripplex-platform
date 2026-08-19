@@ -1510,6 +1510,11 @@ export function FareEstimateScreen({
 // ─────────────────────────────────────────────────────────────────────────────
 // RIDE-005 — FINDING DRIVER
 // ─────────────────────────────────────────────────────────────────────────────
+/** When the searching copy starts acknowledging the wait. Long enough that a
+ * normal match never reaches it, short enough to reassure someone who is
+ * watching a spinner. */
+const LONG_SEARCH_SECONDS = 45;
+
 export function FindingDriverScreen({
   onBack,
   onFound,
@@ -1525,14 +1530,19 @@ export function FindingDriverScreen({
   // The search ends one of three ways: a driver takes it, nobody does, or the
   // passenger cancels. Only the first was handled, so a ride the backend had
   // already closed left this screen spinning "Finding your driver" forever.
-  const [outcome, setOutcome] = useState<'searching' | 'none' | 'cancelled'>('searching');
+  const [outcome, setOutcome] = useState<'searching' | 'cancelled'>('searching');
+  // Seconds spent searching, so the copy can acknowledge a long wait without
+  // ever declaring the trip unfulfillable.
+  const [waited, setWaited] = useState(0);
 
   useEffect(() => {
     const d = setInterval(() => setDots((p) => (p === 3 ? 1 : p + 1)), 500);
     const c = setInterval(() => setEta((p) => Math.max(1, p - 1)), 1000);
+    const w = setInterval(() => setWaited((p) => p + 1), 1000);
     return () => {
       clearInterval(d);
       clearInterval(c);
+      clearInterval(w);
     };
   }, []);
 
@@ -1552,10 +1562,9 @@ export function FindingDriverScreen({
         onFound(ride);
         return;
       }
+      // NO_DRIVERS_FOUND is the backstop far beyond any real wait, and it is
+      // not something to announce — the passenger keeps waiting or cancels.
       if (ride.status === 'NO_DRIVERS_FOUND') {
-        foundRef.current = true;
-        playNotificationSound('warning');
-        setOutcome('none');
         return;
       }
       if (ride.status === 'CANCELLED') {
@@ -1642,17 +1651,21 @@ export function FindingDriverScreen({
         <div className="flex flex-col items-center gap-5 px-5 pb-8 pt-2">
           <div className="text-center">
             <p className="mb-1 text-[20px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
-              {outcome === 'none'
-                ? 'No driver took this trip'
-                : outcome === 'cancelled'
-                  ? 'This ride was cancelled'
-                  : `Finding your driver${'.'.repeat(dots)}`}
+              {outcome === 'cancelled'
+                ? 'This ride was cancelled'
+                : `Finding your driver${'.'.repeat(dots)}`}
             </p>
             <p className="text-[14px]" style={{ fontFamily: IT, color: MUTED }}>
-              {outcome === 'none'
-                ? 'We kept looking and nobody was free. Nothing has been charged — try again in a moment.'
-                : outcome === 'cancelled'
-                  ? 'Nothing has been charged.'
+              {/* Founder decision, 2026-08-19: never tell a passenger DrippleX
+                  could not arrange their ride. The request stays open and keeps
+                  looking; after the first stretch the copy acknowledges the
+                  wait rather than declaring failure, because drivers come
+                  online while a request is live. Cancelling stays the
+                  passenger's call, and it is one tap away below. */}
+              {outcome === 'cancelled'
+                ? 'Nothing has been charged.'
+                : waited >= LONG_SEARCH_SECONDS
+                  ? 'Still looking — drivers come online all the time. Nothing has been charged while you wait.'
                   : 'Matching you with the best driver nearby'}
             </p>
           </div>
@@ -1677,6 +1690,8 @@ export function FindingDriverScreen({
           )}
 
           {outcome === 'searching' ? (
+            // Always available, never automatic: stopping the search is the
+            // passenger's decision, not something the app does to them.
             <button
               onClick={handleCancel}
               className="text-[14px] font-medium active:opacity-60"
@@ -1686,7 +1701,7 @@ export function FindingDriverScreen({
             </button>
           ) : (
             <div className="w-full">
-              <GreenButton label="Try again" onClick={onBack} />
+              <GreenButton label="Book another ride" onClick={onBack} />
             </div>
           )}
         </div>

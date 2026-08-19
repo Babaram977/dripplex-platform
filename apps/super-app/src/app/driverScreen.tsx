@@ -2521,6 +2521,60 @@ export function DriverDashboardScreen({
   // was invisible to every ride except an ECONOMY one, and invisible to that
   // too for want of a location. That is why a verified driver sat online and
   // no request ever arrived.
+  /**
+   * Why this driver is, or is not, reachable by dispatch.
+   *
+   * Going online checks identity verification and commission standing — it
+   * does NOT check that the driver is approved or has an approved vehicle.
+   * Dispatch requires both (`driverProfile.status === APPROVED` and a
+   * DriverAvailability.vehicleType matching the ride), so a driver could sit
+   * on "You are live · Waiting for ride requests…" while being structurally
+   * unmatchable, with nothing on screen saying so. Every field below is read
+   * from an endpoint that already exists; nothing here is inferred.
+   */
+  const [blockReason, setBlockReason] = useState<string | null>(null);
+
+  const checkReadiness = useCallback(async (): Promise<void> => {
+    try {
+      const [profile, vehicles, availability] = await Promise.all([
+        api.driver.getProfile().catch(() => null),
+        api.driver.listVehicles().catch(() => [] as AdminVehicleDto[]),
+        api.driverRides.getAvailability().catch(() => null),
+      ]);
+
+      if (profile && profile.status !== 'APPROVED') {
+        const label = profile.status.toLowerCase().replace(/_/g, ' ');
+        setBlockReason(
+          profile.status === 'REJECTED' && profile.rejectedReason
+            ? `Your account was not approved: ${profile.rejectedReason}. You will not receive ride requests.`
+            : `Your account is ${label}. You will not receive ride requests until Operations approves it.`,
+        );
+        return;
+      }
+
+      const usable = vehicles.find((v) => v.approvalStatus === 'APPROVED' && v.isActive);
+      if (!usable) {
+        setBlockReason(
+          vehicles.length === 0
+            ? 'No vehicle registered. Requests are matched to your vehicle type, so add one to start receiving them.'
+            : 'No approved, active vehicle. Requests are matched to your vehicle type, so none will reach you until one is approved.',
+        );
+        return;
+      }
+
+      if (availability && (availability.latitude === null || availability.longitude === null)) {
+        setBlockReason(
+          'We do not have your location. Requests are matched by distance — allow location access and go online again.',
+        );
+        return;
+      }
+
+      setBlockReason(null);
+    } catch {
+      // A failed check must not invent a blocker; the banner stays as it was.
+    }
+  }, []);
+
   const resolveVehicleType = useCallback(async (): Promise<RideType> => {
     try {
       const vehicles = await api.driver.listVehicles();
@@ -2569,6 +2623,10 @@ export function DriverDashboardScreen({
 
   // Drivers move. Dispatch picks the nearest one, so a stale fix costs the
   // driver trips and sends passengers a driver who is no longer close.
+  useEffect(() => {
+    void checkReadiness();
+  }, [checkReadiness, online]);
+
   useEffect(() => {
     if (!online) return;
     const push = () => {
@@ -2787,10 +2845,20 @@ export function DriverDashboardScreen({
               >
                 <div
                   className="h-2 w-2 rounded-full"
-                  style={{ background: G2, animation: 'pulse-ring .8s ease-out infinite' }}
+                  style={{
+                    background: blockReason === null ? G2 : COLOR_WARNING,
+                    animation: 'pulse-ring .8s ease-out infinite',
+                  }}
                 />
-                <p style={{ fontFamily: IT, fontSize: 13, color: G3 }}>
-                  You are live · Waiting for ride requests...
+                <p
+                  className="px-3 text-center"
+                  style={{
+                    fontFamily: IT,
+                    fontSize: 13,
+                    color: blockReason === null ? G3 : COLOR_WARNING,
+                  }}
+                >
+                  {blockReason ?? 'You are live · Waiting for ride requests...'}
                 </p>
               </div>
             )}
