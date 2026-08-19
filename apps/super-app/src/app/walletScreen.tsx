@@ -549,8 +549,13 @@ export function WalletHomeScreen({
             {displayName}
           </div>
         </div>
+        {/* This was drawn as a magnifying glass while calling onBack — the only
+            way out of the wallet was disguised as search, so a customer who
+            reached this screen had no visible way home and no route to Account,
+            where signing out lives. It is a back arrow now, and it says so. */}
         <button
           onClick={onBack}
+          aria-label="Back to home"
           style={{
             background: NAVY_SURFACE,
             border: `1px solid ${BORDER}`,
@@ -564,8 +569,13 @@ export function WalletHomeScreen({
           }}
         >
           <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-            <circle cx="7" cy="7" r="5" stroke={MUTED} strokeWidth="1.5" />
-            <path d="M11.5 11.5L16 16" stroke={MUTED} strokeWidth="1.5" strokeLinecap="round" />
+            <path
+              d="M11 3.5L5.5 9L11 14.5"
+              stroke={MUTED}
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
         </button>
       </div>
