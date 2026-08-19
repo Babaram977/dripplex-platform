@@ -1121,6 +1121,12 @@ export interface AdminDriverDto {
   createdAt: string;
   updatedAt: string;
   kyc: AdminDriverKycDto[];
+  /** Which of the six activation checks this driver still fails, as
+   * human-readable reasons. The backend has computed these per row since the
+   * roster work; the client was dropping them, so the console showed a column
+   * of identical badges and no way to tell who could actually take a trip.
+   * Empty means nothing is blocking. */
+  activationBlockers?: string[];
 }
 
 // A single Operations work-queue case (SOS alert or incident report), as
