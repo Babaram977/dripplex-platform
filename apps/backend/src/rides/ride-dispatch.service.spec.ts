@@ -345,7 +345,7 @@ describe('RideDispatchService', () => {
   // both alike meant one missed offer made the ride unfulfillable for its
   // whole search window while that same driver sat online and free — which is
   // what a one- or two-driver fleet looks like every time.
-  it('offers the ride again to a driver whose earlier offer expired', async () => {
+  it('leaves a driver holding the ride after their offer runs out of time', async () => {
     if (!databaseAvailable) return;
 
     const driverId = await createDriver(NEARBY);
@@ -355,7 +355,9 @@ describe('RideDispatchService', () => {
     const first = await prisma.rideOffer.findFirstOrThrow({ where: { rideId: ride.id } });
     expect(first.driverId).toBe(driverId);
 
-    // The driver did not tap in time.
+    // The driver did not tap in time. Nobody else is online, so the offer is
+    // held open rather than taken away and re-created — the request stays on
+    // their screen instead of flickering out of existence.
     await prisma.rideOffer.update({
       where: { id: first.id },
       data: { expiresAt: new Date(Date.now() - 1_000) },
@@ -363,11 +365,37 @@ describe('RideDispatchService', () => {
     await service.expireStaleOffers();
 
     const offers = await prisma.rideOffer.findMany({ where: { rideId: ride.id } });
-    expect(offers.length).toBeGreaterThan(1);
-    expect(offers.find((o) => o.status === 'PENDING')?.driverId).toBe(driverId);
+    expect(offers).toHaveLength(1);
+    expect(offers[0]?.status).toBe('PENDING');
+    expect(offers[0]?.driverId).toBe(driverId);
   });
 
-  it('does not offer again to a driver who declined', async () => {
+  it('rotates to another driver when their offer runs out and somebody else is free', async () => {
+    if (!databaseAvailable) return;
+
+    const first = await createDriver(NEARBY);
+    const ride = await createRide();
+    await service.dispatchRide(ride.id);
+    const offer = await prisma.rideOffer.findFirstOrThrow({ where: { rideId: ride.id } });
+    expect(offer.driverId).toBe(first);
+
+    const second = await createDriver(FARTHER);
+    await prisma.rideOffer.update({
+      where: { id: offer.id },
+      data: { expiresAt: new Date(Date.now() - 1_000) },
+    });
+    const expired = await service.expireStaleOffers();
+
+    expect(expired).toBe(1);
+    const pending = await prisma.rideOffer.findMany({
+      where: { rideId: ride.id, status: 'PENDING' },
+    });
+    expect(pending[0]?.driverId).toBe(second);
+  });
+
+  // Founder decision, 2026-08-19: with a thin fleet nobody is barred from an
+  // order they did not take. A decline is a preference — asked last — not a ban.
+  it('asks a driver who declined again when nobody else is free', async () => {
     if (!databaseAvailable) return;
 
     const driverId = await createDriver(NEARBY);
@@ -377,12 +405,56 @@ describe('RideDispatchService', () => {
     const offer = await prisma.rideOffer.findFirstOrThrow({ where: { rideId: ride.id } });
     await service.declineOffer(driverId, offer.id, {});
 
-    // declineOffer re-dispatches internally; with the only driver having
-    // refused, nobody is left and the ride keeps searching without a new offer.
+    // declineOffer re-dispatches internally. The only driver on the platform
+    // declined, so rather than leaving the passenger unserved they are asked
+    // again — last in the order of preference, but asked.
     const pending = await prisma.rideOffer.findMany({
       where: { rideId: ride.id, status: 'PENDING' },
     });
-    expect(pending).toHaveLength(0);
+    expect(pending).toHaveLength(1);
+    expect(pending[0]?.driverId).toBe(driverId);
+  });
+
+  it('prefers a driver who has not seen the ride over one who declined', async () => {
+    if (!databaseAvailable) return;
+
+    const decliner = await createDriver(NEARBY);
+    const ride = await createRide();
+    await service.dispatchRide(ride.id);
+    const first = await prisma.rideOffer.findFirstOrThrow({ where: { rideId: ride.id } });
+    expect(first.driverId).toBe(decliner);
+
+    // A second driver appears, further away but never asked.
+    const fresh = await createDriver(FARTHER);
+    await service.declineOffer(decliner, first.id, {});
+
+    const pending = await prisma.rideOffer.findMany({
+      where: { rideId: ride.id, status: 'PENDING' },
+    });
+    expect(pending[0]?.driverId).toBe(fresh);
+  });
+
+  // "The offer should stay online." Expiring it only to re-create it moments
+  // later makes the request flicker on the one driver's screen.
+  it('holds an offer open instead of expiring it when nobody else can take it', async () => {
+    if (!databaseAvailable) return;
+
+    const driverId = await createDriver(NEARBY);
+    const ride = await createRide();
+    await service.dispatchRide(ride.id);
+    const offer = await prisma.rideOffer.findFirstOrThrow({ where: { rideId: ride.id } });
+
+    await prisma.rideOffer.update({
+      where: { id: offer.id },
+      data: { expiresAt: new Date(Date.now() - 1_000) },
+    });
+    const expiredCount = await service.expireStaleOffers();
+
+    expect(expiredCount).toBe(0);
+    const after = await prisma.rideOffer.findUniqueOrThrow({ where: { id: offer.id } });
+    expect(after.status).toBe('PENDING');
+    expect(after.driverId).toBe(driverId);
+    expect(after.expiresAt.getTime()).toBeGreaterThan(Date.now());
   });
 
   it('gives up once the search window has passed', async () => {

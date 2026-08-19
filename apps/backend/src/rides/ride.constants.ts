@@ -102,13 +102,17 @@ export const RIDE_OFFER_TIMEOUT_MS = 60_000;
 /**
  * How many offers a single ride will ever generate.
  *
- * Raised with RIDE_OFFER_TIMEOUT_MS so the two agree: 20 offers at a minute
- * each is about twenty minutes of trying, which sits inside the thirty-minute
- * RIDE_SEARCH_WINDOW_MS rather than ending the search a quarter of the way
- * through it. At five offers of fifteen seconds, dispatch used to stop after
- * seventy-five seconds while the passenger was still waiting.
+ * This is a runaway guard, not a policy. RIDE_SEARCH_WINDOW_MS is what ends a
+ * search; a ride that stops being offered while the passenger is still waiting
+ * is the bug this used to cause, at five offers of fifteen seconds — seventy-
+ * five seconds of trying against a thirty-minute wait.
+ *
+ * An offer with nobody to rotate to is now renewed rather than re-created
+ * (see expireStaleOffers), so a one-driver fleet generates one offer row and
+ * holds it, not one per minute. Sixty is far above anything the window can
+ * legitimately produce and exists only so a defect cannot mint rows forever.
  */
-export const MAX_DISPATCH_ATTEMPTS = 20;
+export const MAX_DISPATCH_ATTEMPTS = 60;
 
 /**
  * How long a ride keeps looking before dispatch stops on its own.
