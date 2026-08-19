@@ -982,6 +982,15 @@ export interface DriverActivationChecks {
   accountNotLocked: boolean;
 }
 
+/** What the approve/reject endpoints answer with. */
+export interface DriverApprovalDto {
+  driverId: string;
+  status: DriverApprovalStatus;
+  approvedAt?: string;
+  approvedBy?: string;
+  rejectedReason?: string;
+}
+
 export interface DriverActivationEligibilityDto {
   driverId: string;
   eligible: boolean;
@@ -2395,6 +2404,16 @@ export const api = {
     // Driver lifecycle actions (driverId = the driver's user id).
     suspendDriver: (driverId: string, reason: string) =>
       dx<unknown>('POST', `/admin/driver/${driverId}/suspend`, { reason }),
+    /** Activate a driver so dispatch can reach them. The endpoint has existed
+     * since the onboarding work and nothing called it, so a driver who passed
+     * every activation check sat PENDING with no way to be approved — which is
+     * why six drivers could be fully documented and still unreachable. The
+     * backend re-runs the eligibility gate itself and refuses if anything is
+     * genuinely unmet. */
+    approveDriver: (driverId: string) =>
+      dx<DriverApprovalDto>('POST', `/admin/driver/${driverId}/approve`),
+    rejectDriver: (driverId: string, reason: string) =>
+      dx<DriverApprovalDto>('POST', `/admin/driver/${driverId}/reject`, { reason }),
     reactivateDriver: (driverId: string) =>
       dx<unknown>('POST', `/admin/driver/${driverId}/reactivate`),
     // Per-document KYC review — kycId is a DriverKyc.id from a driver's kyc[].

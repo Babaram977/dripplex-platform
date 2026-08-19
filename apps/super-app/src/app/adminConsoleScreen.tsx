@@ -1837,6 +1837,30 @@ function PageDrivers() {
       setBusy(false);
     }
   };
+  /**
+   * Activate the driver so dispatch can reach them.
+   *
+   * POST /admin/driver/:id/approve has existed since the onboarding work and
+   * nothing in this console called it, so a driver who passed all six
+   * activation checks sat PENDING with no button anywhere to approve them —
+   * six of them at once, while a passenger could not book a ride. The backend
+   * re-runs the eligibility gate and refuses if anything is genuinely unmet,
+   * so this cannot activate somebody who should not be.
+   */
+  const approve = async () => {
+    if (!selected) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      await api.admin.approveDriver(selected.driverId);
+      setNote('Approved. They can go online and start receiving ride requests.');
+      await load();
+    } catch (e: unknown) {
+      setNote((e as { message?: string }).message ?? 'Could not approve.');
+    } finally {
+      setBusy(false);
+    }
+  };
   const reactivate = async () => {
     if (!selected) return;
     setBusy(true);
@@ -2107,6 +2131,18 @@ function PageDrivers() {
             <SEP />
             {note && <span style={{ fontSize: 11, color: C_WARN }}>{note}</span>}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              {/* Approving is the action this panel was missing entirely, so it
+                  leads. Offered for anyone not already approved or suspended —
+                  including a driver with an unmet check, because the backend
+                  is the authority on that and its refusal names what is wrong,
+                  which is more useful than a button that is simply absent. */}
+              {selected.status !== 'APPROVED' && selected.status !== 'SUSPENDED' && (
+                <Btn
+                  label={busy ? 'Approving…' : 'Approve Driver'}
+                  color={G2}
+                  onClick={() => void approve()}
+                />
+              )}
               <Btn
                 label={busy ? 'Verifying…' : 'Mark Identity Verified'}
                 color={G3}
