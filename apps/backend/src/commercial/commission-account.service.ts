@@ -15,6 +15,14 @@ import type { CommissionAccount, CommissionLedgerEntry } from '@prisma/client';
 
 type CommercialTx = Prisma.TransactionClient;
 
+/** Who a commission account belongs to, resolved for the admin roster. */
+export interface CommissionAccountOwner {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+}
+
 interface MutationResult {
   account: CommissionAccount;
   applied: boolean;
@@ -65,6 +73,66 @@ export class CommissionAccountService {
         creditLimit: setting.creditLimit,
       },
     });
+  }
+
+  /**
+   * Every commission account, newest debt first, optionally narrowed to one
+   * owner type or to the accounts that are actually blocking business.
+   *
+   * Without this, an operator could read a commission account only if they
+   * already knew whose it was — so a merchant blocked from taking orders was
+   * invisible: the passenger-side error said "outstanding commission balance"
+   * and the console had nowhere to look it up. Each row carries the owner's
+   * name and contact so the list is actionable on its own.
+   */
+  public async listAccounts(input: {
+    ownerType?: CommissionOwnerType;
+    blockedOnly?: boolean;
+    page: number;
+    pageSize: number;
+  }): Promise<{
+    items: { account: CommissionAccount; owner: CommissionAccountOwner | null }[];
+    total: number;
+  }> {
+    const where = {
+      ...(input.ownerType !== undefined ? { ownerType: input.ownerType } : {}),
+      ...(input.blockedOnly === true ? { blocked: true } : {}),
+    };
+    const [accounts, total] = await Promise.all([
+      this.prisma.commissionAccount.findMany({
+        where,
+        // Blocked first, then by the size of the debt: the accounts an
+        // operator has to act on are the ones at the top of the page.
+        orderBy: [{ blocked: 'desc' }, { outstandingBalance: 'desc' }],
+        skip: (input.page - 1) * input.pageSize,
+        take: input.pageSize,
+      }),
+      this.prisma.commissionAccount.count({ where }),
+    ]);
+
+    const owners = await this.prisma.user.findMany({
+      where: { id: { in: accounts.map((account) => account.ownerId) } },
+      select: { id: true, firstName: true, lastName: true, email: true, phone: true },
+    });
+    const byId = new Map(owners.map((owner) => [owner.id, owner]));
+
+    return {
+      items: accounts.map((account) => {
+        const owner = byId.get(account.ownerId);
+        return {
+          account,
+          owner: owner
+            ? {
+                id: owner.id,
+                name: `${owner.firstName} ${owner.lastName}`.trim(),
+                email: owner.email,
+                phone: owner.phone,
+              }
+            : null,
+        };
+      }),
+      total,
+    };
   }
 
   /** Read-only listing of an account's ledger history, most recent first

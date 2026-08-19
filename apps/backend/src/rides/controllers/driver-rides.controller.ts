@@ -16,6 +16,7 @@ import { RequirePermissions } from '../../common/decorators/permissions.decorato
 import { ListRidesQueryDto } from '../dto/list-rides-query.dto';
 import { CancelRideDto } from '../dto/request-ride.dto';
 import { RateRideDto } from '../dto/ride-rating.dto';
+import { StartTripDto } from '../dto/start-trip.dto';
 import { UpdateDriverAvailabilityDto } from '../dto/update-driver-availability.dto';
 import { RideDispatchService } from '../ride-dispatch.service';
 import { RidePaymentService } from '../ride-payment.service';
@@ -150,9 +151,15 @@ export class DriverRidesController {
   public async startTrip(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: StartTripDto,
     @Req() request: Request,
   ): Promise<ApiSuccessResponse<RideDto>> {
-    const data = await this.tripService.startTrip(user.id, id, this.auditContext(request, user.id));
+    const data = await this.tripService.startTrip(
+      user.id,
+      id,
+      dto.verificationCode,
+      this.auditContext(request, user.id),
+    );
     return { success: true, data };
   }
 

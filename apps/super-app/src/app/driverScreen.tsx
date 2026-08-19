@@ -30,6 +30,7 @@ import type {
   AdminVehicleDto,
   DriverActivationEligibilityDto,
   DriverInspectionDto,
+  DriverRideDto,
   InspectionCentreDto,
   RideOfferDto,
   RideOfferPreviewDto,
@@ -3141,35 +3142,31 @@ export function DriverIncomingRequestScreen({
             </div>
           </div>
 
-          {/* Passenger preview */}
+          {/* How this trip pays. The passenger's identity is deliberately not
+              here — a driver has not accepted yet, and the API does not hand
+              out a name before they do. This card used to invent one, complete
+              with a rating and a trip count. */}
           <div
             className="mb-5 flex items-center gap-3 rounded-2xl p-3"
             style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
           >
             <div
-              className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl text-lg font-bold"
+              className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl text-lg"
               style={{ background: 'rgba(59,130,246,.15)', color: '#fff', fontFamily: PP }}
             >
-              C
+              {preview?.paymentMethod === 'CASH' ? '💵' : '💳'}
             </div>
             <div className="flex-1">
               <p className="text-[14px] font-semibold" style={{ fontFamily: PP, color: '#fff' }}>
-                Chidi O.
+                {preview?.paymentMethod === 'CASH'
+                  ? 'Cash on completion'
+                  : preview?.paymentMethod
+                    ? 'Paid in app'
+                    : 'Payment at completion'}
               </p>
-              <div className="flex items-center gap-1">
-                <span style={{ color: COLOR_STAR, fontSize: 12 }}>★</span>
-                <span className="text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
-                  4.8 · 42 trips
-                </span>
-              </div>
-            </div>
-            <div className="text-center">
-              <span
-                className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
-                style={{ background: 'rgba(43,172,82,.1)', color: G3, fontFamily: IT }}
-              >
-                Verified
-              </span>
+              <p className="text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
+                You meet your passenger at the pickup point
+              </p>
             </div>
           </div>
 
@@ -3249,15 +3246,17 @@ export function DriverNavToPickupScreen({
   const [eta, setEta] = useState(3);
   const [dist, setDist] = useState(1.2);
   const [busy, setBusy] = useState(false);
-  // The passenger's NAME, from the active ride — never their phone number.
-  const [passengerName, setPassengerName] = useState<string | null>(null);
+  // The active ride carries the passenger's NAME (never their phone number)
+  // and the address the driver is actually driving to.
+  const [ride, setRide] = useState<DriverRideDto | null>(null);
+  const passengerName = ride?.customerName ?? null;
 
   useEffect(() => {
     api.driverRides
       .getActive()
-      .then((ride) => setPassengerName(ride?.customerName ?? null))
+      .then(setRide)
       .catch(() => {
-        /* Leave it unnamed rather than showing someone else's name. */
+        /* Leave it unnamed rather than showing someone else's trip. */
       });
   }, [rideId]);
 
@@ -3350,7 +3349,7 @@ export function DriverNavToPickupScreen({
               PICKUP POINT
             </p>
             <p className="text-[14px] font-semibold" style={{ fontFamily: PP, color: '#fff' }}>
-              Ikeja GRA, Lagos
+              {ride?.pickupAddress ?? 'Loading pickup…'}
             </p>
           </div>
         </div>
@@ -3418,28 +3417,52 @@ export function DriverPassengerVerifyScreen({
 }) {
   const [otp, setOtp] = useState(['', '', '', '']);
   const [verified, setVerified] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [ride, setRide] = useState<DriverRideDto | null>(null);
   const refs = useRef<(HTMLInputElement | null)[]>([]);
 
-  // Passenger OTP is a local gate (no backend); starting the trip is the real call.
-  const startTrip = async () => {
+  useEffect(() => {
+    api.driverRides
+      .getActive()
+      .then(setRide)
+      .catch(() => {
+        /* Leave the card unnamed rather than showing someone else's trip. */
+      });
+  }, [rideId]);
+
+  /**
+   * The trip code is the backend's gate now, not the screen's. The code the
+   * passenger reads out goes to POST /driver/rides/:id/start, and the API is
+   * what decides whether it matches — this screen no longer knows the answer,
+   * which is the whole point.
+   */
+  const submit = async (code: string) => {
+    if (busy) return;
+    setBusy(true);
+    setErr(null);
     try {
-      if (rideId) await api.driverRides.start(rideId);
-    } catch {
-      /* best-effort — still advance so the driver isn't stuck */
+      if (rideId) await api.driverRides.start(rideId, code);
+      setVerified(true);
+      setTimeout(onVerified, 900);
+    } catch (e) {
+      setErr(
+        e instanceof Error ? e.message : 'That code was not accepted. Please check and try again.',
+      );
+      setOtp(['', '', '', '']);
+      refs.current[0]?.focus();
+    } finally {
+      setBusy(false);
     }
-    onVerified();
   };
 
   const handleChange = (i: number, v: string) => {
-    if (!/^\d*$/.test(v)) return;
+    if (!/^\d*$/.test(v) || busy || verified) return;
     const next = [...otp];
     next[i] = v.slice(-1);
     setOtp(next);
     if (v && i < 3) refs.current[i + 1]?.focus();
-    if (next.every((d) => d) && next.join('') === '4729') {
-      setVerified(true);
-      setTimeout(startTrip, 900);
-    }
+    if (next.every((d) => d)) void submit(next.join(''));
   };
 
   return (
@@ -3465,21 +3488,15 @@ export function DriverPassengerVerifyScreen({
             className="flex h-16 w-16 items-center justify-center rounded-2xl text-2xl font-bold"
             style={{ background: 'rgba(59,130,246,.12)', color: '#fff', fontFamily: PP }}
           >
-            C
+            {ride?.customerName?.trim().charAt(0).toUpperCase() ?? '·'}
           </div>
           <div>
             <p className="text-[17px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
-              Chidi O.
+              {ride?.customerName ?? 'Your passenger'}
             </p>
             <p className="text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
-              To: Victoria Island, Lagos
+              To: {ride?.dropoffAddress ?? '—'}
             </p>
-            <div className="mt-1 flex items-center gap-1">
-              <span style={{ color: COLOR_STAR, fontSize: 12 }}>★</span>
-              <span style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>
-                4.8 · Verified Rider
-              </span>
-            </div>
           </div>
         </div>
 
@@ -3504,6 +3521,7 @@ export function DriverPassengerVerifyScreen({
               onChange={(e) => handleChange(i, e.target.value)}
               maxLength={1}
               inputMode="numeric"
+              disabled={busy || verified}
               className="h-16 w-16 rounded-2xl text-center text-[26px] font-bold outline-none transition-all"
               style={{
                 background: verified ? 'rgba(43,172,82,.12)' : NAVY_SURFACE,
@@ -3514,9 +3532,19 @@ export function DriverPassengerVerifyScreen({
             />
           ))}
         </div>
-        <p className="mb-8 text-center text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
-          Demo: enter <span style={{ color: G3 }}>4729</span>
-        </p>
+        {err ? (
+          <p
+            className="mb-8 text-center text-[12px]"
+            style={{ fontFamily: IT, color: '#F87171' }}
+            role="alert"
+          >
+            {err}
+          </p>
+        ) : (
+          <p className="mb-8 text-center text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
+            {busy ? 'Checking the code…' : "The code is on your passenger's screen."}
+          </p>
+        )}
 
         {verified && (
           <div

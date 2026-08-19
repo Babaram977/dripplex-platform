@@ -225,6 +225,7 @@ export type {
   RideAuditAction,
   RideCancelledBy,
   RideCategoryRatings,
+  RideDriverVehicleDto,
   RideDto,
   RideOfferDto,
   RideOfferPreviewDto,
@@ -244,8 +245,11 @@ export type {
   RideFareRateDto,
   RideSurchargeZoneDto,
   RideSurchargeType,
+  RideShareLinkDto,
   RideSurchargeTrigger,
   RideTypeCatalogEntryDto,
+  SharedRideDto,
+  StartRideTripRequest,
   TipDriverRequest,
   UpdateDriverAvailabilityRequest,
 } from './ride/index.js';
@@ -559,6 +563,7 @@ export { getNotificationSoundEvent, NOTIFICATION_SOUND_EVENTS } from './platform
 export type {
   CommercialAuditAction,
   CommercialCreditSettingDto,
+  AdminCommissionAccountDto,
   CommissionAccountDto,
   CommissionEntryType,
   CommissionLedgerEntryDto,

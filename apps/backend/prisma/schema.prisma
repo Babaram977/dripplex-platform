@@ -1665,6 +1665,16 @@ model Ride {
   id                       String     @id @default(uuid()) @db.Uuid
   customerId               String     @map("customer_id") @db.Uuid
   driverId                 String?    @map("driver_id") @db.Uuid
+  /// The passenger's 4-digit trip code, generated when a driver is assigned.
+  /// Shown only to the passenger; the driver has to be told it out loud, which
+  /// is the point — it proves the person getting in is the one who booked.
+  /// Replaces a hardcoded "4729" that the driver app both checked against and
+  /// printed on its own screen.
+  verificationCode         String?    @map("verification_code") @db.VarChar(8)
+  /// Unguessable token behind the passenger's "share my trip" link. Minted on
+  /// demand, reused for the life of the ride, and readable without a login —
+  /// the person following the trip is family, not a DrippleX account.
+  shareToken               String?    @unique @map("share_token") @db.VarChar(64)
   rideType                 RideType   @map("ride_type")
   status                   RideStatus @default(REQUESTED)
   pickupLatitude           Decimal    @map("pickup_latitude") @db.Decimal(10, 7)

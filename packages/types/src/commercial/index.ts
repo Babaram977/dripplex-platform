@@ -24,6 +24,21 @@ export interface CommissionAccountDto {
   updatedAt: string;
 }
 
+/**
+ * A commission account plus who it belongs to — the row of the Ops Console's
+ * commissions desk.
+ *
+ * The account endpoints were keyed by (ownerType, ownerId) only, so an
+ * operator could read an account only if they already knew whose it was. A
+ * merchant blocked from taking orders was therefore invisible to Ops while
+ * their customers saw "blocked due to an outstanding commission balance".
+ */
+export interface AdminCommissionAccountDto extends CommissionAccountDto {
+  ownerName: string | null;
+  ownerEmail: string | null;
+  ownerPhone: string | null;
+}
+
 export interface CommissionLedgerEntryDto {
   id: string;
   accountId: string;

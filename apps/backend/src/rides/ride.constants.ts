@@ -204,6 +204,22 @@ export const ACTIVE_DRIVER_RIDE_STATUSES: RideStatus[] = [
   RideStatus.IN_PROGRESS,
 ];
 
+/** Statuses a passenger can mint a "share my trip" link for. Deliberately
+ * includes REQUESTED and SEARCHING: telling someone you are on your way is
+ * most useful before a driver has even been found. */
+export const SHAREABLE_RIDE_STATUSES: RideStatus[] = [
+  RideStatus.REQUESTED,
+  RideStatus.SEARCHING,
+  RideStatus.DRIVER_ASSIGNED,
+  RideStatus.ARRIVED,
+  RideStatus.IN_PROGRESS,
+];
+
+/** How long a share link keeps answering after the trip ends. Long enough for
+ * the person watching to see it arrive, short enough that a forwarded link is
+ * not a permanent window into someone's movements. */
+export const SHARE_LINK_GRACE_MS = 30 * 60_000;
+
 export const DEFAULT_RIDE_SPEED_MPS = 8.33;
 
 /**

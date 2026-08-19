@@ -5,6 +5,7 @@ import {
   PromotionDomain,
   RideCancelledBy,
   RideStatus,
+  VehicleApprovalStatus,
 } from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../audit/audit.service';
@@ -50,6 +51,7 @@ import type {
   DriverAvailabilityDto,
   DriverRideDto,
   EstimateRideFareResponse,
+  RideDriverVehicleDto,
   RideDto,
   RideTypeCatalogEntryDto,
 } from '@dripplex/types';
@@ -321,9 +323,52 @@ export class RidesService {
 
   public async getOwnRide(customerId: string, rideId: string): Promise<CustomerRideDto> {
     const ride = await this.requireOwnedRide(customerId, rideId);
+    const [driverName, driverVehicle] = await Promise.all([
+      this.displayName(ride.driverId),
+      this.driverVehicle(ride.driverId, ride.rideType),
+    ]);
     return {
       ...toRideDto(ride),
-      driverName: await this.displayName(ride.driverId),
+      driverName,
+      // The trip code belongs to the passenger and to nobody else — this is
+      // the only endpoint that ever returns it.
+      verificationCode: ride.verificationCode,
+      driverVehicle,
+    };
+  }
+
+  /**
+   * The car the passenger should be looking for. A passenger standing on a
+   * kerb needs a plate and a colour, not a ride class — so this reads the
+   * driver's approved, active vehicle, preferring the one registered for the
+   * ride's class and falling back to their most recently updated approved
+   * vehicle. Returns null rather than a guess when nothing is approved.
+   */
+  private async driverVehicle(
+    driverId: string | null,
+    rideType: RideType,
+  ): Promise<RideDriverVehicleDto | null> {
+    if (driverId === null) {
+      return null;
+    }
+    const vehicles = await this.prisma.vehicle.findMany({
+      where: {
+        driverId,
+        isActive: true,
+        approvalStatus: VehicleApprovalStatus.APPROVED,
+      },
+      orderBy: { updatedAt: 'desc' },
+      select: { plateNumber: true, make: true, model: true, color: true, rideCategory: true },
+    });
+    const match = vehicles.find((vehicle) => vehicle.rideCategory === rideType) ?? vehicles[0];
+    if (!match) {
+      return null;
+    }
+    return {
+      plateNumber: match.plateNumber,
+      make: match.make,
+      model: match.model,
+      color: match.color,
     };
   }
 
@@ -567,6 +612,7 @@ export class RidesService {
     return {
       ...toRideDto(ride),
       customerName: await this.displayName(ride.customerId),
+      requiresVerificationCode: ride.verificationCode !== null,
     };
   }
 

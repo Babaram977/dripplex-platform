@@ -12,7 +12,10 @@ import {
   type AdminFleetDriverDto,
   type AdminFleetSummaryDto,
   type AdminLiveRideDto,
+  type AdminCommissionAccountDto,
   type AdminCustomerDto,
+  type CommissionLedgerEntryDto,
+  type CommissionOwnerType,
   type AdminMerchantDto,
   type AdminUtilityPurchaseDto,
   type UtilityFloatStatusDto,
@@ -79,6 +82,7 @@ export type AdminPage =
   | 'riders'
   | 'customers'
   | 'pricing'
+  | 'commissions'
   | 'billpayments'
   | 'incidents'
   | 'support'
@@ -375,6 +379,7 @@ const NAV_ITEMS: { page: AdminPage; icon: string; label: string }[] = [
   { page: 'riders', icon: '🛵', label: 'Riders' },
   { page: 'customers', icon: '👥', label: 'Customers' },
   { page: 'pricing', icon: '💲', label: 'Pricing' },
+  { page: 'commissions', icon: '🧾', label: 'Commissions' },
   { page: 'billpayments', icon: '📱', label: 'Bill Payments' },
   { page: 'incidents', icon: '⚠️', label: 'Incidents' },
   { page: 'support', icon: '🎧', label: 'Support' },
@@ -529,6 +534,7 @@ const PAGE_LABELS: Record<AdminPage, string> = {
   riders: 'Riders',
   customers: 'Customers',
   pricing: 'Pricing & Fares',
+  commissions: 'Commission Accounts',
   billpayments: 'Bill Payments',
   incidents: 'Incidents',
   support: 'Support Centre',
@@ -4198,6 +4204,16 @@ function customerStatusChip(s: AdminCustomerDto['status']): { label: string; col
 }
 const naira = (n: number) => `₦${Math.round(n).toLocaleString()}`;
 
+/** Dates on the commissions desk read as "12 Aug, 14:05" — an operator
+ * reconciling a payment needs the day and the time, not an ISO string. */
+const commissionDateTime = (iso: string): string =>
+  new Date(iso).toLocaleString('en-NG', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
 function PageCustomers() {
   const [customers, setCustomers] = useState<AdminCustomerDto[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -4462,6 +4478,336 @@ function PageCustomers() {
                 }
               />
             </div>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Page: Commissions ────────────────────────────────────────────────────────
+/**
+ * The commission credit desk.
+ *
+ * A merchant whose outstanding commission exceeds their credit limit is
+ * blocked from receiving new orders — their customers see "Merchant is
+ * currently blocked from receiving new orders due to an outstanding commission
+ * balance" at checkout. Until now the Ops Console had no page for any of this:
+ * the balance, the limit, the ledger and the pay-down endpoint all existed on
+ * the API and were reachable from nowhere, so the block could be hit but never
+ * cleared. This is that page.
+ */
+function PageCommissions() {
+  const [accounts, setAccounts] = useState<AdminCommissionAccountDto[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [ownerType, setOwnerType] = useState<'ALL' | CommissionOwnerType>('ALL');
+  const [blockedOnly, setBlockedOnly] = useState(false);
+  const [selected, setSelected] = useState<AdminCommissionAccountDto | null>(null);
+  const [ledger, setLedger] = useState<CommissionLedgerEntryDto[] | null>(null);
+  const [payAmount, setPayAmount] = useState('');
+  const [payNote, setPayNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [actionMsg, setActionMsg] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      const res = await api.admin.listCommissionAccounts({
+        ...(ownerType === 'ALL' ? {} : { ownerType }),
+        ...(blockedOnly ? { blocked: true } : {}),
+        limit: 100,
+      });
+      setAccounts(res.items);
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load commission accounts.');
+      setAccounts([]);
+    }
+  }, [ownerType, blockedOnly]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const openAccount = async (account: AdminCommissionAccountDto) => {
+    setSelected(account);
+    setLedger(null);
+    setPayAmount('');
+    setPayNote('');
+    setActionMsg(null);
+    try {
+      const res = await api.admin.getCommissionLedger(account.ownerType, account.ownerId);
+      setLedger(res.items);
+    } catch {
+      setLedger([]);
+    }
+  };
+
+  const recordPayment = async () => {
+    if (!selected || busy) return;
+    const amount = Number(payAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setActionMsg('Enter the amount received, in naira.');
+      return;
+    }
+    setBusy(true);
+    setActionMsg(null);
+    try {
+      const updated = await api.admin.recordCommissionPayment(
+        selected.ownerType,
+        selected.ownerId,
+        amount,
+        payNote.trim() || undefined,
+      );
+      setActionMsg(
+        updated.blocked
+          ? `Recorded. ${naira(updated.outstandingBalance)} still outstanding — still blocked.`
+          : `Recorded. Balance is now ${naira(updated.outstandingBalance)} and trading is unblocked.`,
+      );
+      setPayAmount('');
+      setPayNote('');
+      await load();
+      await openAccount({ ...selected, ...updated });
+    } catch (e: unknown) {
+      setActionMsg((e as { message?: string }).message ?? 'Could not record that payment.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const rows = accounts ?? [];
+  const blockedCount = rows.filter((a) => a.blocked).length;
+  const owed = rows.reduce((sum, a) => sum + a.outstandingBalance, 0);
+
+  return (
+    <div style={{ display: 'flex', gap: 14, height: '100%' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <select
+            className="dx-select"
+            style={{ color: MUTED }}
+            value={ownerType}
+            onChange={(e) => setOwnerType(e.target.value as 'ALL' | CommissionOwnerType)}
+          >
+            <option value="ALL">All partners</option>
+            <option value="MERCHANT">Merchants</option>
+            <option value="DRIVER">Drivers</option>
+            <option value="RIDER">Riders</option>
+          </select>
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              fontSize: 12,
+              color: MUTED,
+              fontFamily: 'Inter, sans-serif',
+              cursor: 'pointer',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={blockedOnly}
+              onChange={(e) => setBlockedOnly(e.target.checked)}
+            />
+            Blocked only
+          </label>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 14 }}>
+            <span style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              Blocked:{' '}
+              <strong style={{ color: blockedCount > 0 ? '#F87171' : WHITE }}>
+                {blockedCount}
+              </strong>
+            </span>
+            <span style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              Outstanding: <strong style={{ color: WHITE }}>{naira(owed)}</strong>
+            </span>
+          </div>
+        </div>
+
+        {error && (
+          <Card style={{ padding: '10px 14px', border: '1px solid rgba(239,68,68,.3)' }}>
+            <span style={{ fontSize: 12, color: '#F87171' }}>{error}</span>
+          </Card>
+        )}
+
+        <Card style={{ padding: '12px 16px' }}>
+          <table
+            style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Inter, sans-serif' }}
+          >
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
+                {['Partner', 'Type', 'Outstanding', 'Credit limit', 'Status', 'Contact'].map(
+                  (h) => (
+                    <th
+                      key={h}
+                      style={{
+                        padding: '6px 8px',
+                        textAlign: 'left',
+                        fontSize: 11,
+                        color: MUTED,
+                        fontWeight: 500,
+                      }}
+                    >
+                      {h}
+                    </th>
+                  ),
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((a, i) => (
+                <tr
+                  key={a.id}
+                  className="dx-row"
+                  style={{
+                    borderBottom: '1px solid rgba(255,255,255,.04)',
+                    background:
+                      selected?.id === a.id
+                        ? 'rgba(71,207,114,.05)'
+                        : i % 2 === 1
+                          ? 'rgba(255,255,255,.01)'
+                          : 'transparent',
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => void openAccount(a)}
+                >
+                  <td style={{ padding: '8px 8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Avatar name={a.ownerName ?? '?'} size={26} />
+                      <span style={{ fontSize: 12, fontWeight: 600, color: WHITE }}>
+                        {a.ownerName ?? 'Unknown partner'}
+                      </span>
+                    </div>
+                  </td>
+                  <td style={{ padding: '8px 8px', fontSize: 11, color: MUTED }}>{a.ownerType}</td>
+                  <td style={{ padding: '8px 8px', fontSize: 12, color: WHITE }}>
+                    {naira(a.outstandingBalance)}
+                  </td>
+                  <td style={{ padding: '8px 8px', fontSize: 12, color: MUTED }}>
+                    {naira(a.creditLimit)}
+                  </td>
+                  <td style={{ padding: '8px 8px' }}>
+                    <Chip
+                      label={a.blocked ? 'Blocked' : 'Trading'}
+                      color={a.blocked ? '#F87171' : G3}
+                      bg={a.blocked ? 'rgba(239,68,68,.12)' : 'rgba(71,207,114,.12)'}
+                    />
+                  </td>
+                  <td style={{ padding: '8px 8px', fontSize: 11, color: MUTED }}>
+                    {a.ownerEmail ?? a.ownerPhone ?? '—'}
+                  </td>
+                </tr>
+              ))}
+              {accounts !== null && rows.length === 0 && (
+                <tr>
+                  <td colSpan={6} style={{ padding: '18px 8px', fontSize: 12, color: MUTED }}>
+                    {blockedOnly
+                      ? 'Nobody is blocked. Every partner is inside their credit limit.'
+                      : 'No commission accounts yet. One is created the first time a partner owes commission.'}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </Card>
+      </div>
+
+      {selected && (
+        <div style={{ width: 340, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <Card>
+            <SectionHeader
+              title={selected.ownerName ?? 'Commission account'}
+              action={<Btn label="Close" outline small onClick={() => setSelected(null)} />}
+            />
+            {[
+              ['Outstanding', naira(selected.outstandingBalance)],
+              ['Credit limit', naira(selected.creditLimit)],
+              ['Status', selected.blocked ? 'Blocked from trading' : 'Trading normally'],
+              ['Blocked since', selected.blockedAt ? commissionDateTime(selected.blockedAt) : '—'],
+              ['Contact', selected.ownerEmail ?? selected.ownerPhone ?? '—'],
+            ].map(([l, v]) => (
+              <div
+                key={l}
+                style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}
+              >
+                <span style={{ fontSize: 12, color: MUTED }}>{l}</span>
+                <span style={{ fontSize: 12, color: WHITE, fontWeight: 500 }}>{v}</span>
+              </div>
+            ))}
+          </Card>
+
+          <Card>
+            <SectionHeader title="Record a payment" />
+            <p style={{ fontSize: 11, color: MUTED, marginBottom: 10, lineHeight: 1.5 }}>
+              Money DrippleX has actually received from this partner, outside the app. Recording it
+              pays the balance down; clearing enough of it unblocks them immediately.
+            </p>
+            <input
+              className="dx-input"
+              placeholder="Amount received (₦)"
+              inputMode="decimal"
+              value={payAmount}
+              onChange={(e) => setPayAmount(e.target.value)}
+              style={{ width: '100%', marginBottom: 8 }}
+            />
+            <input
+              className="dx-input"
+              placeholder="Reference or note (optional)"
+              value={payNote}
+              onChange={(e) => setPayNote(e.target.value)}
+              style={{ width: '100%', marginBottom: 10 }}
+            />
+            <Btn
+              label={busy ? 'Recording…' : 'Record payment'}
+              disabled={busy}
+              onClick={() => void recordPayment()}
+            />
+            {actionMsg && (
+              <p style={{ fontSize: 11, color: MUTED, marginTop: 10, lineHeight: 1.5 }}>
+                {actionMsg}
+              </p>
+            )}
+          </Card>
+
+          <Card style={{ flex: 1, overflowY: 'auto' }}>
+            <SectionHeader title="Ledger" />
+            {ledger === null && <span style={{ fontSize: 12, color: MUTED }}>Loading…</span>}
+            {ledger?.length === 0 && (
+              <span style={{ fontSize: 12, color: MUTED }}>No entries yet.</span>
+            )}
+            {(ledger ?? []).map((entry) => (
+              <div
+                key={entry.id}
+                style={{
+                  borderBottom: '1px solid rgba(255,255,255,.04)',
+                  padding: '8px 0',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 12, color: WHITE, fontWeight: 600 }}>{entry.type}</span>
+                  <span
+                    style={{
+                      fontSize: 12,
+                      color: entry.type === 'PAYMENT' ? G3 : WHITE,
+                    }}
+                  >
+                    {entry.type === 'PAYMENT' ? '−' : '+'}
+                    {naira(Math.abs(entry.amount))}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 2 }}>
+                  <span style={{ fontSize: 10, color: MUTED }}>
+                    {commissionDateTime(entry.createdAt)}
+                  </span>
+                  <span style={{ fontSize: 10, color: MUTED }}>
+                    balance {naira(entry.balanceAfter)}
+                  </span>
+                </div>
+                {entry.description && (
+                  <p style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>{entry.description}</p>
+                )}
+              </div>
+            ))}
           </Card>
         </div>
       )}
@@ -7890,6 +8236,8 @@ function renderPage(page: AdminPage) {
       return <PageCustomers />;
     case 'pricing':
       return <PagePricing />;
+    case 'commissions':
+      return <PageCommissions />;
     case 'billpayments':
       return <PageBillPayments />;
     case 'incidents':

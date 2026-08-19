@@ -40,10 +40,12 @@ import type { PaymentProvider } from '@prisma/client';
  * wiring the real services together exactly as the controllers do, so a
  * regression in how milestones compose (not just how each behaves alone)
  * would actually be caught. Scenarios follow the founder's RIDE-002.9 spec
- * (see docs/RIDE-002.9-E2E-VERIFICATION.md for the full report, including
- * the two confirmed gaps this spec deliberately does not fabricate
- * coverage for: no verification-code/PIN step and no SOS/emergency/trip-
- * sharing feature exist anywhere in the backend).
+ * (see docs/RIDE-002.9-E2E-VERIFICATION.md for the full report).
+ *
+ * Two gaps that report recorded have since been closed: the passenger trip
+ * code is real (dispatch mints it on accept and startTrip enforces it — see
+ * `tripCode()` below) and trip sharing exists (RideShareService). SOS remains
+ * outside this spec.
  */
 
 const databaseUrl =
@@ -301,6 +303,18 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
     });
   }
 
+  /** The passenger's trip code, which the driver has to be told before they
+   * can start. Dispatch mints it on accept, so every started trip in these
+   * scenarios has to read it back the way a driver reads it off a passenger's
+   * screen. */
+  async function tripCode(rideId: string): Promise<string | undefined> {
+    const ride = await prisma.ride.findUniqueOrThrow({
+      where: { id: rideId },
+      select: { verificationCode: true },
+    });
+    return ride.verificationCode ?? undefined;
+  }
+
   describe('Scenario 1 — happy path', () => {
     it('walks request -> dispatch -> accept -> trip -> payment -> tip -> ratings -> receipt -> report/resolve, notifying over the WebSocket port at every step and leaving every wallet reconciled', async () => {
       if (!databaseAvailable) return;
@@ -336,7 +350,12 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
       const arrived = await tripService.markArrived(driverId, requested.id, {});
       expect(arrived.status).toBe('ARRIVED');
       await simulateArrivalAtPickup(driverId);
-      const started = await tripService.startTrip(driverId, requested.id, {});
+      const started = await tripService.startTrip(
+        driverId,
+        requested.id,
+        await tripCode(requested.id),
+        {},
+      );
       expect(started.status).toBe('IN_PROGRESS');
       const completed = await tripService.completeTrip(driverId, requested.id, {});
       expect(completed.status).toBe('COMPLETED');
@@ -448,7 +467,7 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
 
       await tripService.markArrived(farDriverId, requested.id, {});
       await simulateArrivalAtPickup(farDriverId);
-      await tripService.startTrip(farDriverId, requested.id, {});
+      await tripService.startTrip(farDriverId, requested.id, await tripCode(requested.id), {});
       const completed = await tripService.completeTrip(farDriverId, requested.id, {});
       expect(completed.status).toBe('COMPLETED');
 
@@ -532,7 +551,7 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
       await dispatchService.acceptOffer(driverId, offer.id, {});
       await tripService.markArrived(driverId, requested.id, {});
       await simulateArrivalAtPickup(driverId);
-      await tripService.startTrip(driverId, requested.id, {});
+      await tripService.startTrip(driverId, requested.id, await tripCode(requested.id), {});
       await tripService.completeTrip(driverId, requested.id, {});
 
       await paymentService.initiatePayment(customerId, requested.id, 'CASH', undefined, {});
@@ -580,7 +599,7 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
       await dispatchService.acceptOffer(driverId, offer.id, {});
       await tripService.markArrived(driverId, requested.id, {});
       await simulateArrivalAtPickup(driverId);
-      await tripService.startTrip(driverId, requested.id, {});
+      await tripService.startTrip(driverId, requested.id, await tripCode(requested.id), {});
       await tripService.completeTrip(driverId, requested.id, {});
 
       await expect(
@@ -682,7 +701,7 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
       await dispatchService.acceptOffer(driverId, offer.id, {});
       await tripService.markArrived(driverId, requested.id, {});
       await simulateArrivalAtPickup(driverId);
-      await tripService.startTrip(driverId, requested.id, {});
+      await tripService.startTrip(driverId, requested.id, await tripCode(requested.id), {});
 
       await expect(ridesService.cancelRide(customerId, requested.id, {}, {})).rejects.toThrow(
         'Ride cannot be cancelled from status IN_PROGRESS',

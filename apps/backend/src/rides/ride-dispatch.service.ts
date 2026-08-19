@@ -25,6 +25,7 @@ import {
   RIDE_SEARCH_WINDOW_MS,
 } from './ride.constants';
 import { toRideDto, toRideOfferDto, toRideOfferPreviewDto } from './ride.mapper';
+import { generateTripVerificationCode } from './ride.verification';
 
 import type { RideDto, RideOfferDto, RideOfferPreviewDto } from '@dripplex/types';
 import type { DriverAvailability, Ride, RideOffer } from '@prisma/client';
@@ -175,6 +176,12 @@ export class RideDispatchService {
           status: RideStatus.DRIVER_ASSIGNED,
           driverId,
           assignedAt: new Date(),
+          // The passenger's trip code, born with the assignment. Only they see
+          // it; the driver has to be told it out loud, which is what makes it
+          // proof that the person getting in is the one who booked. It
+          // replaces a constant the driver app checked against AND printed on
+          // its own screen.
+          verificationCode: generateTripVerificationCode(),
         },
       }),
     ]);

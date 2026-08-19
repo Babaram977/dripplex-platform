@@ -474,12 +474,128 @@ export interface RideDto {
  * driver reaches the passenger through in-app chat, not their phone book. */
 export interface DriverRideDto extends RideDto {
   customerName: string | null;
+  /** Whether the driver must enter the passenger's trip code to start. */
+  requiresVerificationCode: boolean;
+}
+
+/**
+ * The real shape of GET /customer/rides/:id/receipt.
+ *
+ * This was previously declared inline as `{ id, fare: number, currency,
+ * items, driver: { name }, createdAt }` — a shape the endpoint has never
+ * returned. `fare` is a breakdown object, so `naira(receipt.fare)` printed
+ * "₦NaN" as the total charged on every completed trip.
+ */
+export interface RideReceiptDto {
+  rideId: string;
+  status: RideStatus;
+  driver: { id: string; name: string; phone: string | null; vehicleType: RideType } | null;
+  pickupAddress: string | null;
+  dropoffAddress: string | null;
+  distanceMeters: number | null;
+  durationSeconds: number | null;
+  fare: {
+    baseFare: number;
+    distanceFare: number;
+    timeFare: number;
+    surchargeAmount: number;
+    surchargeZoneName: string | null;
+    totalFare: number;
+    tipAmount: number | null;
+    platformCommission: number | null;
+    driverEarning: number | null;
+  };
+  paymentMethod: RidePaymentMethod | null;
+  paymentStatus: 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED';
+  requestedAt: string;
+  completedAt: string | null;
+}
+
+// ── Commercial (commission credit accounts) ─────────────────────────────────
+export type CommissionOwnerType = 'MERCHANT' | 'DRIVER' | 'RIDER';
+export type CommissionEntryType = 'ACCRUAL' | 'PAYMENT' | 'ADJUSTMENT';
+
+export interface CommissionAccountDto {
+  id: string;
+  ownerType: CommissionOwnerType;
+  ownerId: string;
+  outstandingBalance: number;
+  creditLimit: number;
+  blocked: boolean;
+  blockedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A commission account plus who it belongs to — the Ops commissions desk. */
+export interface AdminCommissionAccountDto extends CommissionAccountDto {
+  ownerName: string | null;
+  ownerEmail: string | null;
+  ownerPhone: string | null;
+}
+
+export interface CommissionLedgerEntryDto {
+  id: string;
+  accountId: string;
+  type: CommissionEntryType;
+  amount: number;
+  balanceAfter: number;
+  referenceType: string | null;
+  referenceId: string | null;
+  description: string | null;
+  createdAt: string;
+}
+
+export interface CommercialCreditSettingDto {
+  id: string;
+  ownerType: CommissionOwnerType;
+  creditLimit: number;
+  updatedBy: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+
+export interface RideShareLinkDto {
+  token: string;
+  /** Path to append to this app's own origin, e.g. `/t/9f3c…`. */
+  path: string;
+}
+
+/** A live trip as the person it was shared with sees it. No login: the token
+ * in the link is the credential, so this carries first names only and never
+ * the trip code, a phone number, or the fare. */
+export interface SharedRideDto {
+  status: RideStatus;
+  rideType: RideType;
+  passengerFirstName: string | null;
+  driverFirstName: string | null;
+  vehicle: RideDriverVehicleDto | null;
+  pickupAddress: string | null;
+  dropoffAddress: string | null;
+  dropoffLatitude: number;
+  dropoffLongitude: number;
+  driverPosition: { latitude: number; longitude: number; updatedAt: string } | null;
+  estimatedDurationSeconds: number | null;
+  requestedAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+}
+
+/** The car the passenger is waiting for — sent to the passenger only. */
+export interface RideDriverVehicleDto {
+  plateNumber: string;
+  make: string;
+  model: string;
+  color: string;
 }
 
 /** A ride as its passenger sees it — plus the assigned driver's name, the
- * mirror of CustomerDeliveryDto.riderName. */
+ * mirror of CustomerDeliveryDto.riderName, the car to look for, and the trip
+ * code the passenger reads out at pickup. */
 export interface CustomerRideDto extends RideDto {
   driverName: string | null;
+  verificationCode: string | null;
+  driverVehicle: RideDriverVehicleDto | null;
 }
 
 // Driver ride offers (dispatch)
@@ -1953,15 +2069,23 @@ export const api = {
       ),
     verifyPayment: (id: string, body: { reference?: string }) =>
       dx<RideDto>('POST', `/customer/rides/${id}/pay/verify`, body),
-    getReceipt: (id: string) =>
-      dx<{
-        id: string;
-        fare: number;
-        currency: string;
-        items: Record<string, number>;
-        driver: { name: string };
-        createdAt: string;
-      }>('GET', `/customer/rides/${id}/receipt`),
+    getReceipt: (id: string) => dx<RideReceiptDto>('GET', `/customer/rides/${id}/receipt`),
+    /** Mints (or returns) the public link for this trip. Idempotent. */
+    share: (id: string) => dx<RideShareLinkDto>('POST', `/customer/rides/${id}/share`),
+    /**
+     * Reads a shared trip by its link token. Deliberately does NOT go through
+     * dx(): whoever opens a shared link is family, not an account holder, so
+     * no token is sent and a 401 handler has nothing to do here.
+     */
+    getShared: async (token: string): Promise<SharedRideDto> => {
+      const res = await fetch(`${BASE}/public/rides/shared/${encodeURIComponent(token)}`);
+      const json: unknown = await res.json().catch(() => null);
+      const payload = json as { success?: boolean; data?: SharedRideDto; message?: string } | null;
+      if (!res.ok || payload?.success === false || !payload?.data) {
+        throw new ApiError(res.status, payload?.message ?? 'This trip link is not valid', 'SHARE');
+      }
+      return payload.data;
+    },
     rateDriver: (
       id: string,
       body: { rating: number; comment?: string; categoryRatings?: Record<string, number> },
@@ -1993,7 +2117,12 @@ export const api = {
     acceptOffer: (offerId: string) => dx<RideDto>('POST', `/driver/rides/offers/${offerId}/accept`),
     declineOffer: (offerId: string) => dx<null>('POST', `/driver/rides/offers/${offerId}/decline`),
     arrive: (id: string) => dx<RideDto>('POST', `/driver/rides/${id}/arrive`),
-    start: (id: string) => dx<RideDto>('POST', `/driver/rides/${id}/start`),
+    start: (id: string, verificationCode?: string) =>
+      dx<RideDto>(
+        'POST',
+        `/driver/rides/${id}/start`,
+        verificationCode !== undefined ? { verificationCode } : {},
+      ),
     complete: (id: string) => dx<RideDto>('POST', `/driver/rides/${id}/complete`),
     cancel: (id: string, reason?: string) =>
       dx<RideDto>('POST', `/driver/rides/${id}/cancel`, { reason }),
@@ -2377,6 +2506,54 @@ export const api = {
   // (ops.dripplex.com) uses — no new/duplicate backend. All require an
   // operations_staff session (see api.auth.loginOperations).
   admin: {
+    // ── Commissions ──────────────────────────────────────────────────────
+    // Who owes DrippleX money, and who is blocked from trading because of
+    // it. A merchant blocked here shows their customers "blocked due to an
+    // outstanding commission balance" at checkout, so this desk is the only
+    // place that error can be resolved.
+    listCommissionAccounts: (params?: {
+      ownerType?: CommissionOwnerType;
+      blocked?: boolean;
+      page?: number;
+      limit?: number;
+    }) =>
+      dx<PaginatedResult<AdminCommissionAccountDto>>(
+        'GET',
+        '/admin/commercial/accounts',
+        undefined,
+        {
+          ...(params?.ownerType ? { ownerType: params.ownerType } : {}),
+          ...(params?.blocked !== undefined ? { blocked: params.blocked } : {}),
+          page: params?.page ?? 1,
+          limit: params?.limit ?? 20,
+        },
+      ),
+    getCommissionLedger: (ownerType: CommissionOwnerType, ownerId: string) =>
+      dx<PaginatedResult<CommissionLedgerEntryDto>>(
+        'GET',
+        `/admin/commercial/accounts/${ownerType}/${ownerId}/ledger`,
+      ),
+    /** Records an external payment against the balance. Enough of one clears
+     * the block and the merchant can take orders again. */
+    recordCommissionPayment: (
+      ownerType: CommissionOwnerType,
+      ownerId: string,
+      amount: number,
+      description?: string,
+    ) =>
+      dx<CommissionAccountDto>(
+        'POST',
+        `/admin/commercial/accounts/${ownerType}/${ownerId}/payments`,
+        { amount, ...(description ? { description } : {}) },
+      ),
+    getCreditSetting: (ownerType: CommissionOwnerType) =>
+      dx<CommercialCreditSettingDto>('GET', `/admin/commercial/credit-settings/${ownerType}`),
+    updateCreditSetting: (ownerType: CommissionOwnerType, creditLimit: number) =>
+      dx<CommercialCreditSettingDto>('PATCH', '/admin/commercial/credit-settings', {
+        ownerType,
+        creditLimit,
+      }),
+
     // Vehicles review queue. Pass 'PENDING' to scope to the approval queue.
     // The backend returns { items, meta } (page/limit/total/totalPages).
     listVehicles: (approvalStatus?: 'PENDING' | 'APPROVED' | 'REJECTED') =>

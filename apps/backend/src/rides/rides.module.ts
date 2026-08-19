@@ -15,6 +15,7 @@ import { AdminRidePricingController } from './controllers/admin-ride-pricing.con
 import { AdminRideReportsController } from './controllers/admin-ride-reports.controller';
 import { CustomerRidesController } from './controllers/customer-rides.controller';
 import { DriverRidesController } from './controllers/driver-rides.controller';
+import { PublicRideShareController } from './controllers/public-ride-share.controller';
 import { RideDispatchService } from './ride-dispatch.service';
 import { RIDE_EVENTS_PUBLISHER } from './ride-events.publisher';
 import { RideFareService } from './ride-fare.service';
@@ -25,6 +26,7 @@ import { RidePricingService } from './ride-pricing.service';
 import { RideProblemReportService } from './ride-problem-report.service';
 import { RideRatingService } from './ride-rating.service';
 import { RideReceiptService } from './ride-receipt.service';
+import { RideShareService } from './ride-share.service';
 import { RideTrackingReadService } from './ride-tracking-read.service';
 import { RideTripService } from './ride-trip.service';
 import { RideGateway } from './ride.gateway';
@@ -48,6 +50,7 @@ import { RidesService } from './rides.service';
     AdminRideReportsController,
     AdminRidePaymentsController,
     AdminRidePricingController,
+    PublicRideShareController,
   ],
   providers: [
     RidesService,
@@ -61,6 +64,7 @@ import { RidesService } from './rides.service';
     RidePaymentService,
     RideRatingService,
     RideReceiptService,
+    RideShareService,
     RideProblemReportService,
     RideTrackingReadService,
     RideGateway,
