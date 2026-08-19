@@ -39,6 +39,8 @@ import {
   UTILITIES_AUDIT_ACTIONS,
   UTILITY_AIRTIME_MAX_AMOUNT,
   UTILITY_AIRTIME_MIN_AMOUNT,
+  UTILITY_CARD_REVERSAL_SUFFIX,
+  UTILITY_FLOAT_EXHAUSTED_CARD_CUSTOMER_MESSAGE,
   UTILITY_FLOAT_EXHAUSTED_CUSTOMER_MESSAGE,
   UTILITY_WALLET_REFERENCE_TYPE,
   UTILITY_WALLET_REVERSAL_REFERENCE_TYPE,
@@ -424,9 +426,18 @@ export class UtilitiesService {
 
     // A declared failure. The provider says nothing moved, so the
     // reservation is given back.
+    // Where the money went depends on how they paid, so the sentence does too.
+    // A card customer really was charged; the reversal lands in their DrippleX
+    // Wallet (DPX-D4), and telling them "your money has not been taken" is
+    // both false and contradicted by the receipt's own "money returned".
+    const paidByCard = purchase.paymentMethod !== UtilityPaymentMethod.WALLET;
     const customerMessage = result.floatExhausted
-      ? UTILITY_FLOAT_EXHAUSTED_CUSTOMER_MESSAGE
-      : (result.providerMessage ?? 'That purchase could not be completed');
+      ? paidByCard
+        ? UTILITY_FLOAT_EXHAUSTED_CARD_CUSTOMER_MESSAGE
+        : UTILITY_FLOAT_EXHAUSTED_CUSTOMER_MESSAGE
+      : paidByCard
+        ? `${result.providerMessage ?? 'That purchase could not be completed'}. ${UTILITY_CARD_REVERSAL_SUFFIX}`
+        : (result.providerMessage ?? 'That purchase could not be completed');
 
     if (result.floatExhausted) {
       this.logger.error(

@@ -272,6 +272,42 @@ describe('UtilitiesService', () => {
     expect(await balanceOf(customerId)).toBe(5_000);
   });
 
+  // A card customer really was charged, and DPX-D4 returns it to the DrippleX
+  // Wallet rather than the card. Telling them "your money has not been taken"
+  // was false, and contradicted the receipt's own "money returned" header.
+  it('tells a card customer where their money went when the float is empty', async () => {
+    if (!databaseAvailable) return;
+    const customerId = await fundedCustomer(5_000);
+    provider.purchaseAirtime.mockResolvedValue({
+      outcome: 'FAILED',
+      providerMessage: 'Insufficient wallet balance',
+      floatExhausted: true,
+    });
+
+    const { purchase } = await service.initiatePurchase(
+      customerId,
+      {
+        serviceType: UtilityServiceType.AIRTIME,
+        provider: 'mtn',
+        customerIdentifier: '08165598782',
+        amount: 100,
+        paymentMethod: 'CARD',
+      },
+      { userId: customerId },
+    );
+    const settled = await service.completeCardPurchaseByReference(
+      (await prisma.utilityPurchase.findUniqueOrThrow({ where: { id: purchase.id } }))
+        .paymentReference ?? '',
+      {},
+    );
+
+    expect(settled?.status).toBe(UtilityPurchaseStatus.REVERSED);
+    expect(settled?.failureReason).toContain('returned to your DrippleX Wallet');
+    expect(settled?.failureReason).not.toContain('has not been taken');
+    // Still never names the DrippleX float to a customer.
+    expect(settled?.failureReason?.toLowerCase()).not.toContain('float');
+  });
+
   it('never tells the customer the DrippleX float is empty', async () => {
     if (!databaseAvailable) return;
     const customerId = await fundedCustomer(5_000);
