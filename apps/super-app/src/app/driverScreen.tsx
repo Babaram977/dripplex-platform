@@ -2903,10 +2903,23 @@ export function DriverIncomingRequestScreen({
   onAccept: (ride: RideDto) => void;
   onDecline: () => void;
 }) {
-  const [countdown, setCountdown] = useState(15);
+  // Derived from the offer's real expiresAt rather than a hardcoded 15. The
+  // server window is RIDE_OFFER_TIMEOUT_MS and this used to disagree with it,
+  // so the bar and the number on screen described a deadline that was not the
+  // actual one.
+  const secondsLeft = (o: RideOfferDto | null): number =>
+    o ? Math.max(0, Math.round((new Date(o.expiresAt).getTime() - Date.now()) / 1000)) : 0;
+  const [countdown, setCountdown] = useState(() => secondsLeft(offer));
+  const [total, setTotal] = useState(() => Math.max(1, secondsLeft(offer)));
   const [preview, setPreview] = useState<RideOfferPreviewDto | null>(null);
   const [busy, setBusy] = useState<null | 'accept' | 'decline'>(null);
   const [err, setErr] = useState('');
+
+  useEffect(() => {
+    const left = secondsLeft(offer);
+    setCountdown(left);
+    setTotal(Math.max(1, left));
+  }, [offer]);
 
   useEffect(() => {
     if (!offer) return;
@@ -2948,14 +2961,20 @@ export function DriverIncomingRequestScreen({
 
   useEffect(() => {
     if (countdown <= 0) {
-      handleDecline();
+      // Running out of time is NOT declining. This used to call
+      // declineOffer() on the tick, which recorded a driver who simply had not
+      // tapped yet as having refused the ride — and a refusal excludes them
+      // from that ride for good. The server expires the offer on its own; the
+      // driver just goes back to waiting for the next one.
+      onDecline();
       return;
     }
     const t = setTimeout(() => setCountdown((c) => c - 1), 1000);
     return () => clearTimeout(t);
-  }, [countdown]);
+  }, [countdown, onDecline]);
 
-  const pct = (countdown / 15) * 100;
+  const expired = countdown <= 0;
+  const pct = (countdown / total) * 100;
 
   const km = preview ? (preview.estimatedDistanceMeters / 1000).toFixed(1) : null;
   const mins = preview ? Math.max(1, Math.round(preview.estimatedDurationSeconds / 60)) : null;
@@ -3165,11 +3184,19 @@ export function DriverIncomingRequestScreen({
             </button>
             <DGreenBtn
               label={
-                busy === 'accept' ? 'Accepting…' : preview ? '✓  Accept Ride' : 'Loading ride…'
+                expired
+                  ? 'Request timed out'
+                  : busy === 'accept'
+                    ? 'Accepting…'
+                    : preview
+                      ? '✓  Accept Ride'
+                      : 'Loading ride…'
               }
               onClick={handleAccept}
               loading={busy === 'accept'}
-              disabled={!preview || busy !== null}
+              // An expired offer cannot be accepted, so the button says so
+              // rather than staying green and failing on tap.
+              disabled={expired || !preview || busy !== null}
             />
           </div>
         </div>
