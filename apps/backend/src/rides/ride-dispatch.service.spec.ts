@@ -215,7 +215,10 @@ describe('RideDispatchService', () => {
 
     const dispatched = await service.dispatchRide(ride.id);
 
-    expect(dispatched.status).toBe('NO_DRIVERS_FOUND');
+    // SEARCHING rather than NO_DRIVERS_FOUND: a ride now holds its search open
+    // for RIDE_SEARCH_WINDOW_MS. What this test is about is the ring — no
+    // offer was made, and certainly not to the driver outside it.
+    expect(dispatched.status).toBe('SEARCHING');
     const offers = await prisma.rideOffer.findMany({ where: { rideId: ride.id } });
     expect(offers).toHaveLength(0);
     expect(offers.map((offer) => offer.driverId)).not.toContain(distantDriverId);
@@ -256,7 +259,9 @@ describe('RideDispatchService', () => {
 
     const dispatched = await service.dispatchRide(ride.id);
 
-    expect(dispatched.status).toBe('NO_DRIVERS_FOUND');
+    // SEARCHING, not NO_DRIVERS_FOUND — the search stays open now. The point
+    // here is that the stale driver was not offered the ride.
+    expect(dispatched.status).toBe('SEARCHING');
     const offers = await prisma.rideOffer.findMany({ where: { rideId: ride.id } });
     expect(offers.map((offer) => offer.driverId)).not.toContain(staleDriverId);
   });
@@ -310,6 +315,14 @@ describe('RideDispatchService', () => {
 
   it('offers the ride to a driver who comes online after it was booked', async () => {
     if (!databaseAvailable) return;
+
+    // Rides from earlier tests in this file are still SEARCHING (that is the
+    // change under test), and the sweep serves them first — so the one driver
+    // created below would be offered somebody else's ride. Close them.
+    await prisma.ride.updateMany({
+      where: { id: { in: createdRideIds } },
+      data: { status: 'CANCELLED' },
+    });
 
     const ride = await createRide();
     await service.dispatchRide(ride.id);

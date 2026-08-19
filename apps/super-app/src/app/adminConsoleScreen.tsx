@@ -14,6 +14,9 @@ import {
   type AdminLiveRideDto,
   type AdminCustomerDto,
   type AdminMerchantDto,
+  type AdminUtilityPurchaseDto,
+  type UtilityFloatStatusDto,
+  type UtilityPurchaseStatus,
   type AdminInspectionDto,
   type SettlementReportDto,
   type AdminRiderDto,
@@ -76,6 +79,7 @@ export type AdminPage =
   | 'riders'
   | 'customers'
   | 'pricing'
+  | 'billpayments'
   | 'incidents'
   | 'support'
   | 'analytics'
@@ -371,6 +375,7 @@ const NAV_ITEMS: { page: AdminPage; icon: string; label: string }[] = [
   { page: 'riders', icon: '🛵', label: 'Riders' },
   { page: 'customers', icon: '👥', label: 'Customers' },
   { page: 'pricing', icon: '💲', label: 'Pricing' },
+  { page: 'billpayments', icon: '📱', label: 'Bill Payments' },
   { page: 'incidents', icon: '⚠️', label: 'Incidents' },
   { page: 'support', icon: '🎧', label: 'Support' },
   { page: 'analytics', icon: '📊', label: 'Analytics' },
@@ -524,6 +529,7 @@ const PAGE_LABELS: Record<AdminPage, string> = {
   riders: 'Riders',
   customers: 'Customers',
   pricing: 'Pricing & Fares',
+  billpayments: 'Bill Payments',
   incidents: 'Incidents',
   support: 'Support Centre',
   analytics: 'Analytics',
@@ -5774,6 +5780,251 @@ function PagePricing() {
   );
 }
 
+// ─── Page: Bill Payments ──────────────────────────────────────────────────────
+/**
+ * The desk for utility purchases that are holding a customer's money.
+ *
+ * `/admin/utilities/purchases` and `.../resolve` have existed since the
+ * Peyflex work; nothing called them, so when a ₦1,000 airtime purchase was
+ * paid for and never delivered on 2026-08-19 there was no button anywhere to
+ * return the money. Two statuses need a human:
+ *
+ *   PENDING          — the provider never answered. Did the top-up land or not?
+ *   AWAITING_PAYMENT — paid at the gateway but never settled here.
+ *
+ * Everything else is finished and is shown read-only.
+ */
+const RESOLVABLE_STATUSES: UtilityPurchaseStatus[] = ['PENDING', 'AWAITING_PAYMENT'];
+
+function PageBillPayments() {
+  const [purchases, setPurchases] = useState<AdminUtilityPurchaseDto[]>([]);
+  const [float, setFloat] = useState<UtilityFloatStatusDto | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<UtilityPurchaseStatus | 'ALL'>('ALL');
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const load = useCallback(async (status: UtilityPurchaseStatus | 'ALL') => {
+    setLoading(true);
+    try {
+      const page = await api.adminUtilities.purchases({
+        pageSize: 50,
+        ...(status === 'ALL' ? {} : { status }),
+      });
+      setPurchases(page.items);
+    } catch (cause) {
+      setMsg(cause instanceof Error ? cause.message : 'Could not load purchases');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load(statusFilter);
+    api.adminUtilities
+      .float()
+      .then(setFloat)
+      .catch(() => {
+        // The float is context, not the job. Its own card says when it is unreadable.
+      });
+  }, [load, statusFilter]);
+
+  const resolve = async (
+    purchase: AdminUtilityPurchaseDto,
+    outcome: 'SUCCESSFUL' | 'REVERSED',
+  ): Promise<void> => {
+    setBusy(purchase.id);
+    setMsg(null);
+    try {
+      const updated = await api.adminUtilities.resolve(purchase.id, {
+        outcome,
+        note:
+          outcome === 'REVERSED'
+            ? 'Refunded to the DrippleX wallet by Operations.'
+            : 'Confirmed delivered against the provider dashboard by Operations.',
+      });
+      setPurchases((previous) =>
+        previous.map((entry) => (entry.id === updated.id ? updated : entry)),
+      );
+      setMsg(
+        outcome === 'REVERSED'
+          ? `₦${purchase.amountCharged.toLocaleString()} returned to the customer's DrippleX wallet.`
+          : 'Marked delivered.',
+      );
+    } catch (cause) {
+      setMsg(cause instanceof Error ? cause.message : 'Could not resolve that purchase');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {msg !== null && (
+        <Card style={{ padding: '10px 14px' }}>
+          <span style={{ fontSize: 11.5, color: WHITE, fontFamily: 'Inter, sans-serif' }}>
+            {msg}
+          </span>
+        </Card>
+      )}
+
+      <Card>
+        <SectionHeader
+          title="Peyflex Float"
+          action={
+            float === null ? (
+              <Chip label="Unknown" color={MUTED} />
+            ) : float.error !== null && float.error !== undefined ? (
+              <Chip label="Unreadable" color={C_WARN} />
+            ) : (
+              <Chip label={float.low ? 'Low' : 'Healthy'} color={float.low ? C_WARN : C_OK} />
+            )
+          }
+        />
+        <p style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          {/* One float pays for every utility purchase on the platform, so it
+              running dry fails all four services at once. */}
+          {float === null
+            ? 'Reading the provider balance…'
+            : float.balance === null
+              ? (float.error ?? 'The provider balance could not be read.')
+              : `₦${float.balance.toLocaleString()} ${float.currency} available. Every airtime, data, cable and electricity purchase is paid from this.`}
+        </p>
+      </Card>
+
+      <Card>
+        <SectionHeader
+          title="Purchases"
+          action={
+            <div style={{ display: 'flex', gap: 5 }}>
+              {(['ALL', 'AWAITING_PAYMENT', 'PENDING', 'SUCCESSFUL', 'REVERSED'] as const).map(
+                (status) => (
+                  <Btn
+                    key={status}
+                    label={status === 'ALL' ? 'All' : status.replace(/_/g, ' ')}
+                    small
+                    outline={statusFilter !== status}
+                    color={statusFilter === status ? G2 : MUTED}
+                    onClick={() => {
+                      setStatusFilter(status);
+                    }}
+                  />
+                ),
+              )}
+            </div>
+          }
+        />
+        <table
+          style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Inter, sans-serif' }}
+        >
+          <thead>
+            <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
+              {['Service', 'Number', 'Amount', 'Paid by', 'Status', 'When', 'Actions'].map((h) => (
+                <th
+                  key={h}
+                  style={{
+                    padding: '6px 8px',
+                    textAlign: 'left',
+                    fontSize: 11,
+                    color: MUTED,
+                    fontWeight: 500,
+                  }}
+                >
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {purchases.map((p) => (
+              <tr
+                key={p.id}
+                className="dx-row"
+                style={{ borderBottom: '1px solid rgba(255,255,255,.04)' }}
+              >
+                <td style={{ padding: '8px 8px', fontSize: 12, color: WHITE }}>{p.serviceType}</td>
+                <td
+                  style={{
+                    padding: '8px 8px',
+                    fontSize: 12,
+                    color: G3,
+                    fontFamily: 'monospace',
+                  }}
+                >
+                  {p.customerIdentifier}
+                </td>
+                <td style={{ padding: '8px 8px', fontSize: 12, color: WHITE }}>
+                  ₦{p.amountCharged.toLocaleString()}
+                </td>
+                <td style={{ padding: '8px 8px', fontSize: 11, color: MUTED }}>
+                  {p.paymentMethod}
+                </td>
+                <td style={{ padding: '8px 8px' }}>
+                  <StatusChip status={p.status} />
+                </td>
+                <td style={{ padding: '8px 8px', fontSize: 11, color: MUTED }}>
+                  {p.createdAt.slice(0, 16).replace('T', ' ')}
+                </td>
+                <td style={{ padding: '8px 8px' }}>
+                  {RESOLVABLE_STATUSES.includes(p.status) ? (
+                    <div style={{ display: 'flex', gap: 5 }}>
+                      {/* Refund first, deliberately: it is the safe verdict.
+                          Marking delivered when it was not costs the customer
+                          their money; refunding a purchase that did land costs
+                          DrippleX the float, which is recoverable. */}
+                      <Btn
+                        label="Refund to wallet"
+                        small
+                        outline
+                        color={C_WARN}
+                        disabled={busy === p.id}
+                        onClick={() => void resolve(p, 'REVERSED')}
+                      />
+                      <Btn
+                        label="Mark delivered"
+                        small
+                        outline
+                        color={G3}
+                        disabled={busy === p.id}
+                        onClick={() => void resolve(p, 'SUCCESSFUL')}
+                      />
+                    </div>
+                  ) : (
+                    <span style={{ fontSize: 11, color: MUTED }}>—</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {loading ? (
+          <div
+            style={{
+              padding: '8px 4px',
+              fontSize: 12,
+              color: MUTED,
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            Loading purchases…
+          </div>
+        ) : purchases.length === 0 ? (
+          <div
+            style={{
+              padding: '8px 4px',
+              fontSize: 12,
+              color: MUTED,
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            No purchases in this view.
+          </div>
+        ) : null}
+      </Card>
+    </div>
+  );
+}
+
 // ─── Page: Incidents ──────────────────────────────────────────────────────────
 // ── Incident/SOS helpers (map real OperationsCase fields to the frozen UI) ────
 const INCIDENT_PRIORITY_LADDER = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as const;
@@ -7548,6 +7799,8 @@ function renderPage(page: AdminPage) {
       return <PageCustomers />;
     case 'pricing':
       return <PagePricing />;
+    case 'billpayments':
+      return <PageBillPayments />;
     case 'incidents':
       return <PageIncidents />;
     case 'support':
