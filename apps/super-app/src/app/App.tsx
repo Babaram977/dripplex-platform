@@ -173,6 +173,7 @@ import {
 } from './onboardingScreen';
 import type { PartnerPersona } from './onboardingScreen';
 import { ChatScreen } from './chatScreen';
+import type { NavTabKey } from '../components/navigation/BottomNavigation';
 import { api } from '../lib/api';
 import type {
   DeliveryJobDto,
@@ -577,6 +578,23 @@ function AppShell() {
     navigate(to);
   };
 
+  /**
+   * The one place the footer tabs are wired.
+   *
+   * Every screen that shows the bottom bar had its own handler, and every one of
+   * them covered `home` and `profile` and nothing else — so Marketplace, Ride
+   * and Wallet were dead on all six screens. Three of the app's five primary
+   * destinations were unreachable from the bar built to reach them. One handler
+   * passed down means the next screen with a footer cannot repeat it.
+   */
+  const goTab = (tab: NavTabKey): void => {
+    if (tab === 'home') go('home');
+    if (tab === 'market') go('marketplace');
+    if (tab === 'ride') go('ridehome');
+    if (tab === 'wallet') go('wallethome');
+    if (tab === 'profile') go('account');
+  };
+
   // Hoisted because two routes render it: `home` itself, and `chat` when there
   // is no conversation to show. That second one had drifted to a prop set
   // HomeScreen no longer takes — `onSearch`/`onCart` did nothing and the
@@ -821,6 +839,7 @@ function AppShell() {
     home: homeScreen,
     marketplace: (
       <MarketplaceScreen
+        onTab={goTab}
         onBack={() => go('home')}
         onHome={() => go('home')}
         onAccount={() => go('account')}
@@ -834,6 +853,7 @@ function AppShell() {
     ),
     store: (
       <StoreScreen
+        onTab={goTab}
         onBack={() => go('marketplace')}
         onHome={() => go('home')}
         onAccount={() => go('account')}
@@ -848,6 +868,7 @@ function AppShell() {
     ),
     productdetail: (
       <ProductDetailScreen
+        onTab={goTab}
         onBack={() => go('store')}
         onHome={() => go('home')}
         onAccount={() => go('account')}
@@ -860,6 +881,7 @@ function AppShell() {
     ),
     cart: (
       <CartScreen
+        onTab={goTab}
         // Back to browsing, not to Product Detail — the cart is reachable from
         // the bottom nav/home, where there is no active product, and routing
         // there without a productId used to render an empty/placeholder product.
@@ -872,6 +894,7 @@ function AppShell() {
     ),
     checkout: (
       <CheckoutScreen
+        onTab={goTab}
         onBack={() => go('cart')}
         onHome={() => go('home')}
         onAccount={() => go('account')}
@@ -884,6 +907,7 @@ function AppShell() {
     ),
     ordertracking: (
       <TrackingScreen
+        onTab={goTab}
         onBack={() => go('home')}
         onHome={() => go('home')}
         onAccount={() => go('account')}

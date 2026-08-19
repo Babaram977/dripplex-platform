@@ -1232,6 +1232,7 @@ export function StoreScreen({
   onHome,
   onAccount,
   onNotifications,
+  onTab,
   onProduct,
   onCart,
   merchantId,
@@ -1241,6 +1242,8 @@ export function StoreScreen({
   onHome: () => void;
   onAccount: () => void;
   onNotifications: () => void;
+  /** App's single footer-tab router — see App.tsx `goTab`. */
+  onTab?: (tab: NavTabKey) => void;
   onProduct?: (p: StoreProduct) => void;
   onCart?: () => void;
   merchantId?: string;
@@ -1316,6 +1319,12 @@ export function StoreScreen({
         });
 
   const handleNav = (t: NavTabKey) => {
+    // Delegate to App's single tab router when wired; the local fallback
+    // below only ever handled two of the five tabs.
+    if (onTab) {
+      onTab(t);
+      return;
+    }
     if (t === 'home') onHome();
     if (t === 'profile') onAccount();
   };

@@ -497,6 +497,8 @@ export interface CartScreenProps {
   onAccount: () => void;
   onNotifications: () => void;
   onCheckout?: () => void;
+  /** App's single footer-tab router — see App.tsx `goTab`. */
+  onTab?: (tab: NavTabKey) => void;
 }
 
 function applyCart(cart: CartDto | null): CartMerchant[] {
@@ -534,6 +536,7 @@ export function CartScreen({
   onHome,
   onAccount,
   onNotifications,
+  onTab,
   onCheckout,
 }: CartScreenProps) {
   const [merchants, setMerchants] = useState<CartMerchant[]>([]);
@@ -658,10 +661,16 @@ export function CartScreen({
   const handleTabChange = useCallback(
     (tab: NavTabKey) => {
       setActiveTab(tab);
+      // Delegate to App's single tab router when it is wired. The local
+      // fallback below only ever handled two of the five tabs.
+      if (onTab) {
+        onTab(tab);
+        return;
+      }
       if (tab === 'home') onHome();
       if (tab === 'profile') onAccount();
     },
-    [onHome, onAccount],
+    [onHome, onAccount, onTab],
   );
 
   // GAP: no AI backend exists — these are non-interactive example prompts only.
