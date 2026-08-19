@@ -542,8 +542,20 @@ export class PaymentService {
 
     const transaction = await this.paymentRepository.findByReference(result.reference);
     if (!transaction) {
-      this.logger.warn(`Webhook reference not found: ${result.reference}`);
-      return { accepted: true, message: 'Unknown reference ignored' };
+      // Not an order payment. It may still be a wallet top-up, a ride fare or
+      // a utility purchase — each keeps its own transaction row, so this is
+      // handed to them rather than dropped. Dropping it is what left a paid
+      // airtime purchase sitting in AWAITING_PAYMENT forever.
+      await this.eventBus?.emit(DOMAIN_EVENTS.PAYMENT_WEBHOOK_UNMATCHED, {
+        provider,
+        reference: result.reference,
+        success: result.success ?? false,
+        event: result.event ?? null,
+      });
+      this.logger.log(
+        `Webhook reference not an order payment, offered to subscribers: ${result.reference}`,
+      );
+      return { accepted: true, message: 'Reference handed to subscribers' };
     }
 
     const order = await this.ordersRepository.findById(transaction.orderId);

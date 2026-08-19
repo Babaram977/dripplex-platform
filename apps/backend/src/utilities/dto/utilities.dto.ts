@@ -7,6 +7,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUrl,
   Matches,
   Max,
   MaxLength,
@@ -127,6 +128,17 @@ export class CreateUtilityPurchaseDto {
    */
   @IsIn([...Object.values(UtilityPaymentMethod), 'CARD'])
   public paymentMethod!: UtilityPaymentMethod | 'CARD';
+
+  /**
+   * Where the gateway sends the customer once they have paid. Without it
+   * Paystack leaves them on its own success page, which is how a paid
+   * purchase looked to the customer like nothing happened. Same field, same
+   * validation, as FundWalletDto and InitiateRidePaymentDto.
+   */
+  @IsOptional()
+  @IsUrl({ require_tld: false })
+  @MaxLength(2048)
+  public callbackUrl?: string;
 }
 
 export class UtilityPurchaseHistoryQueryDto {

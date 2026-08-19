@@ -22,6 +22,7 @@ import {
   RIDE_AUDIT_ACTIONS,
   RIDE_DISPATCH_RADIUS_BANDS_METERS,
   RIDE_OFFER_TIMEOUT_MS,
+  RIDE_SEARCH_WINDOW_MS,
 } from './ride.constants';
 import { toRideDto, toRideOfferDto, toRideOfferPreviewDto } from './ride.mapper';
 
@@ -75,7 +76,13 @@ export class RideDispatchService {
     );
 
     if (!candidate) {
-      return await this.giveUp(ride);
+      // Nobody eligible *right now* is not the same as nobody at all. A
+      // driver typically opens the app because demand exists, so giving up on
+      // the first empty look is how a passenger who books twenty seconds
+      // before a driver comes online is told there are no drivers while three
+      // sit polling for work. The ride stays SEARCHING and the sweep tries
+      // again until the search window closes.
+      return await this.keepSearching(ride);
     }
 
     await this.prisma.rideOffer.create({
@@ -274,6 +281,58 @@ export class RideDispatchService {
     }
 
     return null;
+  }
+
+  /**
+   * No candidate this time round. Hold the ride open and let the sweep look
+   * again, until the search window closes.
+   */
+  private async keepSearching(ride: Ride): Promise<RideDto> {
+    if (Date.now() - ride.requestedAt.getTime() >= RIDE_SEARCH_WINDOW_MS) {
+      return await this.giveUp(ride);
+    }
+
+    if (ride.status === RideStatus.SEARCHING) {
+      return toRideDto(ride);
+    }
+
+    const updated = await this.prisma.ride.update({
+      where: { id: ride.id },
+      data: { status: RideStatus.SEARCHING },
+    });
+    this.events.publishToRide(updated.id, 'ride:status', {
+      rideId: updated.id,
+      status: updated.status,
+      driverId: null,
+    });
+    return toRideDto(updated);
+  }
+
+  /**
+   * Rides that are still looking but have no live offer.
+   *
+   * `expireStaleOffers` retries a ride by way of the offer that expired, so a
+   * ride that never got an offer in the first place was invisible to it —
+   * which is precisely the ride that most needs another look. Called on the
+   * same sweep.
+   */
+  public async retryStalledSearches(): Promise<number> {
+    const stalled = await this.prisma.ride.findMany({
+      where: {
+        status: { in: [RideStatus.REQUESTED, RideStatus.SEARCHING] },
+        offers: { none: { status: RideOfferStatus.PENDING } },
+      },
+      select: { id: true },
+      // A bound so one sweep cannot walk an unbounded backlog; anything left
+      // is picked up by the next tick five seconds later.
+      take: 50,
+    });
+
+    for (const ride of stalled) {
+      await this.dispatchRide(ride.id);
+    }
+
+    return stalled.length;
   }
 
   private async giveUp(ride: Ride): Promise<RideDto> {

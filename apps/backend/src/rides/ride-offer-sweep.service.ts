@@ -41,8 +41,14 @@ export class RideOfferSweepService implements OnModuleInit, OnModuleDestroy {
     this.running = true;
     try {
       const expired = await this.dispatchService.expireStaleOffers();
-      if (expired > 0) {
-        this.logger.log(`Ride offer sweep: expired=${String(expired)}`);
+      // A ride that never got an offer has nothing to expire, so it was
+      // invisible to the line above — and that is the ride whose driver came
+      // online a moment after it was booked. Looked at on the same tick.
+      const retried = await this.dispatchService.retryStalledSearches();
+      if (expired > 0 || retried > 0) {
+        this.logger.log(
+          `Ride offer sweep: expired=${String(expired)} stillSearching=${String(retried)}`,
+        );
       }
       return expired;
     } finally {

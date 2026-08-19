@@ -1,6 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   api,
+  type AdminPromotionDto,
+  type CreatePromotionRequest,
+  type PromotionDomain,
+  type PromotionType,
   type AdminVehicleDto,
   type AdminDriverDto,
   type AdminDriverKycDto,
@@ -10,6 +14,9 @@ import {
   type AdminLiveRideDto,
   type AdminCustomerDto,
   type AdminMerchantDto,
+  type AdminUtilityPurchaseDto,
+  type UtilityFloatStatusDto,
+  type UtilityPurchaseStatus,
   type AdminInspectionDto,
   type SettlementReportDto,
   type AdminRiderDto,
@@ -72,6 +79,7 @@ export type AdminPage =
   | 'riders'
   | 'customers'
   | 'pricing'
+  | 'billpayments'
   | 'incidents'
   | 'support'
   | 'analytics'
@@ -322,14 +330,6 @@ interface AuditLogRow {
   ip: string;
 }
 
-interface PromoRow {
-  code: string;
-  discount: string;
-  usage: string;
-  expires: string;
-  status: string;
-}
-
 interface GeneratedReportRow {
   name: string;
   format: string;
@@ -375,6 +375,7 @@ const NAV_ITEMS: { page: AdminPage; icon: string; label: string }[] = [
   { page: 'riders', icon: '🛵', label: 'Riders' },
   { page: 'customers', icon: '👥', label: 'Customers' },
   { page: 'pricing', icon: '💲', label: 'Pricing' },
+  { page: 'billpayments', icon: '📱', label: 'Bill Payments' },
   { page: 'incidents', icon: '⚠️', label: 'Incidents' },
   { page: 'support', icon: '🎧', label: 'Support' },
   { page: 'analytics', icon: '📊', label: 'Analytics' },
@@ -528,6 +529,7 @@ const PAGE_LABELS: Record<AdminPage, string> = {
   riders: 'Riders',
   customers: 'Customers',
   pricing: 'Pricing & Fares',
+  billpayments: 'Bill Payments',
   incidents: 'Incidents',
   support: 'Support Centre',
   analytics: 'Analytics',
@@ -4847,6 +4849,333 @@ function SurchargeZoneEditor({
  * rather than an addition — a different thing that happens to sit in the same
  * corner of the form. Editing it here changes the founder-locked ₦1,500 floor.
  */
+/**
+ * Create or edit a promo campaign.
+ *
+ * The engine behind this supports far more than the form does — BOGO, happy
+ * hour, referral chains, per-device limits, a whole rule tree. What is exposed
+ * here is the subset an operator can set correctly without a rules editor:
+ * who it applies to, how much it takes off, how many times it can be used and
+ * when it stops. Anything richer is a deliberate gap, not an oversight, and
+ * belongs to the API until a rules editor is designed.
+ */
+const PROMO_DOMAINS: PromotionDomain[] = ['RIDE', 'MARKETPLACE', 'DELIVERY', 'WALLET', 'MERCHANT'];
+
+function PromoEditor({
+  promo,
+  onClose,
+  onSaved,
+}: {
+  /** null when creating. */
+  promo: AdminPromotionDto | null;
+  onClose: () => void;
+  onSaved: (saved: AdminPromotionDto) => void;
+}) {
+  const [name, setName] = useState(promo?.name ?? '');
+  const [code, setCode] = useState(promo?.code ?? '');
+  // PERCENTAGE and FIXED are the two an operator can reason about from a form.
+  const [kind, setKind] = useState<'PERCENTAGE' | 'FIXED'>(
+    promo?.type === 'FIXED' ? 'FIXED' : 'PERCENTAGE',
+  );
+  const [value, setValue] = useState(String(promo?.percentOff ?? promo?.amountOff ?? ''));
+  const [maxDiscount, setMaxDiscount] = useState(
+    promo?.maxDiscount === null || promo?.maxDiscount === undefined
+      ? ''
+      : String(promo.maxDiscount),
+  );
+  const [minOrder, setMinOrder] = useState(
+    promo?.minOrderAmount === null || promo?.minOrderAmount === undefined
+      ? ''
+      : String(promo.minOrderAmount),
+  );
+  const [usageLimit, setUsageLimit] = useState(
+    promo?.usageLimit === null || promo?.usageLimit === undefined ? '' : String(promo.usageLimit),
+  );
+  const [perUserLimit, setPerUserLimit] = useState(
+    promo?.perUserLimit === null || promo?.perUserLimit === undefined
+      ? ''
+      : String(promo.perUserLimit),
+  );
+  const [domains, setDomains] = useState<PromotionDomain[]>(
+    (promo?.domains as PromotionDomain[] | undefined) ?? ['RIDE'],
+  );
+  const [endsAt, setEndsAt] = useState(promo?.endsAt ? promo.endsAt.slice(0, 10) : '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const toggleDomain = (domain: PromotionDomain): void => {
+    setDomains((current) =>
+      current.includes(domain) ? current.filter((d) => d !== domain) : [...current, domain],
+    );
+  };
+
+  const save = async (): Promise<void> => {
+    const amount = parseFloat(value);
+    if (name.trim() === '') {
+      setError('Give the campaign a name — it is what an operator sees in this table.');
+      return;
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setError('Enter the discount.');
+      return;
+    }
+    if (kind === 'PERCENTAGE' && amount > 100) {
+      setError('A percentage discount cannot be more than 100.');
+      return;
+    }
+    if (domains.length === 0) {
+      setError('Choose at least one part of the platform this applies to.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const optional = (raw: string): number | undefined => {
+        const parsed = parseFloat(raw);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+      };
+      const body: CreatePromotionRequest = {
+        name: name.trim(),
+        type: kind as PromotionType,
+        domains,
+        // A campaign with no code applies automatically; one with a code has
+        // to be typed in. Both are real, so an empty box means "no code"
+        // rather than a validation error.
+        ...(code.trim() === '' ? {} : { code: code.trim().toUpperCase() }),
+        ...(kind === 'PERCENTAGE' ? { percentOff: amount } : { amountOff: amount }),
+        ...(optional(maxDiscount) !== undefined ? { maxDiscount: optional(maxDiscount) } : {}),
+        ...(optional(minOrder) !== undefined ? { minOrderAmount: optional(minOrder) } : {}),
+        ...(optional(usageLimit) !== undefined
+          ? { usageLimit: Math.round(optional(usageLimit) ?? 0) }
+          : {}),
+        ...(optional(perUserLimit) !== undefined
+          ? { perUserLimit: Math.round(optional(perUserLimit) ?? 0) }
+          : {}),
+        ...(endsAt === '' ? {} : { endsAt: new Date(`${endsAt}T23:59:59Z`).toISOString() }),
+        // New campaigns go live on save. Pausing is one click away in the
+        // table, and a DRAFT that nobody remembers to activate is the more
+        // expensive mistake.
+        ...(promo === null ? { status: 'ACTIVE' as const } : {}),
+      };
+      const saved =
+        promo === null
+          ? await api.admin.createPromotion(body)
+          : await api.admin.updatePromotion(promo.id, body);
+      onSaved(saved);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not save that campaign');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const field = (label: string, node: React.ReactNode): React.ReactNode => (
+    <div>
+      <div style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif', marginBottom: 5 }}>
+        {label}
+      </div>
+      {node}
+    </div>
+  );
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(3,8,16,.72)',
+        zIndex: 60,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 24,
+      }}
+    >
+      <div
+        onClick={(e) => {
+          e.stopPropagation();
+        }}
+        style={{
+          background: NAVY_CARD,
+          border: `1px solid ${BORDER}`,
+          borderRadius: 12,
+          width: 620,
+          maxWidth: '100%',
+          maxHeight: '90vh',
+          overflowY: 'auto',
+          padding: 18,
+        }}
+      >
+        <SectionHeader
+          title={promo === null ? 'New Promo Campaign' : `Edit · ${promo.name}`}
+          action={<Btn label="Close" small outline color={MUTED} onClick={onClose} />}
+        />
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 4 }}>
+          {field(
+            'Campaign name',
+            <input
+              className="dx-input"
+              value={name}
+              placeholder="Launch week — 20% off rides"
+              onChange={(e) => {
+                setName(e.target.value);
+              }}
+              style={{ width: '100%' }}
+            />,
+          )}
+          {field(
+            'Coupon code (leave empty to apply automatically)',
+            <input
+              className="dx-input"
+              value={code}
+              placeholder="DXLAUNCH"
+              onChange={(e) => {
+                setCode(e.target.value);
+              }}
+              style={{ width: '100%' }}
+            />,
+          )}
+          {field(
+            'Discount type',
+            <select
+              className="dx-input"
+              value={kind}
+              onChange={(e) => {
+                setKind(e.target.value === 'FIXED' ? 'FIXED' : 'PERCENTAGE');
+              }}
+              style={{ width: '100%' }}
+            >
+              <option value="PERCENTAGE">Percentage off</option>
+              <option value="FIXED">Fixed naira off</option>
+            </select>,
+          )}
+          {field(
+            kind === 'PERCENTAGE' ? 'Percent off' : 'Naira off',
+            <input
+              className="dx-input"
+              value={value}
+              inputMode="decimal"
+              onChange={(e) => {
+                setValue(e.target.value);
+              }}
+              style={{ width: '100%' }}
+            />,
+          )}
+          {field(
+            'Cap the discount at (optional)',
+            <input
+              className="dx-input"
+              value={maxDiscount}
+              inputMode="decimal"
+              placeholder="e.g. 1000"
+              onChange={(e) => {
+                setMaxDiscount(e.target.value);
+              }}
+              style={{ width: '100%' }}
+            />,
+          )}
+          {field(
+            'Minimum order/fare (optional)',
+            <input
+              className="dx-input"
+              value={minOrder}
+              inputMode="decimal"
+              onChange={(e) => {
+                setMinOrder(e.target.value);
+              }}
+              style={{ width: '100%' }}
+            />,
+          )}
+          {field(
+            'Total uses (optional)',
+            <input
+              className="dx-input"
+              value={usageLimit}
+              inputMode="numeric"
+              onChange={(e) => {
+                setUsageLimit(e.target.value);
+              }}
+              style={{ width: '100%' }}
+            />,
+          )}
+          {field(
+            'Uses per customer (optional)',
+            <input
+              className="dx-input"
+              value={perUserLimit}
+              inputMode="numeric"
+              onChange={(e) => {
+                setPerUserLimit(e.target.value);
+              }}
+              style={{ width: '100%' }}
+            />,
+          )}
+          {field(
+            'Ends on (optional)',
+            <input
+              className="dx-input"
+              type="date"
+              value={endsAt}
+              onChange={(e) => {
+                setEndsAt(e.target.value);
+              }}
+              style={{ width: '100%' }}
+            />,
+          )}
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <div
+            style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif', marginBottom: 6 }}
+          >
+            Applies to
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {PROMO_DOMAINS.map((domain) => (
+              <Btn
+                key={domain}
+                label={domain}
+                small
+                outline={!domains.includes(domain)}
+                color={domains.includes(domain) ? G2 : MUTED}
+                onClick={() => {
+                  toggleDomain(domain);
+                }}
+              />
+            ))}
+          </div>
+        </div>
+
+        {error !== null && (
+          <div
+            style={{
+              marginTop: 12,
+              fontSize: 11.5,
+              color: C_ERR,
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14 }}>
+          <Btn label="Cancel" small outline color={MUTED} onClick={onClose} />
+          <Btn
+            label={saving ? 'Saving…' : promo === null ? 'Create campaign' : 'Save changes'}
+            small
+            color={G2}
+            disabled={saving}
+            onClick={() => void save()}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PagePricing() {
   const [rates, setRates] = useState<RideFareRateDto[]>([]);
   const [rideType, setRideType] = useState<RideType | null>(null);
@@ -4915,10 +5244,63 @@ function PagePricing() {
     }
   };
 
+  const [promos, setPromos] = useState<AdminPromotionDto[]>([]);
+  const [promosLoading, setPromosLoading] = useState(true);
+  const [promoBusy, setPromoBusy] = useState<string | null>(null);
+  // null = closed. { promo: null } = creating; { promo } = editing.
+  const [promoEdit, setPromoEdit] = useState<{ promo: AdminPromotionDto | null } | null>(null);
+
+  const loadPromos = useCallback(async () => {
+    setPromosLoading(true);
+    try {
+      // Unfiltered on purpose: the console is where you go to switch a paused
+      // campaign back on, so hiding anything but ACTIVE would hide the control.
+      setPromos(await api.admin.listPromotions());
+    } catch (cause) {
+      setMsg(cause instanceof Error ? cause.message : 'Could not load promo campaigns');
+    } finally {
+      setPromosLoading(false);
+    }
+  }, []);
+
+  /** Pause a running campaign, or start a paused one. */
+  const togglePromo = async (promo: AdminPromotionDto): Promise<void> => {
+    setPromoBusy(promo.id);
+    setMsg(null);
+    try {
+      const updated =
+        promo.status === 'ACTIVE'
+          ? await api.admin.pausePromotion(promo.id)
+          : await api.admin.resumePromotion(promo.id);
+      setPromos((previous) => previous.map((entry) => (entry.id === updated.id ? updated : entry)));
+      setMsg(`${updated.name} is now ${updated.status.toLowerCase()}.`);
+    } catch (cause) {
+      setMsg(cause instanceof Error ? cause.message : 'Could not change that campaign');
+    } finally {
+      setPromoBusy(null);
+    }
+  };
+
+  /** End a campaign for good. Redemptions already made are untouched. */
+  const endPromo = async (promo: AdminPromotionDto): Promise<void> => {
+    setPromoBusy(promo.id);
+    setMsg(null);
+    try {
+      const updated = await api.admin.expirePromotion(promo.id);
+      setPromos((previous) => previous.map((entry) => (entry.id === updated.id ? updated : entry)));
+      setMsg(`${updated.name} has ended.`);
+    } catch (cause) {
+      setMsg(cause instanceof Error ? cause.message : 'Could not end that campaign');
+    } finally {
+      setPromoBusy(null);
+    }
+  };
+
   useEffect(() => {
     void load(null);
     void loadZones();
-  }, [load, loadZones]);
+    void loadPromos();
+  }, [load, loadZones, loadPromos]);
 
   const save = async (): Promise<void> => {
     if (rideType === null) return;
@@ -4952,7 +5334,6 @@ function PagePricing() {
       (parseFloat(time) || 0) * TIME_MIN,
     parseFloat(minimum) || 0,
   );
-  const promos: PromoRow[] = []; // no ops-facing promo feed (see wiring-status doc)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {msg && (
@@ -5248,11 +5629,9 @@ function PagePricing() {
               label="+ New Promo"
               small
               color={G2}
-              onClick={() =>
-                setMsg(
-                  'Promotions are managed on the marketing/admin surface (promotions:admin:manage), not the operations console.',
-                )
-              }
+              onClick={() => {
+                setPromoEdit({ promo: null });
+              }}
             />
           }
         />
@@ -5278,40 +5657,84 @@ function PagePricing() {
             </tr>
           </thead>
           <tbody>
-            {promos.map((p, i) => (
-              <tr
-                key={p.code}
-                className="dx-row"
-                style={{ borderBottom: `1px solid rgba(255,255,255,.04)` }}
-              >
-                <td
-                  style={{
-                    padding: '8px 8px',
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color: G3,
-                    fontFamily: 'monospace',
-                  }}
+            {promos.map((p) => {
+              const ended = p.status === 'EXPIRED' || p.status === 'ARCHIVED';
+              return (
+                <tr
+                  key={p.id}
+                  className="dx-row"
+                  style={{ borderBottom: `1px solid rgba(255,255,255,.04)` }}
                 >
-                  {p.code}
-                </td>
-                <td style={{ padding: '8px 8px', fontSize: 12, color: WHITE }}>{p.discount}</td>
-                <td style={{ padding: '8px 8px', fontSize: 11, color: MUTED }}>{p.usage}</td>
-                <td style={{ padding: '8px 8px', fontSize: 11, color: MUTED }}>{p.expires}</td>
-                <td style={{ padding: '8px 8px' }}>
-                  <StatusChip status={p.status} />
-                </td>
-                <td style={{ padding: '8px 8px' }}>
-                  <div style={{ display: 'flex', gap: 5 }}>
-                    <Btn label="Edit" small outline color={G3} />
-                    <Btn label="End" small outline color={C_ERR} />
-                  </div>
-                </td>
-              </tr>
-            ))}
+                  <td
+                    style={{
+                      padding: '8px 8px',
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: G3,
+                      fontFamily: 'monospace',
+                    }}
+                  >
+                    {/* A campaign with no code applies automatically — that is
+                        a real configuration, not missing data. */}
+                    {p.code ?? 'AUTO'}
+                  </td>
+                  <td style={{ padding: '8px 8px', fontSize: 12, color: WHITE }}>
+                    {p.percentOff !== null
+                      ? `${String(p.percentOff)}% off`
+                      : p.amountOff !== null
+                        ? `₦${p.amountOff.toLocaleString()} off`
+                        : p.type}
+                  </td>
+                  <td style={{ padding: '8px 8px', fontSize: 11, color: MUTED }}>
+                    {p.usageLimit === null
+                      ? String(p.usageCount)
+                      : `${String(p.usageCount)} / ${String(p.usageLimit)}`}
+                  </td>
+                  <td style={{ padding: '8px 8px', fontSize: 11, color: MUTED }}>
+                    {p.endsAt === null ? 'No end date' : p.endsAt.slice(0, 10)}
+                  </td>
+                  <td style={{ padding: '8px 8px' }}>
+                    <StatusChip status={p.status} />
+                  </td>
+                  <td style={{ padding: '8px 8px' }}>
+                    <div style={{ display: 'flex', gap: 5 }}>
+                      <Btn
+                        label="Edit"
+                        small
+                        outline
+                        color={G3}
+                        onClick={() => {
+                          setPromoEdit({ promo: p });
+                        }}
+                      />
+                      {!ended && (
+                        <Btn
+                          label={p.status === 'ACTIVE' ? 'Pause' : 'Start'}
+                          small
+                          outline
+                          color={p.status === 'ACTIVE' ? C_WARN : G2}
+                          disabled={promoBusy === p.id}
+                          onClick={() => void togglePromo(p)}
+                        />
+                      )}
+                      {!ended && (
+                        <Btn
+                          label="End"
+                          small
+                          outline
+                          color={C_ERR}
+                          disabled={promoBusy === p.id}
+                          onClick={() => void endPromo(p)}
+                        />
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
-        {promos.length === 0 && (
+        {promosLoading ? (
           <div
             style={{
               padding: '8px 4px',
@@ -5320,10 +5743,283 @@ function PagePricing() {
               fontFamily: 'Inter, sans-serif',
             }}
           >
-            No promo campaigns to show here — promotions live on the marketing/admin surface, not
-            the operations console.
+            Loading campaigns…
           </div>
-        )}
+        ) : promos.length === 0 ? (
+          <div
+            style={{
+              padding: '8px 4px',
+              fontSize: 12,
+              color: MUTED,
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            No promo campaigns yet. Use “+ New Promo” to create one.
+          </div>
+        ) : null}
+      </Card>
+
+      {promoEdit !== null && (
+        <PromoEditor
+          promo={promoEdit.promo}
+          onClose={() => {
+            setPromoEdit(null);
+          }}
+          onSaved={(saved) => {
+            setPromos((previous) =>
+              previous.some((entry) => entry.id === saved.id)
+                ? previous.map((entry) => (entry.id === saved.id ? saved : entry))
+                : [saved, ...previous],
+            );
+            setPromoEdit(null);
+            setMsg(`${saved.name} saved.`);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Page: Bill Payments ──────────────────────────────────────────────────────
+/**
+ * The desk for utility purchases that are holding a customer's money.
+ *
+ * `/admin/utilities/purchases` and `.../resolve` have existed since the
+ * Peyflex work; nothing called them, so when a ₦1,000 airtime purchase was
+ * paid for and never delivered on 2026-08-19 there was no button anywhere to
+ * return the money. Two statuses need a human:
+ *
+ *   PENDING          — the provider never answered. Did the top-up land or not?
+ *   AWAITING_PAYMENT — paid at the gateway but never settled here.
+ *
+ * Everything else is finished and is shown read-only.
+ */
+const RESOLVABLE_STATUSES: UtilityPurchaseStatus[] = ['PENDING', 'AWAITING_PAYMENT'];
+
+function PageBillPayments() {
+  const [purchases, setPurchases] = useState<AdminUtilityPurchaseDto[]>([]);
+  const [float, setFloat] = useState<UtilityFloatStatusDto | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<UtilityPurchaseStatus | 'ALL'>('ALL');
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const load = useCallback(async (status: UtilityPurchaseStatus | 'ALL') => {
+    setLoading(true);
+    try {
+      const page = await api.adminUtilities.purchases({
+        pageSize: 50,
+        ...(status === 'ALL' ? {} : { status }),
+      });
+      setPurchases(page.items);
+    } catch (cause) {
+      setMsg(cause instanceof Error ? cause.message : 'Could not load purchases');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load(statusFilter);
+    api.adminUtilities
+      .float()
+      .then(setFloat)
+      .catch(() => {
+        // The float is context, not the job. Its own card says when it is unreadable.
+      });
+  }, [load, statusFilter]);
+
+  const resolve = async (
+    purchase: AdminUtilityPurchaseDto,
+    outcome: 'SUCCESSFUL' | 'REVERSED',
+  ): Promise<void> => {
+    setBusy(purchase.id);
+    setMsg(null);
+    try {
+      const updated = await api.adminUtilities.resolve(purchase.id, {
+        outcome,
+        note:
+          outcome === 'REVERSED'
+            ? 'Refunded to the DrippleX wallet by Operations.'
+            : 'Confirmed delivered against the provider dashboard by Operations.',
+      });
+      setPurchases((previous) =>
+        previous.map((entry) => (entry.id === updated.id ? updated : entry)),
+      );
+      setMsg(
+        outcome === 'REVERSED'
+          ? `₦${purchase.amountCharged.toLocaleString()} returned to the customer's DrippleX wallet.`
+          : 'Marked delivered.',
+      );
+    } catch (cause) {
+      setMsg(cause instanceof Error ? cause.message : 'Could not resolve that purchase');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {msg !== null && (
+        <Card style={{ padding: '10px 14px' }}>
+          <span style={{ fontSize: 11.5, color: WHITE, fontFamily: 'Inter, sans-serif' }}>
+            {msg}
+          </span>
+        </Card>
+      )}
+
+      <Card>
+        <SectionHeader
+          title="Peyflex Float"
+          action={
+            float === null ? (
+              <Chip label="Unknown" color={MUTED} />
+            ) : float.error !== null && float.error !== undefined ? (
+              <Chip label="Unreadable" color={C_WARN} />
+            ) : (
+              <Chip label={float.low ? 'Low' : 'Healthy'} color={float.low ? C_WARN : C_OK} />
+            )
+          }
+        />
+        <p style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          {/* One float pays for every utility purchase on the platform, so it
+              running dry fails all four services at once. */}
+          {float === null
+            ? 'Reading the provider balance…'
+            : float.balance === null
+              ? (float.error ?? 'The provider balance could not be read.')
+              : `₦${float.balance.toLocaleString()} ${float.currency} available. Every airtime, data, cable and electricity purchase is paid from this.`}
+        </p>
+      </Card>
+
+      <Card>
+        <SectionHeader
+          title="Purchases"
+          action={
+            <div style={{ display: 'flex', gap: 5 }}>
+              {(['ALL', 'AWAITING_PAYMENT', 'PENDING', 'SUCCESSFUL', 'REVERSED'] as const).map(
+                (status) => (
+                  <Btn
+                    key={status}
+                    label={status === 'ALL' ? 'All' : status.replace(/_/g, ' ')}
+                    small
+                    outline={statusFilter !== status}
+                    color={statusFilter === status ? G2 : MUTED}
+                    onClick={() => {
+                      setStatusFilter(status);
+                    }}
+                  />
+                ),
+              )}
+            </div>
+          }
+        />
+        <table
+          style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Inter, sans-serif' }}
+        >
+          <thead>
+            <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
+              {['Service', 'Number', 'Amount', 'Paid by', 'Status', 'When', 'Actions'].map((h) => (
+                <th
+                  key={h}
+                  style={{
+                    padding: '6px 8px',
+                    textAlign: 'left',
+                    fontSize: 11,
+                    color: MUTED,
+                    fontWeight: 500,
+                  }}
+                >
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {purchases.map((p) => (
+              <tr
+                key={p.id}
+                className="dx-row"
+                style={{ borderBottom: '1px solid rgba(255,255,255,.04)' }}
+              >
+                <td style={{ padding: '8px 8px', fontSize: 12, color: WHITE }}>{p.serviceType}</td>
+                <td
+                  style={{
+                    padding: '8px 8px',
+                    fontSize: 12,
+                    color: G3,
+                    fontFamily: 'monospace',
+                  }}
+                >
+                  {p.customerIdentifier}
+                </td>
+                <td style={{ padding: '8px 8px', fontSize: 12, color: WHITE }}>
+                  ₦{p.amountCharged.toLocaleString()}
+                </td>
+                <td style={{ padding: '8px 8px', fontSize: 11, color: MUTED }}>
+                  {p.paymentMethod}
+                </td>
+                <td style={{ padding: '8px 8px' }}>
+                  <StatusChip status={p.status} />
+                </td>
+                <td style={{ padding: '8px 8px', fontSize: 11, color: MUTED }}>
+                  {p.createdAt.slice(0, 16).replace('T', ' ')}
+                </td>
+                <td style={{ padding: '8px 8px' }}>
+                  {RESOLVABLE_STATUSES.includes(p.status) ? (
+                    <div style={{ display: 'flex', gap: 5 }}>
+                      {/* Refund first, deliberately: it is the safe verdict.
+                          Marking delivered when it was not costs the customer
+                          their money; refunding a purchase that did land costs
+                          DrippleX the float, which is recoverable. */}
+                      <Btn
+                        label="Refund to wallet"
+                        small
+                        outline
+                        color={C_WARN}
+                        disabled={busy === p.id}
+                        onClick={() => void resolve(p, 'REVERSED')}
+                      />
+                      <Btn
+                        label="Mark delivered"
+                        small
+                        outline
+                        color={G3}
+                        disabled={busy === p.id}
+                        onClick={() => void resolve(p, 'SUCCESSFUL')}
+                      />
+                    </div>
+                  ) : (
+                    <span style={{ fontSize: 11, color: MUTED }}>—</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {loading ? (
+          <div
+            style={{
+              padding: '8px 4px',
+              fontSize: 12,
+              color: MUTED,
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            Loading purchases…
+          </div>
+        ) : purchases.length === 0 ? (
+          <div
+            style={{
+              padding: '8px 4px',
+              fontSize: 12,
+              color: MUTED,
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            No purchases in this view.
+          </div>
+        ) : null}
       </Card>
     </div>
   );
@@ -7103,6 +7799,8 @@ function renderPage(page: AdminPage) {
       return <PageCustomers />;
     case 'pricing':
       return <PagePricing />;
+    case 'billpayments':
+      return <PageBillPayments />;
     case 'incidents':
       return <PageIncidents />;
     case 'support':

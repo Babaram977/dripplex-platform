@@ -16,6 +16,9 @@ async function dx<T>(
   path: string,
   body?: unknown,
   params?: Record<string, string | number | boolean | undefined>,
+  // Set on the one retry a 401 is allowed. An endpoint that answers 401 for a
+  // reason a fresh token cannot fix would otherwise refresh-and-retry forever.
+  retried = false,
 ): Promise<T> {
   const url = new URL(`${BASE}${path}`);
   if (params) {
@@ -35,9 +38,11 @@ async function dx<T>(
   });
 
   // 401 → try silent refresh once
-  if (res.status === 401) {
+  if (res.status === 401 && !retried) {
     const refreshed = await tryRefresh();
-    if (refreshed) return dx(method, path, body, params);
+    if (refreshed) return await dx(method, path, body, params, true);
+  }
+  if (res.status === 401) {
     auth.clear();
     window.dispatchEvent(new Event('dx:session-expired'));
     throw new ApiError(401, 'Session expired — please log in again.', 'SESSION_EXPIRED');
@@ -59,8 +64,34 @@ async function dx<T>(
   return ('data' in json ? json.data : json) as T;
 }
 
-// Silent token refresh
+/**
+ * Silent token refresh — at most one in flight at a time.
+ *
+ * The backend rotates the refresh token on every refresh and treats a second
+ * use of the old one as a stolen-token breach: it revokes the whole session
+ * (RefreshService.handleReuseDetected). So two requests that 401 at the same
+ * moment and each call refresh with the same token do not race harmlessly —
+ * the first rotates, the second is read as reuse, and the user is signed out
+ * for good.
+ *
+ * The driver app is the case that proves it: it polls for ride offers every
+ * five seconds and pushes its location on its own timer, so the instant the
+ * access token expires several requests 401 together. That is a driver being
+ * logged out while sitting online waiting for work.
+ *
+ * Every caller now awaits the same refresh and then retries with whatever it
+ * produced.
+ */
+let refreshInFlight: Promise<boolean> | null = null;
+
 async function tryRefresh(): Promise<boolean> {
+  refreshInFlight ??= performRefresh().finally(() => {
+    refreshInFlight = null;
+  });
+  return await refreshInFlight;
+}
+
+async function performRefresh(): Promise<boolean> {
   const refreshToken = auth.getRefreshToken();
   if (!refreshToken) return false;
   try {
@@ -1260,6 +1291,68 @@ export interface PromotionActiveDto {
   endsAt: string | null;
 }
 
+/** The statuses a campaign moves through, from the Prisma enum. */
+export type PromotionStatus =
+  'DRAFT' | 'SCHEDULED' | 'ACTIVE' | 'PAUSED' | 'EXPIRED' | 'ARCHIVED' | 'CANCELLED';
+
+/** Which side of the platform a campaign applies to. */
+export type PromotionDomain = 'RIDE' | 'MARKETPLACE' | 'DELIVERY' | 'WALLET' | 'MERCHANT';
+
+/**
+ * The full campaign as the admin API returns it. The engine supports far more
+ * (BOGO, happy hour, referral, per-device limits, rule trees); the console
+ * form below deliberately exposes the subset an operator can set safely
+ * without a rules editor, and everything else is left to the API.
+ */
+export type PromotionType =
+  | 'PERCENTAGE'
+  | 'FIXED'
+  | 'BOGO'
+  | 'FLASH_SALE'
+  | 'HAPPY_HOUR'
+  | 'MERCHANT_CAMPAIGN'
+  | 'PLATFORM_CAMPAIGN'
+  | 'REFERRAL'
+  | 'COUPON'
+  | 'AUTOMATIC'
+  | 'WALLET_CREDIT'
+  | 'CASHBACK';
+
+export interface AdminPromotionDto {
+  id: string;
+  code: string | null;
+  name: string;
+  type: string;
+  status: string;
+  domains: string[];
+  percentOff: number | null;
+  amountOff: number | null;
+  maxDiscount: number | null;
+  minOrderAmount: number | null;
+  usageLimit: number | null;
+  usageCount: number;
+  perUserLimit: number | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  createdAt: string;
+}
+
+export interface CreatePromotionRequest {
+  code?: string;
+  name: string;
+  type: PromotionType;
+  status?: PromotionStatus;
+  domains?: PromotionDomain[];
+  percentOff?: number;
+  amountOff?: number;
+  maxDiscount?: number;
+  minOrderAmount?: number;
+  usageLimit?: number;
+  perUserLimit?: number;
+  startsAt?: string;
+  endsAt?: string;
+}
+
 export interface LoyaltyOverviewDto {
   account: {
     id: string;
@@ -1392,6 +1485,9 @@ export interface CreateUtilityPurchaseRequest {
   /** Send 'CARD', never a named gateway — which gateway takes the money is a
    * server decision, so a client naming one breaks when its keys change. */
   paymentMethod: UtilityPaymentMethod | 'CARD';
+  /** Where the gateway returns the customer after paying. See
+   * `lib/gatewayReturn.ts`. */
+  callbackUrl?: string;
 }
 
 export interface UtilityFloatStatusDto {
@@ -2407,6 +2503,23 @@ export const api = {
         active: boolean;
       }>,
     ) => dx<RideSurchargeZoneDto>('PATCH', `/admin/rides/pricing/zones/${id}`, body),
+
+    // Promo campaigns. The engine and its admin API have existed all along
+    // (POST/GET/PATCH /admin/promotions, promotions:admin:manage); the console
+    // simply never called them and told the operator to go somewhere else —
+    // somewhere that does not exist. Founder decision, 2026-08-19: promos are
+    // created here.
+    listPromotions: (params?: { status?: PromotionStatus; domain?: PromotionDomain }) =>
+      dx<AdminPromotionDto[]>('GET', '/admin/promotions', undefined, params),
+    createPromotion: (body: CreatePromotionRequest) =>
+      dx<AdminPromotionDto>('POST', '/admin/promotions', body),
+    updatePromotion: (id: string, body: Partial<CreatePromotionRequest>) =>
+      dx<AdminPromotionDto>('PATCH', `/admin/promotions/${id}`, body),
+    pausePromotion: (id: string) => dx<AdminPromotionDto>('POST', `/admin/promotions/${id}/pause`),
+    resumePromotion: (id: string) =>
+      dx<AdminPromotionDto>('POST', `/admin/promotions/${id}/resume`),
+    expirePromotion: (id: string) =>
+      dx<AdminPromotionDto>('POST', `/admin/promotions/${id}/force-expire`),
 
     // Merchants review desk. Pass a status to scope (e.g. 'PENDING'/'UNDER_REVIEW').
     listMerchants: (status?: 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUSPENDED') =>

@@ -13,6 +13,7 @@ import { NotConfiguredUtilityProvider } from './providers/not-configured-utility
 import { PeyflexUtilityProvider } from './providers/peyflex.provider';
 import { UTILITY_PROVIDER } from './providers/utility-provider.port';
 import { UtilitiesService } from './utilities.service';
+import { UtilityPaymentSubscriber } from './utility-payment.subscriber';
 
 @Module({
   imports: [PrismaModule, AuditModule, AppConfigModule, WalletModule, PaymentsModule],
@@ -34,6 +35,8 @@ import { UtilitiesService } from './utilities.service';
       inject: [AppConfigService, PeyflexUtilityProvider, NotConfiguredUtilityProvider],
     },
     UtilitiesService,
+    // DomainEventBus comes from the @Global() EventsModule, so no import here.
+    UtilityPaymentSubscriber,
   ],
   exports: [UtilitiesService],
 })

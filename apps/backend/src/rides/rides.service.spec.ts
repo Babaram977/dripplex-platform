@@ -202,7 +202,11 @@ describe('RidesService', () => {
       context,
     );
 
-    expect(ride.status).toBe('NO_DRIVERS_FOUND');
+    // SEARCHING rather than NO_DRIVERS_FOUND: dispatch holds the search open
+    // for RIDE_SEARCH_WINDOW_MS instead of giving up on the first empty look.
+    // What this test pins is that no driver of the wrong vehicle type was
+    // matched.
+    expect(ride.status).toBe('SEARCHING');
     expect(ride.driverId).toBeNull();
   });
 

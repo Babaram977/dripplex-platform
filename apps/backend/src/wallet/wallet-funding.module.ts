@@ -7,6 +7,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 
 import { CustomerWalletFundingController } from './customer-wallet-funding.controller';
 import { WalletFundingService } from './wallet-funding.service';
+import { WalletFundingSubscriber } from './wallet-funding.subscriber';
 import { WalletModule } from './wallet.module';
 
 /**
@@ -19,6 +20,7 @@ import { WalletModule } from './wallet.module';
 @Module({
   imports: [PrismaModule, AuditModule, AppConfigModule, WalletModule, PaymentsModule],
   controllers: [CustomerWalletFundingController],
-  providers: [WalletFundingService],
+  // DomainEventBus comes from the @Global() EventsModule, so no import here.
+  providers: [WalletFundingService, WalletFundingSubscriber],
 })
 export class WalletFundingModule {}

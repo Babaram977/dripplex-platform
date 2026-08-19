@@ -183,7 +183,12 @@ import type {
   UtilityPurchaseDto,
   UtilityServiceType,
 } from '../lib/api';
-import { endSession } from '../lib/auth';
+import { auth, endSession } from '../lib/auth';
+import {
+  clearGatewayReturnParam,
+  gatewayReturnKindFromUrl,
+  takeGatewayReturn,
+} from '../lib/gatewayReturn';
 import { installUnlockListener } from '../lib/sound';
 
 // DESKTOP FRAME — for admin operations console
@@ -224,7 +229,12 @@ function DesktopFrame({ children }: { children: React.ReactNode }) {
                 color: 'rgba(255,255,255,.3)',
               }}
             >
-              console.dripplexapp.com
+              {/* This read `console.dripplexapp.com` — a Figma mockup label on
+                  a mock browser bar, inside a real browser. The domain does
+                  not exist and never has, so an operator reading it off the
+                  screen was being sent nowhere. Shows where they actually
+                  are. */}
+              {typeof window === 'undefined' ? '' : window.location.host}
             </span>
           </div>
         </div>
@@ -236,10 +246,14 @@ function DesktopFrame({ children }: { children: React.ReactNode }) {
 
 // PHONE FRAME
 // ═══════════════════════════════════════════════════════════════════════════
+// The bezel, the notch and the 390px width are a desktop preview of a phone.
+// On a real handset they are not chrome around the app — they are the app, and
+// a fixed 390px overflows a 360px screen sideways. The `dx-phone-*` classes let
+// GLOBAL_STYLES drop all of it below 480px so the app renders full bleed.
 function PhoneFrame({ children }: { children: React.ReactNode }) {
   return (
     <div
-      className="relative overflow-hidden"
+      className="dx-phone-frame relative overflow-hidden"
       style={{
         width: 390,
         // Single definite height so the child screen's `h-full` resolves to the
@@ -254,7 +268,7 @@ function PhoneFrame({ children }: { children: React.ReactNode }) {
       }}
     >
       <div
-        className="absolute left-1/2 top-3.5 z-50 -translate-x-1/2 rounded-full"
+        className="dx-phone-notch absolute left-1/2 top-3.5 z-50 -translate-x-1/2 rounded-full"
         style={{
           width: 120,
           height: 36,
@@ -448,6 +462,20 @@ function initialScreenFromLocation(): Screen | null {
   return PORTAL_ROUTES[fromPath] ?? PORTAL_ROUTES[fromQuery] ?? null;
 }
 
+/**
+ * A customer coming back from a payment gateway lands on the screen the
+ * payment belongs to, not on the splash. Only for a signed-in device — the
+ * token survives the round trip in localStorage, and without one there is
+ * nothing to show anyway.
+ */
+function returnScreenFromGateway(): Screen | null {
+  if (!auth.isLoggedIn()) return null;
+  const kind = gatewayReturnKindFromUrl();
+  if (kind === 'utility') return 'utilities';
+  if (kind === 'wallet') return 'wallethome';
+  return null;
+}
+
 function AppShell() {
   // Browsers hold audio back until the user has interacted with the page, so
   // the very first alert of a session would otherwise be silent. This arms the
@@ -457,7 +485,9 @@ function AppShell() {
 
   // A portal link opens that portal; everything else starts the customer journey
   // at the splash screen exactly as before.
-  const [screen, setScreen] = useState<Screen>(() => initialScreenFromLocation() ?? 'splash');
+  const [screen, setScreen] = useState<Screen>(
+    () => returnScreenFromGateway() ?? initialScreenFromLocation() ?? 'splash',
+  );
   const [rideDetailId, setRideDetailId] = useState<string>('');
   const [fading, setFading] = useState(false);
   const [otpData, setOtpData] = useState<{
@@ -594,6 +624,39 @@ function AppShell() {
     if (tab === 'wallet') go('wallethome');
     if (tab === 'profile') go('account');
   };
+
+  /**
+   * Finish a payment the customer made at a gateway.
+   *
+   * The backend settles from the webhook regardless, so this is not what makes
+   * the purchase happen — it is what makes the customer *see* it happen, and
+   * it closes the window where the webhook has not landed yet. Runs once, on
+   * the load that carries `?dxreturn`.
+   */
+  useEffect(() => {
+    const pending = takeGatewayReturn();
+    clearGatewayReturnParam();
+    if (!pending || !auth.isLoggedIn()) return;
+
+    let cancelled = false;
+    void (async () => {
+      if (pending.kind !== 'utility') return;
+      try {
+        const purchase = await api.utilities.confirm(pending.id);
+        if (cancelled) return;
+        setActiveUtilityPurchase(purchase);
+        go('utilityreceipt');
+      } catch {
+        // The webhook is the reliable path; if it has not landed yet the
+        // purchase is still in flight, and the history screen shows its real
+        // state rather than a made-up one.
+        if (!cancelled) go('utilityhistory');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Hoisted because two routes render it: `home` itself, and `chat` when there
   // is no conversation to show. That second one had drifted to a prop set
@@ -1987,7 +2050,7 @@ function AppShell() {
       )}
 
       {/* ── Canvas ───────────────────────────────────────────────────────── */}
-      <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto py-3">
+      <div className="dx-canvas flex min-h-0 flex-1 items-center justify-center overflow-auto py-3">
         <div
           style={{
             opacity: fading ? 0 : 1,

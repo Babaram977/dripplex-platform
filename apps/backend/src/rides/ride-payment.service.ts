@@ -112,6 +112,33 @@ export class RidePaymentService {
     return await this.initiateGatewayPayment(customerId, rideId, method, callbackUrl, context);
   }
 
+  /**
+   * The gateway's side of a card-paid fare.
+   *
+   * `verifyPayment` only runs when the passenger comes back to the app; a
+   * passenger who stops at the gateway's success page is charged and the ride
+   * is never settled. The webhook always arrives. Returns null when the
+   * reference is not a ride payment at all.
+   */
+  public async completeGatewayPaymentByReference(
+    reference: string,
+    context: AuditContext,
+  ): Promise<RideDto | null> {
+    const transaction = await this.prisma.ridePaymentTransaction.findUnique({
+      where: { providerReference: reference },
+      include: { ride: true },
+    });
+    if (!transaction) {
+      return null;
+    }
+    return await this.verifyPayment(
+      transaction.ride.customerId,
+      transaction.rideId,
+      reference,
+      context,
+    );
+  }
+
   public async verifyPayment(
     customerId: string,
     rideId: string,
@@ -154,8 +181,13 @@ export class RidePaymentService {
       throw new ValidationDomainException('Payment verification failed');
     }
 
-    await this.prisma.ridePaymentTransaction.update({
-      where: { id: transaction.id },
+    // Claim the transaction row atomically before any money moves. markPaid()
+    // guards the ride's PAID transition, but the capture and driver payout
+    // below run before it — two concurrent settlements (now that the gateway
+    // webhook settles the same ride as the customer's return-to-app verify)
+    // could both credit before either claimed the ride. The loser stops here.
+    const claimed = await this.prisma.ridePaymentTransaction.updateMany({
+      where: { id: transaction.id, status: { not: TransactionStatus.SUCCESS } },
       data: {
         status: TransactionStatus.SUCCESS,
         verifiedAt: new Date(),
@@ -164,6 +196,9 @@ export class RidePaymentService {
         gatewayResponse: verification.gatewayResponse ?? {},
       },
     });
+    if (claimed.count === 0) {
+      return toRideDto(await this.prisma.ride.findUniqueOrThrow({ where: { id: ride.id } }));
+    }
 
     const rate = await this.platformCommissionSettings.getEffectiveRate();
     const split = this.computeSplit(ride, rate);

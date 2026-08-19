@@ -18,6 +18,7 @@ import {
   NotFoundDomainException,
   ValidationDomainException,
 } from '../common/exceptions/domain.exception';
+import { DOMAIN_EVENTS } from '../events/domain-events';
 import { ORDER_WALLET_PAYMENT_REFERENCE_TYPE } from '../orders/order.constants';
 
 import { OrderPaymentMethodDtoEnum } from './dto/payment.dto';
@@ -31,6 +32,7 @@ import type { InventoryDeductionService } from './inventory-deduction.service';
 import type { AuditService } from '../audit/audit.service';
 import type { CartRepository } from '../cart/repositories/cart.repository';
 import type { AppConfigService } from '../config/app-config.service';
+import type { DomainEventBus } from '../events/domain-event-bus';
 import type { NotificationService } from '../notifications/notification.service';
 import type { OrdersRepository, OrderWithItems } from '../orders/repositories/orders.repository';
 import type { PrismaService } from '../prisma/prisma.service';
@@ -608,6 +610,50 @@ describe('PaymentService', () => {
         expect.objectContaining({
           status: OrderStatus.CONFIRMED,
           paymentStatus: PaymentStatus.PAID,
+        }),
+      );
+    });
+
+    // A reference this service does not own used to be logged and dropped.
+    // Wallet top-ups, ride fares and utility purchases all keep their own
+    // transaction rows, so dropping it meant a customer could be charged for
+    // airtime that never arrived. It is now offered to their subscribers.
+    it('hands an unknown reference to subscribers instead of dropping it', async () => {
+      const eventBus = { emit: jest.fn().mockResolvedValue(undefined) };
+      const withBus = new PaymentService(
+        paymentRepository,
+        ordersRepository,
+        cartRepository,
+        [provider],
+        inventoryDeduction,
+        auditService,
+        notifications,
+        prisma,
+        config,
+        walletService,
+        eventBus as unknown as DomainEventBus,
+      );
+      paymentRepository.findByReference.mockResolvedValue(null);
+      provider.handleWebhook.mockResolvedValue({
+        accepted: true,
+        event: 'charge.success',
+        reference: 'UTIL-b3370710-1787109606020',
+        success: true,
+      });
+
+      const result = await withBus.handleWebhook(PaymentProvider.PAYSTACK, {
+        rawBody: '{}',
+        headers: { 'x-paystack-signature': 'sig' },
+        payload: {},
+      });
+
+      expect(result.accepted).toBe(true);
+      expect(eventBus.emit).toHaveBeenCalledWith(
+        DOMAIN_EVENTS.PAYMENT_WEBHOOK_UNMATCHED,
+        expect.objectContaining({
+          provider: PaymentProvider.PAYSTACK,
+          reference: 'UTIL-b3370710-1787109606020',
+          success: true,
         }),
       );
     });

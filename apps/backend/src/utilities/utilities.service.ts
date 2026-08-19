@@ -334,6 +334,28 @@ export class UtilitiesService {
   }
 
   /**
+   * The gateway's side of the card path.
+   *
+   * `confirmCardPurchase` only runs when the customer comes back to the app,
+   * and a customer who closes the tab at the Paystack success page never
+   * does — they are charged and nothing is delivered. The webhook always
+   * arrives, so it drives the same idempotent confirmation. Returns null when
+   * the reference belongs to some other part of the platform.
+   */
+  public async completeCardPurchaseByReference(
+    reference: string,
+    context: AuditContext,
+  ): Promise<UtilityPurchaseDto | null> {
+    const purchase = await this.prisma.utilityPurchase.findUnique({
+      where: { paymentReference: reference },
+    });
+    if (!purchase) {
+      return null;
+    }
+    return await this.confirmCardPurchase(purchase.customerId, purchase.id, context);
+  }
+
+  /**
    * Call the provider and settle the row. The customer's money is already
    * reserved by the time this runs.
    */
@@ -575,11 +597,28 @@ export class UtilitiesService {
   }
 
   /**
-   * An operator's verdict on a purchase the provider never answered for.
+   * An operator's verdict on a purchase that is stuck holding a customer's
+   * money.
    *
-   * Only PENDING rows can be resolved — a SUCCESSFUL or REVERSED purchase has
-   * already had its money moved, and letting an operator flip it would double
-   * the movement.
+   * Two shapes qualify, and only two:
+   *
+   * PENDING — the provider never answered, so the float may or may not have
+   * been spent. This is the case the method was built for.
+   *
+   * AWAITING_PAYMENT **that the gateway confirms was paid** — the case that
+   * stranded a ₦1,000 airtime purchase on 2026-08-19. The guard here used to
+   * refuse every AWAITING_PAYMENT row on the reasonable-sounding assumption
+   * that it meant "the customer walked away before paying, so there is nothing
+   * to resolve". That assumption is false: a purchase can be AWAITING_PAYMENT
+   * *and* fully paid, which is exactly what the webhook gap produced.
+   *
+   * The gateway is asked before an AWAITING_PAYMENT row can be touched,
+   * because `reverse()` credits the customer's wallet — resolving an abandoned
+   * checkout would mint money for a payment nobody made. An unpaid row is
+   * refused with a message saying so.
+   *
+   * SUCCESSFUL and REVERSED have already had their money moved; letting an
+   * operator flip one would double the movement.
    */
   public async resolvePendingPurchase(
     purchaseId: string,
@@ -590,8 +629,37 @@ export class UtilitiesService {
     if (!purchase) {
       throw new NotFoundDomainException('Purchase not found');
     }
-    if (purchase.status !== UtilityPurchaseStatus.PENDING) {
+    if (
+      purchase.status !== UtilityPurchaseStatus.PENDING &&
+      purchase.status !== UtilityPurchaseStatus.AWAITING_PAYMENT
+    ) {
       throw new ConflictDomainException('Only an unresolved purchase can be resolved by hand');
+    }
+
+    if (purchase.status === UtilityPurchaseStatus.AWAITING_PAYMENT) {
+      if (!purchase.paymentReference) {
+        throw new ConflictDomainException(
+          'This purchase has no card payment, so there is nothing to resolve',
+        );
+      }
+      const adapter = this.getPaymentAdapter(this.resolvePaymentProvider(purchase.paymentMethod));
+      const verification = await adapter.verifyPayment({ reference: purchase.paymentReference });
+      if (!verification.success) {
+        throw new ConflictDomainException(
+          'The gateway has no completed payment for this purchase — nothing was charged, so there is nothing to return',
+        );
+      }
+      // Claim the row before moving money, exactly as confirmCardPurchase
+      // does: an operator resolving by hand must not race a webhook that has
+      // just arrived for the same reference.
+      const claimed = await this.prisma.utilityPurchase.updateMany({
+        where: { id: purchase.id, status: UtilityPurchaseStatus.AWAITING_PAYMENT },
+        data: { status: UtilityPurchaseStatus.PENDING },
+      });
+      if (claimed.count === 0) {
+        throw new ConflictDomainException('This purchase has just been settled — reload and check');
+      }
+      purchase.status = UtilityPurchaseStatus.PENDING;
     }
 
     if (dto.outcome === 'REVERSED') {
