@@ -1494,6 +1494,7 @@ export function MarketplaceScreen({
   onNotifications,
   onStore,
   onCart,
+  onTab,
 }: {
   onBack: () => void;
   onHome: () => void;
@@ -1501,6 +1502,8 @@ export function MarketplaceScreen({
   onNotifications: () => void;
   onStore?: (merchantId: string) => void;
   onCart?: () => void;
+  /** App's single footer-tab router. */
+  onTab?: (tab: NavTab) => void;
 }) {
   const [activecat, setActivecat] = useState('All');
   const [showAI, setShowAI] = useState(false);
@@ -1516,6 +1519,13 @@ export function MarketplaceScreen({
   }, []);
 
   const handleNav = (t: NavTab) => {
+    // Delegate to App's single tab router when wired; the local fallback
+    // below only ever handled two of the five tabs, so Ride and Wallet did
+    // nothing at all from this screen.
+    if (onTab) {
+      onTab(t);
+      return;
+    }
     if (t === 'home') onHome();
     if (t === 'profile') onAccount();
   };

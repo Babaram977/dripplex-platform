@@ -14,8 +14,16 @@ import {
   type SettlementReportDto,
   type AdminRiderDto,
   type DeliveryJobDto,
+  type RideFareRateDto,
+  type RideSurchargeTrigger,
+  type RideSurchargeType,
+  type RideSurchargeZoneDto,
+  type RideType,
 } from '../lib/api';
 import { auth } from '../lib/auth';
+import { addressPredictions, geocodeAddress, loadGoogleMaps, mapsEnabled } from '../lib/maps';
+
+import type { AddressPrediction } from '../lib/maps';
 import {
   LineChart,
   Line,
@@ -203,21 +211,26 @@ function Btn({
   outline = false,
   small = false,
   onClick,
+  disabled = false,
 }: {
   label: string;
   color?: string;
   outline?: boolean;
   small?: boolean;
   onClick?: () => void;
+  /** So an action that is mid-flight cannot be fired twice. */
+  disabled?: boolean;
 }) {
   return (
     <button
       className="dx-btn"
       onClick={onClick}
+      disabled={disabled}
       style={{
         border: outline ? `1px solid ${color}` : 'none',
         borderRadius: 6,
-        cursor: 'pointer',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.5 : 1,
         fontFamily: 'Inter, sans-serif',
         fontWeight: 600,
         letterSpacing: 0.2,
@@ -4364,24 +4377,582 @@ function PageCustomers() {
 }
 
 // ─── Page: Pricing ─────────────────────────────────────────────────────────────
+/**
+ * Pick a surcharge zone on a map.
+ *
+ * A zone is a centre and a radius, and the founder's airport premium is the
+ * reason it exists. Typing a latitude and a longitude into two number boxes is
+ * how an airport surcharge ends up centred in the Gulf of Guinea, so the centre
+ * is a pin you drag and the radius is a circle you can see. Search jumps the map
+ * to a place by name.
+ *
+ * Maps are activated by VITE_GOOGLE_MAPS_KEY. With no key the loader resolves
+ * null by design, so this falls back to coordinate entry and says why, rather
+ * than rendering a dead grey box.
+ */
+const LAGOS_CENTRE = { lat: 6.5244, lng: 3.3792 };
+const RADIUS_MIN = 100;
+const RADIUS_MAX = 50_000;
+
+function SurchargeZoneEditor({
+  zone,
+  onClose,
+  onSaved,
+}: {
+  /** null when creating. */
+  zone: RideSurchargeZoneDto | null;
+  onClose: () => void;
+  onSaved: (saved: RideSurchargeZoneDto) => void;
+}) {
+  const [name, setName] = useState(zone?.name ?? '');
+  const [lat, setLat] = useState(zone?.latitude ?? LAGOS_CENTRE.lat);
+  const [lng, setLng] = useState(zone?.longitude ?? LAGOS_CENTRE.lng);
+  const [radius, setRadius] = useState(zone?.radiusMeters ?? 2000);
+  const [surchargeType, setSurchargeType] = useState<RideSurchargeType>(
+    zone?.surchargeType ?? 'FLAT',
+  );
+  const [amount, setAmount] = useState(String(zone?.amount ?? 500));
+  const [appliesTo, setAppliesTo] = useState<RideSurchargeTrigger>(zone?.appliesTo ?? 'EITHER');
+  const [search, setSearch] = useState('');
+  const [predictions, setPredictions] = useState<AddressPrediction[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [mapLive, setMapLive] = useState<boolean | null>(null);
+
+  const mapHostRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<google.maps.Map | null>(null);
+  const markerRef = useRef<google.maps.Marker | null>(null);
+  const circleRef = useRef<google.maps.Circle | null>(null);
+
+  // Build the map once. The marker carries the centre; the circle follows it.
+  useEffect(() => {
+    let cancelled = false;
+    void loadGoogleMaps().then((g) => {
+      if (cancelled) return;
+      if (!g?.maps || !mapHostRef.current) {
+        setMapLive(false);
+        return;
+      }
+      const centre = { lat, lng };
+      const map = new g.maps.Map(mapHostRef.current, {
+        center: centre,
+        zoom: 13,
+        disableDefaultUI: true,
+        zoomControl: true,
+        clickableIcons: false,
+      });
+      const marker = new g.maps.Marker({ map, position: centre, draggable: true });
+      const circle = new g.maps.Circle({
+        map,
+        center: centre,
+        radius,
+        strokeColor: G3,
+        strokeOpacity: 0.9,
+        strokeWeight: 2,
+        fillColor: G2,
+        fillOpacity: 0.16,
+      });
+      const move = (position: google.maps.LatLng | null | undefined): void => {
+        if (!position) return;
+        setLat(position.lat());
+        setLng(position.lng());
+      };
+      marker.addListener('dragend', () => {
+        move(marker.getPosition());
+      });
+      // Clicking the map is the same gesture as dropping the pin there.
+      map.addListener('click', (event: google.maps.MapMouseEvent) => {
+        move(event.latLng);
+      });
+      mapRef.current = map;
+      markerRef.current = marker;
+      circleRef.current = circle;
+      setMapLive(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Built once — later centre/radius changes are pushed by the effects below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Centre changes (drag, click, search, typed coordinate) → move pin + circle.
+  useEffect(() => {
+    const position = { lat, lng };
+    markerRef.current?.setPosition(position);
+    circleRef.current?.setCenter(position);
+    mapRef.current?.panTo(position);
+  }, [lat, lng]);
+
+  useEffect(() => {
+    circleRef.current?.setRadius(radius);
+  }, [radius]);
+
+  // Search-as-you-type, debounced so a fast typist does not spend the quota.
+  useEffect(() => {
+    if (search.trim().length < 3) {
+      setPredictions([]);
+      return undefined;
+    }
+    const timer = setTimeout(() => {
+      void addressPredictions(search).then(setPredictions);
+    }, 300);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [search]);
+
+  const jumpTo = async (prediction: AddressPrediction): Promise<void> => {
+    const resolved = await geocodeAddress({ placeId: prediction.placeId });
+    if (!resolved) {
+      setError('Could not place that address on the map.');
+      return;
+    }
+    setLat(resolved.latitude);
+    setLng(resolved.longitude);
+    setPredictions([]);
+    setSearch(prediction.description);
+    if (name.trim() === '') setName(prediction.description.split(',')[0] ?? '');
+  };
+
+  const save = async (): Promise<void> => {
+    const trimmed = name.trim();
+    const value = Number(amount);
+    if (trimmed.length < 2) {
+      setError('Give the zone a name — an operator reading the list needs to know what it is.');
+      return;
+    }
+    if (!Number.isFinite(value) || value < 0) {
+      setError('The amount must be a positive number.');
+      return;
+    }
+    if (radius < RADIUS_MIN || radius > RADIUS_MAX) {
+      setError(`The radius must be between ${RADIUS_MIN}m and ${RADIUS_MAX / 1000}km.`);
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const body = {
+        name: trimmed,
+        latitude: lat,
+        longitude: lng,
+        radiusMeters: Math.round(radius),
+        surchargeType,
+        amount: value,
+        appliesTo,
+      };
+      const saved =
+        zone === null
+          ? await api.admin.createRideSurchargeZone({ ...body, active: true })
+          : await api.admin.updateRideSurchargeZone(zone.id, body);
+      onSaved(saved);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not save that zone');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const field = (label: string, node: React.ReactNode): React.ReactNode => (
+    <div>
+      <div style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif', marginBottom: 5 }}>
+        {label}
+      </div>
+      {node}
+    </div>
+  );
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(3,8,16,.72)',
+        zIndex: 60,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 24,
+      }}
+    >
+      <div
+        onClick={(e) => {
+          e.stopPropagation();
+        }}
+        style={{
+          background: NAVY_CARD,
+          border: `1px solid ${BORDER}`,
+          borderRadius: 12,
+          width: 760,
+          maxWidth: '100%',
+          maxHeight: '90vh',
+          overflowY: 'auto',
+          padding: 18,
+        }}
+      >
+        <SectionHeader
+          title={zone === null ? 'New Surcharge Zone' : `Edit · ${zone.name}`}
+          action={<Btn label="Close" small outline color={MUTED} onClick={onClose} />}
+        />
+
+        {mapLive === false ? (
+          <div
+            style={{
+              padding: '10px 12px',
+              borderRadius: 8,
+              background: NAVY_SURFACE,
+              border: `1px solid ${C_WARN}44`,
+              fontSize: 11.5,
+              color: WHITE,
+              fontFamily: 'Inter, sans-serif',
+              marginBottom: 12,
+            }}
+          >
+            {mapsEnabled()
+              ? 'Google Maps did not load, so the map picker is unavailable. Enter the centre coordinates directly below.'
+              : 'Maps are not activated (no VITE_GOOGLE_MAPS_KEY), so there is no map to pick from. Enter the centre coordinates directly below.'}
+          </div>
+        ) : null}
+
+        {mapLive !== false ? (
+          <>
+            <input
+              className="dx-input"
+              placeholder="Search a place — e.g. Murtala Muhammed Airport"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+              }}
+              style={{ width: '100%', marginBottom: predictions.length > 0 ? 0 : 10 }}
+            />
+            {predictions.length > 0 && (
+              <div
+                style={{
+                  border: `1px solid ${BORDER}`,
+                  borderTop: 'none',
+                  borderRadius: '0 0 8px 8px',
+                  marginBottom: 10,
+                  overflow: 'hidden',
+                }}
+              >
+                {predictions.slice(0, 5).map((prediction) => (
+                  <button
+                    key={prediction.placeId}
+                    onClick={() => void jumpTo(prediction)}
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '8px 12px',
+                      background: NAVY_SURFACE,
+                      border: 'none',
+                      borderBottom: `1px solid ${BORDER}`,
+                      color: 'rgba(255,255,255,.8)',
+                      fontSize: 12,
+                      fontFamily: 'Inter, sans-serif',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {prediction.description}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div
+              ref={mapHostRef}
+              style={{
+                height: 300,
+                borderRadius: 10,
+                border: `1px solid ${BORDER}`,
+                background: NAVY_SURFACE,
+                marginBottom: 6,
+              }}
+            />
+            <div
+              style={{
+                fontSize: 11,
+                color: MUTED,
+                fontFamily: 'Inter, sans-serif',
+                marginBottom: 12,
+              }}
+            >
+              {mapLive === null
+                ? 'Loading map…'
+                : 'Drag the pin or tap the map to move the centre. The circle is the zone.'}
+            </div>
+          </>
+        ) : null}
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+          {field(
+            'Zone name',
+            <input
+              className="dx-input"
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+              }}
+              placeholder="Murtala Muhammed Airport"
+              style={{ width: '100%' }}
+            />,
+          )}
+          {field(
+            `Radius — ${(radius / 1000).toFixed(1)}km`,
+            <input
+              type="range"
+              min={RADIUS_MIN}
+              max={RADIUS_MAX}
+              step={100}
+              value={radius}
+              onChange={(e) => {
+                setRadius(Number(e.target.value));
+              }}
+              style={{ width: '100%', accentColor: G3 }}
+            />,
+          )}
+          {field(
+            'Centre latitude',
+            <input
+              className="dx-input"
+              type="number"
+              step="0.0000001"
+              value={lat}
+              onChange={(e) => {
+                setLat(Number(e.target.value));
+              }}
+              style={{ width: '100%' }}
+            />,
+          )}
+          {field(
+            'Centre longitude',
+            <input
+              className="dx-input"
+              type="number"
+              step="0.0000001"
+              value={lng}
+              onChange={(e) => {
+                setLng(Number(e.target.value));
+              }}
+              style={{ width: '100%' }}
+            />,
+          )}
+          {field(
+            'Charge',
+            <div style={{ display: 'flex', gap: 6 }}>
+              {(['FLAT', 'MULTIPLIER'] as const).map((option) => (
+                <button
+                  key={option}
+                  onClick={() => {
+                    setSurchargeType(option);
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '7px 0',
+                    borderRadius: 8,
+                    background: surchargeType === option ? `${G3}22` : NAVY_SURFACE,
+                    border: `1px solid ${surchargeType === option ? G3 : BORDER}`,
+                    color: surchargeType === option ? WHITE : MUTED,
+                    fontSize: 11.5,
+                    fontFamily: 'Inter, sans-serif',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {option === 'FLAT' ? 'Flat ₦' : 'Multiplier ×'}
+                </button>
+              ))}
+            </div>,
+          )}
+          {field(
+            surchargeType === 'FLAT' ? 'Amount (₦ added)' : 'Multiplier (1.25 = a quarter more)',
+            <input
+              className="dx-input"
+              type="number"
+              step={surchargeType === 'FLAT' ? '50' : '0.05'}
+              value={amount}
+              onChange={(e) => {
+                setAmount(e.target.value);
+              }}
+              style={{ width: '100%' }}
+            />,
+          )}
+        </div>
+
+        {field(
+          'Applies when the trip',
+          <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+            {(
+              [
+                ['EITHER', 'Starts or ends here'],
+                ['PICKUP', 'Starts here'],
+                ['DROPOFF', 'Ends here'],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                onClick={() => {
+                  setAppliesTo(value);
+                }}
+                style={{
+                  flex: 1,
+                  padding: '7px 0',
+                  borderRadius: 8,
+                  background: appliesTo === value ? `${G3}22` : NAVY_SURFACE,
+                  border: `1px solid ${appliesTo === value ? G3 : BORDER}`,
+                  color: appliesTo === value ? WHITE : MUTED,
+                  fontSize: 11.5,
+                  fontFamily: 'Inter, sans-serif',
+                  cursor: 'pointer',
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>,
+        )}
+
+        {error !== null && (
+          <div style={{ fontSize: 11.5, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>
+            {error}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          <Btn
+            label={saving ? 'Saving…' : zone === null ? 'Create Zone' : 'Save Zone'}
+            color={G2}
+            disabled={saving}
+            onClick={() => void save()}
+          />
+          <Btn label="Cancel" color={MUTED} outline disabled={saving} onClick={onClose} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Fares, against the real pricing endpoint.
+ *
+ * This page used to hold four hardcoded numbers and a Save button whose only
+ * job was to say "the Operations backend has no fare-config endpoint". That
+ * stopped being true: `/admin/rides/pricing/rates` (GET and PUT per ride type)
+ * has existed since the pricing work, guarded by `admin:rides:pricing:manage`,
+ * and the SDK has had a client for it — nothing had connected this screen to
+ * it, so the founder could not change a price.
+ *
+ * The fourth field was "Waiting Fee (₦/min)", which the backend has never had.
+ * The real fourth number is `minimumFare`, a floor under the computed fare
+ * rather than an addition — a different thing that happens to sit in the same
+ * corner of the form. Editing it here changes the founder-locked ₦1,500 floor.
+ */
 function PagePricing() {
-  const [base, setBase] = useState('500');
-  const [dist, setDist] = useState('120');
-  const [time, setTime] = useState('40');
-  const [wait, setWait] = useState('35');
-  const [surge, setSurge] = useState(false);
-  const [mult, setMult] = useState('1.5');
+  const [rates, setRates] = useState<RideFareRateDto[]>([]);
+  const [rideType, setRideType] = useState<RideType | null>(null);
+  const [base, setBase] = useState('');
+  const [dist, setDist] = useState('');
+  const [time, setTime] = useState('');
+  const [minimum, setMinimum] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
   const DIST_KM = 14,
     TIME_MIN = 22;
-  const calcFare = () => {
-    const b = parseFloat(base) || 0;
-    const d = parseFloat(dist) || 0;
-    const t = parseFloat(time) || 0;
-    const m = surge ? parseFloat(mult) || 1 : 1;
-    return ((b + d * DIST_KM + t * TIME_MIN) * m).toFixed(0);
+
+  const applyRate = (rate: RideFareRateDto): void => {
+    setRideType(rate.rideType);
+    setBase(String(rate.baseFare));
+    setDist(String(rate.perKmRate));
+    setTime(String(rate.perMinuteRate));
+    setMinimum(String(rate.minimumFare));
   };
+
+  const load = useCallback(async (keepType: RideType | null) => {
+    setLoading(true);
+    try {
+      const list = await api.admin.getRideFareRates();
+      setRates(list);
+      const chosen = list.find((rate) => rate.rideType === keepType) ?? list[0];
+      if (chosen) applyRate(chosen);
+    } catch (cause) {
+      setMsg(cause instanceof Error ? cause.message : 'Could not load fare rates');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const [zones, setZones] = useState<RideSurchargeZoneDto[]>([]);
+  const [zonesLoading, setZonesLoading] = useState(true);
+  const [zoneBusy, setZoneBusy] = useState<string | null>(null);
+  // null = closed. { zone: null } = creating; { zone } = editing.
+  const [zoneEdit, setZoneEdit] = useState<{ zone: RideSurchargeZoneDto | null } | null>(null);
+
+  const loadZones = useCallback(async () => {
+    setZonesLoading(true);
+    try {
+      setZones(await api.admin.getRideSurchargeZones());
+    } catch (cause) {
+      setMsg(cause instanceof Error ? cause.message : 'Could not load surcharge zones');
+    } finally {
+      setZonesLoading(false);
+    }
+  }, []);
+
+  const toggleZone = async (zone: RideSurchargeZoneDto): Promise<void> => {
+    setZoneBusy(zone.id);
+    setMsg(null);
+    try {
+      // Only `active` is sent — resubmitting the geometry to switch a zone off
+      // is how a coordinate gets fat-fingered.
+      const updated = await api.admin.updateRideSurchargeZone(zone.id, { active: !zone.active });
+      setZones((previous) => previous.map((z) => (z.id === updated.id ? updated : z)));
+      setMsg(`${updated.name} is now ${updated.active ? 'charging' : 'off'}.`);
+    } catch (cause) {
+      setMsg(cause instanceof Error ? cause.message : 'Could not change that zone');
+    } finally {
+      setZoneBusy(null);
+    }
+  };
+
+  useEffect(() => {
+    void load(null);
+    void loadZones();
+  }, [load, loadZones]);
+
+  const save = async (): Promise<void> => {
+    if (rideType === null) return;
+    setSaving(true);
+    setMsg(null);
+    try {
+      const updated = await api.admin.updateRideFareRate(rideType, {
+        baseFare: Number(base),
+        perKmRate: Number(dist),
+        perMinuteRate: Number(time),
+        minimumFare: Number(minimum),
+      });
+      setRates((previous) =>
+        previous.map((rate) => (rate.rideType === updated.rideType ? updated : rate)),
+      );
+      applyRate(updated);
+      setMsg(`Saved. ${updated.displayName} fares are live for new rides.`);
+    } catch (cause) {
+      setMsg(cause instanceof Error ? cause.message : 'Could not save these fares');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const selected = rates.find((rate) => rate.rideType === rideType) ?? null;
+  // The fare the passenger would be quoted for this trip, by the same shape the
+  // Ride module computes: base + distance + time, floored at the minimum.
+  const previewFare = Math.max(
+    (parseFloat(base) || 0) +
+      (parseFloat(dist) || 0) * DIST_KM +
+      (parseFloat(time) || 0) * TIME_MIN,
+    parseFloat(minimum) || 0,
+  );
   const promos: PromoRow[] = []; // no ops-facing promo feed (see wiring-status doc)
-  const [msg, setMsg] = useState<string | null>(null);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {msg && (
@@ -4395,15 +4966,47 @@ function PagePricing() {
         {/* Fare config */}
         <Card style={{ flex: 1 }}>
           <SectionHeader
-            title="Fare Configuration · Sedan"
-            action={<Chip label="Editing" color={C_WARN} />}
+            title={`Fare Configuration · ${selected?.displayName ?? '—'}`}
+            action={
+              loading ? <Chip label="Loading" color={MUTED} /> : <Chip label="Live" color={C_OK} />
+            }
           />
+          {/* One row per ride type, named by the same catalogue the passenger
+              app reads. "Sedan" was hardcoded and is not a DrippleX ride type. */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+            {rates.map((rate) => {
+              const on = rate.rideType === rideType;
+              return (
+                <button
+                  key={rate.rideType}
+                  onClick={() => {
+                    applyRate(rate);
+                    setMsg(null);
+                  }}
+                  style={{
+                    background: on ? `${G3}22` : NAVY_SURFACE,
+                    border: `1px solid ${on ? G3 : BORDER}`,
+                    borderRadius: 8,
+                    padding: '6px 12px',
+                    fontSize: 12,
+                    fontFamily: 'Inter, sans-serif',
+                    color: on ? WHITE : MUTED,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {rate.displayName}
+                </button>
+              );
+            })}
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
             {[
               ['Base Fare (₦)', base, setBase],
               ['Distance Rate (₦/km)', dist, setDist],
               ['Time Rate (₦/min)', time, setTime],
-              ['Waiting Fee (₦/min)', wait, setWait],
+              // Not "Waiting Fee" — the backend has never had one. This is the
+              // floor under the computed fare, founder-locked at ₦1,500.
+              ['Minimum Fare (₦)', minimum, setMinimum],
             ].map(([label, val, setter]) => (
               <div key={label as string}>
                 <div
@@ -4427,32 +5030,34 @@ function PagePricing() {
           </div>
           <div style={{ marginTop: 14, display: 'flex', gap: 8 }}>
             <Btn
-              label="Save Configuration"
+              label={saving ? 'Saving…' : 'Save Configuration'}
               color={G2}
-              onClick={() =>
-                setMsg(
-                  'Saving fare parameters isn’t available yet — the Operations backend has no fare-config endpoint (fares live in the Ride module). See docs/reference/DPX-OPS-PREVIEW-WIRING-STATUS.md.',
-                )
-              }
+              disabled={saving || loading || rideType === null}
+              onClick={() => void save()}
             />
+            {/* "Reset to Default" used to write four invented numbers into the
+                form. There is no default to reset to — the saved rates are the
+                truth — so this discards edits by reloading them. */}
             <Btn
-              label="Reset to Default"
+              label="Discard Changes"
               color={MUTED}
               outline
+              disabled={saving || loading}
               onClick={() => {
-                setBase('500');
-                setDist('120');
-                setTime('40');
-                setWait('35');
-                setSurge(false);
-                setMult('1.5');
-                setMsg('Preview values reset (local only — not persisted).');
+                setMsg(null);
+                void load(rideType);
               }}
             />
           </div>
         </Card>
         {/* Surge + preview */}
         <div style={{ width: 240, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {/* There is no *global* surge multiplier — no field for one on the
+              fare rate, no endpoint. Premium pricing is done per zone instead
+              (the card below), which is how the airport surcharge works: a
+              circle on the map with a flat amount or a multiplier. The old
+              toggle multiplied a local preview only, so the console displayed a
+              price the Ride module would never charge. */}
           <Card>
             <SectionHeader title="Surge Pricing" />
             <div
@@ -4460,40 +5065,18 @@ function PagePricing() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                marginBottom: 12,
+                marginBottom: 8,
               }}
             >
               <span style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
-                Enable Surge
+                Platform-wide surge
               </span>
-              <input
-                type="checkbox"
-                className="dx-toggle"
-                checked={surge}
-                onChange={(e) => setSurge(e.target.checked)}
-              />
+              <input type="checkbox" className="dx-toggle" checked={false} disabled readOnly />
             </div>
-            {surge && (
-              <div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: MUTED,
-                    fontFamily: 'Inter, sans-serif',
-                    marginBottom: 5,
-                  }}
-                >
-                  Multiplier
-                </div>
-                <input
-                  className="dx-input"
-                  type="number"
-                  step="0.1"
-                  value={mult}
-                  onChange={(e) => setMult(e.target.value)}
-                />
-              </div>
-            )}
+            <span style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              No platform-wide multiplier exists. Charge a premium by area instead — see Surcharge
+              Zones below.
+            </span>
           </Card>
           <Card style={{ background: `linear-gradient(135deg,${G0}22,${NAVY_CARD})` }}>
             <div
@@ -4524,12 +5107,138 @@ function PagePricing() {
                 color: G3,
               }}
             >
-              ₦{parseInt(calcFare()).toLocaleString()}
+              ₦{Math.round(previewFare).toLocaleString()}
             </div>
-            {surge && <Chip label={`${mult}× Surge Applied`} color={C_WARN} />}
+            {previewFare > 0 && previewFare === (parseFloat(minimum) || 0) ? (
+              <Chip label="At minimum fare" color={C_WARN} />
+            ) : null}
           </Card>
         </div>
       </div>
+
+      {/* Surcharge zones — the airport premium and anything shaped like it.
+          Fully built on the backend (GET/POST/PATCH /admin/rides/pricing/zones,
+          audited) and never surfaced here, so the one place premium pricing
+          actually exists was invisible to the person who sets prices. */}
+      <Card>
+        <SectionHeader
+          title="Surcharge Zones"
+          action={
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <span style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+                {zonesLoading ? 'Loading…' : `${zones.filter((z) => z.active).length} active`}
+              </span>
+              <Btn
+                label="+ New Zone"
+                small
+                color={G2}
+                onClick={() => {
+                  setZoneEdit({ zone: null });
+                }}
+              />
+            </div>
+          }
+        />
+        {zones.length === 0 ? (
+          <span style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+            {zonesLoading
+              ? 'Loading zones…'
+              : 'No surcharge zones yet. A zone is a circle on the map — a centre, a radius, and either a flat amount or a multiplier — applied when a trip starts or ends inside it.'}
+          </span>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {zones.map((zone) => (
+              <div
+                key={zone.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: '10px 12px',
+                  borderRadius: 8,
+                  background: NAVY_SURFACE,
+                  border: `1px solid ${zone.active ? `${G3}44` : BORDER}`,
+                  opacity: zone.active ? 1 : 0.62,
+                }}
+              >
+                <div style={{ flex: 1 }}>
+                  <div
+                    style={{
+                      fontFamily: 'Inter, sans-serif',
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: WHITE,
+                    }}
+                  >
+                    {zone.name}
+                  </div>
+                  <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 11, color: MUTED }}>
+                    {(zone.radiusMeters / 1000).toFixed(1)}km radius ·{' '}
+                    {zone.appliesTo === 'EITHER'
+                      ? 'pickup or drop-off'
+                      : zone.appliesTo === 'PICKUP'
+                        ? 'pickup only'
+                        : 'drop-off only'}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div
+                    style={{
+                      fontFamily: 'Poppins, sans-serif',
+                      fontSize: 14,
+                      fontWeight: 700,
+                      color: G3,
+                    }}
+                  >
+                    {zone.surchargeType === 'FLAT'
+                      ? `+₦${zone.amount.toLocaleString()}`
+                      : `${zone.amount}×`}
+                  </div>
+                  <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 10.5, color: MUTED }}>
+                    {zone.surchargeType === 'FLAT' ? 'flat' : 'multiplier'}
+                  </div>
+                </div>
+                <Btn
+                  label="Edit"
+                  small
+                  outline
+                  color={MUTED}
+                  onClick={() => {
+                    setZoneEdit({ zone });
+                  }}
+                />
+                <Btn
+                  label={zone.active ? 'Turn off' : 'Turn on'}
+                  small
+                  outline
+                  color={zone.active ? C_WARN : G2}
+                  disabled={zoneBusy === zone.id}
+                  onClick={() => void toggleZone(zone)}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      {zoneEdit !== null && (
+        <SurchargeZoneEditor
+          zone={zoneEdit.zone}
+          onClose={() => {
+            setZoneEdit(null);
+          }}
+          onSaved={(saved) => {
+            setZones((previous) =>
+              previous.some((z) => z.id === saved.id)
+                ? previous.map((z) => (z.id === saved.id ? saved : z))
+                : [...previous, saved],
+            );
+            setZoneEdit(null);
+            setMsg(`${saved.name} saved.`);
+          }}
+        />
+      )}
+
       {/* Promos */}
       <Card>
         <SectionHeader

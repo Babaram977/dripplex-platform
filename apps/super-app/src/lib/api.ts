@@ -363,6 +363,43 @@ export type RideStatus =
   | 'NO_DRIVERS_FOUND';
 
 export type RideType = 'ECONOMY' | 'COMFORT' | 'XL' | 'TRICYCLE';
+
+export type RideSurchargeType = 'FLAT' | 'MULTIPLIER';
+/** Which end of the trip puts it inside a zone. An airport surcharge is
+ * usually EITHER — the run out and the run back both carry the cost. */
+export type RideSurchargeTrigger = 'PICKUP' | 'DROPOFF' | 'EITHER';
+
+/**
+ * A named circle where trips cost more — the airport being the case that
+ * prompted it. A centre and a radius rather than a polygon, so an operator can
+ * set one up from a map pin and a distance.
+ */
+export interface RideSurchargeZoneDto {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  radiusMeters: number;
+  surchargeType: RideSurchargeType;
+  /** Naira when FLAT, a factor when MULTIPLIER (1.25 = a quarter more). */
+  amount: number;
+  appliesTo: RideSurchargeTrigger;
+  active: boolean;
+  updatedAt: string;
+}
+
+/** One row of the Ops pricing table — GET/PUT /admin/rides/pricing/rates. */
+export interface RideFareRateDto {
+  rideType: RideType;
+  /** From the same catalogue the passenger app reads, so the console and the
+   * app can never disagree about a service name. */
+  displayName: string;
+  baseFare: number;
+  perKmRate: number;
+  perMinuteRate: number;
+  /** A floor under the computed fare, not an addition. */
+  minimumFare: number;
+}
 export type RidePaymentMethod = 'WALLET' | 'PAYSTACK' | 'FLUTTERWAVE' | 'OPAY' | 'CASH';
 
 export interface RideDto {
@@ -2326,6 +2363,50 @@ export const api = {
         from,
         to,
       }),
+
+    // Ride fare rates, one row per ride type. Behind
+    // `admin:rides:pricing:manage` — the permission that went missing from the
+    // production catalogue in #182 and 403'd this whole page.
+    getRideFareRates: () => dx<RideFareRateDto[]>('GET', '/admin/rides/pricing/rates'),
+    updateRideFareRate: (
+      rideType: RideType,
+      body: {
+        baseFare: number;
+        perKmRate: number;
+        perMinuteRate: number;
+        minimumFare: number;
+      },
+    ) => dx<RideFareRateDto>('PUT', `/admin/rides/pricing/rates/${rideType}`, body),
+
+    // Surcharge zones — the airport premium and anything like it. The list
+    // includes inactive zones on purpose: the console is where you go to turn
+    // one back on, so hiding them would hide the control.
+    getRideSurchargeZones: () => dx<RideSurchargeZoneDto[]>('GET', '/admin/rides/pricing/zones'),
+    createRideSurchargeZone: (body: {
+      name: string;
+      latitude: number;
+      longitude: number;
+      radiusMeters: number;
+      surchargeType: RideSurchargeType;
+      amount: number;
+      appliesTo?: RideSurchargeTrigger;
+      active?: boolean;
+    }) => dx<RideSurchargeZoneDto>('POST', '/admin/rides/pricing/zones', body),
+    /** Every field optional — switching a zone off must not mean resubmitting
+     * its geometry, which is how a coordinate gets fat-fingered. */
+    updateRideSurchargeZone: (
+      id: string,
+      body: Partial<{
+        name: string;
+        latitude: number;
+        longitude: number;
+        radiusMeters: number;
+        surchargeType: RideSurchargeType;
+        amount: number;
+        appliesTo: RideSurchargeTrigger;
+        active: boolean;
+      }>,
+    ) => dx<RideSurchargeZoneDto>('PATCH', `/admin/rides/pricing/zones/${id}`, body),
 
     // Merchants review desk. Pass a status to scope (e.g. 'PENDING'/'UNDER_REVIEW').
     listMerchants: (status?: 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUSPENDED') =>

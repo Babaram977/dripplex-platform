@@ -636,6 +636,8 @@ export interface CheckoutScreenProps {
   onAccount: () => void;
   onNotifications: () => void;
   onOrderTracking?: (orderId: string) => void;
+  /** App's single footer-tab router — see App.tsx `goTab`. */
+  onTab?: (tab: NavTabKey) => void;
 }
 
 export function CheckoutScreen({
@@ -643,6 +645,7 @@ export function CheckoutScreen({
   onHome,
   onAccount,
   onNotifications,
+  onTab,
   onOrderTracking,
 }: CheckoutScreenProps) {
   const [addressIdx, setAddressIdx] = useState(0);
@@ -1085,10 +1088,16 @@ export function CheckoutScreen({
   const handleTabChange = useCallback(
     (tab: NavTabKey) => {
       setActiveTab(tab);
+      // Delegate to App's single tab router when it is wired. The local
+      // fallback below only ever handled two of the five tabs.
+      if (onTab) {
+        onTab(tab);
+        return;
+      }
       if (tab === 'home') onHome();
       if (tab === 'profile') onAccount();
     },
-    [onHome, onAccount],
+    [onHome, onAccount, onTab],
   );
 
   if (success) {

@@ -858,6 +858,8 @@ export interface TrackingScreenProps {
   /** Opens the conversation with the rider carrying this order. */
   onMessageRider?: (deliveryJobId: string, riderName: string) => void;
   orderId?: string;
+  /** App's single footer-tab router — see App.tsx `goTab`. */
+  onTab?: (tab: NavTabKey) => void;
 }
 
 export function TrackingScreen({
@@ -865,6 +867,7 @@ export function TrackingScreen({
   onHome,
   onAccount,
   onNotifications,
+  onTab,
   onHistory,
   onMessageRider,
   orderId,
@@ -978,10 +981,16 @@ export function TrackingScreen({
   const handleTabChange = useCallback(
     (tab: NavTabKey) => {
       setActiveTab(tab);
+      // Delegate to App's single tab router when it is wired. The local
+      // fallback below only ever handled two of the five tabs.
+      if (onTab) {
+        onTab(tab);
+        return;
+      }
       if (tab === 'home') onHome();
       if (tab === 'profile') onAccount();
     },
-    [onHome, onAccount],
+    [onHome, onAccount, onTab],
   );
 
   const handleCancel = async () => {
