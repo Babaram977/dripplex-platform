@@ -15,10 +15,15 @@ import {
   type AdminRiderDto,
   type DeliveryJobDto,
   type RideFareRateDto,
+  type RideSurchargeTrigger,
+  type RideSurchargeType,
   type RideSurchargeZoneDto,
   type RideType,
 } from '../lib/api';
 import { auth } from '../lib/auth';
+import { addressPredictions, geocodeAddress, loadGoogleMaps, mapsEnabled } from '../lib/maps';
+
+import type { AddressPrediction } from '../lib/maps';
 import {
   LineChart,
   Line,
@@ -4373,6 +4378,461 @@ function PageCustomers() {
 
 // ─── Page: Pricing ─────────────────────────────────────────────────────────────
 /**
+ * Pick a surcharge zone on a map.
+ *
+ * A zone is a centre and a radius, and the founder's airport premium is the
+ * reason it exists. Typing a latitude and a longitude into two number boxes is
+ * how an airport surcharge ends up centred in the Gulf of Guinea, so the centre
+ * is a pin you drag and the radius is a circle you can see. Search jumps the map
+ * to a place by name.
+ *
+ * Maps are activated by VITE_GOOGLE_MAPS_KEY. With no key the loader resolves
+ * null by design, so this falls back to coordinate entry and says why, rather
+ * than rendering a dead grey box.
+ */
+const LAGOS_CENTRE = { lat: 6.5244, lng: 3.3792 };
+const RADIUS_MIN = 100;
+const RADIUS_MAX = 50_000;
+
+function SurchargeZoneEditor({
+  zone,
+  onClose,
+  onSaved,
+}: {
+  /** null when creating. */
+  zone: RideSurchargeZoneDto | null;
+  onClose: () => void;
+  onSaved: (saved: RideSurchargeZoneDto) => void;
+}) {
+  const [name, setName] = useState(zone?.name ?? '');
+  const [lat, setLat] = useState(zone?.latitude ?? LAGOS_CENTRE.lat);
+  const [lng, setLng] = useState(zone?.longitude ?? LAGOS_CENTRE.lng);
+  const [radius, setRadius] = useState(zone?.radiusMeters ?? 2000);
+  const [surchargeType, setSurchargeType] = useState<RideSurchargeType>(
+    zone?.surchargeType ?? 'FLAT',
+  );
+  const [amount, setAmount] = useState(String(zone?.amount ?? 500));
+  const [appliesTo, setAppliesTo] = useState<RideSurchargeTrigger>(zone?.appliesTo ?? 'EITHER');
+  const [search, setSearch] = useState('');
+  const [predictions, setPredictions] = useState<AddressPrediction[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [mapLive, setMapLive] = useState<boolean | null>(null);
+
+  const mapHostRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<google.maps.Map | null>(null);
+  const markerRef = useRef<google.maps.Marker | null>(null);
+  const circleRef = useRef<google.maps.Circle | null>(null);
+
+  // Build the map once. The marker carries the centre; the circle follows it.
+  useEffect(() => {
+    let cancelled = false;
+    void loadGoogleMaps().then((g) => {
+      if (cancelled) return;
+      if (!g?.maps || !mapHostRef.current) {
+        setMapLive(false);
+        return;
+      }
+      const centre = { lat, lng };
+      const map = new g.maps.Map(mapHostRef.current, {
+        center: centre,
+        zoom: 13,
+        disableDefaultUI: true,
+        zoomControl: true,
+        clickableIcons: false,
+      });
+      const marker = new g.maps.Marker({ map, position: centre, draggable: true });
+      const circle = new g.maps.Circle({
+        map,
+        center: centre,
+        radius,
+        strokeColor: G3,
+        strokeOpacity: 0.9,
+        strokeWeight: 2,
+        fillColor: G2,
+        fillOpacity: 0.16,
+      });
+      const move = (position: google.maps.LatLng | null | undefined): void => {
+        if (!position) return;
+        setLat(position.lat());
+        setLng(position.lng());
+      };
+      marker.addListener('dragend', () => {
+        move(marker.getPosition());
+      });
+      // Clicking the map is the same gesture as dropping the pin there.
+      map.addListener('click', (event: google.maps.MapMouseEvent) => {
+        move(event.latLng);
+      });
+      mapRef.current = map;
+      markerRef.current = marker;
+      circleRef.current = circle;
+      setMapLive(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Built once — later centre/radius changes are pushed by the effects below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Centre changes (drag, click, search, typed coordinate) → move pin + circle.
+  useEffect(() => {
+    const position = { lat, lng };
+    markerRef.current?.setPosition(position);
+    circleRef.current?.setCenter(position);
+    mapRef.current?.panTo(position);
+  }, [lat, lng]);
+
+  useEffect(() => {
+    circleRef.current?.setRadius(radius);
+  }, [radius]);
+
+  // Search-as-you-type, debounced so a fast typist does not spend the quota.
+  useEffect(() => {
+    if (search.trim().length < 3) {
+      setPredictions([]);
+      return undefined;
+    }
+    const timer = setTimeout(() => {
+      void addressPredictions(search).then(setPredictions);
+    }, 300);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [search]);
+
+  const jumpTo = async (prediction: AddressPrediction): Promise<void> => {
+    const resolved = await geocodeAddress({ placeId: prediction.placeId });
+    if (!resolved) {
+      setError('Could not place that address on the map.');
+      return;
+    }
+    setLat(resolved.latitude);
+    setLng(resolved.longitude);
+    setPredictions([]);
+    setSearch(prediction.description);
+    if (name.trim() === '') setName(prediction.description.split(',')[0] ?? '');
+  };
+
+  const save = async (): Promise<void> => {
+    const trimmed = name.trim();
+    const value = Number(amount);
+    if (trimmed.length < 2) {
+      setError('Give the zone a name — an operator reading the list needs to know what it is.');
+      return;
+    }
+    if (!Number.isFinite(value) || value < 0) {
+      setError('The amount must be a positive number.');
+      return;
+    }
+    if (radius < RADIUS_MIN || radius > RADIUS_MAX) {
+      setError(`The radius must be between ${RADIUS_MIN}m and ${RADIUS_MAX / 1000}km.`);
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const body = {
+        name: trimmed,
+        latitude: lat,
+        longitude: lng,
+        radiusMeters: Math.round(radius),
+        surchargeType,
+        amount: value,
+        appliesTo,
+      };
+      const saved =
+        zone === null
+          ? await api.admin.createRideSurchargeZone({ ...body, active: true })
+          : await api.admin.updateRideSurchargeZone(zone.id, body);
+      onSaved(saved);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not save that zone');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const field = (label: string, node: React.ReactNode): React.ReactNode => (
+    <div>
+      <div style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif', marginBottom: 5 }}>
+        {label}
+      </div>
+      {node}
+    </div>
+  );
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(3,8,16,.72)',
+        zIndex: 60,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 24,
+      }}
+    >
+      <div
+        onClick={(e) => {
+          e.stopPropagation();
+        }}
+        style={{
+          background: NAVY_CARD,
+          border: `1px solid ${BORDER}`,
+          borderRadius: 12,
+          width: 760,
+          maxWidth: '100%',
+          maxHeight: '90vh',
+          overflowY: 'auto',
+          padding: 18,
+        }}
+      >
+        <SectionHeader
+          title={zone === null ? 'New Surcharge Zone' : `Edit · ${zone.name}`}
+          action={<Btn label="Close" small outline color={MUTED} onClick={onClose} />}
+        />
+
+        {mapLive === false ? (
+          <div
+            style={{
+              padding: '10px 12px',
+              borderRadius: 8,
+              background: NAVY_SURFACE,
+              border: `1px solid ${C_WARN}44`,
+              fontSize: 11.5,
+              color: WHITE,
+              fontFamily: 'Inter, sans-serif',
+              marginBottom: 12,
+            }}
+          >
+            {mapsEnabled()
+              ? 'Google Maps did not load, so the map picker is unavailable. Enter the centre coordinates directly below.'
+              : 'Maps are not activated (no VITE_GOOGLE_MAPS_KEY), so there is no map to pick from. Enter the centre coordinates directly below.'}
+          </div>
+        ) : null}
+
+        {mapLive !== false ? (
+          <>
+            <input
+              className="dx-input"
+              placeholder="Search a place — e.g. Murtala Muhammed Airport"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+              }}
+              style={{ width: '100%', marginBottom: predictions.length > 0 ? 0 : 10 }}
+            />
+            {predictions.length > 0 && (
+              <div
+                style={{
+                  border: `1px solid ${BORDER}`,
+                  borderTop: 'none',
+                  borderRadius: '0 0 8px 8px',
+                  marginBottom: 10,
+                  overflow: 'hidden',
+                }}
+              >
+                {predictions.slice(0, 5).map((prediction) => (
+                  <button
+                    key={prediction.placeId}
+                    onClick={() => void jumpTo(prediction)}
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '8px 12px',
+                      background: NAVY_SURFACE,
+                      border: 'none',
+                      borderBottom: `1px solid ${BORDER}`,
+                      color: 'rgba(255,255,255,.8)',
+                      fontSize: 12,
+                      fontFamily: 'Inter, sans-serif',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {prediction.description}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div
+              ref={mapHostRef}
+              style={{
+                height: 300,
+                borderRadius: 10,
+                border: `1px solid ${BORDER}`,
+                background: NAVY_SURFACE,
+                marginBottom: 6,
+              }}
+            />
+            <div
+              style={{
+                fontSize: 11,
+                color: MUTED,
+                fontFamily: 'Inter, sans-serif',
+                marginBottom: 12,
+              }}
+            >
+              {mapLive === null
+                ? 'Loading map…'
+                : 'Drag the pin or tap the map to move the centre. The circle is the zone.'}
+            </div>
+          </>
+        ) : null}
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+          {field(
+            'Zone name',
+            <input
+              className="dx-input"
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+              }}
+              placeholder="Murtala Muhammed Airport"
+              style={{ width: '100%' }}
+            />,
+          )}
+          {field(
+            `Radius — ${(radius / 1000).toFixed(1)}km`,
+            <input
+              type="range"
+              min={RADIUS_MIN}
+              max={RADIUS_MAX}
+              step={100}
+              value={radius}
+              onChange={(e) => {
+                setRadius(Number(e.target.value));
+              }}
+              style={{ width: '100%', accentColor: G3 }}
+            />,
+          )}
+          {field(
+            'Centre latitude',
+            <input
+              className="dx-input"
+              type="number"
+              step="0.0000001"
+              value={lat}
+              onChange={(e) => {
+                setLat(Number(e.target.value));
+              }}
+              style={{ width: '100%' }}
+            />,
+          )}
+          {field(
+            'Centre longitude',
+            <input
+              className="dx-input"
+              type="number"
+              step="0.0000001"
+              value={lng}
+              onChange={(e) => {
+                setLng(Number(e.target.value));
+              }}
+              style={{ width: '100%' }}
+            />,
+          )}
+          {field(
+            'Charge',
+            <div style={{ display: 'flex', gap: 6 }}>
+              {(['FLAT', 'MULTIPLIER'] as const).map((option) => (
+                <button
+                  key={option}
+                  onClick={() => {
+                    setSurchargeType(option);
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '7px 0',
+                    borderRadius: 8,
+                    background: surchargeType === option ? `${G3}22` : NAVY_SURFACE,
+                    border: `1px solid ${surchargeType === option ? G3 : BORDER}`,
+                    color: surchargeType === option ? WHITE : MUTED,
+                    fontSize: 11.5,
+                    fontFamily: 'Inter, sans-serif',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {option === 'FLAT' ? 'Flat ₦' : 'Multiplier ×'}
+                </button>
+              ))}
+            </div>,
+          )}
+          {field(
+            surchargeType === 'FLAT' ? 'Amount (₦ added)' : 'Multiplier (1.25 = a quarter more)',
+            <input
+              className="dx-input"
+              type="number"
+              step={surchargeType === 'FLAT' ? '50' : '0.05'}
+              value={amount}
+              onChange={(e) => {
+                setAmount(e.target.value);
+              }}
+              style={{ width: '100%' }}
+            />,
+          )}
+        </div>
+
+        {field(
+          'Applies when the trip',
+          <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+            {(
+              [
+                ['EITHER', 'Starts or ends here'],
+                ['PICKUP', 'Starts here'],
+                ['DROPOFF', 'Ends here'],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                onClick={() => {
+                  setAppliesTo(value);
+                }}
+                style={{
+                  flex: 1,
+                  padding: '7px 0',
+                  borderRadius: 8,
+                  background: appliesTo === value ? `${G3}22` : NAVY_SURFACE,
+                  border: `1px solid ${appliesTo === value ? G3 : BORDER}`,
+                  color: appliesTo === value ? WHITE : MUTED,
+                  fontSize: 11.5,
+                  fontFamily: 'Inter, sans-serif',
+                  cursor: 'pointer',
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>,
+        )}
+
+        {error !== null && (
+          <div style={{ fontSize: 11.5, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>
+            {error}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          <Btn
+            label={saving ? 'Saving…' : zone === null ? 'Create Zone' : 'Save Zone'}
+            color={G2}
+            disabled={saving}
+            onClick={() => void save()}
+          />
+          <Btn label="Cancel" color={MUTED} outline disabled={saving} onClick={onClose} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Fares, against the real pricing endpoint.
  *
  * This page used to hold four hardcoded numbers and a Save button whose only
@@ -4425,6 +4885,8 @@ function PagePricing() {
   const [zones, setZones] = useState<RideSurchargeZoneDto[]>([]);
   const [zonesLoading, setZonesLoading] = useState(true);
   const [zoneBusy, setZoneBusy] = useState<string | null>(null);
+  // null = closed. { zone: null } = creating; { zone } = editing.
+  const [zoneEdit, setZoneEdit] = useState<{ zone: RideSurchargeZoneDto | null } | null>(null);
 
   const loadZones = useCallback(async () => {
     setZonesLoading(true);
@@ -4662,13 +5124,19 @@ function PagePricing() {
         <SectionHeader
           title="Surcharge Zones"
           action={
-            <Btn
-              label={zonesLoading ? 'Loading…' : `${zones.filter((z) => z.active).length} active`}
-              small
-              outline
-              color={MUTED}
-              onClick={() => void loadZones()}
-            />
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <span style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+                {zonesLoading ? 'Loading…' : `${zones.filter((z) => z.active).length} active`}
+              </span>
+              <Btn
+                label="+ New Zone"
+                small
+                color={G2}
+                onClick={() => {
+                  setZoneEdit({ zone: null });
+                }}
+              />
+            </div>
           }
         />
         {zones.length === 0 ? (
@@ -4731,6 +5199,15 @@ function PagePricing() {
                   </div>
                 </div>
                 <Btn
+                  label="Edit"
+                  small
+                  outline
+                  color={MUTED}
+                  onClick={() => {
+                    setZoneEdit({ zone });
+                  }}
+                />
+                <Btn
                   label={zone.active ? 'Turn off' : 'Turn on'}
                   small
                   outline
@@ -4742,12 +5219,25 @@ function PagePricing() {
             ))}
           </div>
         )}
-        <div style={{ marginTop: 10, fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
-          Creating and moving zones is not wired here yet — this lists what exists and switches a
-          zone on or off. A zone needs a centre coordinate and a radius, which wants a map picker
-          rather than four number boxes.
-        </div>
       </Card>
+
+      {zoneEdit !== null && (
+        <SurchargeZoneEditor
+          zone={zoneEdit.zone}
+          onClose={() => {
+            setZoneEdit(null);
+          }}
+          onSaved={(saved) => {
+            setZones((previous) =>
+              previous.some((z) => z.id === saved.id)
+                ? previous.map((z) => (z.id === saved.id ? saved : z))
+                : [...previous, saved],
+            );
+            setZoneEdit(null);
+            setMsg(`${saved.name} saved.`);
+          }}
+        />
+      )}
 
       {/* Promos */}
       <Card>
