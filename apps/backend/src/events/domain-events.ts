@@ -9,6 +9,17 @@ export const DOMAIN_EVENTS = {
   PAYMENT_INITIATED: 'PaymentInitiated',
   PAYMENT_SUCCEEDED: 'PaymentSucceeded',
   PAYMENT_FAILED: 'PaymentFailed',
+  /**
+   * A gateway webhook arrived for a reference PaymentService does not own.
+   *
+   * PaymentService resolves references against PaymentTransaction, which only
+   * exists for order payments. Wallet top-ups, ride fares and utility
+   * purchases each keep their own transaction row, so their references fall
+   * through — and before this event they were dropped as "unknown", which is
+   * how a customer could be charged for airtime that never arrived. Each of
+   * those modules subscribes and claims the reference if the row is theirs.
+   */
+  PAYMENT_WEBHOOK_UNMATCHED: 'PaymentWebhookUnmatched',
   ORDER_CREATED: 'OrderCreated',
   ORDER_PAID: 'OrderPaid',
   ORDER_CANCELLED: 'OrderCancelled',

@@ -334,6 +334,28 @@ export class UtilitiesService {
   }
 
   /**
+   * The gateway's side of the card path.
+   *
+   * `confirmCardPurchase` only runs when the customer comes back to the app,
+   * and a customer who closes the tab at the Paystack success page never
+   * does — they are charged and nothing is delivered. The webhook always
+   * arrives, so it drives the same idempotent confirmation. Returns null when
+   * the reference belongs to some other part of the platform.
+   */
+  public async completeCardPurchaseByReference(
+    reference: string,
+    context: AuditContext,
+  ): Promise<UtilityPurchaseDto | null> {
+    const purchase = await this.prisma.utilityPurchase.findUnique({
+      where: { paymentReference: reference },
+    });
+    if (!purchase) {
+      return null;
+    }
+    return await this.confirmCardPurchase(purchase.customerId, purchase.id, context);
+  }
+
+  /**
    * Call the provider and settle the row. The customer's money is already
    * reserved by the time this runs.
    */

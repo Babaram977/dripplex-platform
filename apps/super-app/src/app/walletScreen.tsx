@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../lib/api';
 import { auth } from '../lib/auth';
+import { gatewayCallbackUrl } from '../lib/gatewayReturn';
 import type {
   CardProviderOptionDto,
   WalletDto,
@@ -1174,6 +1175,11 @@ export function TopUpScreen({
       const res = await api.wallet.fund({
         amount: raw,
         ...(method !== '' ? { provider: method } : {}),
+        // The gateway opens in a second tab, and without a callback it leaves
+        // the customer parked on its own success page. This brings that tab
+        // back to the wallet; the credit itself no longer depends on either
+        // tab, because the backend settles the top-up from the webhook.
+        callbackUrl: gatewayCallbackUrl('wallet'),
       });
       const r = res as { authorizationUrl?: string; reference?: string };
       refRef.current = r.reference ?? null;

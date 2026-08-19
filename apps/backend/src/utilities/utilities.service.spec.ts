@@ -583,6 +583,52 @@ describe('UtilitiesService', () => {
     expect(await balanceOf(customerId)).toBe(5_000);
   });
 
+  // The bug that took ₦1,000 for airtime and delivered nothing: the purchase
+  // was only ever completed by the customer returning to the app, and the
+  // webhook — which always arrives — had no way to reach the purchase at all.
+  it('completes a card purchase from the gateway reference alone', async () => {
+    if (!databaseAvailable) return;
+    const customerId = await fundedCustomer(5_000);
+    provider.purchaseAirtime.mockResolvedValue(success);
+
+    const initiated = await service.initiatePurchase(
+      customerId,
+      {
+        serviceType: UtilityServiceType.AIRTIME,
+        provider: 'mtn',
+        customerIdentifier: '08144216361',
+        amount: 100,
+        paymentMethod: 'CARD',
+      },
+      { userId: customerId },
+    );
+    const row = await prisma.utilityPurchase.findUniqueOrThrow({
+      where: { id: initiated.purchase.id },
+    });
+    const reference = row.paymentReference ?? '';
+    expect(reference).not.toBe('');
+
+    // No customer id, no purchase id — only what the webhook carries.
+    const settled = await service.completeCardPurchaseByReference(reference, {});
+    expect(settled?.status).toBe(UtilityPurchaseStatus.SUCCESSFUL);
+    expect(provider.purchaseAirtime).toHaveBeenCalledTimes(1);
+
+    // The customer's own confirm can still arrive afterwards; it must not buy
+    // a second time.
+    const again = await service.completeCardPurchaseByReference(reference, {});
+    expect(again?.status).toBe(UtilityPurchaseStatus.SUCCESSFUL);
+    expect(provider.purchaseAirtime).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores a gateway reference that is not a utility purchase', async () => {
+    if (!databaseAvailable) return;
+    // Every subscriber sees every unmatched webhook — a wallet top-up
+    // reference reaching this one is normal, not an error.
+    await expect(
+      service.completeCardPurchaseByReference('WALLET-deadbeef-1787109606020', {}),
+    ).resolves.toBeNull();
+  });
+
   it('refuses a card purchase outright when no gateway is configured', async () => {
     if (!databaseAvailable) return;
     const customerId = await fundedCustomer(5_000);

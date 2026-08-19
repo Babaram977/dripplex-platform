@@ -1392,6 +1392,9 @@ export interface CreateUtilityPurchaseRequest {
   /** Send 'CARD', never a named gateway — which gateway takes the money is a
    * server decision, so a client naming one breaks when its keys change. */
   paymentMethod: UtilityPaymentMethod | 'CARD';
+  /** Where the gateway returns the customer after paying. See
+   * `lib/gatewayReturn.ts`. */
+  callbackUrl?: string;
 }
 
 export interface UtilityFloatStatusDto {
