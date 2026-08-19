@@ -57,6 +57,28 @@ const NEAR_DRIVER = { lat: 13.001, lng: 9.001 };
 const FAR_DRIVER = { lat: 13.05, lng: 9.06 };
 const DROPOFF = { lat: 13.02, lng: 9.02 };
 
+/**
+ * A phone number no other fixture in this run can produce.
+ *
+ * The previous form — `Date.now()` plus a five-digit jitter — collided in CI
+ * when Scenario 3 created MAX_DISPATCH_ATTEMPTS drivers inside one
+ * `Promise.all`: sixty draws from a hundred thousand values is roughly a 1-in-60
+ * chance per run, and it duly failed. Worse, the rejection aborted the test
+ * while the other creates were still in flight, so drivers registered
+ * themselves in `createdDriverIds` after `afterEach` had already deactivated
+ * them — leaving sixty live drivers at the same coordinates to steal the next
+ * scenario's dispatch. Both failures came from that one collision.
+ *
+ * A per-process salt keeps concurrent Jest workers apart; the counter makes
+ * collisions inside a worker impossible however many drivers a test creates.
+ */
+const PHONE_SALT = String(Math.floor(Math.random() * 9000) + 1000);
+let phoneSeq = 0;
+function uniquePhone(): string {
+  phoneSeq += 1;
+  return `+234${PHONE_SALT}${String(phoneSeq).padStart(5, '0')}`;
+}
+
 function fakeAdapter(provider: PaymentProvider): jest.Mocked<PaymentProviderAdapter> {
   return {
     provider,
@@ -250,7 +272,7 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
         passwordHash: 'not-a-real-hash',
         firstName: 'Musa',
         lastName: 'Driver',
-        phone: `+234${String(Date.now() + Math.floor(Math.random() * 100_000)).slice(-9)}`,
+        phone: uniquePhone(),
       },
     });
     createdUserIds.push(user.id);

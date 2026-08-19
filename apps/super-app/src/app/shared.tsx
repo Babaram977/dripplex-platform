@@ -68,6 +68,22 @@ export const GLOBAL_STYLES = `
         this only ever affects the containers that were broken. */
   .flex-col > .flex-1 { min-height: 0; }
 
+  /*  1b. The mirror image of the same bug, and the reason Manage Account
+        showed an empty "Account Settings" section with no way to sign out.
+
+        A screen whose root is 'flex h-full flex-col overflow-y-auto' has a
+        definite height, so its children are flex items under shrink
+        pressure. A child normally resists via min-height:auto — but a card
+        with overflow:hidden (every rounded, clipped card in this app) gets
+        min-height:0 instead, so it is free to be squeezed to nothing. The
+        three cards on that screen carrying overflow-hidden collapsed to
+        hairlines; the one without it rendered fine. Nothing was missing from
+        the markup, and no amount of scrolling brought it back.
+
+        A scrolling column should scroll, not compress. */
+  .flex-col.overflow-y-auto > *,
+  .flex-col.overflow-auto > * { flex-shrink: 0; }
+
   /*  2. The device mockup — bezel, notch, 390px width, simulated status bar
         — is a desktop preview of a phone. On an actual phone it IS the
         phone, and a fixed 390px overflows a 360px handset sideways while

@@ -54,7 +54,9 @@ describe('RideShareService', () => {
         passwordHash: 'not-a-real-hash',
         firstName: 'Ado',
         lastName: 'Isa',
-        phone: `+234${String(Date.now()).slice(-9)}`,
+        // Salted rather than clock-derived: two suites starting in the same
+        // millisecond would otherwise collide on the unique phone column.
+        phone: `+234${randomUUID().replace(/\D/g, '').padEnd(9, '0').slice(0, 9)}`,
       },
     });
     driverId = driver.id;
