@@ -209,6 +209,146 @@ function PrimaryBtn({
   );
 }
 
+/**
+ * A collapsed chooser: the current selection, a chevron, and the options only
+ * once you ask for them.
+ *
+ * Founder feedback, 2026-08-19 — the option lists were rendered flat, so eleven
+ * electricity discos or a full MTN data catalogue pushed the amount field, the
+ * pay-with row and the Pay button off the bottom of the phone. On a screen where
+ * the thing you came to do is at the end, a list that never collapses hides it.
+ */
+function Picker({
+  placeholder,
+  options,
+  value,
+  onChange,
+  emptyLabel,
+}: {
+  placeholder: string;
+  options: { id: string; label: string; trailing?: string }[];
+  value: string;
+  onChange: (next: string) => void;
+  /** Shown in place of the list when there is nothing to choose from yet. */
+  emptyLabel?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = options.find((option) => option.id === value) ?? null;
+
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <button
+        onClick={() => {
+          setOpen((previous) => !previous);
+        }}
+        className="flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 active:scale-[.99]"
+        style={{ background: NAVY_CARD, border: `1px solid ${open ? `${G3}66` : BORDER}` }}
+      >
+        <span
+          className="flex-1 text-left"
+          style={{
+            fontFamily: selected ? PP : IT,
+            fontSize: 14,
+            fontWeight: selected ? 600 : 400,
+            color: selected ? WHITE : 'rgba(255,255,255,.42)',
+          }}
+        >
+          {selected?.label ?? placeholder}
+        </span>
+        {selected?.trailing !== undefined ? (
+          <span style={{ fontFamily: PP, fontSize: 13, fontWeight: 600, color: G3 }}>
+            {selected.trailing}
+          </span>
+        ) : null}
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 14 14"
+          fill="none"
+          style={{
+            transform: open ? 'rotate(180deg)' : 'none',
+            transition: 'transform .18s ease',
+            flexShrink: 0,
+          }}
+        >
+          <path
+            d="M3 5.5L7 9.5L11 5.5"
+            stroke={MUTED}
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+
+      {open ? (
+        <div
+          className="mt-2 overflow-y-auto rounded-2xl"
+          style={{ border: `1px solid ${BORDER}`, maxHeight: 260 }}
+        >
+          {options.length === 0 ? (
+            <p style={{ fontFamily: IT, fontSize: 13, color: MUTED, padding: '14px 16px' }}>
+              {emptyLabel ?? 'Nothing to choose from yet.'}
+            </p>
+          ) : (
+            options.map((option) => {
+              const on = option.id === value;
+              return (
+                <button
+                  key={option.id}
+                  onClick={() => {
+                    onChange(option.id);
+                    setOpen(false);
+                  }}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left active:scale-[.99]"
+                  style={{
+                    background: on ? `${G3}1F` : NAVY_CARD,
+                    borderBottom: `1px solid ${BORDER}`,
+                  }}
+                >
+                  <span
+                    className="flex-1"
+                    style={{
+                      fontFamily: IT,
+                      fontSize: 13.5,
+                      color: on ? WHITE : 'rgba(255,255,255,.78)',
+                    }}
+                  >
+                    {option.label}
+                  </span>
+                  {option.trailing !== undefined ? (
+                    <span style={{ fontFamily: PP, fontSize: 13, fontWeight: 600, color: G3 }}>
+                      {option.trailing}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Whether a meter/smartcard lookup actually came back with a person's name.
+ *
+ * The hub returns a 200 with a placeholder — "Unknown", "N/A", blank — for a
+ * number it cannot resolve. Rendering that as the account name tells the
+ * customer their typo was confirmed.
+ */
+const UNUSABLE_ACCOUNT_NAMES = new Set(['unknown', 'n/a', 'na', 'not available', 'null', '-']);
+
+function isUsableAccountName(name: string | null | undefined): name is string {
+  if (name === null || name === undefined) return false;
+  const trimmed = name.trim();
+  if (trimmed === '') return false;
+  if (UNUSABLE_ACCOUNT_NAMES.has(trimmed.toLowerCase())) return false;
+  // A real name has letters in it; a bare echo of the meter number does not.
+  return /\p{L}/u.test(trimmed);
+}
+
 function Notice({
   tone,
   children,
@@ -481,7 +621,19 @@ export function UtilityPurchaseScreen({
               meterNumber: identifier,
               meterType,
             });
-      setVerifiedName(lookup.customerName);
+      if (isUsableAccountName(lookup.customerName)) {
+        setVerifiedName(lookup.customerName);
+      } else {
+        // The hub answered, but with a placeholder rather than a name — the
+        // founder's test showed "Account name: Unknown" presented as if it were
+        // a confirmation, on a screen whose whole job is to catch a mistyped
+        // meter number before ₦1,000 leaves. A name we do not have is not a
+        // confirmation, so this stays unverified and the Pay button stays shut.
+        setVerifiedName(null);
+        setError(
+          'We could not confirm a name for that number. Check the digits and try again — nothing has been charged.',
+        );
+      }
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : 'That number could not be verified');
     } finally {
@@ -537,30 +689,12 @@ export function UtilityPurchaseScreen({
       ) : state.providers.length === 0 ? (
         <Notice tone="warn">No providers are available right now. Please try again shortly.</Notice>
       ) : (
-        <div className="flex flex-wrap gap-2">
-          {state.providers.map((entry) => {
-            const on = entry.code === providerCode;
-            return (
-              <button
-                key={entry.code}
-                onClick={() => {
-                  setProviderCode(entry.code);
-                }}
-                className="rounded-xl px-4 py-3 active:scale-[.98]"
-                style={{
-                  background: on ? `linear-gradient(135deg,${G2},${G3})` : NAVY_CARD,
-                  border: `1px solid ${on ? 'transparent' : BORDER}`,
-                  fontFamily: PP,
-                  fontSize: 13.5,
-                  fontWeight: 600,
-                  color: on ? WHITE : 'rgba(255,255,255,.75)',
-                }}
-              >
-                {entry.name}
-              </button>
-            );
-          })}
-        </div>
+        <Picker
+          placeholder="Choose a provider"
+          value={providerCode}
+          onChange={setProviderCode}
+          options={state.providers.map((entry) => ({ id: entry.code, label: entry.name }))}
+        />
       )}
 
       <SectionLabel>{identifierLabel.toUpperCase()}</SectionLabel>
@@ -634,55 +768,17 @@ export function UtilityPurchaseScreen({
       {needsPlan ? (
         <>
           <SectionLabel>PLAN</SectionLabel>
-          {providerCode === '' ? (
-            <p style={{ fontFamily: IT, fontSize: 13, color: MUTED }}>Choose a provider first.</p>
-          ) : state.plans.length === 0 ? (
-            <p style={{ fontFamily: IT, fontSize: 13, color: MUTED }}>Loading plans…</p>
-          ) : (
-            <div className="overflow-hidden rounded-2xl" style={{ border: `1px solid ${BORDER}` }}>
-              {state.plans.map((plan) => {
-                const on = plan.id === planId;
-                return (
-                  <button
-                    key={plan.id}
-                    onClick={() => {
-                      setPlanId(plan.id);
-                    }}
-                    className="flex w-full items-center gap-3 px-4 py-3 text-left"
-                    style={{
-                      background: on ? 'rgba(43,172,82,.12)' : NAVY_CARD,
-                      border: 'none',
-                      borderBottom: `1px solid ${BORDER}`,
-                    }}
-                  >
-                    <span style={{ flex: 1 }}>
-                      <span
-                        style={{
-                          display: 'block',
-                          fontFamily: PP,
-                          fontSize: 13.5,
-                          fontWeight: 600,
-                          color: on ? WHITE : 'rgba(255,255,255,.8)',
-                        }}
-                      >
-                        {plan.label}
-                      </span>
-                      {'description' in plan && plan.description !== undefined ? (
-                        <span
-                          style={{ display: 'block', fontFamily: IT, fontSize: 11.5, color: MUTED }}
-                        >
-                          {plan.description}
-                        </span>
-                      ) : null}
-                    </span>
-                    <span style={{ fontFamily: PP, fontSize: 14, fontWeight: 700, color: G3 }}>
-                      {naira(plan.amount)}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          <Picker
+            placeholder={providerCode === '' ? 'Choose a provider first' : 'Choose a plan'}
+            value={planId}
+            onChange={setPlanId}
+            emptyLabel={providerCode === '' ? 'Choose a provider first.' : 'Loading plans…'}
+            options={state.plans.map((plan) => ({
+              id: plan.id,
+              label: plan.label,
+              trailing: naira(plan.amount),
+            }))}
+          />
         </>
       ) : (
         <>
