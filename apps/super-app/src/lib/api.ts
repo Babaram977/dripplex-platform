@@ -364,6 +364,30 @@ export type RideStatus =
 
 export type RideType = 'ECONOMY' | 'COMFORT' | 'XL' | 'TRICYCLE';
 
+export type RideSurchargeType = 'FLAT' | 'MULTIPLIER';
+/** Which end of the trip puts it inside a zone. An airport surcharge is
+ * usually EITHER — the run out and the run back both carry the cost. */
+export type RideSurchargeTrigger = 'PICKUP' | 'DROPOFF' | 'EITHER';
+
+/**
+ * A named circle where trips cost more — the airport being the case that
+ * prompted it. A centre and a radius rather than a polygon, so an operator can
+ * set one up from a map pin and a distance.
+ */
+export interface RideSurchargeZoneDto {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  radiusMeters: number;
+  surchargeType: RideSurchargeType;
+  /** Naira when FLAT, a factor when MULTIPLIER (1.25 = a quarter more). */
+  amount: number;
+  appliesTo: RideSurchargeTrigger;
+  active: boolean;
+  updatedAt: string;
+}
+
 /** One row of the Ops pricing table — GET/PUT /admin/rides/pricing/rates. */
 export interface RideFareRateDto {
   rideType: RideType;
@@ -2353,6 +2377,36 @@ export const api = {
         minimumFare: number;
       },
     ) => dx<RideFareRateDto>('PUT', `/admin/rides/pricing/rates/${rideType}`, body),
+
+    // Surcharge zones — the airport premium and anything like it. The list
+    // includes inactive zones on purpose: the console is where you go to turn
+    // one back on, so hiding them would hide the control.
+    getRideSurchargeZones: () => dx<RideSurchargeZoneDto[]>('GET', '/admin/rides/pricing/zones'),
+    createRideSurchargeZone: (body: {
+      name: string;
+      latitude: number;
+      longitude: number;
+      radiusMeters: number;
+      surchargeType: RideSurchargeType;
+      amount: number;
+      appliesTo?: RideSurchargeTrigger;
+      active?: boolean;
+    }) => dx<RideSurchargeZoneDto>('POST', '/admin/rides/pricing/zones', body),
+    /** Every field optional — switching a zone off must not mean resubmitting
+     * its geometry, which is how a coordinate gets fat-fingered. */
+    updateRideSurchargeZone: (
+      id: string,
+      body: Partial<{
+        name: string;
+        latitude: number;
+        longitude: number;
+        radiusMeters: number;
+        surchargeType: RideSurchargeType;
+        amount: number;
+        appliesTo: RideSurchargeTrigger;
+        active: boolean;
+      }>,
+    ) => dx<RideSurchargeZoneDto>('PATCH', `/admin/rides/pricing/zones/${id}`, body),
 
     // Merchants review desk. Pass a status to scope (e.g. 'PENDING'/'UNDER_REVIEW').
     listMerchants: (status?: 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUSPENDED') =>

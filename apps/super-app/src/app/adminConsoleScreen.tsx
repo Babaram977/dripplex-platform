@@ -15,6 +15,7 @@ import {
   type AdminRiderDto,
   type DeliveryJobDto,
   type RideFareRateDto,
+  type RideSurchargeZoneDto,
   type RideType,
 } from '../lib/api';
 import { auth } from '../lib/auth';
@@ -4421,9 +4422,41 @@ function PagePricing() {
     }
   }, []);
 
+  const [zones, setZones] = useState<RideSurchargeZoneDto[]>([]);
+  const [zonesLoading, setZonesLoading] = useState(true);
+  const [zoneBusy, setZoneBusy] = useState<string | null>(null);
+
+  const loadZones = useCallback(async () => {
+    setZonesLoading(true);
+    try {
+      setZones(await api.admin.getRideSurchargeZones());
+    } catch (cause) {
+      setMsg(cause instanceof Error ? cause.message : 'Could not load surcharge zones');
+    } finally {
+      setZonesLoading(false);
+    }
+  }, []);
+
+  const toggleZone = async (zone: RideSurchargeZoneDto): Promise<void> => {
+    setZoneBusy(zone.id);
+    setMsg(null);
+    try {
+      // Only `active` is sent — resubmitting the geometry to switch a zone off
+      // is how a coordinate gets fat-fingered.
+      const updated = await api.admin.updateRideSurchargeZone(zone.id, { active: !zone.active });
+      setZones((previous) => previous.map((z) => (z.id === updated.id ? updated : z)));
+      setMsg(`${updated.name} is now ${updated.active ? 'charging' : 'off'}.`);
+    } catch (cause) {
+      setMsg(cause instanceof Error ? cause.message : 'Could not change that zone');
+    } finally {
+      setZoneBusy(null);
+    }
+  };
+
   useEffect(() => {
     void load(null);
-  }, [load]);
+    void loadZones();
+  }, [load, loadZones]);
 
   const save = async (): Promise<void> => {
     if (rideType === null) return;
@@ -4557,11 +4590,12 @@ function PagePricing() {
         </Card>
         {/* Surge + preview */}
         <div style={{ width: 240, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {/* Surge has no field on RideFareRateDto and no endpoint behind it.
-              The toggle used to flip local state and multiply the preview, so
-              the console showed a surge price the Ride module would never
-              charge. Left visible and switched off rather than deleted: it is a
-              real gap in the pricing model, not a feature to fake. */}
+          {/* There is no *global* surge multiplier — no field for one on the
+              fare rate, no endpoint. Premium pricing is done per zone instead
+              (the card below), which is how the airport surcharge works: a
+              circle on the map with a flat amount or a multiplier. The old
+              toggle multiplied a local preview only, so the console displayed a
+              price the Ride module would never charge. */}
           <Card>
             <SectionHeader title="Surge Pricing" />
             <div
@@ -4573,13 +4607,13 @@ function PagePricing() {
               }}
             >
               <span style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
-                Enable Surge
+                Platform-wide surge
               </span>
               <input type="checkbox" className="dx-toggle" checked={false} disabled readOnly />
             </div>
             <span style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
-              Not available — fares have no surge multiplier yet. Nothing here would reach a
-              passenger.
+              No platform-wide multiplier exists. Charge a premium by area instead — see Surcharge
+              Zones below.
             </span>
           </Card>
           <Card style={{ background: `linear-gradient(135deg,${G0}22,${NAVY_CARD})` }}>
@@ -4619,6 +4653,102 @@ function PagePricing() {
           </Card>
         </div>
       </div>
+
+      {/* Surcharge zones — the airport premium and anything shaped like it.
+          Fully built on the backend (GET/POST/PATCH /admin/rides/pricing/zones,
+          audited) and never surfaced here, so the one place premium pricing
+          actually exists was invisible to the person who sets prices. */}
+      <Card>
+        <SectionHeader
+          title="Surcharge Zones"
+          action={
+            <Btn
+              label={zonesLoading ? 'Loading…' : `${zones.filter((z) => z.active).length} active`}
+              small
+              outline
+              color={MUTED}
+              onClick={() => void loadZones()}
+            />
+          }
+        />
+        {zones.length === 0 ? (
+          <span style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+            {zonesLoading
+              ? 'Loading zones…'
+              : 'No surcharge zones yet. A zone is a circle on the map — a centre, a radius, and either a flat amount or a multiplier — applied when a trip starts or ends inside it.'}
+          </span>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {zones.map((zone) => (
+              <div
+                key={zone.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: '10px 12px',
+                  borderRadius: 8,
+                  background: NAVY_SURFACE,
+                  border: `1px solid ${zone.active ? `${G3}44` : BORDER}`,
+                  opacity: zone.active ? 1 : 0.62,
+                }}
+              >
+                <div style={{ flex: 1 }}>
+                  <div
+                    style={{
+                      fontFamily: 'Inter, sans-serif',
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: WHITE,
+                    }}
+                  >
+                    {zone.name}
+                  </div>
+                  <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 11, color: MUTED }}>
+                    {(zone.radiusMeters / 1000).toFixed(1)}km radius ·{' '}
+                    {zone.appliesTo === 'EITHER'
+                      ? 'pickup or drop-off'
+                      : zone.appliesTo === 'PICKUP'
+                        ? 'pickup only'
+                        : 'drop-off only'}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div
+                    style={{
+                      fontFamily: 'Poppins, sans-serif',
+                      fontSize: 14,
+                      fontWeight: 700,
+                      color: G3,
+                    }}
+                  >
+                    {zone.surchargeType === 'FLAT'
+                      ? `+₦${zone.amount.toLocaleString()}`
+                      : `${zone.amount}×`}
+                  </div>
+                  <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 10.5, color: MUTED }}>
+                    {zone.surchargeType === 'FLAT' ? 'flat' : 'multiplier'}
+                  </div>
+                </div>
+                <Btn
+                  label={zone.active ? 'Turn off' : 'Turn on'}
+                  small
+                  outline
+                  color={zone.active ? C_WARN : G2}
+                  disabled={zoneBusy === zone.id}
+                  onClick={() => void toggleZone(zone)}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{ marginTop: 10, fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          Creating and moving zones is not wired here yet — this lists what exists and switches a
+          zone on or off. A zone needs a centre coordinate and a radius, which wants a map picker
+          rather than four number boxes.
+        </div>
+      </Card>
+
       {/* Promos */}
       <Card>
         <SectionHeader
