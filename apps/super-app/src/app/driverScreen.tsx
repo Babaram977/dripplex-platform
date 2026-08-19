@@ -20,7 +20,7 @@ import {
 import { api, uploadFile } from '../lib/api';
 import { auth } from '../lib/auth';
 import { AccountPageHost, AccountRows, type AccountPage } from './accountPages';
-import { playNotificationSound } from '../lib/sound';
+import { playNotificationSound, startIncomingRideAlarm, stopIncomingRideAlarm } from '../lib/sound';
 import { SoundSettings } from './soundSettings';
 import { PayoutPanel } from './payoutPanel';
 import { getCurrentPosition } from '../lib/maps';
@@ -2497,9 +2497,20 @@ export function DriverDashboardScreen({
           if (pending) {
             if (pending.id !== announcedOfferId) {
               announcedOfferId = pending.id;
-              playNotificationSound('new-request');
+              // Start ringing the moment the offer is detected, not when the
+              // card finishes rendering — and start it here rather than
+              // chiming once, so a driver who is not looking at the phone
+              // still gets an alarm. startIncomingRideAlarm() is idempotent,
+              // so the offer screen re-arming it is a no-op.
+              startIncomingRideAlarm();
             }
             onRequest(pending);
+          } else {
+            // The offer is gone — taken by another driver, cancelled by the
+            // passenger, or finally expired. Whatever the reason, an alarm
+            // still ringing about it is now ringing about nothing.
+            announcedOfferId = null;
+            stopIncomingRideAlarm();
           }
         })
         .catch(() => {});
@@ -2508,6 +2519,8 @@ export function DriverDashboardScreen({
     const iv = setInterval(poll, 5000);
     return () => {
       cancelled = true;
+      // Going offline, or leaving the driver app, silences it too.
+      stopIncomingRideAlarm();
       clearInterval(iv);
     };
   }, [online, onRequest]);
@@ -2921,6 +2934,16 @@ export function DriverIncomingRequestScreen({
     setTotal(Math.max(1, left));
   }, [offer]);
 
+  // Ring until it is answered. Founder decision, 2026-08-19: a driver may be
+  // asleep or doing something else, so an offer has to keep announcing itself
+  // rather than chime once into an empty room. Stops the moment this screen
+  // goes away — accepted, declined, or timed out — so nothing is left ringing
+  // at a driver about a ride that is no longer theirs to take.
+  useEffect(() => {
+    if (!offer) return;
+    return startIncomingRideAlarm();
+  }, [offer?.id]);
+
   useEffect(() => {
     if (!offer) return;
     api.driverRides
@@ -2931,6 +2954,7 @@ export function DriverIncomingRequestScreen({
 
   const handleDecline = async () => {
     if (busy) return;
+    stopIncomingRideAlarm();
     setBusy('decline');
     try {
       if (offer) await api.driverRides.declineOffer(offer.id);
@@ -2944,6 +2968,7 @@ export function DriverIncomingRequestScreen({
 
   const handleAccept = async () => {
     if (busy || !offer || !preview) return;
+    stopIncomingRideAlarm();
     setBusy('accept');
     setErr('');
     try {

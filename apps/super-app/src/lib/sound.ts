@@ -286,3 +286,78 @@ export function previewSound(id: SoundId): void {
     // As above.
   }
 }
+
+// ── Incoming ride alarm ─────────────────────────────────────────────────────
+//
+// Founder decision, 2026-08-19: a ride offer has to ring like an alarm, not
+// chime once. "Driver might be sleeping or taken away by other activity" —
+// and a single 0.22-gain chime into a pocket is not going to reach them. So
+// this repeats until it is answered, at roughly twice the volume of any other
+// alert, and vibrates alongside for a phone that is face-down or silent.
+
+/** Gap between rings. Short enough to read as an alarm rather than a series of
+ * unrelated notifications; long enough that each ring is still distinct. */
+const RIDE_ALARM_INTERVAL_MS = 1_500;
+
+/** Loud on purpose. Every other event tops out at 0.22 (see VOLUME_BY_EVENT);
+ * this is the one a driver is *online in order to receive*. */
+const RIDE_ALARM_VOLUME = 0.5;
+
+/** Buzz-pause-buzz, repeated with the ring. Reaches a driver whose phone is in
+ * a pocket or face-down, and works when the handset itself is on silent.
+ * Unsupported on iOS Safari, which is why it is an addition to the sound
+ * rather than a replacement for it. */
+const RIDE_ALARM_VIBRATION: number[] = [400, 200, 400];
+
+let rideAlarmTimer: ReturnType<typeof setInterval> | null = null;
+
+function ringOnce(): void {
+  try {
+    const preference = readSoundPreference();
+    if (preference.enabled) {
+      const definition =
+        SOUND_LIBRARY.find((entry) => entry.id === preference.sound) ?? SOUND_LIBRARY[0];
+      if (definition) playDefinition(definition, RIDE_ALARM_VOLUME);
+    }
+    // Vibration is not a sound and is not covered by the sound toggle: a
+    // driver who silenced notifications still chose to be online for work.
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+      navigator.vibrate(RIDE_ALARM_VIBRATION);
+    }
+  } catch {
+    // An alarm that throws must not take down the screen showing the offer.
+  }
+}
+
+/**
+ * Ring until answered. Safe to call repeatedly — a second call while ringing
+ * is a no-op rather than a second overlapping alarm.
+ *
+ * Returns the stop function so a caller can use it directly as a React effect
+ * cleanup, which is the one place forgetting to stop would leave a driver
+ * being rung at after the offer is gone.
+ */
+export function startIncomingRideAlarm(): () => void {
+  if (rideAlarmTimer !== null) return stopIncomingRideAlarm;
+  ringOnce();
+  rideAlarmTimer = setInterval(ringOnce, RIDE_ALARM_INTERVAL_MS);
+  return stopIncomingRideAlarm;
+}
+
+export function stopIncomingRideAlarm(): void {
+  if (rideAlarmTimer !== null) {
+    clearInterval(rideAlarmTimer);
+    rideAlarmTimer = null;
+  }
+  try {
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+      navigator.vibrate(0);
+    }
+  } catch {
+    // As above.
+  }
+}
+
+export function isIncomingRideAlarmRinging(): boolean {
+  return rideAlarmTimer !== null;
+}
