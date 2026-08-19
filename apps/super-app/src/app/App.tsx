@@ -229,7 +229,12 @@ function DesktopFrame({ children }: { children: React.ReactNode }) {
                 color: 'rgba(255,255,255,.3)',
               }}
             >
-              console.dripplexapp.com
+              {/* This read `console.dripplexapp.com` — a Figma mockup label on
+                  a mock browser bar, inside a real browser. The domain does
+                  not exist and never has, so an operator reading it off the
+                  screen was being sent nowhere. Shows where they actually
+                  are. */}
+              {typeof window === 'undefined' ? '' : window.location.host}
             </span>
           </div>
         </div>
