@@ -85,11 +85,30 @@ export const RIDE_WALLET_REFERENCE_TYPES = {
  * hard-coded 'order' referenceType, just for the Ride domain instead. */
 export const RIDE_PROMOTION_REFERENCE_TYPE = 'ride';
 
-/** How long a driver has to respond to an offer before it's reassigned. */
-export const RIDE_OFFER_TIMEOUT_MS = 15_000;
+/**
+ * How long a driver has to respond to an offer before it is reassigned.
+ *
+ * Fifteen seconds was not survivable in practice. The driver app discovers a
+ * pending offer by polling every RIDE_LOCATION_THROTTLE_MS (5s), so up to a
+ * third of the window was gone before the card appeared — leaving ~10 seconds
+ * to read a fare, a distance and a pickup address and tap Accept, on a phone,
+ * while possibly driving. On 2026-08-19 a driver got a real offer and it
+ * expired under him.
+ *
+ * A minute leaves a working window even after the worst-case polling delay.
+ */
+export const RIDE_OFFER_TIMEOUT_MS = 60_000;
 
-/** Give up and mark a ride NO_DRIVERS_FOUND after this many declined/expired offers. */
-export const MAX_DISPATCH_ATTEMPTS = 5;
+/**
+ * How many offers a single ride will ever generate.
+ *
+ * Raised with RIDE_OFFER_TIMEOUT_MS so the two agree: 20 offers at a minute
+ * each is about twenty minutes of trying, which sits inside the thirty-minute
+ * RIDE_SEARCH_WINDOW_MS rather than ending the search a quarter of the way
+ * through it. At five offers of fifteen seconds, dispatch used to stop after
+ * seventy-five seconds while the passenger was still waiting.
+ */
+export const MAX_DISPATCH_ATTEMPTS = 20;
 
 /**
  * How long a ride keeps looking before dispatch stops on its own.

@@ -57,23 +57,46 @@ export class RideDispatchService {
       return toRideDto(ride);
     }
 
-    const attemptedDriverIds = (
-      await this.prisma.rideOffer.findMany({
-        where: { rideId: ride.id },
-        select: { driverId: true },
-      })
-    ).map((offer) => offer.driverId);
+    const offers = await this.prisma.rideOffer.findMany({
+      where: { rideId: ride.id },
+      select: { driverId: true, status: true },
+    });
 
-    if (attemptedDriverIds.length >= MAX_DISPATCH_ATTEMPTS) {
+    if (offers.length >= MAX_DISPATCH_ATTEMPTS) {
       return await this.giveUp(ride);
     }
 
-    const candidate = await this.findNearestEligibleDriver(
-      ride.rideType,
-      Number(ride.pickupLatitude),
-      Number(ride.pickupLongitude),
-      attemptedDriverIds,
-    );
+    // Everyone who has already seen this ride. Preferred exclusion: spread
+    // offers around rather than pestering one driver.
+    const alreadyOffered = offers.map((offer) => offer.driverId);
+
+    // A driver who *declined* said no, and one who holds a PENDING offer is
+    // still deciding. Both stay excluded. A driver whose offer merely EXPIRED
+    // never saw it — and excluding them permanently is how a thin fleet dies:
+    // with one driver online, a single missed offer made the ride
+    // unfulfillable for its whole search window while that driver sat free.
+    const refusedOrBusy = offers
+      .filter(
+        (offer) =>
+          offer.status === RideOfferStatus.DECLINED || offer.status === RideOfferStatus.PENDING,
+      )
+      .map((offer) => offer.driverId);
+
+    const candidate =
+      (await this.findNearestEligibleDriver(
+        ride.rideType,
+        Number(ride.pickupLatitude),
+        Number(ride.pickupLongitude),
+        alreadyOffered,
+      )) ??
+      // Nobody fresh. Fall back to whoever let one lapse, rather than leaving
+      // a passenger waiting beside an available driver.
+      (await this.findNearestEligibleDriver(
+        ride.rideType,
+        Number(ride.pickupLatitude),
+        Number(ride.pickupLongitude),
+        refusedOrBusy,
+      ));
 
     if (!candidate) {
       // Nobody eligible *right now* is not the same as nobody at all. A

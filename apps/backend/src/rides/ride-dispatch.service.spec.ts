@@ -341,6 +341,50 @@ describe('RideDispatchService', () => {
     expect(offers[0]?.driverId).toBe(lateDriverId);
   });
 
+  // A driver who never saw the offer is not a driver who said no. Excluding
+  // both alike meant one missed offer made the ride unfulfillable for its
+  // whole search window while that same driver sat online and free — which is
+  // what a one- or two-driver fleet looks like every time.
+  it('offers the ride again to a driver whose earlier offer expired', async () => {
+    if (!databaseAvailable) return;
+
+    const driverId = await createDriver(NEARBY);
+    const ride = await createRide();
+    await service.dispatchRide(ride.id);
+
+    const first = await prisma.rideOffer.findFirstOrThrow({ where: { rideId: ride.id } });
+    expect(first.driverId).toBe(driverId);
+
+    // The driver did not tap in time.
+    await prisma.rideOffer.update({
+      where: { id: first.id },
+      data: { expiresAt: new Date(Date.now() - 1_000) },
+    });
+    await service.expireStaleOffers();
+
+    const offers = await prisma.rideOffer.findMany({ where: { rideId: ride.id } });
+    expect(offers.length).toBeGreaterThan(1);
+    expect(offers.find((o) => o.status === 'PENDING')?.driverId).toBe(driverId);
+  });
+
+  it('does not offer again to a driver who declined', async () => {
+    if (!databaseAvailable) return;
+
+    const driverId = await createDriver(NEARBY);
+    const ride = await createRide();
+    await service.dispatchRide(ride.id);
+
+    const offer = await prisma.rideOffer.findFirstOrThrow({ where: { rideId: ride.id } });
+    await service.declineOffer(driverId, offer.id, {});
+
+    // declineOffer re-dispatches internally; with the only driver having
+    // refused, nobody is left and the ride keeps searching without a new offer.
+    const pending = await prisma.rideOffer.findMany({
+      where: { rideId: ride.id, status: 'PENDING' },
+    });
+    expect(pending).toHaveLength(0);
+  });
+
   it('gives up once the search window has passed', async () => {
     if (!databaseAvailable) return;
 
