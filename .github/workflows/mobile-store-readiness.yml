@@ -49,11 +49,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
-      - name: Set up JDK 17
+      # Capacitor 7 generates capacitor.build.gradle with
+      # sourceCompatibility/targetCompatibility JavaVersion.VERSION_21, so a
+      # JDK 17 toolchain fails the Android build with
+      # "error: invalid source release: 21" in
+      # :capacitor-android:compileReleaseJavaWithJavac.
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
       - name: Restore Android signing material

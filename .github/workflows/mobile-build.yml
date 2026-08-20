@@ -47,11 +47,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
-      - name: Set up JDK 17
+      # Must match the Java version Capacitor 7 targets in
+      # capacitor.build.gradle (21) — see mobile-store-readiness.yml.
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
       - name: Decode signing keystore
