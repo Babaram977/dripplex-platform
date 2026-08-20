@@ -20,6 +20,10 @@ export const WALLET_AUDIT_ACTIONS = {
   DEBITED: 'wallet.debited',
   TRANSFERRED: 'wallet.transferred',
   RECONCILED: 'wallet.reconciled',
+  /** Money set aside without being taken, and the two ways that ends. */
+  HELD: 'wallet.held',
+  HOLD_COMMITTED: 'wallet.hold_committed',
+  HOLD_RELEASED: 'wallet.hold_released',
   FUNDING_INITIATED: 'wallet.funding_initiated',
   FUNDING_SUCCEEDED: 'wallet.funding_succeeded',
   FUNDING_FAILED: 'wallet.funding_failed',
