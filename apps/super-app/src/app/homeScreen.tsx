@@ -22,6 +22,7 @@ import type {
   WalletLedgerEntryDto,
 } from '../lib/api';
 import { ImageWithFallback } from '@/app/components/figma/ImageWithFallback';
+import { Icon, type IconName } from './icons';
 
 // Relative time for real wallet activity timestamps.
 function relTime(iso: string): string {
@@ -51,15 +52,15 @@ const TXN_ICON: Record<WalletLedgerEntryDto['type'], string> = {
 // ─────────────────────────────────────────────────────────────────────────────
 // DATA
 // ─────────────────────────────────────────────────────────────────────────────
-const CATS = [
-  { icon: '🛒', label: 'Supermarkets' },
-  { icon: '🍽', label: 'Restaurants' },
-  { icon: '💊', label: 'Pharmacy' },
-  { icon: '👗', label: 'Fashion' },
-  { icon: '📱', label: 'Electronics' },
-  { icon: '💄', label: 'Beauty' },
-  { icon: '🛋', label: 'Home' },
-  { icon: '🔧', label: 'Hardware' },
+const CATS: { icon: IconName; label: string }[] = [
+  { icon: 'supermarket', label: 'Supermarkets' },
+  { icon: 'restaurant', label: 'Restaurants' },
+  { icon: 'pharmacy', label: 'Pharmacy' },
+  { icon: 'fashion', label: 'Fashion' },
+  { icon: 'electronics', label: 'Electronics' },
+  { icon: 'beauty', label: 'Beauty' },
+  { icon: 'home', label: 'Home' },
+  { icon: 'hardware', label: 'Hardware' },
 ];
 
 /**
@@ -68,15 +69,15 @@ const CATS = [
  * swallows a tap silently is worse than one that says it is not built. No
  * screen is invented to fill them; the gap is recorded in the diff register.
  */
-const QUICK = [
-  { icon: '🛍', label: 'Marketplace', color: '#2BAC52', ready: true },
-  { icon: '🚖', label: 'Ride', color: '#3B82F6', ready: true },
-  { icon: '💳', label: 'Wallet', color: '#8B5CF6', ready: true },
-  { icon: '📦', label: 'Orders', color: '#F59E0B', ready: true },
-  { icon: '⚡', label: 'Utilities', color: '#06B6D4', ready: true },
-  { icon: '🍔', label: 'Food', color: '#F97316', ready: true },
-  { icon: '🏥', label: 'Health', color: '#10B981', ready: false },
-  { icon: '⋯', label: 'More', color: '#6B7280', ready: false },
+const QUICK: { icon: IconName; label: string; color: string; ready: boolean }[] = [
+  { icon: 'marketplace', label: 'Marketplace', color: '#2BAC52', ready: true },
+  { icon: 'ride', label: 'Ride', color: '#3B82F6', ready: true },
+  { icon: 'wallet', label: 'Wallet', color: '#8B5CF6', ready: true },
+  { icon: 'orders', label: 'Orders', color: '#F59E0B', ready: true },
+  { icon: 'utilities', label: 'Utilities', color: '#06B6D4', ready: true },
+  { icon: 'food', label: 'Food', color: '#F97316', ready: true },
+  { icon: 'health', label: 'Health', color: '#10B981', ready: false },
+  { icon: 'more', label: 'More', color: '#6B7280', ready: false },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -372,14 +373,16 @@ function QuickActions({ onSelect }: { onSelect?: (label: string) => void }) {
             style={{ opacity: q.ready ? 1 : 0.42, cursor: q.ready ? 'pointer' : 'default' }}
           >
             <div
-              className="relative flex h-[56px] w-[56px] items-center justify-center rounded-2xl text-[24px]"
+              className="relative flex h-[56px] w-[56px] items-center justify-center rounded-2xl"
               style={{
                 background: q.color + '18',
                 border: `1.5px solid ${q.color}28`,
                 boxShadow: q.ready ? `0 4px 16px ${q.color}12` : 'none',
               }}
             >
-              {q.icon}
+              {/* An emoji ignored `q.color` entirely — the tile was tinted and
+                  the glyph inside it stayed whatever the OS painted. */}
+              <Icon name={q.icon} size={26} color={q.color} />
               {!q.ready && (
                 // Absolutely positioned so the unbuilt tiles stay the same size
                 // as the built ones and the 4×2 grid does not shift.
@@ -982,7 +985,7 @@ function Categories({ active, onPick }: { active: string; onPick: (label: string
               className="flex flex-shrink-0 flex-col items-center gap-1.5 transition-all active:scale-90"
             >
               <div
-                className="flex h-[52px] w-[52px] items-center justify-center rounded-2xl text-[22px]"
+                className="flex h-[52px] w-[52px] items-center justify-center rounded-2xl"
                 style={{
                   background: on ? `linear-gradient(135deg,${G0},${G2})` : NAVY_CARD,
                   border: on ? 'none' : `1.5px solid ${BORDER}`,
@@ -990,7 +993,7 @@ function Categories({ active, onPick }: { active: string; onPick: (label: string
                   transition: 'all .2s ease',
                 }}
               >
-                {c.icon}
+                <Icon name={c.icon} size={23} color={on ? '#FFF' : 'rgba(255,255,255,.62)'} />
               </div>
               <p
                 className="text-center text-[9px] font-semibold"

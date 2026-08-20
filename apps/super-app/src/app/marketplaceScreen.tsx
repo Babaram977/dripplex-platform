@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { G0, G2, G3, NAVY_DEEP, NAVY_CARD, NAVY_SURFACE, BORDER, MUTED } from './shared';
 import { api } from '../lib/api';
 import { ImageWithFallback } from './components/figma/ImageWithFallback';
+import { Icon, type IconName } from './icons';
 import type { MerchantSummaryDto, ProductSummaryDto } from '../lib/api';
 
 // Money formatter — backend prices are numeric (e.g. 4800). Mirrors storeScreen's
@@ -29,19 +30,19 @@ export function monogram(businessName: string): string {
 // ─────────────────────────────────────────────────────────────────────────────
 // DATA
 // ─────────────────────────────────────────────────────────────────────────────
-const CAT_CHIPS = [
-  { label: 'All', icon: '✦' },
-  { label: 'Supermarkets', icon: '🛒' },
-  { label: 'Restaurants', icon: '🍽' },
-  { label: 'Pharmacy', icon: '💊' },
-  { label: 'Electronics', icon: '📱' },
-  { label: 'Fashion', icon: '👗' },
-  { label: 'Beauty', icon: '💄' },
-  { label: 'Hardware', icon: '🔧' },
-  { label: 'Hotels', icon: '🏨' },
-  { label: 'Furniture', icon: '🛋' },
-  { label: 'Services', icon: '⚙' },
-  { label: 'Wholesale', icon: '📦' },
+const CAT_CHIPS: { label: string; icon: IconName }[] = [
+  { label: 'All', icon: 'all' },
+  { label: 'Supermarkets', icon: 'supermarket' },
+  { label: 'Restaurants', icon: 'restaurant' },
+  { label: 'Pharmacy', icon: 'pharmacy' },
+  { label: 'Electronics', icon: 'electronics' },
+  { label: 'Fashion', icon: 'fashion' },
+  { label: 'Beauty', icon: 'beauty' },
+  { label: 'Hardware', icon: 'hardware' },
+  { label: 'Hotels', icon: 'hotel' },
+  { label: 'Furniture', icon: 'home' },
+  { label: 'Services', icon: 'services' },
+  { label: 'Wholesale', icon: 'orders' },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -375,7 +376,7 @@ function CategoryChips({ active, onChange }: { active: string; onChange: (s: str
                 boxShadow: on ? `0 4px 14px rgba(43,172,82,.28)` : 'none',
               }}
             >
-              <span style={{ fontSize: 13 }}>{c.icon}</span>
+              <Icon name={c.icon} size={15} color={on ? '#FFF' : 'rgba(255,255,255,.5)'} />
               <p
                 className="text-[11.5px] font-semibold"
                 style={{
@@ -513,16 +514,16 @@ function FeaturedMerchants({
     'linear-gradient(135deg,#831843,#EC4899)',
     'linear-gradient(135deg,#064E3B,#10B981)',
   ];
-  const EMOJI_POOL: Record<string, string> = {
-    Restaurant: '🍽',
-    Supermarket: '🛒',
-    Pharmacy: '💊',
-    Fashion: '👗',
-    Electronics: '📱',
-    Beauty: '💄',
-    Hotel: '🏨',
-    Hardware: '🔧',
-    default: '🏪',
+  const ICON_POOL: Record<string, IconName> = {
+    Restaurant: 'restaurant',
+    Supermarket: 'supermarket',
+    Pharmacy: 'pharmacy',
+    Fashion: 'fashion',
+    Electronics: 'electronics',
+    Beauty: 'beauty',
+    Hotel: 'hotel',
+    Hardware: 'hardware',
+    default: 'store',
   };
 
   return (
@@ -583,7 +584,7 @@ function FeaturedMerchants({
           {merchants.map((m, idx) => {
             const isOpen = m.isOpenNow;
             const bg = BG_POOL[idx % BG_POOL.length];
-            const emoji = EMOJI_POOL[m.businessType ?? ''] ?? EMOJI_POOL.default;
+            const icon = ICON_POOL[m.businessType ?? ''] ?? ICON_POOL.default;
             const verified = m.verificationStatus === 'VERIFIED';
             const rating = m.rating?.average ?? 0;
             const dist = m.distanceKm != null ? `${m.distanceKm.toFixed(1)} km` : '';
@@ -606,7 +607,7 @@ function FeaturedMerchants({
                       src={m.coverPhotoUrl}
                       alt={m.businessName}
                       className="absolute inset-0 h-full w-full object-cover"
-                      fallbackEmoji={emoji}
+                      fallbackEmoji="🛍️"
                       loading="lazy"
                     />
                   ) : (
@@ -632,12 +633,12 @@ function FeaturedMerchants({
                       >
                         {monogram(m.businessName)}
                       </span>
-                      <span
-                        className="absolute"
-                        style={{ right: 10, bottom: 8, fontSize: 15, opacity: 0.55 }}
-                      >
-                        {emoji}
-                      </span>
+                      <Icon
+                        name={icon}
+                        size={17}
+                        color="rgba(255,255,255,.55)"
+                        style={{ position: 'absolute', right: 10, bottom: 8 }}
+                      />
                     </div>
                   )}
                   <div className="absolute left-3 top-3">
@@ -1001,16 +1002,16 @@ function NearbyBusinesses({ onStore }: { onStore?: (merchantId: string) => void 
     load();
   }, [load]);
 
-  const EMOJI_POOL: Record<string, string> = {
-    Restaurant: '🍽',
-    Supermarket: '🛒',
-    Pharmacy: '💊',
-    Fashion: '👗',
-    Electronics: '📱',
-    Beauty: '💄',
-    Hotel: '🏨',
-    Hardware: '🔧',
-    default: '🏪',
+  const ICON_POOL: Record<string, IconName> = {
+    Restaurant: 'restaurant',
+    Supermarket: 'supermarket',
+    Pharmacy: 'pharmacy',
+    Fashion: 'fashion',
+    Electronics: 'electronics',
+    Beauty: 'beauty',
+    Hotel: 'hotel',
+    Hardware: 'hardware',
+    default: 'store',
   };
 
   return (
@@ -1075,7 +1076,7 @@ function NearbyBusinesses({ onStore }: { onStore?: (merchantId: string) => void 
               const isOpen = m.isOpenNow !== false;
               const rating = m.rating?.average ?? 0;
               const dist = m.distanceKm != null ? `${m.distanceKm.toFixed(1)} km` : '—';
-              const emoji = EMOJI_POOL[m.businessType ?? ''] ?? EMOJI_POOL.default;
+              const icon = ICON_POOL[m.businessType ?? ''] ?? ICON_POOL.default;
               return (
                 <div
                   key={m.id}
@@ -1085,10 +1086,10 @@ function NearbyBusinesses({ onStore }: { onStore?: (merchantId: string) => void 
                   }}
                 >
                   <div
-                    className="flex h-[42px] w-[42px] flex-shrink-0 items-center justify-center rounded-2xl text-[20px]"
+                    className="flex h-[42px] w-[42px] flex-shrink-0 items-center justify-center rounded-2xl"
                     style={{ background: 'rgba(255,255,255,.06)' }}
                   >
-                    {emoji}
+                    <Icon name={icon} size={20} color="rgba(255,255,255,.6)" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
