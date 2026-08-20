@@ -119,6 +119,9 @@ describe('OperationsAnalyticsService', () => {
     startedAt?: Date | null;
     completedAt?: Date | null;
     driverEarning?: number | null;
+    totalFare?: number;
+    platformCommission?: number | null;
+    tipAmount?: number | null;
     cancelledBy?: RideCancelledBy | null;
     cancellationReason?: string | null;
     pickupLatitude?: number;
@@ -142,6 +145,11 @@ describe('OperationsAnalyticsService', () => {
         ...(overrides.driverEarning !== undefined
           ? { driverEarning: overrides.driverEarning }
           : {}),
+        ...(overrides.totalFare !== undefined ? { totalFare: overrides.totalFare } : {}),
+        ...(overrides.platformCommission !== undefined
+          ? { platformCommission: overrides.platformCommission }
+          : {}),
+        ...(overrides.tipAmount !== undefined ? { tipAmount: overrides.tipAmount } : {}),
         ...(overrides.cancelledBy !== undefined ? { cancelledBy: overrides.cancelledBy } : {}),
         ...(overrides.cancellationReason !== undefined
           ? { cancellationReason: overrides.cancellationReason }
@@ -453,5 +461,61 @@ describe('OperationsAnalyticsService', () => {
     expect(result.ridesCompleted).toBe(1);
     expect(result.completionRate).toBeCloseTo(0.5);
     expect(result.onlineDriversNow).toBeGreaterThanOrEqual(0);
+  });
+  it('sums revenue over rides completed in range, keeps tips out of it, and buckets the series', async () => {
+    if (!databaseAvailable) return;
+
+    const { range, anchor } = pinnedRange();
+    await createRide({
+      status: RideStatus.COMPLETED,
+      requestedAt: anchor,
+      completedAt: anchor,
+      totalFare: 1000,
+      platformCommission: 100,
+      driverEarning: 900,
+      tipAmount: 250,
+    });
+    await createRide({
+      status: RideStatus.COMPLETED,
+      requestedAt: anchor,
+      completedAt: new Date(anchor.getTime() + 60_000),
+      totalFare: 500,
+      platformCommission: 50,
+      driverEarning: 450,
+    });
+    // Cancelled rides carry a fare too; they are not revenue.
+    await createRide({
+      status: RideStatus.CANCELLED,
+      requestedAt: anchor,
+      completedAt: anchor,
+      totalFare: 9999,
+      platformCommission: 999,
+    });
+
+    const result = await service.getOverview(range);
+
+    expect(result.grossFareRevenue).toBe(1500);
+    expect(result.platformCommissionRevenue).toBe(150);
+    expect(result.driverEarnings).toBe(1350);
+    // A tip is the driver's money and must never inflate either revenue line.
+    expect(result.tipsCollected).toBe(250);
+
+    // The series covers the whole window even where nothing happened, and its
+    // commission adds back up to the headline figure.
+    expect(result.revenueSeries.length).toBeGreaterThan(0);
+    const seriesTotal = result.revenueSeries.reduce((sum, b) => sum + b.platformCommission, 0);
+    expect(seriesTotal).toBeCloseTo(result.platformCommissionRevenue);
+    expect(result.revenueSeries.reduce((sum, b) => sum + b.ridesCompleted, 0)).toBe(2);
+  });
+
+  it('reports zero revenue — not null — for a range with no completed rides', async () => {
+    if (!databaseAvailable) return;
+
+    const { range } = pinnedRange();
+    const result = await service.getOverview(range);
+
+    expect(result.grossFareRevenue).toBe(0);
+    expect(result.platformCommissionRevenue).toBe(0);
+    expect(result.tipsCollected).toBe(0);
   });
 });

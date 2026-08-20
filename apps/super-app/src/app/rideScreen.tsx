@@ -18,7 +18,14 @@ import {
   reverseGeocode,
 } from '../lib/maps';
 import type { AddressPrediction } from '../lib/maps';
-import type { CustomerRideDto, RideDto, RideType, RideTypeCatalogEntryDto } from '../lib/api';
+import type {
+  CustomerRideDto,
+  RideDto,
+  RideStatus,
+  SharedRideDto,
+  RideType,
+  RideTypeCatalogEntryDto,
+} from '../lib/api';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS
@@ -176,6 +183,130 @@ function useLiveRide(rideId?: string) {
     };
   }, [rideId]);
   return ride;
+}
+
+/**
+ * Moves the passenger through the trip when the *trip* moves.
+ *
+ * These screens used to advance on buttons the passenger pressed — including
+ * one labelled "Simulate: Driver Arrived". So a driver could mark themselves
+ * arrived, enter the trip code and pull away while the passenger's phone still
+ * said "Driver on the way". The ride's status on the server is the only thing
+ * that knows what is happening, so it is what drives the screens now.
+ */
+function useRideStatusAdvance(
+  status: RideStatus | undefined,
+  handlers: Partial<Record<RideStatus, (() => void) | undefined>>,
+): void {
+  const handler = status === undefined ? undefined : handlers[status];
+  const ref = useRef(handler);
+  ref.current = handler;
+  useEffect(() => {
+    ref.current?.();
+  }, [status]);
+}
+
+/** The car the passenger is looking for. Real plate, real colour, from the
+ * driver's approved vehicle — or an honest "—" when the driver has no
+ * approved vehicle on file, never an invented plate. */
+function VehicleFacts({ ride }: { ride: CustomerRideDto | null }) {
+  const vehicle = ride?.driverVehicle ?? null;
+  const typeLabel = ride ? RIDE_TYPE_LABEL[ride.rideType] : null;
+  return (
+    <div className="grid grid-cols-2 gap-2 border-t pt-3" style={{ borderColor: BORDER }}>
+      {[
+        ['🚗 Vehicle', vehicle ? `${vehicle.color} ${vehicle.make} ${vehicle.model}` : '—'],
+        ['🔢 Plate', vehicle?.plateNumber ?? '—'],
+        ['🏷 Class', typeLabel ?? '—'],
+      ].map(([l, v]) => (
+        <div key={l}>
+          <p className="mb-0.5 text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
+            {l}
+          </p>
+          <p className="text-[13px] font-medium" style={{ fontFamily: IT, color: '#fff' }}>
+            {v}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** The passenger's own trip code. Read it to the driver; the driver types it
+ * into their app and the backend checks it. Nobody sees it but the passenger,
+ * which is what makes it worth anything. */
+function TripCodeCard({ code }: { code: string | null }) {
+  if (!code) return null;
+  return (
+    <div
+      className="mb-4 flex items-center gap-4 rounded-2xl p-4"
+      style={{ background: 'rgba(43,172,82,.08)', border: '1px solid rgba(43,172,82,.25)' }}
+    >
+      <div className="flex-1">
+        <p className="text-[13px] font-semibold" style={{ fontFamily: PP, color: '#fff' }}>
+          Your trip code
+        </p>
+        <p className="text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
+          Read this to your driver before you set off
+        </p>
+      </div>
+      <p
+        className="text-[28px] font-bold tracking-[.3em]"
+        style={{ fontFamily: PP, color: G3 }}
+        aria-label={`Trip code ${code.split('').join(' ')}`}
+      >
+        {code}
+      </p>
+    </div>
+  );
+}
+
+/** "Share trip with family" — one control, the same on every screen of the
+ * trip, because the founder asked for it to be there the whole way through. */
+function ShareTripRow({ onShare }: { onShare?: () => void }) {
+  if (!onShare) return null;
+  return (
+    <button
+      onClick={onShare}
+      className="mb-4 flex w-full items-center gap-3 rounded-2xl p-3.5 transition-all active:scale-[.97]"
+      style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
+    >
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke={G2}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <circle cx="18" cy="5" r="3" />
+        <circle cx="6" cy="12" r="3" />
+        <circle cx="18" cy="19" r="3" />
+        <path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98" />
+      </svg>
+      <div className="flex-1 text-left">
+        <p className="text-[14px] font-medium" style={{ fontFamily: PP, color: '#fff' }}>
+          Share trip with family
+        </p>
+        <p className="text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
+          Let someone follow your ride live
+        </p>
+      </div>
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke={MUTED}
+        strokeWidth="2"
+        strokeLinecap="round"
+      >
+        <path d="M5 12h14M12 5l7 7-7 7" />
+      </svg>
+    </button>
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1716,13 +1847,20 @@ export function FindingDriverScreen({
 export function DriverAssignedScreen({
   onBack,
   onArrived,
+  onStarted,
   onCancel,
+  onShare,
   rideId,
   onMessageDriver,
 }: {
   onBack: () => void;
   onArrived: () => void;
+  /** The driver can start the trip straight from ARRIVED, and a passenger who
+   * had the app backgrounded can miss the arrival entirely — so this screen
+   * has to be able to jump the whole way. */
+  onStarted?: () => void;
   onCancel?: () => void;
+  onShare?: () => void;
   rideId?: string;
   onMessageDriver?: (rideId: string, driverName: string | null) => void;
 }) {
@@ -1731,6 +1869,7 @@ export function DriverAssignedScreen({
   const eta = ride ? Math.max(0, Math.round(ride.estimatedDurationSeconds / 60)) : null;
   const assigned = !!ride?.driverId;
   const typeLabel = ride ? RIDE_TYPE_LABEL[ride.rideType] : null;
+  useRideStatusAdvance(ride?.status, { ARRIVED: onArrived, IN_PROGRESS: onStarted });
 
   return (
     <div
@@ -1844,24 +1983,10 @@ export function DriverAssignedScreen({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 border-t pt-3" style={{ borderColor: BORDER }}>
-              {[
-                // Vehicle class is real (RideDto.rideType); make/model is not exposed.
-                ['🚗 Vehicle class', typeLabel ?? '—'],
-                // GAP: backend never provides driver plate.
-                ['🔢 Plate', '—'],
-              ].map(([l, v]) => (
-                <div key={l}>
-                  <p className="mb-0.5 text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
-                    {l}
-                  </p>
-                  <p className="text-[13px] font-medium" style={{ fontFamily: IT, color: '#fff' }}>
-                    {v}
-                  </p>
-                </div>
-              ))}
-            </div>
+            <VehicleFacts ride={ride} />
           </div>
+
+          <TripCodeCard code={ride?.verificationCode ?? null} />
 
           {/* Actions */}
           {/* "Call Driver" lived here and did nothing — and it cannot be made to
@@ -1921,18 +2046,7 @@ export function DriverAssignedScreen({
             </button>
           </div>
 
-          <button
-            onClick={onArrived}
-            className="flex h-12 w-full items-center justify-center rounded-2xl text-sm font-medium transition-all active:scale-[.97]"
-            style={{
-              background: NAVY_SURFACE,
-              border: `1px solid ${BORDER}`,
-              fontFamily: IT,
-              color: TEXT_SECONDARY,
-            }}
-          >
-            Simulate: Driver Arrived →
-          </button>
+          <ShareTripRow onShare={onShare} />
         </div>
       </BottomSheet>
     </div>
@@ -1947,15 +2061,20 @@ export function DriverArrivedScreen({
   onStart,
   onShare,
   rideId,
+  onMessageDriver,
 }: {
   onBack: () => void;
+  /** Fired when the *driver* starts the trip, not when the passenger taps
+   * anything — the passenger cannot start their own ride. */
   onStart: () => void;
   onShare?: () => void;
   rideId?: string;
+  onMessageDriver?: (rideId: string, driverName: string | null) => void;
 }) {
   const ride = useLiveRide(rideId);
   const typeLabel = ride ? RIDE_TYPE_LABEL[ride.rideType] : null;
   const [pulse, setPulse] = useState(true);
+  useRideStatusAdvance(ride?.status, { IN_PROGRESS: onStart });
   useEffect(() => {
     const t = setInterval(() => setPulse((p) => !p), 1200);
     return () => clearInterval(t);
@@ -2002,101 +2121,79 @@ export function DriverArrivedScreen({
               <p className="text-[16px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
                 Your driver has arrived!
               </p>
-              {/* GAP: backend never provides vehicle make/model or plate live — show ride class only. */}
               <p className="text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
-                {typeLabel ? `Look for your ${typeLabel} ride` : 'Your ride is here'}
+                {ride?.driverVehicle
+                  ? `Look for the ${ride.driverVehicle.color} ${ride.driverVehicle.make} ${ride.driverVehicle.model} — ${ride.driverVehicle.plateNumber}`
+                  : typeLabel
+                    ? `Look for your ${typeLabel} ride`
+                    : 'Your ride is here'}
               </p>
             </div>
           </div>
 
-          {/* Driver mini card */}
-          {/* GAP: RideDto exposes only driverId; no live driver name/rating/vehicle. */}
+          {/* Driver card — a real name and a real car, because a passenger
+              about to get in has to be able to check both. */}
           <div
-            className="flex items-center gap-3 rounded-2xl p-3"
+            className="rounded-2xl p-3"
             style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
           >
-            <div
-              className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl text-lg"
-              style={{
-                background: `linear-gradient(135deg,${G0},${G2})`,
-                color: '#fff',
-                fontFamily: PP,
-              }}
-            >
-              🚗
-            </div>
-            <div className="flex-1">
-              <p className="text-[14px] font-semibold" style={{ fontFamily: PP, color: '#fff' }}>
-                Driver assigned
-              </p>
-              <div className="flex items-center gap-1">
-                <span className="text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
-                  {typeLabel ?? '—'} · details after pickup
-                </span>
-              </div>
-            </div>
-            <button
-              className="flex h-10 w-10 items-center justify-center rounded-2xl"
-              style={{ background: 'rgba(43,172,82,.12)', border: '1px solid rgba(43,172,82,.2)' }}
-            >
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke={G2}
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+            <div className="mb-3 flex items-center gap-3">
+              <div
+                className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl text-lg"
+                style={{
+                  background: `linear-gradient(135deg,${G0},${G2})`,
+                  color: '#fff',
+                  fontFamily: PP,
+                }}
               >
-                <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 014.95 13 19.79 19.79 0 011.87 4.4 2 2 0 013.86 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" />
-              </svg>
-            </button>
+                🚗
+              </div>
+              <div className="flex-1">
+                <p className="text-[14px] font-semibold" style={{ fontFamily: PP, color: '#fff' }}>
+                  {ride?.driverName ?? 'Your driver'}
+                </p>
+                <p className="text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
+                  Waiting at your pickup point
+                </p>
+              </div>
+              {/* Chat, not a phone call — the passenger never receives the
+                  driver's number. The button that sat here dialled nothing. */}
+              {onMessageDriver && rideId && (
+                <button
+                  onClick={() => onMessageDriver(rideId, ride?.driverName ?? null)}
+                  aria-label="Message driver"
+                  className="flex h-10 items-center justify-center gap-1.5 rounded-2xl px-3"
+                  style={{
+                    background: 'rgba(43,172,82,.12)',
+                    border: '1px solid rgba(43,172,82,.2)',
+                    fontFamily: IT,
+                    fontSize: 12,
+                    color: G3,
+                  }}
+                >
+                  💬 Message
+                </button>
+              )}
+            </div>
+            <VehicleFacts ride={ride} />
           </div>
 
-          {/* Share trip */}
-          <button
-            onClick={onShare}
-            className="flex items-center gap-3 rounded-2xl p-3.5 transition-all active:scale-[.97]"
+          <TripCodeCard code={ride?.verificationCode ?? null} />
+
+          <ShareTripRow onShare={onShare} />
+
+          {/* No "Start Trip" button. The passenger cannot start their own
+              ride — the driver does, after the trip code checks out — so a
+              button here only ever lied about who was in control. */}
+          <div
+            className="flex items-center justify-center gap-2 rounded-2xl px-4 py-3"
             style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
           >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke={G2}
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="18" cy="5" r="3" />
-              <circle cx="6" cy="12" r="3" />
-              <circle cx="18" cy="19" r="3" />
-              <path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98" />
-            </svg>
-            <div className="flex-1 text-left">
-              <p className="text-[14px] font-medium" style={{ fontFamily: PP, color: '#fff' }}>
-                Share trip with family
-              </p>
-              <p className="text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
-                Let someone track your ride
-              </p>
-            </div>
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke={MUTED}
-              strokeWidth="2"
-              strokeLinecap="round"
-            >
-              <path d="M5 12h14M12 5l7 7-7 7" />
-            </svg>
-          </button>
-
-          <GreenButton label="Start Trip →" onClick={onStart} />
+            <div className="h-2 w-2 animate-pulse rounded-full" style={{ background: G3 }} />
+            <p className="text-[13px]" style={{ fontFamily: IT, color: TEXT_SECONDARY }}>
+              Give your driver the trip code to set off
+            </p>
+          </div>
         </div>
       </BottomSheet>
     </div>
@@ -2110,41 +2207,48 @@ export function RideInProgressScreen({
   onBack,
   onComplete,
   onSOS,
+  onShare,
   rideId,
+  onMessageDriver,
 }: {
   onBack: () => void;
+  /** Fired when the driver completes the trip on the server — not on a timer. */
   onComplete: () => void;
   onSOS?: () => void;
+  onShare?: () => void;
   rideId?: string;
+  onMessageDriver?: (rideId: string, driverName: string | null) => void;
 }) {
   const ride = useLiveRide(rideId);
   const typeLabel = ride ? RIDE_TYPE_LABEL[ride.rideType] : null;
-  const [progress, setProgress] = useState(0.15);
-  const [elapsed, setElapsed] = useState(0);
   const [expanded, setExpanded] = useState(false);
+  useRideStatusAdvance(ride?.status, { COMPLETED: onComplete });
 
+  // A ticking clock, so the elapsed figures below stay current between polls.
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const t = setInterval(() => {
-      setProgress((p) => {
-        const next = Math.min(p + 0.04, 1);
-        if (next >= 1) {
-          clearInterval(t);
-          setTimeout(onComplete, 800);
-        }
-        return next;
-      });
-      setElapsed((e) => e + 1);
-    }, 1200);
+    const t = setInterval(() => setNow(Date.now()), 5000);
     return () => clearInterval(t);
   }, []);
 
-  // Seed the countdown from the ride's real estimated duration/distance.
-  // NOTE: live position is WebSocket-only and out of scope; the % is a local
-  // animation, not a real GPS position.
-  const totalMin = ride ? Math.max(1, Math.round(ride.estimatedDurationSeconds / 60)) : 22;
-  const totalKm = ride ? ride.estimatedDistanceMeters / 1000 : 14;
-  const remaining = Math.max(0, Math.round(totalMin * (1 - progress)));
-  const distLeft = (totalKm * (1 - progress)).toFixed(1);
+  /**
+   * Progress against the *estimated* duration, measured from the real
+   * `startedAt` on the ride. This used to be a 1.2s interval that filled a bar
+   * and then declared the trip over and navigated to the receipt — regardless
+   * of where the car was. Now the bar is an estimate that says so, and only
+   * the driver completing the trip ends it.
+   */
+  const totalMin = ride ? Math.max(1, Math.round(ride.estimatedDurationSeconds / 60)) : null;
+  const totalKm = ride ? ride.estimatedDistanceMeters / 1000 : null;
+  const startedAtMs = ride?.startedAt ? new Date(ride.startedAt).getTime() : null;
+  const elapsedMin =
+    startedAtMs !== null && !Number.isNaN(startedAtMs)
+      ? Math.max(0, (now - startedAtMs) / 60000)
+      : null;
+  const progress =
+    totalMin !== null && elapsedMin !== null ? Math.min(elapsedMin / totalMin, 1) : 0;
+  const remaining = totalMin !== null ? Math.max(0, Math.round(totalMin * (1 - progress))) : null;
+  const distLeft = totalKm !== null ? (totalKm * (1 - progress)).toFixed(1) : '—';
   const fareLabel = ride ? naira(ride.totalFare) : '—';
 
   return (
@@ -2169,7 +2273,7 @@ export function RideInProgressScreen({
           <div className="mb-4">
             <div className="mb-2 flex justify-between">
               <p className="text-[13px] font-medium" style={{ fontFamily: IT, color: MUTED }}>
-                Trip progress
+                Trip progress (estimated)
               </p>
               <p className="text-[13px] font-semibold" style={{ fontFamily: IT, color: G3 }}>
                 {Math.round(progress * 100)}%
@@ -2192,7 +2296,7 @@ export function RideInProgressScreen({
           {/* Stats row */}
           <div className="mb-4 flex gap-2">
             {[
-              { v: `${remaining}`, u: 'min left', icon: '⏱' },
+              { v: remaining !== null ? `${remaining}` : '—', u: 'min left', icon: '⏱' },
               { v: distLeft, u: 'km left', icon: '📍' },
               { v: fareLabel, u: 'fare', icon: '💳' },
             ].map((s) => (
@@ -2212,13 +2316,14 @@ export function RideInProgressScreen({
             ))}
           </div>
 
-          {/* Driver row */}
+          {/* Driver row — the passenger's own driver, by name, with the car
+              they are sitting in. It used to read "Driver assigned · details
+              after trip", which is no use to someone already in the seat. */}
           <button
             onClick={() => setExpanded(!expanded)}
             className="mb-3 flex w-full items-center gap-3 rounded-2xl p-3 transition-all"
             style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
           >
-            {/* GAP: RideDto exposes only driverId; no live driver name/plate/vehicle. */}
             <div
               className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl text-sm"
               style={{
@@ -2231,10 +2336,12 @@ export function RideInProgressScreen({
             </div>
             <div className="flex-1 text-left">
               <p className="text-[13px] font-semibold" style={{ fontFamily: PP, color: '#fff' }}>
-                Driver assigned
+                {ride?.driverName ?? 'Your driver'}
               </p>
               <p className="text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
-                {typeLabel ?? '—'} · details after trip
+                {ride?.driverVehicle
+                  ? `${ride.driverVehicle.color} ${ride.driverVehicle.make} ${ride.driverVehicle.model} · ${ride.driverVehicle.plateNumber}`
+                  : (typeLabel ?? '—')}
               </p>
             </div>
             <svg
@@ -2257,13 +2364,20 @@ export function RideInProgressScreen({
           {expanded && (
             <div className="mb-3 flex gap-2">
               {[
-                { label: 'Call', icon: '📞', fn: undefined },
-                { label: 'Message', icon: '💬', fn: undefined },
+                {
+                  label: 'Message',
+                  icon: '💬',
+                  fn:
+                    onMessageDriver && rideId
+                      ? () => onMessageDriver(rideId, ride?.driverName ?? null)
+                      : undefined,
+                },
                 { label: 'Emergency', icon: '🆘', fn: onSOS },
               ].map((a) => (
                 <button
                   key={a.label}
                   onClick={a.fn}
+                  disabled={!a.fn}
                   className="flex flex-1 flex-col items-center gap-1 rounded-xl py-2.5 transition-all active:scale-[.95]"
                   style={{
                     background: NAVY_CARD,
@@ -2271,6 +2385,7 @@ export function RideInProgressScreen({
                     fontFamily: IT,
                     fontSize: 12,
                     color: TEXT_SECONDARY,
+                    opacity: a.fn ? 1 : 0.45,
                   }}
                 >
                   <span>{a.icon}</span>
@@ -2279,6 +2394,8 @@ export function RideInProgressScreen({
               ))}
             </div>
           )}
+
+          <ShareTripRow onShare={onShare} />
 
           {/* Route */}
           <div
@@ -2340,7 +2457,13 @@ export function TripCompletedScreen({
     : '—';
   const distanceLabel = ride ? `${(ride.estimatedDistanceMeters / 1000).toFixed(1)} km` : '—';
   const routeLabel = ride ? `${ride.pickupAddress ?? '—'} → ${ride.dropoffAddress ?? '—'}` : '—';
-  const totalLabel = receipt ? naira(receipt.fare) : ride ? naira(ride.totalFare) : '—';
+  // `receipt.fare` is the fare *breakdown* object, not a number — passing it
+  // straight to naira() is what printed "₦NaN" on the trip-completed screen.
+  const totalLabel = receipt
+    ? naira(receipt.fare.totalFare + (receipt.fare.tipAmount ?? 0))
+    : ride
+      ? naira(ride.totalFare)
+      : '—';
 
   return (
     <div
@@ -2401,10 +2524,13 @@ export function TripCompletedScreen({
               ['Duration', durationLabel],
               ['Distance', distanceLabel],
               ['Route', routeLabel],
-              // Driver name is available post-ride from the receipt only.
-              ['Driver', receipt?.driver?.name ?? '—'],
-              // GAP: receipt exposes driver name only; no vehicle make/model or plate.
-              ['Vehicle', typeLabel ?? '—'],
+              ['Driver', receipt?.driver?.name ?? ride?.driverName ?? '—'],
+              [
+                'Vehicle',
+                ride?.driverVehicle
+                  ? `${ride.driverVehicle.color} ${ride.driverVehicle.make} ${ride.driverVehicle.model} · ${ride.driverVehicle.plateNumber}`
+                  : (typeLabel ?? '—'),
+              ],
             ].map(([l, v]) => (
               <div key={l} className="mb-2.5 flex items-start justify-between">
                 <p className="text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
@@ -5005,11 +5131,63 @@ export function EmergencySOSScreen({ onBack, onSOS }: { onBack?: () => void; onS
   );
 }
 
-// 12. ShareTripScreen
-export function ShareTripScreen({ onBack }: { onBack?: () => void }) {
+// 12. ShareTripScreen — a real link to a real live trip.
+//
+// This screen used to show a hardcoded `drpx.app/t/RX-5201`, a hardcoded
+// driver ("Adeyemi Okafor • LAG 482 KA"), share buttons wired to nothing, a
+// QR code drawn with Math.random(), and an "auto-share with emergency
+// contacts" toggle that saved nowhere. Nothing was ever shared.
+export function ShareTripScreen({ onBack, rideId }: { onBack?: () => void; rideId?: string }) {
+  const ride = useLiveRide(rideId);
+  const [link, setLink] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [autoShare, setAutoShare] = useState(false);
-  const link = 'drpx.app/t/RX-5201';
+
+  useEffect(() => {
+    if (!rideId) return;
+    let alive = true;
+    api.rides
+      .share(rideId)
+      .then((res) => {
+        if (alive) setLink(`${window.location.origin}${res.path}`);
+      })
+      .catch((e: unknown) => {
+        if (alive) setError(e instanceof Error ? e.message : 'Could not create a link right now.');
+      });
+    return () => {
+      alive = false;
+    };
+  }, [rideId]);
+
+  const message = link
+    ? `I'm on a DrippleX trip${ride?.dropoffAddress ? ` to ${ride.dropoffAddress}` : ''}. Follow me here: ${link}`
+    : '';
+
+  const copy = async () => {
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(message);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setError('Copying is blocked in this browser — select the link above instead.');
+    }
+  };
+
+  // The OS share sheet is the only way to reach WhatsApp, Messages, Telegram
+  // and the rest without pretending to integrate with each of them.
+  const nativeShare = async () => {
+    if (!link) return;
+    if (typeof navigator.share !== 'function') {
+      await copy();
+      return;
+    }
+    try {
+      await navigator.share({ title: 'My DrippleX trip', text: message, url: link });
+    } catch {
+      /* The person dismissed the share sheet. Nothing to report. */
+    }
+  };
 
   return (
     <div
@@ -5022,141 +5200,83 @@ export function ShareTripScreen({ onBack }: { onBack?: () => void }) {
         <p style={{ fontFamily: PP, fontSize: 18, fontWeight: 700, color: '#fff' }}>
           Share Your Trip
         </p>
-        {/* LIVE badge */}
-        <div
-          className="ml-auto flex items-center gap-1.5 rounded-full px-2.5 py-1"
-          style={{ background: 'rgba(34,197,94,.15)', border: `1px solid ${G3}` }}
-        >
-          <div className="h-2 w-2 animate-pulse rounded-full" style={{ background: G3 }} />
-          <p style={{ fontSize: 11, fontFamily: PP, fontWeight: 700, color: G3 }}>LIVE</p>
-        </div>
+        {link && (
+          <div
+            className="ml-auto flex items-center gap-1.5 rounded-full px-2.5 py-1"
+            style={{ background: 'rgba(34,197,94,.15)', border: `1px solid ${G3}` }}
+          >
+            <div className="h-2 w-2 animate-pulse rounded-full" style={{ background: G3 }} />
+            <p style={{ fontSize: 11, fontFamily: PP, fontWeight: 700, color: G3 }}>LIVE</p>
+          </div>
+        )}
       </div>
       <div className="flex-1 overflow-y-auto px-5" style={{ scrollbarWidth: 'none' }}>
-        {/* Trip snapshot */}
-        <div className="mb-4 overflow-hidden rounded-2xl" style={{ border: `1px solid ${BORDER}` }}>
-          {/* Map thumbnail */}
-          <div
-            className="flex h-32 items-center justify-center"
-            style={{ background: 'linear-gradient(135deg,#0f2027,#203a43,#2c5364)' }}
-          >
-            <svg width="100" height="60" viewBox="0 0 100 60">
-              <rect width="100" height="60" fill="none" />
-              <path
-                d="M10 50 Q30 20 50 30 Q70 40 90 10"
-                stroke={G3}
-                strokeWidth="2.5"
-                fill="none"
-                strokeLinecap="round"
-                strokeDasharray="4 2"
-              />
-              <circle cx="10" cy="50" r="4" fill={G3} />
-              <circle cx="90" cy="10" r="4" fill="#3B82F6" />
-            </svg>
-          </div>
-          <div className="p-4" style={{ background: NAVY_CARD }}>
-            <p style={{ fontFamily: PP, fontSize: 14, fontWeight: 600, color: '#fff' }}>
-              Adeyemi Okafor • LAG 482 KA
-            </p>
-            <p style={{ fontSize: 12, color: TEXT_SECONDARY, fontFamily: IT, marginTop: 2 }}>
-              ETA: Arriving 9:58 AM
-            </p>
-          </div>
+        {/* Trip snapshot — the driver and car actually on this ride. */}
+        <div
+          className="mb-4 rounded-2xl p-4"
+          style={{ background: NAVY_CARD, border: `1px solid ${BORDER}` }}
+        >
+          <p style={{ fontFamily: PP, fontSize: 14, fontWeight: 600, color: '#fff' }}>
+            {ride?.driverName ?? 'Driver not assigned yet'}
+            {ride?.driverVehicle ? ` • ${ride.driverVehicle.plateNumber}` : ''}
+          </p>
+          <p style={{ fontSize: 12, color: TEXT_SECONDARY, fontFamily: IT, marginTop: 2 }}>
+            {ride?.dropoffAddress ? `Heading to ${ride.dropoffAddress}` : 'Trip in progress'}
+          </p>
         </div>
-        {/* Share link */}
+
+        {error && (
+          <div
+            className="mb-4 rounded-xl px-3 py-2"
+            style={{ background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.25)' }}
+          >
+            <p style={{ fontSize: 12, fontFamily: IT, color: '#F87171' }}>{error}</p>
+          </div>
+        )}
+
+        {/* The link itself */}
         <div className="mb-4 flex gap-2">
           <div
-            className="flex flex-1 items-center rounded-xl px-4 py-3"
+            className="flex flex-1 items-center overflow-hidden rounded-xl px-4 py-3"
             style={{ background: NAVY_CARD, border: `1px solid ${BORDER}` }}
           >
-            <p style={{ fontSize: 13, color: G3, fontFamily: IT, flex: 1 }}>{link}</p>
+            <p
+              className="truncate"
+              style={{ fontSize: 13, color: link ? G3 : MUTED, fontFamily: IT, flex: 1 }}
+            >
+              {link ?? 'Creating your link…'}
+            </p>
           </div>
           <button
+            disabled={!link}
             className="rounded-xl px-4 text-sm font-semibold"
             style={{
               background: copied ? 'rgba(34,197,94,.1)' : NAVY_SURFACE,
               color: copied ? G3 : TEXT_SECONDARY,
               fontFamily: PP,
               border: `1px solid ${copied ? G3 : BORDER}`,
+              opacity: link ? 1 : 0.45,
             }}
-            onClick={() => {
-              setCopied(true);
-              setTimeout(() => setCopied(false), 2000);
-            }}
+            onClick={() => void copy()}
           >
             {copied ? '✓' : 'Copy'}
           </button>
         </div>
-        {/* Share to row */}
-        <p
-          style={{ fontSize: 11, fontFamily: PP, fontWeight: 600, color: MUTED, marginBottom: 10 }}
+
+        <button
+          disabled={!link}
+          onClick={() => void nativeShare()}
+          className="mb-6 flex h-12 w-full items-center justify-center rounded-2xl text-[14px] font-semibold active:scale-[.97]"
+          style={{
+            background: `linear-gradient(135deg,${G0},${G2})`,
+            fontFamily: IT,
+            color: '#fff',
+            opacity: link ? 1 : 0.45,
+          }}
         >
-          SHARE TO
-        </p>
-        <div className="mb-6 flex gap-3">
-          {[
-            { label: 'WhatsApp', color: '#25D366' },
-            { label: 'iMessage', color: '#2997FF' },
-            { label: 'Telegram', color: '#0088cc' },
-            { label: 'More', color: MUTED },
-          ].map((s) => (
-            <button
-              key={s.label}
-              className="flex flex-1 flex-col items-center gap-1 rounded-xl p-3 transition-all active:scale-95"
-              style={{ background: NAVY_CARD, border: `1px solid ${BORDER}` }}
-            >
-              <div className="h-8 w-8 rounded-full" style={{ background: s.color + '22' }} />
-              <p style={{ fontSize: 10, color: TEXT_SECONDARY, fontFamily: IT }}>{s.label}</p>
-            </button>
-          ))}
-        </div>
-        {/* QR code placeholder */}
-        <div className="mb-4 flex justify-center">
-          <div className="rounded-2xl p-3" style={{ background: '#fff' }}>
-            <svg width="80" height="80" viewBox="0 0 80 80">
-              {Array.from({ length: 8 }).map((_, r) =>
-                Array.from({ length: 8 }).map((_, c) =>
-                  (r < 3 && c < 3) ||
-                  (r < 3 && c > 4) ||
-                  (r > 4 && c < 3) ||
-                  Math.random() > 0.5 ? (
-                    <rect
-                      key={`${r}-${c}`}
-                      x={c * 10}
-                      y={r * 10}
-                      width={9}
-                      height={9}
-                      fill="#0A1628"
-                    />
-                  ) : null,
-                ),
-              )}
-            </svg>
-          </div>
-        </div>
-        {/* Auto-share toggle */}
-        <div
-          className="mb-4 flex items-center justify-between rounded-2xl p-4"
-          style={{ background: NAVY_CARD, border: `1px solid ${BORDER}` }}
-        >
-          <div>
-            <p style={{ fontFamily: PP, fontSize: 14, fontWeight: 600, color: '#fff' }}>
-              Auto-share with emergency contacts
-            </p>
-            <p style={{ fontSize: 12, color: TEXT_SECONDARY, fontFamily: IT }}>
-              Sends trip link when ride starts
-            </p>
-          </div>
-          <button
-            className="relative h-6 w-12 rounded-full transition-all"
-            style={{ background: autoShare ? G3 : NAVY_SURFACE, border: `1px solid ${BORDER}` }}
-            onClick={() => setAutoShare(!autoShare)}
-          >
-            <div
-              className="absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all"
-              style={{ left: autoShare ? 'calc(100% - 22px)' : 2 }}
-            />
-          </button>
-        </div>
+          Send to family or friends
+        </button>
+
         <p
           style={{
             fontSize: 11,
@@ -5166,8 +5286,139 @@ export function ShareTripScreen({ onBack }: { onBack?: () => void }) {
             marginBottom: 20,
           }}
         >
-          Anyone with this link can see your live trip position.
+          Anyone with this link can follow your trip until 30 minutes after it ends. They see your
+          driver&apos;s first name, the car and where it is — not your phone number and not your
+          trip code.
         </p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * What the family member opening a shared link actually sees.
+ *
+ * Reached at `/t/<token>` with no sign-in. It polls the public endpoint, which
+ * returns first names and a last-known position and nothing else.
+ */
+export function SharedTripScreen({ token }: { token: string }) {
+  const [trip, setTrip] = useState<SharedRideDto | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    const load = () =>
+      api.rides
+        .getShared(token)
+        .then((t) => {
+          if (alive) {
+            setTrip(t);
+            setError(null);
+          }
+        })
+        .catch((e: unknown) => {
+          if (alive) setError(e instanceof Error ? e.message : 'This trip link is not valid.');
+        });
+    load();
+    const poll = setInterval(load, 10_000);
+    return () => {
+      alive = false;
+      clearInterval(poll);
+    };
+  }, [token]);
+
+  const headline: Record<RideStatus, string> = {
+    REQUESTED: 'Looking for a driver',
+    SEARCHING: 'Looking for a driver',
+    DRIVER_ASSIGNED: 'Driver on the way to pickup',
+    ARRIVED: 'Driver has arrived at pickup',
+    IN_PROGRESS: 'On the way',
+    COMPLETED: 'Arrived safely',
+    CANCELLED: 'Trip cancelled',
+    NO_DRIVERS_FOUND: 'No driver was found',
+  };
+
+  return (
+    <div
+      className="absolute inset-0 flex flex-col overflow-y-auto"
+      style={{ background: NAVY_DEEP, fontFamily: IT }}
+    >
+      <RideStatusBar />
+      <div className="px-5 pb-8 pt-4">
+        <p style={{ fontFamily: PP, fontSize: 20, fontWeight: 700, color: '#fff' }}>
+          DrippleX live trip
+        </p>
+
+        {error && !trip && (
+          <div
+            className="mt-6 rounded-2xl p-4"
+            style={{ background: 'rgba(239,68,68,.08)', border: '1px solid rgba(239,68,68,.25)' }}
+          >
+            <p style={{ fontSize: 13, fontFamily: IT, color: '#F87171' }}>{error}</p>
+          </div>
+        )}
+
+        {trip && (
+          <>
+            <div
+              className="mt-4 rounded-2xl p-4"
+              style={{ background: 'rgba(43,172,82,.08)', border: '1px solid rgba(43,172,82,.25)' }}
+            >
+              <p style={{ fontFamily: PP, fontSize: 16, fontWeight: 700, color: '#fff' }}>
+                {headline[trip.status]}
+              </p>
+              <p style={{ fontSize: 13, fontFamily: IT, color: MUTED, marginTop: 2 }}>
+                {trip.passengerFirstName ? `${trip.passengerFirstName}'s trip` : 'A DrippleX trip'}
+              </p>
+            </div>
+
+            <div
+              className="mt-4 rounded-2xl p-4"
+              style={{ background: NAVY_CARD, border: `1px solid ${BORDER}` }}
+            >
+              {[
+                ['Driver', trip.driverFirstName ?? 'Not assigned yet'],
+                [
+                  'Vehicle',
+                  trip.vehicle
+                    ? `${trip.vehicle.color} ${trip.vehicle.make} ${trip.vehicle.model}`
+                    : '—',
+                ],
+                ['Plate', trip.vehicle?.plateNumber ?? '—'],
+                ['From', trip.pickupAddress ?? '—'],
+                ['To', trip.dropoffAddress ?? '—'],
+                [
+                  'Driver position',
+                  trip.driverPosition
+                    ? `${trip.driverPosition.latitude.toFixed(4)}, ${trip.driverPosition.longitude.toFixed(4)}`
+                    : 'Not available',
+                ],
+              ].map(([l, v]) => (
+                <div key={l} className="mb-2.5 flex items-start justify-between gap-4">
+                  <p style={{ fontSize: 13, fontFamily: IT, color: MUTED }}>{l}</p>
+                  <p
+                    className="max-w-[60%] text-right"
+                    style={{ fontSize: 13, fontFamily: IT, color: '#fff', fontWeight: 500 }}
+                  >
+                    {v}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            <p
+              style={{
+                fontSize: 11,
+                color: MUTED,
+                fontFamily: IT,
+                textAlign: 'center',
+                marginTop: 20,
+              }}
+            >
+              This page refreshes on its own. The link stops working 30 minutes after the trip ends.
+            </p>
+          </>
+        )}
       </div>
     </div>
   );

@@ -7,9 +7,11 @@ import { CommercialCreditSettingsService } from './commercial-credit-settings.se
 import { CommissionAccountService } from './commission-account.service';
 import { AdminCommercialCreditSettingsController } from './controllers/admin-commercial-credit-settings.controller';
 import { AdminCommissionAccountsController } from './controllers/admin-commission-accounts.controller';
+import { AdminCommissionRosterController } from './controllers/admin-commission-roster.controller';
 import { AdminPlatformCommissionSettingsController } from './controllers/admin-platform-commission-settings.controller';
 import { DriverCommercialController } from './controllers/driver-commercial.controller';
 import { MerchantCommercialController } from './controllers/merchant-commercial.controller';
+import { PartnerPositionService } from './partner-position.service';
 import { PlatformCommissionSettingsService } from './platform-commission-settings.service';
 
 /**
@@ -25,6 +27,7 @@ import { PlatformCommissionSettingsService } from './platform-commission-setting
   imports: [PrismaModule, AuditModule],
   controllers: [
     AdminCommercialCreditSettingsController,
+    AdminCommissionRosterController,
     AdminCommissionAccountsController,
     AdminPlatformCommissionSettingsController,
     MerchantCommercialController,
@@ -33,6 +36,7 @@ import { PlatformCommissionSettingsService } from './platform-commission-setting
   providers: [
     CommercialCreditSettingsService,
     CommissionAccountService,
+    PartnerPositionService,
     PlatformCommissionSettingsService,
   ],
   exports: [

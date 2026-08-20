@@ -25,6 +25,7 @@ import { RidePaymentService } from '../ride-payment.service';
 import { RideProblemReportService } from '../ride-problem-report.service';
 import { RideRatingService } from '../ride-rating.service';
 import { RideReceiptService } from '../ride-receipt.service';
+import { RideShareService } from '../ride-share.service';
 import { RideTrackingReadService } from '../ride-tracking-read.service';
 import { RIDE_PERMISSIONS } from '../ride.constants';
 import { RidesService } from '../rides.service';
@@ -40,6 +41,7 @@ import type {
   RideProblemReportDto,
   RideRatingDto,
   RideReceiptDto,
+  RideShareLinkDto,
   RideTrackingPointDto,
   RideTypeCatalogEntryDto,
 } from '@dripplex/types';
@@ -55,6 +57,7 @@ export class CustomerRidesController {
     private readonly receiptService: RideReceiptService,
     private readonly problemReportService: RideProblemReportService,
     private readonly trackingReadService: RideTrackingReadService,
+    private readonly shareService: RideShareService,
   ) {}
 
   /** Registered before `:id` — otherwise "types" would be captured as a
@@ -180,6 +183,17 @@ export class CustomerRidesController {
     const data = await this.paymentService.verifyPayment(user.id, id, dto.reference, {
       userId: user.id,
     });
+    return { success: true, data };
+  }
+
+  /** Mints (or returns) the passenger's public share link for this trip. */
+  @Post(':id/share')
+  @HttpCode(HttpStatus.OK)
+  public async shareRide(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ApiSuccessResponse<RideShareLinkDto>> {
+    const data = await this.shareService.createShareLink(user.id, id);
     return { success: true, data };
   }
 

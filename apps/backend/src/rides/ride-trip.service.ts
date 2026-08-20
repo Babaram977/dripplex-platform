@@ -78,10 +78,12 @@ export class RideTripService {
   public async startTrip(
     driverId: string,
     rideId: string,
+    verificationCode: string | undefined,
     context: AuditContext,
   ): Promise<RideDto> {
     const ride = await this.requireAssignedRide(driverId, rideId);
     this.requireStatus(ride, RideStatus.ARRIVED, 'started');
+    this.requireVerificationCode(ride, verificationCode);
     const distanceMeters = await this.requireDriverNearPickup(driverId, ride);
 
     const updated = await this.prisma.ride.update({
@@ -179,11 +181,29 @@ export class RideTripService {
   }
 
   /**
-   * Founder-locked decision: no mandatory passenger OTP/PIN before ride
-   * start. Instead, gate "Start Ride" on the driver's last-known location
-   * being within RIDE_START_PROXIMITY_METERS of the pickup point — reduces
-   * accidental or fraudulent starts without requiring any passenger
-   * interaction. Returns the measured distance for the audit trail.
+   * The passenger's trip code — the proof that the person getting into the car
+   * is the person who booked it. Generated when the driver accepts the offer,
+   * shown only in the passenger's app, and read out at the kerb.
+   *
+   * Rides assigned before trip codes existed carry no code; those skip the
+   * check rather than becoming permanently unstartable.
+   */
+  private requireVerificationCode(ride: Ride, supplied: string | undefined): void {
+    if (ride.verificationCode === null) {
+      return;
+    }
+    if (supplied?.trim() !== ride.verificationCode) {
+      throw new ValidationDomainException(
+        'That trip code does not match. Ask your passenger to read the code shown in their app.',
+      );
+    }
+  }
+
+  /**
+   * The second half of the start gate: the driver's last-known location must
+   * be within RIDE_START_PROXIMITY_METERS of the pickup point. The trip code
+   * proves *who* is in the car; this proves the car is at the kerb it was
+   * sent to. Returns the measured distance for the audit trail.
    */
   private async requireDriverNearPickup(driverId: string, ride: Ride): Promise<number> {
     const availability = await this.prisma.driverAvailability.findUnique({

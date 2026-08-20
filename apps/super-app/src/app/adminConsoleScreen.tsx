@@ -12,7 +12,14 @@ import {
   type AdminFleetDriverDto,
   type AdminFleetSummaryDto,
   type AdminLiveRideDto,
+  type AdminCommissionAccountDto,
   type AdminCustomerDto,
+  type AdminAnalyticsOverviewDto,
+  type CommercialCreditSettingDto,
+  type CommissionLedgerEntryDto,
+  type CommissionOwnerType,
+  type PartnerFinancialPositionDto,
+  type RideQueueSummaryDto,
   type AdminMerchantDto,
   type AdminUtilityPurchaseDto,
   type UtilityFloatStatusDto,
@@ -28,7 +35,7 @@ import {
   type RideType,
 } from '../lib/api';
 import { auth } from '../lib/auth';
-import { addressPredictions, geocodeAddress, loadGoogleMaps, mapsEnabled } from '../lib/maps';
+import { addressPredictions, geocodeAddress, mapsEnabled, mapsLibrary } from '../lib/maps';
 
 import type { AddressPrediction } from '../lib/maps';
 import {
@@ -79,6 +86,7 @@ export type AdminPage =
   | 'riders'
   | 'customers'
   | 'pricing'
+  | 'commissions'
   | 'billpayments'
   | 'incidents'
   | 'support'
@@ -305,8 +313,6 @@ function Card({
 
 const TRIPS: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
 
-const REVENUE_DATA: Record<string, unknown>[] = []; // mock cleared — no revenue time-series feed yet
-
 const WEEKLY_DATA: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
 
 const DRIVER_GROWTH: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
@@ -375,6 +381,7 @@ const NAV_ITEMS: { page: AdminPage; icon: string; label: string }[] = [
   { page: 'riders', icon: '🛵', label: 'Riders' },
   { page: 'customers', icon: '👥', label: 'Customers' },
   { page: 'pricing', icon: '💲', label: 'Pricing' },
+  { page: 'commissions', icon: '🧾', label: 'Commissions' },
   { page: 'billpayments', icon: '📱', label: 'Bill Payments' },
   { page: 'incidents', icon: '⚠️', label: 'Incidents' },
   { page: 'support', icon: '🎧', label: 'Support' },
@@ -529,6 +536,7 @@ const PAGE_LABELS: Record<AdminPage, string> = {
   riders: 'Riders',
   customers: 'Customers',
   pricing: 'Pricing & Fares',
+  commissions: 'Commission Accounts',
   billpayments: 'Bill Payments',
   incidents: 'Incidents',
   support: 'Support Centre',
@@ -821,7 +829,8 @@ function PageDashboard() {
   } | null>(null);
   const [fleet, setFleet] = useState<AdminFleetSummaryDto | null>(null);
   const [rides, setRides] = useState<AdminLiveRideDto[] | null>(null);
-  const [overview, setOverview] = useState<{ ridesCompleted: number } | null>(null);
+  const [queueSummary, setQueueSummary] = useState<RideQueueSummaryDto | null>(null);
+  const [overview, setOverview] = useState<AdminAnalyticsOverviewDto | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -837,7 +846,11 @@ function PageDashboard() {
     );
     const loadRides = () =>
       api.admin.getRideQueue().then(
-        (v) => !cancelled && setRides(v.rides),
+        (v) => {
+          if (cancelled) return;
+          setRides(v.rides);
+          setQueueSummary(v.summary);
+        },
         () => {},
       );
     void loadRides();
@@ -848,7 +861,7 @@ function PageDashboard() {
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     void api.admin.getAnalyticsOverview(startOfToday.toISOString(), now.toISOString()).then(
-      (v) => !cancelled && setOverview({ ridesCompleted: v.ridesCompleted }),
+      (v) => !cancelled && setOverview(v),
       () => {},
     );
     return () => {
@@ -865,6 +878,26 @@ function PageDashboard() {
   const fmt = (n: number) =>
     '₦' +
     (n >= 1000000 ? (n / 1000000).toFixed(1) + 'M' : n >= 1000 ? (n / 1000).toFixed(0) + 'K' : n);
+
+  /** The revenue chart's points: one per hour of today, DrippleX's commission
+   * against the clock. The chart used to plot REVENUE_DATA — an array emptied
+   * when its mock was removed and never replaced, so the card drew an empty
+   * box. Buckets past the current hour are dropped: a flat line running to
+   * midnight reads as "we earned nothing all evening" rather than "the evening
+   * has not happened yet". */
+  const revenueSeries = (() => {
+    if (!overview) return [] as { time: string; revenue: number }[];
+    const nowMs = Date.now();
+    return overview.revenueSeries
+      .filter((bucket) => new Date(bucket.bucketStart).getTime() <= nowMs)
+      .map((bucket) => ({
+        time: new Date(bucket.bucketStart).toLocaleTimeString('en-NG', {
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+        revenue: bucket.platformCommission,
+      }));
+  })();
 
   // Trip Status pie from the real live ride queue (status distribution).
   const pieData = (() => {
@@ -894,10 +927,14 @@ function PageDashboard() {
       {/* KPI Row 1 */}
       <div style={{ display: 'flex', gap: 12 }}>
         <KpiCard label="Active Trips" value={c(activeTrips)} sub="Live now" color={G3} icon="🚗" />
+        {/* Rides still looking for a driver. This read the ops-case
+            "waiting review" counter, which counts SOS/incident/support cases —
+            a different queue entirely, and always 0 on a healthy day, which is
+            why the tile looked dead no matter how many rides were booked. */}
         <KpiCard
           label="Pending Requests"
-          value={c(counters?.waitingReviewCount)}
-          sub="Awaiting review"
+          value={c(queueSummary?.pendingCount)}
+          sub="Waiting for a driver"
           color={C_WARN}
           icon="⏳"
         />
@@ -908,7 +945,16 @@ function PageDashboard() {
           color={C_OK}
           icon="✅"
         />
-        <KpiCard label="Revenue Today" value="—" sub="No feed yet" color={G2} icon="💰" />
+        {/* DrippleX's own cut of every ride completed today, with the gross
+            passengers were charged underneath it. Both come from the ride
+            records themselves — this tile was a hardcoded em-dash. */}
+        <KpiCard
+          label="Revenue Today"
+          value={overview ? naira(overview.platformCommissionRevenue) : '—'}
+          sub={overview ? `${naira(overview.grossFareRevenue)} gross` : 'Loading…'}
+          color={G2}
+          icon="💰"
+        />
       </div>
       {/* KPI Row 2 */}
       <div style={{ display: 'flex', gap: 12 }}>
@@ -946,34 +992,50 @@ function PageDashboard() {
         {/* Area chart */}
         <Card style={{ flex: 2, padding: '14px 16px' }}>
           <SectionHeader title="Revenue Over Time (Today)" />
-          <ResponsiveContainer width="100%" height={120}>
-            <AreaChart data={REVENUE_DATA} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-              <defs>
-                <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={G2} stopOpacity={0.3} />
-                  <stop offset="95%" stopColor={G2} stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid {...CHART_GRID} />
-              <XAxis dataKey="time" tick={AXIS_STYLE} axisLine={false} tickLine={false} />
-              <YAxis
-                tickFormatter={fmt}
-                tick={AXIS_STYLE}
-                axisLine={false}
-                tickLine={false}
-                width={50}
-              />
-              <Tooltip formatter={(v: number) => fmt(v)} contentStyle={TOOLTIP_STYLE} />
-              <Area
-                type="monotone"
-                dataKey="revenue"
-                stroke={G3}
-                fill="url(#revGrad)"
-                strokeWidth={2}
-                dot={false}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+          {revenueSeries.length === 0 ? (
+            <div
+              style={{
+                height: 120,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 12,
+                color: MUTED,
+                fontFamily: 'Inter, sans-serif',
+              }}
+            >
+              No completed rides today yet.
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={120}>
+              <AreaChart data={revenueSeries} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                <defs>
+                  <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={G2} stopOpacity={0.3} />
+                    <stop offset="95%" stopColor={G2} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid {...CHART_GRID} />
+                <XAxis dataKey="time" tick={AXIS_STYLE} axisLine={false} tickLine={false} />
+                <YAxis
+                  tickFormatter={fmt}
+                  tick={AXIS_STYLE}
+                  axisLine={false}
+                  tickLine={false}
+                  width={50}
+                />
+                <Tooltip formatter={(v: number) => fmt(v)} contentStyle={TOOLTIP_STYLE} />
+                <Area
+                  type="monotone"
+                  dataKey="revenue"
+                  stroke={G3}
+                  fill="url(#revGrad)"
+                  strokeWidth={2}
+                  dot={false}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
         </Card>
         {/* Pie chart */}
         <Card style={{ flex: 1, padding: '14px 16px' }}>
@@ -4198,6 +4260,16 @@ function customerStatusChip(s: AdminCustomerDto['status']): { label: string; col
 }
 const naira = (n: number) => `₦${Math.round(n).toLocaleString()}`;
 
+/** Dates on the commissions desk read as "12 Aug, 14:05" — an operator
+ * reconciling a payment needs the day and the time, not an ISO string. */
+const commissionDateTime = (iso: string): string =>
+  new Date(iso).toLocaleString('en-NG', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
 function PageCustomers() {
   const [customers, setCustomers] = useState<AdminCustomerDto[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -4469,6 +4541,595 @@ function PageCustomers() {
   );
 }
 
+// ─── Page: Commissions ────────────────────────────────────────────────────────
+/**
+ * The commission credit desk.
+ *
+ * A merchant whose outstanding commission exceeds their credit limit is
+ * blocked from receiving new orders — their customers see "Merchant is
+ * currently blocked from receiving new orders due to an outstanding commission
+ * balance" at checkout. Until now the Ops Console had no page for any of this:
+ * the balance, the limit, the ledger and the pay-down endpoint all existed on
+ * the API and were reachable from nowhere, so the block could be hit but never
+ * cleared. This is that page.
+ */
+function PageCommissions() {
+  const [accounts, setAccounts] = useState<AdminCommissionAccountDto[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [ownerType, setOwnerType] = useState<'ALL' | CommissionOwnerType>('ALL');
+  const [blockedOnly, setBlockedOnly] = useState(false);
+  const [selected, setSelected] = useState<AdminCommissionAccountDto | null>(null);
+  const [ledger, setLedger] = useState<CommissionLedgerEntryDto[] | null>(null);
+  const [position, setPosition] = useState<PartnerFinancialPositionDto | null>(null);
+  const [partnerLimit, setPartnerLimit] = useState('');
+  const [partnerLimitNote, setPartnerLimitNote] = useState('');
+  const [partnerLimitMsg, setPartnerLimitMsg] = useState<string | null>(null);
+  const [payAmount, setPayAmount] = useState('');
+  const [payNote, setPayNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [actionMsg, setActionMsg] = useState<string | null>(null);
+  // The policy dial behind every block on this page.
+  const [limitFor, setLimitFor] = useState<CommissionOwnerType>('MERCHANT');
+  const [limit, setLimit] = useState<CommercialCreditSettingDto | null>(null);
+  const [limitInput, setLimitInput] = useState('');
+  const [limitMsg, setLimitMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    api.admin
+      .getCreditSetting(limitFor)
+      .then((setting) => {
+        if (!alive) return;
+        setLimit(setting);
+        setLimitInput(String(setting.creditLimit));
+      })
+      .catch(() => {
+        if (alive) setLimit(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [limitFor]);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      const res = await api.admin.listCommissionAccounts({
+        ...(ownerType === 'ALL' ? {} : { ownerType }),
+        ...(blockedOnly ? { blocked: true } : {}),
+        limit: 100,
+      });
+      setAccounts(res.items);
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load commission accounts.');
+      setAccounts([]);
+    }
+  }, [ownerType, blockedOnly]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const openAccount = async (account: AdminCommissionAccountDto) => {
+    setSelected(account);
+    setLedger(null);
+    setPosition(null);
+    setPayAmount('');
+    setPayNote('');
+    setActionMsg(null);
+    // Position and ledger are independent reads: one failing must not blank
+    // the other.
+    setPartnerLimit(
+      account.negotiatedCreditLimit === null ? '' : String(account.negotiatedCreditLimit),
+    );
+    setPartnerLimitNote(account.negotiationNote ?? '');
+    setPartnerLimitMsg(null);
+    void api.admin
+      .getPartnerPosition(account.ownerType, account.ownerId)
+      .then(setPosition)
+      .catch(() => setPosition(null));
+    try {
+      const res = await api.admin.getCommissionLedger(account.ownerType, account.ownerId);
+      setLedger(res.items);
+    } catch {
+      setLedger([]);
+    }
+  };
+
+  const recordPayment = async () => {
+    if (!selected || busy) return;
+    const amount = Number(payAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setActionMsg('Enter the amount received, in naira.');
+      return;
+    }
+    setBusy(true);
+    setActionMsg(null);
+    try {
+      const updated = await api.admin.recordCommissionPayment(
+        selected.ownerType,
+        selected.ownerId,
+        amount,
+        payNote.trim() || undefined,
+      );
+      setActionMsg(
+        updated.blocked
+          ? `Recorded. ${naira(updated.outstandingBalance)} still outstanding — still blocked.`
+          : `Recorded. Balance is now ${naira(updated.outstandingBalance)} and trading is unblocked.`,
+      );
+      setPayAmount('');
+      setPayNote('');
+      await load();
+      await openAccount({ ...selected, ...updated });
+    } catch (e: unknown) {
+      setActionMsg((e as { message?: string }).message ?? 'Could not record that payment.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** The limit agreed with THIS partner. Blank clears the agreement and hands
+   * them back to the owner-type default. */
+  const savePartnerLimit = async (clear = false) => {
+    if (!selected) return;
+    const raw = partnerLimit.trim();
+    const value = clear || raw === '' ? null : Number(raw);
+    if (value !== null && (!Number.isFinite(value) || value < 0)) {
+      setPartnerLimitMsg('Enter the agreed limit in naira, or clear it to use the default.');
+      return;
+    }
+    setPartnerLimitMsg(null);
+    try {
+      const updated = await api.admin.negotiateCreditLimit(
+        selected.ownerType,
+        selected.ownerId,
+        value,
+        partnerLimitNote.trim() || undefined,
+      );
+      setPartnerLimitMsg(
+        value === null
+          ? `Agreement cleared. Back on the ${selected.ownerType.toLowerCase()} default of ${naira(updated.creditLimit)}.`
+          : updated.blocked
+            ? `Agreed at ${naira(value)}. Still blocked — the balance is above it.`
+            : `Agreed at ${naira(value)}. Trading is open.`,
+      );
+      if (value === null) setPartnerLimit('');
+      await load();
+      const refreshed = await api.admin
+        .getPartnerPosition(selected.ownerType, selected.ownerId)
+        .catch(() => null);
+      if (refreshed) setPosition(refreshed);
+    } catch (e: unknown) {
+      setPartnerLimitMsg((e as { message?: string }).message ?? 'Could not save that limit.');
+    }
+  };
+
+  const saveLimit = async () => {
+    const value = Number(limitInput);
+    if (!Number.isFinite(value) || value < 0) {
+      setLimitMsg('Enter the new limit in naira.');
+      return;
+    }
+    setLimitMsg(null);
+    try {
+      const updated = await api.admin.updateCreditSetting(limitFor, value);
+      setLimit(updated);
+      setLimitMsg(
+        `Saved. New ${limitFor.toLowerCase()} limit is ${naira(updated.creditLimit)}. It applies from the next accrual — already-blocked partners stay blocked until their balance clears.`,
+      );
+      await load();
+    } catch (e: unknown) {
+      setLimitMsg((e as { message?: string }).message ?? 'Could not save that limit.');
+    }
+  };
+
+  const rows = accounts ?? [];
+  const blockedCount = rows.filter((a) => a.blocked).length;
+  const owed = rows.reduce((sum, a) => sum + a.outstandingBalance, 0);
+
+  return (
+    <div style={{ display: 'flex', gap: 14, height: '100%' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <select
+            className="dx-select"
+            style={{ color: MUTED }}
+            value={ownerType}
+            onChange={(e) => setOwnerType(e.target.value as 'ALL' | CommissionOwnerType)}
+          >
+            <option value="ALL">All partners</option>
+            <option value="MERCHANT">Merchants</option>
+            <option value="DRIVER">Drivers</option>
+            <option value="RIDER">Riders</option>
+          </select>
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              fontSize: 12,
+              color: MUTED,
+              fontFamily: 'Inter, sans-serif',
+              cursor: 'pointer',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={blockedOnly}
+              onChange={(e) => setBlockedOnly(e.target.checked)}
+            />
+            Blocked only
+          </label>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 14 }}>
+            <span style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              Blocked:{' '}
+              <strong style={{ color: blockedCount > 0 ? '#F87171' : WHITE }}>
+                {blockedCount}
+              </strong>
+            </span>
+            <span style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              Outstanding: <strong style={{ color: WHITE }}>{naira(owed)}</strong>
+            </span>
+          </div>
+        </div>
+
+        {error && (
+          <Card style={{ padding: '10px 14px', border: '1px solid rgba(239,68,68,.3)' }}>
+            <span style={{ fontSize: 12, color: '#F87171' }}>{error}</span>
+          </Card>
+        )}
+
+        {/* The credit limit is what decides who gets blocked, so it belongs on
+            the page where blocks are read. A flat naira ceiling bites hard on
+            high-value merchants: at a 10% platform commission, one ₦650,000
+            furniture order accrues ₦65,000 and blocks a shop whose limit is
+            ₦50,000 — on its first sale. Raising the limit is the lever; whether
+            a flat ceiling is the right shape for every category is a founder
+            decision, not one to change here. */}
+        <Card>
+          <SectionHeader title="Default credit limit" />
+          <p style={{ fontSize: 11, color: MUTED, marginBottom: 10, lineHeight: 1.5 }}>
+            A partner is blocked once their outstanding commission goes over this ceiling, and stays
+            blocked until the balance reaches zero — crossing back under the line is not enough.
+          </p>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <select
+              className="dx-select"
+              style={{ color: MUTED }}
+              value={limitFor}
+              onChange={(e) => setLimitFor(e.target.value as CommissionOwnerType)}
+            >
+              <option value="MERCHANT">Merchants</option>
+              <option value="DRIVER">Drivers</option>
+              <option value="RIDER">Riders</option>
+            </select>
+            <input
+              className="dx-input"
+              inputMode="decimal"
+              placeholder="Limit (₦)"
+              value={limitInput}
+              onChange={(e) => setLimitInput(e.target.value)}
+              style={{ width: 160 }}
+            />
+            <Btn label="Save limit" onClick={() => void saveLimit()} />
+            {limit && (
+              <span style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+                Currently {naira(limit.creditLimit)}
+              </span>
+            )}
+          </div>
+          {limitMsg && (
+            <p style={{ fontSize: 11, color: MUTED, marginTop: 10, lineHeight: 1.5 }}>{limitMsg}</p>
+          )}
+        </Card>
+
+        <Card style={{ padding: '12px 16px' }}>
+          <table
+            style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Inter, sans-serif' }}
+          >
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
+                {['Partner', 'Type', 'Outstanding', 'Credit limit', 'Status', 'Contact'].map(
+                  (h) => (
+                    <th
+                      key={h}
+                      style={{
+                        padding: '6px 8px',
+                        textAlign: 'left',
+                        fontSize: 11,
+                        color: MUTED,
+                        fontWeight: 500,
+                      }}
+                    >
+                      {h}
+                    </th>
+                  ),
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((a, i) => (
+                <tr
+                  key={a.id}
+                  className="dx-row"
+                  style={{
+                    borderBottom: '1px solid rgba(255,255,255,.04)',
+                    background:
+                      selected?.id === a.id
+                        ? 'rgba(71,207,114,.05)'
+                        : i % 2 === 1
+                          ? 'rgba(255,255,255,.01)'
+                          : 'transparent',
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => void openAccount(a)}
+                >
+                  <td style={{ padding: '8px 8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Avatar name={a.ownerName ?? '?'} size={26} />
+                      <span style={{ fontSize: 12, fontWeight: 600, color: WHITE }}>
+                        {a.ownerName ?? 'Unknown partner'}
+                      </span>
+                    </div>
+                  </td>
+                  <td style={{ padding: '8px 8px', fontSize: 11, color: MUTED }}>{a.ownerType}</td>
+                  <td style={{ padding: '8px 8px', fontSize: 12, color: WHITE }}>
+                    {naira(a.outstandingBalance)}
+                  </td>
+                  <td style={{ padding: '8px 8px', fontSize: 12, color: MUTED }}>
+                    {naira(a.creditLimit)}
+                    {a.negotiatedCreditLimit !== null && (
+                      <span style={{ fontSize: 10, color: G3 }}> · agreed</span>
+                    )}
+                  </td>
+                  <td style={{ padding: '8px 8px' }}>
+                    <Chip
+                      label={a.blocked ? 'Blocked' : 'Trading'}
+                      color={a.blocked ? '#F87171' : G3}
+                      bg={a.blocked ? 'rgba(239,68,68,.12)' : 'rgba(71,207,114,.12)'}
+                    />
+                  </td>
+                  <td style={{ padding: '8px 8px', fontSize: 11, color: MUTED }}>
+                    {a.ownerEmail ?? a.ownerPhone ?? '—'}
+                  </td>
+                </tr>
+              ))}
+              {accounts !== null && rows.length === 0 && (
+                <tr>
+                  <td colSpan={6} style={{ padding: '18px 8px', fontSize: 12, color: MUTED }}>
+                    {blockedOnly
+                      ? 'Nobody is blocked. Every partner is inside their credit limit.'
+                      : 'No commission accounts yet. One is created the first time a partner owes commission.'}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </Card>
+      </div>
+
+      {selected && (
+        <div style={{ width: 340, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {/* DrippleX's position with this partner, in one place. The money
+              lived in two unconnected records — a Wallet holding funds FOR
+              them and a CommissionAccount recording what they owe US — and
+              answering "where do we stand with this merchant?" meant two
+              lookups and mental arithmetic. */}
+          <Card>
+            <SectionHeader
+              title={selected.ownerName ?? 'Partner position'}
+              action={<Btn label="Close" outline small onClick={() => setSelected(null)} />}
+            />
+            <p style={{ fontSize: 11, color: MUTED, marginBottom: 10 }}>
+              {selected.ownerType} · {selected.ownerEmail ?? selected.ownerPhone ?? 'no contact'}
+            </p>
+
+            {position && (
+              <div
+                style={{
+                  background:
+                    position.netPosition >= 0 ? 'rgba(71,207,114,.08)' : 'rgba(239,68,68,.08)',
+                  border: `1px solid ${position.netPosition >= 0 ? 'rgba(71,207,114,.25)' : 'rgba(239,68,68,.25)'}`,
+                  borderRadius: 8,
+                  padding: '10px 12px',
+                  marginBottom: 12,
+                }}
+              >
+                <p style={{ fontSize: 11, color: MUTED, marginBottom: 2 }}>Net position</p>
+                <p
+                  style={{
+                    fontFamily: 'Poppins, sans-serif',
+                    fontSize: 20,
+                    fontWeight: 700,
+                    color: position.netPosition >= 0 ? G3 : '#F87171',
+                  }}
+                >
+                  {naira(Math.abs(position.netPosition))}
+                </p>
+                <p style={{ fontSize: 11, color: MUTED, marginTop: 2, lineHeight: 1.4 }}>
+                  {position.netPosition >= 0
+                    ? 'DrippleX would pay this out if the relationship settled today.'
+                    : 'Still owed to DrippleX after their wallet is emptied.'}
+                </p>
+              </div>
+            )}
+
+            {[
+              ['Wallet (available)', position ? naira(position.walletAvailable) : '—'],
+              ['Wallet (pending)', position ? naira(position.walletPending) : '—'],
+              ['Commission owed', naira(selected.outstandingBalance)],
+              ['Credit limit', naira(selected.creditLimit)],
+              ['Status', selected.blocked ? 'Blocked from trading' : 'Trading normally'],
+              ['Blocked since', selected.blockedAt ? commissionDateTime(selected.blockedAt) : '—'],
+              [
+                'Withdrawals pending',
+                position
+                  ? position.pendingWithdrawalCount === 0
+                    ? 'None'
+                    : `${naira(position.pendingWithdrawalAmount)} · ${String(position.pendingWithdrawalCount)}`
+                  : '—',
+              ],
+            ].map(([l, v]) => (
+              <div
+                key={l}
+                style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}
+              >
+                <span style={{ fontSize: 12, color: MUTED }}>{l}</span>
+                <span style={{ fontSize: 12, color: WHITE, fontWeight: 500 }}>{v}</span>
+              </div>
+            ))}
+
+            {position && (
+              <div style={{ borderTop: `1px solid ${BORDER}`, marginTop: 6, paddingTop: 10 }}>
+                <p
+                  style={{
+                    fontSize: 10,
+                    color: MUTED,
+                    textTransform: 'uppercase',
+                    letterSpacing: 1,
+                    marginBottom: 8,
+                  }}
+                >
+                  Lifetime
+                </p>
+                {[
+                  ['Commission accrued', naira(position.lifetimeCommissionAccrued)],
+                  ['Commission paid', naira(position.lifetimeCommissionPaid)],
+                  ['Paid into wallet', naira(position.lifetimeWalletCredited)],
+                  ['Paid out of wallet', naira(position.lifetimeWalletDebited)],
+                ].map(([l, v]) => (
+                  <div
+                    key={l}
+                    style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}
+                  >
+                    <span style={{ fontSize: 11, color: MUTED }}>{l}</span>
+                    <span style={{ fontSize: 11, color: WHITE }}>{v}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          {/* The limit agreed with THIS partner. Founder decision, 2026-08-20:
+              limits are individual "because of business difference" and are
+              negotiated and agreed between DrippleX and the merchant — a
+              furniture shop and a food vendor cannot share one ceiling. */}
+          <Card>
+            <SectionHeader title="Agreed credit limit" />
+            <p style={{ fontSize: 11, color: MUTED, marginBottom: 10, lineHeight: 1.5 }}>
+              {position?.negotiatedCreditLimit === null || position === null
+                ? `No limit agreed with this partner — they are on the ${selected.ownerType.toLowerCase()} default of ${naira(selected.creditLimit)}.`
+                : `Agreed at ${naira(position.negotiatedCreditLimit)}${
+                    position.negotiatedAt ? ` on ${commissionDateTime(position.negotiatedAt)}` : ''
+                  }.`}
+            </p>
+            <input
+              className="dx-input"
+              inputMode="decimal"
+              placeholder="Agreed limit (₦)"
+              value={partnerLimit}
+              onChange={(e) => setPartnerLimit(e.target.value)}
+              style={{ width: '100%', marginBottom: 8 }}
+            />
+            <input
+              className="dx-input"
+              placeholder="What was agreed, and with whom"
+              value={partnerLimitNote}
+              onChange={(e) => setPartnerLimitNote(e.target.value)}
+              style={{ width: '100%', marginBottom: 10 }}
+            />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Btn label="Save agreement" onClick={() => void savePartnerLimit()} />
+              {position?.negotiatedCreditLimit !== null && position !== null && (
+                <Btn label="Use default" outline onClick={() => void savePartnerLimit(true)} />
+              )}
+            </div>
+            {partnerLimitMsg && (
+              <p style={{ fontSize: 11, color: MUTED, marginTop: 10, lineHeight: 1.5 }}>
+                {partnerLimitMsg}
+              </p>
+            )}
+          </Card>
+
+          <Card>
+            <SectionHeader title="Record a payment" />
+            <p style={{ fontSize: 11, color: MUTED, marginBottom: 10, lineHeight: 1.5 }}>
+              Money DrippleX has actually received from this partner, outside the app. Recording it
+              pays the balance down; clearing enough of it unblocks them immediately.
+            </p>
+            <input
+              className="dx-input"
+              placeholder="Amount received (₦)"
+              inputMode="decimal"
+              value={payAmount}
+              onChange={(e) => setPayAmount(e.target.value)}
+              style={{ width: '100%', marginBottom: 8 }}
+            />
+            <input
+              className="dx-input"
+              placeholder="Reference or note (optional)"
+              value={payNote}
+              onChange={(e) => setPayNote(e.target.value)}
+              style={{ width: '100%', marginBottom: 10 }}
+            />
+            <Btn
+              label={busy ? 'Recording…' : 'Record payment'}
+              disabled={busy}
+              onClick={() => void recordPayment()}
+            />
+            {actionMsg && (
+              <p style={{ fontSize: 11, color: MUTED, marginTop: 10, lineHeight: 1.5 }}>
+                {actionMsg}
+              </p>
+            )}
+          </Card>
+
+          <Card style={{ flex: 1, overflowY: 'auto' }}>
+            <SectionHeader title="Ledger" />
+            {ledger === null && <span style={{ fontSize: 12, color: MUTED }}>Loading…</span>}
+            {ledger?.length === 0 && (
+              <span style={{ fontSize: 12, color: MUTED }}>No entries yet.</span>
+            )}
+            {(ledger ?? []).map((entry) => (
+              <div
+                key={entry.id}
+                style={{
+                  borderBottom: '1px solid rgba(255,255,255,.04)',
+                  padding: '8px 0',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 12, color: WHITE, fontWeight: 600 }}>{entry.type}</span>
+                  <span
+                    style={{
+                      fontSize: 12,
+                      color: entry.type === 'PAYMENT' ? G3 : WHITE,
+                    }}
+                  >
+                    {entry.type === 'PAYMENT' ? '−' : '+'}
+                    {naira(Math.abs(entry.amount))}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 2 }}>
+                  <span style={{ fontSize: 10, color: MUTED }}>
+                    {commissionDateTime(entry.createdAt)}
+                  </span>
+                  <span style={{ fontSize: 10, color: MUTED }}>
+                    balance {naira(entry.balanceAfter)}
+                  </span>
+                </div>
+                {entry.description && (
+                  <p style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>{entry.description}</p>
+                )}
+              </div>
+            ))}
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Page: Pricing ─────────────────────────────────────────────────────────────
 /**
  * Pick a surcharge zone on a map.
@@ -4520,22 +5181,26 @@ function SurchargeZoneEditor({
   // Build the map once. The marker carries the centre; the circle follows it.
   useEffect(() => {
     let cancelled = false;
-    void loadGoogleMaps().then((g) => {
+    // `loading=async` means google.maps is an almost-empty namespace at load:
+    // Map, Marker and Circle only exist once their libraries are imported, so
+    // constructing them straight from `g.maps` threw the same
+    // "is not a constructor" that broke checkout's address picker.
+    void Promise.all([mapsLibrary('maps'), mapsLibrary('marker')]).then(([maps, markerLib]) => {
       if (cancelled) return;
-      if (!g?.maps || !mapHostRef.current) {
+      if (!maps || !markerLib || !mapHostRef.current) {
         setMapLive(false);
         return;
       }
       const centre = { lat, lng };
-      const map = new g.maps.Map(mapHostRef.current, {
+      const map = new maps.Map(mapHostRef.current, {
         center: centre,
         zoom: 13,
         disableDefaultUI: true,
         zoomControl: true,
         clickableIcons: false,
       });
-      const marker = new g.maps.Marker({ map, position: centre, draggable: true });
-      const circle = new g.maps.Circle({
+      const marker = new markerLib.Marker({ map, position: centre, draggable: true });
+      const circle = new maps.Circle({
         map,
         center: centre,
         radius,
@@ -7890,6 +8555,8 @@ function renderPage(page: AdminPage) {
       return <PageCustomers />;
     case 'pricing':
       return <PagePricing />;
+    case 'commissions':
+      return <PageCommissions />;
     case 'billpayments':
       return <PageBillPayments />;
     case 'incidents':

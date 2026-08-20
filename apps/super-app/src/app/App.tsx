@@ -89,6 +89,7 @@ import {
   ReferralScreen,
   EmergencySOSScreen,
   ShareTripScreen,
+  SharedTripScreen,
   TripReceiptScreen,
   RideHomeExtendedScreen,
   LiveTrackingScreen,
@@ -173,6 +174,7 @@ import {
 } from './onboardingScreen';
 import type { PartnerPersona } from './onboardingScreen';
 import { ChatScreen } from './chatScreen';
+import { ScreenErrorBoundary } from './errorBoundary';
 import type { NavTabKey } from '../components/navigation/BottomNavigation';
 import { api } from '../lib/api';
 import type {
@@ -476,6 +478,51 @@ function returnScreenFromGateway(): Screen | null {
   return null;
 }
 
+/**
+ * Where a signed-in device belongs when it opens the app, or when a crashed
+ * screen offers a way out. A driver's home is the driver dashboard, not the
+ * customer home screen — sending them to the wrong one mid-shift is its own
+ * kind of "logged out".
+ */
+function homeScreenForSession(): Screen {
+  if (auth.hasRole('driver')) return 'drvdash';
+  if (auth.hasRole('rider')) return 'riderdash';
+  return 'home';
+}
+
+/**
+ * A device that already holds a session opens the app signed in.
+ *
+ * The app used to start at 'splash' → 'welcome' no matter what was in
+ * localStorage, so every reload — including the reload a crashed screen forces
+ * — looked exactly like being signed out. The token was there the whole time.
+ */
+function resumeScreenFromSession(): Screen | null {
+  return auth.isLoggedIn() ? homeScreenForSession() : null;
+}
+
+/** Portal front doors that are sign-in gates, and what to show instead when
+ * the device is already signed in with that role. */
+const PORTAL_RESUME: Partial<Record<Screen, { role: string; screen: Screen }>> = {
+  drvlogin: { role: 'driver', screen: 'drvdash' },
+  riderlogin: { role: 'rider', screen: 'riderdash' },
+};
+
+function initialScreen(): Screen {
+  const fromGateway = returnScreenFromGateway();
+  if (fromGateway) return fromGateway;
+
+  const portal = initialScreenFromLocation();
+  if (portal) {
+    // A driver who bookmarked /driver should not be asked to sign in again
+    // every time they open it while their session is still good.
+    const resume = PORTAL_RESUME[portal];
+    return resume && auth.isLoggedIn() && auth.hasRole(resume.role) ? resume.screen : portal;
+  }
+
+  return resumeScreenFromSession() ?? 'splash';
+}
+
 function AppShell() {
   // Browsers hold audio back until the user has interacted with the page, so
   // the very first alert of a session would otherwise be silent. This arms the
@@ -483,11 +530,9 @@ function AppShell() {
   // job or an order arrives.
   useEffect(() => installUnlockListener(), []);
 
-  // A portal link opens that portal; everything else starts the customer journey
-  // at the splash screen exactly as before.
-  const [screen, setScreen] = useState<Screen>(
-    () => returnScreenFromGateway() ?? initialScreenFromLocation() ?? 'splash',
-  );
+  // A portal link opens that portal, a device with a live session resumes where
+  // that session belongs, and a first-time visitor starts at the splash screen.
+  const [screen, setScreen] = useState<Screen>(initialScreen);
   const [rideDetailId, setRideDetailId] = useState<string>('');
   const [fading, setFading] = useState(false);
   const [otpData, setOtpData] = useState<{
@@ -1062,7 +1107,9 @@ function AppShell() {
       <DriverAssignedScreen
         onBack={() => go('ridefare')}
         onArrived={() => go('ridearrived')}
+        onStarted={() => go('rideinprogress')}
         onCancel={() => go('ridehome')}
+        onShare={() => go('rideshare')}
         rideId={activeCustomerRideId}
         onMessageDriver={(rideId, driverName) => {
           setChat({
@@ -1081,6 +1128,15 @@ function AppShell() {
         onStart={() => go('rideinprogress')}
         onShare={() => go('rideshare')}
         rideId={activeCustomerRideId}
+        onMessageDriver={(rideId, driverName) => {
+          setChat({
+            context: 'ride',
+            contextId: rideId,
+            title: driverName ?? 'Your driver',
+            back: 'ridearrived',
+          });
+          go('chat');
+        }}
       />
     ),
     rideinprogress: (
@@ -1088,7 +1144,17 @@ function AppShell() {
         onBack={() => go('ridearrived')}
         onComplete={() => go('ridecomplete')}
         onSOS={() => go('ridesos')}
+        onShare={() => go('rideshare')}
         rideId={activeCustomerRideId}
+        onMessageDriver={(rideId, driverName) => {
+          setChat({
+            context: 'ride',
+            contextId: rideId,
+            title: driverName ?? 'Your driver',
+            back: 'rideinprogress',
+          });
+          go('chat');
+        }}
       />
     ),
     ridecomplete: (
@@ -1222,7 +1288,9 @@ function AppShell() {
     ridesos: (
       <EmergencySOSScreen onBack={() => go('rideinprogress')} onSOS={() => go('rideinprogress')} />
     ),
-    rideshare: <ShareTripScreen onBack={() => go('rideinprogress')} />,
+    rideshare: (
+      <ShareTripScreen onBack={() => goBack('rideassigned')} rideId={activeCustomerRideId} />
+    ),
     ridereceipt: (
       <TripReceiptScreen
         onBack={() => go('ridedetail')}
@@ -2058,10 +2126,20 @@ function AppShell() {
             transition: 'all .22s ease',
           }}
         >
+          {/* Keyed on the screen so leaving a broken screen clears the error;
+              staying on it keeps the message until "Try again" is tapped. */}
           {isDesktop ? (
-            <DesktopFrame>{screens[screen]}</DesktopFrame>
+            <DesktopFrame>
+              <ScreenErrorBoundary key={screen} onGoHome={() => go(homeScreenForSession())}>
+                {screens[screen]}
+              </ScreenErrorBoundary>
+            </DesktopFrame>
           ) : (
-            <PhoneFrame>{screens[screen]}</PhoneFrame>
+            <PhoneFrame>
+              <ScreenErrorBoundary key={screen} onGoHome={() => go(homeScreenForSession())}>
+                {screens[screen]}
+              </ScreenErrorBoundary>
+            </PhoneFrame>
           )}
         </div>
       </div>
@@ -2069,7 +2147,42 @@ function AppShell() {
   );
 }
 
+/**
+ * `/t/<token>` — a trip a passenger shared with someone.
+ *
+ * Whoever opens this is family, not a DrippleX user: no sign-in, no splash, no
+ * bottom nav, and nothing here reads or writes the session. It is served by
+ * the same SPA only because that is where the passenger's link points.
+ */
+function sharedTripTokenFromLocation(): string | null {
+  if (typeof window === 'undefined') return null;
+  return /^\/t\/([A-Za-z0-9_-]{8,64})\/?$/.exec(window.location.pathname)?.[1] ?? null;
+}
+
 export default function App() {
+  const sharedToken = sharedTripTokenFromLocation();
+
+  if (sharedToken) {
+    return (
+      <ApiProvider>
+        <div
+          className="flex items-center justify-center overflow-hidden"
+          style={{
+            height: '100dvh',
+            background: `radial-gradient(ellipse at 50% 0%,#0D1E33 0%,#050A12 65%,#030709 100%)`,
+          }}
+        >
+          <style>{GLOBAL_STYLES}</style>
+          <PhoneFrame>
+            <ScreenErrorBoundary>
+              <SharedTripScreen token={sharedToken} />
+            </ScreenErrorBoundary>
+          </PhoneFrame>
+        </div>
+      </ApiProvider>
+    );
+  }
+
   return (
     <ApiProvider>
       <AppShell />

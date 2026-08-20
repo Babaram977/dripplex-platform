@@ -34,6 +34,7 @@ export {
   ReferralScreen,
   EmergencySOSScreen,
   ShareTripScreen,
+  SharedTripScreen,
   TripReceiptScreen,
   WalletPaySuccessScreen,
 } from '../../app/rideScreen';

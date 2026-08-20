@@ -1989,9 +1989,6 @@ export function AccountManagementScreen({
 }) {
   const dxUser = auth.getUser();
   const [name, setName] = useState(auth.displayName(dxUser));
-  // NOTE: DrippleX has no username concept (founder decision: identity = phone + optional email + name).
-  // This field is legacy UI; seed it from the email local-part rather than mock data until the screen is reconciled.
-  const [username, setUsername] = useState(dxUser?.email?.split('@')[0] ?? '');
   const [email, setEmail] = useState(dxUser?.email ?? '');
   const [saved, setSaved] = useState(false);
   const [deleteSheet, setDeleteSheet] = useState(false);
@@ -2105,8 +2102,11 @@ export function AccountManagementScreen({
         >
           {name}
         </p>
+        {/* No "@handle" line. DrippleX has no usernames (founder decision:
+            identity is phone, primary, plus an optional email and a name), so
+            this showed everyone an invented one derived from their email. */}
         <p className="text-[11px]" style={{ color: MUTED }}>
-          @{username}
+          {dxUser?.phone ?? dxUser?.email ?? ''}
         </p>
       </div>
 
@@ -2124,13 +2124,6 @@ export function AccountManagementScreen({
             type: 'text',
           },
           {
-            label: 'Username',
-            value: username,
-            onChange: setUsername,
-            placeholder: 'username',
-            type: 'text',
-          },
-          {
             label: 'Email Address',
             value: email,
             onChange: setEmail,
@@ -2138,7 +2131,7 @@ export function AccountManagementScreen({
             type: 'email',
           },
         ].map((f, i) => (
-          <div key={f.label} className={i < 2 ? 'mb-3' : ''}>
+          <div key={f.label} className={i < 1 ? 'mb-3' : ''}>
             <p
               className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest"
               style={{ color: MUTED }}
@@ -2184,6 +2177,41 @@ export function AccountManagementScreen({
             </span>
           </div>
         </div>
+      </div>
+
+      {/* Sign Out sits ABOVE the settings list, not below eighteen rows of it.
+          The founder reported "no sign out option for customer" while this
+          button existed — it was simply the last thing on a very long screen
+          (and, until the flex fix in shared.tsx, collapsed to a hairline). */}
+      <div
+        className="mx-6 mb-4 overflow-hidden rounded-2xl"
+        style={{ background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
+      >
+        <button
+          onClick={() => {
+            void endSession(() => api.auth.logout()).then(() => onSignOut?.());
+          }}
+          className="flex w-full items-center gap-3 px-4 py-3 text-left transition-all active:scale-[.98]"
+        >
+          <div
+            className="flex h-9 w-9 items-center justify-center rounded-xl text-lg"
+            style={{ background: 'rgba(255,255,255,.06)' }}
+          >
+            ⏻
+          </div>
+          <div className="flex-1">
+            <p
+              className="text-[13px] font-semibold"
+              style={{ fontFamily: "'Poppins',sans-serif", color: '#fff' }}
+            >
+              Sign Out
+            </p>
+            <p className="text-[11px]" style={{ color: MUTED }}>
+              End this session on this device
+            </p>
+          </div>
+          <ArrowIcon />
+        </button>
       </div>
 
       {/* Account settings menu */}
@@ -2277,12 +2305,6 @@ export function AccountManagementScreen({
             onClick: onChangePhone,
           },
           {
-            icon: '@',
-            label: 'Username',
-            sub: 'Manage your public DrippleX identity',
-            onClick: onUsername,
-          },
-          {
             icon: '🔑',
             label: 'Recovery Codes',
             sub: '10 one-time emergency access codes',
@@ -2333,39 +2355,6 @@ export function AccountManagementScreen({
             <ArrowIcon />
           </button>
         ))}
-      </div>
-
-      {/* End session — customers had no way out of the app at all. Refreshing
-          the page looked like a sign-out but left the session intact. */}
-      <div
-        className="mx-6 mb-3 overflow-hidden rounded-2xl"
-        style={{ background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
-      >
-        <button
-          onClick={() => {
-            void endSession(() => api.auth.logout()).then(() => onSignOut?.());
-          }}
-          className="flex w-full items-center gap-3 px-4 py-3 text-left transition-all active:scale-[.98]"
-        >
-          <div
-            className="flex h-9 w-9 items-center justify-center rounded-xl text-lg"
-            style={{ background: 'rgba(255,255,255,.06)' }}
-          >
-            ⏻
-          </div>
-          <div className="flex-1">
-            <p
-              className="text-[13px] font-semibold"
-              style={{ fontFamily: "'Poppins',sans-serif", color: '#fff' }}
-            >
-              Sign Out
-            </p>
-            <p className="text-[11px]" style={{ color: MUTED }}>
-              End this session on this device
-            </p>
-          </div>
-          <ArrowIcon />
-        </button>
       </div>
 
       {/* Delete account */}

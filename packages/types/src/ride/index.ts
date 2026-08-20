@@ -128,6 +128,19 @@ export interface RideDto {
  * taken back. (Founder decision, 2026-08-16.) */
 export interface DriverRideDto extends RideDto {
   customerName: string | null;
+  /** Whether this ride carries a passenger trip code the driver must enter
+   * before starting. False on rides assigned before trip codes existed —
+   * those stay startable rather than becoming stuck. */
+  requiresVerificationCode: boolean;
+}
+
+/** The car the passenger is waiting for. Only ever sent to the passenger:
+ * the driver already knows what they are driving. */
+export interface RideDriverVehicleDto {
+  plateNumber: string;
+  make: string;
+  model: string;
+  color: string;
 }
 
 /** A ride as its **customer** sees it, plus the assigned driver's display
@@ -135,6 +148,51 @@ export interface DriverRideDto extends RideDto {
  * see and message a named person rather than a UUID. */
 export interface CustomerRideDto extends RideDto {
   driverName: string | null;
+  /** The 4-digit code the passenger reads out to the driver at pickup.
+   * Generated when a driver accepts; null before that. Never sent to the
+   * driver — the whole point is that only the passenger has it. */
+  verificationCode: string | null;
+  driverVehicle: RideDriverVehicleDto | null;
+}
+
+/** What a passenger gets back when they share their trip. The client builds
+ * the full URL from its own origin, so a link always points at the host the
+ * passenger is actually using. */
+export interface RideShareLinkDto {
+  token: string;
+  /** Path to append to the app's origin, e.g. `/t/9f3c…`. */
+  path: string;
+}
+
+/**
+ * A live trip as the person it was shared with sees it — no login required,
+ * the token in the link is the only credential.
+ *
+ * Deliberately thin: first names only, no phone numbers, no fare, no ride id,
+ * and never the trip verification code. Enough to watch a car arrive; not
+ * enough to identify or act on anyone.
+ */
+export interface SharedRideDto {
+  status: RideStatus;
+  rideType: RideType;
+  passengerFirstName: string | null;
+  driverFirstName: string | null;
+  vehicle: RideDriverVehicleDto | null;
+  pickupAddress: string | null;
+  dropoffAddress: string | null;
+  dropoffLatitude: number;
+  dropoffLongitude: number;
+  /** Last known driver position while the trip is live; null once it ends. */
+  driverPosition: { latitude: number; longitude: number; updatedAt: string } | null;
+  estimatedDurationSeconds: number | null;
+  requestedAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+}
+
+export interface StartRideTripRequest {
+  /** The passenger's 4-digit trip code, read out at pickup. */
+  verificationCode?: string;
 }
 
 export interface InitiateRidePaymentRequest {

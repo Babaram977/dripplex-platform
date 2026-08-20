@@ -100,9 +100,12 @@ export class DriverRideClient {
     });
   }
 
-  public startTrip(rideId: string): Promise<RideDto> {
+  /** `verificationCode` is the passenger's 4-digit trip code. Required by the
+   * API on every ride assigned since trip codes shipped. */
+  public startTrip(rideId: string, verificationCode?: string): Promise<RideDto> {
     return this.http.request<RideDto>(`/driver/rides/${rideId}/start`, {
       method: 'POST',
+      body: verificationCode !== undefined ? { verificationCode } : {},
       auth: true,
     });
   }

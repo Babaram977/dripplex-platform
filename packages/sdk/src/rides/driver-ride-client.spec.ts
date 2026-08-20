@@ -137,6 +137,20 @@ describe('DriverRideClient', () => {
 
     expect(request).toHaveBeenCalledWith('/driver/rides/ride-1/start', {
       method: 'POST',
+      body: {},
+      auth: true,
+    });
+  });
+
+  it('startTrip() sends the passenger trip code when one is supplied', async () => {
+    const { http, request } = createHttpMock();
+    const client = new DriverRideClient(http);
+
+    await client.startTrip('ride-1', '4729');
+
+    expect(request).toHaveBeenCalledWith('/driver/rides/ride-1/start', {
+      method: 'POST',
+      body: { verificationCode: '4729' },
       auth: true,
     });
   });

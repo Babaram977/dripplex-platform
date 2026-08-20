@@ -1430,7 +1430,26 @@ model CommissionAccount {
   ownerType          CommissionOwnerType     @map("owner_type")
   ownerId            String                  @map("owner_id") @db.Uuid
   outstandingBalance Decimal                 @default(0) @map("outstanding_balance") @db.Decimal(14, 2)
+  /// The limit actually in force. Materialised so every read is one query;
+  /// kept in sync from negotiatedCreditLimit, or from the owner-type default
+  /// when no limit has been negotiated.
   creditLimit        Decimal                 @map("credit_limit") @db.Decimal(14, 2)
+  /// A limit agreed with this partner individually (founder decision,
+  /// 2026-08-20: "limit should be individually set to each merchant because
+  /// of business difference and it should be negotiated and agreed by
+  /// DrippleX and merchant"). A furniture shop selling ₦650,000 pieces and a
+  /// food vendor selling ₦2,000 plates cannot share one ceiling.
+  ///
+  /// Null means no agreement exists yet and the owner-type default applies —
+  /// which is also what makes the platform default meaningful rather than
+  /// something that silently overwrites a negotiated figure.
+  negotiatedCreditLimit Decimal?             @map("negotiated_credit_limit") @db.Decimal(14, 2)
+  /// Who agreed it, when, and on what terms. A negotiated limit is a
+  /// commercial commitment, so it carries its own record rather than living
+  /// only in the audit log.
+  negotiatedBy       String?                 @map("negotiated_by") @db.Uuid
+  negotiatedAt       DateTime?               @map("negotiated_at")
+  negotiationNote    String?                 @map("negotiation_note") @db.VarChar(500)
   blocked            Boolean                 @default(false)
   blockedAt          DateTime?               @map("blocked_at")
   /// Optimistic-concurrency guard on outstandingBalance updates, same
@@ -1665,6 +1684,16 @@ model Ride {
   id                       String     @id @default(uuid()) @db.Uuid
   customerId               String     @map("customer_id") @db.Uuid
   driverId                 String?    @map("driver_id") @db.Uuid
+  /// The passenger's 4-digit trip code, generated when a driver is assigned.
+  /// Shown only to the passenger; the driver has to be told it out loud, which
+  /// is the point — it proves the person getting in is the one who booked.
+  /// Replaces a hardcoded "4729" that the driver app both checked against and
+  /// printed on its own screen.
+  verificationCode         String?    @map("verification_code") @db.VarChar(8)
+  /// Unguessable token behind the passenger's "share my trip" link. Minted on
+  /// demand, reused for the life of the ride, and readable without a login —
+  /// the person following the trip is family, not a DrippleX account.
+  shareToken               String?    @unique @map("share_token") @db.VarChar(64)
   rideType                 RideType   @map("ride_type")
   status                   RideStatus @default(REQUESTED)
   pickupLatitude           Decimal    @map("pickup_latitude") @db.Decimal(10, 7)

@@ -163,7 +163,7 @@ describe('RideTripService', () => {
     const arrived = await service.markArrived(driverId, ride.id, context);
     expect(arrived.status).toBe('ARRIVED');
 
-    const started = await service.startTrip(driverId, ride.id, context);
+    const started = await service.startTrip(driverId, ride.id, undefined, context);
     expect(started.status).toBe('IN_PROGRESS');
 
     const completed = await service.completeTrip(driverId, ride.id, context);
@@ -180,7 +180,7 @@ describe('RideTripService', () => {
 
     const ride = await createAssignedRide();
 
-    await expect(service.startTrip(driverId, ride.id, context)).rejects.toThrow(
+    await expect(service.startTrip(driverId, ride.id, undefined, context)).rejects.toThrow(
       'Ride cannot be started from status DRIVER_ASSIGNED',
     );
   });
@@ -196,7 +196,7 @@ describe('RideTripService', () => {
       data: { latitude: 6.615, longitude: 3.365 },
     });
 
-    await expect(service.startTrip(driverId, ride.id, context)).rejects.toThrow(
+    await expect(service.startTrip(driverId, ride.id, undefined, context)).rejects.toThrow(
       'Driver is too far from pickup to start the ride',
     );
   });
@@ -211,9 +211,27 @@ describe('RideTripService', () => {
       data: { latitude: null, longitude: null },
     });
 
-    await expect(service.startTrip(driverId, ride.id, context)).rejects.toThrow(
+    await expect(service.startTrip(driverId, ride.id, undefined, context)).rejects.toThrow(
       'Driver location is not available; cannot verify proximity to pickup',
     );
+  });
+
+  it('rejects starting a trip with the wrong passenger trip code', async () => {
+    if (!databaseAvailable) return;
+
+    const ride = await createAssignedRide();
+    await prisma.ride.update({ where: { id: ride.id }, data: { verificationCode: '4729' } });
+    await service.markArrived(driverId, ride.id, context);
+
+    await expect(service.startTrip(driverId, ride.id, '1234', context)).rejects.toThrow(
+      'That trip code does not match',
+    );
+    await expect(service.startTrip(driverId, ride.id, undefined, context)).rejects.toThrow(
+      'That trip code does not match',
+    );
+
+    const started = await service.startTrip(driverId, ride.id, '4729', context);
+    expect(started.status).toBe('IN_PROGRESS');
   });
 
   it('rejects completing a trip that has not started', async () => {
@@ -255,7 +273,7 @@ describe('RideTripService', () => {
 
     const ride = await createAssignedRide();
     await service.markArrived(driverId, ride.id, context);
-    await service.startTrip(driverId, ride.id, context);
+    await service.startTrip(driverId, ride.id, undefined, context);
 
     await expect(service.cancelByDriver(driverId, ride.id, undefined, context)).rejects.toThrow(
       'Ride cannot be cancelled by the driver from status IN_PROGRESS',

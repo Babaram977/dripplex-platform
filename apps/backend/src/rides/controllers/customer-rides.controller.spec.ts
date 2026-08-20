@@ -7,6 +7,7 @@ import type { RidePaymentService } from '../ride-payment.service';
 import type { RideProblemReportService } from '../ride-problem-report.service';
 import type { RideRatingService } from '../ride-rating.service';
 import type { RideReceiptService } from '../ride-receipt.service';
+import type { RideShareService } from '../ride-share.service';
 import type { RideTrackingReadService } from '../ride-tracking-read.service';
 import type { RidesService } from '../rides.service';
 
@@ -34,6 +35,7 @@ describe('CustomerRidesController — estimateFare', () => {
       {} as RideReceiptService,
       {} as RideProblemReportService,
       {} as RideTrackingReadService,
+      {} as RideShareService,
     );
 
     const user = { id: 'customer-1' } as AuthenticatedUser;

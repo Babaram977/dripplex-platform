@@ -33,6 +33,10 @@ export const COMMERCIAL_AUDIT_ACTIONS = {
   PAYMENT_RECORDED: 'commission_account.payment_recorded',
   BLOCKED: 'commission_account.blocked',
   UNBLOCKED: 'commission_account.unblocked',
+  /// A credit limit agreed with one partner individually, rather than the
+  /// owner-type default. Its own action so the commercial commitment is
+  /// auditable apart from routine policy edits.
+  CREDIT_LIMIT_NEGOTIATED: 'commission_account.credit_limit_negotiated',
 } as const;
 
 /// DPX-LAUNCH — singleton row id for the Ops-configurable platform

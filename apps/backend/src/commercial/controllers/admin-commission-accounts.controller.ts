@@ -5,6 +5,7 @@ import {
   Param,
   ParseEnumPipe,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   Req,
@@ -16,7 +17,9 @@ import { RequirePermissions } from '../../common/decorators/permissions.decorato
 import { COMMERCIAL_PERMISSIONS } from '../commercial.constants';
 import { toCommissionAccountDto, toCommissionLedgerEntryDto } from '../commercial.mapper';
 import { CommissionAccountService } from '../commission-account.service';
+import { NegotiateCreditLimitDto } from '../dto/negotiate-credit-limit.dto';
 import { RecordCommissionPaymentDto } from '../dto/record-commission-payment.dto';
+import { PartnerPositionService } from '../partner-position.service';
 
 import type { AuthenticatedUser } from '../../auth/auth.types';
 import type { ApiSuccessResponse } from '../../common/dto/api-response.dto';
@@ -24,6 +27,7 @@ import type {
   CommissionAccountDto,
   CommissionLedgerEntryDto,
   PaginatedResult,
+  PartnerFinancialPositionDto,
 } from '@dripplex/types';
 import type { Request } from 'express';
 
@@ -38,7 +42,10 @@ import type { Request } from 'express';
 @Controller('admin/commercial/accounts/:ownerType/:ownerId')
 @RequirePermissions(COMMERCIAL_PERMISSIONS.ADMIN_ACCOUNT_MANAGE)
 export class AdminCommissionAccountsController {
-  constructor(private readonly accounts: CommissionAccountService) {}
+  constructor(
+    private readonly accounts: CommissionAccountService,
+    private readonly positions: PartnerPositionService,
+  ) {}
 
   @Get()
   public async get(
@@ -47,6 +54,17 @@ export class AdminCommissionAccountsController {
   ): Promise<ApiSuccessResponse<CommissionAccountDto>> {
     const account = await this.accounts.getOrCreateAccount(ownerType, ownerId);
     return { success: true, data: toCommissionAccountDto(account) };
+  }
+
+  /** DrippleX's whole position with this partner: what we hold for them, what
+   * they owe us, and the net of the two. */
+  @Get('position')
+  public async getPosition(
+    @Param('ownerType', new ParseEnumPipe(CommissionOwnerType)) ownerType: CommissionOwnerType,
+    @Param('ownerId', ParseUUIDPipe) ownerId: string,
+  ): Promise<ApiSuccessResponse<PartnerFinancialPositionDto>> {
+    const data = await this.positions.getPosition(ownerType, ownerId);
+    return { success: true, data };
   }
 
   @Get('ledger')
@@ -76,6 +94,35 @@ export class AdminCommissionAccountsController {
         },
       },
     };
+  }
+
+  /**
+   * Record the credit limit agreed with this partner. Its own permission —
+   * `ADMIN_CREDIT_SETTINGS_MANAGE`, the same one that guards the platform
+   * default — because agreeing a partner's ceiling is a commercial commitment,
+   * not routine account admin.
+   */
+  @Patch('credit-limit')
+  @RequirePermissions(COMMERCIAL_PERMISSIONS.ADMIN_CREDIT_SETTINGS_MANAGE)
+  public async negotiateCreditLimit(
+    @Param('ownerType', new ParseEnumPipe(CommissionOwnerType)) ownerType: CommissionOwnerType,
+    @Param('ownerId', ParseUUIDPipe) ownerId: string,
+    @Body() dto: NegotiateCreditLimitDto,
+    @CurrentUser() admin: AuthenticatedUser,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<CommissionAccountDto>> {
+    const account = await this.accounts.setNegotiatedCreditLimit({
+      ownerType,
+      ownerId,
+      creditLimit: dto.creditLimit,
+      ...(dto.note !== undefined ? { note: dto.note } : {}),
+      recordedBy: admin.id,
+      context: {
+        userId: admin.id,
+        ...(request.ip !== undefined ? { ipAddress: request.ip } : {}),
+      },
+    });
+    return { success: true, data: toCommissionAccountDto(account) };
   }
 
   @Post('payments')
