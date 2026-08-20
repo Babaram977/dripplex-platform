@@ -107,3 +107,40 @@ export const UTILITY_PROVIDER_TIMEOUT_MS = 45_000;
  * what makes a customer pay for a bundle that no longer exists, so they are
  * read from Peyflex and merely cached. */
 export const UTILITY_CATALOGUE_CACHE_TTL_MS = 10 * 60_000;
+
+/**
+ * How often to look for card purchases that were paid but never completed.
+ *
+ * The card path has two triggers and both are event-driven: the customer
+ * returning to the app, and the gateway webhook. Neither is guaranteed. A
+ * customer who closes the tab AND a webhook that never lands leaves the money
+ * taken, the row on AWAITING_PAYMENT, and Peyflex never called — which is
+ * exactly what happened to a ₦1,000 airtime purchase on 2026-08-19. This
+ * sweep is the trigger that does not depend on anything arriving.
+ */
+export const UTILITY_PAYMENT_SWEEP_INTERVAL_MS = 5 * 60_000;
+
+/**
+ * How long to leave a purchase alone before sweeping it.
+ *
+ * The customer is still at the gateway during this window. Sweeping
+ * immediately would ask the gateway about a payment that is legitimately
+ * still in progress, and would race the two fast paths for no benefit.
+ */
+export const UTILITY_PAYMENT_SWEEP_GRACE_MS = 10 * 60_000;
+
+/**
+ * How far back to keep looking.
+ *
+ * Bounded for two reasons. An abandoned checkout — a customer who opened the
+ * gateway and never paid — is a row that will never confirm, and polling it
+ * forever spends a gateway call every five minutes for nothing. And a
+ * purchase old enough to have been forgotten should be an operator's
+ * decision, not a surprise delivery weeks later. Past this age the row stops
+ * being swept and stays for the Ops resolve desk.
+ */
+export const UTILITY_PAYMENT_SWEEP_MAX_AGE_MS = 7 * 24 * 60 * 60_000;
+
+/** Rows examined per sweep, oldest first. Bounds the gateway calls one pass
+ * can make; a backlog simply drains across several passes. */
+export const UTILITY_PAYMENT_SWEEP_BATCH = 25;
