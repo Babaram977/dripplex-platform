@@ -99,75 +99,81 @@ export function WelcomeScreen({
         className="relative z-10 flex flex-1 items-center justify-center"
         style={{ animation: 'fade-in .55s ease .15s both' }}
       >
-        <div
-          className="relative flex items-center justify-center"
-          style={{ width: 320, height: 320 }}
-        >
+        {/* The slot reserves the scaled footprint; the orbit inside keeps its
+            authored 320px geometry and is scaled to fit. Splitting it this way
+            is what stops the ring overflowing its flex slot on a short screen
+            and landing on the headline. */}
+        <div className="dx-hero-slot">
           <div
-            className="absolute inset-0 rounded-full"
-            style={{
-              border: '1px solid rgba(43,172,82,.11)',
-              animation: 'orbit-cw 32s linear infinite',
-            }}
-          />
-          <div
-            className="absolute rounded-full"
-            style={{
-              inset: 18,
-              borderTop: `1.5px solid ${G2}`,
-              borderRight: '1.5px solid transparent',
-              borderBottom: '1.5px solid transparent',
-              borderLeft: '1.5px solid transparent',
-              borderRadius: '50%',
-              animation: 'orbit-ccw 9s linear infinite',
-              boxShadow: `0 0 10px rgba(43,172,82,.2)`,
-            }}
-          />
-          <div
-            className="absolute rounded-full"
-            style={{
-              inset: 42,
-              border: '1px solid rgba(43,172,82,.06)',
-              animation: 'orbit-cw 22s linear infinite',
-            }}
-          />
-          <div
-            className="relative z-10 flex items-center justify-center rounded-2xl px-5 py-4"
-            style={{
-              background: `linear-gradient(145deg,${NAVY_SURFACE},${NAVY_CARD})`,
-              animation: 'glow-ring 4s ease-in-out infinite',
-            }}
+            className="dx-hero-orbit relative flex items-center justify-center"
+            style={{ width: 320, height: 320 }}
           >
-            <Logo width={192} />
-          </div>
-          {(
-            [
-              { icon: '🛍️', angle: -68, anim: 'float-a', dur: '3.2s' },
-              { icon: '🚖', angle: 54, anim: 'float-b', dur: '4.0s' },
-              { icon: '💳', angle: 174, anim: 'float-c', dur: '3.6s' },
-            ] as const
-          ).map(({ icon, angle, anim, dur }) => {
-            const rad = (angle * Math.PI) / 180,
-              r = 134;
-            return (
-              <div
-                key={angle}
-                className="absolute"
-                style={{ transform: `translate(${Math.cos(rad) * r}px,${Math.sin(rad) * r}px)` }}
-              >
+            <div
+              className="absolute inset-0 rounded-full"
+              style={{
+                border: '1px solid rgba(43,172,82,.11)',
+                animation: 'orbit-cw 32s linear infinite',
+              }}
+            />
+            <div
+              className="absolute rounded-full"
+              style={{
+                inset: 18,
+                borderTop: `1.5px solid ${G2}`,
+                borderRight: '1.5px solid transparent',
+                borderBottom: '1.5px solid transparent',
+                borderLeft: '1.5px solid transparent',
+                borderRadius: '50%',
+                animation: 'orbit-ccw 9s linear infinite',
+                boxShadow: `0 0 10px rgba(43,172,82,.2)`,
+              }}
+            />
+            <div
+              className="absolute rounded-full"
+              style={{
+                inset: 42,
+                border: '1px solid rgba(43,172,82,.06)',
+                animation: 'orbit-cw 22s linear infinite',
+              }}
+            />
+            <div
+              className="relative z-10 flex items-center justify-center rounded-2xl px-5 py-4"
+              style={{
+                background: `linear-gradient(145deg,${NAVY_SURFACE},${NAVY_CARD})`,
+                animation: 'glow-ring 4s ease-in-out infinite',
+              }}
+            >
+              <Logo width={192} />
+            </div>
+            {(
+              [
+                { icon: '🛍️', angle: -68, anim: 'float-a', dur: '3.2s' },
+                { icon: '🚖', angle: 54, anim: 'float-b', dur: '4.0s' },
+                { icon: '💳', angle: 174, anim: 'float-c', dur: '3.6s' },
+              ] as const
+            ).map(({ icon, angle, anim, dur }) => {
+              const rad = (angle * Math.PI) / 180,
+                r = 134;
+              return (
                 <div
-                  className="flex h-12 w-12 items-center justify-center rounded-2xl text-2xl"
-                  style={{
-                    background: `linear-gradient(145deg,${NAVY_SURFACE},${NAVY_CARD})`,
-                    boxShadow: `0 0 0 1px rgba(43,172,82,.16),0 10px 28px rgba(0,0,0,.45)`,
-                    animation: `${anim} ${dur} ease-in-out infinite`,
-                  }}
+                  key={angle}
+                  className="absolute"
+                  style={{ transform: `translate(${Math.cos(rad) * r}px,${Math.sin(rad) * r}px)` }}
                 >
-                  {icon}
+                  <div
+                    className="flex h-12 w-12 items-center justify-center rounded-2xl text-2xl"
+                    style={{
+                      background: `linear-gradient(145deg,${NAVY_SURFACE},${NAVY_CARD})`,
+                      boxShadow: `0 0 0 1px rgba(43,172,82,.16),0 10px 28px rgba(0,0,0,.45)`,
+                      animation: `${anim} ${dur} ease-in-out infinite`,
+                    }}
+                  >
+                    {icon}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       </div>
       <div
