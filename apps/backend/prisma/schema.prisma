@@ -2594,6 +2594,16 @@ enum WalletTransactionType {
   CASHBACK
   WITHDRAWAL
   TRANSFER
+  /// Money moved out of `availableBalance` and into `pendingBalance` — set
+  /// aside for something that has not happened yet, and NOT taken. Every
+  /// HOLD is terminated by exactly one HOLD_COMMIT or HOLD_RELEASE.
+  HOLD
+  /// The held money is now genuinely taken. `pendingBalance` falls;
+  /// `availableBalance` does not move, because the HOLD already reduced it.
+  HOLD_COMMIT
+  /// The hold is given back. `pendingBalance` falls and `availableBalance`
+  /// rises by the same amount, returning the wallet to where it started.
+  HOLD_RELEASE
 }
 
 enum WalletDirection {
@@ -3112,7 +3122,16 @@ model Wallet {
   ownerType              WalletOwnerType     @map("owner_type")
   ownerId                String              @map("owner_id") @db.Uuid
   currency               String              @default("NGN") @db.VarChar(3)
+  /// Spendable now. A hold reduces this immediately, which is what stops
+  /// the same money being promised twice.
   availableBalance       Decimal             @default(0) @map("available_balance") @db.Decimal(14, 2)
+  /// Held, not taken. Money set aside for something still being decided —
+  /// a hotel that has 30 minutes to accept a booking, say. It has left
+  /// `availableBalance` and has not yet left the customer: committing the
+  /// hold takes it, releasing the hold returns it.
+  ///
+  /// Declared from the beginning but never written until DPX-HOTEL-001
+  /// needed a way to reserve money without charging for it.
   pendingBalance         Decimal             @default(0) @map("pending_balance") @db.Decimal(14, 2)
   version                Int                 @default(0)
   /// Customer-configurable spending limits (Wallet Settings). Null = no
