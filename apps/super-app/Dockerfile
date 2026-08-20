@@ -35,7 +35,13 @@ FROM base AS runner
 WORKDIR /app
 RUN pnpm add -g serve@14
 COPY --from=build /app/apps/super-app/dist ./dist
+# Cache policy. Without it `serve` sends index.html with an ETag and no
+# Cache-Control at all, so a browser may hold it heuristically and stay pinned
+# to the hashed bundle that copy references — the device keeps running an old
+# build after a deploy has landed. The config must be COPYed and named on the
+# command line; serve does not pick it up from the repo on its own.
+COPY apps/super-app/serve.json ./serve.json
 ENV PORT=3000
 EXPOSE 3000
 # SPA fallback (-s) so client-side routing resolves; listen on Railway's $PORT.
-CMD ["sh", "-c", "serve -s dist -l ${PORT:-3000}"]
+CMD ["sh", "-c", "serve -s dist -l ${PORT:-3000} --config /app/serve.json"]
