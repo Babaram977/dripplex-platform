@@ -6,12 +6,14 @@ import type { DeliveryService } from './delivery.service';
 describe('DeliveryDispatchSweepService', () => {
   const deliveryService = {
     redispatchUnassignedJobs: jest.fn(),
+    reclaimStaleAssignments: jest.fn(),
   } as unknown as jest.Mocked<DeliveryService>;
 
   const service = new DeliveryDispatchSweepService(deliveryService);
 
   beforeEach(() => {
     jest.clearAllMocks();
+    deliveryService.reclaimStaleAssignments.mockResolvedValue(0);
   });
 
   it('re-dispatches a bounded batch per tick', async () => {
@@ -47,6 +49,34 @@ describe('DeliveryDispatchSweepService', () => {
     await expect(service.runSweep()).resolves.toBe(0);
 
     // The guard was released, so the next tick still runs.
+    deliveryService.redispatchUnassignedJobs.mockResolvedValueOnce(1);
+    await expect(service.runSweep()).resolves.toBe(1);
+  });
+
+  it('reclaims stalled assignments before dispatching, so a taken-back job is re-offered on the same tick', async () => {
+    const order: string[] = [];
+    deliveryService.reclaimStaleAssignments.mockImplementation(() => {
+      order.push('reclaim');
+      return Promise.resolve(1);
+    });
+    deliveryService.redispatchUnassignedJobs.mockImplementation(() => {
+      order.push('dispatch');
+      return Promise.resolve(1);
+    });
+
+    await service.runSweep();
+
+    expect(order).toEqual(['reclaim', 'dispatch']);
+    expect(deliveryService.reclaimStaleAssignments).toHaveBeenCalledWith(
+      DELIVERY_DISPATCH_SWEEP_BATCH_SIZE,
+    );
+  });
+
+  it('keeps the timer alive when the reclaim pass throws', async () => {
+    deliveryService.reclaimStaleAssignments.mockRejectedValueOnce(new Error('database down'));
+    await expect(service.runSweep()).resolves.toBe(0);
+
+    deliveryService.reclaimStaleAssignments.mockResolvedValueOnce(0);
     deliveryService.redispatchUnassignedJobs.mockResolvedValueOnce(1);
     await expect(service.runSweep()).resolves.toBe(1);
   });

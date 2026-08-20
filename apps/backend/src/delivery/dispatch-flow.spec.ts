@@ -16,7 +16,10 @@ import { type CommissionAccountService } from '../commercial/commission-account.
 
 import { AssignmentService } from './assignment.service';
 import { DeliveryFeeService } from './delivery-fee.service';
-import { DELIVERY_DISPATCH_SWEEP_BATCH_SIZE } from './delivery.constants';
+import {
+  DELIVERY_ASSIGNMENT_ACCEPT_TIMEOUT_MS,
+  DELIVERY_DISPATCH_SWEEP_BATCH_SIZE,
+} from './delivery.constants';
 import { DeliveryService } from './delivery.service';
 import { PrismaDeliveryRepository } from './repositories/prisma-delivery.repository';
 
@@ -241,5 +244,44 @@ describe('delivery dispatch flow (real database)', () => {
     // assignment, not again by the repeat sweep.
     const availability = await prisma.riderAvailability.findUniqueOrThrow({ where: { riderId } });
     expect(availability.activeJobCount).toBe(1);
+  });
+
+  it('leaves a fresh assignment alone — the rider still has time to accept', async () => {
+    if (!databaseAvailable) return;
+
+    const reclaimed = await service.reclaimStaleAssignments(DELIVERY_DISPATCH_SWEEP_BATCH_SIZE);
+
+    expect(reclaimed).toBe(0);
+    const job = await prisma.deliveryJob.findUniqueOrThrow({ where: { id: jobId } });
+    expect(job.riderId).toBe(riderId);
+    expect(job.status).toBe(DeliveryStatus.ASSIGNED);
+  });
+
+  it('takes the delivery back from a rider who never accepted it', async () => {
+    if (!databaseAvailable) return;
+
+    // The founder's live case: the rider was eligible and online when the
+    // merchant marked the order ready, then put the phone down. Before this,
+    // ASSIGNED was terminal for dispatch — no sweep looked at it again, so the
+    // merchant waited and no other rider could ever be offered the job.
+    await prisma.deliveryJob.update({
+      where: { id: jobId },
+      data: { assignedAt: new Date(Date.now() - DELIVERY_ASSIGNMENT_ACCEPT_TIMEOUT_MS - 1_000) },
+    });
+
+    const reclaimed = await service.reclaimStaleAssignments(DELIVERY_DISPATCH_SWEEP_BATCH_SIZE);
+
+    expect(reclaimed).toBe(1);
+    const job = await prisma.deliveryJob.findUniqueOrThrow({ where: { id: jobId } });
+    // The rider who ignored it is excluded from the immediate retry, and no
+    // other rider exists in this fixture — so it is back in the queue rather
+    // than handed straight back to the phone that just ignored it.
+    expect(job.riderId).toBeNull();
+    expect(job.status).toBe(DeliveryStatus.PENDING);
+
+    // Their active-job slot is freed, so the reclaim does not quietly cost them
+    // capacity for a delivery they are no longer holding.
+    const availability = await prisma.riderAvailability.findUniqueOrThrow({ where: { riderId } });
+    expect(availability.activeJobCount).toBe(0);
   });
 });
