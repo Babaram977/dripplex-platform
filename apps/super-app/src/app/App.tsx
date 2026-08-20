@@ -1,5 +1,11 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiProvider } from '../lib/ApiProvider';
+import {
+  authRouteFromLocation,
+  GoogleCallbackScreen,
+  VerifyEmailScreen,
+  type AuthRoute,
+} from './authRouteScreens';
 import { GLOBAL_STYLES, NAVY_BASE, COUNTRIES } from './shared';
 import {
   SplashScreen,
@@ -2162,6 +2168,19 @@ function sharedTripTokenFromLocation(): string | null {
 export default function App() {
   const sharedToken = sharedTripTokenFromLocation();
 
+  // Two paths the backend redirects to (Google's handoff code, the email
+  // verification token). They answer before AppShell so an unrecognised path
+  // never falls through to the splash screen with the payload discarded.
+  const [authRoute, setAuthRoute] = useState<AuthRoute | null>(authRouteFromLocation);
+
+  // Leaving one of those screens clears the payload out of the address bar
+  // first: query strings persist in history and referrer headers, and the app
+  // proper has no business being reachable at /auth/google/callback.
+  const leaveAuthRoute = useCallback(() => {
+    window.history.replaceState({}, '', '/');
+    setAuthRoute(null);
+  }, []);
+
   if (sharedToken) {
     return (
       <ApiProvider>
@@ -2176,6 +2195,31 @@ export default function App() {
           <PhoneFrame>
             <ScreenErrorBoundary>
               <SharedTripScreen token={sharedToken} />
+            </ScreenErrorBoundary>
+          </PhoneFrame>
+        </div>
+      </ApiProvider>
+    );
+  }
+
+  if (authRoute) {
+    return (
+      <ApiProvider>
+        <div
+          className="flex items-center justify-center overflow-hidden"
+          style={{
+            height: '100dvh',
+            background: `radial-gradient(ellipse at 50% 0%,#0D1E33 0%,#050A12 65%,#030709 100%)`,
+          }}
+        >
+          <style>{GLOBAL_STYLES}</style>
+          <PhoneFrame>
+            <ScreenErrorBoundary>
+              {authRoute === 'google-callback' ? (
+                <GoogleCallbackScreen onDone={leaveAuthRoute} />
+              ) : (
+                <VerifyEmailScreen onDone={leaveAuthRoute} />
+              )}
             </ScreenErrorBoundary>
           </PhoneFrame>
         </div>

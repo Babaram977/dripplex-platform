@@ -1814,6 +1814,19 @@ export const api = {
     loginOperations: (body: { email?: string; phone?: string; password: string }) =>
       dx<PortalLoginResponse>('POST', '/auth/login/operations', body),
 
+    /**
+     * Google sign-in, second half.
+     *
+     * The backend runs the whole OAuth dance itself and redirects the browser
+     * back to `${CUSTOMER_APP_URL}/auth/google/callback?code=<handoff>`. That
+     * handoff code is short-lived and single-use: real JWTs are deliberately
+     * kept out of the redirect URL, which ends up in browser history and in
+     * referrer headers. This trades it for the actual token pair, which is
+     * why it is a POST and not part of the redirect.
+     */
+    exchangeGoogleCode: (code: string) =>
+      dx<PortalLoginResponse>('POST', '/auth/google/exchange', { code }),
+
     // Phone verification (OTP) — real routes are under /auth/phone/*.
     // The backend has NO /auth/otp/* endpoints; registration dispatches a
     // phone OTP that is confirmed here with { phone, otp }, which activates
@@ -1849,7 +1862,11 @@ export const api = {
     sendEmailVerification: (body: { email: string }) =>
       dx<unknown>('POST', '/auth/email/send-verification', body),
     verifyEmail: (body: { email: string; token: string }) =>
-      dx<unknown>('POST', '/auth/email/verify', body),
+      dx<{ verified: true; email: string; status: string; emailVerifiedAt: string }>(
+        'POST',
+        '/auth/email/verify',
+        body,
+      ),
     resendEmailVerification: (body: { email: string }) =>
       dx<unknown>('POST', '/auth/email/resend', body),
 
