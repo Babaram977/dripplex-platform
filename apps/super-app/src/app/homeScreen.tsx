@@ -1,5 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { G0, G2, G3, NAVY_DEEP, NAVY_CARD, NAVY_SURFACE, BORDER, MUTED } from './shared';
+import {
+  G0,
+  G2,
+  G3,
+  NAVY_DEEP,
+  NAVY_CARD,
+  NAVY_SURFACE,
+  BORDER,
+  MUTED,
+  timeGreeting,
+} from './shared';
 import { api } from '../lib/api';
 import { auth } from '../lib/auth';
 import type {
@@ -1541,10 +1551,7 @@ export function HomeScreen({
   const [foundProducts, setFoundProducts] = useState<ProductSummaryDto[]>([]);
   const [searchNonce, setSearchNonce] = useState(0);
 
-  const [greeting] = useState(() => {
-    const h = new Date().getHours();
-    return h < 12 ? 'Good Morning' : h < 17 ? 'Good Afternoon' : 'Good Evening';
-  });
+  const [greeting] = useState(() => timeGreeting());
 
   // Debounce the box into the committed term.
   useEffect(() => {
@@ -1675,8 +1682,8 @@ export function HomeScreen({
       <Header
         greeting={greeting}
         name={(() => {
-          const u = auth.getUser();
-          return u ? `${u.firstName} ${u.lastName}`.trim() : 'there';
+          const n = auth.greetingName();
+          return n ? `Hi, ${n}` : 'Hello';
         })()}
         onNotif={onNotifications}
         onProfile={onAccount}

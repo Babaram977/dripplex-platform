@@ -4,7 +4,7 @@ import { AccountPageHost, AccountRows, type AccountPage } from './accountPages';
 import { playNotificationSound } from '../lib/sound';
 import { SoundSettings } from './soundSettings';
 import { PayoutPanel } from './payoutPanel';
-import { auth } from '../lib/auth';
+import { auth, endSession } from '../lib/auth';
 import { getCurrentPosition } from '../lib/maps';
 import type {
   DeliveryJobDto,
@@ -1302,14 +1302,10 @@ export function RiderAccountScreen({
 
   const signOut = () => {
     // Best-effort server-side revoke; the local session is cleared either way,
-    // so a network failure can never leave the rider signed in.
-    void api.auth
-      .logout()
-      .catch(() => {})
-      .finally(() => {
-        auth.clear();
-        onSignedOut();
-      });
+    // so a network failure can never leave the rider signed in. endSession
+    // also caps the wait, so a request that never settles cannot leave the
+    // rider staring at a button that appears to do nothing.
+    void endSession(() => api.auth.logout()).finally(() => onSignedOut());
   };
 
   const user = auth.getUser();

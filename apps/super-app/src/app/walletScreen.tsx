@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../lib/api';
 import { auth } from '../lib/auth';
 import { gatewayCallbackUrl } from '../lib/gatewayReturn';
+import { timeGreeting } from './shared';
 import type {
   CardProviderOptionDto,
   WalletDto,
@@ -508,8 +509,7 @@ export function WalletHomeScreen({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const user = auth.getUser();
-  const displayName = user?.firstName ?? user?.email?.split('@')[0] ?? 'there';
+  const displayName = auth.greetingName();
 
   const load = useCallback(async () => {
     setError('');
@@ -544,10 +544,10 @@ export function WalletHomeScreen({
       >
         <div>
           <div style={{ fontFamily: IT, fontSize: 12, color: MUTED, fontWeight: 500 }}>
-            Good morning,
+            {timeGreeting()},
           </div>
           <div style={{ fontFamily: PP, fontSize: 17, fontWeight: 700, color: '#fff' }}>
-            {displayName}
+            {displayName ? `Hi, ${displayName}` : 'Hello'}
           </div>
         </div>
         {/* This was drawn as a magnifying glass while calling onBack — the only
