@@ -17,6 +17,7 @@ import { WalletService } from '../wallet/wallet.service';
 import { UtilityProviderRejectedError } from './providers/utility-provider.port';
 import { UTILITIES_PERMISSIONS } from './utilities.constants';
 import { providerReferenceFor, UtilitiesService } from './utilities.service';
+import { UtilityPaymentSweepService } from './utility-payment-sweep.service';
 
 import type { AuditLogRepository } from '../audit/repositories/audit-log.repository';
 import type { AppConfigService } from '../config/app-config.service';
@@ -991,6 +992,164 @@ describe('UtilitiesService', () => {
     const again = await service.completeCardPurchaseByReference(reference, {});
     expect(again?.status).toBe(UtilityPurchaseStatus.SUCCESSFUL);
     expect(provider.purchaseAirtime).toHaveBeenCalledTimes(1);
+  });
+
+  // ── The payment sweep ─────────────────────────────────────────────────────
+  //
+  // Abdullahi's ₦1,000 airtime, generalised. Both existing triggers are
+  // event-driven — the customer returning, and the webhook — and when
+  // NEITHER fires the money is taken, the row sits on AWAITING_PAYMENT, and
+  // Peyflex is never called. These pin the trigger that does not wait for
+  // anything to arrive.
+
+  it('delivers a purchase the customer paid for that no webhook ever confirmed', async () => {
+    if (!databaseAvailable) return;
+    const customerId = await fundedCustomer(5_000);
+    provider.purchaseAirtime.mockResolvedValue(success);
+    const sweep = new UtilityPaymentSweepService(prisma, service);
+
+    const initiated = await service.initiatePurchase(
+      customerId,
+      {
+        serviceType: UtilityServiceType.AIRTIME,
+        provider: 'mtn',
+        customerIdentifier: '08144216361',
+        amount: 100,
+        paymentMethod: 'CARD',
+      },
+      { userId: customerId },
+    );
+
+    // The customer paid and then closed the tab, and the webhook never
+    // landed. Nothing has called back.
+    expect(initiated.purchase.status).toBe(UtilityPurchaseStatus.AWAITING_PAYMENT);
+    expect(provider.purchaseAirtime).not.toHaveBeenCalled();
+
+    // Too fresh: the customer could still be at the gateway, so the sweep
+    // leaves it alone rather than racing the fast paths. Asserted on THIS
+    // row rather than on the sweep's return count — the sweep is global by
+    // design, so a count is a claim about every row in the database.
+    await sweep.runSweep();
+    expect(provider.purchaseAirtime).not.toHaveBeenCalled();
+
+    // Aged past the grace window — the same row, an hour later.
+    await prisma.utilityPurchase.update({
+      where: { id: initiated.purchase.id },
+      data: { createdAt: new Date(Date.now() - 60 * 60_000) },
+    });
+
+    await sweep.runSweep();
+
+    // Delivered, not refunded. The customer paid for airtime and gets airtime.
+    const row = await prisma.utilityPurchase.findUniqueOrThrow({
+      where: { id: initiated.purchase.id },
+    });
+    expect(row.status).toBe(UtilityPurchaseStatus.SUCCESSFUL);
+    expect(provider.purchaseAirtime).toHaveBeenCalledTimes(1);
+  });
+
+  it('never buys twice, however many times it sweeps', async () => {
+    if (!databaseAvailable) return;
+    const customerId = await fundedCustomer(5_000);
+    provider.purchaseAirtime.mockResolvedValue(success);
+    const sweep = new UtilityPaymentSweepService(prisma, service);
+
+    const initiated = await service.initiatePurchase(
+      customerId,
+      {
+        serviceType: UtilityServiceType.AIRTIME,
+        provider: 'mtn',
+        customerIdentifier: '08144216361',
+        amount: 100,
+        paymentMethod: 'CARD',
+      },
+      { userId: customerId },
+    );
+    await prisma.utilityPurchase.update({
+      where: { id: initiated.purchase.id },
+      data: { createdAt: new Date(Date.now() - 60 * 60_000) },
+    });
+
+    await sweep.runSweep();
+    await sweep.runSweep();
+    await sweep.runSweep();
+
+    // A sweep every five minutes must not become airtime every five minutes.
+    expect(provider.purchaseAirtime).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves an abandoned checkout exactly as it is', async () => {
+    if (!databaseAvailable) return;
+    const customerId = await fundedCustomer(5_000);
+    provider.purchaseAirtime.mockResolvedValue(success);
+    const sweep = new UtilityPaymentSweepService(prisma, service);
+
+    const initiated = await service.initiatePurchase(
+      customerId,
+      {
+        serviceType: UtilityServiceType.AIRTIME,
+        provider: 'mtn',
+        customerIdentifier: '08144216361',
+        amount: 100,
+        paymentMethod: 'CARD',
+      },
+      { userId: customerId },
+    );
+    await prisma.utilityPurchase.update({
+      where: { id: initiated.purchase.id },
+      data: { createdAt: new Date(Date.now() - 60 * 60_000) },
+    });
+
+    // This customer opened the gateway and never paid.
+    gateways.flutterwave.verifyPayment.mockResolvedValue({
+      success: false,
+      reference: 'unpaid',
+      amount: 0,
+      currency: 'NGN',
+    });
+
+    await sweep.runSweep();
+
+    // Untouched — not delivered, and not cancelled either. Whether an
+    // abandoned checkout should be cleaned up is a policy decision nobody
+    // has made, and the sweep is not the place to invent one.
+    const row = await prisma.utilityPurchase.findUniqueOrThrow({
+      where: { id: initiated.purchase.id },
+    });
+    expect(row.status).toBe(UtilityPurchaseStatus.AWAITING_PAYMENT);
+    expect(provider.purchaseAirtime).not.toHaveBeenCalled();
+  });
+
+  it('stops sweeping a purchase old enough to be an operator decision', async () => {
+    if (!databaseAvailable) return;
+    const customerId = await fundedCustomer(5_000);
+    provider.purchaseAirtime.mockResolvedValue(success);
+    const sweep = new UtilityPaymentSweepService(prisma, service);
+
+    const initiated = await service.initiatePurchase(
+      customerId,
+      {
+        serviceType: UtilityServiceType.AIRTIME,
+        provider: 'mtn',
+        customerIdentifier: '08144216361',
+        amount: 100,
+        paymentMethod: 'CARD',
+      },
+      { userId: customerId },
+    );
+    // Older than the sweep window. Delivering airtime somebody bought a
+    // month ago should be a person's call, not a surprise.
+    await prisma.utilityPurchase.update({
+      where: { id: initiated.purchase.id },
+      data: { createdAt: new Date(Date.now() - 30 * 24 * 60 * 60_000) },
+    });
+
+    await sweep.runSweep();
+
+    const row = await prisma.utilityPurchase.findUniqueOrThrow({
+      where: { id: initiated.purchase.id },
+    });
+    expect(row.status).toBe(UtilityPurchaseStatus.AWAITING_PAYMENT);
   });
 
   // The founder's ₦1,000 airtime: paid at the gateway, stranded in
