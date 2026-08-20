@@ -17,6 +17,7 @@ import {
   BackBtn,
   GreenBtn,
   Divider,
+  GoogleGlyph,
   ArrowIcon,
   CheckIcon,
   COUNTRIES,
@@ -2465,10 +2466,32 @@ export function SignInScreen({
           icon={<ArrowIcon />}
           onClick={handleLogin}
         />
-        {/* Social/biometric sign-in (Google/Apple/Face ID) is intentionally not
-            shown yet: Apple has no backend, Face ID is native-only, and Google
-            OAuth is not wired into this screen. Hidden rather than left as dead
-            buttons (DPX §3: document gaps, don't fake). */}
+        {/* Google sign-in is a full-page navigation to the backend, which runs
+            the OAuth dance and lands the browser back on /auth/google/callback
+            (see authRouteScreens.tsx). Apple and Face ID stay hidden: Apple has
+            no backend and Face ID is native-only, so they would be dead buttons
+            (DPX §3: document gaps, don't fake).
+
+            Known limit: Google refuses OAuth inside an embedded WebView, so
+            this works on the web but is expected to fail in the Capacitor
+            shell until it goes through a native plugin or the system browser.
+            Tracked in docs/store/DPX-MOBILE-001-STORE-READINESS.md. */}
+        <Divider label="or" />
+        <button
+          onClick={() => {
+            window.location.href = api.auth.googleSignInUrl();
+          }}
+          className="flex h-[52px] w-full items-center justify-center gap-3 rounded-xl transition-all active:scale-95"
+          style={{ background: 'rgba(255,255,255,.04)', border: `1.5px solid ${BORDER}` }}
+        >
+          <GoogleGlyph />
+          <span
+            className="text-[15px] font-semibold text-white"
+            style={{ fontFamily: "'Poppins',sans-serif" }}
+          >
+            Continue with Google
+          </span>
+        </button>
         {(onMerchant || onDriver) && (
           <>
             <Divider label="partner sign-in" />

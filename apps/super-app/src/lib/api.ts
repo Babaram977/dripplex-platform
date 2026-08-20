@@ -1827,6 +1827,16 @@ export const api = {
     exchangeGoogleCode: (code: string) =>
       dx<PortalLoginResponse>('POST', '/auth/google/exchange', { code }),
 
+    /**
+     * Where to send the browser to *start* Google sign-in.
+     *
+     * A full-page navigation, not a fetch: OAuth needs a top-level redirect so
+     * Google can show its own consent screen and set its own cookies. The
+     * backend owns the whole dance from there and lands the browser back on
+     * /auth/google/callback.
+     */
+    googleSignInUrl: () => `${BASE}/auth/google`,
+
     // Phone verification (OTP) — real routes are under /auth/phone/*.
     // The backend has NO /auth/otp/* endpoints; registration dispatches a
     // phone OTP that is confirmed here with { phone, otp }, which activates

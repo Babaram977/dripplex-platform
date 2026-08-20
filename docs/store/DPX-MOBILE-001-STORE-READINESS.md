@@ -71,11 +71,15 @@ success and verify rejection all behave; `/` and `/ops` unchanged.
 1. The super-app has no custom domain — only `super-app-production-2345.up.railway.app`. DNS for
    `dripplex.com` is on Cloudflare and is founder-side.
 2. Moving the variable restarts the backend (see below), so it wants doing deliberately.
-3. The super-app still has no "Sign in with Google" button. `src/app/screensA.tsx:2468` hides
-   social sign-in on purpose ("Google OAuth is not wired into this screen"). The callback half is
-   now real, so that note is out of date, but adding the button is a UI decision and was left
-   alone. Until it is added, nothing inside the super-app starts the Google flow — the route only
-   catches a flow begun elsewhere.
+3. **Google sign-in inside the Capacitor shell is expected to fail.** The "Continue with Google"
+   button now exists on `SignInScreen` and navigates to `api.auth.googleSignInUrl()`
+   (`https://api.dripplex.com/api/v1/auth/google`), verified in a browser. But Google refuses
+   OAuth in an embedded WebView, and Capacitor opens off-origin top-level navigations in the
+   system browser by default (`server.allowNavigation` is unset), so the redirect back would land
+   outside the app. Making this work on device needs a native plugin or a system-browser flow
+   with a deep link back — not yet built, and it should be tested on real hardware before any
+   store submission claims Google sign-in works. Apple and Face ID sign-in stay hidden: Apple has
+   no backend and Face ID is native-only.
 
 ### Dependencies once a target is chosen
 
