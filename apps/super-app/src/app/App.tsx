@@ -1951,29 +1951,41 @@ function AppShell() {
 
   // ── Design Preview gate ──────────────────────────────────────────────────
   // The module-navigator sidebar lists every screen in the platform, including
-  // preview-only screens that are not part of any real user journey. It used to
-  // render unconditionally, so a signed-in customer could open it and land on
-  // demo data. It is now OFF by default and only shown when deliberately
-  // enabled, so the team keeps it and customers never see it:
-  //   • VITE_DESIGN_PREVIEW=true   — build/env flag (e.g. a preview deployment)
-  //   • ?preview=1 in the URL      — remembered for the session on this device
-  //   • ?preview=0                 — turns it back off
-  // Local `pnpm dev` keeps it on automatically so day-to-day work is unchanged.
+  // preview-only screens carrying demo content that is not part of any real user
+  // journey. Whether it can be shown at all is decided at BUILD time:
+  //   • `pnpm dev`               — always available
+  //   • VITE_DESIGN_PREVIEW=true — a deliberately-flagged preview deployment
+  // A production build sets neither, so the sidebar cannot be reached there by
+  // any means.
+  //
+  // This ordering is the point. `?preview=1` used to be checked first, which
+  // made it a live switch in production: anyone appending it to the URL got the
+  // demo screens, and the flag stuck for the rest of the session. Verified in
+  // the deployed bundle before this change. The query param is now only a
+  // convenience *within* a build that already permits preview — it can no
+  // longer turn anything on in production.
+  //   • ?preview=1 — remembered for the session on this device
+  //   • ?preview=0 — turns it back off
   const showDesignPreview = React.useMemo(() => {
     if (typeof window === 'undefined') return false;
-    const params = new URLSearchParams(window.location.search);
-    const param = params.get('preview');
+
+    const previewAllowedByBuild =
+      import.meta.env.DEV || String(import.meta.env.VITE_DESIGN_PREVIEW ?? '') === 'true';
+    if (!previewAllowedByBuild) return false;
+
+    const param = new URLSearchParams(window.location.search).get('preview');
     if (param === '1') {
       window.sessionStorage.setItem('dx.designPreview', '1');
       return true;
     }
     if (param === '0') {
-      window.sessionStorage.removeItem('dx.designPreview');
+      window.sessionStorage.setItem('dx.designPreview', '0');
       return false;
     }
-    if (window.sessionStorage.getItem('dx.designPreview') === '1') return true;
-    if (import.meta.env.DEV) return true;
-    return String(import.meta.env.VITE_DESIGN_PREVIEW ?? '') === 'true';
+    // A build that permits preview shows it by default — that was `pnpm dev`'s
+    // behaviour and day-to-day work should not change. `?preview=0` opts out
+    // for the rest of the session on this device.
+    return window.sessionStorage.getItem('dx.designPreview') !== '0';
   }, []);
 
   return (
