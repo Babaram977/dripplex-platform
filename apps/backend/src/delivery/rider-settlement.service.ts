@@ -78,6 +78,31 @@ export class RiderSettlementService {
       return false;
     }
 
+    const order = await this.ordersRepository.findById(job.orderId);
+    const isCash = order?.paymentMethod === OrderPaymentMethod.CASH;
+
+    // A cash delivery cannot be settled until the rider has said what they
+    // actually took at the door.
+    //
+    // Both DELIVERY_COMPLETED and DELIVERY_CASH_CONFIRMED reach this service,
+    // and the subscriber assumed either could settle because settlement is
+    // idempotent. That holds for prepaid and fails for cash: confirmCash()
+    // requires the job to be DELIVERED, so the completion event ALWAYS lands
+    // first, always with cashCollectedAmount still null. The old code then
+    // fell back to accruing the platform commission alone and claimed the
+    // settlement, so the confirmation that followed hit the idempotency guard
+    // and the real figure was never recorded.
+    //
+    // Observed in production on delivery b15f0efb: ₦7,412.50 collected, ₦150
+    // accrued instead of ₦6,062.50 — the merchant's entire proceeds missing
+    // from what the rider owed DrippleX. Every cash delivery did this.
+    //
+    // Returning early leaves settledAt null so the cash-confirmed event does
+    // the real settlement.
+    if (isCash && job.cashCollectedAmount === null) {
+      return false;
+    }
+
     const rate = await this.platformCommissionSettings.getEffectiveRate();
     // Round the platform's cut, then give the rider the remainder, so the two
     // halves always add back to exactly the fee — never a stray kobo either way.
@@ -94,15 +119,13 @@ export class RiderSettlementService {
       return false;
     }
 
-    const order = await this.ordersRepository.findById(job.orderId);
-    const isCash = order?.paymentMethod === OrderPaymentMethod.CASH;
-
     if (isCash) {
       // The rider is holding the customer's cash. What they owe DrippleX is
       // everything they collected beyond their own earning — the merchant's
-      // proceeds plus the platform's cut of the fee.
-      const collected = job.cashCollectedAmount !== null ? Number(job.cashCollectedAmount) : null;
-      const owed = collected !== null ? Math.max(0, collected - riderEarning) : platformCommission;
+      // proceeds plus the platform's cut of the fee. The guard above
+      // guarantees cashCollectedAmount is present by this point.
+      const collected = Number(job.cashCollectedAmount);
+      const owed = Math.max(0, collected - riderEarning);
       // accrue() rejects a non-positive amount. A rider who collected no more
       // than their own earning owes nothing — that is a valid settlement, not
       // an error, so record the split and stop.
