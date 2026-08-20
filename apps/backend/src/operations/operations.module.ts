@@ -15,6 +15,7 @@ import { OperationsAnalyticsService } from './operations-analytics.service';
 import { OperationsCasesService } from './operations-cases.service';
 import { OperationsDashboardService } from './operations-dashboard.service';
 import { OperationsDispatchSupportService } from './operations-dispatch-support.service';
+import { OperationsEligibilityService } from './operations-eligibility.service';
 import { OperationsFleetService } from './operations-fleet.service';
 import { OperationsRideDetailService } from './operations-ride-detail.service';
 import { OperationsRideQueueService } from './operations-ride-queue.service';
@@ -68,6 +69,7 @@ import { OperationsRideQueueService } from './operations-ride-queue.service';
   ],
   providers: [
     OperationsFleetService,
+    OperationsEligibilityService,
     OperationsRideQueueService,
     OperationsRideDetailService,
     OperationsDispatchSupportService,
@@ -77,6 +79,7 @@ import { OperationsRideQueueService } from './operations-ride-queue.service';
   ],
   exports: [
     OperationsFleetService,
+    OperationsEligibilityService,
     OperationsRideQueueService,
     OperationsRideDetailService,
     OperationsDispatchSupportService,

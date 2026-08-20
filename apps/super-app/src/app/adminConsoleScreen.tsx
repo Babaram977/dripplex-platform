@@ -33,6 +33,7 @@ import {
   type RideSurchargeType,
   type RideSurchargeZoneDto,
   type RideType,
+  type DispatchEligibilityDto,
   MERCHANT_CATEGORY_LABEL,
   type MerchantCategory,
 } from '../lib/api';
@@ -1556,11 +1557,160 @@ function PageLiveMap() {
                     />
                   </div>
                 </div>
+                <EligibilityPanel subjectId={d.driverId} role="DRIVER" />
               </Card>
             );
           })}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Why this person is — or is not — getting work.
+ *
+ * Every gate shown here already governed dispatch and every one of them was
+ * silent: a rider with one unverified document read "You are live · Waiting
+ * for delivery jobs…" in confident green while being filtered out of
+ * `listAvailableRiders`, and the only way to find out was to read the query.
+ *
+ * Collapsed by default so the roster stays scannable — the question is only
+ * asked about one person at a time, and asking it should cost one tap rather
+ * than a support thread.
+ */
+function EligibilityPanel({ subjectId, role }: { subjectId: string; role: 'DRIVER' | 'RIDER' }) {
+  const [open, setOpen] = useState(false);
+  const [data, setData] = useState<DispatchEligibilityDto | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setData(
+        role === 'DRIVER'
+          ? await api.admin.getDriverEligibility(subjectId)
+          : await api.admin.getRiderEligibility(subjectId),
+      );
+    } catch (cause: unknown) {
+      setError((cause as { message?: string }).message ?? 'Could not read eligibility.');
+    } finally {
+      setLoading(false);
+    }
+  }, [subjectId, role]);
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <button
+        onClick={() => {
+          const next = !open;
+          setOpen(next);
+          if (next && data === null) void load();
+        }}
+        style={{
+          background: 'transparent',
+          border: 'none',
+          padding: 0,
+          cursor: 'pointer',
+          fontSize: 11,
+          color: MUTED,
+          fontFamily: 'Inter, sans-serif',
+        }}
+      >
+        {open ? '▾' : '▸'} Why {role === 'DRIVER' ? 'is this driver' : 'is this rider'} not getting
+        work?
+      </button>
+
+      {open ? (
+        <div
+          style={{
+            marginTop: 8,
+            padding: 10,
+            borderRadius: 8,
+            background: 'rgba(255,255,255,.03)',
+            border: `1px solid ${BORDER}`,
+          }}
+        >
+          {loading ? (
+            <p style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>Checking…</p>
+          ) : error !== null ? (
+            <p style={{ fontSize: 11, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>{error}</p>
+          ) : data === null ? null : (
+            <>
+              <p
+                style={{
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  color: data.dispatchable ? C_OK : C_WARN,
+                  fontFamily: 'Inter, sans-serif',
+                  marginBottom: 8,
+                }}
+              >
+                {data.dispatchable
+                  ? 'Dispatchable — every check passes'
+                  : 'Not dispatchable — see below'}
+              </p>
+
+              <div style={{ display: 'grid', gap: 6 }}>
+                {data.gates.map((g) => (
+                  <div key={g.key} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                    <span
+                      style={{ fontSize: 11, color: g.passed ? C_OK : C_ERR, lineHeight: '15px' }}
+                    >
+                      {g.passed ? '✓' : '✕'}
+                    </span>
+                    <div style={{ flex: 1 }}>
+                      <span
+                        style={{
+                          fontSize: 11.5,
+                          color: g.passed ? MUTED : WHITE,
+                          fontFamily: 'Inter, sans-serif',
+                        }}
+                      >
+                        {g.label}
+                      </span>
+                      {/* The detail is the whole point — "Guarantor ID is
+                          still PENDING" tells an operator what to open, where
+                          "not eligible" sent them hunting. */}
+                      {g.detail !== null ? (
+                        <p
+                          style={{
+                            fontSize: 11,
+                            color: C_WARN,
+                            fontFamily: 'Inter, sans-serif',
+                            marginTop: 2,
+                          }}
+                        >
+                          {g.detail}
+                          {g.fixableBy === 'DRIVER' ? ' · only the driver can fix this' : ''}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {data.vehicle !== null ? (
+                <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${BORDER}` }}>
+                  <p style={{ fontSize: 10.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+                    VEHICLE
+                  </p>
+                  <p
+                    style={{ fontSize: 11.5, color: WHITE, fontFamily: 'Inter, sans-serif' }}
+                  >{`${data.vehicle.year} ${data.vehicle.make} ${data.vehicle.model} · ${data.vehicle.colour}`}</p>
+                  <p style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+                    {data.vehicle.plateNumber} · {data.vehicle.rideCategory} ·{' '}
+                    {data.vehicle.approvalStatus}
+                    {data.vehicle.seats !== null ? ` · ${String(data.vehicle.seats)} seats` : ''}
+                  </p>
+                </div>
+              ) : null}
+            </>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
