@@ -44,6 +44,12 @@ describe('UtilitiesService', () => {
   let prisma: PrismaService;
   let service: UtilitiesService;
   let provider: jest.Mocked<UtilityProviderPort>;
+  /** The stub gateways, held so a test can make a verification fail. */
+  let gateways: { flutterwave: jest.Mocked<PaymentProviderAdapter> };
+  /** UtilityPurchase.paymentReference is unique, so a stub gateway that
+   * returns one constant reference makes the second card test in the file
+   * collide on it. Counted rather than randomised so a failure is repeatable. */
+  let gatewayReferenceSeq = 0;
   let wallets: WalletService;
   const createdUserIds: string[] = [];
 
@@ -116,25 +122,55 @@ describe('UtilitiesService', () => {
     // the SERVER chose that gateway from its own config.
     const flutterwave = {
       provider: PaymentProvider.FLUTTERWAVE,
-      initializePayment: jest.fn().mockResolvedValue({
-        provider: PaymentProvider.FLUTTERWAVE,
-        reference: 'FLW-TEST-REF',
-        authorizationUrl: 'https://checkout.flutterwave.test/pay/FLW-TEST-REF',
+      initializePayment: jest.fn().mockImplementation(() => {
+        gatewayReferenceSeq += 1;
+        const reference = `FLW-TEST-REF-${String(gatewayReferenceSeq)}`;
+        return Promise.resolve({
+          provider: PaymentProvider.FLUTTERWAVE,
+          reference,
+          authorizationUrl: `https://checkout.flutterwave.test/pay/${reference}`,
+        });
       }),
-      verifyPayment: jest.fn(),
+      // Paid, by default. The card path asks the gateway before it buys
+      // anything or returns any money, so a stub that answers nothing would
+      // make every card test fail for the wrong reason.
+      verifyPayment: jest.fn().mockImplementation((input: { reference: string }) =>
+        Promise.resolve({
+          success: true,
+          reference: input.reference,
+          providerTransactionId: 'flw-txn-1',
+          amount: 100,
+          currency: 'NGN',
+          paidAt: new Date(),
+        }),
+      ),
       handleWebhook: jest.fn(),
-    } as unknown as PaymentProviderAdapter;
+    } as unknown as jest.Mocked<PaymentProviderAdapter>;
+    gateways = { flutterwave };
 
     // Both gateways registered, because the founder's decision is that both
     // stay live and the customer picks between them.
     const paystack = {
       provider: PaymentProvider.PAYSTACK,
-      initializePayment: jest.fn().mockResolvedValue({
-        provider: PaymentProvider.PAYSTACK,
-        reference: 'PSK-TEST-REF',
-        authorizationUrl: 'https://checkout.paystack.test/pay/PSK-TEST-REF',
+      initializePayment: jest.fn().mockImplementation(() => {
+        gatewayReferenceSeq += 1;
+        const reference = `PSK-TEST-REF-${String(gatewayReferenceSeq)}`;
+        return Promise.resolve({
+          provider: PaymentProvider.PAYSTACK,
+          reference,
+          authorizationUrl: `https://checkout.paystack.test/pay/${reference}`,
+        });
       }),
-      verifyPayment: jest.fn(),
+      verifyPayment: jest.fn().mockImplementation((input: { reference: string }) =>
+        Promise.resolve({
+          success: true,
+          reference: input.reference,
+          providerTransactionId: 'psk-txn-1',
+          amount: 100,
+          currency: 'NGN',
+          paidAt: new Date(),
+        }),
+      ),
       handleWebhook: jest.fn(),
     } as unknown as PaymentProviderAdapter;
 
@@ -234,6 +270,42 @@ describe('UtilitiesService', () => {
     expect(result.purchase.status).toBe(UtilityPurchaseStatus.REVERSED);
     expect(result.purchase.failureReason).toBe('Invalid mobile number');
     expect(await balanceOf(customerId)).toBe(5_000);
+  });
+
+  // A card customer really was charged, and DPX-D4 returns it to the DrippleX
+  // Wallet rather than the card. Telling them "your money has not been taken"
+  // was false, and contradicted the receipt's own "money returned" header.
+  it('tells a card customer where their money went when the float is empty', async () => {
+    if (!databaseAvailable) return;
+    const customerId = await fundedCustomer(5_000);
+    provider.purchaseAirtime.mockResolvedValue({
+      outcome: 'FAILED',
+      providerMessage: 'Insufficient wallet balance',
+      floatExhausted: true,
+    });
+
+    const { purchase } = await service.initiatePurchase(
+      customerId,
+      {
+        serviceType: UtilityServiceType.AIRTIME,
+        provider: 'mtn',
+        customerIdentifier: '08165598782',
+        amount: 100,
+        paymentMethod: 'CARD',
+      },
+      { userId: customerId },
+    );
+    const settled = await service.completeCardPurchaseByReference(
+      (await prisma.utilityPurchase.findUniqueOrThrow({ where: { id: purchase.id } }))
+        .paymentReference ?? '',
+      {},
+    );
+
+    expect(settled?.status).toBe(UtilityPurchaseStatus.REVERSED);
+    expect(settled?.failureReason).toContain('returned to your DrippleX Wallet');
+    expect(settled?.failureReason).not.toContain('has not been taken');
+    // Still never names the DrippleX float to a customer.
+    expect(settled?.failureReason?.toLowerCase()).not.toContain('float');
   });
 
   it('never tells the customer the DrippleX float is empty', async () => {
@@ -581,6 +653,122 @@ describe('UtilitiesService', () => {
     expect(result.purchase.status).toBe(UtilityPurchaseStatus.AWAITING_PAYMENT);
     expect(provider.purchaseAirtime).not.toHaveBeenCalled();
     expect(await balanceOf(customerId)).toBe(5_000);
+  });
+
+  // The bug that took ₦1,000 for airtime and delivered nothing: the purchase
+  // was only ever completed by the customer returning to the app, and the
+  // webhook — which always arrives — had no way to reach the purchase at all.
+  it('completes a card purchase from the gateway reference alone', async () => {
+    if (!databaseAvailable) return;
+    const customerId = await fundedCustomer(5_000);
+    provider.purchaseAirtime.mockResolvedValue(success);
+
+    const initiated = await service.initiatePurchase(
+      customerId,
+      {
+        serviceType: UtilityServiceType.AIRTIME,
+        provider: 'mtn',
+        customerIdentifier: '08144216361',
+        amount: 100,
+        paymentMethod: 'CARD',
+      },
+      { userId: customerId },
+    );
+    const row = await prisma.utilityPurchase.findUniqueOrThrow({
+      where: { id: initiated.purchase.id },
+    });
+    const reference = row.paymentReference ?? '';
+    expect(reference).not.toBe('');
+
+    // No customer id, no purchase id — only what the webhook carries.
+    const settled = await service.completeCardPurchaseByReference(reference, {});
+    expect(settled?.status).toBe(UtilityPurchaseStatus.SUCCESSFUL);
+    expect(provider.purchaseAirtime).toHaveBeenCalledTimes(1);
+
+    // The customer's own confirm can still arrive afterwards; it must not buy
+    // a second time.
+    const again = await service.completeCardPurchaseByReference(reference, {});
+    expect(again?.status).toBe(UtilityPurchaseStatus.SUCCESSFUL);
+    expect(provider.purchaseAirtime).toHaveBeenCalledTimes(1);
+  });
+
+  // The founder's ₦1,000 airtime: paid at the gateway, stranded in
+  // AWAITING_PAYMENT by the webhook gap, and — until this — impossible to
+  // return, because the resolve path refused every AWAITING_PAYMENT row on the
+  // assumption that it meant the customer never paid.
+  it('lets an operator refund a paid purchase that never settled', async () => {
+    if (!databaseAvailable) return;
+    const customerId = await fundedCustomer(5_000);
+    const { purchase } = await service.initiatePurchase(
+      customerId,
+      {
+        serviceType: UtilityServiceType.AIRTIME,
+        provider: 'mtn',
+        customerIdentifier: '08144216361',
+        amount: 1_000,
+        paymentMethod: 'CARD',
+      },
+      { userId: customerId },
+    );
+    expect(purchase.status).toBe(UtilityPurchaseStatus.AWAITING_PAYMENT);
+
+    const resolved = await service.resolvePendingPurchase(
+      purchase.id,
+      { outcome: 'REVERSED', note: 'Paid at the gateway, never delivered' },
+      { userId: 'ops-1' },
+    );
+
+    expect(resolved.status).toBe(UtilityPurchaseStatus.REVERSED);
+    // Card refunds go to the DrippleX wallet, never the PSP (DPX-D4), so the
+    // ₦1,000 lands on top of the wallet balance the card purchase never touched.
+    expect(await balanceOf(customerId)).toBe(6_000);
+    expect(provider.purchaseAirtime).not.toHaveBeenCalled();
+  });
+
+  // The guard that stops this becoming a way to mint money: an abandoned
+  // checkout is also AWAITING_PAYMENT, and refunding one would credit a wallet
+  // for a payment nobody made.
+  it('refuses to refund a purchase the gateway says was never paid', async () => {
+    if (!databaseAvailable) return;
+    const customerId = await fundedCustomer(5_000);
+    const { purchase } = await service.initiatePurchase(
+      customerId,
+      {
+        serviceType: UtilityServiceType.AIRTIME,
+        provider: 'mtn',
+        customerIdentifier: '08144216361',
+        amount: 1_000,
+        paymentMethod: 'CARD',
+      },
+      { userId: customerId },
+    );
+    gateways.flutterwave.verifyPayment.mockImplementation((input: { reference: string }) =>
+      Promise.resolve({
+        success: false,
+        reference: input.reference,
+        amount: 1_000,
+        currency: 'NGN',
+      }),
+    );
+
+    await expect(
+      service.resolvePendingPurchase(
+        purchase.id,
+        { outcome: 'REVERSED', note: 'Customer says they paid' },
+        { userId: 'ops-1' },
+      ),
+    ).rejects.toThrow(/no completed payment/);
+
+    expect(await balanceOf(customerId)).toBe(5_000);
+  });
+
+  it('ignores a gateway reference that is not a utility purchase', async () => {
+    if (!databaseAvailable) return;
+    // Every subscriber sees every unmatched webhook — a wallet top-up
+    // reference reaching this one is normal, not an error.
+    await expect(
+      service.completeCardPurchaseByReference('WALLET-deadbeef-1787109606020', {}),
+    ).resolves.toBeNull();
   });
 
   it('refuses a card purchase outright when no gateway is configured', async () => {

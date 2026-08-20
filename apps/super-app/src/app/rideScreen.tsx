@@ -184,7 +184,7 @@ function useLiveRide(rideId?: string) {
 function RideStatusBar() {
   return (
     <div
-      className="relative z-10 flex w-full items-center justify-between px-5 pt-[52px]"
+      className="dx-status-mock relative z-10 flex w-full items-center justify-between px-5 pt-[52px]"
       style={{ fontFamily: IT, fontSize: 11, color: 'rgba(255,255,255,.55)' }}
     >
       <span>9:41</span>
@@ -450,7 +450,10 @@ function BottomSheet({
 }) {
   return (
     <div
-      className="relative z-10 flex flex-1 flex-col"
+      // min-h-0 so the sheet is bounded by the screen rather than by its own
+      // content. Without it the sheet grows past the frame and anything pinned
+      // to its bottom — the Book button — is clipped away.
+      className="relative z-10 flex min-h-0 flex-1 flex-col"
       style={{
         background: NAVY_BASE,
         borderRadius: peek ? '28px 28px 0 0' : 0,
@@ -1507,6 +1510,11 @@ export function FareEstimateScreen({
 // ─────────────────────────────────────────────────────────────────────────────
 // RIDE-005 — FINDING DRIVER
 // ─────────────────────────────────────────────────────────────────────────────
+/** When the searching copy starts acknowledging the wait. Long enough that a
+ * normal match never reaches it, short enough to reassure someone who is
+ * watching a spinner. */
+const LONG_SEARCH_SECONDS = 45;
+
 export function FindingDriverScreen({
   onBack,
   onFound,
@@ -1519,13 +1527,22 @@ export function FindingDriverScreen({
   const [dots, setDots] = useState(1);
   const [eta, setEta] = useState(8);
   const foundRef = useRef(false);
+  // The search ends one of three ways: a driver takes it, nobody does, or the
+  // passenger cancels. Only the first was handled, so a ride the backend had
+  // already closed left this screen spinning "Finding your driver" forever.
+  const [outcome, setOutcome] = useState<'searching' | 'cancelled'>('searching');
+  // Seconds spent searching, so the copy can acknowledge a long wait without
+  // ever declaring the trip unfulfillable.
+  const [waited, setWaited] = useState(0);
 
   useEffect(() => {
     const d = setInterval(() => setDots((p) => (p === 3 ? 1 : p + 1)), 500);
     const c = setInterval(() => setEta((p) => Math.max(1, p - 1)), 1000);
+    const w = setInterval(() => setWaited((p) => p + 1), 1000);
     return () => {
       clearInterval(d);
       clearInterval(c);
+      clearInterval(w);
     };
   }, []);
 
@@ -1543,6 +1560,16 @@ export function FindingDriverScreen({
         // has been watching "Finding your driver" hears it exactly once.
         playNotificationSound('success');
         onFound(ride);
+        return;
+      }
+      // NO_DRIVERS_FOUND is the backstop far beyond any real wait, and it is
+      // not something to announce — the passenger keeps waiting or cancels.
+      if (ride.status === 'NO_DRIVERS_FOUND') {
+        return;
+      }
+      if (ride.status === 'CANCELLED') {
+        foundRef.current = true;
+        setOutcome('cancelled');
       }
     };
     ws.joinRide(rideId);
@@ -1624,10 +1651,22 @@ export function FindingDriverScreen({
         <div className="flex flex-col items-center gap-5 px-5 pb-8 pt-2">
           <div className="text-center">
             <p className="mb-1 text-[20px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
-              Finding your driver{'.'.repeat(dots)}
+              {outcome === 'cancelled'
+                ? 'This ride was cancelled'
+                : `Finding your driver${'.'.repeat(dots)}`}
             </p>
             <p className="text-[14px]" style={{ fontFamily: IT, color: MUTED }}>
-              Matching you with the best driver nearby
+              {/* Founder decision, 2026-08-19: never tell a passenger DrippleX
+                  could not arrange their ride. The request stays open and keeps
+                  looking; after the first stretch the copy acknowledges the
+                  wait rather than declaring failure, because drivers come
+                  online while a request is live. Cancelling stays the
+                  passenger's call, and it is one tap away below. */}
+              {outcome === 'cancelled'
+                ? 'Nothing has been charged.'
+                : waited >= LONG_SEARCH_SECONDS
+                  ? 'Still looking — drivers come online all the time. Nothing has been charged while you wait.'
+                  : 'Matching you with the best driver nearby'}
             </p>
           </div>
           {/* The three tiles here read "4 Drivers nearby · ~3 min Est. pickup
@@ -1637,24 +1676,34 @@ export function FindingDriverScreen({
               mid-search, so there is nothing honest to put here. Removed
               rather than kept as decoration. */}
 
-          {/* Progress bar */}
-          <div
-            className="h-1.5 w-full overflow-hidden rounded-full"
-            style={{ background: 'rgba(255,255,255,.06)' }}
-          >
+          {/* Progress bar — only while there is still something to wait for. */}
+          {outcome === 'searching' && (
             <div
-              className="h-full rounded-full"
-              style={{ background: G2, animation: 'bar-fill 4s ease-in-out forwards' }}
-            />
-          </div>
+              className="h-1.5 w-full overflow-hidden rounded-full"
+              style={{ background: 'rgba(255,255,255,.06)' }}
+            >
+              <div
+                className="h-full rounded-full"
+                style={{ background: G2, animation: 'bar-fill 4s ease-in-out forwards' }}
+              />
+            </div>
+          )}
 
-          <button
-            onClick={handleCancel}
-            className="text-[14px] font-medium active:opacity-60"
-            style={{ fontFamily: IT, color: MUTED }}
-          >
-            Cancel ride
-          </button>
+          {outcome === 'searching' ? (
+            // Always available, never automatic: stopping the search is the
+            // passenger's decision, not something the app does to them.
+            <button
+              onClick={handleCancel}
+              className="text-[14px] font-medium active:opacity-60"
+              style={{ fontFamily: IT, color: MUTED }}
+            >
+              Cancel ride
+            </button>
+          ) : (
+            <div className="w-full">
+              <GreenButton label="Book another ride" onClick={onBack} />
+            </div>
+          )}
         </div>
       </BottomSheet>
     </div>

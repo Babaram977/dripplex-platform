@@ -19,6 +19,7 @@ import { RideDispatchService } from './ride-dispatch.service';
 import { RIDE_EVENTS_PUBLISHER } from './ride-events.publisher';
 import { RideFareService } from './ride-fare.service';
 import { RideOfferSweepService } from './ride-offer-sweep.service';
+import { RidePaymentWebhookSubscriber } from './ride-payment-webhook.subscriber';
 import { RidePaymentService } from './ride-payment.service';
 import { RidePricingService } from './ride-pricing.service';
 import { RideProblemReportService } from './ride-problem-report.service';
@@ -50,6 +51,8 @@ import { RidesService } from './rides.service';
   ],
   providers: [
     RidesService,
+    // DomainEventBus comes from the @Global() EventsModule, so no import here.
+    RidePaymentWebhookSubscriber,
     RideFareService,
     RidePricingService,
     RideDispatchService,

@@ -119,6 +119,7 @@ export class CustomerUtilitiesController {
       user.id,
       dto,
       this.auditContext(request, user.id),
+      dto.callbackUrl,
     );
     return { success: true, data };
   }

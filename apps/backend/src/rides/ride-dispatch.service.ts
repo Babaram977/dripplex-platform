@@ -22,6 +22,7 @@ import {
   RIDE_AUDIT_ACTIONS,
   RIDE_DISPATCH_RADIUS_BANDS_METERS,
   RIDE_OFFER_TIMEOUT_MS,
+  RIDE_SEARCH_WINDOW_MS,
 } from './ride.constants';
 import { toRideDto, toRideOfferDto, toRideOfferPreviewDto } from './ride.mapper';
 
@@ -56,26 +57,59 @@ export class RideDispatchService {
       return toRideDto(ride);
     }
 
-    const attemptedDriverIds = (
-      await this.prisma.rideOffer.findMany({
-        where: { rideId: ride.id },
-        select: { driverId: true },
-      })
-    ).map((offer) => offer.driverId);
+    const offers = await this.prisma.rideOffer.findMany({
+      where: { rideId: ride.id },
+      select: { driverId: true, status: true },
+    });
 
-    if (attemptedDriverIds.length >= MAX_DISPATCH_ATTEMPTS) {
+    if (offers.length >= MAX_DISPATCH_ATTEMPTS) {
       return await this.giveUp(ride);
     }
 
-    const candidate = await this.findNearestEligibleDriver(
-      ride.rideType,
-      Number(ride.pickupLatitude),
-      Number(ride.pickupLongitude),
-      attemptedDriverIds,
-    );
+    // Everyone who has already seen this ride. Preferred exclusion: spread
+    // offers around rather than pestering one driver.
+    const alreadyOffered = offers.map((offer) => offer.driverId);
+
+    // Founder decision, 2026-08-19: with a thin fleet, no driver is ever barred
+    // from an order they did not take. Preference, not prohibition — three
+    // tiers, tried in order:
+    //
+    //   1. never offered this ride    — spread the work
+    //   2. let an offer lapse         — they never saw it
+    //   3. declined                   — they said no, so they are asked last
+    //
+    // Only a driver holding a live PENDING offer is truly excluded, and only
+    // so the same ride is not offered to one person twice at once. Excluding
+    // declines permanently is what made a one-driver fleet unable to serve a
+    // ride at all.
+    const holdingLiveOffer = offers
+      .filter((offer) => offer.status === RideOfferStatus.PENDING)
+      .map((offer) => offer.driverId);
+    const declined = offers
+      .filter((offer) => offer.status === RideOfferStatus.DECLINED)
+      .map((offer) => offer.driverId);
+
+    const nearest = async (exclude: string[]): Promise<DriverAvailability | null> =>
+      await this.findNearestEligibleDriver(
+        ride.rideType,
+        Number(ride.pickupLatitude),
+        Number(ride.pickupLongitude),
+        exclude,
+      );
+
+    const candidate =
+      (await nearest(alreadyOffered)) ??
+      (await nearest([...holdingLiveOffer, ...declined])) ??
+      (await nearest(holdingLiveOffer));
 
     if (!candidate) {
-      return await this.giveUp(ride);
+      // Nobody eligible *right now* is not the same as nobody at all. A
+      // driver typically opens the app because demand exists, so giving up on
+      // the first empty look is how a passenger who books twenty seconds
+      // before a driver comes online is told there are no drivers while three
+      // sit polling for work. The ride stays SEARCHING and the sweep tries
+      // again until the search window closes.
+      return await this.keepSearching(ride);
     }
 
     await this.prisma.rideOffer.create({
@@ -185,13 +219,46 @@ export class RideDispatchService {
     await this.dispatchRide(offer.rideId);
   }
 
-  /** Called by RideOfferSweepService on a timer — expires stale offers and retries dispatch. */
+  /**
+   * Called by RideOfferSweepService on a timer.
+   *
+   * An offer that runs out of time is only taken away when there is somebody
+   * else to give it to. Founder decision, 2026-08-19: the offer stays on the
+   * driver's screen — with a thin fleet, expiring it just to re-create it
+   * moments later makes the request flicker in and out of existence while the
+   * only driver on the platform watches. Rotation is for sharing work between
+   * drivers; when there is nobody to rotate to, there is nothing to share.
+   */
   public async expireStaleOffers(): Promise<number> {
     const stale = await this.prisma.rideOffer.findMany({
       where: { status: RideOfferStatus.PENDING, expiresAt: { lt: new Date() } },
     });
 
+    const renewed: string[] = [];
     for (const offer of stale) {
+      const ride = await this.prisma.ride.findUnique({ where: { id: offer.rideId } });
+      const stillLooking =
+        ride?.status === RideStatus.SEARCHING || ride?.status === RideStatus.REQUESTED;
+      if (ride && stillLooking) {
+        const alternative = await this.findNearestEligibleDriver(
+          ride.rideType,
+          Number(ride.pickupLatitude),
+          Number(ride.pickupLongitude),
+          [offer.driverId],
+        );
+        if (!alternative) {
+          // Nobody else to offer it to: hold it open rather than dropping it.
+          await this.prisma.rideOffer.update({
+            where: { id: offer.id },
+            data: { expiresAt: new Date(Date.now() + RIDE_OFFER_TIMEOUT_MS) },
+          });
+          renewed.push(offer.id);
+          continue;
+        }
+      }
+    }
+
+    for (const offer of stale.filter((o) => !renewed.includes(o.id))) {
       await this.prisma.rideOffer.update({
         where: { id: offer.id },
         data: { status: RideOfferStatus.EXPIRED, respondedAt: new Date() },
@@ -204,7 +271,9 @@ export class RideDispatchService {
       await this.dispatchRide(offer.rideId);
     }
 
-    return stale.length;
+    // Only the ones actually taken away — a renewed offer is not an expiry,
+    // and counting it as one would make the sweep log look like churn.
+    return stale.length - renewed.length;
   }
 
   /**
@@ -274,6 +343,58 @@ export class RideDispatchService {
     }
 
     return null;
+  }
+
+  /**
+   * No candidate this time round. Hold the ride open and let the sweep look
+   * again, until the search window closes.
+   */
+  private async keepSearching(ride: Ride): Promise<RideDto> {
+    if (Date.now() - ride.requestedAt.getTime() >= RIDE_SEARCH_WINDOW_MS) {
+      return await this.giveUp(ride);
+    }
+
+    if (ride.status === RideStatus.SEARCHING) {
+      return toRideDto(ride);
+    }
+
+    const updated = await this.prisma.ride.update({
+      where: { id: ride.id },
+      data: { status: RideStatus.SEARCHING },
+    });
+    this.events.publishToRide(updated.id, 'ride:status', {
+      rideId: updated.id,
+      status: updated.status,
+      driverId: null,
+    });
+    return toRideDto(updated);
+  }
+
+  /**
+   * Rides that are still looking but have no live offer.
+   *
+   * `expireStaleOffers` retries a ride by way of the offer that expired, so a
+   * ride that never got an offer in the first place was invisible to it —
+   * which is precisely the ride that most needs another look. Called on the
+   * same sweep.
+   */
+  public async retryStalledSearches(): Promise<number> {
+    const stalled = await this.prisma.ride.findMany({
+      where: {
+        status: { in: [RideStatus.REQUESTED, RideStatus.SEARCHING] },
+        offers: { none: { status: RideOfferStatus.PENDING } },
+      },
+      select: { id: true },
+      // A bound so one sweep cannot walk an unbounded backlog; anything left
+      // is picked up by the next tick five seconds later.
+      take: 50,
+    });
+
+    for (const ride of stalled) {
+      await this.dispatchRide(ride.id);
+    }
+
+    return stalled.length;
   }
 
   private async giveUp(ride: Ride): Promise<RideDto> {

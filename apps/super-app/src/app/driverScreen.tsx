@@ -98,7 +98,7 @@ function txWhen(iso: string): string {
 function DStatusBar({ light }: { light?: boolean }) {
   return (
     <div
-      className="relative z-10 flex w-full items-center justify-between px-5 pt-[52px]"
+      className="dx-status-mock relative z-10 flex w-full items-center justify-between px-5 pt-[52px]"
       style={{
         fontFamily: IT,
         fontSize: 11,
@@ -2521,6 +2521,60 @@ export function DriverDashboardScreen({
   // was invisible to every ride except an ECONOMY one, and invisible to that
   // too for want of a location. That is why a verified driver sat online and
   // no request ever arrived.
+  /**
+   * Why this driver is, or is not, reachable by dispatch.
+   *
+   * Going online checks identity verification and commission standing — it
+   * does NOT check that the driver is approved or has an approved vehicle.
+   * Dispatch requires both (`driverProfile.status === APPROVED` and a
+   * DriverAvailability.vehicleType matching the ride), so a driver could sit
+   * on "You are live · Waiting for ride requests…" while being structurally
+   * unmatchable, with nothing on screen saying so. Every field below is read
+   * from an endpoint that already exists; nothing here is inferred.
+   */
+  const [blockReason, setBlockReason] = useState<string | null>(null);
+
+  const checkReadiness = useCallback(async (): Promise<void> => {
+    try {
+      const [profile, vehicles, availability] = await Promise.all([
+        api.driver.getProfile().catch(() => null),
+        api.driver.listVehicles().catch(() => [] as AdminVehicleDto[]),
+        api.driverRides.getAvailability().catch(() => null),
+      ]);
+
+      if (profile && profile.status !== 'APPROVED') {
+        const label = profile.status.toLowerCase().replace(/_/g, ' ');
+        setBlockReason(
+          profile.status === 'REJECTED' && profile.rejectedReason
+            ? `Your account was not approved: ${profile.rejectedReason}. You will not receive ride requests.`
+            : `Your account is ${label}. You will not receive ride requests until Operations approves it.`,
+        );
+        return;
+      }
+
+      const usable = vehicles.find((v) => v.approvalStatus === 'APPROVED' && v.isActive);
+      if (!usable) {
+        setBlockReason(
+          vehicles.length === 0
+            ? 'No vehicle registered. Requests are matched to your vehicle type, so add one to start receiving them.'
+            : 'No approved, active vehicle. Requests are matched to your vehicle type, so none will reach you until one is approved.',
+        );
+        return;
+      }
+
+      if (availability && (availability.latitude === null || availability.longitude === null)) {
+        setBlockReason(
+          'We do not have your location. Requests are matched by distance — allow location access and go online again.',
+        );
+        return;
+      }
+
+      setBlockReason(null);
+    } catch {
+      // A failed check must not invent a blocker; the banner stays as it was.
+    }
+  }, []);
+
   const resolveVehicleType = useCallback(async (): Promise<RideType> => {
     try {
       const vehicles = await api.driver.listVehicles();
@@ -2569,6 +2623,10 @@ export function DriverDashboardScreen({
 
   // Drivers move. Dispatch picks the nearest one, so a stale fix costs the
   // driver trips and sends passengers a driver who is no longer close.
+  useEffect(() => {
+    void checkReadiness();
+  }, [checkReadiness, online]);
+
   useEffect(() => {
     if (!online) return;
     const push = () => {
@@ -2787,10 +2845,20 @@ export function DriverDashboardScreen({
               >
                 <div
                   className="h-2 w-2 rounded-full"
-                  style={{ background: G2, animation: 'pulse-ring .8s ease-out infinite' }}
+                  style={{
+                    background: blockReason === null ? G2 : COLOR_WARNING,
+                    animation: 'pulse-ring .8s ease-out infinite',
+                  }}
                 />
-                <p style={{ fontFamily: IT, fontSize: 13, color: G3 }}>
-                  You are live · Waiting for ride requests...
+                <p
+                  className="px-3 text-center"
+                  style={{
+                    fontFamily: IT,
+                    fontSize: 13,
+                    color: blockReason === null ? G3 : COLOR_WARNING,
+                  }}
+                >
+                  {blockReason ?? 'You are live · Waiting for ride requests...'}
                 </p>
               </div>
             )}
@@ -2835,10 +2903,23 @@ export function DriverIncomingRequestScreen({
   onAccept: (ride: RideDto) => void;
   onDecline: () => void;
 }) {
-  const [countdown, setCountdown] = useState(15);
+  // Derived from the offer's real expiresAt rather than a hardcoded 15. The
+  // server window is RIDE_OFFER_TIMEOUT_MS and this used to disagree with it,
+  // so the bar and the number on screen described a deadline that was not the
+  // actual one.
+  const secondsLeft = (o: RideOfferDto | null): number =>
+    o ? Math.max(0, Math.round((new Date(o.expiresAt).getTime() - Date.now()) / 1000)) : 0;
+  const [countdown, setCountdown] = useState(() => secondsLeft(offer));
+  const [total, setTotal] = useState(() => Math.max(1, secondsLeft(offer)));
   const [preview, setPreview] = useState<RideOfferPreviewDto | null>(null);
   const [busy, setBusy] = useState<null | 'accept' | 'decline'>(null);
   const [err, setErr] = useState('');
+
+  useEffect(() => {
+    const left = secondsLeft(offer);
+    setCountdown(left);
+    setTotal(Math.max(1, left));
+  }, [offer]);
 
   useEffect(() => {
     if (!offer) return;
@@ -2880,14 +2961,20 @@ export function DriverIncomingRequestScreen({
 
   useEffect(() => {
     if (countdown <= 0) {
-      handleDecline();
+      // Running out of time is NOT declining. This used to call
+      // declineOffer() on the tick, which recorded a driver who simply had not
+      // tapped yet as having refused the ride — and a refusal excludes them
+      // from that ride for good. The server expires the offer on its own; the
+      // driver just goes back to waiting for the next one.
+      onDecline();
       return;
     }
     const t = setTimeout(() => setCountdown((c) => c - 1), 1000);
     return () => clearTimeout(t);
-  }, [countdown]);
+  }, [countdown, onDecline]);
 
-  const pct = (countdown / 15) * 100;
+  const expired = countdown <= 0;
+  const pct = (countdown / total) * 100;
 
   const km = preview ? (preview.estimatedDistanceMeters / 1000).toFixed(1) : null;
   const mins = preview ? Math.max(1, Math.round(preview.estimatedDurationSeconds / 60)) : null;
@@ -3097,11 +3184,19 @@ export function DriverIncomingRequestScreen({
             </button>
             <DGreenBtn
               label={
-                busy === 'accept' ? 'Accepting…' : preview ? '✓  Accept Ride' : 'Loading ride…'
+                expired
+                  ? 'Request timed out'
+                  : busy === 'accept'
+                    ? 'Accepting…'
+                    : preview
+                      ? '✓  Accept Ride'
+                      : 'Loading ride…'
               }
               onClick={handleAccept}
               loading={busy === 'accept'}
-              disabled={!preview || busy !== null}
+              // An expired offer cannot be accepted, so the button says so
+              // rather than staying green and failing on tap.
+              disabled={expired || !preview || busy !== null}
             />
           </div>
         </div>
@@ -3731,16 +3826,22 @@ function DriverEarningsTab({ onBack }: { onBack: () => void }) {
   const [txs, setTxs] = useState<WalletLedgerEntryDto[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
     Promise.all([
       api.driverRides
         .getWallet()
         .then((w) => setWallet(w))
-        .catch(() => {}),
+        .catch((cause: unknown) => {
+          setError(cause instanceof Error ? cause.message : 'Could not load your earnings');
+        }),
       api.driverRides
         .getWalletTransactions({ pageSize: 20 })
         .then((r) => setTxs((r as { items?: WalletLedgerEntryDto[] }).items ?? []))
-        .catch(() => {}),
+        .catch(() => {
+          // Reported by the list's own empty state, not by blanking the hero.
+        }),
     ]).finally(() => setLoading(false));
   }, []);
 
@@ -3776,8 +3877,13 @@ function DriverEarningsTab({ onBack }: { onBack: () => void }) {
             Available Balance
           </p>
           <p className="text-[36px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
-            {wallet ? naira(wallet.availableBalance) : '—'}
+            {wallet ? naira(wallet.availableBalance) : loading ? '…' : '—'}
           </p>
+          {error !== null && (
+            <p className="mt-1 text-[12px] opacity-90" style={{ fontFamily: IT, color: '#fff' }}>
+              {error}
+            </p>
+          )}
           {wallet && wallet.pendingBalance > 0 && (
             <p className="mt-1 text-[12px] opacity-80" style={{ fontFamily: IT, color: '#fff' }}>
               + {naira(wallet.pendingBalance)} pending
@@ -3863,17 +3969,26 @@ function DriverWalletTab({ onBack }: { onBack: () => void }) {
   const [wallet, setWallet] = useState<WalletDto | null>(null);
   const [txs, setTxs] = useState<WalletLedgerEntryDto[]>([]);
   const [loading, setLoading] = useState(true);
+  // A swallowed error left this screen showing a dash where the balance goes
+  // and nothing else — a driver cannot tell "you have earned nothing yet" from
+  // "we could not reach the server". Whatever went wrong now says so.
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
       api.driverRides
         .getWallet()
         .then((w) => setWallet(w))
-        .catch(() => {}),
+        .catch((cause: unknown) => {
+          setError(cause instanceof Error ? cause.message : 'Could not load your wallet');
+        }),
       api.driverRides
         .getWalletTransactions({ pageSize: 20 })
         .then((r) => setTxs((r as { items?: WalletLedgerEntryDto[] }).items ?? []))
-        .catch(() => {}),
+        .catch(() => {
+          // The balance is the headline; a failed history is reported by the
+          // list's own empty state rather than by blanking the screen.
+        }),
     ]).finally(() => setLoading(false));
   }, []);
 
@@ -3904,10 +4019,13 @@ function DriverWalletTab({ onBack }: { onBack: () => void }) {
             Available Balance
           </p>
           <p className="mb-4 text-[38px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
-            {wallet ? naira(wallet.availableBalance) : '—'}
+            {wallet ? naira(wallet.availableBalance) : loading ? '…' : '—'}
           </p>
-          <p className="text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
-            Paid out every Monday by bank transfer.
+          <p
+            className="text-[12px]"
+            style={{ fontFamily: IT, color: error === null ? MUTED : COLOR_ERROR }}
+          >
+            {error ?? 'Paid out every Monday by bank transfer.'}
           </p>
         </div>
 

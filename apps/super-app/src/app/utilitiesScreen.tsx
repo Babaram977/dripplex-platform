@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { api, ApiError } from '../lib/api';
+import { gatewayCallbackUrl, rememberGatewayReturn } from '../lib/gatewayReturn';
 import { playNotificationSound } from '../lib/sound';
 
 import type {
@@ -659,11 +660,16 @@ export function UtilityPurchaseScreen({
         ...(needsPlan ? { planId } : { amount: Number(amount) }),
         ...(service === 'ELECTRICITY' ? { meterType } : {}),
         paymentMethod,
+        // Without this the gateway leaves the customer on its own success
+        // page — paid, with no airtime and no way back into the app.
+        callbackUrl: gatewayCallbackUrl('utility'),
       });
 
       if (result.authorizationUrl !== undefined && result.authorizationUrl !== '') {
         // Card. The provider is not touched until the gateway confirms, so
-        // leaving now costs nothing.
+        // leaving now costs nothing. The purchase id is kept so the app can
+        // show the receipt the moment the customer lands back here.
+        rememberGatewayReturn('utility', result.purchase.id);
         window.location.assign(result.authorizationUrl);
         return;
       }

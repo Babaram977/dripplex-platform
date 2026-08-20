@@ -468,6 +468,33 @@ export class RidesService {
     // event-driven flags). Going offline is never blocked. See
     // docs/DRIVER-001-IDENTITY-VERIFICATION-DESIGN.md.
     if (dto.online) {
+      // Founder decision, 2026-08-19: a driver with any pending approval must
+      // not be able to go online. Dispatch only ever offers a ride to a driver
+      // whose DriverProfile.status is APPROVED
+      // (RideDispatchService.findNearestEligibleDriver), so without this a
+      // PENDING or UNDER_REVIEW driver toggled Online, was told "You are live ·
+      // Waiting for ride requests…", pushed GPS every thirty seconds, and was
+      // structurally unreachable — which is what two drivers did while a
+      // passenger watched an empty search. Going OFFLINE is never blocked.
+      const profile = await this.prisma.driverProfile.findUnique({
+        where: { userId: driverId },
+        select: { status: true, rejectedReason: true },
+      });
+      if (!profile) {
+        throw new ValidationDomainException(
+          'Complete your driver registration before going online',
+        );
+      }
+      if (profile.status !== DriverStatus.APPROVED) {
+        throw new ValidationDomainException(
+          profile.status === DriverStatus.REJECTED && profile.rejectedReason
+            ? `Your account was not approved: ${profile.rejectedReason}`
+            : profile.status === DriverStatus.SUSPENDED
+              ? 'Your account is suspended, so you cannot go online. Contact Operations.'
+              : `Your account is ${profile.status.toLowerCase().replace(/_/g, ' ')}. You cannot go online until Operations approves it.`,
+        );
+      }
+
       await this.identityVerificationService.assertNotRequired(driverId, {
         ...(dto.deviceId !== undefined ? { deviceId: dto.deviceId } : {}),
         ...(dto.latitude !== undefined ? { latitude: dto.latitude } : {}),

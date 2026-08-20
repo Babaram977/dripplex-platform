@@ -85,11 +85,57 @@ export const RIDE_WALLET_REFERENCE_TYPES = {
  * hard-coded 'order' referenceType, just for the Ride domain instead. */
 export const RIDE_PROMOTION_REFERENCE_TYPE = 'ride';
 
-/** How long a driver has to respond to an offer before it's reassigned. */
-export const RIDE_OFFER_TIMEOUT_MS = 15_000;
+/**
+ * How long a driver has to respond to an offer before it is reassigned.
+ *
+ * Fifteen seconds was not survivable in practice. The driver app discovers a
+ * pending offer by polling every RIDE_LOCATION_THROTTLE_MS (5s), so up to a
+ * third of the window was gone before the card appeared — leaving ~10 seconds
+ * to read a fare, a distance and a pickup address and tap Accept, on a phone,
+ * while possibly driving. On 2026-08-19 a driver got a real offer and it
+ * expired under him.
+ *
+ * A minute leaves a working window even after the worst-case polling delay.
+ */
+export const RIDE_OFFER_TIMEOUT_MS = 60_000;
 
-/** Give up and mark a ride NO_DRIVERS_FOUND after this many declined/expired offers. */
-export const MAX_DISPATCH_ATTEMPTS = 5;
+/**
+ * How many offers a single ride will ever generate.
+ *
+ * This is a runaway guard, not a policy. RIDE_SEARCH_WINDOW_MS is what ends a
+ * search; a ride that stops being offered while the passenger is still waiting
+ * is the bug this used to cause, at five offers of fifteen seconds — seventy-
+ * five seconds of trying against a thirty-minute wait.
+ *
+ * An offer with nobody to rotate to is now renewed rather than re-created
+ * (see expireStaleOffers), so a one-driver fleet generates one offer row and
+ * holds it, not one per minute. Sixty is far above anything the window can
+ * legitimately produce and exists only so a defect cannot mint rows forever.
+ */
+export const MAX_DISPATCH_ATTEMPTS = 60;
+
+/**
+ * How long a ride keeps looking before dispatch stops on its own.
+ *
+ * Founder decision, 2026-08-19: a request must not close itself and tell the
+ * passenger DrippleX could not arrange their ride. That is the same mistake as
+ * the "no driver nearby" label removed from the fare screen — it hands the
+ * passenger to a competitor at the moment they are ready to travel. A request
+ * keeps looking, and the passenger decides when to stop by cancelling.
+ *
+ * So this is a backstop against unbounded SEARCHING rows, not a moment the
+ * passenger is meant to reach. Thirty minutes is far longer than any real
+ * wait; a passenger who is still there has cancelled long before, and one who
+ * closed the app leaves a row the sweep should eventually stop re-dispatching.
+ *
+ * Dispatch used to be a single shot: `dispatchRide` ran once inside the
+ * booking request, and if nobody was eligible in that instant the ride was
+ * marked NO_DRIVERS_FOUND immediately and never looked again. On 2026-08-19 a
+ * passenger booked at 03:45:53 and the first driver came online at 03:46:13 —
+ * twenty seconds later. That is the normal shape of a thin fleet: the driver
+ * opens the app *because* demand exists.
+ */
+export const RIDE_SEARCH_WINDOW_MS = 30 * 60_000;
 
 /** How often the background sweep checks for expired offers. */
 export const RIDE_OFFER_SWEEP_INTERVAL_MS = 5_000;

@@ -50,6 +50,23 @@ export const UTILITY_WALLET_REVERSAL_REFERENCE_TYPE = 'utility_purchase_reversal
 export const UTILITY_FLOAT_EXHAUSTED_CUSTOMER_MESSAGE =
   'This service is temporarily unavailable. Your money has not been taken — please try again shortly.';
 
+/**
+ * The same outage, told to somebody who paid by card.
+ *
+ * "Your money has not been taken" is true on the wallet path and false on the
+ * card path: the gateway really did charge them, and DrippleX returns it to
+ * the DrippleX wallet rather than to the card (DPX-D4). A customer who has
+ * just watched ₦100 leave their card being told it was never taken is a trust
+ * problem, and it contradicted the same screen's own "money returned" header.
+ */
+export const UTILITY_FLOAT_EXHAUSTED_CARD_CUSTOMER_MESSAGE =
+  'This service is temporarily unavailable. Your payment has been returned to your DrippleX Wallet — please try again shortly.';
+
+/** A card purchase that failed for any other provider reason. Same point: say
+ * where the money went, rather than implying it never moved. */
+export const UTILITY_CARD_REVERSAL_SUFFIX =
+  'Your payment has been returned to your DrippleX Wallet.';
+
 /** Substrings in a provider message that mean the DrippleX float, not the
  * customer, is the problem. Matched case-insensitively. */
 export const UTILITY_FLOAT_EXHAUSTED_MARKERS = [

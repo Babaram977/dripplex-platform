@@ -6,6 +6,7 @@ describe('RideOfferSweepService', () => {
   it('delegates to RideDispatchService.expireStaleOffers', async () => {
     const dispatchService = {
       expireStaleOffers: jest.fn().mockResolvedValue(2),
+      retryStalledSearches: jest.fn().mockResolvedValue(0),
     } as unknown as jest.Mocked<RideDispatchService>;
     const service = new RideOfferSweepService(dispatchService);
 
@@ -13,6 +14,21 @@ describe('RideOfferSweepService', () => {
 
     expect(result).toBe(2);
     expect(dispatchService.expireStaleOffers).toHaveBeenCalledTimes(1);
+  });
+
+  // A ride that never got an offer has nothing to expire, so expireStaleOffers
+  // cannot see it — and that is exactly the ride whose driver came online a
+  // moment too late. Both run on the same tick.
+  it('also retries rides that are still searching with no live offer', async () => {
+    const dispatchService = {
+      expireStaleOffers: jest.fn().mockResolvedValue(0),
+      retryStalledSearches: jest.fn().mockResolvedValue(3),
+    } as unknown as jest.Mocked<RideDispatchService>;
+    const service = new RideOfferSweepService(dispatchService);
+
+    await service.runSweep();
+
+    expect(dispatchService.retryStalledSearches).toHaveBeenCalledTimes(1);
   });
 
   it('does not re-enter while a sweep is already running', async () => {
@@ -24,6 +40,7 @@ describe('RideOfferSweepService', () => {
             resolveFirst = resolve;
           }),
       ),
+      retryStalledSearches: jest.fn().mockResolvedValue(0),
     } as unknown as jest.Mocked<RideDispatchService>;
     const service = new RideOfferSweepService(dispatchService);
 
@@ -43,6 +60,7 @@ describe('RideOfferSweepService', () => {
     const clearSpy = jest.spyOn(global, 'clearInterval');
     const dispatchService = {
       expireStaleOffers: jest.fn().mockResolvedValue(0),
+      retryStalledSearches: jest.fn().mockResolvedValue(0),
     } as unknown as jest.Mocked<RideDispatchService>;
     const service = new RideOfferSweepService(dispatchService);
 

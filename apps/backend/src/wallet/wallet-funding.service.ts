@@ -96,6 +96,27 @@ export class WalletFundingService {
     };
   }
 
+  /**
+   * The gateway's side of a top-up.
+   *
+   * `verifyFunding` only runs when the customer comes back to the app; a
+   * customer who closes the tab at the gateway's success page is charged and
+   * never credited. The webhook always arrives, so it settles the same row.
+   * Returns null when the reference is not a wallet top-up at all.
+   */
+  public async completeFundingByReference(
+    reference: string,
+    context: AuditContext,
+  ): Promise<WalletDto | null> {
+    const transaction = await this.prisma.walletTopUpTransaction.findUnique({
+      where: { providerReference: reference },
+    });
+    if (!transaction) {
+      return null;
+    }
+    return await this.verifyFunding(transaction.walletOwnerId, { reference }, context);
+  }
+
   public async verifyFunding(
     customerId: string,
     dto: VerifyWalletFundingDto,
@@ -139,8 +160,12 @@ export class WalletFundingService {
       throw new ValidationDomainException('Wallet funding verification failed');
     }
 
-    await this.prisma.walletTopUpTransaction.update({
-      where: { id: transaction.id },
+    // Claim the row atomically before crediting. The status check at the top
+    // of this method is not enough now that the webhook can settle the same
+    // top-up concurrently with the customer's return-to-app verify — two
+    // callers could both pass it and credit the wallet twice.
+    const claimed = await this.prisma.walletTopUpTransaction.updateMany({
+      where: { id: transaction.id, status: { not: TransactionStatus.SUCCESS } },
       data: {
         status: TransactionStatus.SUCCESS,
         verifiedAt: new Date(),
@@ -149,6 +174,9 @@ export class WalletFundingService {
         gatewayResponse: verification.gatewayResponse ?? {},
       },
     });
+    if (claimed.count === 0) {
+      return await this.walletService.getWallet(WalletOwnerType.CUSTOMER, customerId);
+    }
 
     const wallet = await this.walletService.credit({
       ownerType: WalletOwnerType.CUSTOMER,

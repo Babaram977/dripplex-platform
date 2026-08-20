@@ -1,3 +1,9 @@
+# Every service's Railway watchPatterns include this file and pnpm-lock.yaml, so
+# a change here rebuilds all of them. That is the lever for forcing a clean
+# deploy across the platform when a build failed for reasons outside the code —
+# Railway's 2026-08-18 incident left five services carrying a failed build they
+# had no changes for, and a service cannot be redeployed once a path-filtered
+# SKIPPED record supersedes the failure.
 packages:
   - "apps/*"
   - "packages/*"

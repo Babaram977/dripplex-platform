@@ -53,6 +53,37 @@ export const GLOBAL_STYLES = `
   @keyframes avatar-pulse   { 0%,100%{box-shadow:0 0 0 0 rgba(43,172,82,.4);} 50%{box-shadow:0 0 0 14px rgba(43,172,82,0);} }
   @keyframes welcome-rise   { from{opacity:0;transform:translateY(32px) scale(.95);} to{opacity:1;transform:translateY(0) scale(1);} }
   @keyframes orbit-once     { from{transform:rotate(0deg);} to{transform:rotate(360deg);} }
+
+  /* ── Fitting a real phone ───────────────────────────────────────────────
+     Two layout rules that are wrong to repeat per screen.
+
+     1. A flex column whose child is 'flex-1' gives that child
+        min-height:auto, so the child grows to fit its content instead of
+        being bounded by the column. Anything pinned below it — a Book
+        button, a Proceed to Checkout bar — is then pushed past the bottom
+        of the screen and clipped. That is why the ride Fare Estimate could
+        not be confirmed. min-height:0 lets the child shrink so its own
+        scroll area takes the overflow and the pinned row stays on screen.
+        Children that scroll already get this from their own overflow, so
+        this only ever affects the containers that were broken. */
+  .flex-col > .flex-1 { min-height: 0; }
+
+  /*  2. The device mockup — bezel, notch, 390px width, simulated status bar
+        — is a desktop preview of a phone. On an actual phone it IS the
+        phone, and a fixed 390px overflows a 360px handset sideways while
+        wasting space on a 430px one. Below 480px the app goes full bleed
+        and the mock chrome disappears. */
+  @media (max-width: 480px) {
+    .dx-canvas       { padding: 0 !important; align-items: stretch !important; }
+    .dx-canvas > *   { width: 100%; height: 100%; }
+    .dx-phone-frame  { width: 100dvw !important; height: 100dvh !important;
+                       border-radius: 0 !important; box-shadow: none !important; }
+    .dx-phone-notch  { display: none !important; }
+    /* The 9:41 clock and fake battery are mock chrome sitting under the real
+       ones. The row stays as the safe-area spacer it needs to be. */
+    .dx-status-mock  { padding-top: max(env(safe-area-inset-top), 10px) !important; }
+    .dx-status-mock > * { visibility: hidden; }
+  }
 `;
 
 // ── Shared primitives ──────────────────────────────────────────────────────
@@ -93,7 +124,7 @@ export function Ambient() {
 export function StatusBar({ light }: { light?: boolean } = {}) {
   return (
     <div
-      className="relative z-10 flex w-full items-center justify-between px-7 pt-[52px]"
+      className="dx-status-mock relative z-10 flex w-full items-center justify-between px-7 pt-[52px]"
       style={{
         fontFamily: "'Inter',sans-serif",
         fontSize: 11,

@@ -1136,11 +1136,18 @@ export function RiderJobScreen({
 export function RiderEarningsScreen({ onBack }: { onBack: () => void }) {
   const [wallet, setWallet] = useState<WalletDto | null>(null);
   const [loading, setLoading] = useState(true);
+  // The rejection was unhandled and the screen fell through to a bare "Unable
+  // to load wallet", which tells a rider nothing about whether to retry, sign
+  // in again, or call support.
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     api.rider
       .getWallet()
       .then(setWallet)
+      .catch((cause: unknown) => {
+        setError(cause instanceof Error ? cause.message : 'Could not load your wallet');
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -1247,7 +1254,9 @@ export function RiderEarningsScreen({ onBack }: { onBack: () => void }) {
             />
           </>
         ) : (
-          <p style={{ fontFamily: IT, color: MUTED, textAlign: 'center' }}>Unable to load wallet</p>
+          <p style={{ fontFamily: IT, color: MUTED, textAlign: 'center' }}>
+            {error ?? 'Unable to load wallet'}
+          </p>
         )}
       </div>
     </div>
