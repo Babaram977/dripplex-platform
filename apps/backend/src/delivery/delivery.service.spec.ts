@@ -18,7 +18,7 @@ import {
 
 import { type AssignmentService } from './assignment.service';
 import { type DeliveryFeeService } from './delivery-fee.service';
-import { DELIVERY_AUDIT_ACTIONS } from './delivery.constants';
+import { DELIVERY_AUDIT_ACTIONS, DELIVERY_REJECTION_COOLDOWN_MS } from './delivery.constants';
 import { DeliveryService } from './delivery.service';
 
 import type { AddressRepository } from '../addresses/repositories/address.repository';
@@ -1294,7 +1294,7 @@ describe('DeliveryService', () => {
       expect(deliveryRepository.assignRider).not.toHaveBeenCalled();
     });
 
-    it('never re-offers a job a rider already rejected', async () => {
+    it('does not re-offer a job to a rider who just rejected it', async () => {
       const waiting = makeJob();
       deliveryRepository.listUnassignedJobs.mockResolvedValue([waiting]);
       deliveryRepository.findJobById.mockResolvedValue(waiting);
@@ -1303,12 +1303,58 @@ describe('DeliveryService', () => {
 
       await service.redispatchUnassignedJobs(25);
 
-      // The rejecting rider is passed through as an exclusion, so dispatch
-      // cannot hand them back the same delivery.
+      // A rider who declined is passed through as an exclusion, so the next
+      // tick cannot hand them straight back the same delivery.
       expect(assignmentService.findNearestRider).toHaveBeenCalledWith(
         expect.any(Number),
         expect.any(Number),
         [riderId],
+      );
+    });
+
+    it('only excludes rejections inside the cooldown window', async () => {
+      // The exclusion used to be permanent, which in a one-rider fleet meant a
+      // single decline stranded the delivery for good: the sweep re-ran every
+      // 30s forever, excluding the only eligible rider, and logged nothing
+      // because it only logs when it assigns. Two real production orders
+      // reached that state. The lookup is now bounded, so the rider returns to
+      // the pool once the window passes.
+      const waiting = makeJob();
+      deliveryRepository.listUnassignedJobs.mockResolvedValue([waiting]);
+      deliveryRepository.findJobById.mockResolvedValue(waiting);
+      assignmentService.findNearestRider.mockResolvedValue(null);
+
+      const before = Date.now();
+      await service.redispatchUnassignedJobs(25);
+      const after = Date.now();
+
+      expect(deliveryRepository.listRejectedRiderIds).toHaveBeenCalledWith(
+        waiting.id,
+        expect.any(Date),
+      );
+      const [, cutoff] = deliveryRepository.listRejectedRiderIds.mock.calls[0] as [string, Date];
+      expect(cutoff.getTime()).toBeGreaterThanOrEqual(before - DELIVERY_REJECTION_COOLDOWN_MS);
+      expect(cutoff.getTime()).toBeLessThanOrEqual(after - DELIVERY_REJECTION_COOLDOWN_MS);
+    });
+
+    it('assigns a rider whose only rejection has aged out of the window', async () => {
+      // Same job, same rider — but the rejection is older than the cooldown, so
+      // the repository no longer returns them and dispatch can proceed. This is
+      // the path that recovers a stranded delivery without an operator.
+      const waiting = makeJob();
+      deliveryRepository.listUnassignedJobs.mockResolvedValue([waiting]);
+      deliveryRepository.findJobById.mockResolvedValue(waiting);
+      deliveryRepository.listRejectedRiderIds.mockResolvedValue([]);
+      assignmentService.findNearestRider.mockResolvedValue(makeRiderAvailability());
+      deliveryRepository.assignRider.mockResolvedValue(
+        makeJob({ riderId, status: DeliveryStatus.ASSIGNED, assignedAt: now }),
+      );
+
+      await expect(service.redispatchUnassignedJobs(25)).resolves.toBe(1);
+      expect(assignmentService.findNearestRider).toHaveBeenCalledWith(
+        expect.any(Number),
+        expect.any(Number),
+        [],
       );
     });
 

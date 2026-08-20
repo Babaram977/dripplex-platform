@@ -102,7 +102,7 @@ export interface DeliveryRepository {
    * excludes them so a re-dispatch never hands a rider back a delivery they
    * have already turned down.
    */
-  listRejectedRiderIds(jobId: string): Promise<string[]>;
+  listRejectedRiderIds(jobId: string, rejectedSince: Date): Promise<string[]>;
   createTracking(input: CreateDeliveryTrackingInput): Promise<DeliveryTracking>;
   findLatestTracking(deliveryJobId: string): Promise<DeliveryTracking | null>;
   findTrackingHistory(deliveryJobId: string): Promise<DeliveryTracking[]>;

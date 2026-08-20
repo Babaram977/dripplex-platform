@@ -40,6 +40,7 @@ import { DeliveryFeeService, haversineMeters } from './delivery-fee.service';
 import {
   DELIVERY_ASSIGNMENT_ACCEPT_TIMEOUT_MS,
   DELIVERY_AUDIT_ACTIONS,
+  DELIVERY_REJECTION_COOLDOWN_MS,
 } from './delivery.constants';
 import {
   toDeliveryJobDto,
@@ -700,7 +701,10 @@ export class DeliveryService {
         continue;
       }
 
-      const excluded = await this.deliveryRepository.listRejectedRiderIds(job.id);
+      const excluded = await this.deliveryRepository.listRejectedRiderIds(
+        job.id,
+        new Date(Date.now() - DELIVERY_REJECTION_COOLDOWN_MS),
+      );
       const result = await this.tryAutoAssign(job, order, context, excluded);
       if (result.riderId !== null) {
         assignedCount += 1;
@@ -757,7 +761,13 @@ export class DeliveryService {
         continue;
       }
 
-      const rejected = await this.deliveryRepository.listRejectedRiderIds(job.id);
+      // Same bounded lookup as the sweep: a rider who declined this job long
+      // ago is eligible again. `ignoredBy` is unioned in regardless, so the
+      // rider who just let it time out is never handed it straight back.
+      const rejected = await this.deliveryRepository.listRejectedRiderIds(
+        job.id,
+        new Date(Date.now() - DELIVERY_REJECTION_COOLDOWN_MS),
+      );
       await this.tryAutoAssign(pending, order, context, [...new Set([...rejected, ignoredBy])]);
     }
 
