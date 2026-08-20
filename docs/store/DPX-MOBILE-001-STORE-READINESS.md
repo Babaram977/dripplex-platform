@@ -11,9 +11,63 @@ Prepare the DrippleX customer mobile application for controlled Android and iOS 
 - Android application ID: `com.dripplex.customer`
 - iOS bundle identifier: `com.dripplex.customer`
 - Android channels: `production`, `internal`, `closedBeta`
-- Production customer URL: `https://app.dripplex.com`
+- Production customer URL: `https://app.dripplex.com` — the Capacitor default, **not a settled choice**; see _Shell target_ below
 - Android release artifacts: AAB + APK
 - iOS release validation: unsigned simulator Release build in CI; signed App Store archive requires Apple signing credentials on macOS
+
+## Shell target — open founder decision (2026-08-20)
+
+`CAPACITOR_SERVER_URL` is the page the WebView **loads**. It is a different thing from
+`VITE_API_BASE`, the API that loaded page **calls**. Verified live on 2026-08-20:
+
+| Host                                               | Verified state                                                                                                        |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `https://app.dripplex.com`                         | HTTP 200 — serves **customer-web** (Cloudflare Worker), byte-identical to `www.dripplex.com`, `robots: index, follow` |
+| `https://super-app-production-2345.up.railway.app` | HTTP 200 — serves **super-app**, `robots: noindex, nofollow`; no custom domain attached                               |
+| `https://api.dripplex.com/`                        | HTTP 404 `application/json` — an API root, never a valid `CAPACITOR_SERVER_URL`                                       |
+
+The super-app already calls the production API (`VITE_API_BASE` / `VITE_SOCKET_URL` default to
+`api.dripplex.com` — `apps/super-app/src/lib/api.ts:9`, `src/lib/ws.ts:10`), and the backend's
+live CORS allowlist already admits both the super-app Railway host and `app.dripplex.com`
+(unknown origins receive no `access-control-allow-origin` header).
+
+So the shell as configured ships **customer-web**, not the super-app. Repointing it is a CI
+input (`server_url` on `mobile-build.yml` and `mobile-store-readiness.yml`), not a code change
+— but it is blocked on the item below, which is not a matter of configuration.
+
+### Blocker — the super-app cannot own `CUSTOMER_APP_URL`
+
+The backend holds a single `CUSTOMER_APP_URL`, currently `https://www.dripplex.com`
+(`docs/ops/DPX-LAUNCH-003-GOOGLE-SIGNIN.md:76`). Two flows redirect the browser to it:
+
+- `apps/backend/src/auth/controllers/google-auth.controller.ts:50` → `${CUSTOMER_APP_URL}/auth/google/callback?code=…`
+- `apps/backend/src/notifications/production-notification.service.ts:85` → `${CUSTOMER_APP_URL}/verify-email?token=…`
+
+The super-app has no router — no `react-router`/`wouter` dependency — and recognises only these
+URL shapes: portal paths via `PORTAL_ROUTES` (`src/app/App.tsx:462-464`), trip codes `/t/<code>`
+(`App.tsx:2159`), and the `?app=`, `?preview=` and gateway-return query params. An unrecognised
+path resolves to `null` and renders the splash screen. `/auth/google/callback` and
+`/verify-email` would therefore both land on splash with the handoff code and verification token
+discarded — Google sign-in and email verification would break outright.
+
+This is a **missing capability, not a preference**, so per the no-speculative-behavior rule the
+routes are not invented here. Founder decision required, one of:
+
+1. Leave `CUSTOMER_APP_URL` on customer-web and accept that super-app users finish Google
+   sign-in and email verification on the customer-web domain.
+2. Build `/auth/google/callback` and `/verify-email` handling into the super-app first, then
+   move `CUSTOMER_APP_URL`.
+3. Ship the shell against customer-web as currently configured.
+
+### Dependencies once a target is chosen
+
+- Do not ship a `*.up.railway.app` host in a submitted build.
+- A new domain must be added to `CORS_ORIGINS` on the `@dripplex/backend` Railway service.
+  `apps/backend/src/main.ts:23-26` reads it once at bootstrap, so that variable change
+  **restarts the backend**. Railway's Raw Editor replaces the entire variable set — paste the
+  complete block (`docs/ops/PRODUCTION-RAILWAY.md:104`).
+- DNS for `dripplex.com` is on Cloudflare and is founder-side; no tooling available to the
+  agent session can change it.
 
 ## Gate A — Technical packaging
 
