@@ -37,7 +37,7 @@ import { PrismaService } from '../prisma/prisma.service';
 
 import { AssignmentService } from './assignment.service';
 import { DeliveryFeeService, haversineMeters } from './delivery-fee.service';
-import { DELIVERY_AUDIT_ACTIONS } from './delivery.constants';
+import { DELIVERY_AUDIT_ACTIONS, DELIVERY_REJECTION_COOLDOWN_MS } from './delivery.constants';
 import {
   toDeliveryJobDto,
   toEtaDto,
@@ -697,7 +697,10 @@ export class DeliveryService {
         continue;
       }
 
-      const excluded = await this.deliveryRepository.listRejectedRiderIds(job.id);
+      const excluded = await this.deliveryRepository.listRejectedRiderIds(
+        job.id,
+        new Date(Date.now() - DELIVERY_REJECTION_COOLDOWN_MS),
+      );
       const result = await this.tryAutoAssign(job, order, context, excluded);
       if (result.riderId !== null) {
         assignedCount += 1;

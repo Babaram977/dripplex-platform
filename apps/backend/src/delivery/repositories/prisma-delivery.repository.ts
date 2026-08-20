@@ -176,12 +176,13 @@ export class PrismaDeliveryRepository implements DeliveryRepository {
     });
   }
 
-  public async listRejectedRiderIds(jobId: string): Promise<string[]> {
+  public async listRejectedRiderIds(jobId: string, rejectedSince: Date): Promise<string[]> {
     const rows = await this.prisma.auditLog.findMany({
       where: {
         action: DELIVERY_AUDIT_ACTIONS.REJECTED,
         resource: 'delivery_job',
         resourceId: jobId,
+        createdAt: { gte: rejectedSince },
       },
       select: { metadata: true },
     });

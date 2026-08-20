@@ -39,6 +39,22 @@ export const DELIVERY_DISPATCH_SWEEP_INTERVAL_MS = 30_000;
  * predictable; anything left over is picked up by the next tick.
  */
 export const DELIVERY_DISPATCH_SWEEP_BATCH_SIZE = 25;
+
+/**
+ * How long a rider who turned a job down stays out of the running for it.
+ *
+ * Rejections used to exclude a rider from that job forever. In a thin fleet
+ * that is the same as cancelling the delivery: with one rider online, a single
+ * decline left the job PENDING, and the 30-second sweep then re-ran forever,
+ * excluding the only person who could take it and logging nothing because it
+ * only logs when it assigns. Two real orders reached that state — one already
+ * paid for — and neither was visible to Ops.
+ *
+ * A decline still means "not right now": the rider is not re-offered the same
+ * job on the very next tick. After the window they are eligible again, which
+ * is the same bet the ride side makes with its offer expiry.
+ */
+export const DELIVERY_REJECTION_COOLDOWN_MS = 10 * 60_000;
 export const DEFAULT_SPEED_MPS = 8.33;
 export const MIN_DELIVERY_FEE = 500;
 export const FEE_PER_KM = 150;
