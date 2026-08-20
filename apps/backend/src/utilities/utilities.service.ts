@@ -84,6 +84,17 @@ export interface AdminUtilityPurchaseDto extends UtilityPurchaseDto {
   /** Ops-only: what the float was actually debited, and therefore the
    * margin. Never sent to the customer. */
   providerCost: number | null;
+  /**
+   * Exactly what the provider replied, verbatim.
+   *
+   * `failureReason` is written for the customer and is deliberately vague —
+   * "we could not confirm this purchase" tells an operator nothing about
+   * why. The raw response was already being stored on every failure and was
+   * reachable only by reading the server logs, which meant diagnosing a
+   * failing integration needed infrastructure access rather than the desk
+   * built for it. Ops-only, never on the customer's receipt.
+   */
+  providerResponse: unknown;
 }
 
 export interface InitiateUtilityPurchaseResult {
@@ -998,5 +1009,6 @@ export function toAdminPurchaseDto(purchase: UtilityPurchase): AdminUtilityPurch
     ...toPurchaseDto(purchase),
     customerId: purchase.customerId,
     providerCost: purchase.providerCost === null ? null : Number(purchase.providerCost),
+    providerResponse: purchase.providerResponse ?? null,
   };
 }

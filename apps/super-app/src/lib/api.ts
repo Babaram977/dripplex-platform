@@ -1718,6 +1718,9 @@ export interface UtilityFloatStatusDto {
 }
 
 export interface AdminUtilityPurchaseDto extends UtilityPurchaseDto {
+  /** Exactly what the provider replied. Ops-only — `failureReason` is the
+   * customer's wording and says nothing about why a call failed. */
+  providerResponse?: unknown;
   customerId: string;
   providerCost: number | null;
 }
