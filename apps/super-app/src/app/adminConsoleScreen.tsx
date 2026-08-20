@@ -4908,8 +4908,24 @@ function PageCommissions() {
         </Card>
       </div>
 
+      {/* The detail panel scrolls as a whole rather than being clipped by the
+          viewport. It stacks four cards — position, agreed limit, record a
+          payment, ledger — which together are taller than the console's
+          content area, and the Ledger card at the bottom was cut off with no
+          way to reach it. `minHeight: 0` is what lets a flex child actually
+          scroll instead of growing past its parent. */}
       {selected && (
-        <div style={{ width: 340, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div
+          style={{
+            width: 340,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 12,
+            minHeight: 0,
+            overflowY: 'auto',
+            paddingRight: 4,
+          }}
+        >
           {/* DrippleX's position with this partner, in one place. The money
               lived in two unconnected records — a Wallet holding funds FOR
               them and a CommissionAccount recording what they owe US — and
@@ -5084,7 +5100,9 @@ function PageCommissions() {
             )}
           </Card>
 
-          <Card style={{ flex: 1, overflowY: 'auto' }}>
+          {/* Sized by its content: the panel above scrolls, so a `flex: 1`
+              here only squeezed the ledger into a sliver. */}
+          <Card style={{ flexShrink: 0 }}>
             <SectionHeader title="Ledger" />
             {ledger === null && <span style={{ fontSize: 12, color: MUTED }}>Loading…</span>}
             {ledger?.length === 0 && (
