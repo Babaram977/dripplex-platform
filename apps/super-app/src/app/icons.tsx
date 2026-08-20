@@ -60,7 +60,35 @@ export type IconName =
   | 'all'
   // Order tracking
   | 'scooter'
-  | 'house';
+  | 'house'
+  // Wallet and money
+  | 'card'
+  | 'bank'
+  | 'gift'
+  | 'send'
+  | 'receipt'
+  | 'tag'
+  // Account and security
+  | 'lock'
+  | 'user'
+  | 'key'
+  | 'alert'
+  // Rides
+  | 'rideComfort'
+  | 'rideXl'
+  | 'tricycle'
+  | 'pin'
+  | 'chat'
+  | 'phone'
+  | 'cash'
+  | 'sos'
+  | 'calendar'
+  | 'star'
+  | 'search'
+  | 'flag'
+  | 'shield'
+  | 'ticket'
+  | 'users';
 
 /**
  * Path data only — the wrapping <svg> and its stroke attributes live in
@@ -272,6 +300,197 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <path d="M3.6 10.4 12 3.6l8.4 6.8" />
       <path d="M5.4 9v10a1.4 1.4 0 0 0 1.4 1.4h10.4a1.4 1.4 0 0 0 1.4-1.4V9" />
       <path d="M9.6 20.4v-5.2h4.8v5.2" />
+    </>
+  ),
+  // The ride tiers. A passenger picking a class needs to tell them apart at a
+  // glance, so the silhouettes differ in roof line and length rather than in
+  // decoration: a saloon (`ride`), a taller estate, a van, and a keke.
+  rideComfort: (
+    <>
+      <path d="M3.5 16.5v-3.2l1.6-4.6A2 2 0 0 1 7 7.2h10a2 2 0 0 1 1.9 1.5l1.6 4.6v3.2" />
+      <path d="M3.5 13.3h17" />
+      <path d="M8.2 7.2v6.1M15.8 7.2v6.1" />
+      <circle cx="7.5" cy="16.5" r="1.75" />
+      <circle cx="16.5" cy="16.5" r="1.75" />
+    </>
+  ),
+  rideXl: (
+    <>
+      <path d="M3 17.2V7.4a1.8 1.8 0 0 1 1.8-1.8h10.4a1.8 1.8 0 0 1 1.66 1.11L19.4 12l1.6.9v4.3" />
+      <path d="M3 13.4h18" />
+      <path d="M11 5.6v7.8" />
+      <circle cx="7.2" cy="17.2" r="1.75" />
+      <circle cx="16.8" cy="17.2" r="1.75" />
+    </>
+  ),
+  // A keke napep: cabin over one front wheel, two at the back.
+  tricycle: (
+    <>
+      <path d="M6.6 15.4V8.8a2.2 2.2 0 0 1 2.2-2.2h3.6l3.4 5.2v3.6" />
+      <path d="M6.6 11.6h9.2" />
+      <circle cx="5.2" cy="17.4" r="1.7" />
+      <circle cx="17.6" cy="17.4" r="1.7" />
+      <path d="M6.9 17.4h9" />
+    </>
+  ),
+  // A map pin: a pickup, a drop-off, a saved place.
+  pin: (
+    <>
+      <path d="M19.2 10.4c0 5.4-7.2 10.6-7.2 10.6s-7.2-5.2-7.2-10.6a7.2 7.2 0 0 1 14.4 0Z" />
+      <circle cx="12" cy="10.2" r="2.6" />
+    </>
+  ),
+  // A speech bubble: in-app chat, which is how a passenger reaches a driver.
+  chat: (
+    <path d="M20.6 14.2a2.2 2.2 0 0 1-2.2 2.2H8.2L3.4 20.6V6a2.2 2.2 0 0 1 2.2-2.2h12.8a2.2 2.2 0 0 1 2.2 2.2Z" />
+  ),
+  // A handset: a phone call.
+  phone: (
+    <path d="M21 16.9v2.9a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.05 13 19.8 19.8 0 0 1 .97 4.4 2 2 0 0 1 2.96 2.2h2.9a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L7.19 9.91a16 16 0 0 0 6 6l1.07-1.07a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 21 16.9Z" />
+  ),
+  // A banknote: paying the driver in cash.
+  cash: (
+    <>
+      <rect x="2.4" y="6.4" width="19.2" height="11.2" rx="2" />
+      <circle cx="12" cy="12" r="2.6" />
+      <path d="M6 10.2v3.6M18 10.2v3.6" />
+    </>
+  ),
+  // A shield with an exclamation: the emergency control. Deliberately not a
+  // siren — this is protection the passenger reaches for, not an alarm at them.
+  sos: (
+    <>
+      <path d="M12 2.8 4.4 6v6.1c0 4.4 3.1 8.5 7.6 9.7 4.5-1.2 7.6-5.3 7.6-9.7V6Z" />
+      <path d="M12 8.4v4" />
+      <path d="M12 15.6h.01" />
+    </>
+  ),
+  // A calendar: a scheduled ride.
+  calendar: (
+    <>
+      <rect x="3.2" y="5.2" width="17.6" height="15.6" rx="2.2" />
+      <path d="M3.2 9.8h17.6" />
+      <path d="M8.2 3.2v4M15.8 3.2v4" />
+    </>
+  ),
+  // A star: a rating.
+  star: (
+    <path d="M12 3.2l2.72 5.51 6.08.89-4.4 4.29 1.04 6.06L12 17.09l-5.44 2.86 1.04-6.06-4.4-4.29 6.08-.89Z" />
+  ),
+  search: (
+    <>
+      <circle cx="10.8" cy="10.8" r="7" />
+      <path d="M15.8 15.8 21 21" />
+    </>
+  ),
+  // A chequered flag: the trip is finished.
+  flag: (
+    <>
+      <path d="M5 21V3.8" />
+      <path d="M5 4.6h13.4l-2.6 4.4 2.6 4.4H5" />
+    </>
+  ),
+  shield: (
+    <>
+      <path d="M12 2.8 4.4 6v6.1c0 4.4 3.1 8.5 7.6 9.7 4.5-1.2 7.6-5.3 7.6-9.7V6Z" />
+      <path d="M8.8 11.8 11 14l4.2-4.2" />
+    </>
+  ),
+  // A torn ticket: a promo code.
+  ticket: (
+    <>
+      <path d="M3.2 8.6V6.8a1.6 1.6 0 0 1 1.6-1.6h14.4a1.6 1.6 0 0 1 1.6 1.6v1.8a3.4 3.4 0 0 0 0 6.8v1.8a1.6 1.6 0 0 1-1.6 1.6H4.8a1.6 1.6 0 0 1-1.6-1.6v-1.8a3.4 3.4 0 0 0 0-6.8Z" />
+      <path d="M13.6 5.2v2.2M13.6 10.9v2.2M13.6 16.6v2.2" />
+    </>
+  ),
+  // Two people: referrals and shared trips.
+  users: (
+    <>
+      <circle cx="9.4" cy="8.2" r="3.6" />
+      <path d="M2.8 20.2a6.6 6.6 0 0 1 13.2 0" />
+      <path d="M16.4 4.9a3.6 3.6 0 0 1 0 6.6" />
+      <path d="M18 14.4a6.6 6.6 0 0 1 3.2 5.8" />
+    </>
+  ),
+  // A payment card. Distinct from `wallet`, which is the account itself —
+  // a top-up card and the balance it funds are not the same thing.
+  card: (
+    <>
+      <rect x="2.6" y="5.2" width="18.8" height="13.6" rx="2.6" />
+      <path d="M2.6 9.8h18.8" />
+      <path d="M6.4 14.6h3.2" />
+    </>
+  ),
+  // A bank: withdrawals and linked accounts.
+  bank: (
+    <>
+      <path d="M3 9.4 12 4l9 5.4" />
+      <path d="M4.6 9.4v8M9.4 9.4v8M14.6 9.4v8M19.4 9.4v8" />
+      <path d="M2.8 20.4h18.4" />
+    </>
+  ),
+  // A wrapped gift: cashback and rewards.
+  gift: (
+    <>
+      <rect x="3.2" y="9" width="17.6" height="4.2" rx="1.2" />
+      <path d="M4.8 13.2v6a1.6 1.6 0 0 0 1.6 1.6h11.2a1.6 1.6 0 0 0 1.6-1.6v-6" />
+      <path d="M12 9v11.8" />
+      <path d="M12 9S10.9 4.4 8.6 4.4a2.3 2.3 0 0 0 0 4.6Z" />
+      <path d="M12 9s1.1-4.6 3.4-4.6a2.3 2.3 0 0 1 0 4.6Z" />
+    </>
+  ),
+  // Money leaving: a transfer out.
+  send: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 16.4V7.6" />
+      <path d="M8.6 11 12 7.6l3.4 3.4" />
+    </>
+  ),
+  // A statement: transaction history.
+  receipt: (
+    <>
+      <path d="M5.4 3.4h13.2v17.2l-2.64-1.6-2.64 1.6-2.64-1.6-2.64 1.6L5.4 20.6Z" />
+      <path d="M9 8.4h6M9 12.4h6M9 16h3.6" />
+    </>
+  ),
+  // A price tag: promotions and discounts.
+  tag: (
+    <>
+      <path d="M11.1 3.4H19a1.6 1.6 0 0 1 1.6 1.6v7.9a1.6 1.6 0 0 1-.47 1.13l-6.9 6.9a1.6 1.6 0 0 1-2.26 0l-7.03-7.03a1.6 1.6 0 0 1 0-2.26l6.9-6.9a1.6 1.6 0 0 1 1.13-.47Z" />
+      <circle cx="16.4" cy="7.6" r="1.3" />
+    </>
+  ),
+  // A padlock: the wallet PIN and anything behind it.
+  lock: (
+    <>
+      <rect x="4.4" y="10.2" width="15.2" height="10.4" rx="2.4" />
+      <path d="M8 10.2V7.6a4 4 0 0 1 8 0v2.6" />
+      <path d="M12 14.4v2.2" />
+    </>
+  ),
+  // A person: the account holder.
+  user: (
+    <>
+      <circle cx="12" cy="8.2" r="3.8" />
+      <path d="M4.6 20.4a7.4 7.4 0 0 1 14.8 0" />
+    </>
+  ),
+  // A key: credentials and recovery.
+  key: (
+    <>
+      <circle cx="8.2" cy="15.8" r="4.2" />
+      <path d="M11.2 12.8 20 4" />
+      <path d="M16.6 7.4l2.2 2.2" />
+      <path d="M18.4 5.6l2.2 2.2" />
+    </>
+  ),
+  // A warning triangle. Only ever for something the customer must act on.
+  alert: (
+    <>
+      <path d="M10.6 4.1 2.5 18.2a1.6 1.6 0 0 0 1.4 2.4h16.2a1.6 1.6 0 0 0 1.4-2.4L13.4 4.1a1.6 1.6 0 0 0-2.8 0Z" />
+      <path d="M12 9.6v4.4" />
+      <path d="M12 17.4h.01" />
     </>
   ),
   // A four-point spark: "everything".
