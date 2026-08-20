@@ -171,40 +171,67 @@ adding five booking states to an enum the delivery flow switches on.
 
 ## 5. How a booking runs
 
+Revised 2026-08-20 to match the answered decisions. The hotel now accepts
+before the money is committed, which moves the risky step earlier and shortens
+the window in which anything can be held wrongly.
+
 ```
-Customer picks dates + room type
+Guest picks dates + room type          (>=1 night, <=3 months ahead)
         |
         v
 Availability check: every night from checkIn to checkOut-1 has a free room
         |
         v
-Order created (PENDING) + Booking (PENDING_PAYMENT)
-Nights held: roomsBooked +N per night, in ONE transaction
+Booking AWAITING_HOTEL + funds HELD, not taken   <-- see 7.1: the wallet has
+Nights held: roomsBooked +N per night, ONE txn       no hold concept yet
+        |
+        +----- hotel REJECTS ---------> nights released, hold released,
+        |                               booking REJECTED. Nothing charged.
+        |
+        +----- 30 minutes elapse -----> nights released, hold released,
+        |                               booking EXPIRED. Nothing charged.
         |
         v
-Payment via existing gateway --- fails or times out ---> nights released,
-        |                                                booking CANCELLED
-        v
-Booking CONFIRMED, commission accrues to the hotel's account
+Hotel ACCEPTS
         |
         v
-Guest arrives -> hotel marks CHECKED_IN -> CHECKED_OUT -> Order COMPLETED
-                                                          settlement runs
+Hold committed: the guest is charged in full, funds settle to the hotel's
+DrippleX account, commission accrues at 10% (Ops-adjustable)
+        |
+        v
+Booking CONFIRMED  --- from here the payment is FINAL and non-refundable ---
+        |
+        v
+Guest arrives -> hotel marks CHECKED_IN -> CHECKED_OUT -> settlement runs
+        |
+        +----- guest never arrives ---> NO_SHOW. Money stays where it is;
+                                        commission still accrues.
 ```
 
-**Two failure modes worth naming now, because both have bitten this platform
-already:**
+**Where "non-refundable" starts.** At `CONFIRMED`, not before. A rejection or a
+timeout is not a cancellation — no room was ever contracted — so nothing is
+charged and there is nothing to refund. Guest cancellation after confirmation,
+and no-show, are the two cases decisions 2 and 5 govern, and in both the money
+stays.
 
-1. **Payment held but never confirmed.** The utilities work established the
-   rule: a provider _rejection_ proves nothing executed and must be reversed; a
-   _timeout_ may have succeeded and must never be silently reversed. Apply the
-   same distinction here — a rejected card releases the nights immediately; a
-   timeout holds them and raises an Ops task.
+**Three failure modes worth naming now, because the first two have already
+bitten this platform:**
 
-2. **Nights held forever by an abandoned checkout.** `InventoryReservation`
-   already solves the equivalent for carts with `expiresAt` and a sweep. The
-   night-hold needs the same expiry, or a browsing customer quietly makes a
-   hotel look full.
+1. **Money moved but nothing confirmed it.** Utilities learned this the
+   expensive way (see the payment sweep, 2026-08-20): a trigger that waits for
+   an event is not a guarantee. Whatever commits the hold on accept needs a
+   sweep behind it, not just a webhook and a hopeful comment.
+
+2. **Nights held forever by an abandoned request.** `InventoryReservation`
+   already solves the equivalent for carts with `expiresAt` and a sweep, and the
+   30-minute accept window makes this concrete rather than theoretical. The same
+   sweep releases both the nights and the money hold — they must be released
+   together or a hotel looks full while nobody is charged.
+
+3. **A hotel that accepts on the 29th minute while the sweep is expiring it.**
+   One transaction decides, the same way `confirmCardPurchase` claims a row with
+   a conditional `updateMany` before acting. Accept and expire must not both
+   win.
 
 ---
 
@@ -242,19 +269,67 @@ first.
 
 ---
 
-## 7. Founder decisions required
+## 7. Founder decisions — ANSWERED 2026-08-20
 
-Nothing below is inferable from the code. Each changes what gets built.
+All seven, plus two follow-ups the answers forced. These are now locked; changing
+one changes the build.
 
-| #   | Decision                                    | Why it matters                                                                                                                                                                            |
-| --- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | **Pay in full, deposit, or pay at hotel?**  | Deposit needs a balance-due concept; pay-at-hotel means commission accrues against money DrippleX never touched — the same shape as cash-on-delivery, which already has a settled pattern |
-| 2   | **Cancellation window and refund**          | Free until 24h before? Non-refundable rate? Refunds go to the DrippleX Wallet per DPX-D4                                                                                                  |
-| 3   | **Instant confirmation, or hotel accepts?** | Instant is a better guest experience; accept-first protects a hotel with imperfect calendar discipline                                                                                    |
-| 4   | **Commission rate for hotels**              | 10% default, or its own rate? Hotel margins differ from retail                                                                                                                            |
-| 5   | **No-show policy**                          | Who keeps the money, and does commission still accrue?                                                                                                                                    |
-| 6   | **Extra KYC for hotels?**                   | Or is merchant KYC enough?                                                                                                                                                                |
-| 7   | **Booking horizon and minimum stay**        | How far ahead can a guest book; is a one-night stay allowed                                                                                                                               |
+| #   | Decision                   | Answer                                                                                                  |
+| --- | -------------------------- | ------------------------------------------------------------------------------------------------------- |
+| 1   | Payment shape              | **Pay in full**, through the DrippleX payment window, settling to the merchant's DrippleX account       |
+| 2   | Cancellation and refund    | **Non-refundable. Bookings are final.** Covers a guest changing their mind                              |
+| 3   | Confirmation               | **The hotel accepts first**, to confirm availability                                                    |
+| 4   | Commission                 | **10%, Ops-adjustable** — the existing platform default and the existing console control, not a new one |
+| 5   | No-show                    | **Non-refundable**, same as #2                                                                          |
+| 6   | KYC                        | **Merchant KYC is enough.** No hotel-specific documents                                                 |
+| 7   | Horizon and stay length    | **3 months ahead maximum. One night MINIMUM — multi-night stays allowed**                               |
+| 8   | Hotel rejects or times out | **The money is not taken until the hotel accepts** (follow-up to #2/#3)                                 |
+| 9   | Accept window              | **30 minutes**, then the request auto-expires (follow-up to #3)                                         |
+
+Decisions 8 and 9 exist because #2 and #3 collide. "Non-refundable" cannot mean
+DrippleX keeps money for a room that was never contracted — a hotel declining is
+not a guest cancelling. Non-refundable therefore governs guest cancellation and
+no-show only.
+
+---
+
+## 7.1 The dependency decision 8 creates
+
+**Not taking the money until the hotel accepts is not free, and the platform
+cannot do it today.** Stated here rather than designed around:
+
+- `WalletService` has **no hold or reserve concept** — only debit, credit and
+  refund. There is no state between "the customer has it" and "we have taken it".
+- `PaymentProviderAdapter` exposes `initializePayment` / `verifyPayment` /
+  `handleWebhook` and **no authorise-then-capture**. A card pre-authorisation is
+  not merely unimplemented; whether Paystack and Flutterwave will grant DrippleX
+  auth/capture at all is an open question with each provider.
+
+Three ways forward, in the order they should be considered:
+
+**A. Hotel bookings are wallet-funded, and the wallet gains a real hold.**
+_Recommended._ A hold is a debit that has not been committed: reserved at
+request, committed on accept, released on reject or on the 30-minute expiry.
+It is DrippleX's own ledger, so no provider has to agree to anything, and the
+existing `referenceType`/`referenceId` idempotency carries over unchanged. A
+guest paying by card funds their Wallet first — a flow that already exists and
+already works.
+_Cost to the guest:_ one extra step when their balance is short.
+_Cost to build:_ a reserved state on the wallet ledger, and a release path.
+
+**B. Charge at request; return to the Wallet on reject or expiry.**
+Uses only what exists today. Contradicts decision 8 literally — the money IS
+taken before the hotel accepts — but only for at most 30 minutes, and it
+returns automatically. Honest framing to the guest matters: "held while the
+hotel confirms", never "paid".
+
+**C. Card pre-authorisation.**
+The literal reading of decision 8 for card payments. Requires adapter work AND
+provider approval, and may simply not be available on Nigerian card rails.
+Not a launch option.
+
+**Needs founder confirmation before Phase 2 of the sequence below.** A is the
+recommendation; B is the fallback if wallet-first friction is unacceptable.
 
 ---
 
@@ -262,19 +337,28 @@ Nothing below is inferable from the code. Each changes what gets built.
 
 Each slice ships independently and is testable on its own.
 
-| Slice | Contents                                                                                                                            |
-| ----- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| 0     | Merchant category field (§6.1) — needed regardless of hotels                                                                        |
-| 1     | `roomTypeDetail` + `room_availability` + the merchant calendar. No booking yet; a hotel can list rooms and open nights              |
-| 2     | `Booking` + the availability check + night-hold transaction, with the double-booking constraint and its tests against real Postgres |
-| 3     | Customer flow: dates → room → pay, reusing the existing gateway; commission accrual on confirmation                                 |
-| 4     | Check-in / check-out / no-show, settlement, Ops visibility                                                                          |
-| 5     | Cancellation and refund per decision #2                                                                                             |
+| Slice | Contents                                                                                                                          |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------- |
+| 0     | ✅ **DONE 2026-08-20** — merchant category field (§6.1), shipped in #203 with an Ops control                                      |
+| 1     | Wallet **hold** — reserve, commit, release — per §7.1 option A. Nothing hotel-specific; it is the prerequisite decision 8 created |
+| 2     | `roomTypeDetail` + `room_availability` + the merchant calendar. No booking yet; a hotel can list rooms and open nights            |
+| 3     | `Booking` + availability check + night-hold transaction, with the double-booking constraint and its tests against real Postgres   |
+| 4     | The accept flow: guest requests → funds held → hotel accepts/rejects → 30-minute expiry sweep. Commission accrues on acceptance   |
+| 5     | Check-in / check-out / no-show, settlement, Ops visibility                                                                        |
 
-**Slice 2 is the one that deserves the most care.** Everything else is
-recombination of parts already working in production; that slice is the only
-genuinely new invariant, and it is the one whose failure a guest experiences at
-a hotel desk at night.
+Slice 5 is the last one: decisions 2 and 5 make bookings non-refundable, so
+there is no cancellation-and-refund slice to build. That is one fewer moving
+part than the original sequence assumed.
+
+**Slice 1 is now the gate.** It was not in the original plan — decision 8 put it
+there. Until the wallet can hold money without taking it, the accept-first flow
+cannot be built honestly, and §7.1 option B is the only alternative.
+
+**Slice 3 is the one that deserves the most care** (it was slice 2 before the
+wallet hold moved in front of it). Everything else is recombination of parts
+already working in production; that slice carries the only genuinely new
+invariant, and it is the one whose failure a guest experiences at a hotel desk
+at night.
 
 ---
 
