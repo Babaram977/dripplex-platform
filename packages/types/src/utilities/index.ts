@@ -1,5 +1,5 @@
 /// DPX-UTILITIES-001 / -002 — the Utilities tab (airtime, data, electricity,
-/// cable TV) behind the Peyflex aggregator.
+/// cable TV, betting top-ups and exam PINs) behind the Peyflex aggregator.
 ///
 /// Every shape here mirrors the BACKEND contract
 /// (apps/backend/src/utilities/utilities.service.ts and
@@ -7,7 +7,17 @@
 /// client-shaped interface that drifts from the server is how a screen ends
 /// up rendering `undefined` for every field while the build stays green.
 
-export type UtilityServiceType = 'AIRTIME' | 'DATA' | 'ELECTRICITY' | 'CABLE_TV';
+export type UtilityServiceType =
+  | 'AIRTIME'
+  | 'DATA'
+  | 'ELECTRICITY'
+  | 'CABLE_TV'
+  /// Funding a bookmaker account. Verified before funding — money sent to a
+  /// mistyped betting id does not come back.
+  | 'BETTING'
+  /// WAEC / NECO / NABTEB result-checker PINs. The only service priced per
+  /// unit and bought in quantity.
+  | 'EDUCATION';
 
 export type UtilityPaymentMethod = 'WALLET' | 'PAYSTACK' | 'FLUTTERWAVE';
 
@@ -29,6 +39,10 @@ export interface UtilityCatalogueDto {
   services: UtilityServiceType[];
   airtimeMinAmount: number;
   airtimeMaxAmount: number;
+  bettingMinAmount: number;
+  bettingMaxAmount: number;
+  /// Exam PINs are the only service bought in quantity.
+  educationMaxQuantity: number;
 }
 
 export interface UtilityNetworkDto {
@@ -54,6 +68,15 @@ export interface UtilityCablePlanDto {
   description?: string;
 }
 
+/// A result-checker PIN. `unitPrice` is for ONE — the charge is unitPrice
+/// multiplied by the quantity, which no other utility does.
+export interface UtilityEducationPlanDto {
+  id: string;
+  planCode: string;
+  unitPrice: number;
+  label: string;
+}
+
 export interface UtilityElectricityDiscoDto {
   code: string;
   name: string;
@@ -74,11 +97,17 @@ export interface UtilityPurchaseDto {
   providerCode: string;
   planCode: string | null;
   amountCharged: number;
+  /// Exam PINs only. Without it a receipt for ₦16,050 cannot explain itself.
+  quantity: number | null;
+  /// Whose betting account was funded, as verified before payment. Null for
+  /// every other service.
+  beneficiaryName: string | null;
   paymentMethod: UtilityPaymentMethod;
   status: UtilityPurchaseStatus;
   providerReference: string | null;
-  /// The electricity token or recharge PIN. Re-displayable, because a
-  /// customer who closes the app and loses it has lost the money.
+  /// The electricity token or exam PIN(s) — every PIN a purchase sold, in
+  /// one `||`-separated string. Re-displayable, because a customer who closes
+  /// the app and loses it has lost the money.
   deliveredToken: string | null;
   failureReason: string | null;
   createdAt: string;
@@ -97,10 +126,13 @@ export interface CreateUtilityPurchaseRequest {
   serviceType: UtilityServiceType;
   provider: string;
   customerIdentifier: string;
-  /// Required for DATA and CABLE_TV; the amount comes from the catalogue.
+  /// Required for DATA, CABLE_TV and EDUCATION; the amount comes from the
+  /// catalogue.
   planId?: string;
-  /// Required for AIRTIME and ELECTRICITY, which are amount-priced.
+  /// Required for AIRTIME, ELECTRICITY and BETTING, which are amount-priced.
   amount?: number;
+  /// EDUCATION only — how many PINs. Defaults to 1.
+  quantity?: number;
   meterType?: 'prepaid' | 'postpaid';
   contactPhone?: string;
   paymentMethod: UtilityPaymentMethod;
@@ -115,6 +147,13 @@ export interface InitiateUtilityPurchaseResult {
 export interface VerifyCableCustomerRequest {
   provider: string;
   smartcardNumber: string;
+}
+
+export interface VerifyBettingCustomerRequest {
+  provider: string;
+  /// May be a username, not only a phone number — Bet9ja and others identify
+  /// customers by username.
+  customerId: string;
 }
 
 export interface VerifyElectricityCustomerRequest {

@@ -30,6 +30,7 @@ import {
   type UtilityCablePlan,
   type UtilityCustomerLookup,
   type UtilityDataPlan,
+  type UtilityEducationPlan,
   type UtilityElectricityDisco,
   type UtilityNetwork,
   type UtilityProviderPort,
@@ -39,6 +40,10 @@ import {
 import {
   UTILITIES_AUDIT_ACTIONS,
   UTILITY_AIRTIME_MAX_AMOUNT,
+  UTILITY_BETTING_MAX_AMOUNT,
+  UTILITY_BETTING_MIN_AMOUNT,
+  UTILITY_EDUCATION_MAX_QUANTITY,
+  UTILITY_EDUCATION_MIN_QUANTITY,
   UTILITY_AIRTIME_MIN_AMOUNT,
   UTILITY_CARD_REVERSAL_SUFFIX,
   UTILITY_FLOAT_EXHAUSTED_CARD_CUSTOMER_MESSAGE,
@@ -61,6 +66,10 @@ export interface UtilityCatalogueDto {
   services: UtilityServiceType[];
   airtimeMinAmount: number;
   airtimeMaxAmount: number;
+  bettingMinAmount: number;
+  bettingMaxAmount: number;
+  /** Exam PINs are the only service bought in quantity. */
+  educationMaxQuantity: number;
 }
 
 export interface UtilityPurchaseDto {
@@ -70,6 +79,12 @@ export interface UtilityPurchaseDto {
   providerCode: string;
   planCode: string | null;
   amountCharged: number;
+  /** How many units — exam PINs only, null elsewhere. Without it a receipt
+   * for ₦16,050 of WAEC PINs cannot explain where the figure came from. */
+  quantity: number | null;
+  /** Whose betting account was funded, as verified before payment. Null for
+   * every other service. */
+  beneficiaryName: string | null;
   paymentMethod: UtilityPaymentMethod;
   status: UtilityPurchaseStatus;
   providerReference: string | null;
@@ -159,9 +174,14 @@ export class UtilitiesService {
         UtilityServiceType.DATA,
         UtilityServiceType.ELECTRICITY,
         UtilityServiceType.CABLE_TV,
+        UtilityServiceType.BETTING,
+        UtilityServiceType.EDUCATION,
       ],
       airtimeMinAmount: UTILITY_AIRTIME_MIN_AMOUNT,
       airtimeMaxAmount: UTILITY_AIRTIME_MAX_AMOUNT,
+      bettingMinAmount: UTILITY_BETTING_MIN_AMOUNT,
+      bettingMaxAmount: UTILITY_BETTING_MAX_AMOUNT,
+      educationMaxQuantity: UTILITY_EDUCATION_MAX_QUANTITY,
     };
   }
 
@@ -202,6 +222,21 @@ export class UtilitiesService {
     meterType: 'prepaid' | 'postpaid',
   ): Promise<UtilityCustomerLookup> {
     return await this.provider.verifyElectricityCustomer(discoCode, meterNumber, meterType);
+  }
+
+  public async listBettingCompanies(): Promise<UtilityNetwork[]> {
+    return await this.provider.listBettingCompanies();
+  }
+
+  public async listEducationPlans(): Promise<UtilityEducationPlan[]> {
+    return await this.provider.listEducationPlans();
+  }
+
+  public async verifyBettingCustomer(
+    companyCode: string,
+    customerId: string,
+  ): Promise<UtilityCustomerLookup> {
+    return await this.provider.verifyBettingCustomer(companyCode, customerId);
   }
 
   // ── Purchase ──────────────────────────────────────────────────────────────
@@ -380,7 +415,15 @@ export class UtilitiesService {
   ): Promise<UtilityPurchase> {
     let result: UtilityPurchaseResult;
     try {
-      result = await this.callProvider(purchase.serviceType, request);
+      // Stamped here rather than at either call site, because this is where
+      // the wallet path and the card path converge and it is the first point
+      // at which the row — and therefore its id — certainly exists. Only
+      // betting sends it on to Peyflex; every other service has nowhere to
+      // put it (G1).
+      result = await this.callProvider(purchase.serviceType, {
+        ...request,
+        reference: providerReferenceFor(purchase.id),
+      });
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       this.logger.error(`Utility purchase ${purchase.id} threw: ${detail}`);
@@ -750,8 +793,21 @@ export class UtilitiesService {
   private async resolvePurchase(dto: CreateUtilityPurchaseDto): Promise<{
     amount: number;
     planCode: string | null;
+    quantity?: number;
+    beneficiaryName?: string;
     request: UtilityPurchaseRequest;
   }> {
+    // The DTO validates `customerIdentifier` against the widest safe shape
+    // because betting accounts can be usernames. Everything else in this
+    // module is a phone, meter or smartcard number, so the narrow rule is
+    // re-applied here where the service type is finally known.
+    if (
+      dto.serviceType !== UtilityServiceType.BETTING &&
+      !/^[0-9]{6,}$/.test(dto.customerIdentifier)
+    ) {
+      throw new ValidationDomainException('That number does not look right — digits only');
+    }
+
     switch (dto.serviceType) {
       case UtilityServiceType.AIRTIME: {
         const amount = this.requireAmount(dto.amount);
@@ -827,6 +883,74 @@ export class UtilitiesService {
           },
         };
       }
+
+      case UtilityServiceType.BETTING: {
+        const amount = this.requireAmount(dto.amount);
+        if (amount < UTILITY_BETTING_MIN_AMOUNT || amount > UTILITY_BETTING_MAX_AMOUNT) {
+          throw new ValidationDomainException(
+            `Betting top-ups must be between ₦${String(UTILITY_BETTING_MIN_AMOUNT)} and ₦${String(UTILITY_BETTING_MAX_AMOUNT)}`,
+          );
+        }
+        this.requireCode(await this.provider.listBettingCompanies(), dto.provider, 'bookmaker');
+
+        // Verified server-side, every time, and NOT taken from the client.
+        //
+        // Peyflex requires `customer_name` on the funding call. Accepting it
+        // from the request would put the name of the account about to be
+        // credited under the caller's control, and would also mean trusting
+        // that a verification happened at all. Re-verifying costs one call
+        // and fails closed before any money moves — which matters more here
+        // than anywhere else in this module, because a bookmaker top-up sent
+        // to the wrong account cannot be recalled.
+        const account = await this.provider.verifyBettingCustomer(
+          dto.provider,
+          dto.customerIdentifier,
+        );
+
+        return {
+          amount,
+          planCode: null,
+          beneficiaryName: account.customerName,
+          request: {
+            providerCode: dto.provider,
+            customerIdentifier: dto.customerIdentifier,
+            amount,
+            customerName: account.customerName,
+          },
+        };
+      }
+
+      case UtilityServiceType.EDUCATION: {
+        const quantity = dto.quantity ?? 1;
+        if (
+          quantity < UTILITY_EDUCATION_MIN_QUANTITY ||
+          quantity > UTILITY_EDUCATION_MAX_QUANTITY
+        ) {
+          throw new ValidationDomainException(
+            `Between ${String(UTILITY_EDUCATION_MIN_QUANTITY)} and ${String(UTILITY_EDUCATION_MAX_QUANTITY)} PINs can be bought at once`,
+          );
+        }
+        const plans = await this.provider.listEducationPlans();
+        const plan = plans.find((entry) => entry.id === dto.planId);
+        if (!plan) {
+          throw new ValidationDomainException('That exam PIN is no longer available');
+        }
+        return {
+          // Priced per unit — the only service in this module that multiplies.
+          amount: roundToKobo(plan.unitPrice * quantity),
+          planCode: plan.planCode,
+          quantity,
+          request: {
+            providerCode: dto.provider,
+            customerIdentifier: dto.customerIdentifier,
+            amount: roundToKobo(plan.unitPrice * quantity),
+            // Peyflex's purchase call keys on `plan_id`, not `plan_code`.
+            planCode: plan.id,
+            quantity,
+            ...(dto.contactPhone !== undefined ? { contactPhone: dto.contactPhone } : {}),
+          },
+        };
+      }
     }
   }
 
@@ -860,7 +984,12 @@ export class UtilitiesService {
   private async createPurchaseRow(
     customerId: string,
     dto: CreateUtilityPurchaseDto,
-    resolved: { amount: number; planCode: string | null },
+    resolved: {
+      amount: number;
+      planCode: string | null;
+      quantity?: number;
+      beneficiaryName?: string;
+    },
     status: UtilityPurchaseStatus,
     paymentMethod: UtilityPaymentMethod,
     paymentReference?: string,
@@ -875,6 +1004,13 @@ export class UtilitiesService {
         amountCharged: resolved.amount,
         paymentMethod,
         status,
+        // Named explicitly, like every other column: this is an explicit
+        // field list, so anything not written here is silently dropped on
+        // write and the feature looks shipped while doing nothing.
+        ...(resolved.quantity !== undefined ? { quantity: resolved.quantity } : {}),
+        ...(resolved.beneficiaryName !== undefined
+          ? { beneficiaryName: resolved.beneficiaryName }
+          : {}),
         ...(paymentReference !== undefined ? { paymentReference } : {}),
       },
     });
@@ -893,6 +1029,13 @@ export class UtilitiesService {
       ...(purchase.serviceType === UtilityServiceType.ELECTRICITY
         ? { meterType: 'prepaid' as const }
         : {}),
+      // Carried through the card path's second leg. Without these an
+      // education purchase paid by card would silently buy ONE pin however
+      // many were paid for, and a betting top-up would be rejected for a
+      // missing customer_name — both only on the card path, which is exactly
+      // the kind of asymmetry that survives testing on the wallet path.
+      ...(purchase.quantity !== null ? { quantity: purchase.quantity } : {}),
+      ...(purchase.beneficiaryName !== null ? { customerName: purchase.beneficiaryName } : {}),
     };
   }
 
@@ -909,6 +1052,10 @@ export class UtilitiesService {
         return await this.provider.purchaseCable(request);
       case UtilityServiceType.ELECTRICITY:
         return await this.provider.purchaseElectricity(request);
+      case UtilityServiceType.BETTING:
+        return await this.provider.purchaseBetting(request);
+      case UtilityServiceType.EDUCATION:
+        return await this.provider.purchaseEducation(request);
     }
   }
 
@@ -980,7 +1127,24 @@ function describeService(serviceType: UtilityServiceType): string {
       return 'Electricity';
     case UtilityServiceType.CABLE_TV:
       return 'Cable TV';
+    case UtilityServiceType.BETTING:
+      return 'Betting top-up';
+    case UtilityServiceType.EDUCATION:
+      return 'Exam PIN';
   }
+}
+
+/**
+ * DrippleX's reference for a purchase, in the shape Peyflex's betting
+ * endpoint accepts.
+ *
+ * Derived from the purchase id rather than generated, so it is identical on
+ * every retry of the same purchase — that determinism is the entire point.
+ * Hyphens stripped because Peyflex's own example reference is bare
+ * alphanumerics and nothing documents what they accept.
+ */
+export function providerReferenceFor(purchaseId: string): string {
+  return `DPX${purchaseId.replace(/-/g, '')}`;
 }
 
 /** The customer's view. Deliberately without `providerCost` — the margin is
@@ -994,6 +1158,8 @@ export function toPurchaseDto(purchase: UtilityPurchase): UtilityPurchaseDto {
     providerCode: purchase.providerCode,
     planCode: purchase.planCode,
     amountCharged: Number(purchase.amountCharged),
+    quantity: purchase.quantity,
+    beneficiaryName: purchase.beneficiaryName,
     paymentMethod: purchase.paymentMethod,
     status: purchase.status,
     providerReference: purchase.providerReference,

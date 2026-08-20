@@ -7,6 +7,7 @@ import {
   CreateUtilityPurchaseDto,
   UtilityPlansQueryDto,
   UtilityPurchaseHistoryQueryDto,
+  VerifyBettingCustomerDto,
   VerifyCableCustomerDto,
   VerifyElectricityCustomerDto,
 } from './dto/utilities.dto';
@@ -22,6 +23,7 @@ import type {
   UtilityCablePlan,
   UtilityCustomerLookup,
   UtilityDataPlan,
+  UtilityEducationPlan,
   UtilityElectricityDisco,
   UtilityNetwork,
 } from './providers/utility-provider.port';
@@ -81,6 +83,36 @@ export class CustomerUtilitiesController {
   @RequirePermissions(UTILITIES_PERMISSIONS.CUSTOMER_READ)
   public async getElectricityDiscos(): Promise<ApiSuccessResponse<UtilityElectricityDisco[]>> {
     return { success: true, data: await this.utilitiesService.listElectricityDiscos() };
+  }
+
+  @Get('betting/providers')
+  @RequirePermissions(UTILITIES_PERMISSIONS.CUSTOMER_READ)
+  public async getBettingCompanies(): Promise<ApiSuccessResponse<UtilityNetwork[]>> {
+    return { success: true, data: await this.utilitiesService.listBettingCompanies() };
+  }
+
+  /** Exam PINs come as one flat list — Peyflex files them all under a single
+   * `education` provider, so there is no provider to choose first. */
+  @Get('education/plans')
+  @RequirePermissions(UTILITIES_PERMISSIONS.CUSTOMER_READ)
+  public async getEducationPlans(): Promise<ApiSuccessResponse<UtilityEducationPlan[]>> {
+    return { success: true, data: await this.utilitiesService.listEducationPlans() };
+  }
+
+  /**
+   * Confirm whose betting account this is before any money moves.
+   *
+   * The purchase re-verifies server-side regardless — this endpoint exists so
+   * the customer sees the account holder's name and can stop before paying,
+   * not as the check the money path relies on.
+   */
+  @Post('betting/verify')
+  @RequirePermissions(UTILITIES_PERMISSIONS.CUSTOMER_READ)
+  public async verifyBetting(
+    @Body() dto: VerifyBettingCustomerDto,
+  ): Promise<ApiSuccessResponse<UtilityCustomerLookup>> {
+    const data = await this.utilitiesService.verifyBettingCustomer(dto.provider, dto.customerId);
+    return { success: true, data };
   }
 
   /** Confirm whose smartcard this is before any money moves. */

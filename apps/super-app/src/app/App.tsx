@@ -596,6 +596,10 @@ function AppShell() {
   // is closed.
   const [activeUtilityService, setActiveUtilityService] = useState<UtilityServiceType>('AIRTIME');
   const [utilityCardEnabled, setUtilityCardEnabled] = useState(false);
+  /** The server's ceiling on exam PINs per purchase, carried from the
+   *  catalogue so the quantity stepper cannot offer more than the backend
+   *  will accept. */
+  const [utilityMaxPinQuantity, setUtilityMaxPinQuantity] = useState(1);
   const [activeUtilityPurchase, setActiveUtilityPurchase] = useState<UtilityPurchaseDto | null>(
     null,
   );
@@ -1482,9 +1486,10 @@ function AppShell() {
     utilities: (
       <UtilitiesHomeScreen
         onBack={() => goBack('home')}
-        onService={(service, cardEnabled) => {
+        onService={(service, cardEnabled, maxPinQuantity) => {
           setActiveUtilityService(service);
           setUtilityCardEnabled(cardEnabled);
+          setUtilityMaxPinQuantity(maxPinQuantity);
           go('utilitybuy');
         }}
         onHistory={() => go('utilityhistory')}
@@ -1494,6 +1499,7 @@ function AppShell() {
       <UtilityPurchaseScreen
         service={activeUtilityService}
         cardEnabled={utilityCardEnabled}
+        maxPinQuantity={utilityMaxPinQuantity}
         onBack={() => goBack('utilities')}
         onDone={(purchase) => {
           setActiveUtilityPurchase(purchase);
@@ -1510,9 +1516,10 @@ function AppShell() {
     ) : (
       <UtilitiesHomeScreen
         onBack={() => goBack('home')}
-        onService={(service, cardEnabled) => {
+        onService={(service, cardEnabled, maxPinQuantity) => {
           setActiveUtilityService(service);
           setUtilityCardEnabled(cardEnabled);
+          setUtilityMaxPinQuantity(maxPinQuantity);
           go('utilitybuy');
         }}
         onHistory={() => go('utilityhistory')}

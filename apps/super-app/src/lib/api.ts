@@ -1658,7 +1658,8 @@ export interface LoyaltyOverviewDto {
 // field while the build stays green — this app has no tsconfig, so nothing
 // would catch it but a browser.
 
-export type UtilityServiceType = 'AIRTIME' | 'DATA' | 'ELECTRICITY' | 'CABLE_TV';
+export type UtilityServiceType =
+  'AIRTIME' | 'DATA' | 'ELECTRICITY' | 'CABLE_TV' | 'BETTING' | 'EDUCATION';
 export type UtilityPaymentMethod = 'WALLET' | 'PAYSTACK' | 'FLUTTERWAVE';
 export type UtilityPurchaseStatus =
   'AWAITING_PAYMENT' | 'PENDING' | 'SUCCESSFUL' | 'FAILED' | 'REVERSED';
@@ -1684,11 +1685,24 @@ export interface UtilityCatalogueDto {
   services: UtilityServiceType[];
   airtimeMinAmount: number;
   airtimeMaxAmount: number;
+  bettingMinAmount: number;
+  bettingMaxAmount: number;
+  /** Exam PINs are the only service bought in quantity. */
+  educationMaxQuantity: number;
 }
 
 export interface UtilityNetworkDto {
   code: string;
   name: string;
+}
+
+/** A result-checker PIN. `unitPrice` is for ONE — the charge is unitPrice
+ *  multiplied by the quantity, which no other utility does. */
+export interface UtilityEducationPlanDto {
+  id: string;
+  planCode: string;
+  unitPrice: number;
+  label: string;
 }
 
 export interface UtilityDataPlanDto {
@@ -1728,11 +1742,16 @@ export interface UtilityPurchaseDto {
   providerCode: string;
   planCode: string | null;
   amountCharged: number;
+  /** Exam PINs only. Without it a receipt for ₦16,050 cannot explain itself. */
+  quantity: number | null;
+  /** Whose betting account was funded, as verified before payment. */
+  beneficiaryName: string | null;
   paymentMethod: UtilityPaymentMethod;
   status: UtilityPurchaseStatus;
   providerReference: string | null;
-  /** The electricity token or recharge PIN. Re-displayable, because a
-   * customer who closes the app and loses it has lost the money. */
+  /** The electricity token or exam PIN(s) — every PIN a purchase sold, in one
+   * `||`-separated string. Re-displayable, because a customer who closes the
+   * app and loses it has lost the money. */
   deliveredToken: string | null;
   failureReason: string | null;
   createdAt: string;
@@ -1751,6 +1770,8 @@ export interface CreateUtilityPurchaseRequest {
   customerIdentifier: string;
   planId?: string;
   amount?: number;
+  /** EDUCATION only — how many PINs. Defaults to 1. */
+  quantity?: number;
   meterType?: 'prepaid' | 'postpaid';
   contactPhone?: string;
   /** Send 'CARD', never a named gateway — which gateway takes the money is a
@@ -3034,6 +3055,13 @@ export const api = {
       dx<UtilityCablePlanDto[]>('GET', '/customer/utilities/cable/plans', undefined, { provider }),
     electricityProviders: () =>
       dx<UtilityElectricityDiscoDto[]>('GET', '/customer/utilities/electricity/providers'),
+    bettingProviders: () => dx<UtilityNetworkDto[]>('GET', '/customer/utilities/betting/providers'),
+    /** One flat list — exam PINs all sit under a single provider, so there is
+     *  no provider to choose first. */
+    educationPlans: () =>
+      dx<UtilityEducationPlanDto[]>('GET', '/customer/utilities/education/plans'),
+    verifyBetting: (body: { provider: string; customerId: string }) =>
+      dx<UtilityCustomerLookupDto>('POST', '/customer/utilities/betting/verify', body),
     verifyCable: (body: { provider: string; smartcardNumber: string }) =>
       dx<UtilityCustomerLookupDto>('POST', '/customer/utilities/cable/verify', body),
     verifyElectricity: (body: {

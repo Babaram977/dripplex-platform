@@ -10,12 +10,13 @@ import {
 } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
+import { ValidationDomainException } from '../common/exceptions/domain.exception';
 import { DomainEventBus } from '../events/domain-event-bus';
 import { WalletService } from '../wallet/wallet.service';
 
 import { UtilityProviderRejectedError } from './providers/utility-provider.port';
 import { UTILITIES_PERMISSIONS } from './utilities.constants';
-import { UtilitiesService } from './utilities.service';
+import { providerReferenceFor, UtilitiesService } from './utilities.service';
 
 import type { AuditLogRepository } from '../audit/repositories/audit-log.repository';
 import type { AppConfigService } from '../config/app-config.service';
@@ -62,6 +63,14 @@ describe('UtilitiesService', () => {
       { id: 'M2GBS:1505', planCode: 'M2GBS', amount: 1505, label: '2GB — 30 days' },
     ],
     discos: [{ code: 'kaduna', name: 'Kaduna Electric', minAmount: 1100, maxAmount: 100_000 }],
+    // Code and label deliberately differ — the adapter sends Peyflex the
+    // label while the client selects by code.
+    bettingCompanies: [{ code: 'sportybet', name: 'SportyBet' }],
+    // Real values from Peyflex's live catalogue, including the unit price
+    // that the quantity multiplies.
+    educationPlans: [
+      { id: 'waec', planCode: 'WAEC-EPIN', unitPrice: 5350, label: 'WAEC Result Checker PIN' },
+    ],
   };
 
   beforeAll(async () => {
@@ -96,8 +105,15 @@ describe('UtilitiesService', () => {
       listCableProviders: jest.fn().mockResolvedValue([]),
       listCablePlans: jest.fn().mockResolvedValue([]),
       listElectricityDiscos: jest.fn().mockResolvedValue(CATALOGUE.discos),
+      listBettingCompanies: jest.fn().mockResolvedValue(CATALOGUE.bettingCompanies),
+      listEducationPlans: jest.fn().mockResolvedValue(CATALOGUE.educationPlans),
       verifyCableCustomer: jest.fn(),
       verifyElectricityCustomer: jest.fn(),
+      verifyBettingCustomer: jest
+        .fn()
+        .mockResolvedValue({ customerName: 'MOGOLI PHILIP', identifier: '08105867169' }),
+      purchaseBetting: jest.fn(),
+      purchaseEducation: jest.fn(),
       purchaseAirtime: jest.fn(),
       purchaseData: jest.fn(),
       purchaseCable: jest.fn(),
@@ -568,6 +584,237 @@ describe('UtilitiesService', () => {
       ),
     ).rejects.toThrow();
     expect(provider.purchaseAirtime).not.toHaveBeenCalled();
+  });
+
+  // ── Betting ───────────────────────────────────────────────────────────────
+
+  it('verifies the betting account server-side and funds the name it got back', async () => {
+    if (!databaseAvailable) return;
+    const customerId = await fundedCustomer(5_000);
+    provider.purchaseBetting.mockResolvedValue({
+      outcome: 'SUCCESS',
+      providerReference: 'TIVA901C2F72162E4',
+      providerCost: 999,
+    });
+
+    const result = await service.initiatePurchase(
+      customerId,
+      {
+        serviceType: UtilityServiceType.BETTING,
+        provider: 'sportybet',
+        customerIdentifier: '08105867169',
+        amount: 1_000,
+        paymentMethod: UtilityPaymentMethod.WALLET,
+      },
+      { userId: customerId },
+    );
+
+    expect(result.purchase.status).toBe(UtilityPurchaseStatus.SUCCESSFUL);
+    expect(provider.verifyBettingCustomer).toHaveBeenCalledWith('sportybet', '08105867169');
+    // The name reaching Peyflex is the VERIFIED one. Nothing the caller sent
+    // can name whose account gets credited.
+    expect(provider.purchaseBetting).toHaveBeenCalledWith(
+      expect.objectContaining({ customerName: 'MOGOLI PHILIP' }),
+    );
+    expect(result.purchase.beneficiaryName).toBe('MOGOLI PHILIP');
+  });
+
+  it('sends betting a reference derived from the purchase id, so a retry is not a second top-up', async () => {
+    if (!databaseAvailable) return;
+    const customerId = await fundedCustomer(5_000);
+    provider.purchaseBetting.mockResolvedValue({ outcome: 'SUCCESS' });
+
+    const result = await service.initiatePurchase(
+      customerId,
+      {
+        serviceType: UtilityServiceType.BETTING,
+        provider: 'sportybet',
+        customerIdentifier: '08105867169',
+        amount: 500,
+        paymentMethod: UtilityPaymentMethod.WALLET,
+      },
+      { userId: customerId },
+    );
+
+    // Betting is the ONLY Peyflex call that accepts our reference, and it is
+    // deterministic from the row id — the one place G1 can actually be closed.
+    expect(provider.purchaseBetting).toHaveBeenCalledWith(
+      expect.objectContaining({ reference: providerReferenceFor(result.purchase.id) }),
+    );
+  });
+
+  it('never funds a betting account it could not verify', async () => {
+    if (!databaseAvailable) return;
+    const customerId = await fundedCustomer(5_000);
+    provider.verifyBettingCustomer.mockRejectedValue(
+      new ValidationDomainException('That betting account could not be verified'),
+    );
+
+    await expect(
+      service.initiatePurchase(
+        customerId,
+        {
+          serviceType: UtilityServiceType.BETTING,
+          provider: 'sportybet',
+          customerIdentifier: 'nosuchuser',
+          amount: 1_000,
+          paymentMethod: UtilityPaymentMethod.WALLET,
+        },
+        { userId: customerId },
+      ),
+    ).rejects.toThrow();
+
+    // Fails closed: no funding call, and the wallet is untouched.
+    expect(provider.purchaseBetting).not.toHaveBeenCalled();
+    expect(await balanceOf(customerId)).toBe(5_000);
+  });
+
+  it('accepts a bookmaker username, not just a phone number', async () => {
+    if (!databaseAvailable) return;
+    const customerId = await fundedCustomer(5_000);
+    provider.purchaseBetting.mockResolvedValue({ outcome: 'SUCCESS' });
+
+    // Bet9ja and others identify customers by username. A digits-only rule
+    // would make every one of them unusable while looking like the account
+    // simply did not exist.
+    const result = await service.initiatePurchase(
+      customerId,
+      {
+        serviceType: UtilityServiceType.BETTING,
+        provider: 'sportybet',
+        customerIdentifier: 'kola_bet99',
+        amount: 500,
+        paymentMethod: UtilityPaymentMethod.WALLET,
+      },
+      { userId: customerId },
+    );
+    expect(result.purchase.status).toBe(UtilityPurchaseStatus.SUCCESSFUL);
+  });
+
+  it('still requires digits for a meter or a phone', async () => {
+    if (!databaseAvailable) return;
+    const customerId = await fundedCustomer(5_000);
+    await expect(
+      service.initiatePurchase(
+        customerId,
+        {
+          serviceType: UtilityServiceType.AIRTIME,
+          provider: 'mtn',
+          customerIdentifier: 'kola_bet99',
+          amount: 100,
+          paymentMethod: UtilityPaymentMethod.WALLET,
+        },
+        { userId: customerId },
+      ),
+    ).rejects.toThrow();
+    expect(provider.purchaseAirtime).not.toHaveBeenCalled();
+  });
+
+  // ── Education ─────────────────────────────────────────────────────────────
+
+  it('multiplies the exam PIN unit price by the quantity, from the catalogue', async () => {
+    if (!databaseAvailable) return;
+    const customerId = await fundedCustomer(20_000);
+    provider.purchaseEducation.mockResolvedValue({
+      outcome: 'SUCCESS',
+      deliveredToken:
+        'Serial No:WRN182135587, pin: 373820665258||Serial No:WRN182135588, pin: 373827897584||Serial No:WRN182135589, pin: 373833873043',
+    });
+
+    const result = await service.initiatePurchase(
+      customerId,
+      {
+        serviceType: UtilityServiceType.EDUCATION,
+        provider: 'education',
+        customerIdentifier: '08144216361',
+        planId: 'waec',
+        quantity: 3,
+        paymentMethod: UtilityPaymentMethod.WALLET,
+      },
+      { userId: customerId },
+    );
+
+    // 5,350 x 3. Priced from the catalogue, never from the client.
+    expect(result.purchase.amountCharged).toBe(16_050);
+    expect(await balanceOf(customerId)).toBe(3_950);
+    expect(result.purchase.quantity).toBe(3);
+    expect(provider.purchaseEducation).toHaveBeenCalledWith(
+      expect.objectContaining({ quantity: 3, planCode: 'waec' }),
+    );
+  });
+
+  it('stores every PIN it sold, without truncating the last one', async () => {
+    if (!databaseAvailable) return;
+    const customerId = await fundedCustomer(60_000);
+    // Ten PINs — comfortably past the 255 characters the column used to hold.
+    // A truncated PIN is a customer who paid and received nothing usable.
+    const tenPins = Array.from(
+      { length: 10 },
+      (_, index) => `Serial No:WRN18213558${String(index)}, pin: 37382066525${String(index)}`,
+    ).join('||');
+    provider.purchaseEducation.mockResolvedValue({
+      outcome: 'SUCCESS',
+      deliveredToken: tenPins,
+    });
+
+    const result = await service.initiatePurchase(
+      customerId,
+      {
+        serviceType: UtilityServiceType.EDUCATION,
+        provider: 'education',
+        customerIdentifier: '08144216361',
+        planId: 'waec',
+        quantity: 10,
+        paymentMethod: UtilityPaymentMethod.WALLET,
+      },
+      { userId: customerId },
+    );
+
+    expect(tenPins.length).toBeGreaterThan(255);
+    const row = await prisma.utilityPurchase.findUniqueOrThrow({
+      where: { id: result.purchase.id },
+    });
+    expect(row.deliveredToken).toBe(tenPins);
+  });
+
+  it('refuses a quantity beyond the guard rail before charging anyone', async () => {
+    if (!databaseAvailable) return;
+    const customerId = await fundedCustomer(200_000);
+    await expect(
+      service.initiatePurchase(
+        customerId,
+        {
+          serviceType: UtilityServiceType.EDUCATION,
+          provider: 'education',
+          customerIdentifier: '08144216361',
+          planId: 'waec',
+          quantity: 25,
+          paymentMethod: UtilityPaymentMethod.WALLET,
+        },
+        { userId: customerId },
+      ),
+    ).rejects.toThrow();
+    expect(provider.purchaseEducation).not.toHaveBeenCalled();
+    expect(await balanceOf(customerId)).toBe(200_000);
+  });
+
+  it('defaults to one PIN when no quantity is given', async () => {
+    if (!databaseAvailable) return;
+    const customerId = await fundedCustomer(20_000);
+    provider.purchaseEducation.mockResolvedValue({ outcome: 'SUCCESS' });
+
+    const result = await service.initiatePurchase(
+      customerId,
+      {
+        serviceType: UtilityServiceType.EDUCATION,
+        provider: 'education',
+        customerIdentifier: '08144216361',
+        planId: 'waec',
+        paymentMethod: UtilityPaymentMethod.WALLET,
+      },
+      { userId: customerId },
+    );
+    expect(result.purchase.amountCharged).toBe(5_350);
   });
 
   it('will not spend more than the customer has', async () => {

@@ -19,8 +19,8 @@ import type {
 } from '../lib/api';
 
 /**
- * Utilities — airtime, data, electricity and cable TV, through the Peyflex
- * hub.
+ * Utilities — airtime, data, electricity, cable TV, betting top-ups and exam
+ * PINs, through the Peyflex hub.
  *
  * Three things here are load-bearing rather than decorative:
  *
@@ -31,9 +31,12 @@ import type {
  * 2. **Amounts for plan-priced services are never sent from here.** The
  *    server prices a data or cable purchase from its own catalogue; this
  *    screen sends the plan id and shows what the server said it costs.
- * 3. **An electricity token is re-displayable.** It is the thing the customer
- *    bought — the receipt below can be reopened from history at any time, so
- *    closing the app does not lose it.
+ * 3. **A delivered token is re-displayable.** An electricity token or an exam
+ *    PIN IS the thing the customer bought — the receipt below can be reopened
+ *    from history at any time, so closing the app does not lose it.
+ * 4. **Betting is verified before it is funded.** The server re-verifies too;
+ *    this screen shows the account holder's name so the customer can stop
+ *    before paying, because a top-up sent to the wrong id cannot be recalled.
  */
 
 const NAVY_BASE = '#050D1A';
@@ -54,7 +57,13 @@ const SERVICES: { type: UtilityServiceType; label: string; icon: IconName; blurb
   { type: 'DATA', label: 'Data', icon: 'data', blurb: 'Buy a data bundle' },
   { type: 'ELECTRICITY', label: 'Electricity', icon: 'electricity', blurb: 'Pay for power' },
   { type: 'CABLE_TV', label: 'Cable TV', icon: 'cableTv', blurb: 'Renew a subscription' },
+  { type: 'BETTING', label: 'Betting', icon: 'betting', blurb: 'Fund your account' },
+  { type: 'EDUCATION', label: 'Exam PINs', icon: 'education', blurb: 'WAEC, NECO, NABTEB' },
 ];
+
+/** Exam PINs are all filed under one provider, so there is no provider step —
+ *  this is the code the backend expects on the purchase. */
+const EDUCATION_PROVIDER_CODE = 'education';
 
 const naira = (amount: number): string => `₦${amount.toLocaleString('en-NG')}`;
 
@@ -383,9 +392,11 @@ export function UtilitiesHomeScreen({
   onHistory,
 }: {
   onBack: () => void;
-  /** `cardEnabled` is passed on from the catalogue this screen already
-   * fetches, so the purchase screen does not have to ask again. */
-  onService: (service: UtilityServiceType, cardEnabled: boolean) => void;
+  /** `cardEnabled` and `maxPinQuantity` are passed on from the catalogue this
+   * screen already fetches, so the purchase screen does not have to ask
+   * again — and so the PIN cap is the SERVER's number rather than a second
+   * copy of it that can drift. */
+  onService: (service: UtilityServiceType, cardEnabled: boolean, maxPinQuantity: number) => void;
   onHistory: () => void;
 }) {
   const [catalogue, setCatalogue] = useState<UtilityCatalogueDto | null>(null);
@@ -449,7 +460,11 @@ export function UtilitiesHomeScreen({
           <button
             key={service.type}
             onClick={() => {
-              onService(service.type, catalogue?.cardEnabled ?? false);
+              onService(
+                service.type,
+                catalogue?.cardEnabled ?? false,
+                catalogue?.educationMaxQuantity ?? 1,
+              );
             }}
             disabled={loading || unavailable}
             className="flex flex-col items-start gap-2 rounded-2xl p-4 text-left active:scale-[.98]"
@@ -481,6 +496,7 @@ interface PurchaseState {
 export function UtilityPurchaseScreen({
   service,
   cardEnabled,
+  maxPinQuantity,
   onBack,
   onDone,
 }: {
@@ -489,6 +505,10 @@ export function UtilityPurchaseScreen({
    * then not offered at all, rather than offered and failing after the
    * customer has chosen what to buy. */
   cardEnabled: boolean;
+  /** The server's own ceiling on exam PINs per purchase. Threaded rather than
+   * redeclared here: two copies of a limit is how a stepper lets a customer
+   * pick a quantity the backend then refuses. */
+  maxPinQuantity: number;
   onBack: () => void;
   onDone: (purchase: UtilityPurchaseDto) => void;
 }) {
@@ -499,6 +519,9 @@ export function UtilityPurchaseScreen({
   const [planId, setPlanId] = useState('');
   const [identifier, setIdentifier] = useState('');
   const [amount, setAmount] = useState('');
+  /** Exam PINs only. Held as a number because it multiplies a price — a
+   *  string here is how a total becomes "53505350". */
+  const [quantity, setQuantity] = useState(1);
   const [meterType, setMeterType] = useState<'prepaid' | 'postpaid'>('prepaid');
   const [paymentMethod, setPaymentMethod] = useState<UtilityPaymentMethod | 'CARD'>('WALLET');
   // Which gateways can take money right now. Read from the server rather than
@@ -512,20 +535,51 @@ export function UtilityPurchaseScreen({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const needsPlan = service === 'DATA' || service === 'CABLE_TV';
-  const needsVerification = service === 'ELECTRICITY' || service === 'CABLE_TV';
+  const needsPlan = service === 'DATA' || service === 'CABLE_TV' || service === 'EDUCATION';
+  const needsVerification =
+    service === 'ELECTRICITY' || service === 'CABLE_TV' || service === 'BETTING';
+  // Exam PINs are the only thing bought by the unit.
+  const needsQuantity = service === 'EDUCATION';
+  // Exam PINs have exactly one provider, so asking the customer to pick it
+  // would be a step that decides nothing.
+  const needsProvider = service !== 'EDUCATION';
 
   const identifierLabel =
     service === 'ELECTRICITY'
       ? 'Meter number'
       : service === 'CABLE_TV'
         ? 'Smartcard / IUC number'
-        : 'Phone number';
+        : service === 'BETTING'
+          ? 'Betting account ID or username'
+          : 'Phone number';
+
+  /** Bookmakers identify customers by username as often as by phone, and a
+   *  username can be short. Everything else in this screen is a Nigerian
+   *  phone, meter or smartcard number and is never shorter than six digits. */
+  const minIdentifierLength = service === 'BETTING' ? 3 : 6;
 
   const loadProviders = useCallback(async () => {
     setLoadingCatalogue(true);
     setError(null);
     try {
+      if (!needsProvider) {
+        // Exam PINs: skip straight to the plans, with the provider fixed.
+        const plans = await api.utilities.educationPlans();
+        setProviderCode(EDUCATION_PROVIDER_CODE);
+        setState({
+          providers: [],
+          // The screen's plan list is priced by `amount`; an exam PIN is
+          // priced per unit, so the unit price is mapped in here and the
+          // quantity is applied when the total is worked out.
+          plans: plans.map((plan) => ({
+            id: plan.id,
+            planCode: plan.planCode,
+            amount: plan.unitPrice,
+            label: plan.label,
+          })),
+        });
+        return;
+      }
       const providers =
         service === 'AIRTIME'
           ? await api.utilities.airtimeNetworks()
@@ -533,14 +587,16 @@ export function UtilityPurchaseScreen({
             ? await api.utilities.dataNetworks()
             : service === 'CABLE_TV'
               ? await api.utilities.cableProviders()
-              : await api.utilities.electricityProviders();
+              : service === 'BETTING'
+                ? await api.utilities.bettingProviders()
+                : await api.utilities.electricityProviders();
       setState({ providers, plans: [] });
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : 'Could not load providers');
     } finally {
       setLoadingCatalogue(false);
     }
-  }, [service]);
+  }, [service, needsProvider]);
 
   useEffect(() => {
     void loadProviders();
@@ -567,7 +623,7 @@ export function UtilityPurchaseScreen({
   // changes rather than cached across a switch — a GOtv package list shown
   // under DStv is a purchase that fails at the provider.
   useEffect(() => {
-    if (!needsPlan || providerCode === '') return;
+    if (!needsPlan || !needsProvider || providerCode === '') return;
     let live = true;
     setPlanId('');
     const request =
@@ -584,7 +640,7 @@ export function UtilityPurchaseScreen({
     return () => {
       live = false;
     };
-  }, [needsPlan, providerCode, service]);
+  }, [needsPlan, needsProvider, providerCode, service]);
 
   // A changed meter or smartcard invalidates the name we confirmed against it.
   useEffect(() => {
@@ -605,7 +661,10 @@ export function UtilityPurchaseScreen({
     [service, state.providers, providerCode],
   );
 
-  const payable = needsPlan ? (selectedPlan?.amount ?? 0) : Number(amount || '0');
+  // Exam PINs are the only service where the plan price is a UNIT price.
+  const payable = needsPlan
+    ? (selectedPlan?.amount ?? 0) * (needsQuantity ? quantity : 1)
+    : Number(amount || '0');
 
   const verify = async (): Promise<void> => {
     setVerifying(true);
@@ -617,11 +676,16 @@ export function UtilityPurchaseScreen({
               provider: providerCode,
               smartcardNumber: identifier,
             })
-          : await api.utilities.verifyElectricity({
-              provider: providerCode,
-              meterNumber: identifier,
-              meterType,
-            });
+          : service === 'BETTING'
+            ? await api.utilities.verifyBetting({
+                provider: providerCode,
+                customerId: identifier,
+              })
+            : await api.utilities.verifyElectricity({
+                provider: providerCode,
+                meterNumber: identifier,
+                meterType,
+              });
       if (isUsableAccountName(lookup.customerName)) {
         setVerifiedName(lookup.customerName);
       } else {
@@ -644,7 +708,7 @@ export function UtilityPurchaseScreen({
 
   const canSubmit =
     providerCode !== '' &&
-    identifier.length >= 6 &&
+    identifier.length >= minIdentifierLength &&
     (needsPlan ? planId !== '' : payable > 0) &&
     (!needsVerification || verifiedName !== null) &&
     !submitting;
@@ -658,6 +722,7 @@ export function UtilityPurchaseScreen({
         provider: providerCode,
         customerIdentifier: identifier,
         ...(needsPlan ? { planId } : { amount: Number(amount) }),
+        ...(needsQuantity ? { quantity } : {}),
         ...(service === 'ELECTRICITY' ? { meterType } : {}),
         paymentMethod,
         // Without this the gateway leaves the customer on its own success
@@ -689,8 +754,8 @@ export function UtilityPurchaseScreen({
     <PageShell title={definition.label} onBack={onBack}>
       {error !== null ? <Notice tone="error">{error}</Notice> : null}
 
-      <SectionLabel>PROVIDER</SectionLabel>
-      {loadingCatalogue ? (
+      {needsProvider ? <SectionLabel>PROVIDER</SectionLabel> : null}
+      {!needsProvider ? null : loadingCatalogue ? (
         <p style={{ fontFamily: IT, fontSize: 13, color: MUTED }}>Loading providers…</p>
       ) : state.providers.length === 0 ? (
         <Notice tone="warn">No providers are available right now. Please try again shortly.</Notice>
@@ -708,7 +773,13 @@ export function UtilityPurchaseScreen({
         label={identifierLabel}
         value={identifier}
         onChange={setIdentifier}
-        placeholder={service === 'ELECTRICITY' ? '12345678901' : '08144216361'}
+        placeholder={
+          service === 'ELECTRICITY'
+            ? '12345678901'
+            : service === 'BETTING'
+              ? 'Your bookmaker ID or username'
+              : '08144216361'
+        }
         maxLength={32}
       />
 
@@ -745,14 +816,17 @@ export function UtilityPurchaseScreen({
               mistyped digit before money moves. */}
           <button
             onClick={() => void verify()}
-            disabled={providerCode === '' || identifier.length < 6 || verifying}
+            disabled={providerCode === '' || identifier.length < minIdentifierLength || verifying}
             className="mb-3 w-full rounded-xl py-3 active:scale-[.99]"
             style={{
               background: NAVY_CARD,
               border: `1px solid ${BORDER}`,
               fontFamily: IT,
               fontSize: 13.5,
-              color: providerCode === '' || identifier.length < 6 ? 'rgba(255,255,255,.24)' : WHITE,
+              color:
+                providerCode === '' || identifier.length < minIdentifierLength
+                  ? 'rgba(255,255,255,.24)'
+                  : WHITE,
             }}
           >
             {verifying ? 'Checking…' : 'Confirm the name on this account'}
@@ -782,9 +856,64 @@ export function UtilityPurchaseScreen({
             options={state.plans.map((plan) => ({
               id: plan.id,
               label: plan.label,
-              trailing: naira(plan.amount),
+              trailing: needsQuantity ? `${naira(plan.amount)} each` : naira(plan.amount),
             }))}
           />
+          {needsQuantity ? (
+            <>
+              <SectionLabel>HOW MANY</SectionLabel>
+              <div className="mb-4 flex items-center gap-3">
+                {([-1, 1] as const).map((step) => (
+                  <button
+                    key={step}
+                    onClick={() => {
+                      setQuantity((current) =>
+                        Math.min(maxPinQuantity, Math.max(1, current + step)),
+                      );
+                    }}
+                    className="rounded-xl active:scale-[.96]"
+                    style={{
+                      width: 46,
+                      height: 46,
+                      background: NAVY_CARD,
+                      border: `1px solid ${BORDER}`,
+                      fontFamily: PP,
+                      fontSize: 20,
+                      color: WHITE,
+                      flexShrink: 0,
+                    }}
+                    aria-label={step === 1 ? 'One more PIN' : 'One fewer PIN'}
+                  >
+                    {step === 1 ? '+' : '−'}
+                  </button>
+                ))}
+                <div className="flex-1 text-center">
+                  <p style={{ fontFamily: PP, fontSize: 20, fontWeight: 600, color: WHITE }}>
+                    {quantity}
+                  </p>
+                  <p style={{ fontFamily: IT, fontSize: 11.5, color: MUTED }}>
+                    {quantity === 1 ? 'PIN' : 'PINs'}
+                  </p>
+                </div>
+              </div>
+              {/* The total is the thing the customer is agreeing to, and it is
+                  a multiplication they did not do. Shown before the Pay button,
+                  not on the receipt afterwards. */}
+              {selectedPlan !== null ? (
+                <div
+                  className="mb-4 flex items-center justify-between rounded-xl px-4 py-3"
+                  style={{ background: NAVY_CARD, border: `1px solid ${BORDER}` }}
+                >
+                  <span style={{ fontFamily: IT, fontSize: 12.5, color: MUTED }}>
+                    {quantity} × {naira(selectedPlan.amount)}
+                  </span>
+                  <span style={{ fontFamily: PP, fontSize: 16, fontWeight: 600, color: WHITE }}>
+                    {naira(payable)}
+                  </span>
+                </div>
+              ) : null}
+            </>
+          ) : null}
         </>
       ) : (
         <>
@@ -886,6 +1015,20 @@ export function UtilityReceiptScreen({
         ? 'Not completed — money returned'
         : 'Not completed';
 
+  /** Peyflex packs every exam PIN a purchase sold into one `||`-separated
+   *  string. A single electricity token has no separator and comes back as a
+   *  one-element list, so this is safe for both. */
+  const tokenParts = useMemo(
+    () =>
+      purchase.deliveredToken === null
+        ? []
+        : purchase.deliveredToken
+            .split('||')
+            .map((part) => part.trim())
+            .filter((part) => part.length > 0),
+    [purchase.deliveredToken],
+  );
+
   const copyToken = (): void => {
     if (purchase.deliveredToken === null) return;
     void navigator.clipboard
@@ -917,6 +1060,19 @@ export function UtilityReceiptScreen({
         <p style={{ fontFamily: IT, fontSize: 12.5, color: MUTED, marginTop: 4 }}>
           {purchase.customerIdentifier}
         </p>
+        {/* Whose betting account was credited, as verified before payment.
+            The account id alone does not tell a customer they funded the
+            right person. */}
+        {purchase.beneficiaryName !== null ? (
+          <p style={{ fontFamily: IT, fontSize: 12.5, color: WHITE, marginTop: 2 }}>
+            {purchase.beneficiaryName}
+          </p>
+        ) : null}
+        {purchase.quantity !== null && purchase.quantity > 1 ? (
+          <p style={{ fontFamily: IT, fontSize: 12.5, color: MUTED, marginTop: 2 }}>
+            {purchase.quantity} PINs
+          </p>
+        ) : null}
       </div>
 
       {/* A purchase the provider never answered for. Said plainly rather than
@@ -941,20 +1097,31 @@ export function UtilityReceiptScreen({
           className="mb-4 rounded-2xl p-4"
           style={{ background: NAVY_CARD, border: `1px solid ${G3}44` }}
         >
-          <p style={{ fontFamily: IT, fontSize: 11.5, color: MUTED }}>Your token</p>
-          <p
-            style={{
-              fontFamily: PP,
-              fontSize: 19,
-              fontWeight: 700,
-              color: WHITE,
-              letterSpacing: '0.06em',
-              wordBreak: 'break-all',
-              margin: '4px 0 10px',
-            }}
-          >
-            {purchase.deliveredToken}
+          <p style={{ fontFamily: IT, fontSize: 11.5, color: MUTED }}>
+            {tokenParts.length > 1 ? `Your ${String(tokenParts.length)} PINs` : 'Your token'}
           </p>
+          {/* An education purchase returns every PIN it sold in ONE
+              `||`-separated string. Rendered as a single run-on line, a
+              customer buying three PINs has to find the boundaries themselves
+              — and a mis-copied exam PIN is money gone. Split into one line
+              each; a single token is unaffected. */}
+          <div style={{ margin: '4px 0 10px', display: 'grid', gap: 6 }}>
+            {tokenParts.map((part, index) => (
+              <p
+                key={`${part}-${String(index)}`}
+                style={{
+                  fontFamily: PP,
+                  fontSize: tokenParts.length > 1 ? 14 : 19,
+                  fontWeight: 700,
+                  color: WHITE,
+                  letterSpacing: '0.06em',
+                  wordBreak: 'break-all',
+                }}
+              >
+                {part}
+              </p>
+            ))}
+          </div>
           <button
             onClick={copyToken}
             className="rounded-xl px-4 py-2 active:scale-95"
