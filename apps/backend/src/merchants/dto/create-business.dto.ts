@@ -1,4 +1,4 @@
-import { BusinessType } from '@prisma/client';
+import { BusinessType, MerchantCategory } from '@prisma/client';
 import { Transform, Type } from 'class-transformer';
 import {
   IsEmail,
@@ -26,6 +26,13 @@ export class CreateBusinessDto {
 
   @IsEnum(BusinessType)
   public businessType!: BusinessType;
+
+  /** What this merchant SELLS — distinct from businessType, which is the legal
+   *  structure. Optional: a merchant may finish onboarding uncategorised and
+   *  set it later; a guessed category is worse than a blank one. */
+  @IsOptional()
+  @IsEnum(MerchantCategory)
+  public category?: MerchantCategory;
 
   // Minimal onboarding (founder decision) creates the business with just name +
   // structure; the fields below are optional here and completed/verified later

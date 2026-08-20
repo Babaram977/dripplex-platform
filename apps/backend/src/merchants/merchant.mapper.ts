@@ -12,6 +12,7 @@ export function toBusinessDto(business: Business): BusinessDto {
     merchantId: business.merchantId,
     businessName: business.businessName,
     businessType: business.businessType,
+    category: business.category,
     registrationNumber: business.registrationNumber,
     taxNumber: business.taxNumber,
     description: business.description,

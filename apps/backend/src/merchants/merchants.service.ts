@@ -3,6 +3,7 @@ import {
   BusinessStatus,
   BusinessVerificationStatus,
   KycVerificationStatus,
+  MerchantCategory,
   MerchantStatus,
   OnboardingStatus,
 } from '@prisma/client';
@@ -147,6 +148,7 @@ export class MerchantsService {
       merchantId: merchantUserId,
       businessName: dto.businessName.trim(),
       businessType: dto.businessType,
+      ...(dto.category !== undefined ? { category: dto.category } : {}),
       registrationNumber,
       email,
       phone,
@@ -239,6 +241,7 @@ export class MerchantsService {
     const updated = await this.merchantsRepository.updateBusiness(business.id, {
       ...(dto.businessName !== undefined ? { businessName: dto.businessName.trim() } : {}),
       ...(dto.businessType !== undefined ? { businessType: dto.businessType } : {}),
+      ...(dto.category !== undefined ? { category: dto.category } : {}),
       ...(dto.registrationNumber !== undefined
         ? { registrationNumber: dto.registrationNumber.trim().toUpperCase() }
         : {}),
@@ -650,6 +653,49 @@ export class MerchantsService {
       merchantId: merchantUserId,
       ...input,
     });
+  }
+
+  /**
+   * Ops sets what a merchant SELLS, on their behalf.
+   *
+   * A merchant can set this themselves in the portal. This exists because
+   * every merchant onboarded before the field existed has none, and an
+   * uncategorised merchant is invisible to every marketplace category filter
+   * — so somebody has to be able to sort out the ones already trading without
+   * waiting for each of them to log in.
+   *
+   * Passing `null` returns them to uncategorised. That is deliberate: OTHER is
+   * a claim about a business, and "we do not know yet" is not the same claim.
+   */
+  public async setMerchantCategory(
+    merchantUserId: string,
+    category: MerchantCategory | null,
+    adminUserId: string,
+    context: AuditContext,
+  ): Promise<BusinessDto> {
+    const detail = await this.requireAdminDetail(merchantUserId);
+    if (!detail.business) {
+      throw new ValidationDomainException('Merchant has no business profile to categorise');
+    }
+
+    const previous = detail.business.category;
+    const updated = await this.merchantsRepository.updateBusiness(detail.business.id, {
+      category,
+    });
+
+    await this.auditService.record(
+      MERCHANT_AUDIT_ACTIONS.BUSINESS_UPDATED,
+      { ...context, userId: adminUserId },
+      {
+        resource: 'business',
+        resourceId: updated.id,
+        // Both sides recorded: a category change moves a merchant in and out of
+        // customer-facing listings, so "what did it used to be" matters.
+        metadata: { field: 'category', from: previous, to: category, byAdmin: adminUserId },
+      },
+    );
+
+    return toBusinessDto(updated);
   }
 
   public async approveMerchant(

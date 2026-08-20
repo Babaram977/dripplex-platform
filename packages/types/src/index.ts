@@ -104,6 +104,7 @@ export type {
   ListMerchantsQuery,
   MerchantApprovalDto,
   MerchantAuditAction,
+  MerchantCategory,
   MerchantDetailDto,
   MerchantDetailResponse,
   MerchantKycDto,
@@ -120,7 +121,12 @@ export type {
   UpdateBusinessRequest,
 } from './merchant/index.js';
 
-export { MERCHANT_AUDIT_ACTIONS, MERCHANT_SORTS } from './merchant/index.js';
+export {
+  MERCHANT_AUDIT_ACTIONS,
+  MERCHANT_CATEGORIES,
+  MERCHANT_CATEGORY_LABEL,
+  MERCHANT_SORTS,
+} from './merchant/index.js';
 
 export type {
   AcceptDriverAgreementRequest,

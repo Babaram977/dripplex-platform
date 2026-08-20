@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { api, uploadFile } from '../lib/api';
 import { auth, endSession } from '../lib/auth';
+import { MERCHANT_CATEGORY_LABEL, type MerchantCategory } from '../lib/api';
 import { addressPredictions, geocodeAddress, getCurrentPosition } from '../lib/maps';
 import { ImageWithFallback } from './components/figma/ImageWithFallback';
 import { playNotificationSound } from '../lib/sound';
@@ -311,6 +312,11 @@ function ReadOnlyField({ label, value, hint }: { label: string; value: string; h
     </div>
   );
 }
+
+/** The categories a merchant can pick, labelled as a customer sees them. */
+const MERCHANT_CATEGORY_OPTIONS = (Object.keys(MERCHANT_CATEGORY_LABEL) as MerchantCategory[]).map(
+  (value) => ({ value, label: MERCHANT_CATEGORY_LABEL[value] }),
+);
 
 function businessTypeLabel(bt: string | undefined | null): string {
   switch (bt) {
@@ -2788,6 +2794,10 @@ function StoreSetupPage({
     : null;
 
   const [description, setDescription] = useState(business?.description ?? '');
+  // What the store SELLS. Separate from businessType, which is the legal
+  // structure and is fixed at registration. Blank is honest for a merchant
+  // onboarded before categories existed — better than guessing one for them.
+  const [category, setCategory] = useState<string>(business?.category ?? '');
   const [address, setAddress] = useState(business?.address ?? '');
   // Real pickup coordinates. Dispatch measures every delivery from here, so an
   // address typed as free text is not enough — a business saved without
@@ -2829,6 +2839,7 @@ function StoreSetupPage({
         WEEK.map((d) => [d, { open: openTime, close: closeTime }]),
       );
       await api.merchant.updateBusiness({
+        ...(category ? { category: category as MerchantCategory } : {}),
         description: description || undefined,
         address: address || undefined,
         city: city || undefined,
@@ -2935,10 +2946,31 @@ function StoreSetupPage({
           <SectionHead title="Business Information" />
           <ReadOnlyField label="Store / Business Name" value={business.businessName} />
           <ReadOnlyField
-            label="Category / Business Type"
+            label="Business Type (legal structure)"
             value={businessTypeLabel(business.businessType)}
             hint="Set during registration"
           />
+          <MxSelect
+            label="Category — what you sell *"
+            value={category}
+            onChange={setCategory}
+            options={MERCHANT_CATEGORY_OPTIONS}
+          />
+          {!category && (
+            <p
+              style={{
+                fontFamily: IT,
+                fontSize: 11,
+                color: C_WARN,
+                marginTop: -8,
+                marginBottom: 14,
+                lineHeight: 1.5,
+              }}
+            >
+              Without a category your store will not appear under any of the marketplace filters —
+              only under "All".
+            </p>
+          )}
           <div style={{ marginBottom: 14 }}>
             <div style={{ fontFamily: IT, fontSize: 12, color: MUTED, marginBottom: 6 }}>
               Description

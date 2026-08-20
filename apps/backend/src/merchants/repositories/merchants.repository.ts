@@ -6,6 +6,7 @@ import type {
   BusinessType,
   BusinessVerificationStatus,
   KycDocumentType,
+  MerchantCategory,
   MerchantKyc,
   MerchantProfile,
   MerchantStatus,
@@ -32,6 +33,7 @@ export interface CreateBusinessInput {
   merchantId: string;
   businessName: string;
   businessType: BusinessType;
+  category?: MerchantCategory;
   registrationNumber: string;
   taxNumber?: string;
   description?: string;
@@ -53,6 +55,9 @@ export interface CreateBusinessInput {
 export interface UpdateBusinessInput {
   businessName?: string;
   businessType?: BusinessType;
+  /** `null` clears it back to uncategorised — matching taxNumber/description
+   *  below, where null is "unset" and undefined is "leave alone". */
+  category?: MerchantCategory | null;
   registrationNumber?: string;
   taxNumber?: string | null;
   description?: string | null;
