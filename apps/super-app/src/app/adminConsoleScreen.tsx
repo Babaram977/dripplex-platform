@@ -14,9 +14,11 @@ import {
   type AdminLiveRideDto,
   type AdminCommissionAccountDto,
   type AdminCustomerDto,
+  type AdminAnalyticsOverviewDto,
   type CommercialCreditSettingDto,
   type CommissionLedgerEntryDto,
   type CommissionOwnerType,
+  type RideQueueSummaryDto,
   type AdminMerchantDto,
   type AdminUtilityPurchaseDto,
   type UtilityFloatStatusDto,
@@ -309,8 +311,6 @@ function Card({
 }
 
 const TRIPS: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
-
-const REVENUE_DATA: Record<string, unknown>[] = []; // mock cleared — no revenue time-series feed yet
 
 const WEEKLY_DATA: Record<string, unknown>[] = []; // mock cleared — wired to backend per screen
 
@@ -828,7 +828,8 @@ function PageDashboard() {
   } | null>(null);
   const [fleet, setFleet] = useState<AdminFleetSummaryDto | null>(null);
   const [rides, setRides] = useState<AdminLiveRideDto[] | null>(null);
-  const [overview, setOverview] = useState<{ ridesCompleted: number } | null>(null);
+  const [queueSummary, setQueueSummary] = useState<RideQueueSummaryDto | null>(null);
+  const [overview, setOverview] = useState<AdminAnalyticsOverviewDto | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -844,7 +845,11 @@ function PageDashboard() {
     );
     const loadRides = () =>
       api.admin.getRideQueue().then(
-        (v) => !cancelled && setRides(v.rides),
+        (v) => {
+          if (cancelled) return;
+          setRides(v.rides);
+          setQueueSummary(v.summary);
+        },
         () => {},
       );
     void loadRides();
@@ -855,7 +860,7 @@ function PageDashboard() {
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     void api.admin.getAnalyticsOverview(startOfToday.toISOString(), now.toISOString()).then(
-      (v) => !cancelled && setOverview({ ridesCompleted: v.ridesCompleted }),
+      (v) => !cancelled && setOverview(v),
       () => {},
     );
     return () => {
@@ -872,6 +877,26 @@ function PageDashboard() {
   const fmt = (n: number) =>
     '₦' +
     (n >= 1000000 ? (n / 1000000).toFixed(1) + 'M' : n >= 1000 ? (n / 1000).toFixed(0) + 'K' : n);
+
+  /** The revenue chart's points: one per hour of today, DrippleX's commission
+   * against the clock. The chart used to plot REVENUE_DATA — an array emptied
+   * when its mock was removed and never replaced, so the card drew an empty
+   * box. Buckets past the current hour are dropped: a flat line running to
+   * midnight reads as "we earned nothing all evening" rather than "the evening
+   * has not happened yet". */
+  const revenueSeries = (() => {
+    if (!overview) return [] as { time: string; revenue: number }[];
+    const nowMs = Date.now();
+    return overview.revenueSeries
+      .filter((bucket) => new Date(bucket.bucketStart).getTime() <= nowMs)
+      .map((bucket) => ({
+        time: new Date(bucket.bucketStart).toLocaleTimeString('en-NG', {
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+        revenue: bucket.platformCommission,
+      }));
+  })();
 
   // Trip Status pie from the real live ride queue (status distribution).
   const pieData = (() => {
@@ -901,10 +926,14 @@ function PageDashboard() {
       {/* KPI Row 1 */}
       <div style={{ display: 'flex', gap: 12 }}>
         <KpiCard label="Active Trips" value={c(activeTrips)} sub="Live now" color={G3} icon="🚗" />
+        {/* Rides still looking for a driver. This read the ops-case
+            "waiting review" counter, which counts SOS/incident/support cases —
+            a different queue entirely, and always 0 on a healthy day, which is
+            why the tile looked dead no matter how many rides were booked. */}
         <KpiCard
           label="Pending Requests"
-          value={c(counters?.waitingReviewCount)}
-          sub="Awaiting review"
+          value={c(queueSummary?.pendingCount)}
+          sub="Waiting for a driver"
           color={C_WARN}
           icon="⏳"
         />
@@ -915,7 +944,16 @@ function PageDashboard() {
           color={C_OK}
           icon="✅"
         />
-        <KpiCard label="Revenue Today" value="—" sub="No feed yet" color={G2} icon="💰" />
+        {/* DrippleX's own cut of every ride completed today, with the gross
+            passengers were charged underneath it. Both come from the ride
+            records themselves — this tile was a hardcoded em-dash. */}
+        <KpiCard
+          label="Revenue Today"
+          value={overview ? naira(overview.platformCommissionRevenue) : '—'}
+          sub={overview ? `${naira(overview.grossFareRevenue)} gross` : 'Loading…'}
+          color={G2}
+          icon="💰"
+        />
       </div>
       {/* KPI Row 2 */}
       <div style={{ display: 'flex', gap: 12 }}>
@@ -953,34 +991,50 @@ function PageDashboard() {
         {/* Area chart */}
         <Card style={{ flex: 2, padding: '14px 16px' }}>
           <SectionHeader title="Revenue Over Time (Today)" />
-          <ResponsiveContainer width="100%" height={120}>
-            <AreaChart data={REVENUE_DATA} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-              <defs>
-                <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={G2} stopOpacity={0.3} />
-                  <stop offset="95%" stopColor={G2} stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid {...CHART_GRID} />
-              <XAxis dataKey="time" tick={AXIS_STYLE} axisLine={false} tickLine={false} />
-              <YAxis
-                tickFormatter={fmt}
-                tick={AXIS_STYLE}
-                axisLine={false}
-                tickLine={false}
-                width={50}
-              />
-              <Tooltip formatter={(v: number) => fmt(v)} contentStyle={TOOLTIP_STYLE} />
-              <Area
-                type="monotone"
-                dataKey="revenue"
-                stroke={G3}
-                fill="url(#revGrad)"
-                strokeWidth={2}
-                dot={false}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+          {revenueSeries.length === 0 ? (
+            <div
+              style={{
+                height: 120,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 12,
+                color: MUTED,
+                fontFamily: 'Inter, sans-serif',
+              }}
+            >
+              No completed rides today yet.
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={120}>
+              <AreaChart data={revenueSeries} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                <defs>
+                  <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={G2} stopOpacity={0.3} />
+                    <stop offset="95%" stopColor={G2} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid {...CHART_GRID} />
+                <XAxis dataKey="time" tick={AXIS_STYLE} axisLine={false} tickLine={false} />
+                <YAxis
+                  tickFormatter={fmt}
+                  tick={AXIS_STYLE}
+                  axisLine={false}
+                  tickLine={false}
+                  width={50}
+                />
+                <Tooltip formatter={(v: number) => fmt(v)} contentStyle={TOOLTIP_STYLE} />
+                <Area
+                  type="monotone"
+                  dataKey="revenue"
+                  stroke={G3}
+                  fill="url(#revGrad)"
+                  strokeWidth={2}
+                  dot={false}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
         </Card>
         {/* Pie chart */}
         <Card style={{ flex: 1, padding: '14px 16px' }}>

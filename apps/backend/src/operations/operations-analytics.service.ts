@@ -22,10 +22,16 @@ import type {
   OperationsAnalyticsOverviewDto,
   OperationsResponseAnalyticsDto,
   OperationsResponseByTypeDto,
+  RevenueBucketDto,
   RideOperationsAnalyticsDto,
   RideTypeBreakdownDto,
   ShiftAnalyticsDto,
 } from '@dripplex/types';
+import type { Prisma } from '@prisma/client';
+
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+const TWO_DAYS_MS = 2 * DAY_MS;
 
 /** A caller-supplied window — always required, never defaulted server-side.
  * Per the founder's explicit instruction, time-range filtering is
@@ -128,12 +134,14 @@ export class OperationsAnalyticsService {
       dispatchPerformance,
       operationsResponse,
       onlineDriversNow,
+      revenue,
     ] = await Promise.all([
       this.getRideOperations(range),
       this.getDriverUtilization(range),
       this.getDispatchPerformance(range),
       this.getOperationsResponse(range),
       this.prisma.driverAvailability.count({ where: { online: true } }),
+      this.getRideRevenue(range),
     ]);
 
     return {
@@ -150,6 +158,105 @@ export class OperationsAnalyticsService {
       repeatedOfferRideRate: dispatchPerformance.repeatedOfferRate,
       openCasesCount: operationsResponse.openCasesCount,
       averageTimeToFirstResponseSeconds: operationsResponse.averageTimeToFirstResponseSeconds,
+      grossFareRevenue: revenue.grossFareRevenue,
+      platformCommissionRevenue: revenue.platformCommissionRevenue,
+      driverEarnings: revenue.driverEarnings,
+      tipsCollected: revenue.tipsCollected,
+      revenueSeries: revenue.revenueSeries,
+    };
+  }
+
+  /**
+   * Money over rides COMPLETED inside the range.
+   *
+   * The Ops dashboard's "Revenue Today" tile and its "Revenue Over Time" chart
+   * had no backend feed at all: the tile was a hardcoded em-dash reading "No
+   * feed yet" and the chart drew an empty box. Every figure it needs is
+   * already on the ride — `totalFare`, `platformCommission`, `driverEarning`,
+   * `tipAmount` are written at settlement — so this aggregates them rather
+   * than introducing any new accounting.
+   *
+   * Cohorted on `completedAt`, exactly like `ridesCompleted`, so the two
+   * numbers on the dashboard always describe the same set of rides. Tips are
+   * reported separately and excluded from both revenue figures: 100% of a tip
+   * goes to the driver and it was never the platform's money.
+   */
+  public async getRideRevenue(range: AnalyticsRange): Promise<{
+    grossFareRevenue: number;
+    platformCommissionRevenue: number;
+    driverEarnings: number;
+    tipsCollected: number;
+    revenueSeries: RevenueBucketDto[];
+  }> {
+    const rides = await this.prisma.ride.findMany({
+      where: { status: RideStatus.COMPLETED, completedAt: { gte: range.from, lte: range.to } },
+      select: {
+        completedAt: true,
+        totalFare: true,
+        platformCommission: true,
+        driverEarning: true,
+        tipAmount: true,
+      },
+    });
+
+    const money = (value: Prisma.Decimal | null): number => (value ? Number(value) : 0);
+    const round = (value: number): number => Math.round(value * 100) / 100;
+
+    // Hourly for a day-or-two window (the dashboard's "today"), daily beyond —
+    // a month of hourly buckets is 720 points nobody can read.
+    const spanMs = Math.max(0, range.to.getTime() - range.from.getTime());
+    const bucketMs = spanMs <= TWO_DAYS_MS ? HOUR_MS : DAY_MS;
+    const floorToBucket = (at: Date): number => Math.floor(at.getTime() / bucketMs) * bucketMs;
+
+    const buckets = new Map<
+      number,
+      { grossFare: number; platformCommission: number; ridesCompleted: number }
+    >();
+    // Seed every bucket in range so a quiet hour plots as zero rather than
+    // vanishing and making the line lie about when money came in.
+    for (let cursor = floorToBucket(range.from); cursor <= range.to.getTime(); cursor += bucketMs) {
+      buckets.set(cursor, { grossFare: 0, platformCommission: 0, ridesCompleted: 0 });
+    }
+
+    let grossFareRevenue = 0;
+    let platformCommissionRevenue = 0;
+    let driverEarnings = 0;
+    let tipsCollected = 0;
+
+    for (const ride of rides) {
+      const gross = money(ride.totalFare);
+      const commission = money(ride.platformCommission);
+      grossFareRevenue += gross;
+      platformCommissionRevenue += commission;
+      driverEarnings += money(ride.driverEarning);
+      tipsCollected += money(ride.tipAmount);
+
+      if (!ride.completedAt) continue;
+      const key = floorToBucket(ride.completedAt);
+      const bucket = buckets.get(key) ?? {
+        grossFare: 0,
+        platformCommission: 0,
+        ridesCompleted: 0,
+      };
+      bucket.grossFare += gross;
+      bucket.platformCommission += commission;
+      bucket.ridesCompleted += 1;
+      buckets.set(key, bucket);
+    }
+
+    return {
+      grossFareRevenue: round(grossFareRevenue),
+      platformCommissionRevenue: round(platformCommissionRevenue),
+      driverEarnings: round(driverEarnings),
+      tipsCollected: round(tipsCollected),
+      revenueSeries: [...buckets.entries()]
+        .sort(([a], [b]) => a - b)
+        .map(([start, bucket]) => ({
+          bucketStart: new Date(start).toISOString(),
+          grossFare: round(bucket.grossFare),
+          platformCommission: round(bucket.platformCommission),
+          ridesCompleted: bucket.ridesCompleted,
+        })),
     };
   }
 

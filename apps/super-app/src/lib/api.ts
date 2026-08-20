@@ -1363,6 +1363,32 @@ export interface AdminAnalyticsOverviewDto {
   repeatedOfferRideRate: number;
   openCasesCount: number;
   averageTimeToFirstResponseSeconds: number | null;
+  /** Money over rides COMPLETED in the range. `platformCommissionRevenue` is
+   * DrippleX's own cut; `grossFareRevenue` is what passengers were charged.
+   * Tips are reported separately and excluded from both — they are the
+   * driver's. */
+  grossFareRevenue: number;
+  platformCommissionRevenue: number;
+  driverEarnings: number;
+  tipsCollected: number;
+  revenueSeries: RevenueBucketDto[];
+}
+
+/** One point on the Ops dashboard's revenue chart. Hourly for a day-scale
+ * range, daily beyond; empty buckets are present with zeroes. */
+export interface RevenueBucketDto {
+  bucketStart: string;
+  grossFare: number;
+  platformCommission: number;
+  ridesCompleted: number;
+}
+
+/** Live ride queue counts by stage. `pendingCount` is rides still looking for
+ * a driver — the Ops dashboard's "Pending Requests". */
+export interface RideQueueSummaryDto {
+  pendingCount: number;
+  assignedCount: number;
+  inProgressCount: number;
 }
 
 // One customer row for the Ops Console roster (GET /admin/customers). tripsCount
@@ -2681,7 +2707,7 @@ export const api = {
     getRideQueue: () =>
       dx<{
         rides: AdminLiveRideDto[];
-        summary: { pendingCount: number; assignedCount: number; inProgressCount: number };
+        summary: RideQueueSummaryDto;
       }>('GET', '/operations/rides'),
     // Recent operations activity feed for the Dashboard.
     getActivityFeed: () =>

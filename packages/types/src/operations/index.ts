@@ -462,6 +462,31 @@ export interface OperationsAnalyticsOverviewDto {
    * the range. */
   openCasesCount: number;
   averageTimeToFirstResponseSeconds: number | null;
+  /** Are we making money? Aggregated over rides COMPLETED inside the range —
+   * a ride counts on the day it finished, matching `ridesCompleted` above.
+   *
+   * `grossFareRevenue` is what passengers were charged (GMV);
+   * `platformCommissionRevenue` is DrippleX's own cut and is the figure the
+   * dashboard leads with. Tips are excluded from both — they belong entirely
+   * to the driver and were never platform revenue. */
+  grossFareRevenue: number;
+  platformCommissionRevenue: number;
+  driverEarnings: number;
+  tipsCollected: number;
+  /** The same money split into buckets across the range, oldest first — what
+   * the dashboard's "Revenue Over Time" chart plots. Hourly for ranges up to
+   * two days, daily beyond that. Empty buckets are present with zeroes so the
+   * chart shows a real flat line rather than skipping the hours nothing
+   * happened in. */
+  revenueSeries: RevenueBucketDto[];
+}
+
+export interface RevenueBucketDto {
+  /** ISO timestamp of the bucket's start. */
+  bucketStart: string;
+  grossFare: number;
+  platformCommission: number;
+  ridesCompleted: number;
 }
 
 /** One driver's utilization row in the drill-down's ranked list —

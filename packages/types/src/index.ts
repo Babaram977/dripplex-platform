@@ -298,6 +298,7 @@ export type {
   DispatchSupportDto,
   AnalyticsTimeRangeDto,
   OperationsAnalyticsOverviewDto,
+  RevenueBucketDto,
   DriverUtilizationRowDto,
   DriverUtilizationAnalyticsDto,
   ShiftAnalyticsDto,
