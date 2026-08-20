@@ -8,6 +8,7 @@ import type {
   PaymentStatus,
 } from '../lib/api';
 import { G0, G2, G3, NAVY_BASE, NAVY_CARD, NAVY_DEEP, NAVY_SURFACE, BORDER, MUTED } from './shared';
+import { Icon, type IconName } from './icons';
 import { BottomNavigation, FloatingAIButton } from '../components/navigation';
 import type { NavTabKey } from '../components/navigation/BottomNavigation';
 
@@ -29,12 +30,12 @@ const API_TO_UI: Record<string, UIStatus> = {
   CANCELLED: 'cancelled',
 };
 
-const STATUS_STEPS: { key: UIStatus; label: string; icon: string; sub: string }[] = [
+const STATUS_STEPS: { key: UIStatus; label: string; icon: string | IconName; sub: string }[] = [
   { key: 'confirmed', label: 'Order Confirmed', icon: '✓', sub: 'Payment received' },
   { key: 'preparing', label: 'Preparing Order', icon: '✓', sub: 'Your meal is being cooked' },
   { key: 'accepted', label: 'Ready for Pickup', icon: '✓', sub: 'Merchant confirmed ready' },
   { key: 'assigned', label: 'Driver Assigned', icon: '✓', sub: 'Rider heading to merchant' },
-  { key: 'on_the_way', label: 'On the Way', icon: '🛵', sub: 'Rider is heading your way' },
+  { key: 'on_the_way', label: 'On the Way', icon: 'scooter', sub: 'Rider is heading your way' },
   { key: 'delivered', label: 'Delivered', icon: '○', sub: 'Order delivered successfully' },
 ];
 
@@ -152,14 +153,14 @@ function LiveMap({ progress, etaMin }: { progress: number; etaMin: number }) {
       </svg>
       <div className="absolute flex flex-col items-center" style={{ left: MX - 18, top: MY - 38 }}>
         <div
-          className="flex h-9 w-9 items-center justify-center rounded-xl text-xl"
+          className="flex h-9 w-9 items-center justify-center rounded-xl"
           style={{
             background: 'linear-gradient(135deg,#7C2D12,#F97316)',
             border: '2px solid rgba(255,255,255,.2)',
             boxShadow: '0 4px 12px rgba(0,0,0,.5)',
           }}
         >
-          🍗
+          <Icon name="store" size={19} color="#FFF" title="Merchant" />
         </div>
         <div
           className="h-0 w-0"
@@ -179,7 +180,7 @@ function LiveMap({ progress, etaMin }: { progress: number; etaMin: number }) {
             boxShadow: '0 4px 12px rgba(43,172,82,.4)',
           }}
         >
-          🏠
+          <Icon name="house" size={19} color="#FFF" title="Your address" />
         </div>
         <div
           className="h-0 w-0"
@@ -199,7 +200,7 @@ function LiveMap({ progress, etaMin }: { progress: number; etaMin: number }) {
         }}
       >
         <div
-          className="flex h-9 w-9 items-center justify-center rounded-full text-xl"
+          className="flex h-9 w-9 items-center justify-center rounded-full"
           style={{
             background: '#FFF',
             border: `2.5px solid ${G2}`,
@@ -207,7 +208,7 @@ function LiveMap({ progress, etaMin }: { progress: number; etaMin: number }) {
             animation: 'glow-ring 2s ease-in-out infinite',
           }}
         >
-          🛵
+          <Icon name="scooter" size={19} color={G0} title="Your rider" />
         </div>
       </div>
       <div
@@ -298,7 +299,15 @@ function OrderTimeline({
                   color: done ? '#FFF' : active ? G3 : MUTED,
                 }}
               >
-                {done ? '✓' : active ? step.icon : ''}
+                {done ? (
+                  '✓'
+                ) : active && step.icon === 'scooter' ? (
+                  <Icon name="scooter" size={16} color={G3} />
+                ) : active ? (
+                  step.icon
+                ) : (
+                  ''
+                )}
               </div>
               {i < STATUS_STEPS.length - 1 && (
                 <div
@@ -756,7 +765,7 @@ export function OrderHistoryScreen({
           </div>
         ) : orders.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 py-20">
-            <span style={{ fontSize: 48 }}>🛍</span>
+            <Icon name="marketplace" size={44} color="rgba(255,255,255,.28)" />
             <p
               className="text-[16px] font-semibold text-white"
               style={{ fontFamily: "'Poppins',sans-serif" }}
@@ -1020,7 +1029,7 @@ export function TrackingScreen({
         className="flex h-full w-full flex-col items-center justify-center gap-4"
         style={{ background: NAVY_BASE }}
       >
-        <span style={{ fontSize: 48 }}>📦</span>
+        <Icon name="orders" size={44} color="rgba(255,255,255,.28)" />
         <p
           className="text-[16px] font-semibold text-white"
           style={{ fontFamily: "'Poppins',sans-serif" }}

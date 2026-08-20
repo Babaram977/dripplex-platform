@@ -9,6 +9,7 @@ import {
 } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { DRIVER_LOCATION_MAX_AGE_MS } from '../rides/ride.constants';
 
 import { toFleetDriverDto } from './operations.mapper';
 
@@ -31,7 +32,17 @@ export interface FleetComputationInput {
   driverId: string;
   driverStatus: DriverStatus;
   hasOpenSos: boolean;
-  online: boolean;
+  /**
+   * Reachability, NOT the driver's own toggle.
+   *
+   * Dispatch has refused to offer rides to a driver whose last position is
+   * older than DRIVER_LOCATION_MAX_AGE_MS ever since the stale-location fix.
+   * This snapshot must apply the identical test or Operations reads a fleet
+   * that does not exist — drivers shown ready for work that dispatch has
+   * already written off. The caller does the freshness comparison and passes
+   * the answer in; see `isReachable` at the call site.
+   */
+  reachable: boolean;
   acceptingRides: boolean;
   activeRideCount: number;
   hasActiveRide: boolean;
@@ -55,8 +66,26 @@ export function computeFleetDriverStatus(input: FleetComputationInput): FleetDri
   if (needsInspection) return 'NEEDS_INSPECTION';
 
   if (input.hasActiveRide || input.activeRideCount > 0) return 'BUSY';
-  if (input.online && input.acceptingRides) return 'AVAILABLE';
+  if (input.reachable && input.acceptingRides) return 'AVAILABLE';
   return 'OFFLINE';
+}
+
+/**
+ * Whether the platform can still see this driver.
+ *
+ * The toggle alone is not evidence of anything: nothing clears `online` when a
+ * driver force-quits, loses signal or lets their battery die, so the flag
+ * survives indefinitely. Freshness of the last position ping is the only
+ * signal that the driver is actually there, which is why dispatch already
+ * gates on it — this reuses that rule rather than inventing a second one.
+ */
+export function isReachable(
+  online: boolean,
+  locationUpdatedAt: Date | null,
+  now: Date = new Date(),
+): boolean {
+  if (!online || locationUpdatedAt === null) return false;
+  return now.getTime() - locationUpdatedAt.getTime() <= DRIVER_LOCATION_MAX_AGE_MS;
 }
 
 /**
@@ -85,6 +114,7 @@ export class OperationsFleetService {
         summary: {
           totalDrivers: 0,
           onlineCount: 0,
+          staleCount: 0,
           availableCount: 0,
           busyCount: 0,
           offlineCount: 0,
@@ -127,6 +157,11 @@ export class OperationsFleetService {
           })
         : [];
 
+    // One timestamp for the whole snapshot, so two drivers with identical
+    // ping ages cannot land on opposite sides of the freshness cut-off
+    // partway through the loop.
+    const now = new Date();
+
     const drivers = profiles.map((profile) => {
       const driverId = profile.userId;
       const driverAvailability = availability.find((a) => a.driverId === driverId);
@@ -143,11 +178,17 @@ export class OperationsFleetService {
         : undefined;
       const activeRide = activeRides.find((r) => r.driverId === driverId);
 
+      const reachable = isReachable(
+        driverAvailability?.online ?? false,
+        driverAvailability?.locationUpdatedAt ?? null,
+        now,
+      );
+
       const status = computeFleetDriverStatus({
         driverId,
         driverStatus: profile.status,
         hasOpenSos,
-        online: driverAvailability?.online ?? false,
+        reachable,
         acceptingRides: driverAvailability?.acceptingRides ?? false,
         activeRideCount: driverAvailability?.activeRideCount ?? 0,
         hasActiveRide: activeRide !== undefined,
@@ -160,6 +201,7 @@ export class OperationsFleetService {
         profile,
         user: profile.user,
         status,
+        reachable,
         hasOpenSos,
         isSuspended: profile.status === DriverStatus.SUSPENDED,
         needsInspection: status === 'NEEDS_INSPECTION',
@@ -170,12 +212,22 @@ export class OperationsFleetService {
       });
     });
 
+    // The first three partition the fleet and must keep summing to
+    // totalDrivers. They are deliberately derived from reachability rather
+    // than from `status`: `status` answers "why can't this driver work",
+    // which is a different question and overlaps itself (a suspended driver
+    // is never also counted OFFLINE). Mixing the two is what previously let
+    // the same driver be counted twice, or not at all.
+    const onlineCount = drivers.filter((d) => d.reachable).length;
+    const staleCount = drivers.filter((d) => d.online && !d.reachable).length;
+
     const summary = {
       totalDrivers: drivers.length,
-      onlineCount: drivers.filter((d) => d.online).length,
+      onlineCount,
+      staleCount,
+      offlineCount: drivers.length - onlineCount - staleCount,
       availableCount: drivers.filter((d) => d.status === 'AVAILABLE').length,
       busyCount: drivers.filter((d) => d.status === 'BUSY').length,
-      offlineCount: drivers.filter((d) => d.status === 'OFFLINE').length,
       sosCount: drivers.filter((d) => d.status === 'SOS').length,
       suspendedCount: drivers.filter((d) => d.status === 'SUSPENDED').length,
       needsInspectionCount: drivers.filter((d) => d.status === 'NEEDS_INSPECTION').length,

@@ -6,6 +6,7 @@ import type {
   UtilityCablePlan,
   UtilityCustomerLookup,
   UtilityDataPlan,
+  UtilityEducationPlan,
   UtilityElectricityDisco,
   UtilityFloatBalance,
   UtilityNetwork,
@@ -51,7 +52,19 @@ export class NotConfiguredUtilityProvider implements UtilityProviderPort {
     return this.refuse();
   }
 
+  public listBettingCompanies(): Promise<UtilityNetwork[]> {
+    return this.refuse();
+  }
+
+  public listEducationPlans(): Promise<UtilityEducationPlan[]> {
+    return this.refuse();
+  }
+
   public verifyCableCustomer(): Promise<UtilityCustomerLookup> {
+    return this.refuse();
+  }
+
+  public verifyBettingCustomer(): Promise<UtilityCustomerLookup> {
     return this.refuse();
   }
 
@@ -72,6 +85,14 @@ export class NotConfiguredUtilityProvider implements UtilityProviderPort {
   }
 
   public purchaseElectricity(): Promise<UtilityPurchaseResult> {
+    return this.refuse();
+  }
+
+  public purchaseBetting(): Promise<UtilityPurchaseResult> {
+    return this.refuse();
+  }
+
+  public purchaseEducation(): Promise<UtilityPurchaseResult> {
     return this.refuse();
   }
 

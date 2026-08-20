@@ -13,6 +13,7 @@ import { NotConfiguredUtilityProvider } from './providers/not-configured-utility
 import { PeyflexUtilityProvider } from './providers/peyflex.provider';
 import { UTILITY_PROVIDER } from './providers/utility-provider.port';
 import { UtilitiesService } from './utilities.service';
+import { UtilityPaymentSweepService } from './utility-payment-sweep.service';
 import { UtilityPaymentSubscriber } from './utility-payment.subscriber';
 
 @Module({
@@ -37,6 +38,10 @@ import { UtilityPaymentSubscriber } from './utility-payment.subscriber';
     UtilitiesService,
     // DomainEventBus comes from the @Global() EventsModule, so no import here.
     UtilityPaymentSubscriber,
+    // The trigger that does not depend on an event arriving. Both of the
+    // others do, and when neither fires a customer is charged and gets
+    // nothing.
+    UtilityPaymentSweepService,
   ],
   exports: [UtilitiesService],
 })

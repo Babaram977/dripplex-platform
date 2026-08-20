@@ -1,5 +1,15 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { G0, G2, G3, NAVY_DEEP, NAVY_CARD, NAVY_SURFACE, BORDER, MUTED } from './shared';
+import {
+  G0,
+  G2,
+  G3,
+  NAVY_DEEP,
+  NAVY_CARD,
+  NAVY_SURFACE,
+  BORDER,
+  MUTED,
+  timeGreeting,
+} from './shared';
 import {
   COLOR_SUCCESS,
   COLOR_WARNING,
@@ -21,6 +31,7 @@ import type { AddressPrediction } from '../lib/maps';
 import type {
   CustomerRideDto,
   RideDto,
+  RideReceiptDto,
   RideStatus,
   SharedRideDto,
   RideType,
@@ -126,6 +137,10 @@ const RIDE_TYPE_LABEL: Record<RideType, string> = {
   XL: 'XL',
   TRICYCLE: 'Tricycle',
 };
+// Founder decision 2026-08-20: the ride tiers keep their colourful emoji.
+// The rest of the app moved to drawn icons, but on the fare chips the emoji
+// carry the tier apart at a glance better than four monochrome silhouettes at
+// 15px do — and the backend catalogue already ships one per tier.
 const RIDE_TYPE_EMOJI: Record<RideType, string> = {
   ECONOMY: '🚗',
   COMFORT: '🚙',
@@ -5434,14 +5449,111 @@ export function TripReceiptScreen({
   rideId?: string;
   onReport?: () => void;
 }) {
-  const breakdown = [
-    { label: 'Base fare', amount: '₦800' },
-    { label: 'Distance (14.2 km × ₦80)', amount: '₦1,136' },
-    { label: 'Time (22 min × ₦7)', amount: '₦154' },
-    { label: 'Subtotal', amount: '₦2,090', bold: true },
-    { label: 'Promo (NEWRIDE)', amount: '−₦500', color: G3 },
-    { label: 'Total', amount: '₦1,590', bold: true, large: true, color: G3 },
+  // Every figure on this screen used to be invented: an ₦800 base fare, a
+  // ₦500 "NEWRIDE" promo nobody had applied, a ₦1,590 total, a driver called
+  // Adeyemi Okafor rated 4.92, and Ikeja → Victoria Island. It took a rideId
+  // and never asked the server what the trip had actually cost.
+  const [receipt, setReceipt] = useState<RideReceiptDto | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!rideId) return;
+    setLoadError(null);
+    api.rides
+      .getReceipt(rideId)
+      .then(setReceipt)
+      .catch((err: unknown) =>
+        setLoadError(err instanceof Error ? err.message : 'Failed to load receipt'),
+      );
+  }, [rideId]);
+
+  if (!receipt) {
+    return (
+      <div
+        className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-5"
+        style={{ background: NAVY_BASE }}
+      >
+        <div
+          className="flex h-16 w-16 items-center justify-center rounded-full text-3xl"
+          style={{ background: NAVY_SURFACE }}
+        >
+          {loadError ? '⚠️' : '🧾'}
+        </div>
+        <p className="text-[15px] font-semibold" style={{ fontFamily: PP, color: '#fff' }}>
+          {loadError ? "Couldn't load receipt" : 'Loading receipt…'}
+        </p>
+        {loadError && (
+          <p className="text-center text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
+            {loadError}
+          </p>
+        )}
+        <button
+          onClick={onBack}
+          className="mt-2 text-[14px] font-medium active:opacity-60"
+          style={{ fontFamily: IT, color: G3 }}
+        >
+          ← Back
+        </button>
+      </div>
+    );
+  }
+
+  const f = receipt.fare;
+  const km = receipt.distanceMeters === null ? null : (receipt.distanceMeters / 1000).toFixed(1);
+  const mins =
+    receipt.durationSeconds === null ? null : Math.max(1, Math.round(receipt.durationSeconds / 60));
+
+  // Only lines the server actually returned. A zero surcharge or an absent tip
+  // is left off entirely rather than printed as ₦0.
+  const breakdown: { label: string; amount: string; bold?: boolean; large?: boolean }[] = [
+    { label: 'Base fare', amount: naira(f.baseFare) },
+    { label: km ? `Distance (${km} km)` : 'Distance', amount: naira(f.distanceFare) },
+    { label: mins ? `Time (${mins} min)` : 'Time', amount: naira(f.timeFare) },
   ];
+  if (f.surchargeAmount > 0) {
+    breakdown.push({
+      label: f.surchargeZoneName ? `Surcharge (${f.surchargeZoneName})` : 'Surcharge',
+      amount: naira(f.surchargeAmount),
+    });
+  }
+  if (f.tipAmount && f.tipAmount > 0) {
+    breakdown.push({ label: 'Tip', amount: naira(f.tipAmount) });
+  }
+  breakdown.push({ label: 'Total', amount: naira(f.totalFare), bold: true, large: true });
+
+  const stamped = new Date(receipt.completedAt ?? receipt.requestedAt).toLocaleString([], {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+  const PAYMENT_LABEL: Record<string, string> = {
+    WALLET: 'DrippleX Wallet',
+    CASH: 'Cash',
+    CARD: 'Card',
+    PAYSTACK: 'Card · Paystack',
+    FLUTTERWAVE: 'Card · Flutterwave',
+  };
+  const paymentLabel = receipt.paymentMethod
+    ? (PAYMENT_LABEL[receipt.paymentMethod] ?? receipt.paymentMethod)
+    : 'Not recorded';
+  const paidLabel =
+    receipt.paymentStatus === 'PAID'
+      ? 'Paid'
+      : receipt.paymentStatus === 'REFUNDED'
+        ? 'Refunded'
+        : receipt.paymentStatus === 'FAILED'
+          ? 'Failed'
+          : 'Pending';
+  const paidColor = receipt.paymentStatus === 'PAID' ? G3 : '#F59E0B';
+  const driverName = receipt.driver?.name ?? null;
+  const driverInitials = driverName
+    ? driverName
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((part: string) => part.charAt(0).toUpperCase())
+        .join('')
+    : '🚗';
+
   return (
     <div
       className="relative flex h-full w-full flex-col overflow-hidden"
@@ -5454,7 +5566,7 @@ export function TripReceiptScreen({
       </div>
       <div className="flex-1 overflow-y-auto px-5" style={{ scrollbarWidth: 'none' }}>
         <p style={{ fontSize: 12, color: MUTED, fontFamily: IT, marginBottom: 16 }}>
-          Today, 9:41 AM • {rideId || 'RX-20241205-0012'}
+          {stamped} • {receipt.rideId}
         </p>
         {/* Route visual */}
         <div className="mb-4 flex gap-4">
@@ -5469,20 +5581,24 @@ export function TripReceiptScreen({
           <div className="flex-1">
             <div className="mb-3">
               <p style={{ fontFamily: PP, fontSize: 14, fontWeight: 600, color: '#fff' }}>
-                Ikeja, Lagos
+                {receipt.pickupAddress ?? 'Pickup not recorded'}
               </p>
               <p style={{ fontSize: 11, color: MUTED, fontFamily: IT }}>Pickup</p>
             </div>
             <div>
               <p style={{ fontFamily: PP, fontSize: 14, fontWeight: 600, color: '#fff' }}>
-                Victoria Island
+                {receipt.dropoffAddress ?? 'Dropoff not recorded'}
               </p>
               <p style={{ fontSize: 11, color: MUTED, fontFamily: IT }}>Dropoff</p>
             </div>
           </div>
           <div className="text-right">
-            <p style={{ fontSize: 12, color: TEXT_SECONDARY, fontFamily: IT }}>14.2 km</p>
-            <p style={{ fontSize: 12, color: TEXT_SECONDARY, fontFamily: IT }}>22 min</p>
+            <p style={{ fontSize: 12, color: TEXT_SECONDARY, fontFamily: IT }}>
+              {km ? `${km} km` : '—'}
+            </p>
+            <p style={{ fontSize: 12, color: TEXT_SECONDARY, fontFamily: IT }}>
+              {mins ? `${mins} min` : '—'}
+            </p>
           </div>
         </div>
         {/* Fare breakdown */}
@@ -5501,7 +5617,7 @@ export function TripReceiptScreen({
           >
             FARE BREAKDOWN
           </p>
-          {breakdown.map((row, i) => (
+          {breakdown.map((row) => (
             <div key={row.label}>
               {row.label === 'Total' && (
                 <div className="my-2 h-px" style={{ background: BORDER }} />
@@ -5522,7 +5638,7 @@ export function TripReceiptScreen({
                     fontSize: row.large ? 18 : 13,
                     fontFamily: row.bold ? PP : IT,
                     fontWeight: row.bold ? 700 : 400,
-                    color: row.color || TEXT_SECONDARY,
+                    color: row.large ? G3 : TEXT_SECONDARY,
                   }}
                 >
                   {row.amount}
@@ -5536,61 +5652,45 @@ export function TripReceiptScreen({
           className="mb-4 flex items-center gap-3 rounded-2xl p-4"
           style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
         >
-          <span style={{ fontSize: 20 }}>💜</span>
-          <p style={{ fontFamily: IT, fontSize: 14, color: '#fff', flex: 1 }}>DrippleX Wallet</p>
+          <span style={{ fontSize: 20 }}>{receipt.paymentMethod === 'CASH' ? '💵' : '💳'}</span>
+          <p style={{ fontFamily: IT, fontSize: 14, color: '#fff', flex: 1 }}>{paymentLabel}</p>
           <span
             className="rounded-full px-2.5 py-1 text-xs font-semibold"
-            style={{ background: 'rgba(34,197,94,.15)', color: G3, fontFamily: PP }}
+            style={{ background: `${paidColor}26`, color: paidColor, fontFamily: PP }}
           >
-            Paid
+            {paidLabel}
           </span>
         </div>
-        {/* Driver row */}
-        <div
-          className="mb-4 flex items-center gap-3 rounded-2xl p-4"
-          style={{ background: NAVY_CARD, border: `1px solid ${BORDER}` }}
-        >
+        {/* Driver row. No rating is shown: the receipt carries the driver's
+            name and vehicle type, and no per-driver rating exists in the API,
+            so the old "4.92 ★" was a number the platform does not hold. */}
+        {driverName && (
           <div
-            className="flex h-10 w-10 items-center justify-center rounded-full"
-            style={{
-              background: 'linear-gradient(135deg,#16a34a,#22c55e)',
-              fontFamily: PP,
-              fontWeight: 700,
-              color: '#fff',
-              fontSize: 14,
-            }}
+            className="mb-4 flex items-center gap-3 rounded-2xl p-4"
+            style={{ background: NAVY_CARD, border: `1px solid ${BORDER}` }}
           >
-            AO
-          </div>
-          <div className="flex-1">
-            <p style={{ fontFamily: PP, fontSize: 14, fontWeight: 600, color: '#fff' }}>
-              Adeyemi Okafor
-            </p>
-            <div className="mt-0.5 flex items-center gap-1">
-              <StarRow rating={4.92} size={11} />
-              <p style={{ fontSize: 11, color: TEXT_SECONDARY, fontFamily: IT, marginLeft: 3 }}>
-                4.92
+            <div
+              className="flex h-10 w-10 items-center justify-center rounded-full"
+              style={{
+                background: 'linear-gradient(135deg,#16a34a,#22c55e)',
+                fontFamily: PP,
+                fontWeight: 700,
+                color: '#fff',
+                fontSize: 14,
+              }}
+            >
+              {driverInitials}
+            </div>
+            <div className="flex-1">
+              <p style={{ fontFamily: PP, fontSize: 14, fontWeight: 600, color: '#fff' }}>
+                {driverName}
+              </p>
+              <p style={{ fontSize: 11, color: TEXT_SECONDARY, fontFamily: IT, marginTop: 2 }}>
+                {receipt.driver ? RIDE_TYPE_LABEL[receipt.driver.vehicleType] : 'Driver'}
               </p>
             </div>
           </div>
-        </div>
-        {/* Share/Download */}
-        <div className="mb-4 flex gap-3">
-          {['📤 Share Receipt', '⬇️ Download PDF'].map((l) => (
-            <button
-              key={l}
-              className="h-11 flex-1 rounded-xl text-sm font-medium transition-all active:scale-[.97]"
-              style={{
-                background: 'transparent',
-                border: `1px solid ${BORDER}`,
-                color: TEXT_SECONDARY,
-                fontFamily: IT,
-              }}
-            >
-              {l}
-            </button>
-          ))}
-        </div>
+        )}
         {/* Support link */}
         <div className="mb-6 text-center">
           <button onClick={onReport} style={{ fontSize: 12, color: '#EF4444', fontFamily: IT }}>
@@ -5657,7 +5757,12 @@ export function RideHomeExtendedScreen({
         <p
           style={{ fontFamily: PP, fontSize: 20, fontWeight: 700, color: '#fff', marginBottom: 12 }}
         >
-          Good morning, Chidi 👋
+          {(() => {
+            // Was hardcoded "Good morning, Chidi 👋" — every passenger was
+            // greeted by a designer's placeholder name, at any hour.
+            const n = auth.greetingName();
+            return n ? `${timeGreeting()}, ${n} 👋` : `${timeGreeting()} 👋`;
+          })()}
         </p>
         {/* Search bar */}
         <button

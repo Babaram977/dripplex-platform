@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { G0, G2, G3, NAVY_DEEP, NAVY_CARD, NAVY_SURFACE, BORDER, MUTED } from './shared';
 import { BottomNavigation, FloatingAIButton } from '../components/navigation';
+import { FAB_BOTTOM } from '../tokens/spacing';
 import type { NavTabKey } from '../components/navigation/BottomNavigation';
 import { api } from '../lib/api';
 import type { MerchantSummaryDto, ProductSummaryDto } from '../lib/api';
@@ -1381,7 +1382,11 @@ export function StoreScreen({
             delivery, "food cannot be returned") on every store. */}
         <StoreInfo merchant={merchant} />
 
-        <div style={{ height: 104 }} />
+        {/* Same defect the home screen had: 104 clears the bottom nav but not
+            the Ask Drip button, which sits 94px up and is 52px tall, so the
+            last 42px of the page could never be scrolled out from under it.
+            FAB_BOTTOM + FAB_SIZE is the number that matters, plus a gap. */}
+        <div style={{ height: FAB_BOTTOM + 52 + 16 }} />
       </div>
 
       <FloatingAIButton onPress={() => setShowAI(true)} />

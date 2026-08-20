@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../lib/api';
 import { auth } from '../lib/auth';
 import { gatewayCallbackUrl } from '../lib/gatewayReturn';
+import { timeGreeting } from './shared';
+import { Icon, type IconName } from './icons';
 import type {
   CardProviderOptionDto,
   WalletDto,
@@ -378,15 +380,15 @@ function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
 }
 
 function TxIcon({ type }: { type: string }) {
-  const map: Record<string, { icon: string; color: string }> = {
-    RIDE: { icon: '🚗', color: INFO },
-    TOPUP: { icon: '💳', color: SUCCESS },
-    TRANSFER: { icon: '↑', color: PURPLE },
-    WITHDRAWAL: { icon: '🏦', color: WARNING },
-    REFUND: { icon: '↩', color: SUCCESS },
-    CASHBACK: { icon: '🎁', color: STAR },
-    CREDIT: { icon: '↓', color: SUCCESS },
-    DEBIT: { icon: '↑', color: MUTED },
+  const map: Record<string, { icon: IconName | null; glyph?: string; color: string }> = {
+    RIDE: { icon: 'ride', color: INFO },
+    TOPUP: { icon: 'card', color: SUCCESS },
+    TRANSFER: { icon: null, glyph: '↑', color: PURPLE },
+    WITHDRAWAL: { icon: 'bank', color: WARNING },
+    REFUND: { icon: null, glyph: '↩', color: SUCCESS },
+    CASHBACK: { icon: 'gift', color: STAR },
+    CREDIT: { icon: null, glyph: '↓', color: SUCCESS },
+    DEBIT: { icon: null, glyph: '↑', color: MUTED },
   };
   const key = type?.toUpperCase().replace(/-/g, '_');
   const match = map[key] ??
@@ -398,10 +400,14 @@ function TxIcon({ type }: { type: string }) {
           : type?.includes('TRANSFER')
             ? 'TRANSFER'
             : 'DEBIT'
-    ] ?? { icon: '₦', color: MUTED };
+    ] ?? { icon: null, glyph: '₦', color: MUTED };
   return (
     <IconCircle bg={`${match.color}22`} size={42}>
-      <span style={{ fontSize: 18 }}>{match.icon}</span>
+      {match.icon ? (
+        <Icon name={match.icon} size={19} color={match.color} />
+      ) : (
+        <span style={{ fontSize: 18, color: match.color }}>{match.glyph}</span>
+      )}
     </IconCircle>
   );
 }
@@ -428,7 +434,7 @@ function fmtDate(iso: string) {
   }
 }
 
-function EmptyState({ icon, title, sub }: { icon: string; title: string; sub?: string }) {
+function EmptyState({ icon, title, sub }: { icon: IconName; title: string; sub?: string }) {
   return (
     <div
       style={{
@@ -439,7 +445,7 @@ function EmptyState({ icon, title, sub }: { icon: string; title: string; sub?: s
         gap: 8,
       }}
     >
-      <span style={{ fontSize: 40 }}>{icon}</span>
+      <Icon name={icon} size={38} color="rgba(255,255,255,.28)" />
       <div style={{ fontFamily: PP, fontSize: 15, fontWeight: 700, color: '#fff' }}>{title}</div>
       {sub && (
         <div style={{ fontFamily: IT, fontSize: 13, color: MUTED, textAlign: 'center' }}>{sub}</div>
@@ -459,7 +465,7 @@ function ErrorRetry({ message, onRetry }: { message?: string; onRetry: () => voi
         gap: 12,
       }}
     >
-      <span style={{ fontSize: 36 }}>⚠️</span>
+      <Icon name="alert" size={34} color="#F59E0B" />
       <div style={{ fontFamily: IT, fontSize: 13, color: MUTED, textAlign: 'center' }}>
         {message ?? 'Something went wrong.'}
       </div>
@@ -508,8 +514,7 @@ export function WalletHomeScreen({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const user = auth.getUser();
-  const displayName = user?.firstName ?? user?.email?.split('@')[0] ?? 'there';
+  const displayName = auth.greetingName();
 
   const load = useCallback(async () => {
     setError('');
@@ -544,10 +549,10 @@ export function WalletHomeScreen({
       >
         <div>
           <div style={{ fontFamily: IT, fontSize: 12, color: MUTED, fontWeight: 500 }}>
-            Good morning,
+            {timeGreeting()},
           </div>
           <div style={{ fontFamily: PP, fontSize: 17, fontWeight: 700, color: '#fff' }}>
-            {displayName}
+            {displayName ? `Hi, ${displayName}` : 'Hello'}
           </div>
         </div>
         {/* This was drawn as a magnifying glass while calling onBack — the only
@@ -712,7 +717,7 @@ export function WalletHomeScreen({
                     fontWeight: 600,
                   }}
                 >
-                  🔒 PIN Protected
+                  <Icon name="lock" size={11} /> PIN Protected
                 </span>
               </div>
               <div
@@ -725,7 +730,7 @@ export function WalletHomeScreen({
                 }}
               >
                 <span style={{ fontFamily: IT, fontSize: 11, color: G3, fontWeight: 600 }}>
-                  ✦ DrippleX Wallet
+                  <Icon name="all" size={11} /> DrippleX Wallet
                 </span>
               </div>
             </div>
@@ -737,7 +742,7 @@ export function WalletHomeScreen({
               { label: 'Withdraw', icon: '↑', color: WARNING, onClick: onWithdraw },
               { label: 'Transfer', icon: '→', color: INFO, onClick: onTransfer },
               { label: 'Pay', icon: '₦', color: PURPLE, onClick: onPay },
-              { label: 'Rewards', icon: '🎁', color: WARNING, onClick: onRewards },
+              { label: 'Rewards', icon: 'gift', color: WARNING, onClick: onRewards },
             ].map(({ label, icon, color, onClick }) => (
               <button
                 key={label}
@@ -765,11 +770,21 @@ export function WalletHomeScreen({
                     boxShadow: '0 2px 12px rgba(0,0,0,.3)',
                   }}
                 >
-                  <span
-                    style={{ color, fontFamily: PP, fontSize: 22, fontWeight: 700, lineHeight: 1 }}
-                  >
-                    {icon}
-                  </span>
+                  {icon === 'gift' ? (
+                    <Icon name="gift" size={21} color={color} />
+                  ) : (
+                    <span
+                      style={{
+                        color,
+                        fontFamily: PP,
+                        fontSize: 22,
+                        fontWeight: 700,
+                        lineHeight: 1,
+                      }}
+                    >
+                      {icon}
+                    </span>
+                  )}
                 </div>
                 <span
                   style={{
@@ -821,7 +836,7 @@ export function WalletHomeScreen({
                 ))
               ) : txs.length === 0 ? (
                 <EmptyState
-                  icon="💸"
+                  icon="send"
                   title="No transactions yet"
                   sub="Your wallet activity will appear here"
                 />
@@ -1013,7 +1028,7 @@ export function TransactionHistoryScreen({ onBack }: { onBack?: () => void }) {
           <ErrorRetry message={error} onRetry={() => load(activeTab, page)} />
         ) : filtered.length === 0 ? (
           <EmptyState
-            icon="📋"
+            icon="receipt"
             title="No transactions"
             sub={search ? 'Try a different search' : 'Nothing to show for this filter'}
           />
@@ -1120,7 +1135,7 @@ const AMOUNT_PRESETS = ['500', '1,000', '2,000', '5,000', '10,000', '20,000'];
  * read from the server so a rotated key removes an option instead of leaving a
  * button that fails.
  */
-const GATEWAY_ICONS: Record<string, string> = { PAYSTACK: '💳', FLUTTERWAVE: '🏦' };
+const GATEWAY_ICONS: Record<string, IconName> = { PAYSTACK: 'card', FLUTTERWAVE: 'bank' };
 
 export function TopUpScreen({
   onBack,
@@ -1226,7 +1241,9 @@ export function TopUpScreen({
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 16 }}>
         {verifying ? (
           <div style={{ padding: '40px 24px', textAlign: 'center' }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>💳</div>
+            <div style={{ marginBottom: 16 }}>
+              <Icon name="card" size={44} color="rgba(255,255,255,.28)" />
+            </div>
             <div
               style={{
                 fontFamily: PP,
@@ -1387,7 +1404,7 @@ export function TopUpScreen({
                       textAlign: 'left',
                     }}
                   >
-                    <span style={{ fontSize: 22 }}>{GATEWAY_ICONS[pm.provider] ?? '💳'}</span>
+                    <Icon name={GATEWAY_ICONS[pm.provider] ?? 'card'} size={22} color={G3} />
                     <div style={{ flex: 1 }}>
                       <div style={{ fontFamily: IT, fontSize: 14, fontWeight: 600, color: '#fff' }}>
                         {pm.label}
@@ -1706,7 +1723,7 @@ export function WithdrawScreen({
                     gap: 12,
                   }}
                 >
-                  <span style={{ fontSize: 26 }}>🏦</span>
+                  <Icon name="bank" size={24} color={G3} />
                   <div style={{ flex: 1, textAlign: 'left' }}>
                     <div style={{ fontFamily: IT, fontSize: 14, fontWeight: 600, color: '#fff' }}>
                       {bank.bankName}
@@ -2086,7 +2103,7 @@ export function TransferScreen({
 
         {!recipient && !search && (
           <div style={{ padding: '20px 16px', textAlign: 'center' }}>
-            <span style={{ fontSize: 32 }}>📱</span>
+            <Icon name="airtime" size={30} color="rgba(255,255,255,.32)" />
             <div style={{ fontFamily: IT, fontSize: 13, color: MUTED, marginTop: 8 }}>
               Enter the recipient's phone number to find them
             </div>
@@ -2317,7 +2334,7 @@ export function PaymentMethodsScreen({
               textAlign: 'center',
             }}
           >
-            <span style={{ fontSize: 32, display: 'block', marginBottom: 8 }}>💳</span>
+            <Icon name="card" size={30} color="rgba(255,255,255,.3)" style={{ marginBottom: 8 }} />
             <div style={{ fontFamily: IT, fontSize: 13, color: MUTED }}>
               Card management is handled by your payment provider during checkout. Add a card via
               Top Up to save it.
@@ -2375,7 +2392,7 @@ export function PaymentMethodsScreen({
                     gap: 12,
                   }}
                 >
-                  <span style={{ fontSize: 26 }}>🏦</span>
+                  <Icon name="bank" size={24} color={G3} />
                   <div style={{ flex: 1 }}>
                     <div style={{ fontFamily: IT, fontSize: 14, fontWeight: 600, color: '#fff' }}>
                       {bank.bankName}
@@ -2418,7 +2435,7 @@ const EARN_RULES = [
     label: 'Complete an order',
     desc: 'Earned when your order is paid',
     points: 50,
-    icon: '🛍️',
+    icon: 'marketplace' as IconName,
     color: G2,
   },
   {
@@ -2426,7 +2443,7 @@ const EARN_RULES = [
     label: 'Delivery completed',
     desc: 'When a delivery is finished',
     points: 25,
-    icon: '🛵',
+    icon: 'scooter' as IconName,
     color: INFO,
   },
   {
@@ -2434,7 +2451,7 @@ const EARN_RULES = [
     label: 'Sign-up bonus',
     desc: 'One-time, on registration',
     points: 100,
-    icon: '🎁',
+    icon: 'gift' as IconName,
     color: WARNING,
   },
   {
@@ -2442,7 +2459,7 @@ const EARN_RULES = [
     label: 'Use a promo code',
     desc: 'When a coupon is redeemed',
     points: 10,
-    icon: '🏷️',
+    icon: 'tag' as IconName,
     color: STAR,
   },
 ];
@@ -2594,7 +2611,7 @@ export function RewardsScreen({ onBack }: { onBack?: () => void }) {
                 }}
               >
                 <IconCircle bg={`${r.color}22`} size={44}>
-                  <span style={{ fontSize: 20 }}>{r.icon}</span>
+                  <Icon name={r.icon} size={20} color={r.color} />
                 </IconCircle>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontFamily: IT, fontSize: 14, fontWeight: 600, color: '#fff' }}>
@@ -2855,7 +2872,7 @@ export function WalletStatementScreen({
         ) : error ? (
           <ErrorRetry message={error} onRetry={() => load(activeMonth)} />
         ) : txs.length === 0 ? (
-          <EmptyState icon="📋" title={`No transactions in ${activeMonth}`} />
+          <EmptyState icon="receipt" title={`No transactions in ${activeMonth}`} />
         ) : (
           <>
             <div className="px-5" style={{ marginBottom: 8 }}>
@@ -3118,14 +3135,14 @@ export function WalletSecurityScreen({
               {
                 label: 'Face ID',
                 sub: 'Coming soon',
-                icon: '👤',
+                icon: 'user' as IconName,
                 value: false,
                 toggle: () => {},
               },
               {
                 label: 'Two-Factor Auth (2FA)',
                 sub: 'Coming soon',
-                icon: '🔑',
+                icon: 'key' as IconName,
                 value: false,
                 toggle: () => {},
               },
@@ -3146,10 +3163,9 @@ export function WalletSecurityScreen({
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        fontSize: 20,
                       }}
                     >
-                      {row.icon}
+                      <Icon name={row.icon} size={19} color="rgba(255,255,255,.6)" />
                     </div>
                     <div>
                       <div style={{ fontFamily: IT, fontSize: 14, fontWeight: 600, color: '#fff' }}>
@@ -3177,7 +3193,12 @@ export function WalletSecurityScreen({
               textAlign: 'center',
             }}
           >
-            <span style={{ fontSize: 28, display: 'block', marginBottom: 8 }}>📱</span>
+            <Icon
+              name="airtime"
+              size={27}
+              color="rgba(255,255,255,.3)"
+              style={{ marginBottom: 8 }}
+            />
             <div style={{ fontFamily: IT, fontSize: 13, color: MUTED }}>
               Device management is not available in this pilot version.
             </div>
@@ -3592,7 +3613,7 @@ export function WalletSettingsScreen({ onBack }: { onBack?: () => void }) {
             {privacyMode && (
               <div style={{ padding: '10px 16px 14px', background: `rgba(43,172,82,.05)` }}>
                 <div className="flex items-center gap-2" style={{ gap: 8 }}>
-                  <span style={{ fontSize: 14 }}>🔒</span>
+                  <Icon name="lock" size={14} color={G3} />
                   <span style={{ fontFamily: IT, fontSize: 12, color: G3 }}>
                     Balances are hidden. Tap amounts to reveal.
                   </span>

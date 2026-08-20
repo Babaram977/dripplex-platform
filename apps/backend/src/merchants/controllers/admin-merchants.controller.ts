@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   Req,
@@ -17,6 +18,7 @@ import {
   RejectKycDto,
   RejectMerchantDto,
   ReviewKycDto,
+  SetMerchantCategoryDto,
   SuspendMerchantDto,
 } from '../dto/admin-actions.dto';
 import { ListMerchantsQueryDto } from '../dto/list-merchants-query.dto';
@@ -25,7 +27,12 @@ import { MerchantsService } from '../merchants.service';
 
 import type { AuthenticatedUser } from '../../auth/auth.types';
 import type { ApiSuccessResponse } from '../../common/dto/api-response.dto';
-import type { MerchantApprovalDto, MerchantKycDto, MerchantProfileDto } from '@dripplex/types';
+import type {
+  BusinessDto,
+  MerchantApprovalDto,
+  MerchantKycDto,
+  MerchantProfileDto,
+} from '@dripplex/types';
 import type { Request } from 'express';
 
 @Controller('admin')
@@ -53,6 +60,33 @@ export class AdminMerchantsController {
     }>
   > {
     const data = await this.merchantsService.getMerchantProfile(id);
+    return { success: true, data };
+  }
+
+  /**
+   * Set what a merchant SELLS, on their behalf.
+   *
+   * Guarded by APPROVE rather than a new permission: an operator trusted to
+   * admit a merchant onto the platform is certainly trusted to record what it
+   * sells, and a new permission code would mean an RBAC re-seed across three
+   * roles for a curation action. REVIEW would have been wrong — it is the
+   * read-only grant.
+   */
+  @Patch('merchant/:id/category')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(MERCHANT_PERMISSIONS.APPROVE)
+  public async setMerchantCategory(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetMerchantCategoryDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() req: Request,
+  ): Promise<ApiSuccessResponse<BusinessDto>> {
+    const data = await this.merchantsService.setMerchantCategory(
+      id,
+      dto.category ?? null,
+      user.id,
+      this.auditContext(req),
+    );
     return { success: true, data };
   }
 

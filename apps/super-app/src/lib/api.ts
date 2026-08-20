@@ -27,6 +27,23 @@ async function dx<T>(
     });
   }
 
+  /**
+   * Endpoints where a 401 means "those credentials are wrong", NOT "your
+   * session ended".
+   *
+   * Signing in is how you get a session, so it cannot have lost one. Treating
+   * a failed sign-in as an expiry did three harmful things at once: it told
+   * the user "Session expired — please log in again" when they HAD just
+   * logged in, which is a loop with no exit and no hint that the password was
+   * simply wrong; it fired a token refresh using whatever stale token was
+   * lying around; and it called auth.clear(), so a bad sign-in on one account
+   * signed out a good session on another.
+   *
+   * Drivers and merchants coming back to finish their registration hit this
+   * and could not get past it.
+   */
+  const isCredentialCheck = path.startsWith('/auth/login') || path.startsWith('/auth/register');
+
   const token = auth.getAccessToken();
   const res = await fetch(url.toString(), {
     method,
@@ -37,12 +54,13 @@ async function dx<T>(
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
-  // 401 → try silent refresh once
-  if (res.status === 401 && !retried) {
+  // 401 → try silent refresh once. Never on a sign-in: there is no session to
+  // refresh, and the stale token used to attempt it belongs to somebody else.
+  if (res.status === 401 && !retried && !isCredentialCheck) {
     const refreshed = await tryRefresh();
     if (refreshed) return await dx(method, path, body, params, true);
   }
-  if (res.status === 401) {
+  if (res.status === 401 && !isCredentialCheck) {
     auth.clear();
     window.dispatchEvent(new Event('dx:session-expired'));
     throw new ApiError(401, 'Session expired — please log in again.', 'SESSION_EXPIRED');
@@ -204,10 +222,47 @@ export interface WithdrawalRequestDto {
 }
 
 // Marketplace
+/**
+ * What a merchant SELLS. `businessType` beside it is the LEGAL structure
+ * (SOLE_PROPRIETORSHIP, PARTNERSHIP) — the two were conflated, which is why
+ * the category chips used to run a name search and every merchant card drew
+ * the same default icon. null = uncategorised, a real state for anyone
+ * onboarded before the field existed.
+ */
+export type MerchantCategory =
+  | 'SUPERMARKET'
+  | 'RESTAURANT'
+  | 'PHARMACY'
+  | 'ELECTRONICS'
+  | 'FASHION'
+  | 'BEAUTY'
+  | 'HARDWARE'
+  | 'HOTEL'
+  | 'FURNITURE'
+  | 'SERVICES'
+  | 'WHOLESALE'
+  | 'OTHER';
+
+export const MERCHANT_CATEGORY_LABEL: Record<MerchantCategory, string> = {
+  SUPERMARKET: 'Supermarket',
+  RESTAURANT: 'Restaurant',
+  PHARMACY: 'Pharmacy',
+  ELECTRONICS: 'Electronics',
+  FASHION: 'Fashion',
+  BEAUTY: 'Beauty',
+  HARDWARE: 'Hardware',
+  HOTEL: 'Hotel',
+  FURNITURE: 'Furniture & Home',
+  SERVICES: 'Services',
+  WHOLESALE: 'Wholesale',
+  OTHER: 'Other',
+};
+
 export interface MerchantSummaryDto {
   id: string;
   businessName: string;
   businessType: string;
+  category: MerchantCategory | null;
   logoUrl: string | null;
   coverPhotoUrl: string | null;
   verificationStatus: string;
@@ -892,7 +947,10 @@ export interface MerchantSettlementDto {
 export interface MerchantBusinessDto {
   id: string;
   businessName: string;
+  /** Legal structure — NOT what they sell. See `category`. */
   businessType: string;
+  /** What they sell. Drives the marketplace category chips and the store icon. */
+  category: MerchantCategory | null;
   description: string | null;
   address: string | null;
   city: string | null;
@@ -1000,7 +1058,11 @@ export interface AdminMerchantDto {
   createdAt: string;
   business: {
     businessName: string;
+    /** Legal structure — not what they sell. See `category`. */
     businessType: string;
+    /** What they sell. null = uncategorised, so invisible to every
+     *  marketplace category filter until Ops or the merchant sets one. */
+    category: MerchantCategory | null;
     verificationStatus: 'PENDING' | 'VERIFIED' | 'REJECTED' | 'UNDER_REVIEW';
     city: string | null;
     state: string | null;
@@ -1333,7 +1395,13 @@ export interface AdminFleetDriverDto {
   hasOpenSos: boolean;
   isSuspended: boolean;
   needsInspection: boolean;
+  /** The driver's own toggle — what their app shows them. */
   online: boolean;
+  /** What the platform believes: toggled on AND pinging within the same
+   * freshness window dispatch uses. `online && !reachable` is a driver whose
+   * app says "Online" while we have lost them. */
+  reachable: boolean;
+  lastLocationAt: string | null;
   acceptingRides: boolean;
   latitude: number | null;
   longitude: number | null;
@@ -1342,9 +1410,56 @@ export interface AdminFleetDriverDto {
   shiftStatus: 'ACTIVE' | 'ON_BREAK' | null;
   vehiclePlateNumber: string | null;
 }
+/** onlineCount + staleCount + offlineCount === totalDrivers. The rest are
+ *  status breakdowns that overlap and never sum to anything. */
+export type DispatchGateKey =
+  | 'PROFILE_APPROVED'
+  | 'KYC_VERIFIED'
+  | 'IDENTITY_VERIFIED'
+  | 'VEHICLE_APPROVED'
+  | 'INSPECTION_PASSED'
+  | 'ONLINE'
+  | 'ACCEPTING'
+  | 'POSITION_KNOWN'
+  | 'POSITION_FRESH'
+  | 'CAPACITY';
+
+export interface DispatchGateDto {
+  key: DispatchGateKey;
+  label: string;
+  passed: boolean;
+  /** Named specifically when it fails — "Guarantor ID is still PENDING" —
+   *  never a bare "not eligible". Null when the gate passes. */
+  detail: string | null;
+  fixableBy: 'OPERATIONS' | 'DRIVER';
+}
+
+export interface DispatchVehicleDto {
+  id: string;
+  plateNumber: string;
+  make: string;
+  model: string;
+  colour: string;
+  year: number;
+  rideCategory: string;
+  approvalStatus: string;
+  seats: number | null;
+}
+
+export interface DispatchEligibilityDto {
+  subjectId: string;
+  subjectName: string;
+  phone: string | null;
+  role: 'DRIVER' | 'RIDER';
+  dispatchable: boolean;
+  gates: DispatchGateDto[];
+  vehicle: DispatchVehicleDto | null;
+}
+
 export interface AdminFleetSummaryDto {
   totalDrivers: number;
   onlineCount: number;
+  staleCount: number;
   availableCount: number;
   busyCount: number;
   offlineCount: number;
@@ -1605,7 +1720,8 @@ export interface LoyaltyOverviewDto {
 // field while the build stays green — this app has no tsconfig, so nothing
 // would catch it but a browser.
 
-export type UtilityServiceType = 'AIRTIME' | 'DATA' | 'ELECTRICITY' | 'CABLE_TV';
+export type UtilityServiceType =
+  'AIRTIME' | 'DATA' | 'ELECTRICITY' | 'CABLE_TV' | 'BETTING' | 'EDUCATION';
 export type UtilityPaymentMethod = 'WALLET' | 'PAYSTACK' | 'FLUTTERWAVE';
 export type UtilityPurchaseStatus =
   'AWAITING_PAYMENT' | 'PENDING' | 'SUCCESSFUL' | 'FAILED' | 'REVERSED';
@@ -1631,11 +1747,24 @@ export interface UtilityCatalogueDto {
   services: UtilityServiceType[];
   airtimeMinAmount: number;
   airtimeMaxAmount: number;
+  bettingMinAmount: number;
+  bettingMaxAmount: number;
+  /** Exam PINs are the only service bought in quantity. */
+  educationMaxQuantity: number;
 }
 
 export interface UtilityNetworkDto {
   code: string;
   name: string;
+}
+
+/** A result-checker PIN. `unitPrice` is for ONE — the charge is unitPrice
+ *  multiplied by the quantity, which no other utility does. */
+export interface UtilityEducationPlanDto {
+  id: string;
+  planCode: string;
+  unitPrice: number;
+  label: string;
 }
 
 export interface UtilityDataPlanDto {
@@ -1675,11 +1804,16 @@ export interface UtilityPurchaseDto {
   providerCode: string;
   planCode: string | null;
   amountCharged: number;
+  /** Exam PINs only. Without it a receipt for ₦16,050 cannot explain itself. */
+  quantity: number | null;
+  /** Whose betting account was funded, as verified before payment. */
+  beneficiaryName: string | null;
   paymentMethod: UtilityPaymentMethod;
   status: UtilityPurchaseStatus;
   providerReference: string | null;
-  /** The electricity token or recharge PIN. Re-displayable, because a
-   * customer who closes the app and loses it has lost the money. */
+  /** The electricity token or exam PIN(s) — every PIN a purchase sold, in one
+   * `||`-separated string. Re-displayable, because a customer who closes the
+   * app and loses it has lost the money. */
   deliveredToken: string | null;
   failureReason: string | null;
   createdAt: string;
@@ -1698,6 +1832,8 @@ export interface CreateUtilityPurchaseRequest {
   customerIdentifier: string;
   planId?: string;
   amount?: number;
+  /** EDUCATION only — how many PINs. Defaults to 1. */
+  quantity?: number;
   meterType?: 'prepaid' | 'postpaid';
   contactPhone?: string;
   /** Send 'CARD', never a named gateway — which gateway takes the money is a
@@ -2787,6 +2923,17 @@ export const api = {
         'GET',
         '/operations/fleet',
       ),
+    /**
+     * Why a driver or rider is — or is not — getting work.
+     *
+     * Every gate here already governed dispatch and every one was silent, so
+     * "he is online but no order matches him" could only be answered by
+     * reading the dispatcher's query. Read-only; it changes nothing.
+     */
+    getDriverEligibility: (id: string) =>
+      dx<DispatchEligibilityDto>('GET', `/operations/fleet/drivers/${id}/eligibility`),
+    getRiderEligibility: (id: string) =>
+      dx<DispatchEligibilityDto>('GET', `/operations/fleet/riders/${id}/eligibility`),
     // Live ride queue (active rides only) for the Trips screen.
     getRideQueue: () =>
       dx<{
@@ -2882,6 +3029,10 @@ export const api = {
     suspendMerchant: (id: string, reason: string) =>
       dx<unknown>('POST', `/admin/merchant/${id}/suspend`, { reason }),
     reactivateMerchant: (id: string) => dx<unknown>('POST', `/admin/merchant/${id}/reactivate`),
+    /** Set what a merchant sells, on their behalf. null clears it back to
+     *  uncategorised rather than forcing OTHER. */
+    setMerchantCategory: (id: string, category: MerchantCategory | null) =>
+      dx<unknown>('PATCH', `/admin/merchant/${id}/category`, { category }),
 
     // Riders review desk. Pass a status to scope (e.g. 'PENDING'/'UNDER_REVIEW').
     listRiders: (status?: 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUSPENDED') =>
@@ -3004,6 +3155,13 @@ export const api = {
       dx<UtilityCablePlanDto[]>('GET', '/customer/utilities/cable/plans', undefined, { provider }),
     electricityProviders: () =>
       dx<UtilityElectricityDiscoDto[]>('GET', '/customer/utilities/electricity/providers'),
+    bettingProviders: () => dx<UtilityNetworkDto[]>('GET', '/customer/utilities/betting/providers'),
+    /** One flat list — exam PINs all sit under a single provider, so there is
+     *  no provider to choose first. */
+    educationPlans: () =>
+      dx<UtilityEducationPlanDto[]>('GET', '/customer/utilities/education/plans'),
+    verifyBetting: (body: { provider: string; customerId: string }) =>
+      dx<UtilityCustomerLookupDto>('POST', '/customer/utilities/betting/verify', body),
     verifyCable: (body: { provider: string; smartcardNumber: string }) =>
       dx<UtilityCustomerLookupDto>('POST', '/customer/utilities/cable/verify', body),
     verifyElectricity: (body: {

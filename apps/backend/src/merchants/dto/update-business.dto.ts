@@ -1,4 +1,4 @@
-import { BusinessType } from '@prisma/client';
+import { BusinessType, MerchantCategory } from '@prisma/client';
 import { Transform, Type } from 'class-transformer';
 import {
   IsEmail,
@@ -28,6 +28,13 @@ export class UpdateBusinessDto {
   @IsOptional()
   @IsEnum(BusinessType)
   public businessType?: BusinessType;
+
+  /** What this merchant SELLS — distinct from businessType, which is the legal
+   *  structure. Optional: a merchant may finish onboarding uncategorised and
+   *  set it later; a guessed category is worse than a blank one. */
+  @IsOptional()
+  @IsEnum(MerchantCategory)
+  public category?: MerchantCategory;
 
   @IsOptional()
   @IsString()

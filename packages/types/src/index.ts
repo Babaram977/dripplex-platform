@@ -104,6 +104,7 @@ export type {
   ListMerchantsQuery,
   MerchantApprovalDto,
   MerchantAuditAction,
+  MerchantCategory,
   MerchantDetailDto,
   MerchantDetailResponse,
   MerchantKycDto,
@@ -120,7 +121,12 @@ export type {
   UpdateBusinessRequest,
 } from './merchant/index.js';
 
-export { MERCHANT_AUDIT_ACTIONS, MERCHANT_SORTS } from './merchant/index.js';
+export {
+  MERCHANT_AUDIT_ACTIONS,
+  MERCHANT_CATEGORIES,
+  MERCHANT_CATEGORY_LABEL,
+  MERCHANT_SORTS,
+} from './merchant/index.js';
 
 export type {
   AcceptDriverAgreementRequest,
@@ -295,6 +301,10 @@ export type {
   OperationsRideAllocationDto,
   OperationsRideTrackingDto,
   DispatchCandidateDto,
+  DispatchEligibilityDto,
+  DispatchGateDto,
+  DispatchGateKey,
+  DispatchVehicleDto,
   DispatchSupportDto,
   AnalyticsTimeRangeDto,
   OperationsAnalyticsOverviewDto,
@@ -588,6 +598,7 @@ export type {
   UtilityCatalogueDto,
   UtilityCustomerLookupDto,
   UtilityDataPlanDto,
+  UtilityEducationPlanDto,
   UtilityElectricityDiscoDto,
   UtilityFloatStatusDto,
   UtilityNetworkDto,
@@ -595,6 +606,7 @@ export type {
   UtilityPurchaseDto,
   UtilityPurchaseStatus,
   UtilityServiceType,
+  VerifyBettingCustomerRequest,
   VerifyCableCustomerRequest,
   VerifyElectricityCustomerRequest,
 } from './utilities/index.js';

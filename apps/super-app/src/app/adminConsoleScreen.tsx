@@ -33,6 +33,9 @@ import {
   type RideSurchargeType,
   type RideSurchargeZoneDto,
   type RideType,
+  type DispatchEligibilityDto,
+  MERCHANT_CATEGORY_LABEL,
+  type MerchantCategory,
 } from '../lib/api';
 import { auth } from '../lib/auth';
 import { addressPredictions, geocodeAddress, mapsEnabled, mapsLibrary } from '../lib/maps';
@@ -966,17 +969,29 @@ function PageDashboard() {
       </div>
       {/* KPI Row 2 */}
       <div style={{ display: 'flex', gap: 12 }}>
+        {/* "Online" here means what dispatch means by it — toggled on AND
+            still reporting a position. A driver whose app says Online but who
+            stopped pinging is counted under "Gone Quiet" instead, because
+            dispatch will not send them work and Ops needs to see that gap
+            rather than a number that flatters the fleet. */}
         <KpiCard
           label="Online Drivers"
           value={c(fleet?.onlineCount)}
-          sub="Now"
+          sub={`Reachable of ${c(fleet?.totalDrivers)}`}
           color={C_OK}
           icon="🟢"
         />
         <KpiCard
+          label="Gone Quiet"
+          value={c(fleet?.staleCount)}
+          sub={fleet && fleet.staleCount > 0 ? 'App says online — not pinging' : 'None'}
+          color={fleet && fleet.staleCount > 0 ? C_WARN : MUTED}
+          icon="📵"
+        />
+        <KpiCard
           label="Offline Drivers"
           value={c(fleet?.offlineCount)}
-          sub="Now"
+          sub="Signed off"
           color={MUTED}
           icon="⚫"
         />
@@ -1231,6 +1246,7 @@ function PageLiveMap() {
         summary: {
           totalDrivers: 0,
           onlineCount: 0,
+          staleCount: 0,
           availableCount: 0,
           busyCount: 0,
           offlineCount: 0,
@@ -1541,11 +1557,160 @@ function PageLiveMap() {
                     />
                   </div>
                 </div>
+                <EligibilityPanel subjectId={d.driverId} role="DRIVER" />
               </Card>
             );
           })}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Why this person is — or is not — getting work.
+ *
+ * Every gate shown here already governed dispatch and every one of them was
+ * silent: a rider with one unverified document read "You are live · Waiting
+ * for delivery jobs…" in confident green while being filtered out of
+ * `listAvailableRiders`, and the only way to find out was to read the query.
+ *
+ * Collapsed by default so the roster stays scannable — the question is only
+ * asked about one person at a time, and asking it should cost one tap rather
+ * than a support thread.
+ */
+function EligibilityPanel({ subjectId, role }: { subjectId: string; role: 'DRIVER' | 'RIDER' }) {
+  const [open, setOpen] = useState(false);
+  const [data, setData] = useState<DispatchEligibilityDto | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setData(
+        role === 'DRIVER'
+          ? await api.admin.getDriverEligibility(subjectId)
+          : await api.admin.getRiderEligibility(subjectId),
+      );
+    } catch (cause: unknown) {
+      setError((cause as { message?: string }).message ?? 'Could not read eligibility.');
+    } finally {
+      setLoading(false);
+    }
+  }, [subjectId, role]);
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <button
+        onClick={() => {
+          const next = !open;
+          setOpen(next);
+          if (next && data === null) void load();
+        }}
+        style={{
+          background: 'transparent',
+          border: 'none',
+          padding: 0,
+          cursor: 'pointer',
+          fontSize: 11,
+          color: MUTED,
+          fontFamily: 'Inter, sans-serif',
+        }}
+      >
+        {open ? '▾' : '▸'} Why {role === 'DRIVER' ? 'is this driver' : 'is this rider'} not getting
+        work?
+      </button>
+
+      {open ? (
+        <div
+          style={{
+            marginTop: 8,
+            padding: 10,
+            borderRadius: 8,
+            background: 'rgba(255,255,255,.03)',
+            border: `1px solid ${BORDER}`,
+          }}
+        >
+          {loading ? (
+            <p style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>Checking…</p>
+          ) : error !== null ? (
+            <p style={{ fontSize: 11, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>{error}</p>
+          ) : data === null ? null : (
+            <>
+              <p
+                style={{
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  color: data.dispatchable ? C_OK : C_WARN,
+                  fontFamily: 'Inter, sans-serif',
+                  marginBottom: 8,
+                }}
+              >
+                {data.dispatchable
+                  ? 'Dispatchable — every check passes'
+                  : 'Not dispatchable — see below'}
+              </p>
+
+              <div style={{ display: 'grid', gap: 6 }}>
+                {data.gates.map((g) => (
+                  <div key={g.key} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                    <span
+                      style={{ fontSize: 11, color: g.passed ? C_OK : C_ERR, lineHeight: '15px' }}
+                    >
+                      {g.passed ? '✓' : '✕'}
+                    </span>
+                    <div style={{ flex: 1 }}>
+                      <span
+                        style={{
+                          fontSize: 11.5,
+                          color: g.passed ? MUTED : WHITE,
+                          fontFamily: 'Inter, sans-serif',
+                        }}
+                      >
+                        {g.label}
+                      </span>
+                      {/* The detail is the whole point — "Guarantor ID is
+                          still PENDING" tells an operator what to open, where
+                          "not eligible" sent them hunting. */}
+                      {g.detail !== null ? (
+                        <p
+                          style={{
+                            fontSize: 11,
+                            color: C_WARN,
+                            fontFamily: 'Inter, sans-serif',
+                            marginTop: 2,
+                          }}
+                        >
+                          {g.detail}
+                          {g.fixableBy === 'DRIVER' ? ' · only the driver can fix this' : ''}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {data.vehicle !== null ? (
+                <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${BORDER}` }}>
+                  <p style={{ fontSize: 10.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+                    VEHICLE
+                  </p>
+                  <p
+                    style={{ fontSize: 11.5, color: WHITE, fontFamily: 'Inter, sans-serif' }}
+                  >{`${data.vehicle.year} ${data.vehicle.make} ${data.vehicle.model} · ${data.vehicle.colour}`}</p>
+                  <p style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+                    {data.vehicle.plateNumber} · {data.vehicle.rideCategory} ·{' '}
+                    {data.vehicle.approvalStatus}
+                    {data.vehicle.seats !== null ? ` · ${String(data.vehicle.seats)} seats` : ''}
+                  </p>
+                </div>
+              ) : null}
+            </>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -3517,8 +3682,14 @@ function MerchantReviewCard({ m, reload }: { m: AdminMerchantDto; reload: () => 
           {m.business?.businessName ?? 'Business not set'}
         </div>
         {m.business?.businessType && (
-          <Chip label={m.business.businessType.replace(/_/g, ' ')} color={C_INFO} />
+          <Chip label={m.business.businessType.replace(/_/g, ' ')} color={MUTED} />
         )}
+        {m.business &&
+          (m.business.category ? (
+            <Chip label={MERCHANT_CATEGORY_LABEL[m.business.category]} color={C_INFO} />
+          ) : (
+            <Chip label="No category" color={C_WARN} />
+          ))}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
           <Chip {...kyc} />
           <Chip {...st} />
@@ -3537,6 +3708,61 @@ function MerchantReviewCard({ m, reload }: { m: AdminMerchantDto; reload: () => 
           <DetailRow label="Reason" value={m.rejectedReason} />
         )}
       </div>
+      {/* What this merchant SELLS.
+
+          A merchant can set this in their own portal, but everyone onboarded
+          before the field existed has none — and an uncategorised merchant is
+          invisible to every marketplace category filter, appearing only under
+          "All". This lets Operations sort out the merchants already trading
+          without waiting for each of them to log in.
+
+          Blank is offered deliberately: it returns them to uncategorised
+          rather than forcing OTHER, which would be a claim about a business
+          that is not true. */}
+      {m.business && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            flexWrap: 'wrap',
+            padding: 10,
+            borderRadius: 8,
+            background: 'rgba(255,255,255,.03)',
+            border: `1px solid ${m.business.category ? BORDER : 'rgba(245,158,11,.3)'}`,
+          }}
+        >
+          <span style={{ fontSize: 11, fontWeight: 700, color: WHITE }}>Sells</span>
+          <select
+            className="dx-select"
+            value={m.business.category ?? ''}
+            disabled={busy === 'category'}
+            onChange={(e) => {
+              const next = e.target.value === '' ? null : (e.target.value as MerchantCategory);
+              void run('category', () => api.admin.setMerchantCategory(m.merchantId, next));
+            }}
+            style={{ minWidth: 190 }}
+          >
+            <option value="">— No category —</option>
+            {(Object.keys(MERCHANT_CATEGORY_LABEL) as MerchantCategory[]).map((c) => (
+              <option key={c} value={c}>
+                {MERCHANT_CATEGORY_LABEL[c]}
+              </option>
+            ))}
+          </select>
+          {!m.business.category && (
+            <span style={{ fontSize: 11, color: C_WARN, fontFamily: 'Inter, sans-serif' }}>
+              Only shows under “All” until this is set
+            </span>
+          )}
+          {busy === 'category' && (
+            <span style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              Saving…
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Business document review. A merchant submits several documents (CAC
           certificate, director's NIN, …); this panel shows the one awaiting
           review and re-renders with the next one after each decision. */}
@@ -4651,6 +4877,17 @@ function PageCommissions() {
       setActionMsg('Enter the amount received, in naira.');
       return;
     }
+    // A payment can never exceed the debt, so say what the ceiling IS. The
+    // server refuses with "Payment amount exceeds outstanding commission
+    // balance", which is true but leaves the operator to work out the figure.
+    if (amount > selected.outstandingBalance) {
+      setActionMsg(
+        `That is more than the ${naira(selected.outstandingBalance)} outstanding. Record ` +
+          `${naira(selected.outstandingBalance)} to clear the balance` +
+          `${selected.blocked ? ' and unblock them' : ''}.`,
+      );
+      return;
+    }
     setBusy(true);
     setActionMsg(null);
     try {
@@ -5081,6 +5318,41 @@ function PageCommissions() {
               Money DrippleX has actually received from this partner, outside the app. Recording it
               pays the balance down; clearing enough of it unblocks them immediately.
             </p>
+            {/* The one figure that matters, and a button that types it.
+                Blocking is a latch: only a zero balance releases a blocked
+                partner, and a payment can never exceed what is owed. So there
+                is exactly one amount that unblocks somebody — and it used to
+                have to be read off the table and typed by hand, with an
+                overpayment simply refused. Reported live: ₦80,000 entered
+                against a ₦60,000 balance, rejected, and read as "no option to
+                make a merchant active". */}
+            {selected.outstandingBalance > 0 && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 10,
+                  marginBottom: 10,
+                  padding: '8px 10px',
+                  borderRadius: 8,
+                  background: 'rgba(255,255,255,.04)',
+                  border: `1px solid ${BORDER}`,
+                }}
+              >
+                <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.45 }}>
+                  {naira(selected.outstandingBalance)} outstanding
+                  {selected.blocked ? ' — this exact amount unblocks them' : ''}
+                </span>
+                <Btn
+                  label={`Pay off ${naira(selected.outstandingBalance)}`}
+                  small
+                  outline
+                  disabled={busy}
+                  onClick={() => setPayAmount(String(selected.outstandingBalance))}
+                />
+              </div>
+            )}
             <input
               className="dx-input"
               placeholder="Amount received (₦)"

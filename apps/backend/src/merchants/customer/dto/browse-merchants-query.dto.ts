@@ -1,8 +1,8 @@
-import { MERCHANT_SORTS } from '@dripplex/types';
+import { MERCHANT_CATEGORIES, MERCHANT_SORTS } from '@dripplex/types';
 import { Transform } from 'class-transformer';
 import { IsIn, IsNumber, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 
-import type { BusinessType, MerchantSort } from '@dripplex/types';
+import type { BusinessType, MerchantCategory, MerchantSort } from '@dripplex/types';
 
 const BUSINESS_TYPE_VALUES = [
   'SOLE_PROPRIETORSHIP',
@@ -25,6 +25,15 @@ export class BrowseMerchantsQueryDto {
   @IsOptional()
   @IsIn(BUSINESS_TYPE_VALUES)
   public businessType?: BusinessType;
+
+  /**
+   * What the merchant SELLS. This is what the marketplace's category chips
+   * mean; `businessType` above is a legal structure and was never a category,
+   * which is why those chips previously fell back to a name search.
+   */
+  @IsOptional()
+  @IsIn(MERCHANT_CATEGORIES)
+  public category?: MerchantCategory;
 
   @IsOptional()
   @Transform(toNumber)

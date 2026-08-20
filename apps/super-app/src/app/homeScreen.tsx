@@ -1,5 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { G0, G2, G3, NAVY_DEEP, NAVY_CARD, NAVY_SURFACE, BORDER, MUTED } from './shared';
+import {
+  G0,
+  G2,
+  G3,
+  NAVY_DEEP,
+  NAVY_CARD,
+  NAVY_SURFACE,
+  BORDER,
+  MUTED,
+  timeGreeting,
+} from './shared';
 import { api } from '../lib/api';
 import { auth } from '../lib/auth';
 import type {
@@ -12,6 +22,7 @@ import type {
   WalletLedgerEntryDto,
 } from '../lib/api';
 import { ImageWithFallback } from '@/app/components/figma/ImageWithFallback';
+import { Icon, type IconName } from './icons';
 
 // Relative time for real wallet activity timestamps.
 function relTime(iso: string): string {
@@ -41,15 +52,15 @@ const TXN_ICON: Record<WalletLedgerEntryDto['type'], string> = {
 // ─────────────────────────────────────────────────────────────────────────────
 // DATA
 // ─────────────────────────────────────────────────────────────────────────────
-const CATS = [
-  { icon: '🛒', label: 'Supermarkets' },
-  { icon: '🍽', label: 'Restaurants' },
-  { icon: '💊', label: 'Pharmacy' },
-  { icon: '👗', label: 'Fashion' },
-  { icon: '📱', label: 'Electronics' },
-  { icon: '💄', label: 'Beauty' },
-  { icon: '🛋', label: 'Home' },
-  { icon: '🔧', label: 'Hardware' },
+const CATS: { icon: IconName; label: string }[] = [
+  { icon: 'supermarket', label: 'Supermarkets' },
+  { icon: 'restaurant', label: 'Restaurants' },
+  { icon: 'pharmacy', label: 'Pharmacy' },
+  { icon: 'fashion', label: 'Fashion' },
+  { icon: 'electronics', label: 'Electronics' },
+  { icon: 'beauty', label: 'Beauty' },
+  { icon: 'home', label: 'Home' },
+  { icon: 'hardware', label: 'Hardware' },
 ];
 
 /**
@@ -58,15 +69,15 @@ const CATS = [
  * swallows a tap silently is worse than one that says it is not built. No
  * screen is invented to fill them; the gap is recorded in the diff register.
  */
-const QUICK = [
-  { icon: '🛍', label: 'Marketplace', color: '#2BAC52', ready: true },
-  { icon: '🚖', label: 'Ride', color: '#3B82F6', ready: true },
-  { icon: '💳', label: 'Wallet', color: '#8B5CF6', ready: true },
-  { icon: '📦', label: 'Orders', color: '#F59E0B', ready: true },
-  { icon: '⚡', label: 'Utilities', color: '#06B6D4', ready: true },
-  { icon: '🍔', label: 'Food', color: '#F97316', ready: true },
-  { icon: '🏥', label: 'Health', color: '#10B981', ready: false },
-  { icon: '⋯', label: 'More', color: '#6B7280', ready: false },
+const QUICK: { icon: IconName; label: string; color: string; ready: boolean }[] = [
+  { icon: 'marketplace', label: 'Marketplace', color: '#2BAC52', ready: true },
+  { icon: 'ride', label: 'Ride', color: '#3B82F6', ready: true },
+  { icon: 'wallet', label: 'Wallet', color: '#8B5CF6', ready: true },
+  { icon: 'orders', label: 'Orders', color: '#F59E0B', ready: true },
+  { icon: 'utilities', label: 'Utilities', color: '#06B6D4', ready: true },
+  { icon: 'food', label: 'Food', color: '#F97316', ready: true },
+  { icon: 'health', label: 'Health', color: '#10B981', ready: false },
+  { icon: 'more', label: 'More', color: '#6B7280', ready: false },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -362,14 +373,16 @@ function QuickActions({ onSelect }: { onSelect?: (label: string) => void }) {
             style={{ opacity: q.ready ? 1 : 0.42, cursor: q.ready ? 'pointer' : 'default' }}
           >
             <div
-              className="relative flex h-[56px] w-[56px] items-center justify-center rounded-2xl text-[24px]"
+              className="relative flex h-[56px] w-[56px] items-center justify-center rounded-2xl"
               style={{
                 background: q.color + '18',
                 border: `1.5px solid ${q.color}28`,
                 boxShadow: q.ready ? `0 4px 16px ${q.color}12` : 'none',
               }}
             >
-              {q.icon}
+              {/* An emoji ignored `q.color` entirely — the tile was tinted and
+                  the glyph inside it stayed whatever the OS painted. */}
+              <Icon name={q.icon} size={26} color={q.color} />
               {!q.ready && (
                 // Absolutely positioned so the unbuilt tiles stay the same size
                 // as the built ones and the 4×2 grid does not shift.
@@ -972,7 +985,7 @@ function Categories({ active, onPick }: { active: string; onPick: (label: string
               className="flex flex-shrink-0 flex-col items-center gap-1.5 transition-all active:scale-90"
             >
               <div
-                className="flex h-[52px] w-[52px] items-center justify-center rounded-2xl text-[22px]"
+                className="flex h-[52px] w-[52px] items-center justify-center rounded-2xl"
                 style={{
                   background: on ? `linear-gradient(135deg,${G0},${G2})` : NAVY_CARD,
                   border: on ? 'none' : `1.5px solid ${BORDER}`,
@@ -980,7 +993,7 @@ function Categories({ active, onPick }: { active: string; onPick: (label: string
                   transition: 'all .2s ease',
                 }}
               >
-                {c.icon}
+                <Icon name={c.icon} size={23} color={on ? '#FFF' : 'rgba(255,255,255,.62)'} />
               </div>
               <p
                 className="text-center text-[9px] font-semibold"
@@ -1455,18 +1468,24 @@ function BottomNav({ active, onChange }: { active: NavTab; onChange: (t: NavTab)
 // ─────────────────────────────────────────────────────────────────────────────
 // FLOATING AI BUTTON
 // ─────────────────────────────────────────────────────────────────────────────
+/** Where the Ask Drip button sits and how big it is. Named so the scrollable
+ *  body can reserve exactly enough room to scroll clear of it — the two were
+ *  independent numbers, and the spacer was the smaller of them. */
+const FAB_BOTTOM = 94;
+const FAB_SIZE = 52;
+
 function FAB({ onPress }: { onPress: () => void }) {
   return (
     <button
       onClick={onPress}
       className="absolute z-40 transition-all active:scale-90"
-      style={{ bottom: 94, right: 18 }}
+      style={{ bottom: FAB_BOTTOM, right: 18 }}
       aria-label="AI Assistant"
     >
       <div
         style={{
-          width: 52,
-          height: 52,
+          width: FAB_SIZE,
+          height: FAB_SIZE,
           borderRadius: '50%',
           background: `linear-gradient(135deg,${G0},${G2})`,
           boxShadow: `0 6px 28px rgba(43,172,82,.5), 0 0 0 1.5px rgba(43,172,82,.32)`,
@@ -1541,10 +1560,7 @@ export function HomeScreen({
   const [foundProducts, setFoundProducts] = useState<ProductSummaryDto[]>([]);
   const [searchNonce, setSearchNonce] = useState(0);
 
-  const [greeting] = useState(() => {
-    const h = new Date().getHours();
-    return h < 12 ? 'Good Morning' : h < 17 ? 'Good Afternoon' : 'Good Evening';
-  });
+  const [greeting] = useState(() => timeGreeting());
 
   // Debounce the box into the committed term.
   useEffect(() => {
@@ -1675,8 +1691,8 @@ export function HomeScreen({
       <Header
         greeting={greeting}
         name={(() => {
-          const u = auth.getUser();
-          return u ? `${u.firstName} ${u.lastName}`.trim() : 'there';
+          const n = auth.greetingName();
+          return n ? `Hi, ${n}` : 'Hello';
         })()}
         onNotif={onNotifications}
         onProfile={onAccount}
@@ -1751,7 +1767,14 @@ export function HomeScreen({
           </>
         )}
 
-        <div style={{ height: 104 }} />
+        {/* Clearance for the bottom nav AND the floating Ask Drip button.
+            At 104 this only cleared the nav: the button sits 94px up and is
+            52px tall, so it reaches 146px and the last 42px of the page could
+            never be scrolled out from under it. Reported live with the button
+            parked on the "More" tile. A FAB is expected to float over content
+            in passing — what it must never do is permanently hide something,
+            and that is what too small a spacer caused. */}
+        <div style={{ height: FAB_BOTTOM + FAB_SIZE + 16 }} />
       </div>
 
       <FAB onPress={() => setShowAI(true)} />

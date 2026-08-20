@@ -1165,7 +1165,7 @@ export function WelcomeDrippleXScreen({
   onQuickStart?: (key: 'marketplace' | 'ride' | 'wallet' | 'merchant') => void;
 }) {
   const [phase, setPhase] = useState<'celebrate' | 'ready'>('celebrate');
-  const firstName = auth.getUser()?.firstName?.trim() || 'there';
+  const firstName = auth.greetingName();
 
   useEffect(() => {
     const t = setTimeout(() => setPhase('ready'), 2200);
@@ -1277,7 +1277,7 @@ export function WelcomeDrippleXScreen({
             animation: 'fade-up .5s ease .55s both',
           }}
         >
-          Welcome, {firstName} 👋
+          {firstName ? `Welcome, ${firstName} 👋` : 'Welcome 👋'}
         </p>
         <p
           className="mt-1 px-8 text-center text-[12px]"

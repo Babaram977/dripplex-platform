@@ -25,6 +25,7 @@ describe('CustomerMerchantsService', () => {
   interface MerchantFixtureOptions {
     businessName: string;
     businessType?: 'SOLE_PROPRIETORSHIP' | 'CORPORATION';
+    category?: 'HOTEL' | 'RESTAURANT' | 'PHARMACY';
     status?: BusinessStatus;
     isApproved?: boolean;
     latitude?: string;
@@ -50,6 +51,7 @@ describe('CustomerMerchantsService', () => {
         merchantId: user.id,
         businessName: options.businessName,
         businessType: options.businessType ?? 'SOLE_PROPRIETORSHIP',
+        ...(options.category ? { category: options.category } : {}),
         registrationNumber: `REG-${randomUUID()}`,
         email: `${options.businessName.toLowerCase()}-${randomUUID()}@dripplex.test`,
         phone: '+2348000000000',
@@ -187,5 +189,48 @@ describe('CustomerMerchantsService', () => {
     });
     expect(result.parsed.nearMe).toBe(true);
     expect(result.results.items.map((item) => item.id)).toContain(approvedMerchantProfileId);
+  });
+
+  describe('category filter', () => {
+    it('finds a hotel by category even when its NAME says nothing about hotels', async () => {
+      if (!databaseAvailable) return;
+
+      // The exact case that motivated the field. The marketplace's "Hotels"
+      // chip used to feed its LABEL to a merchant-NAME search, so this hotel
+      // was unreachable through the category it belongs to.
+      await createMerchant({ businessName: 'Tahir Guest Palace', category: 'HOTEL' });
+      await createMerchant({ businessName: 'Mani Restaurant', category: 'RESTAURANT' });
+
+      const byCategory = await service.browse({ category: 'HOTEL' } as never);
+      const names = byCategory.items.map((m) => m.businessName);
+      expect(names).toContain('Tahir Guest Palace');
+      expect(names).not.toContain('Mani Restaurant');
+
+      // ...and the old behaviour, so the regression is legible: searching the
+      // word "Hotels" finds nothing, because it is nobody's name.
+      const byName = await service.browse({ q: 'Hotels' });
+      expect(byName.items.map((m) => m.businessName)).not.toContain('Tahir Guest Palace');
+    });
+
+    it('carries the category out on the summary, so the card can draw the right icon', async () => {
+      if (!databaseAvailable) return;
+
+      await createMerchant({ businessName: 'Kano Pharma Ltd', category: 'PHARMACY' });
+      const res = await service.browse({ category: 'PHARMACY' } as never);
+      const found = res.items.find((m) => m.businessName === 'Kano Pharma Ltd');
+      expect(found?.category).toBe('PHARMACY');
+    });
+
+    it('leaves an uncategorised merchant out of every category but still in All', async () => {
+      if (!databaseAvailable) return;
+
+      await createMerchant({ businessName: 'Uncategorised Trading Co' });
+
+      const inHotels = await service.browse({ category: 'HOTEL' } as never);
+      expect(inHotels.items.map((m) => m.businessName)).not.toContain('Uncategorised Trading Co');
+
+      const all = await service.browse({});
+      expect(all.items.map((m) => m.businessName)).toContain('Uncategorised Trading Co');
+    });
   });
 });

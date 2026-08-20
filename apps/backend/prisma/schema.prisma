@@ -88,6 +88,34 @@ enum BusinessVerificationStatus {
   REJECTED
 }
 
+/// What a merchant SELLS, as opposed to how it is legally constituted.
+///
+/// BusinessType is a legal structure — SOLE_PROPRIETORSHIP, PARTNERSHIP — and
+/// was the only thing resembling a category, so the marketplace had nothing to
+/// filter on. Its category chips fell back to a free-text search of merchant
+/// NAMES, which meant a hotel called "Tahir Guest Palace" never appeared under
+/// Hotels, and the storefront-icon lookup never matched, so every merchant card
+/// drew the same default glyph.
+///
+/// The values are exactly the chips the marketplace and home screens already
+/// offer, so the existing UI becomes real rather than a new taxonomy being
+/// invented alongside it. OTHER exists so a merchant is never forced into a
+/// wrong one; UNCATEGORISED is absent by design — that state is `null`.
+enum MerchantCategory {
+  SUPERMARKET
+  RESTAURANT
+  PHARMACY
+  ELECTRONICS
+  FASHION
+  BEAUTY
+  HARDWARE
+  HOTEL
+  FURNITURE
+  SERVICES
+  WHOLESALE
+  OTHER
+}
+
 enum BusinessType {
   SOLE_PROPRIETORSHIP
   PARTNERSHIP
@@ -566,6 +594,11 @@ model Business {
   merchantId         String                     @unique @map("merchant_id") @db.Uuid
   businessName       String                     @map("business_name") @db.VarChar(150)
   businessType       BusinessType               @map("business_type")
+  /// What this merchant sells. Nullable: every merchant onboarded before this
+  /// column existed has none, and a wrong guess is worse than an honest blank
+  /// — an uncategorised merchant still appears under "All", it just cannot be
+  /// filtered to a category until someone sets one.
+  category           MerchantCategory?
   registrationNumber String                     @unique @map("registration_number") @db.VarChar(100)
   taxNumber          String?                    @map("tax_number") @db.VarChar(100)
   description        String?                    @db.VarChar(2000)
@@ -596,6 +629,8 @@ model Business {
   @@index([verificationStatus])
   @@index([country, state])
   @@index([createdAt])
+  /// The marketplace's primary browse is "approved merchants in this category".
+  @@index([category])
   @@map("businesses")
 }
 
@@ -2559,6 +2594,16 @@ enum WalletTransactionType {
   CASHBACK
   WITHDRAWAL
   TRANSFER
+  /// Money moved out of `availableBalance` and into `pendingBalance` — set
+  /// aside for something that has not happened yet, and NOT taken. Every
+  /// HOLD is terminated by exactly one HOLD_COMMIT or HOLD_RELEASE.
+  HOLD
+  /// The held money is now genuinely taken. `pendingBalance` falls;
+  /// `availableBalance` does not move, because the HOLD already reduced it.
+  HOLD_COMMIT
+  /// The hold is given back. `pendingBalance` falls and `availableBalance`
+  /// rises by the same amount, returning the wallet to where it started.
+  HOLD_RELEASE
 }
 
 enum WalletDirection {
@@ -3077,7 +3122,16 @@ model Wallet {
   ownerType              WalletOwnerType     @map("owner_type")
   ownerId                String              @map("owner_id") @db.Uuid
   currency               String              @default("NGN") @db.VarChar(3)
+  /// Spendable now. A hold reduces this immediately, which is what stops
+  /// the same money being promised twice.
   availableBalance       Decimal             @default(0) @map("available_balance") @db.Decimal(14, 2)
+  /// Held, not taken. Money set aside for something still being decided —
+  /// a hotel that has 30 minutes to accept a booking, say. It has left
+  /// `availableBalance` and has not yet left the customer: committing the
+  /// hold takes it, releasing the hold returns it.
+  ///
+  /// Declared from the beginning but never written until DPX-HOTEL-001
+  /// needed a way to reserve money without charging for it.
   pendingBalance         Decimal             @default(0) @map("pending_balance") @db.Decimal(14, 2)
   version                Int                 @default(0)
   /// Customer-configurable spending limits (Wallet Settings). Null = no
@@ -3734,6 +3788,13 @@ enum UtilityServiceType {
   DATA
   ELECTRICITY
   CABLE_TV
+  /// Funding a bookmaker account. Verified before funding, like cable —
+  /// money sent to a mistyped betting ID does not come back.
+  BETTING
+  /// WAEC / NECO / NABTEB result-checker PINs. The only service that is
+  /// priced per unit and bought in quantity, and the only one besides
+  /// electricity whose delivered artifact IS the thing purchased.
+  EDUCATION
 }
 
 /// How the customer paid for a utility purchase. Deliberately its own enum
@@ -3781,6 +3842,15 @@ model UtilityPurchase {
   /// Data bundle or cable package. Null for airtime and for electricity,
   /// which are priced by amount rather than by plan.
   planCode           String?               @map("plan_code") @db.VarChar(64)
+  /// How many units were bought. Only education PINs are sold in quantity;
+  /// null everywhere else, so a receipt can say "3 × WAEC PIN" without
+  /// implying every other service has a countable unit.
+  quantity           Int?
+  /// The name registered against the funded account, captured at
+  /// verification. Stored only for BETTING, where Peyflex requires it on the
+  /// funding call and the customer needs the receipt to show whose account
+  /// was credited.
+  beneficiaryName    String?               @map("beneficiary_name") @db.VarChar(120)
   /// What the customer was charged — face value.
   amountCharged      Decimal               @map("amount_charged") @db.Decimal(12, 2)
   /// What Peyflex debited from the DrippleX float. Null until the provider
@@ -3799,10 +3869,15 @@ model UtilityPurchase {
   /// generates it and returns it in the response — it cannot be supplied
   /// up front, which is the root of G1.
   providerReference  String?               @map("provider_reference") @db.VarChar(100)
-  /// The electricity token or recharge PIN. This is the thing the customer
+  /// The electricity token or exam PIN(s). This is the thing the customer
   /// bought; a customer who closes the app and loses it has lost the money,
   /// so it is stored and re-displayable rather than shown once.
-  deliveredToken     String?               @map("delivered_token") @db.VarChar(255)
+  ///
+  /// Text, not VarChar(255): an education purchase returns every PIN it sold
+  /// in one `||`-separated string — roughly 47 characters per PIN — so a
+  /// quantity of six would have silently truncated, and a truncated PIN is a
+  /// customer who paid and received nothing usable.
+  deliveredToken     String?               @map("delivered_token")
   /// Shown to the customer and kept for support. Never carries the
   /// provider's own "Insufficient wallet balance" — that means the DrippleX
   /// float is dry, not the customer's, and reads as an accusation.

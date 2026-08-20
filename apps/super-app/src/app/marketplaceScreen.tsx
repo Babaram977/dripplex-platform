@@ -2,29 +2,77 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { G0, G2, G3, NAVY_DEEP, NAVY_CARD, NAVY_SURFACE, BORDER, MUTED } from './shared';
 import { api } from '../lib/api';
 import { ImageWithFallback } from './components/figma/ImageWithFallback';
+import { Icon, type IconName } from './icons';
+import { MERCHANT_CATEGORY_LABEL, type MerchantCategory } from '../lib/api';
 import type { MerchantSummaryDto, ProductSummaryDto } from '../lib/api';
 
 // Money formatter — backend prices are numeric (e.g. 4800). Mirrors storeScreen's
 // `₦${n.toLocaleString()}` convention. Do not invent a different format.
 const naira = (n: number) => `₦${n.toLocaleString()}`;
 
+/**
+ * Up to two initials for a business without a cover photo.
+ *
+ * Words like "Ltd" or "&" carry no identity, so they never win a slot — the
+ * monogram for "Ghasan Leather Shop" is GL, and for "Mani & Sons Ltd" it is MS.
+ */
+const MONOGRAM_SKIP = new Set(['ltd', 'limited', 'nig', 'nigeria', 'and', 'the', 'co', 'inc']);
+
+export function monogram(businessName: string): string {
+  const words = businessName
+    .split(/[\s\-_/&]+/)
+    .map((w) => w.replace(/[^\p{L}\p{N}]/gu, ''))
+    .filter((w) => w.length > 0 && !MONOGRAM_SKIP.has(w.toLowerCase()));
+  if (words.length === 0) return businessName.trim().charAt(0).toUpperCase() || '•';
+  if (words.length === 1) return words[0]!.slice(0, 2).toUpperCase();
+  return (words[0]!.charAt(0) + words[1]!.charAt(0)).toUpperCase();
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // DATA
 // ─────────────────────────────────────────────────────────────────────────────
-const CAT_CHIPS = [
-  { label: 'All', icon: '✦' },
-  { label: 'Supermarkets', icon: '🛒' },
-  { label: 'Restaurants', icon: '🍽' },
-  { label: 'Pharmacy', icon: '💊' },
-  { label: 'Electronics', icon: '📱' },
-  { label: 'Fashion', icon: '👗' },
-  { label: 'Beauty', icon: '💄' },
-  { label: 'Hardware', icon: '🔧' },
-  { label: 'Hotels', icon: '🏨' },
-  { label: 'Furniture', icon: '🛋' },
-  { label: 'Services', icon: '⚙' },
-  { label: 'Wholesale', icon: '📦' },
+/**
+ * The chips carry the real `MerchantCategory` value now. They used to carry a
+ * LABEL that was fed to a free-text merchant-name search, so "Hotels" only
+ * matched a business with the word "Hotels" in its name — a hotel called
+ * "Tahir Guest Palace" never appeared under it. `category: null` is All.
+ */
+const CAT_CHIPS: { label: string; icon: IconName; category: MerchantCategory | null }[] = [
+  { label: 'All', icon: 'all', category: null },
+  { label: 'Supermarkets', icon: 'supermarket', category: 'SUPERMARKET' },
+  { label: 'Restaurants', icon: 'restaurant', category: 'RESTAURANT' },
+  { label: 'Pharmacy', icon: 'pharmacy', category: 'PHARMACY' },
+  { label: 'Electronics', icon: 'electronics', category: 'ELECTRONICS' },
+  { label: 'Fashion', icon: 'fashion', category: 'FASHION' },
+  { label: 'Beauty', icon: 'beauty', category: 'BEAUTY' },
+  { label: 'Hardware', icon: 'hardware', category: 'HARDWARE' },
+  { label: 'Hotels', icon: 'hotel', category: 'HOTEL' },
+  { label: 'Furniture', icon: 'home', category: 'FURNITURE' },
+  { label: 'Services', icon: 'services', category: 'SERVICES' },
+  { label: 'Wholesale', icon: 'orders', category: 'WHOLESALE' },
 ];
+
+/** Category -> icon. Keyed on `category`, which actually exists on a merchant;
+ *  the old map was keyed on `businessType` (a legal structure) so it never
+ *  matched and every card fell through to the same default glyph. */
+const CATEGORY_ICON: Record<MerchantCategory, IconName> = {
+  SUPERMARKET: 'supermarket',
+  RESTAURANT: 'restaurant',
+  PHARMACY: 'pharmacy',
+  ELECTRONICS: 'electronics',
+  FASHION: 'fashion',
+  BEAUTY: 'beauty',
+  HARDWARE: 'hardware',
+  HOTEL: 'hotel',
+  FURNITURE: 'home',
+  SERVICES: 'services',
+  WHOLESALE: 'orders',
+  OTHER: 'store',
+};
+
+function categoryIcon(category: MerchantCategory | null): IconName {
+  return category ? CATEGORY_ICON[category] : 'store';
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SHARED PRIMITIVES
@@ -340,16 +388,22 @@ function MpHeader({
 // ─────────────────────────────────────────────────────────────────────────────
 // CATEGORY CHIPS
 // ─────────────────────────────────────────────────────────────────────────────
-function CategoryChips({ active, onChange }: { active: string; onChange: (s: string) => void }) {
+function CategoryChips({
+  active,
+  onChange,
+}: {
+  active: MerchantCategory | null;
+  onChange: (c: MerchantCategory | null) => void;
+}) {
   return (
     <div className="mb-4 mt-3">
       <div className="flex gap-2 overflow-x-auto px-5" style={{ scrollbarWidth: 'none' }}>
         {CAT_CHIPS.map((c) => {
-          const on = active === c.label;
+          const on = active === c.category;
           return (
             <button
               key={c.label}
-              onClick={() => onChange(c.label)}
+              onClick={() => onChange(c.category)}
               className="flex h-9 flex-shrink-0 items-center gap-1.5 rounded-full px-3.5 transition-all active:scale-95"
               style={{
                 background: on ? `linear-gradient(135deg,${G0},${G2})` : 'rgba(255,255,255,.06)',
@@ -357,7 +411,7 @@ function CategoryChips({ active, onChange }: { active: string; onChange: (s: str
                 boxShadow: on ? `0 4px 14px rgba(43,172,82,.28)` : 'none',
               }}
             >
-              <span style={{ fontSize: 13 }}>{c.icon}</span>
+              <Icon name={c.icon} size={15} color={on ? '#FFF' : 'rgba(255,255,255,.5)'} />
               <p
                 className="text-[11.5px] font-semibold"
                 style={{
@@ -457,7 +511,7 @@ function FeaturedMerchants({
   active,
   onStore,
 }: {
-  active: string;
+  active: MerchantCategory | null;
   onStore?: (id: string) => void;
 }) {
   const [merchants, setMerchants] = useState<MerchantSummaryDto[]>([]);
@@ -468,10 +522,13 @@ function FeaturedMerchants({
     setLoading(true);
     setError('');
     try {
-      const q = active === 'All' ? undefined : active;
-      const res = q
-        ? await api.marketplace.searchMerchants(q, { limit: 20 })
-        : await api.marketplace.getMerchants({ limit: 20 });
+      // A category is a filter, not a search term. This used to send the chip
+      // LABEL to smart-search, which matched merchant NAMES — so "Hotels"
+      // returned only businesses with "Hotels" written in their name.
+      const res = await api.marketplace.getMerchants({
+        limit: 20,
+        ...(active ? { category: active } : {}),
+      });
       const r = res as { items?: MerchantSummaryDto[] };
       setMerchants(r.items ?? []);
     } catch (e: unknown) {
@@ -495,17 +552,6 @@ function FeaturedMerchants({
     'linear-gradient(135deg,#831843,#EC4899)',
     'linear-gradient(135deg,#064E3B,#10B981)',
   ];
-  const EMOJI_POOL: Record<string, string> = {
-    Restaurant: '🍽',
-    Supermarket: '🛒',
-    Pharmacy: '💊',
-    Fashion: '👗',
-    Electronics: '📱',
-    Beauty: '💄',
-    Hotel: '🏨',
-    Hardware: '🔧',
-    default: '🏪',
-  };
 
   return (
     <div className="mb-5">
@@ -557,7 +603,8 @@ function FeaturedMerchants({
       ) : merchants.length === 0 ? (
         <div style={{ padding: '24px 20px', textAlign: 'center' }}>
           <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 13, color: MUTED }}>
-            No merchants found{active !== 'All' ? ` in "${active}"` : ''}.
+            No merchants found
+            {active ? ` in ${MERCHANT_CATEGORY_LABEL[active]}` : ''}.
           </p>
         </div>
       ) : (
@@ -565,7 +612,7 @@ function FeaturedMerchants({
           {merchants.map((m, idx) => {
             const isOpen = m.isOpenNow;
             const bg = BG_POOL[idx % BG_POOL.length];
-            const emoji = EMOJI_POOL[m.businessType ?? ''] ?? EMOJI_POOL.default;
+            const icon = categoryIcon(m.category);
             const verified = m.verificationStatus === 'VERIFIED';
             const rating = m.rating?.average ?? 0;
             const dist = m.distanceKm != null ? `${m.distanceKm.toFixed(1)} km` : '';
@@ -583,21 +630,58 @@ function FeaturedMerchants({
                   className="relative flex h-[88px] items-center justify-center"
                   style={{ background: m.coverPhotoUrl ? undefined : bg }}
                 >
-                  <ImageWithFallback
-                    src={m.coverPhotoUrl ?? undefined}
-                    alt={m.businessName}
-                    className="absolute inset-0 h-full w-full object-cover"
-                    fallbackEmoji={emoji}
-                  />
+                  {m.coverPhotoUrl ? (
+                    <ImageWithFallback
+                      src={m.coverPhotoUrl}
+                      alt={m.businessName}
+                      className="absolute inset-0 h-full w-full object-cover"
+                      fallbackEmoji="🛍️"
+                      loading="lazy"
+                    />
+                  ) : (
+                    /* A monogram, not a giant emoji. Emoji are bitmap glyphs —
+                       they blur on high-DPI screens, and they look like a
+                       different app on every OS. Initials in Poppins over the
+                       category gradient stay vector-sharp at any density, and
+                       they identify the merchant rather than their sector. */
+                    <div
+                      className="absolute inset-0 flex items-center justify-center overflow-hidden"
+                      aria-hidden="true"
+                    >
+                      <span
+                        style={{
+                          fontFamily: "'Poppins',sans-serif",
+                          fontSize: 30,
+                          fontWeight: 700,
+                          letterSpacing: '0.06em',
+                          lineHeight: 1,
+                          color: 'rgba(255,255,255,.92)',
+                          textShadow: '0 2px 10px rgba(0,0,0,.28)',
+                        }}
+                      >
+                        {monogram(m.businessName)}
+                      </span>
+                      <Icon
+                        name={icon}
+                        size={17}
+                        color="rgba(255,255,255,.55)"
+                        style={{ position: 'absolute', right: 10, bottom: 8 }}
+                      />
+                    </div>
+                  )}
                   <div className="absolute left-3 top-3">
                     {verified && (
                       <span
                         className="rounded-lg px-2 py-1 text-[9px] font-bold"
                         style={{
-                          background: 'rgba(71,207,114,.15)',
+                          // A dark scrim, not a green tint. The tint sat on
+                          // whichever gradient the card drew, so green-on-red
+                          // was barely readable; this reads the same on all
+                          // eight banner colours and on a photo.
+                          background: 'rgba(6,14,28,.55)',
                           color: G3,
-                          border: `1px solid rgba(71,207,114,.25)`,
-                          backdropFilter: 'blur(4px)',
+                          border: `1px solid rgba(71,207,114,.35)`,
+                          backdropFilter: 'blur(6px)',
                           fontFamily: "'Inter',sans-serif",
                         }}
                       >
@@ -648,7 +732,7 @@ function FeaturedMerchants({
                       className="mb-1.5 text-[10px]"
                       style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
                     >
-                      {m.businessType ?? 'Business'}
+                      {m.category ? MERCHANT_CATEGORY_LABEL[m.category] : 'Business'}
                     </p>
                     <div className="flex items-center gap-3">
                       {rating > 0 && (
@@ -946,18 +1030,6 @@ function NearbyBusinesses({ onStore }: { onStore?: (merchantId: string) => void 
     load();
   }, [load]);
 
-  const EMOJI_POOL: Record<string, string> = {
-    Restaurant: '🍽',
-    Supermarket: '🛒',
-    Pharmacy: '💊',
-    Fashion: '👗',
-    Electronics: '📱',
-    Beauty: '💄',
-    Hotel: '🏨',
-    Hardware: '🔧',
-    default: '🏪',
-  };
-
   return (
     <div className="mb-5">
       <SRow title="Nearby Businesses" sub="Based on your location" onAll={() => {}} />
@@ -1020,7 +1092,7 @@ function NearbyBusinesses({ onStore }: { onStore?: (merchantId: string) => void 
               const isOpen = m.isOpenNow !== false;
               const rating = m.rating?.average ?? 0;
               const dist = m.distanceKm != null ? `${m.distanceKm.toFixed(1)} km` : '—';
-              const emoji = EMOJI_POOL[m.businessType ?? ''] ?? EMOJI_POOL.default;
+              const icon = categoryIcon(m.category);
               return (
                 <div
                   key={m.id}
@@ -1030,10 +1102,10 @@ function NearbyBusinesses({ onStore }: { onStore?: (merchantId: string) => void 
                   }}
                 >
                   <div
-                    className="flex h-[42px] w-[42px] flex-shrink-0 items-center justify-center rounded-2xl text-[20px]"
+                    className="flex h-[42px] w-[42px] flex-shrink-0 items-center justify-center rounded-2xl"
                     style={{ background: 'rgba(255,255,255,.06)' }}
                   >
-                    {emoji}
+                    <Icon name={icon} size={20} color="rgba(255,255,255,.6)" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
@@ -1505,7 +1577,7 @@ export function MarketplaceScreen({
   /** App's single footer-tab router. */
   onTab?: (tab: NavTab) => void;
 }) {
-  const [activecat, setActivecat] = useState('All');
+  const [activecat, setActivecat] = useState<MerchantCategory | null>(null);
   const [showAI, setShowAI] = useState(false);
   // Real cart badge — reflects the customer's actual server-side cart, never a
   // hardcoded number. 0 when the cart is empty or the fetch fails.

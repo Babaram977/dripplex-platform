@@ -14,6 +14,7 @@ import type {
   UtilityCablePlan,
   UtilityCustomerLookup,
   UtilityDataPlan,
+  UtilityEducationPlan,
   UtilityElectricityDisco,
   UtilityFloatBalance,
   UtilityNetwork,
@@ -38,15 +39,32 @@ import type {
  *   drifting through the arithmetic downstream.
  */
 
+/**
+ * The union of every purchase response shape Peyflex returns.
+ *
+ * The four original services agree on `reference` / `charged` / `token`.
+ * Betting and education do not, and the disagreement is silent — a missing
+ * `charged` reads as "the provider did not say what it cost", which is
+ * indistinguishable from a genuine omission. Both aliases are declared here
+ * and resolved once, in `purchase()`.
+ *
+ * - betting returns `transaction_id` for the reference and never a token
+ * - education returns `pin` for the token — every PIN it sold, `||`-separated
+ * - both return `amount_charged` rather than `charged`
+ */
 interface PeyflexPurchaseResponse {
   status?: string;
   message?: string;
   reference?: string;
   amount?: string | number;
   charged?: string | number;
+  amount_charged?: string | number;
   discount?: string | number;
   balance?: string | number;
   token?: string;
+  pin?: string;
+  card_serial?: string;
+  card_pin?: string;
   transaction_id?: string | number;
 }
 
@@ -186,7 +204,91 @@ export class PeyflexUtilityProvider implements UtilityProviderPort {
     });
   }
 
+  public async listBettingCompanies(): Promise<UtilityNetwork[]> {
+    return await this.cached('betting-companies', async () => {
+      // Note the `/api/v1/` prefix — betting is the only family Peyflex
+      // versions, and dropping the v1 gets a 404 rather than a useful error.
+      const body = await this.request<{ companies?: { code?: string; label?: string }[] }>(
+        'GET',
+        '/api/v1/bet/companies/',
+      );
+      return (body.companies ?? [])
+        .filter((entry): entry is { code: string; label: string } =>
+          Boolean(entry.code && entry.label),
+        )
+        .map((entry) => ({ code: entry.code, name: entry.label }));
+    });
+  }
+
+  public async listEducationPlans(): Promise<UtilityEducationPlan[]> {
+    return await this.cached('education-plans', async () => {
+      // Exam PINs are nested one level deeper than every other catalogue:
+      // providers[] -> plans[], with a single `education` provider. Flattened
+      // here so the client picks a plan directly, with no meaningless
+      // provider step in between.
+      const body = await this.request<{
+        providers?: {
+          plans?: {
+            plan_id?: string;
+            plan_code?: string;
+            unit_price?: string | number;
+            display_name?: string;
+          }[];
+        }[];
+      }>('GET', '/api/education/providers/');
+
+      return (body.providers ?? [])
+        .flatMap((provider) => provider.plans ?? [])
+        .map((plan) => {
+          const unitPrice = toNumber(plan.unit_price);
+          // `plan_id` is what the purchase call wants, and the live catalogue
+          // publishes `waec`/`neco`/`nabteb`. The Postman sample's
+          // `waecdirect` appears nowhere in it — the catalogue is the truth.
+          if (!plan.plan_id || unitPrice === null) return null;
+          return {
+            id: plan.plan_id,
+            planCode: plan.plan_code ?? plan.plan_id,
+            unitPrice: roundToKobo(unitPrice),
+            label: plan.display_name ?? plan.plan_id,
+          };
+        })
+        .filter((plan): plan is UtilityEducationPlan => plan !== null);
+    });
+  }
+
   // ── Verification ──────────────────────────────────────────────────────────
+
+  public async verifyBettingCustomer(
+    companyCode: string,
+    customerId: string,
+  ): Promise<UtilityCustomerLookup> {
+    const body = await this.request<{
+      success?: boolean;
+      message?: string;
+      data?: { name?: string; username?: string; customerId?: string; type?: string };
+    }>('POST', '/api/v1/bet/verify/', {
+      // The LABEL, not the code. Peyflex's only worked example sends
+      // "SportyBet" and its response echoes `type: "SportyBet"`, while
+      // /companies/ publishes `sportybet`. The demonstrated form wins on a
+      // money path; the client still selects by code and the translation
+      // happens here, so switching to codes is a one-line change if Peyflex
+      // confirms they work. Open question G8.
+      betting_company: await this.bettingCompanyLabel(companyCode),
+      customer_id: customerId,
+    });
+
+    const name = body.data?.name ?? body.data?.username;
+    if (body.success !== true || !name) {
+      throw new ValidationDomainException(
+        body.message ?? 'That betting account could not be verified',
+      );
+    }
+    return {
+      customerName: name,
+      identifier: body.data?.customerId ?? customerId,
+      ...(body.data?.type !== undefined ? { providerName: body.data.type } : {}),
+    };
+  }
 
   public async verifyCableCustomer(
     providerCode: string,
@@ -281,6 +383,35 @@ export class PeyflexUtilityProvider implements UtilityProviderPort {
     });
   }
 
+  /**
+   * Fund a bookmaker account.
+   *
+   * The only Peyflex call that accepts a reference we choose, and therefore
+   * the only one where a retry after a timeout is safe — see
+   * `UtilityPurchaseRequest.reference`. `customer_name` is required by the
+   * endpoint and comes from a server-side verification, never from the
+   * client: it names whose account is about to be credited.
+   */
+  public async purchaseBetting(request: UtilityPurchaseRequest): Promise<UtilityPurchaseResult> {
+    return await this.purchase('/api/v1/bet/fund/', {
+      betting_company: await this.bettingCompanyLabel(request.providerCode),
+      customer_id: request.customerIdentifier,
+      amount: request.amount,
+      ...(request.reference !== undefined ? { reference: request.reference } : {}),
+      ...(request.customerName !== undefined ? { customer_name: request.customerName } : {}),
+    });
+  }
+
+  public async purchaseEducation(request: UtilityPurchaseRequest): Promise<UtilityPurchaseResult> {
+    return await this.purchase('/api/education/purchase/', {
+      identifier: 'education',
+      plan_id: request.planCode,
+      // Peyflex's own example sends quantity as a string.
+      quantity: String(request.quantity ?? 1),
+      phone: request.contactPhone ?? request.customerIdentifier,
+    });
+  }
+
   public async getFloatBalance(): Promise<UtilityFloatBalance> {
     const body = await this.request<{ wallet_credit?: string | number }>(
       'GET',
@@ -326,13 +457,16 @@ export class PeyflexUtilityProvider implements UtilityProviderPort {
     const status = (response.status ?? '').toUpperCase();
     const message = response.message ?? '';
 
+    const reference = purchaseReference(response);
+
     if (status === 'SUCCESS') {
-      const cost = toNumber(response.charged);
+      const cost = toNumber(response.charged ?? response.amount_charged);
+      const token = response.token ?? response.pin;
       return {
         outcome: 'SUCCESS',
-        ...(response.reference !== undefined ? { providerReference: response.reference } : {}),
+        ...(reference !== undefined ? { providerReference: reference } : {}),
         ...(cost !== null ? { providerCost: roundToKobo(cost) } : {}),
-        ...(isUsableToken(response.token) ? { deliveredToken: response.token } : {}),
+        ...(isUsableToken(token) ? { deliveredToken: token } : {}),
         ...(message ? { providerMessage: message } : {}),
         raw: response,
       };
@@ -350,11 +484,25 @@ export class PeyflexUtilityProvider implements UtilityProviderPort {
 
     return {
       outcome: 'FAILED',
-      ...(response.reference !== undefined ? { providerReference: response.reference } : {}),
+      ...(reference !== undefined ? { providerReference: reference } : {}),
       ...(message ? { providerMessage: message } : {}),
       floatExhausted: isFloatExhausted(message),
       raw: response,
     };
+  }
+
+  /**
+   * Turn our catalogue code into the label Peyflex's betting endpoints want.
+   *
+   * Falls back to the code itself when the company is not in the (cached)
+   * catalogue. That is the honest failure: sending the code may be rejected,
+   * but inventing a label by title-casing would send Peyflex a company name
+   * that does not exist in their system, and `bet9ja_agent` shows exactly why
+   * that guess would be wrong.
+   */
+  private async bettingCompanyLabel(code: string): Promise<string> {
+    const companies = await this.listBettingCompanies();
+    return companies.find((company) => company.code === code)?.name ?? code;
   }
 
   private async request<T>(
@@ -433,6 +581,25 @@ export class PeyflexUtilityProvider implements UtilityProviderPort {
 /** Peyflex sends numbers as strings, and sometimes at 28 significant figures.
  * Anything unparseable becomes null rather than NaN, so a missing field can
  * never silently poison an amount. */
+/**
+ * The provider's reference, whatever Peyflex chose to call it this time.
+ *
+ * Airtime, data, cable, electricity and education return `reference`;
+ * betting returns `transaction_id`. Reading only `reference` would leave
+ * every betting purchase with no reference at all — the one field an
+ * operator needs to reconcile a disputed transaction against the Peyflex
+ * dashboard.
+ */
+export function purchaseReference(response: {
+  reference?: string;
+  transaction_id?: string | number;
+}): string | undefined {
+  if (response.reference !== undefined && response.reference !== '') return response.reference;
+  if (response.transaction_id === undefined) return undefined;
+  const asString = String(response.transaction_id);
+  return asString === '' ? undefined : asString;
+}
+
 export function toNumber(value: string | number | undefined | null): number | null {
   if (value === undefined || value === null) return null;
   const parsed = typeof value === 'number' ? value : Number.parseFloat(value);

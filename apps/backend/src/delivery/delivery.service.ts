@@ -37,7 +37,11 @@ import { PrismaService } from '../prisma/prisma.service';
 
 import { AssignmentService } from './assignment.service';
 import { DeliveryFeeService, haversineMeters } from './delivery-fee.service';
-import { DELIVERY_AUDIT_ACTIONS, DELIVERY_REJECTION_COOLDOWN_MS } from './delivery.constants';
+import {
+  DELIVERY_ASSIGNMENT_ACCEPT_TIMEOUT_MS,
+  DELIVERY_AUDIT_ACTIONS,
+  DELIVERY_REJECTION_COOLDOWN_MS,
+} from './delivery.constants';
 import {
   toDeliveryJobDto,
   toEtaDto,
@@ -708,6 +712,66 @@ export class DeliveryService {
     }
 
     return assignedCount;
+  }
+
+  /**
+   * Take back deliveries an assigned rider never accepted, and offer them to
+   * somebody else.
+   *
+   * Dispatch used to be one-way. `redispatchUnassignedJobs` only ever looks at
+   * PENDING jobs with a null rider, so the moment a job reached ASSIGNED it
+   * passed out of every sweep's reach. A rider who was eligible and online at
+   * the instant the merchant marked the order ready — but who then put the
+   * phone down — held that delivery permanently: the merchant waited with the
+   * order bagged, the customer was told a rider had been assigned, and no
+   * other rider could be given it however many were standing by.
+   *
+   * The reclaimed rider is excluded from the immediate retry (on top of the
+   * riders who explicitly rejected it), so the job never lands straight back
+   * on the phone that just ignored it. If nobody else is available the job is
+   * left PENDING rather than handed back: the customer then honestly reads
+   * "Awaiting rider", and the ordinary sweep keeps trying.
+   */
+  public async reclaimStaleAssignments(limit: number, context: AuditContext = {}): Promise<number> {
+    const cutoff = new Date(Date.now() - DELIVERY_ASSIGNMENT_ACCEPT_TIMEOUT_MS);
+    const candidates = await this.deliveryRepository.listStaleAssignedJobs(cutoff, limit);
+    let reclaimed = 0;
+
+    for (const candidate of candidates) {
+      // Re-read: the batch is a snapshot, and the rider may have accepted in
+      // the moments since it was taken. Only an untouched ASSIGNED job is ours.
+      const job = await this.deliveryRepository.findJobById(candidate.id);
+      if (job?.status !== DeliveryStatus.ASSIGNED || job.riderId === null) {
+        continue;
+      }
+
+      const ignoredBy = job.riderId;
+      const pending = await this.deliveryRepository.clearRider(job.id);
+      await this.deliveryRepository.decrementRiderActiveJobCount(ignoredBy);
+      await this.auditLifecycle(DELIVERY_AUDIT_ACTIONS.REJECTED, pending, context, {
+        riderId: ignoredBy,
+        reason: 'accept_timeout',
+      });
+      reclaimed += 1;
+
+      const order = await this.ordersRepository.findById(job.orderId);
+      if (order?.status !== OrderStatus.READY) {
+        // The order moved on. Leave the job unassigned for Operations rather
+        // than pushing it at a rider for an order nobody is waiting on.
+        continue;
+      }
+
+      // Same bounded lookup as the sweep: a rider who declined this job long
+      // ago is eligible again. `ignoredBy` is unioned in regardless, so the
+      // rider who just let it time out is never handed it straight back.
+      const rejected = await this.deliveryRepository.listRejectedRiderIds(
+        job.id,
+        new Date(Date.now() - DELIVERY_REJECTION_COOLDOWN_MS),
+      );
+      await this.tryAutoAssign(pending, order, context, [...new Set([...rejected, ignoredBy])]);
+    }
+
+    return reclaimed;
   }
 
   private async tryAutoAssign(

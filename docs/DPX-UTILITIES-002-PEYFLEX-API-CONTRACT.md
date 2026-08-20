@@ -42,9 +42,33 @@ Trusting the code here would credit a customer for electricity they never receiv
 
 ## 2. Endpoints in scope
 
-Four services were chosen for launch. Peyflex also exposes betting, education, recharge-card
-printing and virtual phone numbers — **out of scope**, listed in §5 so nobody wires them by
-mistake.
+Four services were chosen for launch; **betting and education were added on 2026-08-20** at the
+founder's direction, bringing the total to six. Peyflex also exposes recharge-card printing and
+virtual phone numbers — still **out of scope**, listed in §5 so nobody wires them by mistake.
+
+### Betting `/api/v1/bet/…` ← note the `v1`
+
+The only family Peyflex versions. Dropping the `v1` returns a 404 rather than a useful error.
+
+| Method | Path                     | Auth  | Notes                                                                                                                                                                        |
+| ------ | ------------------------ | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/v1/bet/companies/` | none  | 16 bookmakers. `{label, code}` — see G8.                                                                                                                                     |
+| POST   | `/api/v1/bet/verify/`    | token | `{betting_company, customer_id}` → `data.name`.                                                                                                                              |
+| POST   | `/api/v1/bet/fund/`      | token | `{betting_company, customer_id, amount, reference, customer_name}`. **Accepts a client reference** — the only endpoint that does. Returns `transaction_id`, not `reference`. |
+
+A bookmaker `customer_id` is **not always numeric** — several identify customers by username.
+
+### Education `/api/education/…`
+
+| Method | Path                        | Auth  | Notes                                                                                                                                  |
+| ------ | --------------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/education/providers/` | none  | Nested `providers[] → plans[]` under one `education` provider. Publishes `unit_price` and `plan_id` (`waec`/`neco`/`nabteb` — see G9). |
+| POST   | `/api/education/purchase/`  | token | `{identifier: "education", plan_id, quantity, phone}`. Priced **per unit** — the only service that multiplies.                         |
+
+The response returns every PIN it sold in **one `||`-separated string** (`pin`), roughly 47
+characters per PIN. `delivered_token` was widened from `VarChar(255)` to `text` for this: at a
+quantity of six the old column would have truncated silently, and a truncated PIN is a customer
+who paid and received nothing usable.
 
 ### Account and float
 
@@ -142,15 +166,31 @@ guaranteed on every service**, so a zero spread must be a normal outcome, not an
 
 ## 4. What the documentation still does not settle
 
-| #      | Gap                                                                                                                                                            | Why it matters                                                                                                                                                                                 |
-| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **G1** | **No idempotency key.** No request accepts a client reference. Peyflex generates its own `reference` and returns it _in the response_.                         | If a purchase request times out, DrippleX has no reference and cannot ask "did that go through?" without a manual check. Retrying risks charging twice. **The single largest remaining risk.** |
-| **G2** | **No transaction-status lookup** for airtime, data, cable or electricity. Recharge-card has `/api/rc/orders/<id>/`; the four in scope have nothing equivalent. | Compounds G1 — after a timeout there is no way to resolve the outcome programmatically.                                                                                                        |
-| **G3** | **No successful electricity response.** The only example is a failure, where `token` reads `"Please contact Admin for Token"`.                                 | The field name `token` is known; its shape on success is not. An electricity token is the thing the customer bought.                                                                           |
-| **G4** | **No successful cable response.**                                                                                                                              | Presumed to match airtime/data; unconfirmed.                                                                                                                                                   |
-| **G5** | **`plan_code` is not unique in data plans.** `M2GBS` appears twice — ₦800 for 2 days and ₦1,505 for 1 month.                                                   | Keying a plan on `plan_code` alone would sell a customer the wrong bundle. Must key on `plan_code` **plus** `amount`.                                                                          |
-| **G6** | **No sandbox documented.**                                                                                                                                     | Every integration test spends real float. Decides whether the adapter can be exercised in CI at all.                                                                                           |
-| **G7** | **`amount` is absent from the documented cable subscribe body** but present in the founder's own curl.                                                         | Resolve before implementing; the plans endpoint supplies the amount either way.                                                                                                                |
+| #      | Gap                                                                                                                                                                                                                                                                                                                           | Why it matters                                                                                                                                                                                                                                                                                                       |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **G1** | **No idempotency key.** No request accepts a client reference. Peyflex generates its own `reference` and returns it _in the response_.                                                                                                                                                                                        | If a purchase request times out, DrippleX has no reference and cannot ask "did that go through?" without a manual check. Retrying risks charging twice. **The single largest remaining risk.**                                                                                                                       |
+| **G2** | **No transaction-status lookup** for airtime, data, cable or electricity. Recharge-card has `/api/rc/orders/<id>/`; the four in scope have nothing equivalent.                                                                                                                                                                | Compounds G1 — after a timeout there is no way to resolve the outcome programmatically.                                                                                                                                                                                                                              |
+| **G3** | **No successful electricity response.** The only example is a failure, where `token` reads `"Please contact Admin for Token"`.                                                                                                                                                                                                | The field name `token` is known; its shape on success is not. An electricity token is the thing the customer bought.                                                                                                                                                                                                 |
+| **G4** | **No successful cable response.**                                                                                                                                                                                                                                                                                             | Presumed to match airtime/data; unconfirmed.                                                                                                                                                                                                                                                                         |
+| **G5** | **`plan_code` is not unique in data plans.** `M2GBS` appears twice — ₦800 for 2 days and ₦1,505 for 1 month.                                                                                                                                                                                                                  | Keying a plan on `plan_code` alone would sell a customer the wrong bundle. Must key on `plan_code` **plus** `amount`.                                                                                                                                                                                                |
+| **G6** | **No sandbox documented.**                                                                                                                                                                                                                                                                                                    | Every integration test spends real float. Decides whether the adapter can be exercised in CI at all.                                                                                                                                                                                                                 |
+| **G7** | **`amount` is absent from the documented cable subscribe body** but present in the founder's own curl.                                                                                                                                                                                                                        | Resolve before implementing; the plans endpoint supplies the amount either way.                                                                                                                                                                                                                                      |
+| **G8** | **Betting: label or code?** `/api/v1/bet/companies/` publishes `{label: "SportyBet", code: "sportybet"}`, but the only worked example of `verify`/`fund` sends `betting_company: "SportyBet"` — the **label** — and echoes `type: "SportyBet"` back. Both endpoints are auth-gated, so this could not be settled empirically. | The adapter sends the **label**, because that is the only form Peyflex has demonstrated working on a money path; the client still selects by `code` and the translation happens in one place (`bettingCompanyLabel`). If Peyflex confirms codes are accepted it is a one-line change. Worth asking on the next call. |
+| **G9** | **Education `plan_id` disagrees with itself.** The Postman sample posts `plan_id: "waecdirect"`; the live `/api/education/providers/` publishes `waec`, `neco`, `nabteb`.                                                                                                                                                     | The live catalogue wins — the platform never free-types a code, it forwards what the catalogue gave it. Recorded because a reader comparing the code against the Postman collection will otherwise think the adapter has a typo.                                                                                     |
+
+### Resolved by the betting endpoints
+
+**G1 is closed for betting only.** `/api/v1/bet/fund/` is the single Peyflex
+call that accepts a client-supplied `reference`. DrippleX sends one derived
+deterministically from the purchase row id (`providerReferenceFor`), so a
+retry after a timeout carries the same reference and is Peyflex's to
+deduplicate. Every other service still has nowhere to put it, so the
+write-the-row-first rule below continues to carry them.
+
+**G2 remains open for all six.** Recharge Card has `/api/rc/orders/<id>/`;
+airtime, data, cable, electricity, betting and education have nothing
+equivalent. Peyflex has clearly built such an endpoint once, which is the
+argument for asking them to expose it for the rest.
 
 G1 and G2 together are the reason the money path must record its own purchase row **before**
 calling Peyflex, so a timeout leaves a `PENDING` record an operator can resolve by hand rather
@@ -160,6 +200,18 @@ than a silent gap.
 
 ## 5. Out of scope
 
-`/api/v1/bet/*` (betting), `/api/education/*`, `/api/rc/*` (recharge-card printing) and
-`/api/otp/*` (rented phone numbers for receiving SMS). Peyflex exposes them; DrippleX is not
-launching them. Listed only so they are not wired up by accident.
+`/api/rc/*` (recharge-card printing) and `/api/otp/*` (rented phone numbers for receiving SMS).
+Peyflex exposes them; DrippleX is not launching them. Listed only so they are not wired up by
+accident.
+
+Two notes for whoever picks them up next:
+
+- **Recharge Card is the only endpoint that requires a `pin` in the body** — a transaction PIN,
+  which nothing else in the API asks for. It is also the only service with an order-status
+  lookup (`/api/rc/orders/<id>/`), which is the precedent to cite when asking Peyflex to close
+  G2 for everything else.
+- **Virtual Number is a rental, not a purchase**: buy → poll status → cancel, with its own
+  history endpoint. It does not fit the one-shot purchase shape this module is built around, so
+  it needs a design decision before any code.
+
+`/api/v1/bet/*` and `/api/education/*` moved **into** scope on 2026-08-20 — see §2.

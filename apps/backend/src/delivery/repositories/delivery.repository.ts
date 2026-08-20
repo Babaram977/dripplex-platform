@@ -90,6 +90,13 @@ export interface DeliveryRepository {
    */
   listUnassignedJobs(limit: number): Promise<DeliveryJob[]>;
   /**
+   * Jobs still sitting at ASSIGNED whose rider has not accepted them within the
+   * accept window — oldest assignment first, so the longest-waiting merchant is
+   * unblocked first. These are invisible to `listUnassignedJobs` (they have a
+   * rider and are not PENDING), which is exactly how they used to get stuck.
+   */
+  listStaleAssignedJobs(assignedBefore: Date, limit: number): Promise<DeliveryJob[]>;
+  /**
    * DPX-RIDER-004 — riders who already rejected THIS job, read from the
    * `delivery.rejected` audit records the reject path already writes. The sweep
    * excludes them so a re-dispatch never hands a rider back a delivery they

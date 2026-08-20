@@ -55,11 +55,19 @@ export class DeliveryDispatchSweepService implements OnModuleInit, OnModuleDestr
 
     this.running = true;
     try {
+      // Reclaim first, then dispatch: a job taken back from a rider who never
+      // accepted is PENDING by the time the second pass runs, so it is offered
+      // to somebody else on this same tick rather than waiting for the next.
+      const reclaimed = await this.deliveryService.reclaimStaleAssignments(
+        DELIVERY_DISPATCH_SWEEP_BATCH_SIZE,
+      );
       const assigned = await this.deliveryService.redispatchUnassignedJobs(
         DELIVERY_DISPATCH_SWEEP_BATCH_SIZE,
       );
-      if (assigned > 0) {
-        this.logger.log(`Delivery dispatch sweep: assigned=${String(assigned)}`);
+      if (assigned > 0 || reclaimed > 0) {
+        this.logger.log(
+          `Delivery dispatch sweep: reclaimed=${String(reclaimed)} assigned=${String(assigned)}`,
+        );
       }
       return assigned;
     } catch (error) {

@@ -55,6 +55,25 @@ export const DELIVERY_DISPATCH_SWEEP_BATCH_SIZE = 25;
  * is the same bet the ride side makes with its offer expiry.
  */
 export const DELIVERY_REJECTION_COOLDOWN_MS = 10 * 60_000;
+
+/**
+ * How long a rider has to accept a delivery before it is offered to somebody
+ * else.
+ *
+ * Assignment was one-way: once a job reached ASSIGNED it left the sweep's
+ * reach entirely (that only looks at PENDING jobs), so a rider who never
+ * opened the app held the delivery forever. The merchant waited with the food
+ * bagged, the customer was told a rider was on the way, and no other rider
+ * could ever be given it — observed live on 2026-08-20, order DPX-20260820-
+ * UTFN8S sat assigned while a second rider stood online with an empty queue.
+ *
+ * Ninety seconds: the rider app discovers an assignment by polling every 8s,
+ * so the window has to absorb that delay and still leave time to read a
+ * pickup, a drop-off and a fee and tap Accept. Deliberately longer than
+ * RIDE_OFFER_TIMEOUT_MS (60s) — a rider is usually on a bike in traffic, not
+ * sitting at a wheel waiting for a ping.
+ */
+export const DELIVERY_ASSIGNMENT_ACCEPT_TIMEOUT_MS = 90_000;
 export const DEFAULT_SPEED_MPS = 8.33;
 export const MIN_DELIVERY_FEE = 500;
 export const FEE_PER_KM = 150;

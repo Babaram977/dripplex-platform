@@ -199,6 +199,10 @@ export class CustomerMerchantsService {
     const where: Prisma.BusinessWhereInput = {
       ...BUSINESS_WHERE_BASE,
       ...(query.businessType ? { businessType: query.businessType } : {}),
+      // What they sell. Uncategorised merchants (category null) are simply not
+      // in any category's results — they still appear under "All", which is
+      // what an unfiltered browse is.
+      ...(query.category ? { category: query.category } : {}),
     };
 
     const term = query.q?.trim();

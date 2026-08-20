@@ -69,6 +69,8 @@ export class PrismaMerchantsRepository implements MerchantsRepository {
           businessName: input.businessName,
           businessType: input.businessType,
           registrationNumber: input.registrationNumber,
+          // Explicit field list — anything not named here is silently dropped.
+          ...(input.category !== undefined ? { category: input.category } : {}),
           email: input.email,
           phone: input.phone,
           country: input.country,
@@ -109,6 +111,7 @@ export class PrismaMerchantsRepository implements MerchantsRepository {
       data: {
         ...(input.businessName !== undefined ? { businessName: input.businessName } : {}),
         ...(input.businessType !== undefined ? { businessType: input.businessType } : {}),
+        ...(input.category !== undefined ? { category: input.category } : {}),
         ...(input.registrationNumber !== undefined
           ? { registrationNumber: input.registrationNumber }
           : {}),

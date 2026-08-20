@@ -176,6 +176,18 @@ export class PrismaDeliveryRepository implements DeliveryRepository {
     });
   }
 
+  public async listStaleAssignedJobs(assignedBefore: Date, limit: number): Promise<DeliveryJob[]> {
+    return await this.prisma.deliveryJob.findMany({
+      where: {
+        status: DeliveryStatus.ASSIGNED,
+        riderId: { not: null },
+        assignedAt: { lt: assignedBefore },
+      },
+      orderBy: { assignedAt: 'asc' },
+      take: limit,
+    });
+  }
+
   public async listRejectedRiderIds(jobId: string, rejectedSince: Date): Promise<string[]> {
     const rows = await this.prisma.auditLog.findMany({
       where: {
