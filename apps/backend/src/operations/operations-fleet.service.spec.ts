@@ -10,7 +10,13 @@ import {
   VehicleApprovalStatus,
 } from '@prisma/client';
 
-import { computeFleetDriverStatus, OperationsFleetService } from './operations-fleet.service';
+import { DRIVER_LOCATION_MAX_AGE_MS } from '../rides/ride.constants';
+
+import {
+  computeFleetDriverStatus,
+  isReachable,
+  OperationsFleetService,
+} from './operations-fleet.service';
 
 import type { PrismaService } from '../prisma/prisma.service';
 
@@ -19,7 +25,7 @@ describe('computeFleetDriverStatus', () => {
     driverId: 'driver-1',
     driverStatus: DriverStatus.APPROVED,
     hasOpenSos: false,
-    online: true,
+    reachable: true,
     acceptingRides: true,
     activeRideCount: 0,
     hasActiveRide: false,
@@ -32,8 +38,8 @@ describe('computeFleetDriverStatus', () => {
     expect(computeFleetDriverStatus(baseline)).toBe('AVAILABLE');
   });
 
-  it('returns OFFLINE when not online, everything else clear', () => {
-    expect(computeFleetDriverStatus({ ...baseline, online: false })).toBe('OFFLINE');
+  it('returns OFFLINE when not reachable, everything else clear', () => {
+    expect(computeFleetDriverStatus({ ...baseline, reachable: false })).toBe('OFFLINE');
   });
 
   it('returns BUSY when the driver has an active ride, even while online/accepting', () => {
@@ -97,9 +103,40 @@ describe('computeFleetDriverStatus', () => {
         hasOpenSos: true,
         driverStatus: DriverStatus.SUSPENDED,
         vehicleApprovalStatus: null,
-        online: false,
+        reachable: false,
       }),
     ).toBe('SOS');
+  });
+});
+
+describe('isReachable', () => {
+  const now = new Date('2026-08-20T12:00:00.000Z');
+  const ago = (ms: number): Date => new Date(now.getTime() - ms);
+
+  it('is true for an online driver who pinged just now', () => {
+    expect(isReachable(true, ago(0), now)).toBe(true);
+  });
+
+  it('is true right up to the dispatch cut-off', () => {
+    expect(isReachable(true, ago(DRIVER_LOCATION_MAX_AGE_MS), now)).toBe(true);
+  });
+
+  it('is false one millisecond past the cut-off', () => {
+    expect(isReachable(true, ago(DRIVER_LOCATION_MAX_AGE_MS + 1), now)).toBe(false);
+  });
+
+  /* The Tunde case: the app still shows "Online" because nothing clears the
+     flag when a phone dies. Ops must not read that as a driver ready for work. */
+  it('is false for a driver whose flag says online but who went quiet an hour ago', () => {
+    expect(isReachable(true, ago(60 * 60_000), now)).toBe(false);
+  });
+
+  it('is false when a location has never been reported at all', () => {
+    expect(isReachable(true, null, now)).toBe(false);
+  });
+
+  it('is false when the driver signed off, however fresh the last ping', () => {
+    expect(isReachable(false, ago(0), now)).toBe(false);
   });
 });
 
@@ -112,6 +149,7 @@ describe('OperationsFleetService', () => {
   let prisma: PrismaService;
   let service: OperationsFleetService;
   let availableDriverId: string;
+  let staleDriverId: string;
   let suspendedDriverId: string;
   let centreId: string;
 
@@ -187,6 +225,60 @@ describe('OperationsFleetService', () => {
       },
     });
 
+    // A driver whose app still says "Online" but who stopped reporting an
+    // hour ago — force-quit, dead battery, no signal. Nothing clears the
+    // flag, so this is the ordinary end state of a driver's day, not an
+    // edge case.
+    const staleDriver = await prisma.user.create({
+      data: {
+        email: `ops-fleet-stale-${randomUUID()}@dripplex.test`,
+        passwordHash: 'not-a-real-hash',
+        firstName: 'Gone',
+        lastName: 'Quiet',
+      },
+    });
+    staleDriverId = staleDriver.id;
+    await prisma.driverProfile.create({
+      data: { userId: staleDriverId, status: DriverStatus.APPROVED, isApproved: true },
+    });
+    await prisma.driverAvailability.create({
+      data: {
+        driverId: staleDriverId,
+        online: true,
+        acceptingRides: true,
+        vehicleType: RideType.ECONOMY,
+        latitude: 6.5244,
+        longitude: 3.3792,
+        locationUpdatedAt: new Date(Date.now() - 60 * 60_000),
+      },
+    });
+    // Fully cleared to work — approved vehicle, passed inspection — so the
+    // ONLY thing standing between this driver and AVAILABLE is the stale
+    // ping. Without this the driver falls to NEEDS_INSPECTION, which
+    // outranks reachability, and the test would pass for the wrong reason.
+    const staleVehicle = await prisma.vehicle.create({
+      data: {
+        driverId: staleDriverId,
+        plateNumber: `ofq-${randomUUID().slice(0, 6)}`.toUpperCase(),
+        make: 'Toyota',
+        model: 'Corolla',
+        color: 'Silver',
+        year: 2019,
+        rideCategory: RideType.ECONOMY,
+        approvalStatus: VehicleApprovalStatus.APPROVED,
+      },
+    });
+    await prisma.inspection.create({
+      data: {
+        driverId: staleDriverId,
+        vehicleId: staleVehicle.id,
+        centreId,
+        status: InspectionStatus.PASSED,
+        scheduledAt: new Date(Date.now() - 3_600_000),
+        completedAt: new Date(),
+      },
+    });
+
     const suspendedDriver = await prisma.user.create({
       data: {
         email: `ops-fleet-suspended-${randomUUID()}@dripplex.test`,
@@ -204,16 +296,17 @@ describe('OperationsFleetService', () => {
   afterAll(async () => {
     if (databaseAvailable) {
       await prisma.inspection
-        .deleteMany({ where: { driverId: availableDriverId } })
+        .deleteMany({ where: { driverId: { in: [availableDriverId, staleDriverId] } } })
         .catch(() => undefined);
       await prisma.vehicle
-        .deleteMany({ where: { driverId: availableDriverId } })
+        .deleteMany({ where: { driverId: { in: [availableDriverId, staleDriverId] } } })
         .catch(() => undefined);
       await prisma.inspectionCentre.delete({ where: { id: centreId } }).catch(() => undefined);
       await prisma.driverAvailability
-        .deleteMany({ where: { driverId: availableDriverId } })
+        .deleteMany({ where: { driverId: { in: [availableDriverId, staleDriverId] } } })
         .catch(() => undefined);
       await prisma.user.delete({ where: { id: availableDriverId } }).catch(() => undefined);
+      await prisma.user.delete({ where: { id: staleDriverId } }).catch(() => undefined);
       await prisma.user.delete({ where: { id: suspendedDriverId } }).catch(() => undefined);
     }
     await prisma.$disconnect();
@@ -239,6 +332,37 @@ describe('OperationsFleetService', () => {
     expect(snapshot.summary.totalDrivers).toBeGreaterThanOrEqual(2);
     expect(snapshot.summary.availableCount).toBeGreaterThanOrEqual(1);
     expect(snapshot.summary.suspendedCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it('does not count a driver whose app says online but who went quiet as online', async () => {
+    if (!databaseAvailable) return;
+
+    const snapshot = await service.getFleetSnapshot();
+    const stale = snapshot.drivers.find((d) => d.driverId === staleDriverId);
+
+    expect(stale).toBeDefined();
+    // Their own toggle is reported untouched — that discrepancy is the
+    // signal, and hiding it would just move the lie somewhere else.
+    expect(stale?.online).toBe(true);
+    expect(stale?.reachable).toBe(false);
+    expect(stale?.lastLocationAt).not.toBeNull();
+    // Dispatch would skip them, so the fleet view must not show them ready.
+    expect(stale?.status).toBe('OFFLINE');
+    expect(snapshot.summary.staleCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it('keeps online + stale + offline summing to the fleet size', async () => {
+    if (!databaseAvailable) return;
+
+    const { summary } = await service.getFleetSnapshot();
+
+    // The invariant the dashboard depends on: these three tiles are a
+    // partition. Previously onlineCount read the raw flag while offlineCount
+    // read the computed status, so a driver could land in both or neither
+    // and the two tiles could not be reconciled by anyone looking at them.
+    expect(summary.onlineCount + summary.staleCount + summary.offlineCount).toBe(
+      summary.totalDrivers,
+    );
   });
 
   it('flags an open SOS alert as the highest-priority status, overriding availability', async () => {

@@ -968,17 +968,29 @@ function PageDashboard() {
       </div>
       {/* KPI Row 2 */}
       <div style={{ display: 'flex', gap: 12 }}>
+        {/* "Online" here means what dispatch means by it — toggled on AND
+            still reporting a position. A driver whose app says Online but who
+            stopped pinging is counted under "Gone Quiet" instead, because
+            dispatch will not send them work and Ops needs to see that gap
+            rather than a number that flatters the fleet. */}
         <KpiCard
           label="Online Drivers"
           value={c(fleet?.onlineCount)}
-          sub="Now"
+          sub={`Reachable of ${c(fleet?.totalDrivers)}`}
           color={C_OK}
           icon="🟢"
         />
         <KpiCard
+          label="Gone Quiet"
+          value={c(fleet?.staleCount)}
+          sub={fleet && fleet.staleCount > 0 ? 'App says online — not pinging' : 'None'}
+          color={fleet && fleet.staleCount > 0 ? C_WARN : MUTED}
+          icon="📵"
+        />
+        <KpiCard
           label="Offline Drivers"
           value={c(fleet?.offlineCount)}
-          sub="Now"
+          sub="Signed off"
           color={MUTED}
           icon="⚫"
         />
@@ -1233,6 +1245,7 @@ function PageLiveMap() {
         summary: {
           totalDrivers: 0,
           onlineCount: 0,
+          staleCount: 0,
           availableCount: 0,
           busyCount: 0,
           offlineCount: 0,

@@ -30,6 +30,7 @@ export function toFleetDriverDto(input: {
   profile: DriverProfile;
   user: User;
   status: FleetDriverStatus;
+  reachable: boolean;
   hasOpenSos: boolean;
   isSuspended: boolean;
   needsInspection: boolean;
@@ -48,6 +49,8 @@ export function toFleetDriverDto(input: {
     isSuspended: input.isSuspended,
     needsInspection: input.needsInspection,
     online: input.availability?.online ?? false,
+    reachable: input.reachable,
+    lastLocationAt: input.availability?.locationUpdatedAt?.toISOString() ?? null,
     acceptingRides: input.availability?.acceptingRides ?? false,
     latitude: input.availability?.latitude ? Number(input.availability.latitude) : null,
     longitude: input.availability?.longitude ? Number(input.availability.longitude) : null,
