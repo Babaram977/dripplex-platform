@@ -188,6 +188,7 @@ describe('DeliveryService', () => {
     assignRider: jest.fn(),
     clearRider: jest.fn(),
     listUnassignedJobs: jest.fn(),
+    listStaleAssignedJobs: jest.fn(),
     listRejectedRiderIds: jest.fn(),
     createTracking: jest.fn(),
     findLatestTracking: jest.fn(),
