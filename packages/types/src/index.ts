@@ -594,6 +594,7 @@ export type {
   UtilityCatalogueDto,
   UtilityCustomerLookupDto,
   UtilityDataPlanDto,
+  UtilityEducationPlanDto,
   UtilityElectricityDiscoDto,
   UtilityFloatStatusDto,
   UtilityNetworkDto,
@@ -601,6 +602,7 @@ export type {
   UtilityPurchaseDto,
   UtilityPurchaseStatus,
   UtilityServiceType,
+  VerifyBettingCustomerRequest,
   VerifyCableCustomerRequest,
   VerifyElectricityCustomerRequest,
 } from './utilities/index.js';

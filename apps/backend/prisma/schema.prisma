@@ -3769,6 +3769,13 @@ enum UtilityServiceType {
   DATA
   ELECTRICITY
   CABLE_TV
+  /// Funding a bookmaker account. Verified before funding, like cable —
+  /// money sent to a mistyped betting ID does not come back.
+  BETTING
+  /// WAEC / NECO / NABTEB result-checker PINs. The only service that is
+  /// priced per unit and bought in quantity, and the only one besides
+  /// electricity whose delivered artifact IS the thing purchased.
+  EDUCATION
 }
 
 /// How the customer paid for a utility purchase. Deliberately its own enum
@@ -3816,6 +3823,15 @@ model UtilityPurchase {
   /// Data bundle or cable package. Null for airtime and for electricity,
   /// which are priced by amount rather than by plan.
   planCode           String?               @map("plan_code") @db.VarChar(64)
+  /// How many units were bought. Only education PINs are sold in quantity;
+  /// null everywhere else, so a receipt can say "3 × WAEC PIN" without
+  /// implying every other service has a countable unit.
+  quantity           Int?
+  /// The name registered against the funded account, captured at
+  /// verification. Stored only for BETTING, where Peyflex requires it on the
+  /// funding call and the customer needs the receipt to show whose account
+  /// was credited.
+  beneficiaryName    String?               @map("beneficiary_name") @db.VarChar(120)
   /// What the customer was charged — face value.
   amountCharged      Decimal               @map("amount_charged") @db.Decimal(12, 2)
   /// What Peyflex debited from the DrippleX float. Null until the provider
@@ -3834,10 +3850,15 @@ model UtilityPurchase {
   /// generates it and returns it in the response — it cannot be supplied
   /// up front, which is the root of G1.
   providerReference  String?               @map("provider_reference") @db.VarChar(100)
-  /// The electricity token or recharge PIN. This is the thing the customer
+  /// The electricity token or exam PIN(s). This is the thing the customer
   /// bought; a customer who closes the app and loses it has lost the money,
   /// so it is stored and re-displayable rather than shown once.
-  deliveredToken     String?               @map("delivered_token") @db.VarChar(255)
+  ///
+  /// Text, not VarChar(255): an education purchase returns every PIN it sold
+  /// in one `||`-separated string — roughly 47 characters per PIN — so a
+  /// quantity of six would have silently truncated, and a truncated PIN is a
+  /// customer who paid and received nothing usable.
+  deliveredToken     String?               @map("delivered_token")
   /// Shown to the customer and kept for support. Never carries the
   /// provider's own "Insufficient wallet balance" — that means the DrippleX
   /// float is dry, not the customer's, and reads as an accusation.

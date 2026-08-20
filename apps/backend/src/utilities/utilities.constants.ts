@@ -81,6 +81,23 @@ export const UTILITY_FLOAT_EXHAUSTED_MARKERS = [
 export const UTILITY_AIRTIME_MIN_AMOUNT = 50;
 export const UTILITY_AIRTIME_MAX_AMOUNT = 50_000;
 
+/** Betting-wallet funding bounds. Peyflex publishes none — its own example
+ * funds ₦14 — so like airtime these are DrippleX's guard rails against a
+ * fat-fingered amount, not a provider contract. The ceiling matches the
+ * largest figure Peyflex themselves advertise (a ₦100,000 SportyBet top-up),
+ * rounded up. */
+export const UTILITY_BETTING_MIN_AMOUNT = 100;
+export const UTILITY_BETTING_MAX_AMOUNT = 500_000;
+
+/** How many exam PINs one purchase may buy.
+ *
+ * Also DrippleX's own rail. It bounds the blast radius of a mistyped
+ * quantity on a ₦5,350 unit price, and it bounds the delivered-PIN string,
+ * which arrives as one `||`-separated blob. Raise it freely — nothing in the
+ * provider contract objects. */
+export const UTILITY_EDUCATION_MIN_QUANTITY = 1;
+export const UTILITY_EDUCATION_MAX_QUANTITY = 10;
+
 /** How long to wait on a Peyflex call before giving up. A purchase that times
  * out cannot be resolved programmatically (G1/G2), so the timeout is set long
  * enough that a merely-slow provider is not turned into a manual reconcile. */

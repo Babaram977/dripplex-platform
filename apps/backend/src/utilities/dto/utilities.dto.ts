@@ -27,6 +27,17 @@ const CODE_PATTERN = /^[A-Za-z0-9_.:-]+$/;
  * in scope is numeric, and allowing more invites the same injection risk. */
 const IDENTIFIER_PATTERN = /^[0-9]+$/;
 
+/**
+ * A bookmaker account id, which is NOT necessarily a number.
+ *
+ * SportyBet identifies customers by phone, but Bet9ja and several others use
+ * usernames. Reusing the digits-only pattern here would have made every
+ * username-based bookmaker in the catalogue unusable while looking, from the
+ * outside, like the account did not exist. Still deliberately narrow — no
+ * slashes, dots or spaces — so nothing can be smuggled into a URL or a body.
+ */
+const BETTING_ACCOUNT_PATTERN = /^[A-Za-z0-9_-]+$/;
+
 export class UtilityPlansQueryDto {
   @IsString()
   @Matches(CODE_PATTERN)
@@ -63,6 +74,19 @@ export class VerifyElectricityCustomerDto {
   public meterType!: 'prepaid' | 'postpaid';
 }
 
+export class VerifyBettingCustomerDto {
+  @IsString()
+  @Matches(CODE_PATTERN)
+  @MaxLength(64)
+  public provider!: string;
+
+  @IsString()
+  @Matches(BETTING_ACCOUNT_PATTERN)
+  @MinLength(3)
+  @MaxLength(32)
+  public customerId!: string;
+}
+
 /**
  * One purchase request for all four services.
  *
@@ -80,10 +104,19 @@ export class CreateUtilityPurchaseDto {
   @MaxLength(64)
   public provider!: string;
 
-  /** Phone number, meter number or smartcard number. */
+  /**
+   * Phone number, meter number, smartcard number — or a bookmaker account id,
+   * which may be a username.
+   *
+   * Validated here only against the widest safe shape, because the narrow
+   * rule is per-service and this DTO deliberately does not branch on
+   * `serviceType`; the service re-checks that everything except BETTING is
+   * digits-only. Both patterns exclude slashes, dots and spaces, so neither
+   * can smuggle a path fragment into a URL we build.
+   */
   @IsString()
-  @Matches(IDENTIFIER_PATTERN)
-  @MinLength(6)
+  @Matches(BETTING_ACCOUNT_PATTERN)
+  @MinLength(3)
   @MaxLength(32)
   public customerIdentifier!: string;
 
@@ -106,6 +139,16 @@ export class CreateUtilityPurchaseDto {
   @Min(1)
   @Max(1_000_000)
   public amount?: number;
+
+  /** Education PINs only — how many to buy. Bounded properly in the service
+   * against UTILITY_EDUCATION_MAX_QUANTITY; the ceiling here is only a
+   * sanity rail so an absurd value never reaches the pricing arithmetic. */
+  @IsOptional()
+  @Transform(toNumber)
+  @IsInt({ message: 'quantity must be a whole number' })
+  @Min(1)
+  @Max(100)
+  public quantity?: number;
 
   @IsOptional()
   @IsIn(['prepaid', 'postpaid'])

@@ -56,6 +56,8 @@ export type IconName =
   | 'data'
   | 'electricity'
   | 'cableTv'
+  | 'betting'
+  | 'education'
   | 'store'
   | 'all'
   // Order tracking
@@ -259,6 +261,25 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <rect x="2.8" y="7" width="18.4" height="12" rx="2.2" />
       <path d="M8.4 3.4 12 7l3.6-3.6" />
       <path d="M9 21.4h6" />
+    </>
+  ),
+  // A football on the centre spot: funding a betting account. A ball rather
+  // than dice or a chip — Nigerian sports betting is overwhelmingly football,
+  // and a casino chip would name the wrong thing.
+  betting: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="m12 7.4 3.6 2.6-1.4 4.3H9.8L8.4 10Z" />
+      <path d="M12 3v4.4M4.4 9.2 8.4 10M6.9 19l2.9-4.7M17.1 19l-2.9-4.7M19.6 9.2 15.6 10" />
+    </>
+  ),
+  // A mortarboard: an exam result-checker PIN. The tassel is what separates
+  // it from an envelope at small sizes.
+  education: (
+    <>
+      <path d="M2.6 9.2 12 4.6l9.4 4.6L12 13.8Z" />
+      <path d="M6.4 11.2v4.6c0 1.5 2.5 2.8 5.6 2.8s5.6-1.3 5.6-2.8v-4.6" />
+      <path d="M21.4 9.2v5" />
     </>
   ),
   // A cog: services, as opposed to goods. The outer ring is what stops it

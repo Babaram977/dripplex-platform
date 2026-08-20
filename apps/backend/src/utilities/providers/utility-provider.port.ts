@@ -60,18 +60,49 @@ export interface UtilityCustomerLookup {
   providerName?: string;
 }
 
+/** A result-checker PIN. Priced per unit and bought in quantity, which no
+ *  other utility is. */
+export interface UtilityEducationPlan {
+  /** Peyflex's `plan_id` — taken from the live catalogue, which publishes
+   *  `waec`/`neco`/`nabteb`. The Postman sample's `waecdirect` does not
+   *  appear in it; the catalogue wins. */
+  id: string;
+  planCode: string;
+  /** Price for ONE unit. Multiply by quantity for the charge. */
+  unitPrice: number;
+  label: string;
+}
+
 export interface UtilityPurchaseRequest {
   providerCode: string;
-  /** Phone, meter or smartcard number. */
+  /** Phone, meter, smartcard — or, for betting, the bookmaker account id,
+   *  which may be a username rather than a number. */
   customerIdentifier: string;
-  /** Face value, in naira. */
+  /** Face value, in naira. For education this is unitPrice × quantity. */
   amount: number;
-  /** Data bundle or cable package; absent for airtime and electricity. */
+  /** Data bundle, cable package or exam plan; absent for airtime,
+   *  electricity and betting. */
   planCode?: string;
   /** Prepaid vs postpaid — electricity only. */
   meterType?: 'prepaid' | 'postpaid';
-  /** A contact number for the receipt. Electricity and cable want one. */
+  /** A contact number for the receipt. Electricity, cable and education want one. */
   contactPhone?: string;
+  /** How many units — education only. */
+  quantity?: number;
+  /** The verified account holder. Betting only, where Peyflex requires it.
+   *  Resolved server-side from a verification call, never taken from the
+   *  client: it names whose account is about to be credited. */
+  customerName?: string;
+  /**
+   * DrippleX's own reference for this purchase.
+   *
+   * Only the betting endpoint accepts one, and it is the single place the
+   * platform can close G1: with a reference we chose, a retry after a timeout
+   * is Peyflex's problem to deduplicate rather than ours to reconcile by
+   * hand. Every other service ignores this because Peyflex gives it nowhere
+   * to go.
+   */
+  reference?: string;
 }
 
 /**
@@ -122,6 +153,10 @@ export interface UtilityProviderPort {
   listCableProviders(): Promise<UtilityNetwork[]>;
   listCablePlans(providerCode: string): Promise<UtilityCablePlan[]>;
   listElectricityDiscos(): Promise<UtilityElectricityDisco[]>;
+  listBettingCompanies(): Promise<UtilityNetwork[]>;
+  /** One flat list — Peyflex publishes exam PINs under a single `education`
+   *  identifier, so there is no provider to choose first. */
+  listEducationPlans(): Promise<UtilityEducationPlan[]>;
 
   verifyCableCustomer(
     providerCode: string,
@@ -132,11 +167,14 @@ export interface UtilityProviderPort {
     meterNumber: string,
     meterType: 'prepaid' | 'postpaid',
   ): Promise<UtilityCustomerLookup>;
+  verifyBettingCustomer(companyCode: string, customerId: string): Promise<UtilityCustomerLookup>;
 
   purchaseAirtime(request: UtilityPurchaseRequest): Promise<UtilityPurchaseResult>;
   purchaseData(request: UtilityPurchaseRequest): Promise<UtilityPurchaseResult>;
   purchaseCable(request: UtilityPurchaseRequest): Promise<UtilityPurchaseResult>;
   purchaseElectricity(request: UtilityPurchaseRequest): Promise<UtilityPurchaseResult>;
+  purchaseBetting(request: UtilityPurchaseRequest): Promise<UtilityPurchaseResult>;
+  purchaseEducation(request: UtilityPurchaseRequest): Promise<UtilityPurchaseResult>;
 
   /** The DrippleX float, not a customer balance. Read by the low-balance
    * alarm. */
