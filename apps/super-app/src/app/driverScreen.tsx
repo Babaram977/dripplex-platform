@@ -23,6 +23,7 @@ import { AccountPageHost, AccountRows, type AccountPage } from './accountPages';
 import { playNotificationSound, startIncomingRideAlarm, stopIncomingRideAlarm } from '../lib/sound';
 import { SoundSettings } from './soundSettings';
 import { PayoutPanel } from './payoutPanel';
+import { useLocationHeartbeat } from '../lib/locationHeartbeat';
 import { getCurrentPosition } from '../lib/maps';
 // Same cadence for both couriers — see the constant's note for why 30s.
 import { LOCATION_PUSH_INTERVAL_MS } from './riderScreen';
@@ -2589,6 +2590,25 @@ export function DriverDashboardScreen({
     }
   }, []);
 
+  /**
+   * Keep the server's idea of where this driver is from going stale.
+   *
+   * Position used to be sent once, at go-online. Dispatch ignores anything
+   * older than five minutes, so a driver became invisible after five minutes
+   * while the app still said "You are live" — which is exactly how a customer
+   * ended up searching with an online driver sitting idle.
+   */
+  const resolveVehicleTypeRef = useRef<() => Promise<RideType>>(async () => 'ECONOMY' as RideType);
+  const heartbeat = useLocationHeartbeat(online, async (position) => {
+    await api.driverRides.setAvailability({
+      online: true,
+      acceptingRides: true,
+      vehicleType: await resolveVehicleTypeRef.current(),
+      latitude: position.latitude,
+      longitude: position.longitude,
+    });
+  });
+
   const resolveVehicleType = useCallback(async (): Promise<RideType> => {
     try {
       const vehicles = await api.driver.listVehicles();
@@ -2599,6 +2619,9 @@ export function DriverDashboardScreen({
       return 'ECONOMY';
     }
   }, []);
+  // The heartbeat's callback is deliberately stable, so it reaches the
+  // resolver through a ref rather than restarting the timer on every render.
+  resolveVehicleTypeRef.current = resolveVehicleType;
 
   const handleToggle = async () => {
     setToggling(true);
@@ -2872,7 +2895,10 @@ export function DriverDashboardScreen({
                     color: blockReason === null ? G3 : COLOR_WARNING,
                   }}
                 >
-                  {blockReason ?? 'You are live · Waiting for ride requests...'}
+                  {blockReason ??
+                    (heartbeat.degraded
+                      ? 'Location unavailable — you will stop receiving requests. Check location access.'
+                      : 'You are live · Waiting for ride requests...')}
                 </p>
               </div>
             )}

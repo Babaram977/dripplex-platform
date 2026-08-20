@@ -5,6 +5,7 @@ import { playNotificationSound } from '../lib/sound';
 import { SoundSettings } from './soundSettings';
 import { PayoutPanel } from './payoutPanel';
 import { auth, endSession } from '../lib/auth';
+import { useLocationHeartbeat } from '../lib/locationHeartbeat';
 import { getCurrentPosition } from '../lib/maps';
 import type {
   DeliveryJobDto,
@@ -359,6 +360,21 @@ export function RiderDashboardScreen({
   onSignIn?: () => void;
 }) {
   const [online, setOnline] = useState(false);
+
+  /**
+   * Same problem, same fix as the driver app: a position sent once at
+   * go-online ages out, and a rider with a stale position is one the
+   * assignment service can no longer place. Tunde reading "You are live ·
+   * Waiting for delivery jobs…" with a ready order unassigned is this.
+   */
+  const heartbeat = useLocationHeartbeat(online, async (position) => {
+    await api.rider.setAvailability({
+      online: true,
+      acceptingOrders: true,
+      latitude: position.latitude,
+      longitude: position.longitude,
+    });
+  });
   const [toggling, setToggling] = useState(false);
   const [jobs, setJobs] = useState<RiderDeliveryJobDto[]>([]);
   const [wallet, setWallet] = useState<WalletDto | null>(null);
@@ -670,7 +686,9 @@ export function RiderDashboardScreen({
             />
             <p style={{ fontFamily: IT, fontSize: 13, color: located ? G3 : C_WARN }}>
               {located
-                ? 'You are live · Waiting for delivery jobs...'
+                ? heartbeat.degraded
+                  ? 'Location unavailable — you will stop receiving jobs. Check location access.'
+                  : 'You are live · Waiting for delivery jobs...'
                 : 'Online, but we do not have your location — deliveries are sent to the nearest rider, so you will not be offered any until location sharing is on.'}
             </p>
           </div>
