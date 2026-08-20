@@ -1412,6 +1412,50 @@ export interface AdminFleetDriverDto {
 }
 /** onlineCount + staleCount + offlineCount === totalDrivers. The rest are
  *  status breakdowns that overlap and never sum to anything. */
+export type DispatchGateKey =
+  | 'PROFILE_APPROVED'
+  | 'KYC_VERIFIED'
+  | 'IDENTITY_VERIFIED'
+  | 'VEHICLE_APPROVED'
+  | 'INSPECTION_PASSED'
+  | 'ONLINE'
+  | 'ACCEPTING'
+  | 'POSITION_KNOWN'
+  | 'POSITION_FRESH'
+  | 'CAPACITY';
+
+export interface DispatchGateDto {
+  key: DispatchGateKey;
+  label: string;
+  passed: boolean;
+  /** Named specifically when it fails — "Guarantor ID is still PENDING" —
+   *  never a bare "not eligible". Null when the gate passes. */
+  detail: string | null;
+  fixableBy: 'OPERATIONS' | 'DRIVER';
+}
+
+export interface DispatchVehicleDto {
+  id: string;
+  plateNumber: string;
+  make: string;
+  model: string;
+  colour: string;
+  year: number;
+  rideCategory: string;
+  approvalStatus: string;
+  seats: number | null;
+}
+
+export interface DispatchEligibilityDto {
+  subjectId: string;
+  subjectName: string;
+  phone: string | null;
+  role: 'DRIVER' | 'RIDER';
+  dispatchable: boolean;
+  gates: DispatchGateDto[];
+  vehicle: DispatchVehicleDto | null;
+}
+
 export interface AdminFleetSummaryDto {
   totalDrivers: number;
   onlineCount: number;
@@ -2879,6 +2923,17 @@ export const api = {
         'GET',
         '/operations/fleet',
       ),
+    /**
+     * Why a driver or rider is — or is not — getting work.
+     *
+     * Every gate here already governed dispatch and every one was silent, so
+     * "he is online but no order matches him" could only be answered by
+     * reading the dispatcher's query. Read-only; it changes nothing.
+     */
+    getDriverEligibility: (id: string) =>
+      dx<DispatchEligibilityDto>('GET', `/operations/fleet/drivers/${id}/eligibility`),
+    getRiderEligibility: (id: string) =>
+      dx<DispatchEligibilityDto>('GET', `/operations/fleet/riders/${id}/eligibility`),
     // Live ride queue (active rides only) for the Trips screen.
     getRideQueue: () =>
       dx<{

@@ -98,6 +98,75 @@ export interface FleetSummaryDto {
   needsInspectionCount: number;
 }
 
+/**
+ * Why a driver or rider is — or is not — getting work.
+ *
+ * Every gate below already existed and every one of them was silent. A rider
+ * whose guarantor ID had not been verified saw "You are live · Waiting for
+ * delivery jobs…" in confident green while being invisible to dispatch, and
+ * nobody — not the rider, not Operations — could see which check was failing.
+ * That is how "the driver is online but no order matches him" became a
+ * question answered by reading source code.
+ *
+ * Two families of gate are deliberately shown together, because a person
+ * asking "why is nobody getting this job" does not care which family the
+ * answer comes from:
+ *
+ *   - **Standing**: approved, documents verified, vehicle approved, inspection
+ *     passed. Fixed by Operations, and permanent until something changes.
+ *   - **Right now**: online, accepting, position known, position fresh, has
+ *     capacity. Fixed by the driver, and true only for the moment it is read.
+ */
+export type DispatchGateKey =
+  | 'PROFILE_APPROVED'
+  | 'KYC_VERIFIED'
+  | 'IDENTITY_VERIFIED'
+  | 'VEHICLE_APPROVED'
+  | 'INSPECTION_PASSED'
+  | 'ONLINE'
+  | 'ACCEPTING'
+  | 'POSITION_KNOWN'
+  | 'POSITION_FRESH'
+  | 'CAPACITY';
+
+export interface DispatchGateDto {
+  key: DispatchGateKey;
+  /** Operator-facing wording, e.g. "KYC documents verified". */
+  label: string;
+  passed: boolean;
+  /** Named specifically when it fails — "Guarantor ID is still PENDING",
+   *  "Last position 47 minutes ago" — never a bare "not eligible". Null when
+   *  the gate passes. */
+  detail: string | null;
+  /** Whether Operations can fix this, or only the driver can. */
+  fixableBy: 'OPERATIONS' | 'DRIVER';
+}
+
+/** Vehicle detail for the fleet desk. Driver only; riders have none. */
+export interface DispatchVehicleDto {
+  id: string;
+  plateNumber: string;
+  make: string;
+  model: string;
+  colour: string;
+  year: number;
+  rideCategory: RideType;
+  approvalStatus: string;
+  seats: number | null;
+}
+
+export interface DispatchEligibilityDto {
+  subjectId: string;
+  subjectName: string;
+  phone: string | null;
+  role: 'DRIVER' | 'RIDER';
+  /** True only when EVERY gate passes. This is the answer to "why is nobody
+   *  getting this job". */
+  dispatchable: boolean;
+  gates: DispatchGateDto[];
+  vehicle: DispatchVehicleDto | null;
+}
+
 export interface OperationsFleetSnapshotDto {
   drivers: FleetDriverDto[];
   summary: FleetSummaryDto;
