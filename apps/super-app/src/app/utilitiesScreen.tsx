@@ -344,21 +344,35 @@ function Picker({
 }
 
 /**
- * Whether a meter/smartcard lookup actually came back with a person's name.
+ * Whether a lookup actually came back with something that confirms the
+ * account, rather than a placeholder.
  *
- * The hub returns a 200 with a placeholder — "Unknown", "N/A", blank — for a
- * number it cannot resolve. Rendering that as the account name tells the
- * customer their typo was confirmed.
+ * The hub returns a 200 with "Unknown", "N/A" or a blank for a number it
+ * cannot resolve. Rendering that as the account name tells the customer their
+ * typo was confirmed.
+ *
+ * `requireLetters` is the part that differs by service, and getting it wrong
+ * broke every SportyBet verification:
+ *
+ * - A **meter or smartcard** lookup that echoes the number back has resolved
+ *   nothing — a real customer name has letters in it, so letters are required.
+ * - A **bookmaker** account is often identified BY the phone number, and
+ *   Peyflex's own worked example returns `name: "08105867169"` alongside
+ *   `"message": "Customer verified."`. Demanding letters there rejects a
+ *   perfectly good confirmation and tells the customer their correct number
+ *   is wrong.
  */
 const UNUSABLE_ACCOUNT_NAMES = new Set(['unknown', 'n/a', 'na', 'not available', 'null', '-']);
 
-function isUsableAccountName(name: string | null | undefined): name is string {
+function isUsableAccountName(
+  name: string | null | undefined,
+  requireLetters: boolean,
+): name is string {
   if (name === null || name === undefined) return false;
   const trimmed = name.trim();
   if (trimmed === '') return false;
   if (UNUSABLE_ACCOUNT_NAMES.has(trimmed.toLowerCase())) return false;
-  // A real name has letters in it; a bare echo of the meter number does not.
-  return /\p{L}/u.test(trimmed);
+  return requireLetters ? /\p{L}/u.test(trimmed) : true;
 }
 
 function Notice({
@@ -652,6 +666,12 @@ export function UtilityPurchaseScreen({
     [state.plans, planId],
   );
 
+  /** The chosen provider's display name — "SportyBet", not "Betting". */
+  const selectedProviderName = useMemo(
+    () => state.providers.find((entry) => entry.code === providerCode)?.name ?? '',
+    [state.providers, providerCode],
+  );
+
   const selectedDisco = useMemo(
     () =>
       service === 'ELECTRICITY'
@@ -686,7 +706,9 @@ export function UtilityPurchaseScreen({
                 meterNumber: identifier,
                 meterType,
               });
-      if (isUsableAccountName(lookup.customerName)) {
+      // Betting is the exception: a bookmaker that identifies its customers
+      // by phone has no other name to give back.
+      if (isUsableAccountName(lookup.customerName, service !== 'BETTING')) {
         setVerifiedName(lookup.customerName);
       } else {
         // The hub answered, but with a placeholder rather than a name — the
@@ -696,7 +718,9 @@ export function UtilityPurchaseScreen({
         // confirmation, so this stays unverified and the Pay button stays shut.
         setVerifiedName(null);
         setError(
-          'We could not confirm a name for that number. Check the digits and try again — nothing has been charged.',
+          service === 'BETTING'
+            ? 'We could not find that betting account. Check the ID and try again — nothing has been charged.'
+            : 'We could not confirm a name for that number. Check the digits and try again — nothing has been charged.',
         );
       }
     } catch (cause) {
@@ -836,9 +860,18 @@ export function UtilityPurchaseScreen({
               className="mb-3 rounded-xl px-4 py-3"
               style={{ background: NAVY_CARD, border: `1px solid ${G3}44` }}
             >
-              <p style={{ fontFamily: IT, fontSize: 11.5, color: MUTED }}>Account name</p>
+              {/* When the bookmaker gives back the account id rather than a
+                  person — which is what SportyBet does, because that IS how it
+                  identifies customers — calling it "Account name" would
+                  present a phone number as somebody's name. Say what was
+                  actually established instead. */}
+              <p style={{ fontFamily: IT, fontSize: 11.5, color: MUTED }}>
+                {verifiedName === identifier ? 'Account found' : 'Account name'}
+              </p>
               <p style={{ fontFamily: PP, fontSize: 15, fontWeight: 600, color: WHITE }}>
-                {verifiedName}
+                {verifiedName === identifier
+                  ? `${selectedProviderName} account ${verifiedName}`.trim()
+                  : verifiedName}
               </p>
             </div>
           ) : null}
