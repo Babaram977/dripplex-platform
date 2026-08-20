@@ -569,6 +569,8 @@ export type {
   CommissionEntryType,
   CommissionLedgerEntryDto,
   CommissionOwnerType,
+  NegotiateCreditLimitRequest,
+  PartnerFinancialPositionDto,
   PlatformCommissionSettingDto,
   RecordCommissionPaymentRequest,
   UpdateCommercialCreditSettingRequest,

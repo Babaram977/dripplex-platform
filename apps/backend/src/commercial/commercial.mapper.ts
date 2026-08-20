@@ -43,6 +43,10 @@ export function toCommissionAccountDto(account: CommissionAccount): CommissionAc
     ownerId: account.ownerId,
     outstandingBalance: Number(account.outstandingBalance),
     creditLimit: Number(account.creditLimit),
+    negotiatedCreditLimit:
+      account.negotiatedCreditLimit === null ? null : Number(account.negotiatedCreditLimit),
+    negotiatedAt: account.negotiatedAt?.toISOString() ?? null,
+    negotiationNote: account.negotiationNote,
     blocked: account.blocked,
     blockedAt: account.blockedAt?.toISOString() ?? null,
     createdAt: account.createdAt.toISOString(),

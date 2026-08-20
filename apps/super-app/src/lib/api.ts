@@ -520,7 +520,13 @@ export interface CommissionAccountDto {
   ownerType: CommissionOwnerType;
   ownerId: string;
   outstandingBalance: number;
+  /** The ceiling in force — the negotiated limit if one exists, else the
+   * owner-type default. */
   creditLimit: number;
+  /** A limit agreed with this partner individually; null = using the default. */
+  negotiatedCreditLimit: number | null;
+  negotiatedAt: string | null;
+  negotiationNote: string | null;
   blocked: boolean;
   blockedAt: string | null;
   createdAt: string;
@@ -532,6 +538,34 @@ export interface AdminCommissionAccountDto extends CommissionAccountDto {
   ownerName: string | null;
   ownerEmail: string | null;
   ownerPhone: string | null;
+}
+
+/** DrippleX's whole financial position with one merchant, driver or rider.
+ * Signs are from DrippleX's side: `walletAvailable` is money we owe out,
+ * `commissionOutstanding` is money owed in, `netPosition` is what would change
+ * hands if the relationship were settled today. */
+export interface PartnerFinancialPositionDto {
+  ownerType: CommissionOwnerType;
+  ownerId: string;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  walletAvailable: number;
+  walletPending: number;
+  commissionOutstanding: number;
+  commissionCreditLimit: number;
+  negotiatedCreditLimit: number | null;
+  negotiatedAt: string | null;
+  negotiationNote: string | null;
+  blocked: boolean;
+  blockedAt: string | null;
+  netPosition: number;
+  lifetimeCommissionAccrued: number;
+  lifetimeCommissionPaid: number;
+  lifetimeWalletCredited: number;
+  lifetimeWalletDebited: number;
+  pendingWithdrawalAmount: number;
+  pendingWithdrawalCount: number;
 }
 
 export interface CommissionLedgerEntryDto {
@@ -2554,6 +2588,13 @@ export const api = {
           limit: params?.limit ?? 20,
         },
       ),
+    /** Everything DrippleX has with one partner: what we hold for them, what
+     * they owe us, and the net. */
+    getPartnerPosition: (ownerType: CommissionOwnerType, ownerId: string) =>
+      dx<PartnerFinancialPositionDto>(
+        'GET',
+        `/admin/commercial/accounts/${ownerType}/${ownerId}/position`,
+      ),
     getCommissionLedger: (ownerType: CommissionOwnerType, ownerId: string) =>
       dx<PaginatedResult<CommissionLedgerEntryDto>>(
         'GET',
@@ -2571,6 +2612,19 @@ export const api = {
         'POST',
         `/admin/commercial/accounts/${ownerType}/${ownerId}/payments`,
         { amount, ...(description ? { description } : {}) },
+      ),
+    /** Record (or, with null, clear) the credit limit agreed with ONE partner.
+     * A negotiated limit overrides the owner-type default outright. */
+    negotiateCreditLimit: (
+      ownerType: CommissionOwnerType,
+      ownerId: string,
+      creditLimit: number | null,
+      note?: string,
+    ) =>
+      dx<CommissionAccountDto>(
+        'PATCH',
+        `/admin/commercial/accounts/${ownerType}/${ownerId}/credit-limit`,
+        { creditLimit, ...(note ? { note } : {}) },
       ),
     getCreditSetting: (ownerType: CommissionOwnerType) =>
       dx<CommercialCreditSettingDto>('GET', `/admin/commercial/credit-settings/${ownerType}`),

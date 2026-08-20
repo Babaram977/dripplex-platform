@@ -18,6 +18,7 @@ import {
   type CommercialCreditSettingDto,
   type CommissionLedgerEntryDto,
   type CommissionOwnerType,
+  type PartnerFinancialPositionDto,
   type RideQueueSummaryDto,
   type AdminMerchantDto,
   type AdminUtilityPurchaseDto,
@@ -4559,6 +4560,10 @@ function PageCommissions() {
   const [blockedOnly, setBlockedOnly] = useState(false);
   const [selected, setSelected] = useState<AdminCommissionAccountDto | null>(null);
   const [ledger, setLedger] = useState<CommissionLedgerEntryDto[] | null>(null);
+  const [position, setPosition] = useState<PartnerFinancialPositionDto | null>(null);
+  const [partnerLimit, setPartnerLimit] = useState('');
+  const [partnerLimitNote, setPartnerLimitNote] = useState('');
+  const [partnerLimitMsg, setPartnerLimitMsg] = useState<string | null>(null);
   const [payAmount, setPayAmount] = useState('');
   const [payNote, setPayNote] = useState('');
   const [busy, setBusy] = useState(false);
@@ -4608,9 +4613,21 @@ function PageCommissions() {
   const openAccount = async (account: AdminCommissionAccountDto) => {
     setSelected(account);
     setLedger(null);
+    setPosition(null);
     setPayAmount('');
     setPayNote('');
     setActionMsg(null);
+    // Position and ledger are independent reads: one failing must not blank
+    // the other.
+    setPartnerLimit(
+      account.negotiatedCreditLimit === null ? '' : String(account.negotiatedCreditLimit),
+    );
+    setPartnerLimitNote(account.negotiationNote ?? '');
+    setPartnerLimitMsg(null);
+    void api.admin
+      .getPartnerPosition(account.ownerType, account.ownerId)
+      .then(setPosition)
+      .catch(() => setPosition(null));
     try {
       const res = await api.admin.getCommissionLedger(account.ownerType, account.ownerId);
       setLedger(res.items);
@@ -4648,6 +4665,42 @@ function PageCommissions() {
       setActionMsg((e as { message?: string }).message ?? 'Could not record that payment.');
     } finally {
       setBusy(false);
+    }
+  };
+
+  /** The limit agreed with THIS partner. Blank clears the agreement and hands
+   * them back to the owner-type default. */
+  const savePartnerLimit = async (clear = false) => {
+    if (!selected) return;
+    const raw = partnerLimit.trim();
+    const value = clear || raw === '' ? null : Number(raw);
+    if (value !== null && (!Number.isFinite(value) || value < 0)) {
+      setPartnerLimitMsg('Enter the agreed limit in naira, or clear it to use the default.');
+      return;
+    }
+    setPartnerLimitMsg(null);
+    try {
+      const updated = await api.admin.negotiateCreditLimit(
+        selected.ownerType,
+        selected.ownerId,
+        value,
+        partnerLimitNote.trim() || undefined,
+      );
+      setPartnerLimitMsg(
+        value === null
+          ? `Agreement cleared. Back on the ${selected.ownerType.toLowerCase()} default of ${naira(updated.creditLimit)}.`
+          : updated.blocked
+            ? `Agreed at ${naira(value)}. Still blocked — the balance is above it.`
+            : `Agreed at ${naira(value)}. Trading is open.`,
+      );
+      if (value === null) setPartnerLimit('');
+      await load();
+      const refreshed = await api.admin
+        .getPartnerPosition(selected.ownerType, selected.ownerId)
+        .catch(() => null);
+      if (refreshed) setPosition(refreshed);
+    } catch (e: unknown) {
+      setPartnerLimitMsg((e as { message?: string }).message ?? 'Could not save that limit.');
     }
   };
 
@@ -4734,7 +4787,7 @@ function PageCommissions() {
             a flat ceiling is the right shape for every category is a founder
             decision, not one to change here. */}
         <Card>
-          <SectionHeader title="Credit limit policy" />
+          <SectionHeader title="Default credit limit" />
           <p style={{ fontSize: 11, color: MUTED, marginBottom: 10, lineHeight: 1.5 }}>
             A partner is blocked once their outstanding commission goes over this ceiling, and stays
             blocked until the balance reaches zero — crossing back under the line is not enough.
@@ -4825,6 +4878,9 @@ function PageCommissions() {
                   </td>
                   <td style={{ padding: '8px 8px', fontSize: 12, color: MUTED }}>
                     {naira(a.creditLimit)}
+                    {a.negotiatedCreditLimit !== null && (
+                      <span style={{ fontSize: 10, color: G3 }}> · agreed</span>
+                    )}
                   </td>
                   <td style={{ padding: '8px 8px' }}>
                     <Chip
@@ -4854,17 +4910,65 @@ function PageCommissions() {
 
       {selected && (
         <div style={{ width: 340, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {/* DrippleX's position with this partner, in one place. The money
+              lived in two unconnected records — a Wallet holding funds FOR
+              them and a CommissionAccount recording what they owe US — and
+              answering "where do we stand with this merchant?" meant two
+              lookups and mental arithmetic. */}
           <Card>
             <SectionHeader
-              title={selected.ownerName ?? 'Commission account'}
+              title={selected.ownerName ?? 'Partner position'}
               action={<Btn label="Close" outline small onClick={() => setSelected(null)} />}
             />
+            <p style={{ fontSize: 11, color: MUTED, marginBottom: 10 }}>
+              {selected.ownerType} · {selected.ownerEmail ?? selected.ownerPhone ?? 'no contact'}
+            </p>
+
+            {position && (
+              <div
+                style={{
+                  background:
+                    position.netPosition >= 0 ? 'rgba(71,207,114,.08)' : 'rgba(239,68,68,.08)',
+                  border: `1px solid ${position.netPosition >= 0 ? 'rgba(71,207,114,.25)' : 'rgba(239,68,68,.25)'}`,
+                  borderRadius: 8,
+                  padding: '10px 12px',
+                  marginBottom: 12,
+                }}
+              >
+                <p style={{ fontSize: 11, color: MUTED, marginBottom: 2 }}>Net position</p>
+                <p
+                  style={{
+                    fontFamily: 'Poppins, sans-serif',
+                    fontSize: 20,
+                    fontWeight: 700,
+                    color: position.netPosition >= 0 ? G3 : '#F87171',
+                  }}
+                >
+                  {naira(Math.abs(position.netPosition))}
+                </p>
+                <p style={{ fontSize: 11, color: MUTED, marginTop: 2, lineHeight: 1.4 }}>
+                  {position.netPosition >= 0
+                    ? 'DrippleX would pay this out if the relationship settled today.'
+                    : 'Still owed to DrippleX after their wallet is emptied.'}
+                </p>
+              </div>
+            )}
+
             {[
-              ['Outstanding', naira(selected.outstandingBalance)],
+              ['Wallet (available)', position ? naira(position.walletAvailable) : '—'],
+              ['Wallet (pending)', position ? naira(position.walletPending) : '—'],
+              ['Commission owed', naira(selected.outstandingBalance)],
               ['Credit limit', naira(selected.creditLimit)],
               ['Status', selected.blocked ? 'Blocked from trading' : 'Trading normally'],
               ['Blocked since', selected.blockedAt ? commissionDateTime(selected.blockedAt) : '—'],
-              ['Contact', selected.ownerEmail ?? selected.ownerPhone ?? '—'],
+              [
+                'Withdrawals pending',
+                position
+                  ? position.pendingWithdrawalCount === 0
+                    ? 'None'
+                    : `${naira(position.pendingWithdrawalAmount)} · ${String(position.pendingWithdrawalCount)}`
+                  : '—',
+              ],
             ].map(([l, v]) => (
               <div
                 key={l}
@@ -4874,6 +4978,77 @@ function PageCommissions() {
                 <span style={{ fontSize: 12, color: WHITE, fontWeight: 500 }}>{v}</span>
               </div>
             ))}
+
+            {position && (
+              <div style={{ borderTop: `1px solid ${BORDER}`, marginTop: 6, paddingTop: 10 }}>
+                <p
+                  style={{
+                    fontSize: 10,
+                    color: MUTED,
+                    textTransform: 'uppercase',
+                    letterSpacing: 1,
+                    marginBottom: 8,
+                  }}
+                >
+                  Lifetime
+                </p>
+                {[
+                  ['Commission accrued', naira(position.lifetimeCommissionAccrued)],
+                  ['Commission paid', naira(position.lifetimeCommissionPaid)],
+                  ['Paid into wallet', naira(position.lifetimeWalletCredited)],
+                  ['Paid out of wallet', naira(position.lifetimeWalletDebited)],
+                ].map(([l, v]) => (
+                  <div
+                    key={l}
+                    style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}
+                  >
+                    <span style={{ fontSize: 11, color: MUTED }}>{l}</span>
+                    <span style={{ fontSize: 11, color: WHITE }}>{v}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          {/* The limit agreed with THIS partner. Founder decision, 2026-08-20:
+              limits are individual "because of business difference" and are
+              negotiated and agreed between DrippleX and the merchant — a
+              furniture shop and a food vendor cannot share one ceiling. */}
+          <Card>
+            <SectionHeader title="Agreed credit limit" />
+            <p style={{ fontSize: 11, color: MUTED, marginBottom: 10, lineHeight: 1.5 }}>
+              {position?.negotiatedCreditLimit === null || position === null
+                ? `No limit agreed with this partner — they are on the ${selected.ownerType.toLowerCase()} default of ${naira(selected.creditLimit)}.`
+                : `Agreed at ${naira(position.negotiatedCreditLimit)}${
+                    position.negotiatedAt ? ` on ${commissionDateTime(position.negotiatedAt)}` : ''
+                  }.`}
+            </p>
+            <input
+              className="dx-input"
+              inputMode="decimal"
+              placeholder="Agreed limit (₦)"
+              value={partnerLimit}
+              onChange={(e) => setPartnerLimit(e.target.value)}
+              style={{ width: '100%', marginBottom: 8 }}
+            />
+            <input
+              className="dx-input"
+              placeholder="What was agreed, and with whom"
+              value={partnerLimitNote}
+              onChange={(e) => setPartnerLimitNote(e.target.value)}
+              style={{ width: '100%', marginBottom: 10 }}
+            />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Btn label="Save agreement" onClick={() => void savePartnerLimit()} />
+              {position?.negotiatedCreditLimit !== null && position !== null && (
+                <Btn label="Use default" outline onClick={() => void savePartnerLimit(true)} />
+              )}
+            </div>
+            {partnerLimitMsg && (
+              <p style={{ fontSize: 11, color: MUTED, marginTop: 10, lineHeight: 1.5 }}>
+                {partnerLimitMsg}
+              </p>
+            )}
           </Card>
 
           <Card>

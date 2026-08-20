@@ -11,6 +11,7 @@ import { AdminCommissionRosterController } from './controllers/admin-commission-
 import { AdminPlatformCommissionSettingsController } from './controllers/admin-platform-commission-settings.controller';
 import { DriverCommercialController } from './controllers/driver-commercial.controller';
 import { MerchantCommercialController } from './controllers/merchant-commercial.controller';
+import { PartnerPositionService } from './partner-position.service';
 import { PlatformCommissionSettingsService } from './platform-commission-settings.service';
 
 /**
@@ -35,6 +36,7 @@ import { PlatformCommissionSettingsService } from './platform-commission-setting
   providers: [
     CommercialCreditSettingsService,
     CommissionAccountService,
+    PartnerPositionService,
     PlatformCommissionSettingsService,
   ],
   exports: [

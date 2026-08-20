@@ -50,9 +50,10 @@ export class CommissionAccountService {
     private readonly creditSettings: CommercialCreditSettingsService,
   ) {}
 
-  /** Returns the account for (ownerType, ownerId), creating it — seeded
-   * with the currently-effective credit limit — if none exists yet. Never
-   * mutates outstandingBalance. */
+  /** Returns the account for (ownerType, ownerId), creating it — seeded with
+   * the owner-type default limit, which stands until a limit is negotiated
+   * with this partner individually — if none exists yet. Never mutates
+   * outstandingBalance. */
   public async getOrCreateAccount(
     ownerType: CommissionOwnerType,
     ownerId: string,
@@ -422,6 +423,81 @@ export class CommissionAccountService {
     return { account: updatedAccount, applied: true };
   }
 
+  /**
+   * The ceiling actually in force for one account.
+   *
+   * A limit negotiated with this partner wins outright; only an account that
+   * has agreed nothing falls back to the owner-type default. Before this, the
+   * default was re-synced onto every account on every write, so a negotiated
+   * figure survived exactly until the partner's next order.
+   */
+  private async effectiveCreditLimit(account: CommissionAccount): Promise<Prisma.Decimal> {
+    if (account.negotiatedCreditLimit !== null) {
+      return new Prisma.Decimal(account.negotiatedCreditLimit);
+    }
+    const setting = await this.creditSettings.getEffective(account.ownerType);
+    return new Prisma.Decimal(setting.creditLimit);
+  }
+
+  /**
+   * Record the credit limit DrippleX and this partner have agreed.
+   *
+   * Founder decision, 2026-08-20: limits belong to the individual merchant,
+   * "because of business difference", and are "negotiated and agreed by
+   * DrippleX and merchant". A furniture shop turning over ₦650,000 a sale and
+   * a food vendor turning over ₦2,000 cannot share one ceiling — under a flat
+   * ₦50,000 the furniture shop is blocked by its first order.
+   *
+   * Passing null clears the agreement and returns the partner to the
+   * owner-type default. Raising a limit can release a blocked partner
+   * immediately; lowering one cannot retroactively block someone who is
+   * within their old ceiling — blocking only ever happens on the next accrual,
+   * which is the same prospective-only rule the platform default follows.
+   */
+  public async setNegotiatedCreditLimit(input: {
+    ownerType: CommissionOwnerType;
+    ownerId: string;
+    creditLimit: number | null;
+    note?: string;
+    recordedBy: string;
+    context?: AuditContext;
+  }): Promise<CommissionAccount> {
+    const account = await this.getOrCreateAccount(input.ownerType, input.ownerId);
+    if (input.creditLimit !== null && input.creditLimit < 0) {
+      throw new ValidationDomainException('A credit limit cannot be negative');
+    }
+
+    const updated = await this.prisma.commissionAccount.update({
+      where: { id: account.id },
+      data: {
+        negotiatedCreditLimit: input.creditLimit,
+        negotiatedBy: input.creditLimit === null ? null : input.recordedBy,
+        negotiatedAt: input.creditLimit === null ? null : new Date(),
+        negotiationNote: input.creditLimit === null ? null : (input.note ?? null),
+      },
+    });
+
+    await this.auditService.record(
+      COMMERCIAL_AUDIT_ACTIONS.CREDIT_LIMIT_NEGOTIATED,
+      { ...(input.context ?? {}), userId: input.recordedBy },
+      {
+        resource: 'commission_account',
+        resourceId: updated.id,
+        metadata: {
+          ownerType: input.ownerType,
+          ownerId: input.ownerId,
+          negotiatedCreditLimit: input.creditLimit,
+          note: input.note ?? null,
+        },
+      },
+    );
+
+    // A raised limit should release a blocked partner without waiting for
+    // their next order — that is the whole point of agreeing a new one.
+    await this.recomputeAndPersistBlockState(updated, input.context);
+    return await this.prisma.commissionAccount.findUniqueOrThrow({ where: { id: updated.id } });
+  }
+
   /** Re-reads the currently-effective credit limit, re-syncs it onto the
    * account (prospective-only, per §3.2), and recomputes `blocked` from
    * `outstandingBalance > creditLimit`. Called after every accrue()/
@@ -430,9 +506,8 @@ export class CommissionAccountService {
     account: CommissionAccount,
     context?: AuditContext,
   ): Promise<void> {
-    const setting = await this.creditSettings.getEffective(account.ownerType);
     const balance = new Prisma.Decimal(account.outstandingBalance);
-    const creditLimit = new Prisma.Decimal(setting.creditLimit);
+    const creditLimit = await this.effectiveCreditLimit(account);
 
     // Blocking is a latch, not a threshold, for every commission-carrying party.
     // You cross your credit limit to get blocked, and only clearing the balance

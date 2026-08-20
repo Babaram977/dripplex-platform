@@ -1430,7 +1430,26 @@ model CommissionAccount {
   ownerType          CommissionOwnerType     @map("owner_type")
   ownerId            String                  @map("owner_id") @db.Uuid
   outstandingBalance Decimal                 @default(0) @map("outstanding_balance") @db.Decimal(14, 2)
+  /// The limit actually in force. Materialised so every read is one query;
+  /// kept in sync from negotiatedCreditLimit, or from the owner-type default
+  /// when no limit has been negotiated.
   creditLimit        Decimal                 @map("credit_limit") @db.Decimal(14, 2)
+  /// A limit agreed with this partner individually (founder decision,
+  /// 2026-08-20: "limit should be individually set to each merchant because
+  /// of business difference and it should be negotiated and agreed by
+  /// DrippleX and merchant"). A furniture shop selling ₦650,000 pieces and a
+  /// food vendor selling ₦2,000 plates cannot share one ceiling.
+  ///
+  /// Null means no agreement exists yet and the owner-type default applies —
+  /// which is also what makes the platform default meaningful rather than
+  /// something that silently overwrites a negotiated figure.
+  negotiatedCreditLimit Decimal?             @map("negotiated_credit_limit") @db.Decimal(14, 2)
+  /// Who agreed it, when, and on what terms. A negotiated limit is a
+  /// commercial commitment, so it carries its own record rather than living
+  /// only in the audit log.
+  negotiatedBy       String?                 @map("negotiated_by") @db.Uuid
+  negotiatedAt       DateTime?               @map("negotiated_at")
+  negotiationNote    String?                 @map("negotiation_note") @db.VarChar(500)
   blocked            Boolean                 @default(false)
   blockedAt          DateTime?               @map("blocked_at")
   /// Optimistic-concurrency guard on outstandingBalance updates, same
