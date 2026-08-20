@@ -28,6 +28,17 @@ export { G0, G2, G3, NAVY_DEEP, NAVY_BASE, NAVY_CARD, NAVY_SURFACE, BORDER, MUTE
  */
 export const DRIPPLEX_SUPPORT_WHATSAPP = '+2349061616116';
 
+/**
+ * Time-of-day greeting. One implementation so the wallet cannot say
+ * "Good morning" at 9pm while the home screen says "Good Evening".
+ */
+export function timeGreeting(now: Date = new Date()): string {
+  const h = now.getHours();
+  if (h < 12) return 'Good Morning';
+  if (h < 17) return 'Good Afternoon';
+  return 'Good Evening';
+}
+
 export const GLOBAL_STYLES = `
   @keyframes orbit-cw       { from{transform:rotate(0deg);}    to{transform:rotate(360deg);}   }
   @keyframes orbit-ccw      { from{transform:rotate(0deg);}    to{transform:rotate(-360deg);}  }

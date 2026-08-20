@@ -43,6 +43,27 @@ export const auth = {
     return raw ? (JSON.parse(raw) as DxUser) : null;
   },
 
+  /**
+   * The name to greet this person by, or null when we genuinely don't know one.
+   *
+   * Screens used to fall back to the bare word "there" — the tail of "Hi there"
+   * with the greeting stripped off — and then render it in the slot reserved for
+   * the customer's name, so the app appeared to believe the person was called
+   * "there". Callers get null instead and choose a greeting that reads without a
+   * name. Empty strings count as unknown: a signed-up-but-unnamed account stores
+   * firstName as "", which `??` would have happily rendered as a blank line.
+   */
+  greetingName(): string | null {
+    const u = this.getUser();
+    if (!u) return null;
+    const first = u.firstName?.trim();
+    if (first) return first;
+    const last = u.lastName?.trim();
+    if (last) return last;
+    const local = u.email?.split('@')[0]?.trim();
+    return local || null;
+  },
+
   clear() {
     localStorage.removeItem(ACCESS_KEY);
     localStorage.removeItem(REFRESH_KEY);

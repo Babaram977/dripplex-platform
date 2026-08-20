@@ -1,5 +1,15 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { G0, G2, G3, NAVY_DEEP, NAVY_CARD, NAVY_SURFACE, BORDER, MUTED } from './shared';
+import {
+  G0,
+  G2,
+  G3,
+  NAVY_DEEP,
+  NAVY_CARD,
+  NAVY_SURFACE,
+  BORDER,
+  MUTED,
+  timeGreeting,
+} from './shared';
 import {
   COLOR_SUCCESS,
   COLOR_WARNING,
@@ -5657,7 +5667,12 @@ export function RideHomeExtendedScreen({
         <p
           style={{ fontFamily: PP, fontSize: 20, fontWeight: 700, color: '#fff', marginBottom: 12 }}
         >
-          Good morning, Chidi 👋
+          {(() => {
+            // Was hardcoded "Good morning, Chidi 👋" — every passenger was
+            // greeted by a designer's placeholder name, at any hour.
+            const n = auth.greetingName();
+            return n ? `${timeGreeting()}, ${n} 👋` : `${timeGreeting()} 👋`;
+          })()}
         </p>
         {/* Search bar */}
         <button
