@@ -174,6 +174,60 @@ describe('rider delivery settlement (real database)', () => {
     expect(Number(account?.outstandingBalance)).toBe(5150);
   });
 
+  it('defers a CASH delivery until the rider says what they collected', async () => {
+    if (!databaseAvailable) return;
+    // This is the production bug. DELIVERY_COMPLETED always reaches settlement
+    // first, because confirmCash() requires the job to already be DELIVERED —
+    // so at that moment cashCollectedAmount is null. Settling then claimed the
+    // job and accrued only the platform commission, and the confirmation that
+    // followed was swallowed by the idempotency guard. On the real order that
+    // meant ₦150 accrued against ₦7,412.50 collected.
+    const riderId = await makeUser('rider-cash-early');
+    const jobId = await makeDelivery({
+      riderId,
+      deliveryFee: 1500,
+      paymentMethod: OrderPaymentMethod.CASH,
+    });
+
+    await expect(service.settleDelivery(jobId)).resolves.toBe(false);
+
+    // Crucially the job is NOT claimed, so the cash-confirmed event can still
+    // do the real settlement.
+    const job = await prisma.deliveryJob.findUniqueOrThrow({ where: { id: jobId } });
+    expect(job.settledAt).toBeNull();
+
+    const account = await prisma.commissionAccount.findFirst({
+      where: { ownerType: CommissionOwnerType.RIDER, ownerId: riderId },
+    });
+    expect(account === null || Number(account.outstandingBalance) === 0).toBe(true);
+  });
+
+  it('accrues the full amount once the cash is confirmed, not just the commission', async () => {
+    if (!databaseAvailable) return;
+    const riderId = await makeUser('rider-cash-late');
+    const jobId = await makeDelivery({
+      riderId,
+      deliveryFee: 1500,
+      paymentMethod: OrderPaymentMethod.CASH,
+    });
+
+    // Completion first — deferred, exactly as it happens live.
+    await expect(service.settleDelivery(jobId)).resolves.toBe(false);
+
+    // Then the rider confirms what they took, and settlement runs for real.
+    await prisma.deliveryJob.update({
+      where: { id: jobId },
+      data: { cashCollectedAmount: 7412.5 },
+    });
+    await expect(service.settleDelivery(jobId)).resolves.toBe(true);
+
+    const account = await prisma.commissionAccount.findFirst({
+      where: { ownerType: CommissionOwnerType.RIDER, ownerId: riderId },
+    });
+    // 7412.50 collected − 1350 kept = 6062.50 owed, not the 150 commission.
+    expect(Number(account?.outstandingBalance)).toBe(6062.5);
+  });
+
   it('is idempotent — a re-fired completion event cannot pay a rider twice', async () => {
     if (!databaseAvailable) return;
     const riderId = await makeUser('rider-idem');
