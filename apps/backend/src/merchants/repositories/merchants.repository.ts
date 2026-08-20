@@ -55,7 +55,9 @@ export interface CreateBusinessInput {
 export interface UpdateBusinessInput {
   businessName?: string;
   businessType?: BusinessType;
-  category?: MerchantCategory;
+  /** `null` clears it back to uncategorised — matching taxNumber/description
+   *  below, where null is "unset" and undefined is "leave alone". */
+  category?: MerchantCategory | null;
   registrationNumber?: string;
   taxNumber?: string | null;
   description?: string | null;

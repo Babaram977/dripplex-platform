@@ -33,6 +33,8 @@ import {
   type RideSurchargeType,
   type RideSurchargeZoneDto,
   type RideType,
+  MERCHANT_CATEGORY_LABEL,
+  type MerchantCategory,
 } from '../lib/api';
 import { auth } from '../lib/auth';
 import { addressPredictions, geocodeAddress, mapsEnabled, mapsLibrary } from '../lib/maps';
@@ -3517,8 +3519,14 @@ function MerchantReviewCard({ m, reload }: { m: AdminMerchantDto; reload: () => 
           {m.business?.businessName ?? 'Business not set'}
         </div>
         {m.business?.businessType && (
-          <Chip label={m.business.businessType.replace(/_/g, ' ')} color={C_INFO} />
+          <Chip label={m.business.businessType.replace(/_/g, ' ')} color={MUTED} />
         )}
+        {m.business &&
+          (m.business.category ? (
+            <Chip label={MERCHANT_CATEGORY_LABEL[m.business.category]} color={C_INFO} />
+          ) : (
+            <Chip label="No category" color={C_WARN} />
+          ))}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
           <Chip {...kyc} />
           <Chip {...st} />
@@ -3537,6 +3545,61 @@ function MerchantReviewCard({ m, reload }: { m: AdminMerchantDto; reload: () => 
           <DetailRow label="Reason" value={m.rejectedReason} />
         )}
       </div>
+      {/* What this merchant SELLS.
+
+          A merchant can set this in their own portal, but everyone onboarded
+          before the field existed has none — and an uncategorised merchant is
+          invisible to every marketplace category filter, appearing only under
+          "All". This lets Operations sort out the merchants already trading
+          without waiting for each of them to log in.
+
+          Blank is offered deliberately: it returns them to uncategorised
+          rather than forcing OTHER, which would be a claim about a business
+          that is not true. */}
+      {m.business && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            flexWrap: 'wrap',
+            padding: 10,
+            borderRadius: 8,
+            background: 'rgba(255,255,255,.03)',
+            border: `1px solid ${m.business.category ? BORDER : 'rgba(245,158,11,.3)'}`,
+          }}
+        >
+          <span style={{ fontSize: 11, fontWeight: 700, color: WHITE }}>Sells</span>
+          <select
+            className="dx-select"
+            value={m.business.category ?? ''}
+            disabled={busy === 'category'}
+            onChange={(e) => {
+              const next = e.target.value === '' ? null : (e.target.value as MerchantCategory);
+              void run('category', () => api.admin.setMerchantCategory(m.merchantId, next));
+            }}
+            style={{ minWidth: 190 }}
+          >
+            <option value="">— No category —</option>
+            {(Object.keys(MERCHANT_CATEGORY_LABEL) as MerchantCategory[]).map((c) => (
+              <option key={c} value={c}>
+                {MERCHANT_CATEGORY_LABEL[c]}
+              </option>
+            ))}
+          </select>
+          {!m.business.category && (
+            <span style={{ fontSize: 11, color: C_WARN, fontFamily: 'Inter, sans-serif' }}>
+              Only shows under “All” until this is set
+            </span>
+          )}
+          {busy === 'category' && (
+            <span style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              Saving…
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Business document review. A merchant submits several documents (CAC
           certificate, director's NIN, …); this panel shows the one awaiting
           review and re-renders with the next one after each decision. */}

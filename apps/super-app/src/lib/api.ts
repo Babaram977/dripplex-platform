@@ -1040,7 +1040,11 @@ export interface AdminMerchantDto {
   createdAt: string;
   business: {
     businessName: string;
+    /** Legal structure — not what they sell. See `category`. */
     businessType: string;
+    /** What they sell. null = uncategorised, so invisible to every
+     *  marketplace category filter until Ops or the merchant sets one. */
+    category: MerchantCategory | null;
     verificationStatus: 'PENDING' | 'VERIFIED' | 'REJECTED' | 'UNDER_REVIEW';
     city: string | null;
     state: string | null;
@@ -2895,6 +2899,10 @@ export const api = {
     suspendMerchant: (id: string, reason: string) =>
       dx<unknown>('POST', `/admin/merchant/${id}/suspend`, { reason }),
     reactivateMerchant: (id: string) => dx<unknown>('POST', `/admin/merchant/${id}/reactivate`),
+    /** Set what a merchant sells, on their behalf. null clears it back to
+     *  uncategorised rather than forcing OTHER. */
+    setMerchantCategory: (id: string, category: MerchantCategory | null) =>
+      dx<unknown>('PATCH', `/admin/merchant/${id}/category`, { category }),
 
     // Riders review desk. Pass a status to scope (e.g. 'PENDING'/'UNDER_REVIEW').
     listRiders: (status?: 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUSPENDED') =>
