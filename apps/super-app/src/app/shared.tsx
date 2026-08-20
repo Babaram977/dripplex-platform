@@ -95,6 +95,38 @@ export const GLOBAL_STYLES = `
   .flex-col.overflow-y-auto > *,
   .flex-col.overflow-auto > * { flex-shrink: 0; }
 
+  /*  1b. The welcome hero.
+
+        The orbit is authored at a fixed 320px, with a 134px satellite radius
+        and a 192px logo inside it. It sits in a flex-1 slot, and a flex item
+        will not shrink below its content — so on a short screen the slot is
+        smaller than 320px and the ring simply spills out of it, over the
+        "Your Life. One App." headline below. Measured: 47px of overlap at
+        360x640 and 17px at 390x700, with the top of the ring clipped off the
+        screen entirely. It only looks right on a tall viewport, which is why
+        it survived this long.
+
+        One scale factor keeps every part of the composition in proportion —
+        ring, satellites, logo and all. It is set on an ancestor, so the
+        orbit-cw / orbit-ccw / float-a-b-c animations inside are untouched;
+        a parent scale composes with a child's rotate rather than replacing
+        it. The slot reserves the SCALED size, which is the half that
+        actually stops the overlap. */
+  :root { --dx-hero-scale: 1; }
+  @media (max-height: 780px) { :root { --dx-hero-scale: .90; } }
+  @media (max-height: 720px) { :root { --dx-hero-scale: .82; } }
+  @media (max-height: 660px) { :root { --dx-hero-scale: .68; } }
+  @media (max-height: 600px) { :root { --dx-hero-scale: .56; } }
+  /* Narrow-and-short together is the worst case, so it is stated last and
+     wins over either rule on its own. */
+  @media (max-width: 345px) and (max-height: 720px) { :root { --dx-hero-scale: .64; } }
+  @media (max-width: 345px) and (max-height: 640px) { :root { --dx-hero-scale: .48; } }
+
+  .dx-hero-slot  { width: calc(320px * var(--dx-hero-scale));
+                   height: calc(320px * var(--dx-hero-scale));
+                   display: grid; place-items: center; }
+  .dx-hero-orbit { transform: scale(var(--dx-hero-scale)); }
+
   /*  2. The device mockup — bezel, notch, 390px width, simulated status bar
         — is a desktop preview of a phone. On an actual phone it IS the
         phone, and a fixed 390px overflows a 360px handset sideways while

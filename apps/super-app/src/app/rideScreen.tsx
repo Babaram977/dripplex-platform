@@ -28,7 +28,6 @@ import {
   reverseGeocode,
 } from '../lib/maps';
 import type { AddressPrediction } from '../lib/maps';
-import { Icon, type IconName } from './icons';
 import type {
   CustomerRideDto,
   RideDto,
@@ -138,11 +137,15 @@ const RIDE_TYPE_LABEL: Record<RideType, string> = {
   XL: 'XL',
   TRICYCLE: 'Tricycle',
 };
-const RIDE_TYPE_ICON: Record<RideType, IconName> = {
-  ECONOMY: 'ride',
-  COMFORT: 'rideComfort',
-  XL: 'rideXl',
-  TRICYCLE: 'tricycle',
+// Founder decision 2026-08-20: the ride tiers keep their colourful emoji.
+// The rest of the app moved to drawn icons, but on the fare chips the emoji
+// carry the tier apart at a glance better than four monochrome silhouettes at
+// 15px do — and the backend catalogue already ships one per tier.
+const RIDE_TYPE_EMOJI: Record<RideType, string> = {
+  ECONOMY: '🚗',
+  COMFORT: '🚙',
+  XL: '🚐',
+  TRICYCLE: '🛺',
 };
 
 // Shared money formatter — backend money is numeric; format for display.
@@ -1422,7 +1425,7 @@ export function FareEstimateScreen({
   const entry = catalog?.find((c) => c.type === rideType) ?? null;
   const typeName = entry?.displayName ?? RIDE_TYPE_LABEL[rideType];
   const typeDesc = entry?.description ?? '';
-  const typeIcon = RIDE_TYPE_ICON[rideType];
+  const typeEmoji = entry?.emoji ?? RIDE_TYPE_EMOJI[rideType];
   // GAP: backend ride catalog exposes no per-type "seats" field — omitted.
   const durationMin = estimate ? Math.max(1, Math.round(estimate.durationSeconds / 60)) : null;
   // Honest fallback: no fabricated flat price before the estimate resolves.
@@ -1500,8 +1503,7 @@ export function FareEstimateScreen({
                       fontFamily: IT,
                     }}
                   >
-                    <Icon name={RIDE_TYPE_ICON[option.type]} size={15} />
-                    {option.displayName}
+                    {option.emoji} {option.displayName}
                   </button>
                 );
               })}
@@ -1514,10 +1516,10 @@ export function FareEstimateScreen({
             style={{ background: 'rgba(43,172,82,.08)', border: '1.5px solid rgba(43,172,82,.3)' }}
           >
             <div
-              className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl"
+              className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl text-3xl"
               style={{ background: 'rgba(43,172,82,.12)' }}
             >
-              <Icon name={typeIcon} size={30} color={G3} />
+              {typeEmoji}
             </div>
             <div className="flex-1">
               <div className="mb-0.5 flex items-center gap-2">

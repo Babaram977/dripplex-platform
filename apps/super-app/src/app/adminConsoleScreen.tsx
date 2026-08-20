@@ -4651,6 +4651,17 @@ function PageCommissions() {
       setActionMsg('Enter the amount received, in naira.');
       return;
     }
+    // A payment can never exceed the debt, so say what the ceiling IS. The
+    // server refuses with "Payment amount exceeds outstanding commission
+    // balance", which is true but leaves the operator to work out the figure.
+    if (amount > selected.outstandingBalance) {
+      setActionMsg(
+        `That is more than the ${naira(selected.outstandingBalance)} outstanding. Record ` +
+          `${naira(selected.outstandingBalance)} to clear the balance` +
+          `${selected.blocked ? ' and unblock them' : ''}.`,
+      );
+      return;
+    }
     setBusy(true);
     setActionMsg(null);
     try {
@@ -5081,6 +5092,41 @@ function PageCommissions() {
               Money DrippleX has actually received from this partner, outside the app. Recording it
               pays the balance down; clearing enough of it unblocks them immediately.
             </p>
+            {/* The one figure that matters, and a button that types it.
+                Blocking is a latch: only a zero balance releases a blocked
+                partner, and a payment can never exceed what is owed. So there
+                is exactly one amount that unblocks somebody — and it used to
+                have to be read off the table and typed by hand, with an
+                overpayment simply refused. Reported live: ₦80,000 entered
+                against a ₦60,000 balance, rejected, and read as "no option to
+                make a merchant active". */}
+            {selected.outstandingBalance > 0 && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 10,
+                  marginBottom: 10,
+                  padding: '8px 10px',
+                  borderRadius: 8,
+                  background: 'rgba(255,255,255,.04)',
+                  border: `1px solid ${BORDER}`,
+                }}
+              >
+                <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.45 }}>
+                  {naira(selected.outstandingBalance)} outstanding
+                  {selected.blocked ? ' — this exact amount unblocks them' : ''}
+                </span>
+                <Btn
+                  label={`Pay off ${naira(selected.outstandingBalance)}`}
+                  small
+                  outline
+                  disabled={busy}
+                  onClick={() => setPayAmount(String(selected.outstandingBalance))}
+                />
+              </div>
+            )}
             <input
               className="dx-input"
               placeholder="Amount received (₦)"
