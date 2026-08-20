@@ -9,6 +9,61 @@ export type BusinessVerificationStatus = 'PENDING' | 'UNDER_REVIEW' | 'VERIFIED'
 export type BusinessType =
   'SOLE_PROPRIETORSHIP' | 'PARTNERSHIP' | 'LIMITED_LIABILITY' | 'CORPORATION' | 'OTHER';
 
+/**
+ * What a merchant SELLS. Distinct from BusinessType, which is how it is
+ * legally constituted — the two were conflated, and the marketplace filtered
+ * on the legal one because it was the only field that looked like a category.
+ *
+ * `null` on a merchant means uncategorised, which is a real state: everything
+ * onboarded before this existed has no category, and a guessed one would be
+ * worse than a blank. Uncategorised merchants still list under "All".
+ */
+export type MerchantCategory =
+  | 'SUPERMARKET'
+  | 'RESTAURANT'
+  | 'PHARMACY'
+  | 'ELECTRONICS'
+  | 'FASHION'
+  | 'BEAUTY'
+  | 'HARDWARE'
+  | 'HOTEL'
+  | 'FURNITURE'
+  | 'SERVICES'
+  | 'WHOLESALE'
+  | 'OTHER';
+
+export const MERCHANT_CATEGORIES = [
+  'SUPERMARKET',
+  'RESTAURANT',
+  'PHARMACY',
+  'ELECTRONICS',
+  'FASHION',
+  'BEAUTY',
+  'HARDWARE',
+  'HOTEL',
+  'FURNITURE',
+  'SERVICES',
+  'WHOLESALE',
+  'OTHER',
+] as const satisfies readonly MerchantCategory[];
+
+/** What a customer sees. One place, so the app and the merchant portal cannot
+ *  drift into calling the same category two different things. */
+export const MERCHANT_CATEGORY_LABEL: Record<MerchantCategory, string> = {
+  SUPERMARKET: 'Supermarket',
+  RESTAURANT: 'Restaurant',
+  PHARMACY: 'Pharmacy',
+  ELECTRONICS: 'Electronics',
+  FASHION: 'Fashion',
+  BEAUTY: 'Beauty',
+  HARDWARE: 'Hardware',
+  HOTEL: 'Hotel',
+  FURNITURE: 'Furniture & Home',
+  SERVICES: 'Services',
+  WHOLESALE: 'Wholesale',
+  OTHER: 'Other',
+};
+
 export type KycDocumentType =
   | 'NATIONAL_ID'
   | 'PASSPORT'
@@ -27,6 +82,7 @@ export interface BusinessDto {
   merchantId: string;
   businessName: string;
   businessType: BusinessType;
+  category: MerchantCategory | null;
   registrationNumber: string;
   taxNumber: string | null;
   description: string | null;
@@ -128,6 +184,7 @@ export type MerchantAuditAction =
 export interface CreateBusinessRequest {
   businessName: string;
   businessType: BusinessType;
+  category?: MerchantCategory;
   registrationNumber: string;
   taxNumber?: string;
   description?: string;
@@ -146,6 +203,7 @@ export interface CreateBusinessRequest {
 export interface UpdateBusinessRequest {
   businessName?: string;
   businessType?: BusinessType;
+  category?: MerchantCategory;
   registrationNumber?: string;
   taxNumber?: string;
   description?: string;
@@ -237,6 +295,8 @@ export interface MerchantSummaryDto {
   id: string;
   businessName: string;
   businessType: BusinessType;
+  /** What they sell. null = uncategorised (onboarded before categories existed). */
+  category: MerchantCategory | null;
   logoUrl: string | null;
   coverPhotoUrl: string | null;
   verificationStatus: BusinessVerificationStatus;
@@ -261,6 +321,9 @@ export interface MerchantDetailDto extends MerchantSummaryDto {
 export interface BrowseMerchantsQuery {
   q?: string;
   businessType?: BusinessType;
+  /** Filter by what they SELL. The chips in the marketplace mean this, not
+   *  businessType — which is a legal structure and was never a category. */
+  category?: MerchantCategory;
   minRating?: number;
   lat?: number;
   lng?: number;

@@ -204,10 +204,47 @@ export interface WithdrawalRequestDto {
 }
 
 // Marketplace
+/**
+ * What a merchant SELLS. `businessType` beside it is the LEGAL structure
+ * (SOLE_PROPRIETORSHIP, PARTNERSHIP) — the two were conflated, which is why
+ * the category chips used to run a name search and every merchant card drew
+ * the same default icon. null = uncategorised, a real state for anyone
+ * onboarded before the field existed.
+ */
+export type MerchantCategory =
+  | 'SUPERMARKET'
+  | 'RESTAURANT'
+  | 'PHARMACY'
+  | 'ELECTRONICS'
+  | 'FASHION'
+  | 'BEAUTY'
+  | 'HARDWARE'
+  | 'HOTEL'
+  | 'FURNITURE'
+  | 'SERVICES'
+  | 'WHOLESALE'
+  | 'OTHER';
+
+export const MERCHANT_CATEGORY_LABEL: Record<MerchantCategory, string> = {
+  SUPERMARKET: 'Supermarket',
+  RESTAURANT: 'Restaurant',
+  PHARMACY: 'Pharmacy',
+  ELECTRONICS: 'Electronics',
+  FASHION: 'Fashion',
+  BEAUTY: 'Beauty',
+  HARDWARE: 'Hardware',
+  HOTEL: 'Hotel',
+  FURNITURE: 'Furniture & Home',
+  SERVICES: 'Services',
+  WHOLESALE: 'Wholesale',
+  OTHER: 'Other',
+};
+
 export interface MerchantSummaryDto {
   id: string;
   businessName: string;
   businessType: string;
+  category: MerchantCategory | null;
   logoUrl: string | null;
   coverPhotoUrl: string | null;
   verificationStatus: string;
@@ -892,7 +929,10 @@ export interface MerchantSettlementDto {
 export interface MerchantBusinessDto {
   id: string;
   businessName: string;
+  /** Legal structure — NOT what they sell. See `category`. */
   businessType: string;
+  /** What they sell. Drives the marketplace category chips and the store icon. */
+  category: MerchantCategory | null;
   description: string | null;
   address: string | null;
   city: string | null;

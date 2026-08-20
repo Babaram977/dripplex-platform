@@ -147,6 +147,7 @@ export class MerchantsService {
       merchantId: merchantUserId,
       businessName: dto.businessName.trim(),
       businessType: dto.businessType,
+      ...(dto.category !== undefined ? { category: dto.category } : {}),
       registrationNumber,
       email,
       phone,
@@ -239,6 +240,7 @@ export class MerchantsService {
     const updated = await this.merchantsRepository.updateBusiness(business.id, {
       ...(dto.businessName !== undefined ? { businessName: dto.businessName.trim() } : {}),
       ...(dto.businessType !== undefined ? { businessType: dto.businessType } : {}),
+      ...(dto.category !== undefined ? { category: dto.category } : {}),
       ...(dto.registrationNumber !== undefined
         ? { registrationNumber: dto.registrationNumber.trim().toUpperCase() }
         : {}),

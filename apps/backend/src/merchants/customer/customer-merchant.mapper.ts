@@ -82,6 +82,7 @@ export function toMerchantSummaryDto(
     id: merchantProfileId,
     businessName: business.businessName,
     businessType: business.businessType,
+    category: business.category,
     logoUrl: business.logoUrl,
     coverPhotoUrl: business.coverPhotoUrl,
     verificationStatus: business.verificationStatus,

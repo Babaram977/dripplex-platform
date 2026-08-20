@@ -3,6 +3,7 @@ import { G0, G2, G3, NAVY_DEEP, NAVY_CARD, NAVY_SURFACE, BORDER, MUTED } from '.
 import { api } from '../lib/api';
 import { ImageWithFallback } from './components/figma/ImageWithFallback';
 import { Icon, type IconName } from './icons';
+import { MERCHANT_CATEGORY_LABEL, type MerchantCategory } from '../lib/api';
 import type { MerchantSummaryDto, ProductSummaryDto } from '../lib/api';
 
 // Money formatter — backend prices are numeric (e.g. 4800). Mirrors storeScreen's
@@ -30,20 +31,48 @@ export function monogram(businessName: string): string {
 // ─────────────────────────────────────────────────────────────────────────────
 // DATA
 // ─────────────────────────────────────────────────────────────────────────────
-const CAT_CHIPS: { label: string; icon: IconName }[] = [
-  { label: 'All', icon: 'all' },
-  { label: 'Supermarkets', icon: 'supermarket' },
-  { label: 'Restaurants', icon: 'restaurant' },
-  { label: 'Pharmacy', icon: 'pharmacy' },
-  { label: 'Electronics', icon: 'electronics' },
-  { label: 'Fashion', icon: 'fashion' },
-  { label: 'Beauty', icon: 'beauty' },
-  { label: 'Hardware', icon: 'hardware' },
-  { label: 'Hotels', icon: 'hotel' },
-  { label: 'Furniture', icon: 'home' },
-  { label: 'Services', icon: 'services' },
-  { label: 'Wholesale', icon: 'orders' },
+/**
+ * The chips carry the real `MerchantCategory` value now. They used to carry a
+ * LABEL that was fed to a free-text merchant-name search, so "Hotels" only
+ * matched a business with the word "Hotels" in its name — a hotel called
+ * "Tahir Guest Palace" never appeared under it. `category: null` is All.
+ */
+const CAT_CHIPS: { label: string; icon: IconName; category: MerchantCategory | null }[] = [
+  { label: 'All', icon: 'all', category: null },
+  { label: 'Supermarkets', icon: 'supermarket', category: 'SUPERMARKET' },
+  { label: 'Restaurants', icon: 'restaurant', category: 'RESTAURANT' },
+  { label: 'Pharmacy', icon: 'pharmacy', category: 'PHARMACY' },
+  { label: 'Electronics', icon: 'electronics', category: 'ELECTRONICS' },
+  { label: 'Fashion', icon: 'fashion', category: 'FASHION' },
+  { label: 'Beauty', icon: 'beauty', category: 'BEAUTY' },
+  { label: 'Hardware', icon: 'hardware', category: 'HARDWARE' },
+  { label: 'Hotels', icon: 'hotel', category: 'HOTEL' },
+  { label: 'Furniture', icon: 'home', category: 'FURNITURE' },
+  { label: 'Services', icon: 'services', category: 'SERVICES' },
+  { label: 'Wholesale', icon: 'orders', category: 'WHOLESALE' },
 ];
+
+/** Category -> icon. Keyed on `category`, which actually exists on a merchant;
+ *  the old map was keyed on `businessType` (a legal structure) so it never
+ *  matched and every card fell through to the same default glyph. */
+const CATEGORY_ICON: Record<MerchantCategory, IconName> = {
+  SUPERMARKET: 'supermarket',
+  RESTAURANT: 'restaurant',
+  PHARMACY: 'pharmacy',
+  ELECTRONICS: 'electronics',
+  FASHION: 'fashion',
+  BEAUTY: 'beauty',
+  HARDWARE: 'hardware',
+  HOTEL: 'hotel',
+  FURNITURE: 'home',
+  SERVICES: 'services',
+  WHOLESALE: 'orders',
+  OTHER: 'store',
+};
+
+function categoryIcon(category: MerchantCategory | null): IconName {
+  return category ? CATEGORY_ICON[category] : 'store';
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SHARED PRIMITIVES
@@ -359,16 +388,22 @@ function MpHeader({
 // ─────────────────────────────────────────────────────────────────────────────
 // CATEGORY CHIPS
 // ─────────────────────────────────────────────────────────────────────────────
-function CategoryChips({ active, onChange }: { active: string; onChange: (s: string) => void }) {
+function CategoryChips({
+  active,
+  onChange,
+}: {
+  active: MerchantCategory | null;
+  onChange: (c: MerchantCategory | null) => void;
+}) {
   return (
     <div className="mb-4 mt-3">
       <div className="flex gap-2 overflow-x-auto px-5" style={{ scrollbarWidth: 'none' }}>
         {CAT_CHIPS.map((c) => {
-          const on = active === c.label;
+          const on = active === c.category;
           return (
             <button
               key={c.label}
-              onClick={() => onChange(c.label)}
+              onClick={() => onChange(c.category)}
               className="flex h-9 flex-shrink-0 items-center gap-1.5 rounded-full px-3.5 transition-all active:scale-95"
               style={{
                 background: on ? `linear-gradient(135deg,${G0},${G2})` : 'rgba(255,255,255,.06)',
@@ -476,7 +511,7 @@ function FeaturedMerchants({
   active,
   onStore,
 }: {
-  active: string;
+  active: MerchantCategory | null;
   onStore?: (id: string) => void;
 }) {
   const [merchants, setMerchants] = useState<MerchantSummaryDto[]>([]);
@@ -487,10 +522,13 @@ function FeaturedMerchants({
     setLoading(true);
     setError('');
     try {
-      const q = active === 'All' ? undefined : active;
-      const res = q
-        ? await api.marketplace.searchMerchants(q, { limit: 20 })
-        : await api.marketplace.getMerchants({ limit: 20 });
+      // A category is a filter, not a search term. This used to send the chip
+      // LABEL to smart-search, which matched merchant NAMES — so "Hotels"
+      // returned only businesses with "Hotels" written in their name.
+      const res = await api.marketplace.getMerchants({
+        limit: 20,
+        ...(active ? { category: active } : {}),
+      });
       const r = res as { items?: MerchantSummaryDto[] };
       setMerchants(r.items ?? []);
     } catch (e: unknown) {
@@ -514,17 +552,6 @@ function FeaturedMerchants({
     'linear-gradient(135deg,#831843,#EC4899)',
     'linear-gradient(135deg,#064E3B,#10B981)',
   ];
-  const ICON_POOL: Record<string, IconName> = {
-    Restaurant: 'restaurant',
-    Supermarket: 'supermarket',
-    Pharmacy: 'pharmacy',
-    Fashion: 'fashion',
-    Electronics: 'electronics',
-    Beauty: 'beauty',
-    Hotel: 'hotel',
-    Hardware: 'hardware',
-    default: 'store',
-  };
 
   return (
     <div className="mb-5">
@@ -576,7 +603,8 @@ function FeaturedMerchants({
       ) : merchants.length === 0 ? (
         <div style={{ padding: '24px 20px', textAlign: 'center' }}>
           <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 13, color: MUTED }}>
-            No merchants found{active !== 'All' ? ` in "${active}"` : ''}.
+            No merchants found
+            {active ? ` in ${MERCHANT_CATEGORY_LABEL[active]}` : ''}.
           </p>
         </div>
       ) : (
@@ -584,7 +612,7 @@ function FeaturedMerchants({
           {merchants.map((m, idx) => {
             const isOpen = m.isOpenNow;
             const bg = BG_POOL[idx % BG_POOL.length];
-            const icon = ICON_POOL[m.businessType ?? ''] ?? ICON_POOL.default;
+            const icon = categoryIcon(m.category);
             const verified = m.verificationStatus === 'VERIFIED';
             const rating = m.rating?.average ?? 0;
             const dist = m.distanceKm != null ? `${m.distanceKm.toFixed(1)} km` : '';
@@ -704,7 +732,7 @@ function FeaturedMerchants({
                       className="mb-1.5 text-[10px]"
                       style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
                     >
-                      {m.businessType ?? 'Business'}
+                      {m.category ? MERCHANT_CATEGORY_LABEL[m.category] : 'Business'}
                     </p>
                     <div className="flex items-center gap-3">
                       {rating > 0 && (
@@ -1002,18 +1030,6 @@ function NearbyBusinesses({ onStore }: { onStore?: (merchantId: string) => void 
     load();
   }, [load]);
 
-  const ICON_POOL: Record<string, IconName> = {
-    Restaurant: 'restaurant',
-    Supermarket: 'supermarket',
-    Pharmacy: 'pharmacy',
-    Fashion: 'fashion',
-    Electronics: 'electronics',
-    Beauty: 'beauty',
-    Hotel: 'hotel',
-    Hardware: 'hardware',
-    default: 'store',
-  };
-
   return (
     <div className="mb-5">
       <SRow title="Nearby Businesses" sub="Based on your location" onAll={() => {}} />
@@ -1076,7 +1092,7 @@ function NearbyBusinesses({ onStore }: { onStore?: (merchantId: string) => void 
               const isOpen = m.isOpenNow !== false;
               const rating = m.rating?.average ?? 0;
               const dist = m.distanceKm != null ? `${m.distanceKm.toFixed(1)} km` : '—';
-              const icon = ICON_POOL[m.businessType ?? ''] ?? ICON_POOL.default;
+              const icon = categoryIcon(m.category);
               return (
                 <div
                   key={m.id}
@@ -1561,7 +1577,7 @@ export function MarketplaceScreen({
   /** App's single footer-tab router. */
   onTab?: (tab: NavTab) => void;
 }) {
-  const [activecat, setActivecat] = useState('All');
+  const [activecat, setActivecat] = useState<MerchantCategory | null>(null);
   const [showAI, setShowAI] = useState(false);
   // Real cart badge — reflects the customer's actual server-side cart, never a
   // hardcoded number. 0 when the cart is empty or the fetch fails.
