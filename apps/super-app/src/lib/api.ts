@@ -27,6 +27,23 @@ async function dx<T>(
     });
   }
 
+  /**
+   * Endpoints where a 401 means "those credentials are wrong", NOT "your
+   * session ended".
+   *
+   * Signing in is how you get a session, so it cannot have lost one. Treating
+   * a failed sign-in as an expiry did three harmful things at once: it told
+   * the user "Session expired — please log in again" when they HAD just
+   * logged in, which is a loop with no exit and no hint that the password was
+   * simply wrong; it fired a token refresh using whatever stale token was
+   * lying around; and it called auth.clear(), so a bad sign-in on one account
+   * signed out a good session on another.
+   *
+   * Drivers and merchants coming back to finish their registration hit this
+   * and could not get past it.
+   */
+  const isCredentialCheck = path.startsWith('/auth/login') || path.startsWith('/auth/register');
+
   const token = auth.getAccessToken();
   const res = await fetch(url.toString(), {
     method,
@@ -37,12 +54,13 @@ async function dx<T>(
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
-  // 401 → try silent refresh once
-  if (res.status === 401 && !retried) {
+  // 401 → try silent refresh once. Never on a sign-in: there is no session to
+  // refresh, and the stale token used to attempt it belongs to somebody else.
+  if (res.status === 401 && !retried && !isCredentialCheck) {
     const refreshed = await tryRefresh();
     if (refreshed) return await dx(method, path, body, params, true);
   }
-  if (res.status === 401) {
+  if (res.status === 401 && !isCredentialCheck) {
     auth.clear();
     window.dispatchEvent(new Event('dx:session-expired'));
     throw new ApiError(401, 'Session expired — please log in again.', 'SESSION_EXPIRED');
