@@ -8,6 +8,8 @@ import {
   UTILITY_PROVIDER_TIMEOUT_MS,
 } from '../utilities.constants';
 
+import { UtilityProviderRejectedError } from './utility-provider.port';
+
 import type {
   UtilityCablePlan,
   UtilityCustomerLookup,
@@ -363,7 +365,8 @@ export class PeyflexUtilityProvider implements UtilityProviderPort {
   ): Promise<T> {
     const token = this.config.peyflexApiToken;
     if (!token) {
-      throw new ValidationDomainException('Peyflex is not configured');
+      // Nothing was sent, so nothing can have been delivered.
+      throw new UtilityProviderRejectedError('Peyflex is not configured');
     }
 
     const baseUrl = this.config.peyflexBaseUrl.replace(/\/$/, '');
@@ -394,9 +397,16 @@ export class PeyflexUtilityProvider implements UtilityProviderPort {
       }
 
       if (!response.ok && !(options.acceptErrorStatus && parsed !== null)) {
-        throw new ValidationDomainException(
-          `Peyflex request failed (${String(response.status)}): ${text.slice(0, 200)}`,
-        );
+        const detail = `Peyflex request failed (${String(response.status)}): ${text.slice(0, 200)}`;
+        // 401/403 mean the token is wrong or revoked; 4xx generally means the
+        // request was refused at the door. Either way Peyflex did not process
+        // it, the float did not move, and the customer must get their money
+        // back rather than be parked on "Still confirming" forever. A 5xx or a
+        // timeout stays ambiguous and is handled by the caller as UNKNOWN.
+        if (response.status >= 400 && response.status < 500) {
+          throw new UtilityProviderRejectedError(detail);
+        }
+        throw new ValidationDomainException(detail);
       }
       if (parsed === null) {
         throw new ValidationDomainException('Peyflex returned an unreadable response');

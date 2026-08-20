@@ -25,6 +25,7 @@ import { WalletService } from '../wallet/wallet.service';
 
 import { roundToKobo } from './providers/peyflex.provider';
 import {
+  isProviderRejection,
   UTILITY_PROVIDER,
   type UtilityCablePlan,
   type UtilityCustomerLookup,
@@ -370,12 +371,30 @@ export class UtilitiesService {
     try {
       result = await this.callProvider(purchase.serviceType, request);
     } catch (error) {
-      // An adapter that threw rather than answering is the UNKNOWN case: the
-      // float may or may not have been spent, so nothing is reversed.
-      this.logger.error(
-        `Utility purchase ${purchase.id} threw: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      result = { outcome: 'UNKNOWN', providerMessage: 'The provider did not respond' };
+      const detail = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Utility purchase ${purchase.id} threw: ${detail}`);
+
+      if (isProviderRejection(error)) {
+        // Refused at the door — a bad or missing token, or a malformed
+        // request. The provider never processed it, so the float did not move
+        // and nothing was delivered. This is a declared failure, not an
+        // ambiguous one, and the customer gets their money back.
+        //
+        // Treating these as UNKNOWN is what left a card customer on "Still
+        // confirming" while DrippleX kept the money and the Peyflex dashboard
+        // showed no transaction at all — because there had not been one.
+        this.logger.error(
+          `Utility purchase ${purchase.id} was REJECTED by the provider (not executed) — check PEYFLEX_API_TOKEN. Reversing.`,
+        );
+        result = {
+          outcome: 'FAILED',
+          providerMessage: 'We could not reach our provider for that purchase',
+        };
+      } else {
+        // A timeout or a provider-side error. It may still have been
+        // delivered, so nothing is reversed — see the class comment.
+        result = { outcome: 'UNKNOWN', providerMessage: 'The provider did not respond' };
+      }
     }
 
     if (result.outcome === 'SUCCESS') {
