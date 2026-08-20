@@ -7,7 +7,10 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { AddressController } from './address.controller';
 import { AddressService } from './address.service';
 import { AdminAddressesController } from './admin-addresses.controller';
+import { GEOCODER, type Geocoder } from './geocoding/geocoder';
+import { GoogleGeocoder } from './geocoding/google-geocoder';
 import { GoogleReverseGeocoder } from './geocoding/google-reverse-geocoder';
+import { NotConfiguredGeocoder } from './geocoding/not-configured-geocoder';
 import { NotConfiguredReverseGeocoder } from './geocoding/not-configured-reverse-geocoder';
 import { REVERSE_GEOCODER, type ReverseGeocoder } from './geocoding/reverse-geocoder';
 import { ADDRESS_REPOSITORY } from './repositories/address.repository';
@@ -35,7 +38,14 @@ import { StubDeliveryZoneService } from './zones/stub-delivery-zone.service';
       inject: [AppConfigService, GoogleReverseGeocoder],
     },
     GoogleReverseGeocoder,
+    {
+      provide: GEOCODER,
+      useFactory: (config: AppConfigService, google: GoogleGeocoder): Geocoder =>
+        config.googleMapsConfigured ? google : new NotConfiguredGeocoder(),
+      inject: [AppConfigService, GoogleGeocoder],
+    },
+    GoogleGeocoder,
   ],
-  exports: [AddressService, ADDRESS_REPOSITORY, DELIVERY_ZONE_SERVICE, REVERSE_GEOCODER],
+  exports: [AddressService, ADDRESS_REPOSITORY, DELIVERY_ZONE_SERVICE, REVERSE_GEOCODER, GEOCODER],
 })
 export class AddressesModule {}

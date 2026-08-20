@@ -269,11 +269,15 @@ describe('DeliveryService', () => {
   // service resolves in one batched lookup.
   const userFindMany = jest.fn();
   const merchantProfileFindUnique = jest.fn();
+  const businessUpdate = jest.fn().mockResolvedValue(undefined);
   const prisma = {
-    business: { findUnique: businessFindUnique },
+    business: { findUnique: businessFindUnique, update: businessUpdate },
     user: { findUnique: userFindUnique, findMany: userFindMany },
     merchantProfile: { findUnique: merchantProfileFindUnique },
   } as unknown as PrismaService;
+
+  // A merchant onboarded with only a free-text address is located from it.
+  const geocoder = { geocode: jest.fn() };
 
   // Riders may not go online while blocked over their credit limit; these
   // specs exercise everything else, so the account reads clear by default.
@@ -291,6 +295,8 @@ describe('DeliveryService', () => {
     auditService,
     prisma,
     commissionAccounts,
+    undefined,
+    geocoder,
   );
 
   beforeEach(() => {
@@ -487,17 +493,16 @@ describe('DeliveryService', () => {
     );
   });
 
-  it('uses default pickup coordinates when the merchant business is missing', async () => {
+  it('refuses to dispatch when the merchant business is missing', async () => {
+    // This used to fall back to a hardcoded city default. A pickup nobody
+    // verified misprices the fee, misdirects the rider and misreports the ETA,
+    // and does all three silently — so dispatch now refuses instead.
     businessFindUnique.mockResolvedValue(null);
 
-    await service.createDeliveryJob(orderId);
-
-    expect(deliveryRepository.createJob).toHaveBeenCalledWith(
-      expect.objectContaining({
-        pickupLatitude: 6.5244,
-        pickupLongitude: 3.3792,
-      }),
+    await expect(service.createDeliveryJob(orderId)).rejects.toBeInstanceOf(
+      ValidationDomainException,
     );
+    expect(deliveryRepository.createJob).not.toHaveBeenCalled();
   });
 
   it('passes an existing order delivery fee as the merchant override estimate', async () => {
@@ -1236,15 +1241,26 @@ describe('DeliveryService', () => {
     expect(deliveryRepository.assignRider).not.toHaveBeenCalled();
   });
 
-  it('ignores a 0/0 business location instead of quoting a cross-country delivery', async () => {
+  it('geocodes the registered address when the business has no coordinates', async () => {
     // Minimal merchant onboarding writes 0/0 until the merchant sets an
-    // address. Treated as real it put pickup in the Gulf of Guinea and quoted
-    // 1,634 km / 3,271 min for a local drop.
+    // address. Treated as real it put pickup in the Gulf of Guinea; treated as
+    // a city default it put a Kano restaurant in Lagos, 835km away. Neither is
+    // a location — the registered address is, so it is resolved and stored.
     ordersRepository.findById.mockResolvedValue(makeOrder());
     deliveryRepository.findJobByOrderId.mockResolvedValue(null);
     addressRepository.findByIdForCustomer.mockResolvedValue(makeAddress());
-    (prisma.business.findUnique as jest.Mock).mockResolvedValue({ latitude: 0, longitude: 0 });
+    (prisma.business.findUnique as jest.Mock).mockResolvedValue({
+      id: 'business-1',
+      latitude: 0,
+      longitude: 0,
+      address: '840 tudun wada Birgade kano',
+    });
     (prisma.merchantProfile.findUnique as jest.Mock).mockResolvedValue({ userId: merchantId });
+    geocoder.geocode.mockResolvedValue({
+      latitude: 11.9866717,
+      longitude: 8.5896134,
+      formattedAddress: 'Tudun Wada, Kano, Nigeria',
+    });
     deliveryFeeService.estimate.mockReturnValue({
       fee: 1400,
       distanceMeters: 9200,
@@ -1255,12 +1271,36 @@ describe('DeliveryService', () => {
 
     await service.createDeliveryJob(orderId);
 
-    // Falls back to the city default, so the quoted distance stays local.
-    const [distanceArg] = deliveryFeeService.estimate.mock.calls[0] ?? [];
-    expect(distanceArg).toBeLessThan(100_000);
+    expect(geocoder.geocode).toHaveBeenCalledWith('840 tudun wada Birgade kano');
     expect(deliveryRepository.createJob).toHaveBeenCalledWith(
-      expect.objectContaining({ pickupLatitude: 6.5244, pickupLongitude: 3.3792 }),
+      expect.objectContaining({ pickupLatitude: 11.9866717, pickupLongitude: 8.5896134 }),
     );
+    // Stored, so the merchant is located once rather than on every order.
+    expect(prisma.business.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'business-1' },
+        data: { latitude: 11.9866717, longitude: 8.5896134 },
+      }),
+    );
+  });
+
+  it('refuses to dispatch when the registered address cannot be geocoded', async () => {
+    ordersRepository.findById.mockResolvedValue(makeOrder());
+    deliveryRepository.findJobByOrderId.mockResolvedValue(null);
+    addressRepository.findByIdForCustomer.mockResolvedValue(makeAddress());
+    (prisma.business.findUnique as jest.Mock).mockResolvedValue({
+      id: 'business-1',
+      latitude: 0,
+      longitude: 0,
+      address: 'somewhere nobody can find',
+    });
+    (prisma.merchantProfile.findUnique as jest.Mock).mockResolvedValue({ userId: merchantId });
+    geocoder.geocode.mockRejectedValue(new Error('ZERO_RESULTS'));
+
+    await expect(service.createDeliveryJob(orderId)).rejects.toBeInstanceOf(
+      ValidationDomainException,
+    );
+    expect(deliveryRepository.createJob).not.toHaveBeenCalled();
   });
 
   describe('re-dispatch sweep (DPX-RIDER-004)', () => {
