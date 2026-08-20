@@ -80,7 +80,43 @@ register -> OTP (out of band) -> activate -> login -> everything else
 Option 3 is the most faithful to "prove the platform as a system": real hardware where hardware
 matters, independent server-side confirmation that each event actually landed.
 
-## 5. Not claimed
+## 5. Every transition in the protocol has a live route
+
+Probed 2026-08-20 without credentials, which is enough to tell the two cases apart: `401` means
+the route is registered and gated, `404 Cannot <METHOD> <path>` would mean it does not exist.
+**Zero missing routes** — the five-persona test cannot fail on a missing endpoint.
+
+| Persona    | Transitions checked                                                                                                           | Result      |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| Customer   | register · verify email/phone · login · merchants · product · cart/items · checkout · order · tracking · verify               | all present |
+| Merchant   | register · login · orders · accept · ready · reject                                                                           | all present |
+| Rider      | register · login · profile · availability · jobs · accept · pickup · deliver                                                  | all present |
+| Driver     | register · login · kyc · vehicles · activation-eligibility · availability · offers · offer accept · start · arrive · complete | all present |
+| Operations | login · dashboard counters · rides · driver record · approve · reject                                                         | all present |
+
+## 6. Harness for the device test
+
+`scripts/ops/verify-flow.sh` is the server-side half. After each device action, it reads what the
+backend actually holds, so a screen reading "Completed" is never taken as evidence the operation
+happened.
+
+```
+./scripts/ops/verify-flow.sh login customer ada@example.com 'password'   # -> export DX_TOKEN=…
+DX_TOKEN=… ./scripts/ops/verify-flow.sh customer      # identity, cart, orders, wallet
+DX_TOKEN=… ./scripts/ops/verify-flow.sh order <id>    # order, tracking, delivery, payment
+DX_TOKEN=… ./scripts/ops/verify-flow.sh merchant      # incoming orders
+DX_TOKEN=… ./scripts/ops/verify-flow.sh rider         # profile, availability, jobs, wallet
+DX_TOKEN=… ./scripts/ops/verify-flow.sh driver        # kyc, vehicles, eligibility, offers, earnings
+DX_TOKEN=… ./scripts/ops/verify-flow.sh ops           # counters, activity feed, rides
+DX_TOKEN=<ops> ./scripts/ops/verify-flow.sh driver-record <driverId>
+```
+
+It only reads. `login` is the single call that writes anything, and only a session, exactly as the
+app does. It cannot approve, activate or advance a state — driver approval goes through the real
+Ops Console and the script is then re-run to confirm the state actually moved. Nothing in it
+bypasses activation or edits a row to let a test proceed.
+
+## 7. Not claimed
 
 - No flow past registration has been executed. Nothing below the OTP wall is marked PASS.
 - Real-hardware behaviour (cold launch, push, camera, geolocation) is untested — no device here.
