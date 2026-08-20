@@ -4,6 +4,8 @@ import { api, ApiError } from '../lib/api';
 import { gatewayCallbackUrl, rememberGatewayReturn } from '../lib/gatewayReturn';
 import { playNotificationSound } from '../lib/sound';
 
+import { Icon, type IconName } from './icons';
+
 import type {
   CardProviderOptionDto,
   UtilityCablePlanDto,
@@ -47,11 +49,11 @@ const C_WARN = '#F59E0B';
 const PP = "'Poppins',sans-serif";
 const IT = "'Inter',sans-serif";
 
-const SERVICES: { type: UtilityServiceType; label: string; icon: string; blurb: string }[] = [
-  { type: 'AIRTIME', label: 'Airtime', icon: '📱', blurb: 'Top up any network' },
-  { type: 'DATA', label: 'Data', icon: '🌐', blurb: 'Buy a data bundle' },
-  { type: 'ELECTRICITY', label: 'Electricity', icon: '💡', blurb: 'Pay for power' },
-  { type: 'CABLE_TV', label: 'Cable TV', icon: '📺', blurb: 'Renew a subscription' },
+const SERVICES: { type: UtilityServiceType; label: string; icon: IconName; blurb: string }[] = [
+  { type: 'AIRTIME', label: 'Airtime', icon: 'airtime', blurb: 'Top up any network' },
+  { type: 'DATA', label: 'Data', icon: 'data', blurb: 'Buy a data bundle' },
+  { type: 'ELECTRICITY', label: 'Electricity', icon: 'electricity', blurb: 'Pay for power' },
+  { type: 'CABLE_TV', label: 'Cable TV', icon: 'cableTv', blurb: 'Renew a subscription' },
 ];
 
 const naira = (amount: number): string => `₦${amount.toLocaleString('en-NG')}`;
@@ -457,9 +459,7 @@ export function UtilitiesHomeScreen({
               opacity: loading || unavailable ? 0.45 : 1,
             }}
           >
-            <span style={{ fontSize: 26 }} aria-hidden>
-              {service.icon}
-            </span>
+            <Icon name={service.icon} size={26} color={G3} />
             <span style={{ fontFamily: PP, fontSize: 15, fontWeight: 600, color: WHITE }}>
               {service.label}
             </span>
