@@ -616,6 +616,17 @@ function AppShell() {
    */
   const historyRef = useRef<Screen[]>([]);
 
+  /**
+   * Where the splash screen hands off.
+   *
+   * Opening the app cold shows Welcome ("Get Started" / "Sign In"). Signing out
+   * runs the same splash — the founder asked that signing out take you all the
+   * way back out of the app rather than leaving you standing inside it — but
+   * lands on the sign-in form, because somebody who just signed out already has
+   * an account and does not need to be pitched "Get Started".
+   */
+  const afterSplashRef = useRef<Screen>('welcome');
+
   const navigate = (to: Screen) => {
     setFading(true);
     setTimeout(() => {
@@ -746,7 +757,9 @@ function AppShell() {
   );
 
   const screens: Record<Screen, React.ReactNode> = {
-    splash: <SplashScreen onDone={() => go('welcome')} />,
+    // goAfterAuthChange, not go: splash is the root, so it must not sit in the
+    // history where Back can walk into it and be bounced straight out again.
+    splash: <SplashScreen onDone={() => goAfterAuthChange(afterSplashRef.current)} />,
     welcome: (
       <WelcomeScreen
         onGetStarted={() => go('register')}
@@ -855,7 +868,10 @@ function AppShell() {
     kyc: <IdentityVerificationScreen onBack={() => go('account')} />,
     account: (
       <AccountManagementScreen
-        onSignOut={() => goAfterAuthChange('welcome')}
+        onSignOut={() => {
+          afterSplashRef.current = 'signin';
+          goAfterAuthChange('splash');
+        }}
         onBack={() => goBack('home')}
         onKYC={() => go('kyc')}
         onSecurity={() => go('security')}
@@ -1387,7 +1403,7 @@ function AppShell() {
         }}
         onSettings={() => go('drvsettings')}
         onSignOut={() => {
-          void endSession(() => api.auth.logout()).then(() => goAfterAuthChange('drvlogin'));
+          void endSession(() => api.auth.logout()).finally(() => goAfterAuthChange('drvlogin'));
         }}
         onSignIn={() => go('drvlogin')}
       />
@@ -1433,6 +1449,15 @@ function AppShell() {
           go('drvtripdone');
         }}
         onBack={() => go('drvverify')}
+        onMessagePassenger={(id, passengerName) => {
+          setChat({
+            context: 'ride',
+            contextId: id,
+            title: passengerName ?? 'Your passenger',
+            back: 'drvtripactive',
+          });
+          go('chat');
+        }}
       />
     ),
     drvtripdone: <DriverTripCompletedScreen ride={activeDriverRide} onDone={() => go('drvdash')} />,

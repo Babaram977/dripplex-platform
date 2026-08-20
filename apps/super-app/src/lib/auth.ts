@@ -97,12 +97,25 @@ export const auth = {
  *
  * `logout` is passed in rather than imported to keep this module free of a
  * dependency on the API client (which imports auth).
+ *
+ * The revoke is raced against a timeout. Callers navigate in the `.then` of
+ * this promise, so a request that never settles — a dropped connection, a
+ * gateway holding the socket open — left the person sitting on the Account
+ * screen with nothing happening, which is exactly what "Sign Out does nothing"
+ * looks like. Four seconds, then the device is cleared regardless.
  */
+const REVOKE_TIMEOUT_MS = 4000;
+
 export async function endSession(logout?: () => Promise<unknown>): Promise<void> {
   try {
-    await logout?.();
-  } catch {
-    // Best effort: the local session is cleared either way.
+    if (logout) {
+      await Promise.race([
+        logout().catch(() => undefined),
+        new Promise((resolve) => setTimeout(resolve, REVOKE_TIMEOUT_MS)),
+      ]);
+    }
+  } finally {
+    // Best effort server-side: the local session is cleared either way.
+    auth.clear();
   }
-  auth.clear();
 }

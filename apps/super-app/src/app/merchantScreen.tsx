@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { api, uploadFile } from '../lib/api';
-import { auth } from '../lib/auth';
+import { auth, endSession } from '../lib/auth';
 import { addressPredictions, geocodeAddress, getCurrentPosition } from '../lib/maps';
 import { ImageWithFallback } from './components/figma/ImageWithFallback';
 import { playNotificationSound } from '../lib/sound';
@@ -4697,10 +4697,14 @@ export function MerchantPortalScreen({
 
   const handleLogout = () => {
     if (badgePollRef.current) clearInterval(badgePollRef.current);
-    auth.clear();
-    setIsLoggedIn(false);
-    setBusiness(null);
-    setWallet(null);
+    // This only ever cleared localStorage, so the merchant's access token
+    // stayed valid on the server after they had signed out. endSession revokes
+    // it, and clears the device whether or not the revoke gets through.
+    void endSession(() => api.auth.logout()).finally(() => {
+      setIsLoggedIn(false);
+      setBusiness(null);
+      setWallet(null);
+    });
   };
 
   if (!isLoggedIn)

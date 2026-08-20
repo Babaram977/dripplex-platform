@@ -8,6 +8,24 @@ import type { MerchantSummaryDto, ProductSummaryDto } from '../lib/api';
 // `₦${n.toLocaleString()}` convention. Do not invent a different format.
 const naira = (n: number) => `₦${n.toLocaleString()}`;
 
+/**
+ * Up to two initials for a business without a cover photo.
+ *
+ * Words like "Ltd" or "&" carry no identity, so they never win a slot — the
+ * monogram for "Ghasan Leather Shop" is GL, and for "Mani & Sons Ltd" it is MS.
+ */
+const MONOGRAM_SKIP = new Set(['ltd', 'limited', 'nig', 'nigeria', 'and', 'the', 'co', 'inc']);
+
+export function monogram(businessName: string): string {
+  const words = businessName
+    .split(/[\s\-_/&]+/)
+    .map((w) => w.replace(/[^\p{L}\p{N}]/gu, ''))
+    .filter((w) => w.length > 0 && !MONOGRAM_SKIP.has(w.toLowerCase()));
+  if (words.length === 0) return businessName.trim().charAt(0).toUpperCase() || '•';
+  if (words.length === 1) return words[0]!.slice(0, 2).toUpperCase();
+  return (words[0]!.charAt(0) + words[1]!.charAt(0)).toUpperCase();
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // DATA
 // ─────────────────────────────────────────────────────────────────────────────
@@ -583,21 +601,58 @@ function FeaturedMerchants({
                   className="relative flex h-[88px] items-center justify-center"
                   style={{ background: m.coverPhotoUrl ? undefined : bg }}
                 >
-                  <ImageWithFallback
-                    src={m.coverPhotoUrl ?? undefined}
-                    alt={m.businessName}
-                    className="absolute inset-0 h-full w-full object-cover"
-                    fallbackEmoji={emoji}
-                  />
+                  {m.coverPhotoUrl ? (
+                    <ImageWithFallback
+                      src={m.coverPhotoUrl}
+                      alt={m.businessName}
+                      className="absolute inset-0 h-full w-full object-cover"
+                      fallbackEmoji={emoji}
+                      loading="lazy"
+                    />
+                  ) : (
+                    /* A monogram, not a giant emoji. Emoji are bitmap glyphs —
+                       they blur on high-DPI screens, and they look like a
+                       different app on every OS. Initials in Poppins over the
+                       category gradient stay vector-sharp at any density, and
+                       they identify the merchant rather than their sector. */
+                    <div
+                      className="absolute inset-0 flex items-center justify-center overflow-hidden"
+                      aria-hidden="true"
+                    >
+                      <span
+                        style={{
+                          fontFamily: "'Poppins',sans-serif",
+                          fontSize: 30,
+                          fontWeight: 700,
+                          letterSpacing: '0.06em',
+                          lineHeight: 1,
+                          color: 'rgba(255,255,255,.92)',
+                          textShadow: '0 2px 10px rgba(0,0,0,.28)',
+                        }}
+                      >
+                        {monogram(m.businessName)}
+                      </span>
+                      <span
+                        className="absolute"
+                        style={{ right: 10, bottom: 8, fontSize: 15, opacity: 0.55 }}
+                      >
+                        {emoji}
+                      </span>
+                    </div>
+                  )}
                   <div className="absolute left-3 top-3">
                     {verified && (
                       <span
                         className="rounded-lg px-2 py-1 text-[9px] font-bold"
                         style={{
-                          background: 'rgba(71,207,114,.15)',
+                          // A dark scrim, not a green tint. The tint sat on
+                          // whichever gradient the card drew, so green-on-red
+                          // was barely readable; this reads the same on all
+                          // eight banner colours and on a photo.
+                          background: 'rgba(6,14,28,.55)',
                           color: G3,
-                          border: `1px solid rgba(71,207,114,.25)`,
-                          backdropFilter: 'blur(4px)',
+                          border: `1px solid rgba(71,207,114,.35)`,
+                          backdropFilter: 'blur(6px)',
                           fontFamily: "'Inter',sans-serif",
                         }}
                       >

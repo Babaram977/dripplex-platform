@@ -2189,7 +2189,7 @@ export function AccountManagementScreen({
       >
         <button
           onClick={() => {
-            void endSession(() => api.auth.logout()).then(() => onSignOut?.());
+            void endSession(() => api.auth.logout()).finally(() => onSignOut?.());
           }}
           className="flex w-full items-center gap-3 px-4 py-3 text-left transition-all active:scale-[.98]"
         >

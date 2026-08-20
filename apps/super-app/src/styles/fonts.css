@@ -40,9 +40,18 @@ svg {
  * card banner. Sizing it against the container makes it look deliberate at
  * both ends. `inline-size` (not `size`) so boxes with auto height are
  * unaffected; the fixed size stays as the fallback where cqw is unsupported.
+ *
+ * The cap matters as much as the ratio. `cqw` only knows the box's WIDTH, so a
+ * wide, short slot — the 318x88 merchant card banner — resolved 55cqw to a
+ * 175px glyph in an 88px box. It started above the banner and ran down over
+ * the merchant's name and the Visit Store button: the "cluster of images" on
+ * the marketplace was one enormous 🏪 per card. min() bounds it to something
+ * that fits a banner, and `overflow: hidden` guarantees no glyph can ever
+ * paint outside its own slot again whatever the box turns out to be.
  */
 .dx-img-fallback {
   container-type: inline-size;
+  overflow: hidden;
 }
 
 .dx-img-fallback > span {
@@ -51,6 +60,6 @@ svg {
 
 @supports (font-size: 1cqw) {
   .dx-img-fallback > span {
-    font-size: 55cqw;
+    font-size: min(55cqw, 3.5rem);
   }
 }

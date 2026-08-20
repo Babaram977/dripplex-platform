@@ -3578,44 +3578,67 @@ export function DriverTripInProgressScreen({
   onComplete,
   onBack,
   rideId,
+  onMessagePassenger,
 }: {
   onComplete: (ride: RideDto | null) => void;
   onBack: () => void;
   rideId?: string;
+  onMessagePassenger?: (rideId: string, passengerName: string | null) => void;
 }) {
-  const [progress, setProgress] = useState(0.2);
-  const [elapsed, setElapsed] = useState(5);
+  // The live trip, so this screen stops narrating a fictional one. Everything
+  // below — passenger, destination, fare, distance — used to be hard-coded.
+  const [ride, setRide] = useState<DriverRideDto | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const [busy, setBusy] = useState(false);
   const completedRef = useRef(false);
+
+  useEffect(() => {
+    api.driverRides
+      .getActive()
+      .then(setRide)
+      .catch(() => {
+        /* Show the trip unnamed rather than showing somebody else's. */
+      });
+  }, [rideId]);
+
+  // A clock, not a progress simulation. The bar used to fill itself and then
+  // CALL /complete on its own — every real trip ended after nineteen seconds,
+  // whether or not the driver had arrived. Only the driver ends a trip now.
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
 
   const completeTrip = async () => {
     if (completedRef.current) return;
     completedRef.current = true;
-    let ride: RideDto | null = null;
+    setBusy(true);
+    let completed: RideDto | null = null;
     try {
-      if (rideId) ride = await api.driverRides.complete(rideId);
+      const id = rideId ?? ride?.id;
+      if (id) completed = await api.driverRides.complete(id);
     } catch {
       /* best-effort — still advance to the summary */
     }
-    onComplete(ride);
+    onComplete(completed);
   };
 
-  useEffect(() => {
-    const t = setInterval(() => {
-      setProgress((p) => {
-        const n = Math.min(p + 0.05, 1);
-        if (n >= 1) {
-          clearInterval(t);
-          setTimeout(completeTrip, 600);
-        }
-        return n;
-      });
-      setElapsed((e) => e + 1);
-    }, 1200);
-    return () => clearInterval(t);
-  }, []);
+  const startedAt = ride?.startedAt ? new Date(ride.startedAt).getTime() : null;
+  const elapsed = startedAt ? Math.max(0, Math.floor((now - startedAt) / 60000)) : 0;
 
-  const remaining = Math.max(0, Math.round(22 * (1 - progress)));
-  const distLeft = (14 * (1 - progress)).toFixed(1);
+  // Booked estimates from the fare quote. Distance actually driven needs live
+  // telemetry the backend does not expose yet, so these are labelled as the
+  // trip's booked figures rather than dressed up as a countdown.
+  const estMinutes = ride ? Math.round(ride.estimatedDurationSeconds / 60) : null;
+  const estKm = ride ? (ride.estimatedDistanceMeters / 1000).toFixed(1) : null;
+  const fare = ride ? `₦${ride.totalFare.toLocaleString()}` : '—';
+  const passengerName = ride?.customerName ?? null;
+  const destination = ride?.dropoffAddress ?? 'Destination not shared';
+  const initial = passengerName?.trim().charAt(0).toUpperCase() || '👤';
+
+  // Elapsed against the booked duration — a real ratio, capped so a slow trip
+  // shows a full bar instead of overflowing it.
+  const progress = estMinutes && estMinutes > 0 ? Math.min(elapsed / estMinutes, 1) : 0;
 
   return (
     <div
@@ -3665,9 +3688,9 @@ export function DriverTripInProgressScreen({
         {/* Stats */}
         <div className="flex gap-2">
           {[
-            { v: `${remaining}m`, l: 'Left', color: '#fff' },
-            { v: distLeft, l: 'km left', color: '#fff' },
-            { v: `₦2,100`, l: 'Fare', color: G3 },
+            { v: `${elapsed}m`, l: 'Elapsed', color: '#fff' },
+            { v: estKm ?? '—', l: 'km booked', color: '#fff' },
+            { v: fare, l: 'Fare', color: G3 },
           ].map((s) => (
             <div
               key={s.l}
@@ -3695,7 +3718,7 @@ export function DriverTripInProgressScreen({
               DESTINATION
             </p>
             <p className="text-[14px] font-semibold" style={{ fontFamily: PP, color: '#fff' }}>
-              Victoria Island, Lagos
+              {destination}
             </p>
           </div>
         </div>
@@ -3709,17 +3732,22 @@ export function DriverTripInProgressScreen({
             className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl font-bold"
             style={{ background: 'rgba(59,130,246,.12)', color: '#fff', fontFamily: PP }}
           >
-            C
+            {initial}
           </div>
           <div className="flex-1">
             <p className="text-[14px] font-semibold" style={{ fontFamily: PP, color: '#fff' }}>
-              Chidi O.
+              {passengerName ?? 'Your passenger'}
             </p>
             <p className="text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
               Passenger · {elapsed} min elapsed
             </p>
           </div>
           <button
+            onClick={() => {
+              const id = rideId ?? ride?.id;
+              if (id) onMessagePassenger?.(id, passengerName);
+            }}
+            aria-label="Message your passenger"
             className="flex h-10 w-10 items-center justify-center rounded-xl"
             style={{ background: 'rgba(43,172,82,.1)', border: '1px solid rgba(43,172,82,.2)' }}
           >
@@ -3737,6 +3765,16 @@ export function DriverTripInProgressScreen({
             </svg>
           </button>
         </div>
+
+        {/* The driver ends the trip. There was no button here at all — the
+            progress bar completed the ride by itself after roughly nineteen
+            seconds, so a real trip settled and charged the passenger while the
+            driver was still pulling out of the pickup. */}
+        <DGreenBtn
+          label={busy ? 'Completing…' : 'Complete Trip →'}
+          onClick={() => void completeTrip()}
+          loading={busy}
+        />
       </div>
     </div>
   );
