@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Build Android release artifacts (AAB + universal APK) for customer-mobile.
-# Requires: JDK 17+, Android SDK, keystore.properties (release signing).
+# Requires: JDK 21 (Capacitor 7 targets JavaVersion.VERSION_21), Android SDK.
+# keystore.properties is optional — without it the release is unsigned, which
+# is fine for a packaging check and NOT submittable to Play.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

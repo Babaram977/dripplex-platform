@@ -16,10 +16,15 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Signing material is only present when the ANDROID_KEYSTORE_* secrets are
+    // configured; a fork, a local checkout and CI without those secrets all
+    // have no keystore.properties.
+    def keystorePropertiesFile = rootProject.file('keystore.properties')
+    def hasSigningMaterial = keystorePropertiesFile.exists()
+
     signingConfigs {
         release {
-            def keystorePropertiesFile = rootProject.file('keystore.properties')
-            if (keystorePropertiesFile.exists()) {
+            if (hasSigningMaterial) {
                 def keystoreProperties = new Properties()
                 keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
                 storeFile file(keystoreProperties['storeFile'])
@@ -33,7 +38,19 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            signingConfig signingConfigs.release
+            // Assigning the signing config unconditionally handed AGP a config
+            // whose storeFile was null whenever no keystore existed, and
+            // :app:signProductionReleaseBundle then died inside
+            // FinalizeBundleTask with a bare java.lang.NullPointerException —
+            // no mention of signing, no mention of a missing keystore.
+            //
+            // Without signing material the release build is simply unsigned,
+            // which is what a packaging gate needs (it proves the app compiles
+            // and bundles). An unsigned artifact is NOT submittable to Play —
+            // set the ANDROID_KEYSTORE_* secrets and this signs as before.
+            if (hasSigningMaterial) {
+                signingConfig signingConfigs.release
+            }
         }
         debug {
             applicationIdSuffix ".debug"
