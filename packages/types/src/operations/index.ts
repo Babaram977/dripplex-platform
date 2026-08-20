@@ -42,7 +42,19 @@ export interface FleetDriverDto {
   hasOpenSos: boolean;
   isSuspended: boolean;
   needsInspection: boolean;
+  /** The driver's own toggle — what *they* believe. Left as-is deliberately:
+   * an app that says "Online" while the platform has stopped hearing from it
+   * is the exact discrepancy Operations needs to see, so it is reported
+   * rather than smoothed over. Compare with `reachable`. */
   online: boolean;
+  /** What the *platform* believes: the toggle is on AND a location ping has
+   * arrived within DRIVER_LOCATION_MAX_AGE_MS. This is the same test dispatch
+   * applies before offering a ride, so a driver who is `online` but not
+   * `reachable` will never be sent work no matter what their app displays. */
+  reachable: boolean;
+  /** When the last position ping arrived; null if one never has. Lets the UI
+   * say "last seen 43 min ago" instead of just contradicting the driver. */
+  lastLocationAt: string | null;
   acceptingRides: boolean;
   latitude: number | null;
   longitude: number | null;
@@ -52,12 +64,35 @@ export interface FleetDriverDto {
   vehiclePlateNumber: string | null;
 }
 
+/**
+ * Counts over the same fleet snapshot.
+ *
+ * `onlineCount` + `staleCount` + `offlineCount` === `totalDrivers`, always.
+ * They are the only three that partition the fleet; the rest
+ * (available/busy/sos/suspended/needsInspection) are `status` breakdowns that
+ * overlap the first three and each other's causes, so they must never be
+ * presented as if they summed to anything.
+ *
+ * This used to be wrong in a way that produced impossible dashboards:
+ * `onlineCount` counted the raw online flag while `offlineCount` counted the
+ * computed status OFFLINE, which only applies once SOS / SUSPENDED /
+ * NEEDS_INSPECTION / BUSY have been ruled out. A driver toggled online with no
+ * passed inspection was counted in BOTH; a driver toggled off who also needed
+ * an inspection was counted in NEITHER.
+ */
 export interface FleetSummaryDto {
   totalDrivers: number;
+  /** Toggle on and pinging — dispatch would consider them. */
   onlineCount: number;
+  /** Toggle on but silent past DRIVER_LOCATION_MAX_AGE_MS. Their app still
+   * shows "Online" and they may well be sitting waiting for work, but the
+   * platform has lost them and will not dispatch to them. A non-zero value
+   * here is an alert, not a statistic. */
+  staleCount: number;
+  /** Genuinely signed off. */
+  offlineCount: number;
   availableCount: number;
   busyCount: number;
-  offlineCount: number;
   sosCount: number;
   suspendedCount: number;
   needsInspectionCount: number;

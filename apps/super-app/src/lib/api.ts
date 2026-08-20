@@ -1377,7 +1377,13 @@ export interface AdminFleetDriverDto {
   hasOpenSos: boolean;
   isSuspended: boolean;
   needsInspection: boolean;
+  /** The driver's own toggle — what their app shows them. */
   online: boolean;
+  /** What the platform believes: toggled on AND pinging within the same
+   * freshness window dispatch uses. `online && !reachable` is a driver whose
+   * app says "Online" while we have lost them. */
+  reachable: boolean;
+  lastLocationAt: string | null;
   acceptingRides: boolean;
   latitude: number | null;
   longitude: number | null;
@@ -1386,9 +1392,12 @@ export interface AdminFleetDriverDto {
   shiftStatus: 'ACTIVE' | 'ON_BREAK' | null;
   vehiclePlateNumber: string | null;
 }
+/** onlineCount + staleCount + offlineCount === totalDrivers. The rest are
+ *  status breakdowns that overlap and never sum to anything. */
 export interface AdminFleetSummaryDto {
   totalDrivers: number;
   onlineCount: number;
+  staleCount: number;
   availableCount: number;
   busyCount: number;
   offlineCount: number;
