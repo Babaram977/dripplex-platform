@@ -13,6 +13,7 @@ import { AuditService } from '../audit/audit.service';
 import { DomainEventBus } from '../events/domain-event-bus';
 import { WalletService } from '../wallet/wallet.service';
 
+import { UtilityProviderRejectedError } from './providers/utility-provider.port';
 import { UTILITIES_PERMISSIONS } from './utilities.constants';
 import { UtilitiesService } from './utilities.service';
 
@@ -358,6 +359,59 @@ describe('UtilitiesService', () => {
     // The float may or may not have been spent. Handing the money back would
     // give away electricity that was actually delivered; the row waits for a
     // human instead.
+    expect(result.purchase.status).toBe(UtilityPurchaseStatus.PENDING);
+    expect(await balanceOf(customerId)).toBe(3_000);
+  });
+
+  it('refunds when the provider REJECTED the request, rather than parking it on pending', async () => {
+    if (!databaseAvailable) return;
+    const customerId = await fundedCustomer(5_000);
+    // A wrong or revoked API token: Peyflex answers 401 and never processes
+    // the request. The float cannot have moved and nothing was delivered.
+    provider.purchaseElectricity.mockRejectedValue(
+      new UtilityProviderRejectedError('Peyflex request failed (401): Invalid token.'),
+    );
+
+    const result = await service.initiatePurchase(
+      customerId,
+      {
+        serviceType: UtilityServiceType.ELECTRICITY,
+        provider: 'kaduna',
+        customerIdentifier: '12345678901',
+        amount: 2_000,
+        meterType: 'prepaid',
+        paymentMethod: UtilityPaymentMethod.WALLET,
+      },
+      { userId: customerId },
+    );
+
+    // Money back. Treating this as UNKNOWN kept a real customer's payment and
+    // showed them "Still confirming" indefinitely, while the provider
+    // dashboard listed no transaction at all — because there was none.
+    expect(result.purchase.status).toBe(UtilityPurchaseStatus.REVERSED);
+    expect(await balanceOf(customerId)).toBe(5_000);
+  });
+
+  it('still refuses to reverse a genuine timeout — a delivered purchase must not be refunded', async () => {
+    if (!databaseAvailable) return;
+    const customerId = await fundedCustomer(5_000);
+    // Not a rejection: the request may have been processed before the socket
+    // died, so this one is genuinely ambiguous.
+    provider.purchaseElectricity.mockRejectedValue(new Error('fetch failed: aborted'));
+
+    const result = await service.initiatePurchase(
+      customerId,
+      {
+        serviceType: UtilityServiceType.ELECTRICITY,
+        provider: 'kaduna',
+        customerIdentifier: '12345678901',
+        amount: 2_000,
+        meterType: 'prepaid',
+        paymentMethod: UtilityPaymentMethod.WALLET,
+      },
+      { userId: customerId },
+    );
+
     expect(result.purchase.status).toBe(UtilityPurchaseStatus.PENDING);
     expect(await balanceOf(customerId)).toBe(3_000);
   });

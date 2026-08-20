@@ -126,6 +126,14 @@ if (typeof document !== 'undefined' && !document.getElementById(STYLE_ID)) {
     .dx-input:focus { border-color: rgba(71,207,114,.45); }
     .dx-input::placeholder { color: rgba(255,255,255,.28); }
     .dx-select { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); border-radius: 6px; color: #fff; font-family: Inter, sans-serif; font-size: 12px; padding: 6px 8px; outline: none; cursor: pointer; }
+    /* The native dropdown popup is painted by the OS, not by this dark theme:
+       on Windows/Chrome it opens on a WHITE background. Every select here
+       overrides the rule above with an inline muted-grey colour, which the
+       options inherit — so the list rendered light grey on white and looked
+       empty or one-item-long. The founder reported the commission owner-type
+       dropdown as missing Drivers and Riders; all three were always there and
+       two of them were simply unreadable. Options get their own colours. */
+    .dx-select option { background: #0B1626; color: #fff; }
     .dx-toggle { appearance: none; width: 36px; height: 20px; background: rgba(255,255,255,.12); border-radius: 10px; cursor: pointer; position: relative; transition: background .2s; flex-shrink: 0; }
     .dx-toggle:checked { background: #2BAC52; }
     .dx-toggle::after { content:''; position:absolute; top:3px; left:3px; width:14px; height:14px; border-radius:50%; background:#fff; transition: left .2s; }
@@ -4908,8 +4916,24 @@ function PageCommissions() {
         </Card>
       </div>
 
+      {/* The detail panel scrolls as a whole rather than being clipped by the
+          viewport. It stacks four cards — position, agreed limit, record a
+          payment, ledger — which together are taller than the console's
+          content area, and the Ledger card at the bottom was cut off with no
+          way to reach it. `minHeight: 0` is what lets a flex child actually
+          scroll instead of growing past its parent. */}
       {selected && (
-        <div style={{ width: 340, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div
+          style={{
+            width: 340,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 12,
+            minHeight: 0,
+            overflowY: 'auto',
+            paddingRight: 4,
+          }}
+        >
           {/* DrippleX's position with this partner, in one place. The money
               lived in two unconnected records — a Wallet holding funds FOR
               them and a CommissionAccount recording what they owe US — and
@@ -5084,7 +5108,9 @@ function PageCommissions() {
             )}
           </Card>
 
-          <Card style={{ flex: 1, overflowY: 'auto' }}>
+          {/* Sized by its content: the panel above scrolls, so a `flex: 1`
+              here only squeezed the ledger into a sliver. */}
+          <Card style={{ flexShrink: 0 }}>
             <SectionHeader title="Ledger" />
             {ledger === null && <span style={{ fontSize: 12, color: MUTED }}>Loading…</span>}
             {ledger?.length === 0 && (
@@ -6698,7 +6724,52 @@ function PageBillPayments() {
                 className="dx-row"
                 style={{ borderBottom: '1px solid rgba(255,255,255,.04)' }}
               >
-                <td style={{ padding: '8px 8px', fontSize: 12, color: WHITE }}>{p.serviceType}</td>
+                <td style={{ padding: '8px 8px', fontSize: 12, color: WHITE }}>
+                  {p.serviceType}
+                  {/* What the provider actually said. `failureReason` is
+                      written for the customer ("we could not confirm this
+                      purchase") and tells an operator nothing, so diagnosing a
+                      failing integration used to mean reading server logs.
+                      The raw reply was already stored on every failure — it
+                      just had nowhere to appear. */}
+                  {p.providerResponse !== null && p.providerResponse !== undefined && (
+                    <details style={{ marginTop: 4 }}>
+                      <summary
+                        style={{
+                          fontSize: 10,
+                          color: MUTED,
+                          cursor: 'pointer',
+                          listStyle: 'revert',
+                        }}
+                      >
+                        provider reply
+                      </summary>
+                      <pre
+                        style={{
+                          margin: '6px 0 0',
+                          padding: 8,
+                          maxWidth: 320,
+                          maxHeight: 180,
+                          overflow: 'auto',
+                          background: 'rgba(255,255,255,.04)',
+                          border: `1px solid ${BORDER}`,
+                          borderRadius: 6,
+                          fontSize: 10,
+                          color: WHITE,
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-word',
+                        }}
+                      >
+                        {JSON.stringify(p.providerResponse, null, 2)}
+                      </pre>
+                    </details>
+                  )}
+                  {p.failureReason && (
+                    <p style={{ fontSize: 10, color: MUTED, marginTop: 4, maxWidth: 260 }}>
+                      {p.failureReason}
+                    </p>
+                  )}
+                </td>
                 <td
                   style={{
                     padding: '8px 8px',

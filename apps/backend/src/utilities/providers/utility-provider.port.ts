@@ -143,4 +143,33 @@ export interface UtilityProviderPort {
   getFloatBalance(): Promise<UtilityFloatBalance>;
 }
 
+/**
+ * A provider failure that proves the request was never executed.
+ *
+ * The Utilities money path deliberately never reverses an `UNKNOWN` outcome:
+ * a request that timed out may still have delivered, and refunding it would
+ * give away airtime. That rule is right for a timeout and wrong for a
+ * rejection. An auth failure, a missing configuration or a malformed request
+ * is refused at the door — the DrippleX float cannot have moved, nothing was
+ * delivered, and there is nothing ambiguous to reconcile.
+ *
+ * Collapsing both into UNKNOWN is what left a customer's card payment sitting
+ * on "Still confirming" with the money kept and nothing delivered, while the
+ * provider dashboard showed no transaction at all — because there had not
+ * been one.
+ */
+export class UtilityProviderRejectedError extends Error {
+  /** Discriminator: the request never reached execution. */
+  public readonly neverExecuted = true;
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'UtilityProviderRejectedError';
+  }
+}
+
+export function isProviderRejection(error: unknown): error is UtilityProviderRejectedError {
+  return error instanceof UtilityProviderRejectedError;
+}
+
 export const UTILITY_PROVIDER = Symbol('UTILITY_PROVIDER');
