@@ -6,7 +6,21 @@ import { addressPredictions, geocodeAddress, getCurrentPosition } from '../lib/m
 import { ImageWithFallback } from './components/figma/ImageWithFallback';
 import { playNotificationSound } from '../lib/sound';
 import { SoundSettings } from './soundSettings';
+import {
+  addNights,
+  formatNight,
+  formatStay,
+  naira,
+  nightRange,
+  nightsBetween,
+  timeLeft,
+  todayNight,
+} from '../lib/bookingDates';
 import type {
+  BookingStatus,
+  MerchantBookingDto,
+  RoomAvailabilityDto,
+  RoomTypeDto,
   MerchantBusinessDto,
   MerchantProductDto,
   MerchantOrderDto,
@@ -80,6 +94,8 @@ if (typeof document !== 'undefined' && !document.getElementById(STYLE_ID)) {
 type MerchantPage =
   | 'dashboard'
   | 'orders'
+  | 'rooms'
+  | 'bookings'
   | 'products'
   | 'store'
   | 'earnings'
@@ -492,6 +508,12 @@ const NAV_PRIMARY: { page: MerchantPage; icon: string; label: string }[] = [
   { page: 'store', icon: '🏬', label: 'Store' },
   { page: 'earnings', icon: '💰', label: 'Earnings' },
 ];
+/** Shown only to a merchant whose category is HOTEL. A pharmacy has no use for
+ *  a rate calendar, and an empty tab that explains why is worse than no tab. */
+const NAV_HOTEL: { page: MerchantPage; icon: string; label: string }[] = [
+  { page: 'rooms', icon: '🛏️', label: 'Rooms' },
+  { page: 'bookings', icon: '🗓️', label: 'Bookings' },
+];
 const NAV_SECONDARY: { page: MerchantPage; icon: string; label: string }[] = [
   { page: 'approval', icon: '✅', label: 'Approval Status' },
   { page: 'kyc', icon: '🪪', label: 'KYC' },
@@ -505,6 +527,8 @@ function MxSidebar({
   storeOpen,
   businessName,
   newOrderCount,
+  isHotel = false,
+  pendingBookingCount = 0,
   onLogout,
 }: {
   page: MerchantPage;
@@ -512,6 +536,8 @@ function MxSidebar({
   storeOpen: boolean;
   businessName?: string;
   newOrderCount?: number;
+  isHotel?: boolean;
+  pendingBookingCount?: number;
   onLogout?: () => void;
 }) {
   const initials = (businessName ?? 'MX').slice(0, 2).toUpperCase();
@@ -592,10 +618,14 @@ function MxSidebar({
         >
           MAIN
         </div>
-        {NAV_PRIMARY.map((item) => {
+        {[...NAV_PRIMARY, ...(isHotel ? NAV_HOTEL : [])].map((item) => {
           const active = item.page === page;
           const badge =
-            item.page === 'orders' && (newOrderCount ?? 0) > 0 ? newOrderCount : undefined;
+            item.page === 'orders' && (newOrderCount ?? 0) > 0
+              ? newOrderCount
+              : item.page === 'bookings' && pendingBookingCount > 0
+                ? pendingBookingCount
+                : undefined;
           return (
             <div
               key={item.page}
@@ -750,6 +780,8 @@ function MxHeader({
   const labels: Record<MerchantPage, string> = {
     dashboard: 'Dashboard',
     orders: 'Orders',
+    rooms: 'Rooms & Availability',
+    bookings: 'Bookings',
     products: 'Products & Catalogue',
     store: 'Store Setup',
     earnings: 'Earnings & Settlements',
@@ -4679,7 +4711,12 @@ export function MerchantPortalScreen({
   const [wallet, setWallet] = useState<WalletDto | null>(null);
   const [storeOpen, setStoreOpen] = useState(false);
   const [newOrderCount, setNewOrderCount] = useState(0);
+  const [pendingBookingCount, setPendingBookingCount] = useState(0);
   const badgePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Rooms and Bookings exist only for a hotel. Read from the business the
+  // portal already loads rather than a second call.
+  const isHotel = business?.category === 'HOTEL';
 
   const loadPortalData = useCallback(async () => {
     try {
@@ -4708,15 +4745,37 @@ export function MerchantPortalScreen({
     } catch {}
   }, []);
 
+  const pollPendingBookings = useCallback(async () => {
+    if (!isHotel) return;
+    try {
+      const page = await api.merchant.bookings.list({ status: 'PENDING_HOTEL', pageSize: 1 });
+      const count = page.meta.total;
+      setPendingBookingCount((previous) => {
+        // Only on a rise, same rule as orders: the badge is polled, so
+        // comparing against the last count separates "a booking arrived" from
+        // "the same one is still waiting" — otherwise it would chime until
+        // somebody answered.
+        if (count > previous) playNotificationSound('new-request');
+        return count;
+      });
+    } catch {
+      // A failed poll is not worth surfacing; the Bookings page reports for real.
+    }
+  }, [isHotel]);
+
   useEffect(() => {
     if (!isLoggedIn) return;
     loadPortalData();
     pollNewOrders();
-    badgePollRef.current = setInterval(pollNewOrders, 8000);
+    void pollPendingBookings();
+    badgePollRef.current = setInterval(() => {
+      void pollNewOrders();
+      void pollPendingBookings();
+    }, 8000);
     return () => {
       if (badgePollRef.current) clearInterval(badgePollRef.current);
     };
-  }, [isLoggedIn, loadPortalData, pollNewOrders]);
+  }, [isLoggedIn, loadPortalData, pollNewOrders, pollPendingBookings]);
 
   const handleToggleStore = async (open: boolean) => {
     try {
@@ -4772,6 +4831,10 @@ export function MerchantPortalScreen({
         );
       case 'orders':
         return <OrdersPage onDetail={onDetail} />;
+      case 'rooms':
+        return <RoomsPage />;
+      case 'bookings':
+        return <BookingsPage />;
       case 'products':
         return <ProductsPage />;
       case 'store':
@@ -4818,12 +4881,851 @@ export function MerchantPortalScreen({
         storeOpen={storeOpen}
         businessName={businessName}
         newOrderCount={newOrderCount}
+        isHotel={isHotel}
+        pendingBookingCount={pendingBookingCount}
         onLogout={handleLogout}
       />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <MxHeader page={page} orderBadge={newOrderCount} initials={initials} />
         {renderPage()}
       </div>
+    </div>
+  );
+}
+
+// ─── Page: Rooms (DPX-HOTEL-001) ─────────────────────────────────────────────
+/**
+ * A hotel's rooms and its nightly calendar.
+ *
+ * Only reachable for a merchant whose category is HOTEL — a pharmacy has no use
+ * for a rate calendar, and the nav hides it rather than showing a tab that
+ * explains why it is empty.
+ *
+ * The calendar is the part worth care. A night with no row is NOT for sale:
+ * the backend refuses to invent availability for a calendar the hotel never
+ * touched, because a hotel that forgets to open a date must not accidentally
+ * sell a room it does not have. So the strip distinguishes three states —
+ * closed (no row), open with rooms left, and full — rather than showing a
+ * blank for two of them.
+ */
+function RoomsPage() {
+  const [roomTypes, setRoomTypes] = useState<RoomTypeDto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState('');
+  const [msg, setMsg] = useState('');
+
+  const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [form, setForm] = useState({
+    name: '',
+    description: '',
+    capacity: '2',
+    basePrice: '',
+    totalRooms: '',
+  });
+  const [saving, setSaving] = useState(false);
+
+  // The room whose calendar is open, and the fortnight being shown.
+  const [calendarFor, setCalendarFor] = useState<RoomTypeDto | null>(null);
+  const [calendarFrom, setCalendarFrom] = useState(todayNight());
+  const [calendar, setCalendar] = useState<RoomAvailabilityDto[]>([]);
+  const [calendarLoading, setCalendarLoading] = useState(false);
+  const [openForm, setOpenForm] = useState({ from: '', to: '', roomsOpen: '', price: '' });
+  const [openBusy, setOpenBusy] = useState(false);
+
+  const CALENDAR_DAYS = 14;
+
+  const flash = (text: string) => {
+    setMsg(text);
+    window.setTimeout(() => setMsg(''), 3000);
+  };
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      setRoomTypes(await api.merchant.bookings.listRoomTypes());
+      setErr('');
+    } catch (cause) {
+      setErr(cause instanceof Error ? cause.message : 'Could not load your rooms.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const loadCalendar = useCallback(async (roomTypeId: string, from: string) => {
+    setCalendarLoading(true);
+    try {
+      // `to` is exclusive, like a check-out.
+      setCalendar(
+        await api.merchant.bookings.getCalendar(roomTypeId, from, addNights(from, CALENDAR_DAYS)),
+      );
+    } catch {
+      setCalendar([]);
+    } finally {
+      setCalendarLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (calendarFor) void loadCalendar(calendarFor.id, calendarFrom);
+  }, [calendarFor, calendarFrom, loadCalendar]);
+
+  const openAdd = () => {
+    setForm({ name: '', description: '', capacity: '2', basePrice: '', totalRooms: '' });
+    setEditId(null);
+    setErr('');
+    setShowForm(true);
+  };
+
+  const openEdit = (room: RoomTypeDto) => {
+    setForm({
+      name: room.name,
+      description: room.description ?? '',
+      capacity: String(room.capacity),
+      basePrice: String(room.basePrice),
+      totalRooms: String(room.totalRooms),
+    });
+    setEditId(room.id);
+    setErr('');
+    setShowForm(true);
+  };
+
+  const saveRoom = async () => {
+    const basePrice = Number(form.basePrice);
+    const totalRooms = Number(form.totalRooms);
+    if (form.name.trim() === '') return setErr('Give the room a name.');
+    if (!Number.isFinite(basePrice) || basePrice <= 0) return setErr('Set a nightly price.');
+    if (!Number.isFinite(totalRooms) || totalRooms < 1)
+      return setErr('How many of this room do you have?');
+
+    setSaving(true);
+    setErr('');
+    try {
+      const body = {
+        name: form.name.trim(),
+        capacity: Number(form.capacity) || 2,
+        basePrice,
+        totalRooms,
+        ...(form.description.trim() !== '' ? { description: form.description.trim() } : {}),
+      };
+      if (editId) await api.merchant.bookings.updateRoomType(editId, body);
+      else await api.merchant.bookings.createRoomType(body);
+      setShowForm(false);
+      await load();
+      flash(editId ? 'Room updated.' : 'Room added. Open some nights to start selling it.');
+    } catch (cause) {
+      setErr(cause instanceof Error ? cause.message : 'Could not save that room.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleActive = async (room: RoomTypeDto) => {
+    try {
+      await api.merchant.bookings.updateRoomType(room.id, { isActive: !room.isActive });
+      await load();
+      flash(room.isActive ? `${room.name} taken off sale.` : `${room.name} back on sale.`);
+    } catch (cause) {
+      setErr(cause instanceof Error ? cause.message : 'Could not change that.');
+    }
+  };
+
+  const openNights = async () => {
+    if (!calendarFor) return;
+    const rooms = Number(openForm.roomsOpen);
+    if (openForm.from === '' || openForm.to === '') return setErr('Pick the nights to open.');
+    if (nightsBetween(openForm.from, openForm.to) < 1)
+      return setErr('The last night must be after the first.');
+    if (!Number.isFinite(rooms) || rooms < 0) return setErr('How many rooms are for sale?');
+
+    const price = openForm.price.trim() === '' ? null : Number(openForm.price);
+    if (price !== null && (!Number.isFinite(price) || price <= 0))
+      return setErr('That price is not a number.');
+
+    setOpenBusy(true);
+    setErr('');
+    try {
+      await api.merchant.bookings.openNights(calendarFor.id, {
+        from: openForm.from,
+        // The form asks for the LAST night, which reads naturally to a hotel.
+        // The API wants an exclusive end, like a check-out, so add a day here
+        // rather than making a person think in half-open ranges.
+        to: addNights(openForm.to, 1),
+        roomsOpen: rooms,
+        ...(price !== null ? { priceOverride: price } : {}),
+      });
+      await loadCalendar(calendarFor.id, calendarFrom);
+      const count = nightsBetween(openForm.from, addNights(openForm.to, 1));
+      flash(`${String(count)} night${count === 1 ? '' : 's'} updated.`);
+    } catch (cause) {
+      setErr(cause instanceof Error ? cause.message : 'Could not open those nights.');
+    } finally {
+      setOpenBusy(false);
+    }
+  };
+
+  const byNight = new Map(calendar.map((row) => [row.night, row]));
+  const strip = nightRange(calendarFrom, addNights(calendarFrom, CALENDAR_DAYS));
+
+  return (
+    <div className="mx-scroll" style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+      {msg !== '' && (
+        <MxCard style={{ marginBottom: 12, padding: '10px 14px' }}>
+          <span style={{ fontFamily: IT, fontSize: 12.5, color: G3 }}>{msg}</span>
+        </MxCard>
+      )}
+      {err !== '' && (
+        <MxCard style={{ marginBottom: 12, padding: '10px 14px' }}>
+          <span style={{ fontFamily: IT, fontSize: 12.5, color: C_ERR }}>{err}</span>
+        </MxCard>
+      )}
+
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 14,
+        }}
+      >
+        <div>
+          <div style={{ fontFamily: PP, fontSize: 17, fontWeight: 700, color: WHITE }}>Rooms</div>
+          <div style={{ fontFamily: IT, fontSize: 12, color: MUTED, marginTop: 2 }}>
+            Your room types, and the nights each one is for sale
+          </div>
+        </div>
+        <MxBtn label="Add room type" onClick={openAdd} />
+      </div>
+
+      {loading ? (
+        <MxCard>
+          <span style={{ fontFamily: IT, fontSize: 12.5, color: MUTED }}>Loading your rooms…</span>
+        </MxCard>
+      ) : roomTypes.length === 0 ? (
+        <MxCard>
+          <div style={{ fontFamily: PP, fontSize: 14, fontWeight: 600, color: WHITE }}>
+            No rooms yet
+          </div>
+          <p style={{ fontFamily: IT, fontSize: 12.5, color: MUTED, lineHeight: 1.6 }}>
+            Add a room type — Standard, Deluxe, Suite — then open the nights it is available and set
+            what each night costs. Guests only see nights you have opened.
+          </p>
+          <MxBtn label="Add your first room" onClick={openAdd} />
+        </MxCard>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {roomTypes.map((room) => (
+            <MxCard key={room.id}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontFamily: PP, fontSize: 14.5, fontWeight: 700, color: WHITE }}>
+                      {room.name}
+                    </span>
+                    {room.isActive ? (
+                      <MxChip label="On sale" color={C_OK} bg="rgba(16,185,129,.12)" />
+                    ) : (
+                      <MxChip label="Off sale" color={MUTED} bg="rgba(255,255,255,.06)" />
+                    )}
+                  </div>
+                  <div style={{ fontFamily: IT, fontSize: 12, color: MUTED, marginTop: 4 }}>
+                    {naira(room.basePrice)} a night · {room.totalRooms} room
+                    {room.totalRooms === 1 ? '' : 's'} · sleeps {room.capacity}
+                  </div>
+                  {room.description !== null && room.description !== '' && (
+                    <div style={{ fontFamily: IT, fontSize: 12, color: MUTED, marginTop: 4 }}>
+                      {room.description}
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <MxBtn
+                    label={calendarFor?.id === room.id ? 'Hide calendar' : 'Calendar'}
+                    small
+                    variant="outline"
+                    onClick={() => {
+                      const closing = calendarFor?.id === room.id;
+                      setCalendarFor(closing ? null : room);
+                      setCalendarFrom(todayNight());
+                      setOpenForm({
+                        from: todayNight(),
+                        to: addNights(todayNight(), 6),
+                        roomsOpen: String(room.totalRooms),
+                        price: '',
+                      });
+                    }}
+                  />
+                  <MxBtn label="Edit" small variant="ghost" onClick={() => openEdit(room)} />
+                  <MxBtn
+                    label={room.isActive ? 'Take off sale' : 'Put on sale'}
+                    small
+                    variant="ghost"
+                    onClick={() => void toggleActive(room)}
+                  />
+                </div>
+              </div>
+
+              {calendarFor?.id === room.id && (
+                <div style={{ marginTop: 14, borderTop: `1px solid ${BORDER}`, paddingTop: 14 }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: 10,
+                      flexWrap: 'wrap',
+                      gap: 8,
+                    }}
+                  >
+                    <span style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>
+                      {formatNight(calendarFrom)} onwards
+                    </span>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <MxBtn
+                        label="◀ Earlier"
+                        small
+                        variant="ghost"
+                        disabled={calendarFrom <= todayNight()}
+                        onClick={() =>
+                          setCalendarFrom((f) => {
+                            const back = addNights(f, -CALENDAR_DAYS);
+                            return back < todayNight() ? todayNight() : back;
+                          })
+                        }
+                      />
+                      <MxBtn
+                        label="Later ▶"
+                        small
+                        variant="ghost"
+                        onClick={() => setCalendarFrom((f) => addNights(f, CALENDAR_DAYS))}
+                      />
+                    </div>
+                  </div>
+
+                  {calendarLoading ? (
+                    <span style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>
+                      Loading calendar…
+                    </span>
+                  ) : (
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fill,minmax(96px,1fr))',
+                        gap: 6,
+                      }}
+                    >
+                      {strip.map((night) => {
+                        const row = byNight.get(night);
+                        // Three states, all shown. A night with no row is
+                        // CLOSED, not "zero left" — the hotel never opened it.
+                        const closed = row === undefined;
+                        const full = row !== undefined && row.roomsLeft <= 0;
+                        return (
+                          <div
+                            key={night}
+                            style={{
+                              padding: '8px 9px',
+                              borderRadius: 8,
+                              background: closed ? 'rgba(255,255,255,.03)' : NAVY_SURFACE,
+                              border: `1px solid ${full ? 'rgba(245,158,11,.35)' : BORDER}`,
+                            }}
+                          >
+                            <div style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>
+                              {formatNight(night)}
+                            </div>
+                            {closed ? (
+                              <div style={{ fontFamily: IT, fontSize: 11.5, color: MUTED }}>
+                                Closed
+                              </div>
+                            ) : (
+                              <>
+                                <div
+                                  style={{
+                                    fontFamily: IT,
+                                    fontSize: 12.5,
+                                    fontWeight: 600,
+                                    color: full ? C_WARN : G3,
+                                  }}
+                                >
+                                  {full
+                                    ? 'Full'
+                                    : `${String(row.roomsLeft)} of ${String(row.roomsOpen)}`}
+                                </div>
+                                <div style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>
+                                  {naira(row.price)}
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <div style={{ marginTop: 14 }}>
+                    <div
+                      style={{
+                        fontFamily: PP,
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: WHITE,
+                        marginBottom: 8,
+                      }}
+                    >
+                      Open nights for sale
+                    </div>
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))',
+                        gap: 10,
+                      }}
+                    >
+                      <MxInput
+                        label="First night"
+                        type="date"
+                        value={openForm.from}
+                        onChange={(v) => setOpenForm((f) => ({ ...f, from: v }))}
+                      />
+                      <MxInput
+                        label="Last night"
+                        type="date"
+                        value={openForm.to}
+                        onChange={(v) => setOpenForm((f) => ({ ...f, to: v }))}
+                      />
+                      <MxInput
+                        label="Rooms for sale"
+                        type="number"
+                        value={openForm.roomsOpen}
+                        onChange={(v) => setOpenForm((f) => ({ ...f, roomsOpen: v }))}
+                      />
+                      <MxInput
+                        label={`Price a night (blank = ${naira(room.basePrice)})`}
+                        type="number"
+                        value={openForm.price}
+                        onChange={(v) => setOpenForm((f) => ({ ...f, price: v }))}
+                      />
+                    </div>
+                    <p style={{ fontFamily: IT, fontSize: 11.5, color: MUTED, margin: '0 0 10px' }}>
+                      Both nights are included. Setting a lower number than you have already sold
+                      for a night is refused — the booking stands.
+                    </p>
+                    <MxBtn
+                      label={openBusy ? 'Opening…' : 'Open these nights'}
+                      disabled={openBusy}
+                      onClick={() => void openNights()}
+                    />
+                  </div>
+                </div>
+              )}
+            </MxCard>
+          ))}
+        </div>
+      )}
+
+      {showForm && (
+        <MxCard style={{ marginTop: 14 }}>
+          <div
+            style={{
+              fontFamily: PP,
+              fontSize: 14,
+              fontWeight: 700,
+              color: WHITE,
+              marginBottom: 10,
+            }}
+          >
+            {editId ? 'Edit room type' : 'New room type'}
+          </div>
+          <MxInput
+            label="Name"
+            placeholder="Deluxe"
+            value={form.name}
+            onChange={(v) => setForm((f) => ({ ...f, name: v }))}
+          />
+          <MxInput
+            label="Description (optional)"
+            placeholder="En-suite, air conditioned, breakfast included"
+            value={form.description}
+            onChange={(v) => setForm((f) => ({ ...f, description: v }))}
+          />
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))',
+              gap: 10,
+            }}
+          >
+            <MxInput
+              label="Price a night"
+              type="number"
+              placeholder="20000"
+              value={form.basePrice}
+              onChange={(v) => setForm((f) => ({ ...f, basePrice: v }))}
+            />
+            <MxInput
+              label="How many rooms"
+              type="number"
+              placeholder="5"
+              value={form.totalRooms}
+              onChange={(v) => setForm((f) => ({ ...f, totalRooms: v }))}
+            />
+            <MxInput
+              label="Guests per room"
+              type="number"
+              value={form.capacity}
+              onChange={(v) => setForm((f) => ({ ...f, capacity: v }))}
+            />
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <MxBtn
+              label={saving ? 'Saving…' : editId ? 'Save changes' : 'Add room'}
+              disabled={saving}
+              onClick={() => void saveRoom()}
+            />
+            <MxBtn
+              label="Cancel"
+              variant="ghost"
+              disabled={saving}
+              onClick={() => setShowForm(false)}
+            />
+          </div>
+        </MxCard>
+      )}
+    </div>
+  );
+}
+
+// ─── Page: Bookings (DPX-HOTEL-001) ──────────────────────────────────────────
+/**
+ * The hotel's book, and the thirty minutes.
+ *
+ * Founder decision 9: a guest's money is HELD, not taken, and the hotel has
+ * thirty minutes to accept before the booking expires and the hold is released
+ * automatically. So the countdown is not decoration — it is the whole
+ * interaction, and a booking whose timer has run out is shown as gone rather
+ * than as something still answerable.
+ *
+ * Polled rather than pushed, and the countdown ticks locally each second, so a
+ * hotel watching this screen sees the time it actually has left.
+ */
+function BookingsPage() {
+  const [bookings, setBookings] = useState<MerchantBookingDto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState('');
+  const [msg, setMsg] = useState('');
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [rejectId, setRejectId] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  // Re-render once a second so every countdown is honest.
+  const [, setTick] = useState(0);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const flash = (text: string) => {
+    setMsg(text);
+    window.setTimeout(() => setMsg(''), 3200);
+  };
+
+  const load = useCallback(async () => {
+    try {
+      const page = await api.merchant.bookings.list({ pageSize: 50 });
+      setBookings(page.items);
+      setErr('');
+    } catch (cause) {
+      setErr(cause instanceof Error ? cause.message : 'Could not load your bookings.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+    // A booking arrives without warning and the clock starts immediately, so
+    // the list refreshes on its own rather than waiting for someone to reload.
+    pollRef.current = setInterval(() => void load(), 15_000);
+    const ticker = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      clearInterval(ticker);
+    };
+  }, [load]);
+
+  const answer = async (id: string, action: 'accept' | 'reject', reason?: string) => {
+    setBusyId(id);
+    setErr('');
+    try {
+      if (action === 'accept') {
+        await api.merchant.bookings.accept(id);
+        flash('Booking confirmed. The guest has been charged and the room is held.');
+      } else {
+        await api.merchant.bookings.reject(id, reason);
+        flash('Booking declined. The guest was never charged — their money is untouched.');
+      }
+      setRejectId(null);
+      setRejectReason('');
+      await load();
+    } catch (cause) {
+      setErr(cause instanceof Error ? cause.message : 'Could not answer that booking.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const pending = bookings.filter((b) => b.status === 'PENDING_HOTEL');
+  const answered = bookings.filter((b) => b.status !== 'PENDING_HOTEL');
+
+  const statusChip = (status: BookingStatus) => {
+    if (status === 'CONFIRMED')
+      return <MxChip label="Confirmed" color={C_OK} bg="rgba(16,185,129,.12)" />;
+    if (status === 'REJECTED')
+      return <MxChip label="Declined" color={C_ERR} bg="rgba(239,68,68,.12)" />;
+    if (status === 'EXPIRED')
+      return <MxChip label="Expired" color={C_WARN} bg="rgba(245,158,11,.12)" />;
+    return <MxChip label={status.replace(/_/g, ' ')} color={MUTED} bg="rgba(255,255,255,.06)" />;
+  };
+
+  return (
+    <div className="mx-scroll" style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+      {msg !== '' && (
+        <MxCard style={{ marginBottom: 12, padding: '10px 14px' }}>
+          <span style={{ fontFamily: IT, fontSize: 12.5, color: G3 }}>{msg}</span>
+        </MxCard>
+      )}
+      {err !== '' && (
+        <MxCard style={{ marginBottom: 12, padding: '10px 14px' }}>
+          <span style={{ fontFamily: IT, fontSize: 12.5, color: C_ERR }}>{err}</span>
+        </MxCard>
+      )}
+
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontFamily: PP, fontSize: 17, fontWeight: 700, color: WHITE }}>Bookings</div>
+        <div style={{ fontFamily: IT, fontSize: 12, color: MUTED, marginTop: 2 }}>
+          You have thirty minutes to answer. After that the booking expires on its own and the guest
+          gets their money back.
+        </div>
+      </div>
+
+      {loading ? (
+        <MxCard>
+          <span style={{ fontFamily: IT, fontSize: 12.5, color: MUTED }}>Loading bookings…</span>
+        </MxCard>
+      ) : (
+        <>
+          <div
+            style={{
+              fontFamily: IT,
+              fontSize: 11,
+              color: MUTED,
+              letterSpacing: 0.6,
+              margin: '0 0 8px',
+            }}
+          >
+            NEEDS AN ANSWER
+          </div>
+          {pending.length === 0 ? (
+            <MxCard style={{ marginBottom: 18 }}>
+              <span style={{ fontFamily: IT, fontSize: 12.5, color: MUTED }}>
+                Nothing waiting. New bookings appear here the moment a guest makes one.
+              </span>
+            </MxCard>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 18 }}>
+              {pending.map((b) => {
+                const left = timeLeft(b.acceptDeadline);
+                const lapsed = left === null;
+                return (
+                  <MxCard
+                    key={b.id}
+                    style={{
+                      border: `1px solid ${lapsed ? BORDER : 'rgba(245,158,11,.35)'}`,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        gap: 12,
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 220 }}>
+                        <div
+                          style={{ fontFamily: PP, fontSize: 14.5, fontWeight: 700, color: WHITE }}
+                        >
+                          {b.guestName}
+                        </div>
+                        <div style={{ fontFamily: IT, fontSize: 12, color: MUTED, marginTop: 3 }}>
+                          {formatStay(b.checkIn, b.checkOut)}
+                        </div>
+                        <div style={{ fontFamily: IT, fontSize: 12, color: MUTED, marginTop: 2 }}>
+                          {b.rooms} room{b.rooms === 1 ? '' : 's'} · {b.guests} guest
+                          {b.guests === 1 ? '' : 's'} · {b.guestPhone}
+                        </div>
+                        {b.guestNote !== null && b.guestNote !== '' && (
+                          <div
+                            style={{
+                              fontFamily: IT,
+                              fontSize: 12,
+                              color: MUTED,
+                              marginTop: 6,
+                              fontStyle: 'italic',
+                            }}
+                          >
+                            “{b.guestNote}”
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontFamily: PP, fontSize: 16, fontWeight: 700, color: G3 }}>
+                          {naira(b.totalAmount)}
+                        </div>
+                        <div
+                          style={{
+                            fontFamily: IT,
+                            fontSize: 12,
+                            fontWeight: 600,
+                            color: lapsed ? MUTED : C_WARN,
+                            marginTop: 3,
+                          }}
+                        >
+                          {lapsed ? 'Window closed' : `${left} left`}
+                        </div>
+                        <div style={{ fontFamily: IT, fontSize: 11, color: MUTED, marginTop: 2 }}>
+                          {b.reference}
+                        </div>
+                      </div>
+                    </div>
+
+                    {lapsed ? (
+                      // Deliberately no buttons. The sweep has released the
+                      // hold; pressing Accept would only produce an error, and
+                      // offering it suggests the room is still sellable.
+                      <p style={{ fontFamily: IT, fontSize: 12, color: MUTED, margin: '10px 0 0' }}>
+                        This one ran out of time and the guest has their money back. It will drop
+                        off this list shortly.
+                      </p>
+                    ) : rejectId === b.id ? (
+                      <div style={{ marginTop: 12 }}>
+                        <MxInput
+                          label="Why? (optional — the guest sees this)"
+                          placeholder="The room is out of service this week"
+                          value={rejectReason}
+                          onChange={setRejectReason}
+                        />
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <MxBtn
+                            label={busyId === b.id ? 'Declining…' : 'Confirm decline'}
+                            variant="danger"
+                            small
+                            disabled={busyId === b.id}
+                            onClick={() =>
+                              void answer(
+                                b.id,
+                                'reject',
+                                rejectReason.trim() === '' ? undefined : rejectReason.trim(),
+                              )
+                            }
+                          />
+                          <MxBtn
+                            label="Cancel"
+                            variant="ghost"
+                            small
+                            onClick={() => {
+                              setRejectId(null);
+                              setRejectReason('');
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                        <MxBtn
+                          label={busyId === b.id ? 'Confirming…' : 'Accept booking'}
+                          disabled={busyId === b.id}
+                          onClick={() => void answer(b.id, 'accept')}
+                        />
+                        <MxBtn
+                          label="Decline"
+                          variant="danger"
+                          disabled={busyId === b.id}
+                          onClick={() => {
+                            setRejectId(b.id);
+                            setRejectReason('');
+                          }}
+                        />
+                      </div>
+                    )}
+                  </MxCard>
+                );
+              })}
+            </div>
+          )}
+
+          <div
+            style={{
+              fontFamily: IT,
+              fontSize: 11,
+              color: MUTED,
+              letterSpacing: 0.6,
+              margin: '0 0 8px',
+            }}
+          >
+            EVERYTHING ELSE
+          </div>
+          {answered.length === 0 ? (
+            <MxCard>
+              <span style={{ fontFamily: IT, fontSize: 12.5, color: MUTED }}>
+                No past bookings yet.
+              </span>
+            </MxCard>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {answered.map((b) => (
+                <MxCard key={b.id} style={{ padding: 13 }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      gap: 12,
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: 200 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span
+                          style={{ fontFamily: PP, fontSize: 13.5, fontWeight: 600, color: WHITE }}
+                        >
+                          {b.guestName}
+                        </span>
+                        {statusChip(b.status)}
+                      </div>
+                      <div style={{ fontFamily: IT, fontSize: 11.5, color: MUTED, marginTop: 3 }}>
+                        {formatStay(b.checkIn, b.checkOut)} · {b.reference}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontFamily: IT, fontSize: 13, fontWeight: 600, color: WHITE }}>
+                        {naira(b.totalAmount)}
+                      </div>
+                      {/* Only once accepted. Nothing is owed on a booking
+                          nobody agreed to, and showing a cut against a
+                          declined one would read as a charge. */}
+                      {b.payoutAmount !== null && (
+                        <div style={{ fontFamily: IT, fontSize: 11, color: MUTED, marginTop: 2 }}>
+                          You receive {naira(b.payoutAmount)}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </MxCard>
+              ))}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
