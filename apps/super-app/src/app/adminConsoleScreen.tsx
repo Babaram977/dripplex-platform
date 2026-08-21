@@ -6850,6 +6850,21 @@ function PagePricing() {
  */
 const RESOLVABLE_STATUSES: UtilityPurchaseStatus[] = ['PENDING', 'AWAITING_PAYMENT'];
 
+/**
+ * Services where the thing bought IS a string the customer must be given.
+ * Marking one of these delivered without pasting that string sets the status
+ * to SUCCESSFUL and leaves the customer with nothing — which is worse than
+ * leaving it pending, because a resolved row drops out of this queue.
+ */
+const TOKEN_BEARING_SERVICES = ['ELECTRICITY', 'EDUCATION'];
+
+interface DeliveryDraft {
+  purchase: AdminUtilityPurchaseDto;
+  token: string;
+  providerReference: string;
+  providerCost: string;
+}
+
 function PageBillPayments() {
   const [purchases, setPurchases] = useState<AdminUtilityPurchaseDto[]>([]);
   const [float, setFloat] = useState<UtilityFloatStatusDto | null>(null);
@@ -6857,6 +6872,7 @@ function PageBillPayments() {
   const [statusFilter, setStatusFilter] = useState<UtilityPurchaseStatus | 'ALL'>('ALL');
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [deliver, setDeliver] = useState<DeliveryDraft | null>(null);
 
   const load = useCallback(async (status: UtilityPurchaseStatus | 'ALL') => {
     setLoading(true);
@@ -6886,24 +6902,36 @@ function PageBillPayments() {
   const resolve = async (
     purchase: AdminUtilityPurchaseDto,
     outcome: 'SUCCESSFUL' | 'REVERSED',
+    delivery?: { token: string; providerReference: string; providerCost: string },
   ): Promise<void> => {
     setBusy(purchase.id);
     setMsg(null);
     try {
+      const token = delivery?.token.trim() ?? '';
+      const providerReference = delivery?.providerReference.trim() ?? '';
+      const cost = Number(delivery?.providerCost.trim() ?? '');
       const updated = await api.adminUtilities.resolve(purchase.id, {
         outcome,
         note:
           outcome === 'REVERSED'
             ? 'Refunded to the DrippleX wallet by Operations.'
             : 'Confirmed delivered against the provider dashboard by Operations.',
+        // Only sent when actually typed. An empty string would overwrite a
+        // token the provider had already returned.
+        ...(token !== '' ? { deliveredToken: token } : {}),
+        ...(providerReference !== '' ? { providerReference } : {}),
+        ...(Number.isFinite(cost) && cost > 0 ? { providerCost: cost } : {}),
       });
+      setDeliver(null);
       setPurchases((previous) =>
         previous.map((entry) => (entry.id === updated.id ? updated : entry)),
       );
       setMsg(
         outcome === 'REVERSED'
-          ? `₦${purchase.amountCharged.toLocaleString()} returned to the customer's DrippleX wallet.`
-          : 'Marked delivered.',
+          ? `₦${purchase.amountCharged.toLocaleString()} returned to the customer's DrippleX wallet. They have been notified.`
+          : updated.deliveredToken !== null && updated.deliveredToken !== ''
+            ? 'Marked delivered. The customer has been notified and can see the token on their receipt.'
+            : 'Marked delivered, with no token recorded — the customer has nothing to collect from this receipt.',
       );
     } catch (cause) {
       setMsg(cause instanceof Error ? cause.message : 'Could not resolve that purchase');
@@ -6945,6 +6973,24 @@ function PageBillPayments() {
               : `₦${float.balance.toLocaleString()} ${float.currency} available. Every airtime, data, cable and electricity purchase is paid from this.`}
         </p>
       </Card>
+
+      {deliver !== null && (
+        <DeliverPurchaseCard
+          draft={deliver}
+          busy={busy === deliver.purchase.id}
+          onChange={setDeliver}
+          onCancel={() => {
+            setDeliver(null);
+          }}
+          onConfirm={() => {
+            void resolve(deliver.purchase, 'SUCCESSFUL', {
+              token: deliver.token,
+              providerReference: deliver.providerReference,
+              providerCost: deliver.providerCost,
+            });
+          }}
+        />
+      )}
 
       <Card>
         <SectionHeader
@@ -7085,7 +7131,15 @@ function PageBillPayments() {
                         outline
                         color={G3}
                         disabled={busy === p.id}
-                        onClick={() => void resolve(p, 'SUCCESSFUL')}
+                        onClick={() => {
+                          setMsg(null);
+                          setDeliver({
+                            purchase: p,
+                            token: p.deliveredToken ?? '',
+                            providerReference: p.providerReference ?? '',
+                            providerCost: '',
+                          });
+                        }}
                       />
                     </div>
                   ) : (
@@ -7121,6 +7175,112 @@ function PageBillPayments() {
         ) : null}
       </Card>
     </div>
+  );
+}
+
+/**
+ * What an operator types when Peyflex delivered but DrippleX never heard back.
+ *
+ * The queue's "Mark delivered" button used to resolve the row on the spot,
+ * sending only an outcome. That flipped the status to SUCCESSFUL and left
+ * `deliveredToken` null — so an electricity customer's row left the queue and
+ * they still had no meter token, and no page anywhere could give them one. The
+ * backend has accepted these three fields since the Peyflex work; nothing sent
+ * them.
+ */
+function DeliverPurchaseCard({
+  draft,
+  busy,
+  onChange,
+  onCancel,
+  onConfirm,
+}: {
+  draft: DeliveryDraft;
+  busy: boolean;
+  onChange: (next: DeliveryDraft) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const { purchase } = draft;
+  const needsToken = TOKEN_BEARING_SERVICES.includes(purchase.serviceType);
+  const tokenMissing = draft.token.trim() === '';
+
+  return (
+    <Card>
+      <SectionHeader
+        title={`Mark delivered — ${purchase.serviceType} ₦${purchase.amountCharged.toLocaleString()}`}
+        action={<Chip label={purchase.customerIdentifier} color={G3} />}
+      />
+      <p style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif', marginTop: 0 }}>
+        Open the transaction on the Peyflex dashboard and copy what it shows. Anything left blank
+        keeps whatever is already on the record.
+      </p>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+        <label style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          {needsToken
+            ? purchase.serviceType === 'ELECTRICITY'
+              ? 'Meter token — what the customer types into the meter'
+              : 'PIN(s) — separate several with ||'
+            : 'Token or note for the receipt (optional for this service)'}
+          <input
+            className="dx-input"
+            value={draft.token}
+            onChange={(e) => {
+              onChange({ ...draft, token: e.target.value });
+            }}
+            placeholder={purchase.serviceType === 'ELECTRICITY' ? '1234 5678 9012 3456 7890' : ''}
+            style={{ marginTop: 4, width: '100%', fontFamily: 'monospace' }}
+          />
+        </label>
+
+        <label style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          Peyflex Order ID — the reference a dispute is argued with
+          <input
+            className="dx-input"
+            value={draft.providerReference}
+            onChange={(e) => {
+              onChange({ ...draft, providerReference: e.target.value });
+            }}
+            placeholder="2026082104518TwoojR6"
+            style={{ marginTop: 4, width: '100%', fontFamily: 'monospace' }}
+          />
+        </label>
+
+        <label style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          What Peyflex actually charged the float — the drop between Old and New Balance. Leave
+          blank if unknown; it is only used to measure DrippleX&apos;s margin.
+          <input
+            className="dx-input"
+            value={draft.providerCost}
+            onChange={(e) => {
+              onChange({ ...draft, providerCost: e.target.value });
+            }}
+            inputMode="decimal"
+            placeholder="1000"
+            style={{ marginTop: 4, width: '100%' }}
+          />
+        </label>
+
+        {needsToken && tokenMissing && (
+          <span style={{ fontSize: 11, color: C_WARN, fontFamily: 'Inter, sans-serif' }}>
+            Without a token this customer has nothing to collect, and the row leaves this queue.
+            Refund to wallet instead if Peyflex has not delivered.
+          </span>
+        )}
+
+        <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
+          <Btn
+            label={busy ? '…' : 'Confirm delivered'}
+            small
+            color={G2}
+            disabled={busy || (needsToken && tokenMissing)}
+            onClick={onConfirm}
+          />
+          <Btn label="Cancel" small outline color={MUTED} disabled={busy} onClick={onCancel} />
+        </div>
+      </div>
+    </Card>
   );
 }
 

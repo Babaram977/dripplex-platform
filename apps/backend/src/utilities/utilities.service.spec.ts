@@ -12,11 +12,13 @@ import {
 import { AuditService } from '../audit/audit.service';
 import { ValidationDomainException } from '../common/exceptions/domain.exception';
 import { DomainEventBus } from '../events/domain-event-bus';
+import { type NotificationCenterService } from '../notification-center/notification-center.service';
 import { WalletService } from '../wallet/wallet.service';
 
 import { UtilityProviderRejectedError } from './providers/utility-provider.port';
 import { UTILITIES_PERMISSIONS } from './utilities.constants';
 import { providerReferenceFor, UtilitiesService } from './utilities.service';
+import { UtilityCustomerNotifier } from './utility-customer-notifier.service';
 import { UtilityPaymentSweepService } from './utility-payment-sweep.service';
 
 import type { AuditLogRepository } from '../audit/repositories/audit-log.repository';
@@ -54,6 +56,9 @@ describe('UtilitiesService', () => {
    * collide on it. Counted rather than randomised so a failure is repeatable. */
   let gatewayReferenceSeq = 0;
   let wallets: WalletService;
+  /** Every notification the service tried to send, so a test can assert the
+   *  customer was actually told — the whole point of the notifier. */
+  let notificationCentre: { send: jest.Mock };
   const createdUserIds: string[] = [];
 
   const CATALOGUE = {
@@ -192,10 +197,22 @@ describe('UtilitiesService', () => {
       handleWebhook: jest.fn(),
     } as unknown as PaymentProviderAdapter;
 
-    service = new UtilitiesService(prisma, walletService, auditService, config, provider, [
-      flutterwave,
-      paystack,
-    ]);
+    notificationCentre = {
+      send: jest.fn().mockResolvedValue({ notification: null, skipped: false }),
+    };
+    const notifier = new UtilityCustomerNotifier(
+      notificationCentre as unknown as NotificationCenterService,
+    );
+
+    service = new UtilitiesService(
+      prisma,
+      walletService,
+      auditService,
+      config,
+      provider,
+      [flutterwave, paystack],
+      notifier,
+    );
   });
 
   /** A customer with a funded wallet. */
@@ -474,6 +491,87 @@ describe('UtilitiesService', () => {
         { userId: 'ops-1' },
       ),
     ).rejects.toThrow();
+  });
+
+  /**
+   * The gap this closes: on 2026-08-21 a customer paid ₦1,000 for an
+   * electricity token, Peyflex did not answer, and the receipt read "Still
+   * confirming". Peyflex had in fact delivered. When an operator later pasted
+   * the token in, nothing at all was sent — the customer had to think to go
+   * back and look for it, with no reason to.
+   */
+  it('tells the customer when an operator finally delivers a stuck purchase', async () => {
+    if (!databaseAvailable) return;
+    const customerId = await fundedCustomer(5_000);
+    provider.purchaseElectricity.mockResolvedValue({ outcome: 'UNKNOWN' });
+    const { purchase } = await service.initiatePurchase(
+      customerId,
+      {
+        serviceType: UtilityServiceType.ELECTRICITY,
+        provider: 'kaduna',
+        customerIdentifier: '04184468587',
+        amount: 2_000,
+        paymentMethod: UtilityPaymentMethod.WALLET,
+      },
+      { userId: customerId },
+    );
+    // Nothing is claimed while it is genuinely unresolved.
+    expect(notificationCentre.send).not.toHaveBeenCalled();
+
+    await service.resolvePendingPurchase(
+      purchase.id,
+      {
+        outcome: 'SUCCESSFUL',
+        note: 'Found on the Peyflex dashboard',
+        deliveredToken: '6876 9786 3337 0514 1953',
+        providerReference: '2026082104518TwoojR6',
+      },
+      { userId: 'ops-1' },
+    );
+
+    const sent = notificationCentre.send.mock.calls.map(
+      ([dto]) => dto as { channel: string; userId: string; body: string; type: string },
+    );
+    expect(sent.map((s) => s.channel).sort()).toEqual(['IN_APP', 'PUSH']);
+    expect(sent.every((s) => s.userId === customerId)).toBe(true);
+    expect(sent.every((s) => s.type === 'UTILITY_PURCHASE_DELIVERED')).toBe(true);
+
+    // The in-app message carries the token — that is the whole point.
+    const inApp = sent.find((s) => s.channel === 'IN_APP');
+    expect(inApp?.body).toContain('6876 9786 3337 0514 1953');
+
+    // The push does NOT. It renders on a locked screen, and a meter token is
+    // spendable by anyone who can read it.
+    const push = sent.find((s) => s.channel === 'PUSH');
+    expect(push?.body).not.toContain('6876 9786 3337 0514 1953');
+    expect(push?.body).toContain('Open DrippleX');
+  });
+
+  it('tells the customer when a purchase is reversed and the money comes back', async () => {
+    if (!databaseAvailable) return;
+    const customerId = await fundedCustomer(5_000);
+    provider.purchaseElectricity.mockResolvedValue({
+      outcome: 'FAILED',
+      providerMessage: 'Meter not found',
+    });
+    await service.initiatePurchase(
+      customerId,
+      {
+        serviceType: UtilityServiceType.ELECTRICITY,
+        provider: 'kaduna',
+        customerIdentifier: '12345678901',
+        amount: 2_000,
+        paymentMethod: UtilityPaymentMethod.WALLET,
+      },
+      { userId: customerId },
+    );
+
+    const sent = notificationCentre.send.mock.calls.map(
+      ([dto]) => dto as { channel: string; type: string; body: string },
+    );
+    expect(sent.length).toBe(2);
+    expect(sent.every((s) => s.type === 'UTILITY_PURCHASE_REVERSED')).toBe(true);
+    expect(sent[0]?.body).toContain('DrippleX Wallet');
   });
 
   it('returns the money when an operator finds the purchase never landed', async () => {
