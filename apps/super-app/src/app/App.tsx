@@ -197,6 +197,7 @@ import {
   gatewayReturnKindFromUrl,
   takeGatewayReturn,
 } from '../lib/gatewayReturn';
+import { clearHistory, popPrevious, recordNavigation } from '../lib/screenHistory';
 import { installUnlockListener } from '../lib/sound';
 
 // DESKTOP FRAME — for admin operations console
@@ -646,39 +647,12 @@ function AppShell() {
   };
 
   /**
-   * Navigate, remembering where we were.
-   *
-   * The guard below is what stops Back from becoming a trap. Ninety-one Back
-   * buttons in this file are written `onBack={() => go('account')}` — a
-   * hard-coded destination rather than a pop — and each of those *pushed* the
-   * screen being left onto the history stack. So:
-   *
-   *   home → Manage Account            history: [home]
-   *   → PIN Setup                      history: [home, account]
-   *   → Back (go('account'))           history: [home, account, pinsetup]
-   *   → Back (goBack('home')) pops pinsetup ... and lands on PIN Setup again.
-   *
-   * Manage Account and PIN Setup then bounced off each other forever, and the
-   * customer could not get home from any profile page they had opened. Which
-   * page they opened did not matter — every one of them navigates back the
-   * same way.
-   *
-   * Returning to the screen directly beneath us on the stack IS a back move,
-   * whichever call spelled it, so treat it as one: pop instead of push. That
-   * fixes every hard-coded Back in the app at once rather than only the ones
-   * anybody remembered to rewrite.
+   * Navigate, remembering where we were. The stack logic lives in
+   * `lib/screenHistory` so it can be tested — see `screenHistory.test.ts`,
+   * which pins the exact path a customer got trapped on.
    */
   const go = (to: Screen) => {
-    if (screen !== to) {
-      const stack = historyRef.current;
-      if (stack[stack.length - 1] === to) {
-        stack.pop();
-      } else {
-        stack.push(screen);
-        // A wandering session should not grow without bound.
-        if (stack.length > 50) stack.shift();
-      }
-    }
+    recordNavigation(historyRef.current, screen, to);
     navigate(to);
   };
 
@@ -687,8 +661,7 @@ function AppShell() {
    * home for this persona when there is no history (a deep link, or a reload).
    */
   const goBack = (fallback: Screen) => {
-    const previous = historyRef.current.pop();
-    navigate(previous ?? fallback);
+    navigate(popPrevious(historyRef.current, fallback));
   };
 
   /**
@@ -698,7 +671,7 @@ function AppShell() {
    * would walk into the signed-in app.
    */
   const goAfterAuthChange = (to: Screen) => {
-    historyRef.current = [];
+    clearHistory(historyRef.current);
     navigate(to);
   };
 
