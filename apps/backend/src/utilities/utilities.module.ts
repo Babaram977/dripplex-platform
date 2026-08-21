@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module';
 import { AppConfigService } from '../config/app-config.service';
 import { AppConfigModule } from '../config/config.module';
+import { NotificationCenterModule } from '../notification-center/notification-center.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { WalletModule } from '../wallet/wallet.module';
@@ -13,11 +14,21 @@ import { NotConfiguredUtilityProvider } from './providers/not-configured-utility
 import { PeyflexUtilityProvider } from './providers/peyflex.provider';
 import { UTILITY_PROVIDER } from './providers/utility-provider.port';
 import { UtilitiesService } from './utilities.service';
+import { UtilityCustomerNotifier } from './utility-customer-notifier.service';
 import { UtilityPaymentSweepService } from './utility-payment-sweep.service';
 import { UtilityPaymentSubscriber } from './utility-payment.subscriber';
 
 @Module({
-  imports: [PrismaModule, AuditModule, AppConfigModule, WalletModule, PaymentsModule],
+  imports: [
+    PrismaModule,
+    AuditModule,
+    AppConfigModule,
+    WalletModule,
+    PaymentsModule,
+    // Peyflex answers late or not at all, so the customer has to be told when
+    // a purchase finally resolves — they are not watching the screen by then.
+    NotificationCenterModule,
+  ],
   controllers: [CustomerUtilitiesController, AdminUtilitiesController],
   providers: [
     PeyflexUtilityProvider,
@@ -35,6 +46,7 @@ import { UtilityPaymentSubscriber } from './utility-payment.subscriber';
       ) => (config.peyflexConfigured ? peyflex : notConfigured),
       inject: [AppConfigService, PeyflexUtilityProvider, NotConfiguredUtilityProvider],
     },
+    UtilityCustomerNotifier,
     UtilitiesService,
     // DomainEventBus comes from the @Global() EventsModule, so no import here.
     UtilityPaymentSubscriber,

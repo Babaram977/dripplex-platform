@@ -2466,6 +2466,15 @@ enum NotificationType {
   SHIFT_BREAK_REMINDER
   SHIFT_FATIGUE_WARNING
   SHIFT_DAILY_LIMIT_EXCEEDED
+  /// A utility purchase finished and the customer has something to collect —
+  /// an electricity token, an exam PIN, or simply the confirmation that the
+  /// airtime landed. Separate from PAYMENT_SUCCESS because the payment
+  /// succeeding and the *service* arriving are two different moments for
+  /// utilities: money can be taken minutes or hours before Peyflex answers.
+  UTILITY_PURCHASE_DELIVERED
+  /// A utility purchase could not be completed and the money has been
+  /// returned to the DrippleX Wallet (DPX-D4).
+  UTILITY_PURCHASE_REVERSED
 }
 
 enum DevicePlatform {
@@ -2491,6 +2500,11 @@ enum NotificationCategory {
   MARKETING
   SYSTEM
   SECURITY
+  /// Airtime, data, electricity, cable, betting, education — the Peyflex hub.
+  /// Not WALLET: the wallet may not be involved at all (card path), and a
+  /// customer filtering their inbox for "my bill payments" is asking a
+  /// different question from "my wallet movements".
+  UTILITIES
 }
 
 enum SearchEntityType {
