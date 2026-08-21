@@ -52,7 +52,31 @@
         </provider>
     </application>
 
-    <!-- Minimal permission set — no camera, location, storage, or phone -->
+    <!--
+        Deliberately minimal. Each line below is required by a shipped feature;
+        nothing is declared "just in case", because every permission is a Play
+        review question and a prompt the user has to say yes to.
+
+        Location: Capacitor bridges navigator.geolocation to the platform
+        provider, which cannot be granted a permission the app never declared.
+        Without these two, getCurrentPosition fails on device and takes
+        checkout, ride pickup, merchant onboarding and — worst — the two-minute
+        driver/rider heartbeat with it. A driver then reads "You are live"
+        while dispatch cannot see them.
+
+        NOT declared, on purpose:
+        - ACCESS_BACKGROUND_LOCATION. The heartbeat runs on navigator.geolocation
+          inside a WebView, which only executes while the app is foregrounded.
+          Declaring it would trigger a Play policy review we would fail, for a
+          capability we do not have.
+        - CAMERA. The KYC screens use <input type="file" accept="image/*"
+          capture>, which Android satisfies by intent to the camera app — that
+          needs no permission from us, and declaring it while ungranted can
+          actually break ACTION_IMAGE_CAPTURE. Pending a real-device test of the
+          KYC capture flow; see docs/store/DPX-MOBILE-002-PRIVACY-PERMISSIONS-AUDIT.md.
+    -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 </manifest>
