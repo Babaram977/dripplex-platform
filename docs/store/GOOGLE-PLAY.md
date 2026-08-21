@@ -12,6 +12,7 @@ Use this draft when creating the Play Console listing. Replace placeholders befo
 | **Category**                     | Shopping                                                                |
 | **Tags / keywords**              | marketplace, food delivery, Nigeria, wallet, rides, parcel, pharmacy    |
 | **Privacy Policy URL**           | `https://dripplex.com/privacy`                                          |
+| **Account deletion URL**         | `https://dripplex.com/account-deletion`                                 |
 | **Support URL**                  | `https://dripplex.com/contact`                                          |
 | **Email**                        | support@dripplex.com                                                    |
 

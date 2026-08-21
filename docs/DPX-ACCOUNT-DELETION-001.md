@@ -186,8 +186,16 @@ Google Play requires a deletion route reachable **without installing the app**. 
 - `/account-deletion/request` — an authenticated request form for users who no longer have the app
   installed. Same backend endpoint, `requestedVia = WEB`.
 
-Also needed: `/contact`. `docs/store/GOOGLE-PLAY.md` and `APP-STORE.md` both list
-`https://dripplex.com/contact` as the support URL and **no such route exists** in customer-web.
+**Correction (2026-08-21):** an earlier draft of this section claimed `/contact` did not exist.
+That was wrong — `apps/customer-web/src/app/(public)/contact/page.tsx` has always been there, and
+both `dripplex.com/contact` and `www.dripplex.com/contact` return 200. The check that produced the
+claim searched for `privacy*`, `terms*`, `support*` and `legal*` directories and never looked for
+`contact`; absence of evidence was reported as evidence of absence.
+
+The route does need work, though not the work described before: it renders a `ContactForm` whose
+own copy reads _"Support routing will connect to operations in a later release."_ The link a store
+reviewer clicks resolves; the message a real user sends goes nowhere. Wiring it to operations is
+its own task.
 
 ## 9. User messaging
 
