@@ -43,6 +43,11 @@ placed, a payout was made, or a fraud signal was raised. Three separable things:
 - **Eligible personal data is deleted or anonymised.**
 - **Financial, transaction, fraud-prevention, KYC and other legally required records are retained
   only where required.**
+- **No deletion request may be blocked indefinitely.** A residual balance the user cannot
+  withdraw — below the minimum threshold, or bank details that will not accept it — must not
+  become a permanent bar on closing the account. The system must provide a reasonable settlement
+  path; where ordinary withdrawal is impossible, the request moves to an alternative resolution
+  path rather than sitting in `PENDING_SETTLEMENT` forever.
 - **Exact Nigerian statutory retention periods must be confirmed before implementation. Do not
   invent durations.**
 
@@ -198,7 +203,28 @@ used as an excuse, and nothing about their money is hidden.
 - **Completion** — confirm by email before the address is anonymised. Sequencing matters: send
   first, anonymise second, or the confirmation is unsendable.
 
-## 10. Retention periods — OPEN, needs legal review
+## 10. Gated on legal review — do not implement until answered
+
+Two questions, both requiring legal input, both deliberately unanswered here rather than guessed.
+
+### 10a. Residual balances that cannot be withdrawn
+
+**Founder decision 2026-08-21: no indefinite deletion block.** The mechanism is not decided.
+
+`PENDING_SETTLEMENT` must not be a trap. When a balance cannot clear by ordinary withdrawal, the
+request needs somewhere else to go. Candidate mechanisms, none approved:
+
+- assisted payout — Ops pays out manually against corrected details;
+- transfer to another verified account holder nominated by the user;
+- forfeiture after notice, **only where legally permitted**;
+- escheatment or an equivalent unclaimed-funds route.
+
+Each carries financial and legal consequences. Forfeiture in particular is not a default we can
+adopt because it is convenient: taking a user's money on account closure has to be lawful,
+disclosed in the terms before they act, and defensible if challenged. **This must be resolved,
+with legal review, before implementation begins.**
+
+### 10b. Retention periods
 
 **Do not implement §6 retention until this is answered.** Deliberately unanswered here rather than
 guessed.
@@ -218,17 +244,18 @@ fails the other. Output should be a per-category retention period, which becomes
 
 ## 11. Edge cases
 
-| Case                                  | Handling                                                                                                                                   |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| Merchant with live listings           | Deactivate listings at `PROCESSING`; block while payouts are `PENDING`                                                                     |
-| Rider owing platform cash             | `CommissionAccount.outstandingBalance > 0` blocks; user is told the amount                                                                 |
-| Multi-persona account                 | One `User`, several roles. **All** roles' obligations must clear — a customer who is also a merchant cannot delete around a pending payout |
-| Suspended or blocked user             | May still request deletion. Suspension is our action; erasure is their right. Fraud-related retention still applies                        |
-| User re-registers with the same phone | Phone is anonymised at `COMPLETED`, freeing the unique constraint. A new account is genuinely new — no history carries over                |
-| Deletion during an active ride        | Blocks. Cancelling a stranger's ride mid-journey is not an acceptable side effect                                                          |
-| Request while already `PROCESSING`    | 409                                                                                                                                        |
-| Withdrawal fails after `COMPLETED`    | Must be impossible — `WithdrawalRequest.status = PENDING` blocks entry to `PROCESSING`                                                     |
-| Ops rejects                           | Reason recorded and shown; user may request again                                                                                          |
+| Case                                    | Handling                                                                                                                                             |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Merchant with live listings             | Deactivate listings at `PROCESSING`; block while payouts are `PENDING`                                                                               |
+| Rider owing platform cash               | `CommissionAccount.outstandingBalance > 0` blocks; user is told the amount                                                                           |
+| Multi-persona account                   | One `User`, several roles. **All** roles' obligations must clear — a customer who is also a merchant cannot delete around a pending payout           |
+| Suspended or blocked user               | May still request deletion. Suspension is our action; erasure is their right. Fraud-related retention still applies                                  |
+| Residual balance that will not withdraw | **Must not block indefinitely** (§10a). Falls to the alternative resolution path once that mechanism is decided; until then, implementation is gated |
+| User re-registers with the same phone   | Phone is anonymised at `COMPLETED`, freeing the unique constraint. A new account is genuinely new — no history carries over                          |
+| Deletion during an active ride          | Blocks. Cancelling a stranger's ride mid-journey is not an acceptable side effect                                                                    |
+| Request while already `PROCESSING`      | 409                                                                                                                                                  |
+| Withdrawal fails after `COMPLETED`      | Must be impossible — `WithdrawalRequest.status = PENDING` blocks entry to `PROCESSING`                                                               |
+| Ops rejects                             | Reason recorded and shown; user may request again                                                                                                    |
 
 ## 12. Audit trail
 
@@ -253,7 +280,10 @@ of _why_ an account closed must outlive the account, and `AuditLog` is already r
 10. The completion email is sent before the address is anonymised.
 11. Every transition is in `AuditLog` with its blocking-reason set.
 12. The Play Console deletion URL resolves and explains erasure versus retention.
-13. Play Data Safety "users can request data deletion" can be answered **Yes**.
+13. **No request can remain in `PENDING_SETTLEMENT` indefinitely.** Every blocking reason has
+    either a user-actionable resolution or an Ops-actionable one; a residual balance below the
+    withdrawal threshold must reach a terminal state by some path (§10a).
+14. Play Data Safety "users can request data deletion" can be answered **Yes**.
 
 ## 14. Open questions for the founder
 
@@ -262,8 +292,8 @@ of _why_ an account closed must outlive the account, and `AuditLog` is already r
 2. **Grace period.** Many platforms hold 14–30 days between `PROCESSING` and irreversible
    erasure, to absorb regret and account-takeover-driven deletions. Not in the policy as stated.
    Worth adding?
-3. **Wallet balance that cannot be withdrawn** — below the minimum withdrawal threshold, or the
-   user's bank details are invalid. Forfeit after notice, or block indefinitely? Blocking
-   indefinitely means an account that can never be deleted, which fails the store requirement.
-4. **Merchant with an active storefront and customers mid-order** — notice period before delisting?
-5. **Retention periods** (§10) — the legal review, which gates implementation.
+3. **Merchant with an active storefront and customers mid-order** — notice period before delisting?
+
+**Resolved since the first draft:** a wallet balance that cannot be withdrawn must never block
+deletion permanently (founder decision 2026-08-21). The mechanism that replaces the block is still
+open, and is now tracked in §10a where it gates implementation alongside retention.
