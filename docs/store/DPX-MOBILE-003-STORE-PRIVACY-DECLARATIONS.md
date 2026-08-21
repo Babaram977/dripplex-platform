@@ -126,11 +126,16 @@ maturity.
   which only executes in the foreground. Declaring it invites a Play policy review we would fail,
   for a capability we do not have. `verify-config.mjs` fails the build if it appears.
 - **`NSLocationAlwaysAndWhenInUseUsageDescription`.** Same reasoning on iOS.
-- **Android `CAMERA`.** The KYC screens use `<input type="file" accept="image/*" capture>`, which
-  Android satisfies by intent to the camera app — no permission needed from us, and declaring it
-  while ungranted can break `ACTION_IMAGE_CAPTURE`. **Open pending a real-device test of the KYC
-  capture flow.** iOS is the opposite case and does need its strings, because WKWebView invokes
-  the system camera and photo picker directly. The asymmetry is correct, not an oversight.
+- **Android `CAMERA` — resolved 2026-08-21, and it is a "not yet", not a "no".** Camera is a real
+  product requirement: receipts, documents, and face verification if Smile Identity is engaged. But
+  everything shipping today is a file input (`checkoutScreen.tsx:1647`, `riderScreen.tsx:1040`,
+  `screensB.tsx:1818`), and `getUserMedia` appears nowhere in the codebase. Android satisfies file
+  inputs by intent to the camera app — no permission needed from us, and declaring it while
+  ungranted can break `ACTION_IMAGE_CAPTURE`. **Add `CAMERA` as part of the Smile Identity work**,
+  where face verification opens a live stream in-app and genuinely requires it, along with a
+  runtime permission request. See `DPX-MOBILE-002` §5. iOS is the opposite case throughout and does
+  need its strings, because WKWebView invokes the system camera and photo picker directly. The
+  asymmetry is correct, not an oversight.
 
 ## 5. The remaining blocker
 
