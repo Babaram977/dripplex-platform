@@ -1,6 +1,6 @@
 # DPX-HOTEL-001 — Hotel booking on the merchant rails
 
-**Status:** DRAFT — awaiting founder decisions in §7
+**Status:** DECIDED 2026-08-20 — all seven answered in §7, plus one they created. Building.
 **Author:** drafted 2026-08-20, from the live schema at `1b29fbf`
 **Founder direction (2026-08-20):** _"Hotel booking design going through merchant
 registration, adding rooms as products will be a good stress free idea."_
@@ -242,19 +242,41 @@ first.
 
 ---
 
-## 7. Founder decisions required
+## 7. Founder decisions — ANSWERED 2026-08-20
 
-Nothing below is inferable from the code. Each changes what gets built.
+Recorded verbatim from the founder, with the reading applied where the answer
+needed one. **These supersede the flow sketched in §5**, which assumed
+pay-then-confirm.
 
-| #   | Decision                                    | Why it matters                                                                                                                                                                            |
-| --- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | **Pay in full, deposit, or pay at hotel?**  | Deposit needs a balance-due concept; pay-at-hotel means commission accrues against money DrippleX never touched — the same shape as cash-on-delivery, which already has a settled pattern |
-| 2   | **Cancellation window and refund**          | Free until 24h before? Non-refundable rate? Refunds go to the DrippleX Wallet per DPX-D4                                                                                                  |
-| 3   | **Instant confirmation, or hotel accepts?** | Instant is a better guest experience; accept-first protects a hotel with imperfect calendar discipline                                                                                    |
-| 4   | **Commission rate for hotels**              | 10% default, or its own rate? Hotel margins differ from retail                                                                                                                            |
-| 5   | **No-show policy**                          | Who keeps the money, and does commission still accrue?                                                                                                                                    |
-| 6   | **Extra KYC for hotels?**                   | Or is merchant KYC enough?                                                                                                                                                                |
-| 7   | **Booking horizon and minimum stay**        | How far ahead can a guest book; is a one-night stay allowed                                                                                                                               |
+| #   | Decision                                | Answer                                                                                            |
+| --- | --------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| 1   | Pay in full, deposit, or pay at hotel?  | **Pay in full**, through the DrippleX payment window, settling to the merchant's DrippleX account |
+| 2   | Cancellation window and refund          | **Non-refundable. Bookings are final.**                                                           |
+| 3   | Instant confirmation, or hotel accepts? | **Hotel accepts first**, to confirm availability                                                  |
+| 4   | Commission rate for hotels              | **10%, Ops-adjustable** — the existing commission config, no new mechanism                        |
+| 5   | No-show policy                          | **Non-refundable**, same as #2                                                                    |
+| 6   | Extra KYC for hotels?                   | **No — merchant KYC is enough**                                                                   |
+| 7   | Booking horizon and minimum stay        | **3 months ahead maximum. One night minimum**, multi-night allowed                                |
+
+### 7.1 The decision these created
+
+#2 and #3 collide: if the guest has already paid in full and the hotel then
+**rejects**, "non-refundable" would mean DrippleX keeping money for a room
+nobody ever provided. That is not what "final" was meant to cover, so it was
+put back to the founder and answered:
+
+| #   | Decision                                           | Answer                                                                                                                          |
+| --- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| 8   | What happens to the money while the hotel decides? | **It is not taken until the hotel accepts.** A wallet HOLD reserves it; accepting commits it, rejecting or expiring releases it |
+| 9   | How long does the hotel have?                      | **30 minutes**, then the booking auto-expires and the hold is released                                                          |
+
+**Non-refundable therefore applies to the guest changing their mind and to a
+no-show — never to a hotel declining or letting the window lapse.** In those
+cases no room was ever contracted and the guest is made whole automatically.
+
+Decision 8 is why `WalletService.hold/commitHold/releaseHold` exists
+(shipped 2026-08-20); `pendingBalance` had been declared since the wallet was
+created and never written to until this needed it.
 
 ---
 
@@ -262,14 +284,14 @@ Nothing below is inferable from the code. Each changes what gets built.
 
 Each slice ships independently and is testable on its own.
 
-| Slice | Contents                                                                                                                            |
-| ----- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| 0     | Merchant category field (§6.1) — needed regardless of hotels                                                                        |
-| 1     | `roomTypeDetail` + `room_availability` + the merchant calendar. No booking yet; a hotel can list rooms and open nights              |
-| 2     | `Booking` + the availability check + night-hold transaction, with the double-booking constraint and its tests against real Postgres |
-| 3     | Customer flow: dates → room → pay, reusing the existing gateway; commission accrual on confirmation                                 |
-| 4     | Check-in / check-out / no-show, settlement, Ops visibility                                                                          |
-| 5     | Cancellation and refund per decision #2                                                                                             |
+| Slice | Contents                                                                                                                                                                                      |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0     | Merchant category field (§6.1) — needed regardless of hotels                                                                                                                                  |
+| 1     | `roomTypeDetail` + `room_availability` + the merchant calendar. No booking yet; a hotel can list rooms and open nights                                                                        |
+| 2     | `Booking` + the availability check + night-hold transaction, with the double-booking constraint and its tests against real Postgres. Per decision 8 the guest's money is HELD here, not taken |
+| 3     | Customer flow: dates → room → hold → hotel accepts (30 min) → commit. Commission accrues on acceptance, not on payment                                                                        |
+| 4     | Check-in / check-out / no-show, settlement, Ops visibility                                                                                                                                    |
+| 5     | Cancellation and refund per decision #2                                                                                                                                                       |
 
 **Slice 2 is the one that deserves the most care.** Everything else is
 recombination of parts already working in production; that slice is the only
