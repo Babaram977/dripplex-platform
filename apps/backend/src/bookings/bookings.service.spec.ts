@@ -11,6 +11,7 @@ import {
 import { AuditService } from '../audit/audit.service';
 import {
   ConflictDomainException,
+  NotFoundDomainException,
   ValidationDomainException,
 } from '../common/exceptions/domain.exception';
 import { DomainEventBus } from '../events/domain-event-bus';
@@ -62,7 +63,7 @@ describe('BookingsService', () => {
   async function createHotel(
     totalRooms: number,
     basePrice: number,
-  ): Promise<{ businessId: string; roomTypeId: string }> {
+  ): Promise<{ businessId: string; roomTypeId: string; merchantUserId: string }> {
     const user = await prisma.user.create({
       data: {
         email: `hotel-${randomUUID()}@dripplex.test`,
@@ -93,13 +94,12 @@ describe('BookingsService', () => {
     });
     createdBusinessIds.push(business.id);
 
-    const roomType = await rooms.createRoomType({
-      businessId: business.id,
+    const roomType = await rooms.createRoomType(user.id, {
       name: 'Deluxe',
       basePrice,
       totalRooms,
     });
-    return { businessId: business.id, roomTypeId: roomType.id };
+    return { businessId: business.id, roomTypeId: roomType.id, merchantUserId: user.id };
   }
 
   /** A customer with money in their DrippleX Wallet. */
@@ -140,8 +140,12 @@ describe('BookingsService', () => {
 
   /** Open the two nights of `stay`, plus the checkout day, so a test can prove
    *  the checkout day is NOT held rather than merely absent. */
-  async function openStayNights(roomTypeId: string, roomsOpen: number): Promise<void> {
-    await rooms.openNights({
+  async function openStayNights(
+    merchantUserId: string,
+    roomTypeId: string,
+    roomsOpen: number,
+  ): Promise<void> {
+    await rooms.openNights(merchantUserId, {
       roomTypeId,
       from: day('2026-09-10'),
       to: day('2026-09-13'),
@@ -197,10 +201,10 @@ describe('BookingsService', () => {
 
   it('prices a stay from the calendar, night by night', async () => {
     if (!databaseAvailable) return;
-    const { roomTypeId } = await createHotel(3, 20_000);
-    await openStayNights(roomTypeId, 3);
+    const { roomTypeId, merchantUserId } = await createHotel(3, 20_000);
+    await openStayNights(merchantUserId, roomTypeId, 3);
     // The Friday costs more, and the quote has to say so.
-    await rooms.openNights({
+    await rooms.openNights(merchantUserId, {
       roomTypeId,
       from: day('2026-09-11'),
       to: day('2026-09-12'),
@@ -220,15 +224,15 @@ describe('BookingsService', () => {
 
   it('refuses a stay with one unopened night in the middle', async () => {
     if (!databaseAvailable) return;
-    const { roomTypeId } = await createHotel(3, 20_000);
+    const { roomTypeId, merchantUserId } = await createHotel(3, 20_000);
     // The 10th and the 12th are open; the 11th never was.
-    await rooms.openNights({
+    await rooms.openNights(merchantUserId, {
       roomTypeId,
       from: day('2026-09-10'),
       to: day('2026-09-11'),
       roomsOpen: 3,
     });
-    await rooms.openNights({
+    await rooms.openNights(merchantUserId, {
       roomTypeId,
       from: day('2026-09-12'),
       to: day('2026-09-13'),
@@ -256,8 +260,8 @@ describe('BookingsService', () => {
 
   it('holds the money without taking it, and holds only the nights slept', async () => {
     if (!databaseAvailable) return;
-    const { roomTypeId } = await createHotel(3, 20_000);
-    await openStayNights(roomTypeId, 3);
+    const { roomTypeId, merchantUserId } = await createHotel(3, 20_000);
+    await openStayNights(merchantUserId, roomTypeId, 3);
     const guestId = await fundedGuest(100_000);
 
     const booking = await bookings.createBooking(guestId, {
@@ -289,8 +293,8 @@ describe('BookingsService', () => {
 
   it('refuses a guest who cannot cover the stay, and holds no nights for them', async () => {
     if (!databaseAvailable) return;
-    const { roomTypeId } = await createHotel(3, 20_000);
-    await openStayNights(roomTypeId, 3);
+    const { roomTypeId, merchantUserId } = await createHotel(3, 20_000);
+    await openStayNights(merchantUserId, roomTypeId, 3);
     const guestId = await fundedGuest(1_000);
 
     await expect(
@@ -316,8 +320,8 @@ describe('BookingsService', () => {
    */
   it('sells the last room exactly once when two guests race for it', async () => {
     if (!databaseAvailable) return;
-    const { roomTypeId } = await createHotel(1, 20_000);
-    await openStayNights(roomTypeId, 1);
+    const { roomTypeId, merchantUserId } = await createHotel(1, 20_000);
+    await openStayNights(merchantUserId, roomTypeId, 1);
     const [a, b] = await Promise.all([fundedGuest(100_000), fundedGuest(100_000)]);
 
     const attempt = (guestId: string): Promise<unknown> =>
@@ -343,8 +347,8 @@ describe('BookingsService', () => {
 
   it('refuses a second booking once the last room is gone', async () => {
     if (!databaseAvailable) return;
-    const { roomTypeId } = await createHotel(1, 20_000);
-    await openStayNights(roomTypeId, 1);
+    const { roomTypeId, merchantUserId } = await createHotel(1, 20_000);
+    await openStayNights(merchantUserId, roomTypeId, 1);
     const first = await fundedGuest(100_000);
     const second = await fundedGuest(100_000);
 
@@ -371,8 +375,8 @@ describe('BookingsService', () => {
 
   it('takes the money only when the hotel accepts, and records the 10% cut', async () => {
     if (!databaseAvailable) return;
-    const { roomTypeId } = await createHotel(3, 20_000);
-    await openStayNights(roomTypeId, 3);
+    const { roomTypeId, merchantUserId } = await createHotel(3, 20_000);
+    await openStayNights(merchantUserId, roomTypeId, 3);
     const guestId = await fundedGuest(100_000);
     const booking = await bookings.createBooking(guestId, {
       roomTypeId,
@@ -381,7 +385,7 @@ describe('BookingsService', () => {
       guestPhone: '+2348012345678',
     });
 
-    const accepted = await bookings.acceptBooking(booking.id);
+    const accepted = await bookings.acceptBooking(merchantUserId, booking.id);
 
     expect(accepted.status).toBe(BookingStatus.CONFIRMED);
     expect(accepted.acceptedAt).not.toBeNull();
@@ -395,8 +399,8 @@ describe('BookingsService', () => {
 
   it('cannot take the money twice when a hotel double-taps Accept', async () => {
     if (!databaseAvailable) return;
-    const { roomTypeId } = await createHotel(3, 20_000);
-    await openStayNights(roomTypeId, 3);
+    const { roomTypeId, merchantUserId } = await createHotel(3, 20_000);
+    await openStayNights(merchantUserId, roomTypeId, 3);
     const guestId = await fundedGuest(100_000);
     const booking = await bookings.createBooking(guestId, {
       roomTypeId,
@@ -405,8 +409,10 @@ describe('BookingsService', () => {
       guestPhone: '+2348012345678',
     });
 
-    await bookings.acceptBooking(booking.id);
-    await expect(bookings.acceptBooking(booking.id)).rejects.toThrow(ConflictDomainException);
+    await bookings.acceptBooking(merchantUserId, booking.id);
+    await expect(bookings.acceptBooking(merchantUserId, booking.id)).rejects.toThrow(
+      ConflictDomainException,
+    );
 
     expect((await balances(guestId)).available).toBe(60_000);
   });
@@ -415,8 +421,8 @@ describe('BookingsService', () => {
 
   it('gives the money and the nights back when the hotel declines', async () => {
     if (!databaseAvailable) return;
-    const { roomTypeId } = await createHotel(1, 20_000);
-    await openStayNights(roomTypeId, 1);
+    const { roomTypeId, merchantUserId } = await createHotel(1, 20_000);
+    await openStayNights(merchantUserId, roomTypeId, 1);
     const guestId = await fundedGuest(100_000);
     const booking = await bookings.createBooking(guestId, {
       roomTypeId,
@@ -425,7 +431,11 @@ describe('BookingsService', () => {
       guestPhone: '+2348012345678',
     });
 
-    const rejected = await bookings.rejectBooking(booking.id, 'Rooms are being repainted');
+    const rejected = await bookings.rejectBooking(
+      merchantUserId,
+      booking.id,
+      'Rooms are being repainted',
+    );
 
     expect(rejected.status).toBe(BookingStatus.REJECTED);
     expect(rejected.rejectionReason).toBe('Rooms are being repainted');
@@ -444,8 +454,8 @@ describe('BookingsService', () => {
 
   it('expires a booking the hotel never answered and releases everything', async () => {
     if (!databaseAvailable) return;
-    const { roomTypeId } = await createHotel(1, 20_000);
-    await openStayNights(roomTypeId, 1);
+    const { roomTypeId, merchantUserId } = await createHotel(1, 20_000);
+    await openStayNights(merchantUserId, roomTypeId, 1);
     const guestId = await fundedGuest(100_000);
     const booking = await bookings.createBooking(guestId, {
       roomTypeId,
@@ -474,8 +484,8 @@ describe('BookingsService', () => {
 
   it('leaves a booking still inside its window alone', async () => {
     if (!databaseAvailable) return;
-    const { roomTypeId } = await createHotel(2, 20_000);
-    await openStayNights(roomTypeId, 2);
+    const { roomTypeId, merchantUserId } = await createHotel(2, 20_000);
+    await openStayNights(merchantUserId, roomTypeId, 2);
     const guestId = await fundedGuest(100_000);
     const booking = await bookings.createBooking(guestId, {
       roomTypeId,
@@ -493,8 +503,8 @@ describe('BookingsService', () => {
 
   it('refuses to accept a booking whose window has already closed', async () => {
     if (!databaseAvailable) return;
-    const { roomTypeId } = await createHotel(2, 20_000);
-    await openStayNights(roomTypeId, 2);
+    const { roomTypeId, merchantUserId } = await createHotel(2, 20_000);
+    await openStayNights(merchantUserId, roomTypeId, 2);
     const guestId = await fundedGuest(100_000);
     const booking = await bookings.createBooking(guestId, {
       roomTypeId,
@@ -507,7 +517,9 @@ describe('BookingsService', () => {
       data: { acceptDeadline: new Date(Date.now() - 1_000) },
     });
 
-    await expect(bookings.acceptBooking(booking.id)).rejects.toThrow(ConflictDomainException);
+    await expect(bookings.acceptBooking(merchantUserId, booking.id)).rejects.toThrow(
+      ConflictDomainException,
+    );
     expect((await balances(guestId)).pending).toBe(40_000);
   });
 
@@ -515,8 +527,8 @@ describe('BookingsService', () => {
 
   it('leaves a ledger a dispute can be argued from', async () => {
     if (!databaseAvailable) return;
-    const { roomTypeId } = await createHotel(2, 20_000);
-    await openStayNights(roomTypeId, 2);
+    const { roomTypeId, merchantUserId } = await createHotel(2, 20_000);
+    await openStayNights(merchantUserId, roomTypeId, 2);
     const guestId = await fundedGuest(100_000);
     const booking = await bookings.createBooking(guestId, {
       roomTypeId,
@@ -524,7 +536,7 @@ describe('BookingsService', () => {
       guestName: 'Hamza Bello',
       guestPhone: '+2348012345678',
     });
-    await bookings.acceptBooking(booking.id);
+    await bookings.acceptBooking(merchantUserId, booking.id);
 
     const wallet = await wallets.getWallet(WalletOwnerType.CUSTOMER, guestId);
     const entries = await prisma.walletLedgerEntry.findMany({
@@ -542,8 +554,8 @@ describe('BookingsService', () => {
 
   it('refuses more rooms than a single booking allows', async () => {
     if (!databaseAvailable) return;
-    const { roomTypeId } = await createHotel(20, 20_000);
-    await openStayNights(roomTypeId, 20);
+    const { roomTypeId, merchantUserId } = await createHotel(20, 20_000);
+    await openStayNights(merchantUserId, roomTypeId, 20);
     const guestId = await fundedGuest(1_000_000);
 
     await expect(
@@ -559,8 +571,8 @@ describe('BookingsService', () => {
 
   it('refuses a booking with no phone number for the hotel to call', async () => {
     if (!databaseAvailable) return;
-    const { roomTypeId } = await createHotel(2, 20_000);
-    await openStayNights(roomTypeId, 2);
+    const { roomTypeId, merchantUserId } = await createHotel(2, 20_000);
+    await openStayNights(merchantUserId, roomTypeId, 2);
     const guestId = await fundedGuest(100_000);
 
     await expect(
@@ -573,10 +585,147 @@ describe('BookingsService', () => {
     ).rejects.toThrow(ValidationDomainException);
   });
 
+  // ── Ownership ───────────────────────────────────────────────────────────────
+  //
+  // The worst thing this API could permit is one hotel accepting another
+  // hotel's booking — that takes a guest's money for a room nobody agreed to
+  // provide. Enforced in the service rather than only in a controller, and
+  // tested here for that reason.
+
+  it("will not let one hotel accept another hotel's booking", async () => {
+    if (!databaseAvailable) return;
+    const theirs = await createHotel(2, 20_000);
+    const rival = await createHotel(2, 20_000);
+    await openStayNights(theirs.merchantUserId, theirs.roomTypeId, 2);
+    const guestId = await fundedGuest(100_000);
+    const booking = await bookings.createBooking(guestId, {
+      roomTypeId: theirs.roomTypeId,
+      ...stay,
+      guestName: 'Hamza Bello',
+      guestPhone: '+2348012345678',
+    });
+
+    await expect(bookings.acceptBooking(rival.merchantUserId, booking.id)).rejects.toThrow(
+      NotFoundDomainException,
+    );
+
+    // Not a penny moved, and the booking is still the other hotel's to answer.
+    expect((await balances(guestId)).pending).toBe(40_000);
+    expect((await balances(guestId)).available).toBe(60_000);
+    const untouched = await prisma.booking.findUniqueOrThrow({ where: { id: booking.id } });
+    expect(untouched.status).toBe(BookingStatus.PENDING_HOTEL);
+  });
+
+  it("will not let one hotel reject another hotel's booking", async () => {
+    if (!databaseAvailable) return;
+    const theirs = await createHotel(2, 20_000);
+    const rival = await createHotel(2, 20_000);
+    await openStayNights(theirs.merchantUserId, theirs.roomTypeId, 2);
+    const guestId = await fundedGuest(100_000);
+    const booking = await bookings.createBooking(guestId, {
+      roomTypeId: theirs.roomTypeId,
+      ...stay,
+      guestName: 'Hamza Bello',
+      guestPhone: '+2348012345678',
+    });
+
+    await expect(
+      bookings.rejectBooking(rival.merchantUserId, booking.id, 'not mine to decline'),
+    ).rejects.toThrow(NotFoundDomainException);
+
+    expect((await balances(guestId)).pending).toBe(40_000);
+  });
+
+  it("will not let one hotel edit another hotel's rooms or calendar", async () => {
+    if (!databaseAvailable) return;
+    const theirs = await createHotel(2, 20_000);
+    const rival = await createHotel(2, 20_000);
+
+    await expect(
+      rooms.updateRoomType(rival.merchantUserId, theirs.roomTypeId, { basePrice: 1 }),
+    ).rejects.toThrow(NotFoundDomainException);
+
+    await expect(
+      rooms.openNights(rival.merchantUserId, {
+        roomTypeId: theirs.roomTypeId,
+        from: day('2026-09-10'),
+        to: day('2026-09-11'),
+        roomsOpen: 2,
+      }),
+    ).rejects.toThrow(NotFoundDomainException);
+  });
+
+  it('creates a room type against the signed-in hotel, never one it names', async () => {
+    if (!databaseAvailable) return;
+    const theirs = await createHotel(2, 20_000);
+    const rival = await createHotel(2, 20_000);
+
+    // The input type carries no businessId at all, so the strongest form of
+    // this check is that the created row lands on the caller's own business.
+    const created = await rooms.createRoomType(rival.merchantUserId, {
+      name: 'Suite',
+      basePrice: 50_000,
+      totalRooms: 1,
+    });
+    expect(created.businessId).toBe(rival.businessId);
+    expect(created.businessId).not.toBe(theirs.businessId);
+  });
+
+  it("keeps a guest out of another guest's booking", async () => {
+    if (!databaseAvailable) return;
+    const { roomTypeId, merchantUserId } = await createHotel(2, 20_000);
+    await openStayNights(merchantUserId, roomTypeId, 2);
+    const mine = await fundedGuest(100_000);
+    const stranger = await fundedGuest(100_000);
+    const booking = await bookings.createBooking(mine, {
+      roomTypeId,
+      ...stay,
+      guestName: 'Hamza Bello',
+      guestPhone: '+2348012345678',
+    });
+
+    await expect(bookings.getCustomerBooking(stranger, booking.id)).rejects.toThrow(
+      NotFoundDomainException,
+    );
+    await expect(bookings.getCustomerBooking(mine, booking.id)).resolves.toMatchObject({
+      id: booking.id,
+    });
+  });
+
+  it("shows a hotel its own book and nobody else's", async () => {
+    if (!databaseAvailable) return;
+    const theirs = await createHotel(2, 20_000);
+    const rival = await createHotel(2, 20_000);
+    await openStayNights(theirs.merchantUserId, theirs.roomTypeId, 2);
+    const guestId = await fundedGuest(100_000);
+    await bookings.createBooking(guestId, {
+      roomTypeId: theirs.roomTypeId,
+      ...stay,
+      guestName: 'Hamza Bello',
+      guestPhone: '+2348012345678',
+    });
+
+    const mine = await bookings.listMerchantBookings(theirs.merchantUserId, 1, 20);
+    expect(mine.total).toBe(1);
+    expect(mine.items[0]?.businessId).toBe(theirs.businessId);
+
+    const rivals = await bookings.listMerchantBookings(rival.merchantUserId, 1, 20);
+    expect(rivals.total).toBe(0);
+  });
+
+  it('tells an account with no business to finish registering, rather than failing oddly', async () => {
+    if (!databaseAvailable) return;
+    const stranger = await fundedGuest(0);
+    await expect(rooms.requireOwnBusiness(stranger)).rejects.toThrow(NotFoundDomainException);
+    await expect(
+      rooms.createRoomType(stranger, { name: 'Deluxe', basePrice: 1_000, totalRooms: 1 }),
+    ).rejects.toThrow(/finish merchant registration/i);
+  });
+
   it('will not let a hotel close a night it has already sold', async () => {
     if (!databaseAvailable) return;
-    const { roomTypeId } = await createHotel(2, 20_000);
-    await openStayNights(roomTypeId, 2);
+    const { roomTypeId, merchantUserId } = await createHotel(2, 20_000);
+    await openStayNights(merchantUserId, roomTypeId, 2);
     const guestId = await fundedGuest(100_000);
     await bookings.createBooking(guestId, {
       roomTypeId,
@@ -586,7 +735,7 @@ describe('BookingsService', () => {
     });
 
     await expect(
-      rooms.openNights({
+      rooms.openNights(merchantUserId, {
         roomTypeId,
         from: day('2026-09-10'),
         to: day('2026-09-11'),

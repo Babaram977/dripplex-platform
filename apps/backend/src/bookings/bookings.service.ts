@@ -355,8 +355,12 @@ export class BookingsService {
    * settlement. Accruing here would charge the hotel for money DrippleX already
    * has.
    */
-  public async acceptBooking(bookingId: string, context: AuditContext = {}): Promise<Booking> {
-    const booking = await this.requirePending(bookingId);
+  public async acceptBooking(
+    merchantUserId: string,
+    bookingId: string,
+    context: AuditContext = {},
+  ): Promise<Booking> {
+    const booking = await this.requireOwnPending(merchantUserId, bookingId);
 
     if (booking.acceptDeadline.getTime() <= Date.now()) {
       throw new ConflictDomainException(
@@ -408,11 +412,12 @@ export class BookingsService {
 
   /** The hotel says no. The guest was never charged, and the nights go back. */
   public async rejectBooking(
+    merchantUserId: string,
     bookingId: string,
     reason: string | undefined,
     context: AuditContext = {},
   ): Promise<Booking> {
-    const booking = await this.requirePending(bookingId);
+    const booking = await this.requireOwnPending(merchantUserId, bookingId);
     return await this.unwind(
       booking,
       BookingStatus.REJECTED,
@@ -541,8 +546,109 @@ export class BookingsService {
     );
   }
 
-  private async requirePending(bookingId: string): Promise<Booking> {
-    const booking = await this.prisma.booking.findUnique({ where: { id: bookingId } });
+  // ── Reads ─────────────────────────────────────────────────────────────────
+
+  /** A guest's own bookings, newest first. */
+  public async listCustomerBookings(
+    customerId: string,
+    page: number,
+    pageSize: number,
+  ): Promise<{ items: Booking[]; total: number }> {
+    const where = { customerId };
+    const [total, items] = await Promise.all([
+      this.prisma.booking.count({ where }),
+      this.prisma.booking.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
+    return { items, total };
+  }
+
+  /** One booking, and only if it is this guest's. NOT_FOUND rather than
+   *  FORBIDDEN so an id cannot be probed for existence. */
+  public async getCustomerBooking(customerId: string, bookingId: string): Promise<Booking> {
+    const booking = await this.prisma.booking.findFirst({ where: { id: bookingId, customerId } });
+    if (!booking) {
+      throw new NotFoundDomainException('Booking not found');
+    }
+    return booking;
+  }
+
+  /**
+   * The hotel's own book. Defaults to what needs answering, because that is
+   * what a hotel opens this screen for and every minute of the thirty counts.
+   */
+  public async listMerchantBookings(
+    merchantUserId: string,
+    page: number,
+    pageSize: number,
+    status?: BookingStatus,
+  ): Promise<{ items: Booking[]; total: number }> {
+    const businessId = await this.requireOwnBusinessId(merchantUserId);
+    const where = { businessId, ...(status ? { status } : {}) };
+    const [total, items] = await Promise.all([
+      this.prisma.booking.count({ where }),
+      this.prisma.booking.findMany({
+        where,
+        // Pending first and by deadline: the one closest to expiring is the one
+        // the hotel most needs to see.
+        orderBy: [{ status: 'asc' }, { acceptDeadline: 'asc' }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
+    return { items, total };
+  }
+
+  /** Every hotel's bookings, for Ops. Read-only by design — see
+   *  AdminBookingsController on why an operator cannot accept one. */
+  public async listAllBookings(
+    page: number,
+    pageSize: number,
+    status?: BookingStatus,
+  ): Promise<{ items: Booking[]; total: number }> {
+    const where = status ? { status } : {};
+    const [total, items] = await Promise.all([
+      this.prisma.booking.count({ where }),
+      this.prisma.booking.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
+    return { items, total };
+  }
+
+  // ── Ownership ─────────────────────────────────────────────────────────────
+
+  private async requireOwnBusinessId(merchantUserId: string): Promise<string> {
+    const business = await this.prisma.business.findUnique({
+      where: { merchantId: merchantUserId },
+      select: { id: true },
+    });
+    if (!business) {
+      throw new NotFoundDomainException(
+        'No business is registered against this account yet. Finish merchant registration first.',
+      );
+    }
+    return business.id;
+  }
+
+  /**
+   * A booking this hotel may answer.
+   *
+   * Scoped by the signed-in merchant's own business, so one hotel cannot
+   * accept — and take a guest's money for — another hotel's booking. That is
+   * the single worst thing this API could permit, so the check is here in the
+   * service rather than in a controller that a future caller might bypass.
+   */
+  private async requireOwnPending(merchantUserId: string, bookingId: string): Promise<Booking> {
+    const businessId = await this.requireOwnBusinessId(merchantUserId);
+    const booking = await this.prisma.booking.findFirst({ where: { id: bookingId, businessId } });
     if (!booking) {
       throw new NotFoundDomainException('Booking not found');
     }
