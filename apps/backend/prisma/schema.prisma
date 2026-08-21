@@ -101,6 +101,158 @@ enum BusinessVerificationStatus {
 /// offer, so the existing UI becomes real rather than a new taxonomy being
 /// invented alongside it. OTHER exists so a merchant is never forced into a
 /// wrong one; UNCATEGORISED is absent by design — that state is `null`.
+// ─── Hotel booking (DPX-HOTEL-001) ───────────────────────────────────────────
+
+/// A bookable room type at a hotel — "Standard Double", "Executive Suite".
+///
+/// Deliberately its own model rather than a Product with inventory. A hotel
+/// room is not stock: selling one for the 14th says nothing about the 15th,
+/// and squeezing a per-night figure into `ProductInventory.quantity` is how a
+/// platform double-books a guest who then finds out at a desk at night.
+model RoomType {
+  id          String  @id @default(uuid()) @db.Uuid
+  /// The hotel's Business, not its User — a room belongs to the establishment.
+  businessId  String  @map("business_id") @db.Uuid
+  name        String  @db.VarChar(120)
+  description String? @db.VarChar(1000)
+  /// How many people the room sleeps. Shown to the guest; not enforced.
+  capacity    Int     @default(2)
+  /// The default nightly rate in naira. A specific night may override it via
+  /// RoomAvailability.priceOverride — a Friday costs what a Friday costs.
+  basePrice   Decimal @map("base_price") @db.Decimal(12, 2)
+  /// How many of this room type the hotel has in total. The per-night row
+  /// records how many of them are already sold.
+  totalRooms  Int     @map("total_rooms")
+  photoUrl    String? @map("photo_url") @db.VarChar(2048)
+  isActive    Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  business     Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  availability RoomAvailability[]
+  bookings     Booking[]
+
+  @@index([businessId])
+  @@index([businessId, isActive])
+  @@map("room_types")
+}
+
+/// One night, for one room type.
+///
+/// The row exists only for nights the hotel has opened. A missing row means
+/// "not for sale that night" — which is the safe default, because a hotel that
+/// forgets to close a date should not accidentally sell a room it does not
+/// have.
+model RoomAvailability {
+  id         String   @id @default(uuid()) @db.Uuid
+  roomTypeId String   @map("room_type_id") @db.Uuid
+  /// The night being slept, stored as a date at UTC midnight. A stay from the
+  /// 14th to the 16th occupies the 14th and the 15th — never the checkout day.
+  night      DateTime @db.Date
+  /// Rooms of this type sellable on this night. May be below the room type's
+  /// total when the hotel is holding some back.
+  roomsOpen  Int      @map("rooms_open")
+  /// Rooms already committed. The invariant the whole model exists to protect
+  /// is roomsBooked <= roomsOpen, enforced by a CHECK constraint rather than
+  /// by application code, because application code races.
+  roomsBooked Int     @default(0) @map("rooms_booked")
+  /// This night's price, when it differs from the room type's base.
+  priceOverride Decimal? @map("price_override") @db.Decimal(12, 2)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  roomType RoomType @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
+
+  /// One row per room type per night — the constraint that makes an upsert
+  /// safe and stops two calendars disagreeing about the same night.
+  @@unique([roomTypeId, night])
+  @@index([roomTypeId, night])
+  @@map("room_availability")
+}
+
+/// Where a booking is in its life.
+///
+/// PENDING_HOTEL is the decision the founder made on 2026-08-20: the guest's
+/// money is HELD, not taken, while the hotel has 30 minutes to accept. Every
+/// exit from PENDING_HOTEL either commits that hold or releases it — there is
+/// no path that leaves money in limbo.
+enum BookingStatus {
+  /// Held, awaiting the hotel. Auto-expires after BOOKING_ACCEPT_WINDOW_MS.
+  PENDING_HOTEL
+  /// Hotel accepted; the hold has been committed and the money is taken.
+  CONFIRMED
+  /// Hotel declined. Hold released, guest whole.
+  REJECTED
+  /// The 30 minutes lapsed with no answer. Hold released, guest whole.
+  EXPIRED
+  /// Guest arrived.
+  CHECKED_IN
+  /// Stay complete; settlement runs.
+  CHECKED_OUT
+  /// Confirmed, paid, and the guest never came. Non-refundable per decision 5.
+  NO_SHOW
+}
+
+/// A stay.
+///
+/// Money model (founder decisions 1, 2, 5, 8): paid in full up front, held
+/// rather than taken until the hotel accepts, and non-refundable once
+/// confirmed — including a no-show. A hotel REJECTING or letting the window
+/// lapse is not a cancellation and always returns the guest's money, because
+/// no room was ever contracted.
+model Booking {
+  id         String        @id @default(uuid()) @db.Uuid
+  reference  String        @unique @db.VarChar(40)
+  customerId String        @map("customer_id") @db.Uuid
+  businessId String        @map("business_id") @db.Uuid
+  roomTypeId String        @map("room_type_id") @db.Uuid
+  status     BookingStatus @default(PENDING_HOTEL)
+
+  /// First night slept.
+  checkIn  DateTime @map("check_in") @db.Date
+  /// Departure day — NOT slept, and never held in room_availability.
+  checkOut DateTime @map("check_out") @db.Date
+  /// checkOut - checkIn, stored so a receipt does not have to recompute it.
+  nights   Int
+  rooms    Int      @default(1)
+  guests   Int      @default(1)
+
+  /// What the guest pays, summed from each night's actual price at the moment
+  /// of booking. Frozen here so a later price change cannot move it.
+  totalAmount Decimal @map("total_amount") @db.Decimal(12, 2)
+  /// DrippleX's cut, at the rate in force when the hotel accepted.
+  commissionAmount Decimal? @map("commission_amount") @db.Decimal(12, 2)
+
+  guestName  String  @map("guest_name") @db.VarChar(160)
+  guestPhone String  @map("guest_phone") @db.VarChar(20)
+  guestNote  String? @map("guest_note") @db.VarChar(500)
+
+  /// When the hold must be resolved by. Read by the expiry sweep.
+  acceptDeadline DateTime  @map("accept_deadline")
+  acceptedAt     DateTime? @map("accepted_at")
+  rejectedAt     DateTime? @map("rejected_at")
+  /// The hotel's own words when declining — shown to the guest.
+  rejectionReason String?  @map("rejection_reason") @db.VarChar(500)
+  checkedInAt    DateTime? @map("checked_in_at")
+  checkedOutAt   DateTime? @map("checked_out_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  customer User     @relation("BookingCustomer", fields: [customerId], references: [id], onDelete: Cascade)
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  roomType RoomType @relation(fields: [roomTypeId], references: [id], onDelete: Restrict)
+
+  @@index([customerId, createdAt])
+  @@index([businessId, status])
+  /// The expiry sweep's query: everything still pending past its deadline.
+  @@index([status, acceptDeadline])
+  @@map("bookings")
+}
+
 enum MerchantCategory {
   SUPERMARKET
   RESTAURANT
@@ -405,6 +557,7 @@ model User {
   @@index([emailVerifiedAt])
   @@index([phoneVerifiedAt])
   @@map("users")
+  bookingsAsCustomer          Booking[]                    @relation("BookingCustomer")
 }
 
 model Role {
@@ -632,6 +785,8 @@ model Business {
   /// The marketplace's primary browse is "approved merchants in this category".
   @@index([category])
   @@map("businesses")
+  roomTypes                RoomType[]
+  bookings                 Booking[]
 }
 
 model MerchantKyc {
