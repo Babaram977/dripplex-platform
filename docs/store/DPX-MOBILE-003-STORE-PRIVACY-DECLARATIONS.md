@@ -82,7 +82,7 @@ unchanged.
 | Question                             | Answer                                                                     |
 | ------------------------------------ | -------------------------------------------------------------------------- |
 | Encrypted in transit                 | **Yes** — `allowMixedContent: false`, `androidScheme: 'https'`, HTTPS only |
-| Users can request data deletion      | **See §5 — currently No**                                                  |
+| Users can request data deletion      | **Yes** — `https://dripplex.com/account-deletion` (see §5)                 |
 | Data used for tracking / advertising | **No**                                                                     |
 
 Collected, **not shared**, in every case below. All required rather than optional except where the
@@ -134,10 +134,17 @@ maturity.
 
 ## 5. The remaining blocker
 
-**Account deletion does not exist** — no endpoint, no screen, no flow. Google Play requires a
-deletion route including a public web URL; Apple requires in-app deletion under 5.1.1(v). Until it
-ships, the Play Data Safety answer to "users can request data deletion" is **No**, and that answer
-is itself a submission blocker.
+**Play's requirement is met; Apple's is not.**
+
+Google Play requires a deletion route reachable without installing the app. That now exists:
+`/account-deletion` on customer-web explains what is erased, what is retained and why, what has to
+be settled first, and how to request it — by email or through the contact page. The Data Safety
+answer is therefore **Yes**, and the URL above goes in the Play Console.
+
+**Apple still blocks.** 5.1.1(v) requires deletion to be initiable _from inside the app_, and no
+in-app flow exists. There is also no backend endpoint, no obligation checking and no anonymisation
+job — the request is handled by a human reading the mailbox. That is honest and it satisfies Play,
+but it does not scale and it does not satisfy Apple.
 
 Founder policy direction is locked (2026-08-21) and awaits its own specification and PR:
 deletion is **requestable** but not immediate destruction — deactivate, remove access, anonymise
