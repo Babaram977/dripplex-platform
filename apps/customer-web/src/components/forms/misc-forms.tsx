@@ -362,6 +362,12 @@ function VerifyPhoneOtpForm({ phone }: { phone: string }): React.JSX.Element {
   );
 }
 
+/**
+ * Not wired to any backend. `onSubmit` toasts and discards the message, so this
+ * component must not be mounted on a user-facing page — it was removed from
+ * /contact for that reason (see the note there). Kept for when an operations
+ * intake endpoint exists; wire `onSubmit` to it before rendering this anywhere.
+ */
 export function ContactForm(): React.JSX.Element {
   const {
     register,
