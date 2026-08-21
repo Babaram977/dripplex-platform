@@ -69,11 +69,19 @@
           inside a WebView, which only executes while the app is foregrounded.
           Declaring it would trigger a Play policy review we would fail, for a
           capability we do not have.
-        - CAMERA. The KYC screens use <input type="file" accept="image/*"
-          capture>, which Android satisfies by intent to the camera app — that
-          needs no permission from us, and declaring it while ungranted can
-          actually break ACTION_IMAGE_CAPTURE. Pending a real-device test of the
-          KYC capture flow; see docs/store/DPX-MOBILE-002-PRIVACY-PERMISSIONS-AUDIT.md.
+        - CAMERA. Not "never" — "not yet". Camera is a real product need
+          (payment receipts, documents, and face verification if Smile Identity
+          is engaged), but every capture path shipping today is a file input:
+          checkoutScreen.tsx:1647, riderScreen.tsx:1040, screensB.tsx:1818.
+          getUserMedia appears nowhere in the codebase. Android satisfies file
+          inputs by intent to the camera app, which needs no permission from us,
+          and declaring CAMERA while ungranted can actually break
+          ACTION_IMAGE_CAPTURE — so adding it now would risk the capture that
+          already works. Add it with the Smile Identity work, where face
+          verification opens a live stream in-app and genuinely requires it,
+          together with a runtime permission request (Capacitor's WebView does
+          not grant getUserMedia on its own). Resolved 2026-08-21; see
+          docs/store/DPX-MOBILE-002-PRIVACY-PERMISSIONS-AUDIT.md.
     -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />

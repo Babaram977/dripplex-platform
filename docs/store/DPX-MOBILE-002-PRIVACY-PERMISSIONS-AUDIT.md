@@ -127,11 +127,44 @@ Recommend keeping one binary and declaring the full set — but it should be a c
 Background location triggers a Play policy review that we would fail, for a capability we do not
 have.
 
-**Camera needs a device test before deciding.** Six screens use `<input type="file" accept="image/*">`
-and two add `capture=`. Android delegates that to the camera app by intent, which does _not_
-require the `CAMERA` permission — and declaring it while ungranted can make `ACTION_IMAGE_CAPTURE`
-fail. So the correct action is: test KYC capture on a real device first, then declare only if it
-proves necessary. Do not add it speculatively.
+**Camera — resolved 2026-08-21. Not needed now; needed when Smile Identity is engaged.**
+
+Founder confirmation: customers photograph payment receipts, users photograph documents, and if
+Smile Identity is engaged it performs face verification. Camera is a real product requirement. The
+question was never whether the feature exists — it is which Android mechanism it uses, because the
+two need different things from the manifest.
+
+Everything shipping today is a **file input**, verified in the source:
+
+| Surface         | File                      | Mechanism                                                                 |
+| --------------- | ------------------------- | ------------------------------------------------------------------------- |
+| Payment receipt | `checkoutScreen.tsx:1647` | `accept="image/*,application/pdf"` — no `capture`; a picker, not a camera |
+| Delivery photo  | `riderScreen.tsx:1040`    | `capture="environment"`                                                   |
+| KYC selfie      | `screensB.tsx:1818`       | `capture="user"`                                                          |
+
+`getUserMedia`, `mediaDevices` and `<video>` return **zero matches** across `apps/super-app/src`
+and `apps/customer-web/src`. So every capture path hands off to the camera app by intent, which
+needs no permission from us — and declaring `CAMERA` while it is ungranted can make
+`ACTION_IMAGE_CAPTURE` fail. Adding it today would risk breaking receipt and selfie capture that
+currently works, in exchange for a Play review question about a capability nothing uses.
+
+**Smile Identity changes the mechanism, not just the feature.** Face verification is a live camera
+stream, not a file input — `getUserMedia` via their Web SDK, or a native SDK. Either opens the
+camera _inside_ the app, and that requires:
+
+- `<uses-permission android:name="android.permission.CAMERA" />`, and
+- a **runtime permission request** — Capacitor's WebView does not grant `getUserMedia` on its own;
+  it needs the Camera plugin or explicit handling.
+
+So `CAMERA` belongs to the Smile Identity work, added at the same time as the code that needs it.
+
+It also moves the privacy declarations. A face scan used for identity matching is biometric
+processing — a materially heavier disclosure than the stored selfie image declared today. This is
+the `SMILE_ID_*` trap in `DPX-MOBILE-003` §1 firing: configuring those variables makes both store
+declarations false the same day unless they are updated in the same change.
+
+**Still worth doing on device:** confirm the three surfaces above actually capture. If they do, the
+current undeclared-`CAMERA` position is proven rather than merely reasoned.
 
 ### iOS — `Info.plist`
 
