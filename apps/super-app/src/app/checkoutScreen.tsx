@@ -1,6 +1,6 @@
+import { PLATFORM_BASE_CITY, PLATFORM_BASE_COUNTRY, PLATFORM_BASE_STATE } from '@dripplex/types';
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { G0, G2, G3, NAVY_BASE, NAVY_CARD, NAVY_DEEP, NAVY_SURFACE, BORDER, MUTED } from './shared';
-import { SERVICE_AREA_CITY, SERVICE_AREA_COUNTRY, SERVICE_AREA_STATE } from './serviceArea';
 import { api, uploadFile } from '../lib/api';
 import type { OrderDto, CustomerAddressDto, CartDto } from '../lib/api';
 import { BottomNavigation } from '../components/navigation';
@@ -791,9 +791,9 @@ export function CheckoutScreen({
         // customer's saved address while the lat/lng underneath were correct.
         // The real fix is to ask the customer instead of guessing; that is a
         // Figma-side change and is not being invented here.
-        city: geo?.city || SERVICE_AREA_CITY,
-        state: geo?.state || SERVICE_AREA_STATE,
-        country: geo?.country || SERVICE_AREA_COUNTRY,
+        city: geo?.city || PLATFORM_BASE_CITY,
+        state: geo?.state || PLATFORM_BASE_STATE,
+        country: geo?.country || PLATFORM_BASE_COUNTRY,
         postalCode: geo?.postalCode,
         latitude: pos.latitude,
         longitude: pos.longitude,

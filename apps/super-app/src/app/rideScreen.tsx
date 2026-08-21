@@ -1,3 +1,4 @@
+import { PLATFORM_BASE_CENTRE } from '@dripplex/types';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   G0,
@@ -17,7 +18,6 @@ import {
   COLOR_INFO,
   TEXT_SECONDARY,
 } from '../tokens/colors';
-import { SERVICE_AREA_CENTRE } from './serviceArea';
 import { api } from '../lib/api';
 import { playNotificationSound } from '../lib/sound';
 import { auth } from '../lib/auth';
@@ -56,7 +56,7 @@ const IT = "'Inter',sans-serif";
  * The real pickup now comes from the device (see useDevicePickup) or from the
  * passenger picking one, and booking is refused without it.
  */
-export const RIDE_MAP_FALLBACK_CENTRE = SERVICE_AREA_CENTRE;
+export const RIDE_MAP_FALLBACK_CENTRE = PLATFORM_BASE_CENTRE;
 
 /** Where the passenger is being collected from. */
 export interface RidePickup {

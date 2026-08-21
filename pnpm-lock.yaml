@@ -923,6 +923,9 @@ importers:
 
   apps/super-app:
     dependencies:
+      '@dripplex/types':
+        specifier: workspace:*
+        version: link:../../packages/types
       '@emotion/react':
         specifier: 11.14.0
         version: 11.14.0(@types/react@19.2.17)(react@18.3.1)

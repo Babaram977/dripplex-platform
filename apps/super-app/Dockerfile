@@ -2,12 +2,17 @@
 # DrippleX Super App — Vite SPA.
 # VITE_* values are read by Vite at BUILD time, so they are baked here via ARG/ENV.
 #
-# It has exactly one workspace dependency: @dripplex/config, for the tsconfig the
-# app extends. Vite resolves that tsconfig during the build, so the package has
-# to be in the image — leaving it out fails the build with "Tsconfig not found
-# @dripplex/config/typescript/react-library", which is what happened when the
-# app gained a tsconfig and this file still said it had no workspace deps.
-# `pnpm build` at the repo root cannot catch that: the workspace is present
+# It has two workspace dependencies:
+#   @dripplex/config — the tsconfig the app extends, resolved by Vite at build
+#     time. Leaving it out fails with "Tsconfig not found
+#     @dripplex/config/typescript/react-library", which is what happened when
+#     the app gained a tsconfig and this file still said it had no workspace
+#     deps.
+#   @dripplex/types  — PLATFORM_BASE_* (the Kano service-area constants). This
+#     one resolves to ./dist, so copying the source is not enough: it has to be
+#     BUILT in the image before the app build runs, the same way
+#     apps/customer-web/Dockerfile does it.
+# `pnpm build` at the repo root cannot catch either: the workspace is present
 # there and absent here, so the Docker build is its own gate.
 
 FROM node:22-bookworm-slim AS base
@@ -19,6 +24,7 @@ WORKDIR /app
 FROM base AS build
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
 COPY packages/config packages/config
+COPY packages/types packages/types
 COPY apps/super-app/package.json apps/super-app/
 RUN pnpm install --filter @dripplex/super-app... --no-frozen-lockfile
 COPY apps/super-app apps/super-app
@@ -29,6 +35,8 @@ ARG VITE_GOOGLE_MAPS_KEY=""
 ENV VITE_API_BASE=$VITE_API_BASE
 ENV VITE_SOCKET_URL=$VITE_SOCKET_URL
 ENV VITE_GOOGLE_MAPS_KEY=$VITE_GOOGLE_MAPS_KEY
+# @dripplex/types resolves to ./dist — build it before the app that imports it.
+RUN pnpm --filter @dripplex/types build
 RUN pnpm --filter @dripplex/super-app build
 
 FROM base AS runner
