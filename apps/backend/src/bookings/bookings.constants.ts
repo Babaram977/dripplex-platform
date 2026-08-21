@@ -9,6 +9,9 @@ export const BOOKING_PERMISSIONS = {
 } as const;
 
 export const BOOKING_AUDIT_ACTIONS = {
+  ROOM_TYPE_CREATED: 'booking.room_type_created',
+  ROOM_TYPE_UPDATED: 'booking.room_type_updated',
+  AVAILABILITY_SET: 'booking.availability_set',
   CREATED: 'booking.created',
   ACCEPTED: 'booking.accepted',
   REJECTED: 'booking.rejected',

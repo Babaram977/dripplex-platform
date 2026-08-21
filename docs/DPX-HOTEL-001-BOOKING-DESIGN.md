@@ -280,6 +280,36 @@ created and never written to until this needed it.
 
 ---
 
+## 7.2 Where the build diverged from §4, and why
+
+§4 was written before the founder decisions in §7. Three things changed when
+they landed. Recorded here rather than quietly, because §4 still reads as the
+plan and the code is now the truth.
+
+| §4 said                                           | Built as                                                   | Why                                                                                                                                                                                                                                                  |
+| ------------------------------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `roomTypeDetail` hangs off a `Product`            | `RoomType` hangs off a `Business`                          | A room is never in a cart, never has a marketplace price, and never ships. Attaching it to `Product` meant every marketplace query had to learn to exclude rooms.                                                                                    |
+| `Booking.orderId` — the money lives on an `Order` | `Booking` carries its own `totalAmount`/`commissionAmount` | Decision 8 moved the money to a **wallet hold**, and a hold is not a payment. An `Order` in `PENDING` with no `PaymentTransaction` behind it would have been a lie in the orders table, and `OrderStatus` has no state meaning "waiting on a hotel". |
+| `closed boolean` on each night                    | Dropped                                                    | `roomsOpen = 0` already closes a night, and two ways to say the same thing drift.                                                                                                                                                                    |
+
+**The commission is recorded, not accrued.** `CommissionAccountService.accrue()`
+was the obvious reach, and it is wrong here: accrual records a debt the merchant
+owes DrippleX, which is right when the _merchant_ collected the cash (marketplace
+modes B and C). For a booking DrippleX holds the money, so the hotel owes
+nothing — the cut simply comes off what it is paid at settlement, exactly as
+mode A works for online orders. Accruing would have charged a hotel for money
+DrippleX already had.
+
+**Where the money sits between acceptance and settlement.** Committing the hold
+takes it from the guest. Paying the hotel is Slice 4 (check-out), so between
+those two points the money is DrippleX's float, recorded on the guest's wallet
+ledger as `hotel_booking_hold_commit` and nowhere else. That matches how a utility wallet
+debit already behaves — single-sided, no counterparty credit — so it introduces
+no new pattern, but it does mean **a hotel is not paid until Slice 4 exists**.
+Stated as a dependency, not implemented speculatively.
+
+---
+
 ## 8. Suggested sequence
 
 Each slice ships independently and is testable on its own.
