@@ -1,5 +1,6 @@
 'use client';
 
+import { PLATFORM_BASE_CENTRE } from '@dripplex/types';
 import { Map, Marker, useMap } from '@vis.gl/react-google-maps';
 import * as React from 'react';
 
@@ -14,9 +15,13 @@ export interface FleetMapProps {
   className?: string;
 }
 
-/** Lagos default centre — same fallback point driver-portal/customer-web's
- * LiveMap use when there's no better anchor yet. */
-const DEFAULT_CENTER = { lat: 6.455, lng: 3.3841 };
+/** Platform base — same fallback point driver-portal/customer-web's LiveMap
+ * use when there's no better anchor yet. Was a Lagos coordinate while the base
+ * is Kano, so an empty fleet map opened ~830 km from the service area. */
+const DEFAULT_CENTER = {
+  lat: PLATFORM_BASE_CENTRE.latitude,
+  lng: PLATFORM_BASE_CENTRE.longitude,
+};
 
 function svgIcon(svg: string): string {
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;

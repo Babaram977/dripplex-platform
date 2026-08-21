@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { G0, G2, G3, NAVY_BASE, NAVY_CARD, NAVY_DEEP, NAVY_SURFACE, BORDER, MUTED } from './shared';
+import { SERVICE_AREA_CITY, SERVICE_AREA_COUNTRY, SERVICE_AREA_STATE } from './serviceArea';
 import { api, uploadFile } from '../lib/api';
 import type { OrderDto, CustomerAddressDto, CartDto } from '../lib/api';
 import { BottomNavigation } from '../components/navigation';
@@ -784,9 +785,15 @@ export function CheckoutScreen({
         recipientName: recipientName || 'Customer',
         phone: user?.phone ?? '',
         addressLine1: geo?.addressLine1 || 'Current location',
-        city: geo?.city || 'Lagos',
-        state: geo?.state || 'Lagos',
-        country: geo?.country || 'Nigeria',
+        // CreateAddressDto requires city/state, so a reverse-geocode miss has
+        // to fall back to something. The base city is the least-wrong guess —
+        // it used to be Lagos, which stamped the wrong city onto a Kano
+        // customer's saved address while the lat/lng underneath were correct.
+        // The real fix is to ask the customer instead of guessing; that is a
+        // Figma-side change and is not being invented here.
+        city: geo?.city || SERVICE_AREA_CITY,
+        state: geo?.state || SERVICE_AREA_STATE,
+        country: geo?.country || SERVICE_AREA_COUNTRY,
         postalCode: geo?.postalCode,
         latitude: pos.latitude,
         longitude: pos.longitude,

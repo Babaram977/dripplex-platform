@@ -1230,3 +1230,10 @@ export interface UpdateFraudListEntryRequest {
   reason?: string;
   active?: boolean;
 }
+
+export {
+  PLATFORM_BASE_CENTRE,
+  PLATFORM_BASE_CITY,
+  PLATFORM_BASE_COUNTRY,
+  PLATFORM_BASE_STATE,
+} from './service-area.js';
