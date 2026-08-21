@@ -26,6 +26,17 @@ than the source's fully rounded pill-caps. If the founder ever has the
 actual SVG/AI/PDF export (not just the PNG), swapping it in would close
 that last gap.
 
+### Native app icons are done; a true Bézier master is still open
+
+`apps/customer-mobile` no longer ships the stock Capacitor logo — every launcher icon,
+adaptive foreground, Play 512 and splash is generated from the founder's master vector
+(`apps/customer-mobile/resources/dripplex-mark.svg`, supplied 2026-08-21).
+
+That master is still a **polygon trace**, not Bézier paths, so the note below about the true
+vector source stands. It is good to 1024px; it is not good for signage or print. The web
+surfaces listed above are also still on the older, cruder `dripplexMarkSvg` trace in
+`packages/ui` — swapping them onto this better master is worth doing as its own change.
+
 ## Done
 
 - [x] Tagline corrected to `life, Simplified` (space after comma) everywhere.

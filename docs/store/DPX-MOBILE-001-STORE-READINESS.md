@@ -109,22 +109,49 @@ success and verify rejection all behave; `/` and `/ops` unchanged.
 
 ## Gate B — Brand and store assets
 
-The repository currently identifies launcher/store assets as placeholders. Public submission must not proceed until the approved DrippleX mark has been exported into the required native/store sizes.
+Launcher and splash assets shipped the **stock Capacitor logo** up to 2026-08-21 —
+verified by opening the files, not by reading a manifest. They are now generated from the
+founder-supplied master vector `apps/customer-mobile/resources/dripplex-mark.svg`.
 
 Required:
 
-- [ ] Android 512x512 store icon
-- [ ] Android adaptive icon foreground/background
+- [x] Android 512x512 store icon — `apps/customer-mobile/resources/play-store-icon-512.png`
+- [x] Android adaptive icon foreground/background — foreground at every density; background
+      layer `@color/ic_launcher_background` moved `#FFFFFF` → `#000000`
 - [ ] Google Play feature graphic
 - [ ] Android phone screenshots
 - [ ] iPhone screenshots
 - [ ] iPad screenshots if the iPad target remains enabled
-- [ ] iOS App Store icon set
-- [ ] Final splash assets
+- [x] iOS App Store icon set — 1024x1024, alpha-free (Apple rejects transparency)
+- [x] Final splash assets — all 11 Android densities + the 3 iOS entries, black ground;
+      `capacitor.config.ts` splash `backgroundColor` moved `#0E7A3E` → `#000000` so the
+      splash is not framed in a colour the artwork does not contain
 - [ ] Store listing copy
 - [ ] Privacy policy URL
 - [ ] Support URL
 - [ ] Marketing website URL
+
+Assets are **generated, never hand-edited**:
+
+```
+pnpm --filter @dripplex/customer-mobile icons:generate   # rewrite all 31 assets
+pnpm --filter @dripplex/customer-mobile icons:verify     # assert they are correct
+```
+
+`icons:verify` checks more than existence: exact dimensions, no alpha on store icons, a
+black ground, adaptive foregrounds entirely inside the launcher mask-safe circle, no
+blue-dominant (Capacitor-logo) regression, and — because the failure that motivated it was
+silent — that a column through the mark crosses exactly four painted bands, so a dropped
+element cannot pass as a valid icon. Both checks run in `mobile-store-readiness.yml`, which
+also regenerates and fails if the committed PNGs drift from the master.
+
+**Known limitation, accepted.** The master's three paths are `M`/`L`/`Z` polygons (18, 23 and
+98 points) — a fine raster trace, not Bézier curves. Faceting is invisible at 1024px and
+below, which covers every asset here, so it is production-ready for app icons, splash screens
+and digital use. Large-format print, signage and vehicle livery want a true Bézier redraw;
+tracked in `docs/TODO-BRAND-ASSETS.md`. The master's gradient also resolves per path rather
+than sweeping the whole mark; that matches the approved artwork and is preserved deliberately
+(founder decision 2026-08-21).
 
 Source of truth for the brand mark: `packages/ui/src/brand/dripplex-mark.ts` and the approved brand-identity reference documented in `docs/TODO-BRAND-ASSETS.md`.
 
