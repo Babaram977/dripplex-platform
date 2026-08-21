@@ -251,6 +251,25 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
     description:
       'View the bill-payment register and provider float balance, and resolve purchases the provider never answered for',
   },
+  {
+    code: 'customer:bookings:read',
+    description:
+      'Browse hotel rooms, see per-night prices and availability, and read own bookings (DPX-HOTEL-001)',
+  },
+  {
+    code: 'customer:bookings:book',
+    description:
+      'Book a hotel room, placing a wallet hold the hotel has thirty minutes to accept (DPX-HOTEL-001)',
+  },
+  {
+    code: 'merchant:bookings:manage',
+    description:
+      "Manage own hotel's room types and nightly calendar, and accept or decline its bookings (DPX-HOTEL-001)",
+  },
+  {
+    code: 'admin:bookings:manage',
+    description: 'View hotel bookings across the platform (DPX-HOTEL-001)',
+  },
   { code: 'users:read', description: 'Read user records' },
   { code: 'users:write', description: 'Update user records' },
   { code: 'users:delete', description: 'Soft-delete user records' },

@@ -5,8 +5,11 @@ import { OrdersModule } from '../orders/orders.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { WalletModule } from '../wallet/wallet.module';
 
+import { AdminBookingsController } from './admin-bookings.controller';
 import { BookingExpirySweepService } from './booking-expiry-sweep.service';
 import { BookingsService } from './bookings.service';
+import { CustomerBookingsController } from './customer-bookings.controller';
+import { MerchantBookingsController } from './merchant-bookings.controller';
 import { RoomInventoryService } from './room-inventory.service';
 
 /**
@@ -19,6 +22,7 @@ import { RoomInventoryService } from './room-inventory.service';
  */
 @Module({
   imports: [PrismaModule, AuditModule, WalletModule, OrdersModule],
+  controllers: [CustomerBookingsController, MerchantBookingsController, AdminBookingsController],
   providers: [RoomInventoryService, BookingsService, BookingExpirySweepService],
   exports: [RoomInventoryService, BookingsService],
 })

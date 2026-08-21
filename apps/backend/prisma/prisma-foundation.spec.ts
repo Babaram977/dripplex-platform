@@ -72,7 +72,13 @@ describe('Prisma schema foundation (S1-C1)', () => {
     // here — see rbac-seed-parity.spec.ts, which now stops the two lists
     // drifting at all. Bump this only alongside a permission you meant to add;
     // an unexplained bump is a permission that arrived without review.
-    expect(PERMISSION_SEEDS).toHaveLength(128);
+    // 132 as of 2026-08-21. The four added are hotel booking (DPX-HOTEL-001):
+    // `customer:bookings:read` and `customer:bookings:book` are split for the
+    // same reason the utilities pair is — a restricted customer should still be
+    // able to see what a room costs without being able to hold money against
+    // it. `merchant:bookings:manage` is a hotel's own rooms, calendar and book,
+    // and `admin:bookings:manage` is the read-only Ops list.
+    expect(PERMISSION_SEEDS).toHaveLength(132);
     expect(PERMISSION_SEEDS.map((permission) => permission.code)).toEqual(
       expect.arrayContaining([
         'admin:rides:pricing:manage',

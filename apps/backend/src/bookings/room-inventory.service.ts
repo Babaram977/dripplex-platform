@@ -15,7 +15,6 @@ import { BOOKING_AUDIT_ACTIONS, BOOKING_MAX_HORIZON_DAYS } from './bookings.cons
 import type { RoomAvailability, RoomType } from '@prisma/client';
 
 export interface CreateRoomTypeInput {
-  businessId: string;
   name: string;
   description?: string;
   capacity?: number;
@@ -67,12 +66,56 @@ export class RoomInventoryService {
     private readonly auditService: AuditService,
   ) {}
 
+  // ── Ownership ─────────────────────────────────────────────────────────────
+
+  /**
+   * The business this merchant owns, or a refusal.
+   *
+   * Every merchant-facing method resolves the business from the **signed-in
+   * user** rather than accepting a businessId from the request. A hotel
+   * therefore cannot name someone else's business — not because a check
+   * catches it, but because there is nowhere to put the id. `Business.merchantId`
+   * is unique, so this is one row or none.
+   */
+  public async requireOwnBusiness(merchantUserId: string): Promise<string> {
+    const business = await this.prisma.business.findUnique({
+      where: { merchantId: merchantUserId },
+      select: { id: true },
+    });
+    if (!business) {
+      throw new NotFoundDomainException(
+        'No business is registered against this account yet. Finish merchant registration first.',
+      );
+    }
+    return business.id;
+  }
+
+  /**
+   * A room type, but only if this merchant owns it.
+   *
+   * Deliberately NOT_FOUND rather than FORBIDDEN when it belongs to someone
+   * else: a merchant probing ids should not be able to learn which ones exist.
+   */
+  public async requireOwnRoomType(merchantUserId: string, roomTypeId: string): Promise<RoomType> {
+    const businessId = await this.requireOwnBusiness(merchantUserId);
+    const roomType = await this.prisma.roomType.findFirst({
+      where: { id: roomTypeId, businessId, deletedAt: null },
+    });
+    if (!roomType) {
+      throw new NotFoundDomainException('Room type not found');
+    }
+    return roomType;
+  }
+
   // ── Room types ────────────────────────────────────────────────────────────
 
   public async createRoomType(
+    merchantUserId: string,
     input: CreateRoomTypeInput,
     context: AuditContext = {},
   ): Promise<RoomType> {
+    const businessId = await this.requireOwnBusiness(merchantUserId);
+
     if (input.basePrice <= 0) {
       throw new ValidationDomainException('A room needs a nightly price.');
     }
@@ -82,7 +125,7 @@ export class RoomInventoryService {
 
     const roomType = await this.prisma.roomType.create({
       data: {
-        businessId: input.businessId,
+        businessId,
         name: input.name.trim(),
         ...(input.description !== undefined ? { description: input.description } : {}),
         ...(input.capacity !== undefined ? { capacity: input.capacity } : {}),
@@ -95,18 +138,19 @@ export class RoomInventoryService {
     await this.auditService.record(BOOKING_AUDIT_ACTIONS.ROOM_TYPE_CREATED, context, {
       resource: 'room_type',
       resourceId: roomType.id,
-      metadata: { businessId: input.businessId, name: roomType.name },
+      metadata: { businessId, name: roomType.name },
     });
 
     return roomType;
   }
 
   public async updateRoomType(
+    merchantUserId: string,
     roomTypeId: string,
     input: UpdateRoomTypeInput,
     context: AuditContext = {},
   ): Promise<RoomType> {
-    const existing = await this.requireRoomType(roomTypeId);
+    const existing = await this.requireOwnRoomType(merchantUserId, roomTypeId);
 
     if (input.basePrice !== undefined && input.basePrice <= 0) {
       throw new ValidationDomainException('A room needs a nightly price.');
@@ -163,10 +207,11 @@ export class RoomInventoryService {
    * it, which a constraint violation cannot say.
    */
   public async openNights(
+    merchantUserId: string,
     input: OpenNightsInput,
     context: AuditContext = {},
   ): Promise<RoomAvailability[]> {
-    const roomType = await this.requireRoomType(input.roomTypeId);
+    const roomType = await this.requireOwnRoomType(merchantUserId, input.roomTypeId);
 
     if (input.roomsOpen < 0) {
       throw new ValidationDomainException('A hotel cannot open a negative number of rooms.');
@@ -255,7 +300,9 @@ export class RoomInventoryService {
     });
   }
 
-  private async requireRoomType(roomTypeId: string): Promise<RoomType> {
+  /** A room type by id, without an ownership check — for the public browse
+   *  path, where a guest is legitimately reading somebody else's rooms. */
+  public async getRoomType(roomTypeId: string): Promise<RoomType> {
     const roomType = await this.prisma.roomType.findFirst({
       where: { id: roomTypeId, deletedAt: null },
     });
