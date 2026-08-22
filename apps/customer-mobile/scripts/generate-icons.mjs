@@ -25,6 +25,7 @@ import {
   ADAPTIVE_FOREGROUNDS,
   STORE_ICONS,
   SPLASHES,
+  FEATURE_GRAPHIC,
 } from './asset-spec.mjs';
 
 const require = createRequire(import.meta.url);
@@ -63,6 +64,64 @@ function compose({ width, height, cover, background, circle = false }) {
 ${bg}${ART.defs}
 <g transform="translate(${tx.toFixed(4)} ${ty.toFixed(4)}) scale(${s.toFixed(6)})">${ART.body}</g>
 </svg>`;
+}
+
+/**
+ * The Play feature graphic: mark, title and tagline as one left-aligned
+ * lockup on black.
+ *
+ * Left rather than centred because Play overlays a play button across the
+ * middle of this image in placements that have a promo video, and crops the
+ * outer edges in others. Everything meaningful stays inside the safe inset.
+ *
+ * Type is the locked Figma system — Poppins for the title, Inter for the
+ * tagline (see apps/customer-web/src/app/layout.tsx). Both must be installed
+ * for the render; the verifier fails loudly if the text did not draw.
+ */
+function composeFeature({ width, height, markCover, safeInset, title, tagline }, dx = 0) {
+  const inset = Math.min(width, height) * safeInset;
+  const markH = height * markCover;
+  const s = markH / g.h;
+  const markW = g.w * s;
+  const tx = inset - g.x * s;
+  const ty = (height - markH) / 2 - g.y * s;
+
+  const textX = inset + markW + inset * 0.86;
+  const titleSize = height * 0.184;
+  const taglineSize = height * 0.068;
+  // The lockup is optically centred on the mark, not mathematically stacked:
+  // the title sits above the midline and the tagline below it.
+  const titleY = height / 2 - height * 0.012;
+  const taglineY = titleY + taglineSize * 1.62;
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+<rect width="${width}" height="${height}" fill="${BLACK}"/>${ART.defs}
+<g transform="translate(${dx.toFixed(4)} 0)">
+<g transform="translate(${tx.toFixed(4)} ${ty.toFixed(4)}) scale(${s.toFixed(6)})">${ART.body}</g>
+<text x="${textX.toFixed(2)}" y="${titleY.toFixed(2)}" fill="#FFFFFF" font-family="Poppins SemiBold, Poppins, sans-serif" font-weight="600" font-size="${titleSize.toFixed(2)}" letter-spacing="${(-titleSize * 0.018).toFixed(3)}">${title}</text>
+<text x="${textX.toFixed(2)}" y="${taglineY.toFixed(2)}" fill="#62FF00" font-family="Inter, sans-serif" font-weight="400" font-size="${taglineSize.toFixed(2)}" letter-spacing="${(taglineSize * 0.01).toFixed(3)}">${tagline}</text>
+</g>
+</svg>`;
+}
+
+/**
+ * Centre the lockup by measuring where the ink actually lands, not by adding
+ * up font metrics. Text width depends on the installed face and its kerning,
+ * so a computed guess drifts the moment either changes; trimming the rendered
+ * pixels cannot.
+ */
+async function centredFeature(spec) {
+  const density = 144;
+  const scale = 72 / density;
+  const flat = await sharp(Buffer.from(composeFeature(spec, 0)), { density })
+    .flatten({ background: BLACK })
+    .png()
+    .toBuffer();
+  const { info } = await sharp(flat).trim({ threshold: 12 }).toBuffer({ resolveWithObject: true });
+  const inkLeft = -(info.trimOffsetLeft ?? 0) * scale;
+  const inkWidth = info.width * scale;
+  const dx = (spec.width - inkWidth) / 2 - inkLeft;
+  return composeFeature(spec, dx);
 }
 
 /**
@@ -128,6 +187,14 @@ for (const { file, width, height } of SPLASHES) {
     }),
   );
 }
+
+jobs.push(
+  emit(FEATURE_GRAPHIC.file, await centredFeature(FEATURE_GRAPHIC), {
+    width: FEATURE_GRAPHIC.width,
+    height: FEATURE_GRAPHIC.height,
+    alpha: FEATURE_GRAPHIC.alpha,
+  }),
+);
 
 const written = await Promise.all(jobs);
 console.log(`generated ${written.length} assets from resources/dripplex-mark.svg`);

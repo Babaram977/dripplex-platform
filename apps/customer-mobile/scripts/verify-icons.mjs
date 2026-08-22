@@ -21,6 +21,7 @@ import {
   ADAPTIVE_FOREGROUNDS,
   STORE_ICONS,
   SPLASHES,
+  FEATURE_GRAPHIC,
 } from './asset-spec.mjs';
 
 const require = createRequire(import.meta.url);
@@ -146,6 +147,81 @@ async function checkNotCapacitor(file) {
 }
 
 // ── run ──────────────────────────────────────────────────────────────────────
+/**
+ * The feature graphic must actually contain its text.
+ *
+ * If Poppins or Inter are not installed on the machine that ran the generator,
+ * librsvg silently draws nothing (or a fallback face) and the PNG still looks
+ * plausible at a glance — black, mark on the left, empty on the right. This is
+ * the check that catches a missing font, so it looks for white pixels to the
+ * RIGHT of the mark, where only the title can be.
+ */
+async function checkFeatureGraphic(spec) {
+  const { file, width, height } = spec;
+  if (!(await checkSize(file, width, height))) return;
+  await checkOpaque(file);
+  await checkBlackGround(file);
+  await checkNotCapacitor(file);
+
+  const { info, at } = await raw(file);
+  const isWhite = (p) => p.r > 200 && p.g > 200 && p.b > 200;
+  const isGreen = (p) => p.g > 90 && p.g > p.r + 30 && p.g > p.b + 30;
+
+  let white = 0;
+  let greenRight = 0;
+  let minX = info.width;
+  let maxX = -1;
+  let minY = info.height;
+  let maxY = -1;
+  for (let y = 0; y < info.height; y++) {
+    for (let x = 0; x < info.width; x++) {
+      const p = at(x, y);
+      const lit = isWhite(p) || isGreen(p);
+      if (!lit) continue;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+      if (isWhite(p)) white++;
+      if (isGreen(p) && x > info.width * 0.45) greenRight++;
+    }
+  }
+
+  // The title is the only white in the composition — the mark is all green.
+  if (white < 2000) {
+    fail(
+      file,
+      `only ${white} white pixels — the title did not render. Poppins is probably not installed; run: fc-list | grep -i poppins`,
+    );
+  }
+  // The tagline is green and sits right of the mark.
+  if (greenRight < 500) {
+    fail(
+      file,
+      `only ${greenRight} green pixels right of centre — the tagline did not render (Inter missing?)`,
+    );
+  }
+
+  const inset = Math.min(width, height) * spec.safeInset;
+  if (
+    minX < inset * 0.6 ||
+    maxX > width - inset * 0.6 ||
+    minY < inset * 0.6 ||
+    maxY > height - inset * 0.6
+  ) {
+    fail(
+      file,
+      `artwork reaches (${minX},${minY})-(${maxX},${maxY}), inside the ${Math.round(inset)}px keep-clear border Play may crop`,
+    );
+  }
+
+  // Centred within 2% of the canvas — the ink-measured centring must hold.
+  const drift = Math.abs((minX + maxX) / 2 - width / 2);
+  if (drift > width * 0.02) {
+    fail(file, `lockup is ${Math.round(drift)}px off centre, beyond the 2% tolerance`);
+  }
+}
+
 const g = markGeometry();
 if (Math.abs(g.w / g.canvas - 0.7536) > 0.001) {
   fail(
@@ -181,7 +257,10 @@ for (const { file, width, height } of SPLASHES) {
   await checkNotCapacitor(file);
 }
 
+await checkFeatureGraphic(FEATURE_GRAPHIC);
+
 const total =
+  1 +
   ICONS.length +
   STORE_ICONS.length +
   ROUND_ICONS.length +
