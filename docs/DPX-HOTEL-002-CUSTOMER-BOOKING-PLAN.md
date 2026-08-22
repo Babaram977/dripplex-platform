@@ -207,6 +207,33 @@ choosing a closed night says which night is the problem.
 
 ### Slice C — Book it, and watch the thirty minutes
 
+> **SUPERSEDED before it was built — 2026-08-22.** Everything below this banner
+> describes the **wallet-hold** model: money held on applying, a thirty-minute
+> wait, and a guest without balance turned away. Founder decisions 10–13 of §0.4
+> replaced that entirely, and #230 shipped the replacement:
+>
+> ```
+> apply (nothing at stake, an empty wallet is fine)
+>   → hotel accepts → 24 hours to pay through DrippleX
+>   → paid, assured, and a 5-character PIN for the desk
+> ```
+>
+> What was actually built follows that flow, not this text. Three specific
+> reversals worth naming, because building to the words below would have got
+> each of them wrong:
+>
+> - **No wallet balance check.** The "open dependency" at the end of this slice
+>   — that a guest without balance cannot book — is no longer true and was the
+>   main reason the model changed.
+> - **Nothing is "held".** The confirmation sheet must not promise a hold; it
+>   says plainly that nothing is taken yet.
+> - **Two clocks, not one.** The hotel's 30 minutes to accept, then the guest's
+>   24 hours to pay.
+>
+> Kept rather than deleted because the reasoning about _what a guest must be
+> told at the moment they commit_ survived the change intact — only the facts
+> being told changed. See DPX-HOTEL-003 for the settlement this created.
+
 **The money slice.** Everything before this is read-only.
 
 - Guest details: name, phone, optional note. Pre-filled from the account but

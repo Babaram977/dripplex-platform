@@ -192,6 +192,9 @@ import type {
   UtilityServiceType,
 } from '../lib/api';
 import { auth, endSession } from '../lib/auth';
+import { BookingApplyScreen, BookingStatusScreen, MyBookingsScreen } from './hotelBookingScreens';
+
+import type { BookingDraft } from './hotelBookingScreens';
 import {
   clearGatewayReturnParam,
   gatewayReturnKindFromUrl,
@@ -341,6 +344,9 @@ type Screen =
   | 'checkout'
   | 'ordertracking'
   | 'orderhistory'
+  | 'hotelbooking'
+  | 'bookingstatus'
+  | 'mybookings'
   | 'ridehome'
   | 'ridesearch'
   | 'ridepickup'
@@ -482,6 +488,10 @@ function returnScreenFromGateway(): Screen | null {
   const kind = gatewayReturnKindFromUrl();
   if (kind === 'utility') return 'utilities';
   if (kind === 'wallet') return 'wallethome';
+  // A guest coming back from paying for a room lands on the booking itself,
+  // which is where the PIN appears. Landing anywhere else would hide the one
+  // thing they just paid for.
+  if (kind === 'booking') return 'bookingstatus';
   return null;
 }
 
@@ -586,6 +596,11 @@ function AppShell() {
   const [activeRiderJob, setActiveRiderJob] = useState<RiderDeliveryJobDto | null>(null);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [activeMerchantId, setActiveMerchantId] = useState<string | undefined>(undefined);
+  // Hotel booking (DPX-HOTEL-002). The draft holds the room + dates + quote
+  // between choosing a room and sending the request; it is deliberately not
+  // persisted, because a quote goes stale and the server re-prices anyway.
+  const [activeBookingId, setActiveBookingId] = useState<string | null>(null);
+  const [activeBookingDraft, setActiveBookingDraft] = useState<BookingDraft | null>(null);
   const [activeProductId, setActiveProductId] = useState<string | undefined>(undefined);
   const [activeDriverOffer, setActiveDriverOffer] = useState<RideOfferDto | null>(null);
   const [activeDriverRide, setActiveDriverRide] = useState<RideDto | null>(null);
@@ -707,6 +722,21 @@ function AppShell() {
 
     let cancelled = false;
     void (async () => {
+      if (pending.kind === 'booking') {
+        // The gateway is asked directly — a browser arriving back here proves
+        // nothing about whether the charge went through. On success the PIN is
+        // on the booking, which is what the status screen renders.
+        setActiveBookingId(pending.id);
+        try {
+          await api.bookings.confirmPayment(pending.id);
+        } catch {
+          // Confirmation failed or the charge did not land. The status screen
+          // re-reads the booking and shows its real state — including that it
+          // is still unpaid — rather than claiming success.
+        }
+        if (!cancelled) go('bookingstatus');
+        return;
+      }
       if (pending.kind !== 'utility') return;
       try {
         const purchase = await api.utilities.confirm(pending.id);
@@ -999,6 +1029,57 @@ function AppShell() {
           setActiveProductId(p?.id);
           go('productdetail');
         }}
+        onBookHotel={(draft) => {
+          setActiveBookingDraft(draft);
+          go('hotelbooking');
+        }}
+      />
+    ),
+    hotelbooking: activeBookingDraft ? (
+      <BookingApplyScreen
+        draft={activeBookingDraft}
+        defaultName={auth.displayName(auth.getUser())}
+        defaultPhone={auth.getUser()?.phone ?? ''}
+        onCancel={() => go('store')}
+        onApplied={(booking) => {
+          setActiveBookingId(booking.id);
+          go('bookingstatus');
+        }}
+      />
+    ) : (
+      // No draft means this screen was reached directly (a reload, a deep
+      // link). Sending them to the hotel list is honest; rendering an empty
+      // booking form would not be.
+      <MyBookingsScreen
+        onOpen={(id) => {
+          setActiveBookingId(id);
+          go('bookingstatus');
+        }}
+        onBack={() => go('home')}
+      />
+    ),
+    bookingstatus: activeBookingId ? (
+      <BookingStatusScreen
+        bookingId={activeBookingId}
+        {...(activeBookingDraft ? { hotelName: activeBookingDraft.hotelName } : {})}
+        onBack={() => go('mybookings')}
+      />
+    ) : (
+      <MyBookingsScreen
+        onOpen={(id) => {
+          setActiveBookingId(id);
+          go('bookingstatus');
+        }}
+        onBack={() => go('home')}
+      />
+    ),
+    mybookings: (
+      <MyBookingsScreen
+        onOpen={(id) => {
+          setActiveBookingId(id);
+          go('bookingstatus');
+        }}
+        onBack={() => go('home')}
       />
     ),
     productdetail: (

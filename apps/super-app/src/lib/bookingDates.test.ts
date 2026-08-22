@@ -101,6 +101,26 @@ describe('booking dates', () => {
       expect(timeLeft(deadline, new Date('2026-09-10T12:29:45.000Z'))).toBe('15s');
     });
 
+    /**
+     * The 24-hour payment window, added 2026-08-22. Before the hours branch
+     * existed this rendered as "1439m 00s" — correct, and useless to someone
+     * working out whether they have time to get to a bank.
+     */
+    it('counts the payment window in hours', () => {
+      const payBy = '2026-09-11T12:00:00.000Z';
+      expect(timeLeft(payBy, new Date('2026-09-10T12:00:00.000Z'))).toBe('24h 00m');
+      expect(timeLeft(payBy, new Date('2026-09-11T09:30:00.000Z'))).toBe('2h 30m');
+    });
+
+    /** The boundary between the two formats. One hour exactly is still hours;
+     *  a second under it drops to the minute-and-second form the hotel's
+     *  thirty-minute window uses. */
+    it('switches to minutes under an hour', () => {
+      const payBy = '2026-09-11T12:00:00.000Z';
+      expect(timeLeft(payBy, new Date('2026-09-11T11:00:00.000Z'))).toBe('1h 00m');
+      expect(timeLeft(payBy, new Date('2026-09-11T11:00:01.000Z'))).toBe('59m 59s');
+    });
+
     /** Null, not a negative countdown: the window is closed and the guest
      *  already has their money back. */
     it('returns null once the window has closed', () => {

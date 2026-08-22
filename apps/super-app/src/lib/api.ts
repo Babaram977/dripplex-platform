@@ -966,7 +966,17 @@ export interface MerchantSettlementDto {
 // render as the previous day for anyone west of UTC.
 
 export type BookingStatus =
-  'PENDING_HOTEL' | 'CONFIRMED' | 'REJECTED' | 'EXPIRED' | 'CHECKED_IN' | 'CHECKED_OUT' | 'NO_SHOW';
+  | 'PENDING_HOTEL'
+  /** The hotel said yes and the guest now has 24 hours to pay. Added 2026-08-22
+   *  with the payment-through-DrippleX change; a client missing this value
+   *  renders the most important state of a booking as unknown. */
+  | 'AWAITING_PAYMENT'
+  | 'CONFIRMED'
+  | 'REJECTED'
+  | 'EXPIRED'
+  | 'CHECKED_IN'
+  | 'CHECKED_OUT'
+  | 'NO_SHOW';
 
 export interface RoomTypeDto {
   id: string;
@@ -1007,10 +1017,34 @@ export interface BookingDto {
   guestNote: string | null;
   /** When the hotel's thirty minutes run out. The UI counts down to this. */
   acceptDeadline: string;
+  /** When the guest's 24 hours to pay run out. Null until the hotel accepts. */
+  paymentDeadline: string | null;
+  paidAt: string | null;
+  /** The five-character code for the hotel desk. Present ONLY once the money
+   *  has arrived — its existence is the proof, which is why the UI shows the
+   *  booking as assured on `pin !== null` rather than on a status alone. */
+  pin: string | null;
   acceptedAt: string | null;
   rejectedAt: string | null;
   rejectionReason: string | null;
   createdAt: string;
+}
+
+/** A quote for one stay: what it costs and, when it cannot be had, why not. */
+export interface AvailabilityResult {
+  available: boolean;
+  /** Already a sentence a guest can act on ("No rooms left on 2026-09-11").
+   *  Shown verbatim — the app must not paraphrase the hotel's own calendar. */
+  reason: string | null;
+  nights: number;
+  totalAmount: number;
+  perNight: { night: string; price: number }[];
+}
+
+export interface CustomerBookingDto extends BookingDto {
+  /** Set on rejected/expired bookings: "you were never charged". Server-owned
+   *  wording, so one change of policy does not need a client release. */
+  customerMessage: string | null;
 }
 
 export interface MerchantBookingDto extends BookingDto {
@@ -2223,6 +2257,70 @@ export const api = {
     getCategories: () => dx<CategoryDto[]>('GET', '/categories'),
     getBrands: () =>
       dx<{ id: string; name: string; slug: string; logoUrl: string | null }[]>('GET', '/brands'),
+  },
+
+  // ── HOTEL BOOKING, CUSTOMER SIDE (DPX-HOTEL-001 / 002) ─────────────────────
+  //
+  // The money path here is NOT the one in the original plan. Founder decision
+  // 2026-08-22 replaced the wallet hold entirely:
+  //
+  //   apply (nothing at stake, empty wallet is fine)
+  //     → hotel accepts        → AWAITING_PAYMENT, 24 hours to pay
+  //     → pay via the gateway  → CONFIRMED, and a 5-character PIN for the desk
+  //
+  // So there is no balance check before applying, and `pay` is an ordinary
+  // gateway checkout — the same one utilities and wallet top-ups already use.
+  bookings: {
+    /** A hotel's rooms. Takes the `MerchantProfile.id` the marketplace card
+     *  carries (`MerchantSummaryDto.id`), not a Business id — the two are
+     *  different and the endpoint resolves the mapping server-side. */
+    roomTypes: (merchantId: string) =>
+      dx<RoomTypeDto[]>('GET', `/customer/bookings/hotels/${merchantId}/room-types`),
+    calendar: (roomTypeId: string, from: string, to: string) =>
+      dx<RoomAvailabilityDto[]>(
+        'GET',
+        `/customer/bookings/room-types/${roomTypeId}/calendar`,
+        undefined,
+        { from, to },
+      ),
+    /** The quote. The booking call re-runs this server-side, so a stale price
+     *  on a phone can never become the amount charged. */
+    availability: (
+      roomTypeId: string,
+      params: { checkIn: string; checkOut: string; rooms?: number },
+    ) =>
+      dx<AvailabilityResult>(
+        'GET',
+        `/customer/bookings/room-types/${roomTypeId}/availability`,
+        undefined,
+        params,
+      ),
+    create: (body: {
+      roomTypeId: string;
+      checkIn: string;
+      checkOut: string;
+      rooms?: number;
+      guests?: number;
+      guestName: string;
+      guestPhone: string;
+      guestNote?: string;
+    }) => dx<BookingDto>('POST', '/customer/bookings', body),
+    /** Start the checkout. `authorizationUrl` is null when the gateway is not
+     *  configured — the caller must handle that rather than open `null`. */
+    pay: (id: string, callbackUrl?: string) =>
+      dx<{ booking: BookingDto; authorizationUrl: string | null }>(
+        'POST',
+        `/customer/bookings/${id}/pay`,
+        { callbackUrl },
+      ),
+    /** Ask the gateway whether the money actually arrived. Coming back from a
+     *  checkout page proves nothing on its own. */
+    confirmPayment: (id: string) => dx<BookingDto>('POST', `/customer/bookings/${id}/pay/confirm`),
+    // ApiPage, not PaginatedResult: the flat type declared above does not match
+    // what the NestJS controllers actually send. See the note at ApiPage.
+    list: (params?: { page?: number; pageSize?: number }) =>
+      dx<ApiPage<BookingDto>>('GET', '/customer/bookings', undefined, params),
+    get: (id: string) => dx<CustomerBookingDto>('GET', `/customer/bookings/${id}`),
   },
 
   // ── CART ───────────────────────────────────────────────────────────────────

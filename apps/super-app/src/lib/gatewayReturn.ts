@@ -14,13 +14,19 @@
 // sessionStorage — it survives the round trip through the gateway in the same
 // tab, and is gone when the tab is.
 
-/** Only the two flows the app actually sends to a gateway today. Ride fares
- * are cash-only in this client, so there is nothing to come back from. */
-export type GatewayReturnKind = 'utility' | 'wallet';
+/** The flows the app sends to a gateway. Ride fares are cash-only in this
+ * client, so there is nothing to come back from there.
+ *
+ * `booking` joined on 2026-08-22: a hotel booking is now paid through DrippleX
+ * after the hotel accepts, so it makes the same round trip — and has the same
+ * failure mode the airtime incident exposed, with the added sting that a guest
+ * stranded on the gateway's page does not receive the PIN that proves the room
+ * is theirs. */
+export type GatewayReturnKind = 'utility' | 'wallet' | 'booking';
 
 export interface GatewayReturn {
   kind: GatewayReturnKind;
-  /** The utility purchase id, or the wallet top-up reference. */
+  /** The utility purchase id, the wallet top-up reference, or the booking id. */
   id: string;
 }
 
@@ -52,7 +58,7 @@ export function rememberGatewayReturn(kind: GatewayReturnKind, id: string): void
 export function gatewayReturnKindFromUrl(): GatewayReturnKind | null {
   if (typeof window === 'undefined') return null;
   const value = new URLSearchParams(window.location.search).get(PARAM);
-  return value === 'utility' || value === 'wallet' ? value : null;
+  return value === 'utility' || value === 'wallet' || value === 'booking' ? value : null;
 }
 
 /**

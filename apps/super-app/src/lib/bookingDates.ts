@@ -72,17 +72,30 @@ export function formatStay(checkIn: string, checkOut: string): string {
 }
 
 /**
- * How long a hotel has left to answer, in words.
+ * How long is left on a deadline, in words.
+ *
+ * Two windows use this and they are two orders of magnitude apart: the hotel's
+ * 30 minutes to answer, and — since the payment change of 2026-08-22 — the
+ * guest's 24 hours to pay. Hence the hours branch: without it a fresh payment
+ * window reads "1439m 00s", which is technically correct and useless to the
+ * person deciding whether they have time to walk to a bank.
+ *
+ * Seconds are dropped once there is an hour or more left. Watching a seconds
+ * digit tick for a day is not information, and re-rendering it every second
+ * for that long is not free either.
  *
  * Returns null once the window has closed, so a caller renders "expired"
- * rather than a negative countdown — a booking past its deadline is gone and
- * the guest already has their money back.
+ * rather than a negative countdown.
  */
 export function timeLeft(deadlineIso: string, now: Date = new Date()): string | null {
   const remaining = new Date(deadlineIso).getTime() - now.getTime();
   if (Number.isNaN(remaining) || remaining <= 0) return null;
 
   const minutes = Math.floor(remaining / 60_000);
+  if (minutes >= 60) {
+    const hours = Math.floor(minutes / 60);
+    return `${String(hours)}h ${String(minutes % 60).padStart(2, '0')}m`;
+  }
   if (minutes >= 1) {
     const seconds = Math.floor((remaining % 60_000) / 1000);
     return `${String(minutes)}m ${String(seconds).padStart(2, '0')}s`;

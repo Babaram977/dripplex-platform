@@ -573,3 +573,41 @@ the token and reference; a success sound plays; history speaks plain words ("Del
 `SUCCESSFUL`) and reopening a row shows the token again; both ₦800 and ₦1,505 `M2GBS` bundles list
 separately and the composite `M2GBS:1505` id is sent rather than the bare code; and an
 unconfigured provider is stated with the services untappable.
+
+---
+
+## DPX-HOTEL-002 — customer hotel booking has **no Figma design at all** (2026-08-22)
+
+**The gap, stated rather than filled.** The customer booking screens — a hotel's rooms, the
+date picker, the apply/pay flow, My Bookings — were built with **no approved design to build
+against**. This is not a case of implementation drifting from Figma; there is nothing in Figma
+to drift from.
+
+**How that was established**, rather than assumed:
+
+- `docs/reference/dpx-100-figma-screen-mapping.md` has **zero** entries for hotel, room or
+  booking. That document's screen list is generated from the live Figma file's own `Screen`
+  type, so its silence is Figma's silence.
+- `docs/reference/figma-super-app-source/` mentions "hotel" only in `marketplaceScreen.tsx` and
+  `rideScreen-v2.tsx` — as a **category chip and a destination label**, never a screen.
+- The hotel module (DPX-HOTEL-001/002/003) is entirely post-Figma backend work, so the design
+  file predates the feature existing.
+
+**What was built instead, and on what authority.** The visual language is taken from the screens
+already in this app — the same card, field, and status-pill patterns used by the store, checkout
+and utilities screens. No new visual idiom was introduced. Every piece of _behaviour_ comes from
+a founder decision or a shipped backend contract, not from a guess:
+
+| On screen                                     | Where it comes from                                                                                   |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Three-month horizon, 1–30 nights, max 5 rooms | Founder decision 7 (`BOOKING_MAX_HORIZON_DAYS`, `BOOKING_MIN_NIGHTS/MAX_NIGHTS`, `BOOKING_MAX_ROOMS`) |
+| "You are not paying now… nothing is held"     | Founder decisions 10–11, 2026-08-22                                                                   |
+| 30 minutes to accept, then 24 hours to pay    | `BOOKING_ACCEPT_WINDOW_MS`, `BOOKING_PAYMENT_WINDOW_MS`                                               |
+| The 5-character PIN block                     | Founder decision 13; shown on `pin !== null` because the backend issues it only on payment            |
+| Why a room cannot be had                      | `AvailabilityResult.reason`, rendered **verbatim** — the app does not paraphrase the hotel's calendar |
+| "You were never charged"                      | `customerMessage`, server-owned wording                                                               |
+
+**Per DPX-FIGMA-001 this register reports the gap; it does not close it.** These screens should
+be designed properly in Figma and the implementation reconciled against that design. Until then
+the customer-facing hotel flow is the one part of the app with **no visual source of truth**, and
+that is a founder decision to make, not one to be made by whoever writes the next screen.
