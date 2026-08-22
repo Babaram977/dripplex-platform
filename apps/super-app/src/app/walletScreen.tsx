@@ -140,12 +140,31 @@ function BackButton({ onBack, label = '' }: { onBack?: () => void; label?: strin
   );
 }
 
+/**
+ * Every wallet view's root. Fills the phone frame rather than assuming its
+ * size: this used to be a hardcoded 390x844 — the Figma artboard — which is
+ * not a size any real device has to be.
+ *
+ * On a 360px handset the frame is 360 wide (GLOBAL_STYLES drops the desktop
+ * bezel below 480px and sets `width: 100dvw`), so a 390px child overflowed by
+ * 30px into the frame's `overflow: hidden` and simply vanished: the balance
+ * card ran off the edge, "Rewards" in the action row and "See all" on Recent
+ * Transactions were both cut in half. Nothing scrolled it back into view,
+ * because the clipping ancestor was the frame, not the page.
+ *
+ * The fixed 844 had the matching vertical failure — the frame is
+ * `min(844px, 100dvh - 24px)`, so on any shorter viewport the bottom of the
+ * screen was clipped away. Same reasoning as the PhoneFrame comment in App.tsx.
+ *
+ * 100% resolves against the frame in both axes, which is definite in both, so
+ * desktop still renders at exactly 390x844 and nothing changes there.
+ */
 function Screen({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
     <div
       style={{
-        width: 390,
-        height: 844,
+        width: '100%',
+        height: '100%',
         background: NAVY_BASE,
         overflow: 'hidden',
         position: 'relative',

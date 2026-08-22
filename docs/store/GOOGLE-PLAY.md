@@ -36,22 +36,31 @@ Questions? support@dripplex.com
 
 ## Graphics (required)
 
-| Asset                   | Spec               | Status                                           |
-| ----------------------- | ------------------ | ------------------------------------------------ |
-| App icon                | 512×512 PNG        | ✅ `resources/play-store-icon-512.png`           |
-| Feature graphic         | 1024×500           | ✅ `resources/play-feature-graphic-1024x500.png` |
-| Phone screenshots       | 2–8, min 1080×1920 | ⏳ Capture from staging                          |
-| 7-inch / 10-inch tablet | Optional           | ⏳                                               |
+| Asset                   | Spec               | Status                                                               |
+| ----------------------- | ------------------ | -------------------------------------------------------------------- |
+| App icon                | 512×512 PNG        | ✅ `resources/play-store-icon-512.png`                               |
+| Feature graphic         | 1024×500           | ✅ `resources/play-feature-graphic-1024x500.png`                     |
+| Phone screenshots       | 2–8, min 1080×1920 | ✅ `resources/play-screenshots/` — 5 captured, **2 worth uploading** |
+| 7-inch / 10-inch tablet | Optional           | ⏳                                                                   |
 
-Both finished assets are generated from `resources/dripplex-mark.svg`, not drawn
-by hand. Regenerate with `node scripts/generate-icons.mjs` and check with
-`node scripts/verify-icons.mjs` from `apps/customer-mobile`. A dirty git tree
-after a regenerate means someone edited a PNG directly.
+The icon and the feature graphic are generated from `resources/dripplex-mark.svg`,
+not drawn by hand. Regenerate with `node scripts/generate-icons.mjs` and check
+with `node scripts/verify-icons.mjs` from `apps/customer-mobile`. A dirty git
+tree after a regenerate means someone edited a PNG directly.
 
-The feature graphic needs **Poppins and Inter installed** on the machine that
-runs the generator — without them the text silently does not draw. The verifier
-fails with a message naming the missing font rather than letting a wordless
-graphic reach the listing.
+Screenshots are different: they photograph live production data through the
+real app (`node scripts/capture-screenshots.mjs`), so they are **not** byte
+reproducible and CI does not check them. `resources/play-screenshots/README.md`
+grades each one and says why. In short: home and marketplace are listing
+quality; wallet (₦0.00, no transactions) and orders (a single order on an empty
+screen) are thin because the data is thin, and the fix is real usage, not
+seeded rows.
+
+The feature graphic's type no longer depends on the machine: Poppins and Inter
+are vendored in `resources/fonts/` and the generator points fontconfig there, so
+it renders identically everywhere. (This page previously said to install them —
+that stopped being true once they were pinned.) The verifier still checks the
+text actually drew, because a missing face fails silently rather than loudly.
 
 ## Content rating
 

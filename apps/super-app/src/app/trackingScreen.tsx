@@ -678,7 +678,7 @@ export function OrderHistoryScreen({
     <div className="flex h-full w-full flex-col overflow-hidden" style={{ background: NAVY_BASE }}>
       {/* Status bar */}
       <div
-        className="flex shrink-0 items-center justify-between px-5 pb-1 pt-[52px]"
+        className="dx-status-mock flex shrink-0 items-center justify-between px-5 pb-1 pt-[52px]"
         style={{ fontSize: 11, color: 'rgba(255,255,255,.35)', fontFamily: "'Inter',sans-serif" }}
       >
         <span>9:41</span>
@@ -1121,7 +1121,7 @@ export function TrackingScreen({
     >
       {/* Status bar */}
       <div
-        className="flex shrink-0 items-center justify-between px-5 pb-1 pt-[52px]"
+        className="dx-status-mock flex shrink-0 items-center justify-between px-5 pb-1 pt-[52px]"
         style={{ fontSize: 11, color: 'rgba(255,255,255,.35)', fontFamily: "'Inter',sans-serif" }}
       >
         <span>9:41</span>
