@@ -27,7 +27,20 @@ android {
             if (hasSigningMaterial) {
                 def keystoreProperties = new Properties()
                 keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
-                storeFile file(keystoreProperties['storeFile'])
+                // rootProject.file, not file. This block lives in app/build.gradle,
+                // so a bare file() resolves against android/app/ — while
+                // keystore.properties itself is read from android/ one line above.
+                // The two halves of one config disagreed about their base
+                // directory, so `storeFile=release.keystore` was looked for at
+                // android/app/release.keystore while CI writes it to
+                // android/release.keystore, and the build died with
+                // "Keystore file ... not found for signing config 'release'".
+                //
+                // Invisible until signing actually ran: the steps that write the
+                // keystore were skipped on every run until the `if` bug in the
+                // workflows was fixed, so hasSigningMaterial was always false and
+                // this line never executed.
+                storeFile rootProject.file(keystoreProperties['storeFile'])
                 storePassword keystoreProperties['storePassword']
                 keyAlias keystoreProperties['keyAlias']
                 keyPassword keystoreProperties['keyPassword']
