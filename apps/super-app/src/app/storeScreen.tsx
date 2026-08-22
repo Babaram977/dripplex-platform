@@ -4,7 +4,9 @@ import { BottomNavigation, FloatingAIButton } from '../components/navigation';
 import { FAB_BOTTOM } from '../tokens/spacing';
 import type { NavTabKey } from '../components/navigation/BottomNavigation';
 import { api } from '../lib/api';
-import type { MerchantSummaryDto, ProductSummaryDto } from '../lib/api';
+import type { MerchantCategory, MerchantSummaryDto, ProductSummaryDto } from '../lib/api';
+import { HotelRoomsPanel } from './hotelBookingScreens';
+import type { BookingDraft } from './hotelBookingScreens';
 import { ImageWithFallback } from '@/app/components/figma/ImageWithFallback';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1236,6 +1238,7 @@ export function StoreScreen({
   onTab,
   onProduct,
   onCart,
+  onBookHotel,
   merchantId,
   merchant: merchantProp = DEFAULT_MERCHANT,
 }: {
@@ -1247,6 +1250,9 @@ export function StoreScreen({
   onTab?: (tab: NavTabKey) => void;
   onProduct?: (p: StoreProduct) => void;
   onCart?: () => void;
+  /** Hand-off to the booking flow when this store is a hotel. Absent in the
+   *  design-preview navigator, where there is no router to hand off to. */
+  onBookHotel?: (draft: BookingDraft) => void;
   merchantId?: string;
   merchant?: StoreMerchant;
 }) {
@@ -1259,6 +1265,10 @@ export function StoreScreen({
   const [liveMerchant, setLiveMerchant] = useState<StoreMerchant | null>(null);
   const [liveProducts, setLiveProducts] = useState<StoreProduct[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // The MerchantCategory ("what they sell"), kept separately because
+  // StoreMerchant.category carries businessType (the legal structure) and the
+  // two are different fields with confusingly similar names.
+  const [liveCategory, setLiveCategory] = useState<MerchantCategory | null>(null);
 
   const load = () => {
     if (!merchantId) {
@@ -1284,6 +1294,7 @@ export function StoreScreen({
     ])
       .then(([dto, productsRes]) => {
         setLiveMerchant(dtoToStoreMerchant(dto));
+        setLiveCategory(dto.category);
         const res = productsRes as
           { items?: ProductSummaryDto[]; data?: ProductSummaryDto[] } | ProductSummaryDto[];
         const list = Array.isArray(res) ? res : (res.items ?? res.data ?? []);
@@ -1308,6 +1319,7 @@ export function StoreScreen({
     const seen = products.map((p) => p.category).filter((c): c is string => Boolean(c));
     return ['All', ...Array.from(new Set(seen))];
   }, [products]);
+  const isHotel = liveCategory === 'HOTEL';
   const [followed, setFollowed] = useState(false);
 
   const filteredProducts =
@@ -1346,7 +1358,7 @@ export function StoreScreen({
 
       <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
         <StoreSearch storeName={merchant.name} />
-        <StoreCats active={activeCat} onChange={setActiveCat} cats={storeCats} />
+        {!isHotel && <StoreCats active={activeCat} onChange={setActiveCat} cats={storeCats} />}
 
         <div style={{ height: 16 }} />
         {loadError ? (
@@ -1367,6 +1379,19 @@ export function StoreScreen({
             >
               Retry
             </button>
+          </div>
+        ) : isHotel && merchantId ? (
+          // A hotel sells nights, not products. Before this the product grid
+          // rendered empty for every hotel, which reads as "this hotel has
+          // nothing" — the app was misrepresenting real businesses.
+          <div style={{ padding: '0 16px' }}>
+            <HotelRoomsPanel
+              merchantId={merchantId}
+              hotelName={merchant.name}
+              onBook={(roomType, stay, quote) =>
+                onBookHotel?.({ roomType, stay, quote, hotelName: merchant.name })
+              }
+            />
           </div>
         ) : (
           <ProductGrid
