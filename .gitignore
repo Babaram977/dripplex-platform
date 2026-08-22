@@ -72,3 +72,12 @@ temp
 # super-app build output
 apps/super-app/dist/
 apps/super-app/.env
+
+# Android signing material. The upload key must never reach the repository —
+# anyone holding it can publish an update as Dripplex. CI writes both of these
+# from the ANDROID_KEYSTORE_* secrets at build time; locally they are yours.
+apps/customer-mobile/android/release.keystore
+apps/customer-mobile/android/keystore.properties
+*.jks
+*.p12
+*.keystore
