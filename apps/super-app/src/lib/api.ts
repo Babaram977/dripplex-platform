@@ -1053,6 +1053,30 @@ export interface MerchantBookingDto extends BookingDto {
   payoutAmount: number | null;
 }
 
+/**
+ * One weekly hotel payout — mirrors the backend `BookingSettlementDto`.
+ *
+ * `weekFrom`/`weekTo` are sent by the server precisely so a client does not
+ * have to know the settlement calendar. `weekTo` is the Sunday, not the
+ * following Monday.
+ */
+export interface BookingSettlementDto {
+  id: string;
+  businessId: string;
+  weekStarting: string;
+  weekFrom: string;
+  weekTo: string;
+  status: 'PENDING' | 'COMPLETED' | 'FAILED';
+  bookingCount: number;
+  grossAmount: number;
+  commissionAmount: number;
+  netAmount: number;
+  currency: string;
+  failureReason: string | null;
+  settledAt: string | null;
+  createdAt: string;
+}
+
 export interface MerchantBusinessDto {
   id: string;
   businessName: string;
@@ -2754,6 +2778,15 @@ export const api = {
           '/merchant/bookings',
           undefined,
           params as Record<string, string | number> | undefined,
+        ),
+      /** What DrippleX has paid this hotel, week by week. Shipped in the
+       *  backend with weekly settlement; this is the client that reads it. */
+      settlements: (params?: { page?: number; pageSize?: number }) =>
+        dx<ApiPage<BookingSettlementDto>>(
+          'GET',
+          '/merchant/bookings/settlements',
+          undefined,
+          params,
         ),
       accept: (id: string) => dx<MerchantBookingDto>('POST', `/merchant/bookings/${id}/accept`),
       reject: (id: string, reason?: string) =>

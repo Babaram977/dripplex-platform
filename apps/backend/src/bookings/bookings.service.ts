@@ -18,6 +18,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 
 import { BookingCustomerNotifier } from './booking-customer-notifier.service';
+import { BookingHotelNotifier } from './booking-hotel-notifier.service';
 import { generateBookingPin } from './booking-pin';
 import { nightCount, nightsBetween, toNight, validateStay } from './booking.dates';
 import {
@@ -113,6 +114,7 @@ export class BookingsService {
     @Inject(PAYMENT_PROVIDER_ADAPTERS)
     private readonly paymentProviders: PaymentProviderAdapter[],
     private readonly customerNotifier: BookingCustomerNotifier,
+    private readonly hotelNotifier: BookingHotelNotifier,
   ) {}
 
   // ── Availability ──────────────────────────────────────────────────────────
@@ -343,6 +345,13 @@ export class BookingsService {
         acceptDeadline: booking.acceptDeadline.toISOString(),
       },
     });
+
+    // The hotel's thirty minutes start now, and founder decision 9 chose that
+    // window precisely because a small hotel is NOT watching the app. An
+    // in-app badge alone cannot deliver it.
+    await this.notifyHotel(booking, (merchantUserId) =>
+      this.hotelNotifier.bookingRequested(booking, merchantUserId, context),
+    );
 
     return booking;
   }
@@ -634,6 +643,9 @@ export class BookingsService {
     // Read back after the write so the PIN is on the row being announced — the
     // notification's whole value is carrying that code to the guest.
     await this.notifyCustomer(confirmed, context);
+    await this.notifyHotel(confirmed, (merchantUserId) =>
+      this.hotelNotifier.bookingPaid(confirmed, merchantUserId, context),
+    );
     return confirmed;
   }
 
@@ -700,6 +712,20 @@ export class BookingsService {
 
     const unwound = await this.prisma.booking.findUniqueOrThrow({ where: { id: booking.id } });
     await this.notifyCustomer(unwound, context);
+    // Only expiry is news to the hotel. A rejection is the hotel's own action
+    // taken seconds earlier, and telling them what they just did is noise.
+    if (to === BookingStatus.EXPIRED) {
+      await this.notifyHotel(unwound, (merchantUserId) =>
+        this.hotelNotifier.bookingLapsed(
+          unwound,
+          merchantUserId,
+          // Only an accepted booking has a payment deadline, so its presence
+          // separates "the guest never paid" from "we never answered".
+          unwound.paymentDeadline !== null,
+          context,
+        ),
+      );
+    }
     return unwound;
   }
 
@@ -727,6 +753,34 @@ export class BookingsService {
     } catch (error) {
       this.logger.error(
         `Could not notify the guest about booking ${booking.reference}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  /**
+   * Tell the hotel, under the same rule as `notifyCustomer` — a failure here
+   * must never undo the thing that just happened.
+   *
+   * `Business.merchantId` is the owning `User.id`, which is what a notification
+   * is addressed to. Resolved per call rather than threaded through, because
+   * every caller already has the booking and none of them has the user.
+   */
+  private async notifyHotel(
+    booking: Booking,
+    tell: (merchantUserId: string) => Promise<void>,
+  ): Promise<void> {
+    try {
+      const business = await this.prisma.business.findUnique({
+        where: { id: booking.businessId },
+        select: { merchantId: true },
+      });
+      if (!business) return;
+      await tell(business.merchantId);
+    } catch (error) {
+      this.logger.error(
+        `Could not notify the hotel about booking ${booking.reference}: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );

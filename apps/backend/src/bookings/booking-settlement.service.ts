@@ -5,6 +5,7 @@ import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { WalletService } from '../wallet/wallet.service';
 
+import { BookingHotelNotifier } from './booking-hotel-notifier.service';
 import { BOOKING_AUDIT_ACTIONS, BOOKING_SETTLEMENT_REFERENCE_TYPE } from './bookings.constants';
 import { isSettlementDay, settlementPeriod } from './settlement-week';
 
@@ -57,6 +58,7 @@ export class BookingSettlementService {
     private readonly prisma: PrismaService,
     private readonly walletService: WalletService,
     private readonly auditService: AuditService,
+    private readonly hotelNotifier: BookingHotelNotifier,
   ) {}
 
   /**
@@ -234,6 +236,20 @@ export class BookingSettlementService {
         settledAt: new Date(),
       },
     });
+
+    // Tell the hotel the money landed. Without this a merchant sees a wallet
+    // balance change with no explanation — the gap flagged when settlement
+    // shipped. Guarded: a payout that succeeded must never be undone by a
+    // message that would not send.
+    try {
+      await this.hotelNotifier.settlementPaid(completed, business.merchantId);
+    } catch (error) {
+      this.logger.error(
+        `Paid settlement ${settlement.id} but could not notify the hotel: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
 
     // Empty context on purpose: no person did this. A settlement is the clock
     // paying a hotel, and attributing it to a user would invent an actor.

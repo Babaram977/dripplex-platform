@@ -13,6 +13,7 @@ import { AuditService } from '../audit/audit.service';
 import { DomainEventBus } from '../events/domain-event-bus';
 import { WalletService } from '../wallet/wallet.service';
 
+import { type BookingHotelNotifier } from './booking-hotel-notifier.service';
 import { BookingSettlementService } from './booking-settlement.service';
 
 import type { AuditLogRepository } from '../audit/repositories/audit-log.repository';
@@ -198,7 +199,12 @@ describe('BookingSettlementService', () => {
     };
     const auditService = new AuditService(auditLogRepository);
     wallets = new WalletService(prisma, auditService, new DomainEventBus());
-    settlements = new BookingSettlementService(prisma, wallets, auditService);
+    // Stubbed: this suite is about money moving exactly once, not about what
+    // the hotel is told. A throwing stub would masquerade as a payout failure.
+    const hotelNotifier = {
+      settlementPaid: jest.fn().mockResolvedValue(undefined),
+    } as unknown as BookingHotelNotifier;
+    settlements = new BookingSettlementService(prisma, wallets, auditService, hotelNotifier);
   });
 
   it("pays a hotel the week's takings, less the commission", async () => {
