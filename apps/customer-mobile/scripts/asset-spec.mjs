@@ -8,6 +8,12 @@ import { fileURLToPath } from 'node:url';
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const MASTER = resolve(ROOT, 'resources/dripplex-mark.svg');
 
+/**
+ * Brand faces, vendored so a render does not depend on what the machine has
+ * installed. See resources/fonts/NOTICE.md for provenance and licence.
+ */
+export const FONT_DIR = resolve(ROOT, 'resources/fonts');
+
 export const BLACK = '#000000';
 
 /**

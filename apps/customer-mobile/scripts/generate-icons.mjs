@@ -9,13 +9,15 @@
  *
  *   node scripts/generate-icons.mjs
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 
 import {
   ROOT,
   BLACK,
+  FONT_DIR,
   markGeometry,
   ADAPTIVE_COVER,
   ROUND_COVER,
@@ -27,6 +29,31 @@ import {
   SPLASHES,
   FEATURE_GRAPHIC,
 } from './asset-spec.mjs';
+
+/**
+ * Render the feature graphic's text from the fonts in this repo, not from
+ * whatever the machine happens to have installed.
+ *
+ * CI regenerates every asset and fails if a single byte differs from what is
+ * committed. Left to system fontconfig that check fails on any runner without
+ * Poppins — and worse, it can PASS the "did the text draw" verification while
+ * silently substituting a fallback face, because a fallback still paints
+ * pixels. Pinning the font files makes the output identical everywhere.
+ *
+ * Set before sharp is required: librsvg reads fontconfig when it initialises.
+ */
+const FONTCONF = join(mkdtempSync(join(tmpdir(), 'dpx-fonts-')), 'fonts.conf');
+writeFileSync(
+  FONTCONF,
+  `<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+<fontconfig>
+  <dir>${FONT_DIR}</dir>
+  <cachedir>${dirname(FONTCONF)}/cache</cachedir>
+</fontconfig>
+`,
+);
+process.env['FONTCONFIG_FILE'] = FONTCONF;
 
 const require = createRequire(import.meta.url);
 const sharp = require('sharp');
