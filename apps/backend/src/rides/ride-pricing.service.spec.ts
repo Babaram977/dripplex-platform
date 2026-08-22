@@ -141,6 +141,7 @@ describe('RidePricingService', () => {
         amount: number;
         appliesTo: RideSurchargeTrigger;
         radiusMeters: number;
+        excludedRideTypes: RideType[];
       }> = {},
     ): Promise<string> {
       const zone = await service.createZone(
@@ -152,6 +153,9 @@ describe('RidePricingService', () => {
           surchargeType: overrides.surchargeType ?? RideSurchargeType.FLAT,
           amount: overrides.amount ?? 1_500,
           appliesTo: overrides.appliesTo ?? RideSurchargeTrigger.EITHER,
+          ...(overrides.excludedRideTypes !== undefined
+            ? { excludedRideTypes: overrides.excludedRideTypes }
+            : {}),
         },
         adminId,
         {},
@@ -244,6 +248,117 @@ describe('RidePricingService', () => {
       // 1.25 means the fare becomes a quarter more, so the surcharge is 1,000
       // on a 4,000 metered fare — not 5,000.
       expect(applied?.amount).toBe(1_000);
+    });
+
+    describe('vehicle restrictions', () => {
+      it('bars an excluded ride type from a trip touching the zone', async () => {
+        if (!databaseAvailable) return;
+
+        await createAirportZone({ excludedRideTypes: [RideType.TRICYCLE] });
+
+        // Dropoff at the airport — a tricycle is not permitted onto it.
+        const exclusion = await service.findExclusion(
+          RideType.TRICYCLE,
+          { lat: 12.0022, lng: 8.592 },
+          { lat: 12.0476, lng: 8.5246 },
+        );
+        expect(exclusion).not.toBeNull();
+      });
+
+      it('bars it on pickup as well as dropoff', async () => {
+        if (!databaseAvailable) return;
+
+        await createAirportZone({ excludedRideTypes: [RideType.TRICYCLE] });
+
+        // Leaving the airport is the same restriction as arriving at it.
+        const exclusion = await service.findExclusion(
+          RideType.TRICYCLE,
+          { lat: 12.0476, lng: 8.5246 },
+          { lat: 12.0022, lng: 8.592 },
+        );
+        expect(exclusion).not.toBeNull();
+      });
+
+      it('leaves other ride types alone', async () => {
+        if (!databaseAvailable) return;
+
+        await createAirportZone({ excludedRideTypes: [RideType.TRICYCLE] });
+
+        const exclusion = await service.findExclusion(
+          RideType.ECONOMY,
+          { lat: 12.0022, lng: 8.592 },
+          { lat: 12.0476, lng: 8.5246 },
+        );
+        expect(exclusion).toBeNull();
+      });
+
+      it('does not bar a trip that never touches the zone', async () => {
+        if (!databaseAvailable) return;
+
+        await createAirportZone({ excludedRideTypes: [RideType.TRICYCLE] });
+
+        // Both ends well inside Kano city, nowhere near the airport radius.
+        const exclusion = await service.findExclusion(
+          RideType.TRICYCLE,
+          { lat: 12.0022, lng: 8.592 },
+          { lat: 11.9776, lng: 8.6584 },
+        );
+        expect(exclusion).toBeNull();
+      });
+
+      it('a zone with no restriction bars nothing, which is every zone by default', async () => {
+        if (!databaseAvailable) return;
+
+        await createAirportZone();
+
+        const exclusion = await service.findExclusion(
+          RideType.TRICYCLE,
+          { lat: 12.0022, lng: 8.592 },
+          { lat: 12.0476, lng: 8.5246 },
+        );
+        expect(exclusion).toBeNull();
+      });
+
+      it('an inactive zone stops barring', async () => {
+        if (!databaseAvailable) return;
+
+        const zoneId = await createAirportZone({ excludedRideTypes: [RideType.TRICYCLE] });
+        await service.updateZone(zoneId, { active: false }, adminId, {});
+
+        const exclusion = await service.findExclusion(
+          RideType.TRICYCLE,
+          { lat: 12.0022, lng: 8.592 },
+          { lat: 12.0476, lng: 8.5246 },
+        );
+        expect(exclusion).toBeNull();
+      });
+
+      it('reports the barred types at a pickup point', async () => {
+        if (!databaseAvailable) return;
+
+        await createAirportZone({ excludedRideTypes: [RideType.TRICYCLE] });
+
+        const atAirport = await service.exclusionsAtPoint({ lat: 12.0476, lng: 8.5246 });
+        expect(atAirport.has(RideType.TRICYCLE)).toBe(true);
+        expect(atAirport.has(RideType.ECONOMY)).toBe(false);
+
+        const inTown = await service.exclusionsAtPoint({ lat: 12.0022, lng: 8.592 });
+        expect(inTown.has(RideType.TRICYCLE)).toBe(false);
+      });
+
+      it('a dropoff-only zone says nothing about where the passenger stands', async () => {
+        if (!databaseAvailable) return;
+
+        await createAirportZone({
+          excludedRideTypes: [RideType.TRICYCLE],
+          appliesTo: RideSurchargeTrigger.DROPOFF,
+        });
+
+        // Standing at the airport is not a dropoff at it, so the fare screen
+        // must not grey the type out here — the estimate catches the real case.
+        const atAirport = await service.exclusionsAtPoint({ lat: 12.0476, lng: 8.5246 });
+        expect(atAirport.has(RideType.TRICYCLE)).toBe(false);
+      });
     });
   });
 });
