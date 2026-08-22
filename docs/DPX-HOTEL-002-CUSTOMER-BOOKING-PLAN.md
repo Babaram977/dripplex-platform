@@ -94,6 +94,11 @@ with DrippleX, **DrippleX now owes every hotel its share**, and there is no
 mechanism that pays one. That makes settlement required rather than deferred —
 it is the next piece of work, and decision 14 sets its schedule.
 
+> **Built.** See [DPX-HOTEL-003](./DPX-HOTEL-003-SETTLEMENT.md). Weekly, every
+> Monday, settling the seven days that just finished, into the hotel's existing
+> merchant wallet. That doc also corrects a claim made in the first version of
+> the settlement code about which database guard prevents a double payment.
+
 It also settles the commission question in the opposite direction from the note
 in §0.3 below. With DrippleX holding the money the cut comes **off** what the
 hotel is paid (mode A, as marketplace online orders work), not accrued as a

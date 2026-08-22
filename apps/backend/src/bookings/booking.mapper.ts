@@ -1,4 +1,4 @@
-import type { Booking, RoomAvailability, RoomType } from '@prisma/client';
+import type { Booking, BookingSettlement, RoomAvailability, RoomType } from '@prisma/client';
 
 /**
  * What leaves the API.
@@ -142,4 +142,57 @@ export function toMerchantBookingDto(booking: Booking): MerchantBookingDto {
 /** A Postgres DATE read back as a UTC-midnight Date, rendered as the day it is. */
 export function toNightString(value: Date): string {
   return value.toISOString().slice(0, 10);
+}
+
+/**
+ * A weekly payout, as a hotel or an operator sees it.
+ *
+ * `weekStarting` is the Monday the run was labelled by; the week it actually
+ * paid for is the seven days *before* it. `weekFrom`/`weekTo` are sent so a
+ * hotel reconciling against its own book is not left to work that out — the
+ * question a hotel asks is "which nights is this money for", and the answer
+ * should not depend on the client knowing the settlement calendar.
+ */
+export interface BookingSettlementDto {
+  id: string;
+  businessId: string;
+  /** The Monday this run is labelled by, `YYYY-MM-DD`. */
+  weekStarting: string;
+  /** First day covered, inclusive, `YYYY-MM-DD`. */
+  weekFrom: string;
+  /** Last day covered, inclusive — the Sunday, not the following Monday. A
+   *  hotel reading "to: Monday" would reasonably think Monday was included. */
+  weekTo: string;
+  status: BookingSettlement['status'];
+  bookingCount: number;
+  grossAmount: number;
+  commissionAmount: number;
+  netAmount: number;
+  currency: string;
+  /** Why a payout did not land. Null unless the status is FAILED. */
+  failureReason: string | null;
+  settledAt: string | null;
+  createdAt: string;
+}
+
+export function toBookingSettlementDto(row: BookingSettlement): BookingSettlementDto {
+  const weekStarting = row.weekStarting;
+  const from = new Date(weekStarting.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const lastDay = new Date(weekStarting.getTime() - 24 * 60 * 60 * 1000);
+  return {
+    id: row.id,
+    businessId: row.businessId,
+    weekStarting: toNightString(weekStarting),
+    weekFrom: toNightString(from),
+    weekTo: toNightString(lastDay),
+    status: row.status,
+    bookingCount: row.bookingCount,
+    grossAmount: Number(row.grossAmount),
+    commissionAmount: Number(row.commissionAmount),
+    netAmount: Number(row.netAmount),
+    currency: row.currency,
+    failureReason: row.failureReason,
+    settledAt: row.settledAt?.toISOString() ?? null,
+    createdAt: row.createdAt.toISOString(),
+  };
 }
