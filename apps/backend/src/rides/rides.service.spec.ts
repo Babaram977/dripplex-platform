@@ -96,9 +96,12 @@ describe('RidesService', () => {
       auditService,
       commercialCreditSettings,
     );
+    // One pricing instance, so the fare the guard checks and the fare the
+    // estimate quotes come from the same zones.
+    const pricingService = new RidePricingService(prisma, auditService);
     service = new RidesService(
       prisma,
-      new RideFareService(new RidePricingService(prisma, auditService)),
+      new RideFareService(pricingService),
       auditService,
       dispatchService,
       notifications,
@@ -107,6 +110,7 @@ describe('RidesService', () => {
       eventBus,
       identityVerificationService,
       commissionAccounts,
+      pricingService,
     );
 
     const customer = await prisma.user.create({

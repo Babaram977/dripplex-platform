@@ -1,6 +1,7 @@
-import { RideSurchargeTrigger, RideSurchargeType } from '@prisma/client';
+import { RideSurchargeTrigger, RideSurchargeType, RideType } from '@prisma/client';
 import { Transform, Type } from 'class-transformer';
 import {
+  IsArray,
   IsBoolean,
   IsEnum,
   IsNumber,
@@ -94,6 +95,18 @@ export class CreateRideSurchargeZoneDto {
   @IsEnum(RideSurchargeTrigger)
   public appliesTo: RideSurchargeTrigger = RideSurchargeTrigger.EITHER;
 
+  /**
+   * Ride types this zone bars outright. Empty (the default) means none.
+   *
+   * A ban is not a price: a passenger choosing a barred type is refused at the
+   * estimate rather than quoted, so setting this wrongly takes a vehicle class
+   * off sale for the area. Recorded in the audit trail for that reason.
+   */
+  @IsOptional()
+  @IsArray()
+  @IsEnum(RideType, { each: true })
+  public excludedRideTypes?: RideType[];
+
   @IsOptional()
   @IsBoolean()
   public active?: boolean;
@@ -148,6 +161,18 @@ export class UpdateRideSurchargeZoneDto {
   @IsOptional()
   @IsEnum(RideSurchargeTrigger)
   public appliesTo?: RideSurchargeTrigger;
+
+  /**
+   * Ride types this zone bars outright. Empty (the default) means none.
+   *
+   * A ban is not a price: a passenger choosing a barred type is refused at the
+   * estimate rather than quoted, so setting this wrongly takes a vehicle class
+   * off sale for the area. Recorded in the audit trail for that reason.
+   */
+  @IsOptional()
+  @IsArray()
+  @IsEnum(RideType, { each: true })
+  public excludedRideTypes?: RideType[];
 
   @IsOptional()
   @IsBoolean()

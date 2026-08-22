@@ -144,6 +144,7 @@ function toZoneDto(zone: RideSurchargeZone): RideSurchargeZoneDto {
     surchargeType: zone.surchargeType,
     amount: Number(zone.amount),
     appliesTo: zone.appliesTo,
+    excludedRideTypes: zone.excludedRideTypes,
     active: zone.active,
     updatedAt: zone.updatedAt.toISOString(),
   };

@@ -24,6 +24,9 @@ export interface CreateRideSurchargeZoneRequest {
   /** Naira when FLAT, a factor when MULTIPLIER (1.25 = a quarter more). */
   amount: number;
   appliesTo?: RideSurchargeTrigger;
+  /** Ride types this zone bars outright. Omitted leaves it unchanged; an empty
+   * array clears the restriction. */
+  excludedRideTypes?: RideType[];
   active?: boolean;
 }
 

@@ -32,6 +32,7 @@ import {
   type RideFareEstimate,
   RideFareService,
 } from './ride-fare.service';
+import { RidePricingService } from './ride-pricing.service';
 import {
   ACTIVE_DRIVER_RIDE_STATUSES,
   CANCELLABLE_RIDE_STATUSES,
@@ -72,6 +73,7 @@ export class RidesService {
     private readonly eventBus: DomainEventBus,
     private readonly identityVerificationService: DriverIdentityVerificationService,
     private readonly commissionAccounts: CommissionAccountService,
+    private readonly pricing: RidePricingService,
   ) {}
 
   /** Real service-type catalog (display name + description) so the
@@ -139,12 +141,21 @@ export class RidesService {
       }
     }
 
+    // "Not permitted here" is a different answer from "nobody is free", and a
+    // passenger standing at the airport must not be told to wait for a
+    // tricycle that is never coming.
+    const barred = await this.pricing.exclusionsAtPoint({ lat: latitude, lng: longitude });
+
     return this.listRideTypes().map((entry) => {
       const nearest = nearestByType.get(entry.type);
+      const restricted = barred.has(entry.type);
       return {
         ...entry,
-        availableNow: nearest !== undefined,
+        availableNow: !restricted && nearest !== undefined,
         nearestDriverMeters: nearest ?? null,
+        restrictedReason: restricted
+          ? `${entry.displayName} is not permitted from this location`
+          : null,
       };
     });
   }
@@ -152,10 +163,35 @@ export class RidesService {
   /** Read-only preview — does not redeem or lock anything. Used by the
    * `/rides/estimate` endpoint so a customer can see a coupon's discount
    * before requesting the ride. */
+  /**
+   * Refuse a ride type a zone bars from the trip.
+   *
+   * Checked on both the estimate and the request, not just the request: a
+   * passenger who is quoted a fare and only then told the vehicle cannot go
+   * has been misled, and the fare screen is where the choice is actually made.
+   */
+  private async assertRideTypeAllowed(
+    rideType: RideType,
+    pickup: { lat: number; lng: number },
+    dropoff: { lat: number; lng: number },
+  ): Promise<void> {
+    const exclusion = await this.pricing.findExclusion(rideType, pickup, dropoff);
+    if (exclusion !== null) {
+      throw new ValidationDomainException(
+        `${RIDE_TYPE_CATALOG[rideType].displayName} cannot serve trips to or from ${exclusion.zoneName}. Choose another ride type.`,
+      );
+    }
+  }
+
   public async estimateFare(
     customerId: string,
     dto: EstimateRideFareDto,
   ): Promise<EstimateRideFareResponse> {
+    await this.assertRideTypeAllowed(
+      dto.rideType,
+      { lat: dto.pickupLatitude, lng: dto.pickupLongitude },
+      { lat: dto.dropoffLatitude, lng: dto.dropoffLongitude },
+    );
     const estimate = await this.fareService.estimate(
       dto.rideType,
       { lat: dto.pickupLatitude, lng: dto.pickupLongitude },
@@ -180,6 +216,14 @@ export class RidesService {
     dto: RequestRideDto,
     context: AuditContext,
   ): Promise<RideDto> {
+    // Re-checked here rather than trusted from the estimate: the estimate is a
+    // separate call the client may skip, and Ops may have added the
+    // restriction between the quote and the tap.
+    await this.assertRideTypeAllowed(
+      dto.rideType,
+      { lat: dto.pickupLatitude, lng: dto.pickupLongitude },
+      { lat: dto.dropoffLatitude, lng: dto.dropoffLongitude },
+    );
     const estimate = await this.fareService.estimate(
       dto.rideType,
       { lat: dto.pickupLatitude, lng: dto.pickupLongitude },

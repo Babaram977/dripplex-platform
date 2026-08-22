@@ -147,7 +147,8 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
     // Fares now come from the Ops-editable table, so the fare service needs
     // the pricing service that reads it. Rates seed themselves from the
     // constants on first touch, so this prices exactly as it did before.
-    const fareService = new RideFareService(new RidePricingService(prisma, auditService));
+    const pricingService = new RidePricingService(prisma, auditService);
+    const fareService = new RideFareService(pricingService);
     dispatchService = new RideDispatchService(
       prisma,
       auditService,
@@ -181,6 +182,7 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
       new DomainEventBus(),
       identityVerificationService,
       commissionAccounts,
+      pricingService,
     );
     tripService = new RideTripService(
       prisma,
