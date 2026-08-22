@@ -246,7 +246,7 @@ function dtoToStoreProduct(dto: ProductSummaryDto): StoreProduct {
 function StoreStatusBar() {
   return (
     <div
-      className="flex items-center justify-between px-5 pb-1 pt-[52px]"
+      className="dx-status-mock flex items-center justify-between px-5 pb-1 pt-[52px]"
       style={{ fontSize: 11, color: 'rgba(255,255,255,.35)', fontFamily: "'Inter',sans-serif" }}
     >
       <span>9:41</span>

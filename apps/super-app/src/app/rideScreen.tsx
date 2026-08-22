@@ -66,6 +66,15 @@ export interface RidePickup {
 }
 
 /**
+ * Stands in for the address when the geocoder gives us nothing back — no Maps
+ * key, offline, or a coordinate it has no street for. Exported so the views
+ * that render a pickup can recognise it instead of captioning it: the ride
+ * sheet prints "Your current location: {address}", which read
+ * "Your current location: Your current location" whenever this was the value.
+ */
+export const UNNAMED_PICKUP = 'Your current location';
+
+/**
  * Resolves the passenger's real pickup: device position, reverse-geocoded to a
  * readable address. Returns null while unresolved and on refusal — callers must
  * treat "no pickup" as "cannot book", not as "use a default".
@@ -107,7 +116,7 @@ export function useDevicePickup(): {
           longitude: pos.longitude,
           // A coordinate with no street name is still a true pickup; showing it
           // beats naming somewhere the passenger is not.
-          address: label.length > 0 ? label : 'Your current location',
+          address: label.length > 0 ? label : UNNAMED_PICKUP,
         });
       })
       .catch(() => setError('Could not read your location. Set your pickup point by hand.'))
@@ -812,7 +821,11 @@ export function RideHomeScreen({
               {firstName ? `Where to, ${firstName}?` : 'Where to?'}
             </p>
             <p className="text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
-              {pickup ? `Your current location: ${pickup.address}` : 'Finding your location…'}
+              {!pickup
+                ? 'Finding your location…'
+                : pickup.address === UNNAMED_PICKUP
+                  ? pickup.address
+                  : `Your current location: ${pickup.address}`}
             </p>
           </div>
 
