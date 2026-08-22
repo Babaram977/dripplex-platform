@@ -253,21 +253,29 @@ model Booking {
   /// alone, and so one payment can never be claimed by two bookings.
   paymentReference String?   @unique @map("payment_reference") @db.VarChar(100)
   paidAt           DateTime? @map("paid_at")
+  /// Which weekly settlement paid this booking out to the hotel. Null until
+  /// it has been settled; set once and never cleared, so a booking cannot be
+  /// paid out twice however often the weekly run happens.
+  settlementId     String?   @map("settlement_id") @db.Uuid
   rejectedAt       DateTime? @map("rejected_at")
   /// The hotel's own words when declining — shown to the guest.
-  rejectionReason String?   @map("rejection_reason") @db.VarChar(500)
-  checkedInAt     DateTime? @map("checked_in_at")
-  checkedOutAt    DateTime? @map("checked_out_at")
+  rejectionReason  String?   @map("rejection_reason") @db.VarChar(500)
+  checkedInAt      DateTime? @map("checked_in_at")
+  checkedOutAt     DateTime? @map("checked_out_at")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  customer User     @relation("BookingCustomer", fields: [customerId], references: [id], onDelete: Cascade)
-  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  roomType RoomType @relation(fields: [roomTypeId], references: [id], onDelete: Restrict)
+  customer   User               @relation("BookingCustomer", fields: [customerId], references: [id], onDelete: Cascade)
+  business   Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  /// Restrict, not Cascade: deleting a settlement must never quietly erase
+  /// the record of which bookings it paid for.
+  settlement BookingSettlement? @relation(fields: [settlementId], references: [id], onDelete: Restrict)
+  roomType   RoomType           @relation(fields: [roomTypeId], references: [id], onDelete: Restrict)
 
   @@index([customerId, createdAt])
   @@index([businessId, status])
+  @@index([settlementId])
   /// The expiry sweep's query: everything still pending past its deadline.
   @@index([status, acceptDeadline])
   /// The payment sweep's query: everything accepted whose 24 hours ran out.
@@ -801,6 +809,7 @@ model Business {
   kycDocuments       MerchantKyc[]
   roomTypes          RoomType[]
   bookings           Booking[]
+  bookingSettlements BookingSettlement[]
 
   @@index([status])
   @@index([verificationStatus])
@@ -1590,6 +1599,57 @@ enum OrderSettlementStatus {
   COMPLETED
   FAILED
   REVERSED
+}
+
+/// DPX-HOTEL-003 — what DrippleX owes one hotel for one week.
+///
+/// Founder decision 2026-08-22: hotel settlements run weekly, every Monday.
+/// Because a guest now pays THROUGH DrippleX (decision 11), DrippleX holds the
+/// money and owes the hotel its share; this is the record of releasing it.
+///
+/// One row per hotel per week, enforced by a unique index rather than by
+/// convention, so a run that fires twice on the same Monday — a restart, two
+/// instances, a manual trigger — cannot leave two records of the same week.
+///
+/// What stops the hotel being PAID twice is `Booking.settlementId`, not this
+/// index; see BookingSettlementService for why, and for the experiment that
+/// established it.
+model BookingSettlement {
+  id                  String                  @id @default(uuid()) @db.Uuid
+  businessId          String                  @map("business_id") @db.Uuid
+  /// The Monday this run covers, at UTC midnight. The week settled is the
+  /// seven days BEFORE it.
+  weekStarting        DateTime                @map("week_starting") @db.Date
+  status              BookingSettlementStatus @default(PENDING)
+  /// How many bookings this covers — so a hotel can reconcile the figure.
+  bookingCount        Int                     @map("booking_count")
+  grossAmount         Decimal                 @map("gross_amount") @db.Decimal(12, 2)
+  commissionAmount    Decimal                 @map("commission_amount") @db.Decimal(12, 2)
+  /// What actually reached the hotel's wallet: gross less commission.
+  netAmount           Decimal                 @map("net_amount") @db.Decimal(12, 2)
+  currency            String                  @default("NGN") @db.VarChar(3)
+  walletLedgerEntryId String?                 @map("wallet_ledger_entry_id") @db.Uuid
+  failureReason       String?                 @map("failure_reason") @db.VarChar(1000)
+  settledAt           DateTime?               @map("settled_at")
+  createdAt           DateTime                @default(now()) @map("created_at")
+  updatedAt           DateTime                @updatedAt @map("updated_at")
+
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  /// The bookings this payout covered — the breakdown behind the figure.
+  bookings Booking[]
+
+  /// One settlement row per hotel per week.
+  @@unique([businessId, weekStarting])
+  @@index([businessId])
+  @@index([status])
+  @@index([weekStarting])
+  @@map("booking_settlements")
+}
+
+enum BookingSettlementStatus {
+  PENDING
+  COMPLETED
+  FAILED
 }
 
 /// DPX-MERCHANT-002 — one row per settled Order, created once

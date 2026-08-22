@@ -13,7 +13,13 @@ import {
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
 
-import { toAvailabilityDto, toMerchantBookingDto, toRoomTypeDto } from './booking.mapper';
+import { BookingSettlementService } from './booking-settlement.service';
+import {
+  toAvailabilityDto,
+  toBookingSettlementDto,
+  toMerchantBookingDto,
+  toRoomTypeDto,
+} from './booking.mapper';
 import { BOOKING_PERMISSIONS } from './bookings.constants';
 import { BookingsService } from './bookings.service';
 import {
@@ -22,11 +28,17 @@ import {
   CreateRoomTypeDto,
   OpenNightsDto,
   RejectBookingDto,
+  SettlementListQueryDto,
   UpdateRoomTypeDto,
 } from './dto/bookings.dto';
 import { RoomInventoryService } from './room-inventory.service';
 
-import type { MerchantBookingDto, RoomAvailabilityDto, RoomTypeDto } from './booking.mapper';
+import type {
+  BookingSettlementDto,
+  MerchantBookingDto,
+  RoomAvailabilityDto,
+  RoomTypeDto,
+} from './booking.mapper';
 import type { AuthenticatedUser } from '../auth/auth.types';
 import type { ApiSuccessResponse } from '../common/dto/api-response.dto';
 import type { PaginatedResult } from '@dripplex/types';
@@ -46,6 +58,7 @@ export class MerchantBookingsController {
   constructor(
     private readonly rooms: RoomInventoryService,
     private readonly bookings: BookingsService,
+    private readonly settlements: BookingSettlementService,
   ) {}
 
   // ── Rooms ─────────────────────────────────────────────────────────────────
@@ -187,6 +200,43 @@ export class MerchantBookingsController {
       auditContext(request, user.id),
     );
     return { success: true, data: toMerchantBookingDto(booking) };
+  }
+
+  // ── Settlements ───────────────────────────────────────────────────────────
+
+  /**
+   * What DrippleX has paid this hotel, week by week.
+   *
+   * A hotel is not paid at the moment a guest pays any more — the money sits
+   * with DrippleX until Monday — so without this the hotel's only signal is a
+   * wallet credit with no breakdown. This is the answer to "what is this
+   * ₦54,000 for", which is the first thing anyone asks about a payout.
+   *
+   * Scoped to the signed-in merchant's own business, like every other route
+   * here: there is nowhere in the request to put another hotel's id.
+   */
+  @Get('settlements')
+  @RequirePermissions(BOOKING_PERMISSIONS.MERCHANT_MANAGE)
+  public async listSettlements(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: SettlementListQueryDto,
+  ): Promise<ApiSuccessResponse<PaginatedResult<BookingSettlementDto>>> {
+    const businessId = await this.rooms.requireOwnBusiness(user.id);
+    const page = query.page ?? 1;
+    const pageSize = Math.min(query.pageSize ?? 20, 100);
+    const { items, total } = await this.settlements.listForBusiness(businessId, page, pageSize);
+    return {
+      success: true,
+      data: {
+        items: items.map(toBookingSettlementDto),
+        meta: {
+          page,
+          limit: pageSize,
+          total,
+          totalPages: Math.max(1, Math.ceil(total / pageSize)),
+        },
+      },
+    };
   }
 }
 

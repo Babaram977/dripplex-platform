@@ -1,3 +1,5 @@
+import { RequestMethod } from '@nestjs/common';
+
 import { PERMISSION_SEEDS } from '../../prisma/seed-data/permissions';
 import { ROLE_PERMISSION_GRANTS } from '../../prisma/seed-data/role-permissions';
 import { PERMISSIONS_KEY } from '../common/decorators/permissions.decorator';
@@ -120,11 +122,41 @@ describe('booking permissions', () => {
     }
   });
 
-  /** Ops can look. Ops cannot answer on a hotel's behalf — that would charge a
-   *  guest for a room no hotel agreed to provide. Not a founder decision, so
-   *  not an endpoint. */
-  it('exposes no admin route that answers a booking', () => {
-    const adminRoutes = ROUTES.filter((r) => r.controller === 'AdminBookingsController');
-    expect(adminRoutes.map((r) => r.handler)).toEqual(['list']);
+  /**
+   * Ops can look. Ops cannot answer on a hotel's behalf — that would charge a
+   * guest for a room no hotel agreed to provide — and cannot re-run a payout,
+   * because retrying a settlement by hand is how a hotel gets paid twice.
+   * Neither is a founder decision, so neither is an endpoint.
+   *
+   * Asserted as "every admin route is a GET" rather than as a list of allowed
+   * handler names. The name list said the same thing for one route and then
+   * failed the moment a second *read* route was added, which teaches the next
+   * person to append a name and move on — exactly the reflex this test exists
+   * to catch. A method check cannot be satisfied that way.
+   */
+  it('exposes no admin route that writes', () => {
+    // Prove the helper can see a write before trusting it to report none.
+    // Without this the assertion below passes just as happily if reflection
+    // silently returns nothing for every handler.
+    expect(httpMethodOf(MerchantBookingsController, 'accept')).toBe('POST');
+
+    const writes = ROUTES.filter((r) => r.controller === 'AdminBookingsController')
+      .map((r) => ({
+        handler: r.handler,
+        method: httpMethodOf(AdminBookingsController, r.handler),
+      }))
+      .filter((r) => r.method !== 'GET')
+      .map((r) => `${r.handler} (${r.method})`);
+    expect(writes).toEqual([]);
   });
 });
+
+/** Nest stores the verb as the `RequestMethod` enum under the 'method' key. */
+function httpMethodOf(
+  controller: (new (...args: never[]) => object) & { name: string },
+  handler: string,
+): string {
+  const proto = controller.prototype as Record<string, unknown>;
+  const method = Reflect.getMetadata('method', proto[handler] as object) as unknown;
+  return RequestMethod[method as number] ?? `unknown(${String(method)})`;
+}

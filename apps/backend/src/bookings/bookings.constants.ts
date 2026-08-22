@@ -17,6 +17,7 @@ export const BOOKING_AUDIT_ACTIONS = {
   REJECTED: 'booking.rejected',
   EXPIRED: 'booking.expired',
   PAID: 'booking.paid',
+  SETTLED: 'booking.settled',
   CHECKED_IN: 'booking.checked_in',
   CHECKED_OUT: 'booking.checked_out',
   NO_SHOW: 'booking.no_show',
@@ -81,6 +82,23 @@ export const BOOKING_MAX_ROOMS = 5;
  * one of those two things.
  */
 export const BOOKING_WALLET_REFERENCE_TYPE = 'hotel_booking';
+
+/**
+ * WalletLedgerEntry.referenceType for a weekly hotel payout, paired with the
+ * settlement id. The wallet's own idempotency on that pair means a retried
+ * settlement credits once, whatever else went wrong around it.
+ */
+export const BOOKING_SETTLEMENT_REFERENCE_TYPE = 'hotel_settlement';
+
+/**
+ * How often to check whether a weekly settlement is due. Founder decision
+ * 2026-08-22: settlements run every Monday.
+ *
+ * Hourly rather than daily, so a deploy or a restart during Monday does not
+ * skip the week — the next tick picks it up, and a tick with nothing left to
+ * claim does no work and moves no money.
+ */
+export const BOOKING_SETTLEMENT_SWEEP_INTERVAL_MS = 60 * 60_000;
 
 /** Commission reference, paired with the booking id. `accrue` is idempotent
  *  on this pair, so a replayed acceptance cannot charge the hotel twice. */

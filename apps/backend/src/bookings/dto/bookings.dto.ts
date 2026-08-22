@@ -1,4 +1,4 @@
-import { BookingStatus } from '@prisma/client';
+import { BookingSettlementStatus, BookingStatus } from '@prisma/client';
 import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
@@ -250,4 +250,23 @@ export class HotelListQueryDto {
   @IsInt()
   @Min(1)
   public pageSize?: number;
+}
+
+export class SettlementListQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  public page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  public pageSize?: number;
+
+  /** Ops filters by this to find the payouts that need a human — FAILED. */
+  @IsOptional()
+  @IsEnum(BookingSettlementStatus)
+  public status?: BookingSettlementStatus;
 }
