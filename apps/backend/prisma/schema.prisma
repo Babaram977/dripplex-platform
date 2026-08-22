@@ -180,13 +180,19 @@ model RoomAvailability {
 /// exit from PENDING_HOTEL either commits that hold or releases it — there is
 /// no path that leaves money in limbo.
 enum BookingStatus {
-  /// Held, awaiting the hotel. Auto-expires after BOOKING_ACCEPT_WINDOW_MS.
+  /// Applied for, awaiting the hotel. Rooms are held; NO money is involved —
+  /// founder decision 2026-08-22, anyone may apply without wallet funds.
+  /// Auto-expires after BOOKING_ACCEPT_WINDOW_MS.
   PENDING_HOTEL
-  /// Hotel accepted; the hold has been committed and the money is taken.
+  /// Hotel accepted. The guest now has BOOKING_PAYMENT_WINDOW_MS (24h) to pay
+  /// through the DrippleX gateway. Rooms stay held throughout.
+  AWAITING_PAYMENT
+  /// Paid and assured. Only in this state does a booking have a PIN.
   CONFIRMED
-  /// Hotel declined. Hold released, guest whole.
+  /// Hotel declined. Rooms released; nothing was ever charged.
   REJECTED
-  /// The 30 minutes lapsed with no answer. Hold released, guest whole.
+  /// Either window lapsed — the hotel never answered, or the guest never paid.
+  /// Rooms released; nothing was ever charged.
   EXPIRED
   /// Guest arrived.
   CHECKED_IN
@@ -206,6 +212,10 @@ enum BookingStatus {
 model Booking {
   id         String        @id @default(uuid()) @db.Uuid
   reference  String        @unique @db.VarChar(40)
+  /// The five-character code the guest reads out at the desk (founder decision
+  /// 2026-08-22). Null until the booking is PAID: a PIN existing is itself the
+  /// proof that money arrived, so a hotel holding one never has to ask.
+  pin        String?       @db.VarChar(8)
   customerId String        @map("customer_id") @db.Uuid
   businessId String        @map("business_id") @db.Uuid
   roomTypeId String        @map("room_type_id") @db.Uuid
@@ -230,9 +240,19 @@ model Booking {
   guestPhone String  @map("guest_phone") @db.VarChar(20)
   guestNote  String? @map("guest_note") @db.VarChar(500)
 
-  /// When the hold must be resolved by. Read by the expiry sweep.
+  /// When the hotel must have answered by. Read by the expiry sweep.
   acceptDeadline DateTime  @map("accept_deadline")
   acceptedAt     DateTime? @map("accepted_at")
+  /// When the guest's 24 hours to pay run out. Set on acceptance, null before.
+  /// The same sweep releases the rooms when this lapses — with no money at
+  /// stake, this deadline is the only thing stopping one person reserving a
+  /// city's worth of rooms and never paying.
+  paymentDeadline DateTime? @map("payment_deadline")
+  /// The DrippleX gateway reference for the guest's payment. Unique so a
+  /// webhook or a returning browser can find the booking from the reference
+  /// alone, and so one payment can never be claimed by two bookings.
+  paymentReference String?  @unique @map("payment_reference") @db.VarChar(100)
+  paidAt           DateTime? @map("paid_at")
   rejectedAt     DateTime? @map("rejected_at")
   /// The hotel's own words when declining — shown to the guest.
   rejectionReason String?  @map("rejection_reason") @db.VarChar(500)
@@ -250,6 +270,8 @@ model Booking {
   @@index([businessId, status])
   /// The expiry sweep's query: everything still pending past its deadline.
   @@index([status, acceptDeadline])
+  /// The payment sweep's query: everything accepted whose 24 hours ran out.
+  @@index([status, paymentDeadline])
   @@map("bookings")
 }
 

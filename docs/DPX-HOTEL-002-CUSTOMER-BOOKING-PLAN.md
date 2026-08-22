@@ -62,12 +62,13 @@ orders, from the founder's 2026-08-17 decision:
 | DrippleX's cut when it never held the money | `CommissionAccountService.accrue()` — mode B, the merchant owes it |
 | The hotel gets blocked if it owes too much  | commission credit limit + latch                                    |
 
-**And the correction this forces on me:** in #225 I wrote that accruing
-commission would be _wrong_ for bookings, because DrippleX held the money. Under
-the wallet-hold model that was right. **Under this model it is exactly right** —
-DrippleX never touches the money, so the 10% becomes a debt the hotel owes,
-identical to a `MERCHANT_DIRECT` order. The commission code needs to move from
-"record on the booking" to "accrue against the hotel".
+**Note, superseded within the same day.** When this section was written the
+money was going to the hotel's own account, which would have made commission an
+accrued debt. Decision 11 then routed payment through DrippleX, so the cut comes
+off the settlement instead — back to recording it on the booking, which is what
+#225 already did. Left here rather than deleted because the reasoning is what
+matters: **who holds the money decides which mechanism is correct**, and that is
+worth being able to re-read the next time the question comes up.
 
 `OrderPaymentProofService`'s own header already states the three rules that
 matter here, and they carry over unchanged:
@@ -78,7 +79,29 @@ matter here, and they carry over unchanged:
 - **Proofs are append-only.** A wrong upload adds a second row; both stay, so a
   dispute has real evidence.
 
-### 0.4 What this leaves genuinely open
+### 0.4 The rest of the decisions, 2026-08-22
+
+| #   | Question                          | Answer                                                                             |
+| --- | --------------------------------- | ---------------------------------------------------------------------------------- |
+| 10  | How long to pay after acceptance? | **24 hours.** Rooms release automatically when it lapses                           |
+| 11  | Where does the money go?          | **Through DrippleX**, on the existing card/transfer gateway — not to the hotel     |
+| 12  | Who confirms payment?             | **The gateway.** No receipt, no one judging an image, no forged receipt can assure |
+| 13  | The desk code                     | **Five characters, alphanumeric**, issued on payment                               |
+| 14  | Hotel settlement                  | **Weekly, every Monday**                                                           |
+
+Decision 11 is the one with the largest consequence: because the money lands
+with DrippleX, **DrippleX now owes every hotel its share**, and there is no
+mechanism that pays one. That makes settlement required rather than deferred —
+it is the next piece of work, and decision 14 sets its schedule.
+
+It also settles the commission question in the opposite direction from the note
+in §0.3 below. With DrippleX holding the money the cut comes **off** what the
+hotel is paid (mode A, as marketplace online orders work), not accrued as a
+debt. `commissionAmount` is snapshotted onto the booking at the rate in force
+when the money arrives, so a later rate change cannot move what a past stay
+owed.
+
+### 0.5 What this leaves genuinely open
 
 1. **How long does a guest have to pay after the hotel accepts?** This is the
    one that matters. The room is held from the moment of application, and with

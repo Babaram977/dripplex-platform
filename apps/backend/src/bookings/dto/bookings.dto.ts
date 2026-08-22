@@ -93,6 +93,15 @@ export class CreateBookingDto {
   public guestNote?: string;
 }
 
+export class StartBookingPaymentDto {
+  /** Where the gateway returns the guest after paying. Same contract as the
+   *  utilities card path — see lib/gatewayReturn.ts in the app. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(2048)
+  public callbackUrl?: string;
+}
+
 export class RejectBookingDto {
   /** Optional, and shown to the guest. A hotel that gives a reason spares
    *  itself the call asking why. */
