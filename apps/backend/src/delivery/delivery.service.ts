@@ -1,5 +1,4 @@
-import { PLATFORM_BASE_CENTRE } from '@dripplex/types';
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
   AssignmentMethod,
   CommissionOwnerType,
@@ -11,6 +10,7 @@ import {
   ProofType,
 } from '@prisma/client';
 
+import { GEOCODER, type Geocoder } from '../addresses/geocoding/geocoder';
 import {
   ADDRESS_REPOSITORY,
   type AddressRepository,
@@ -62,9 +62,6 @@ import { DELIVERY_REPOSITORY, type DeliveryRepository } from './repositories/del
 import type { PaginatedResult } from '@dripplex/types';
 import type { DeliveryJob } from '@prisma/client';
 
-const DEFAULT_PICKUP_LATITUDE = PLATFORM_BASE_CENTRE.latitude;
-const DEFAULT_PICKUP_LONGITUDE = PLATFORM_BASE_CENTRE.longitude;
-
 const ACTIVE_STATUSES: DeliveryStatus[] = [
   DeliveryStatus.ASSIGNED,
   DeliveryStatus.ACCEPTED,
@@ -99,6 +96,8 @@ export interface AdminDeliveryJobQuery {
 
 @Injectable()
 export class DeliveryService {
+  private readonly logger = new Logger(DeliveryService.name);
+
   constructor(
     @Inject(DELIVERY_REPOSITORY)
     private readonly deliveryRepository: DeliveryRepository,
@@ -115,6 +114,9 @@ export class DeliveryService {
     private readonly commissionAccounts: CommissionAccountService,
     @Optional()
     private readonly eventBus?: DomainEventBus,
+    @Optional()
+    @Inject(GEOCODER)
+    private readonly geocoder?: Geocoder,
   ) {}
 
   /** Creates the delivery job once the merchant has marked the order
@@ -179,12 +181,35 @@ export class DeliveryService {
     // with no location on file priced every local delivery off an ~830 km leg.
     const hasBusinessLocation =
       business !== null && Number(business.latitude) !== 0 && Number(business.longitude) !== 0;
-    const pickupLatitude = hasBusinessLocation
-      ? Number(business.latitude)
-      : DEFAULT_PICKUP_LATITUDE;
-    const pickupLongitude = hasBusinessLocation
-      ? Number(business.longitude)
-      : DEFAULT_PICKUP_LONGITUDE;
+
+    // Where the rider is actually collecting from. This used to fall back to a
+    // hardcoded city default when a merchant had no coordinates, which is how
+    // a Kano restaurant shipped a Lagos pickup: 835km and 27.9 hours on the
+    // job, and any order without a pre-set fee priced off that fiction.
+    //
+    // Minimal onboarding takes a free-text address and no coordinates, so an
+    // approved merchant legitimately reaches this point at 0,0. Geocode their
+    // registered address instead, and persist it so the merchant is located
+    // once rather than on every order.
+    let pickup = hasBusinessLocation
+      ? { latitude: Number(business.latitude), longitude: Number(business.longitude) }
+      : null;
+
+    if (pickup === null && business !== null) {
+      pickup = await this.locateBusinessFromAddress(business);
+    }
+
+    if (pickup === null) {
+      // Refusing is the point. A delivery whose pickup is a guess misprices the
+      // fee, misleads the rider and misreports the ETA, and it does all three
+      // silently. Ops can fix the merchant's address and the order proceeds.
+      throw new ValidationDomainException(
+        'This merchant has no usable pickup location. Add a valid business address before dispatching deliveries.',
+      );
+    }
+
+    const pickupLatitude = pickup.latitude;
+    const pickupLongitude = pickup.longitude;
     const dropoffLatitude = Number(address.latitude);
     const dropoffLongitude = Number(address.longitude);
     const distanceMeters = haversineMeters(
@@ -777,6 +802,41 @@ export class DeliveryService {
     }
 
     return reclaimed;
+  }
+
+  /**
+   * Locate a merchant from the address they registered, and remember it.
+   *
+   * Persisting matters: without it every order from an ungeocoded merchant
+   * would spend a geocoding call, and a maps outage would then stop deliveries
+   * for a merchant who had already been located once.
+   *
+   * Returns null when the address cannot be resolved — the caller refuses the
+   * dispatch rather than inventing a location.
+   */
+  private async locateBusinessFromAddress(business: {
+    id: string;
+    address: string;
+  }): Promise<{ latitude: number; longitude: number } | null> {
+    if (!this.geocoder || business.address.trim() === '') {
+      return null;
+    }
+    try {
+      const located = await this.geocoder.geocode(business.address);
+      await this.prisma.business.update({
+        where: { id: business.id },
+        data: { latitude: located.latitude, longitude: located.longitude },
+      });
+      this.logger.log(`Geocoded merchant business ${business.id} from its registered address`);
+      return { latitude: located.latitude, longitude: located.longitude };
+    } catch (error) {
+      this.logger.error(
+        `Could not locate merchant business ${business.id} from "${business.address}": ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return null;
+    }
   }
 
   private async tryAutoAssign(

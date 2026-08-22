@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { Test } from '@nestjs/testing';
 import {
+  BusinessType,
   FulfillmentType,
   OrderPaymentMethod,
   OrderStatus,
@@ -100,6 +101,28 @@ describe('merchant-direct order dispatch (real database)', () => {
     merchantUserId = await makeUser('merchant');
     const profile = await prisma.merchantProfile.create({ data: { userId: merchantUserId } });
     merchantProfileId = profile.id;
+
+    // The merchant needs a real pickup location. Dispatch refuses to place a
+    // job for a merchant it cannot locate — that refusal is the behaviour
+    // under test elsewhere, so leaving this out made these specs assert the
+    // refusal by accident rather than the dispatch they are named for.
+    await prisma.business.create({
+      data: {
+        merchantId: merchantUserId,
+        businessName: 'Test Kitchen',
+        businessType: BusinessType.SOLE_PROPRIETORSHIP,
+        registrationNumber: `RC-${randomUUID()}`,
+        email: `business-${randomUUID()}@example.com`,
+        phone: '+2348100000001',
+        country: 'Nigeria',
+        state: 'Kano',
+        city: 'Kano',
+        address: '840 Tudun Wada, Kano',
+        latitude: 11.99,
+        longitude: 8.56,
+      },
+    });
+
     const address = await prisma.customerAddress.create({
       data: {
         customerId,
@@ -107,11 +130,13 @@ describe('merchant-direct order dispatch (real database)', () => {
         recipientName: 'Test Customer',
         phone: '+2348100000000',
         addressLine1: '1 Test Close',
-        city: 'Lagos',
-        state: 'Lagos',
+        city: 'Kano',
+        state: 'Kano',
         country: 'Nigeria',
-        latitude: 6.6018,
-        longitude: 3.3515,
+        // A local drop from the pickup above, so the fee is the minimum rather
+        // than a cross-country quote.
+        latitude: 12.01,
+        longitude: 8.54,
       },
     });
     addressId = address.id;
@@ -123,6 +148,7 @@ describe('merchant-direct order dispatch (real database)', () => {
       await prisma.order.deleteMany({ where: { customerId } });
       await prisma.customerAddress.deleteMany({ where: { customerId } });
       await prisma.merchantProfile.deleteMany({ where: { id: merchantProfileId } });
+      await prisma.business.deleteMany({ where: { merchantId: merchantUserId } });
       await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
     }
     await moduleRef?.close();
