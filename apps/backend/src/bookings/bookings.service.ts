@@ -17,6 +17,7 @@ import {
 } from '../payments/providers/payment-provider.adapter';
 import { PrismaService } from '../prisma/prisma.service';
 
+import { BookingCustomerNotifier } from './booking-customer-notifier.service';
 import { generateBookingPin } from './booking-pin';
 import { nightCount, nightsBetween, toNight, validateStay } from './booking.dates';
 import {
@@ -111,6 +112,7 @@ export class BookingsService {
     private readonly config: AppConfigService,
     @Inject(PAYMENT_PROVIDER_ADAPTERS)
     private readonly paymentProviders: PaymentProviderAdapter[],
+    private readonly customerNotifier: BookingCustomerNotifier,
   ) {}
 
   // ── Availability ──────────────────────────────────────────────────────────
@@ -395,7 +397,9 @@ export class BookingsService {
       },
     });
 
-    return await this.prisma.booking.findUniqueOrThrow({ where: { id: booking.id } });
+    const accepted = await this.prisma.booking.findUniqueOrThrow({ where: { id: booking.id } });
+    await this.notifyCustomer(accepted, context);
+    return accepted;
   }
 
   /** The hotel says no. The guest was never charged, and the nights go back. */
@@ -626,7 +630,11 @@ export class BookingsService {
       `Booking ${booking.reference} paid. DrippleX holds ${String(Number(booking.totalAmount))} and owes the hotel ${String(roundMoney(Number(booking.totalAmount) - commissionAmount))} at the next weekly settlement.`,
     );
 
-    return await this.prisma.booking.findUniqueOrThrow({ where: { id: booking.id } });
+    const confirmed = await this.prisma.booking.findUniqueOrThrow({ where: { id: booking.id } });
+    // Read back after the write so the PIN is on the row being announced — the
+    // notification's whole value is carrying that code to the guest.
+    await this.notifyCustomer(confirmed, context);
+    return confirmed;
   }
 
   public customerMessageFor(status: BookingStatus): string | null {
@@ -690,7 +698,39 @@ export class BookingsService {
       },
     });
 
-    return await this.prisma.booking.findUniqueOrThrow({ where: { id: booking.id } });
+    const unwound = await this.prisma.booking.findUniqueOrThrow({ where: { id: booking.id } });
+    await this.notifyCustomer(unwound, context);
+    return unwound;
+  }
+
+  /**
+   * Tell the guest, and never let that fail the thing that just happened.
+   *
+   * Every caller has already committed a state change — rooms released, money
+   * taken, a PIN issued. A notification that could not be sent must not undo
+   * any of it, so this swallows and logs rather than throwing. The notifier
+   * already guards each channel; this is the outer guard for everything around
+   * it, including the hotel-name lookup.
+   */
+  private async notifyCustomer(booking: Booking, context: AuditContext): Promise<void> {
+    try {
+      const business = await this.prisma.business.findUnique({
+        where: { id: booking.businessId },
+        select: { businessName: true },
+      });
+      await this.customerNotifier.bookingChanged(
+        booking,
+        business?.businessName ?? 'The hotel',
+        this.customerMessageFor(booking.status),
+        context,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Could not notify the guest about booking ${booking.reference}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
 
   /** Put every night of a stay back on sale. */

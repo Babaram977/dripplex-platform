@@ -2,12 +2,14 @@ import { Module } from '@nestjs/common';
 
 import { AuditModule } from '../audit/audit.module';
 import { AppConfigModule } from '../config/config.module';
+import { NotificationCenterModule } from '../notification-center/notification-center.module';
 import { OrdersModule } from '../orders/orders.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { WalletModule } from '../wallet/wallet.module';
 
 import { AdminBookingsController } from './admin-bookings.controller';
+import { BookingCustomerNotifier } from './booking-customer-notifier.service';
 import { BookingExpirySweepService } from './booking-expiry-sweep.service';
 import { BookingSettlementSweepService } from './booking-settlement-sweep.service';
 import { BookingSettlementService } from './booking-settlement.service';
@@ -33,12 +35,16 @@ import { RoomInventoryService } from './room-inventory.service';
     // The guest pays through the DrippleX gateway (founder decision
     // 2026-08-22), so bookings need the same payment adapters orders use.
     PaymentsModule,
+    // Slice E: a guest is told what happened to their booking, since every
+    // state change is decided by somebody else while they are not watching.
+    NotificationCenterModule,
     AppConfigModule,
   ],
   controllers: [CustomerBookingsController, MerchantBookingsController, AdminBookingsController],
   providers: [
     RoomInventoryService,
     BookingsService,
+    BookingCustomerNotifier,
     BookingExpirySweepService,
     BookingSettlementService,
     BookingSettlementSweepService,

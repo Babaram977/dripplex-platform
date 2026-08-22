@@ -2723,6 +2723,17 @@ enum NotificationType {
   /// A utility purchase could not be completed and the money has been
   /// returned to the DrippleX Wallet (DPX-D4).
   UTILITY_PURCHASE_REVERSED
+  /// The hotel accepted and the guest's 24 hours to pay have started
+  /// (DPX-HOTEL-002). The one booking notification with a deadline attached:
+  /// a guest who misses it loses the room to somebody else.
+  BOOKING_ACCEPTED
+  /// Paid in full, the room is assured, and the desk PIN has been issued.
+  BOOKING_CONFIRMED
+  /// The hotel declined. Nothing was ever charged.
+  BOOKING_REJECTED
+  /// The booking lapsed — either the hotel never answered, or the guest did
+  /// not pay inside their 24 hours. Nothing was ever charged either way.
+  BOOKING_EXPIRED
 }
 
 enum DevicePlatform {
@@ -2753,6 +2764,10 @@ enum NotificationCategory {
   /// customer filtering their inbox for "my bill payments" is asking a
   /// different question from "my wallet movements".
   UTILITIES
+  /// Hotel room bookings (DPX-HOTEL-002). Not MARKETPLACE: a booking is not an
+  /// order — it has no cart, no delivery, and a guest looking for "my hotel
+  /// bookings" is asking a different question from "my shopping".
+  BOOKING
 }
 
 enum SearchEntityType {

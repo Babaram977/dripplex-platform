@@ -252,6 +252,38 @@ reference at the hotel desk.
 
 ### Slice E — Tell the guest without making them watch
 
+> **BUILT 2026-08-22, with one addition that needs your confirmation.**
+>
+> This slice as written lists **CONFIRMED, REJECTED and EXPIRED**. That list was
+> correct under the wallet-hold model, where a hotel accepting _was_ the end of
+> the story — the money moved and the booking was done.
+>
+> Under the model that shipped, acceptance is the moment the guest must **act**:
+> they have 24 hours to pay or they lose the room. So a fourth notification was
+> added, `BOOKING_ACCEPTED`, and **that is my reading of decisions 11–12 rather
+> than something you wrote down.** Flagged here rather than assumed.
+>
+> The reasoning: a notification feature that stays silent on the one state with
+> a deadline attached is worse than none, because a guest who gets told about
+> declines and confirmations will reasonably read silence as "nothing needs me".
+> If you would rather the app said nothing on acceptance, it is a one-line
+> change — say so and I will remove it.
+>
+> Two other decisions worth knowing about, both made the same way:
+>
+> - **The PIN never goes in a push.** A push body renders on a locked screen and
+>   the PIN is what proves a guest is the guest at the desk. The push says the
+>   room is confirmed; the in-app message, behind authentication, carries the
+>   code. Same rule the utilities notifier follows for meter tokens.
+> - **Expiry says two different things.** A booking dies either because the
+>   hotel never answered or because the guest never paid, and those are
+>   opposites from the guest's side. Being told "the hotel did not respond" when
+>   you simply forgot to pay is a support ticket waiting to happen.
+>
+> Sent at HIGH, not CRITICAL. CRITICAL is used in exactly one place in this
+> codebase — a driver's SOS alert — and diluting that tier with hotel reminders
+> would cost more than it gains.
+
 - Notification on `CONFIRMED`, `REJECTED` and `EXPIRED`, through the notification
   centre already wired for utilities (#222).
 - Needs two `NotificationType` values and a `BOOKING` category — the same
