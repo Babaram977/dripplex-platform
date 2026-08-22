@@ -53,22 +53,44 @@ jobs:
             echo "::endgroup::"
           }
 
-          delete_conflicting_dns dripplex.com
-          delete_conflicting_dns www.dripplex.com
-          attach dripplex-customer-web dripplex.com
-          attach dripplex-customer-web www.dripplex.com
-          attach dripplex-customer-web app.dripplex.com
+          # ── Only hostnames still served by Cloudflare Workers belong here ──
+          #
+          # dripplex.com, www.dripplex.com, app.dripplex.com and ops.dripplex.com
+          # were migrated to Railway on 2026-08-22 and MUST NOT be listed. Both
+          # helpers above are destructive to a migrated host:
+          #
+          #   delete_conflicting_dns  deletes the A/AAAA/CNAME records the
+          #                           migration created — including the CNAME
+          #                           pointing at Railway's per-domain edge
+          #   attach                  re-binds the hostname to a Worker, which
+          #                           takes precedence and is invisible in the
+          #                           Cloudflare DNS tab
+          #
+          # Running this with a migrated host listed silently reverts it: the
+          # Railway CNAME disappears, its certificate stops renewing, and the
+          # host serves whatever stale build the Worker last deployed. The apex
+          # is the account-deletion URL Google Play requires, so that revert
+          # would also break the store listing.
+          #
+          # Adding a host back here is only correct if it is genuinely being
+          # moved back to Workers. Check what serves it first:
+          #   curl -sI https://<host>/ | grep -i '^server:'
+          #   railway-hikari -> Railway, leave it out.  cloudflare -> Workers.
           attach dripplex-merchant merchant.dripplex.com
           attach dripplex-rider rider.dripplex.com
           attach dripplex-admin admin.dripplex.com
-          attach dripplex-ops ops.dripplex.com
 
+      # Probes every production hostname, not just the ones attached above — a
+      # migrated host turning red here is the signal that something reverted it
+      # to a Worker. `server` says which side answered:
+      # railway-hikari = Railway, cloudflare = Worker.
       - name: Probe
         if: always()
         run: |
           set +e
           for u in https://dripplex.com https://www.dripplex.com https://app.dripplex.com https://merchant.dripplex.com https://rider.dripplex.com https://admin.dripplex.com https://ops.dripplex.com; do
             code=$(curl -s -o /tmp/p.html -w '%{http_code}' --max-time 25 "$u" || echo 000)
+            srv=$(curl -sI --max-time 25 "$u" | tr -d '\r' | awk 'tolower($1)=="server:"{print $2; exit}')
             title=$(python3 -c "import re; t=open('/tmp/p.html','rb').read().decode('utf-8','ignore'); m=re.search(r'<title>([^<]+)',t); print(m.group(1)[:60] if m else '')")
-            echo "$code $u | $title"
+            echo "$code ${srv:-?} $u | $title"
           done
