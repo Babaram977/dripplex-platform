@@ -11,6 +11,7 @@ import {
   BookingListQueryDto,
   CalendarQueryDto,
   CreateBookingDto,
+  StartBookingPaymentDto,
 } from './dto/bookings.dto';
 import { auditContext } from './merchant-bookings.controller';
 import { RoomInventoryService } from './room-inventory.service';
@@ -37,13 +38,20 @@ export class CustomerBookingsController {
     private readonly bookings: BookingsService,
   ) {}
 
-  /** The rooms a hotel currently offers. Active only — a room the hotel has
-   *  taken off sale is not something to show a guest. */
-  @Get('hotels/:businessId/room-types')
+  /**
+   * The rooms a hotel currently offers. Active only — a room the hotel has
+   * taken off sale is not something to show a guest.
+   *
+   * Addressed by `MerchantProfile.id`, the same id the marketplace card
+   * carries, so a customer tapping a hotel can call this directly. Founder
+   * decision 2026-08-22 — see DPX-HOTEL-002 §2.
+   */
+  @Get('hotels/:merchantId/room-types')
   @RequirePermissions(BOOKING_PERMISSIONS.CUSTOMER_READ)
   public async roomTypes(
-    @Param('businessId', ParseUUIDPipe) businessId: string,
+    @Param('merchantId', ParseUUIDPipe) merchantId: string,
   ): Promise<ApiSuccessResponse<RoomTypeDto[]>> {
+    const businessId = await this.rooms.resolveBusinessIdForMerchant(merchantId);
     const roomTypes = await this.rooms.listRoomTypes(businessId);
     return { success: true, data: roomTypes.map(toRoomTypeDto) };
   }
@@ -84,11 +92,11 @@ export class CustomerBookingsController {
   }
 
   /**
-   * Book it.
+   * Apply for a room.
    *
-   * Nothing is charged here. The money is HELD (founder decision 8) and the
-   * hotel has thirty minutes to accept; `acceptDeadline` on the response is
-   * what the app counts down to.
+   * No money is taken and none is reserved — founder decision 2026-08-22, a
+   * guest may apply with an empty wallet. The rooms are held, the hotel has
+   * `acceptDeadline` to answer, and payment only begins once it accepts.
    */
   @Post()
   @RequirePermissions(BOOKING_PERMISSIONS.CUSTOMER_BOOK)
@@ -98,6 +106,52 @@ export class CustomerBookingsController {
     @Req() request: Request,
   ): Promise<ApiSuccessResponse<BookingDto>> {
     const booking = await this.bookings.createBooking(user.id, dto, auditContext(request, user.id));
+    return { success: true, data: toBookingDto(booking) };
+  }
+
+  /**
+   * Start paying for a booking the hotel has accepted.
+   *
+   * Founder decision 2026-08-22: the money passes through DrippleX, on the
+   * same gateway that already takes card and transfer payments elsewhere in
+   * the app. Returns the checkout URL to send the guest to.
+   */
+  @Post(':id/pay')
+  @RequirePermissions(BOOKING_PERMISSIONS.CUSTOMER_BOOK)
+  public async pay(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: StartBookingPaymentDto,
+  ): Promise<ApiSuccessResponse<{ booking: BookingDto; authorizationUrl: string | null }>> {
+    const result = await this.bookings.initiateBookingPayment(user.id, id, dto.callbackUrl);
+    return {
+      success: true,
+      data: {
+        booking: toBookingDto(result.booking),
+        authorizationUrl: result.authorizationUrl ?? null,
+      },
+    };
+  }
+
+  /**
+   * Called when the guest comes back from the gateway.
+   *
+   * The gateway is asked directly — a browser returning from a checkout page
+   * proves nothing about whether the charge succeeded. On success the booking
+   * is assured and the guest's PIN appears on it.
+   */
+  @Post(':id/pay/confirm')
+  @RequirePermissions(BOOKING_PERMISSIONS.CUSTOMER_BOOK)
+  public async confirmPayment(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<BookingDto>> {
+    const booking = await this.bookings.confirmBookingPayment(
+      user.id,
+      id,
+      auditContext(request, user.id),
+    );
     return { success: true, data: toBookingDto(booking) };
   }
 

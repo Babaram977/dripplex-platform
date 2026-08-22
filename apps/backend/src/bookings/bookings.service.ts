@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
-import { Injectable, Logger } from '@nestjs/common';
-import { BookingStatus, Prisma, WalletOwnerType } from '@prisma/client';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { BookingStatus, PaymentProvider, Prisma } from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../audit/audit.service';
 import {
@@ -9,18 +9,23 @@ import {
   NotFoundDomainException,
   ValidationDomainException,
 } from '../common/exceptions/domain.exception';
+import { AppConfigService } from '../config/app-config.service';
 import { MerchantCommissionSettingsService } from '../orders/merchant-commission-settings.service';
+import {
+  PAYMENT_PROVIDER_ADAPTERS,
+  type PaymentProviderAdapter,
+} from '../payments/providers/payment-provider.adapter';
 import { PrismaService } from '../prisma/prisma.service';
-import { WalletService } from '../wallet/wallet.service';
 
+import { generateBookingPin } from './booking-pin';
 import { nightCount, nightsBetween, toNight, validateStay } from './booking.dates';
 import {
   BOOKING_ACCEPT_WINDOW_MS,
   BOOKING_AUDIT_ACTIONS,
   BOOKING_EXPIRED_CUSTOMER_MESSAGE,
   BOOKING_MAX_ROOMS,
+  BOOKING_PAYMENT_WINDOW_MS,
   BOOKING_REJECTED_CUSTOMER_MESSAGE,
-  BOOKING_WALLET_REFERENCE_TYPE,
 } from './bookings.constants';
 
 import type { Booking, RoomAvailability } from '@prisma/client';
@@ -57,11 +62,21 @@ export interface CreateBookingInput {
 /**
  * Hotel bookings — DPX-HOTEL-001.
  *
- * The whole design turns on founder decisions 3, 8 and 9: the hotel accepts
- * first, the guest's money is HELD rather than taken while it decides, and it
- * has thirty minutes. Every exit from PENDING_HOTEL therefore does exactly one
- * of two things to that hold — commits it or releases it — and never neither
- * and never both.
+ * The money model, as set by the founder on 2026-08-22:
+ *
+ *   apply (no money at all)  →  hotel accepts  →  24 hours to pay through the
+ *   DrippleX gateway  →  paid, assured, and a five-character PIN for the desk
+ *
+ * Anyone may apply with an empty wallet. This SUPERSEDES the wallet hold of
+ * decision 8 — nothing is held or taken until the guest pays, and payment runs
+ * on the same gateway that already takes card and transfer money elsewhere in
+ * the app, so no one has to judge a receipt and a forged one cannot assure a
+ * room.
+ *
+ * What that gives up is what the hold used to buy: abandoning an application
+ * now costs the guest nothing. Two deadlines replace it — the hotel's window
+ * to answer, and the guest's 24 hours to pay — and the sweep enforces both,
+ * because rooms held against nothing are rooms the hotel cannot sell.
  *
  * Two invariants are load-bearing, and they are protected in different places
  * on purpose:
@@ -91,9 +106,11 @@ export class BookingsService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly walletService: WalletService,
     private readonly commissionSettings: MerchantCommissionSettingsService,
     private readonly auditService: AuditService,
+    private readonly config: AppConfigService,
+    @Inject(PAYMENT_PROVIDER_ADAPTERS)
+    private readonly paymentProviders: PaymentProviderAdapter[],
   ) {}
 
   // ── Availability ──────────────────────────────────────────────────────────
@@ -300,32 +317,15 @@ export class BookingsService {
         throw error;
       });
 
-    // The hold is placed AFTER the nights are held, and outside their
-    // transaction, because WalletService runs its own. If it fails, the guest
-    // is not charged and the nights must go back — otherwise a hotel looks
-    // full because of a booking that never existed.
-    try {
-      await this.walletService.hold({
-        ownerType: WalletOwnerType.CUSTOMER,
-        ownerId: customerId,
-        amount: quote.totalAmount,
-        description: `Booking ${reference} — ${roomType.name}`,
-        referenceType: BOOKING_WALLET_REFERENCE_TYPE,
-        referenceId: booking.id,
-        context,
-      });
-    } catch (error) {
-      await this.releaseNights(booking).catch((cause: unknown) => {
-        // Both failed. The nights are now held against a booking with no
-        // money behind it, which needs a human — say so loudly rather than
-        // swallowing it.
-        this.logger.error(
-          `Booking ${reference}: wallet hold failed AND releasing the nights failed (${String(cause)}). Rooms are held with no hold behind them — needs manual correction.`,
-        );
-      });
-      await this.prisma.booking.delete({ where: { id: booking.id } }).catch(() => undefined);
-      throw error;
-    }
+    // No money moves here, and none is even reserved. Founder decision
+    // 2026-08-22: anyone may apply for a reservation without funds. The guest
+    // pays only once the hotel has accepted, through the DrippleX gateway,
+    // within BOOKING_PAYMENT_WINDOW_MS.
+    //
+    // What that costs us is the thing the wallet hold used to buy: abandoning
+    // an application is now free, so the rooms held here are protected by
+    // deadlines alone — BOOKING_ACCEPT_WINDOW_MS before the hotel answers and
+    // BOOKING_PAYMENT_WINDOW_MS after. Both are enforced by the sweep.
 
     await this.auditService.record(BOOKING_AUDIT_ACTIONS.CREATED, context, {
       resource: 'booking',
@@ -364,32 +364,21 @@ export class BookingsService {
 
     if (booking.acceptDeadline.getTime() <= Date.now()) {
       throw new ConflictDomainException(
-        'The thirty-minute window on this booking has closed and the guest has been refunded.',
+        'The window on this booking has closed and the rooms have gone back on sale.',
       );
     }
 
-    const rate = Number((await this.commissionSettings.getEffective()).commissionRate);
-    const commissionAmount = roundMoney(Number(booking.totalAmount) * rate);
-
-    await this.walletService.commitHold({
-      ownerType: WalletOwnerType.CUSTOMER,
-      ownerId: booking.customerId,
-      amount: booking.totalAmount,
-      description: `Booking ${booking.reference} confirmed`,
-      referenceType: BOOKING_WALLET_REFERENCE_TYPE,
-      referenceId: booking.id,
-      context,
-    });
-
-    // Claimed conditionally so a hotel double-tapping Accept, or Accept racing
-    // the expiry sweep, cannot move the money twice — commitHold is itself
-    // idempotent on its reference, and this makes the status transition so too.
+    // Accepting no longer takes money — there is none to take. It opens the
+    // guest's 24 hours to pay (founder decision 2026-08-22) and keeps the rooms
+    // held meanwhile. The commission is NOT computed here: it is computed and
+    // recorded when the money actually arrives, so a booking that is accepted
+    // and then never paid leaves no phantom revenue behind it.
     const claimed = await this.prisma.booking.updateMany({
       where: { id: booking.id, status: BookingStatus.PENDING_HOTEL },
       data: {
-        status: BookingStatus.CONFIRMED,
+        status: BookingStatus.AWAITING_PAYMENT,
         acceptedAt: new Date(),
-        commissionAmount: new Prisma.Decimal(commissionAmount),
+        paymentDeadline: new Date(Date.now() + BOOKING_PAYMENT_WINDOW_MS),
       },
     });
     if (claimed.count === 0) {
@@ -402,8 +391,7 @@ export class BookingsService {
       metadata: {
         reference: booking.reference,
         totalAmount: Number(booking.totalAmount),
-        commissionRate: rate,
-        commissionAmount,
+        paymentWindowHours: BOOKING_PAYMENT_WINDOW_MS / 3_600_000,
       },
     });
 
@@ -435,13 +423,24 @@ export class BookingsService {
    * a booking and missing their money until someone noticed.
    */
   public async expireOverdueBookings(now: Date = new Date()): Promise<number> {
+    // Two deadlines, one sweep. A booking dies either because the hotel never
+    // answered it, or because it was accepted and the guest never paid within
+    // their 24 hours. Both leave rooms held against nothing, and both release
+    // them the same way.
     const overdue = await this.prisma.booking.findMany({
-      where: { status: BookingStatus.PENDING_HOTEL, acceptDeadline: { lte: now } },
+      where: {
+        OR: [
+          { status: BookingStatus.PENDING_HOTEL, acceptDeadline: { lte: now } },
+          { status: BookingStatus.AWAITING_PAYMENT, paymentDeadline: { lte: now } },
+        ],
+      },
       take: 100,
     });
 
-    let expired = 0;
+    let unanswered = 0;
+    let unpaid = 0;
     for (const booking of overdue) {
+      const wasAwaitingPayment = booking.status === BookingStatus.AWAITING_PAYMENT;
       try {
         await this.unwind(
           booking,
@@ -450,22 +449,184 @@ export class BookingsService {
           undefined,
           {},
         );
-        expired += 1;
+        if (wasAwaitingPayment) unpaid += 1;
+        else unanswered += 1;
       } catch (error) {
-        // One booking that cannot be unwound must not stop the rest — the
-        // others are guests whose money is still held.
+        // One booking that cannot be unwound must not stop the rest — every
+        // other row here is a room sitting unsellable.
         this.logger.error(
           `Could not expire booking ${booking.reference}: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
     }
 
-    if (expired > 0) {
+    if (unanswered > 0) {
       this.logger.warn(
-        `Expired ${String(expired)} booking(s) the hotel did not answer within thirty minutes. Money released to the guests.`,
+        `Expired ${String(unanswered)} booking(s) the hotel did not answer in time. Rooms back on sale; nothing was ever charged.`,
       );
     }
-    return expired;
+    if (unpaid > 0) {
+      this.logger.warn(
+        `Expired ${String(unpaid)} accepted booking(s) the guest did not pay for within 24 hours. Rooms back on sale.`,
+      );
+    }
+    return unanswered + unpaid;
+  }
+
+  // ── Payment, through DrippleX ─────────────────────────────────────────────
+
+  /**
+   * Start the guest's payment for an accepted booking.
+   *
+   * Founder decision 2026-08-22: the money passes through DrippleX rather than
+   * to the hotel, using the same gateway that already takes card and transfer
+   * payments for orders and wallet top-ups. That choice removes the trust
+   * problem a receipt-and-confirm flow would have had — the gateway tells us
+   * whether the money arrived, so nobody has to judge a screenshot, and a
+   * forged receipt cannot assure a room.
+   *
+   * Returns the checkout URL. Calling it twice reuses the existing reference
+   * rather than opening a second charge against the same booking.
+   */
+  public async initiateBookingPayment(
+    customerId: string,
+    bookingId: string,
+    callbackUrl?: string,
+  ): Promise<{ booking: Booking; authorizationUrl: string | undefined; reference: string }> {
+    const booking = await this.getCustomerBooking(customerId, bookingId);
+
+    if (booking.status !== BookingStatus.AWAITING_PAYMENT) {
+      throw new ConflictDomainException(
+        booking.status === BookingStatus.PENDING_HOTEL
+          ? 'The hotel has not accepted this booking yet.'
+          : 'This booking is not waiting for payment.',
+      );
+    }
+    if (booking.paymentDeadline !== null && booking.paymentDeadline.getTime() <= Date.now()) {
+      throw new ConflictDomainException(
+        'The 24 hours to pay for this booking have passed and the rooms have gone back on sale.',
+      );
+    }
+
+    const customer = await this.prisma.user.findUnique({ where: { id: customerId } });
+    if (!customer?.email) {
+      throw new ValidationDomainException('An email address is required to pay for a booking');
+    }
+
+    const provider = this.config.defaultCardProvider as PaymentProvider;
+    const adapter = this.paymentProviders.find((a) => a.provider === provider);
+    if (!adapter) {
+      throw new ConflictDomainException('Card payments are not available right now');
+    }
+
+    // Reused, not regenerated: a guest who closes the checkout and comes back
+    // must land on the same charge, or one booking could collect two payments.
+    const reference = booking.paymentReference ?? bookingPaymentReference(booking.id);
+
+    const init = await adapter.initializePayment({
+      email: customer.email,
+      amount: Number(booking.totalAmount),
+      currency: 'NGN',
+      reference,
+      orderId: reference,
+      orderNumber: booking.reference,
+      ...(callbackUrl !== undefined ? { callbackUrl } : {}),
+    });
+
+    if (booking.paymentReference === null) {
+      await this.prisma.booking.update({
+        where: { id: booking.id },
+        data: { paymentReference: init.reference },
+      });
+    }
+
+    return {
+      booking: await this.prisma.booking.findUniqueOrThrow({ where: { id: booking.id } }),
+      authorizationUrl: init.authorizationUrl,
+      reference: init.reference,
+    };
+  }
+
+  /**
+   * The money arrived. Assure the booking and issue the guest's PIN.
+   *
+   * The gateway is asked directly rather than trusted from the client — a
+   * browser returning from a checkout page proves nothing about whether the
+   * charge succeeded.
+   *
+   * **The PIN is issued here and nowhere else.** That is what makes it worth
+   * something: a hotel holding a PIN knows the money is in, without having to
+   * ask anyone. It is generated once and never regenerated, so a guest who
+   * reads it off an old screen is still right.
+   */
+  public async confirmBookingPayment(
+    customerId: string,
+    bookingId: string,
+    context: AuditContext = {},
+  ): Promise<Booking> {
+    const booking = await this.getCustomerBooking(customerId, bookingId);
+
+    // Idempotent: a guest refreshing the return page, or a webhook arriving
+    // after they already came back, must not charge or re-issue anything.
+    if (booking.status === BookingStatus.CONFIRMED) {
+      return booking;
+    }
+    if (booking.status !== BookingStatus.AWAITING_PAYMENT) {
+      throw new ConflictDomainException('This booking is not waiting for payment.');
+    }
+    if (booking.paymentReference === null) {
+      throw new ConflictDomainException('No payment has been started for this booking.');
+    }
+
+    const provider = this.config.defaultCardProvider as PaymentProvider;
+    const adapter = this.paymentProviders.find((a) => a.provider === provider);
+    if (!adapter) {
+      throw new ConflictDomainException('Card payments are not available right now');
+    }
+
+    const verification = await adapter.verifyPayment({ reference: booking.paymentReference });
+    if (!verification.success) {
+      throw new ValidationDomainException('That payment has not completed');
+    }
+
+    // The rate in force at the moment the money arrives, snapshotted onto the
+    // booking so a later rate change cannot move what this stay owed.
+    const rate = Number((await this.commissionSettings.getEffective()).commissionRate);
+    const commissionAmount = roundMoney(Number(booking.totalAmount) * rate);
+
+    const claimed = await this.prisma.booking.updateMany({
+      where: { id: booking.id, status: BookingStatus.AWAITING_PAYMENT },
+      data: {
+        status: BookingStatus.CONFIRMED,
+        paidAt: new Date(),
+        pin: generateBookingPin(),
+        commissionAmount: new Prisma.Decimal(commissionAmount),
+      },
+    });
+    if (claimed.count === 0) {
+      // Something else confirmed it between the read and the write. Return
+      // what is there rather than erroring at a guest who did nothing wrong.
+      return await this.prisma.booking.findUniqueOrThrow({ where: { id: booking.id } });
+    }
+
+    await this.auditService.record(BOOKING_AUDIT_ACTIONS.PAID, context, {
+      resource: 'booking',
+      resourceId: booking.id,
+      userId: customerId,
+      metadata: {
+        reference: booking.reference,
+        paymentReference: booking.paymentReference,
+        totalAmount: Number(booking.totalAmount),
+        commissionRate: rate,
+        commissionAmount,
+      },
+    });
+
+    this.logger.log(
+      `Booking ${booking.reference} paid. DrippleX holds ${String(Number(booking.totalAmount))} and owes the hotel ${String(roundMoney(Number(booking.totalAmount) - commissionAmount))} at the next weekly settlement.`,
+    );
+
+    return await this.prisma.booking.findUniqueOrThrow({ where: { id: booking.id } });
   }
 
   public customerMessageFor(status: BookingStatus): string | null {
@@ -492,18 +653,20 @@ export class BookingsService {
     reason: string | undefined,
     context: AuditContext,
   ): Promise<Booking> {
-    await this.walletService.releaseHold({
-      ownerType: WalletOwnerType.CUSTOMER,
-      ownerId: booking.customerId,
-      amount: booking.totalAmount,
-      description: `Booking ${booking.reference} — money returned`,
-      referenceType: BOOKING_WALLET_REFERENCE_TYPE,
-      referenceId: booking.id,
-      context,
-    });
-
+    // Nothing to give back. Under the 2026-08-22 model no money is taken or
+    // held until the guest pays through the gateway, so unwinding a booking
+    // that was never paid is purely a matter of putting the rooms back.
+    //
+    // The status guard covers BOTH live states: a booking the hotel never
+    // answered (PENDING_HOTEL) and one it accepted that the guest never paid
+    // for (AWAITING_PAYMENT). A CONFIRMED booking has money behind it and must
+    // never reach here — refunding is a different path with a different
+    // decision behind it.
     const claimed = await this.prisma.booking.updateMany({
-      where: { id: booking.id, status: BookingStatus.PENDING_HOTEL },
+      where: {
+        id: booking.id,
+        status: { in: [BookingStatus.PENDING_HOTEL, BookingStatus.AWAITING_PAYMENT] },
+      },
       data: {
         status: to,
         rejectedAt: new Date(),
@@ -522,6 +685,7 @@ export class BookingsService {
       metadata: {
         reference: booking.reference,
         totalAmount: Number(booking.totalAmount),
+        fromStatus: booking.status,
         reason: reason ?? null,
       },
     });
@@ -664,6 +828,15 @@ export class BookingsService {
 /** Naira, to the kobo. */
 function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+/**
+ * The gateway's reference for a booking payment. Derived from the booking id,
+ * so re-opening a checkout finds the same charge rather than starting a second
+ * one against the same room.
+ */
+export function bookingPaymentReference(bookingId: string): string {
+  return `DXBK-${bookingId.replace(/-/g, '').slice(0, 20).toUpperCase()}`;
 }
 
 /** What the guest quotes at the desk. Derived from the id, so it is stable. */

@@ -16,6 +16,7 @@ export const BOOKING_AUDIT_ACTIONS = {
   ACCEPTED: 'booking.accepted',
   REJECTED: 'booking.rejected',
   EXPIRED: 'booking.expired',
+  PAID: 'booking.paid',
   CHECKED_IN: 'booking.checked_in',
   CHECKED_OUT: 'booking.checked_out',
   NO_SHOW: 'booking.no_show',
@@ -31,8 +32,25 @@ export const BOOKING_AUDIT_ACTIONS = {
  */
 export const BOOKING_ACCEPT_WINDOW_MS = 30 * 60_000;
 
+/**
+ * How long a guest has to pay once the hotel has accepted. Founder decision,
+ * 2026-08-22: 24 hours.
+ *
+ * This window exists because the payment model changed. A guest now applies
+ * with **no money at stake** — no wallet hold, nothing reserved but the room
+ * itself. So nothing costs them anything if they simply never pay, and without
+ * a deadline one person could reserve every room in a city and abandon them
+ * all.
+ *
+ * Twenty-four hours because a bank transfer has to be possible at any hour a
+ * person is awake, including one made the following morning. The room goes
+ * back on sale when it lapses, exactly as it does on a rejection.
+ */
+export const BOOKING_PAYMENT_WINDOW_MS = 24 * 60 * 60_000;
+
 /** How often to look for bookings whose window has closed. Frequent enough
- *  that a guest is not left waiting materially past the promised 30 minutes. */
+ *  that a guest is not left waiting materially past the promised 30 minutes,
+ *  and the same sweep now also releases rooms whose 24 hours ran out. */
 export const BOOKING_EXPIRY_SWEEP_INTERVAL_MS = 60_000;
 
 /** How far ahead a stay may start. Founder decision 7: three months. */
@@ -49,8 +67,12 @@ export const BOOKING_MAX_NIGHTS = 30;
 export const BOOKING_MAX_ROOMS = 5;
 
 /**
- * WalletLedgerEntry.referenceType for the hold that reserves a guest's money
- * while the hotel decides.
+ * SUPERSEDED 2026-08-22 and kept only so an older booking's ledger entries can
+ * still be found. No new booking places a wallet hold — payment now passes
+ * through the DrippleX gateway after the hotel accepts.
+ *
+ * Originally: WalletLedgerEntry.referenceType for the hold that reserved a
+ * guest's money while the hotel decided.
  *
  * Founder decision 8: the money is NOT taken until the hotel accepts. The
  * hold reduces the guest's available balance immediately — so the same money
@@ -67,7 +89,10 @@ export const BOOKING_COMMISSION_REFERENCE_TYPE = 'booking';
 /** What a guest is told when a hotel declines. Deliberately not "cancelled":
  *  nothing was ever confirmed, and the money never left their wallet. */
 export const BOOKING_REJECTED_CUSTOMER_MESSAGE =
-  'The hotel could not take this booking. Your money was never charged — it is all still in your DrippleX Wallet.';
+  'The hotel could not take this booking. You were never charged for it.';
 
+/** Covers both lapses: the hotel never answered, and the guest never paid.
+ *  Deliberately does not accuse — a guest who simply ran out of time should be
+ *  invited to try again, not told off. */
 export const BOOKING_EXPIRED_CUSTOMER_MESSAGE =
-  'The hotel did not respond in time, so this booking was cancelled. Your money was never charged — it is all still in your DrippleX Wallet.';
+  'This booking has expired and the rooms have gone back on sale. You were never charged. You are welcome to book again.';

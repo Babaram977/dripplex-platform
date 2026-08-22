@@ -49,6 +49,12 @@ export interface BookingDto {
   guestNote: string | null;
   /** When the hotel's window closes. The customer app counts down to this. */
   acceptDeadline: string;
+  /** When the guest's 24 hours to pay run out. Null until the hotel accepts. */
+  paymentDeadline: string | null;
+  paidAt: string | null;
+  /** The five-character code for the desk. Present ONLY on a paid booking —
+   *  its existence is the proof the money arrived. */
+  pin: string | null;
   acceptedAt: string | null;
   rejectedAt: string | null;
   rejectionReason: string | null;
@@ -110,6 +116,9 @@ export function toBookingDto(booking: Booking): BookingDto {
     guestPhone: booking.guestPhone,
     guestNote: booking.guestNote,
     acceptDeadline: booking.acceptDeadline.toISOString(),
+    paymentDeadline: booking.paymentDeadline?.toISOString() ?? null,
+    paidAt: booking.paidAt?.toISOString() ?? null,
+    pin: booking.pin,
     acceptedAt: booking.acceptedAt?.toISOString() ?? null,
     rejectedAt: booking.rejectedAt?.toISOString() ?? null,
     rejectionReason: booking.rejectionReason,

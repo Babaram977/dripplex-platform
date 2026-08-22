@@ -6,6 +6,7 @@ import {
   Prisma,
   PrismaClient,
   WalletOwnerType,
+  PaymentProvider,
 } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
@@ -19,11 +20,13 @@ import { MerchantCommissionSettingsService } from '../orders/merchant-commission
 import { MERCHANT_COMMISSION_SETTING_ID } from '../orders/order.constants';
 import { WalletService } from '../wallet/wallet.service';
 
-import { BOOKING_ACCEPT_WINDOW_MS, BOOKING_WALLET_REFERENCE_TYPE } from './bookings.constants';
+import { BOOKING_PAYMENT_WINDOW_MS } from './bookings.constants';
 import { BookingsService } from './bookings.service';
 import { RoomInventoryService } from './room-inventory.service';
 
 import type { AuditLogRepository } from '../audit/repositories/audit-log.repository';
+import type { AppConfigService } from '../config/app-config.service';
+import type { PaymentProviderAdapter } from '../payments/providers/payment-provider.adapter';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { RoomAvailability } from '@prisma/client';
 
@@ -40,10 +43,11 @@ const day = (iso: string): Date => new Date(`${iso}T00:00:00.000Z`);
  * a hotel desk at night, or in their wallet:
  *
  *  - a room is never sold twice, even when two guests race for the last one;
- *  - the guest's money is HELD, not taken, until the hotel accepts
- *    (founder decision 8);
- *  - accepting takes it once, and a double-tap cannot take it twice;
- *  - rejecting and expiring both give it back AND put the nights back on sale;
+ *  - a guest with an empty wallet can apply, and nothing is taken or held
+ *    until they pay (founder decision 2026-08-22);
+ *  - a PIN exists only on a paid booking, so a hotel holding one knows the
+ *    money arrived;
+ *  - both deadlines release the rooms — the hotel's, and the guest's 24 hours;
  *  - the checkout day is never held.
  *
  * Real Postgres is not optional here: the no-overbooking invariant is a CHECK
@@ -55,6 +59,7 @@ describe('BookingsService', () => {
   let bookings: BookingsService;
   let rooms: RoomInventoryService;
   let wallets: WalletService;
+  let gateway: jest.Mocked<PaymentProviderAdapter>;
 
   const createdUserIds: string[] = [];
   const createdBusinessIds: string[] = [];
@@ -102,7 +107,8 @@ describe('BookingsService', () => {
     return { businessId: business.id, roomTypeId: roomType.id, merchantUserId: user.id };
   }
 
-  /** A customer with money in their DrippleX Wallet. */
+  /** A customer. `balance` is only used by the tests that assert the wallet is
+   *  left untouched — a guest no longer needs any to book. */
   async function fundedGuest(balance: number): Promise<string> {
     const user = await prisma.user.create({
       data: {
@@ -186,7 +192,39 @@ describe('BookingsService', () => {
     wallets = new WalletService(prisma, auditService, new DomainEventBus());
     rooms = new RoomInventoryService(prisma, auditService);
     const commissionSettings = new MerchantCommissionSettingsService(prisma, auditService);
-    bookings = new BookingsService(prisma, wallets, commissionSettings, auditService);
+
+    // A stub gateway. The booking money path goes through DrippleX now
+    // (founder decision 2026-08-22), so `verifyPayment` is what decides
+    // whether a booking becomes assured — a test can make it fail to prove an
+    // unpaid booking is never confirmed.
+    gateway = {
+      provider: PaymentProvider.FLUTTERWAVE,
+      initializePayment: jest.fn().mockImplementation((input: { reference: string }) =>
+        Promise.resolve({
+          provider: PaymentProvider.FLUTTERWAVE,
+          reference: input.reference,
+          authorizationUrl: `https://checkout.test/pay/${input.reference}`,
+        }),
+      ),
+      verifyPayment: jest.fn().mockImplementation((input: { reference: string }) =>
+        Promise.resolve({
+          success: true,
+          reference: input.reference,
+          providerTransactionId: 'flw-booking-1',
+          amount: 40_000,
+          currency: 'NGN',
+          paidAt: new Date(),
+        }),
+      ),
+      handleWebhook: jest.fn(),
+    };
+
+    const config = {
+      defaultCardProvider: PaymentProvider.FLUTTERWAVE,
+      cardPaymentsEnabled: true,
+    } as unknown as AppConfigService;
+
+    bookings = new BookingsService(prisma, commissionSettings, auditService, config, [gateway]);
 
     // The rate is a singleton row an operator can change; pin it at the
     // founder's 10% so a console change cannot silently rewrite these numbers.
@@ -258,7 +296,7 @@ describe('BookingsService', () => {
 
   // ── The hold ────────────────────────────────────────────────────────────────
 
-  it('holds the money without taking it, and holds only the nights slept', async () => {
+  it('reserves the rooms without touching the money, and holds only the nights slept', async () => {
     if (!databaseAvailable) return;
     const { roomTypeId, merchantUserId } = await createHotel(3, 20_000);
     await openStayNights(merchantUserId, roomTypeId, 3);
@@ -273,16 +311,14 @@ describe('BookingsService', () => {
 
     expect(booking.status).toBe(BookingStatus.PENDING_HOTEL);
     expect(Number(booking.totalAmount)).toBe(40_000);
-    expect(booking.acceptDeadline.getTime()).toBeGreaterThan(Date.now());
-    expect(booking.acceptDeadline.getTime()).toBeLessThanOrEqual(
-      Date.now() + BOOKING_ACCEPT_WINDOW_MS + 1_000,
-    );
-
-    // Founder decision 8: reserved, not taken. Available falls, pending rises,
-    // and the two together still add up to what they started with.
+    // Founder decision 2026-08-22: nothing is taken and nothing is even held.
+    // The guest's wallet is exactly as it was.
     const after = await balances(guestId);
-    expect(after.available).toBe(60_000);
-    expect(after.pending).toBe(40_000);
+    expect(after.available).toBe(100_000);
+    expect(after.pending).toBe(0);
+    // And no PIN yet — a PIN means paid.
+    expect(booking.pin).toBeNull();
+    expect(booking.paymentDeadline).toBeNull();
 
     // The nights slept are held; the departure day is untouched even though it
     // is open for sale.
@@ -291,25 +327,28 @@ describe('BookingsService', () => {
     expect((await nightRow(roomTypeId, '2026-09-12'))?.roomsBooked).toBe(0);
   });
 
-  it('refuses a guest who cannot cover the stay, and holds no nights for them', async () => {
+  /**
+   * The decision that reversed. Under the wallet-hold model this guest was
+   * refused; under the 2026-08-22 model anyone may apply, and they pay only
+   * once a hotel has said yes.
+   */
+  it('lets a guest with an empty wallet apply for a room', async () => {
     if (!databaseAvailable) return;
     const { roomTypeId, merchantUserId } = await createHotel(3, 20_000);
     await openStayNights(merchantUserId, roomTypeId, 3);
-    const guestId = await fundedGuest(1_000);
+    const pennilessGuest = await fundedGuest(0);
 
-    await expect(
-      bookings.createBooking(guestId, {
-        roomTypeId,
-        ...stay,
-        guestName: 'Hamza Bello',
-        guestPhone: '+2348012345678',
-      }),
-    ).rejects.toThrow();
+    const booking = await bookings.createBooking(pennilessGuest, {
+      roomTypeId,
+      ...stay,
+      guestName: 'Hamza Bello',
+      guestPhone: '+2348012345678',
+    });
 
-    // The nights must have gone back — otherwise the hotel looks full because
-    // of a booking that never existed.
-    expect((await nightRow(roomTypeId, '2026-09-10'))?.roomsBooked).toBe(0);
-    expect((await nightRow(roomTypeId, '2026-09-11'))?.roomsBooked).toBe(0);
+    expect(booking.status).toBe(BookingStatus.PENDING_HOTEL);
+    expect((await balances(pennilessGuest)).available).toBe(0);
+    // The room really is held for them.
+    expect((await nightRow(roomTypeId, '2026-09-10'))?.roomsBooked).toBe(1);
   });
 
   // ── The invariant ───────────────────────────────────────────────────────────
@@ -373,7 +412,7 @@ describe('BookingsService', () => {
 
   // ── Accept ──────────────────────────────────────────────────────────────────
 
-  it('takes the money only when the hotel accepts, and records the 10% cut', async () => {
+  it('opens the 24 hours to pay when the hotel accepts, and still takes nothing', async () => {
     if (!databaseAvailable) return;
     const { roomTypeId, merchantUserId } = await createHotel(3, 20_000);
     await openStayNights(merchantUserId, roomTypeId, 3);
@@ -387,17 +426,20 @@ describe('BookingsService', () => {
 
     const accepted = await bookings.acceptBooking(merchantUserId, booking.id);
 
-    expect(accepted.status).toBe(BookingStatus.CONFIRMED);
+    expect(accepted.status).toBe(BookingStatus.AWAITING_PAYMENT);
     expect(accepted.acceptedAt).not.toBeNull();
-    expect(Number(accepted.commissionAmount)).toBe(4_000);
-
-    // Taken for real: the hold is gone and the money did not come back.
-    const after = await balances(guestId);
-    expect(after.available).toBe(60_000);
-    expect(after.pending).toBe(0);
+    expect(accepted.paymentDeadline).not.toBeNull();
+    expect(accepted.paymentDeadline?.getTime() ?? 0).toBeGreaterThan(
+      Date.now() + BOOKING_PAYMENT_WINDOW_MS - 60_000,
+    );
+    // Accepting is not a charge, and no commission is owed on a booking that
+    // has not been paid for.
+    expect((await balances(guestId)).available).toBe(100_000);
+    expect(accepted.commissionAmount).toBeNull();
+    expect(accepted.pin).toBeNull();
   });
 
-  it('cannot take the money twice when a hotel double-taps Accept', async () => {
+  it('cannot be accepted twice when a hotel double-taps', async () => {
     if (!databaseAvailable) return;
     const { roomTypeId, merchantUserId } = await createHotel(3, 20_000);
     await openStayNights(merchantUserId, roomTypeId, 3);
@@ -413,8 +455,6 @@ describe('BookingsService', () => {
     await expect(bookings.acceptBooking(merchantUserId, booking.id)).rejects.toThrow(
       ConflictDomainException,
     );
-
-    expect((await balances(guestId)).available).toBe(60_000);
   });
 
   // ── Reject and expire ───────────────────────────────────────────────────────
@@ -498,7 +538,7 @@ describe('BookingsService', () => {
 
     const untouched = await prisma.booking.findUniqueOrThrow({ where: { id: booking.id } });
     expect(untouched.status).toBe(BookingStatus.PENDING_HOTEL);
-    expect((await balances(guestId)).pending).toBe(40_000);
+    expect((await nightRow(roomTypeId, '2026-09-10'))?.roomsBooked).toBe(1);
   });
 
   it('refuses to accept a booking whose window has already closed', async () => {
@@ -520,16 +560,17 @@ describe('BookingsService', () => {
     await expect(bookings.acceptBooking(merchantUserId, booking.id)).rejects.toThrow(
       ConflictDomainException,
     );
-    expect((await balances(guestId)).pending).toBe(40_000);
   });
 
   // ── The wallet ledger ───────────────────────────────────────────────────────
 
-  it('leaves a ledger a dispute can be argued from', async () => {
+  // ── Payment, through DrippleX ───────────────────────────────────────────────
+
+  it('assures the booking and issues a PIN once the money arrives', async () => {
     if (!databaseAvailable) return;
     const { roomTypeId, merchantUserId } = await createHotel(2, 20_000);
     await openStayNights(merchantUserId, roomTypeId, 2);
-    const guestId = await fundedGuest(100_000);
+    const guestId = await fundedGuest(0);
     const booking = await bookings.createBooking(guestId, {
       roomTypeId,
       ...stay,
@@ -538,16 +579,179 @@ describe('BookingsService', () => {
     });
     await bookings.acceptBooking(merchantUserId, booking.id);
 
-    const wallet = await wallets.getWallet(WalletOwnerType.CUSTOMER, guestId);
-    const entries = await prisma.walletLedgerEntry.findMany({
-      where: { walletId: wallet.id, referenceId: booking.id },
+    const started = await bookings.initiateBookingPayment(guestId, booking.id);
+    expect(started.authorizationUrl).toContain('checkout.test');
+    expect(started.reference).toMatch(/^DXBK-/);
+
+    const paid = await bookings.confirmBookingPayment(guestId, booking.id);
+
+    expect(paid.status).toBe(BookingStatus.CONFIRMED);
+    expect(paid.paidAt).not.toBeNull();
+    // The PIN is what the guest reads out at the desk, and it exists only now.
+    expect(paid.pin).toMatch(/^[A-Z0-9]{5}$/);
+    // The cut is snapshotted at the rate in force when the money landed.
+    expect(Number(paid.commissionAmount)).toBe(4_000);
+  });
+
+  /** A PIN existing is the proof that money arrived. If an unpaid booking could
+   *  carry one, a hotel holding a PIN would learn nothing. */
+  it('issues no PIN while a booking is unpaid', async () => {
+    if (!databaseAvailable) return;
+    const { roomTypeId, merchantUserId } = await createHotel(2, 20_000);
+    await openStayNights(merchantUserId, roomTypeId, 2);
+    const guestId = await fundedGuest(0);
+    const booking = await bookings.createBooking(guestId, {
+      roomTypeId,
+      ...stay,
+      guestName: 'Hamza Bello',
+      guestPhone: '+2348012345678',
     });
-    // Both halves of the hold are on the record: what was set aside, and what
-    // was taken. One entry would leave a customer unable to see either.
-    expect(entries.length).toBe(2);
-    expect(
-      entries.every((e) => e.referenceType?.startsWith(BOOKING_WALLET_REFERENCE_TYPE) === true),
-    ).toBe(true);
+    expect(booking.pin).toBeNull();
+
+    const accepted = await bookings.acceptBooking(merchantUserId, booking.id);
+    expect(accepted.pin).toBeNull();
+  });
+
+  it('refuses to confirm a payment the gateway says never completed', async () => {
+    if (!databaseAvailable) return;
+    const { roomTypeId, merchantUserId } = await createHotel(2, 20_000);
+    await openStayNights(merchantUserId, roomTypeId, 2);
+    const guestId = await fundedGuest(0);
+    const booking = await bookings.createBooking(guestId, {
+      roomTypeId,
+      ...stay,
+      guestName: 'Hamza Bello',
+      guestPhone: '+2348012345678',
+    });
+    await bookings.acceptBooking(merchantUserId, booking.id);
+    await bookings.initiateBookingPayment(guestId, booking.id);
+
+    // The gateway is the authority, not the client returning from checkout.
+    gateway.verifyPayment.mockResolvedValueOnce({
+      success: false,
+      reference: 'x',
+    });
+
+    await expect(bookings.confirmBookingPayment(guestId, booking.id)).rejects.toThrow(
+      ValidationDomainException,
+    );
+    const unpaid = await prisma.booking.findUniqueOrThrow({ where: { id: booking.id } });
+    expect(unpaid.status).toBe(BookingStatus.AWAITING_PAYMENT);
+    expect(unpaid.pin).toBeNull();
+  });
+
+  it('confirms once, however many times the guest refreshes', async () => {
+    if (!databaseAvailable) return;
+    const { roomTypeId, merchantUserId } = await createHotel(2, 20_000);
+    await openStayNights(merchantUserId, roomTypeId, 2);
+    const guestId = await fundedGuest(0);
+    const booking = await bookings.createBooking(guestId, {
+      roomTypeId,
+      ...stay,
+      guestName: 'Hamza Bello',
+      guestPhone: '+2348012345678',
+    });
+    await bookings.acceptBooking(merchantUserId, booking.id);
+    await bookings.initiateBookingPayment(guestId, booking.id);
+
+    const first = await bookings.confirmBookingPayment(guestId, booking.id);
+    const second = await bookings.confirmBookingPayment(guestId, booking.id);
+
+    // Same PIN, not a new one — a guest reading it off an older screen is
+    // still right.
+    expect(second.pin).toBe(first.pin);
+    expect(second.status).toBe(BookingStatus.CONFIRMED);
+  });
+
+  it('reuses one payment reference, so a booking cannot collect two charges', async () => {
+    if (!databaseAvailable) return;
+    const { roomTypeId, merchantUserId } = await createHotel(2, 20_000);
+    await openStayNights(merchantUserId, roomTypeId, 2);
+    const guestId = await fundedGuest(0);
+    const booking = await bookings.createBooking(guestId, {
+      roomTypeId,
+      ...stay,
+      guestName: 'Hamza Bello',
+      guestPhone: '+2348012345678',
+    });
+    await bookings.acceptBooking(merchantUserId, booking.id);
+
+    const first = await bookings.initiateBookingPayment(guestId, booking.id);
+    const second = await bookings.initiateBookingPayment(guestId, booking.id);
+    expect(second.reference).toBe(first.reference);
+  });
+
+  it('will not start a payment before the hotel has accepted', async () => {
+    if (!databaseAvailable) return;
+    const { roomTypeId, merchantUserId } = await createHotel(2, 20_000);
+    await openStayNights(merchantUserId, roomTypeId, 2);
+    const guestId = await fundedGuest(0);
+    const booking = await bookings.createBooking(guestId, {
+      roomTypeId,
+      ...stay,
+      guestName: 'Hamza Bello',
+      guestPhone: '+2348012345678',
+    });
+
+    await expect(bookings.initiateBookingPayment(guestId, booking.id)).rejects.toThrow(
+      ConflictDomainException,
+    );
+  });
+
+  /**
+   * The deadline that replaced the wallet hold. With no money at stake,
+   * this is the only thing stopping one person reserving a city's worth of
+   * rooms and never paying.
+   */
+  it('releases the rooms when the 24 hours to pay run out', async () => {
+    if (!databaseAvailable) return;
+    const { roomTypeId, merchantUserId } = await createHotel(1, 20_000);
+    await openStayNights(merchantUserId, roomTypeId, 1);
+    const guestId = await fundedGuest(0);
+    const booking = await bookings.createBooking(guestId, {
+      roomTypeId,
+      ...stay,
+      guestName: 'Hamza Bello',
+      guestPhone: '+2348012345678',
+    });
+    await bookings.acceptBooking(merchantUserId, booking.id);
+    expect((await nightRow(roomTypeId, '2026-09-10'))?.roomsBooked).toBe(1);
+
+    // 24 hours later, with no payment.
+    await prisma.booking.update({
+      where: { id: booking.id },
+      data: { paymentDeadline: new Date(Date.now() - 1_000) },
+    });
+
+    await bookings.expireOverdueBookings();
+
+    const expired = await prisma.booking.findUniqueOrThrow({ where: { id: booking.id } });
+    expect(expired.status).toBe(BookingStatus.EXPIRED);
+    expect(expired.pin).toBeNull();
+    // Back on sale for the next guest.
+    expect((await nightRow(roomTypeId, '2026-09-10'))?.roomsBooked).toBe(0);
+    const quote = await bookings.checkAvailability({ roomTypeId, ...stay });
+    expect(quote.available).toBe(true);
+  });
+
+  it('leaves an accepted booking alone while its 24 hours are still running', async () => {
+    if (!databaseAvailable) return;
+    const { roomTypeId, merchantUserId } = await createHotel(2, 20_000);
+    await openStayNights(merchantUserId, roomTypeId, 2);
+    const guestId = await fundedGuest(0);
+    const booking = await bookings.createBooking(guestId, {
+      roomTypeId,
+      ...stay,
+      guestName: 'Hamza Bello',
+      guestPhone: '+2348012345678',
+    });
+    await bookings.acceptBooking(merchantUserId, booking.id);
+
+    await bookings.expireOverdueBookings();
+
+    const alive = await prisma.booking.findUniqueOrThrow({ where: { id: booking.id } });
+    expect(alive.status).toBe(BookingStatus.AWAITING_PAYMENT);
+    expect((await nightRow(roomTypeId, '2026-09-10'))?.roomsBooked).toBe(1);
   });
 
   // ── Guard rails ─────────────────────────────────────────────────────────────
@@ -609,9 +813,7 @@ describe('BookingsService', () => {
       NotFoundDomainException,
     );
 
-    // Not a penny moved, and the booking is still the other hotel's to answer.
-    expect((await balances(guestId)).pending).toBe(40_000);
-    expect((await balances(guestId)).available).toBe(60_000);
+    // The booking is still the other hotel's to answer, and untouched.
     const untouched = await prisma.booking.findUniqueOrThrow({ where: { id: booking.id } });
     expect(untouched.status).toBe(BookingStatus.PENDING_HOTEL);
   });
@@ -633,7 +835,8 @@ describe('BookingsService', () => {
       bookings.rejectBooking(rival.merchantUserId, booking.id, 'not mine to decline'),
     ).rejects.toThrow(NotFoundDomainException);
 
-    expect((await balances(guestId)).pending).toBe(40_000);
+    const untouched = await prisma.booking.findUniqueOrThrow({ where: { id: booking.id } });
+    expect(untouched.status).toBe(BookingStatus.PENDING_HOTEL);
   });
 
   it("will not let one hotel edit another hotel's rooms or calendar", async () => {
@@ -653,6 +856,31 @@ describe('BookingsService', () => {
         roomsOpen: 2,
       }),
     ).rejects.toThrow(NotFoundDomainException);
+  });
+
+  /**
+   * The customer app addresses a hotel by the id its marketplace card carries
+   * — a MerchantProfile.id — not by Business.id. Before this the two were
+   * different and the app could not call its own booking endpoint from a
+   * marketplace tap. Founder decision 2026-08-22.
+   */
+  it('finds a hotel by the merchant id the marketplace card carries', async () => {
+    if (!databaseAvailable) return;
+    const hotel = await createHotel(2, 20_000);
+    const profile = await prisma.merchantProfile.findFirstOrThrow({
+      where: { userId: hotel.merchantUserId },
+    });
+
+    await expect(rooms.resolveBusinessIdForMerchant(profile.id)).resolves.toBe(hotel.businessId);
+    // And the id is genuinely a different one, or this test proves nothing.
+    expect(profile.id).not.toBe(hotel.businessId);
+  });
+
+  it('refuses a merchant id that is not a hotel we know', async () => {
+    if (!databaseAvailable) return;
+    await expect(rooms.resolveBusinessIdForMerchant(randomUUID())).rejects.toThrow(
+      NotFoundDomainException,
+    );
   });
 
   it('creates a room type against the signed-in hotel, never one it names', async () => {

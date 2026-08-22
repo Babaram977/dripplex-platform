@@ -1,7 +1,127 @@
 # DPX-HOTEL-002 — Customer booking: slices and steps
 
-**Status:** PLAN — one blocker needs a founder decision (§2). Everything else is buildable.
+**Status:** REVISED 2026-08-22 — the payment model changed. §0 supersedes parts of §3.
 **Depends on:** DPX-HOTEL-001 (#225 schema + service, #226 API, #228 merchant screens)
+
+---
+
+## 0. Founder decisions, 2026-08-22 — the payment model changed
+
+Recorded verbatim, then the reading applied:
+
+> "take end point as merchant ID"
+>
+> "for wallet balance NO, everybody can apply for a reservation without funds in
+> his wallet until when a hotel accepts booking then the super-App will provide
+> a bank account details for the customer pay, after payment customer should
+> send a receipt of payment to Merchant hotel agent for confirmation and assured
+> booking with booking reference code/pin to be presented to the hotel to verify
+> the guest"
+
+### 0.1 What this supersedes
+
+| Was                                                                       | Now                                                  |
+| ------------------------------------------------------------------------- | ---------------------------------------------------- |
+| Decision 8 — a **wallet HOLD** reserves the money while the hotel decides | **No money at all** until the hotel has accepted     |
+| Decision 1 — pay in full through the DrippleX payment window              | **Bank transfer to the hotel**, confirmed by receipt |
+| A guest needs wallet balance to book                                      | **Anyone can apply.** No funds required to reserve   |
+
+The 30-minute accept window (decision 9) was built to bound how long a guest's
+money sits held. **With nothing held, it no longer protects money — it protects
+inventory**, which is a different job and probably a different duration. See §0.4.
+
+### 0.2 The new flow
+
+```
+Guest applies (no money)  →  PENDING_HOTEL
+        │
+        ▼
+Hotel accepts             →  AWAITING_PAYMENT   ← app now shows the hotel's bank details
+        │
+        ▼
+Guest transfers, uploads receipt →  PAYMENT_SUBMITTED
+        │
+        ▼
+Hotel confirms receipt    →  CONFIRMED  + reference code/PIN for the desk
+```
+
+### 0.3 This is not new ground — DrippleX already does it
+
+Every mechanism this needs is already **live in production** for marketplace
+orders, from the founder's 2026-08-17 decision:
+
+> "when an order is paid to merchant customer should have an option to upload
+> receipt of payment which will go to merchant for confirmation and in case of
+> dispute it can be referenced."
+
+| Need                                        | Already exists                                                     |
+| ------------------------------------------- | ------------------------------------------------------------------ |
+| Show the customer the hotel's bank details  | `CheckoutService.getMerchantBankForOrder` → `BankAccount`          |
+| Customer uploads a receipt                  | `OrderPaymentProof` + `OrderPaymentProofService`                   |
+| Merchant confirms payment received          | `MerchantOrdersService.confirmPaymentReceived`                     |
+| DrippleX's cut when it never held the money | `CommissionAccountService.accrue()` — mode B, the merchant owes it |
+| The hotel gets blocked if it owes too much  | commission credit limit + latch                                    |
+
+**Note, superseded within the same day.** When this section was written the
+money was going to the hotel's own account, which would have made commission an
+accrued debt. Decision 11 then routed payment through DrippleX, so the cut comes
+off the settlement instead — back to recording it on the booking, which is what
+#225 already did. Left here rather than deleted because the reasoning is what
+matters: **who holds the money decides which mechanism is correct**, and that is
+worth being able to re-read the next time the question comes up.
+
+`OrderPaymentProofService`'s own header already states the three rules that
+matter here, and they carry over unchanged:
+
+- **A receipt does not mark anything paid.** A customer can upload any image.
+  Confirmation stays the hotel's word.
+- **Nothing verifies the receipt.** No bank is queried. It records what was sent.
+- **Proofs are append-only.** A wrong upload adds a second row; both stay, so a
+  dispute has real evidence.
+
+### 0.4 The rest of the decisions, 2026-08-22
+
+| #   | Question                          | Answer                                                                             |
+| --- | --------------------------------- | ---------------------------------------------------------------------------------- |
+| 10  | How long to pay after acceptance? | **24 hours.** Rooms release automatically when it lapses                           |
+| 11  | Where does the money go?          | **Through DrippleX**, on the existing card/transfer gateway — not to the hotel     |
+| 12  | Who confirms payment?             | **The gateway.** No receipt, no one judging an image, no forged receipt can assure |
+| 13  | The desk code                     | **Five characters, alphanumeric**, issued on payment                               |
+| 14  | Hotel settlement                  | **Weekly, every Monday**                                                           |
+
+Decision 11 is the one with the largest consequence: because the money lands
+with DrippleX, **DrippleX now owes every hotel its share**, and there is no
+mechanism that pays one. That makes settlement required rather than deferred —
+it is the next piece of work, and decision 14 sets its schedule.
+
+It also settles the commission question in the opposite direction from the note
+in §0.3 below. With DrippleX holding the money the cut comes **off** what the
+hotel is paid (mode A, as marketplace online orders work), not accrued as a
+debt. `commissionAmount` is snapshotted onto the booking at the rate in force
+when the money arrives, so a later rate change cannot move what a past stay
+owed.
+
+### 0.5 What this leaves genuinely open
+
+1. **How long does a guest have to pay after the hotel accepts?** This is the
+   one that matters. The room is held from the moment of application, and with
+   no money at stake there is nothing to stop someone reserving every room in
+   Kaduna and never paying. Needs a payment window and an auto-release, the same
+   way the 30 minutes works today — but the duration is a business call, not a
+   technical one.
+2. **Does the 30-minute accept window still apply?** It no longer guards money.
+   Keeping it is defensible (a guest deserves a quick answer); so is lengthening
+   it now that nothing is held.
+3. **Reference code / PIN.** A booking already carries `reference`
+   (`DXB-XXXXXXXXXX`). Is that the code the guest shows at the desk, or is a
+   separate short PIN wanted alongside it?
+4. **The wallet hold code in `BookingsService` becomes dead.** `createBooking`
+   calls `walletService.hold`, and accept calls `commitHold`. Both go. The
+   `WalletService.hold/commitHold/releaseHold` primitives stay — they are
+   general and were the right thing to build; they are simply not what hotel
+   bookings use any more.
+
+---
 
 ---
 
@@ -24,29 +144,19 @@ and there is no way to reach the booking API from the app.**
 
 ---
 
-## 2. The blocker, and it is small but real
+## 2. The id blocker — DECIDED and BUILT
 
-`GET /customer/bookings/hotels/:businessId/room-types` takes a **`Business.id`**.
+`GET /customer/bookings/hotels/:businessId/room-types` took a `Business.id`,
+while the marketplace card carries a `MerchantProfile.id`. The customer app
+could not call its own booking endpoint from a marketplace tap.
 
-The marketplace card carries a **`MerchantProfile.id`** — `toMerchantSummaryDto`
-sets `id: merchantProfileId` — and that is what `onStore(m.id)` passes to the
-store screen.
+**Founder decision 2026-08-22: "take end point as merchant ID."** The route is
+now `hotels/:merchantId`, resolved to the business inside
+`RoomInventoryService.resolveBusinessIdForMerchant`. The customer app addresses
+a merchant one way everywhere, and no card has to carry two ids.
 
-They are different ids. As it stands the customer app **cannot call its own
-booking endpoint** from a marketplace tap.
-
-Three ways out, and the choice is a real one:
-
-| Option                                                 | Cost                                                                 | Consequence                                                                         |
-| ------------------------------------------------------ | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| **A. Endpoint accepts a merchantProfileId** (proposed) | One backend change: resolve profile → business inside the controller | Matches how every other customer-facing merchant route is addressed. No client work |
-| B. Add `businessId` to `MerchantSummaryDto`            | Widens a DTO every marketplace screen reads                          | Two ids on every card, and a caller can pick the wrong one                          |
-| C. Resolve client-side with an extra call              | An extra round trip on every hotel page open                         | Slower, and a second failure mode for no benefit                                    |
-
-**Recommendation: A.** The customer app should address a merchant the one way
-it already does everywhere else. B invites the exact confusion that produced
-this blocker. This is the only item here that changes a shipped contract, which
-is why it is called out rather than absorbed.
+Two tests cover it, one of which asserts the two ids are genuinely different —
+otherwise the test would pass for the wrong reason.
 
 ---
 
