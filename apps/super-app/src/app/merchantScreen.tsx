@@ -5626,6 +5626,11 @@ function BookingsPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [rejectId, setRejectId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
+  // The desk: a code typed in, and whoever it belongs to.
+  const [deskCode, setDeskCode] = useState('');
+  const [deskGuest, setDeskGuest] = useState<MerchantBookingDto | null>(null);
+  const [deskBusy, setDeskBusy] = useState(false);
+  const [deskErr, setDeskErr] = useState('');
   // Re-render once a second so every countdown is honest.
   const [, setTick] = useState(0);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -5665,10 +5670,10 @@ function BookingsPage() {
     try {
       if (action === 'accept') {
         await api.merchant.bookings.accept(id);
-        flash('Booking confirmed. The guest has been charged and the room is held.');
+        flash('Accepted. The guest now has 24 hours to pay — the room is held until then.');
       } else {
         await api.merchant.bookings.reject(id, reason);
-        flash('Booking declined. The guest was never charged — their money is untouched.');
+        flash('Declined. Nothing was ever charged, and the rooms are back on sale.');
       }
       setRejectId(null);
       setRejectReason('');
@@ -5677,6 +5682,49 @@ function BookingsPage() {
       setErr(cause instanceof Error ? cause.message : 'Could not answer that booking.');
     } finally {
       setBusyId(null);
+    }
+  };
+
+  const findGuest = async () => {
+    if (deskCode.trim() === '') return;
+    setDeskBusy(true);
+    setDeskErr('');
+    setDeskGuest(null);
+    try {
+      setDeskGuest(await api.merchant.bookings.lookupByPin(deskCode));
+    } catch (cause) {
+      // The server's own words. It distinguishes "not a valid code" from "no
+      // booking here matches", and a receptionist needs to know which.
+      setDeskErr(cause instanceof Error ? cause.message : 'Could not look that code up.');
+    } finally {
+      setDeskBusy(false);
+    }
+  };
+
+  const deskAction = async (action: 'checkIn' | 'checkOut' | 'noShow') => {
+    if (!deskGuest) return;
+    setDeskBusy(true);
+    setDeskErr('');
+    try {
+      const updated =
+        action === 'checkIn'
+          ? await api.merchant.bookings.checkIn(deskGuest.id)
+          : action === 'checkOut'
+            ? await api.merchant.bookings.checkOut(deskGuest.id)
+            : await api.merchant.bookings.noShow(deskGuest.id);
+      setDeskGuest(updated);
+      flash(
+        action === 'checkIn'
+          ? `${updated.guestName} is checked in.`
+          : action === 'checkOut'
+            ? `${updated.guestName} is checked out.`
+            : `${updated.guestName} recorded as a no-show.`,
+      );
+      await load();
+    } catch (cause) {
+      setDeskErr(cause instanceof Error ? cause.message : 'Could not do that.');
+    } finally {
+      setDeskBusy(false);
     }
   };
 
@@ -5690,6 +5738,14 @@ function BookingsPage() {
       return <MxChip label="Declined" color={C_ERR} bg="rgba(239,68,68,.12)" />;
     if (status === 'EXPIRED')
       return <MxChip label="Expired" color={C_WARN} bg="rgba(245,158,11,.12)" />;
+    if (status === 'AWAITING_PAYMENT')
+      return <MxChip label="Awaiting payment" color={C_WARN} bg="rgba(245,158,11,.12)" />;
+    if (status === 'CHECKED_IN')
+      return <MxChip label="Checked in" color={G3} bg="rgba(59,130,246,.12)" />;
+    if (status === 'CHECKED_OUT')
+      return <MxChip label="Checked out" color={MUTED} bg="rgba(255,255,255,.06)" />;
+    if (status === 'NO_SHOW')
+      return <MxChip label="No-show" color={C_ERR} bg="rgba(239,68,68,.12)" />;
     return <MxChip label={status.replace(/_/g, ' ')} color={MUTED} bg="rgba(255,255,255,.06)" />;
   };
 
@@ -5706,11 +5762,198 @@ function BookingsPage() {
         </MxCard>
       )}
 
+      {/* ── The desk ──────────────────────────────────────────────────────
+          A guest arrives and reads out five characters. Until this existed the
+          code was decorative: issued on payment, shown to the guest, announced
+          to the hotel, and impossible to look up. */}
+      <MxCard style={{ marginBottom: 14, padding: 16 }}>
+        <div style={{ fontFamily: PP, fontSize: 15, fontWeight: 700, color: WHITE }}>
+          Guest at the desk
+        </div>
+        <div style={{ fontFamily: IT, fontSize: 12, color: MUTED, marginTop: 2 }}>
+          Type the five-character code from their app. Case and spaces do not matter.
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          <input
+            value={deskCode}
+            onChange={(e) => setDeskCode(e.target.value.toUpperCase())}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void findGuest();
+            }}
+            placeholder="B7X9K"
+            maxLength={12}
+            aria-label="Check-in code"
+            style={{
+              flex: 1,
+              padding: '10px 12px',
+              borderRadius: 10,
+              border: `1px solid ${BORDER}`,
+              background: NAVY_SURFACE,
+              color: WHITE,
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+              fontSize: 18,
+              letterSpacing: 4,
+              textTransform: 'uppercase',
+            }}
+          />
+          <button
+            onClick={() => void findGuest()}
+            disabled={deskBusy || deskCode.trim() === ''}
+            className="active:scale-95"
+            style={{
+              padding: '0 20px',
+              borderRadius: 10,
+              border: 'none',
+              background: `linear-gradient(135deg,${G0},${G2})`,
+              color: WHITE,
+              fontFamily: PP,
+              fontWeight: 700,
+              fontSize: 13,
+              opacity: deskBusy || deskCode.trim() === '' ? 0.5 : 1,
+            }}
+          >
+            {deskBusy ? 'Checking…' : 'Find'}
+          </button>
+        </div>
+
+        {deskErr !== '' && (
+          <div style={{ fontFamily: IT, fontSize: 12.5, color: C_ERR, marginTop: 10 }}>
+            {deskErr}
+          </div>
+        )}
+
+        {deskGuest && (
+          <div
+            style={{
+              marginTop: 12,
+              paddingTop: 12,
+              borderTop: `1px solid ${BORDER}`,
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+              <div>
+                <div style={{ fontFamily: PP, fontWeight: 700, fontSize: 15, color: WHITE }}>
+                  {deskGuest.guestName}
+                </div>
+                <div style={{ fontFamily: IT, fontSize: 12, color: MUTED, marginTop: 2 }}>
+                  {formatStay(deskGuest.checkIn, deskGuest.checkOut)}
+                </div>
+                <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>
+                  {deskGuest.rooms} {deskGuest.rooms === 1 ? 'room' : 'rooms'} · {deskGuest.guests}{' '}
+                  {deskGuest.guests === 1 ? 'guest' : 'guests'} · {deskGuest.guestPhone}
+                </div>
+                <div style={{ fontFamily: IT, fontSize: 11, color: MUTED, marginTop: 4 }}>
+                  {deskGuest.reference}
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                {statusChip(deskGuest.status)}
+                <div
+                  style={{
+                    fontFamily: PP,
+                    fontWeight: 800,
+                    fontSize: 16,
+                    color: WHITE,
+                    marginTop: 6,
+                  }}
+                >
+                  {naira(deskGuest.totalAmount)}
+                </div>
+                {deskGuest.paidAt !== null && (
+                  <div style={{ fontFamily: IT, fontSize: 11, color: C_OK }}>paid</div>
+                )}
+              </div>
+            </div>
+
+            {deskGuest.guestNote !== null && deskGuest.guestNote !== '' && (
+              <div style={{ fontFamily: IT, fontSize: 12, color: G3, marginTop: 8 }}>
+                Note from the guest: {deskGuest.guestNote}
+              </div>
+            )}
+
+            {/* Only the action the booking's state actually allows. A desk
+                should not be offered a button that will be refused. */}
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              {deskGuest.status === 'CONFIRMED' && (
+                <>
+                  <button
+                    onClick={() => void deskAction('checkIn')}
+                    disabled={deskBusy}
+                    className="active:scale-95"
+                    style={{
+                      flex: 2,
+                      padding: '11px 14px',
+                      borderRadius: 10,
+                      border: 'none',
+                      background: `linear-gradient(135deg,${G0},${G2})`,
+                      color: WHITE,
+                      fontFamily: PP,
+                      fontWeight: 700,
+                      fontSize: 13,
+                    }}
+                  >
+                    Check in
+                  </button>
+                  <button
+                    onClick={() => void deskAction('noShow')}
+                    disabled={deskBusy}
+                    className="active:scale-95"
+                    style={{
+                      flex: 1,
+                      padding: '11px 14px',
+                      borderRadius: 10,
+                      border: `1px solid ${BORDER}`,
+                      background: 'transparent',
+                      color: MUTED,
+                      fontFamily: PP,
+                      fontWeight: 600,
+                      fontSize: 13,
+                    }}
+                  >
+                    No-show
+                  </button>
+                </>
+              )}
+              {deskGuest.status === 'CHECKED_IN' && (
+                <button
+                  onClick={() => void deskAction('checkOut')}
+                  disabled={deskBusy}
+                  className="active:scale-95"
+                  style={{
+                    flex: 1,
+                    padding: '11px 14px',
+                    borderRadius: 10,
+                    border: `1px solid ${BORDER}`,
+                    background: 'transparent',
+                    color: WHITE,
+                    fontFamily: PP,
+                    fontWeight: 700,
+                    fontSize: 13,
+                  }}
+                >
+                  Check out
+                </button>
+              )}
+              {['CHECKED_OUT', 'NO_SHOW', 'EXPIRED', 'REJECTED', 'AWAITING_PAYMENT'].includes(
+                deskGuest.status,
+              ) && (
+                <div style={{ fontFamily: IT, fontSize: 12.5, color: MUTED }}>
+                  {deskGuest.status === 'AWAITING_PAYMENT'
+                    ? 'This guest has not paid yet, so there is nothing to check in.'
+                    : 'Nothing left to do on this booking.'}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </MxCard>
+
       <div style={{ marginBottom: 14 }}>
         <div style={{ fontFamily: PP, fontSize: 17, fontWeight: 700, color: WHITE }}>Bookings</div>
         <div style={{ fontFamily: IT, fontSize: 12, color: MUTED, marginTop: 2 }}>
-          You have thirty minutes to answer. After that the booking expires on its own and the guest
-          gets their money back.
+          You have thirty minutes to answer. After that the request expires on its own and the rooms
+          go back on sale. Nothing is charged until the guest pays, which they do after you accept.
         </div>
       </div>
 

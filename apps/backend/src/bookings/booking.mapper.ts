@@ -56,6 +56,9 @@ export interface BookingDto {
    *  its existence is the proof the money arrived. */
   pin: string | null;
   acceptedAt: string | null;
+  /** When the guest actually arrived and left, as recorded at the desk. */
+  checkedInAt: string | null;
+  checkedOutAt: string | null;
   rejectedAt: string | null;
   rejectionReason: string | null;
   createdAt: string;
@@ -120,6 +123,8 @@ export function toBookingDto(booking: Booking): BookingDto {
     paidAt: booking.paidAt?.toISOString() ?? null,
     pin: booking.pin,
     acceptedAt: booking.acceptedAt?.toISOString() ?? null,
+    checkedInAt: booking.checkedInAt?.toISOString() ?? null,
+    checkedOutAt: booking.checkedOutAt?.toISOString() ?? null,
     rejectedAt: booking.rejectedAt?.toISOString() ?? null,
     rejectionReason: booking.rejectionReason,
     createdAt: booking.createdAt.toISOString(),

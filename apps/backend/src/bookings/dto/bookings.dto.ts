@@ -15,6 +15,8 @@ import {
   MinLength,
 } from 'class-validator';
 
+import { BOOKING_PIN_LENGTH } from '../booking-pin';
+
 /**
  * Nights arrive as `YYYY-MM-DD`, never as timestamps.
  *
@@ -269,4 +271,18 @@ export class SettlementListQueryDto {
   @IsOptional()
   @IsEnum(BookingSettlementStatus)
   public status?: BookingSettlementStatus;
+}
+
+/**
+ * The code a guest reads out at the desk.
+ *
+ * Validated for shape here as well as in the service — a request that cannot
+ * possibly match should not reach a database query, and the length bound is
+ * what stops an oversized body being used to probe the endpoint.
+ */
+export class CheckInByPinDto {
+  @IsString()
+  @MinLength(BOOKING_PIN_LENGTH)
+  @MaxLength(20)
+  public pin!: string;
 }
