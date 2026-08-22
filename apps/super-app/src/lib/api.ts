@@ -169,6 +169,22 @@ export interface PaginatedResult<T> {
   pageSize: number;
 }
 
+/**
+ * What the backend's paginated endpoints ACTUALLY return — `@dripplex/types`
+ * `PaginatedResult`, with the counts nested under `meta`.
+ *
+ * `PaginatedResult` above declares a flat `{ items, total, page, pageSize }`,
+ * which does not match the NestJS controllers. Declared separately rather than
+ * corrected in place: every screen already reading the flat type would start
+ * type-checking against a shape it does not use, and untangling that is its own
+ * change. New code should use this one. Recorded so the discrepancy is a known
+ * thing rather than a trap the next person rediscovers.
+ */
+export interface ApiPage<T> {
+  items: T[];
+  meta: { page: number; limit: number; total: number; totalPages: number };
+}
+
 export interface CursorPaginatedResult<T> {
   items: T[];
   nextCursor: string | null;
@@ -942,6 +958,65 @@ export interface MerchantSettlementDto {
   status: 'PENDING' | 'SETTLED';
   settledAt: string | null;
   createdAt: string;
+}
+
+// ── Hotel booking (DPX-HOTEL-001) ────────────────────────────────────────────
+// Mirrors apps/backend/src/bookings/booking.mapper.ts. Nights are 'YYYY-MM-DD',
+// never timestamps: a night is a calendar day, and an ISO timestamp would
+// render as the previous day for anyone west of UTC.
+
+export type BookingStatus =
+  'PENDING_HOTEL' | 'CONFIRMED' | 'REJECTED' | 'EXPIRED' | 'CHECKED_IN' | 'CHECKED_OUT' | 'NO_SHOW';
+
+export interface RoomTypeDto {
+  id: string;
+  businessId: string;
+  name: string;
+  description: string | null;
+  capacity: number;
+  basePrice: number;
+  totalRooms: number;
+  photoUrl: string | null;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface RoomAvailabilityDto {
+  night: string;
+  roomsOpen: number;
+  roomsBooked: number;
+  roomsLeft: number;
+  /** The override if the hotel set one for this night, else the base price. */
+  price: number;
+}
+
+export interface BookingDto {
+  id: string;
+  reference: string;
+  businessId: string;
+  roomTypeId: string;
+  status: BookingStatus;
+  checkIn: string;
+  checkOut: string;
+  nights: number;
+  rooms: number;
+  guests: number;
+  totalAmount: number;
+  guestName: string;
+  guestPhone: string;
+  guestNote: string | null;
+  /** When the hotel's thirty minutes run out. The UI counts down to this. */
+  acceptDeadline: string;
+  acceptedAt: string | null;
+  rejectedAt: string | null;
+  rejectionReason: string | null;
+  createdAt: string;
+}
+
+export interface MerchantBookingDto extends BookingDto {
+  /** Null while pending — no cut is owed on a booking nobody has agreed to. */
+  commissionAmount: number | null;
+  payoutAmount: number | null;
 }
 
 export interface MerchantBusinessDto {
@@ -2536,6 +2611,57 @@ export const api = {
 
   // ── MERCHANT ───────────────────────────────────────────────────────────────
   merchant: {
+    // ── Hotel rooms and bookings (DPX-HOTEL-001) ────────────────────────────
+    //
+    // No route takes a businessId. The backend resolves the hotel from the
+    // signed-in merchant, so there is nowhere in a request to name someone
+    // else's business — see MerchantBookingsController.
+    bookings: {
+      listRoomTypes: () => dx<RoomTypeDto[]>('GET', '/merchant/bookings/room-types'),
+      createRoomType: (body: {
+        name: string;
+        description?: string;
+        capacity?: number;
+        basePrice: number;
+        totalRooms: number;
+        photoUrl?: string;
+      }) => dx<RoomTypeDto>('POST', '/merchant/bookings/room-types', body),
+      updateRoomType: (
+        id: string,
+        body: {
+          name?: string;
+          description?: string;
+          capacity?: number;
+          basePrice?: number;
+          totalRooms?: number;
+          photoUrl?: string;
+          isActive?: boolean;
+        },
+      ) => dx<RoomTypeDto>('PATCH', `/merchant/bookings/room-types/${id}`, body),
+      /** `from`/`to` are YYYY-MM-DD, and `to` is exclusive like a check-out. */
+      getCalendar: (id: string, from: string, to: string) =>
+        dx<RoomAvailabilityDto[]>(
+          'GET',
+          `/merchant/bookings/room-types/${id}/calendar`,
+          undefined,
+          { from, to },
+        ),
+      openNights: (
+        id: string,
+        body: { from: string; to: string; roomsOpen: number; priceOverride?: number | null },
+      ) => dx<RoomAvailabilityDto[]>('POST', `/merchant/bookings/room-types/${id}/calendar`, body),
+      list: (params?: { page?: number; pageSize?: number; status?: BookingStatus }) =>
+        dx<ApiPage<MerchantBookingDto>>(
+          'GET',
+          '/merchant/bookings',
+          undefined,
+          params as Record<string, string | number> | undefined,
+        ),
+      accept: (id: string) => dx<MerchantBookingDto>('POST', `/merchant/bookings/${id}/accept`),
+      reject: (id: string, reason?: string) =>
+        dx<MerchantBookingDto>('POST', `/merchant/bookings/${id}/reject`, { reason }),
+    },
+
     // Business profile
     getBusiness: () => dx<MerchantBusinessDto>('GET', '/merchant/business'),
     // Registration: create the merchant's business record (minimal onboarding —
