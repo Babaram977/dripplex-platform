@@ -17,6 +17,7 @@ import {
   todayNight,
 } from '../lib/bookingDates';
 import type {
+  BookingSettlementDto,
   BookingStatus,
   MerchantBookingDto,
   RoomAvailabilityDto,
@@ -96,6 +97,7 @@ type MerchantPage =
   | 'orders'
   | 'rooms'
   | 'bookings'
+  | 'payouts'
   | 'products'
   | 'store'
   | 'earnings'
@@ -513,6 +515,7 @@ const NAV_PRIMARY: { page: MerchantPage; icon: string; label: string }[] = [
 const NAV_HOTEL: { page: MerchantPage; icon: string; label: string }[] = [
   { page: 'rooms', icon: '🛏️', label: 'Rooms' },
   { page: 'bookings', icon: '🗓️', label: 'Bookings' },
+  { page: 'payouts', icon: '💰', label: 'Payouts' },
 ];
 const NAV_SECONDARY: { page: MerchantPage; icon: string; label: string }[] = [
   { page: 'approval', icon: '✅', label: 'Approval Status' },
@@ -782,6 +785,7 @@ function MxHeader({
     orders: 'Orders',
     rooms: 'Rooms & Availability',
     bookings: 'Bookings',
+    payouts: 'Hotel Payouts',
     products: 'Products & Catalogue',
     store: 'Store Setup',
     earnings: 'Earnings & Settlements',
@@ -4835,6 +4839,8 @@ export function MerchantPortalScreen({
         return <RoomsPage />;
       case 'bookings':
         return <BookingsPage />;
+      case 'payouts':
+        return <HotelPayoutsPage />;
       case 'products':
         return <ProductsPage />;
       case 'store':
@@ -5399,15 +5405,215 @@ function RoomsPage() {
   );
 }
 
+// ─── Page: Hotel Payouts (DPX-HOTEL-003) ─────────────────────────────────────
+/**
+ * What DrippleX has paid this hotel, week by week.
+ *
+ * Founder decision 2026-08-22: a guest pays THROUGH DrippleX, so DrippleX holds
+ * the money and settles to the hotel weekly, every Monday. The consequence for
+ * this screen is the reason it exists — the hotel's wallet balance changes on a
+ * Monday morning with no explanation attached to it, and "what is this ₦54,000
+ * for?" is the first question anyone asks about a payout.
+ *
+ * Deliberately separate from Earnings & Settlements, which reads
+ * `/merchant/settlements` — that is the ORDER settlement table
+ * (DPX-MERCHANT-002). A hotel booking settles through a different table on a
+ * different schedule, and merging the two lists would put two unrelated
+ * payment rails under one total.
+ *
+ * There is no "settle now" button, here or in Ops. Re-running a payout by hand
+ * is how a hotel gets paid twice.
+ */
+function HotelPayoutsPage() {
+  const [rows, setRows] = useState<BookingSettlementDto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    api.merchant.bookings
+      .settlements({ page: 1, pageSize: 50 })
+      .then((page) => {
+        if (!cancelled) setRows(page.items);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setErr(e instanceof Error ? e.message : 'Could not load payouts');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const paid = rows.filter((r) => r.status === 'COMPLETED');
+  const totalNet = paid.reduce((sum, r) => sum + r.netAmount, 0);
+  const totalGross = paid.reduce((sum, r) => sum + r.grossAmount, 0);
+  const totalCommission = paid.reduce((sum, r) => sum + r.commissionAmount, 0);
+  // Surfaced rather than hidden: a FAILED payout is left alone on purpose and
+  // waits for a person, so the hotel should be able to see one and ask.
+  const failed = rows.filter((r) => r.status === 'FAILED');
+
+  return (
+    <div className="mx-scroll" style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+      <SectionHead title="Hotel Payouts" sub="Your booking earnings, settled weekly every Monday" />
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr 1fr',
+          gap: 12,
+          marginBottom: 20,
+        }}
+      >
+        {[
+          {
+            label: 'Paid to you',
+            value: loading ? '…' : `₦${totalNet.toLocaleString()}`,
+            color: G2,
+            sub: 'all settled weeks',
+          },
+          {
+            label: 'Guests paid',
+            value: loading ? '…' : `₦${totalGross.toLocaleString()}`,
+            color: WHITE,
+            sub: 'before commission',
+          },
+          {
+            label: 'Commission',
+            value: loading ? '…' : `₦${totalCommission.toLocaleString()}`,
+            color: MUTED,
+            sub: "DrippleX's share",
+          },
+        ].map((k) => (
+          <MxCard key={k.label} style={{ textAlign: 'center', padding: '20px 16px' }}>
+            <div style={{ fontFamily: IT, fontSize: 11, color: MUTED, marginBottom: 8 }}>
+              {k.label}
+            </div>
+            <div style={{ fontFamily: PP, fontWeight: 800, fontSize: 22, color: k.color }}>
+              {k.value}
+            </div>
+            <div style={{ fontFamily: IT, fontSize: 11, color: MUTED, marginTop: 4 }}>{k.sub}</div>
+          </MxCard>
+        ))}
+      </div>
+
+      <InfoBanner
+        icon="🗓️"
+        text="Bookings paid for between Monday and Sunday are settled into your DrippleX wallet the following Monday. Withdraw from your wallet as usual."
+        color={'#3B82F6'}
+      />
+
+      {failed.length > 0 && (
+        <InfoBanner
+          icon="⚠️"
+          text={`${String(failed.length)} payout${failed.length === 1 ? '' : 's'} could not be completed and ${failed.length === 1 ? 'is' : 'are'} being looked at by DrippleX Operations. Your bookings are not lost — they stay on the payout until it succeeds.`}
+          color={C_WARN}
+        />
+      )}
+
+      {err !== '' && <InfoBanner icon="⚠️" text={err} color={'#EF4444'} />}
+
+      {loading && (
+        <div style={{ fontFamily: IT, fontSize: 13, color: MUTED, marginTop: 16 }}>Loading…</div>
+      )}
+
+      {!loading && rows.length === 0 && err === '' && (
+        <MxCard style={{ marginTop: 16, padding: 20 }}>
+          <div style={{ fontFamily: IT, fontSize: 13, color: MUTED }}>
+            No payouts yet. Your first settlement runs on the Monday after your first paid booking.
+          </div>
+        </MxCard>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 16 }}>
+        {rows.map((row) => (
+          <MxCard key={row.id} style={{ padding: 16 }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'baseline',
+                gap: 12,
+              }}
+            >
+              <div>
+                {/* The week the money is FOR, not the Monday it ran on — that
+                    is what a hotel reconciles against its own book. */}
+                <div style={{ fontFamily: PP, fontWeight: 700, fontSize: 15, color: WHITE }}>
+                  {formatNight(row.weekFrom)} – {formatNight(row.weekTo)}
+                </div>
+                <div style={{ fontFamily: IT, fontSize: 11, color: MUTED, marginTop: 2 }}>
+                  {row.bookingCount} {row.bookingCount === 1 ? 'booking' : 'bookings'}
+                  {row.settledAt !== null && ` · paid ${formatNight(row.settledAt.slice(0, 10))}`}
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div
+                  style={{
+                    fontFamily: PP,
+                    fontWeight: 800,
+                    fontSize: 18,
+                    color: row.status === 'COMPLETED' ? G2 : C_WARN,
+                  }}
+                >
+                  {naira(row.netAmount)}
+                </div>
+                <div style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>
+                  {row.status === 'COMPLETED'
+                    ? 'in your wallet'
+                    : row.status === 'FAILED'
+                      ? 'being looked at'
+                      : 'in progress'}
+                </div>
+              </div>
+            </div>
+
+            {/* The arithmetic, shown rather than left to be trusted. */}
+            <div
+              style={{
+                display: 'flex',
+                gap: 16,
+                marginTop: 10,
+                paddingTop: 10,
+                borderTop: `1px solid ${BORDER}`,
+                fontFamily: IT,
+                fontSize: 11,
+                color: MUTED,
+              }}
+            >
+              <span>Guests paid {naira(row.grossAmount)}</span>
+              <span>− commission {naira(row.commissionAmount)}</span>
+              <span style={{ color: WHITE }}>= {naira(row.netAmount)}</span>
+            </div>
+
+            {row.failureReason !== null && row.failureReason !== '' && (
+              <div style={{ fontFamily: IT, fontSize: 11, color: C_WARN, marginTop: 8 }}>
+                {row.failureReason}
+              </div>
+            )}
+          </MxCard>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Page: Bookings (DPX-HOTEL-001) ──────────────────────────────────────────
 /**
  * The hotel's book, and the thirty minutes.
  *
- * Founder decision 9: a guest's money is HELD, not taken, and the hotel has
- * thirty minutes to accept before the booking expires and the hold is released
- * automatically. So the countdown is not decoration — it is the whole
- * interaction, and a booking whose timer has run out is shown as gone rather
- * than as something still answerable.
+ * Founder decision 9: the hotel has thirty minutes to accept before the
+ * booking expires and the rooms go back on sale. So the countdown is not
+ * decoration — it is the whole interaction, and a booking whose timer has run
+ * out is shown as gone rather than as something still answerable.
+ *
+ * This comment used to say a guest's money was HELD while the hotel decided.
+ * That was true under the original model and was superseded on 2026-08-22: a
+ * guest now applies with nothing at stake and pays through DrippleX only after
+ * the hotel accepts. Nothing is held at any point, and the rooms are protected
+ * by the two deadlines alone.
  *
  * Polled rather than pushed, and the countdown ticks locally each second, so a
  * hotel watching this screen sees the time it actually has left.

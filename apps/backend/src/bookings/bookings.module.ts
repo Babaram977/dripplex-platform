@@ -11,6 +11,7 @@ import { WalletModule } from '../wallet/wallet.module';
 import { AdminBookingsController } from './admin-bookings.controller';
 import { BookingCustomerNotifier } from './booking-customer-notifier.service';
 import { BookingExpirySweepService } from './booking-expiry-sweep.service';
+import { BookingHotelNotifier } from './booking-hotel-notifier.service';
 import { BookingSettlementSweepService } from './booking-settlement-sweep.service';
 import { BookingSettlementService } from './booking-settlement.service';
 import { BookingsService } from './bookings.service';
@@ -45,6 +46,7 @@ import { RoomInventoryService } from './room-inventory.service';
     RoomInventoryService,
     BookingsService,
     BookingCustomerNotifier,
+    BookingHotelNotifier,
     BookingExpirySweepService,
     BookingSettlementService,
     BookingSettlementSweepService,

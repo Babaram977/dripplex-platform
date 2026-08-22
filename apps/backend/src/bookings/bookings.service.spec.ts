@@ -21,6 +21,7 @@ import { MERCHANT_COMMISSION_SETTING_ID } from '../orders/order.constants';
 import { WalletService } from '../wallet/wallet.service';
 
 import { type BookingCustomerNotifier } from './booking-customer-notifier.service';
+import { type BookingHotelNotifier } from './booking-hotel-notifier.service';
 import { BOOKING_PAYMENT_WINDOW_MS } from './bookings.constants';
 import { BookingsService } from './bookings.service';
 import { RoomInventoryService } from './room-inventory.service';
@@ -239,6 +240,12 @@ describe('BookingsService', () => {
       config,
       [gateway],
       customerNotifier,
+      {
+        bookingRequested: jest.fn().mockResolvedValue(undefined),
+        bookingPaid: jest.fn().mockResolvedValue(undefined),
+        bookingLapsed: jest.fn().mockResolvedValue(undefined),
+        settlementPaid: jest.fn().mockResolvedValue(undefined),
+      } as unknown as BookingHotelNotifier,
     );
 
     // The rate is a singleton row an operator can change; pin it at the
