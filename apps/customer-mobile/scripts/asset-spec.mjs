@@ -8,6 +8,12 @@ import { fileURLToPath } from 'node:url';
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const MASTER = resolve(ROOT, 'resources/dripplex-mark.svg');
 
+/**
+ * Brand faces, vendored so a render does not depend on what the machine has
+ * installed. See resources/fonts/NOTICE.md for provenance and licence.
+ */
+export const FONT_DIR = resolve(ROOT, 'resources/fonts');
+
 export const BLACK = '#000000';
 
 /**
@@ -127,6 +133,32 @@ export const STORE_ICONS = [
     note: 'Google Play 512x512 listing icon',
   },
 ];
+
+/**
+ * Google Play feature graphic — 1024x500, no alpha, shown at the top of the
+ * listing and in promotional placements.
+ *
+ * Composition is a left lockup, not a centred one, for two reasons Play
+ * imposes: some placements overlay a play button over the middle, and some
+ * crop the outer edges. Everything that carries meaning sits inside
+ * FEATURE_SAFE_INSET of the frame.
+ *
+ * Copy is taken from docs/store/GOOGLE-PLAY.md verbatim — the title as Play
+ * will show it and the approved tagline. Nothing here is invented ad copy.
+ */
+export const FEATURE_GRAPHIC = {
+  file: 'resources/play-feature-graphic-1024x500.png',
+  width: 1024,
+  height: 500,
+  alpha: false,
+  /** Mark height as a fraction of the canvas height. */
+  markCover: 0.46,
+  /** Keep-clear border, as a fraction of the shorter edge. */
+  safeInset: 0.11,
+  title: 'Dripplex',
+  tagline: 'life, Simplified.',
+  note: 'Google Play 1024x500 feature graphic',
+};
 
 /** Splash screens. Sizes match what the native projects already reference. */
 export const SPLASHES = [
