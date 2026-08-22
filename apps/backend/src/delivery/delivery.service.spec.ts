@@ -87,8 +87,8 @@ function makeAddress(overrides: Partial<CustomerAddress> = {}): CustomerAddress 
     state: 'Lagos',
     country: 'NG',
     postalCode: null,
-    latitude: 6.6018,
-    longitude: 3.3515,
+    latitude: 12.01,
+    longitude: 8.54,
     isDefault: true,
     isActive: true,
     verifiedAt: null,
@@ -108,10 +108,10 @@ function makeJob(overrides: Record<string, unknown> = {}): DeliveryJob {
     customerId,
     assignmentMethod: AssignmentMethod.AUTO,
     status: DeliveryStatus.PENDING,
-    pickupLatitude: 6.5244,
-    pickupLongitude: 3.3792,
-    dropoffLatitude: 6.6018,
-    dropoffLongitude: 3.3515,
+    pickupLatitude: 11.99,
+    pickupLongitude: 8.56,
+    dropoffLatitude: 12.01,
+    dropoffLongitude: 8.54,
     estimatedDistanceMeters: 9200,
     estimatedDurationSeconds: 1105,
     deliveryFee: 1400,
@@ -366,8 +366,8 @@ describe('DeliveryService', () => {
     });
     businessFindUnique.mockResolvedValue({
       merchantId,
-      latitude: 6.5244,
-      longitude: 3.3792,
+      latitude: 11.99,
+      longitude: 8.56,
     });
     userFindMany.mockImplementation(({ where }: { where: { id: { in: string[] } } }) =>
       Promise.resolve(where.id.in.map((id) => ({ id, firstName: 'Mamman', lastName: 'Isa' }))),
@@ -401,17 +401,17 @@ describe('DeliveryService', () => {
         orderId,
         merchantId,
         customerId,
-        pickupLatitude: 6.5244,
-        pickupLongitude: 3.3792,
-        dropoffLatitude: 6.6018,
-        dropoffLongitude: 3.3515,
+        pickupLatitude: 11.99,
+        pickupLongitude: 8.56,
+        dropoffLatitude: 12.01,
+        dropoffLongitude: 8.54,
         deliveryFee: 900,
         estimatedDistanceMeters: 1000,
         estimatedDurationSeconds: 120,
         assignmentMethod: AssignmentMethod.AUTO,
       }),
     );
-    expect(assignmentService.findNearestRider).toHaveBeenCalledWith(6.5244, 3.3792, []);
+    expect(assignmentService.findNearestRider).toHaveBeenCalledWith(11.99, 8.56, []);
     expect(deliveryRepository.assignRider).toHaveBeenCalledWith(
       jobId,
       riderId,
@@ -630,7 +630,7 @@ describe('DeliveryService', () => {
     const result = await service.rejectJob(riderId, jobId, {});
 
     expect(result.riderId).toBe(nextRiderId);
-    expect(assignmentService.findNearestRider).toHaveBeenCalledWith(6.5244, 3.3792, [riderId]);
+    expect(assignmentService.findNearestRider).toHaveBeenCalledWith(11.99, 8.56, [riderId]);
     expect(deliveryRepository.assignRider).toHaveBeenCalledWith(
       jobId,
       nextRiderId,

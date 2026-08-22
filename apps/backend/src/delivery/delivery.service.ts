@@ -173,8 +173,12 @@ export class DeliveryService {
     // a location yet (createBusiness defaults latitude/longitude to 0), and a
     // record that exists with 0/0 is NOT a pickup point — it is the Gulf of
     // Guinea. Treating it as real produced a 1,634 km / 3,271 min estimate on a
-    // local delivery. Fall back to the city default until the merchant sets a
+    // local delivery. Fall back to the platform base until the merchant sets a
     // real address.
+    //
+    // That fallback was Lagos (6.5244, 3.3792) while the base is Kano, which
+    // reintroduced the same failure it was written to prevent: a Kano merchant
+    // with no location on file priced every local delivery off an ~830 km leg.
     const hasBusinessLocation =
       business !== null && Number(business.latitude) !== 0 && Number(business.longitude) !== 0;
 

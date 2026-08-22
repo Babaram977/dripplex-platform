@@ -46,6 +46,11 @@ export function Footer(): React.JSX.Element {
                   Terms
                 </Link>
               </li>
+              <li>
+                <Link href="/account-deletion" className="hover:text-foreground">
+                  Delete account
+                </Link>
+              </li>
             </ul>
           </div>
           <div className="space-y-3">

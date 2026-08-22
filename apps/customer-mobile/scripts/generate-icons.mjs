@@ -1,0 +1,133 @@
+#!/usr/bin/env node
+/**
+ * Regenerate every native launcher icon, store icon and splash image from
+ * resources/dripplex-mark.svg.
+ *
+ * Run after any change to the master. Output is deterministic: the same master
+ * always produces the same bytes, so a dirty git tree after running this means
+ * someone hand-edited a PNG.
+ *
+ *   node scripts/generate-icons.mjs
+ */
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { createRequire } from 'node:module';
+
+import {
+  ROOT,
+  BLACK,
+  markGeometry,
+  ADAPTIVE_COVER,
+  ROUND_COVER,
+  SPLASH_COVER,
+  ICONS,
+  ROUND_ICONS,
+  ADAPTIVE_FOREGROUNDS,
+  STORE_ICONS,
+  SPLASHES,
+} from './asset-spec.mjs';
+
+const require = createRequire(import.meta.url);
+const sharp = require('sharp');
+
+const g = markGeometry();
+
+/** The master's <defs> and drawing group, without its own black backdrop. */
+const ART = (() => {
+  const defs = g.svg.match(/<defs>[\s\S]*?<\/defs>/)?.[0] ?? '';
+  const body = g.svg.match(/<g\b[\s\S]*<\/g>/)?.[0];
+  if (!body) throw new Error('master SVG has no drawing group');
+  return { defs, body };
+})();
+
+/**
+ * Compose the mark onto a canvas.
+ *
+ * `cover` is the mark's width as a fraction of `fit` (the shorter edge for
+ * non-square canvases). The gradient is left exactly as authored — it uses
+ * default objectBoundingBox units so it resolves per path, which survives any
+ * transform unchanged. That per-path look is the approved artwork.
+ */
+function compose({ width, height, cover, background, circle = false }) {
+  const fit = Math.min(width, height);
+  const w = fit * cover,
+    s = w / g.w;
+  const tx = (width - w) / 2 - g.x * s;
+  const ty = (height - g.h * s) / 2 - g.y * s;
+  const bg = !background
+    ? ''
+    : circle
+      ? `<circle cx="${width / 2}" cy="${height / 2}" r="${fit / 2}" fill="${background}"/>`
+      : `<rect width="${width}" height="${height}" fill="${background}"/>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+${bg}${ART.defs}
+<g transform="translate(${tx.toFixed(4)} ${ty.toFixed(4)}) scale(${s.toFixed(6)})">${ART.body}</g>
+</svg>`;
+}
+
+/**
+ * Supersample factor. Rasterising a 48px icon at 48px leaves visibly ragged
+ * diagonals, so small targets are rendered large and scaled down with a proper
+ * filter. Capped so the biggest canvas (2732px splash) stays inside sharp's
+ * pixel limit rather than blowing up mid-run.
+ */
+function supersample(width, height) {
+  return Math.max(1, Math.min(4, Math.floor(4096 / Math.max(width, height))));
+}
+
+async function emit(file, svg, { width, height, alpha = true } = {}) {
+  const out = resolve(ROOT, file);
+  mkdirSync(dirname(out), { recursive: true });
+  const ss = supersample(width, height);
+  let img = sharp(Buffer.from(svg), { density: 72 * ss });
+  if (ss > 1) img = img.resize(width, height, { kernel: 'lanczos3' });
+  if (!alpha) img = img.flatten({ background: BLACK });
+  writeFileSync(out, await img.png({ compressionLevel: 9 }).toBuffer());
+  return file;
+}
+
+const jobs = [];
+
+for (const { file, size, cover, alpha } of [...ICONS, ...STORE_ICONS]) {
+  jobs.push(
+    emit(file, compose({ width: size, height: size, cover, background: BLACK }), {
+      width: size,
+      height: size,
+      alpha,
+    }),
+  );
+}
+
+for (const { file, size } of ROUND_ICONS) {
+  // Transparent outside the circle so launchers that expect a round icon get one.
+  jobs.push(
+    emit(
+      file,
+      compose({ width: size, height: size, cover: ROUND_COVER, background: BLACK, circle: true }),
+      { width: size, height: size },
+    ),
+  );
+}
+
+for (const { file, size } of ADAPTIVE_FOREGROUNDS) {
+  // No background: the adaptive <background> layer supplies it (@color/ic_launcher_background).
+  jobs.push(
+    emit(file, compose({ width: size, height: size, cover: ADAPTIVE_COVER }), {
+      width: size,
+      height: size,
+    }),
+  );
+}
+
+for (const { file, width, height } of SPLASHES) {
+  jobs.push(
+    emit(file, compose({ width, height, cover: SPLASH_COVER, background: BLACK }), {
+      width,
+      height,
+      alpha: false,
+    }),
+  );
+}
+
+const written = await Promise.all(jobs);
+console.log(`generated ${written.length} assets from resources/dripplex-mark.svg`);

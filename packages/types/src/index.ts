@@ -570,6 +570,12 @@ export type {
   WishlistItemType,
 } from './platform/index.js';
 export { getNotificationSoundEvent, NOTIFICATION_SOUND_EVENTS } from './platform/index.js';
+export {
+  PLATFORM_BASE_CENTRE,
+  PLATFORM_BASE_CITY,
+  PLATFORM_BASE_COUNTRY,
+  PLATFORM_BASE_STATE,
+} from './platform/index.js';
 
 export type {
   CommercialAuditAction,

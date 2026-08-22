@@ -67,6 +67,16 @@ import { ReservationCleanupService } from './reservation-cleanup.service';
       useClass: CatalogCheckoutInventoryValidator,
     },
   ],
-  exports: [CheckoutService, InventoryReservationService, ORDERS_REPOSITORY],
+  exports: [
+    CheckoutService,
+    InventoryReservationService,
+    ORDERS_REPOSITORY,
+    // Hotel bookings take the same Ops-adjustable merchant commission rate
+    // (DPX-HOTEL-001 founder decision 4: "the existing commission config, no
+    // new mechanism"). Exported rather than re-provided in BookingsModule, so
+    // there is one singleton reading one settings row and the two rates cannot
+    // drift apart.
+    MerchantCommissionSettingsService,
+  ],
 })
 export class OrdersModule {}

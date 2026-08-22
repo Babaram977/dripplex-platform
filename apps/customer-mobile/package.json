@@ -2,7 +2,7 @@
   "name": "@dripplex/customer-mobile",
   "version": "1.0.0",
   "private": true,
-  "description": "Dripplex Customer — Capacitor shell for Android/iOS store distribution",
+  "description": "Dripplex Customer \u2014 Capacitor shell for Android/iOS store distribution",
   "type": "module",
   "scripts": {
     "cap:sync": "cap sync",
@@ -11,7 +11,9 @@
     "android:debug": "cd android && ./gradlew assembleDebug",
     "android:release": "cd android && ./gradlew bundleRelease assembleRelease",
     "android:apk": "cd android && ./gradlew assembleRelease",
-    "verify": "node scripts/verify-config.mjs"
+    "verify": "node scripts/verify-config.mjs",
+    "icons:generate": "node scripts/generate-icons.mjs",
+    "icons:verify": "node scripts/verify-icons.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^7.2.0",
@@ -24,6 +26,7 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^7.2.0",
+    "sharp": ">=0.35.0",
     "typescript": "^5.7.2"
   }
 }

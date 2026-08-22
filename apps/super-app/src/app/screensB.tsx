@@ -24,6 +24,7 @@ import {
 import { api, uploadFile } from '../lib/api';
 import type { CustomerKycStatusDto, SessionDto } from '../lib/api';
 import { auth, endSession } from '../lib/auth';
+import { splitFullName } from '../lib/fullName';
 
 // AUTH-010  TWO-FACTOR AUTHENTICATION
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1989,15 +1990,55 @@ export function AccountManagementScreen({
 }) {
   const dxUser = auth.getUser();
   const [name, setName] = useState(auth.displayName(dxUser));
-  const [email, setEmail] = useState(dxUser?.email ?? '');
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [deleteSheet, setDeleteSheet] = useState(false);
   const [deleteStep, setDeleteStep] = useState<'confirm' | 'type' | 'done'>('confirm');
   const [deleteInput, setDeleteInput] = useState('');
 
+  /**
+   * Save the name. For real, this time.
+   *
+   * This used to be `setSaved(true)` and a timer — no request, nothing
+   * persisted. It showed "Account Updated · Your changes have been saved
+   * successfully" over an edit that was discarded the moment the screen
+   * re-rendered. A customer correcting a misspelt name was told it worked and
+   * it never did.
+   *
+   * `PATCH /auth/me` takes firstName and lastName separately, so the single
+   * Full Name box is split on the first space: everything before it is the
+   * first name, the remainder is the surname. A one-word name saves as a
+   * first name with no surname, which is what the backend's optional
+   * lastName is for.
+   *
+   * Email is deliberately not here — see the field itself. The success screen
+   * now appears only after the server has confirmed the change.
+   */
   const saveChanges = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2600);
+    const split = splitFullName(name);
+    if (split === null) {
+      setSaveError('Enter your name.');
+      return;
+    }
+
+    setSaving(true);
+    setSaveError(null);
+    void api.auth
+      .updateMe(split)
+      .then((updated) => {
+        // Keep the device's copy in step, or every other screen greets them by
+        // the old name until they next sign in.
+        auth.setUser(updated);
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2600);
+      })
+      .catch((cause: unknown) => {
+        setSaveError(
+          cause instanceof Error ? cause.message : 'Could not save that. Please try again.',
+        );
+      })
+      .finally(() => setSaving(false));
   };
 
   if (saved)
@@ -2115,44 +2156,65 @@ export function AccountManagementScreen({
         className="mx-6 mb-4 rounded-2xl p-4"
         style={{ background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
       >
-        {[
-          {
-            label: 'Full Name',
-            value: name,
-            onChange: setName,
-            placeholder: 'Your full name',
-            type: 'text',
-          },
-          {
-            label: 'Email Address',
-            value: email,
-            onChange: setEmail,
-            placeholder: 'you@email.com',
-            type: 'email',
-          },
-        ].map((f, i) => (
-          <div key={f.label} className={i < 1 ? 'mb-3' : ''}>
-            <p
-              className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest"
-              style={{ color: MUTED }}
+        <div className="mb-3">
+          <p
+            className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest"
+            style={{ color: MUTED }}
+          >
+            Full Name
+          </p>
+          <input
+            value={name}
+            onChange={(e) => {
+              setName(e.target.value);
+              setSaveError(null);
+            }}
+            placeholder="Your full name"
+            type="text"
+            className="h-[46px] w-full rounded-xl px-4 text-[14px] outline-none"
+            style={{
+              fontFamily: "'Inter',sans-serif",
+              color: '#FFF',
+              background: 'rgba(255,255,255,.04)',
+              border: `1.5px solid ${BORDER}`,
+            }}
+          />
+        </div>
+
+        {/* Email is NOT a free-text box that Save writes.
+            Changing an email on this backend is a two-step flow — request a
+            code at POST /auth/me/email/change, confirm it at .../confirm —
+            because an unverified address silently replacing a verified one is
+            an account-takeover route. This field used to accept typing and
+            then throw it away on Save, which read as "email changed" and was
+            not. It shows the real address and sends them to the flow that can
+            actually change it. */}
+        <div>
+          <p
+            className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest"
+            style={{ color: MUTED }}
+          >
+            Email Address
+          </p>
+          <button
+            onClick={onEmailVerify}
+            disabled={onEmailVerify === undefined}
+            className="flex h-[46px] w-full items-center justify-between rounded-xl px-4 text-left"
+            style={{ background: 'rgba(255,255,255,.03)', border: `1.5px solid ${BORDER}` }}
+          >
+            <span
+              className="text-[14px]"
+              style={{ color: 'rgba(255,255,255,.55)', fontFamily: "'Inter',sans-serif" }}
             >
-              {f.label}
-            </p>
-            <input
-              value={f.value}
-              onChange={(e) => f.onChange(e.target.value)}
-              placeholder={f.placeholder}
-              type={f.type}
-              className="h-[46px] w-full rounded-xl px-4 text-[14px] outline-none"
-              style={{
-                fontFamily: "'Inter',sans-serif",
-                color: '#FFF',
-                background: 'rgba(255,255,255,.04)',
-                border: `1.5px solid ${BORDER}`,
-              }}
-            />
-          </div>
-        ))}
+              {dxUser?.email ?? 'Not set'}
+            </span>
+            {onEmailVerify !== undefined && (
+              <span className="text-[12px] font-semibold" style={{ color: G3 }}>
+                {dxUser?.email ? 'Change' : 'Add'}
+              </span>
+            )}
+          </button>
+        </div>
         <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${BORDER}` }}>
           <p
             className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest"
@@ -2389,7 +2451,15 @@ export function AccountManagementScreen({
 
       {/* Save button */}
       <div className="mt-1 px-6 pb-4">
-        <GreenBtn label="Save Changes" onClick={saveChanges} />
+        {saveError !== null && (
+          <p className="mb-2 text-center text-[12px]" style={{ color: '#F87171' }}>
+            {saveError}
+          </p>
+        )}
+        <GreenBtn
+          label={saving ? 'Saving…' : 'Save Changes'}
+          onClick={saving ? () => undefined : saveChanges}
+        />
       </div>
 
       {/* Footer */}

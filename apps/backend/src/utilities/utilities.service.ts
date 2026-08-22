@@ -51,6 +51,7 @@ import {
   UTILITY_WALLET_REFERENCE_TYPE,
   UTILITY_WALLET_REVERSAL_REFERENCE_TYPE,
 } from './utilities.constants';
+import { UtilityCustomerNotifier } from './utility-customer-notifier.service';
 
 import type { CreateUtilityPurchaseDto, ResolveUtilityPurchaseDto } from './dto/utilities.dto';
 import type { PaginatedResult } from '@dripplex/types';
@@ -161,6 +162,7 @@ export class UtilitiesService {
     private readonly provider: UtilityProviderPort,
     @Inject(PAYMENT_PROVIDER_ADAPTERS)
     private readonly paymentProviders: PaymentProviderAdapter[],
+    private readonly customerNotifier: UtilityCustomerNotifier,
   ) {}
 
   // ── Catalogues ────────────────────────────────────────────────────────────
@@ -473,6 +475,12 @@ export class UtilitiesService {
           providerReference: result.providerReference ?? null,
         },
       });
+      // Sent on every success, not only a late one, because this method cannot
+      // tell the two apart: the sweep's recovery of a paid-but-undelivered
+      // purchase arrives here by exactly the same path as a customer watching
+      // the receipt render. The customer who is watching gets a message they
+      // did not need; the customer who walked away gets the one they did.
+      await this.customerNotifier.purchaseDelivered(updated, context);
       return updated;
     }
 
@@ -571,6 +579,8 @@ export class UtilitiesService {
         floatExhausted: result?.floatExhausted ?? false,
       },
     });
+
+    await this.customerNotifier.purchaseReversed(purchase, customerMessage, context);
   }
 
   // ── History ───────────────────────────────────────────────────────────────
@@ -777,6 +787,15 @@ export class UtilitiesService {
     const refreshed = await this.prisma.utilityPurchase.findUniqueOrThrow({
       where: { id: purchase.id },
     });
+
+    // The reversal path already told the customer from inside `reverse()`.
+    // This is the other half: the operator found the purchase on the provider
+    // dashboard and pasted the token, and the customer — who last saw "Still
+    // confirming" and closed the app — has no other way to learn it arrived.
+    if (dto.outcome === 'SUCCESSFUL') {
+      await this.customerNotifier.purchaseDelivered(refreshed, context);
+    }
+
     return toAdminPurchaseDto(refreshed);
   }
 

@@ -1,5 +1,6 @@
 'use client';
 
+import { PLATFORM_BASE_CENTRE } from '@dripplex/types';
 import { SuperAppRideMapCanvas } from '@dripplex/ui';
 import { Map, Marker, Polyline, useMap, useMapsLibrary } from '@vis.gl/react-google-maps';
 import * as React from 'react';
@@ -245,9 +246,7 @@ export function LiveMap({
         styles={DARK_MAP_STYLES}
         disableDefaultUI
         gestureHandling="greedy"
-        defaultCenter={toLatLng(
-          cameraPoints[0] ?? center ?? { latitude: 6.455, longitude: 3.3841 },
-        )}
+        defaultCenter={toLatLng(cameraPoints[0] ?? center ?? PLATFORM_BASE_CENTRE)}
         defaultZoom={zoom ?? 14}
       >
         <CameraController points={cameraPoints} fallbackCenter={center} zoom={zoom} />

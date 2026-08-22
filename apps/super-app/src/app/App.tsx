@@ -197,6 +197,7 @@ import {
   gatewayReturnKindFromUrl,
   takeGatewayReturn,
 } from '../lib/gatewayReturn';
+import { clearHistory, popPrevious, recordNavigation } from '../lib/screenHistory';
 import { installUnlockListener } from '../lib/sound';
 
 // DESKTOP FRAME — for admin operations console
@@ -645,12 +646,13 @@ function AppShell() {
     }, 220);
   };
 
+  /**
+   * Navigate, remembering where we were. The stack logic lives in
+   * `lib/screenHistory` so it can be tested — see `screenHistory.test.ts`,
+   * which pins the exact path a customer got trapped on.
+   */
   const go = (to: Screen) => {
-    if (screen !== to) {
-      historyRef.current.push(screen);
-      // A wandering session should not grow without bound.
-      if (historyRef.current.length > 50) historyRef.current.shift();
-    }
+    recordNavigation(historyRef.current, screen, to);
     navigate(to);
   };
 
@@ -659,8 +661,7 @@ function AppShell() {
    * home for this persona when there is no history (a deep link, or a reload).
    */
   const goBack = (fallback: Screen) => {
-    const previous = historyRef.current.pop();
-    navigate(previous ?? fallback);
+    navigate(popPrevious(historyRef.current, fallback));
   };
 
   /**
@@ -670,7 +671,7 @@ function AppShell() {
    * would walk into the signed-in app.
    */
   const goAfterAuthChange = (to: Screen) => {
-    historyRef.current = [];
+    clearHistory(historyRef.current);
     navigate(to);
   };
 

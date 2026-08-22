@@ -5,9 +5,41 @@ platform as a system, with real accounts and real data — no mock data, no fake
 simulator. Nothing here is asserted from reading code; every line is a real request and its real
 response.
 
-**Gate 1 (database backup):** founder confirmed backups switched on. Note for the record: "switched
-on" schedules future snapshots — it is not the same as a snapshot existing now, nor as a restore
-having been proven. Confirm the first snapshot has completed before any destructive change.
+**Gate 1 (database backup): CLOSED 2026-08-21.** The original caveat was right, and worse than it
+read. "Backups switched on" was not true: the Backups tab showed **no schedule at all**, and the
+only backup in existence was a manual one from **2026-08-09, eleven days old**. A host failure the
+same night took Postgres down for 3h18m (22:13Z–01:31Z). The volume survived, so nothing was lost
+— but had it not, the loss would have been eleven days of orders, wallet ledger entries,
+settlements, KYC submissions and registrations. Roughly 59 MB of data, measured as the difference
+between that 173 MB snapshot and a fresh one.
+
+Now in place, each verified in the live service rather than assumed:
+
+|                        | State                         | Evidence                 |
+| ---------------------- | ----------------------------- | ------------------------ |
+| Volume backup          | 232 MB taken 2026-08-21 03:33 | Backups tab              |
+| Backup schedule        | running, 3-hourly             | "Next backup in 3 hours" |
+| Point-in-time recovery | **enabled and archiving**     | see below                |
+
+PITR was verified three independent ways, because the first attempt to enable it reported success
+and had not in fact applied (the Railway MCP returned `"status": "applied"` for a change that was
+only staged; the subsequent deploy ran on the previous configuration):
+
+1. `WAL_ARCHIVE_BUCKET / ENDPOINT / KEY / PATH / REGION / SECRET` present in the **live rendered
+   variables**, not merely staged.
+2. The restore window's upper edge advancing in real time — `04:02:00` then `04:03:05` across two
+   observations 65 seconds apart.
+3. Postgres network egress non-zero for the first time (peak 6.9 MB/hour) and memory up from
+   0.05 GB to 0.23 GB, consistent with the pgBackRest worker shipping WAL.
+
+Restore window floor is **2026-08-21 03:54:59** — the first base backup. PITR cannot reach behind
+it; anything earlier is covered only by the two volume snapshots.
+
+**Still not proven: an actual restore.** The second half of the original caveat stands. Backups
+existing is not the same as a restore having been performed and its data verified. Railway's PITR
+restores into a _new sibling service_ and leaves the source running, so a rehearsal is
+non-destructive and safe to do — but it has not been done, and until it is, we know we are taking
+backups, not that we can recover from them. Worth rehearsing once before launch.
 
 ---
 
