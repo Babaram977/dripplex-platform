@@ -2,6 +2,8 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -9,6 +11,7 @@ import {
   Query,
   Req,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
@@ -24,6 +27,7 @@ import { BOOKING_PERMISSIONS } from './bookings.constants';
 import { BookingsService } from './bookings.service';
 import {
   BookingListQueryDto,
+  CheckInByPinDto,
   CalendarQueryDto,
   CreateRoomTypeDto,
   OpenNightsDto,
@@ -197,6 +201,72 @@ export class MerchantBookingsController {
       user.id,
       id,
       dto.reason,
+      auditContext(request, user.id),
+    );
+    return { success: true, data: toMerchantBookingDto(booking) };
+  }
+
+  // ── The desk (DPX-HOTEL-001 slice 4) ──────────────────────────────────────
+
+  /**
+   * Look up a booking by the code the guest reads out.
+   *
+   * A POST rather than a GET with the code in the path: a check-in code is a
+   * credential, and a URL is the one part of a request that reliably ends up in
+   * access logs, browser history and proxy caches.
+   *
+   * Throttled harder than the default. Five characters is guessable, and while
+   * the search is already scoped to the caller's own hotel, a bounded rate is
+   * what makes a scripted sweep pointless rather than merely slow.
+   */
+  @Post('check-in/lookup')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @RequirePermissions(BOOKING_PERMISSIONS.MERCHANT_MANAGE)
+  public async lookupByPin(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CheckInByPinDto,
+  ): Promise<ApiSuccessResponse<MerchantBookingDto>> {
+    const booking = await this.bookings.findBookingByPin(user.id, dto.pin);
+    return { success: true, data: toMerchantBookingDto(booking) };
+  }
+
+  @Post(':id/check-in')
+  @RequirePermissions(BOOKING_PERMISSIONS.MERCHANT_MANAGE)
+  public async checkIn(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<MerchantBookingDto>> {
+    const booking = await this.bookings.checkInBooking(user.id, id, auditContext(request, user.id));
+    return { success: true, data: toMerchantBookingDto(booking) };
+  }
+
+  @Post(':id/check-out')
+  @RequirePermissions(BOOKING_PERMISSIONS.MERCHANT_MANAGE)
+  public async checkOut(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<MerchantBookingDto>> {
+    const booking = await this.bookings.checkOutBooking(
+      user.id,
+      id,
+      auditContext(request, user.id),
+    );
+    return { success: true, data: toMerchantBookingDto(booking) };
+  }
+
+  @Post(':id/no-show')
+  @RequirePermissions(BOOKING_PERMISSIONS.MERCHANT_MANAGE)
+  public async noShow(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<MerchantBookingDto>> {
+    const booking = await this.bookings.markBookingNoShow(
+      user.id,
+      id,
       auditContext(request, user.id),
     );
     return { success: true, data: toMerchantBookingDto(booking) };

@@ -19,7 +19,7 @@ import { PrismaService } from '../prisma/prisma.service';
 
 import { BookingCustomerNotifier } from './booking-customer-notifier.service';
 import { BookingHotelNotifier } from './booking-hotel-notifier.service';
-import { generateBookingPin } from './booking-pin';
+import { generateBookingPin, isBookingPinShaped, normalizeBookingPin } from './booking-pin';
 import { nightCount, nightsBetween, toNight, validateStay } from './booking.dates';
 import {
   BOOKING_ACCEPT_WINDOW_MS,
@@ -904,6 +904,171 @@ export class BookingsService {
    * the single worst thing this API could permit, so the check is here in the
    * service rather than in a controller that a future caller might bypass.
    */
+  // ── Check-in, at the desk (DPX-HOTEL-001 slice 4) ─────────────────────────
+
+  /**
+   * Find a booking by the code the guest reads out.
+   *
+   * Until this existed the PIN was decorative: generated, shown to the guest,
+   * announced to the hotel — and impossible to look up. A guest standing at a
+   * desk saying "B7X9K" had no way to be found.
+   *
+   * **Scoped to the hotel's own bookings, always.** Five characters is
+   * guessable — about 20.5 million combinations, a lot for a person and not
+   * much for a script — so what bounds the risk is not the alphabet but how
+   * many bookings a caller can reach. Restricted to the caller's own business,
+   * the only thing guessing can surface is a booking they may already see.
+   *
+   * Any paid booking is findable, including one already checked out: a desk
+   * asking about a code deserves the real answer ("they left on Tuesday")
+   * rather than "not found". The transition guards are what stop a finished
+   * booking being acted on again.
+   */
+  public async findBookingByPin(merchantUserId: string, pin: string): Promise<Booking> {
+    // Shape-checked before touching the database. It costs nothing, rejects
+    // input that could never match, and keeps a brute-force attempt from
+    // being one query per attempt.
+    if (!isBookingPinShaped(pin)) {
+      throw new ValidationDomainException('That is not a valid check-in code.');
+    }
+    const businessId = await this.requireOwnBusinessId(merchantUserId);
+
+    const booking = await this.prisma.booking.findFirst({
+      where: {
+        businessId,
+        // Case-insensitive, matching `bookingPinsMatch` — the single
+        // definition of "these are the same code". A guest reading a code
+        // aloud and a receptionist typing it will not agree on case, and
+        // turning a real guest away over that is the worst outcome here.
+        pin: { equals: normalizeBookingPin(pin), mode: 'insensitive' },
+      },
+    });
+    if (!booking) {
+      throw new NotFoundDomainException('No booking here matches that code.');
+    }
+    return booking;
+  }
+
+  /** The guest has arrived. */
+  public async checkInBooking(
+    merchantUserId: string,
+    bookingId: string,
+    context: AuditContext = {},
+  ): Promise<Booking> {
+    return await this.transitionBooking(
+      merchantUserId,
+      bookingId,
+      BookingStatus.CONFIRMED,
+      BookingStatus.CHECKED_IN,
+      { checkedInAt: new Date() },
+      BOOKING_AUDIT_ACTIONS.CHECKED_IN,
+      'Only a paid, confirmed booking can be checked in.',
+      context,
+    );
+  }
+
+  /** The guest has left. */
+  public async checkOutBooking(
+    merchantUserId: string,
+    bookingId: string,
+    context: AuditContext = {},
+  ): Promise<Booking> {
+    return await this.transitionBooking(
+      merchantUserId,
+      bookingId,
+      BookingStatus.CHECKED_IN,
+      BookingStatus.CHECKED_OUT,
+      { checkedOutAt: new Date() },
+      BOOKING_AUDIT_ACTIONS.CHECKED_OUT,
+      'Only a guest who has checked in can be checked out.',
+      context,
+    );
+  }
+
+  /**
+   * The guest never came.
+   *
+   * Refused before the stay was due to start. That is not a policy, it is
+   * arithmetic: nobody can have failed to arrive for a night that has not
+   * happened yet.
+   *
+   * **What is deliberately NOT decided here** is the policy question — whether
+   * a hotel may mark a no-show at 6pm on the arrival day or must wait until the
+   * night is over, and whether a no-show forfeits the guest's money. Neither is
+   * a founder decision yet, so neither is enforced or implied.
+   */
+  public async markBookingNoShow(
+    merchantUserId: string,
+    bookingId: string,
+    context: AuditContext = {},
+  ): Promise<Booking> {
+    const booking = await this.requireOwnBooking(merchantUserId, bookingId);
+    if (Date.now() < booking.checkIn.getTime()) {
+      throw new ConflictDomainException(
+        'This stay has not started yet, so the guest cannot be a no-show.',
+      );
+    }
+    return await this.transitionBooking(
+      merchantUserId,
+      bookingId,
+      BookingStatus.CONFIRMED,
+      BookingStatus.NO_SHOW,
+      {},
+      BOOKING_AUDIT_ACTIONS.NO_SHOW,
+      'Only a confirmed booking can be recorded as a no-show.',
+      context,
+    );
+  }
+
+  /**
+   * One guarded state change, shared by the three desk actions.
+   *
+   * The `from` status lives in the WHERE rather than being read and then
+   * written, so two receptionists pressing the same button at the same moment
+   * produce one transition and one audit line instead of two.
+   */
+  private async transitionBooking(
+    merchantUserId: string,
+    bookingId: string,
+    from: BookingStatus,
+    to: BookingStatus,
+    data: Prisma.BookingUpdateManyMutationInput,
+    auditAction: string,
+    refusal: string,
+    context: AuditContext,
+  ): Promise<Booking> {
+    const booking = await this.requireOwnBooking(merchantUserId, bookingId);
+
+    const claimed = await this.prisma.booking.updateMany({
+      where: { id: booking.id, businessId: booking.businessId, status: from },
+      data: { ...data, status: to },
+    });
+    if (claimed.count === 0) {
+      throw new ConflictDomainException(
+        `${refusal} This one is ${describeStatus(booking.status)}.`,
+      );
+    }
+
+    await this.auditService.record(auditAction, context, {
+      resource: 'booking',
+      resourceId: booking.id,
+      metadata: { reference: booking.reference, fromStatus: from, toStatus: to },
+    });
+
+    return await this.prisma.booking.findUniqueOrThrow({ where: { id: booking.id } });
+  }
+
+  /** This hotel's booking, or nothing. NOT_FOUND rather than FORBIDDEN so an
+   *  id cannot be probed for existence across hotels. */
+  private async requireOwnBooking(merchantUserId: string, bookingId: string): Promise<Booking> {
+    const businessId = await this.requireOwnBusinessId(merchantUserId);
+    const booking = await this.prisma.booking.findFirst({ where: { id: bookingId, businessId } });
+    if (!booking) {
+      throw new NotFoundDomainException('Booking not found');
+    }
+    return booking;
+  }
+
   private async requireOwnPending(merchantUserId: string, bookingId: string): Promise<Booking> {
     const businessId = await this.requireOwnBusinessId(merchantUserId);
     const booking = await this.prisma.booking.findFirst({ where: { id: bookingId, businessId } });
@@ -953,3 +1118,8 @@ function isOverbookingViolation(error: unknown): boolean {
 }
 
 export type { RoomAvailability };
+
+/** `AWAITING_PAYMENT` → "awaiting payment", for a sentence a receptionist reads. */
+function describeStatus(status: BookingStatus): string {
+  return status.toLowerCase().replace(/_/g, ' ');
+}

@@ -1025,6 +1025,9 @@ export interface BookingDto {
    *  booking as assured on `pin !== null` rather than on a status alone. */
   pin: string | null;
   acceptedAt: string | null;
+  /** Recorded at the desk when the guest actually arrived and left. */
+  checkedInAt: string | null;
+  checkedOutAt: string | null;
   rejectedAt: string | null;
   rejectionReason: string | null;
   createdAt: string;
@@ -2788,6 +2791,15 @@ export const api = {
           undefined,
           params,
         ),
+      /** Find a guest by the code they read out at the desk.
+       *  A POST, not a GET: a check-in code is a credential and a URL is the
+       *  part of a request that ends up in logs and history. */
+      lookupByPin: (pin: string) =>
+        dx<MerchantBookingDto>('POST', '/merchant/bookings/check-in/lookup', { pin }),
+      checkIn: (id: string) => dx<MerchantBookingDto>('POST', `/merchant/bookings/${id}/check-in`),
+      checkOut: (id: string) =>
+        dx<MerchantBookingDto>('POST', `/merchant/bookings/${id}/check-out`),
+      noShow: (id: string) => dx<MerchantBookingDto>('POST', `/merchant/bookings/${id}/no-show`),
       accept: (id: string) => dx<MerchantBookingDto>('POST', `/merchant/bookings/${id}/accept`),
       reject: (id: string, reason?: string) =>
         dx<MerchantBookingDto>('POST', `/merchant/bookings/${id}/reject`, { reason }),
