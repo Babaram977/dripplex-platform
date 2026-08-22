@@ -37,13 +37,20 @@ export class CustomerBookingsController {
     private readonly bookings: BookingsService,
   ) {}
 
-  /** The rooms a hotel currently offers. Active only — a room the hotel has
-   *  taken off sale is not something to show a guest. */
-  @Get('hotels/:businessId/room-types')
+  /**
+   * The rooms a hotel currently offers. Active only — a room the hotel has
+   * taken off sale is not something to show a guest.
+   *
+   * Addressed by `MerchantProfile.id`, the same id the marketplace card
+   * carries, so a customer tapping a hotel can call this directly. Founder
+   * decision 2026-08-22 — see DPX-HOTEL-002 §2.
+   */
+  @Get('hotels/:merchantId/room-types')
   @RequirePermissions(BOOKING_PERMISSIONS.CUSTOMER_READ)
   public async roomTypes(
-    @Param('businessId', ParseUUIDPipe) businessId: string,
+    @Param('merchantId', ParseUUIDPipe) merchantId: string,
   ): Promise<ApiSuccessResponse<RoomTypeDto[]>> {
+    const businessId = await this.rooms.resolveBusinessIdForMerchant(merchantId);
     const roomTypes = await this.rooms.listRoomTypes(businessId);
     return { success: true, data: roomTypes.map(toRoomTypeDto) };
   }

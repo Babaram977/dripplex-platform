@@ -300,6 +300,34 @@ export class RoomInventoryService {
     });
   }
 
+  /**
+   * A hotel's business, addressed the way the customer app addresses every
+   * other merchant: by `MerchantProfile.id`.
+   *
+   * The marketplace card carries a merchant profile id (`toMerchantSummaryDto`
+   * sets `id: merchantProfileId`), so a customer tapping a hotel has that and
+   * not a `Business.id`. Resolving here means the customer app addresses a
+   * merchant one way everywhere, rather than carrying two ids per card and
+   * inviting a caller to pick the wrong one. Founder decision, 2026-08-22.
+   */
+  public async resolveBusinessIdForMerchant(merchantProfileId: string): Promise<string> {
+    const profile = await this.prisma.merchantProfile.findUnique({
+      where: { id: merchantProfileId },
+      select: { userId: true },
+    });
+    if (!profile) {
+      throw new NotFoundDomainException('Hotel not found');
+    }
+    const business = await this.prisma.business.findUnique({
+      where: { merchantId: profile.userId },
+      select: { id: true },
+    });
+    if (!business) {
+      throw new NotFoundDomainException('Hotel not found');
+    }
+    return business.id;
+  }
+
   /** A room type by id, without an ownership check — for the public browse
    *  path, where a guest is legitimately reading somebody else's rooms. */
   public async getRoomType(roomTypeId: string): Promise<RoomType> {

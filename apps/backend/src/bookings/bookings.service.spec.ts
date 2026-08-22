@@ -655,6 +655,31 @@ describe('BookingsService', () => {
     ).rejects.toThrow(NotFoundDomainException);
   });
 
+  /**
+   * The customer app addresses a hotel by the id its marketplace card carries
+   * — a MerchantProfile.id — not by Business.id. Before this the two were
+   * different and the app could not call its own booking endpoint from a
+   * marketplace tap. Founder decision 2026-08-22.
+   */
+  it('finds a hotel by the merchant id the marketplace card carries', async () => {
+    if (!databaseAvailable) return;
+    const hotel = await createHotel(2, 20_000);
+    const profile = await prisma.merchantProfile.findFirstOrThrow({
+      where: { userId: hotel.merchantUserId },
+    });
+
+    await expect(rooms.resolveBusinessIdForMerchant(profile.id)).resolves.toBe(hotel.businessId);
+    // And the id is genuinely a different one, or this test proves nothing.
+    expect(profile.id).not.toBe(hotel.businessId);
+  });
+
+  it('refuses a merchant id that is not a hotel we know', async () => {
+    if (!databaseAvailable) return;
+    await expect(rooms.resolveBusinessIdForMerchant(randomUUID())).rejects.toThrow(
+      NotFoundDomainException,
+    );
+  });
+
   it('creates a room type against the signed-in hotel, never one it names', async () => {
     if (!databaseAvailable) return;
     const theirs = await createHotel(2, 20_000);
