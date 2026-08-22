@@ -19,6 +19,7 @@ import type {
   RideSurchargeTrigger,
   RideSurchargeType,
   RideSurchargeZoneDto,
+  RideType,
 } from '@dripplex/types';
 
 import { AppShell } from '@/components/app-shell';
@@ -214,6 +215,24 @@ const TRIGGER_LABEL: Record<RideSurchargeTrigger, string> = {
   EITHER: 'Trips either way',
 };
 
+/**
+ * Ride types an operator can bar from a zone.
+ *
+ * A ban is not a price. Barring a type refuses the quote outright, so this is
+ * the control that takes a vehicle class off sale for an area — Kano airport
+ * does not admit tricycles, and the product used to quote and dispatch them
+ * there anyway.
+ */
+const RIDE_TYPES: readonly { value: RideType; label: string }[] = [
+  { value: 'ECONOMY', label: 'Dx Ride' },
+  { value: 'COMFORT', label: 'Dx Comfort' },
+  { value: 'XL', label: 'Dx XL' },
+  { value: 'TRICYCLE', label: 'Tricycle' },
+];
+
+const RIDE_TYPE_LABEL = (type: RideType): string =>
+  RIDE_TYPES.find((entry) => entry.value === type)?.label ?? type;
+
 function describeAmount(zone: RideSurchargeZoneDto): string {
   return zone.surchargeType === 'FLAT'
     ? `${naira(zone.amount)} added`
@@ -231,9 +250,16 @@ function CreateZoneForm(): React.JSX.Element {
     amount: '',
     appliesTo: 'EITHER' as RideSurchargeTrigger,
   });
+  const [excluded, setExcluded] = React.useState<RideType[]>([]);
 
   const set = (key: keyof typeof form, value: string): void => {
     setForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const toggleExcluded = (type: RideType): void => {
+    setExcluded((prev) =>
+      prev.includes(type) ? prev.filter((entry) => entry !== type) : [...prev, type],
+    );
   };
 
   const onSubmit = (): void => {
@@ -282,10 +308,12 @@ function CreateZoneForm(): React.JSX.Element {
         surchargeType: form.surchargeType,
         amount,
         appliesTo: form.appliesTo,
+        excludedRideTypes: excluded,
       },
       {
         onSuccess: () => {
           toast({ title: 'Surcharge zone created' });
+          setExcluded([]);
           setForm({
             name: '',
             latitude: '',
@@ -395,6 +423,27 @@ function CreateZoneForm(): React.JSX.Element {
               </select>
             </label>
           </div>
+          <fieldset className="flex flex-col gap-2">
+            <legend className="text-xs">Not permitted in this zone</legend>
+            <div className="flex flex-wrap gap-3">
+              {RIDE_TYPES.map((type) => (
+                <label key={type.value} className="flex items-center gap-1.5 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={excluded.includes(type.value)}
+                    onChange={() => {
+                      toggleExcluded(type.value);
+                    }}
+                  />
+                  {type.label}
+                </label>
+              ))}
+            </div>
+            <p className="text-muted-foreground text-xs">
+              A ticked type is refused outright, not surcharged — the passenger cannot get a quote
+              for a trip touching this zone.
+            </p>
+          </fieldset>
           <Button onClick={onSubmit} disabled={create.isPending}>
             {create.isPending ? 'Creating…' : 'Create zone'}
           </Button>
@@ -449,6 +498,51 @@ function ZoneList(): React.JSX.Element {
                 {describeAmount(zone)} · {TRIGGER_LABEL[zone.appliesTo]} · {zone.radiusMeters} m
                 around {zone.latitude.toFixed(4)}, {zone.longitude.toFixed(4)}
               </p>
+              {zone.excludedRideTypes.length > 0 ? (
+                <p className="text-xs font-medium text-amber-600 dark:text-amber-500">
+                  Not permitted: {zone.excludedRideTypes.map(RIDE_TYPE_LABEL).join(', ')}
+                </p>
+              ) : null}
+              <div className="mt-2 flex flex-wrap gap-3">
+                {RIDE_TYPES.map((type) => (
+                  <label key={type.value} className="flex items-center gap-1.5 text-xs">
+                    <input
+                      type="checkbox"
+                      disabled={update.isPending}
+                      checked={zone.excludedRideTypes.includes(type.value)}
+                      onChange={() => {
+                        // Send the whole resulting list, not a delta — the API
+                        // replaces the array, and computing it here keeps the
+                        // checkbox and the stored value the same thing.
+                        const next = zone.excludedRideTypes.includes(type.value)
+                          ? zone.excludedRideTypes.filter((entry) => entry !== type.value)
+                          : [...zone.excludedRideTypes, type.value];
+                        update.mutate(
+                          { id: zone.id, body: { excludedRideTypes: next } },
+                          {
+                            onSuccess: () => {
+                              toast({
+                                title: next.includes(type.value)
+                                  ? `${type.label} barred from ${zone.name}`
+                                  : `${type.label} allowed in ${zone.name}`,
+                                description: 'Applies to new quotes immediately.',
+                              });
+                            },
+                            onError: (error) => {
+                              toast({
+                                title: "Couldn't change the restriction",
+                                description: error.message,
+                                variant: 'destructive',
+                              });
+                            },
+                          },
+                        );
+                      }}
+                    />
+                    Bar {type.label}
+                  </label>
+                ))}
+              </div>
             </div>
             <Button
               variant="outline"
