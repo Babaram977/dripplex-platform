@@ -20,6 +20,7 @@ import { MerchantCommissionSettingsService } from '../orders/merchant-commission
 import { MERCHANT_COMMISSION_SETTING_ID } from '../orders/order.constants';
 import { WalletService } from '../wallet/wallet.service';
 
+import { type BookingCustomerNotifier } from './booking-customer-notifier.service';
 import { BOOKING_PAYMENT_WINDOW_MS } from './bookings.constants';
 import { BookingsService } from './bookings.service';
 import { RoomInventoryService } from './room-inventory.service';
@@ -224,7 +225,21 @@ describe('BookingsService', () => {
       cardPaymentsEnabled: true,
     } as unknown as AppConfigService;
 
-    bookings = new BookingsService(prisma, commissionSettings, auditService, config, [gateway]);
+    // A notifier whose delivery is irrelevant to what this suite asserts, but
+    // whose ABSENCE would be: the service calls it on every terminal outcome,
+    // so a stub that throws would mask itself as a booking failure.
+    const customerNotifier = {
+      bookingChanged: jest.fn().mockResolvedValue(undefined),
+    } as unknown as BookingCustomerNotifier;
+
+    bookings = new BookingsService(
+      prisma,
+      commissionSettings,
+      auditService,
+      config,
+      [gateway],
+      customerNotifier,
+    );
 
     // The rate is a singleton row an operator can change; pin it at the
     // founder's 10% so a console change cannot silently rewrite these numbers.
