@@ -25,6 +25,20 @@ export interface RideTypeCatalogEntryDto {
    * is none. Not a road distance and not an ETA — it is what dispatch ranks
    * on, so it is what we can honestly report. */
   nearestDriverMeters?: number | null;
+
+  /**
+   * Set when a zone bars this ride type from the pickup point entirely — not
+   * "nobody is free right now" but "this vehicle may not go there".
+   *
+   * Distinct from `availableNow` on purpose: a tricycle at Kano airport is not
+   * unavailable, it is not permitted, and a UI that greys it out with "no
+   * drivers nearby" tells the passenger to wait for something that will never
+   * come. When set, the type cannot be booked from here at all.
+   *
+   * Only the pickup is known at this point. A restriction that applies to the
+   * destination is caught by the fare estimate instead.
+   */
+  restrictedReason?: string | null;
 }
 
 // ── Pricing console ─────────────────────────────────────────────────────────
@@ -58,6 +72,9 @@ export interface RideSurchargeZoneDto {
   /** Naira when FLAT, a factor when MULTIPLIER (1.25 = a quarter more). */
   amount: number;
   appliesTo: RideSurchargeTrigger;
+  /** Ride types this zone bars outright — empty means none. A ban, not a
+   * price: a barred type is refused at the estimate rather than quoted. */
+  excludedRideTypes: RideType[];
   active: boolean;
   updatedAt: string;
 }

@@ -169,6 +169,7 @@ export class RidePricingService {
       surchargeType: RideSurchargeType;
       amount: number;
       appliesTo: RideSurchargeTrigger;
+      excludedRideTypes?: RideType[];
       active?: boolean;
     },
     adminUserId: string,
@@ -203,6 +204,7 @@ export class RidePricingService {
       surchargeType: RideSurchargeType;
       amount: number;
       appliesTo: RideSurchargeTrigger;
+      excludedRideTypes: RideType[];
       active: boolean;
     }>,
     adminUserId: string,
@@ -239,6 +241,7 @@ export class RidePricingService {
             amount: Number(before.amount),
             radiusMeters: before.radiusMeters,
             appliesTo: before.appliesTo,
+            excludedRideTypes: before.excludedRideTypes,
             active: before.active,
           },
           after: {
@@ -247,6 +250,7 @@ export class RidePricingService {
             amount: Number(zone.amount),
             radiusMeters: zone.radiusMeters,
             appliesTo: zone.appliesTo,
+            excludedRideTypes: zone.excludedRideTypes,
             active: zone.active,
           },
           changedBy: adminUserId,
@@ -302,6 +306,64 @@ export class RidePricingService {
     }
 
     return best;
+  }
+
+  /**
+   * The zone, if any, that forbids this ride type from serving this trip.
+   *
+   * Separate from resolveSurcharge because it answers a different question:
+   * not "what does this cost" but "may this vehicle go at all". A tricycle is
+   * not permitted onto Kano airport, so a tricycle quote for an airport trip
+   * promises a journey that cannot legally be made — and dispatch would then
+   * offer it to a tricycle driver who would have to turn back at the gate.
+   *
+   * Unlike the surcharge, restrictions do not compete: the first zone that
+   * forbids the type settles it. There is nothing to pick a maximum of, and a
+   * trip barred by any zone is barred.
+   */
+  public async findExclusion(
+    rideType: RideType,
+    pickup: { lat: number; lng: number },
+    dropoff: { lat: number; lng: number },
+  ): Promise<{ zoneId: string; zoneName: string } | null> {
+    const zones = await this.prisma.rideSurchargeZone.findMany({
+      where: { active: true, excludedRideTypes: { has: rideType } },
+    });
+
+    for (const zone of zones) {
+      if (zoneContainsTrip(zone, pickup, dropoff)) {
+        return { zoneId: zone.id, zoneName: zone.name };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Ride types barred from a single point — used by the fare screen, which
+   * knows where the passenger is standing before it knows where they are
+   * going. A destination-side restriction cannot be seen from here and is
+   * caught at estimate time instead.
+   */
+  public async exclusionsAtPoint(point: { lat: number; lng: number }): Promise<Set<RideType>> {
+    const zones = await this.prisma.rideSurchargeZone.findMany({
+      where: { active: true, NOT: { excludedRideTypes: { isEmpty: true } } },
+    });
+
+    const barred = new Set<RideType>();
+    for (const zone of zones) {
+      if (zone.appliesTo === RideSurchargeTrigger.DROPOFF) {
+        continue; // says nothing about where the passenger is now
+      }
+      if (
+        haversineMeters(Number(zone.latitude), Number(zone.longitude), point.lat, point.lng) <=
+        zone.radiusMeters
+      ) {
+        for (const type of zone.excludedRideTypes) {
+          barred.add(type);
+        }
+      }
+    }
+    return barred;
   }
 }
 

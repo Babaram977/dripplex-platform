@@ -1,4 +1,4 @@
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
   BusinessStatus,
   BusinessVerificationStatus,
@@ -8,6 +8,7 @@ import {
   OnboardingStatus,
 } from '@prisma/client';
 
+import { GEOCODER, type Geocoder } from '../addresses/geocoding/geocoder';
 import { AuditService } from '../audit/audit.service';
 import {
   ConflictDomainException,
@@ -54,6 +55,8 @@ import type {
 
 @Injectable()
 export class MerchantsService {
+  private readonly logger = new Logger(MerchantsService.name);
+
   constructor(
     @Inject(MERCHANTS_REPOSITORY)
     private readonly merchantsRepository: MerchantsRepository,
@@ -62,8 +65,47 @@ export class MerchantsService {
     private readonly notifications: NotificationService,
     private readonly storageAssets: StorageAssetService,
     @Optional()
+    @Inject(GEOCODER)
+    private readonly geocoder?: Geocoder,
+    @Optional()
     private readonly eventBus?: DomainEventBus,
   ) {}
+
+  /**
+   * Coordinates for a business, derived from its registered address.
+   *
+   * Minimal onboarding takes a single free-text address and no coordinates, so
+   * without this a merchant trades with latitude/longitude at 0 and delivery
+   * dispatch has nothing to work from.
+   *
+   * Best-effort on purpose: a maps outage must not block a merchant from
+   * onboarding or editing their store. When it cannot resolve, the business
+   * keeps whatever it had and DeliveryService geocodes again — and refuses to
+   * guess — at the point where a wrong location would actually cost money.
+   */
+  private async coordinatesFromAddress(
+    address: string,
+    explicitLatitude?: number,
+    explicitLongitude?: number,
+  ): Promise<{ latitude: number; longitude: number } | null> {
+    if (explicitLatitude !== undefined || explicitLongitude !== undefined) {
+      return null; // the merchant gave real coordinates; never override them
+    }
+    if (address.trim() === '' || !this.geocoder) {
+      return null;
+    }
+    try {
+      const located = await this.geocoder.geocode(address);
+      return { latitude: located.latitude, longitude: located.longitude };
+    } catch (error) {
+      this.logger.warn(
+        `Could not geocode business address "${address}": ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return null;
+    }
+  }
 
   /** DPX-STORAGE-001 (F) — merchant KYC documents are private; return signed GET URLs. */
   private async signMerchantKyc(dto: MerchantKycDto): Promise<MerchantKycDto> {
@@ -128,8 +170,9 @@ export class MerchantsService {
     const state = dto.state?.trim() ?? '';
     const city = dto.city?.trim() ?? '';
     const address = dto.address?.trim() ?? '';
-    const latitude = dto.latitude ?? 0;
-    const longitude = dto.longitude ?? 0;
+    const located = await this.coordinatesFromAddress(address, dto.latitude, dto.longitude);
+    const latitude = dto.latitude ?? located?.latitude ?? 0;
+    const longitude = dto.longitude ?? located?.longitude ?? 0;
 
     // Only enforce full location validation when the merchant actually supplied it.
     if (dto.latitude !== undefined || dto.longitude !== undefined) {
@@ -238,6 +281,12 @@ export class MerchantsService {
       });
     }
 
+    // A merchant correcting their address should move on the map with it.
+    const relocated =
+      dto.address !== undefined
+        ? await this.coordinatesFromAddress(dto.address, dto.latitude, dto.longitude)
+        : null;
+
     const updated = await this.merchantsRepository.updateBusiness(business.id, {
       ...(dto.businessName !== undefined ? { businessName: dto.businessName.trim() } : {}),
       ...(dto.businessType !== undefined ? { businessType: dto.businessType } : {}),
@@ -253,8 +302,16 @@ export class MerchantsService {
       ...(dto.state !== undefined ? { state: dto.state.trim() } : {}),
       ...(dto.city !== undefined ? { city: dto.city.trim() } : {}),
       ...(dto.address !== undefined ? { address: dto.address.trim() } : {}),
-      ...(dto.latitude !== undefined ? { latitude: dto.latitude } : {}),
-      ...(dto.longitude !== undefined ? { longitude: dto.longitude } : {}),
+      ...(dto.latitude !== undefined
+        ? { latitude: dto.latitude }
+        : relocated
+          ? { latitude: relocated.latitude }
+          : {}),
+      ...(dto.longitude !== undefined
+        ? { longitude: dto.longitude }
+        : relocated
+          ? { longitude: relocated.longitude }
+          : {}),
       ...(dto.logoUrl !== undefined ? { logoUrl: dto.logoUrl } : {}),
       ...(dto.coverPhotoUrl !== undefined ? { coverPhotoUrl: dto.coverPhotoUrl } : {}),
       ...(dto.operatingHours !== undefined ? { operatingHours: dto.operatingHours } : {}),

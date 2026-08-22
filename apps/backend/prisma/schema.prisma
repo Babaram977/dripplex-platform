@@ -126,8 +126,8 @@ model RoomType {
   photoUrl    String? @map("photo_url") @db.VarChar(2048)
   isActive    Boolean @default(true) @map("is_active")
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
   business     Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
@@ -146,18 +146,18 @@ model RoomType {
 /// forgets to close a date should not accidentally sell a room it does not
 /// have.
 model RoomAvailability {
-  id         String   @id @default(uuid()) @db.Uuid
-  roomTypeId String   @map("room_type_id") @db.Uuid
+  id            String   @id @default(uuid()) @db.Uuid
+  roomTypeId    String   @map("room_type_id") @db.Uuid
   /// The night being slept, stored as a date at UTC midnight. A stay from the
   /// 14th to the 16th occupies the 14th and the 15th — never the checkout day.
-  night      DateTime @db.Date
+  night         DateTime @db.Date
   /// Rooms of this type sellable on this night. May be below the room type's
   /// total when the hotel is holding some back.
-  roomsOpen  Int      @map("rooms_open")
+  roomsOpen     Int      @map("rooms_open")
   /// Rooms already committed. The invariant the whole model exists to protect
   /// is roomsBooked <= roomsOpen, enforced by a CHECK constraint rather than
   /// by application code, because application code races.
-  roomsBooked Int     @default(0) @map("rooms_booked")
+  roomsBooked   Int      @default(0) @map("rooms_booked")
   /// This night's price, when it differs from the room type's base.
   priceOverride Decimal? @map("price_override") @db.Decimal(12, 2)
 
@@ -232,7 +232,7 @@ model Booking {
 
   /// What the guest pays, summed from each night's actual price at the moment
   /// of booking. Frozen here so a later price change cannot move it.
-  totalAmount Decimal @map("total_amount") @db.Decimal(12, 2)
+  totalAmount      Decimal  @map("total_amount") @db.Decimal(12, 2)
   /// DrippleX's cut, at the rate in force when the hotel accepted.
   commissionAmount Decimal? @map("commission_amount") @db.Decimal(12, 2)
 
@@ -241,23 +241,23 @@ model Booking {
   guestNote  String? @map("guest_note") @db.VarChar(500)
 
   /// When the hotel must have answered by. Read by the expiry sweep.
-  acceptDeadline DateTime  @map("accept_deadline")
-  acceptedAt     DateTime? @map("accepted_at")
+  acceptDeadline   DateTime  @map("accept_deadline")
+  acceptedAt       DateTime? @map("accepted_at")
   /// When the guest's 24 hours to pay run out. Set on acceptance, null before.
   /// The same sweep releases the rooms when this lapses — with no money at
   /// stake, this deadline is the only thing stopping one person reserving a
   /// city's worth of rooms and never paying.
-  paymentDeadline DateTime? @map("payment_deadline")
+  paymentDeadline  DateTime? @map("payment_deadline")
   /// The DrippleX gateway reference for the guest's payment. Unique so a
   /// webhook or a returning browser can find the booking from the reference
   /// alone, and so one payment can never be claimed by two bookings.
-  paymentReference String?  @unique @map("payment_reference") @db.VarChar(100)
+  paymentReference String?   @unique @map("payment_reference") @db.VarChar(100)
   paidAt           DateTime? @map("paid_at")
-  rejectedAt     DateTime? @map("rejected_at")
+  rejectedAt       DateTime? @map("rejected_at")
   /// The hotel's own words when declining — shown to the guest.
-  rejectionReason String?  @map("rejection_reason") @db.VarChar(500)
-  checkedInAt    DateTime? @map("checked_in_at")
-  checkedOutAt   DateTime? @map("checked_out_at")
+  rejectionReason String?   @map("rejection_reason") @db.VarChar(500)
+  checkedInAt     DateTime? @map("checked_in_at")
+  checkedOutAt    DateTime? @map("checked_out_at")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -572,6 +572,7 @@ model User {
   createdAt                   DateTime                     @default(now()) @map("created_at")
   updatedAt                   DateTime                     @updatedAt @map("updated_at")
   deletedAt                   DateTime?                    @map("deleted_at")
+  bookingsAsCustomer          Booking[]                    @relation("BookingCustomer")
 
   @@index([status])
   @@index([deletedAt])
@@ -579,7 +580,6 @@ model User {
   @@index([emailVerifiedAt])
   @@index([phoneVerifiedAt])
   @@map("users")
-  bookingsAsCustomer          Booking[]                    @relation("BookingCustomer")
 }
 
 model Role {
@@ -799,6 +799,8 @@ model Business {
   updatedAt          DateTime                   @updatedAt @map("updated_at")
   merchant           User                       @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   kycDocuments       MerchantKyc[]
+  roomTypes          RoomType[]
+  bookings           Booking[]
 
   @@index([status])
   @@index([verificationStatus])
@@ -807,8 +809,6 @@ model Business {
   /// The marketplace's primary browse is "approved merchants in this category".
   @@index([category])
   @@map("businesses")
-  roomTypes                RoomType[]
-  bookings                 Booking[]
 }
 
 model MerchantKyc {
@@ -1550,6 +1550,17 @@ model RideSurchargeZone {
   amount        Decimal              @db.Decimal(12, 4)
   appliesTo     RideSurchargeTrigger @default(EITHER) @map("applies_to")
 
+  /// Ride types that may not serve a trip touching this zone at all.
+  ///
+  /// A zone is a place with special rules; a surcharge is one of them and a
+  /// vehicle restriction is another. Kano airport is the case this exists for:
+  /// tricycles are not permitted onto the airport, so quoting one — and then
+  /// dispatching one — promises a trip that cannot legally be made.
+  ///
+  /// Empty means no restriction, which is every zone until Ops sets one.
+  /// Containment follows appliesTo, the same as the surcharge.
+  excludedRideTypes RideType[] @map("excluded_ride_types")
+
   /// Deactivating keeps the zone and its name available to rides that already
   /// reference it, which deleting would not.
   active Boolean @default(true)
@@ -1638,14 +1649,14 @@ enum CommissionEntryType {
 /// as MerchantCommissionSetting.commissionRate snapshotting into each
 /// OrderSettlement). See docs/DPX-COMMERCIAL-001-REVENUE-SETTLEMENT-CREDIT-POLICY.md.
 model CommissionAccount {
-  id                 String                  @id @default(uuid()) @db.Uuid
-  ownerType          CommissionOwnerType     @map("owner_type")
-  ownerId            String                  @map("owner_id") @db.Uuid
-  outstandingBalance Decimal                 @default(0) @map("outstanding_balance") @db.Decimal(14, 2)
+  id                    String                  @id @default(uuid()) @db.Uuid
+  ownerType             CommissionOwnerType     @map("owner_type")
+  ownerId               String                  @map("owner_id") @db.Uuid
+  outstandingBalance    Decimal                 @default(0) @map("outstanding_balance") @db.Decimal(14, 2)
   /// The limit actually in force. Materialised so every read is one query;
   /// kept in sync from negotiatedCreditLimit, or from the owner-type default
   /// when no limit has been negotiated.
-  creditLimit        Decimal                 @map("credit_limit") @db.Decimal(14, 2)
+  creditLimit           Decimal                 @map("credit_limit") @db.Decimal(14, 2)
   /// A limit agreed with this partner individually (founder decision,
   /// 2026-08-20: "limit should be individually set to each merchant because
   /// of business difference and it should be negotiated and agreed by
@@ -1655,22 +1666,22 @@ model CommissionAccount {
   /// Null means no agreement exists yet and the owner-type default applies —
   /// which is also what makes the platform default meaningful rather than
   /// something that silently overwrites a negotiated figure.
-  negotiatedCreditLimit Decimal?             @map("negotiated_credit_limit") @db.Decimal(14, 2)
+  negotiatedCreditLimit Decimal?                @map("negotiated_credit_limit") @db.Decimal(14, 2)
   /// Who agreed it, when, and on what terms. A negotiated limit is a
   /// commercial commitment, so it carries its own record rather than living
   /// only in the audit log.
-  negotiatedBy       String?                 @map("negotiated_by") @db.Uuid
-  negotiatedAt       DateTime?               @map("negotiated_at")
-  negotiationNote    String?                 @map("negotiation_note") @db.VarChar(500)
-  blocked            Boolean                 @default(false)
-  blockedAt          DateTime?               @map("blocked_at")
+  negotiatedBy          String?                 @map("negotiated_by") @db.Uuid
+  negotiatedAt          DateTime?               @map("negotiated_at")
+  negotiationNote       String?                 @map("negotiation_note") @db.VarChar(500)
+  blocked               Boolean                 @default(false)
+  blockedAt             DateTime?               @map("blocked_at")
   /// Optimistic-concurrency guard on outstandingBalance updates, same
   /// pattern as Wallet.version — a conditional updateMany() keyed on both
   /// id and version, incremented on every accrue()/recordPayment() write.
-  version            Int                     @default(0)
-  createdAt          DateTime                @default(now()) @map("created_at")
-  updatedAt          DateTime                @updatedAt @map("updated_at")
-  ledgerEntries      CommissionLedgerEntry[]
+  version               Int                     @default(0)
+  createdAt             DateTime                @default(now()) @map("created_at")
+  updatedAt             DateTime                @updatedAt @map("updated_at")
+  ledgerEntries         CommissionLedgerEntry[]
 
   @@unique([ownerType, ownerId])
   @@index([ownerType])
