@@ -942,6 +942,60 @@ describe('BookingsService', () => {
     });
   });
 
+  /**
+   * A guest's own reads carry the hotel's name and the room's.
+   *
+   * Both reads previously returned `businessId` and `roomTypeId` and nothing
+   * else about either, so "My bookings" could only show a reference and a date
+   * — there was no way to tell a room in Kano from a room in Abuja. Asserted on
+   * the list AND the single read, because they take different code paths and it
+   * is the list that a guest actually scans.
+   */
+  it('tells a guest which hotel and which room, on both of their own reads', async () => {
+    if (!databaseAvailable) return;
+    const { roomTypeId, merchantUserId } = await createHotel(2, 20_000);
+    await openStayNights(merchantUserId, roomTypeId, 2);
+    const guestId = await fundedGuest(0);
+    const booking = await bookings.createBooking(guestId, {
+      roomTypeId,
+      ...stay,
+      guestName: 'Hamza Bello',
+      guestPhone: '+2348012345678',
+    });
+
+    const one = await bookings.getCustomerBooking(guestId, booking.id);
+    expect(one.business.businessName).toBe('Tahir Guest Palace');
+    expect(one.roomType.name).toBe('Deluxe');
+
+    const { items } = await bookings.listCustomerBookings(guestId, 1, 20);
+    const listed = items.find((b) => b.id === booking.id);
+    expect(listed?.business.businessName).toBe('Tahir Guest Palace');
+    expect(listed?.roomType.name).toBe('Deluxe');
+  });
+
+  /**
+   * The include is narrowed to two columns on purpose. A bare
+   * `include: { business: true }` would put the hotel's registration number,
+   * tax number and address one careless spread away from a customer response,
+   * and nothing else in the type system would object.
+   */
+  it("does not hand a guest the hotel's private business record", async () => {
+    if (!databaseAvailable) return;
+    const { roomTypeId, merchantUserId } = await createHotel(2, 20_000);
+    await openStayNights(merchantUserId, roomTypeId, 2);
+    const guestId = await fundedGuest(0);
+    const booking = await bookings.createBooking(guestId, {
+      roomTypeId,
+      ...stay,
+      guestName: 'Hamza Bello',
+      guestPhone: '+2348012345678',
+    });
+
+    const read = await bookings.getCustomerBooking(guestId, booking.id);
+    expect(Object.keys(read.business)).toEqual(['businessName']);
+    expect(Object.keys(read.roomType)).toEqual(['name']);
+  });
+
   it("shows a hotel its own book and nobody else's", async () => {
     if (!databaseAvailable) return;
     const theirs = await createHotel(2, 20_000);

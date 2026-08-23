@@ -76,7 +76,15 @@ const QUICK: { icon: IconName; label: string; color: string; ready: boolean }[] 
   { icon: 'orders', label: 'Orders', color: '#F59E0B', ready: true },
   { icon: 'utilities', label: 'Utilities', color: '#06B6D4', ready: true },
   { icon: 'food', label: 'Food', color: '#F97316', ready: true },
-  { icon: 'health', label: 'Health', color: '#10B981', ready: false },
+  // Hotels replaced a dead "Health" placeholder on 2026-08-23. The hotel flow
+  // has been live since #233 with no entry point anywhere on Home, the nav or
+  // the category row — the only route was a Marketplace chip sitting 9th of 12
+  // in a scrolling strip, off-screen on a 390px phone. Reported by the founder
+  // as "I cannot find the hotel menu or icon", which is exactly what it was.
+  //
+  // Taking Health's slot rather than adding a ninth tile keeps the approved
+  // 8-tile grid intact: a built feature displaces an unbuilt one.
+  { icon: 'hotel', label: 'Hotels', color: '#10B981', ready: true },
   { icon: 'more', label: 'More', color: '#6B7280', ready: false },
 ];
 
@@ -1509,6 +1517,7 @@ export function HomeScreen({
   onSecurity,
   onNotifications,
   onMarketplace,
+  onHotels,
   onRide,
   onDriverApp,
   onStore,
@@ -1523,6 +1532,8 @@ export function HomeScreen({
   onSecurity: () => void;
   onNotifications: () => void;
   onMarketplace?: () => void;
+  /** Marketplace, already filtered to hotels. */
+  onHotels?: () => void;
   onRide?: () => void;
   onDriverApp?: () => void;
   onStore?: (id: string) => void;
@@ -1672,12 +1683,15 @@ export function HomeScreen({
       case 'Orders':
         onOrders?.();
         break;
+      case 'Hotels':
+        onHotels?.();
+        break;
       case 'Utilities':
         onUtilities?.();
         break;
       default:
-        // Health / More have no screen yet. They are marked `ready: false`
-        // above so they never reach here — this stays as the backstop.
+        // More has no screen yet. It is marked `ready: false`
+        // above so it never reaches here — this stays as the backstop.
         break;
     }
   };

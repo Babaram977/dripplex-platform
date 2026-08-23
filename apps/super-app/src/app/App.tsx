@@ -185,6 +185,7 @@ import type { NavTabKey } from '../components/navigation/BottomNavigation';
 import { api } from '../lib/api';
 import type {
   DeliveryJobDto,
+  MerchantCategory,
   RiderDeliveryJobDto,
   RideOfferDto,
   RideDto,
@@ -607,6 +608,10 @@ function AppShell() {
   // persisted, because a quote goes stale and the server re-prices anyway.
   const [activeBookingId, setActiveBookingId] = useState<string | null>(null);
   const [activeBookingDraft, setActiveBookingDraft] = useState<BookingDraft | null>(null);
+  // Which chip the Marketplace opens on. Set by Home's Hotels tile and cleared
+  // by the Marketplace nav tab, so "Marketplace" always means everything and
+  // "Hotels" always means hotels, whichever was tapped last.
+  const [marketplaceCategory, setMarketplaceCategory] = useState<MerchantCategory | null>(null);
   const [activeProductId, setActiveProductId] = useState<string | undefined>(undefined);
   const [activeDriverOffer, setActiveDriverOffer] = useState<RideOfferDto | null>(null);
   const [activeDriverRide, setActiveDriverRide] = useState<RideDto | null>(null);
@@ -707,7 +712,13 @@ function AppShell() {
    */
   const goTab = (tab: NavTabKey): void => {
     if (tab === 'home') go('home');
-    if (tab === 'market') go('marketplace');
+    // The Marketplace tab means everything, always. Without this reset a tap
+    // on Home's Hotels tile would leave every later Marketplace visit filtered
+    // to hotels, which looks like the rest of the marketplace disappearing.
+    if (tab === 'market') {
+      setMarketplaceCategory(null);
+      go('marketplace');
+    }
     if (tab === 'ride') go('ridehome');
     if (tab === 'wallet') go('wallethome');
     if (tab === 'profile') go('account');
@@ -797,7 +808,10 @@ function AppShell() {
       onAccount={() => go('account')}
       onSecurity={() => go('security')}
       onNotifications={() => go('activitydash')}
-      onMarketplace={() => go('marketplace')}
+      onMarketplace={() => {
+        setMarketplaceCategory(null);
+        go('marketplace');
+      }}
       onRide={() => go('ridehome')}
       onDriverApp={() => go('drvsplash')}
       onStore={(id) => {
@@ -807,6 +821,10 @@ function AppShell() {
       onWallet={() => go('wallethome')}
       onUtilities={() => go('utilities')}
       onOrders={() => go('orderhistory')}
+      onHotels={() => {
+        setMarketplaceCategory('HOTEL');
+        go('marketplace');
+      }}
       onTrackOrder={(id) => {
         setActiveOrderId(id);
         go('ordertracking');
@@ -1041,6 +1059,8 @@ function AppShell() {
     home: homeScreen,
     marketplace: (
       <MarketplaceScreen
+        key={marketplaceCategory ?? 'all'}
+        initialCategory={marketplaceCategory}
         onTab={goTab}
         onBack={() => goBack('home')}
         onHome={() => go('home')}
@@ -1100,6 +1120,7 @@ function AppShell() {
         bookingId={activeBookingId}
         {...(activeBookingDraft ? { hotelName: activeBookingDraft.hotelName } : {})}
         onBack={() => goBack('mybookings')}
+        onMyBookings={() => go('mybookings')}
       />
     ) : (
       <MyBookingsScreen

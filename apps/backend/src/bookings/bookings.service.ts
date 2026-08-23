@@ -30,6 +30,7 @@ import {
   BOOKING_REJECTED_CUSTOMER_MESSAGE,
 } from './bookings.constants';
 
+import type { BookingWithNames } from './booking.mapper';
 import type { Booking, RoomAvailability } from '@prisma/client';
 
 export interface AvailabilityQuery {
@@ -806,17 +807,30 @@ export class BookingsService {
 
   // ── Reads ─────────────────────────────────────────────────────────────────
 
+  /**
+   * The hotel's name and the room's, for a guest's own reads.
+   *
+   * Only the two fields the guest is shown. A bare `include: { business: true }`
+   * would put the hotel's registration number, tax number and bank details one
+   * careless spread away from a customer response.
+   */
+  private static readonly CUSTOMER_BOOKING_NAMES = {
+    business: { select: { businessName: true } },
+    roomType: { select: { name: true } },
+  } as const;
+
   /** A guest's own bookings, newest first. */
   public async listCustomerBookings(
     customerId: string,
     page: number,
     pageSize: number,
-  ): Promise<{ items: Booking[]; total: number }> {
+  ): Promise<{ items: BookingWithNames[]; total: number }> {
     const where = { customerId };
     const [total, items] = await Promise.all([
       this.prisma.booking.count({ where }),
       this.prisma.booking.findMany({
         where,
+        include: BookingsService.CUSTOMER_BOOKING_NAMES,
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * pageSize,
         take: pageSize,
@@ -827,8 +841,14 @@ export class BookingsService {
 
   /** One booking, and only if it is this guest's. NOT_FOUND rather than
    *  FORBIDDEN so an id cannot be probed for existence. */
-  public async getCustomerBooking(customerId: string, bookingId: string): Promise<Booking> {
-    const booking = await this.prisma.booking.findFirst({ where: { id: bookingId, customerId } });
+  public async getCustomerBooking(
+    customerId: string,
+    bookingId: string,
+  ): Promise<BookingWithNames> {
+    const booking = await this.prisma.booking.findFirst({
+      where: { id: bookingId, customerId },
+      include: BookingsService.CUSTOMER_BOOKING_NAMES,
+    });
     if (!booking) {
       throw new NotFoundDomainException('Booking not found');
     }

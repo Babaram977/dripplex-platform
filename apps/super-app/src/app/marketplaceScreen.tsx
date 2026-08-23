@@ -1567,6 +1567,7 @@ export function MarketplaceScreen({
   onStore,
   onCart,
   onTab,
+  initialCategory = null,
 }: {
   onBack: () => void;
   onHome: () => void;
@@ -1576,8 +1577,12 @@ export function MarketplaceScreen({
   onCart?: () => void;
   /** App's single footer-tab router. */
   onTab?: (tab: NavTab) => void;
+  /** Which chip is already selected on arrival. Home's Hotels tile lands here
+   *  with `HOTEL` — the chip is 9th of 12 in a scrolling strip, so a person who
+   *  taps Hotels must not then have to go and find Hotels. */
+  initialCategory?: MerchantCategory | null;
 }) {
-  const [activecat, setActivecat] = useState<MerchantCategory | null>(null);
+  const [activecat, setActivecat] = useState<MerchantCategory | null>(initialCategory);
   const [showAI, setShowAI] = useState(false);
   // Real cart badge — reflects the customer's actual server-side cart, never a
   // hardcoded number. 0 when the cart is empty or the fetch fails.
