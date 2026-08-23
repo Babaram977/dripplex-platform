@@ -72,7 +72,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       return {
         statusCode: exception.statusCode,
         errorCode: exception.errorCode,
-        message: exception.message,
+        // `publicMessage` when the exception carries a diagnostic meant for
+        // our logs rather than the caller. Everything else is unaffected —
+        // it defaults to `message`.
+        message: exception.publicMessage ?? exception.message,
         details: exception.details,
       };
     }

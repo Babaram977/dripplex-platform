@@ -1,6 +1,10 @@
 import { type ArgumentsHost, HttpException, HttpStatus } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
+import {
+  UtilityProviderRejectedError,
+  isProviderRejection,
+} from '../../utilities/providers/utility-provider.port';
 import { DomainException } from '../exceptions/domain.exception';
 
 import { GlobalExceptionFilter } from './global-exception.filter';
@@ -46,6 +50,53 @@ describe('GlobalExceptionFilter', () => {
         path: '/api/v1/test',
       }),
     );
+  });
+
+  it('sends publicMessage over the wire and keeps the diagnostic in the log', () => {
+    const filter = new GlobalExceptionFilter(logger);
+    const statusSpy = jest.fn();
+    const jsonSpy = jest.fn();
+    const host = createHost(statusSpy, jsonSpy);
+
+    const detail = 'Peyflex request failed (404): {"error":"Network not found or not active"}';
+    filter.catch(
+      new DomainException('UPSTREAM_PROVIDER_ERROR', detail, 502, undefined, 'Try again shortly.'),
+      host,
+    );
+
+    expect(statusSpy).toHaveBeenCalledWith(502);
+    expect(jsonSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ statusCode: 502, message: 'Try again shortly.' }),
+    );
+    // The provider's own wording must not reach the customer.
+    expect(JSON.stringify(jsonSpy.mock.calls[0])).not.toContain('Peyflex');
+  });
+
+  it('maps a UtilityProviderRejectedError to 502, not the catch-all 500', () => {
+    const filter = new GlobalExceptionFilter(logger);
+    const statusSpy = jest.fn();
+    const jsonSpy = jest.fn();
+    const host = createHost(statusSpy, jsonSpy);
+
+    // The exact shape that reached a customer as "An unexpected error
+    // occurred" when a stale provider code was sent to the data-plans read.
+    const err = new UtilityProviderRejectedError(
+      'Peyflex request failed (404): {"error":"Network not found or not active"}',
+    );
+    filter.catch(err, host);
+
+    expect(statusSpy).toHaveBeenCalledWith(502);
+    expect(jsonSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        statusCode: 502,
+        errorCode: 'UPSTREAM_PROVIDER_ERROR',
+        message: 'That service is temporarily unavailable. Please try again shortly.',
+      }),
+    );
+    // Still a provider rejection, so the purchase path's refund logic — which
+    // keys off this discriminator — is untouched.
+    expect(err.neverExecuted).toBe(true);
+    expect(isProviderRejection(err)).toBe(true);
   });
 
   it('maps HttpException messages', () => {
