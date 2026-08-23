@@ -815,7 +815,7 @@ function AppShell() {
           go('otp');
         }}
         onSignIn={() => go('signin')}
-        onBack={() => go('welcome')}
+        onBack={() => goBack('welcome')}
       />
     ),
     otp: (
@@ -827,7 +827,7 @@ function AppShell() {
         password={otpData.password}
         persona={otpData.persona}
         onBack={() =>
-          go(otpData.persona && otpData.persona !== 'customer' ? 'partnerselect' : 'register')
+          goBack(otpData.persona && otpData.persona !== 'customer' ? 'partnerselect' : 'register')
         }
         onChangeNumber={() =>
           go(otpData.persona && otpData.persona !== 'customer' ? 'partnerselect' : 'register')
@@ -849,14 +849,14 @@ function AppShell() {
       <ProfileSetupScreen
         onContinue={() => go('permissions')}
         onSkip={() => go('permissions')}
-        onBack={() => go('otp')}
+        onBack={() => goBack('otp')}
       />
     ),
     permissions: (
       <PermissionsScreen
         onContinue={() => go('consent')}
         onSkip={() => go('consent')}
-        onBack={() => go('profile')}
+        onBack={() => goBack('profile')}
       />
     ),
     // "Returning" routes to the REAL email/password sign-in (the biometric
@@ -878,7 +878,7 @@ function AppShell() {
       />
     ),
     recovery: (
-      <RecoveryScreen onRecovered={() => go(recoveryFrom)} onBack={() => go(recoveryFrom)} />
+      <RecoveryScreen onRecovered={() => go(recoveryFrom)} onBack={() => goBack(recoveryFrom)} />
     ),
     signin: (
       <SignInScreen
@@ -896,17 +896,17 @@ function AppShell() {
         }}
       />
     ),
-    twofa: <TwoFactorScreen onBack={() => go('security')} onDone={() => go('security')} />,
-    devices: <TrustedDevicesScreen onBack={() => go('security')} />,
+    twofa: <TwoFactorScreen onBack={() => goBack('security')} onDone={() => go('security')} />,
+    devices: <TrustedDevicesScreen onBack={() => goBack('security')} />,
     activity: (
-      <SecurityActivityScreen onBack={() => go('security')} onSecure={() => go('security')} />
+      <SecurityActivityScreen onBack={() => goBack('security')} onSecure={() => go('security')} />
     ),
     security: (
       <SecurityCenterScreen onBack={() => goBack('account')} onNav={(s) => go(s as Screen)} />
     ),
-    sessions: <SessionManagementScreen onBack={() => go('security')} />,
-    privacy: <PrivacyControlsScreen onBack={() => go('account')} />,
-    kyc: <IdentityVerificationScreen onBack={() => go('account')} />,
+    sessions: <SessionManagementScreen onBack={() => goBack('security')} />,
+    privacy: <PrivacyControlsScreen onBack={() => goBack('account')} />,
+    kyc: <IdentityVerificationScreen onBack={() => goBack('account')} />,
     account: (
       <AccountManagementScreen
         onSignOut={() => {
@@ -936,13 +936,16 @@ function AppShell() {
     ),
     consent: <ConsentScreen onAccept={() => go('notifprefs')} onLater={() => go('notifprefs')} />,
     notifprefs: (
-      <NotificationPrefsScreen onBack={() => go('consent')} onSave={() => go('langregion')} />
+      <NotificationPrefsScreen onBack={() => goBack('consent')} onSave={() => go('langregion')} />
     ),
     langregion: (
-      <LanguageRegionScreen onBack={() => go('notifprefs')} onSave={() => go('accessibility')} />
+      <LanguageRegionScreen
+        onBack={() => goBack('notifprefs')}
+        onSave={() => go('accessibility')}
+      />
     ),
     accessibility: (
-      <AccessibilityScreen onBack={() => go('langregion')} onApply={() => go('onboarddone')} />
+      <AccessibilityScreen onBack={() => goBack('langregion')} onApply={() => go('onboarddone')} />
     ),
     onboarddone: (
       <WelcomeDrippleXScreen
@@ -961,13 +964,13 @@ function AppShell() {
         }
       />
     ),
-    linked: <LinkedAccountsScreen onBack={() => go('account')} />,
+    linked: <LinkedAccountsScreen onBack={() => goBack('account')} />,
     verifstatus: (
-      <VerificationStatusScreen onBack={() => go('account')} onContinue={() => go('kyc')} />
+      <VerificationStatusScreen onBack={() => goBack('account')} onContinue={() => go('kyc')} />
     ),
-    emergency: <EmergencyProtectionScreen onBack={() => go('security')} />,
-    activitydash: <ActivityDashboardScreen onBack={() => go('account')} />,
-    services: <ConnectedServicesScreen onBack={() => go('account')} />,
+    emergency: <EmergencyProtectionScreen onBack={() => goBack('security')} />,
+    activitydash: <ActivityDashboardScreen onBack={() => goBack('account')} />,
+    services: <ConnectedServicesScreen onBack={() => goBack('account')} />,
     trust: (
       <TrustCenterScreen
         onBack={() => goBack('account')}
@@ -976,25 +979,27 @@ function AppShell() {
         onVerifyId={() => go('kyc')}
       />
     ),
-    pinsetup: <PinSetupScreen onBack={() => go('account')} onDone={() => go('account')} />,
-    changepin: <ChangePinScreen onBack={() => go('account')} onDone={() => go('account')} />,
+    pinsetup: <PinSetupScreen onBack={() => goBack('account')} onDone={() => go('account')} />,
+    changepin: <ChangePinScreen onBack={() => goBack('account')} onDone={() => go('account')} />,
     emailverify: (
-      <EmailVerificationScreen onBack={() => go('account')} onDone={() => go('account')} />
+      <EmailVerificationScreen onBack={() => goBack('account')} onDone={() => go('account')} />
     ),
-    changephone: <ChangePhoneScreen onBack={() => go('account')} onDone={() => go('account')} />,
+    changephone: (
+      <ChangePhoneScreen onBack={() => goBack('account')} onDone={() => go('account')} />
+    ),
     username: (
-      <UsernameManagementScreen onBack={() => go('account')} onSave={() => go('account')} />
+      <UsernameManagementScreen onBack={() => goBack('account')} onSave={() => go('account')} />
     ),
-    loginapproval: <LoginApprovalsScreen onBack={() => go('security')} />,
-    recoverycodes: <RecoveryCodesScreen onBack={() => go('account')} />,
+    loginapproval: <LoginApprovalsScreen onBack={() => goBack('security')} />,
+    recoverycodes: <RecoveryCodesScreen onBack={() => goBack('account')} />,
     securityqs: (
-      <SecurityQuestionsScreen onBack={() => go('account')} onSave={() => go('account')} />
+      <SecurityQuestionsScreen onBack={() => goBack('account')} onSave={() => go('account')} />
     ),
-    acctransfer: <AccountTransferScreen onBack={() => go('account')} />,
-    suspension: <AccountSuspensionScreen onBack={() => go('account')} />,
+    acctransfer: <AccountTransferScreen onBack={() => goBack('account')} />,
+    suspension: <AccountSuspensionScreen onBack={() => goBack('account')} />,
     authsummary: (
       <AuthSummaryScreen
-        onBack={() => go('account')}
+        onBack={() => goBack('account')}
         onFinish={() => go('home')}
         onAddEmail={() => go('emailverify')}
         onRecoveryCodes={() => go('recoverycodes')}
@@ -1005,7 +1010,7 @@ function AppShell() {
     marketplace: (
       <MarketplaceScreen
         onTab={goTab}
-        onBack={() => go('home')}
+        onBack={() => goBack('home')}
         onHome={() => go('home')}
         onAccount={() => go('account')}
         onNotifications={() => go('activitydash')}
@@ -1019,7 +1024,7 @@ function AppShell() {
     store: (
       <StoreScreen
         onTab={goTab}
-        onBack={() => go('marketplace')}
+        onBack={() => goBack('marketplace')}
         onHome={() => go('home')}
         onAccount={() => go('account')}
         onNotifications={() => go('activitydash')}
@@ -1055,14 +1060,14 @@ function AppShell() {
           setActiveBookingId(id);
           go('bookingstatus');
         }}
-        onBack={() => go('home')}
+        onBack={() => goBack('home')}
       />
     ),
     bookingstatus: activeBookingId ? (
       <BookingStatusScreen
         bookingId={activeBookingId}
         {...(activeBookingDraft ? { hotelName: activeBookingDraft.hotelName } : {})}
-        onBack={() => go('mybookings')}
+        onBack={() => goBack('mybookings')}
       />
     ) : (
       <MyBookingsScreen
@@ -1070,7 +1075,7 @@ function AppShell() {
           setActiveBookingId(id);
           go('bookingstatus');
         }}
-        onBack={() => go('home')}
+        onBack={() => goBack('home')}
       />
     ),
     mybookings: (
@@ -1079,13 +1084,13 @@ function AppShell() {
           setActiveBookingId(id);
           go('bookingstatus');
         }}
-        onBack={() => go('home')}
+        onBack={() => goBack('home')}
       />
     ),
     productdetail: (
       <ProductDetailScreen
         onTab={goTab}
-        onBack={() => go('store')}
+        onBack={() => goBack('store')}
         onHome={() => go('home')}
         onAccount={() => go('account')}
         onNotifications={() => go('activitydash')}
@@ -1101,7 +1106,7 @@ function AppShell() {
         // Back to browsing, not to Product Detail — the cart is reachable from
         // the bottom nav/home, where there is no active product, and routing
         // there without a productId used to render an empty/placeholder product.
-        onBack={() => go('marketplace')}
+        onBack={() => goBack('marketplace')}
         onHome={() => go('home')}
         onAccount={() => go('account')}
         onNotifications={() => go('activitydash')}
@@ -1111,7 +1116,7 @@ function AppShell() {
     checkout: (
       <CheckoutScreen
         onTab={goTab}
-        onBack={() => go('cart')}
+        onBack={() => goBack('cart')}
         onHome={() => go('home')}
         onAccount={() => go('account')}
         onNotifications={() => go('activitydash')}
@@ -1124,7 +1129,7 @@ function AppShell() {
     ordertracking: (
       <TrackingScreen
         onTab={goTab}
-        onBack={() => go('home')}
+        onBack={() => goBack('home')}
         onHome={() => go('home')}
         onAccount={() => go('account')}
         onNotifications={() => go('activitydash')}
@@ -1147,14 +1152,14 @@ function AppShell() {
         contextId={chat.contextId}
         title={chat.title}
         subtitle={chat.context === 'delivery' ? 'About your delivery' : 'About your trip'}
-        onBack={() => go(chat.back)}
+        onBack={() => goBack(chat.back)}
       />
     ) : (
       homeScreen
     ),
     orderhistory: (
       <OrderHistoryScreen
-        onBack={() => go('home')}
+        onBack={() => goBack('home')}
         onOrder={(id) => {
           setActiveOrderId(id);
           go('ordertracking');
@@ -1164,7 +1169,7 @@ function AppShell() {
     // ── RIDE module ──────────────────────────────────────────────────────────
     ridehome: (
       <RideHomeScreen
-        onBack={() => go('home')}
+        onBack={() => goBack('home')}
         onSearch={() => go('ridesearch')}
         onHistory={() => go('ridehistory')}
         pickup={ridePickup.pickup}
@@ -1172,7 +1177,7 @@ function AppShell() {
     ),
     ridesearch: (
       <DestinationSearchScreen
-        onBack={() => go('ridehome')}
+        onBack={() => goBack('ridehome')}
         onSelect={(dest) => {
           setRideDest(dest);
           go('ridepickup');
@@ -1186,7 +1191,7 @@ function AppShell() {
     ),
     ridepickup: (
       <PickupConfirmScreen
-        onBack={() => go('ridesearch')}
+        onBack={() => goBack('ridesearch')}
         onConfirm={() => go('ridefare')}
         pickup={ridePickup.pickup}
         dropoff={rideDest}
@@ -1194,7 +1199,7 @@ function AppShell() {
     ),
     ridefare: (
       <FareEstimateScreen
-        onBack={() => go('ridepickup')}
+        onBack={() => goBack('ridepickup')}
         dropoff={rideDest}
         pickup={ridePickup.pickup}
         rideType="ECONOMY"
@@ -1206,14 +1211,14 @@ function AppShell() {
     ),
     ridefinding: (
       <FindingDriverScreen
-        onBack={() => go('ridehome')}
+        onBack={() => goBack('ridehome')}
         rideId={activeCustomerRideId}
         onFound={() => go('rideassigned')}
       />
     ),
     rideassigned: (
       <DriverAssignedScreen
-        onBack={() => go('ridefare')}
+        onBack={() => goBack('ridefare')}
         onArrived={() => go('ridearrived')}
         onStarted={() => go('rideinprogress')}
         onCancel={() => go('ridehome')}
@@ -1232,7 +1237,7 @@ function AppShell() {
     ),
     ridearrived: (
       <DriverArrivedScreen
-        onBack={() => go('rideassigned')}
+        onBack={() => goBack('rideassigned')}
         onStart={() => go('rideinprogress')}
         onShare={() => go('rideshare')}
         rideId={activeCustomerRideId}
@@ -1249,7 +1254,7 @@ function AppShell() {
     ),
     rideinprogress: (
       <RideInProgressScreen
-        onBack={() => go('ridearrived')}
+        onBack={() => goBack('ridearrived')}
         onComplete={() => go('ridecomplete')}
         onSOS={() => go('ridesos')}
         onShare={() => go('rideshare')}
@@ -1275,14 +1280,14 @@ function AppShell() {
     ),
     riderating: (
       <RateDriverScreen
-        onBack={() => go('ridecomplete')}
+        onBack={() => goBack('ridecomplete')}
         onSubmit={() => go('home')}
         rideId={activeCustomerRideId}
       />
     ),
     ridehistory: (
       <RideHistoryScreen
-        onBack={() => go('ridehome')}
+        onBack={() => goBack('ridehome')}
         onDetail={(id) => {
           setRideDetailId(id);
           go('ridedetail');
@@ -1291,7 +1296,7 @@ function AppShell() {
     ),
     ridedetail: (
       <RideDetailScreen
-        onBack={() => go('ridehistory')}
+        onBack={() => goBack('ridehistory')}
         rideId={rideDetailId}
         onRebook={() => go('ridehome')}
         onReport={() => go('ridereport')}
@@ -1300,7 +1305,7 @@ function AppShell() {
     // ── Extended Ride screens ────────────────────────────────────────────────
     ridehomeplus: (
       <RideHomeExtendedScreen
-        onBack={() => go('home')}
+        onBack={() => goBack('home')}
         onSearch={() => go('ridesearch')}
         onSchedule={() => go('rideschedule')}
         onHistory={() => go('ridehistory')}
@@ -1312,7 +1317,7 @@ function AppShell() {
     ),
     ridelivetrack: (
       <LiveTrackingScreen
-        onBack={() => go('rideinprogress')}
+        onBack={() => goBack('rideinprogress')}
         onShare={() => go('rideshare')}
         onSOS={() => go('ridesos')}
         onChat={() => go('rideinprogress')}
@@ -1320,28 +1325,28 @@ function AppShell() {
     ),
     rideenroute: (
       <DriverEnRouteScreen
-        onBack={() => go('ridefinding')}
+        onBack={() => goBack('ridefinding')}
         onContact={() => go('rideassigned')}
         onCancel={() => go('ridehome')}
       />
     ),
     ridepaxwait: (
       <PassengerWaitingScreen
-        onBack={() => go('rideassigned')}
+        onBack={() => goBack('rideassigned')}
         onContact={() => go('rideassigned')}
         onBoard={() => go('rideinprogress')}
       />
     ),
     ridearrivedplus: (
       <DriverArrivedExtendedScreen
-        onBack={() => go('rideassigned')}
+        onBack={() => goBack('rideassigned')}
         onStart={() => go('rideinprogress')}
         onReport={() => go('ridereport')}
       />
     ),
     ridedriver: (
       <DriverProfileSheet
-        onBack={() => go('rideassigned')}
+        onBack={() => goBack('rideassigned')}
         onMessage={() => {
           if (activeCustomerRideId) {
             setChat({
@@ -1359,49 +1364,57 @@ function AppShell() {
     ),
     ridepayment: (
       <PaymentScreen
-        onBack={() => go('ridefare')}
+        onBack={() => goBack('ridefare')}
         onPay={() => go('ridepaysuccess')}
         onChangeMethod={() => go('ridepayment')}
       />
     ),
     rideopay: (
-      <OPayPaymentScreen onBack={() => go('ridepayment')} onSuccess={() => go('ridepaysuccess')} />
+      <OPayPaymentScreen
+        onBack={() => goBack('ridepayment')}
+        onSuccess={() => go('ridepaysuccess')}
+      />
     ),
     ridecash: (
       <CashPaymentScreen
-        onBack={() => go('ridepayment')}
+        onBack={() => goBack('ridepayment')}
         onConfirm={() => go('ridepaysuccess')}
         rideId={activeCustomerRideId}
       />
     ),
     ridetip: (
       <TipDriverScreen
-        onBack={() => go('ridecomplete')}
+        onBack={() => goBack('ridecomplete')}
         onSubmit={() => go('riderating')}
         onSkip={() => go('riderating')}
         rideId={activeCustomerRideId}
       />
     ),
     ridereport: (
-      <ReportTripScreen onBack={() => go('ridedetail')} onSubmit={() => go('ridehistory')} />
+      <ReportTripScreen onBack={() => goBack('ridedetail')} onSubmit={() => go('ridehistory')} />
     ),
-    ridesaved: <SavedPlacesScreen onBack={() => go('ridehome')} onAdd={() => go('ridesaved')} />,
+    ridesaved: (
+      <SavedPlacesScreen onBack={() => goBack('ridehome')} onAdd={() => go('ridesaved')} />
+    ),
     rideschedule: (
-      <ScheduleRideScreen onBack={() => go('ridehome')} onConfirm={() => go('ridefare')} />
+      <ScheduleRideScreen onBack={() => goBack('ridehome')} onConfirm={() => go('ridefare')} />
     ),
     ridepromo: (
-      <PromoCodeScreen onBack={() => go('ridepayment')} onApply={() => go('ridepayment')} />
+      <PromoCodeScreen onBack={() => goBack('ridepayment')} onApply={() => go('ridepayment')} />
     ),
-    ridereferral: <ReferralScreen onBack={() => go('ridehome')} />,
+    ridereferral: <ReferralScreen onBack={() => goBack('ridehome')} />,
     ridesos: (
-      <EmergencySOSScreen onBack={() => go('rideinprogress')} onSOS={() => go('rideinprogress')} />
+      <EmergencySOSScreen
+        onBack={() => goBack('rideinprogress')}
+        onSOS={() => go('rideinprogress')}
+      />
     ),
     rideshare: (
       <ShareTripScreen onBack={() => goBack('rideassigned')} rideId={activeCustomerRideId} />
     ),
     ridereceipt: (
       <TripReceiptScreen
-        onBack={() => go('ridedetail')}
+        onBack={() => goBack('ridedetail')}
         rideId={rideDetailId}
         onReport={() => go('ridereport')}
       />
@@ -1420,7 +1433,7 @@ function AppShell() {
         // could never finish registering. The hub always offers "Continue to
         // Dashboard", so a driver who IS finished loses nothing.
         onContinue={() => go('drvkyc')}
-        onBack={() => go('home')}
+        onBack={() => goBack('home')}
         onApply={() => {
           setPartnerPersona('driver');
           go('partnerdriver');
@@ -1431,7 +1444,7 @@ function AppShell() {
         }}
       />
     ),
-    drvotp: <DriverOTPScreen onVerified={() => go('drvkyc')} onBack={() => go('drvlogin')} />,
+    drvotp: <DriverOTPScreen onVerified={() => go('drvkyc')} onBack={() => goBack('drvlogin')} />,
     drvkyc: (
       <DriverKYCStatusScreen
         onContinue={() => go('drvdash')}
@@ -1450,7 +1463,7 @@ function AppShell() {
     ),
     drvuploaddocs: (
       <DriverUploadDocsScreen
-        onBack={() => go('drvkyc')}
+        onBack={() => goBack('drvkyc')}
         onSave={() => go('drvkyc')}
         // Submitting for review is refused without these two, and this screen
         // is where a driver reads that refusal — so it must also be where they
@@ -1465,10 +1478,10 @@ function AppShell() {
         }}
       />
     ),
-    drvinspection: <DriverInspectionScreen onBack={() => go('drvkyc')} />,
+    drvinspection: <DriverInspectionScreen onBack={() => goBack('drvkyc')} />,
     drvvehicle: (
       <DriverVehicleRegScreen
-        onBack={() => go('drvkyc')}
+        onBack={() => goBack('drvkyc')}
         onSave={() => {
           setDriverStepReturn('drvkyc');
           go('drvemergency');
@@ -1477,13 +1490,13 @@ function AppShell() {
     ),
     drvemergency: (
       <EmergencyContactScreen
-        onBack={() => go(driverStepReturn)}
+        onBack={() => goBack(driverStepReturn)}
         onContinue={() => go('drvagree')}
       />
     ),
     drvagree: (
       <AgreementAcceptanceScreen
-        onBack={() => go(driverStepReturn)}
+        onBack={() => goBack(driverStepReturn)}
         onContinue={() => go(driverStepReturn)}
       />
     ),
@@ -1514,7 +1527,7 @@ function AppShell() {
       <DriverNavToPickupScreen
         rideId={activeDriverRide?.id}
         onArrived={() => go('drvverify')}
-        onBack={() => go('drvdash')}
+        onBack={() => goBack('drvdash')}
         onMessagePassenger={(rideId, passengerName) => {
           setChat({
             context: 'ride',
@@ -1530,7 +1543,7 @@ function AppShell() {
       <DriverPassengerVerifyScreen
         rideId={activeDriverRide?.id}
         onVerified={() => go('drvtripactive')}
-        onBack={() => go('drvtopickup')}
+        onBack={() => goBack('drvtopickup')}
       />
     ),
     drvtripactive: (
@@ -1540,7 +1553,7 @@ function AppShell() {
           if (ride) setActiveDriverRide(ride);
           go('drvtripdone');
         }}
-        onBack={() => go('drvverify')}
+        onBack={() => goBack('drvverify')}
         onMessagePassenger={(id, passengerName) => {
           setChat({
             context: 'ride',
@@ -1562,7 +1575,7 @@ function AppShell() {
     // ── WALLET module ────────────────────────────────────────────────────────
     wallethome: (
       <WalletHomeScreen
-        onBack={() => go('home')}
+        onBack={() => goBack('home')}
         onTopUp={() => go('wallettopup')}
         onWithdraw={() => go('walletwithdraw')}
         onTransfer={() => go('wallettransfer')}
@@ -1622,19 +1635,21 @@ function AppShell() {
         }}
       />
     ),
-    wallettx: <TransactionHistoryScreen onBack={() => go('wallethome')} />,
-    wallettopup: <TopUpScreen onBack={() => go('wallethome')} onConfirm={() => go('wallethome')} />,
+    wallettx: <TransactionHistoryScreen onBack={() => goBack('wallethome')} />,
+    wallettopup: (
+      <TopUpScreen onBack={() => goBack('wallethome')} onConfirm={() => go('wallethome')} />
+    ),
     walletwithdraw: (
-      <WithdrawScreen onBack={() => go('wallethome')} onConfirm={() => go('wallethome')} />
+      <WithdrawScreen onBack={() => goBack('wallethome')} onConfirm={() => go('wallethome')} />
     ),
     wallettransfer: (
-      <TransferScreen onBack={() => go('wallethome')} onConfirm={() => go('wallethome')} />
+      <TransferScreen onBack={() => goBack('wallethome')} onConfirm={() => go('wallethome')} />
     ),
-    walletpay: <PaymentMethodsScreen onBack={() => go('wallethome')} />,
-    walletrewards: <RewardsScreen onBack={() => go('wallethome')} />,
-    walletstatement: <WalletStatementScreen onBack={() => go('wallethome')} />,
-    walletsecurity: <WalletSecurityScreen onBack={() => go('wallethome')} />,
-    walletsettings: <WalletSettingsScreen onBack={() => go('wallethome')} />,
+    walletpay: <PaymentMethodsScreen onBack={() => goBack('wallethome')} />,
+    walletrewards: <RewardsScreen onBack={() => goBack('wallethome')} />,
+    walletstatement: <WalletStatementScreen onBack={() => goBack('wallethome')} />,
+    walletsecurity: <WalletSecurityScreen onBack={() => goBack('wallethome')} />,
+    walletsettings: <WalletSettingsScreen onBack={() => goBack('wallethome')} />,
     // ── RIDE OPERATIONS CONSOLE (desktop) ───────────────────────────────────
     admindash: <AdminDashboardScreen />,
     adminmap: <AdminLiveMapScreen />,
@@ -1671,7 +1686,7 @@ function AppShell() {
     riderlogin: (
       <RiderLoginScreen
         onContinue={() => go('riderdash')}
-        onBack={() => go('home')}
+        onBack={() => goBack('home')}
         onApply={() => {
           setPartnerPersona('rider');
           go('partnerrider');
@@ -1696,7 +1711,7 @@ function AppShell() {
     riderjob: activeRiderJob ? (
       <RiderJobScreen
         job={activeRiderJob}
-        onBack={() => go('riderdash')}
+        onBack={() => goBack('riderdash')}
         onDone={() => go('riderdash')}
         onMessageCustomer={(deliveryJobId, customerName) => {
           setChat({
@@ -1711,14 +1726,14 @@ function AppShell() {
     ) : (
       <RiderLoginScreen
         onContinue={() => go('riderdash')}
-        onBack={() => go('home')}
+        onBack={() => goBack('home')}
         onApply={() => {
           setPartnerPersona('rider');
           go('partnerrider');
         }}
       />
     ),
-    riderearnings: <RiderEarningsScreen onBack={() => go('riderdash')} />,
+    riderearnings: <RiderEarningsScreen onBack={() => goBack('riderdash')} />,
     rideraccount: (
       <RiderAccountScreen
         onBack={() => goBack('riderdash')}
@@ -1745,7 +1760,7 @@ function AppShell() {
             ? () => {
                 const dest = partnerFrom;
                 setPartnerFrom(null);
-                go(dest);
+                goBack(dest);
               }
             : undefined
         }
@@ -1753,7 +1768,7 @@ function AppShell() {
     ),
     partnermerchant: (
       <MerchantSignUpScreen
-        onBack={() => go('partnerselect')}
+        onBack={() => goBack('partnerselect')}
         onNext={({ email, password, businessName, category }) => {
           setPartnerPersona('merchant');
           setMerchantBiz({ businessName, category });
@@ -1772,7 +1787,7 @@ function AppShell() {
     ),
     partnerdriver: (
       <DriverSignUpScreen
-        onBack={() => go('partnerselect')}
+        onBack={() => goBack('partnerselect')}
         onNext={({ email, password }) => {
           setPartnerPersona('driver');
           setOtpData({
@@ -1790,7 +1805,7 @@ function AppShell() {
     ),
     partnerrider: (
       <RiderSignUpScreen
-        onBack={() => go('partnerselect')}
+        onBack={() => goBack('partnerselect')}
         onNext={({ email, password }) => {
           setPartnerPersona('rider');
           setOtpData({
@@ -1808,13 +1823,13 @@ function AppShell() {
     ),
     partnerdocs: (
       <DriverDocumentsScreen
-        onBack={() => go('partnerdriver')}
+        onBack={() => goBack('partnerdriver')}
         onSubmit={() => go('partnerreview')}
       />
     ),
     riderdocs: (
       <RiderDocumentsScreen
-        onBack={() => go('partnerrider')}
+        onBack={() => goBack('partnerrider')}
         onSubmit={() => go('partnerreview')}
       />
     ),
@@ -1823,7 +1838,7 @@ function AppShell() {
         businessName={merchantBiz.businessName}
         category={merchantBiz.category}
         onDone={() => go('partnerreview')}
-        onBack={() => go('partnerreview')}
+        onBack={() => goBack('partnerreview')}
       />
     ),
     partnerreview: (
