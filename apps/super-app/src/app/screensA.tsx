@@ -13,6 +13,7 @@ import {
   MUTED,
   Logo,
   Ambient,
+  HeroFit,
   StatusBar,
   BackBtn,
   GreenBtn,
@@ -97,14 +98,13 @@ export function WelcomeScreen({
       <Ambient />
       <StatusBar />
       <div
-        className="relative z-10 flex flex-1 items-center justify-center"
+        className="relative z-10 flex min-h-0 flex-1 items-center justify-center"
         style={{ animation: 'fade-in .55s ease .15s both' }}
       >
-        {/* The slot reserves the scaled footprint; the orbit inside keeps its
-            authored 320px geometry and is scaled to fit. Splitting it this way
-            is what stops the ring overflowing its flex slot on a short screen
-            and landing on the headline. */}
-        <div className="dx-hero-slot">
+        {/* HeroFit measures this row and scales the orbit to fit it. The orbit
+            keeps its authored 320px geometry either way — only the fitting
+            changes, so the composition stays as designed. */}
+        <HeroFit>
           <div
             className="dx-hero-orbit relative flex items-center justify-center"
             style={{ width: 320, height: 320 }}
@@ -175,7 +175,7 @@ export function WelcomeScreen({
               );
             })}
           </div>
-        </div>
+        </HeroFit>
       </div>
       <div
         className="relative z-10 flex flex-col gap-5 px-7 pb-10"
