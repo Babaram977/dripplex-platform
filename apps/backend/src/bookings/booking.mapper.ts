@@ -64,6 +64,41 @@ export interface BookingDto {
   createdAt: string;
 }
 
+/**
+ * What a guest sees, plus the two names they actually recognise.
+ *
+ * `BookingDto` carries `businessId` and `roomTypeId` and nothing else about
+ * either, which is fine for a hotel reading its own book — it knows which hotel
+ * it is. It is not fine for a guest: their bookings list showed a reference,
+ * some dates and an amount, with no way to tell a room in Kano from a room in
+ * Abuja. A guest recognises "Tahir Guest Palace · Deluxe King", never
+ * `b61f05a2-…`.
+ *
+ * Denormalised onto the DTO rather than left to the client to fetch. A list of
+ * ten bookings would otherwise be ten extra merchant lookups, each able to fail
+ * on its own and leave a row half-named.
+ */
+export interface CustomerBookingDto extends BookingDto {
+  hotelName: string;
+  roomName: string;
+}
+
+/** A booking read with the two relations `toCustomerBookingDto` needs. Stated
+ *  as a type so a caller that forgets the `include` fails to compile rather
+ *  than at runtime on `undefined.businessName`. */
+export type BookingWithNames = Booking & {
+  business: { businessName: string };
+  roomType: { name: string };
+};
+
+export function toCustomerBookingDto(booking: BookingWithNames): CustomerBookingDto {
+  return {
+    ...toBookingDto(booking),
+    hotelName: booking.business.businessName,
+    roomName: booking.roomType.name,
+  };
+}
+
 /** Everything a customer's BookingDto has, plus what only the hotel may see. */
 export interface MerchantBookingDto extends BookingDto {
   /** DrippleX's cut, once the hotel has accepted. Null while pending — no cut

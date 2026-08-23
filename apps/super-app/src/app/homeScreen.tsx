@@ -76,11 +76,14 @@ const QUICK: { icon: IconName; label: string; color: string; ready: boolean }[] 
   { icon: 'orders', label: 'Orders', color: '#F59E0B', ready: true },
   { icon: 'utilities', label: 'Utilities', color: '#06B6D4', ready: true },
   { icon: 'food', label: 'Food', color: '#F97316', ready: true },
-  // Hotels replaced Health here (founder, 2026-08-23). The hotel screens have
-  // existed since DPX-HOTEL-001 and were rebuilt on the token system in #248,
-  // but nothing in the app navigated to them — `mybookings` was a registered
-  // route with no caller — so the whole feature was unreachable while a tile
-  // next to it advertised a Health service that does not exist.
+  // Hotels replaced a dead "Health" placeholder on 2026-08-23. The hotel flow
+  // has been live since #233 with no entry point anywhere on Home, the nav or
+  // the category row — the only route was a Marketplace chip sitting 9th of 12
+  // in a scrolling strip, off-screen on a 390px phone. Reported by the founder
+  // as "I cannot find the hotel menu or icon", which is exactly what it was.
+  //
+  // Taking Health's slot rather than adding a ninth tile keeps the approved
+  // 8-tile grid intact: a built feature displaces an unbuilt one.
   { icon: 'hotel', label: 'Hotels', color: '#10B981', ready: true },
   { icon: 'more', label: 'More', color: '#6B7280', ready: false },
 ];
@@ -1514,13 +1517,13 @@ export function HomeScreen({
   onSecurity,
   onNotifications,
   onMarketplace,
+  onHotels,
   onRide,
   onDriverApp,
   onStore,
   onWallet,
   onWalletAction,
   onUtilities,
-  onHotels,
   onOrders,
   onTrackOrder,
   onBecomePartner,
@@ -1529,6 +1532,8 @@ export function HomeScreen({
   onSecurity: () => void;
   onNotifications: () => void;
   onMarketplace?: () => void;
+  /** Marketplace, already filtered to hotels. */
+  onHotels?: () => void;
   onRide?: () => void;
   onDriverApp?: () => void;
   onStore?: (id: string) => void;
@@ -1536,8 +1541,6 @@ export function HomeScreen({
   onWalletAction?: (a: 'send' | 'receive' | 'topup' | 'pay') => void;
   /** Bill payments — airtime, data, electricity, cable TV. */
   onUtilities?: () => void;
-  /** Opens the marketplace filtered to hotels. */
-  onHotels?: () => void;
   onOrders?: () => void;
   /** Open live tracking for an order the customer already has in flight. */
   onTrackOrder?: (orderId: string) => void;
@@ -1680,11 +1683,11 @@ export function HomeScreen({
       case 'Orders':
         onOrders?.();
         break;
-      case 'Utilities':
-        onUtilities?.();
-        break;
       case 'Hotels':
         onHotels?.();
+        break;
+      case 'Utilities':
+        onUtilities?.();
         break;
       default:
         // More has no screen yet. It is marked `ready: false` above so it

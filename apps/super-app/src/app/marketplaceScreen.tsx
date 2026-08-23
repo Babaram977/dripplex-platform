@@ -1573,8 +1573,9 @@ export function MarketplaceScreen({
   onCart?: () => void;
   /** App's single footer-tab router. */
   onTab?: (tab: NavTab) => void;
-  /** Open with a category already selected — how the home screen's Hotels
-   *  quick action lands the customer on hotels rather than on everything. */
+  /** Which chip is already selected on arrival. Home's Hotels tile lands here
+   *  with `HOTEL` — the chip is 9th of 12 in a scrolling strip, so a person who
+   *  taps Hotels must not then have to go and find Hotels. */
   initialCategory?: MerchantCategory | null;
   /** Where the search bar goes. Falls back to Home, which is where the search
    *  that queries the catalogue lives. */

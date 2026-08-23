@@ -594,22 +594,27 @@ function AppShell() {
   } | null>(null);
   // Merchant's business fields from sign-up, pre-filled into the post-login
   // Business Details step (persisted via PATCH /merchant/business).
-  const [merchantBiz, setMerchantBiz] = useState<{ businessName: string; category: string }>({
+  const [merchantBiz, setMerchantBiz] = useState<{
+    businessName: string;
+    category: MerchantCategory | null;
+  }>({
     businessName: '',
-    category: '',
+    category: null,
   });
   // The rider's own job list returns RiderDeliveryJobDto — DeliveryJobDto plus
   // `customerName`, which the job screen needs to title the chat.
   const [activeRiderJob, setActiveRiderJob] = useState<RiderDeliveryJobDto | null>(null);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [activeMerchantId, setActiveMerchantId] = useState<string | undefined>(undefined);
-  /** Category the marketplace opens on, set by the Hotels quick action. */
-  const [marketplaceCategory, setMarketplaceCategory] = useState<MerchantCategory | null>(null);
   // Hotel booking (DPX-HOTEL-002). The draft holds the room + dates + quote
   // between choosing a room and sending the request; it is deliberately not
   // persisted, because a quote goes stale and the server re-prices anyway.
   const [activeBookingId, setActiveBookingId] = useState<string | null>(null);
   const [activeBookingDraft, setActiveBookingDraft] = useState<BookingDraft | null>(null);
+  // Which chip the Marketplace opens on. Set by Home's Hotels tile and cleared
+  // by the Marketplace nav tab, so "Marketplace" always means everything and
+  // "Hotels" always means hotels, whichever was tapped last.
+  const [marketplaceCategory, setMarketplaceCategory] = useState<MerchantCategory | null>(null);
   const [activeProductId, setActiveProductId] = useState<string | undefined>(undefined);
   const [activeDriverOffer, setActiveDriverOffer] = useState<RideOfferDto | null>(null);
   const [activeDriverRide, setActiveDriverRide] = useState<RideDto | null>(null);
@@ -710,7 +715,13 @@ function AppShell() {
    */
   const goTab = (tab: NavTabKey): void => {
     if (tab === 'home') go('home');
-    if (tab === 'market') go('marketplace');
+    // The Marketplace tab means everything, always. Without this reset a tap
+    // on Home's Hotels tile would leave every later Marketplace visit filtered
+    // to hotels, which looks like the rest of the marketplace disappearing.
+    if (tab === 'market') {
+      setMarketplaceCategory(null);
+      go('marketplace');
+    }
     if (tab === 'ride') go('ridehome');
     if (tab === 'wallet') go('wallethome');
     if (tab === 'profile') go('account');
@@ -800,7 +811,10 @@ function AppShell() {
       onAccount={() => go('account')}
       onSecurity={() => go('security')}
       onNotifications={() => go('activitydash')}
-      onMarketplace={() => go('marketplace')}
+      onMarketplace={() => {
+        setMarketplaceCategory(null);
+        go('marketplace');
+      }}
       onRide={() => go('ridehome')}
       onDriverApp={() => go('drvsplash')}
       onStore={(id) => {
@@ -1052,6 +1066,10 @@ function AppShell() {
     home: homeScreen,
     marketplace: (
       <MarketplaceScreen
+        // Remounting on the category is what makes a SECOND tap of Hotels
+        // work: initialCategory only seeds state on mount, so without this the
+        // filter applied once and never again.
+        key={marketplaceCategory ?? 'all'}
         initialCategory={marketplaceCategory}
         // The catalogue search lives on Home. Sending the customer there beats
         // a box on this screen that cannot search.
@@ -1115,6 +1133,7 @@ function AppShell() {
         bookingId={activeBookingId}
         {...(activeBookingDraft ? { hotelName: activeBookingDraft.hotelName } : {})}
         onBack={() => goBack('mybookings')}
+        onMyBookings={() => go('mybookings')}
       />
     ) : (
       <MyBookingsScreen

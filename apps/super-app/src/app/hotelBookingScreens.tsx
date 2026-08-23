@@ -92,7 +92,13 @@ import {
   WEIGHT,
 } from '../tokens';
 
-import type { AvailabilityResult, BookingDto, CustomerBookingDto, RoomTypeDto } from '../lib/api';
+import type {
+  AvailabilityResult,
+  BookingDto,
+  CustomerBookingDto,
+  CustomerBookingListItemDto,
+  RoomTypeDto,
+} from '../lib/api';
 
 /** Founder decision 7: three months ahead, one night minimum, 30 nights max.
  *  Enforced in the picker so an impossible stay cannot even be typed — the
@@ -802,11 +808,17 @@ export function BookingStatusScreen({
   hotelName,
   onDone,
   onBack,
+  onMyBookings,
 }: {
   bookingId: string;
+  /** The name carried over from the room the guest just chose. Optional
+   *  because this screen is also opened from the bookings list, where there is
+   *  no draft — the server's own `hotelName` covers that case. */
   hotelName?: string;
   onDone?: (booking: BookingDto) => void;
   onBack: () => void;
+  /** Where the guest goes to find this PIN again in three weeks. */
+  onMyBookings?: () => void;
 }): React.ReactElement {
   const [booking, setBooking] = useState<CustomerBookingDto | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -896,9 +908,13 @@ export function BookingStatusScreen({
   }
 
   const tone = bookingStatusTone(booking.status);
+  // The prop is the name from the room the guest just chose; the server's is
+  // the one that survives a reload or an arrival from the bookings list. Before
+  // this the second case showed no hotel name at all.
+  const hotel = hotelName ?? booking.hotelName;
 
   return (
-    <HotelPage title="Your booking" subtitle={hotelName ?? booking.reference} onBack={onBack}>
+    <HotelPage title="Your booking" subtitle={hotel} onBack={onBack}>
       <div style={cardStyle}>
         <div style={{ display: 'flex', alignItems: 'center', gap: SPACE[2] }}>
           <span
@@ -915,9 +931,9 @@ export function BookingStatusScreen({
             {bookingStatusLabel(booking)}
           </span>
         </div>
-        {hotelName != null && (
-          <div style={{ ...heading(TYPE.lg), marginTop: SPACE[2] }}>{hotelName}</div>
-        )}
+        {/* The hotel's name is already the page subtitle two lines above, so
+            the card leads with the room instead of repeating it. */}
+        <div style={{ ...heading(TYPE.lg), marginTop: SPACE[2] }}>{booking.roomName}</div>
         <div style={{ ...body(TYPE.md, TEXT_SECONDARY), marginTop: SPACE[1] }}>
           {formatStay(booking.checkIn, booking.checkOut)}
         </div>
@@ -942,7 +958,7 @@ export function BookingStatusScreen({
       {booking.status === 'PENDING_HOTEL' && (
         <div style={cardStyle}>
           <div style={body(TYPE.md, TEXT_SECONDARY)}>
-            {hotelName ?? 'The hotel'} is deciding.{' '}
+            {hotel} is deciding.{' '}
             {countdown != null ? (
               <>
                 <strong style={{ color: TEXT_PRIMARY }}>{countdown}</strong> left to answer.
@@ -1015,6 +1031,15 @@ export function BookingStatusScreen({
       )}
 
       {error !== null && <div style={errorCardStyle}>{error}</div>}
+
+      {/* The way back to this PIN in three weeks. This screen is transient —
+          a guest who books, closes the app and returns had no route to their
+          own booking at all until now. */}
+      {onMyBookings !== undefined && (
+        <button type="button" onClick={onMyBookings} style={secondaryButtonStyle}>
+          View all my bookings
+        </button>
+      )}
     </HotelPage>
   );
 }
@@ -1035,7 +1060,7 @@ export function MyBookingsScreen({
   onOpen: (bookingId: string) => void;
   onBack: () => void;
 }): React.ReactElement {
-  const [items, setItems] = useState<BookingDto[] | null>(null);
+  const [items, setItems] = useState<CustomerBookingListItemDto[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -1058,7 +1083,7 @@ export function MyBookingsScreen({
   // Anything still moving goes first — those are the ones with a clock on them.
   const sorted = useMemo(() => {
     if (!items) return null;
-    const rank = (b: BookingDto): number =>
+    const rank = (b: CustomerBookingListItemDto): number =>
       b.status === 'AWAITING_PAYMENT' ? 0 : b.status === 'PENDING_HOTEL' ? 1 : 2;
     return [...items].sort((a, b) => rank(a) - rank(b) || b.createdAt.localeCompare(a.createdAt));
   }, [items]);
@@ -1083,7 +1108,12 @@ export function MyBookingsScreen({
           style={{ ...cardStyle, textAlign: 'left', cursor: 'pointer', width: '100%' }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: SPACE[2] }}>
-            <span style={heading(TYPE.lg)}>{booking.reference}</span>
+            {/* The hotel's name leads, not the reference. A guest scanning this
+                list is looking for "the place in Kano", and `DPX-BK-9F3A2` tells
+                them nothing — it was the only identifier here until now. */}
+            <span style={{ ...heading(TYPE.lg), minWidth: 0, overflowWrap: 'anywhere' }}>
+              {booking.hotelName}
+            </span>
             {/* A chip rather than coloured text: the same shape the merchant
                 order list uses for a status, so one status reads like another. */}
             <span
@@ -1100,8 +1130,20 @@ export function MyBookingsScreen({
             </span>
           </div>
           <div style={{ ...body(TYPE.md, TEXT_SECONDARY), marginTop: SPACE[1] }}>
+            {booking.roomName} · {booking.rooms} {booking.rooms === 1 ? 'room' : 'rooms'} ·{' '}
+            {booking.guests} {booking.guests === 1 ? 'guest' : 'guests'}
+          </div>
+          <div style={{ ...body(TYPE.md, TEXT_SECONDARY), marginTop: 2 }}>
             {formatNight(booking.checkIn)} · {booking.nights}{' '}
-            {booking.nights === 1 ? 'night' : 'nights'} · {naira(booking.totalAmount)}
+            {booking.nights === 1 ? 'night' : 'nights'} ·{' '}
+            <span style={{ color: TEXT_PRIMARY, fontWeight: WEIGHT.semibold }}>
+              {naira(booking.totalAmount)}
+            </span>
+          </div>
+          {/* Demoted to a footnote now that the hotel's name is the headline.
+              Still shown: it is what a hotel asks for on the phone. */}
+          <div style={{ ...body(TYPE.sm, TEXT_MUTED), marginTop: SPACE[1] }}>
+            {booking.reference}
           </div>
           {booking.pin != null && (
             <div style={{ ...body(TYPE.base, G3, WEIGHT.semibold), marginTop: SPACE[1] }}>

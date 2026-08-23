@@ -1053,7 +1053,21 @@ export interface AvailabilityResult {
   perNight: { night: string; price: number }[];
 }
 
-export interface CustomerBookingDto extends BookingDto {
+/**
+ * A booking as its guest sees it.
+ *
+ * `BookingDto` carries `businessId` and `roomTypeId` and nothing else about
+ * either — enough for a hotel reading its own book, useless to a guest. Their
+ * bookings list showed a reference, some dates and an amount, with no way to
+ * tell a room in Kano from a room in Abuja. Both customer endpoints now send
+ * the two names a person actually recognises.
+ */
+export interface CustomerBookingListItemDto extends BookingDto {
+  hotelName: string;
+  roomName: string;
+}
+
+export interface CustomerBookingDto extends CustomerBookingListItemDto {
   /** Set on rejected/expired bookings: "you were never charged". Server-owned
    *  wording, so one change of policy does not need a client release. */
   customerMessage: string | null;
@@ -2378,7 +2392,7 @@ export const api = {
     // ApiPage, not PaginatedResult: the flat type declared above does not match
     // what the NestJS controllers actually send. See the note at ApiPage.
     list: (params?: { page?: number; pageSize?: number }) =>
-      dx<ApiPage<BookingDto>>('GET', '/customer/bookings', undefined, params),
+      dx<ApiPage<CustomerBookingListItemDto>>('GET', '/customer/bookings', undefined, params),
     get: (id: string) => dx<CustomerBookingDto>('GET', `/customer/bookings/${id}`),
   },
 
@@ -2847,7 +2861,12 @@ export const api = {
     // PATCHes an existing one.
     createBusiness: (body: {
       businessName: string;
+      /** The LEGAL structure (sole proprietorship, LLC…). Not what they sell. */
       businessType: string;
+      /** What they SELL. Optional in the backend DTO, and it was missing from
+       *  this type entirely — which is why onboarding never sent one and every
+       *  merchant registered through the app landed uncategorised. */
+      category?: MerchantCategory;
       description?: string;
       phone?: string;
       address?: string;
