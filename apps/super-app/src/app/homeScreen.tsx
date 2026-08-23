@@ -76,7 +76,12 @@ const QUICK: { icon: IconName; label: string; color: string; ready: boolean }[] 
   { icon: 'orders', label: 'Orders', color: '#F59E0B', ready: true },
   { icon: 'utilities', label: 'Utilities', color: '#06B6D4', ready: true },
   { icon: 'food', label: 'Food', color: '#F97316', ready: true },
-  { icon: 'health', label: 'Health', color: '#10B981', ready: false },
+  // Hotels replaced Health here (founder, 2026-08-23). The hotel screens have
+  // existed since DPX-HOTEL-001 and were rebuilt on the token system in #248,
+  // but nothing in the app navigated to them — `mybookings` was a registered
+  // route with no caller — so the whole feature was unreachable while a tile
+  // next to it advertised a Health service that does not exist.
+  { icon: 'hotel', label: 'Hotels', color: '#10B981', ready: true },
   { icon: 'more', label: 'More', color: '#6B7280', ready: false },
 ];
 
@@ -1515,6 +1520,7 @@ export function HomeScreen({
   onWallet,
   onWalletAction,
   onUtilities,
+  onHotels,
   onOrders,
   onTrackOrder,
   onBecomePartner,
@@ -1530,6 +1536,8 @@ export function HomeScreen({
   onWalletAction?: (a: 'send' | 'receive' | 'topup' | 'pay') => void;
   /** Bill payments — airtime, data, electricity, cable TV. */
   onUtilities?: () => void;
+  /** Opens the marketplace filtered to hotels. */
+  onHotels?: () => void;
   onOrders?: () => void;
   /** Open live tracking for an order the customer already has in flight. */
   onTrackOrder?: (orderId: string) => void;
@@ -1675,9 +1683,12 @@ export function HomeScreen({
       case 'Utilities':
         onUtilities?.();
         break;
+      case 'Hotels':
+        onHotels?.();
+        break;
       default:
-        // Health / More have no screen yet. They are marked `ready: false`
-        // above so they never reach here — this stays as the backstop.
+        // More has no screen yet. It is marked `ready: false` above so it
+        // never reaches here — this stays as the backstop.
         break;
     }
   };
