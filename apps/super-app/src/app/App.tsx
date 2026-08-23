@@ -185,6 +185,7 @@ import type { NavTabKey } from '../components/navigation/BottomNavigation';
 import { api } from '../lib/api';
 import type {
   DeliveryJobDto,
+  MerchantCategory,
   RiderDeliveryJobDto,
   RideOfferDto,
   RideDto,
@@ -602,6 +603,8 @@ function AppShell() {
   const [activeRiderJob, setActiveRiderJob] = useState<RiderDeliveryJobDto | null>(null);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [activeMerchantId, setActiveMerchantId] = useState<string | undefined>(undefined);
+  /** Category the marketplace opens on, set by the Hotels quick action. */
+  const [marketplaceCategory, setMarketplaceCategory] = useState<MerchantCategory | null>(null);
   // Hotel booking (DPX-HOTEL-002). The draft holds the room + dates + quote
   // between choosing a room and sending the request; it is deliberately not
   // persisted, because a quote goes stale and the server re-prices anyway.
@@ -806,6 +809,14 @@ function AppShell() {
       }}
       onWallet={() => go('wallethome')}
       onUtilities={() => go('utilities')}
+      // Hotels open the marketplace already filtered to hotel merchants — the
+      // browse path that exists, rather than a new landing screen with no
+      // design behind it. Until now nothing in the app reached the hotel
+      // feature at all: `mybookings` was a registered route with no caller.
+      onHotels={() => {
+        setMarketplaceCategory('HOTEL');
+        go('marketplace');
+      }}
       onOrders={() => go('orderhistory')}
       onTrackOrder={(id) => {
         setActiveOrderId(id);
@@ -1041,6 +1052,10 @@ function AppShell() {
     home: homeScreen,
     marketplace: (
       <MarketplaceScreen
+        initialCategory={marketplaceCategory}
+        // The catalogue search lives on Home. Sending the customer there beats
+        // a box on this screen that cannot search.
+        onSearch={() => go('home')}
         onTab={goTab}
         onBack={() => goBack('home')}
         onHome={() => go('home')}
