@@ -4,6 +4,17 @@ export class DomainException extends Error {
     message: string,
     public readonly statusCode = 400,
     public readonly details?: unknown,
+    /**
+     * What the caller is told, when `message` is written for us rather than
+     * for them.
+     *
+     * Some failures carry a diagnostic worth keeping in the logs and the
+     * stack — an upstream provider's own error body, say — that should not be
+     * handed to a customer verbatim. Setting this keeps the full text
+     * everywhere we look at it, and sends the safe version over the wire.
+     * Defaults to `message`, so every existing exception is unchanged.
+     */
+    public readonly publicMessage?: string,
   ) {
     super(message);
     this.name = new.target.name;
