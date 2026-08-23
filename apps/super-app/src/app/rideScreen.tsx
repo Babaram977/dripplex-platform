@@ -37,6 +37,7 @@ import type { AddressPrediction } from '../lib/maps';
 import type {
   CardProviderOptionDto,
   CustomerRideDto,
+  EstimateRideFareResponse,
   RideDto,
   RideReceiptDto,
   RideStatus,
@@ -1371,15 +1372,11 @@ export function FareEstimateScreen({
   // Live wallet balance for the Wallet payment option.
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
 
-  const [estimate, setEstimate] = useState<{
-    baseFare: number;
-    distanceFare: number;
-    timeFare: number;
-    totalFare: number;
-    promoDiscount: number;
-    distanceMeters: number;
-    durationSeconds: number;
-  } | null>(null);
+  // The API's own type, not a hand-written subset. The subset listed seven
+  // fields and omitted the surcharge and the minimum fare — so the price
+  // breakdown could not show them even though both were on the wire, and the
+  // itemised lines did not add up to the total.
+  const [estimate, setEstimate] = useState<EstimateRideFareResponse | null>(null);
   const [booking, setBooking] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1603,10 +1600,43 @@ export function FareEstimateScreen({
             <p className="mb-3 text-[13px] font-semibold" style={{ fontFamily: PP, color: MUTED }}>
               PRICE BREAKDOWN
             </p>
+            {/* Every line that moves the total, including the two that used to
+                move it invisibly.
+
+                A surcharge zone has been adding to fares since it shipped, and
+                a minimum fare has been flooring short trips, and neither
+                appeared here. So a 2km trip listed ₦300 + ₦198 + ₦66 and then
+                a total of ₦1,500, and an airport trip listed the same ₦564 of
+                lines under ₦16,767. Reported, correctly, as the breakdown not
+                adding up — which from the passenger's side is indistinguishable
+                from being overcharged.
+
+                The surcharge names its zone, because "airport pickup" is a
+                reason and "surcharge" is not. The minimum-fare row shows the
+                difference it made rather than just its own value, so the column
+                still adds up to the total when read top to bottom. */}
             {[
               ['Base fare', estimate ? naira(estimate.baseFare) : '—'],
               [`Distance (${kmLabel} km)`, estimate ? naira(estimate.distanceFare) : '—'],
               ['Time fee', estimate ? naira(estimate.timeFare) : '—'],
+              ...(estimate && estimate.surchargeAmount > 0
+                ? [
+                    [
+                      estimate.surchargeZoneName
+                        ? `Surcharge · ${estimate.surchargeZoneName}`
+                        : 'Zone surcharge',
+                      naira(estimate.surchargeAmount),
+                    ] as [string, string],
+                  ]
+                : []),
+              ...(estimate && estimate.minimumFareApplied
+                ? [
+                    [
+                      `Minimum fare (${naira(estimate.minimumFare)})`,
+                      `+${naira(estimate.minimumFare - estimate.meteredFare - estimate.surchargeAmount)}`,
+                    ] as [string, string],
+                  ]
+                : []),
               ['Promo applied', estimate ? `−${naira(estimate.promoDiscount)}` : '−₦0'],
             ].map(([l, v]) => (
               <div key={l} className="mb-2 flex items-center justify-between">

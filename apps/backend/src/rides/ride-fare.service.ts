@@ -18,6 +18,15 @@ export interface RideFareEstimate {
   /** The zone that added it, snapshotted for the receipt, or null. */
   surchargeZoneId: string | null;
   surchargeZoneName: string | null;
+  /** base + distance + time, before any surcharge and before the floor. The
+   * number the itemised lines actually add up to. */
+  meteredFare: number;
+  /** The floor in force for this ride type. Sent whether or not it bit, so a
+   * breakdown can say why a short trip costs what it costs. */
+  minimumFare: number;
+  /** True when the floor decided the price — i.e. the metered fare plus any
+   * surcharge came in under it. */
+  minimumFareApplied: boolean;
   totalFare: number;
 }
 
@@ -55,7 +64,8 @@ export class RideFareService {
     const surcharge = await this.pricing.resolveSurcharge(pickup, dropoff, meteredFare);
     const surchargeAmount = surcharge?.amount ?? 0;
 
-    const totalFare = Math.max(meteredFare + surchargeAmount, rates.minimumFare);
+    const beforeFloor = meteredFare + surchargeAmount;
+    const totalFare = Math.max(beforeFloor, rates.minimumFare);
 
     return {
       distanceMeters,
@@ -66,6 +76,13 @@ export class RideFareService {
       surchargeAmount,
       surchargeZoneId: surcharge?.zoneId ?? null,
       surchargeZoneName: surcharge?.zoneName ?? null,
+      meteredFare,
+      minimumFare: rates.minimumFare,
+      // Reported rather than left for the client to infer. A breakdown that
+      // lists base + distance + time and then shows a larger total, with
+      // nothing accounting for the gap, reads as an overcharge — which is
+      // exactly how a ₦564 trip quoted at ₦1,500 was reported.
+      minimumFareApplied: beforeFloor < rates.minimumFare,
       totalFare,
     };
   }

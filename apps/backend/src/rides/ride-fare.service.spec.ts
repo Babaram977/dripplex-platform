@@ -141,6 +141,41 @@ describe('RideFareService', () => {
     expect(rate.minimumFare).toBe(RIDE_MINIMUM_FARE);
   });
 
+  /**
+   * The itemised lines must account for the total.
+   *
+   * The estimate reported base, distance and time and a `totalFare` that could
+   * be far larger, because a surcharge zone adds to it and a minimum fare
+   * floors it — and neither was reported. A 2km trip quoted ₦300 + ₦198 + ₦66
+   * and a total of ₦1,500, which the founder read, correctly, as a breakdown
+   * that does not tally.
+   */
+  it('reports the floor it applied, so a short trip adds up', async () => {
+    if (!databaseAvailable) return;
+
+    // Two points a few hundred metres apart price well under the minimum.
+    const near = { lat: IKEJA.lat + 0.002, lng: IKEJA.lng + 0.002 };
+    const e = await service.estimate(RideType.ECONOMY, IKEJA, near);
+
+    expect(e.meteredFare).toBe(e.baseFare + e.distanceFare + e.timeFare);
+    expect(e.meteredFare + e.surchargeAmount).toBeLessThan(e.minimumFare);
+    expect(e.minimumFareApplied).toBe(true);
+    expect(e.totalFare).toBe(e.minimumFare);
+    // The gap the UI renders as its own line.
+    expect(e.minimumFare - e.meteredFare - e.surchargeAmount).toBeGreaterThan(0);
+  });
+
+  it('leaves a trip priced above the floor alone, and says so', async () => {
+    if (!databaseAvailable) return;
+
+    const e = await service.estimate(RideType.ECONOMY, IKEJA, VICTORIA_ISLAND);
+
+    expect(e.meteredFare).toBe(e.baseFare + e.distanceFare + e.timeFare);
+    expect(e.minimumFareApplied).toBe(false);
+    // With no floor and no surcharge in play, the lines are the total.
+    expect(e.totalFare).toBe(e.meteredFare + e.surchargeAmount);
+  });
+
   it('estimates a higher fare for Economy than Tricycle over the same trip', async () => {
     if (!databaseAvailable) return;
 

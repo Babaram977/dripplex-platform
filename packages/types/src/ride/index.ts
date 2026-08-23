@@ -341,6 +341,17 @@ export interface EstimateRideFareResponse {
   baseFare: number;
   distanceFare: number;
   timeFare: number;
+  /** Naira added by a surcharge zone, or 0. On the wire since surcharge zones
+   * shipped; declared here only now, which is why no client ever showed it. */
+  surchargeAmount: number;
+  surchargeZoneId: string | null;
+  surchargeZoneName: string | null;
+  /** base + distance + time. What the itemised lines sum to. */
+  meteredFare: number;
+  /** The floor under this ride type's price. */
+  minimumFare: number;
+  /** Whether that floor is what set `totalFare`. */
+  minimumFareApplied: boolean;
   totalFare: number;
   promotionId: string | null;
   promoDiscount: number;
