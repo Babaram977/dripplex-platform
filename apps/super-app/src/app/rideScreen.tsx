@@ -171,14 +171,6 @@ const fmtDate = (iso?: string | null) => {
   });
 };
 
-// Payment options. Wallet balance is loaded live from `api.wallet.get()`;
-// card/cash carry no balance. No fabricated balances here.
-const PAYMENT_METHODS = [
-  { id: 'wallet', icon: '💳', label: 'DrippleX Wallet', color: G2 },
-  { id: 'card', icon: '💳', label: 'Card', color: '#3B82F6' },
-  { id: 'cash', icon: '💵', label: 'Cash', color: '#F59E0B' },
-];
-
 // Live ride loader — polls `api.rides.get(id)` (same 3s cadence the
 // FindingDriver poll uses) and rides the ws status fast-path. Returns the
 // authoritative `RideDto` for the active-ride screens.
@@ -1359,7 +1351,6 @@ export function FareEstimateScreen({
   pickup?: RidePickup | null;
   rideType?: RideType;
 }) {
-  const [payment, setPayment] = useState('cash');
   // Dispatch matches DriverAvailability.vehicleType against the ride type the
   // passenger asked for, exactly. The driver app sends the real category of the
   // car they drive, but this screen hardcoded ECONOMY and offered no choice —
@@ -1561,39 +1552,40 @@ export function FareEstimateScreen({
             </div>
           </div>
 
-          {/* Payment */}
+          {/* Payment.
+
+              This was a three-way Wallet / Card / Cash selector. It did
+              nothing: `setPayment` updated state that was never read again,
+              and `api.rides.book` takes no payment method — so whichever tile
+              the passenger tapped, the ride was created with paymentMethod
+              null. A control that looks like a choice and silently isn't is
+              worse than no control, because the passenger believes they have
+              chosen.
+
+              Payment is taken after the trip, per the founder-locked order in
+              RIDE-002.7, so this says when it happens and what the wallet
+              holds, and the real choice is made on PaymentScreen. */}
           <div className="mb-4">
             <p
               className="mb-2.5 text-[13px] font-semibold"
               style={{ fontFamily: PP, color: MUTED }}
             >
-              PAYMENT METHOD
+              PAYMENT
             </p>
-            <div className="flex gap-2">
-              {PAYMENT_METHODS.map((pm) => (
-                <button
-                  key={pm.id}
-                  onClick={() => setPayment(pm.id)}
-                  className="flex flex-1 flex-col items-center gap-1.5 rounded-2xl px-2 py-3 transition-all active:scale-[.97]"
-                  style={{
-                    background: payment === pm.id ? 'rgba(43,172,82,.08)' : NAVY_SURFACE,
-                    border: `1.5px solid ${payment === pm.id ? 'rgba(43,172,82,.35)' : BORDER}`,
-                  }}
-                >
-                  <span style={{ fontSize: 20 }}>{pm.icon}</span>
-                  <p
-                    className="text-center text-[10px] font-semibold leading-tight"
-                    style={{ fontFamily: IT, color: payment === pm.id ? G3 : MUTED }}
-                  >
-                    {pm.id === 'wallet' ? 'Wallet' : pm.id === 'card' ? 'Card' : 'Cash'}
-                  </p>
-                  {pm.id === 'wallet' && (
-                    <p className="text-[10px]" style={{ fontFamily: IT, color: G2 }}>
-                      {walletBalance != null ? naira(walletBalance) : '—'}
-                    </p>
-                  )}
-                </button>
-              ))}
+            <div
+              className="flex items-center gap-3 rounded-2xl px-4 py-3"
+              style={{ background: NAVY_SURFACE, border: `1.5px solid ${BORDER}` }}
+            >
+              <span style={{ fontSize: 20 }}>💳</span>
+              <div className="flex-1">
+                <p className="text-[13px] font-semibold" style={{ fontFamily: IT, color: '#fff' }}>
+                  Pay when the trip ends
+                </p>
+                <p className="text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
+                  Wallet or cash — you choose on arrival
+                  {walletBalance != null ? ` · Wallet ${naira(walletBalance)}` : ''}
+                </p>
+              </div>
             </div>
           </div>
 
@@ -2455,6 +2447,7 @@ export function TripCompletedScreen({
   onRate,
   onHome,
   onTip,
+  onPay,
   rideId,
 }: {
   onRate: () => void;
@@ -2462,6 +2455,8 @@ export function TripCompletedScreen({
   // Founder request, 2026-08-16: a passenger who feels like adding something
   // for the driver should be able to. 100% of a tip goes to the driver.
   onTip?: () => void;
+  /** Take an unpaid fare. See the unpaid branch below. */
+  onPay?: () => void;
   rideId?: string;
 }) {
   const ride = useLiveRide(rideId);
@@ -2490,6 +2485,9 @@ export function TripCompletedScreen({
     : ride
       ? naira(ride.totalFare)
       : '—';
+  // Only once the ride has actually loaded — an unknown ride must not be
+  // announced as unpaid.
+  const unpaid = ride != null && ride.paymentStatus !== 'PAID';
 
   return (
     <div
@@ -2497,124 +2495,152 @@ export function TripCompletedScreen({
       style={{ background: NAVY_DEEP }}
     >
       <RideStatusBar />
+      {/* Scrolls, and centres only when there is room to. `justify-center` on
+          its own clipped the bottom of the receipt whenever the Route line
+          wrapped to two lines — which it does for any real Kano address pair —
+          taking the Total Charged row off the screen entirely. That is why the
+          fare looked missing. `m-auto` on the inner column centres a short
+          screenful and lets a tall one scroll instead of being cut. */}
       <div
-        className="flex flex-1 flex-col items-center justify-center gap-6 px-5"
-        style={{ animation: 'fade-up .5s ease both' }}
+        className="flex flex-1 flex-col overflow-y-auto px-5"
+        style={{ animation: 'fade-up .5s ease both', scrollbarWidth: 'none' }}
       >
-        {/* Success icon */}
-        <div
-          className="relative flex items-center justify-center"
-          style={{ width: 120, height: 120 }}
-        >
+        <div className="m-auto flex w-full flex-col items-center gap-6 py-4">
+          {/* Success icon */}
           <div
-            className="absolute inset-0 rounded-full"
-            style={{ background: 'rgba(43,172,82,.08)' }}
-          />
-          <div
-            className="flex h-24 w-24 items-center justify-center rounded-full text-5xl"
-            style={{
-              background: `linear-gradient(135deg,${G0},${G2})`,
-              boxShadow: `0 0 60px rgba(43,172,82,.35)`,
-              animation: 'success-bounce .6s ease both',
-            }}
+            className="relative flex items-center justify-center"
+            style={{ width: 120, height: 120 }}
           >
-            🏁
-          </div>
-        </div>
-
-        <div className="text-center">
-          <p
-            className="mb-1 text-[10px] font-bold tracking-widest"
-            style={{ fontFamily: IT, color: G3 }}
-          >
-            TRIP COMPLETED
-          </p>
-          <p className="mb-2 text-[26px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
-            You have arrived!
-          </p>
-          <p className="text-[14px]" style={{ fontFamily: IT, color: MUTED }}>
-            {ride?.dropoffAddress ?? '—'}
-          </p>
-        </div>
-
-        {/* Receipt card */}
-        <div
-          className="w-full overflow-hidden rounded-3xl"
-          style={{ background: NAVY_CARD, border: `1px solid ${BORDER}` }}
-        >
-          <div className="border-b px-5 py-4" style={{ borderColor: BORDER }}>
-            <p className="mb-3 text-[13px] font-semibold" style={{ fontFamily: PP, color: MUTED }}>
-              TRIP SUMMARY
-            </p>
-            {[
-              ['Duration', durationLabel],
-              ['Distance', distanceLabel],
-              ['Route', routeLabel],
-              ['Driver', receipt?.driver?.name ?? ride?.driverName ?? '—'],
-              [
-                'Vehicle',
-                ride?.driverVehicle
-                  ? `${ride.driverVehicle.color} ${ride.driverVehicle.make} ${ride.driverVehicle.model} · ${ride.driverVehicle.plateNumber}`
-                  : (typeLabel ?? '—'),
-              ],
-            ].map(([l, v]) => (
-              <div key={l} className="mb-2.5 flex items-start justify-between">
-                <p className="text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
-                  {l}
-                </p>
-                <p
-                  className="max-w-[55%] text-right text-[13px] font-medium"
-                  style={{ fontFamily: IT, color: '#fff' }}
-                >
-                  {v}
-                </p>
-              </div>
-            ))}
-          </div>
-          <div className="flex items-center justify-between px-5 py-4">
-            <p className="text-[15px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
-              Total Charged
-            </p>
-            <div className="text-right">
-              <p className="text-[22px] font-bold" style={{ fontFamily: PP, color: G3 }}>
-                {totalLabel}
-              </p>
-              <p className="text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
-                {ride?.paymentMethod ?? '—'}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Safety rating prompt */}
-        <div className="flex w-full flex-col gap-3">
-          <GreenButton label="Rate Your Ride ★" onClick={onRate} />
-          {onTip && (
-            <button
-              onClick={onTip}
-              className="flex h-12 w-full items-center justify-center rounded-2xl text-[14px] font-semibold transition-all active:scale-[.97]"
+            <div
+              className="absolute inset-0 rounded-full"
+              style={{ background: 'rgba(43,172,82,.08)' }}
+            />
+            <div
+              className="flex h-24 w-24 items-center justify-center rounded-full text-5xl"
               style={{
-                background: 'rgba(34,197,94,.10)',
-                border: `1px solid rgba(34,197,94,.28)`,
-                fontFamily: IT,
-                color: G3,
+                background: `linear-gradient(135deg,${G0},${G2})`,
+                boxShadow: `0 0 60px rgba(43,172,82,.35)`,
+                animation: 'success-bounce .6s ease both',
               }}
             >
-              💚 Add a tip for {receipt?.driver?.name ?? 'your driver'}
-            </button>
-          )}
-          <button
-            onClick={onHome}
-            className="flex h-12 w-full items-center justify-center rounded-2xl text-[14px] font-medium transition-all active:scale-[.97]"
-            style={{
-              background: NAVY_SURFACE,
-              border: `1px solid ${BORDER}`,
-              fontFamily: IT,
-              color: TEXT_SECONDARY,
-            }}
+              🏁
+            </div>
+          </div>
+
+          <div className="text-center">
+            <p
+              className="mb-1 text-[10px] font-bold tracking-widest"
+              style={{ fontFamily: IT, color: G3 }}
+            >
+              TRIP COMPLETED
+            </p>
+            <p className="mb-2 text-[26px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
+              You have arrived!
+            </p>
+            <p className="text-[14px]" style={{ fontFamily: IT, color: MUTED }}>
+              {ride?.dropoffAddress ?? '—'}
+            </p>
+          </div>
+
+          {/* Receipt card */}
+          <div
+            className="w-full overflow-hidden rounded-3xl"
+            style={{ background: NAVY_CARD, border: `1px solid ${BORDER}` }}
           >
-            Back to Home
-          </button>
+            <div className="border-b px-5 py-4" style={{ borderColor: BORDER }}>
+              <p
+                className="mb-3 text-[13px] font-semibold"
+                style={{ fontFamily: PP, color: MUTED }}
+              >
+                TRIP SUMMARY
+              </p>
+              {[
+                ['Duration', durationLabel],
+                ['Distance', distanceLabel],
+                ['Route', routeLabel],
+                ['Driver', receipt?.driver?.name ?? ride?.driverName ?? '—'],
+                [
+                  'Vehicle',
+                  ride?.driverVehicle
+                    ? `${ride.driverVehicle.color} ${ride.driverVehicle.make} ${ride.driverVehicle.model} · ${ride.driverVehicle.plateNumber}`
+                    : (typeLabel ?? '—'),
+                ],
+              ].map(([l, v]) => (
+                <div key={l} className="mb-2.5 flex items-start justify-between">
+                  <p className="text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
+                    {l}
+                  </p>
+                  <p
+                    className="max-w-[55%] text-right text-[13px] font-medium"
+                    style={{ fontFamily: IT, color: '#fff' }}
+                  >
+                    {v}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-between px-5 py-4">
+              <p className="text-[15px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
+                {unpaid ? 'Total Due' : 'Total Charged'}
+              </p>
+              <div className="text-right">
+                <p
+                  className="text-[22px] font-bold"
+                  style={{ fontFamily: PP, color: unpaid ? '#F59E0B' : G3 }}
+                >
+                  {totalLabel}
+                </p>
+                <p className="text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
+                  {unpaid ? 'Not yet paid' : (ride?.paymentMethod ?? '—')}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Actions. An unpaid fare comes first and alone. Tipping is refused
+            outright by the backend until the ride settles ("Ride must be paid
+            before it can be tipped" — ride-payment.service.ts), which is the
+            failure Sameer hit; rating is not gated, but burying an unpaid fare
+            under a rating prompt is how it stays unpaid. Rate and tip are one
+            tap away again the moment the fare clears. */}
+          <div className="flex w-full flex-col gap-3">
+            {unpaid ? (
+              <>
+                <GreenButton label={`Pay ${totalLabel}`} onClick={onPay ?? (() => undefined)} />
+                <p className="text-center text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
+                  Your trip is finished — settle the fare to rate or tip your driver.
+                </p>
+              </>
+            ) : (
+              <GreenButton label="Rate Your Ride ★" onClick={onRate} />
+            )}
+            {!unpaid && onTip && (
+              <button
+                onClick={onTip}
+                className="flex h-12 w-full items-center justify-center rounded-2xl text-[14px] font-semibold transition-all active:scale-[.97]"
+                style={{
+                  background: 'rgba(34,197,94,.10)',
+                  border: `1px solid rgba(34,197,94,.28)`,
+                  fontFamily: IT,
+                  color: G3,
+                }}
+              >
+                💚 Add a tip for {receipt?.driver?.name ?? 'your driver'}
+              </button>
+            )}
+            <button
+              onClick={onHome}
+              className="flex h-12 w-full items-center justify-center rounded-2xl text-[14px] font-medium transition-all active:scale-[.97]"
+              style={{
+                background: NAVY_SURFACE,
+                border: `1px solid ${BORDER}`,
+                fontFamily: IT,
+                color: TEXT_SECONDARY,
+              }}
+            >
+              Back to Home
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -3525,23 +3551,113 @@ export function DriverProfileSheet({
 }
 
 // 2. PaymentScreen
+//
+// The fare is collected HERE, after the trip — not at booking. That ordering
+// is the founder's locked decision (docs/RIDE-002.7-WALLET-PAYMENT-DESIGN.md:
+// "Ride Completes -> Final fare known -> Payment screen -> Payment successful
+// -> Driver credited -> Receipt"), because charging up front turns every ride
+// that ends badly into a refund.
+//
+// Until now nothing in the passenger flow reached this screen: RideInProgress
+// went straight to TripCompleted, and `ridepayment` was reachable only from
+// itself and the dev screen index. So every ride was created with
+// paymentMethod null / paymentStatus PENDING, completed, and charged nobody —
+// and the tip then failed on the backend's own guard ("Ride must be paid
+// before it can be tipped"), which is the correct behaviour for an unpaid
+// ride. This screen and its routing are that missing step.
+//
+// Only Wallet and Cash are offered, and neither is invented: both settle
+// synchronously in RidePaymentService. Card and OPay are deliberately absent —
+// OpayProvider throws NotImplementedException, and the gateway methods need
+// the leave-the-app-and-return trip that lib/gatewayReturn.ts handles for
+// top-ups but has never been wired for a fare. Offering a button that cannot
+// take money is worse than not offering it. Logged as a gap, not faked.
 export function PaymentScreen({
   onBack,
-  onPay,
-  onChangeMethod,
+  onPaid,
+  onCash,
+  rideId,
 }: {
   onBack?: () => void;
-  onPay?: () => void;
-  onChangeMethod?: () => void;
+  /** Fare settled — go to the receipt. */
+  onPaid?: () => void;
+  /** Passenger chose cash — hand off to the cash confirmation screen. */
+  onCash?: () => void;
+  rideId?: string;
 }) {
-  const [selected, setSelected] = useState('wallet');
-  const [promo, setPromo] = useState('');
+  const ride = useLiveRide(rideId);
+  const [balance, setBalance] = useState<number | null>(null);
+  const [selected, setSelected] = useState<'WALLET' | 'CASH'>('CASH');
+  const [paying, setPaying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.wallet
+      .get()
+      .then((w) => {
+        setBalance(w.availableBalance);
+      })
+      .catch(() => {
+        // A wallet that will not load must not silently read as ₦0 — that
+        // would look like "top up" when the truth is "we do not know".
+        setBalance(null);
+      });
+  }, []);
+
+  const fare = ride ? Number(ride.totalFare) : null;
+  const short = fare != null && balance != null && balance < fare;
+  const alreadyPaid = ride?.paymentStatus === 'PAID';
+
+  const routeLabel =
+    ride?.pickupAddress != null && ride.dropoffAddress != null
+      ? `${ride.pickupAddress} → ${ride.dropoffAddress}`
+      : '—';
+  const typeLabel = ride ? (RIDE_TYPE_LABEL[ride.rideType] ?? ride.rideType) : '—';
+  const distanceLabel = ride ? `${(ride.estimatedDistanceMeters / 1000).toFixed(1)} km` : '—';
+
   const methods = [
-    { id: 'wallet', icon: '💜', label: 'DrippleX Wallet', sub: 'Balance: ₦24,500' },
-    { id: 'visa', icon: '💳', label: 'Visa Card', sub: '•••• 4821' },
-    { id: 'cash', icon: '💵', label: 'Cash', sub: 'Pay driver directly' },
-    { id: 'opay', icon: '🟢', label: 'OPay', sub: 'Link OPay account' },
+    {
+      id: 'WALLET' as const,
+      icon: '💜',
+      label: 'DrippleX Wallet',
+      sub:
+        balance == null
+          ? 'Balance unavailable'
+          : short
+            ? `Balance: ${naira(balance)} — not enough for this fare`
+            : `Balance: ${naira(balance)}`,
+      disabled: balance == null || short,
+    },
+    {
+      id: 'CASH' as const,
+      icon: '💵',
+      label: 'Cash',
+      sub: 'Pay your driver directly',
+      disabled: false,
+    },
   ];
+
+  const handlePay = async () => {
+    if (paying || !rideId) return;
+    if (selected === 'CASH') {
+      onCash?.();
+      return;
+    }
+    setPaying(true);
+    setError(null);
+    try {
+      await api.rides.pay(rideId, { method: 'WALLET' });
+      onPaid?.();
+    } catch (e: unknown) {
+      // Surfaced, never swallowed: a wallet debit that fails leaves the ride
+      // unpaid, and telling the passenger it worked is how a driver ends up
+      // unpaid too.
+      setError(e instanceof Error ? e.message : 'Payment could not be completed');
+    } finally {
+      setPaying(false);
+    }
+  };
+
   return (
     <div
       className="relative flex h-full w-full flex-col overflow-hidden"
@@ -3555,16 +3671,18 @@ export function PaymentScreen({
         </p>
       </div>
       <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
-        {/* Fare summary */}
+        {/* Fare summary — the real fare for this ride, not a placeholder. */}
         <div
           className="mx-5 mb-4 rounded-2xl p-4"
           style={{ background: NAVY_CARD, border: `1px solid ${BORDER}` }}
         >
-          <p style={{ fontSize: 12, color: MUTED, fontFamily: IT }}>Ikeja → Victoria Island</p>
+          <p style={{ fontSize: 12, color: MUTED, fontFamily: IT }}>{routeLabel}</p>
           <p style={{ fontFamily: PP, fontSize: 32, fontWeight: 800, color: G3, margin: '4px 0' }}>
-            ₦2,100
+            {fare != null ? naira(fare) : '—'}
           </p>
-          <p style={{ fontSize: 12, color: TEXT_SECONDARY, fontFamily: IT }}>Economy • 14.2 km</p>
+          <p style={{ fontSize: 12, color: TEXT_SECONDARY, fontFamily: IT }}>
+            {typeLabel} • {distanceLabel}
+          </p>
         </div>
         {/* Payment method list */}
         <div className="mx-5 mb-4">
@@ -3582,12 +3700,16 @@ export function PaymentScreen({
           {methods.map((m) => (
             <button
               key={m.id}
+              disabled={m.disabled}
               className="mb-3 flex w-full items-center gap-3 rounded-2xl p-4 text-left transition-all active:scale-[.98]"
               style={{
                 background: selected === m.id ? 'rgba(34,197,94,.08)' : NAVY_CARD,
                 border: selected === m.id ? `1.5px solid ${G3}` : `1px solid ${BORDER}`,
+                opacity: m.disabled ? 0.5 : 1,
               }}
-              onClick={() => setSelected(m.id)}
+              onClick={() => {
+                setSelected(m.id);
+              }}
             >
               <span style={{ fontSize: 22 }}>{m.icon}</span>
               <div className="flex-1">
@@ -3608,43 +3730,38 @@ export function PaymentScreen({
             </button>
           ))}
         </div>
-        {/* Promo code */}
-        <div className="mx-5 mb-4 flex gap-2">
-          <input
-            value={promo}
-            onChange={(e) => setPromo(e.target.value)}
-            placeholder="Promo code"
-            className="flex-1 rounded-xl px-4 py-3 text-sm outline-none"
-            style={{
-              background: NAVY_SURFACE,
-              border: `1px solid ${BORDER}`,
-              color: '#fff',
-              fontFamily: IT,
-            }}
-          />
-          <button
-            className="rounded-xl px-4 py-3 text-sm font-semibold"
-            style={{
-              background: 'rgba(34,197,94,.1)',
-              color: G3,
-              fontFamily: PP,
-              border: `1px solid rgba(34,197,94,.25)`,
-            }}
+        {error != null && (
+          <div
+            className="mx-5 mb-4 rounded-xl px-4 py-3"
+            style={{ background: 'rgba(239,68,68,.10)', border: '1px solid rgba(239,68,68,.30)' }}
           >
-            Apply
-          </button>
-        </div>
+            <p style={{ fontSize: 13, color: '#FCA5A5', fontFamily: IT }}>{error}</p>
+          </div>
+        )}
         {/* Total row */}
         <div
           className="mx-5 mb-4 flex items-center justify-between rounded-xl px-4 py-3"
           style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
         >
           <p style={{ fontFamily: PP, fontSize: 14, color: '#fff', fontWeight: 600 }}>Total</p>
-          <p style={{ fontFamily: PP, fontSize: 18, fontWeight: 800, color: G3 }}>₦2,100</p>
+          <p style={{ fontFamily: PP, fontSize: 18, fontWeight: 800, color: G3 }}>
+            {fare != null ? naira(fare) : '—'}
+          </p>
         </div>
       </div>
       <div className="px-5 pb-8 pt-3">
-        <GreenButton label="Confirm Payment" onClick={onPay || (() => {})} />
+        <GreenButton
+          label={
+            alreadyPaid
+              ? 'Already paid — continue'
+              : paying
+                ? 'Paying…'
+                : selected === 'CASH'
+                  ? 'Pay with cash'
+                  : 'Pay from wallet'
+          }
+          onClick={alreadyPaid ? () => onPaid?.() : handlePay}
+        />
       </div>
     </div>
   );
@@ -3807,19 +3924,29 @@ export function CashPaymentScreen({
   onConfirm?: () => void;
   rideId?: string;
 }) {
+  const ride = useLiveRide(rideId);
   const [checked, setChecked] = useState(false);
   const [paying, setPaying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fare = ride ? Number(ride.totalFare) : null;
 
   const handleConfirm = async () => {
-    if (paying) return;
+    if (paying || !rideId) return;
     setPaying(true);
+    setError(null);
     try {
-      if (rideId) await api.rides.pay(rideId, { method: 'CASH' });
-    } catch {
-      /* proceed to confirmation either way */
+      await api.rides.pay(rideId, { method: 'CASH' });
+      onConfirm?.();
+    } catch (e: unknown) {
+      // This used to `catch {}` and continue to the confirmation regardless,
+      // so a ride whose payment method never recorded still showed a receipt.
+      // The driver's cash figure and the platform's commission both come off
+      // this call — if it fails, the passenger has to see that.
+      setError(e instanceof Error ? e.message : 'Could not confirm the cash payment');
+    } finally {
+      setPaying(false);
     }
-    setPaying(false);
-    onConfirm?.();
   };
   return (
     <div
@@ -3863,10 +3990,10 @@ export function CashPaymentScreen({
               marginBottom: 4,
             }}
           >
-            ₦2,100
+            {fare != null ? naira(fare) : '—'}
           </p>
           <p style={{ fontSize: 12, color: TEXT_SECONDARY, fontFamily: IT, textAlign: 'center' }}>
-            Pay your driver at the end of the trip
+            Hand this to your driver now
           </p>
         </div>
         {/* Tips */}
@@ -3928,6 +4055,14 @@ export function CashPaymentScreen({
         >
           Cash rides are not refundable
         </p>
+        {error != null && (
+          <div
+            className="mb-4 w-full rounded-xl px-4 py-3"
+            style={{ background: 'rgba(239,68,68,.10)', border: '1px solid rgba(239,68,68,.30)' }}
+          >
+            <p style={{ fontSize: 13, color: '#FCA5A5', fontFamily: IT }}>{error}</p>
+          </div>
+        )}
       </div>
       <div className="px-5 pb-8 pt-3">
         <GreenButton label={paying ? 'Confirming…' : 'Confirm Cash Ride'} onClick={handleConfirm} />

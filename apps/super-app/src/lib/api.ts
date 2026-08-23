@@ -526,9 +526,18 @@ export interface RideDto {
   promoDiscount: number;
   paymentMethod: RidePaymentMethod | null;
   paymentStatus: 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED';
-  platformCommission: number;
-  driverEarning: number;
-  tipAmount: number;
+  /**
+   * Null until the fare settles. All three are `Decimal?` in Prisma and
+   * `number | null` in @dripplex/types — this copy declared them non-null,
+   * which is not a cosmetic disagreement: it is why
+   * `ride.driverEarning.toLocaleString()` on the driver's trip-completed
+   * screen compiled cleanly and then threw "null is not an object" on a real
+   * trip. The split happens at completion, so between the trip ending and the
+   * passenger paying there is genuinely no earning figure yet.
+   */
+  platformCommission: number | null;
+  driverEarning: number | null;
+  tipAmount: number | null;
   requestedAt: string | null;
   assignedAt: string | null;
   arrivedAt: string | null;

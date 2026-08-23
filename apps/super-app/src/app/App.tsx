@@ -1255,7 +1255,11 @@ function AppShell() {
     rideinprogress: (
       <RideInProgressScreen
         onBack={() => goBack('ridearrived')}
-        onComplete={() => go('ridecomplete')}
+        // The fare is collected between the trip ending and the receipt, per
+        // the founder-locked order in RIDE-002.7. This used to jump straight
+        // to 'ridecomplete', which is why rides completed without charging
+        // anyone and why tipping then failed the backend's paid-first guard.
+        onComplete={() => go('ridepayment')}
         onSOS={() => go('ridesos')}
         onShare={() => go('rideshare')}
         rideId={activeCustomerRideId}
@@ -1275,6 +1279,11 @@ function AppShell() {
         onRate={() => go('riderating')}
         onHome={() => go('home')}
         onTip={() => go('ridetip')}
+        // A passenger who backgrounds the app between the trip ending and
+        // paying lands here unpaid, so the screen needs a way back to the
+        // fare. (Rating is not payment-gated in the backend; tipping is —
+        // ride-payment.service.ts refuses a tip on an unsettled ride.)
+        onPay={() => go('ridepayment')}
         rideId={activeCustomerRideId}
       />
     ),
@@ -1364,9 +1373,10 @@ function AppShell() {
     ),
     ridepayment: (
       <PaymentScreen
-        onBack={() => goBack('ridefare')}
-        onPay={() => go('ridepaysuccess')}
-        onChangeMethod={() => go('ridepayment')}
+        onBack={() => goBack('ridecomplete')}
+        onPaid={() => go('ridecomplete')}
+        onCash={() => go('ridecash')}
+        rideId={activeCustomerRideId}
       />
     ),
     rideopay: (
@@ -1378,7 +1388,7 @@ function AppShell() {
     ridecash: (
       <CashPaymentScreen
         onBack={() => goBack('ridepayment')}
-        onConfirm={() => go('ridepaysuccess')}
+        onConfirm={() => go('ridecomplete')}
         rideId={activeCustomerRideId}
       />
     ),

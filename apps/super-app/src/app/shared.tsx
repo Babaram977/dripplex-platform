@@ -95,37 +95,27 @@ export const GLOBAL_STYLES = `
   .flex-col.overflow-y-auto > *,
   .flex-col.overflow-auto > * { flex-shrink: 0; }
 
-  /*  1b. The welcome hero.
+  /*  1b. The welcome hero. See HeroFit below for why the scale is measured
+        rather than declared; this half is the geometry it drives.
 
-        The orbit is authored at a fixed 320px, with a 134px satellite radius
-        and a 192px logo inside it. It sits in a flex-1 slot, and a flex item
-        will not shrink below its content — so on a short screen the slot is
-        smaller than 320px and the ring simply spills out of it, over the
-        "Your Life. One App." headline below. Measured: 47px of overlap at
-        360x640 and 17px at 390x700, with the top of the ring clipped off the
-        screen entirely. It only looks right on a tall viewport, which is why
-        it survived this long.
+        The slot stretches to fill the flex row it is given and reports a
+        144px minimum, so the row cannot collapse the orbit to nothing. The
+        orbit keeps its authored 320px box and is centred on the slot by
+        absolute positioning rather than by grid alignment: a grid item that
+        is LARGER than its area is start-aligned, not centred (CSS Grid 6.2
+        forces start alignment on overflow to keep content reachable), so the
+        old place-items:center slid the whole composition down and to the
+        right by half the shrinkage — measured 51px on a 360x640 screen.
+        left/top 50% + translate(-50%,-50%) centres it for every scale.
 
-        One scale factor keeps every part of the composition in proportion —
-        ring, satellites, logo and all. It is set on an ancestor, so the
-        orbit-cw / orbit-ccw / float-a-b-c animations inside are untouched;
-        a parent scale composes with a child's rotate rather than replacing
-        it. The slot reserves the SCALED size, which is the half that
-        actually stops the overlap. */
-  :root { --dx-hero-scale: 1; }
-  @media (max-height: 780px) { :root { --dx-hero-scale: .90; } }
-  @media (max-height: 720px) { :root { --dx-hero-scale: .82; } }
-  @media (max-height: 660px) { :root { --dx-hero-scale: .68; } }
-  @media (max-height: 600px) { :root { --dx-hero-scale: .56; } }
-  /* Narrow-and-short together is the worst case, so it is stated last and
-     wins over either rule on its own. */
-  @media (max-width: 345px) and (max-height: 720px) { :root { --dx-hero-scale: .64; } }
-  @media (max-width: 345px) and (max-height: 640px) { :root { --dx-hero-scale: .48; } }
-
-  .dx-hero-slot  { width: calc(320px * var(--dx-hero-scale));
-                   height: calc(320px * var(--dx-hero-scale));
-                   display: grid; place-items: center; }
-  .dx-hero-orbit { transform: scale(var(--dx-hero-scale)); }
+        The scale is applied on the orbit itself, above the rings and tiles,
+        so the orbit-cw / orbit-ccw / float-a-b-c animations inside are
+        untouched — a parent scale composes with a child's rotate rather
+        than replacing it. */
+  .dx-hero-slot  { position: relative; flex: 1 1 auto; align-self: stretch;
+                   min-width: 0; min-height: 144px; }
+  .dx-hero-orbit { position: absolute; left: 50%; top: 50%;
+                   transform: translate(-50%,-50%) scale(var(--dx-hero-scale,1)); }
 
   /*  2. The device mockup — bezel, notch, 390px width, simulated status bar
         — is a desktop preview of a phone. On an actual phone it IS the
@@ -153,6 +143,62 @@ export function Logo({ width = 280 }: { width?: number }) {
       alt="DrippleX"
       style={{ width, height: Math.round(width / 3.03), objectFit: 'contain', display: 'block' }}
     />
+  );
+}
+
+/** Authored size of the welcome orbit — ring box, in CSS px. */
+const HERO_ORBIT = 320;
+/** Below this the wordmark stops being legible; matches .dx-hero-slot's min-height. */
+const HERO_MIN_SCALE = 0.45;
+
+/**
+ * Fits the welcome orbit into the space the layout actually leaves it.
+ *
+ * This replaces a ladder of `@media (max-height: 780/720/660/600px)` rules,
+ * which could not work in principle: the constraint is not the viewport, it
+ * is whatever is left after the status bar, the headline, the two buttons,
+ * the partner link and the terms line. On the handset this was reported from
+ * — 412x817 CSS px — that leftover row is 199px tall while the viewport is
+ * 817px, clear of every breakpoint in the ladder. So no rule fired, the slot
+ * stayed a rigid 320px, and it overflowed the row by ~60px top and bottom:
+ * the shopping-bag tile sat in the status bar and the taxi tile sat on top of
+ * "Your Life.". Reproduced at that viewport and measured, not eyeballed.
+ *
+ * Only measuring the row can know. The authored geometry — 320px box, 134px
+ * satellite radius, 192px logo — is untouched and uniformly scaled, so the
+ * composition stays exactly as designed in the Figma Make source
+ * (docs/reference/figma-super-app-source/screensA.tsx).
+ */
+export function HeroFit({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const fit = () => {
+      const { width, height } = el.getBoundingClientRect();
+      if (!width || !height) return;
+      setScale(Math.max(HERO_MIN_SCALE, Math.min(1, width / HERO_ORBIT, height / HERO_ORBIT)));
+    };
+    fit();
+    // Rotation, the keyboard opening, and the WebView's URL bar collapsing all
+    // resize this row without a window resize event reaching it reliably.
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+    };
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      className="dx-hero-slot"
+      style={{ '--dx-hero-scale': scale } as React.CSSProperties}
+    >
+      {children}
+    </div>
   );
 }
 
