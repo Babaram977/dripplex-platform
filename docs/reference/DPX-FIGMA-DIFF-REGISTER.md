@@ -639,3 +639,34 @@ any hotel screen. The production file (`rsHHFRxHVE3OKv81p7m3K1`) is a Figma **Ma
 type: Design.` — and there is no component or frame to reconcile a layout against. What is now
 guaranteed is **system fidelity**, not screen fidelity: the hotel screens no longer invent a
 palette, but their _layout_ is still ours, not designed.
+
+---
+
+## Merchant cover treatment — founder override of the Figma component, 2026-08-23
+
+**Figma says.** `src/components/marketplace/MerchantCard.tsx` in the production Make file
+(`rsHHFRxHVE3OKv81p7m3K1`) declares `coverBg: string // CSS gradient string` as a property of the
+merchant, drawn behind a 44px emoji. Each merchant in the mock data carries its own colour
+(Shoprite `#7F1D1D→#EF4444`, KFC `#7C2D12→#F97316`). There is **no** `coverPhotoUrl` anywhere in
+the component — the design has never had a photographic cover.
+
+**What the code actually did.** `marketplaceScreen.tsx` held a `BG_POOL` of eight gradients and
+selected with `BG_POOL[idx % BG_POOL.length]` — the merchant's **position in the list**, not any
+property of the merchant. A shop was green in one list and red in the next. This was never in the
+design; it is an implementation invention and is recorded here as one. It also rendered
+`coverPhotoUrl` as a full-bleed `object-cover` background, which the design does not have.
+
+**Founder decision, 2026-08-23 (verbatim):** _"Colour on merchant should be uniform... no
+background picture in merchant profile. All merchant should follow the same basic colour of the
+app"_, then, when told the Figma component specifies a per-merchant colour: _"No colour for any
+merchant if that is what figma designs change it No colour"_.
+
+**What shipped.** One neutral `NAVY_BASE` surface for every merchant, in the marketplace card and
+the store header alike. No gradient, no cover photo, no emoji watermark. The merchant's real
+`logoUrl` is shown `object-contain` on a fixed neutral tile — it was previously never read on the
+card at all — with Poppins initials as the fallback where no logo is on file. The category icon
+stays as a vector `Icon`, not an emoji.
+
+**Standing gap.** `coverBg` remains in the Figma component and in `storeScreen`'s local
+`StoreMerchant` type. The override is founder-directed and deliberate; if the design is ever
+updated to drop `coverBg`, this entry can be closed rather than reconciled.

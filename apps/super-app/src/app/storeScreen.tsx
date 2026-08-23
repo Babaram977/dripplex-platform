@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { G0, G2, G3, NAVY_DEEP, NAVY_CARD, NAVY_SURFACE, BORDER, MUTED } from './shared';
+import { G0, G2, G3, NAVY_DEEP, NAVY_BASE, NAVY_CARD, NAVY_SURFACE, BORDER, MUTED } from './shared';
 import { BottomNavigation, FloatingAIButton } from '../components/navigation';
 import { FAB_BOTTOM } from '../tokens/spacing';
 import type { NavTabKey } from '../components/navigation/BottomNavigation';
 import { api } from '../lib/api';
 import type { MerchantCategory, MerchantSummaryDto, ProductSummaryDto } from '../lib/api';
 import { HotelRoomsPanel } from './hotelBookingScreens';
+import { monogram } from './marketplaceScreen';
 import type { BookingDraft } from './hotelBookingScreens';
 import { ImageWithFallback } from '@/app/components/figma/ImageWithFallback';
 
@@ -301,31 +302,30 @@ function StoreHeader({
 }) {
   return (
     <div className="relative flex-shrink-0 overflow-hidden">
-      {/* Cover */}
-      <div className="relative" style={{ height: 200, background: merchant.coverBg }}>
-        {merchant.coverPhotoUrl && (
-          <ImageWithFallback
-            src={merchant.coverPhotoUrl}
-            alt={merchant.name}
-            className="absolute inset-0 h-full w-full object-cover"
-          />
-        )}
+      {/* Cover — the app's own surface, for every merchant alike.
+          (Founder decision, 2026-08-23: no colour and no background picture on
+          any merchant. Logged in the diff register.)
+
+          Three things were removed here. The per-merchant `coverBg` colour,
+          so one store no longer opens red and the next orange. The uploaded
+          `coverPhotoUrl`, which stretched arbitrary merchant imagery to
+          200px behind the back button and the store's own name at whatever
+          resolution it happened to be. And the 90px emoji watermark — a
+          bitmap glyph that blurs on a high-DPI phone and draws differently on
+          every OS, which is exactly the softness that reads as unfinished
+          next to Talabat or Bolt.
+
+          The glare stays: it is a highlight on the surface, not a colour, and
+          it keeps the header from reading as a flat rectangle. */}
+      <div className="relative" style={{ height: 200, background: NAVY_BASE }}>
         <StoreStatusBar />
-        {/* Glare */}
         <div
           className="pointer-events-none absolute inset-0"
           style={{
             backgroundImage:
-              'radial-gradient(ellipse at 70% 30%,rgba(255,255,255,.12) 0%,transparent 55%)',
+              'radial-gradient(ellipse at 70% 30%,rgba(255,255,255,.06) 0%,transparent 55%)',
           }}
         />
-        {/* Big emoji bg */}
-        <div
-          className="pointer-events-none absolute bottom-6 right-6"
-          style={{ fontSize: 90, opacity: 0.1 }}
-        >
-          {merchant.emoji}
-        </div>
 
         {/* Top action bar */}
         <div className="absolute left-0 right-0 top-[88px] z-10 flex items-center justify-between px-4">
@@ -439,19 +439,40 @@ function StoreHeader({
         }}
       >
         <div className="flex items-start gap-3">
-          {/* Logo */}
+          {/* Logo — same neutral tile as the marketplace card, so a store
+              looks like itself in the list and on its own page.
+
+              `object-contain`, not `object-cover`: cover crops a wide logo to
+              a square and cuts the ends off the wordmark. The emoji fallback
+              became initials for the same reason the cover watermark went —
+              a bitmap glyph next to a real logo is the visible difference
+              between this and Talabat. */}
           <div
-            className="flex h-14 w-14 flex-shrink-0 items-center justify-center overflow-hidden rounded-2xl text-[32px]"
-            style={{ background: merchant.coverBg, boxShadow: '0 4px 14px rgba(0,0,0,.35)' }}
+            className="flex h-14 w-14 flex-shrink-0 items-center justify-center overflow-hidden rounded-2xl"
+            style={{
+              background: 'rgba(255,255,255,.06)',
+              border: `1px solid ${BORDER}`,
+              boxShadow: '0 4px 14px rgba(0,0,0,.35)',
+            }}
           >
             {merchant.logoUrl ? (
               <ImageWithFallback
                 src={merchant.logoUrl}
                 alt={merchant.name}
-                className="h-full w-full object-cover"
+                className="h-full w-full object-contain"
               />
             ) : (
-              merchant.emoji
+              <span
+                style={{
+                  fontFamily: "'Poppins',sans-serif",
+                  fontSize: 20,
+                  fontWeight: 700,
+                  letterSpacing: '0.06em',
+                  color: 'rgba(255,255,255,.92)',
+                }}
+              >
+                {monogram(merchant.name)}
+              </span>
             )}
           </div>
           <div className="min-w-0 flex-1">

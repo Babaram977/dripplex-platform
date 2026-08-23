@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { G0, G2, G3, NAVY_DEEP, NAVY_CARD, NAVY_SURFACE, BORDER, MUTED } from './shared';
+import { G0, G2, G3, NAVY_DEEP, NAVY_BASE, NAVY_CARD, NAVY_SURFACE, BORDER, MUTED } from './shared';
 import { api } from '../lib/api';
 import { ImageWithFallback } from './components/figma/ImageWithFallback';
 import { Icon, type IconName } from './icons';
@@ -537,17 +537,6 @@ function FeaturedMerchants({
     load();
   }, [load]);
 
-  const BG_POOL = [
-    'linear-gradient(135deg,#0D2E18,#176B30 42%,#2BAC52)',
-    'linear-gradient(135deg,#7F1D1D,#EF4444)',
-    'linear-gradient(135deg,#7C2D12,#F97316)',
-    'linear-gradient(135deg,#0C4A6E,#06B6D4)',
-    'linear-gradient(135deg,#2E1065,#8B5CF6)',
-    'linear-gradient(135deg,#1E3A5F,#3B82F6)',
-    'linear-gradient(135deg,#831843,#EC4899)',
-    'linear-gradient(135deg,#064E3B,#10B981)',
-  ];
-
   return (
     <div className="mb-5">
       <SRow title="Featured Merchants" sub="Trusted local businesses" onAll={() => {}} />
@@ -604,9 +593,8 @@ function FeaturedMerchants({
         </div>
       ) : (
         <div className="flex flex-col gap-3 px-5">
-          {merchants.map((m, idx) => {
+          {merchants.map((m) => {
             const isOpen = m.isOpenNow;
-            const bg = BG_POOL[idx % BG_POOL.length];
             const icon = categoryIcon(m.category);
             const verified = m.verificationStatus === 'VERIFIED';
             const rating = m.rating?.average ?? 0;
@@ -621,58 +609,95 @@ function FeaturedMerchants({
                   boxShadow: '0 4px 20px rgba(0,0,0,.28)',
                 }}
               >
+                {/* One surface for every merchant — no colour, no photo.
+                    (Founder decision, 2026-08-23, overriding the Figma
+                    component's per-merchant `coverBg`; logged in the diff
+                    register.)
+
+                    What this replaces: a pool of eight gradients indexed by
+                    the merchant's POSITION in the list. Nothing in the design
+                    asked for that — the Figma MerchantCard takes `coverBg` as
+                    a property of the merchant — so a shop was green on one
+                    screen and red on the next, and the wall of unrelated
+                    colours read as decoration rather than as information.
+
+                    The cover photo went with it. The Figma card has no photo
+                    slot at all; using one as a full-bleed background put
+                    arbitrary merchant-uploaded imagery behind the app's own
+                    chrome, at whatever quality was uploaded. */}
                 <div
                   className="relative flex h-[88px] items-center justify-center"
-                  style={{ background: m.coverPhotoUrl ? undefined : bg }}
+                  style={{
+                    background: NAVY_BASE,
+                    borderBottom: `1px solid ${BORDER}`,
+                  }}
                 >
-                  {m.coverPhotoUrl ? (
-                    <ImageWithFallback
-                      src={m.coverPhotoUrl}
-                      alt={m.businessName}
-                      className="absolute inset-0 h-full w-full object-cover"
-                      fallbackEmoji="🛍️"
-                      loading="lazy"
-                    />
-                  ) : (
-                    /* A monogram, not a giant emoji. Emoji are bitmap glyphs —
-                       they blur on high-DPI screens, and they look like a
-                       different app on every OS. Initials in Poppins over the
-                       category gradient stay vector-sharp at any density, and
-                       they identify the merchant rather than their sector. */
+                  {m.logoUrl != null && m.logoUrl !== '' ? (
+                    /* The merchant's own mark, contained rather than cropped
+                       to fill, on a fixed square. This is the Talabat/Bolt
+                       treatment: the brand identifies the shop, the tile stays
+                       the app's. `object-contain` keeps a wide logo from being
+                       stretched, which is what made these look soft. */
                     <div
-                      className="absolute inset-0 flex items-center justify-center overflow-hidden"
-                      aria-hidden="true"
+                      className="flex items-center justify-center overflow-hidden rounded-2xl"
+                      style={{
+                        width: 60,
+                        height: 60,
+                        background: 'rgba(255,255,255,.06)',
+                        border: `1px solid ${BORDER}`,
+                      }}
+                    >
+                      <ImageWithFallback
+                        src={m.logoUrl}
+                        alt={m.businessName}
+                        className="h-full w-full object-contain"
+                        fallbackEmoji="🛍️"
+                        loading="lazy"
+                      />
+                    </div>
+                  ) : (
+                    /* No logo on file: initials, not an emoji. Emoji are
+                       bitmap glyphs — they blur on high-DPI screens and render
+                       as a different app on every OS. Poppins initials and the
+                       vector category icon stay sharp at any density. */
+                    <div
+                      className="flex items-center justify-center rounded-2xl"
+                      style={{
+                        width: 60,
+                        height: 60,
+                        background: 'rgba(255,255,255,.06)',
+                        border: `1px solid ${BORDER}`,
+                      }}
                     >
                       <span
                         style={{
                           fontFamily: "'Poppins',sans-serif",
-                          fontSize: 30,
+                          fontSize: 22,
                           fontWeight: 700,
                           letterSpacing: '0.06em',
                           lineHeight: 1,
                           color: 'rgba(255,255,255,.92)',
-                          textShadow: '0 2px 10px rgba(0,0,0,.28)',
                         }}
                       >
                         {monogram(m.businessName)}
                       </span>
-                      <Icon
-                        name={icon}
-                        size={17}
-                        color="rgba(255,255,255,.55)"
-                        style={{ position: 'absolute', right: 10, bottom: 8 }}
-                      />
                     </div>
                   )}
+                  <Icon
+                    name={icon}
+                    size={17}
+                    color="rgba(255,255,255,.35)"
+                    style={{ position: 'absolute', right: 12, bottom: 10 }}
+                  />
                   <div className="absolute left-3 top-3">
                     {verified && (
                       <span
                         className="rounded-lg px-2 py-1 text-[9px] font-bold"
                         style={{
-                          // A dark scrim, not a green tint. The tint sat on
-                          // whichever gradient the card drew, so green-on-red
-                          // was barely readable; this reads the same on all
-                          // eight banner colours and on a photo.
+                          // A dark scrim, not a green tint. Kept from when the
+                          // banner could be any of eight colours: it still
+                          // gives the badge its own edge against the flat
+                          // surface rather than floating on it.
                           background: 'rgba(6,14,28,.55)',
                           color: G3,
                           border: `1px solid rgba(71,207,114,.35)`,
