@@ -3816,15 +3816,74 @@ export function DriverTripCompletedScreen({
   onDone: () => void;
   ride?: RideDto | null;
 }) {
-  // For cash rides the driver collected fare in person — settle it (10% commission).
+  // `ride` is a snapshot taken the instant the trip ended, and it never
+  // updates again. At that instant the fare is NOT settled: the commission
+  // split runs when the passenger pays, so platformCommission / driverEarning
+  // are still null and paymentMethod has not been chosen yet. Reading
+  // `ride.driverEarning.toLocaleString()` off that snapshot is what threw
+  // "null is not an object" on a real trip — and it type-checked only because
+  // this app's local RideDto wrongly declared the field non-null.
+  //
+  // Two things follow, and both need the ride re-read rather than assumed:
+  //
+  //   • There is no earning figure to show until settlement. Printing ₦0 or a
+  //     guess would be worse than saying so.
+  //   • A CASH fare is settled by the DRIVER's cash-confirm, and that can only
+  //     fire once the passenger has chosen cash on their side — which happens
+  //     after this screen opens. Against the frozen snapshot paymentMethod is
+  //     forever null, the confirm never fires, and the ride never settles at
+  //     all: no commission accrued, no earning recorded.
+  //
+  // There is no GET /driver/rides/:id, so this watches the driver's own ride
+  // list — an endpoint that already exists — and stops as soon as the ride
+  // settles.
+  const [live, setLive] = useState<RideDto | null>(ride ?? null);
+  const confirmedRef = useRef(false);
+
   useEffect(() => {
-    if (ride && ride.paymentMethod === 'CASH') {
-      api.driverRides.confirmCash(ride.id).catch(() => {});
-    }
+    setLive(ride ?? null);
+    confirmedRef.current = false;
   }, [ride]);
 
-  const earned = ride ? `₦${ride.driverEarning.toLocaleString()}` : '—';
-  const dropoff = ride?.dropoffAddress ?? '';
+  const rideId = ride?.id;
+  const settled = live?.paymentStatus === 'PAID';
+
+  useEffect(() => {
+    if (!rideId || settled) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const page = await api.driverRides.list({ limit: 20 });
+        const found = page.items.find((r) => r.id === rideId);
+        if (!cancelled && found) setLive(found);
+      } catch {
+        // A failed poll just means the figure appears a few seconds later.
+      }
+    };
+    void tick();
+    const t = setInterval(() => void tick(), 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [rideId, settled]);
+
+  // For cash rides the driver collected the fare in person — settle it here
+  // (10% commission). Fires once, and only once the passenger has actually
+  // chosen cash.
+  useEffect(() => {
+    if (!live || live.paymentMethod !== 'CASH' || live.paymentStatus === 'PAID') return;
+    if (confirmedRef.current) return;
+    confirmedRef.current = true;
+    api.driverRides.confirmCash(live.id).catch(() => {
+      // Left for the next poll / the driver's earnings screen to reflect.
+      confirmedRef.current = false;
+    });
+  }, [live]);
+
+  const earning = live?.driverEarning;
+  const earned = earning != null ? `₦${earning.toLocaleString()}` : null;
+  const dropoff = live?.dropoffAddress ?? ride?.dropoffAddress ?? '';
 
   return (
     <div
@@ -3885,10 +3944,10 @@ export function DriverTripCompletedScreen({
           {[
             [
               'Duration',
-              ride ? `${Math.max(1, Math.round(ride.estimatedDurationSeconds / 60))} min` : '—',
+              live ? `${Math.max(1, Math.round(live.estimatedDurationSeconds / 60))} min` : '—',
             ],
-            ['Distance', ride ? `${(ride.estimatedDistanceMeters / 1000).toFixed(1)} km` : '—'],
-            ['Total Fare', ride ? `₦${ride.totalFare.toLocaleString()}` : '—'],
+            ['Distance', live ? `${(live.estimatedDistanceMeters / 1000).toFixed(1)} km` : '—'],
+            ['Total Fare', live ? `₦${live.totalFare.toLocaleString()}` : '—'],
           ].map(([l, v]) => (
             <div key={l} className="mb-2 flex justify-between">
               <p className="text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
@@ -3905,12 +3964,17 @@ export function DriverTripCompletedScreen({
             <p className="text-[15px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
               You Earned
             </p>
-            <p className="text-[24px] font-bold" style={{ fontFamily: PP, color: G3 }}>
-              {earned}
+            <p
+              className="text-[24px] font-bold"
+              style={{ fontFamily: PP, color: earned != null ? G3 : MUTED }}
+            >
+              {earned ?? 'Pending'}
             </p>
           </div>
           <p className="text-right text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
-            After 10% platform fee · Added to wallet
+            {earned != null
+              ? 'After 10% platform fee · Added to wallet'
+              : 'Waiting for the passenger to pay — this updates on its own'}
           </p>
         </div>
       </div>
