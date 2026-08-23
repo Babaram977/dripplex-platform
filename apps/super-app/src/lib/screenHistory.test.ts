@@ -109,6 +109,33 @@ describe('screen history', () => {
     expect(stack[stack.length - 1]).toBe(`screen-${String(SCREEN_HISTORY_LIMIT + 9)}`);
   });
 
+  /**
+   * The exact loop a founder was caught in, twice.
+   *
+   * Notifications' Back was a forward `go('account')` while Manage Account's
+   * Back popped history — so the two screens pointed at each other and there
+   * was no way out. Modelled here as the taps a person actually made.
+   */
+  it('escapes the notifications ↔ account loop', () => {
+    const s = session('home').go('activitydash');
+
+    // Back from Notifications returns home, rather than moving forward into
+    // Manage Account.
+    s.back('home');
+    expect(s.at).toBe('home');
+  });
+
+  /** The same trap reached the other way round: profile first, then
+   *  notifications from inside it. Back must unwind, not ping-pong. */
+  it('unwinds a profile → notifications visit one step at a time', () => {
+    const s = session('home').go('account').go('activitydash');
+
+    s.back('home');
+    expect(s.at).toBe('account');
+    s.back('home');
+    expect(s.at).toBe('home');
+  });
+
   it('forgets everything across an authentication boundary', () => {
     const s = session('welcome').go('signin').go('home');
     clearHistory(s.stack);
