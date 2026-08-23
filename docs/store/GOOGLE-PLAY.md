@@ -11,10 +11,16 @@ Use this draft when creating the Play Console listing. Replace placeholders befo
 | **Full description**             | See below                                                               |
 | **Category**                     | Shopping                                                                |
 | **Tags / keywords**              | marketplace, food delivery, Nigeria, wallet, rides, parcel, pharmacy    |
-| **Privacy Policy URL**           | `https://dripplex.com/privacy`                                          |
-| **Account deletion URL**         | `https://dripplex.com/account-deletion`                                 |
-| **Support URL**                  | `https://dripplex.com/contact`                                          |
+| **Privacy Policy URL**           | `https://www.dripplex.com/privacy`                                      |
+| **Account deletion URL**         | `https://www.dripplex.com/account-deletion`                             |
+| **Support URL**                  | `https://www.dripplex.com/contact`                                      |
 | **Email**                        | support@dripplex.com                                                    |
+
+Listing URLs use **www**, because the bare apex 308-redirects to it
+(`apps/customer-web/next.config.ts`). The apex forms still resolve — Google
+follows the redirect — but pointing the Console straight at the destination
+avoids a needless hop and keeps the value stable if the redirect is ever
+tightened.
 
 ### Full description (template)
 
