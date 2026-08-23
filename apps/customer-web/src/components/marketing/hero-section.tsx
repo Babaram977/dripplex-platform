@@ -94,7 +94,13 @@ export function HeroSection(): React.JSX.Element {
               animation: 'glow-ring 4s ease-in-out infinite',
             }}
           >
-            <DripplexLogo />
+            {/* This panel is hard-coded navy, so the wordmark cannot inherit
+                `text-foreground` — in light theme that resolves to near-black
+                and the word "Dripplex" all but disappears into the card. The
+                mark beside it is an inline SVG and stays sharp either way,
+                which is why this reads as a blurry logo rather than an
+                invisible one. Same fix the auth layout already uses. */}
+            <DripplexLogo invertWordmark className="text-primary-foreground" />
           </div>
           {/* orbiting floating icons */}
           {ORBIT_ICONS.map(({ icon, angle, anim, dur }) => {

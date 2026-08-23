@@ -39,7 +39,9 @@ export function SplashIntro(): React.JSX.Element | null {
       return;
     }
     splashPlayedThisLoad = true;
-    const fadeT = setTimeout(() => { setFading(true); }, 2600);
+    const fadeT = setTimeout(() => {
+      setFading(true);
+    }, 2600);
     const doneT = setTimeout(() => {
       setShow(false);
       try {
@@ -79,7 +81,11 @@ export function SplashIntro(): React.JSX.Element | null {
         style={{ animation: 'pop-in .75s cubic-bezier(.34,1.56,.64,1) .25s both' }}
       >
         <div style={{ transform: 'scale(2.2)' }}>
-          <DripplexLogo href="#" />
+          {/* Navy splash, same reason as hero-section: without invertWordmark
+              the word renders in `text-foreground`, which is near-black in
+              light theme. Worse here than anywhere else because the whole
+              lockup is scaled 2.2x, so it is the first thing anyone sees. */}
+          <DripplexLogo href="#" invertWordmark className="text-primary-foreground" />
         </div>
         <span
           className="font-display text-sm font-medium"
