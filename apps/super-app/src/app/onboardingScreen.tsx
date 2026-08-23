@@ -21,6 +21,7 @@
 import React, { useState, useRef } from 'react';
 
 import { api, ApiError, uploadFile } from '../lib/api';
+import type { MerchantCategory } from '../lib/api';
 import { auth } from '../lib/auth';
 
 import {
@@ -596,26 +597,51 @@ export type PartnerSignupResult = { email: string; password: string };
 // Business Details step can pre-fill them before persisting via PATCH /merchant/business.
 export type MerchantSignupResult = PartnerSignupResult & {
   businessName: string;
-  category: string;
+  /** The real enum value, null if somehow unselected. Not the display label:
+   *  a label cannot be stored, and storing nothing is what left every merchant
+   *  registered through this flow uncategorised. */
+  category: MerchantCategory | null;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SCREEN 2 — MERCHANT SIGN-UP (wired: POST /auth/register/merchant)
 // ─────────────────────────────────────────────────────────────────────────────
-const BIZ_TYPES = [
-  'Restaurant & Food',
-  'Supermarket / Grocery',
-  'Pharmacy & Health',
-  'Fashion & Clothing',
-  'Electronics',
-  'Beauty & Cosmetics',
-  'Hardware & Tools',
-  'Furniture & Home',
-  'Hotels & Hospitality',
-  'Wholesale / B2B',
-  'Professional Services',
-  'Other',
+/**
+ * What the merchant sells, with the real `MerchantCategory` value attached.
+ *
+ * These used to be bare label strings, and the label was the only thing that
+ * survived: it was passed along to Business Details and written into the
+ * business *description*, while `Business.category` — a column the backend has
+ * accepted on create and update all along — was left null.
+ *
+ * The consequence was silent and total. An uncategorised business appears only
+ * under "All" in the marketplace, never under its own filter; and a hotel is
+ * recognised as a hotel by `category === 'HOTEL'` and nothing else, so its
+ * store page rendered the empty product grid instead of its rooms. A hotel
+ * could register perfectly and still be unbookable, with no error anywhere.
+ *
+ * Same defect, same fix as the marketplace category chips, which carried
+ * labels into a name search until they were made to carry the enum.
+ */
+const BIZ_TYPES: { label: string; category: MerchantCategory }[] = [
+  { label: 'Restaurant & Food', category: 'RESTAURANT' },
+  { label: 'Supermarket / Grocery', category: 'SUPERMARKET' },
+  { label: 'Pharmacy & Health', category: 'PHARMACY' },
+  { label: 'Fashion & Clothing', category: 'FASHION' },
+  { label: 'Electronics', category: 'ELECTRONICS' },
+  { label: 'Beauty & Cosmetics', category: 'BEAUTY' },
+  { label: 'Hardware & Tools', category: 'HARDWARE' },
+  { label: 'Furniture & Home', category: 'FURNITURE' },
+  { label: 'Hotels & Hospitality', category: 'HOTEL' },
+  { label: 'Wholesale / B2B', category: 'WHOLESALE' },
+  { label: 'Professional Services', category: 'SERVICES' },
+  { label: 'Other', category: 'OTHER' },
 ];
+
+/** The label shown in the dropdown → the value the backend stores. */
+export function categoryForBusinessTypeLabel(label: string): MerchantCategory | null {
+  return BIZ_TYPES.find((b) => b.label === label)?.category ?? null;
+}
 
 export function MerchantSignUpScreen({
   onBack,
@@ -649,7 +675,12 @@ export function MerchantSignUpScreen({
       // no registration field for them; the merchant sets them in the dashboard
       // after approval (registration auto-creates the blank merchant profile).
       await api.auth.registerMerchant({ firstName, lastName, email, password: form.password });
-      onNext({ email, password: form.password, businessName: form.biz, category: form.type });
+      onNext({
+        email,
+        password: form.password,
+        businessName: form.biz,
+        category: categoryForBusinessTypeLabel(form.type),
+      });
     } catch (e) {
       setErr(messageFor(e));
       setLoading(false);
@@ -747,7 +778,7 @@ export function MerchantSignUpScreen({
             placeholder="Select a category"
             value={form.type}
             onChange={set('type')}
-            options={BIZ_TYPES}
+            options={BIZ_TYPES.map((b) => b.label)}
             focused={focused}
             onFocus={setFocused}
             onBlur={() => setFocused(null)}
@@ -1760,9 +1791,10 @@ export function RiderDocumentsScreen({
 // ─────────────────────────────────────────────────────────────────────────────
 // MERCHANT BUSINESS DETAILS (post-login) — wired: PATCH /merchant/business
 // Registration auto-creates a blank merchant profile; this persists the business
-// name + legal structure (+ an optional description carrying the retail category
-// the signup collected, which has no dedicated backend field). Uses the real
-// UpdateBusinessDto — businessType is the LEGAL structure enum, not a retail type.
+// name, its legal structure, and the retail category chosen at signup. Uses the
+// real UpdateBusinessDto — businessType is the LEGAL structure enum (how the
+// business is incorporated) and `category` is what it SELLS. They are different
+// columns and confusing them is what kept every merchant here uncategorised.
 // ─────────────────────────────────────────────────────────────────────────────
 const BUSINESS_STRUCTURES: { label: string; value: string }[] = [
   { label: 'Sole Proprietorship', value: 'SOLE_PROPRIETORSHIP' },
@@ -1779,13 +1811,16 @@ export function BusinessDetailsScreen({
   onBack,
 }: {
   businessName: string;
-  category: string;
+  category: MerchantCategory | null;
   onDone: () => void;
   onBack: () => void;
 }) {
   const [name, setName] = useState(initialName ?? '');
   const [structure, setStructure] = useState('');
-  const [description, setDescription] = useState(category ? `${category}` : '');
+  // No longer seeded with the category: that was a workaround for the category
+  // not being stored at all, and it left every merchant with a description
+  // reading "Hotels & Hospitality" and nothing useful.
+  const [description, setDescription] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [focused, setFocused] = useState<string | null>(null);
@@ -1802,6 +1837,9 @@ export function BusinessDetailsScreen({
       const body: Record<string, unknown> = {
         businessName: name.trim(),
         businessType,
+        // Optional in the DTO on purpose — a guessed category is worse than a
+        // blank one — so it is sent only when the merchant actually chose.
+        ...(category ? { category } : {}),
       };
       if (description.trim()) body.description = description.trim();
       if (phone.replace(/\D/g, '').length >= 7) body.phone = toE164(phone);

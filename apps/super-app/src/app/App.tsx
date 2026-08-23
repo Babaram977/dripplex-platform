@@ -594,9 +594,12 @@ function AppShell() {
   } | null>(null);
   // Merchant's business fields from sign-up, pre-filled into the post-login
   // Business Details step (persisted via PATCH /merchant/business).
-  const [merchantBiz, setMerchantBiz] = useState<{ businessName: string; category: string }>({
+  const [merchantBiz, setMerchantBiz] = useState<{
+    businessName: string;
+    category: MerchantCategory | null;
+  }>({
     businessName: '',
-    category: '',
+    category: null,
   });
   // The rider's own job list returns RiderDeliveryJobDto — DeliveryJobDto plus
   // `customerName`, which the job screen needs to title the chat.

@@ -2861,7 +2861,12 @@ export const api = {
     // PATCHes an existing one.
     createBusiness: (body: {
       businessName: string;
+      /** The LEGAL structure (sole proprietorship, LLC…). Not what they sell. */
       businessType: string;
+      /** What they SELL. Optional in the backend DTO, and it was missing from
+       *  this type entirely — which is why onboarding never sent one and every
+       *  merchant registered through the app landed uncategorised. */
+      category?: MerchantCategory;
       description?: string;
       phone?: string;
       address?: string;
