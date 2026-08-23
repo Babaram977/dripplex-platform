@@ -14,6 +14,8 @@
  * so none of it leaks into the service or the client.
  */
 
+import { DomainException } from '../../common/exceptions/domain.exception';
+
 export interface UtilityNetwork {
   /** The code sent back on purchase. Never free-typed by a client. */
   code: string;
@@ -196,12 +198,39 @@ export interface UtilityProviderPort {
  * provider dashboard showed no transaction at all — because there had not
  * been one.
  */
-export class UtilityProviderRejectedError extends Error {
+export class UtilityProviderRejectedError extends DomainException {
   /** Discriminator: the request never reached execution. */
   public readonly neverExecuted = true;
 
+  /**
+   * Extends DomainException so that the times this escapes to a client carry
+   * an honest status.
+   *
+   * It used to extend plain Error, which the global filter has no case for —
+   * so it fell through to 500 INTERNAL_SERVER_ERROR / "An unexpected error
+   * occurred". On the purchase path that never showed, because the service
+   * catches it, refunds and reports a real failure. On the catalogue reads
+   * (data plans, discos, cable packages) nothing catches it, so a stale
+   * provider code turned Peyflex's perfectly clear
+   * `{"error":"Network not found or not active"}` into an opaque 500.
+   *
+   * 502, not 4xx: the caller did nothing wrong. These codes come from our own
+   * catalogue, and the reasons this fires — a revoked token, a missing
+   * configuration, a network the provider has deactivated since we cached it
+   * — are ours or the provider's, never the customer's.
+   *
+   * `message` keeps the full provider detail for the logs and the stack;
+   * `publicMessage` is what goes over the wire. Naming our aggregator and
+   * echoing its error body to a customer helps nobody.
+   */
   constructor(message: string) {
-    super(message);
+    super(
+      'UPSTREAM_PROVIDER_ERROR',
+      message,
+      502,
+      undefined,
+      'That service is temporarily unavailable. Please try again shortly.',
+    );
     this.name = 'UtilityProviderRejectedError';
   }
 }

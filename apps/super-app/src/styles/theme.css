@@ -135,6 +135,21 @@
 
   html {
     font-size: var(--font-size);
+    /**
+     * Stop the browser resizing our type for us.
+     *
+     * iOS and iPadOS default `-webkit-text-size-adjust` to `auto`, which lets
+     * Safari inflate text when it judges a block to be a narrow column inside a
+     * wide viewport — precisely the shape of the 390px phone frame on a tablet.
+     * Reported as a search placeholder wrapping to three lines over the title
+     * it sits under, and category labels running into each other, on a tablet
+     * whose phone screenshots of the same build are clean.
+     *
+     * Every size in this app is deliberate and comes from the token scale, so
+     * there is nothing for the browser to improve. 100% pins them.
+     */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
   }
 
   h1 {

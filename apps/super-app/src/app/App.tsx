@@ -823,11 +823,15 @@ function AppShell() {
       }}
       onWallet={() => go('wallethome')}
       onUtilities={() => go('utilities')}
-      onOrders={() => go('orderhistory')}
+      // Hotels open the marketplace already filtered to hotel merchants — the
+      // browse path that exists, rather than a new landing screen with no
+      // design behind it. Until now nothing in the app reached the hotel
+      // feature at all: `mybookings` was a registered route with no caller.
       onHotels={() => {
         setMarketplaceCategory('HOTEL');
         go('marketplace');
       }}
+      onOrders={() => go('orderhistory')}
       onTrackOrder={(id) => {
         setActiveOrderId(id);
         go('ordertracking');
@@ -1062,8 +1066,14 @@ function AppShell() {
     home: homeScreen,
     marketplace: (
       <MarketplaceScreen
+        // Remounting on the category is what makes a SECOND tap of Hotels
+        // work: initialCategory only seeds state on mount, so without this the
+        // filter applied once and never again.
         key={marketplaceCategory ?? 'all'}
         initialCategory={marketplaceCategory}
+        // The catalogue search lives on Home. Sending the customer there beats
+        // a box on this screen that cannot search.
+        onSearch={() => go('home')}
         onTab={goTab}
         onBack={() => goBack('home')}
         onHome={() => go('home')}

@@ -117,7 +117,24 @@ export const GLOBAL_STYLES = `
   .dx-hero-orbit { position: absolute; left: 50%; top: 50%;
                    transform: translate(-50%,-50%) scale(var(--dx-hero-scale,1)); }
 
-  /*  2. The device mockup — bezel, notch, 390px width, simulated status bar
+  /*  2a. Above 480px the app is a 390px column, and that column is for
+        reading the app on a big screen — not for pretending to be an iPhone.
+        The bezel, the notch and the fake 9:41 clock are desktop preview
+        chrome; shipped to a tablet user they are imitation hardware wrapped
+        around a real product, and they are what a Play reviewer would see.
+
+        They also cause damage. iOS text autosizing inflates type inside a
+        narrow column on a wide viewport, which is what pushed the marketplace
+        search placeholder onto three lines and over the title above it. The
+        text-size-adjust:100% rule in theme.css is the other half of that fix.
+
+        The column stays; only the costume goes. */
+  .dx-phone-frame { border-radius: 0 !important;
+                    box-shadow: 0 0 0 1px rgba(255,255,255,.06) !important; }
+  .dx-phone-notch { display: none !important; }
+  .dx-status-mock > * { visibility: hidden; }
+
+  /*  2b. The device mockup — bezel, notch, 390px width, simulated status bar
         — is a desktop preview of a phone. On an actual phone it IS the
         phone, and a fixed 390px overflows a 360px handset sideways while
         wasting space on a 430px one. Below 480px the app goes full bleed

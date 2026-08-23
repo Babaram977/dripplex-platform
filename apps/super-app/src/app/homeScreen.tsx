@@ -1690,8 +1690,8 @@ export function HomeScreen({
         onUtilities?.();
         break;
       default:
-        // More has no screen yet. It is marked `ready: false`
-        // above so it never reaches here — this stays as the backstop.
+        // More has no screen yet. It is marked `ready: false` above so it
+        // never reaches here — this stays as the backstop.
         break;
     }
   };

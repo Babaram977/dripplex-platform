@@ -195,11 +195,14 @@ function MpHeader({
   onBack,
   onCart,
   onNotif,
+  onSearch,
   cartCount,
 }: {
   onBack: () => void;
   onCart: () => void;
   onNotif: () => void;
+  /** Opens the search that actually queries the catalogue. See below. */
+  onSearch: () => void;
   cartCount: number;
 }) {
   return (
@@ -314,12 +317,36 @@ function MpHeader({
         </div>
       </div>
 
-      {/* Search bar */}
+      {/* Search.
+
+          This row carried three controls and not one of them did anything:
+          the "search bar" was a <p> of placeholder text in a div with no
+          onClick, the microphone was a <button> with no handler, and so was
+          Filter. Reported as "the search bar is not clear and I think not
+          indexed to the marketplace products" — it was not indexed to
+          anything — and "a lot of clustered icons that need alignment".
+
+          The bar now opens the search that already exists on the home screen,
+          which queries the same catalogue over /merchants/smart-search and
+          /products/smart-search. A search that queries in place on this screen
+          is the better end state and is recorded as a follow-up rather than
+          faked here.
+
+          The microphone and Filter are gone. There is no voice-search endpoint
+          to give the microphone, and the category chips directly below this
+          row are the filter — a second, dead one beside them was the clutter.
+
+          The fixed height:50 went too. A locked height around text the browser
+          may enlarge is what let the placeholder wrap onto three lines and
+          spill over the title above it. */}
       <div className="relative z-10 mx-5">
-        <div
-          className="flex items-center gap-3 rounded-2xl px-4"
+        <button
+          type="button"
+          onClick={onSearch}
+          aria-label="Search products, stores and services"
+          className="flex w-full items-center gap-3 rounded-2xl px-4 py-2.5 text-left active:opacity-80"
           style={{
-            height: 50,
+            minHeight: 50,
             background: 'rgba(255,255,255,.08)',
             border: '1.5px solid rgba(255,255,255,.10)',
           }}
@@ -328,58 +355,26 @@ function MpHeader({
             className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-xl"
             style={{ background: `linear-gradient(135deg,${G0},${G2})` }}
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="white">
-              <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z" />
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="white"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <line x1="16.5" y1="16.5" x2="21" y2="21" />
             </svg>
           </div>
-          <p
-            className="flex-1 text-[12.5px]"
-            style={{ color: 'rgba(255,255,255,.30)', fontFamily: "'Inter',sans-serif" }}
+          <span
+            className="min-w-0 flex-1 text-[12.5px]"
+            style={{ color: 'rgba(255,255,255,.45)', fontFamily: "'Inter',sans-serif" }}
           >
             Search products, stores, services…
-          </p>
-          <div className="flex items-center gap-1.5">
-            <button
-              className="flex h-7 w-7 items-center justify-center rounded-lg"
-              style={{ background: 'rgba(255,255,255,.06)' }}
-            >
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="rgba(255,255,255,.5)"
-                strokeWidth="2"
-                strokeLinecap="round"
-              >
-                <rect x="9" y="2" width="6" height="11" rx="3" />
-                <path d="M5 10a7 7 0 0014 0M12 19v3M9 22h6" />
-              </svg>
-            </button>
-            <div className="h-4 w-px" style={{ background: 'rgba(255,255,255,.10)' }} />
-            <button className="flex items-center gap-1 px-1.5 active:opacity-70">
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke={G3}
-                strokeWidth="2"
-                strokeLinecap="round"
-              >
-                <line x1="4" y1="6" x2="20" y2="6" />
-                <line x1="8" y1="12" x2="20" y2="12" />
-                <line x1="12" y1="18" x2="20" y2="18" />
-              </svg>
-              <p
-                className="text-[11px] font-semibold"
-                style={{ color: G3, fontFamily: "'Inter',sans-serif" }}
-              >
-                Filter
-              </p>
-            </button>
-          </div>
-        </div>
+          </span>
+        </button>
       </div>
     </div>
   );
@@ -1568,6 +1563,7 @@ export function MarketplaceScreen({
   onCart,
   onTab,
   initialCategory = null,
+  onSearch,
 }: {
   onBack: () => void;
   onHome: () => void;
@@ -1581,6 +1577,9 @@ export function MarketplaceScreen({
    *  with `HOTEL` — the chip is 9th of 12 in a scrolling strip, so a person who
    *  taps Hotels must not then have to go and find Hotels. */
   initialCategory?: MerchantCategory | null;
+  /** Where the search bar goes. Falls back to Home, which is where the search
+   *  that queries the catalogue lives. */
+  onSearch?: () => void;
 }) {
   const [activecat, setActivecat] = useState<MerchantCategory | null>(initialCategory);
   const [showAI, setShowAI] = useState(false);
@@ -1616,6 +1615,7 @@ export function MarketplaceScreen({
         onBack={onBack}
         onCart={onCart ?? (() => {})}
         onNotif={onNotifications}
+        onSearch={onSearch ?? onHome}
         cartCount={cartCount}
       />
 
