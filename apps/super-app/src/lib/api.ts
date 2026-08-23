@@ -1080,6 +1080,29 @@ export interface BookingSettlementDto {
   createdAt: string;
 }
 
+/** What the next Monday run will pay — read-only, and shares the run's own
+ *  query server-side so it cannot disagree with what actually happens. */
+export interface SettlementPreviewDto {
+  /** ISO timestamp of the Monday the run happens on. */
+  runsOn: string;
+  weekStarting: string;
+  from: string;
+  /** Exclusive end — the Monday itself, so Sunday is the last day paid for. */
+  to: string;
+  hotels: {
+    businessId: string;
+    businessName: string;
+    bookingCount: number;
+    grossAmount: number;
+    commissionAmount: number;
+    netAmount: number;
+  }[];
+  hotelCount: number;
+  grossAmount: number;
+  commissionAmount: number;
+  netAmount: number;
+}
+
 export interface MerchantBusinessDto {
   id: string;
   businessName: string;
@@ -2782,6 +2805,8 @@ export const api = {
           undefined,
           params as Record<string, string | number> | undefined,
         ),
+      /** What this hotel is due at the next Monday run, before it happens. */
+      nextSettlement: () => dx<SettlementPreviewDto>('GET', '/merchant/bookings/settlements/next'),
       /** What DrippleX has paid this hotel, week by week. Shipped in the
        *  backend with weekly settlement; this is the client that reads it. */
       settlements: (params?: { page?: number; pageSize?: number }) =>

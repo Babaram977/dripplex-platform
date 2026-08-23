@@ -8,6 +8,7 @@ import { BOOKING_PERMISSIONS } from './bookings.constants';
 import { BookingsService } from './bookings.service';
 import { BookingListQueryDto, SettlementListQueryDto } from './dto/bookings.dto';
 
+import type { SettlementPreview } from './booking-settlement.service';
 import type { BookingSettlementDto, MerchantBookingDto } from './booking.mapper';
 import type { ApiSuccessResponse } from '../common/dto/api-response.dto';
 import type { PaginatedResult } from '@dripplex/types';
@@ -62,6 +63,20 @@ export class AdminBookingsController {
    * see it, and this is where they see it — filter by status to get exactly
    * the rows waiting on a person.
    */
+  /**
+   * What Monday's run will pay, before it pays it.
+   *
+   * Read-only, and it shares the run's own query rather than reimplementing
+   * it — a preview that can disagree with the run is worse than none. Exists so
+   * the first live settlement can be looked at in advance instead of being
+   * discovered afterwards.
+   */
+  @Get('settlements/preview')
+  @RequirePermissions(BOOKING_PERMISSIONS.ADMIN_MANAGE)
+  public async previewSettlements(): Promise<ApiSuccessResponse<SettlementPreview>> {
+    return { success: true, data: await this.settlements.previewNextRun() };
+  }
+
   @Get('settlements')
   @RequirePermissions(BOOKING_PERMISSIONS.ADMIN_MANAGE)
   public async listSettlements(

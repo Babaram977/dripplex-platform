@@ -18,6 +18,7 @@ import {
 } from '../lib/bookingDates';
 import type {
   BookingSettlementDto,
+  SettlementPreviewDto,
   BookingStatus,
   MerchantBookingDto,
   RoomAvailabilityDto,
@@ -5426,6 +5427,7 @@ function RoomsPage() {
  */
 function HotelPayoutsPage() {
   const [rows, setRows] = useState<BookingSettlementDto[]>([]);
+  const [next, setNext] = useState<SettlementPreviewDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
 
@@ -5442,6 +5444,15 @@ function HotelPayoutsPage() {
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
+    // What Monday will pay. A failure here is not worth an error banner — the
+    // history below is the record, and this card simply does not appear.
+    api.merchant.bookings
+      .nextSettlement()
+      .then((preview) => {
+        if (!cancelled) setNext(preview);
+      })
+      .catch(() => undefined);
+
     return () => {
       cancelled = true;
     };
@@ -5498,6 +5509,55 @@ function HotelPayoutsPage() {
           </MxCard>
         ))}
       </div>
+
+      {/* What is coming, before it comes. The first live settlement runs on
+          2026-08-24, and a hotel should be able to see the figure in advance
+          rather than find a balance change on Monday morning. */}
+      {next !== null && (
+        <MxCard style={{ marginBottom: 14, padding: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+            <div>
+              <div style={{ fontFamily: PP, fontSize: 14, fontWeight: 700, color: WHITE }}>
+                Next payout
+              </div>
+              <div style={{ fontFamily: IT, fontSize: 12, color: MUTED, marginTop: 2 }}>
+                {formatNight(next.from.slice(0, 10))} – {formatNight(next.to.slice(0, 10))} · paid{' '}
+                {formatNight(next.runsOn.slice(0, 10))}
+              </div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontFamily: PP, fontWeight: 800, fontSize: 20, color: G2 }}>
+                {naira(next.netAmount)}
+              </div>
+              <div style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>
+                {next.hotelCount === 0
+                  ? 'nothing due yet'
+                  : `${next.hotels[0]?.bookingCount ?? 0} ${
+                      (next.hotels[0]?.bookingCount ?? 0) === 1 ? 'booking' : 'bookings'
+                    }`}
+              </div>
+            </div>
+          </div>
+          {next.hotelCount > 0 && (
+            <div
+              style={{
+                display: 'flex',
+                gap: 16,
+                marginTop: 10,
+                paddingTop: 10,
+                borderTop: `1px solid ${BORDER}`,
+                fontFamily: IT,
+                fontSize: 11,
+                color: MUTED,
+              }}
+            >
+              <span>Guests paid {naira(next.grossAmount)}</span>
+              <span>− commission {naira(next.commissionAmount)}</span>
+              <span style={{ color: WHITE }}>= {naira(next.netAmount)}</span>
+            </div>
+          )}
+        </MxCard>
+      )}
 
       <InfoBanner
         icon="🗓️"

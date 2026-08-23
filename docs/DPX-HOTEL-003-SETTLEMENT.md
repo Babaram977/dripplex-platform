@@ -142,6 +142,31 @@ migration history and `schema.prisma` that predate this work — mostly inline
 none are touched by it. Worth its own pass; folding it into a settlement PR would
 mix unrelated risk into a money path.
 
+## Looking before Monday
+
+`GET /admin/bookings/settlements/preview` (Ops) and
+`GET /merchant/bookings/settlements/next` (the hotel's own line) answer "what
+will the next run pay" without paying it. Added 2026-08-23, the day before the
+first live run.
+
+Two things make it trustworthy rather than decorative:
+
+- **It shares the run's query.** `owedForPeriod` is called by both the preview
+  and `settleWeek`. A preview with its own copy of that query would agree with
+  the run right up until somebody edited one of them, and then quietly show a
+  hotel a number it is not going to be paid. A test previews, then settles, and
+  asserts the four figures match.
+- **It is dated from the next run, not from now.** Asked on a Sunday,
+  "the period a run happening now would cover" is last week — already paid.
+  `nextSettlementDay` walks forward to the run instead of backward from it.
+
+Read-only by construction: it queries and stops. A test calls it three times
+and asserts no settlement row exists, no booking is claimed, and no balance
+moved.
+
+Still no way to trigger a run by hand, in Ops or anywhere else. Re-running a
+payout manually is how a hotel gets paid twice.
+
 ## Open
 
 - **Nothing tells a hotel the money arrived.** The wallet credit happens and the

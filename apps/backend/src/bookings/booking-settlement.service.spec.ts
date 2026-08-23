@@ -370,6 +370,103 @@ describe('BookingSettlementService', () => {
     expect(await merchantBalance(hotel.merchantUserId)).toBe(36_000);
   });
 
+  /**
+   * The preview exists so the first live settlement can be looked at before it
+   * happens rather than discovered afterwards. Its only real requirement is
+   * that it agrees with the run — a preview that can disagree is worse than
+   * none, because it is believed.
+   */
+  describe('previewing the next run', () => {
+    /** THE test. Preview, then actually settle, and compare the numbers. */
+    it('predicts exactly what the run then pays', async () => {
+      if (!databaseAvailable) return;
+      const hotel = await createHotel();
+      await paidBooking(hotel.businessId, 40_000, 4_000, DURING_THE_WEEK);
+      await paidBooking(hotel.businessId, 20_000, 2_000, DURING_THE_WEEK);
+
+      // A Sunday inside the week being settled: the preview must look forward
+      // to tomorrow's run, not back at the one that already happened.
+      const preview = await settlements.previewNextRun(new Date('2027-08-22T20:00:00.000Z'));
+      const mine = preview.hotels.find((h) => h.businessId === hotel.businessId);
+
+      expect(preview.runsOn.toISOString()).toBe('2027-08-23T00:00:00.000Z');
+      expect(mine?.netAmount).toBe(54_000);
+
+      await settlements.settleWeek(MONDAY);
+      const settled = await prisma.bookingSettlement.findFirstOrThrow({
+        where: { businessId: hotel.businessId },
+      });
+
+      expect(Number(settled.netAmount)).toBe(mine?.netAmount);
+      expect(Number(settled.grossAmount)).toBe(mine?.grossAmount);
+      expect(Number(settled.commissionAmount)).toBe(mine?.commissionAmount);
+      expect(settled.bookingCount).toBe(mine?.bookingCount);
+    });
+
+    /** Read-only by construction. Looking at Monday's payout must not become
+     *  Monday's payout. */
+    it('moves no money and writes no rows, however often it is asked', async () => {
+      if (!databaseAvailable) return;
+      const hotel = await createHotel();
+      await paidBooking(hotel.businessId, 40_000, 4_000, DURING_THE_WEEK);
+
+      for (let i = 0; i < 3; i += 1) {
+        await settlements.previewNextRun(new Date('2027-08-22T20:00:00.000Z'));
+      }
+
+      expect(
+        await prisma.bookingSettlement.count({ where: { businessId: hotel.businessId } }),
+      ).toBe(0);
+      expect(await merchantBalance(hotel.merchantUserId)).toBe(0);
+      const claimed = await prisma.booking.count({
+        where: { businessId: hotel.businessId, settlementId: { not: null } },
+      });
+      expect(claimed).toBe(0);
+    });
+
+    /** Once a week is paid, its bookings are claimed — so the next preview
+     *  must not still be promising the same money. */
+    it('stops showing money that has already been paid out', async () => {
+      if (!databaseAvailable) return;
+      const hotel = await createHotel();
+      await paidBooking(hotel.businessId, 40_000, 4_000, DURING_THE_WEEK);
+
+      await settlements.settleWeek(MONDAY);
+
+      const after = await settlements.previewNextRun(new Date('2027-08-22T20:00:00.000Z'));
+      expect(after.hotels.find((h) => h.businessId === hotel.businessId)).toBeUndefined();
+    });
+
+    it('shows a hotel only its own line', async () => {
+      if (!databaseAvailable) return;
+      const mine = await createHotel();
+      const theirs = await createHotel();
+      await paidBooking(mine.businessId, 40_000, 4_000, DURING_THE_WEEK);
+      await paidBooking(theirs.businessId, 90_000, 9_000, DURING_THE_WEEK);
+
+      const preview = await settlements.previewNextRunForBusiness(
+        mine.businessId,
+        new Date('2027-08-22T20:00:00.000Z'),
+      );
+
+      expect(preview.hotelCount).toBe(1);
+      expect(preview.netAmount).toBe(36_000);
+      expect(preview.hotels.map((h) => h.businessId)).toEqual([mine.businessId]);
+    });
+
+    it('says nothing is due when nothing is', async () => {
+      if (!databaseAvailable) return;
+      const hotel = await createHotel();
+
+      const preview = await settlements.previewNextRunForBusiness(
+        hotel.businessId,
+        new Date('2027-08-22T20:00:00.000Z'),
+      );
+      expect(preview.hotelCount).toBe(0);
+      expect(preview.netAmount).toBe(0);
+    });
+  });
+
   it('shows a hotel its own settlement history', async () => {
     if (!databaseAvailable) return;
     const hotel = await createHotel();
