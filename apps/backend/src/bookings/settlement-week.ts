@@ -64,3 +64,19 @@ export function settlementPeriod(now: Date): SettlementPeriod {
     to: weekStarting,
   };
 }
+
+/**
+ * The next Monday a settlement will run on — today, if today is Monday.
+ *
+ * Needed because previewing is asked on a day that is *not* the run day.
+ * `settlementPeriod(now)` answers "what does a run happening now cover", and on
+ * a Sunday that is the week that already settled last Monday — the wrong answer
+ * to "what will I be paid tomorrow". This walks forward to the run instead of
+ * backward from it.
+ */
+export function nextSettlementDay(now: Date): Date {
+  const today = toUtcDay(now);
+  // 0 = Sunday, 1 = Monday. Days until the next Monday, or 0 if it is Monday.
+  const untilMonday = (8 - today.getUTCDay()) % 7;
+  return new Date(today.getTime() + untilMonday * MS_PER_DAY);
+}

@@ -279,7 +279,7 @@ reference at the hotel desk.
 
 ### Slice E — Tell the guest without making them watch
 
-> **BUILT 2026-08-22, with one addition that needs your confirmation.**
+> **BUILT 2026-08-22. The extra notification was confirmed on 2026-08-23.**
 >
 > This slice as written lists **CONFIRMED, REJECTED and EXPIRED**. That list was
 > correct under the wallet-hold model, where a hotel accepting _was_ the end of
@@ -287,14 +287,16 @@ reference at the hotel desk.
 >
 > Under the model that shipped, acceptance is the moment the guest must **act**:
 > they have 24 hours to pay or they lose the room. So a fourth notification was
-> added, `BOOKING_ACCEPTED`, and **that is my reading of decisions 11–12 rather
-> than something you wrote down.** Flagged here rather than assumed.
+> added, `BOOKING_ACCEPTED`.
 >
-> The reasoning: a notification feature that stays silent on the one state with
-> a deadline attached is worse than none, because a guest who gets told about
-> declines and confirmations will reasonably read silence as "nothing needs me".
-> If you would rather the app said nothing on acceptance, it is a one-line
-> change — say so and I will remove it.
+> **Founder confirmed it stays, 2026-08-23.** It was built ahead of that
+> confirmation and flagged as my reading of decisions 11–12 rather than
+> something written down; the decision is now recorded and this is no longer an
+> open question.
+>
+> The reasoning behind it: a notification feature silent on the one state with a
+> deadline attached is worse than none, because a guest told about declines and
+> confirmations will reasonably read silence as "nothing needs me".
 >
 > Two other decisions worth knowing about, both made the same way:
 >

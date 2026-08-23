@@ -37,6 +37,7 @@ import {
 } from './dto/bookings.dto';
 import { RoomInventoryService } from './room-inventory.service';
 
+import type { SettlementPreview } from './booking-settlement.service';
 import type {
   BookingSettlementDto,
   MerchantBookingDto,
@@ -285,6 +286,22 @@ export class MerchantBookingsController {
    * Scoped to the signed-in merchant's own business, like every other route
    * here: there is nowhere in the request to put another hotel's id.
    */
+  /**
+   * What this hotel is due on Monday.
+   *
+   * The hotel-facing half of the Ops preview, scoped to the caller's own
+   * business. Answers "am I getting paid this week, and how much" before the
+   * money moves rather than after.
+   */
+  @Get('settlements/next')
+  @RequirePermissions(BOOKING_PERMISSIONS.MERCHANT_MANAGE)
+  public async nextSettlement(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ApiSuccessResponse<SettlementPreview>> {
+    const businessId = await this.rooms.requireOwnBusiness(user.id);
+    return { success: true, data: await this.settlements.previewNextRunForBusiness(businessId) };
+  }
+
   @Get('settlements')
   @RequirePermissions(BOOKING_PERMISSIONS.MERCHANT_MANAGE)
   public async listSettlements(

@@ -7,9 +7,39 @@ import { WalletService } from '../wallet/wallet.service';
 
 import { BookingHotelNotifier } from './booking-hotel-notifier.service';
 import { BOOKING_AUDIT_ACTIONS, BOOKING_SETTLEMENT_REFERENCE_TYPE } from './bookings.constants';
-import { isSettlementDay, settlementPeriod } from './settlement-week';
+import { isSettlementDay, nextSettlementDay, settlementPeriod } from './settlement-week';
 
 import type { BookingSettlement } from '@prisma/client';
+
+/** One hotel's unsettled takings for a week, as the database groups them. */
+interface OwedRow {
+  businessId: string;
+  _count: { _all: number };
+  _sum: { totalAmount: Prisma.Decimal | null; commissionAmount: Prisma.Decimal | null };
+}
+
+/** What a run would pay, if it ran. Amounts are naira, dates UTC. */
+export interface SettlementPreview {
+  /** The Monday the run happens on — today when today is Monday. */
+  runsOn: Date;
+  weekStarting: Date;
+  /** First day covered, inclusive. */
+  from: Date;
+  /** Exclusive end: the Monday itself, so Sunday is the last day paid for. */
+  to: Date;
+  hotels: {
+    businessId: string;
+    businessName: string;
+    bookingCount: number;
+    grossAmount: number;
+    commissionAmount: number;
+    netAmount: number;
+  }[];
+  hotelCount: number;
+  grossAmount: number;
+  commissionAmount: number;
+  netAmount: number;
+}
 
 /**
  * Paying hotels — DPX-HOTEL-003.
@@ -82,19 +112,7 @@ export class BookingSettlementService {
   public async settleWeek(now: Date): Promise<number> {
     const period = settlementPeriod(now);
 
-    // Which hotels have money waiting. Grouped in the database rather than
-    // pulled into memory: a platform-wide settlement should not depend on how
-    // many bookings happened that week.
-    const owed = await this.prisma.booking.groupBy({
-      by: ['businessId'],
-      where: {
-        status: BookingStatus.CONFIRMED,
-        settlementId: null,
-        paidAt: { gte: period.from, lt: period.to },
-      },
-      _count: { _all: true },
-      _sum: { totalAmount: true, commissionAmount: true },
-    });
+    const owed = await this.owedForPeriod(period);
 
     let settled = 0;
     for (const row of owed) {
@@ -272,6 +290,105 @@ export class BookingSettlementService {
     );
 
     return completed;
+  }
+
+  /**
+   * Which hotels have money waiting for a given week.
+   *
+   * Shared deliberately between the real run and the preview below. A preview
+   * built on its own copy of this query is worse than no preview: it would
+   * agree with the run right up until someone edited one of them, and then
+   * quietly show a hotel a number it is not going to be paid.
+   *
+   * Grouped in the database rather than pulled into memory — a platform-wide
+   * settlement should not depend on how many bookings happened that week.
+   */
+  private async owedForPeriod(period: { from: Date; to: Date }): Promise<OwedRow[]> {
+    // Assigned before returning on purpose: annotating the return type of a
+    // function that returns `groupBy` directly feeds that annotation back into
+    // Prisma's own inference and it stops type-checking.
+    const rows = await this.prisma.booking.groupBy({
+      by: ['businessId'],
+      where: {
+        status: BookingStatus.CONFIRMED,
+        settlementId: null,
+        paidAt: { gte: period.from, lt: period.to },
+      },
+      _count: { _all: true },
+      _sum: { totalAmount: true, commissionAmount: true },
+    });
+    return rows;
+  }
+
+  /**
+   * What the next run will pay, without paying it.
+   *
+   * Read-only by construction: it calls the same query the run calls and then
+   * stops. Nothing is inserted, nothing is claimed, and calling it a hundred
+   * times changes nothing — which is the whole point of being able to look
+   * before Monday rather than finding out afterwards.
+   *
+   * Dated from `nextSettlementDay`, not from now. Asked on a Sunday, "the
+   * period a run happening now would cover" is last week — already paid. The
+   * question a person is asking is what tomorrow pays.
+   */
+  public async previewNextRun(now: Date = new Date()): Promise<SettlementPreview> {
+    const runsOn = nextSettlementDay(now);
+    const period = settlementPeriod(runsOn);
+    const owed = await this.owedForPeriod(period);
+
+    const businesses =
+      owed.length === 0
+        ? []
+        : await this.prisma.business.findMany({
+            where: { id: { in: owed.map((row) => row.businessId) } },
+            select: { id: true, businessName: true },
+          });
+    const nameOf = new Map(businesses.map((b) => [b.id, b.businessName]));
+
+    const hotels = owed
+      .map((row) => {
+        const grossAmount = Number(row._sum.totalAmount ?? 0);
+        const commissionAmount = Number(row._sum.commissionAmount ?? 0);
+        return {
+          businessId: row.businessId,
+          businessName: nameOf.get(row.businessId) ?? 'Unknown hotel',
+          bookingCount: row._count._all,
+          grossAmount,
+          commissionAmount,
+          netAmount: roundMoney(grossAmount - commissionAmount),
+        };
+      })
+      .sort((a, b) => b.netAmount - a.netAmount);
+
+    return {
+      runsOn,
+      weekStarting: period.weekStarting,
+      from: period.from,
+      to: period.to,
+      hotels,
+      hotelCount: hotels.length,
+      grossAmount: roundMoney(hotels.reduce((sum, h) => sum + h.grossAmount, 0)),
+      commissionAmount: roundMoney(hotels.reduce((sum, h) => sum + h.commissionAmount, 0)),
+      netAmount: roundMoney(hotels.reduce((sum, h) => sum + h.netAmount, 0)),
+    };
+  }
+
+  /** One hotel's slice of the next run. */
+  public async previewNextRunForBusiness(
+    businessId: string,
+    now: Date = new Date(),
+  ): Promise<SettlementPreview> {
+    const all = await this.previewNextRun(now);
+    const mine = all.hotels.filter((h) => h.businessId === businessId);
+    return {
+      ...all,
+      hotels: mine,
+      hotelCount: mine.length,
+      grossAmount: roundMoney(mine.reduce((sum, h) => sum + h.grossAmount, 0)),
+      commissionAmount: roundMoney(mine.reduce((sum, h) => sum + h.commissionAmount, 0)),
+      netAmount: roundMoney(mine.reduce((sum, h) => sum + h.netAmount, 0)),
+    };
   }
 
   /** A hotel's own settlement history. */

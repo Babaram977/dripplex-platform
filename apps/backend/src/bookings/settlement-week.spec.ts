@@ -1,5 +1,6 @@
 import {
   isSettlementDay,
+  nextSettlementDay,
   settlementPeriod,
   settlementWeekStarting,
   toUtcDay,
@@ -81,6 +82,46 @@ describe('settlement week', () => {
       const thisWeek = settlementPeriod(at('2026-08-24T06:00:00.000Z'));
       const nextWeek = settlementPeriod(at('2026-08-31T06:00:00.000Z'));
       expect(nextWeek.from.toISOString()).toBe(thisWeek.to.toISOString());
+    });
+  });
+
+  describe('nextSettlementDay', () => {
+    /** The question a preview actually asks: not "what did the last run cover"
+     *  but "what will tomorrow's run cover". On a Sunday those are different
+     *  weeks, and answering with the wrong one shows a hotel money it was
+     *  already paid. */
+    it('is tomorrow when asked on a Sunday', () => {
+      // 2026-08-23 is a Sunday; the run is Monday the 24th.
+      expect(nextSettlementDay(at('2026-08-23T22:00:00.000Z')).toISOString()).toBe(
+        '2026-08-24T00:00:00.000Z',
+      );
+    });
+
+    it('is today when asked on a Monday', () => {
+      expect(nextSettlementDay(at('2026-08-24T06:00:00.000Z')).toISOString()).toBe(
+        '2026-08-24T00:00:00.000Z',
+      );
+    });
+
+    it('is the following Monday when asked mid-week', () => {
+      const cases: [string, string][] = [
+        ['2026-08-25', '2026-08-31'],
+        ['2026-08-26', '2026-08-31'],
+        ['2026-08-29', '2026-08-31'],
+      ];
+      for (const [day, expected] of cases) {
+        expect(nextSettlementDay(at(`${day}T09:00:00.000Z`)).toISOString()).toBe(
+          `${expected}T00:00:00.000Z`,
+        );
+      }
+    });
+
+    /** What a preview is for: the week it names must be the seven days the run
+     *  will actually pay for. */
+    it('lines up with the period that run will settle', () => {
+      const period = settlementPeriod(nextSettlementDay(at('2026-08-23T22:00:00.000Z')));
+      expect(period.from.toISOString()).toBe('2026-08-17T00:00:00.000Z');
+      expect(period.to.toISOString()).toBe('2026-08-24T00:00:00.000Z');
     });
   });
 
