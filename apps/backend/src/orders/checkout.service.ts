@@ -6,6 +6,7 @@ import {
   MerchantStatus,
   OrderDisputeStatus,
   OrderStatus,
+  PaymentStatus,
   UserStatus,
 } from '@prisma/client';
 
@@ -86,6 +87,26 @@ export class CheckoutService {
     context: AuditContext,
   ): Promise<CheckoutResponseDto> {
     await this.assertCustomerVerified(customerId);
+
+    // A locked cart means checkout already ran and an order for it is sitting
+    // unpaid. That order IS this checkout — the cart could not have changed
+    // since, because locking is what stops it changing. Hand it back.
+    //
+    // Refusing instead is what customers hit as "I cannot complete my order":
+    // reach checkout, leave the app before paying, come back, and every
+    // attempt answered "Cart is locked pending payment" until the cleanup
+    // sweep released it half an hour later. Worse when the order carries no
+    // inventory reservation, because that sweep only unlocks carts whose
+    // reservations expired — nothing else ever unlocks them, so the cart
+    // stayed dead and the sale was simply lost.
+    //
+    // Resuming rather than cancelling and re-creating is deliberate: a card
+    // payment may already be in flight on that order, and cancelling it to
+    // start a fresh one risks charging for an order nobody will fulfil.
+    const resumed = await this.findResumableOrder(customerId, dto.cartId);
+    if (resumed) {
+      return toCheckoutResponseDto(resumed);
+    }
 
     const cart = await this.resolveCart(customerId, dto.cartId);
     this.assertCartCheckoutable(cart);
@@ -488,6 +509,35 @@ export class CheckoutService {
     );
 
     return toOrderDto(refreshed);
+  }
+
+  /**
+   * The unpaid order holding this customer's cart locked, if there is one.
+   *
+   * Only an order that is still PENDING and still awaiting payment qualifies.
+   * One already paid, cancelled or failed has no claim on the cart — and for
+   * those the ordinary path is right: the lock is stale and
+   * `assertCartCheckoutable` should say so rather than resurrect a dead order.
+   */
+  private async findResumableOrder(
+    customerId: string,
+    cartId?: string,
+  ): Promise<OrderWithItems | null> {
+    const cart = cartId
+      ? await this.cartRepository.findByIdForCustomer(cartId, customerId)
+      : await this.cartRepository.findLockedByCustomerId(customerId);
+    if (cart?.status !== CartStatus.LOCKED) {
+      return null;
+    }
+
+    const existing = await this.ordersRepository.findByCartId(cart.id);
+    if (
+      existing?.status !== OrderStatus.PENDING ||
+      existing.paymentStatus !== PaymentStatus.PENDING
+    ) {
+      return null;
+    }
+    return await this.ordersRepository.findById(existing.id);
   }
 
   private async resolveCart(customerId: string, cartId?: string): Promise<CartWithItems> {
