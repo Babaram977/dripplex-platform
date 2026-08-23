@@ -4072,6 +4072,26 @@ function DriverEarningsTab({ onBack }: { onBack: () => void }) {
           )}
         </div>
 
+        {/* Why a driver who has worked all day can still see zero here.
+            A cash fare never enters the digital ledger — the passenger hands
+            the notes over and the driver keeps them, so RidePaymentService
+            deliberately moves no wallet money (RIDE-002.7). Only wallet and
+            card fares land in this balance. Without saying so, the screen
+            reads as "DrippleX has not paid me", which is how this was
+            reported.
+
+            GAP: the commission a driver owes on cash fares is tracked on
+            their CommissionAccount and is readable at
+            GET /driver/commercial/account, but there is no approved design
+            for showing it here, so it is logged rather than invented. */}
+        <p
+          className="mb-5 px-1 text-[11px] leading-relaxed"
+          style={{ fontFamily: IT, color: MUTED }}
+        >
+          Cash fares are paid to you directly by the passenger and do not appear here — this balance
+          is wallet and card trips only.
+        </p>
+
         {/* Honest summary derived from the loaded transactions */}
         <div
           className="mb-5 flex gap-3 rounded-2xl p-4"
@@ -4291,7 +4311,13 @@ function DriverTripsTab({ onBack }: { onBack: () => void }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const earned = trips.reduce((s, t) => s + (t.driverEarning || 0), 0);
+  // driverEarning is null until the fare settles, so `|| 0` quietly turned
+  // "not paid yet" into "earned nothing" — a completed trip showing ₦0 next to
+  // the word COMPLETED reads as the driver having worked for free. Count only
+  // settled trips in the total, and say how many are still waiting.
+  const settledTrips = trips.filter((t) => t.driverEarning != null);
+  const earned = settledTrips.reduce((s, t) => s + (t.driverEarning ?? 0), 0);
+  const awaiting = trips.length - settledTrips.length;
 
   return (
     <div
@@ -4314,7 +4340,10 @@ function DriverTripsTab({ onBack }: { onBack: () => void }) {
         >
           {[
             { v: trips.length.toString(), l: 'Completed' },
-            { v: naira(earned), l: 'Earned' },
+            {
+              v: settledTrips.length === 0 && awaiting > 0 ? 'Pending' : naira(earned),
+              l: awaiting > 0 ? `Earned · ${String(awaiting)} unpaid` : 'Earned',
+            },
             { v: '—', l: 'Rating' },
           ].map((s) => (
             <div key={s.l} className="flex-1 text-center">
@@ -4364,11 +4393,23 @@ function DriverTripsTab({ onBack }: { onBack: () => void }) {
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-[15px] font-bold" style={{ fontFamily: PP, color: G3 }}>
-                    {naira(trip.driverEarning || 0)}
+                  <p
+                    className="text-[15px] font-bold"
+                    style={{
+                      fontFamily: PP,
+                      color: trip.driverEarning != null ? G3 : '#F59E0B',
+                    }}
+                  >
+                    {trip.driverEarning != null ? naira(trip.driverEarning) : 'Unpaid'}
                   </p>
-                  <span className="text-[10px] font-bold" style={{ color: G3, fontFamily: IT }}>
-                    {trip.status}
+                  <span
+                    className="text-[10px] font-bold"
+                    style={{
+                      color: trip.driverEarning != null ? G3 : '#F59E0B',
+                      fontFamily: IT,
+                    }}
+                  >
+                    {trip.driverEarning != null ? trip.status : 'AWAITING PAYMENT'}
                   </span>
                 </div>
               </div>
