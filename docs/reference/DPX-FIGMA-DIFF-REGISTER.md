@@ -661,11 +661,23 @@ background picture in merchant profile. All merchant should follow the same basi
 app"_, then, when told the Figma component specifies a per-merchant colour: _"No colour for any
 merchant if that is what figma designs change it No colour"_.
 
-**What shipped.** One neutral `NAVY_BASE` surface for every merchant, in the marketplace card and
-the store header alike. No gradient, no cover photo, no emoji watermark. The merchant's real
-`logoUrl` is shown `object-contain` on a fixed neutral tile — it was previously never read on the
-card at all — with Poppins initials as the fallback where no logo is on file. The category icon
-stays as a vector `Icon`, not an emoji.
+**Second founder instruction, same day:** _"why the DA big card for dx apartments just makes it
+simple optimize the size of icons and the card"_.
+
+**What shipped.** The cover band is gone entirely. A merchant is one compact row — a 48px mark,
+name, category, rating and distance on a single line, and the way in. Card height measured at
+**74px, down from ~158px**, so twice as many merchants fit a phone screen. This also brings the
+Featured list into line with `NearbyBusinesses`, which was already a compact neutral row list.
+
+The store header keeps a `NAVY_BASE` surface with no gradient, photo or emoji watermark.
+
+The merchant's real `logoUrl` is shown `object-contain` on a neutral tile — it was previously
+never read on the card at all, only `coverPhotoUrl` was — with Poppins initials as the fallback
+where no logo is on file. The category icon is a vector `Icon`.
+
+**Every bitmap glyph in both merchant lists is gone**: the cover photo, the 90px emoji watermark,
+and the 📍/⏱ glyphs in the Nearby rows. `★` U+2605 stays — it is a typographic glyph drawn from
+the font, not an emoji. Verified by rendering: no `img`, and no character in the emoji ranges.
 
 **Standing gap.** `coverBg` remains in the Figma component and in `storeScreen`'s local
 `StoreMerchant` type. The override is founder-directed and deliberate; if the design is ever

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { G0, G2, G3, NAVY_DEEP, NAVY_BASE, NAVY_CARD, NAVY_SURFACE, BORDER, MUTED } from './shared';
+import { G0, G2, G3, NAVY_DEEP, NAVY_CARD, NAVY_SURFACE, BORDER, MUTED } from './shared';
 import { api } from '../lib/api';
 import { ImageWithFallback } from './components/figma/ImageWithFallback';
 import { Icon, type IconName } from './icons';
@@ -609,43 +609,32 @@ function FeaturedMerchants({
                   boxShadow: '0 4px 20px rgba(0,0,0,.28)',
                 }}
               >
-                {/* One surface for every merchant — no colour, no photo.
-                    (Founder decision, 2026-08-23, overriding the Figma
-                    component's per-merchant `coverBg`; logged in the diff
-                    register.)
+                {/* One compact row per merchant — logo, who they are, and the
+                    way in. No cover band.
 
-                    What this replaces: a pool of eight gradients indexed by
-                    the merchant's POSITION in the list. Nothing in the design
-                    asked for that — the Figma MerchantCard takes `coverBg` as
-                    a property of the merchant — so a shop was green on one
-                    screen and red on the next, and the wall of unrelated
-                    colours read as decoration rather than as information.
+                    Three rounds of this card got smaller. It began as eight
+                    rotating gradients keyed on list position; then one neutral
+                    88px band with a 60px monogram tile; now no band at all.
+                    The band was never carrying information — on a phone it
+                    spent half the card's height rendering "DA" at 30px, so
+                    four merchants filled a screen. A 48px mark is enough to
+                    recognise a shop by, which is the size Talabat and Bolt
+                    both settle on.
 
-                    The cover photo went with it. The Figma card has no photo
-                    slot at all; using one as a full-bleed background put
-                    arbitrary merchant-uploaded imagery behind the app's own
-                    chrome, at whatever quality was uploaded. */}
-                <div
-                  className="relative flex h-[88px] items-center justify-center"
-                  style={{
-                    background: NAVY_BASE,
-                    borderBottom: `1px solid ${BORDER}`,
-                  }}
-                >
+                    (Founder decisions, 2026-08-23: no colour for any merchant,
+                    overriding the Figma component's per-merchant `coverBg`;
+                    then simplify and shrink. Logged in the diff register.)
+
+                    Everything bitmap is gone: no cover photo, no emoji
+                    watermark, no 📍 pin glyph. The logo, the category icon and
+                    the initials are all vector, so they stay sharp at 3x. */}
+                <div className="flex items-center gap-3 p-3">
                   {m.logoUrl != null && m.logoUrl !== '' ? (
-                    /* The merchant's own mark, contained rather than cropped
-                       to fill, on a fixed square. This is the Talabat/Bolt
-                       treatment: the brand identifies the shop, the tile stays
-                       the app's. `object-contain` keeps a wide logo from being
-                       stretched, which is what made these look soft. */
+                    /* `object-contain`, not cover: cover crops a wide wordmark
+                       to a square and cuts its ends off. */
                     <div
-                      className="flex items-center justify-center overflow-hidden rounded-2xl"
-                      style={{
-                        width: 60,
-                        height: 60,
-                        background: 'rgba(255,255,255,.06)',
-                        border: `1px solid ${BORDER}`,
-                      }}
+                      className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl"
+                      style={{ background: 'rgba(255,255,255,.06)', border: `1px solid ${BORDER}` }}
                     >
                       <ImageWithFallback
                         src={m.logoUrl}
@@ -656,90 +645,26 @@ function FeaturedMerchants({
                       />
                     </div>
                   ) : (
-                    /* No logo on file: initials, not an emoji. Emoji are
-                       bitmap glyphs — they blur on high-DPI screens and render
-                       as a different app on every OS. Poppins initials and the
-                       vector category icon stay sharp at any density. */
                     <div
-                      className="flex items-center justify-center rounded-2xl"
-                      style={{
-                        width: 60,
-                        height: 60,
-                        background: 'rgba(255,255,255,.06)',
-                        border: `1px solid ${BORDER}`,
-                      }}
+                      className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl"
+                      style={{ background: 'rgba(255,255,255,.06)', border: `1px solid ${BORDER}` }}
                     >
                       <span
                         style={{
                           fontFamily: "'Poppins',sans-serif",
-                          fontSize: 22,
+                          fontSize: 15,
                           fontWeight: 700,
-                          letterSpacing: '0.06em',
-                          lineHeight: 1,
-                          color: 'rgba(255,255,255,.92)',
+                          letterSpacing: '0.04em',
+                          color: 'rgba(255,255,255,.9)',
                         }}
                       >
                         {monogram(m.businessName)}
                       </span>
                     </div>
                   )}
-                  <Icon
-                    name={icon}
-                    size={17}
-                    color="rgba(255,255,255,.35)"
-                    style={{ position: 'absolute', right: 12, bottom: 10 }}
-                  />
-                  <div className="absolute left-3 top-3">
-                    {verified && (
-                      <span
-                        className="rounded-lg px-2 py-1 text-[9px] font-bold"
-                        style={{
-                          // A dark scrim, not a green tint. Kept from when the
-                          // banner could be any of eight colours: it still
-                          // gives the badge its own edge against the flat
-                          // surface rather than floating on it.
-                          background: 'rgba(6,14,28,.55)',
-                          color: G3,
-                          border: `1px solid rgba(71,207,114,.35)`,
-                          backdropFilter: 'blur(6px)',
-                          fontFamily: "'Inter',sans-serif",
-                        }}
-                      >
-                        ✓ Verified
-                      </span>
-                    )}
-                  </div>
-                  <div className="absolute right-3 top-3 flex items-center gap-1.5">
-                    {isOpen === false && (
-                      <span
-                        className="rounded-lg px-2 py-1 text-[9px] font-bold"
-                        style={{
-                          background: 'rgba(239,68,68,.2)',
-                          color: '#FCA5A5',
-                          border: '1px solid rgba(239,68,68,.25)',
-                          fontFamily: "'Inter',sans-serif",
-                        }}
-                      >
-                        Closed
-                      </span>
-                    )}
-                    {isOpen === null && (
-                      <span
-                        className="rounded-lg px-2 py-1 text-[9px] font-bold"
-                        style={{
-                          background: 'rgba(255,255,255,.12)',
-                          color: 'rgba(255,255,255,.6)',
-                          fontFamily: "'Inter',sans-serif",
-                        }}
-                      >
-                        Hours unavailable
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 p-3.5">
+
                   <div className="min-w-0 flex-1">
-                    <div className="mb-0.5 flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                       <p
                         className="truncate text-[13.5px] font-bold"
                         style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
@@ -748,31 +673,51 @@ function FeaturedMerchants({
                       </p>
                       {verified && <VerifiedBadge />}
                     </div>
-                    <p
-                      className="mb-1.5 text-[10px]"
-                      style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
-                    >
-                      {m.category ? MERCHANT_CATEGORY_LABEL[m.category] : 'Business'}
-                    </p>
-                    <div className="flex items-center gap-3">
+                    {/* Category, rating and distance on one line. They used to
+                        occupy three, which is what made the card tall. */}
+                    <div className="mt-1 flex items-center gap-2">
+                      <Icon name={icon} size={12} color="rgba(255,255,255,.4)" />
+                      <span
+                        className="truncate text-[10px]"
+                        style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
+                      >
+                        {m.category ? MERCHANT_CATEGORY_LABEL[m.category] : 'Business'}
+                      </span>
                       {rating > 0 && (
-                        <span className="text-[10px] font-bold" style={{ color: '#FBBF24' }}>
+                        <span
+                          className="flex-shrink-0 text-[10px] font-bold"
+                          style={{ color: '#FBBF24' }}
+                        >
                           ★ {rating.toFixed(1)}
                         </span>
                       )}
                       {dist && (
                         <span
-                          className="text-[10px]"
+                          className="flex-shrink-0 text-[10px]"
                           style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
                         >
-                          📍 {dist}
+                          {dist}
+                        </span>
+                      )}
+                      {/* Only the actionable state. "Hours unavailable" sat on
+                          every card because no merchant has opening hours on
+                          file yet — a data gap shown as a badge on every row,
+                          which is noise, not information. Closed is worth
+                          saying; unknown is not. */}
+                      {isOpen === false && (
+                        <span
+                          className="flex-shrink-0 text-[10px] font-bold"
+                          style={{ color: '#FCA5A5', fontFamily: "'Inter',sans-serif" }}
+                        >
+                          Closed
                         </span>
                       )}
                     </div>
                   </div>
+
                   <button
                     onClick={() => isOpen !== false && onStore?.(m.id)}
-                    className="h-9 flex-shrink-0 rounded-xl px-4 text-[11px] font-semibold transition-all active:scale-95"
+                    className="h-8 flex-shrink-0 rounded-lg px-3 text-[11px] font-semibold transition-all active:scale-95"
                     style={{
                       background:
                         isOpen !== false
@@ -783,7 +728,7 @@ function FeaturedMerchants({
                       boxShadow: isOpen !== false ? `0 3px 12px rgba(43,172,82,.22)` : 'none',
                     }}
                   >
-                    {isOpen === false ? 'Closed' : 'Visit Store'}
+                    {isOpen === false ? 'Closed' : 'Visit'}
                   </button>
                 </div>
               </div>
@@ -1151,12 +1096,17 @@ function NearbyBusinesses({ onStore }: { onStore?: (merchantId: string) => void 
                       <span className="text-[9.5px] font-bold" style={{ color: '#FBBF24' }}>
                         {rating > 0 ? `★ ${rating.toFixed(1)}` : '★ —'}
                       </span>
-                      {/* GAP: backend has no delivery ETA → "—". */}
+                      {/* Was "📍 {dist} · ⏱ —". Both were bitmap emoji, which
+                          blur at 3x and draw differently per OS, and the ⏱
+                          was labelling a dash. The distance speaks for itself
+                          without a pin beside it.
+                          GAP unchanged: backend has no delivery ETA, so there
+                          is still nothing to show there. */}
                       <span
                         className="text-[9.5px]"
                         style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
                       >
-                        📍 {dist} · ⏱ —
+                        {dist}
                       </span>
                     </div>
                   </div>
