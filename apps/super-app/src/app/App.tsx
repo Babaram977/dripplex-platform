@@ -492,6 +492,12 @@ function returnScreenFromGateway(): Screen | null {
   // which is where the PIN appears. Landing anywhere else would hide the one
   // thing they just paid for.
   if (kind === 'booking') return 'bookingstatus';
+  // A fare paid by card lands on the trip receipt — the screen that shows
+  // whether it actually settled, and the one that offers the rating and tip.
+  if (kind === 'ride') return 'ridecomplete';
+  // An order paid by card lands on its tracking screen, which reads the real
+  // order rather than asserting success.
+  if (kind === 'order') return 'ordertracking';
   return null;
 }
 
@@ -735,6 +741,32 @@ function AppShell() {
           // is still unpaid — rather than claiming success.
         }
         if (!cancelled) go('bookingstatus');
+        return;
+      }
+      if (pending.kind === 'ride') {
+        // Ask the gateway, via our backend — a browser arriving back here
+        // proves nothing about whether the charge went through. The webhook
+        // settles it regardless; this only closes the window before it lands.
+        setActiveCustomerRideId(pending.id);
+        try {
+          await api.rides.verifyPayment(pending.id, {});
+        } catch {
+          // Not settled yet, or the charge failed. TripCompleted re-reads the
+          // ride and shows its real state — including still unpaid — rather
+          // than claiming a fare was collected.
+        }
+        if (!cancelled) go('ridecomplete');
+        return;
+      }
+      if (pending.kind === 'order') {
+        setActiveOrderId(pending.id);
+        try {
+          await api.orders.verifyPayment(pending.id, {});
+        } catch {
+          // Same reasoning: the tracking screen shows the order's real
+          // payment state instead of a made-up one.
+        }
+        if (!cancelled) go('ordertracking');
         return;
       }
       if (pending.kind !== 'utility') return;

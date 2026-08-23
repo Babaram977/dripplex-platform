@@ -19,6 +19,11 @@ import {
   TEXT_SECONDARY,
 } from '../tokens/colors';
 import { api } from '../lib/api';
+import { gatewayCallbackUrl, rememberGatewayReturn } from '../lib/gatewayReturn';
+
+/** What the passenger can pick on the ride payment screen. The two gateway
+ *  values are RidePaymentMethod members the backend already accepts. */
+type RidePaymentChoice = 'WALLET' | 'CASH' | 'PAYSTACK' | 'FLUTTERWAVE';
 import { playNotificationSound } from '../lib/sound';
 import { auth } from '../lib/auth';
 import { ws } from '../lib/ws';
@@ -30,6 +35,7 @@ import {
 } from '../lib/maps';
 import type { AddressPrediction } from '../lib/maps';
 import type {
+  CardProviderOptionDto,
   CustomerRideDto,
   RideDto,
   RideReceiptDto,
@@ -3566,12 +3572,20 @@ export function DriverProfileSheet({
 // before it can be tipped"), which is the correct behaviour for an unpaid
 // ride. This screen and its routing are that missing step.
 //
-// Only Wallet and Cash are offered, and neither is invented: both settle
-// synchronously in RidePaymentService. Card and OPay are deliberately absent —
-// OpayProvider throws NotImplementedException, and the gateway methods need
-// the leave-the-app-and-return trip that lib/gatewayReturn.ts handles for
-// top-ups but has never been wired for a fare. Offering a button that cannot
-// take money is worse than not offering it. Logged as a gap, not faked.
+// Wallet and Cash settle synchronously inside RidePaymentService. Card leaves
+// the app: RidePaymentService.initiateGatewayPayment returns an authorization
+// URL, the customer pays on the gateway's page, and the fare is settled by
+// ride-payment-webhook.subscriber.ts whether or not they come back — the same
+// round trip lib/gatewayReturn.ts already runs for top-ups, utilities and
+// hotel bookings.
+//
+// The gateways offered are whatever the server says are live
+// (`api.payments.providers()`), never a hardcoded pair, so a rotated or pulled
+// key removes the button instead of leaving a dead one on screen.
+//
+// OPay is still absent: OpayProvider throws NotImplementedException, and
+// RIDE_PAYMENT_METHOD_TO_PROVIDER deliberately omits it so the request is
+// rejected at initiation rather than 501-ing in production.
 export function PaymentScreen({
   onBack,
   onPaid,
@@ -3587,7 +3601,8 @@ export function PaymentScreen({
 }) {
   const ride = useLiveRide(rideId);
   const [balance, setBalance] = useState<number | null>(null);
-  const [selected, setSelected] = useState<'WALLET' | 'CASH'>('CASH');
+  const [cardProviders, setCardProviders] = useState<CardProviderOptionDto[]>([]);
+  const [selected, setSelected] = useState<RidePaymentChoice>('CASH');
   const [paying, setPaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -3604,6 +3619,22 @@ export function PaymentScreen({
       });
   }, []);
 
+  useEffect(() => {
+    let live = true;
+    api.payments
+      .providers()
+      .then((config) => {
+        if (live) setCardProviders(config.cardProviders);
+      })
+      .catch(() => {
+        // No gateway list means no card buttons. Wallet and cash still work.
+        if (live) setCardProviders([]);
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
+
   const fare = ride ? Number(ride.totalFare) : null;
   const short = fare != null && balance != null && balance < fare;
   const alreadyPaid = ride?.paymentStatus === 'PAID';
@@ -3615,9 +3646,15 @@ export function PaymentScreen({
   const typeLabel = ride ? (RIDE_TYPE_LABEL[ride.rideType] ?? ride.rideType) : '—';
   const distanceLabel = ride ? `${(ride.estimatedDistanceMeters / 1000).toFixed(1)} km` : '—';
 
-  const methods = [
+  const methods: {
+    id: RidePaymentChoice;
+    icon: string;
+    label: string;
+    sub: string;
+    disabled: boolean;
+  }[] = [
     {
-      id: 'WALLET' as const,
+      id: 'WALLET',
       icon: '💜',
       label: 'DrippleX Wallet',
       sub:
@@ -3628,8 +3665,15 @@ export function PaymentScreen({
             : `Balance: ${naira(balance)}`,
       disabled: balance == null || short,
     },
+    ...cardProviders.map((p) => ({
+      id: p.provider,
+      icon: '💳',
+      label: p.label,
+      sub: 'Pay by card or bank transfer',
+      disabled: false,
+    })),
     {
-      id: 'CASH' as const,
+      id: 'CASH',
       icon: '💵',
       label: 'Cash',
       sub: 'Pay your driver directly',
@@ -3646,8 +3690,29 @@ export function PaymentScreen({
     setPaying(true);
     setError(null);
     try {
-      await api.rides.pay(rideId, { method: 'WALLET' });
-      onPaid?.();
+      if (selected === 'WALLET') {
+        await api.rides.pay(rideId, { method: 'WALLET' });
+        onPaid?.();
+        return;
+      }
+
+      // Card. Remember the ride BEFORE leaving, because the tab that comes
+      // back is this one and sessionStorage is the only thing that survives
+      // the trip. The settlement itself does not depend on the customer
+      // returning at all — the gateway webhook settles the fare either way —
+      // so this is what lets them SEE it, not what makes it happen.
+      rememberGatewayReturn('ride', rideId);
+      const res = await api.rides.pay(rideId, {
+        method: selected,
+        callbackUrl: gatewayCallbackUrl('ride'),
+      });
+      if (res.authorizationUrl != null && res.authorizationUrl !== '') {
+        window.location.assign(res.authorizationUrl);
+        return;
+      }
+      // A gateway that returns no URL has not taken anything. Saying so beats
+      // navigating to a receipt for a fare nobody paid.
+      setError('The card gateway did not start. Try another method.');
     } catch (e: unknown) {
       // Surfaced, never swallowed: a wallet debit that fails leaves the ride
       // unpaid, and telling the passenger it worked is how a driver ends up
@@ -3758,7 +3823,9 @@ export function PaymentScreen({
                 ? 'Paying…'
                 : selected === 'CASH'
                   ? 'Pay with cash'
-                  : 'Pay from wallet'
+                  : selected === 'WALLET'
+                    ? 'Pay from wallet'
+                    : 'Pay by card'
           }
           onClick={alreadyPaid ? () => onPaid?.() : handlePay}
         />

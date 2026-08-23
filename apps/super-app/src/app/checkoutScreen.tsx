@@ -2,7 +2,8 @@ import { PLATFORM_BASE_CITY, PLATFORM_BASE_COUNTRY, PLATFORM_BASE_STATE } from '
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { G0, G2, G3, NAVY_BASE, NAVY_CARD, NAVY_DEEP, NAVY_SURFACE, BORDER, MUTED } from './shared';
 import { api, uploadFile } from '../lib/api';
-import type { OrderDto, CustomerAddressDto, CartDto } from '../lib/api';
+import type { OrderDto, CustomerAddressDto, CartDto, CardProviderOptionDto } from '../lib/api';
+import { gatewayCallbackUrl, rememberGatewayReturn } from '../lib/gatewayReturn';
 import { BottomNavigation } from '../components/navigation';
 import type { NavTabKey } from '../components/navigation/BottomNavigation';
 import { auth } from '../lib/auth';
@@ -27,7 +28,7 @@ interface Address {
   line1: string;
   line2: string;
 }
-type PaymentKey = 'CASH' | 'MERCHANT_DIRECT' | 'WALLET';
+type PaymentKey = 'CASH' | 'MERCHANT_DIRECT' | 'WALLET' | 'PAYSTACK' | 'FLUTTERWAVE';
 type DeliveryMode = 'standard' | 'express' | 'pickup';
 type ScheduleMode = 'now' | 'later';
 
@@ -717,6 +718,23 @@ export function CheckoutScreen({
   const [cartLoaded, setCartLoaded] = useState(false);
   const [cartMerchantName, setCartMerchantName] = useState<string | null>(null);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [cardProviders, setCardProviders] = useState<CardProviderOptionDto[]>([]);
+
+  useEffect(() => {
+    let live = true;
+    api.payments
+      .providers()
+      .then((config) => {
+        if (live) setCardProviders(config.cardProviders);
+      })
+      .catch(() => {
+        // No list, no card buttons. Cash, transfer and wallet still work.
+        if (live) setCardProviders([]);
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!auth.isLoggedIn()) {
@@ -995,6 +1013,20 @@ export function CheckoutScreen({
             : `Balance ${fmt(walletBalance)}`,
       disabled: walletBalance == null || walletInsufficient,
     },
+    // Card. This screen offered cash, bank transfer and wallet only, so a
+    // customer with none of those could not buy anything — while the very same
+    // backend endpoint has accepted PAYSTACK and FLUTTERWAVE all along
+    // (InitializePaymentDto.provider takes the full enum) and wallet top-ups
+    // have been charging cards through it for weeks.
+    //
+    // The list comes from the server, never hardcoded, so a rotated or pulled
+    // key removes the option instead of leaving a button that 500s.
+    ...cardProviders.map((p) => ({
+      key: p.provider,
+      icon: '💳',
+      label: p.label,
+      sub: 'Pay by card or bank transfer',
+    })),
   ];
 
   // Step 1: cart → order, then branch on payment method
@@ -1029,6 +1061,28 @@ export function CheckoutScreen({
         setBankDetails(bank);
         setPlacing(false);
         setShowBankSheet(true);
+        return;
+      }
+
+      if (paymentKey === 'PAYSTACK' || paymentKey === 'FLUTTERWAVE') {
+        // Card leaves the app. Remember the order first: the tab that comes
+        // back is this one, and sessionStorage is the only thing that survives
+        // the trip. The order is settled by the payment webhook whether or not
+        // the customer returns, so this is what lets them see it — not what
+        // makes it happen.
+        rememberGatewayReturn('order', order.id);
+        const res = await api.orders.pay(order.id, {
+          provider: paymentKey,
+          callbackUrl: gatewayCallbackUrl('order'),
+        });
+        if (res.authorizationUrl != null && res.authorizationUrl !== '') {
+          window.location.assign(res.authorizationUrl);
+          return;
+        }
+        // No URL means the gateway never started. The order exists and is
+        // unpaid; saying so beats a success screen for money nobody took.
+        setError('The card gateway did not start. Choose another payment method.');
+        setPlacing(false);
         return;
       }
 
