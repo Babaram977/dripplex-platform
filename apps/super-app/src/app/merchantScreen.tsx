@@ -106,13 +106,39 @@ type MerchantPage =
   | 'bank'
   | 'approval'
   | 'settings';
-type MxStatus = 'new' | 'preparing' | 'ready' | 'completed' | 'cancelled';
+type MxStatus =
+  | 'new'
+  | 'preparing'
+  | 'ready'
+  | 'completed'
+  | 'cancelled'
+  /** Placed but not paid for — nothing for the merchant to act on yet. */
+  | 'awaiting';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function apiStatusToMx(s: string): MxStatus {
+/**
+ * The merchant's view of an order's backend status.
+ *
+ * The `default` used to return 'new', which is how a PENDING order — placed
+ * but never paid for — reached the merchant labelled "New Order" with Accept
+ * and Reject buttons on it. acceptOrder() refuses anything that is not
+ * CONFIRMED ("Only confirmed orders can be accepted"), so pressing Accept
+ * could never work: reported as "the accept button is not accepting".
+ *
+ * Unknown statuses are now passed through verbatim rather than dressed up as
+ * work to do. OrderStatusChip renders an unrecognised value as-is, which is
+ * the honest failure: a merchant seeing "refunded" learns something, a
+ * merchant seeing "New Order" is being lied to.
+ */
+function apiStatusToMx(s: string): MxStatus | string {
   switch (s) {
     case 'CONFIRMED':
       return 'new';
+    // Not paid for. The customer either abandoned checkout or their payment
+    // never completed, so the order is not the merchant's to accept.
+    case 'PENDING':
+    case 'DRAFT':
+      return 'awaiting';
     case 'PREPARING':
       return 'preparing';
     case 'READY':
@@ -126,7 +152,7 @@ function apiStatusToMx(s: string): MxStatus {
     case 'CANCELLED':
       return 'cancelled';
     default:
-      return 'new';
+      return s.toLowerCase();
   }
 }
 function fmtTime(iso: string) {
@@ -236,6 +262,7 @@ function OrderStatusChip({ status }: { status: MxStatus | string }) {
     ready: [G3, 'Ready'],
     completed: [C_OK, 'Completed'],
     cancelled: [MUTED, 'Cancelled'],
+    awaiting: [C_WARN, 'Awaiting payment'],
     pending: [C_WARN, 'Pending'],
     verified: [C_OK, 'Verified'],
     rejected: [C_ERR, 'Rejected'],
@@ -1331,32 +1358,48 @@ function OrdersPage({ onDetail }: { onDetail: (id: string) => void }) {
     };
   }, [activeTab, fetchOrders]);
 
-  const doAccept = async (id: string) => {
+  /**
+   * Every action on this page used to end in `catch {}`. A merchant pressing
+   * Accept on an order the backend refuses saw the button flicker and nothing
+   * else — no message, no change, no reason. That is the whole of "the accept
+   * button is not accepting": the API answered, and the answer was thrown
+   * away. The backend's own wording is the most useful thing available, so it
+   * is what gets shown.
+   */
+  const [actionErr, setActionErr] = useState<string | null>(null);
+  const runAction = async (id: string, fn: () => Promise<unknown>) => {
     setActionId(id);
+    setActionErr(null);
     try {
-      await api.merchant.acceptOrder(id);
+      await fn();
       fetchOrders(activeTab);
-    } catch {}
-    setActionId(null);
+      return true;
+    } catch (e: unknown) {
+      setActionErr(e instanceof Error ? e.message : 'That did not go through. Try again.');
+      return false;
+    } finally {
+      setActionId(null);
+    }
+  };
+
+  const doAccept = async (id: string) => {
+    await runAction(id, () => api.merchant.acceptOrder(id));
   };
   const doReject = async () => {
     if (!showRejectId) return;
-    setActionId(showRejectId);
-    try {
-      await api.merchant.rejectOrder(showRejectId, rejectReason || 'Order rejected');
-      fetchOrders(activeTab);
-    } catch {}
-    setActionId(null);
-    setShowRejectId(null);
-    setRejectReason('');
+    const id = showRejectId;
+    const ok = await runAction(id, () =>
+      api.merchant.rejectOrder(id, rejectReason || 'Order rejected'),
+    );
+    // A failed rejection keeps the sheet open with the reason still typed —
+    // closing it would look like the order had been rejected.
+    if (ok) {
+      setShowRejectId(null);
+      setRejectReason('');
+    }
   };
   const doMarkReady = async (id: string) => {
-    setActionId(id);
-    try {
-      await api.merchant.markReady(id);
-      fetchOrders(activeTab);
-    } catch {}
-    setActionId(null);
+    await runAction(id, () => api.merchant.markReady(id));
   };
   // DPX-ORDER-B — bank-transfer money arrives in the merchant's OWN account, so
   // DrippleX never sees it and only the merchant can confirm it landed. Until
@@ -1364,12 +1407,7 @@ function OrdersPage({ onDetail }: { onDetail: (id: string) => void }) {
   // dispatched to a rider — which is exactly how an order sat at "Pending
   // rider" while three riders were online.
   const doConfirmPayment = async (id: string) => {
-    setActionId(id);
-    try {
-      await api.merchant.confirmPaymentReceived(id);
-      fetchOrders(activeTab);
-    } catch {}
-    setActionId(null);
+    await runAction(id, () => api.merchant.confirmPaymentReceived(id));
   };
 
   // DPX-ORDER-PROOF-001 — the receipts the customer filed for this transfer.
@@ -1392,6 +1430,39 @@ function OrdersPage({ onDetail }: { onDetail: (id: string) => void }) {
       style={{ flex: 1, overflowY: 'auto', padding: 20, position: 'relative' }}
     >
       <SectionHead title="Incoming Orders" sub="Accept and process customer orders" />
+
+      {actionErr !== null && (
+        <div
+          style={{
+            marginBottom: 12,
+            padding: '10px 14px',
+            borderRadius: 12,
+            background: 'rgba(239,68,68,.10)',
+            border: '1px solid rgba(239,68,68,.30)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+          }}
+        >
+          <div style={{ flex: 1, fontFamily: IT, fontSize: 13, color: '#FCA5A5' }}>{actionErr}</div>
+          <button
+            onClick={() => {
+              setActionErr(null);
+            }}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#FCA5A5',
+              cursor: 'pointer',
+              fontSize: 16,
+              lineHeight: 1,
+            }}
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       <div
         style={{
@@ -1460,7 +1531,14 @@ function OrdersPage({ onDetail }: { onDetail: (id: string) => void }) {
                   ? 'PAID'
                   : o.paymentMethod === 'MERCHANT_DIRECT'
                     ? 'BANK TRANSFER'
-                    : 'CARD';
+                    : // A null method means checkout never got as far as
+                      // choosing one — the order was placed and abandoned.
+                      // Calling that "CARD" invents a payment attempt that
+                      // never happened, and it is what made an unpaid order
+                      // look like a card order the merchant should accept.
+                      o.paymentMethod == null
+                      ? 'UNPAID'
+                      : 'CARD';
             const payColor =
               o.paymentMethod === 'CASH' ? C_WARN : o.paymentStatus === 'PAID' ? C_OK : '#3B82F6';
             return (
