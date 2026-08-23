@@ -307,6 +307,54 @@ describe('UtilitiesService', () => {
     expect(await balanceOf(customerId)).toBe(5_000);
   });
 
+  // Peyflex refuses airtime at ₦5,000 and above. We used to accept it, take the
+  // money, get refused and give it back — a round trip the customer experiences
+  // as a failed payment. The refusal belongs here, before the debit.
+  it('refuses ₦5,000 of airtime without touching the money, and names the real limit', async () => {
+    if (!databaseAvailable) return;
+    const customerId = await fundedCustomer(20_000);
+
+    await expect(
+      service.initiatePurchase(
+        customerId,
+        {
+          serviceType: UtilityServiceType.AIRTIME,
+          provider: 'mtn',
+          customerIdentifier: '08144216361',
+          amount: 5_000,
+          paymentMethod: UtilityPaymentMethod.WALLET,
+        },
+        { userId: customerId },
+      ),
+    ).rejects.toThrow(/4999/);
+
+    // Never reached the provider, and the wallet is untouched — the whole
+    // point of moving the bound: no charge, so nothing to refund.
+    expect(provider.purchaseAirtime).not.toHaveBeenCalled();
+    expect(await balanceOf(customerId)).toBe(20_000);
+  });
+
+  it('still sells the largest airtime Peyflex accepts', async () => {
+    if (!databaseAvailable) return;
+    const customerId = await fundedCustomer(20_000);
+    provider.purchaseAirtime.mockResolvedValue(success);
+
+    const result = await service.initiatePurchase(
+      customerId,
+      {
+        serviceType: UtilityServiceType.AIRTIME,
+        provider: 'mtn',
+        customerIdentifier: '08144216361',
+        amount: 4_999,
+        paymentMethod: UtilityPaymentMethod.WALLET,
+      },
+      { userId: customerId },
+    );
+
+    expect(result.purchase.status).toBe(UtilityPurchaseStatus.SUCCESSFUL);
+    expect(await balanceOf(customerId)).toBe(15_001);
+  });
+
   // A card customer really was charged, and DPX-D4 returns it to the DrippleX
   // Wallet rather than the card. Telling them "your money has not been taken"
   // was false, and contradicted the receipt's own "money returned" header.

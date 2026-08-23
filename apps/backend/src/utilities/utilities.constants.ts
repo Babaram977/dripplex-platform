@@ -75,11 +75,25 @@ export const UTILITY_FLOAT_EXHAUSTED_MARKERS = [
   'insufficient funds',
 ] as const;
 
-/** Airtime top-up bounds. Peyflex publishes no limits for airtime (unlike
- * electricity, which returns min/max per disco), so these are DrippleX's own
- * guard rails against a fat-fingered amount, not a provider contract. */
+/** Airtime top-up bounds.
+ *
+ * The ceiling used to be ₦50,000 on the reasoning that Peyflex publishes no
+ * airtime limits (unlike electricity, which returns min/max per disco), so the
+ * bound was only DrippleX's guard rail against a fat-fingered amount.
+ *
+ * It publishes none, but it enforces one: ₦4,999. A ₦5,000 purchase on
+ * 2026-08-23 was accepted here, charged, refused upstream and refunded —
+ * founder-confirmed as Peyflex's own 0–4,999 threshold. Advertising ₦50,000
+ * meant every attempt at or above ₦5,000 took the customer's money and gave
+ * it back, which reads as a failed payment rather than an amount we should
+ * never have accepted.
+ *
+ * So this ceiling is a provider contract now, not a guard rail: the request is
+ * rejected before any money moves, with the real limit named in the message.
+ * If Peyflex raises the threshold, raise it here — do not raise it on the
+ * assumption that no published limit means no limit. */
 export const UTILITY_AIRTIME_MIN_AMOUNT = 50;
-export const UTILITY_AIRTIME_MAX_AMOUNT = 50_000;
+export const UTILITY_AIRTIME_MAX_AMOUNT = 4_999;
 
 /** Betting-wallet funding bounds. Peyflex publishes none — its own example
  * funds ₦14 — so like airtime these are DrippleX's guard rails against a
