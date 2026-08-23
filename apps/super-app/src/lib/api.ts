@@ -747,6 +747,18 @@ export interface EstimateRideFareResponse {
   baseFare: number;
   distanceFare: number;
   timeFare: number;
+  /** Naira a surcharge zone added, and which zone. Both have been on the wire
+   * since surcharge zones shipped; neither was declared here, so the price
+   * breakdown could not show them and an airport trip listed ₦564 of lines
+   * under a ₦16,767 total. */
+  surchargeAmount: number;
+  surchargeZoneId: string | null;
+  surchargeZoneName: string | null;
+  /** base + distance + time — what the itemised lines sum to. */
+  meteredFare: number;
+  minimumFare: number;
+  /** True when the floor, not the meter, set the price. */
+  minimumFareApplied: boolean;
   totalFare: number;
   promotionId: string | null;
   promoDiscount: number;
