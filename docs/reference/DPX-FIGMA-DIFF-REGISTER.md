@@ -611,3 +611,31 @@ a founder decision or a shipped backend contract, not from a guess:
 be designed properly in Figma and the implementation reconciled against that design. Until then
 the customer-facing hotel flow is the one part of the app with **no visual source of truth**, and
 that is a founder decision to make, not one to be made by whoever writes the next screen.
+
+### Correction, 2026-08-23 — the claim above was not true when it was written
+
+The sentence "the visual language is taken from the screens already in this app" was a claim, and
+the code did not support it. Measured on `hotelBookingScreens.tsx` at commit `6a81dfd`:
+
+|                                         | Hotel screens | `walletScreen.tsx` | `storeScreen.tsx` |
+| --------------------------------------- | ------------- | ------------------ | ----------------- |
+| imports from `src/tokens` or `./shared` | **0**         | 1                  | 2                 |
+| `fontFamily` declarations               | **1**         | —                  | —                 |
+| distinct hardcoded hex values           | **23**        | —                  | —                 |
+
+Those 23 were a light-mode Tailwind palette — `#FFFFFF` cards, `#E5E7EB` borders, `#111827`
+buttons, `#6B7280` body text (18 occurrences) — rendered inside a navy `#0A1628` application, with
+no `StatusBar`, no `BackBtn` header, and no font family, so every string fell back to the system
+face. This was reported on device by the founder.
+
+**What changed.** Every colour, radius, space, weight and font now comes from `src/tokens`, and
+the three full-screen components (`BookingApplyScreen`, `BookingStatusScreen`, `MyBookingsScreen`)
+render inside a shared `HotelPage` shell using the same `StatusBar` and `BackBtn` as the rest of
+the app. `grep -c '#[0-9A-Fa-f]\{6\}'` on the file is now **0**.
+
+**What has not changed, and is still the founder's to close.** There is still no Figma _frame_ for
+any hotel screen. The production file (`rsHHFRxHVE3OKv81p7m3K1`) is a Figma **Make** file, so
+`search_design_system` refuses it — `This tool is not supported for Make files. Supported file
+type: Design.` — and there is no component or frame to reconcile a layout against. What is now
+guaranteed is **system fidelity**, not screen fidelity: the hotel screens no longer invent a
+palette, but their _layout_ is still ours, not designed.

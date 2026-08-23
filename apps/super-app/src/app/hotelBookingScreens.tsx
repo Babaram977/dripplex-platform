@@ -21,15 +21,27 @@
  *  - **The PIN is the proof, not the status.** It exists only once the money
  *    arrived, so it is shown on `pin !== null`.
  *
- * ## No Figma for these screens
+ * ## No Figma frame for these screens — but the Figma system still applies
  *
- * There is no approved design: the hotel module is entirely post-Figma backend
- * work, and `docs/reference/dpx-100-figma-screen-mapping.md` has no hotel,
- * room or booking entry (its screen list is generated from Figma's own `Screen`
- * type). Per that document's own governance — report gaps, do not fill them —
- * nothing here claims design fidelity. The visual language is borrowed from the
- * screens already in this app rather than invented, and the gap is logged in
- * the diff register for the founder to have designed properly.
+ * There is still no approved *screen* design: the hotel module is entirely
+ * post-Figma backend work, and `docs/reference/dpx-100-figma-screen-mapping.md`
+ * has no hotel, room or booking entry (its screen list is generated from
+ * Figma's own `Screen` type). The production file is a Figma **Make** file, so
+ * the design-system search tools do not serve it either. That gap is logged in
+ * `DPX-FIGMA-DIFF-REGISTER.md` and is the founder's to close.
+ *
+ * What that emphatically does not license is a private palette. The approved
+ * design *language* is extracted and locked in `src/tokens` — navy surfaces,
+ * the green gradient, Poppins headings on Inter body, base-8 spacing, the 24px
+ * card radius — and every other screen in this app is built from it.
+ *
+ * These screens were first shipped ignoring all of it: white cards, Tailwind
+ * greys (`#6B7280`, `#E5E7EB`, `#111827`), 23 distinct hardcoded hex values and
+ * not one `fontFamily`, dropped into a navy product. On a phone that reads as a
+ * second application bolted on. Everything visual here now comes from the
+ * tokens and from `./shared` — the same status bar and Back button every other
+ * screen uses — so the layout remains ours to answer for, but the look does
+ * not diverge from the approved system.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -45,6 +57,40 @@ import {
 } from '../lib/bookingDates';
 import { api } from '../lib/api';
 import { gatewayCallbackUrl, rememberGatewayReturn } from '../lib/gatewayReturn';
+import { BackBtn, StatusBar } from './shared';
+import {
+  BORDER,
+  BORDER_BRAND,
+  CARD_PADDING,
+  COLOR_ERROR,
+  COLOR_INFO,
+  COLOR_SUCCESS,
+  COLOR_WARNING,
+  ELEVATION,
+  FONT_BODY,
+  FONT_HEADING,
+  G0,
+  G2,
+  G3,
+  ITEM_GAP,
+  LINE,
+  NAVY_BASE,
+  NAVY_CARD,
+  NAVY_SURFACE,
+  PAGE_H_PADDING,
+  RADIUS,
+  R_BUTTON,
+  R_CARD,
+  R_CHIP,
+  R_INPUT,
+  SPACE,
+  TEXT_DISABLED,
+  TEXT_MUTED,
+  TEXT_PRIMARY,
+  TEXT_SECONDARY,
+  TYPE,
+  WEIGHT,
+} from '../tokens';
 
 import type { AvailabilityResult, BookingDto, CustomerBookingDto, RoomTypeDto } from '../lib/api';
 
@@ -89,13 +135,15 @@ export function bookingStatusLabel(booking: BookingDto): string {
   }
 }
 
+/** Status colour, from the semantic tokens rather than a private palette — the
+ *  same green a paid order uses, the same amber a pending one does. */
 export function bookingStatusTone(status: BookingDto['status']): string {
   if (status === 'CONFIRMED' || status === 'CHECKED_IN' || status === 'CHECKED_OUT') {
-    return '#10B981';
+    return COLOR_SUCCESS;
   }
-  if (status === 'AWAITING_PAYMENT') return '#F59E0B';
-  if (status === 'REJECTED' || status === 'EXPIRED' || status === 'NO_SHOW') return '#EF4444';
-  return '#6366F1';
+  if (status === 'AWAITING_PAYMENT') return COLOR_WARNING;
+  if (status === 'REJECTED' || status === 'EXPIRED' || status === 'NO_SHOW') return COLOR_ERROR;
+  return COLOR_INFO;
 }
 
 /**
@@ -132,29 +180,167 @@ function Field({
   children: React.ReactNode;
 }): React.ReactElement {
   return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
-      <span style={{ fontSize: 12, fontWeight: 600, color: '#6B7280' }}>{label}</span>
+    <label style={{ display: 'flex', flexDirection: 'column', gap: SPACE[2], flex: 1 }}>
+      <span
+        style={{
+          fontFamily: FONT_BODY,
+          fontSize: TYPE.base,
+          fontWeight: WEIGHT.semibold,
+          color: TEXT_SECONDARY,
+        }}
+      >
+        {label}
+      </span>
       {children}
     </label>
   );
 }
 
+/**
+ * These screens were first built in a light palette that exists nowhere else in
+ * the app — white cards, Tailwind greys, no font family at all. Against a navy
+ * product that read as a different application bolted on.
+ *
+ * Everything below now comes from `src/tokens`, the locked DrippleX system the
+ * rest of the app is built from: navy surfaces, the green gradient for the one
+ * primary action per screen, Poppins for headings and Inter for body, and the
+ * base-8 spacing and radius scales.
+ */
 const inputStyle: React.CSSProperties = {
-  padding: '10px 12px',
-  borderRadius: 10,
-  border: '1px solid #E5E7EB',
-  fontSize: 14,
+  padding: `${String(SPACE[3])}px ${String(SPACE[4])}px`,
+  borderRadius: R_INPUT,
+  border: `1px solid ${BORDER}`,
+  fontFamily: FONT_BODY,
+  fontSize: TYPE.lg,
+  color: TEXT_PRIMARY,
   width: '100%',
   boxSizing: 'border-box',
-  background: '#FFFFFF',
+  background: NAVY_SURFACE,
+  // A native date/select control renders its own light chrome otherwise, which
+  // is what makes an unstyled picker look pasted onto a dark screen.
+  colorScheme: 'dark',
 };
 
 const cardStyle: React.CSSProperties = {
-  background: '#FFFFFF',
-  border: '1px solid #EEF0F4',
-  borderRadius: 14,
-  padding: 14,
+  background: NAVY_CARD,
+  border: `1px solid ${BORDER}`,
+  borderRadius: R_CARD,
+  padding: CARD_PADDING,
+  boxShadow: ELEVATION.sm,
 };
+
+/** The one primary action on a screen. Brand gradient, never flat grey. */
+function primaryButtonStyle(enabled: boolean): React.CSSProperties {
+  return {
+    width: '100%',
+    padding: `${String(SPACE[3])}px ${String(SPACE[4])}px`,
+    borderRadius: R_BUTTON,
+    border: 'none',
+    fontFamily: FONT_HEADING,
+    fontWeight: WEIGHT.bold,
+    fontSize: TYPE.lg,
+    // Disabled is a flat navy surface with disabled-grade text, not a greyed
+    // gradient: a dimmed brand colour still reads as "nearly tappable".
+    color: enabled ? TEXT_PRIMARY : TEXT_DISABLED,
+    background: enabled ? `linear-gradient(135deg,${G0},${G2})` : NAVY_SURFACE,
+    boxShadow: enabled ? ELEVATION.brand : 'none',
+    cursor: enabled ? 'pointer' : 'not-allowed',
+  };
+}
+
+/** Secondary: outlined, so the gradient always reads as the single next step. */
+const secondaryButtonStyle: React.CSSProperties = {
+  padding: `${String(SPACE[3])}px ${String(SPACE[4])}px`,
+  borderRadius: R_BUTTON,
+  border: `1px solid ${BORDER}`,
+  background: 'transparent',
+  fontFamily: FONT_HEADING,
+  fontWeight: WEIGHT.semibold,
+  fontSize: TYPE.lg,
+  color: TEXT_SECONDARY,
+  cursor: 'pointer',
+};
+
+/**
+ * Text helpers.
+ *
+ * Not sugar: the single largest reason these screens read as a different
+ * application was that not one text node declared a font family, so every one
+ * of them fell back to the browser's system face while the rest of the app is
+ * Poppins and Inter. Going through a helper makes that impossible to forget.
+ */
+function body(
+  size: number,
+  color: string = TEXT_SECONDARY,
+  weight: number = WEIGHT.regular,
+): React.CSSProperties {
+  return { fontFamily: FONT_BODY, fontSize: size, color, fontWeight: weight };
+}
+
+function heading(size: number, color: string = TEXT_PRIMARY): React.CSSProperties {
+  return { fontFamily: FONT_HEADING, fontSize: size, color, fontWeight: WEIGHT.bold };
+}
+
+/** A card tinted by meaning — the accepted banner, the PIN, an error. The tint
+ *  is a low-alpha wash of the semantic colour, which is how the rest of the app
+ *  states urgency on navy; a white callout would punch a hole in the screen. */
+function tintedCard(tone: string, alpha = 0.1): React.CSSProperties {
+  return {
+    ...cardStyle,
+    border: `1px solid ${tone}59`,
+    background: `${tone}${Math.round(alpha * 255)
+      .toString(16)
+      .padStart(2, '0')}`,
+  };
+}
+
+const errorCardStyle: React.CSSProperties = {
+  ...tintedCard(COLOR_ERROR),
+  ...body(TYPE.md, COLOR_ERROR),
+};
+
+/** Page shell: the navy base, the status bar and the Back + title header every
+ *  other screen in this app uses. Without it these read as a different app. */
+function HotelPage({
+  title,
+  subtitle,
+  onBack,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  onBack: () => void;
+  children: React.ReactNode;
+}): React.ReactElement {
+  return (
+    <div
+      className="flex h-full w-full flex-col overflow-y-auto"
+      style={{ background: NAVY_BASE, scrollbarWidth: 'none' }}
+    >
+      <StatusBar />
+      <div className="flex items-center gap-3 px-6 pb-2 pt-4">
+        <BackBtn onClick={onBack} />
+        <div>
+          <p style={heading(TYPE['3xl'])}>{title}</p>
+          <p style={body(TYPE.sm, TEXT_MUTED)}>{subtitle}</p>
+        </div>
+      </div>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: ITEM_GAP,
+          padding: PAGE_H_PADDING,
+          // Room for the last action to clear the home indicator, rather than
+          // sitting flush against the bottom of the phone.
+          paddingBottom: SPACE[10],
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SLICE A + B — a hotel's rooms, with dates and a real price
@@ -269,9 +455,9 @@ export function HotelRoomsPanel({
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: ITEM_GAP }}>
       <div style={cardStyle}>
-        <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+        <div style={{ display: 'flex', gap: SPACE[3], marginBottom: SPACE[3] }}>
           <Field label="Check in">
             <input
               type="date"
@@ -293,7 +479,7 @@ export function HotelRoomsPanel({
             />
           </Field>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: SPACE[3] }}>
           <Field label="Rooms">
             <select
               value={stay.rooms}
@@ -321,23 +507,24 @@ export function HotelRoomsPanel({
             </select>
           </Field>
         </div>
-        <div style={{ marginTop: 10, fontSize: 13, color: stayIsValid ? '#6B7280' : '#EF4444' }}>
+        <div
+          style={{
+            marginTop: SPACE[3],
+            ...body(TYPE.md, stayIsValid ? TEXT_SECONDARY : COLOR_ERROR),
+          }}
+        >
           {stayIsValid
             ? formatStay(stay.checkIn, stay.checkOut)
             : `Choose a stay of ${String(MIN_NIGHTS)} to ${String(MAX_NIGHTS)} nights.`}
         </div>
       </div>
 
-      {error !== null && (
-        <div style={{ ...cardStyle, borderColor: '#FECACA', color: '#B91C1C', fontSize: 13 }}>
-          {error}
-        </div>
-      )}
+      {error !== null && <div style={errorCardStyle}>{error}</div>}
 
-      {rooms === null && <div style={{ fontSize: 13, color: '#6B7280' }}>Loading rooms…</div>}
+      {rooms === null && <div style={body(TYPE.md, TEXT_MUTED)}>Loading rooms…</div>}
 
       {rooms !== null && rooms.length === 0 && error === null && (
-        <div style={{ ...cardStyle, fontSize: 13, color: '#6B7280' }}>
+        <div style={{ ...cardStyle, ...body(TYPE.md, TEXT_SECONDARY) }}>
           {hotelName} has not listed any rooms yet.
         </div>
       )}
@@ -347,20 +534,21 @@ export function HotelRoomsPanel({
         const canBook = stayIsValid && quote != null && quote.available;
         return (
           <div key={room.id} style={cardStyle}>
-            <div style={{ display: 'flex', gap: 12 }}>
+            <div style={{ display: 'flex', gap: ITEM_GAP }}>
               {room.photoUrl != null && room.photoUrl !== '' ? (
                 <img
                   src={room.photoUrl}
                   alt={room.name}
-                  style={{ width: 76, height: 76, borderRadius: 10, objectFit: 'cover' }}
+                  style={{ width: 76, height: 76, borderRadius: RADIUS.lg, objectFit: 'cover' }}
                 />
               ) : (
                 <div
                   style={{
                     width: 76,
                     height: 76,
-                    borderRadius: 10,
-                    background: '#F3F4F6',
+                    borderRadius: RADIUS.lg,
+                    background: NAVY_SURFACE,
+                    border: `1px solid ${BORDER}`,
                     display: 'grid',
                     placeItems: 'center',
                     fontSize: 28,
@@ -371,27 +559,31 @@ export function HotelRoomsPanel({
                 </div>
               )}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 15 }}>{room.name}</div>
-                <div style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>
+                <div style={heading(TYPE.xl)}>{room.name}</div>
+                <div style={{ ...body(TYPE.base, TEXT_MUTED), marginTop: 2 }}>
                   Sleeps {room.capacity}
                 </div>
                 {room.description != null && room.description !== '' && (
-                  <div style={{ fontSize: 12, color: '#6B7280', marginTop: 4 }}>
+                  <div style={{ ...body(TYPE.base, TEXT_SECONDARY), marginTop: SPACE[1] }}>
                     {room.description}
                   </div>
                 )}
-                <div style={{ marginTop: 6, fontSize: 13 }}>
+                <div style={{ marginTop: SPACE[2], ...body(TYPE.md, TEXT_MUTED) }}>
                   {/* Before a valid stay is chosen this is explicitly "from",
                       because basePrice is not what any particular night costs. */}
                   {quoting && stayIsValid ? (
-                    <span style={{ color: '#6B7280' }}>Checking…</span>
+                    <span>Checking…</span>
                   ) : quote?.available === true ? (
-                    <strong>{naira(quote.totalAmount)}</strong>
+                    // The real price for the chosen dates is the one number on
+                    // this card worth the brand green.
+                    <strong style={{ ...heading(TYPE['2xl'], G3), fontWeight: WEIGHT.extrabold }}>
+                      {naira(quote.totalAmount)}
+                    </strong>
                   ) : (
-                    <span style={{ color: '#6B7280' }}>from {naira(room.basePrice)} a night</span>
+                    <span>from {naira(room.basePrice)} a night</span>
                   )}
                   {quote?.available === true && (
-                    <span style={{ color: '#6B7280' }}>
+                    <span>
                       {' '}
                       · {quote.nights} {quote.nights === 1 ? 'night' : 'nights'}
                     </span>
@@ -403,7 +595,9 @@ export function HotelRoomsPanel({
             {/* The server's own sentence, verbatim. It already names the night
                 that is the problem, which is the one thing a guest can act on. */}
             {quote?.available === false && quote.reason != null && (
-              <div style={{ marginTop: 8, fontSize: 12, color: '#B45309' }}>{quote.reason}</div>
+              <div style={{ marginTop: SPACE[2], ...body(TYPE.base, COLOR_WARNING) }}>
+                {quote.reason}
+              </div>
             )}
 
             <button
@@ -412,18 +606,7 @@ export function HotelRoomsPanel({
               onClick={() => {
                 if (quote) onBook(room, stay, quote);
               }}
-              style={{
-                marginTop: 10,
-                width: '100%',
-                padding: '10px 14px',
-                borderRadius: 10,
-                border: 'none',
-                fontWeight: 700,
-                fontSize: 14,
-                color: '#FFFFFF',
-                background: canBook ? '#111827' : '#D1D5DB',
-                cursor: canBook ? 'pointer' : 'not-allowed',
-              }}
+              style={{ ...primaryButtonStyle(canBook), marginTop: SPACE[3] }}
             >
               {canBook ? 'Request this room' : 'Not available'}
             </button>
@@ -499,24 +682,30 @@ export function BookingApplyScreen({
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: 16 }}>
+    <HotelPage title="Confirm your stay" subtitle={draft.hotelName} onBack={onCancel}>
       <div style={cardStyle}>
-        <div style={{ fontWeight: 700, fontSize: 16 }}>{draft.hotelName}</div>
-        <div style={{ fontSize: 13, color: '#6B7280', marginTop: 2 }}>{draft.roomType.name}</div>
-        <div style={{ fontSize: 13, marginTop: 8 }}>
+        <div style={heading(TYPE['2xl'])}>{draft.hotelName}</div>
+        <div style={{ ...body(TYPE.md, TEXT_MUTED), marginTop: 2 }}>{draft.roomType.name}</div>
+        <div style={{ ...body(TYPE.md, TEXT_PRIMARY), marginTop: SPACE[2] }}>
           {formatStay(draft.stay.checkIn, draft.stay.checkOut)}
         </div>
-        <div style={{ fontSize: 13, color: '#6B7280' }}>
+        <div style={body(TYPE.md, TEXT_SECONDARY)}>
           {draft.stay.rooms} {draft.stay.rooms === 1 ? 'room' : 'rooms'} · {draft.stay.guests}{' '}
           {draft.stay.guests === 1 ? 'guest' : 'guests'}
         </div>
-        <div style={{ marginTop: 10, fontSize: 20, fontWeight: 800 }}>
+        <div
+          style={{
+            marginTop: SPACE[3],
+            ...heading(TYPE['5xl'], G3),
+            fontWeight: WEIGHT.extrabold,
+          }}
+        >
           {naira(draft.quote.totalAmount)}
         </div>
       </div>
 
       <div style={cardStyle}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: ITEM_GAP }}>
           <Field label="Guest name">
             <input
               value={guestName}
@@ -547,16 +736,28 @@ export function BookingApplyScreen({
 
       {/* Founder decisions 8–12, said at the moment they matter. Every line is
           a fact about what happens next, not reassurance. */}
-      <div style={{ ...cardStyle, background: '#F9FAFB' }}>
-        <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>Before you send this</div>
-        <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: '#374151', lineHeight: 1.6 }}>
+      <div style={{ ...cardStyle, background: NAVY_SURFACE, border: `1px solid ${BORDER_BRAND}` }}>
+        <div style={{ ...heading(TYPE.md), marginBottom: SPACE[2] }}>Before you send this</div>
+        <ul
+          style={{
+            margin: 0,
+            paddingLeft: SPACE[5],
+            // Tailwind's preflight sets `list-style: none` on every ul, so
+            // without this the four facts run together as unmarked lines —
+            // which is how they first rendered.
+            listStyle: 'disc',
+            ...body(TYPE.md, TEXT_SECONDARY),
+            lineHeight: LINE.relaxed,
+          }}
+        >
           <li>
-            <strong>You are not paying now.</strong> Nothing is taken and nothing is held.
+            <strong style={{ color: TEXT_PRIMARY }}>You are not paying now.</strong> Nothing is
+            taken and nothing is held.
           </li>
           <li>The hotel has 30 minutes to accept.</li>
           <li>
-            If it accepts, you get <strong>24 hours to pay</strong> — and the room is only yours
-            once you have.
+            If it accepts, you get <strong style={{ color: TEXT_PRIMARY }}>24 hours to pay</strong>{' '}
+            — and the room is only yours once you have.
           </li>
           <li>
             If it declines or does not answer, that is the end of it and you have paid nothing.
@@ -564,47 +765,25 @@ export function BookingApplyScreen({
         </ul>
       </div>
 
-      {error !== null && (
-        <div style={{ ...cardStyle, borderColor: '#FECACA', color: '#B91C1C', fontSize: 13 }}>
-          {error}
-        </div>
-      )}
+      {error !== null && <div style={errorCardStyle}>{error}</div>}
 
-      <div style={{ display: 'flex', gap: 10 }}>
-        <button
-          type="button"
-          onClick={onCancel}
-          style={{
-            flex: 1,
-            padding: '12px 14px',
-            borderRadius: 10,
-            border: '1px solid #E5E7EB',
-            background: '#FFFFFF',
-            fontWeight: 600,
-            cursor: 'pointer',
-          }}
-        >
-          Back
+      <div style={{ display: 'flex', gap: ITEM_GAP }}>
+        {/* "Cancel", not "Back": the header now carries the real Back button,
+            and two controls labelled the same thing on one screen is the kind
+            of thing that makes a person hesitate before a form they trust. */}
+        <button type="button" onClick={onCancel} style={{ ...secondaryButtonStyle, flex: 1 }}>
+          Cancel
         </button>
         <button
           type="button"
           disabled={!canSubmit}
           onClick={submit}
-          style={{
-            flex: 2,
-            padding: '12px 14px',
-            borderRadius: 10,
-            border: 'none',
-            color: '#FFFFFF',
-            fontWeight: 700,
-            background: canSubmit ? '#111827' : '#D1D5DB',
-            cursor: canSubmit ? 'pointer' : 'not-allowed',
-          }}
+          style={{ ...primaryButtonStyle(canSubmit), flex: 2, width: 'auto' }}
         >
           {submitting ? 'Sending…' : 'Send request'}
         </button>
       </div>
-    </div>
+    </HotelPage>
   );
 }
 
@@ -708,77 +887,84 @@ export function BookingStatusScreen({
 
   if (booking === null) {
     return (
-      <div style={{ padding: 16 }}>
-        <div style={{ fontSize: 13, color: '#6B7280' }}>{error ?? 'Loading your booking…'}</div>
-        <button type="button" onClick={onBack} style={{ marginTop: 12 }}>
-          Back
-        </button>
-      </div>
+      <HotelPage title="Your booking" subtitle={hotelName ?? 'Hotel stay'} onBack={onBack}>
+        <div style={{ ...cardStyle, ...body(TYPE.md, TEXT_SECONDARY) }}>
+          {error ?? 'Loading your booking…'}
+        </div>
+      </HotelPage>
     );
   }
 
   const tone = bookingStatusTone(booking.status);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: 16 }}>
+    <HotelPage title="Your booking" subtitle={hotelName ?? booking.reference} onBack={onBack}>
       <div style={cardStyle}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: SPACE[2] }}>
           <span
             style={{
               width: 8,
               height: 8,
-              borderRadius: 99,
+              borderRadius: RADIUS.full,
               background: tone,
               display: 'inline-block',
             }}
             aria-hidden
           />
-          <span style={{ fontWeight: 700, color: tone }}>{bookingStatusLabel(booking)}</span>
+          <span style={{ ...body(TYPE.lg, tone, WEIGHT.bold), fontFamily: FONT_HEADING }}>
+            {bookingStatusLabel(booking)}
+          </span>
         </div>
         {hotelName != null && (
-          <div style={{ fontSize: 14, marginTop: 8, fontWeight: 600 }}>{hotelName}</div>
+          <div style={{ ...heading(TYPE.lg), marginTop: SPACE[2] }}>{hotelName}</div>
         )}
-        <div style={{ fontSize: 13, color: '#6B7280', marginTop: 4 }}>
+        <div style={{ ...body(TYPE.md, TEXT_SECONDARY), marginTop: SPACE[1] }}>
           {formatStay(booking.checkIn, booking.checkOut)}
         </div>
-        <div style={{ fontSize: 13, color: '#6B7280' }}>
+        <div style={body(TYPE.md, TEXT_SECONDARY)}>
           {booking.rooms} {booking.rooms === 1 ? 'room' : 'rooms'} · {booking.guests}{' '}
           {booking.guests === 1 ? 'guest' : 'guests'}
         </div>
-        <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 6 }}>
+        <div style={{ ...body(TYPE.base, TEXT_MUTED), marginTop: SPACE[2] }}>
           Reference {booking.reference}
         </div>
-        <div style={{ marginTop: 10, fontSize: 20, fontWeight: 800 }}>
+        <div
+          style={{
+            marginTop: SPACE[3],
+            ...heading(TYPE['5xl'], G3),
+            fontWeight: WEIGHT.extrabold,
+          }}
+        >
           {naira(booking.totalAmount)}
         </div>
       </div>
 
       {booking.status === 'PENDING_HOTEL' && (
         <div style={cardStyle}>
-          <div style={{ fontSize: 13, color: '#374151' }}>
+          <div style={body(TYPE.md, TEXT_SECONDARY)}>
             {hotelName ?? 'The hotel'} is deciding.{' '}
             {countdown != null ? (
               <>
-                <strong>{countdown}</strong> left to answer.
+                <strong style={{ color: TEXT_PRIMARY }}>{countdown}</strong> left to answer.
               </>
             ) : (
               'Their time is nearly up.'
             )}
           </div>
-          <div style={{ fontSize: 12, color: '#6B7280', marginTop: 6 }}>
+          <div style={{ ...body(TYPE.base, TEXT_MUTED), marginTop: SPACE[2] }}>
             You have not paid anything. You can close this — we will keep the request open.
           </div>
         </div>
       )}
 
       {booking.status === 'AWAITING_PAYMENT' && (
-        <div style={{ ...cardStyle, borderColor: '#FDE68A', background: '#FFFBEB' }}>
-          <div style={{ fontWeight: 700, fontSize: 14 }}>The hotel accepted.</div>
-          <div style={{ fontSize: 13, color: '#374151', marginTop: 6 }}>
+        <div style={tintedCard(COLOR_WARNING)}>
+          <div style={heading(TYPE.lg)}>The hotel accepted.</div>
+          <div style={{ ...body(TYPE.md, TEXT_SECONDARY), marginTop: SPACE[2] }}>
             {countdown != null ? (
               <>
-                Pay within <strong>{countdown}</strong> to confirm the room. If you do not, it goes
-                back on sale.
+                Pay within <strong style={{ color: COLOR_WARNING }}>{countdown}</strong> to confirm
+                the room. If you do not, it goes back on sale.
               </>
             ) : (
               'Your time to pay has nearly run out.'
@@ -788,17 +974,7 @@ export function BookingStatusScreen({
             type="button"
             onClick={startPayment}
             disabled={paying}
-            style={{
-              marginTop: 12,
-              width: '100%',
-              padding: '12px 14px',
-              borderRadius: 10,
-              border: 'none',
-              color: '#FFFFFF',
-              fontWeight: 700,
-              background: paying ? '#D1D5DB' : '#111827',
-              cursor: paying ? 'not-allowed' : 'pointer',
-            }}
+            style={{ ...primaryButtonStyle(!paying), marginTop: ITEM_GAP }}
           >
             {paying ? 'Opening payment…' : `Pay ${naira(booking.totalAmount)}`}
           </button>
@@ -806,56 +982,40 @@ export function BookingStatusScreen({
       )}
 
       {/* The PIN is shown on its existence, not on a status: it is issued only
-          when the money actually arrived, which makes it the honest signal. */}
+          when the money actually arrived, which makes it the honest signal.
+          It is the one thing on this screen a guest holds up at a desk, so it
+          gets the brand green and the largest type on the page. */}
       {booking.pin != null && (
-        <div style={{ ...cardStyle, borderColor: '#A7F3D0', background: '#ECFDF5' }}>
-          <div style={{ fontSize: 12, color: '#065F46', fontWeight: 600 }}>
-            Show this at the hotel
-          </div>
+        <div
+          style={{ ...cardStyle, border: `1px solid ${BORDER_BRAND}`, background: NAVY_SURFACE }}
+        >
+          <div style={body(TYPE.base, G3, WEIGHT.semibold)}>Show this at the hotel</div>
           <div
             style={{
               fontSize: 34,
-              fontWeight: 800,
+              fontWeight: WEIGHT.extrabold,
               letterSpacing: 6,
-              marginTop: 6,
+              marginTop: SPACE[2],
+              color: TEXT_PRIMARY,
               fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
             }}
           >
             {booking.pin}
           </div>
-          <div style={{ fontSize: 12, color: '#047857', marginTop: 6 }}>
+          <div style={{ ...body(TYPE.base, TEXT_SECONDARY), marginTop: SPACE[2] }}>
             Paid in full. The hotel can look your booking up with this code.
           </div>
         </div>
       )}
 
       {booking.customerMessage != null && (
-        <div style={{ ...cardStyle, fontSize: 13, color: '#374151' }}>
+        <div style={{ ...cardStyle, ...body(TYPE.md, TEXT_SECONDARY) }}>
           {booking.customerMessage}
         </div>
       )}
 
-      {error !== null && (
-        <div style={{ ...cardStyle, borderColor: '#FECACA', color: '#B91C1C', fontSize: 13 }}>
-          {error}
-        </div>
-      )}
-
-      <button
-        type="button"
-        onClick={onBack}
-        style={{
-          padding: '12px 14px',
-          borderRadius: 10,
-          border: '1px solid #E5E7EB',
-          background: '#FFFFFF',
-          fontWeight: 600,
-          cursor: 'pointer',
-        }}
-      >
-        Back
-      </button>
-    </div>
+      {error !== null && <div style={errorCardStyle}>{error}</div>}
+    </HotelPage>
   );
 }
 
@@ -904,19 +1064,13 @@ export function MyBookingsScreen({
   }, [items]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: 16 }}>
-      <div style={{ fontSize: 18, fontWeight: 800 }}>My bookings</div>
+    <HotelPage title="My bookings" subtitle="Your stays and check-in codes" onBack={onBack}>
+      {sorted === null && <div style={body(TYPE.md, TEXT_MUTED)}>Loading…</div>}
 
-      {sorted === null && <div style={{ fontSize: 13, color: '#6B7280' }}>Loading…</div>}
-
-      {error !== null && (
-        <div style={{ ...cardStyle, borderColor: '#FECACA', color: '#B91C1C', fontSize: 13 }}>
-          {error}
-        </div>
-      )}
+      {error !== null && <div style={errorCardStyle}>{error}</div>}
 
       {sorted !== null && sorted.length === 0 && error === null && (
-        <div style={{ ...cardStyle, fontSize: 13, color: '#6B7280' }}>
+        <div style={{ ...cardStyle, ...body(TYPE.md, TEXT_SECONDARY) }}>
           You have not booked a room yet.
         </div>
       )}
@@ -928,40 +1082,34 @@ export function MyBookingsScreen({
           onClick={() => onOpen(booking.id)}
           style={{ ...cardStyle, textAlign: 'left', cursor: 'pointer', width: '100%' }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-            <span style={{ fontWeight: 700, fontSize: 14 }}>{booking.reference}</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: SPACE[2] }}>
+            <span style={heading(TYPE.lg)}>{booking.reference}</span>
+            {/* A chip rather than coloured text: the same shape the merchant
+                order list uses for a status, so one status reads like another. */}
             <span
-              style={{ fontSize: 12, fontWeight: 700, color: bookingStatusTone(booking.status) }}
+              style={{
+                ...body(TYPE.base, bookingStatusTone(booking.status), WEIGHT.bold),
+                background: `${bookingStatusTone(booking.status)}1A`,
+                border: `1px solid ${bookingStatusTone(booking.status)}40`,
+                borderRadius: R_CHIP,
+                padding: `2px ${String(SPACE[2])}px`,
+                whiteSpace: 'nowrap',
+              }}
             >
               {bookingStatusLabel(booking)}
             </span>
           </div>
-          <div style={{ fontSize: 13, color: '#6B7280', marginTop: 4 }}>
+          <div style={{ ...body(TYPE.md, TEXT_SECONDARY), marginTop: SPACE[1] }}>
             {formatNight(booking.checkIn)} · {booking.nights}{' '}
             {booking.nights === 1 ? 'night' : 'nights'} · {naira(booking.totalAmount)}
           </div>
           {booking.pin != null && (
-            <div style={{ fontSize: 12, color: '#047857', marginTop: 4 }}>
+            <div style={{ ...body(TYPE.base, G3, WEIGHT.semibold), marginTop: SPACE[1] }}>
               PIN <strong>{booking.pin}</strong>
             </div>
           )}
         </button>
       ))}
-
-      <button
-        type="button"
-        onClick={onBack}
-        style={{
-          padding: '12px 14px',
-          borderRadius: 10,
-          border: '1px solid #E5E7EB',
-          background: '#FFFFFF',
-          fontWeight: 600,
-          cursor: 'pointer',
-        }}
-      >
-        Back
-      </button>
-    </div>
+    </HotelPage>
   );
 }
