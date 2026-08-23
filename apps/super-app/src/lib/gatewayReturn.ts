@@ -14,19 +14,29 @@
 // sessionStorage — it survives the round trip through the gateway in the same
 // tab, and is gone when the tab is.
 
-/** The flows the app sends to a gateway. Ride fares are cash-only in this
- * client, so there is nothing to come back from there.
+/** The flows the app sends to a gateway.
  *
  * `booking` joined on 2026-08-22: a hotel booking is now paid through DrippleX
  * after the hotel accepts, so it makes the same round trip — and has the same
  * failure mode the airtime incident exposed, with the added sting that a guest
  * stranded on the gateway's page does not receive the PIN that proves the room
- * is theirs. */
-export type GatewayReturnKind = 'utility' | 'wallet' | 'booking';
+ * is theirs.
+ *
+ * `ride` and `order` joined on 2026-08-23. This file used to say ride fares
+ * were "cash-only in this client, so there is nothing to come back from
+ * there" — that was a description of what the client happened to offer, not a
+ * limitation anywhere else. The backend has taken card for a fare all along
+ * (GATEWAY_METHODS = PAYSTACK, FLUTTERWAVE, settled by
+ * ride-payment-webhook.subscriber.ts) and for a marketplace order
+ * (InitializePaymentDto.provider accepts the full enum), and both keys are
+ * configured in production. The two flows simply never offered the choice. */
+export type GatewayReturnKind = 'utility' | 'wallet' | 'booking' | 'ride' | 'order';
+
+const KINDS: readonly GatewayReturnKind[] = ['utility', 'wallet', 'booking', 'ride', 'order'];
 
 export interface GatewayReturn {
   kind: GatewayReturnKind;
-  /** The utility purchase id, the wallet top-up reference, or the booking id. */
+  /** The utility purchase id, wallet top-up reference, booking id, ride id or order id. */
   id: string;
 }
 
@@ -58,7 +68,10 @@ export function rememberGatewayReturn(kind: GatewayReturnKind, id: string): void
 export function gatewayReturnKindFromUrl(): GatewayReturnKind | null {
   if (typeof window === 'undefined') return null;
   const value = new URLSearchParams(window.location.search).get(PARAM);
-  return value === 'utility' || value === 'wallet' || value === 'booking' ? value : null;
+  // Checked against the list rather than a chain of ORs, so adding a kind
+  // cannot leave a flow that sets the param but is never recognised coming
+  // back — which would strand the customer on the splash after paying.
+  return KINDS.includes(value as GatewayReturnKind) ? (value as GatewayReturnKind) : null;
 }
 
 /**
