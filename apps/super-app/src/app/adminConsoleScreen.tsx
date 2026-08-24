@@ -121,9 +121,18 @@ if (typeof document !== 'undefined' && !document.getElementById(STYLE_ID)) {
        and crushing the Actions column out of reach. A floor width makes the
        table wider than the screen on purpose, which is what makes it pannable.
        Cards stop shrinking below the same floor for the same reason. */
+    /* KPI rows reflow instead of panning. A stat card is small and
+       self-contained, so four of them fit two-up on a phone with nothing
+       lost — panning sideways to read "Online Drivers" would be absurd. A
+       table is the opposite: it has a minimum width below which it stops
+       being a table, so it keeps the floor above and is panned. */
+    .dx-kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
     @media (max-width: 900px) {
       .dx-console-body table { min-width: 760px; }
-      .dx-console-body .dx-card { min-width: 300px; }
+      /* Charts and their side panels sit side by side on a desktop and stack
+         on a phone, rather than each being squeezed to half of 390px. */
+      .dx-split-row { flex-direction: column; }
+      .dx-split-row > * { flex: 1 1 auto !important; width: 100%; min-width: 0 !important; }
     }
     .dx-btn { transition: opacity .15s, transform .08s; cursor: pointer; }
     .dx-btn:hover { opacity: .85; }
@@ -1066,7 +1075,7 @@ function PageDashboard() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* KPI Row 1 */}
-      <div style={{ display: 'flex', gap: 12 }}>
+      <div className="dx-kpi-row">
         <KpiCard label="Active Trips" value={c(activeTrips)} sub="Live now" color={G3} icon="🚗" />
         {/* Rides still looking for a driver. This read the ops-case
             "waiting review" counter, which counts SOS/incident/support cases —
@@ -1098,7 +1107,7 @@ function PageDashboard() {
         />
       </div>
       {/* KPI Row 2 */}
-      <div style={{ display: 'flex', gap: 12 }}>
+      <div className="dx-kpi-row">
         {/* "Online" here means what dispatch means by it — toggled on AND
             still reporting a position. A driver whose app says Online but who
             stopped pinging is counted under "Gone Quiet" instead, because
@@ -1141,7 +1150,7 @@ function PageDashboard() {
         />
       </div>
       {/* Charts row */}
-      <div style={{ display: 'flex', gap: 12 }}>
+      <div className="dx-split-row" style={{ display: 'flex', gap: 12 }}>
         {/* Area chart */}
         <Card style={{ flex: 2, padding: '14px 16px' }}>
           <SectionHeader title="Revenue Over Time (Today)" />
@@ -7796,7 +7805,7 @@ function PageIncidents() {
             <Chip label={caseSeverity(inc)} color={incidentSevColor(caseSeverity(inc))} />
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 12 }}>
+        <div className="dx-split-row" style={{ display: 'flex', gap: 12 }}>
           {/* SVG mini-map */}
           <Card style={{ flex: 1, padding: 12 }}>
             <div
@@ -8384,7 +8393,7 @@ function PageAnalytics() {
           docs/reference/DPX-OPS-PREVIEW-WIRING-STATUS.md.
         </span>
       </Card>
-      <div style={{ display: 'flex', gap: 12 }}>
+      <div className="dx-split-row" style={{ display: 'flex', gap: 12 }}>
         {/* Weekly revenue+trips */}
         <Card style={{ flex: 2, padding: '14px 16px' }}>
           <SectionHeader title="Weekly Revenue & Trips" />
