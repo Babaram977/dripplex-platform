@@ -177,7 +177,13 @@ export default function PrivacyPage(): React.JSX.Element {
           company registered in Nigeria. {CONTROLLER.legalName} (&ldquo;DrippleX&rdquo;,
           &ldquo;we&rdquo;) is the data controller for the personal data described in this policy.
         </p>
-        <p>Registered address: {CONTROLLER.registeredAddress}.</p>
+        {/* Rendered only once a real address exists. Publishing the literal
+            placeholder onto a legal page would read as broken, and an address
+            is not something to guess at — so the page states what is known and
+            stays silent on what is not. */}
+        {!CONTROLLER.registeredAddress.startsWith('[') && (
+          <p>Registered address: {CONTROLLER.registeredAddress}.</p>
+        )}
         <p>
           For any question about this policy, or to exercise any of the rights described below,
           contact{' '}
