@@ -20,6 +20,7 @@ import {
   ArrowIcon,
   CheckIcon,
   COUNTRIES,
+  DRIPPLEX_SUPPORT_EMAIL,
 } from './shared';
 import { api } from '../lib/api';
 import { auth } from '../lib/auth';
@@ -1809,7 +1810,7 @@ export function AccountSuspensionScreen({
             Contact Support
           </p>
           <p className="text-[11px]" style={{ color: MUTED }}>
-            Available 24/7 · security@dripplex.com
+            Available 24/7 · {DRIPPLEX_SUPPORT_EMAIL}
           </p>
         </div>
         <ArrowIcon />
