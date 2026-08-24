@@ -206,10 +206,17 @@ import { installUnlockListener } from '../lib/sound';
 
 // DESKTOP FRAME — for admin operations console
 // ═══════════════════════════════════════════════════════════════════════════
+// The 1100px window and its macOS chrome are a desktop preview of a console,
+// and on a desktop that is what they should stay. On a handset they are a
+// 1100px box inside a ~390px screen: the operator pans sideways around a fake
+// title bar to reach a real dashboard. `/ops` is a shared link, so this is
+// reached from a phone routinely — reported as the ops link being unusable on
+// Android. The `dx-desktop-*` classes let GLOBAL_STYLES drop the window below
+// 480px, the same way `dx-phone-*` drops the bezel.
 function DesktopFrame({ children }: { children: React.ReactNode }) {
   return (
     <div
-      className="relative flex flex-col overflow-hidden"
+      className="dx-desktop-frame relative flex flex-col overflow-hidden"
       style={{
         width: 1100,
         height: 'min(700px, 100dvh - 24px)',
@@ -219,7 +226,7 @@ function DesktopFrame({ children }: { children: React.ReactNode }) {
     >
       {/* macOS-style window chrome */}
       <div
-        className="flex items-center gap-2 px-4"
+        className="dx-desktop-chrome flex items-center gap-2 px-4"
         style={{
           height: 36,
           background: '#040A14',

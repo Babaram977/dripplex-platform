@@ -149,6 +149,20 @@ export const GLOBAL_STYLES = `
        ones. The row stays as the safe-area spacer it needs to be. */
     .dx-status-mock  { padding-top: max(env(safe-area-inset-top), 10px) !important; }
     .dx-status-mock > * { visibility: hidden; }
+
+    /*  The ops/admin console gets the same treatment, and for the same
+        reason. It renders in a 1100px window with macOS traffic lights and a
+        fake URL bar — a desktop preview of a console. On a handset that is a
+        1100px box inside a ~390px screen, so an operator pans sideways past
+        fake window chrome to reach a real dashboard. /ops is a link people
+        share, so a phone opens it routinely; reported as unusable on Android.
+
+        The console's own layout is dense and will still want a landscape
+        screen for real work — this makes it reachable and legible on a phone,
+        which it was not. */
+    .dx-desktop-frame  { width: 100dvw !important; height: 100dvh !important;
+                         border-radius: 0 !important; box-shadow: none !important; }
+    .dx-desktop-chrome { display: none !important; }
   }
 `;
 

@@ -639,3 +639,46 @@ any hotel screen. The production file (`rsHHFRxHVE3OKv81p7m3K1`) is a Figma **Ma
 type: Design.` — and there is no component or frame to reconcile a layout against. What is now
 guaranteed is **system fidelity**, not screen fidelity: the hotel screens no longer invent a
 palette, but their _layout_ is still ours, not designed.
+
+---
+
+## Merchant cover treatment — founder override of the Figma component, 2026-08-23
+
+**Figma says.** `src/components/marketplace/MerchantCard.tsx` in the production Make file
+(`rsHHFRxHVE3OKv81p7m3K1`) declares `coverBg: string // CSS gradient string` as a property of the
+merchant, drawn behind a 44px emoji. Each merchant in the mock data carries its own colour
+(Shoprite `#7F1D1D→#EF4444`, KFC `#7C2D12→#F97316`). There is **no** `coverPhotoUrl` anywhere in
+the component — the design has never had a photographic cover.
+
+**What the code actually did.** `marketplaceScreen.tsx` held a `BG_POOL` of eight gradients and
+selected with `BG_POOL[idx % BG_POOL.length]` — the merchant's **position in the list**, not any
+property of the merchant. A shop was green in one list and red in the next. This was never in the
+design; it is an implementation invention and is recorded here as one. It also rendered
+`coverPhotoUrl` as a full-bleed `object-cover` background, which the design does not have.
+
+**Founder decision, 2026-08-23 (verbatim):** _"Colour on merchant should be uniform... no
+background picture in merchant profile. All merchant should follow the same basic colour of the
+app"_, then, when told the Figma component specifies a per-merchant colour: _"No colour for any
+merchant if that is what figma designs change it No colour"_.
+
+**Second founder instruction, same day:** _"why the DA big card for dx apartments just makes it
+simple optimize the size of icons and the card"_.
+
+**What shipped.** The cover band is gone entirely. A merchant is one compact row — a 48px mark,
+name, category, rating and distance on a single line, and the way in. Card height measured at
+**74px, down from ~158px**, so twice as many merchants fit a phone screen. This also brings the
+Featured list into line with `NearbyBusinesses`, which was already a compact neutral row list.
+
+The store header keeps a `NAVY_BASE` surface with no gradient, photo or emoji watermark.
+
+The merchant's real `logoUrl` is shown `object-contain` on a neutral tile — it was previously
+never read on the card at all, only `coverPhotoUrl` was — with Poppins initials as the fallback
+where no logo is on file. The category icon is a vector `Icon`.
+
+**Every bitmap glyph in both merchant lists is gone**: the cover photo, the 90px emoji watermark,
+and the 📍/⏱ glyphs in the Nearby rows. `★` U+2605 stays — it is a typographic glyph drawn from
+the font, not an emoji. Verified by rendering: no `img`, and no character in the emoji ranges.
+
+**Standing gap.** `coverBg` remains in the Figma component and in `storeScreen`'s local
+`StoreMerchant` type. The override is founder-directed and deliberate; if the design is ever
+updated to drop `coverBg`, this entry can be closed rather than reconciled.

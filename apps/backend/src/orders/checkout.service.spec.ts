@@ -374,11 +374,47 @@ describe('CheckoutService', () => {
       );
     });
 
-    it('rejects locked carts', async () => {
+    it('rejects a locked cart whose order no longer exists', async () => {
       cartRepository.findLockedByCustomerId.mockResolvedValue({
         ...sampleCart,
         status: CartStatus.LOCKED,
       });
+      ordersRepository.findByCartId.mockResolvedValue(null);
+      await expect(service.checkout(customerId, {}, context)).rejects.toBeInstanceOf(
+        ConflictDomainException,
+      );
+    });
+
+    // Reach checkout, leave the app before paying, come back. The cart is
+    // locked and the order is waiting — every retry used to answer "Cart is
+    // locked pending payment" until a sweep released it half an hour later,
+    // and never at all for an order carrying no inventory reservation.
+    it('hands back the unpaid order instead of refusing, so the customer can finish paying', async () => {
+      cartRepository.findLockedByCustomerId.mockResolvedValue({
+        ...sampleCart,
+        status: CartStatus.LOCKED,
+      });
+      ordersRepository.findByCartId.mockResolvedValue(sampleOrder);
+
+      const result = await service.checkout(customerId, {}, context);
+
+      expect(result.order.id).toBe(orderId);
+      // The same order, not a second one for the same basket.
+      expect(ordersRepository.create).not.toHaveBeenCalled();
+      expect(cartRepository.updateStatus).not.toHaveBeenCalled();
+    });
+
+    it('does not resurrect an order that has already been paid', async () => {
+      cartRepository.findLockedByCustomerId.mockResolvedValue({
+        ...sampleCart,
+        status: CartStatus.LOCKED,
+      });
+      ordersRepository.findByCartId.mockResolvedValue({
+        ...sampleOrder,
+        paymentStatus: PaymentStatus.PAID,
+      });
+      // The lock is stale, not live. Refusing is right here — resuming would
+      // walk the customer back into paying for an order already settled.
       await expect(service.checkout(customerId, {}, context)).rejects.toBeInstanceOf(
         ConflictDomainException,
       );

@@ -537,17 +537,6 @@ function FeaturedMerchants({
     load();
   }, [load]);
 
-  const BG_POOL = [
-    'linear-gradient(135deg,#0D2E18,#176B30 42%,#2BAC52)',
-    'linear-gradient(135deg,#7F1D1D,#EF4444)',
-    'linear-gradient(135deg,#7C2D12,#F97316)',
-    'linear-gradient(135deg,#0C4A6E,#06B6D4)',
-    'linear-gradient(135deg,#2E1065,#8B5CF6)',
-    'linear-gradient(135deg,#1E3A5F,#3B82F6)',
-    'linear-gradient(135deg,#831843,#EC4899)',
-    'linear-gradient(135deg,#064E3B,#10B981)',
-  ];
-
   return (
     <div className="mb-5">
       <SRow title="Featured Merchants" sub="Trusted local businesses" onAll={() => {}} />
@@ -604,9 +593,8 @@ function FeaturedMerchants({
         </div>
       ) : (
         <div className="flex flex-col gap-3 px-5">
-          {merchants.map((m, idx) => {
+          {merchants.map((m) => {
             const isOpen = m.isOpenNow;
-            const bg = BG_POOL[idx % BG_POOL.length];
             const icon = categoryIcon(m.category);
             const verified = m.verificationStatus === 'VERIFIED';
             const rating = m.rating?.average ?? 0;
@@ -621,100 +609,62 @@ function FeaturedMerchants({
                   boxShadow: '0 4px 20px rgba(0,0,0,.28)',
                 }}
               >
-                <div
-                  className="relative flex h-[88px] items-center justify-center"
-                  style={{ background: m.coverPhotoUrl ? undefined : bg }}
-                >
-                  {m.coverPhotoUrl ? (
-                    <ImageWithFallback
-                      src={m.coverPhotoUrl}
-                      alt={m.businessName}
-                      className="absolute inset-0 h-full w-full object-cover"
-                      fallbackEmoji="🛍️"
-                      loading="lazy"
-                    />
-                  ) : (
-                    /* A monogram, not a giant emoji. Emoji are bitmap glyphs —
-                       they blur on high-DPI screens, and they look like a
-                       different app on every OS. Initials in Poppins over the
-                       category gradient stay vector-sharp at any density, and
-                       they identify the merchant rather than their sector. */
+                {/* One compact row per merchant — logo, who they are, and the
+                    way in. No cover band.
+
+                    Three rounds of this card got smaller. It began as eight
+                    rotating gradients keyed on list position; then one neutral
+                    88px band with a 60px monogram tile; now no band at all.
+                    The band was never carrying information — on a phone it
+                    spent half the card's height rendering "DA" at 30px, so
+                    four merchants filled a screen. A 48px mark is enough to
+                    recognise a shop by, which is the size Talabat and Bolt
+                    both settle on.
+
+                    (Founder decisions, 2026-08-23: no colour for any merchant,
+                    overriding the Figma component's per-merchant `coverBg`;
+                    then simplify and shrink. Logged in the diff register.)
+
+                    Everything bitmap is gone: no cover photo, no emoji
+                    watermark, no 📍 pin glyph. The logo, the category icon and
+                    the initials are all vector, so they stay sharp at 3x. */}
+                <div className="flex items-center gap-3 p-3">
+                  {m.logoUrl != null && m.logoUrl !== '' ? (
+                    /* `object-contain`, not cover: cover crops a wide wordmark
+                       to a square and cuts its ends off. */
                     <div
-                      className="absolute inset-0 flex items-center justify-center overflow-hidden"
-                      aria-hidden="true"
+                      className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl"
+                      style={{ background: 'rgba(255,255,255,.06)', border: `1px solid ${BORDER}` }}
+                    >
+                      <ImageWithFallback
+                        src={m.logoUrl}
+                        alt={m.businessName}
+                        className="h-full w-full object-contain"
+                        fallbackEmoji="🛍️"
+                        loading="lazy"
+                      />
+                    </div>
+                  ) : (
+                    <div
+                      className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl"
+                      style={{ background: 'rgba(255,255,255,.06)', border: `1px solid ${BORDER}` }}
                     >
                       <span
                         style={{
                           fontFamily: "'Poppins',sans-serif",
-                          fontSize: 30,
+                          fontSize: 15,
                           fontWeight: 700,
-                          letterSpacing: '0.06em',
-                          lineHeight: 1,
-                          color: 'rgba(255,255,255,.92)',
-                          textShadow: '0 2px 10px rgba(0,0,0,.28)',
+                          letterSpacing: '0.04em',
+                          color: 'rgba(255,255,255,.9)',
                         }}
                       >
                         {monogram(m.businessName)}
                       </span>
-                      <Icon
-                        name={icon}
-                        size={17}
-                        color="rgba(255,255,255,.55)"
-                        style={{ position: 'absolute', right: 10, bottom: 8 }}
-                      />
                     </div>
                   )}
-                  <div className="absolute left-3 top-3">
-                    {verified && (
-                      <span
-                        className="rounded-lg px-2 py-1 text-[9px] font-bold"
-                        style={{
-                          // A dark scrim, not a green tint. The tint sat on
-                          // whichever gradient the card drew, so green-on-red
-                          // was barely readable; this reads the same on all
-                          // eight banner colours and on a photo.
-                          background: 'rgba(6,14,28,.55)',
-                          color: G3,
-                          border: `1px solid rgba(71,207,114,.35)`,
-                          backdropFilter: 'blur(6px)',
-                          fontFamily: "'Inter',sans-serif",
-                        }}
-                      >
-                        ✓ Verified
-                      </span>
-                    )}
-                  </div>
-                  <div className="absolute right-3 top-3 flex items-center gap-1.5">
-                    {isOpen === false && (
-                      <span
-                        className="rounded-lg px-2 py-1 text-[9px] font-bold"
-                        style={{
-                          background: 'rgba(239,68,68,.2)',
-                          color: '#FCA5A5',
-                          border: '1px solid rgba(239,68,68,.25)',
-                          fontFamily: "'Inter',sans-serif",
-                        }}
-                      >
-                        Closed
-                      </span>
-                    )}
-                    {isOpen === null && (
-                      <span
-                        className="rounded-lg px-2 py-1 text-[9px] font-bold"
-                        style={{
-                          background: 'rgba(255,255,255,.12)',
-                          color: 'rgba(255,255,255,.6)',
-                          fontFamily: "'Inter',sans-serif",
-                        }}
-                      >
-                        Hours unavailable
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 p-3.5">
+
                   <div className="min-w-0 flex-1">
-                    <div className="mb-0.5 flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                       <p
                         className="truncate text-[13.5px] font-bold"
                         style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
@@ -723,31 +673,51 @@ function FeaturedMerchants({
                       </p>
                       {verified && <VerifiedBadge />}
                     </div>
-                    <p
-                      className="mb-1.5 text-[10px]"
-                      style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
-                    >
-                      {m.category ? MERCHANT_CATEGORY_LABEL[m.category] : 'Business'}
-                    </p>
-                    <div className="flex items-center gap-3">
+                    {/* Category, rating and distance on one line. They used to
+                        occupy three, which is what made the card tall. */}
+                    <div className="mt-1 flex items-center gap-2">
+                      <Icon name={icon} size={12} color="rgba(255,255,255,.4)" />
+                      <span
+                        className="truncate text-[10px]"
+                        style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
+                      >
+                        {m.category ? MERCHANT_CATEGORY_LABEL[m.category] : 'Business'}
+                      </span>
                       {rating > 0 && (
-                        <span className="text-[10px] font-bold" style={{ color: '#FBBF24' }}>
+                        <span
+                          className="flex-shrink-0 text-[10px] font-bold"
+                          style={{ color: '#FBBF24' }}
+                        >
                           ★ {rating.toFixed(1)}
                         </span>
                       )}
                       {dist && (
                         <span
-                          className="text-[10px]"
+                          className="flex-shrink-0 text-[10px]"
                           style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
                         >
-                          📍 {dist}
+                          {dist}
+                        </span>
+                      )}
+                      {/* Only the actionable state. "Hours unavailable" sat on
+                          every card because no merchant has opening hours on
+                          file yet — a data gap shown as a badge on every row,
+                          which is noise, not information. Closed is worth
+                          saying; unknown is not. */}
+                      {isOpen === false && (
+                        <span
+                          className="flex-shrink-0 text-[10px] font-bold"
+                          style={{ color: '#FCA5A5', fontFamily: "'Inter',sans-serif" }}
+                        >
+                          Closed
                         </span>
                       )}
                     </div>
                   </div>
+
                   <button
                     onClick={() => isOpen !== false && onStore?.(m.id)}
-                    className="h-9 flex-shrink-0 rounded-xl px-4 text-[11px] font-semibold transition-all active:scale-95"
+                    className="h-8 flex-shrink-0 rounded-lg px-3 text-[11px] font-semibold transition-all active:scale-95"
                     style={{
                       background:
                         isOpen !== false
@@ -758,7 +728,7 @@ function FeaturedMerchants({
                       boxShadow: isOpen !== false ? `0 3px 12px rgba(43,172,82,.22)` : 'none',
                     }}
                   >
-                    {isOpen === false ? 'Closed' : 'Visit Store'}
+                    {isOpen === false ? 'Closed' : 'Visit'}
                   </button>
                 </div>
               </div>
@@ -1126,12 +1096,17 @@ function NearbyBusinesses({ onStore }: { onStore?: (merchantId: string) => void 
                       <span className="text-[9.5px] font-bold" style={{ color: '#FBBF24' }}>
                         {rating > 0 ? `★ ${rating.toFixed(1)}` : '★ —'}
                       </span>
-                      {/* GAP: backend has no delivery ETA → "—". */}
+                      {/* Was "📍 {dist} · ⏱ —". Both were bitmap emoji, which
+                          blur at 3x and draw differently per OS, and the ⏱
+                          was labelling a dash. The distance speaks for itself
+                          without a pin beside it.
+                          GAP unchanged: backend has no delivery ETA, so there
+                          is still nothing to show there. */}
                       <span
                         className="text-[9.5px]"
                         style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
                       >
-                        📍 {dist} · ⏱ —
+                        {dist}
                       </span>
                     </div>
                   </div>
