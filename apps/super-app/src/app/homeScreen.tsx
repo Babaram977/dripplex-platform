@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { CAT_CHIPS } from './marketplaceScreen';
 import {
   G0,
   G2,
@@ -15,6 +16,7 @@ import { api } from '../lib/api';
 import { auth } from '../lib/auth';
 import type {
   PromotionActiveDto,
+  MerchantCategory,
   MerchantSummaryDto,
   OrderDto,
   ProductSummaryDto,
@@ -54,16 +56,21 @@ const TXN_ICON: Record<WalletLedgerEntryDto['type'], string> = {
 // ─────────────────────────────────────────────────────────────────────────────
 // DATA
 // ─────────────────────────────────────────────────────────────────────────────
-const CATS: { icon: IconName; label: string }[] = [
-  { icon: 'supermarket', label: 'Supermarkets' },
-  { icon: 'restaurant', label: 'Restaurants' },
-  { icon: 'pharmacy', label: 'Pharmacy' },
-  { icon: 'fashion', label: 'Fashion' },
-  { icon: 'electronics', label: 'Electronics' },
-  { icon: 'beauty', label: 'Beauty' },
-  { icon: 'home', label: 'Home' },
-  { icon: 'hardware', label: 'Hardware' },
-];
+/**
+ * The home category row, taken from the marketplace's own chip list so the two
+ * cannot disagree. "All" is dropped — it is a way to clear a filter, which only
+ * means something once you are already looking at a filtered list.
+ *
+ * This row used to be its own array of labels with no category attached, and
+ * tapping one set the SEARCH QUERY to the label text. That is not what a
+ * category is: a merchant registered under FASHION is "Ghasan Leather Shop",
+ * so a text search for "Fashion" returned nothing while the shop sat there
+ * unfound. Verified against production — `?category=FASHION` returns it,
+ * `smart-search?query=Fashion` returns zero.
+ */
+const CATS = CAT_CHIPS.filter(
+  (c): c is { label: string; icon: IconName; category: MerchantCategory } => c.category !== null,
+);
 
 /**
  * `ready: false` means the destination does not exist yet. Those tiles are
@@ -928,17 +935,23 @@ function SearchResults({
   );
 }
 
-function Categories({ active, onPick }: { active: string; onPick: (label: string) => void }) {
+function Categories({
+  active,
+  onPick,
+}: {
+  active: MerchantCategory | null;
+  onPick: (c: MerchantCategory) => void;
+}) {
   return (
     <div className="mb-5">
       <Row title="Categories" />
       <div className="flex gap-3 overflow-x-auto px-5" style={{ scrollbarWidth: 'none' }}>
         {CATS.map((c) => {
-          const on = active === c.label;
+          const on = active === c.category;
           return (
             <button
               key={c.label}
-              onClick={() => onPick(on ? '' : c.label)}
+              onClick={() => onPick(c.category)}
               // A fixed column width is what stops the labels colliding. The
               // tile stays 52px; the button is wider so a long word has room.
               className="flex flex-shrink-0 flex-col items-center gap-1.5 transition-all active:scale-90"
@@ -1512,6 +1525,7 @@ export function HomeScreen({
   onOrders,
   onTrackOrder,
   onBecomePartner,
+  onCategory,
 }: {
   onAccount: () => void;
   onSecurity: () => void;
@@ -1530,6 +1544,8 @@ export function HomeScreen({
   /** Open live tracking for an order the customer already has in flight. */
   onTrackOrder?: (orderId: string) => void;
   onBecomePartner?: () => void;
+  /** Tapping a category opens the marketplace already filtered to it. */
+  onCategory?: (c: MerchantCategory) => void;
 }) {
   const [navTab, setNavTab] = useState<NavTab>('home');
   const [showAI, setShowAI] = useState(false);
@@ -1643,7 +1659,6 @@ export function HomeScreen({
   // A category chip is lit only when the search box holds exactly its label —
   // so typing over it clears the highlight rather than leaving a chip claiming
   // to filter something it no longer filters.
-  const activeCategory = CATS.some((c) => c.label === query) ? query : '';
 
   const handleNav = (t: NavTab) => {
     setNavTab(t);
@@ -1733,7 +1748,7 @@ export function HomeScreen({
             search; hiding them would strand you inside a result set. */}
         {term ? (
           <>
-            <Categories active={activeCategory} onPick={setQuery} />
+            <Categories active={null} onPick={(c) => onCategory?.(c)} />
             <SearchResults
               term={term}
               busy={searching}
@@ -1758,7 +1773,7 @@ export function HomeScreen({
                 2026-08-24: Drip answering customers comes after the app is
                 stable.) */}
             {onBecomePartner && <PartnerEntryCard onOpen={onBecomePartner} />}
-            <Categories active={activeCategory} onPick={setQuery} />
+            <Categories active={null} onPick={(c) => onCategory?.(c)} />
             <Merchants
               loaded={loaded}
               liveMerchants={liveMerchants}
