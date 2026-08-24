@@ -24,6 +24,7 @@ import { playNotificationSound, startIncomingRideAlarm, stopIncomingRideAlarm } 
 import { SoundSettings } from './soundSettings';
 import { PayoutPanel } from './payoutPanel';
 import { useLocationHeartbeat } from '../lib/locationHeartbeat';
+import { pushDriverLocationNow, useDriverLocationPing } from './useDriverLocationPing';
 import { getCurrentPosition } from '../lib/maps';
 // Same cadence for both couriers — see the constant's note for why 30s.
 import { LOCATION_PUSH_INTERVAL_MS } from './riderScreen';
@@ -3297,14 +3298,176 @@ export function DriverIncomingRequestScreen({
 // ─────────────────────────────────────────────────────────────────────────────
 // DRIVER-009 — NAVIGATION TO PICKUP
 // ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Cancelling an accepted trip.
+ *
+ * POST /driver/rides/:id/cancel has existed since RIDE-002.4 and the API client
+ * has always exposed it — no screen ever called it. A driver whose passenger
+ * never showed, or who could not reach the pickup, had no way out of the trip
+ * at all: the only exits from these screens were "I've Arrived" and the back
+ * arrow, and the ride stayed open against them until Operations killed it.
+ *
+ * The backend allows this from DRIVER_ASSIGNED and ARRIVED only — once a trip
+ * is IN_PROGRESS it ends by completing, not cancelling — so this is offered on
+ * the approach and verification screens and nowhere after.
+ */
+const DRIVER_CANCEL_REASONS = [
+  'Passenger is not at the pickup point',
+  'Passenger asked me to cancel',
+  'I cannot reach the pickup point',
+  'Vehicle or mechanical problem',
+  'I do not feel safe taking this trip',
+] as const;
+
+function DriverCancelTrip({ rideId, onCancelled }: { rideId?: string; onCancelled: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState<string | null>(null);
+  const [other, setOther] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  // "Other" is only accepted once it says something — the API rejects a reason
+  // under three characters, and a blank one tells the passenger nothing.
+  const chosen = reason === 'Other' ? other.trim() : reason;
+  const ready = !!chosen && chosen.length >= 3;
+
+  const confirm = async () => {
+    if (!rideId || !ready || busy) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await api.driverRides.cancel(rideId, chosen);
+      onCancelled();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not cancel the trip. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!rideId) return null;
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="w-full rounded-2xl py-3 text-[14px] font-semibold"
+        style={{
+          background: 'transparent',
+          border: '1px solid rgba(248,113,113,.35)',
+          color: '#F87171',
+          fontFamily: PP,
+        }}
+      >
+        Cancel trip
+      </button>
+
+      {open && (
+        <div
+          className="absolute inset-0 z-50 flex flex-col justify-end"
+          style={{ background: 'rgba(2,8,20,.75)' }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Cancel trip"
+        >
+          <div
+            className="flex flex-col gap-3 rounded-t-3xl px-5 pb-8 pt-5"
+            style={{ background: NAVY_BASE, border: `1px solid ${BORDER}`, maxHeight: '85%' }}
+          >
+            <p className="text-[17px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
+              Cancel this trip?
+            </p>
+            <p className="text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
+              Your passenger is told the trip was cancelled and why. Frequent cancellations affect
+              your standing, so only cancel when you genuinely cannot complete the trip.
+            </p>
+
+            <div className="flex flex-col gap-2 overflow-y-auto">
+              {[...DRIVER_CANCEL_REASONS, 'Other'].map((r) => (
+                <button
+                  key={r}
+                  onClick={() => setReason(r)}
+                  className="rounded-2xl px-4 py-3 text-left text-[14px]"
+                  style={{
+                    background: reason === r ? 'rgba(43,172,82,.12)' : NAVY_SURFACE,
+                    border: `1px solid ${reason === r ? G2 : BORDER}`,
+                    color: '#fff',
+                    fontFamily: IT,
+                  }}
+                >
+                  {r}
+                </button>
+              ))}
+              {reason === 'Other' && (
+                <textarea
+                  value={other}
+                  onChange={(e) => setOther(e.target.value)}
+                  maxLength={500}
+                  rows={3}
+                  placeholder="Tell your passenger what happened"
+                  className="rounded-2xl px-4 py-3 text-[14px] outline-none"
+                  style={{
+                    background: NAVY_SURFACE,
+                    border: `1px solid ${BORDER}`,
+                    color: '#fff',
+                    fontFamily: IT,
+                    resize: 'none',
+                  }}
+                />
+              )}
+            </div>
+
+            {err && (
+              <p className="text-[12px]" style={{ fontFamily: IT, color: '#F87171' }} role="alert">
+                {err}
+              </p>
+            )}
+
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => setOpen(false)}
+                disabled={busy}
+                className="flex-1 rounded-2xl py-3 text-[14px] font-semibold"
+                style={{
+                  background: NAVY_SURFACE,
+                  border: `1px solid ${BORDER}`,
+                  color: '#fff',
+                  fontFamily: PP,
+                }}
+              >
+                Keep trip
+              </button>
+              <button
+                onClick={() => void confirm()}
+                disabled={!ready || busy}
+                className="flex-1 rounded-2xl py-3 text-[14px] font-semibold"
+                style={{
+                  background: ready && !busy ? '#DC2626' : 'rgba(220,38,38,.35)',
+                  color: '#fff',
+                  fontFamily: PP,
+                  cursor: ready && !busy ? 'pointer' : 'not-allowed',
+                }}
+              >
+                {busy ? 'Cancelling…' : 'Cancel trip'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 export function DriverNavToPickupScreen({
   onArrived,
   onBack,
+  onCancelled,
   rideId,
   onMessagePassenger,
 }: {
   onArrived: () => void;
   onBack: () => void;
+  onCancelled: () => void;
   rideId?: string;
   // A driver on the way to a pickup could not reach their passenger at all:
   // this card carried a hard-coded name and a call button wired to nothing.
@@ -3317,6 +3480,16 @@ export function DriverNavToPickupScreen({
   // and the address the driver is actually driving to.
   const [ride, setRide] = useState<DriverRideDto | null>(null);
   const passengerName = ride?.customerName ?? null;
+
+  // App.tsx holds the accepted ride in memory only, so a driver who reloads —
+  // or whose phone reaps the tab — arrives here with no rideId and every action
+  // on this screen silently does nothing. The trip fetched from
+  // /driver/rides/active is the same ride; use it when the handoff is missing.
+  const tripId = rideId ?? ride?.id;
+
+  // The approach drive is exactly when the stored position must keep moving:
+  // it feeds the passenger's map and the 50m gate waiting at the kerb.
+  useDriverLocationPing(tripId);
 
   useEffect(() => {
     api.driverRides
@@ -3331,7 +3504,7 @@ export function DriverNavToPickupScreen({
     if (busy) return;
     setBusy(true);
     try {
-      if (rideId) await api.driverRides.arrive(rideId);
+      if (tripId) await api.driverRides.arrive(tripId);
     } catch {
       /* best-effort — still advance so the driver isn't stuck */
     } finally {
@@ -3442,9 +3615,9 @@ export function DriverNavToPickupScreen({
           </div>
           {/* Chat, not a phone call. The driver never receives the passenger's
               number, so the only channel is the one that ends with the trip. */}
-          {onMessagePassenger && rideId && (
+          {onMessagePassenger && tripId && (
             <button
-              onClick={() => onMessagePassenger(rideId, passengerName)}
+              onClick={() => onMessagePassenger(tripId, passengerName)}
               aria-label="Message passenger"
               className="flex h-10 items-center justify-center gap-1.5 rounded-xl px-3"
               style={{
@@ -3465,6 +3638,7 @@ export function DriverNavToPickupScreen({
           onClick={handleArrived}
           loading={busy}
         />
+        <DriverCancelTrip rideId={tripId} onCancelled={onCancelled} />
       </div>
     </div>
   );
@@ -3476,10 +3650,12 @@ export function DriverNavToPickupScreen({
 export function DriverPassengerVerifyScreen({
   onVerified,
   onBack,
+  onCancelled,
   rideId,
 }: {
   onVerified: () => void;
   onBack: () => void;
+  onCancelled: () => void;
   rideId?: string;
 }) {
   const [otp, setOtp] = useState(['', '', '', '']);
@@ -3488,6 +3664,16 @@ export function DriverPassengerVerifyScreen({
   const [err, setErr] = useState<string | null>(null);
   const [ride, setRide] = useState<DriverRideDto | null>(null);
   const refs = useRef<(HTMLInputElement | null)[]>([]);
+
+  // Without this fallback a reload mid-trip left rideId undefined, and `submit`
+  // below skipped POST /start altogether while still showing "Passenger
+  // Verified! Starting trip…" — the driver drove a trip the backend never
+  // started, and no fare was ever recorded against it.
+  const tripId = rideId ?? ride?.id;
+
+  // The start gate measures the driver's last reported position against the
+  // pickup point, so this screen keeps reporting while the driver waits.
+  const heartbeat = useDriverLocationPing(tripId);
 
   useEffect(() => {
     api.driverRides
@@ -3509,7 +3695,25 @@ export function DriverPassengerVerifyScreen({
     setBusy(true);
     setErr(null);
     try {
-      if (rideId) await api.driverRides.start(rideId, code);
+      // The other half of the gate is distance, and it is measured against the
+      // last position this driver reported. Take a fix at the kerb and land it
+      // before asking to start, so the check reads where the car is now rather
+      // than where it was on the newest scheduled report.
+      const fix = await pushDriverLocationNow(tripId);
+      if (!fix) {
+        setErr(
+          'DrippleX cannot read your location, and it has to confirm you are at the pickup before the trip can start. Turn location on for DrippleX, then try again.',
+        );
+        setOtp(['', '', '', '']);
+        refs.current[0]?.focus();
+        return;
+      }
+      if (!tripId) {
+        setErr('We lost track of this trip. Go back and reopen it from your dashboard.');
+        setOtp(['', '', '', '']);
+        return;
+      }
+      await api.driverRides.start(tripId, code);
       setVerified(true);
       setTimeout(onVerified, 900);
     } catch (e) {
@@ -3601,16 +3805,35 @@ export function DriverPassengerVerifyScreen({
         </div>
         {err ? (
           <p
-            className="mb-8 text-center text-[12px]"
+            className="mb-3 text-center text-[12px]"
             style={{ fontFamily: IT, color: '#F87171' }}
             role="alert"
           >
             {err}
           </p>
         ) : (
-          <p className="mb-8 text-center text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
+          <p className="mb-3 text-center text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
             {busy ? 'Checking the code…' : "The code is on your passenger's screen."}
           </p>
+        )}
+
+        {/* The distance half of the start gate fails silently until the driver
+            taps Start. Say it while they are still waiting, not after. */}
+        {heartbeat.degraded && !verified && (
+          <p
+            className="mb-6 text-center text-[12px]"
+            style={{ fontFamily: IT, color: '#FBBF24' }}
+            role="status"
+          >
+            Your phone has stopped reporting your location. DrippleX has to confirm you are at the
+            pickup before the trip can start — check that location is on for DrippleX.
+          </p>
+        )}
+
+        {!verified && (
+          <div className="mb-8 mt-5">
+            <DriverCancelTrip rideId={tripId} onCancelled={onCancelled} />
+          </div>
         )}
 
         {verified && (
@@ -3658,6 +3881,10 @@ export function DriverTripInProgressScreen({
   const [now, setNow] = useState(() => Date.now());
   const [busy, setBusy] = useState(false);
   const completedRef = useRef(false);
+
+  // Keeps the passenger's map — and Operations' fleet view — following the car
+  // for the whole trip, not just up to the moment it was accepted.
+  useDriverLocationPing(rideId);
 
   useEffect(() => {
     api.driverRides

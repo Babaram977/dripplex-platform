@@ -1661,6 +1661,10 @@ function AppShell() {
         rideId={activeDriverRide?.id}
         onArrived={() => go('drvverify')}
         onBack={() => goBack('drvdash')}
+        onCancelled={() => {
+          setActiveDriverRide(null);
+          go('drvdash');
+        }}
         onMessagePassenger={(rideId, passengerName) => {
           setChat({
             context: 'ride',
@@ -1677,6 +1681,10 @@ function AppShell() {
         rideId={activeDriverRide?.id}
         onVerified={() => go('drvtripactive')}
         onBack={() => goBack('drvtopickup')}
+        onCancelled={() => {
+          setActiveDriverRide(null);
+          go('drvdash');
+        }}
       />
     ),
     drvtripactive: (

@@ -48,7 +48,13 @@ export interface RideOfferedEvent {
 let _socket: Socket | null = null;
 
 function getSocket(): Socket {
-  if (_socket?.connected) return _socket;
+  // `active` covers the window where the socket is opening or between
+  // reconnection attempts. Testing `connected` alone meant every call during
+  // that window built ANOTHER socket and abandoned the last one — invisible
+  // while the only callers fired once on mount, but a driver reporting
+  // position every fifteen seconds on a bad connection would stack them up.
+  if (_socket && (_socket.connected || _socket.active)) return _socket;
+  _socket?.disconnect();
 
   const token = auth.getAccessToken();
   _socket = io(`${SOCKET_URL}/rides`, {
