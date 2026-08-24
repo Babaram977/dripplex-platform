@@ -31,15 +31,22 @@ import type { Metadata } from 'next';
  *      sets out controller obligations, lawful bases and the right to erasure
  *      with exceptions. Retention periods and the erasure exceptions should be
  *      answered together, in the same review that unblocks account deletion.
- *   2. The CONTROLLER details below. A privacy policy has to say who the data
- *      controller legally is. The placeholders are deliberately obvious so this
- *      cannot ship half-filled by accident.
+ *   2. The controller's registered address. The legal entity is confirmed —
+ *      AFNAN HOMES LTD, RC 9387949 — but the address is still a placeholder,
+ *      deliberately obvious so this cannot ship half-filled by accident.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-/** Fill these in before publishing — see the note above. */
+/**
+ * The registered entity behind DrippleX. Confirmed by the founder 2026-08-24.
+ *
+ * `registeredAddress` is still outstanding — NDPA 2023 expects a data subject to
+ * be able to identify and reach the controller, and a company name alone does
+ * not do that. Left as an obvious placeholder rather than guessed.
+ */
 const CONTROLLER = {
-  legalName: '[REGISTERED COMPANY NAME]',
+  legalName: 'AFNAN HOMES LTD',
+  rcNumber: 'RC 9387949',
   registeredAddress: '[REGISTERED ADDRESS]',
   privacyEmail: 'privacy@dripplex.com',
 } as const;
@@ -166,10 +173,11 @@ export default function PrivacyPage(): React.JSX.Element {
 
       <Section title="Who is responsible for your data">
         <p>
-          {CONTROLLER.legalName} (&ldquo;DrippleX&rdquo;, &ldquo;we&rdquo;) is the data controller
-          for the personal data described in this policy, and is registered at{' '}
-          {CONTROLLER.registeredAddress}.
+          DrippleX is operated by <strong>{CONTROLLER.legalName}</strong> ({CONTROLLER.rcNumber}), a
+          company registered in Nigeria. {CONTROLLER.legalName} (&ldquo;DrippleX&rdquo;,
+          &ldquo;we&rdquo;) is the data controller for the personal data described in this policy.
         </p>
+        <p>Registered address: {CONTROLLER.registeredAddress}.</p>
         <p>
           For any question about this policy, or to exercise any of the rights described below,
           contact{' '}

@@ -155,8 +155,9 @@ Required:
       splash is not framed in a colour the artwork does not contain
 - [ ] Store listing copy
 - [~] Privacy policy URL — `https://www.dripplex.com/privacy` is live and now carries a full
-  policy grounded in DPX-MOBILE-003. **Blocked on Nigerian legal review and on the
-  registered controller name/address**, which are placeholders in the page source
+  policy grounded in DPX-MOBILE-003. Controller entity confirmed 2026-08-24:
+  **AFNAN HOMES LTD, RC 9387949**. **Still blocked on Nigerian legal review and on the
+  registered address**, which remains a placeholder in the page source
 - [~] Support URL — `https://www.dripplex.com/contact` is live (HTTP 200); confirm it is the
   address you want reviewers and users to write to
 - [ ] Marketing website URL
