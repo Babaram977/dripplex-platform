@@ -533,76 +533,6 @@ function LiveOrderCard({ onTrack }: { onTrack: (orderId: string) => void }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AI CARD
-// ─────────────────────────────────────────────────────────────────────────────
-// GAP: no AI backend exists. "Ask Drip" is not a live assistant — no chat/AI
-// endpoint is wired. This card is an honest "coming soon" entry to the sheet;
-// the fake typewriter + "Online" status were removed.
-function AICard({ onAsk }: { onAsk: () => void }) {
-  return (
-    <div
-      className="mx-5 mb-5 overflow-hidden rounded-3xl"
-      style={{
-        background: 'linear-gradient(135deg,#0A1628 0%,#0E1F38 100%)',
-        border: '1.5px solid rgba(43,172,82,.22)',
-        boxShadow: '0 4px 32px rgba(43,172,82,.08)',
-      }}
-    >
-      <div className="p-4">
-        <div className="mb-3.5 flex items-center gap-3">
-          <div
-            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl"
-            style={{
-              background: `linear-gradient(135deg,${G0},${G3})`,
-              boxShadow: `0 6px 20px rgba(43,172,82,.38)`,
-            }}
-          >
-            <span style={{ fontSize: 20 }}>✨</span>
-          </div>
-          <div>
-            <p
-              className="text-[15px] font-bold leading-tight"
-              style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
-            >
-              Ask Drip
-            </p>
-            <p className="text-[10px]" style={{ color: G3, fontFamily: "'Inter',sans-serif" }}>
-              Coming soon
-            </p>
-          </div>
-        </div>
-
-        <div
-          className="mb-4 rounded-2xl px-4 py-3"
-          style={{ background: 'rgba(43,172,82,.07)', border: '1px solid rgba(43,172,82,.14)' }}
-        >
-          <p
-            className="text-[12px] leading-relaxed"
-            style={{ color: 'rgba(255,255,255,.72)', fontFamily: "'Inter',sans-serif" }}
-          >
-            Our AI assistant isn't available yet. Soon you'll be able to ask Drip about products,
-            rides and orders.
-          </p>
-        </div>
-
-        <button
-          onClick={onAsk}
-          className="active:scale-97 flex h-[46px] w-full items-center justify-center gap-2 rounded-2xl text-[14px] font-semibold transition-all"
-          style={{
-            background: `linear-gradient(135deg,${G0} 0%,${G2} 55%,${G3} 100%)`,
-            color: '#FFF',
-            fontFamily: "'Poppins',sans-serif",
-            boxShadow: `0 8px 24px rgba(43,172,82,.3)`,
-          }}
-        >
-          Learn more
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // PARTNER ENTRY CARD — prominent in-feed "Become a Partner" entry point.
 // Founder decision: the partner hub gets a prominent in-app entry (it used to be
 // buried under the Driver App). Tapping opens the partner choice hub (Sell /
@@ -1801,7 +1731,15 @@ export function HomeScreen({
           <>
             {onTrackOrder && <LiveOrderCard onTrack={onTrackOrder} />}
             <LiveOffers />
-            <AICard onAsk={() => setShowAI(true)} />
+            {/* The Ask Drip card used to sit here, and the identical one was
+                removed from the marketplace in the same breath — this half was
+                missed. Both opened setShowAI(true), which is exactly what the
+                floating button below already does, so the card was a second
+                door to the same room that cost a large block of the first
+                screen to announce a feature that does not exist yet. The
+                floating button is the entry point. (Founder decision,
+                2026-08-24: Drip answering customers comes after the app is
+                stable.) */}
             {onBecomePartner && <PartnerEntryCard onOpen={onBecomePartner} />}
             <Categories active={activeCategory} onPick={setQuery} />
             <Merchants
