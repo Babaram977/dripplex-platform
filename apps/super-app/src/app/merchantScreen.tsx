@@ -5334,10 +5334,15 @@ function RoomsPage() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
+          // On a phone the button and the subtitle were competing for the same
+          // strip of screen and the subtitle ran underneath it. Wrapping lets
+          // the button drop to its own line instead.
+          flexWrap: 'wrap',
+          gap: 10,
           marginBottom: 14,
         }}
       >
-        <div>
+        <div style={{ minWidth: 0, flex: '1 1 200px' }}>
           <div style={{ fontFamily: PP, fontSize: 17, fontWeight: 700, color: WHITE }}>Rooms</div>
           <div style={{ fontFamily: IT, fontSize: 12, color: MUTED, marginTop: 2 }}>
             Your room types, and the nights each one is for sale
