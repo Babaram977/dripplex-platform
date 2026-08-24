@@ -37,6 +37,7 @@ import {
   ACTIVE_DRIVER_RIDE_STATUSES,
   CANCELLABLE_RIDE_STATUSES,
   DRIVER_LOCATION_MAX_AGE_MS,
+  OPERATIONS_CANCELLABLE_RIDE_STATUSES,
   RIDE_AUDIT_ACTIONS,
   RIDE_DISPATCH_MAX_RADIUS_METERS,
   RIDE_PROMOTION_REFERENCE_TYPE,
@@ -45,7 +46,12 @@ import {
 import { toDriverAvailabilityDto, toRideDto } from './ride.mapper';
 
 import type { ListRidesQueryDto } from './dto/list-rides-query.dto';
-import type { CancelRideDto, EstimateRideFareDto, RequestRideDto } from './dto/request-ride.dto';
+import type {
+  CancelRideByOperationsDto,
+  CancelRideDto,
+  EstimateRideFareDto,
+  RequestRideDto,
+} from './dto/request-ride.dto';
 import type { UpdateDriverAvailabilityDto } from './dto/update-driver-availability.dto';
 import type {
   CustomerRideDto,
@@ -531,6 +537,116 @@ export class RidesService {
     }
 
     return toRideDto(updated);
+  }
+
+  /**
+   * Operations cancels a ride on someone else's behalf.
+   *
+   * This exists because rides strand. A driver marks ARRIVED and their phone
+   * dies; a trip goes IN_PROGRESS and nobody ever completes it. The row then
+   * sits forever holding that driver's `activeRideCount` at 1, so dispatch
+   * stops offering them work, and neither party can clear it — the passenger's
+   * cancel button is gone by that point and the driver's app is what failed.
+   * Until now the console's answer was "the ride lifecycle is owned by the
+   * rider/driver apps", which left the only people who could see the problem
+   * unable to touch it.
+   *
+   * Three things separate this from `cancelRide`:
+   *  - no ownership check — the operator is a third party by definition;
+   *  - `OPERATIONS`, not `CUSTOMER` or `SYSTEM`, so the row records that a
+   *    human support decision ended the trip rather than the expiry sweep;
+   *  - the reason is mandatory, and the driver's availability is released with
+   *    a guarded `updateMany` rather than a bare `update`. A ride reaching this
+   *    path is already an anomaly, so the release must not itself fail on a
+   *    missing availability row or drive the counter negative.
+   *
+   * No money moves. Settlement runs only on completion, so cancelling an
+   * IN_PROGRESS ride charges the passenger nothing and pays the driver nothing
+   * — a refund is a separate, separately audited act.
+   */
+  public async cancelRideAsOperations(
+    operatorId: string,
+    rideId: string,
+    dto: CancelRideByOperationsDto,
+    context: AuditContext,
+  ): Promise<RideDto> {
+    const ride = await this.prisma.ride.findUnique({ where: { id: rideId } });
+    if (!ride) {
+      throw new NotFoundDomainException('Ride not found');
+    }
+    if (!OPERATIONS_CANCELLABLE_RIDE_STATUSES.includes(ride.status)) {
+      throw new ValidationDomainException(
+        `Ride cannot be cancelled from status ${ride.status} — it has already finished.`,
+      );
+    }
+
+    const previousStatus = ride.status;
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const next = await tx.ride.update({
+        where: { id: ride.id },
+        data: {
+          status: RideStatus.CANCELLED,
+          cancelledAt: new Date(),
+          cancelledBy: RideCancelledBy.OPERATIONS,
+          cancellationReason: dto.reason,
+        },
+      });
+      if (ride.driverId) {
+        await tx.driverAvailability.updateMany({
+          where: { driverId: ride.driverId, activeRideCount: { gt: 0 } },
+          data: { activeRideCount: { decrement: 1 } },
+        });
+      }
+      return next;
+    });
+
+    await this.auditService.record(
+      RIDE_AUDIT_ACTIONS.CANCELLED,
+      { ...context, userId: operatorId },
+      {
+        resource: 'ride',
+        resourceId: ride.id,
+        metadata: {
+          cancelledBy: 'OPERATIONS',
+          reason: dto.reason,
+          previousStatus,
+          customerId: ride.customerId,
+          driverId: ride.driverId,
+        },
+      },
+    );
+
+    // Both sides are told, because neither of them asked for this.
+    await this.notifyCustomer(ride.customerId, updated.id);
+    if (ride.driverId) {
+      await this.notifyDriver(ride.driverId, updated.id);
+    }
+    this.events.publishToRide(updated.id, 'ride:status', {
+      rideId: updated.id,
+      status: updated.status,
+      driverId: updated.driverId,
+    });
+    if (ride.driverId) {
+      await this.eventBus.emit(DOMAIN_EVENTS.RIDE_CANCELLED, {
+        driverId: ride.driverId,
+        rideId: updated.id,
+      });
+    }
+
+    return toRideDto(updated);
+  }
+
+  private async notifyCustomer(customerId: string, rideId: string): Promise<void> {
+    const customer = await this.prisma.user.findUnique({ where: { id: customerId } });
+    if (!customer?.email) {
+      return;
+    }
+    await this.notifications.notifyRideLifecycle({
+      audience: 'customer',
+      email: customer.email,
+      event: 'ride_cancelled',
+      rideId,
+    });
   }
 
   private async notifyDriver(driverId: string, rideId: string): Promise<void> {

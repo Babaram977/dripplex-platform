@@ -308,6 +308,170 @@ describe('RidesService', () => {
     await expect(service.getOwnRide(customerId, randomUUID())).rejects.toThrow('Ride not found');
   });
 
+  // ── Operations-initiated cancellation ─────────────────────────────────────
+  // The case this exists for: a ride strands mid-lifecycle, holding the
+  // driver's activeRideCount at 1 so dispatch stops offering them work, and
+  // neither the passenger nor the driver can clear it.
+  describe('cancelRideAsOperations', () => {
+    const operatorId = randomUUID();
+
+    it('cancels a stranded ARRIVED ride and attributes it to OPERATIONS', async () => {
+      if (!databaseAvailable) return;
+
+      const ride = await service.requestRide(
+        customerId,
+        { rideType: 'ECONOMY', ...pickup, ...dropoff },
+        context,
+      );
+      const offer = await prisma.rideOffer.findFirstOrThrow({ where: { rideId: ride.id } });
+      await dispatchService.acceptOffer(driverId, offer.id, context);
+      await prisma.ride.update({
+        where: { id: ride.id },
+        data: { status: 'ARRIVED', arrivedAt: new Date() },
+      });
+
+      const cancelled = await service.cancelRideAsOperations(
+        operatorId,
+        ride.id,
+        { reason: 'Driver phone died at the kerb; passenger rebooked' },
+        context,
+      );
+
+      expect(cancelled.status).toBe('CANCELLED');
+      // Not SYSTEM: a human ended this trip, and the row has to say so.
+      expect(cancelled.cancelledBy).toBe('OPERATIONS');
+      expect(cancelled.cancellationReason).toBe(
+        'Driver phone died at the kerb; passenger rebooked',
+      );
+    });
+
+    it('releases the driver so dispatch can offer them work again', async () => {
+      if (!databaseAvailable) return;
+
+      const ride = await service.requestRide(
+        customerId,
+        { rideType: 'ECONOMY', ...pickup, ...dropoff },
+        context,
+      );
+      const offer = await prisma.rideOffer.findFirstOrThrow({ where: { rideId: ride.id } });
+      await dispatchService.acceptOffer(driverId, offer.id, context);
+      expect(
+        (await prisma.driverAvailability.findUniqueOrThrow({ where: { driverId } }))
+          .activeRideCount,
+      ).toBe(1);
+
+      const emitSpy = jest.spyOn(eventBus, 'emit');
+      await service.cancelRideAsOperations(
+        operatorId,
+        ride.id,
+        { reason: 'Stranded ride cleared by Operations' },
+        context,
+      );
+
+      expect(
+        (await prisma.driverAvailability.findUniqueOrThrow({ where: { driverId } }))
+          .activeRideCount,
+      ).toBe(0);
+      expect(emitSpy).toHaveBeenCalledWith(
+        DOMAIN_EVENTS.RIDE_CANCELLED,
+        expect.objectContaining({ driverId, rideId: ride.id }),
+      );
+    });
+
+    it('cancels an IN_PROGRESS ride, which the passenger and driver cannot', async () => {
+      if (!databaseAvailable) return;
+
+      const ride = await service.requestRide(
+        customerId,
+        { rideType: 'ECONOMY', ...pickup, ...dropoff },
+        context,
+      );
+      const offer = await prisma.rideOffer.findFirstOrThrow({ where: { rideId: ride.id } });
+      await dispatchService.acceptOffer(driverId, offer.id, context);
+      await prisma.ride.update({
+        where: { id: ride.id },
+        data: { status: 'IN_PROGRESS', startedAt: new Date() },
+      });
+
+      // The passenger's own cancel is still refused at this status — that is
+      // the gap Operations is filling, not a rule it is relaxing for everyone.
+      await expect(service.cancelRide(customerId, ride.id, {}, context)).rejects.toThrow(
+        'Ride cannot be cancelled from status IN_PROGRESS',
+      );
+
+      const cancelled = await service.cancelRideAsOperations(
+        operatorId,
+        ride.id,
+        { reason: 'Trip never completed; driver unreachable for two hours' },
+        context,
+      );
+      expect(cancelled.status).toBe('CANCELLED');
+      expect(cancelled.cancelledBy).toBe('OPERATIONS');
+    });
+
+    it('does not release the driver twice when a ride is already cancelled', async () => {
+      if (!databaseAvailable) return;
+
+      const ride = await service.requestRide(
+        customerId,
+        { rideType: 'ECONOMY', ...pickup, ...dropoff },
+        context,
+      );
+      const offer = await prisma.rideOffer.findFirstOrThrow({ where: { rideId: ride.id } });
+      await dispatchService.acceptOffer(driverId, offer.id, context);
+      await service.cancelRideAsOperations(
+        operatorId,
+        ride.id,
+        { reason: 'Cleared by Operations' },
+        context,
+      );
+
+      await expect(
+        service.cancelRideAsOperations(
+          operatorId,
+          ride.id,
+          { reason: 'Cleared by Operations' },
+          context,
+        ),
+      ).rejects.toThrow('Ride cannot be cancelled from status CANCELLED');
+      expect(
+        (await prisma.driverAvailability.findUniqueOrThrow({ where: { driverId } }))
+          .activeRideCount,
+      ).toBe(0);
+    });
+
+    it('refuses to cancel a completed ride — that is a refund, not a cancellation', async () => {
+      if (!databaseAvailable) return;
+
+      const ride = await service.requestRide(
+        customerId,
+        { rideType: 'ECONOMY', ...pickup, ...dropoff },
+        context,
+      );
+      await prisma.ride.update({
+        where: { id: ride.id },
+        data: { status: 'COMPLETED', completedAt: new Date() },
+      });
+
+      await expect(
+        service.cancelRideAsOperations(operatorId, ride.id, { reason: 'Wrong button' }, context),
+      ).rejects.toThrow('Ride cannot be cancelled from status COMPLETED');
+    });
+
+    it('throws for an unknown ride id', async () => {
+      if (!databaseAvailable) return;
+
+      await expect(
+        service.cancelRideAsOperations(
+          operatorId,
+          randomUUID(),
+          { reason: 'No such ride' },
+          context,
+        ),
+      ).rejects.toThrow('Ride not found');
+    });
+  });
+
   it('updates driver availability, creating a row if none exists', async () => {
     if (!databaseAvailable) return;
 

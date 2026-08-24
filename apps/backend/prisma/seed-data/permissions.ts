@@ -203,7 +203,11 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
     description:
       'Update own profile (name, photo, languages, service areas, driving experience) and view own performance stats',
   },
-  { code: 'admin:rides:support', description: 'Review and resolve ride problem reports' },
+  {
+    code: 'admin:rides:support',
+    description:
+      'Ride support desk: review and resolve ride problem reports, refund a trip, and cancel a stranded ride from the Operations console',
+  },
   {
     code: 'operations:live:read',
     description:

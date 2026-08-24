@@ -681,6 +681,10 @@ export interface RideOperationsAnalyticsDto {
    * has zero real call sites anywhere in the codebase (confirmed in both
    * the Slice 3 and Slice 4 reality audits), so this is always 0 today. */
   cancelledBySystem: number;
+  /** Rides an Operations agent cancelled from the console (a stranded ride
+   * cleared by the support desk). Separate from `cancelledBySystem` so the
+   * desk's own volume is visible rather than reading as automated expiry. */
+  cancelledByOperations: number;
   byRideType: RideTypeBreakdownDto[];
   demandSeries: DemandSeriesPointDto[];
   /** Raw `Ride.cancellationReason` text, grouped and counted, capped — see

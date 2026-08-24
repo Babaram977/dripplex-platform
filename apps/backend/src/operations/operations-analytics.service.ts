@@ -480,6 +480,12 @@ export class OperationsAnalyticsService {
       // call sites anywhere in the codebase (Slice 3 + Slice 4 reality
       // audits both confirmed this). Not a bug in this query.
       cancelledBySystem: rides.filter((ride) => ride.cancelledBy === RideCancelledBy.SYSTEM).length,
+      // Rides an operator cancelled from this console. Counted separately from
+      // SYSTEM on purpose — otherwise every stranded ride the support desk
+      // clears would read as an automated expiry, and the desk's own volume
+      // would be invisible in its own analytics.
+      cancelledByOperations: rides.filter((ride) => ride.cancelledBy === RideCancelledBy.OPERATIONS)
+        .length,
       byRideType: [...byTypeMap.values()],
       demandSeries,
       topCancellationReasons,

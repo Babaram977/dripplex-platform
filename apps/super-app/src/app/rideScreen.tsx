@@ -457,8 +457,19 @@ function MapCanvas({ variant = 'default', progress = 0 }: { variant?: string; pr
   const totalLen = 280;
   const filled = Math.round(totalLen * progress);
 
+  // The canvas was pinned to 390×320 — the Figma frame width — so on any
+  // handset wider than 390pt the map stopped short of the right edge and left
+  // a black strip beside it, and in the 200px container it overflowed. The
+  // viewBox keeps the drawing's coordinate system; `slice` scales it to cover
+  // whatever box it is given and crops the excess, the way a real map behaves.
+  // Every caller sets its own container height, which is now what decides how
+  // tall the map is.
   return (
-    <svg width="390" height="320" viewBox="0 0 390 320" style={{ display: 'block' }}>
+    <svg
+      viewBox="0 0 390 320"
+      preserveAspectRatio="xMidYMid slice"
+      style={{ display: 'block', width: '100%', height: '100%' }}
+    >
       {/* map bg */}
       <rect width="390" height="320" fill="#0D1B2E" />
       {/* grid lines */}

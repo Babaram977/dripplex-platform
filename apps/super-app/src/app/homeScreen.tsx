@@ -562,10 +562,15 @@ function PartnerEntryCard({
     { icon: '🚗', label: 'Drive', count: personaCounts?.drive },
     { icon: '🛵', label: 'Deliver', count: personaCounts?.deliver },
   ];
+  // `w-full` alongside `mx-5` made this card 100% of the parent *plus* 40px of
+  // margin, so it ran off the right edge of the screen — the left inset looked
+  // correct and the right edge was simply gone. A block-level element already
+  // fills the space its margins leave it, so the width is dropped rather than
+  // fought with.
   return (
     <button
       onClick={handleTap}
-      className="mx-5 mb-5 block w-full overflow-hidden rounded-3xl text-left transition-transform"
+      className="mx-5 mb-5 block overflow-hidden rounded-3xl text-left transition-transform"
       style={{
         background: 'linear-gradient(135deg,#0A1628 0%,#0E1F38 100%)',
         border: '1.5px solid rgba(43,172,82,.28)',

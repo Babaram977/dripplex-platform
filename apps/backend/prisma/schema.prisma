@@ -1946,6 +1946,11 @@ enum RideCancelledBy {
   CUSTOMER
   DRIVER
   SYSTEM
+  /// An Operations agent cancelled the ride from the console. Deliberately
+  /// distinct from SYSTEM: SYSTEM is the automatic offer-expiry sweep, and
+  /// conflating a human support decision with a background job is exactly
+  /// what makes a cancellation audit trail useless.
+  OPERATIONS
 }
 
 enum RidePaymentMethod {

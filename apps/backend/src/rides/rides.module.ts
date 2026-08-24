@@ -13,6 +13,7 @@ import { WalletModule } from '../wallet/wallet.module';
 import { AdminRidePaymentsController } from './controllers/admin-ride-payments.controller';
 import { AdminRidePricingController } from './controllers/admin-ride-pricing.controller';
 import { AdminRideReportsController } from './controllers/admin-ride-reports.controller';
+import { AdminRidesController } from './controllers/admin-rides.controller';
 import { CustomerRidesController } from './controllers/customer-rides.controller';
 import { DriverRidesController } from './controllers/driver-rides.controller';
 import { PublicRideShareController } from './controllers/public-ride-share.controller';
@@ -50,6 +51,7 @@ import { RidesService } from './rides.service';
     AdminRideReportsController,
     AdminRidePaymentsController,
     AdminRidePricingController,
+    AdminRidesController,
     PublicRideShareController,
   ],
   providers: [

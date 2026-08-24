@@ -15,7 +15,9 @@ import { DEFAULT_ANALYTICS_RANGE, type AnalyticsRangeValue } from '@/lib/analyti
  * in — the same distinction Slice 3's ride detail view established.
  * `cancelledBySystem` is shown as-is: it is genuinely always 0 today
  * (`RideCancelledBy.SYSTEM` has zero real call sites platform-wide), and
- * this screen reports that honestly rather than hiding the row. */
+ * this screen reports that honestly rather than hiding the row.
+ * `cancelledByOperations` is the support desk clearing a stranded ride from
+ * the console — a human decision, kept off the System row for that reason. */
 export default function RideOperationsAnalyticsPage(): React.JSX.Element {
   const [range, setRange] = React.useState<AnalyticsRangeValue>(DEFAULT_ANALYTICS_RANGE);
   const query = useRideOperationsAnalytics(range);
@@ -73,6 +75,7 @@ export default function RideOperationsAnalyticsPage(): React.JSX.Element {
                     { label: 'Customer', value: formatCount(data.cancelledByCustomer) },
                     { label: 'Driver', value: formatCount(data.cancelledByDriver) },
                     { label: 'System', value: formatCount(data.cancelledBySystem) },
+                    { label: 'Operations', value: formatCount(data.cancelledByOperations) },
                   ]}
                 />
               </CardContent>

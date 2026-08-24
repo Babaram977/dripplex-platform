@@ -274,8 +274,15 @@ function DriverMapCanvas({ variant = 'default' }: { variant?: string }) {
   const midX = (c.carX + c.pinX) / 2;
   const midY = (c.carY + c.pinY) / 2 - 50;
 
+  // Same fix as the passenger map: 390×280 was the Figma frame width, so the
+  // driver's map stopped short of the right edge on any wider handset. Fills
+  // its container and crops, instead of drawing at one fixed size.
   return (
-    <svg width="390" height="280" viewBox="0 0 390 280" style={{ display: 'block' }}>
+    <svg
+      viewBox="0 0 390 280"
+      preserveAspectRatio="xMidYMid slice"
+      style={{ display: 'block', width: '100%', height: '100%' }}
+    >
       <rect width="390" height="280" fill="#0D1B2E" />
       {[0, 1, 2, 3, 4, 5, 6].map((i) => (
         <line
@@ -2739,8 +2746,9 @@ export function DriverDashboardScreen({
     >
       <DStatusBar />
       <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
-        {/* Map */}
-        <div className="relative flex-shrink-0">
+        {/* Map. The height lives here now — the canvas fills whatever box it
+            is given rather than drawing at one fixed size. */}
+        <div className="relative flex-shrink-0" style={{ height: 280 }}>
           <DriverMapCanvas variant={online ? 'default' : 'default'} />
           {/* Header overlay */}
           <div className="absolute left-0 right-0 top-0 px-5 pt-1">
@@ -3077,8 +3085,8 @@ export function DriverIncomingRequestScreen({
     >
       <DStatusBar />
 
-      {/* Map */}
-      <div className="relative flex-shrink-0">
+      {/* Map. The height lives here now — see the canvas comment. */}
+      <div className="relative flex-shrink-0" style={{ height: 280 }}>
         <DriverMapCanvas variant="topickup" />
         {/* Notification dot */}
         <div

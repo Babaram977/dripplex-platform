@@ -50,10 +50,27 @@ function PinDots({ filled, error }: { filled: number; error?: boolean }) {
   );
 }
 
+/**
+ * The keypad you type a wallet PIN into, so it is sized to be typed on.
+ *
+ * It used to cap at 320px and then spend 48px of that on its own horizontal
+ * padding, leaving keys about 82pt wide and 60pt tall marooned in the middle
+ * of a large screen — small and compacted, well under the 44pt minimum you
+ * want for something people tap six times in a row under pressure.
+ *
+ * Now it takes the width it is given up to a sane maximum and the keys are
+ * taller, so the pad grows with the handset instead of staying a postage stamp
+ * on a big one. The keys stay pills rather than becoming squares: squares at
+ * this width would push the pad past 450pt tall and start clipping the
+ * "Forgot PIN?" link on a smaller screen.
+ */
 function PinPad({ onDigit, onDelete }: { onDigit: (d: string) => void; onDelete: () => void }) {
   const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del'];
   return (
-    <div className="grid grid-cols-3 gap-3 px-6" style={{ maxWidth: 320, margin: '0 auto' }}>
+    <div
+      className="grid w-full grid-cols-3 gap-3"
+      style={{ maxWidth: 340, margin: '0 auto', touchAction: 'manipulation' }}
+    >
       {keys.map((k, i) => {
         if (k === '') return <div key={i} />;
         const isDel = k === 'del';
@@ -63,12 +80,12 @@ function PinPad({ onDigit, onDelete }: { onDigit: (d: string) => void; onDelete:
             onClick={() => (isDel ? onDelete() : onDigit(k))}
             className="flex items-center justify-center transition-all active:scale-90"
             style={{
-              height: 60,
-              borderRadius: 18,
+              height: 70,
+              borderRadius: 20,
               background: 'rgba(255,255,255,.05)',
               border: `1px solid ${BORDER}`,
               fontFamily: "'Poppins',sans-serif",
-              fontSize: isDel ? 20 : 24,
+              fontSize: isDel ? 24 : 28,
               fontWeight: 600,
               color: '#FFF',
             }}

@@ -112,3 +112,16 @@ export class CancelRideDto {
   @MaxLength(500)
   public reason?: string;
 }
+
+/**
+ * Operations-initiated cancellation. The reason is mandatory here, unlike the
+ * passenger's: a third party ending someone else's trip — and, on an
+ * IN_PROGRESS ride, writing off the driver's fare — has to say why, because
+ * that sentence is the only account the driver and the passenger will ever get.
+ */
+export class CancelRideByOperationsDto {
+  @IsString()
+  @MinLength(5)
+  @MaxLength(500)
+  public reason!: string;
+}
