@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { CAT_CHIPS } from './marketplaceScreen';
 import {
   G0,
@@ -1572,6 +1572,17 @@ export function HomeScreen({
   const [foundProducts, setFoundProducts] = useState<ProductSummaryDto[]>([]);
   const [searchNonce, setSearchNonce] = useState(0);
 
+  /** The results panel is open from the first keystroke, not from the moment
+   *  the debounce settles — otherwise typing looks like nothing happened. */
+  const searchOpen = query.trim().length > 0 || term.length > 0;
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+  // Starting a search while scrolled halfway down the feed would leave the
+  // results above the viewport. Send the body back to the top when the panel
+  // opens, so the answer is where the eye already is.
+  useEffect(() => {
+    if (searchOpen) bodyRef.current?.scrollTo({ top: 0 });
+  }, [searchOpen]);
+
   const [greeting] = useState(() => timeGreeting());
 
   // Debounce the box into the committed term.
@@ -1718,6 +1729,7 @@ export function HomeScreen({
 
       {/* Scrollable body */}
       <div
+        ref={bodyRef}
         className="flex-1 overflow-y-auto"
         style={{
           scrollbarWidth: 'none',
@@ -1735,32 +1747,41 @@ export function HomeScreen({
             this page simpler; Wallet still shows the balance, income, spend
             and the Send / Receive / Top Up / Pay actions. */}
 
-        {/* Quick actions 4×2 grid */}
-        <div className="mb-1">
-          <Row title="Quick Actions" />
-          <QuickActions onSelect={handleQuickAction} />
-        </div>
+        {/* Searching replaces the browse sections with results, and the
+            results go FIRST — directly under the search box.
 
-        {/* Searching swaps the browse sections for results. The browse order is
-            left exactly as the Figma has it, so the default screen — the one
-            that gets compared against the design — does not move. Categories
-            ride along with the results because they are how you change the
-            search; hiding them would strand you inside a result set. */}
-        {term ? (
+            They used to sit below Quick Actions and Categories, which is two
+            full rows of tiles. On a phone with the keyboard up that put them
+            off the bottom of the screen: you typed, the search ran, results
+            arrived, and the screen appeared to do nothing. Quick Actions is a
+            browse affordance and has no business competing with an answer you
+            asked for, so it is hidden while searching.
+
+            The panel opens on the first keystroke rather than waiting for the
+            350ms debounce to settle, so typing produces an immediate
+            skeleton instead of a blank pause. Categories stay, below the
+            results, because they are how you change the search — hiding them
+            would strand you inside a result set. */}
+        {searchOpen ? (
           <>
-            <Categories active={null} onPick={(c) => onCategory?.(c)} />
             <SearchResults
-              term={term}
-              busy={searching}
+              term={query.trim() || term}
+              busy={searching || query.trim() !== term}
               error={searchError}
               merchants={foundMerchants}
               products={foundProducts}
               onStore={onStore}
               onRetry={() => setSearchNonce((n) => n + 1)}
             />
+            <Categories active={null} onPick={(c) => onCategory?.(c)} />
           </>
         ) : (
           <>
+            {/* Quick actions 4×2 grid */}
+            <div className="mb-1">
+              <Row title="Quick Actions" />
+              <QuickActions onSelect={handleQuickAction} />
+            </div>
             {onTrackOrder && <LiveOrderCard onTrack={onTrackOrder} />}
             <LiveOffers />
             {/* The Ask Drip card used to sit here, and the identical one was
@@ -1797,10 +1818,14 @@ export function HomeScreen({
             parked on the "More" tile. A FAB is expected to float over content
             in passing — what it must never do is permanently hide something,
             and that is what too small a spacer caused. */}
-        <div style={{ height: FAB_BOTTOM + FAB_SIZE + 16 }} />
+        <div style={{ height: searchOpen ? 104 : FAB_BOTTOM + FAB_SIZE + 16 }} />
       </div>
 
-      <FAB onPress={() => setShowAI(true)} />
+      {/* Hidden while searching. With the keyboard up the visible page is
+          about 400px, and the button parks itself over the first result's
+          price — a control for a feature that does not exist yet, covering an
+          answer the customer asked for. */}
+      {!searchOpen && <FAB onPress={() => setShowAI(true)} />}
       <BottomNav active={navTab} onChange={handleNav} />
       {showAI && <AISheet onClose={() => setShowAI(false)} />}
     </div>
