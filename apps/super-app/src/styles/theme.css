@@ -150,6 +150,68 @@
      */
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
+
+    /**
+     * The difference between a web page and an app, on a real handset.
+     *
+     * None of this was here. Each line below is one thing a phone does to a
+     * web page that it does not do to an app, and each one is individually
+     * noticeable:
+     *
+     * `overscroll-behavior: none` — stops the whole document rubber-banding
+     * past its ends, and stops Android's pull-to-refresh firing when someone
+     * swipes down on a screen that is already at the top. A native app does
+     * not reload itself because you scrolled up.
+     *
+     * `-webkit-tap-highlight-color: transparent` — Android paints a grey box
+     * over every element you touch. It is the single loudest "this is a
+     * website" signal on the platform. Every tappable surface in this app
+     * already has its own `active:scale` feedback, so the flash is pure noise
+     * on top of an animation that already answered the tap.
+     *
+     * `font-smoothing` — the app is light text on a dark navy ground, where
+     * subpixel rendering fattens glyphs and reads as slightly blurry.
+     * Greyscale antialiasing is what native dark UI uses.
+     */
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    /* Repeated here because the property does not inherit and Safari applies
+       the document-level scroll to body, not html. */
+    overscroll-behavior: none;
+  }
+
+  /**
+   * Removes the ~300ms wait a browser holds before dispatching a tap, in case
+   * the tap turns out to be a double-tap-to-zoom. Nothing in this app wants
+   * double-tap zoom, and a third of a second between touch and response is
+   * the gap that makes an interface feel like it is thinking. Pinch-zoom is
+   * unaffected, so accessibility is intact.
+   */
+  a,
+  button,
+  [role='button'],
+  input,
+  select,
+  textarea,
+  label {
+    touch-action: manipulation;
+  }
+
+  /**
+   * Long-pressing a button on Android or iOS raises the text-selection
+   * callout over it. That is right for content and wrong for chrome, so it is
+   * disabled on controls only — every piece of readable text stays
+   * selectable.
+   */
+  button,
+  [role='button'] {
+    -webkit-user-select: none;
+    user-select: none;
   }
 
   h1 {
