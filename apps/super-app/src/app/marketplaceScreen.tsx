@@ -986,7 +986,7 @@ function NearbyBusinesses({ onStore }: { onStore?: (merchantId: string) => void 
             merchants.map((m, i) => {
               const isOpen = m.isOpenNow !== false;
               const rating = m.rating?.average ?? 0;
-              const dist = m.distanceKm != null ? `${m.distanceKm.toFixed(1)} km` : '—';
+              const dist = m.distanceKm != null ? `${m.distanceKm.toFixed(1)} km` : '';
               const icon = categoryIcon(m.category);
               return (
                 <div
@@ -996,11 +996,29 @@ function NearbyBusinesses({ onStore }: { onStore?: (merchantId: string) => void 
                     borderBottom: i < merchants.length - 1 ? `1px solid ${BORDER}` : 'none',
                   }}
                 >
+                  {/* The merchant's own mark, at the size the row already
+                      used. Every business here rendered the same generic
+                      category glyph, so four shops in a row were four
+                      identical grey squares — nothing to recognise a place by.
+                      Merchants upload a logo and the row never read it.
+                      object-contain, so a wide wordmark is not cropped square;
+                      the category icon is the fallback where no logo is on
+                      file, and initials would be indistinguishable at 42px. */}
                   <div
-                    className="flex h-[42px] w-[42px] flex-shrink-0 items-center justify-center rounded-2xl"
+                    className="flex h-[42px] w-[42px] flex-shrink-0 items-center justify-center overflow-hidden rounded-2xl"
                     style={{ background: 'rgba(255,255,255,.06)' }}
                   >
-                    <Icon name={icon} size={20} color="rgba(255,255,255,.6)" />
+                    {m.logoUrl != null && m.logoUrl !== '' ? (
+                      <ImageWithFallback
+                        src={m.logoUrl}
+                        alt={m.businessName}
+                        className="h-full w-full object-contain"
+                        fallbackEmoji="\u{1F6CD}\u{FE0F}"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <Icon name={icon} size={20} color="rgba(255,255,255,.6)" />
+                    )}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
@@ -1022,10 +1040,18 @@ function NearbyBusinesses({ onStore }: { onStore?: (merchantId: string) => void 
                         </span>
                       )}
                     </div>
+                    {/* Only what is real. This line read "★ — —" on every
+                        row: a star with no rating, a distance that was itself
+                        a dash, and a delivery fee dash on the right. Three
+                        placeholders stacked up to look like a broken record
+                        rather than a shop. A row with nothing to say now says
+                        nothing. */}
                     <div className="flex items-center gap-2">
-                      <span className="text-[9.5px] font-bold" style={{ color: '#FBBF24' }}>
-                        {rating > 0 ? `★ ${rating.toFixed(1)}` : '★ —'}
-                      </span>
+                      {rating > 0 && (
+                        <span className="text-[9.5px] font-bold" style={{ color: '#FBBF24' }}>
+                          ★ {rating.toFixed(1)}
+                        </span>
+                      )}
                       {/* Was "📍 {dist} · ⏱ —". Both were bitmap emoji, which
                           blur at 3x and draw differently per OS, and the ⏱
                           was labelling a dash. The distance speaks for itself
@@ -1041,13 +1067,11 @@ function NearbyBusinesses({ onStore }: { onStore?: (merchantId: string) => void 
                     </div>
                   </div>
                   <div className="flex flex-shrink-0 flex-col items-end gap-1">
-                    {/* GAP: backend has no delivery fee → "—". */}
-                    <p
-                      className="text-[10px] font-semibold"
-                      style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
-                    >
-                      —
-                    </p>
+                    {/* GAP unchanged: the backend has no per-merchant delivery
+                        fee. It used to print "—" for it on every row, which is
+                        not information — it is a column reserving space for
+                        something that does not exist. Gone until there is a
+                        fee to show. */}
                     <button
                       onClick={() => isOpen && onStore?.(m.id)}
                       className="h-7 rounded-xl px-3 text-[10px] font-semibold transition-all active:scale-95"
