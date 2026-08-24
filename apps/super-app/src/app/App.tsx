@@ -213,7 +213,25 @@ import { installUnlockListener } from '../lib/sound';
 // reached from a phone routinely — reported as the ops link being unusable on
 // Android. The `dx-desktop-*` classes let GLOBAL_STYLES drop the window below
 // 480px, the same way `dx-phone-*` drops the bezel.
-function DesktopFrame({ children }: { children: React.ReactNode }) {
+function DesktopFrame({
+  children,
+  fullBleed = false,
+}: {
+  children: React.ReactNode;
+  /** The console IS the page — no window, no traffic lights, no fake URL bar.
+   *  What an operator gets at ops.dripplex.com. */
+  fullBleed?: boolean;
+}) {
+  if (fullBleed) {
+    return (
+      <div
+        className="relative flex flex-col overflow-hidden"
+        style={{ width: '100dvw', height: '100dvh', background: NAVY_BASE }}
+      >
+        {children}
+      </div>
+    );
+  }
   return (
     <div
       className="dx-desktop-frame relative flex flex-col overflow-hidden"
@@ -474,15 +492,35 @@ const PORTAL_ROUTES: Record<string, Screen> = {
 };
 
 /**
- * The portal a visitor asked for, from the path (/ops) or the query (?app=ops).
- * The query form exists for hosts that do not rewrite unknown paths to
- * index.html; this one does (`serve -s`), so /ops is the link to share.
+ * Hosts that ARE a portal, so the root of the domain opens it.
+ *
+ * ops.dripplex.com serves this app now (founder decision, 2026-08-24: the
+ * standalone operations-console is not the console we want; the super-app's
+ * is). Without this, ops.dripplex.com would open the customer splash and the
+ * console would sit at ops.dripplex.com/ops — a portal address that does not
+ * lead to the portal.
+ *
+ * Matched on the leading label, so ops.dripplex.com and any ops.* staging host
+ * behave alike, and app.dripplex.com is untouched.
+ */
+function portalFromHostname(): Screen | null {
+  const label = window.location.hostname.toLowerCase().split('.')[0];
+  return PORTAL_ROUTES[label] ?? null;
+}
+
+/**
+ * The portal a visitor asked for, from the host (ops.dripplex.com), the path
+ * (/ops) or the query (?app=ops). The query form exists for hosts that do not
+ * rewrite unknown paths to index.html; this one does (`serve -s`), so /ops is
+ * the link to share.
  */
 function initialScreenFromLocation(): Screen | null {
   if (typeof window === 'undefined') return null;
   const fromPath = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
   const fromQuery = (new URLSearchParams(window.location.search).get('app') ?? '').toLowerCase();
-  return PORTAL_ROUTES[fromPath] ?? PORTAL_ROUTES[fromQuery] ?? null;
+  // Path and query first: on an ops host, /merchant should still reach the
+  // merchant portal rather than being overruled by the hostname.
+  return PORTAL_ROUTES[fromPath] ?? PORTAL_ROUTES[fromQuery] ?? portalFromHostname();
 }
 
 /**
@@ -2206,6 +2244,11 @@ function AppShell() {
     return window.sessionStorage.getItem('dx.designPreview') !== '0';
   }, []);
 
+  // The console fills the browser when it is the thing being used, and keeps
+  // its window when it is being previewed. A production build never shows the
+  // navigator, so an operator always gets the full page.
+  const consoleFullBleed = isDesktop && !showDesignPreview;
+
   return (
     <div
       className="flex gap-0 overflow-hidden"
@@ -2354,8 +2397,17 @@ function AppShell() {
       )}
 
       {/* ── Canvas ───────────────────────────────────────────────────────── */}
-      <div className="dx-canvas flex min-h-0 flex-1 items-center justify-center overflow-auto py-3">
+      {/* The canvas exists to centre a device mock on a desk-sized screen. A
+          full-bleed console has no mock to centre, and the padding and centring
+          would fight a 100dvh child — so the padding goes and the child is
+          allowed to stretch. */}
+      <div
+        className={`dx-canvas flex min-h-0 flex-1 justify-center overflow-auto ${
+          consoleFullBleed ? 'items-stretch' : 'items-center py-3'
+        }`}
+      >
         <div
+          className={consoleFullBleed ? 'flex min-w-0 flex-1' : undefined}
           style={{
             opacity: fading ? 0 : 1,
             transform: fading ? 'scale(.97)' : 'scale(1)',
@@ -2365,7 +2417,14 @@ function AppShell() {
           {/* Keyed on the screen so leaving a broken screen clears the error;
               staying on it keeps the message until "Try again" is tapped. */}
           {isDesktop ? (
-            <DesktopFrame>
+            /* The 1100px window with macOS traffic lights is a preview of a
+               console, and it stays one inside the Design Preview navigator —
+               that is what the navigator is for. Reached as a real
+               destination, the console is the page: founder decision,
+               2026-08-24, "only the console dashboard should on full web
+               page". A production build never shows the navigator, so
+               operators always get the full page. */
+            <DesktopFrame fullBleed={consoleFullBleed}>
               <ScreenErrorBoundary key={screen} onGoHome={() => go(homeScreenForSession())}>
                 {screens[screen]}
               </ScreenErrorBoundary>
