@@ -426,76 +426,6 @@ function CategoryChips({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AI DISCOVERY BANNER
-// ─────────────────────────────────────────────────────────────────────────────
-// GAP: no AI backend exists. "Ask Drip" is not a live shopping assistant — no
-// AI/search-chat endpoint is wired. Honest "coming soon" entry; the fake
-// typewriter + "Live" status were removed.
-function AIDiscovery({ onAsk }: { onAsk: () => void }) {
-  return (
-    <div
-      className="mx-5 mb-5 overflow-hidden rounded-3xl"
-      style={{
-        background: 'linear-gradient(135deg,#0A1628 0%,#0E1F38 100%)',
-        border: '1.5px solid rgba(43,172,82,.2)',
-        boxShadow: '0 4px 32px rgba(43,172,82,.07)',
-      }}
-    >
-      <div className="p-4">
-        <div className="mb-3 flex items-center gap-2.5">
-          <div
-            className="flex h-9 w-9 items-center justify-center rounded-2xl"
-            style={{
-              background: `linear-gradient(135deg,${G0},${G3})`,
-              boxShadow: `0 4px 16px rgba(43,172,82,.35)`,
-            }}
-          >
-            <span style={{ fontSize: 18 }}>✨</span>
-          </div>
-          <div>
-            <p
-              className="text-[14px] font-bold"
-              style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
-            >
-              Ask Drip
-            </p>
-            <p className="text-[10px]" style={{ color: G3, fontFamily: "'Inter',sans-serif" }}>
-              Coming soon
-            </p>
-          </div>
-        </div>
-
-        <div
-          className="mb-3.5 rounded-xl px-3.5 py-3"
-          style={{ background: 'rgba(43,172,82,.07)', border: '1px solid rgba(43,172,82,.14)' }}
-        >
-          <p
-            className="text-[11.5px] leading-relaxed"
-            style={{ color: 'rgba(255,255,255,.7)', fontFamily: "'Inter',sans-serif" }}
-          >
-            Our AI shopping assistant isn't available yet. Soon you'll be able to describe what you
-            need and let Drip find it.
-          </p>
-        </div>
-
-        <button
-          onClick={onAsk}
-          className="active:scale-97 flex h-11 w-full items-center justify-center gap-2 rounded-2xl text-[13px] font-semibold transition-all"
-          style={{
-            background: `linear-gradient(135deg,${G0},${G2} 55%,${G3})`,
-            color: '#FFF',
-            fontFamily: "'Poppins',sans-serif",
-            boxShadow: `0 6px 22px rgba(43,172,82,.28)`,
-          }}
-        >
-          Learn more
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // TODAY'S DEALS SLIDER
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1056,7 +986,7 @@ function NearbyBusinesses({ onStore }: { onStore?: (merchantId: string) => void 
             merchants.map((m, i) => {
               const isOpen = m.isOpenNow !== false;
               const rating = m.rating?.average ?? 0;
-              const dist = m.distanceKm != null ? `${m.distanceKm.toFixed(1)} km` : '—';
+              const dist = m.distanceKm != null ? `${m.distanceKm.toFixed(1)} km` : '';
               const icon = categoryIcon(m.category);
               return (
                 <div
@@ -1066,11 +996,29 @@ function NearbyBusinesses({ onStore }: { onStore?: (merchantId: string) => void 
                     borderBottom: i < merchants.length - 1 ? `1px solid ${BORDER}` : 'none',
                   }}
                 >
+                  {/* The merchant's own mark, at the size the row already
+                      used. Every business here rendered the same generic
+                      category glyph, so four shops in a row were four
+                      identical grey squares — nothing to recognise a place by.
+                      Merchants upload a logo and the row never read it.
+                      object-contain, so a wide wordmark is not cropped square;
+                      the category icon is the fallback where no logo is on
+                      file, and initials would be indistinguishable at 42px. */}
                   <div
-                    className="flex h-[42px] w-[42px] flex-shrink-0 items-center justify-center rounded-2xl"
+                    className="flex h-[42px] w-[42px] flex-shrink-0 items-center justify-center overflow-hidden rounded-2xl"
                     style={{ background: 'rgba(255,255,255,.06)' }}
                   >
-                    <Icon name={icon} size={20} color="rgba(255,255,255,.6)" />
+                    {m.logoUrl != null && m.logoUrl !== '' ? (
+                      <ImageWithFallback
+                        src={m.logoUrl}
+                        alt={m.businessName}
+                        className="h-full w-full object-contain"
+                        fallbackEmoji="\u{1F6CD}\u{FE0F}"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <Icon name={icon} size={20} color="rgba(255,255,255,.6)" />
+                    )}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
@@ -1092,10 +1040,18 @@ function NearbyBusinesses({ onStore }: { onStore?: (merchantId: string) => void 
                         </span>
                       )}
                     </div>
+                    {/* Only what is real. This line read "★ — —" on every
+                        row: a star with no rating, a distance that was itself
+                        a dash, and a delivery fee dash on the right. Three
+                        placeholders stacked up to look like a broken record
+                        rather than a shop. A row with nothing to say now says
+                        nothing. */}
                     <div className="flex items-center gap-2">
-                      <span className="text-[9.5px] font-bold" style={{ color: '#FBBF24' }}>
-                        {rating > 0 ? `★ ${rating.toFixed(1)}` : '★ —'}
-                      </span>
+                      {rating > 0 && (
+                        <span className="text-[9.5px] font-bold" style={{ color: '#FBBF24' }}>
+                          ★ {rating.toFixed(1)}
+                        </span>
+                      )}
                       {/* Was "📍 {dist} · ⏱ —". Both were bitmap emoji, which
                           blur at 3x and draw differently per OS, and the ⏱
                           was labelling a dash. The distance speaks for itself
@@ -1111,13 +1067,11 @@ function NearbyBusinesses({ onStore }: { onStore?: (merchantId: string) => void 
                     </div>
                   </div>
                   <div className="flex flex-shrink-0 flex-col items-end gap-1">
-                    {/* GAP: backend has no delivery fee → "—". */}
-                    <p
-                      className="text-[10px] font-semibold"
-                      style={{ color: MUTED, fontFamily: "'Inter',sans-serif" }}
-                    >
-                      —
-                    </p>
+                    {/* GAP unchanged: the backend has no per-merchant delivery
+                        fee. It used to print "—" for it on every row, which is
+                        not information — it is a column reserving space for
+                        something that does not exist. Gone until there is a
+                        fee to show. */}
                     <button
                       onClick={() => isOpen && onStore?.(m.id)}
                       className="h-7 rounded-xl px-3 text-[10px] font-semibold transition-all active:scale-95"
@@ -1602,7 +1556,14 @@ export function MarketplaceScreen({
         }}
       >
         <CategoryChips active={activecat} onChange={setActivecat} />
-        <AIDiscovery onAsk={() => setShowAI(true)} />
+        {/* The "Ask Drip" banner used to sit here. It opened the same AISheet
+            the floating button already opens — two doors to one room — and it
+            spent roughly a third of the first screen announcing that a feature
+            does not exist yet, above the merchants people actually came for.
+            The floating button is the entry point; it costs nothing until Drip
+            can answer, and it is already on every screen. (Founder decision,
+            2026-08-24: teaching Drip to respond comes after the app is
+            stable.) */}
         <FeaturedMerchants active={activecat} onStore={onStore} />
         <TrendingProducts />
         <NearbyBusinesses onStore={onStore} />

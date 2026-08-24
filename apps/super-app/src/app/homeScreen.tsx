@@ -176,6 +176,7 @@ function HomeStatusBar() {
 function Header({
   greeting,
   name,
+  initial,
   onNotif,
   onProfile,
   query,
@@ -183,7 +184,16 @@ function Header({
   onSubmit,
 }: {
   greeting: string;
+  /** The whole greeting line, e.g. "Hi, Sameer" — this is a sentence. */
   name: string;
+  /** The avatar letter, from the PERSON's name.
+   *
+   *  It used to be derived from `name` with `.charAt(0)`, and `name` is the
+   *  greeting sentence — so the avatar read the first letter of "Hi", and
+   *  every customer on every screen saw the same "H". A signed-in user with
+   *  no name fell back to "Hello", which is also H, so nothing ever revealed
+   *  the mistake. Passed in separately now, from the user record. */
+  initial: string;
   onNotif: () => void;
   onProfile: () => void;
   query: string;
@@ -270,7 +280,7 @@ function Header({
               className="text-[17px] font-bold text-white"
               style={{ fontFamily: "'Poppins',sans-serif" }}
             >
-              {(name.trim().charAt(0) || 'D').toUpperCase()}
+              {initial}
             </span>
           </button>
         </div>
@@ -1736,6 +1746,7 @@ export function HomeScreen({
           const n = auth.greetingName();
           return n ? `Hi, ${n}` : 'Hello';
         })()}
+        initial={(auth.greetingName()?.trim().charAt(0) || 'D').toUpperCase()}
         onNotif={onNotifications}
         onProfile={onAccount}
         query={query}
