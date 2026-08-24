@@ -89,7 +89,12 @@ export type RideStatus =
   | 'CANCELLED'
   | 'NO_DRIVERS_FOUND';
 
-export type RideCancelledBy = 'CUSTOMER' | 'DRIVER' | 'SYSTEM';
+/**
+ * `SYSTEM` is the automatic offer-expiry sweep; `OPERATIONS` is a human on the
+ * support desk cancelling a stranded ride from the console. They are kept
+ * apart so a cancellation trail says which of the two ended the trip.
+ */
+export type RideCancelledBy = 'CUSTOMER' | 'DRIVER' | 'SYSTEM' | 'OPERATIONS';
 
 export type RidePaymentMethod = 'WALLET' | 'PAYSTACK' | 'FLUTTERWAVE' | 'OPAY' | 'CASH';
 export type RidePaymentStatus = 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED';

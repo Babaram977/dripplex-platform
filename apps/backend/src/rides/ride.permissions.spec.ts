@@ -1,7 +1,12 @@
 import { ROLE_PERMISSION_GRANTS } from '../../prisma/seed-data/role-permissions';
 
 import { AdminRidePricingController } from './controllers/admin-ride-pricing.controller';
-import { CANCELLABLE_RIDE_STATUSES, RIDE_PERMISSIONS } from './ride.constants';
+import { AdminRidesController } from './controllers/admin-rides.controller';
+import {
+  CANCELLABLE_RIDE_STATUSES,
+  OPERATIONS_CANCELLABLE_RIDE_STATUSES,
+  RIDE_PERMISSIONS,
+} from './ride.constants';
 
 describe('RIDE_PERMISSIONS', () => {
   it('defines the customer ride self-service permission', () => {
@@ -56,5 +61,40 @@ describe('CANCELLABLE_RIDE_STATUSES', () => {
     expect(CANCELLABLE_RIDE_STATUSES).not.toContain('IN_PROGRESS');
     expect(CANCELLABLE_RIDE_STATUSES).not.toContain('COMPLETED');
     expect(CANCELLABLE_RIDE_STATUSES).not.toContain('CANCELLED');
+  });
+});
+
+describe('OPERATIONS_CANCELLABLE_RIDE_STATUSES', () => {
+  it('covers everything the passenger can cancel, plus a trip already under way', () => {
+    for (const status of CANCELLABLE_RIDE_STATUSES) {
+      expect(OPERATIONS_CANCELLABLE_RIDE_STATUSES).toContain(status);
+    }
+    // The stranded-ride case: nobody else can clear an IN_PROGRESS trip.
+    expect(OPERATIONS_CANCELLABLE_RIDE_STATUSES).toContain('IN_PROGRESS');
+  });
+
+  it('still refuses a finished ride — that is a refund, not a cancellation', () => {
+    expect(OPERATIONS_CANCELLABLE_RIDE_STATUSES).not.toContain('COMPLETED');
+    expect(OPERATIONS_CANCELLABLE_RIDE_STATUSES).not.toContain('CANCELLED');
+    expect(OPERATIONS_CANCELLABLE_RIDE_STATUSES).not.toContain('NO_DRIVERS_FOUND');
+  });
+});
+
+describe('operations ride cancellation', () => {
+  it('guards the cancel endpoint with the ride support permission', () => {
+    // Read the decorator metadata, not the source: an endpoint that lets a
+    // third party end someone else's trip must never silently lose its guard.
+    const required: unknown = Reflect.getMetadata('permissions', AdminRidesController);
+
+    expect(required).toEqual([RIDE_PERMISSIONS.ADMIN_SUPPORT]);
+  });
+
+  it('grants it to the operations and admin desks, and to nobody else', () => {
+    for (const role of ['operations_staff', 'administrator', 'super_administrator']) {
+      expect(ROLE_PERMISSION_GRANTS[role]).toContain(RIDE_PERMISSIONS.ADMIN_SUPPORT);
+    }
+    for (const role of ['customer', 'merchant', 'rider', 'driver']) {
+      expect(ROLE_PERMISSION_GRANTS[role]).not.toContain(RIDE_PERMISSIONS.ADMIN_SUPPORT);
+    }
   });
 });

@@ -202,6 +202,7 @@ describe('OperationsAnalyticsService', () => {
     expect(result.noDriversFoundRate).toBeCloseTo(0.25);
     expect(result.cancelledByCustomer).toBe(2);
     expect(result.cancelledBySystem).toBe(0);
+    expect(result.cancelledByOperations).toBe(0);
     expect(result.byRideType).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ rideType: 'ECONOMY', requested: 1, completed: 1 }),

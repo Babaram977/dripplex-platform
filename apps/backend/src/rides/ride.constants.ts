@@ -196,6 +196,27 @@ export const CANCELLABLE_RIDE_STATUSES: readonly string[] = [
   'ARRIVED',
 ];
 
+/**
+ * What Operations may cancel — everything the passenger may cancel, plus
+ * IN_PROGRESS.
+ *
+ * IN_PROGRESS is the state a ride actually strands in: the driver's phone dies
+ * mid-trip, nobody completes the trip, and the row holds that driver's
+ * `activeRideCount` at 1 so dispatch never offers them another ride again.
+ * Neither party can clear it — the customer's cancel button is gone by then and
+ * the driver's app is what failed.
+ *
+ * The consequence is deliberate and one-way: settlement only ever runs on
+ * COMPLETE (RideTripService.completeTrip → RidePaymentService), so cancelling
+ * an IN_PROGRESS ride charges the passenger nothing and pays the driver
+ * nothing. That is why the operator's reason is mandatory and why the
+ * cancellation is attributed to OPERATIONS rather than SYSTEM.
+ */
+export const OPERATIONS_CANCELLABLE_RIDE_STATUSES: readonly string[] = [
+  ...CANCELLABLE_RIDE_STATUSES,
+  'IN_PROGRESS',
+];
+
 /** Statuses that count as "the driver currently has a trip in progress" —
  * used to recover the active ride reference after a page refresh. */
 export const ACTIVE_DRIVER_RIDE_STATUSES: RideStatus[] = [

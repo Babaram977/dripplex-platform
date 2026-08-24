@@ -1749,6 +1749,14 @@ function PageTrips() {
   const [rides, setRides] = useState<AdminLiveRideDto[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [rowMsg, setRowMsg] = useState<string | null>(null);
+  // The ride an operator is part-way through cancelling, plus the reason they
+  // are typing. Cancelling is never one click — ending someone else's trip
+  // gets a confirmation step and a written reason, both of which are shown
+  // back to the passenger and the driver.
+  const [cancelling, setCancelling] = useState<AdminLiveRideDto | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelBusy, setCancelBusy] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -1762,6 +1770,25 @@ function PageTrips() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const submitCancel = useCallback(async () => {
+    if (!cancelling || cancelReason.trim().length < 5) return;
+    setCancelBusy(true);
+    setCancelError(null);
+    try {
+      await api.admin.cancelRide(cancelling.rideId, cancelReason.trim());
+      setRowMsg(
+        `Ride ${cancelling.rideId.slice(0, 8)} cancelled. ${cancelling.customerName}${cancelling.driverName ? ` and ${cancelling.driverName}` : ''} have been notified; no fare was charged.`,
+      );
+      setCancelling(null);
+      setCancelReason('');
+      await load();
+    } catch (e: unknown) {
+      setCancelError((e as { message?: string }).message ?? 'Could not cancel this ride.');
+    } finally {
+      setCancelBusy(false);
+    }
+  }, [cancelling, cancelReason, load]);
 
   const liveRides = rides ?? [];
   const filtered = liveRides.filter((t) => {
@@ -1808,6 +1835,89 @@ function PageTrips() {
           style={{ marginLeft: 'auto', width: 240 }}
         />
       </div>
+      {/* Cancel confirmation. Deliberately a step of its own: the operator has
+          to name the ride they are ending and say why before the button that
+          ends it becomes live. */}
+      {cancelling && (
+        <Card style={{ padding: '14px 16px', border: `1px solid ${C_ERR}` }}>
+          <p
+            style={{
+              fontSize: 12.5,
+              color: WHITE,
+              fontWeight: 700,
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            Cancel ride {cancelling.rideId.slice(0, 8)}?
+          </p>
+          <p
+            style={{
+              marginTop: 4,
+              fontSize: 11.5,
+              color: MUTED,
+              fontFamily: 'Inter, sans-serif',
+              lineHeight: 1.5,
+            }}
+          >
+            {cancelling.customerName}
+            {cancelling.driverName ? ` ↔ ${cancelling.driverName}` : ' · no driver assigned'} ·{' '}
+            {LIVE_RIDE_STATUS_LABEL[cancelling.status]}. Both are notified and no fare is charged
+            {cancelling.status === 'IN_PROGRESS'
+              ? ' — this trip is under way, so the driver earns nothing for it.'
+              : '.'}{' '}
+            Your reason is recorded against your account.
+          </p>
+          <input
+            className="dx-input"
+            autoFocus
+            placeholder="Why is Operations cancelling this ride?"
+            value={cancelReason}
+            onChange={(e) => setCancelReason(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void submitCancel();
+              if (e.key === 'Escape') setCancelling(null);
+            }}
+            style={{ marginTop: 10, width: '100%' }}
+          />
+          <div style={{ display: 'flex', gap: 6, marginTop: 10, alignItems: 'center' }}>
+            <Btn
+              label={cancelBusy ? 'Cancelling…' : 'Cancel this ride'}
+              small
+              color={C_ERR}
+              disabled={cancelBusy || cancelReason.trim().length < 5}
+              onClick={() => void submitCancel()}
+            />
+            <Btn
+              label="Keep the ride"
+              small
+              outline
+              color={MUTED}
+              disabled={cancelBusy}
+              onClick={() => {
+                setCancelling(null);
+                setCancelError(null);
+              }}
+            />
+            {cancelReason.trim().length < 5 && (
+              <span style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+                A reason of at least 5 characters is required.
+              </span>
+            )}
+          </div>
+          {cancelError && (
+            <div
+              style={{
+                marginTop: 8,
+                fontSize: 11.5,
+                color: C_ERR,
+                fontFamily: 'Inter, sans-serif',
+              }}
+            >
+              {cancelError}
+            </div>
+          )}
+        </Card>
+      )}
       {/* Table */}
       <Card style={{ padding: '14px 16px' }}>
         <table
@@ -1893,11 +2003,12 @@ function PageTrips() {
                         small
                         outline
                         color={C_ERR}
-                        onClick={() =>
-                          setRowMsg(
-                            'Cancelling a ride from Operations isn’t available — the ride lifecycle is owned by the rider/driver apps (read-only here).',
-                          )
-                        }
+                        onClick={() => {
+                          setRowMsg(null);
+                          setCancelError(null);
+                          setCancelReason('');
+                          setCancelling(t);
+                        }}
                       />
                     </div>
                   </td>

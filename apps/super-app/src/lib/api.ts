@@ -3274,6 +3274,16 @@ export const api = {
         rides: AdminLiveRideDto[];
         summary: RideQueueSummaryDto;
       }>('GET', '/operations/rides'),
+    /**
+     * Cancel a stranded ride from the Operations desk. Behind
+     * `admin:rides:support` — the same permission as ride refunds and problem
+     * reports. The reason is mandatory: it is the only account the passenger
+     * and the driver will get, and it lands in the audit trail against the
+     * operator who typed it. Allowed up to and including IN_PROGRESS; a
+     * completed ride is refunded, not cancelled.
+     */
+    cancelRide: (rideId: string, reason: string) =>
+      dx<RideDto>('POST', `/admin/rides/${rideId}/cancel`, { reason }),
     // Recent operations activity feed for the Dashboard.
     getActivityFeed: () =>
       dx<{ items: AdminActivityFeedItemDto[] }>('GET', '/operations/dashboard/activity-feed'),
