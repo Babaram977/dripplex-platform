@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+
+import { useNarrowViewport } from './useNarrowViewport';
 import { api, uploadFile } from '../lib/api';
 import { auth, endSession } from '../lib/auth';
 import { MERCHANT_CATEGORY_LABEL, type MerchantCategory } from '../lib/api';
@@ -76,6 +78,16 @@ if (typeof document !== 'undefined' && !document.getElementById(STYLE_ID)) {
     .mx-input { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); border-radius: 8px; color: #fff; font-family: Inter, sans-serif; font-size: 13px; padding: 9px 12px; outline: none; width: 100%; box-sizing: border-box; transition: border-color .15s; }
     .mx-input:focus { border-color: rgba(43,172,82,.5); }
     .mx-input::placeholder { color: rgba(255,255,255,.28); }
+    /* Below 900px the sidebar is a drawer and the page body can scroll
+       sideways, so a row wider than the screen is pannable rather than
+       clipped by the shell's overflow:hidden. Stat tiles reflow instead —
+       they are small and self-contained, and panning to read one would be
+       absurd. Same split the Operations console makes. */
+    @media (max-width: 900px) {
+      .mx-shell-body .mx-scroll { overflow-x: auto; }
+      .mx-split { grid-template-columns: 1fr !important; }
+      .mx-nav { padding-top: 11px !important; padding-bottom: 11px !important; }
+    }
     .mx-select { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); border-radius: 8px; color: #fff; font-family: Inter, sans-serif; font-size: 13px; padding: 9px 12px; outline: none; cursor: pointer; width: 100%; box-sizing: border-box; color-scheme: dark; }
     .mx-select option { background: #0F1A2E; color: #fff; }
     .mx-toggle { appearance: none; width: 38px; height: 22px; background: rgba(255,255,255,.12); border-radius: 11px; cursor: pointer; position: relative; transition: background .2s; flex-shrink: 0; }
@@ -561,6 +573,9 @@ function MxSidebar({
   isHotel = false,
   pendingBookingCount = 0,
   onLogout,
+  narrow = false,
+  open = false,
+  onClose,
 }: {
   page: MerchantPage;
   onNav: (p: MerchantPage) => void;
@@ -570,6 +585,10 @@ function MxSidebar({
   isHotel?: boolean;
   pendingBookingCount?: number;
   onLogout?: () => void;
+  /** Below 900px the sidebar stops being a column and becomes a drawer. */
+  narrow?: boolean;
+  open?: boolean;
+  onClose?: () => void;
 }) {
   const initials = (businessName ?? 'MX').slice(0, 2).toUpperCase();
   return (
@@ -582,6 +601,20 @@ function MxSidebar({
         borderRight: `1px solid ${BORDER}`,
         display: 'flex',
         flexDirection: 'column',
+        ...(narrow
+          ? {
+              position: 'fixed' as const,
+              top: 0,
+              left: 0,
+              bottom: 0,
+              zIndex: 70,
+              height: '100dvh',
+              overflowY: 'auto' as const,
+              transform: open ? 'translateX(0)' : 'translateX(-100%)',
+              transition: 'transform .22s ease',
+              boxShadow: open ? '0 0 40px rgba(0,0,0,.6)' : 'none',
+            }
+          : {}),
       }}
     >
       <div style={{ padding: '14px 14px 12px', borderBottom: `1px solid ${BORDER}` }}>
@@ -661,7 +694,11 @@ function MxSidebar({
             <div
               key={item.page}
               className="mx-nav"
-              onClick={() => onNav(item.page)}
+              onClick={() => {
+                onNav(item.page);
+                // In drawer mode the nav is covering the page it just opened.
+                onClose?.();
+              }}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -716,7 +753,11 @@ function MxSidebar({
             <div
               key={item.page}
               className="mx-nav"
-              onClick={() => onNav(item.page)}
+              onClick={() => {
+                onNav(item.page);
+                // In drawer mode the nav is covering the page it just opened.
+                onClose?.();
+              }}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -803,10 +844,13 @@ function MxHeader({
   page,
   orderBadge,
   initials,
+  onMenu,
 }: {
   page: MerchantPage;
   orderBadge: number;
   initials?: string;
+  /** Supplied only in drawer mode — the only route back to the navigation. */
+  onMenu?: () => void;
 }) {
   const labels: Record<MerchantPage, string> = {
     dashboard: 'Dashboard',
@@ -835,7 +879,52 @@ function MxHeader({
         gap: 12,
       }}
     >
-      <div style={{ flex: 1, fontFamily: PP, fontWeight: 600, fontSize: 14, color: WHITE }}>
+      {onMenu && (
+        <button
+          onClick={onMenu}
+          aria-label="Open navigation"
+          style={{
+            flexShrink: 0,
+            width: 32,
+            height: 32,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 4,
+            borderRadius: 8,
+            background: 'rgba(255,255,255,.05)',
+            border: `1px solid ${BORDER}`,
+            cursor: 'pointer',
+          }}
+        >
+          {[0, 1, 2].map((i) => (
+            <span
+              key={i}
+              style={{
+                display: 'block',
+                width: 14,
+                height: 1.5,
+                background: WHITE,
+                borderRadius: 1,
+              }}
+            />
+          ))}
+        </button>
+      )}
+      <div
+        style={{
+          flex: 1,
+          minWidth: 0,
+          fontFamily: PP,
+          fontWeight: 600,
+          fontSize: 14,
+          color: WHITE,
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}
+      >
         {labels[page]}
       </div>
       {orderBadge > 0 && (
@@ -1107,7 +1196,7 @@ function DashboardPage({
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: '1fr 1fr 1fr 1fr',
+          gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))',
           gap: 12,
           marginBottom: 20,
         }}
@@ -1150,7 +1239,13 @@ function DashboardPage({
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))',
+          gap: 16,
+        }}
+      >
         <MxCard>
           <SectionHead
             title="Recent Orders"
@@ -1912,7 +2007,10 @@ function OrderDetailPage({ orderId, onBack }: { orderId: string; onBack: () => v
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 16 }}>
+      <div
+        className="mx-split"
+        style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 16 }}
+      >
         <div>
           <MxCard style={{ marginBottom: 14 }}>
             <SectionHead title="Order Items" />
@@ -2533,7 +2631,13 @@ function ProductsPage() {
           <MxBtn label="+ Add your first product" variant="primary" onClick={openAdd} />
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))',
+            gap: 12,
+          }}
+        >
           {products.map((p) => (
             <MxCard
               key={p.id}
@@ -3056,7 +3160,13 @@ function StoreSetupPage({
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))',
+          gap: 16,
+        }}
+      >
         <MxCard>
           <SectionHead title="Business Information" />
           <ReadOnlyField label="Store / Business Name" value={business.businessName} />
@@ -4299,7 +4409,7 @@ function EarningsPage() {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: '1fr 1fr 1fr 1fr',
+          gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))',
           gap: 12,
           marginBottom: 20,
         }}
@@ -4405,6 +4515,7 @@ function EarningsPage() {
               style={{
                 display: 'grid',
                 gridTemplateColumns: '1.5fr 1fr 1fr 1fr 1fr 100px',
+                minWidth: 720,
                 gap: 0,
                 padding: '8px 16px',
                 background: NAVY_SURFACE,
@@ -4432,6 +4543,7 @@ function EarningsPage() {
                 style={{
                   display: 'grid',
                   gridTemplateColumns: '1.5fr 1fr 1fr 1fr 1fr 100px',
+                  minWidth: 720,
                   gap: 0,
                   padding: '11px 16px',
                   borderBottom: i < settlements.length - 1 ? `1px solid ${BORDER}` : 'none',
@@ -4807,6 +4919,13 @@ export function MerchantPortalScreen({
   });
   const [page, setPage] = useState<MerchantPage>(initialPage);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const narrow = useNarrowViewport();
+  const [navOpen, setNavOpen] = useState(false);
+  // Rotating back to landscape, or opening on a laptop, must not strand a
+  // drawer over a layout that no longer has one.
+  useEffect(() => {
+    if (!narrow) setNavOpen(false);
+  }, [narrow]);
   const [business, setBusiness] = useState<MerchantBusinessDto | null>(null);
   const [wallet, setWallet] = useState<WalletDto | null>(null);
   const [storeOpen, setStoreOpen] = useState(false);
@@ -4986,9 +5105,33 @@ export function MerchantPortalScreen({
         isHotel={isHotel}
         pendingBookingCount={pendingBookingCount}
         onLogout={handleLogout}
+        narrow={narrow}
+        open={navOpen}
+        onClose={() => setNavOpen(false)}
       />
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <MxHeader page={page} orderBadge={newOrderCount} initials={initials} />
+      {/* Tapping away closes the drawer, the way every drawer behaves. */}
+      {narrow && navOpen && (
+        <div
+          onClick={() => setNavOpen(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,.55)' }}
+        />
+      )}
+      <div
+        className="mx-shell-body"
+        style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          minWidth: 0,
+        }}
+      >
+        <MxHeader
+          page={page}
+          orderBadge={newOrderCount}
+          initials={initials}
+          {...(narrow ? { onMenu: () => setNavOpen(true) } : {})}
+        />
         {renderPage()}
       </div>
     </div>
@@ -5568,7 +5711,7 @@ function HotelPayoutsPage() {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: '1fr 1fr 1fr',
+          gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))',
           gap: 12,
           marginBottom: 20,
         }}
