@@ -4,6 +4,7 @@ import {
   G2,
   G3,
   NAVY_DEEP,
+  NAVY_BASE,
   NAVY_CARD,
   NAVY_SURFACE,
   BORDER,
@@ -23,6 +24,7 @@ import type {
 } from '../lib/api';
 import { ImageWithFallback } from '@/app/components/figma/ImageWithFallback';
 import { Icon, type IconName } from './icons';
+import { monogram } from './marketplaceScreen';
 
 // Relative time for real wallet activity timestamps.
 function relTime(iso: string): string {
@@ -1025,13 +1027,11 @@ function Categories({ active, onPick }: { active: string; onPick: (label: string
 // ─────────────────────────────────────────────────────────────────────────────
 // MERCHANTS
 // ─────────────────────────────────────────────────────────────────────────────
-const MERCHANT_BG_FALLBACKS = [
-  'linear-gradient(135deg,#7F1D1D,#EF4444)',
-  'linear-gradient(135deg,#7C2D12,#F97316)',
-  'linear-gradient(135deg,#0D2E18,#2BAC52)',
-  'linear-gradient(135deg,#0C4A6E,#06B6D4)',
-  'linear-gradient(135deg,#2E1065,#8B5CF6)',
-];
+// The five-gradient pool that used to live here is gone. It was the same
+// defect as the marketplace's BG_POOL and was missed when that one was fixed:
+// a merchant was coloured by its POSITION in this row, so the same shop was
+// red here, orange one slot over, and neutral on the marketplace screen it
+// links to. Founder instruction was no colour for ANY merchant.
 
 function Merchants({
   loaded,
@@ -1065,27 +1065,55 @@ function Merchants({
             >
               <div
                 className="relative flex h-[82px] items-center justify-center"
-                style={{
-                  background: MERCHANT_BG_FALLBACKS[idx % MERCHANT_BG_FALLBACKS.length],
-                }}
+                style={{ background: NAVY_BASE, borderBottom: `1px solid ${BORDER}` }}
               >
-                <ImageWithFallback
-                  src={m.logoUrl ?? undefined}
-                  alt={m.businessName}
-                  className="h-14 w-14 rounded-xl object-cover"
-                  fallbackEmoji="🏪"
-                />
+                {/* `object-contain` on a neutral tile, matching the marketplace
+                    card. `object-cover` cropped a wide wordmark to a square and
+                    cut its ends off, and the 🏪 fallback was a bitmap glyph
+                    that blurs at 3x — initials are vector and name the shop. */}
                 <div
-                  className="absolute right-2.5 top-2.5 rounded-xl px-2 py-1 text-[9px] font-bold"
-                  style={{
-                    background: 'rgba(0,0,0,.5)',
-                    color: '#FFF',
-                    backdropFilter: 'blur(6px)',
-                    fontFamily: "'Inter',sans-serif",
-                  }}
+                  className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl"
+                  style={{ background: 'rgba(255,255,255,.06)', border: `1px solid ${BORDER}` }}
                 >
-                  {m.isOpenNow ? '🟢 Open' : m.isOpenNow === false ? '🔴 Closed' : '🏪'}
+                  {m.logoUrl != null && m.logoUrl !== '' ? (
+                    <ImageWithFallback
+                      src={m.logoUrl}
+                      alt={m.businessName}
+                      className="h-full w-full object-contain"
+                      fallbackEmoji="🛍️"
+                    />
+                  ) : (
+                    <span
+                      style={{
+                        fontFamily: "'Poppins',sans-serif",
+                        fontSize: 17,
+                        fontWeight: 700,
+                        letterSpacing: '0.04em',
+                        color: 'rgba(255,255,255,.9)',
+                      }}
+                    >
+                      {monogram(m.businessName)}
+                    </span>
+                  )}
                 </div>
+                {/* Was "🟢 Open" / "🔴 Closed" / "🏪" — two emoji and, when the
+                    hours are unknown, a shop glyph standing in for a status
+                    nobody knows. Only the real states are named now, in the
+                    colour that already carries the meaning. Unknown shows
+                    nothing rather than a badge that says nothing. */}
+                {m.isOpenNow !== null && (
+                  <div
+                    className="absolute right-2.5 top-2.5 rounded-xl px-2 py-1 text-[9px] font-bold"
+                    style={{
+                      background: 'rgba(0,0,0,.5)',
+                      color: m.isOpenNow ? G3 : '#FCA5A5',
+                      backdropFilter: 'blur(6px)',
+                      fontFamily: "'Inter',sans-serif",
+                    }}
+                  >
+                    {m.isOpenNow ? 'Open' : 'Closed'}
+                  </div>
+                )}
               </div>
               <div className="p-3">
                 <p
