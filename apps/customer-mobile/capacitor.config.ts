@@ -1,14 +1,23 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 /**
- * Remote URL shell — customer-web is a Next.js SSR app (not a static export).
- * Production/staging URLs are injected at CI via CAPACITOR_SERVER_URL.
+ * Remote URL shell. The APK loads the Super App — the canonical surface for
+ * customers, drivers, riders and merchants (founder decision, 2026-08-24) —
+ * which is served at app.dripplex.com.
+ *
+ * `NEXT_PUBLIC_APP_URL` used to sit in this chain as a second fallback. It is
+ * customer-web's variable, and customer-web is a different service on a
+ * different domain (dripplex.com / www.dripplex.com). A build machine with
+ * that variable set and CAPACITOR_SERVER_URL unset would have shipped an APK
+ * pointing at the marketing site instead of the app, silently and with no
+ * error anywhere. CI has always set CAPACITOR_SERVER_URL explicitly, so this
+ * never fired in a release build — but it was one unset variable away.
+ *
+ * Only an explicit CAPACITOR_SERVER_URL overrides the Super App now, which is
+ * what staging and beta tracks already pass.
  * @see docs/mobile/ANDROID.md · docs/mobile/IOS.md
  */
-const serverUrl =
-  process.env['CAPACITOR_SERVER_URL'] ??
-  process.env['NEXT_PUBLIC_APP_URL'] ??
-  'https://app.dripplex.com';
+const serverUrl = process.env['CAPACITOR_SERVER_URL'] ?? 'https://app.dripplex.com';
 
 const config: CapacitorConfig = {
   appId: 'com.dripplex.customer',
