@@ -18,7 +18,7 @@
 //     so DriverDocumentsScreen stays visual; the driver still creates the account and
 //     lands in pending review. Wire uploads once storage ships.
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 
 import { api, ApiError, uploadFile } from '../lib/api';
 import type { MerchantCategory } from '../lib/api';
@@ -268,6 +268,27 @@ function PasswordField({
   );
 }
 
+/**
+ * A select that opens a panel beneath itself.
+ *
+ * The panel carries `z-50` and that was not enough, for a reason worth writing
+ * down. Every card on these screens animates in with
+ * `fade-up … both`, and `animation-fill-mode: both` leaves the final keyframe
+ * applied forever — including `transform: translateY(0)`. A transform creates a
+ * stacking context, so each animated card became one, and the panel's z-50
+ * could only ever stack *within its own card*. Against the submit button in the
+ * next card — a sibling stacking context, later in the DOM — it always lost.
+ *
+ * On the merchant sign-up that put "Create merchant account" on top of the open
+ * list: the option under it looked visible but every tap hit the button, so
+ * "Pharmacy & Health" could not be selected at all.
+ *
+ * Fixed at the cause: those animations now use `backwards`, which holds the
+ * opening frame through the delay and then lets the element fall back to its
+ * natural state. The end state and the natural state are identical here
+ * (opacity 1, no transform), so nothing looks different — but the stacking
+ * context goes away once the animation ends, and z-50 means what it says.
+ */
 function Dropdown({
   id,
   label,
@@ -290,6 +311,21 @@ function Dropdown({
   onBlur: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  // The Business Type field sits low on the sign-up form, so even a capped
+  // panel opens past the bottom of a phone screen and the lower options are
+  // unreachable without scrolling the page behind it. Bring the panel into
+  // view when it opens.
+  useEffect(() => {
+    if (open) {
+      const t = setTimeout(
+        () => panelRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }),
+        30,
+      );
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  }, [open]);
   const isFocused = focused === id;
   return (
     <div className="relative flex flex-col gap-2">
@@ -329,12 +365,18 @@ function Dropdown({
       </button>
       {open && (
         <div
-          className="absolute left-0 right-0 z-50 overflow-hidden rounded-2xl"
+          ref={panelRef}
+          className="dx-scroll absolute left-0 right-0 z-50 overflow-y-auto rounded-2xl"
           style={{
             top: 'calc(100% + 6px)',
+            // Twelve business types ran past the bottom of a phone screen, so
+            // the last few could only be reached by scrolling the page behind
+            // the panel. The list scrolls inside itself instead.
+            maxHeight: 260,
             background: NAVY_SURFACE,
             border: `1.5px solid ${G2}`,
             boxShadow: '0 16px 40px rgba(0,0,0,.55)',
+            overscrollBehavior: 'contain',
           }}
         >
           {options.map((opt) => (
@@ -480,7 +522,7 @@ export function PartnerChoiceScreen({
             </svg>
           </button>
         )}
-        <div style={{ animation: 'fade-up .45s ease both', marginTop: onBack ? 40 : 0 }}>
+        <div style={{ animation: 'fade-up .45s ease backwards', marginTop: onBack ? 40 : 0 }}>
           <Logo width={140} />
           <h1
             className="mt-5 text-[26px] font-bold leading-tight"
@@ -513,7 +555,10 @@ export function PartnerChoiceScreen({
           )}
         </div>
 
-        <div className="flex flex-col gap-3.5" style={{ animation: 'fade-up .45s ease .1s both' }}>
+        <div
+          className="flex flex-col gap-3.5"
+          style={{ animation: 'fade-up .45s ease .1s backwards' }}
+        >
           {ROLES.map((r) => (
             <button
               key={r.persona}
@@ -571,7 +616,7 @@ export function PartnerChoiceScreen({
           ))}
         </div>
 
-        <div className="pb-10" style={{ animation: 'fade-up .45s ease .2s both' }}>
+        <div className="pb-10" style={{ animation: 'fade-up .45s ease .2s backwards' }}>
           <p className="text-center text-[14px]" style={{ fontFamily: IT, color: MUTED }}>
             Already a partner?{' '}
             <button
@@ -702,7 +747,7 @@ export function MerchantSignUpScreen({
         className="relative z-10 flex-1 overflow-y-auto px-7 pb-10"
         style={{ scrollbarWidth: 'none' }}
       >
-        <div style={{ animation: 'fade-up .4s ease .05s both' }}>
+        <div style={{ animation: 'fade-up .4s ease .05s backwards' }}>
           <div className="mb-1 flex items-center gap-2">
             <span className="text-2xl">🛍</span>
             <span
@@ -732,7 +777,7 @@ export function MerchantSignUpScreen({
 
         <div
           className="mt-7 flex flex-col gap-4"
-          style={{ animation: 'fade-up .4s ease .12s both' }}
+          style={{ animation: 'fade-up .4s ease .12s backwards' }}
         >
           <FieldGroup
             label="Full Name"
@@ -787,7 +832,7 @@ export function MerchantSignUpScreen({
 
         <div
           className="mt-8 flex flex-col gap-4"
-          style={{ animation: 'fade-up .4s ease .2s both' }}
+          style={{ animation: 'fade-up .4s ease .2s backwards' }}
         >
           <ErrorNote message={err} />
           <GreenBtn
@@ -915,7 +960,7 @@ function PhonePersonaSignUp({
         className="relative z-10 flex-1 overflow-y-auto px-7 pb-10"
         style={{ scrollbarWidth: 'none' }}
       >
-        <div style={{ animation: 'fade-up .4s ease .05s both' }}>
+        <div style={{ animation: 'fade-up .4s ease .05s backwards' }}>
           <div className="mb-1 flex items-center gap-2">
             <span className="text-2xl">{emoji}</span>
             <span
@@ -943,7 +988,7 @@ function PhonePersonaSignUp({
 
         <div
           className="mt-7 flex flex-col gap-4"
-          style={{ animation: 'fade-up .4s ease .12s both' }}
+          style={{ animation: 'fade-up .4s ease .12s backwards' }}
         >
           <FieldGroup
             label="Full Name"
@@ -1011,7 +1056,7 @@ function PhonePersonaSignUp({
 
         <div
           className="mt-8 flex flex-col gap-4"
-          style={{ animation: 'fade-up .4s ease .2s both' }}
+          style={{ animation: 'fade-up .4s ease .2s backwards' }}
         >
           <ErrorNote message={err} />
           <GreenBtn
@@ -1434,7 +1479,7 @@ export function DriverDocumentsScreen({
         className="relative z-10 flex-1 overflow-y-auto px-5 pb-10"
         style={{ scrollbarWidth: 'none' }}
       >
-        <div className="mb-6 px-2" style={{ animation: 'fade-up .4s ease .05s both' }}>
+        <div className="mb-6 px-2" style={{ animation: 'fade-up .4s ease .05s backwards' }}>
           <h1
             className="text-[24px] font-bold leading-tight"
             style={{ fontFamily: PP, color: '#fff', letterSpacing: '-0.02em' }}
@@ -1450,7 +1495,7 @@ export function DriverDocumentsScreen({
 
         <div
           className="mb-6 flex flex-col gap-3.5"
-          style={{ animation: 'fade-up .4s ease .1s both' }}
+          style={{ animation: 'fade-up .4s ease .1s backwards' }}
         >
           <DocumentCard
             icon="📋"
@@ -1497,7 +1542,7 @@ export function DriverDocumentsScreen({
 
         <div
           className="mb-8 flex flex-col gap-4"
-          style={{ animation: 'fade-up .4s ease .18s both' }}
+          style={{ animation: 'fade-up .4s ease .18s backwards' }}
         >
           <div className="flex gap-3">
             <div className="min-w-0 flex-1">
@@ -1702,7 +1747,7 @@ export function RiderDocumentsScreen({
         className="relative z-10 flex-1 overflow-y-auto px-5 pb-10"
         style={{ scrollbarWidth: 'none' }}
       >
-        <div className="mb-6 px-2" style={{ animation: 'fade-up .4s ease .05s both' }}>
+        <div className="mb-6 px-2" style={{ animation: 'fade-up .4s ease .05s backwards' }}>
           <h1
             className="text-[24px] font-bold leading-tight"
             style={{ fontFamily: PP, color: '#fff', letterSpacing: '-0.02em' }}
@@ -1718,7 +1763,7 @@ export function RiderDocumentsScreen({
 
         <div
           className="mb-6 flex flex-col gap-3.5"
-          style={{ animation: 'fade-up .4s ease .1s both' }}
+          style={{ animation: 'fade-up .4s ease .1s backwards' }}
         >
           <DocumentCard
             icon="🪪"
@@ -1752,7 +1797,7 @@ export function RiderDocumentsScreen({
 
         <div
           className="mb-8 flex flex-col gap-4"
-          style={{ animation: 'fade-up .4s ease .18s both' }}
+          style={{ animation: 'fade-up .4s ease .18s backwards' }}
         >
           <FieldGroup
             label="Company name"
@@ -1884,7 +1929,7 @@ export function BusinessDetailsScreen({
         className="relative z-10 flex-1 overflow-y-auto px-7 pb-10"
         style={{ scrollbarWidth: 'none' }}
       >
-        <div style={{ animation: 'fade-up .4s ease .05s both' }}>
+        <div style={{ animation: 'fade-up .4s ease .05s backwards' }}>
           <div className="mb-1 flex items-center gap-2">
             <span className="text-2xl">🏪</span>
             <span
@@ -1914,7 +1959,7 @@ export function BusinessDetailsScreen({
 
         <div
           className="mt-7 flex flex-col gap-4"
-          style={{ animation: 'fade-up .4s ease .12s both' }}
+          style={{ animation: 'fade-up .4s ease .12s backwards' }}
         >
           <FieldGroup
             label="Business Name"
@@ -1995,7 +2040,7 @@ export function BusinessDetailsScreen({
 
         <div
           className="mt-8 flex flex-col gap-4"
-          style={{ animation: 'fade-up .4s ease .2s both' }}
+          style={{ animation: 'fade-up .4s ease .2s backwards' }}
         >
           <ErrorNote message={err} />
           <GreenBtn
@@ -2290,7 +2335,7 @@ export function PendingReviewScreen({
           </div>
         </div>
 
-        <div className="mb-6 px-7" style={{ animation: 'fade-up .5s ease .25s both' }}>
+        <div className="mb-6 px-7" style={{ animation: 'fade-up .5s ease .25s backwards' }}>
           <p
             className="mb-4 text-[11px] font-semibold uppercase tracking-widest"
             style={{ fontFamily: IT, color: 'rgba(255,255,255,.3)' }}
@@ -2388,7 +2433,7 @@ export function PendingReviewScreen({
 
         <div
           className="flex flex-col gap-3 px-7 pb-10"
-          style={{ animation: 'fade-up .5s ease .35s both' }}
+          style={{ animation: 'fade-up .5s ease .35s backwards' }}
         >
           <div
             className="flex items-start gap-3 rounded-2xl p-4"
