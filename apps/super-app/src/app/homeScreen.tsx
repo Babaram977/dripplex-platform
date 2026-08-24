@@ -562,16 +562,18 @@ function PartnerEntryCard({
     { icon: '🚗', label: 'Drive', count: personaCounts?.drive },
     { icon: '🛵', label: 'Deliver', count: personaCounts?.deliver },
   ];
-  // `w-full` alongside `mx-5` made this card 100% of the parent *plus* 40px of
-  // margin, so it ran off the right edge of the screen — the left inset looked
-  // correct and the right edge was simply gone. A block-level element already
-  // fills the space its margins leave it, so the width is dropped rather than
-  // fought with.
+  // Width, twice wrong, so here is the whole rule. `w-full` alongside `mx-5`
+  // made the card 100% of the parent PLUS 40px of margin, and it ran off the
+  // right edge. Dropping the width was not the fix either: `width: auto` on a
+  // <button> is shrink-to-fit, not fill — unlike a <div>, a form control sizes
+  // to its content — so the card came up short on the right and read as
+  // off-centre. Only an explicit width that subtracts the margins does both.
   return (
     <button
       onClick={handleTap}
       className="mx-5 mb-5 block overflow-hidden rounded-3xl text-left transition-transform"
       style={{
+        width: 'calc(100% - 40px)', // 100% minus mx-5 (20px each side)
         background: 'linear-gradient(135deg,#0A1628 0%,#0E1F38 100%)',
         border: '1.5px solid rgba(43,172,82,.28)',
         boxShadow: '0 4px 32px rgba(43,172,82,.10)',
@@ -937,7 +939,10 @@ function Categories({ active, onPick }: { active: string; onPick: (label: string
             <button
               key={c.label}
               onClick={() => onPick(on ? '' : c.label)}
+              // A fixed column width is what stops the labels colliding. The
+              // tile stays 52px; the button is wider so a long word has room.
               className="flex flex-shrink-0 flex-col items-center gap-1.5 transition-all active:scale-90"
+              style={{ width: 66 }}
             >
               <div
                 className="flex h-[52px] w-[52px] items-center justify-center rounded-2xl"
@@ -950,12 +955,19 @@ function Categories({ active, onPick }: { active: string; onPick: (label: string
               >
                 <Icon name={c.icon} size={23} color={on ? '#FFF' : 'rgba(255,255,255,.62)'} />
               </div>
+              {/* `maxWidth: 52` could not contain "Supermarkets": a single
+                  word longer than its box does not wrap on its own, so the
+                  label overflowed and ran into the next category's label.
+                  Full-width of the 66px column, and allowed to break, so any
+                  label wraps to a second line instead of escaping sideways. */}
               <p
                 className="text-center text-[9px] font-semibold"
                 style={{
                   color: on ? G3 : 'rgba(255,255,255,.42)',
                   fontFamily: "'Inter',sans-serif",
-                  maxWidth: 52,
+                  width: '100%',
+                  lineHeight: 1.25,
+                  overflowWrap: 'anywhere',
                   transition: 'color .2s ease',
                 }}
               >

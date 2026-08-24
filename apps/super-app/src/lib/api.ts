@@ -190,6 +190,25 @@ export interface CursorPaginatedResult<T> {
   nextCursor: string | null;
 }
 
+/**
+ * What `/products/smart-search` and `/merchants/smart-search` actually return.
+ *
+ * Both were typed here as a bare `CursorPaginatedResult`. They are not: the
+ * page sits under `results`, alongside a `parsed` object describing how the
+ * query was interpreted. Nothing read `results`, so the home screen's search
+ * extracted an empty array from every response and reported "no results" for
+ * queries the backend had answered — searching "rice" returned a product from
+ * the API and nothing on screen.
+ *
+ * `parsed` is declared because it exists and is useful (it is how the backend
+ * says it understood "near me" or "open now"), not because anything reads it
+ * yet.
+ */
+export interface SmartSearchResult<T> {
+  parsed: { keywords: string; nearMe: boolean; openNow: boolean };
+  results: CursorPaginatedResult<T> & { hasMore?: boolean };
+}
+
 // Wallet
 export interface WalletDto {
   id: string;
@@ -2358,10 +2377,10 @@ export const api = {
       query: string,
       params?: { lat?: number; lng?: number; cursor?: string; limit?: number },
     ) =>
-      dx<CursorPaginatedResult<MerchantSummaryDto>>('GET', '/merchants/smart-search', undefined, {
+      dx<SmartSearchResult<MerchantSummaryDto>>('GET', '/merchants/smart-search', undefined, {
         query,
         ...params,
-      }),
+      }).then((r) => r.results),
     getMerchant: (id: string, params?: { lat?: number; lng?: number }) =>
       dx<MerchantSummaryDto & { products?: ProductSummaryDto[] }>(
         'GET',
@@ -2379,10 +2398,10 @@ export const api = {
       query: string,
       params?: { lat?: number; lng?: number; cursor?: string; limit?: number },
     ) =>
-      dx<CursorPaginatedResult<ProductSummaryDto>>('GET', '/products/smart-search', undefined, {
+      dx<SmartSearchResult<ProductSummaryDto>>('GET', '/products/smart-search', undefined, {
         query,
         ...params,
-      }),
+      }).then((r) => r.results),
     getProduct: (id: string) =>
       dx<ProductSummaryDto & { description?: string }>('GET', `/products/${id}`),
     getSimilarProducts: (id: string) => dx<ProductSummaryDto[]>('GET', `/products/${id}/similar`),
