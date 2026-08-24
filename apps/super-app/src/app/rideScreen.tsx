@@ -2524,6 +2524,16 @@ export function TripCompletedScreen({
   // Only once the ride has actually loaded — an unknown ride must not be
   // announced as unpaid.
   const unpaid = ride != null && ride.paymentStatus !== 'PAID';
+  // Cash is chosen by the passenger and settled by the DRIVER: selecting it
+  // records the method and leaves paymentStatus PENDING until the driver
+  // confirms they were handed the money. `unpaid` alone cannot see that
+  // difference, so a passenger who picked cash was sent back to "Pay ₦1,500",
+  // tapped it, chose cash again, and came back to the same button — with no
+  // way out and nothing on screen saying the ball was in the driver's court.
+  // Reported as "no paid option, only stays at pay 1500 — after I have paid
+  // nothing happens, only return to pay 1500". Confirmed on the ride behind
+  // that report: paymentMethod CASH, paymentStatus PENDING.
+  const awaitingCashConfirmation = unpaid && ride?.paymentMethod === 'CASH';
 
   return (
     <div
@@ -2627,7 +2637,14 @@ export function TripCompletedScreen({
                   {totalLabel}
                 </p>
                 <p className="text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
-                  {unpaid ? 'Not yet paid' : (ride?.paymentMethod ?? '—')}
+                  {/* "Not yet paid" is wrong for a cash fare the passenger has
+                      already handed over — the money is with the driver and
+                      only the confirmation is outstanding. */}
+                  {awaitingCashConfirmation
+                    ? 'Cash · awaiting driver confirmation'
+                    : unpaid
+                      ? 'Not yet paid'
+                      : (ride?.paymentMethod ?? '—')}
                 </p>
               </div>
             </div>
@@ -2640,7 +2657,45 @@ export function TripCompletedScreen({
             under a rating prompt is how it stays unpaid. Rate and tip are one
             tap away again the moment the fare clears. */}
           <div className="flex w-full flex-col gap-3">
-            {unpaid ? (
+            {awaitingCashConfirmation ? (
+              /* Cash is chosen, and the passenger has nothing left to do. The
+                 button they kept being shown could only take them back to the
+                 same choice, so it is gone — replaced by what is actually
+                 true. "Pay another way" stays, because a driver who never
+                 confirms would otherwise leave the fare open with no exit. */
+              <>
+                <div
+                  className="w-full rounded-2xl px-4 py-3.5 text-center"
+                  style={{
+                    background: 'rgba(245,158,11,.10)',
+                    border: '1px solid rgba(245,158,11,.28)',
+                  }}
+                >
+                  <p
+                    className="text-[14px] font-semibold"
+                    style={{ fontFamily: PP, color: '#F59E0B' }}
+                  >
+                    Pay {totalLabel} in cash to your driver
+                  </p>
+                  <p className="mt-1 text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
+                    Waiting for your driver to confirm they received it. Rating and tipping unlock
+                    as soon as they do.
+                  </p>
+                </div>
+                <button
+                  onClick={onPay ?? (() => undefined)}
+                  className="flex h-12 w-full items-center justify-center rounded-2xl text-[14px] font-semibold transition-all active:scale-[.97]"
+                  style={{
+                    background: 'rgba(255,255,255,.06)',
+                    border: `1px solid ${BORDER}`,
+                    fontFamily: IT,
+                    color: '#FFF',
+                  }}
+                >
+                  Pay another way instead
+                </button>
+              </>
+            ) : unpaid ? (
               <>
                 <GreenButton label={`Pay ${totalLabel}`} onClick={onPay ?? (() => undefined)} />
                 <p className="text-center text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
