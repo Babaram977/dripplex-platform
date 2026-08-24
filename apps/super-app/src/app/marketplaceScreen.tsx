@@ -426,76 +426,6 @@ function CategoryChips({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AI DISCOVERY BANNER
-// ─────────────────────────────────────────────────────────────────────────────
-// GAP: no AI backend exists. "Ask Drip" is not a live shopping assistant — no
-// AI/search-chat endpoint is wired. Honest "coming soon" entry; the fake
-// typewriter + "Live" status were removed.
-function AIDiscovery({ onAsk }: { onAsk: () => void }) {
-  return (
-    <div
-      className="mx-5 mb-5 overflow-hidden rounded-3xl"
-      style={{
-        background: 'linear-gradient(135deg,#0A1628 0%,#0E1F38 100%)',
-        border: '1.5px solid rgba(43,172,82,.2)',
-        boxShadow: '0 4px 32px rgba(43,172,82,.07)',
-      }}
-    >
-      <div className="p-4">
-        <div className="mb-3 flex items-center gap-2.5">
-          <div
-            className="flex h-9 w-9 items-center justify-center rounded-2xl"
-            style={{
-              background: `linear-gradient(135deg,${G0},${G3})`,
-              boxShadow: `0 4px 16px rgba(43,172,82,.35)`,
-            }}
-          >
-            <span style={{ fontSize: 18 }}>✨</span>
-          </div>
-          <div>
-            <p
-              className="text-[14px] font-bold"
-              style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
-            >
-              Ask Drip
-            </p>
-            <p className="text-[10px]" style={{ color: G3, fontFamily: "'Inter',sans-serif" }}>
-              Coming soon
-            </p>
-          </div>
-        </div>
-
-        <div
-          className="mb-3.5 rounded-xl px-3.5 py-3"
-          style={{ background: 'rgba(43,172,82,.07)', border: '1px solid rgba(43,172,82,.14)' }}
-        >
-          <p
-            className="text-[11.5px] leading-relaxed"
-            style={{ color: 'rgba(255,255,255,.7)', fontFamily: "'Inter',sans-serif" }}
-          >
-            Our AI shopping assistant isn't available yet. Soon you'll be able to describe what you
-            need and let Drip find it.
-          </p>
-        </div>
-
-        <button
-          onClick={onAsk}
-          className="active:scale-97 flex h-11 w-full items-center justify-center gap-2 rounded-2xl text-[13px] font-semibold transition-all"
-          style={{
-            background: `linear-gradient(135deg,${G0},${G2} 55%,${G3})`,
-            color: '#FFF',
-            fontFamily: "'Poppins',sans-serif",
-            boxShadow: `0 6px 22px rgba(43,172,82,.28)`,
-          }}
-        >
-          Learn more
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // TODAY'S DEALS SLIDER
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1602,7 +1532,14 @@ export function MarketplaceScreen({
         }}
       >
         <CategoryChips active={activecat} onChange={setActivecat} />
-        <AIDiscovery onAsk={() => setShowAI(true)} />
+        {/* The "Ask Drip" banner used to sit here. It opened the same AISheet
+            the floating button already opens — two doors to one room — and it
+            spent roughly a third of the first screen announcing that a feature
+            does not exist yet, above the merchants people actually came for.
+            The floating button is the entry point; it costs nothing until Drip
+            can answer, and it is already on every screen. (Founder decision,
+            2026-08-24: teaching Drip to respond comes after the app is
+            stable.) */}
         <FeaturedMerchants active={activecat} onStore={onStore} />
         <TrendingProducts />
         <NearbyBusinesses onStore={onStore} />
