@@ -1590,6 +1590,12 @@ function AppShell() {
           go('drvrequest');
         }}
         onSettings={() => go('drvsettings')}
+        // PORTAL_RESUME lands a driver with a live session here rather than on
+        // the onboarding hub, which is right for a driver who has finished and
+        // wrong for one who has not: the hub was then reachable only by signing
+        // out and in again. The dashboard names the blocker; this is the step
+        // that clears it.
+        onFinishSetup={() => go('drvkyc')}
         onSignOut={() => {
           void endSession(() => api.auth.logout()).finally(() => goAfterAuthChange('drvlogin'));
         }}

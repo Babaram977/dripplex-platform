@@ -2439,9 +2439,13 @@ export function DriverDashboardScreen({
   onSettings,
   onSignOut,
   onSignIn,
+  onFinishSetup,
 }: {
   onRequest: (offer: RideOfferDto) => void;
   onSettings: () => void;
+  /** Back to the onboarding hub, so a blocked driver can clear the blocker
+   *  without signing out and in again. */
+  onFinishSetup?: () => void;
   /** Ends the session and returns the driver to the portal's front door. */
   onSignOut?: () => void;
   onSignIn?: () => void;
@@ -2871,35 +2875,64 @@ export function DriverDashboardScreen({
               )}
             </button>
 
-            {online && (
+            {/* Shown whenever there is something to say, not only when online.
+                `checkReadiness` runs on mount either way, so the reason a
+                driver cannot be matched — unapproved account, no vehicle, no
+                location — was already known and was simply withheld until they
+                pressed Go Online. A driver who has not finished registering
+                would toggle online, read the reason, toggle off, and lose it.
+
+                It also carries a way to act on itself now. The banner said
+                "add one to start receiving them" from a screen with no route
+                to vehicle registration: the onboarding hub was reachable only
+                by signing in again, because PORTAL_RESUME sends a driver with
+                a live session straight here. Naming a blocker without offering
+                the step that clears it is where drivers gave up. */}
+            {(online || blockReason !== null) && (
               <div
-                className="mt-3 flex items-center justify-center gap-2 rounded-2xl py-3"
+                className="mt-3 flex flex-col items-center gap-2 rounded-2xl px-3 py-3"
                 style={{
                   background: 'rgba(43,172,82,.06)',
                   border: '1px solid rgba(43,172,82,.12)',
                   animation: 'fade-in .4s ease',
                 }}
               >
-                <div
-                  className="h-2 w-2 rounded-full"
-                  style={{
-                    background: blockReason === null ? G2 : COLOR_WARNING,
-                    animation: 'pulse-ring .8s ease-out infinite',
-                  }}
-                />
-                <p
-                  className="px-3 text-center"
-                  style={{
-                    fontFamily: IT,
-                    fontSize: 13,
-                    color: blockReason === null ? G3 : COLOR_WARNING,
-                  }}
-                >
-                  {blockReason ??
-                    (heartbeat.degraded
-                      ? 'Location unavailable — you will stop receiving requests. Check location access.'
-                      : 'You are live · Waiting for ride requests...')}
-                </p>
+                <div className="flex items-center justify-center gap-2">
+                  <div
+                    className="h-2 w-2 flex-shrink-0 rounded-full"
+                    style={{
+                      background: blockReason === null ? G2 : COLOR_WARNING,
+                      animation: 'pulse-ring .8s ease-out infinite',
+                    }}
+                  />
+                  <p
+                    className="text-center"
+                    style={{
+                      fontFamily: IT,
+                      fontSize: 13,
+                      color: blockReason === null ? G3 : COLOR_WARNING,
+                    }}
+                  >
+                    {blockReason ??
+                      (heartbeat.degraded
+                        ? 'Location unavailable — you will stop receiving requests. Check location access.'
+                        : 'You are live · Waiting for ride requests...')}
+                  </p>
+                </div>
+                {blockReason !== null && onFinishSetup && (
+                  <button
+                    onClick={onFinishSetup}
+                    className="rounded-xl px-4 py-2 text-[12px] font-semibold transition-all active:scale-95"
+                    style={{
+                      background: 'rgba(255,255,255,.08)',
+                      border: `1px solid ${BORDER}`,
+                      color: '#FFF',
+                      fontFamily: IT,
+                    }}
+                  >
+                    Finish registration
+                  </button>
+                )}
               </div>
             )}
           </div>
