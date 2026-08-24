@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+
+import { useNarrowViewport } from './useNarrowViewport';
 import {
   api,
   type AdminPromotionDto,
@@ -424,29 +426,6 @@ const NAV_ITEMS: { page: AdminPage; icon: string; label: string }[] = [
 
 // Real queue counts for the sidebar badges, keyed by page. Absent/0 → no badge.
 type NavBadges = Partial<Record<AdminPage, number>>;
-
-/**
- * Is the console being read on something too narrow to hold a permanent
- * sidebar next to a table?
- *
- * 900px is the point below which 220px of fixed navigation stops being a
- * convenience and starts being most of the screen. On a phone it took 220 of
- * 390 — 56% — leaving the trip queue about 170px wide, clipped by the shell's
- * `overflow: hidden` so it could not even be panned to.
- */
-function useNarrowConsole(): boolean {
-  const [narrow, setNarrow] = useState(
-    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches,
-  );
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width: 900px)');
-    const onChange = (e: MediaQueryListEvent) => setNarrow(e.matches);
-    mq.addEventListener('change', onChange);
-    setNarrow(mq.matches);
-    return () => mq.removeEventListener('change', onChange);
-  }, []);
-  return narrow;
-}
 
 function Sidebar({
   page,
@@ -9439,7 +9418,7 @@ export function AdminConsoleScreen({ initialPage = 'dashboard' }: { initialPage?
   const [page, setPage] = useState<AdminPage>(initialPage);
   const [authed, setAuthed] = useState<boolean>(() => isOpsAuthed());
   const [badges, setBadges] = useState<NavBadges>({});
-  const narrow = useNarrowConsole();
+  const narrow = useNarrowViewport();
   const [navOpen, setNavOpen] = useState(false);
   // Rotating the phone back to landscape, or opening the console on a desktop,
   // must not leave a drawer stranded over a layout that no longer has one.
