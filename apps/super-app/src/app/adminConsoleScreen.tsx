@@ -115,6 +115,16 @@ if (typeof document !== 'undefined' && !document.getElementById(STYLE_ID)) {
     .dx-nav-item { transition: background .15s, color .15s; cursor: pointer; }
     .dx-nav-item:hover { background: rgba(71,207,114,.06) !important; }
     .dx-row:hover { background: rgba(255,255,255,.025) !important; }
+    /* Below 900px the sidebar becomes a drawer and the console body scrolls
+       sideways. A table left at width:100% inside a sideways-scrolling box
+       does not scroll — it squeezes, wrapping "Mamman Danhanya" onto two lines
+       and crushing the Actions column out of reach. A floor width makes the
+       table wider than the screen on purpose, which is what makes it pannable.
+       Cards stop shrinking below the same floor for the same reason. */
+    @media (max-width: 900px) {
+      .dx-console-body table { min-width: 760px; }
+      .dx-console-body .dx-card { min-width: 300px; }
+    }
     .dx-btn { transition: opacity .15s, transform .08s; cursor: pointer; }
     .dx-btn:hover { opacity: .85; }
     .dx-btn:active { transform: scale(.97); }
@@ -406,14 +416,44 @@ const NAV_ITEMS: { page: AdminPage; icon: string; label: string }[] = [
 // Real queue counts for the sidebar badges, keyed by page. Absent/0 → no badge.
 type NavBadges = Partial<Record<AdminPage, number>>;
 
+/**
+ * Is the console being read on something too narrow to hold a permanent
+ * sidebar next to a table?
+ *
+ * 900px is the point below which 220px of fixed navigation stops being a
+ * convenience and starts being most of the screen. On a phone it took 220 of
+ * 390 — 56% — leaving the trip queue about 170px wide, clipped by the shell's
+ * `overflow: hidden` so it could not even be panned to.
+ */
+function useNarrowConsole(): boolean {
+  const [narrow, setNarrow] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 900px)');
+    const onChange = (e: MediaQueryListEvent) => setNarrow(e.matches);
+    mq.addEventListener('change', onChange);
+    setNarrow(mq.matches);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+  return narrow;
+}
+
 function Sidebar({
   page,
   onNav,
   badges,
+  narrow = false,
+  open = false,
+  onClose,
 }: {
   page: AdminPage;
   onNav: (p: AdminPage) => void;
   badges?: NavBadges;
+  /** Below 900px the sidebar becomes a drawer instead of a column. */
+  narrow?: boolean;
+  open?: boolean;
+  onClose?: () => void;
 }) {
   return (
     <div
@@ -426,6 +466,19 @@ function Sidebar({
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
+        ...(narrow
+          ? {
+              position: 'fixed' as const,
+              top: 0,
+              left: 0,
+              bottom: 0,
+              zIndex: 70,
+              height: '100dvh',
+              transform: open ? 'translateX(0)' : 'translateX(-100%)',
+              transition: 'transform .22s ease',
+              boxShadow: open ? '0 0 40px rgba(0,0,0,.6)' : 'none',
+            }
+          : {}),
       }}
     >
       {/* Logo */}
@@ -482,12 +535,18 @@ function Sidebar({
             <div
               key={item.page}
               className="dx-nav-item"
-              onClick={() => onNav(item.page)}
+              onClick={() => {
+                onNav(item.page);
+                // In drawer mode the navigation is covering the page it just
+                // navigated to, so it gets out of the way.
+                onClose?.();
+              }}
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: 9,
-                padding: '8px 14px',
+                // A 34px row is a mouse target. On the phone these are fingers.
+                padding: narrow ? '11px 14px' : '8px 14px',
                 margin: '1px 8px',
                 borderRadius: 7,
                 borderLeft: active ? `3px solid ${G3}` : '3px solid transparent',
@@ -562,10 +621,14 @@ function Header({
   page,
   onNav,
   onSignOut,
+  onMenu,
 }: {
   page: AdminPage;
   onNav?: (p: AdminPage) => void;
   onSignOut?: () => void;
+  /** Supplied only in drawer mode — the only way back to the navigation once
+   *  the sidebar stops being a permanent column. */
+  onMenu?: () => void;
 }) {
   const [bell, setBell] = useState(false);
   const [admin, setAdmin] = useState(false);
@@ -591,27 +654,83 @@ function Header({
         zIndex: 10,
       }}
     >
-      {/* Breadcrumb */}
+      {onMenu && (
+        <button
+          onClick={onMenu}
+          aria-label="Open navigation"
+          style={{
+            flexShrink: 0,
+            width: 34,
+            height: 34,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 4,
+            borderRadius: 8,
+            background: 'rgba(255,255,255,.05)',
+            border: `1px solid ${BORDER}`,
+            cursor: 'pointer',
+          }}
+        >
+          {[0, 1, 2].map((i) => (
+            <span
+              key={i}
+              style={{
+                display: 'block',
+                width: 15,
+                height: 1.5,
+                background: WHITE,
+                borderRadius: 1,
+              }}
+            />
+          ))}
+        </button>
+      )}
+      {/* Breadcrumb. "Operations Console /" is a desktop luxury — on a narrow
+          screen it wrapped onto two lines and pushed the page name off, so the
+          crumb collapses to just where you are. */}
       <div
         style={{
           flex: 1,
+          minWidth: 0,
           display: 'flex',
           alignItems: 'center',
           gap: 6,
           fontFamily: 'Inter, sans-serif',
         }}
       >
-        <span style={{ fontSize: 12, color: MUTED }}>Operations Console</span>
-        <span style={{ fontSize: 12, color: `rgba(255,255,255,.2)` }}>/</span>
-        <span style={{ fontSize: 13, fontWeight: 600, color: WHITE }}>{PAGE_LABELS[page]}</span>
+        {!onMenu && (
+          <>
+            <span style={{ fontSize: 12, color: MUTED, whiteSpace: 'nowrap' }}>
+              Operations Console
+            </span>
+            <span style={{ fontSize: 12, color: `rgba(255,255,255,.2)` }}>/</span>
+          </>
+        )}
+        <span
+          style={{
+            fontSize: 13,
+            fontWeight: 600,
+            color: WHITE,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {PAGE_LABELS[page]}
+        </span>
       </div>
-      {/* Live indicator */}
+      {/* Live indicator. On a narrow header the word costs more room than it
+          earns — the pulsing dot already says "live", so the label goes and the
+          page name gets the space back instead of being truncated to "Tri…". */}
       <div
         style={{
           display: 'flex',
+          flexShrink: 0,
           alignItems: 'center',
-          gap: 6,
-          padding: '4px 10px',
+          gap: onMenu ? 0 : 6,
+          padding: onMenu ? '6px' : '4px 10px',
           background: `rgba(16,185,129,.1)`,
           borderRadius: 99,
           border: `1px solid rgba(16,185,129,.2)`,
@@ -627,17 +746,19 @@ function Header({
             style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: C_OK }}
           />
         </div>
-        <span
-          style={{
-            fontSize: 11,
-            fontWeight: 700,
-            color: C_OK,
-            fontFamily: 'Inter, sans-serif',
-            letterSpacing: 0.5,
-          }}
-        >
-          LIVE
-        </span>
+        {!onMenu && (
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              color: C_OK,
+              fontFamily: 'Inter, sans-serif',
+              letterSpacing: 0.5,
+            }}
+          >
+            LIVE
+          </span>
+        )}
       </div>
       {/* Bell */}
       <div style={{ position: 'relative' }}>
@@ -700,21 +821,30 @@ function Header({
           }}
           style={{
             display: 'flex',
+            flexShrink: 0,
             alignItems: 'center',
-            gap: 8,
+            gap: onMenu ? 0 : 8,
             cursor: 'pointer',
-            padding: '5px 10px',
+            padding: onMenu ? 4 : '5px 10px',
             borderRadius: 8,
             background: 'rgba(255,255,255,.04)',
             border: `1px solid ${BORDER}`,
           }}
         >
           <Avatar name={adminName} size={24} />
-          <div style={{ fontFamily: 'Inter, sans-serif' }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: WHITE }}>{adminName}</div>
-            <div style={{ fontSize: 10, color: MUTED }}>{adminRole}</div>
-          </div>
-          <span style={{ fontSize: 10, color: MUTED }}>▾</span>
+          {/* The operator knows who they are signed in as. On a narrow header
+              their own name and role were costing 150px that the page name
+              needed, so the avatar carries it alone and the full identity
+              stays one tap away in the menu below. */}
+          {!onMenu && (
+            <>
+              <div style={{ fontFamily: 'Inter, sans-serif' }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: WHITE }}>{adminName}</div>
+                <div style={{ fontSize: 10, color: MUTED }}>{adminRole}</div>
+              </div>
+              <span style={{ fontSize: 10, color: MUTED }}>▾</span>
+            </>
+          )}
         </div>
         {admin && (
           <div
@@ -9300,6 +9430,13 @@ export function AdminConsoleScreen({ initialPage = 'dashboard' }: { initialPage?
   const [page, setPage] = useState<AdminPage>(initialPage);
   const [authed, setAuthed] = useState<boolean>(() => isOpsAuthed());
   const [badges, setBadges] = useState<NavBadges>({});
+  const narrow = useNarrowConsole();
+  const [navOpen, setNavOpen] = useState(false);
+  // Rotating the phone back to landscape, or opening the console on a desktop,
+  // must not leave a drawer stranded over a layout that no longer has one.
+  useEffect(() => {
+    if (!narrow) setNavOpen(false);
+  }, [narrow]);
   const handleSignOut = () => {
     auth.clear();
     setAuthed(false);
@@ -9344,14 +9481,31 @@ export function AdminConsoleScreen({ initialPage = 'dashboard' }: { initialPage?
     <div
       style={{
         width: '100%',
-        height: 641,
+        // Was a hardcoded 641px — the height of the Figma desktop mock. At
+        // ops.dripplex.com the console IS the page, so it takes the page.
+        height: '100%',
         display: 'flex',
         overflow: 'hidden',
         fontFamily: 'Inter, sans-serif',
         background: NAVY_BASE,
       }}
     >
-      <Sidebar page={page} onNav={setPage} badges={badges} />
+      <Sidebar
+        page={page}
+        onNav={setPage}
+        badges={badges}
+        narrow={narrow}
+        open={navOpen}
+        onClose={() => setNavOpen(false)}
+      />
+      {/* Tapping away from an open drawer closes it, the way every drawer
+          anyone has ever used behaves. */}
+      {narrow && navOpen && (
+        <div
+          onClick={() => setNavOpen(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,.55)' }}
+        />
+      )}
       <div
         style={{
           flex: 1,
@@ -9361,13 +9515,22 @@ export function AdminConsoleScreen({ initialPage = 'dashboard' }: { initialPage?
           minWidth: 0,
         }}
       >
-        <Header page={page} onNav={setPage} onSignOut={handleSignOut} />
+        <Header
+          page={page}
+          onNav={setPage}
+          onSignOut={handleSignOut}
+          {...(narrow ? { onMenu: () => setNavOpen(true) } : {})}
+        />
         <div
-          className="dx-scroll"
+          className="dx-scroll dx-console-body"
           style={{
             flex: 1,
             overflowY: 'auto',
-            padding: 18,
+            // The tables are wider than a phone and the shell clips overflow,
+            // so without this the right-hand columns were not merely
+            // off-screen — they were unreachable at any zoom level.
+            overflowX: 'auto',
+            padding: narrow ? 12 : 18,
             background: NAVY_BASE,
           }}
         >

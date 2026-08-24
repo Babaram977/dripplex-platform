@@ -2390,9 +2390,16 @@ export function SignInScreen({
       <div className="relative z-10 px-6 pt-3">
         <BackBtn onPress={onBack} />
       </div>
+      {/* The email/password form, Google, the Merchant and Driver partner
+          tiles and "Become a partner" together stand taller than a handset.
+          The parent clips overflow, so without a scroll here everything below
+          "Continue with Google" was not merely off-screen — it was
+          unreachable, which is exactly what a partner trying to sign in hit.
+          `min-h-0` is what lets a flex child shrink below its content and
+          scroll instead of forcing the parent open. */}
       <div
-        className="relative z-10 flex flex-1 flex-col gap-7 px-7 pt-5"
-        style={{ animation: 'fade-up .5s ease .05s both' }}
+        className="relative z-10 flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto px-7 pt-5"
+        style={{ animation: 'fade-up .5s ease .05s both', WebkitOverflowScrolling: 'touch' }}
       >
         <Logo width={160} />
         <div className="flex flex-col gap-1.5">
@@ -2550,8 +2557,10 @@ export function SignInScreen({
             </button>
           </p>
         )}
+        {/* Bottom breathing room lives inside the scroller, so the last row
+            clears the home indicator instead of sitting under it. */}
+        <div style={{ height: 'max(env(safe-area-inset-bottom), 24px)', flexShrink: 0 }} />
       </div>
-      <div className="pb-8" />
     </div>
   );
 }
@@ -3341,9 +3350,12 @@ export function RecoveryScreen({
       <div className="relative z-10 px-6 pt-3">
         <BackBtn onPress={step === 'reset' ? () => setStep('email') : onBack} />
       </div>
+      {/* Same clipping as the login screen this is one tap away from: the
+          reset step stacks two password fields and the rules under them, which
+          runs past a handset inside an overflow-hidden parent. */}
       <div
-        className="relative z-10 flex flex-1 flex-col gap-6 px-7 pt-5"
-        style={{ animation: 'fade-up .5s ease .05s both' }}
+        className="relative z-10 flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-7 pt-5"
+        style={{ animation: 'fade-up .5s ease .05s both', WebkitOverflowScrolling: 'touch' }}
       >
         <Logo width={150} />
         <div className="flex flex-col gap-1.5">
