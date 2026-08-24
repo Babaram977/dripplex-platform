@@ -2114,6 +2114,24 @@ export interface AdminUtilityPurchaseDto extends UtilityPurchaseDto {
  * could never clear, no matter how many the customer opened or how often
  * mark-all-read succeeded.
  */
+/** A channel the backend can deliver on. Mirrors the Prisma enum. */
+export type NotificationChannel = 'PUSH' | 'EMAIL' | 'SMS' | 'IN_APP' | 'WHATSAPP';
+
+export interface NotificationPreferenceInput {
+  channel: NotificationChannel;
+  /** The Prisma NotificationType. Only PROMOTION is written by the app today. */
+  type: string;
+  enabled: boolean;
+}
+
+export interface NotificationPreferenceDto extends NotificationPreferenceInput {
+  id: string;
+  userId: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
 export interface NotificationDto {
   id: string;
   userId: string;
@@ -3542,6 +3560,23 @@ export const api = {
       ),
     markRead: (id: string) => dx<void>('PATCH', `/customer/notifications/${id}/read`),
     markAllRead: () => dx<void>('POST', '/customer/notifications/mark-all-read'),
+
+    /**
+     * Notification preferences, one row per (channel, type). This is the only
+     * preference store the backend has — there is no general "settings" model —
+     * so it is what the Privacy Controls screen's marketing pills write to,
+     * against type PROMOTION.
+     *
+     * The controller returns raw Prisma rows, so the field names here are the
+     * column names. Declared to match, after three contract mismatches today
+     * caused by client types that were merely plausible.
+     */
+    getPreferences: () =>
+      dx<NotificationPreferenceDto[]>('GET', '/customer/notifications/preferences'),
+    updatePreferences: (preferences: NotificationPreferenceInput[]) =>
+      dx<NotificationPreferenceDto[]>('PUT', '/customer/notifications/preferences', {
+        preferences,
+      }),
   },
 
   // ── UTILITIES (customer bill payments) ──────────────────────────────────────
