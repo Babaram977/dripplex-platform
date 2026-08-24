@@ -4246,6 +4246,17 @@ function ApprovalStatusPage({ onNav }: { onNav: (p: MerchantPage) => void }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // PAGE 9 — EARNINGS
 // ─────────────────────────────────────────────────────────────────────────────
+/** The four states a settlement can really be in. The screen previously knew
+ *  only `SETTLED`, a value the backend never sends, so a completed payout and
+ *  a failed one both rendered as "Pending". */
+const SETTLEMENT_STATUS: Record<MerchantSettlementDto['status'], { label: string; color: string }> =
+  {
+    PENDING: { label: 'Pending', color: C_WARN },
+    COMPLETED: { label: 'Settled', color: C_OK },
+    FAILED: { label: 'Failed', color: C_ERR },
+    REVERSED: { label: 'Reversed', color: MUTED },
+  };
+
 function EarningsPage() {
   const [settlements, setSettlements] = useState<MerchantSettlementDto[]>([]);
   const [wallet, setWallet] = useState<WalletDto | null>(null);
@@ -4272,11 +4283,14 @@ function EarningsPage() {
     ]).finally(() => setLoading(false));
   }, []);
 
-  const totalGross = settlements.reduce((s, r) => s + r.grossAmount, 0);
-  const totalNet = settlements.reduce((s, r) => s + r.netAmount, 0);
+  // Reversed settlements are money taken back, so counting them as earnings
+  // would overstate the total the merchant is owed.
+  const earned = settlements.filter((r) => r.status !== 'REVERSED');
+  const totalGross = earned.reduce((s, r) => s + r.grossAmount, 0);
+  const totalNet = earned.reduce((s, r) => s + r.merchantAmount, 0);
   const pending = settlements
     .filter((r) => r.status === 'PENDING')
-    .reduce((s, r) => s + r.netAmount, 0);
+    .reduce((s, r) => s + r.merchantAmount, 0);
 
   return (
     <div className="mx-scroll" style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
@@ -4428,7 +4442,10 @@ function EarningsPage() {
                   {fmtDate(row.createdAt)}
                 </span>
                 <span style={{ fontFamily: IT, fontSize: 12, color: WHITE, fontWeight: 500 }}>
-                  {row.orderId.slice(0, 8).toUpperCase()}
+                  {/* The backend joins in the real order number for exactly
+                      this — a merchant should not have to match a truncated
+                      UUID against their order list. */}
+                  {row.orderNumber}
                 </span>
                 <span style={{ fontFamily: PP, fontSize: 12, fontWeight: 600, color: WHITE }}>
                   ₦{row.grossAmount.toLocaleString()}
@@ -4437,11 +4454,11 @@ function EarningsPage() {
                   −₦{row.commissionAmount.toLocaleString()}
                 </span>
                 <span style={{ fontFamily: PP, fontSize: 12, fontWeight: 700, color: G3 }}>
-                  ₦{row.netAmount.toLocaleString()}
+                  ₦{row.merchantAmount.toLocaleString()}
                 </span>
                 <MxChip
-                  label={row.status === 'SETTLED' ? 'Settled' : 'Pending'}
-                  color={row.status === 'SETTLED' ? C_OK : C_WARN}
+                  label={SETTLEMENT_STATUS[row.status].label}
+                  color={SETTLEMENT_STATUS[row.status].color}
                 />
               </div>
             ))}

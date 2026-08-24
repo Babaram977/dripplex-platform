@@ -2170,7 +2170,10 @@ export function ActivityDashboardScreen({ onBack }: { onBack: () => void }) {
   }, [fetchNotifications]);
 
   const handleMarkRead = async (id: string) => {
-    setNotifications((ns) => ns.map((n) => (n.id === id ? { ...n, read: true } : n)));
+    // Optimistic: stamp the same field the server will, so the row settles
+    // read immediately and stays read when the list is refetched.
+    const now = new Date().toISOString();
+    setNotifications((ns) => ns.map((n) => (n.id === id ? { ...n, readAt: now } : n)));
     try {
       await api.notifications.markRead(id);
     } catch {}
@@ -2178,14 +2181,15 @@ export function ActivityDashboardScreen({ onBack }: { onBack: () => void }) {
 
   const handleMarkAllRead = async () => {
     setMarkingAll(true);
-    setNotifications((ns) => ns.map((n) => ({ ...n, read: true })));
+    const now = new Date().toISOString();
+    setNotifications((ns) => ns.map((n) => ({ ...n, readAt: n.readAt ?? now })));
     try {
       await api.notifications.markAllRead();
     } catch {}
     setMarkingAll(false);
   };
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  const unreadCount = notifications.filter((n) => n.readAt === null).length;
 
   const notifIconFor = (type: string) => {
     if (type.includes('RIDE') || type.includes('ride')) return '🚖';
@@ -2293,13 +2297,15 @@ export function ActivityDashboardScreen({ onBack }: { onBack: () => void }) {
               onClick={() => handleMarkRead(n.id)}
               className="mx-6 mb-3 flex w-[calc(100%-48px)] items-start gap-3 rounded-2xl p-4 text-left transition-all active:scale-[.98]"
               style={{
-                background: n.read ? NAVY_CARD : 'rgba(43,172,82,.07)',
-                border: `1.5px solid ${n.read ? BORDER : 'rgba(43,172,82,.25)'}`,
+                background: n.readAt !== null ? NAVY_CARD : 'rgba(43,172,82,.07)',
+                border: `1.5px solid ${n.readAt !== null ? BORDER : 'rgba(43,172,82,.25)'}`,
               }}
             >
               <div
                 className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl text-xl"
-                style={{ background: n.read ? 'rgba(255,255,255,.05)' : 'rgba(43,172,82,.12)' }}
+                style={{
+                  background: n.readAt !== null ? 'rgba(255,255,255,.05)' : 'rgba(43,172,82,.12)',
+                }}
               >
                 {notifIconFor(n.type)}
               </div>
@@ -2311,7 +2317,7 @@ export function ActivityDashboardScreen({ onBack }: { onBack: () => void }) {
                   >
                     {n.title}
                   </p>
-                  {!n.read && (
+                  {n.readAt === null && (
                     <div
                       className="h-2 w-2 flex-shrink-0 rounded-full"
                       style={{ background: G2 }}

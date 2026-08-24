@@ -969,16 +969,44 @@ export interface RawMerchantProduct {
   updatedAt: string;
 }
 
+/**
+ * One order's settlement, as `GET /merchant/settlements` actually returns it.
+ *
+ * This copy previously declared `netAmount`, `settledAt`, and a
+ * `'PENDING' | 'SETTLED'` status. None of the three exist on the wire: the
+ * backend's OrderSettlementDto (packages/types/src/order/index.ts) sends
+ * `merchantAmount`, has no `settledAt`, and its status is
+ * `'PENDING' | 'COMPLETED' | 'FAILED' | 'REVERSED'`. Because the invented
+ * names typecheck against an invented type, nothing caught it until a
+ * merchant opened Earnings and `row.netAmount.toLocaleString()` threw
+ * "Cannot read properties of undefined" — the whole screen replaced by an
+ * error boundary. `SETTLED` likewise never matched a real row, so a completed
+ * settlement could not render as completed.
+ *
+ * Kept in sync with OrderSettlementDto by hand; the fields the screens do not
+ * read (reversal bookkeeping) are still declared so the next person can see
+ * the real shape rather than re-guess it.
+ */
 export interface MerchantSettlementDto {
   id: string;
   orderId: string;
+  /** Human-readable order number, so a merchant is never shown a raw UUID. */
+  orderNumber: string;
+  merchantId: string;
+  status: 'PENDING' | 'COMPLETED' | 'FAILED' | 'REVERSED';
   grossAmount: number;
+  commissionRate: number;
   commissionAmount: number;
-  netAmount: number;
+  /** What the merchant actually receives — gross minus commission. */
+  merchantAmount: number;
   currency: string;
-  status: 'PENDING' | 'SETTLED';
-  settledAt: string | null;
+  walletLedgerEntryId: string | null;
+  failureReason: string | null;
+  reversedAt: string | null;
+  reversalReason: string | null;
+  reversalLedgerEntryId: string | null;
   createdAt: string;
+  updatedAt: string;
 }
 
 // ── Hotel booking (DPX-HOTEL-001) ────────────────────────────────────────────
@@ -2056,14 +2084,33 @@ export interface AdminUtilityPurchaseDto extends UtilityPurchaseDto {
 }
 
 // Notifications
+/**
+ * A notification as `GET /customer/notifications` actually returns it — the
+ * raw Prisma row, so the field names are the column names.
+ *
+ * This copy previously declared `read: boolean` and `data`. Neither exists:
+ * the row carries `readAt: string | null` and `payload`. `n.read` was
+ * therefore `undefined` on every notification ever fetched, so `!n.read` was
+ * always true — every notification rendered as unread and the bell's dot
+ * could never clear, no matter how many the customer opened or how often
+ * mark-all-read succeeded.
+ */
 export interface NotificationDto {
   id: string;
+  userId: string;
+  category: string;
+  channel: string;
   type: string;
+  priority: string;
+  status: string;
   title: string;
   body: string;
-  read: boolean;
-  data: Record<string, unknown>;
+  payload: unknown;
+  expiresAt: string | null;
+  /** Null until the customer opens it. This is the read flag. */
+  readAt: string | null;
   createdAt: string;
+  updatedAt: string;
 }
 
 // ─── API Namespaces ───────────────────────────────────────────────────────────
