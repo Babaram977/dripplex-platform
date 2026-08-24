@@ -26,7 +26,15 @@ export { G0, G2, G3, NAVY_DEEP, NAVY_BASE, NAVY_CARD, NAVY_SURFACE, BORDER, MUTE
  * — a stale support number is worse than none, because a blocked user believes
  * they have reached somebody.
  */
-export const DRIPPLEX_SUPPORT_WHATSAPP = '+2349061616116';
+export const DRIPPLEX_SUPPORT_WHATSAPP = '+2347038888300';
+
+/**
+ * The support inbox, for the same reason the number above lives here. Confirmed
+ * by the founder 2026-08-24, together with the WhatsApp line — the merchant
+ * approval screen had been showing `merchants@dripplexapp.com`, a domain that
+ * does not exist, next to "+234 800 DRIPPLEX", which is not a phone number.
+ */
+export const DRIPPLEX_SUPPORT_EMAIL = 'support@dripplex.com';
 
 /**
  * Time-of-day greeting. One implementation so the wallet cannot say

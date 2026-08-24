@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 
+import { DRIPPLEX_SUPPORT_EMAIL, DRIPPLEX_SUPPORT_WHATSAPP } from './shared';
 import { useNarrowViewport } from './useNarrowViewport';
 import { api, uploadFile } from '../lib/api';
 import { auth, endSession } from '../lib/auth';
@@ -4345,7 +4346,7 @@ function ApprovalStatusPage({ onNav }: { onNav: (p: MerchantPage) => void }) {
       <div style={{ marginTop: 16 }}>
         <InfoBanner
           icon="📞"
-          text="Need help? Contact the DrippleX merchant support team at merchants@dripplexapp.com or call +234 800 DRIPPLEX."
+          text={`Need help? Contact DrippleX merchant support at ${DRIPPLEX_SUPPORT_EMAIL} or on WhatsApp at ${DRIPPLEX_SUPPORT_WHATSAPP}.`}
           color={'#3B82F6'}
         />
       </div>
