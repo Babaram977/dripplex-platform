@@ -137,9 +137,22 @@ export const GLOBAL_STYLES = `
   /*  2b. The device mockup — bezel, notch, 390px width, simulated status bar
         — is a desktop preview of a phone. On an actual phone it IS the
         phone, and a fixed 390px overflows a 360px handset sideways while
-        wasting space on a 430px one. Below 480px the app goes full bleed
-        and the mock chrome disappears. */
-  @media (max-width: 480px) {
+        wasting space on a 430px one. Full bleed, and the mock chrome goes.
+
+        The trigger is the DEVICE, not a width. It used to be max-width:
+        480px alone, which is a guess about how wide a phone is — and it is
+        wrong for a large Android, a foldable, or a tablet, all of which
+        report more than 480 CSS pixels. Those devices got the 390px column
+        with dead black bars either side of it, reported as the app not
+        fitting the screen.
+
+        pointer: coarse asks the question that actually matters: is this
+        being touched? Any handheld gets the whole screen at any width. A
+        mouse-driven desktop keeps the centred column, which is right there —
+        a phone layout stretched across a 27-inch monitor is not an
+        improvement. The width query stays alongside it for the rare touch
+        device that misreports its pointer. */
+  @media (max-width: 480px), (pointer: coarse) {
     .dx-canvas       { padding: 0 !important; align-items: stretch !important; }
     .dx-canvas > *   { width: 100%; height: 100%; }
     .dx-phone-frame  { width: 100dvw !important; height: 100dvh !important;
