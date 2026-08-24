@@ -91,6 +91,22 @@ success and verify rejection all behave; `/` and `/ops` unchanged.
 - DNS for `dripplex.com` is on Cloudflare and is founder-side; no tooling available to the
   agent session can change it.
 
+## Shell target — RESOLVED 2026-08-24
+
+`app.dripplex.com` now serves the **super-app**, not customer-web — verified the same day by
+fetching the page (`<title>Dripplex — life, Simplified</title>`, `robots: noindex`) and by
+grepping the served bundle for code merged in #261. `capacitor.config.ts:20` defaults
+`CAPACITOR_SERVER_URL` to that host and `mobile-build.yml` passes it, so the shell finally opens
+the intended app. The three blockers listed above are closed: the super-app has its custom
+domain, CORS admits it, and no `*.up.railway.app` host is shipped.
+
+Google sign-in inside the WebView is **still expected to fail** and is still unbuilt. Do not
+claim it works in a store listing.
+
+The "do not submit while ride booking is broken" instruction at the foot of this document has
+also lifted: the complete driver journey — register through to a paid cash trip with commission
+split — was run against production on 2026-08-24.
+
 ## Gate A — Technical packaging
 
 - [x] Android/iOS native projects present
@@ -103,7 +119,16 @@ success and verify rejection all behave; `/` and `/ops` unchanged.
 - [x] Android release signing is secret-driven in CI
 - [x] Static packaging verification strengthened
 - [x] Dedicated store-readiness CI workflow added
-- [ ] Successful production Android AAB build recorded
+- [x] Successful production Android AAB build recorded — `mobile-build.yml` run #3
+      (2026-08-22, `4984d3b`), `:app:signProductionReleaseBundle` executed and logged SIGNED.
+      **That artifact is stale**: it was built when `app.dripplex.com` still served
+      customer-web. Re-run recorded below.
+- [x] **Current signed AAB + APK — run #4, 2026-08-24, `b229331`, against the corrected shell
+      target.** All three jobs green (packaging verify, iOS project preflight, Android build);
+      `CAPACITOR_SERVER_URL=https://app.dripplex.com`, flavor `production`, `REQUIRE_SIGNED=1`.
+      Artifacts `dripplex-customer-production-aab` / `-apk` on
+      [run 32704498517](https://github.com/Babaram977/dripplex-platform/actions/runs/32704498517).
+      **This is the build to upload.** Not yet installed on real hardware — Gate C is unrun.
 - [ ] Successful iOS Release simulator build recorded
 - [ ] Signed iOS archive/TestFlight build recorded
 
@@ -118,8 +143,10 @@ Required:
 - [x] Android 512x512 store icon — `apps/customer-mobile/resources/play-store-icon-512.png`
 - [x] Android adaptive icon foreground/background — foreground at every density; background
       layer `@color/ic_launcher_background` moved `#FFFFFF` → `#000000`
-- [ ] Google Play feature graphic
-- [ ] Android phone screenshots
+- [x] Google Play feature graphic — `resources/play-feature-graphic-1024x500.png`, verified 1024x500
+- [x] Android phone screenshots — five 1080x1920 PNGs in `resources/play-screenshots/`,
+      captured from the real signed-in app. Their README rates `05-orders.png` **do not ship**
+      and `04-wallet.png` thin, so 2-3 of the five are listing-quality as things stand
 - [ ] iPhone screenshots
 - [ ] iPad screenshots if the iPad target remains enabled
 - [x] iOS App Store icon set — 1024x1024, alpha-free (Apple rejects transparency)
@@ -127,8 +154,12 @@ Required:
       `capacitor.config.ts` splash `backgroundColor` moved `#0E7A3E` → `#000000` so the
       splash is not framed in a colour the artwork does not contain
 - [ ] Store listing copy
-- [ ] Privacy policy URL
-- [ ] Support URL
+- [~] Privacy policy URL — `https://www.dripplex.com/privacy` is live and now carries a full
+  policy grounded in DPX-MOBILE-003. Controller entity confirmed 2026-08-24:
+  **AFNAN HOMES LTD, RC 9387949**. **Still blocked on Nigerian legal review and on the
+  registered address**, which remains a placeholder in the page source
+- [~] Support URL — `https://www.dripplex.com/contact` is live (HTTP 200); confirm it is the
+  address you want reviewers and users to write to
 - [ ] Marketing website URL
 
 Assets are **generated, never hand-edited**:
