@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { G0, G2, G3, NAVY_DEEP, NAVY_CARD, NAVY_SURFACE, BORDER, MUTED } from './shared';
 import { api } from '../lib/api';
 import { ImageWithFallback } from './components/figma/ImageWithFallback';
@@ -37,7 +37,14 @@ export function monogram(businessName: string): string {
  * matched a business with the word "Hotels" in its name — a hotel called
  * "Tahir Guest Palace" never appeared under it. `category: null` is All.
  */
-const CAT_CHIPS: { label: string; icon: IconName; category: MerchantCategory | null }[] = [
+/**
+ * The one list of shoppable categories, exported so the home screen's category
+ * row uses the same labels and the same enum values these chips do. Two lists
+ * would drift, and the drift would be silent: a home tile reading "Home" that
+ * lands on a marketplace chip reading "Furniture" looks like a bug to whoever
+ * taps it.
+ */
+export const CAT_CHIPS: { label: string; icon: IconName; category: MerchantCategory | null }[] = [
   { label: 'All', icon: 'all', category: null },
   { label: 'Supermarkets', icon: 'supermarket', category: 'SUPERMARKET' },
   { label: 'Restaurants', icon: 'restaurant', category: 'RESTAURANT' },
@@ -390,6 +397,15 @@ function CategoryChips({
   active: MerchantCategory | null;
   onChange: (c: MerchantCategory | null) => void;
 }) {
+  const activeRef = useRef<HTMLButtonElement | null>(null);
+  // Arriving here already filtered — from a home category tile — the active
+  // chip can be well off the right of a phone screen, and the row does not
+  // scroll itself. The customer then sees "All / Supermarkets / Restaurants"
+  // and no indication of which filter they are actually looking at. Bring it
+  // into view whenever the filter changes.
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ inline: 'center', block: 'nearest' });
+  }, [active]);
   return (
     <div className="mb-4 mt-3">
       <div className="flex gap-2 overflow-x-auto px-5" style={{ scrollbarWidth: 'none' }}>
@@ -398,6 +414,7 @@ function CategoryChips({
           return (
             <button
               key={c.label}
+              ref={on ? activeRef : undefined}
               onClick={() => onChange(c.category)}
               className="flex h-9 flex-shrink-0 items-center gap-1.5 rounded-full px-3.5 transition-all active:scale-95"
               style={{

@@ -860,6 +860,12 @@ function AppShell() {
         setMarketplaceCategory(null);
         go('marketplace');
       }}
+      // A category is a filter on where a merchant registered, not a word to
+      // search for. Same path the Hotels tile already takes.
+      onCategory={(c) => {
+        setMarketplaceCategory(c);
+        go('marketplace');
+      }}
       onRide={() => go('ridehome')}
       onDriverApp={() => go('drvsplash')}
       onStore={(id) => {
