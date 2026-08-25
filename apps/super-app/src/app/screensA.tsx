@@ -283,6 +283,17 @@ export function RegisterScreen({
   const [showPw, setShowPw] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // A referred customer had nowhere to enter the code. The backend has taken
+  // one on POST /auth/register/customer since referrals shipped —
+  // RegistrationService redeems it against the referrer and the driver
+  // campaign — but this screen never collected it and the API client never
+  // sent it, so every code a customer shared was unusable.
+  const [referralCode, setReferralCode] = useState('');
+  const [refFocused, setRefFocused] = useState(false);
+  // Matches REFERRAL_CODE_PATTERN on the server (4-16 alphanumeric), so a
+  // mistyped code is caught here instead of failing the whole registration.
+  const referralTrimmed = referralCode.trim().toUpperCase();
+  const referralValid = referralTrimmed.length === 0 || /^[A-Z0-9]{4,16}$/.test(referralTrimmed);
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   const phoneDigits = phone.replace(/\D/g, '');
   const phoneValid = phoneDigits.length >= 7;
@@ -296,7 +307,7 @@ export function RegisterScreen({
   // (founder decision) and the customer backend enforces it — so require a valid
   // email here rather than accepting phone-only, which the API would reject.
   // Phone stays optional.
-  const isValid = nameValid && pwValid && emailValid;
+  const isValid = nameValid && pwValid && emailValid && referralValid;
 
   const handleContinue = async () => {
     if (!isValid) {
@@ -323,6 +334,7 @@ export function RegisterScreen({
         password,
         email: trimmedEmail,
         ...(phoneValid ? { phone: e164 } : {}),
+        ...(referralTrimmed ? { referralCode: referralTrimmed } : {}),
       });
       onContinue({ email: trimmedEmail, phone, country, password, verifyChannel });
     } catch (e) {
@@ -627,6 +639,47 @@ export function RegisterScreen({
                 style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.4)' }}
               >
                 Use at least 8 characters with an uppercase letter and a number.
+              </p>
+            )}
+          </div>
+          <div className="flex flex-col gap-2">
+            <label
+              className="text-[11px] font-medium uppercase tracking-widest"
+              style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.3)' }}
+            >
+              Referral code (optional)
+            </label>
+            <div
+              className="flex h-[54px] items-center gap-3 rounded-xl px-4 transition-all duration-200"
+              style={{
+                background: 'rgba(255,255,255,.05)',
+                border: refFocused ? `1.5px solid ${G2}` : `1.5px solid ${BORDER}`,
+                boxShadow: refFocused ? `0 0 0 3px rgba(43,172,82,.11)` : 'none',
+              }}
+            >
+              <input
+                inputMode="text"
+                autoCapitalize="characters"
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="Have a friend's code?"
+                value={referralCode}
+                // Codes are issued uppercase from an alphabet with no 0/O or
+                // 1/I/L, so uppercasing as they type removes the commonest
+                // way of getting a valid code rejected.
+                onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+                onFocus={() => setRefFocused(true)}
+                onBlur={() => setRefFocused(false)}
+                className="placeholder:text-white/22 flex-1 bg-transparent text-[15px] uppercase tracking-widest text-white outline-none"
+                style={{ fontFamily: "'Inter',sans-serif" }}
+              />
+            </div>
+            {!referralValid && (
+              <p
+                className="pl-1 text-[11px]"
+                style={{ fontFamily: "'Inter',sans-serif", color: 'rgba(255,255,255,.4)' }}
+              >
+                A referral code is 4-16 letters and numbers. Leave it empty if you don't have one.
               </p>
             )}
           </div>

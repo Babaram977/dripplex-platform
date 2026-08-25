@@ -2214,6 +2214,11 @@ export const api = {
       phone?: string;
       email?: string;
       password: string;
+      /** Redeemed server-side by RegistrationService against the referrer's
+       *  code or a driver campaign code. Omitted when the customer has none —
+       *  this field was missing from the client entirely, so the backend's
+       *  redemption branch never ran for anyone signing up in the app. */
+      referralCode?: string;
     }) => dx<RegistrationResponse>('POST', '/auth/register/customer', body),
     registerMerchant: (body: Record<string, unknown>) =>
       dx<RegistrationResponse>('POST', '/auth/register/merchant', body),
