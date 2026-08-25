@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-ADRs capture significant engineering decisions for Dripplex.
+ADRs capture significant engineering decisions for DrippleX.
 
 ## Format
 

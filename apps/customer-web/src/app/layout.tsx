@@ -37,7 +37,7 @@ export const metadata: Metadata = {
   description: siteConfig.description,
   applicationName: siteConfig.name,
   keywords: [
-    'Dripplex',
+    'DrippleX',
     'Nigeria',
     'Super Platform',
     'marketplace',

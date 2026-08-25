@@ -1,5 +1,5 @@
 ---
-description: Next.js portal conventions for Dripplex frontends
+description: Next.js portal conventions for DrippleX frontends
 globs:
   - apps/customer-web/**/*
   - apps/merchant-portal/**/*

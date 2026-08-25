@@ -65,7 +65,7 @@ export class FlutterwaveProvider implements PaymentProviderAdapter {
           ...(input.metadata ?? {}),
         },
         customizations: {
-          title: 'Dripplex Order Payment',
+          title: 'DrippleX Order Payment',
           description: `Payment for ${input.orderNumber}`,
         },
       },

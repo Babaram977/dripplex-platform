@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bootstrap an Ubuntu 24.04 host for the Dripplex API Compose stack.
+# Bootstrap an Ubuntu 24.04 host for the DrippleX API Compose stack.
 # Safe to run as a sudo-capable deploy user.
 set -euo pipefail
 

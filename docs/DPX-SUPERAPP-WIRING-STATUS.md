@@ -27,7 +27,7 @@ Last updated: session on branch `claude/figma-connect-iugdbg` (PR #94).
   - backend service `@dripplex/backend` `c37d0dc3-f0ca-4a3d-8080-298ed26d6adb` — builds from
     **`main`**. CORS_ORIGINS (redacted) must include the super-app origin (founder-managed).
 
-## 2. Demo personas (seeded, loginable) — password `Dripplex#Demo1`
+## 2. Demo personas (seeded, loginable) — password `DrippleX#Demo1`
 
 | Persona             | Email                   | Notes                                                       |
 | ------------------- | ----------------------- | ----------------------------------------------------------- |

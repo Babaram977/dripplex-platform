@@ -5,7 +5,7 @@
 
 ## Context
 
-Dripplex spans six Next.js portals, one NestJS API, and multiple shared libraries. Independent repositories would slow cross-cutting type and contract changes and invite duplicated UI/SDK logic.
+DrippleX spans six Next.js portals, one NestJS API, and multiple shared libraries. Independent repositories would slow cross-cutting type and contract changes and invite duplicated UI/SDK logic.
 
 ## Decision
 

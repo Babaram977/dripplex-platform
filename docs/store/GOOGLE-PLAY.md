@@ -6,7 +6,7 @@ Use this draft when creating the Play Console listing. Replace placeholders befo
 
 | Field                            | Value                                                                   |
 | -------------------------------- | ----------------------------------------------------------------------- |
-| **Title**                        | Dripplex                                                                |
+| **Title**                        | DrippleX                                                                |
 | **Short description** (80 chars) | Nigeria’s Super Platform — shop, food, rides, wallet. life, Simplified. |
 | **Full description**             | See below                                                               |
 | **Category**                     | Shopping                                                                |
@@ -25,14 +25,14 @@ tightened.
 ### Full description (template)
 
 ```
-Dripplex is Nigeria’s Super Platform for everyday life — marketplace, food delivery, parcels, rides, pharmacy, home services, and wallet in one app.
+DrippleX is Nigeria’s Super Platform for everyday life — marketplace, food delivery, parcels, rides, pharmacy, home services, and wallet in one app.
 
 life, Simplified.
 
 • Shop local merchants and essentials
 • Order food with live delivery tracking
 • Send parcels and book rides
-• Pay and manage money with Dripplex Wallet
+• Pay and manage money with DrippleX Wallet
 • Track orders and notifications in one place
 
 Built for Nigeria. Secure sign-in, device-aware sessions, and a fast mobile experience.

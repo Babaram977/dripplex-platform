@@ -1,5 +1,5 @@
 ---
-description: Shared packages and reuse rules for Dripplex
+description: Shared packages and reuse rules for DrippleX
 globs:
   - packages/**/*
   - apps/**/*

@@ -101,7 +101,7 @@ jobs:
           ./scripts/cicd/lib.sh 2>/dev/null || true
           if [ -n "${SLACK_WEBHOOK_URL:-}" ]; then
             curl -fsS -X POST -H 'Content-type: application/json' \
-              --data "{\"text\":\"*[Dripplex staging]* Deploy success tag=${IMAGE_TAG}\"}" \
+              --data "{\"text\":\"*[DrippleX staging]* Deploy success tag=${IMAGE_TAG}\"}" \
               "$SLACK_WEBHOOK_URL"
           fi
 
@@ -110,6 +110,6 @@ jobs:
         run: |
           if [ -n "${SLACK_WEBHOOK_URL:-}" ]; then
             curl -fsS -X POST -H 'Content-type: application/json' \
-              --data "{\"text\":\"*[Dripplex staging]* Deploy FAILED tag=${IMAGE_TAG} (rollback attempted)\"}" \
+              --data "{\"text\":\"*[DrippleX staging]* Deploy FAILED tag=${IMAGE_TAG} (rollback attempted)\"}" \
               "$SLACK_WEBHOOK_URL"
           fi

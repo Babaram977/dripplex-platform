@@ -4,7 +4,7 @@
 
 | Field                   | Value                                |
 | ----------------------- | ------------------------------------ |
-| **Name**                | Dripplex                             |
+| **Name**                | DrippleX                             |
 | **Subtitle** (30 chars) | life, Simplified                     |
 | **Bundle ID**           | `com.dripplex.customer`              |
 | **SKU**                 | `dripplex-customer-ios`              |
@@ -57,7 +57,7 @@ Matches `PrivacyInfo.xcprivacy` + Sentry (when enabled).
 ## Review notes
 
 ```
-Dripplex Customer is a WebView shell loading https://app.dripplex.com (our production web app).
+DrippleX Customer is a WebView shell loading https://app.dripplex.com (our production web app).
 
 Test account (staging):
   Email: [provide staging tester]

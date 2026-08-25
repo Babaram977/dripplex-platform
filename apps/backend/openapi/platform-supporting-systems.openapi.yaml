@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: Dripplex Platform Supporting Systems API
+  title: DrippleX Platform Supporting Systems API
   version: 0.1.0
   description: >
     Interim OpenAPI source of truth for Sprint 1 C14-C23 stabilization endpoints.

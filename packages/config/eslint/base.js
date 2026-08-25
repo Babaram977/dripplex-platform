@@ -13,7 +13,7 @@ import tseslint from 'typescript-eslint';
  */
 
 /**
- * Shared ESLint flat config for all Dripplex TypeScript packages.
+ * Shared ESLint flat config for all DrippleX TypeScript packages.
  * Enforces strict typing: `any` is forbidden.
  *
  * @param {DripplexEslintOptions} [options]

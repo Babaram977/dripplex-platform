@@ -20,10 +20,10 @@ const sans = Manrope({
 
 export const metadata: Metadata = {
   title: {
-    default: 'Dripplex Driver Portal',
-    template: `%s · Dripplex Driver Portal`,
+    default: 'DrippleX Driver Portal',
+    template: `%s · DrippleX Driver Portal`,
   },
-  description: 'Dripplex driver portal — live Backend Core integration via sdk-driver.',
+  description: 'DrippleX driver portal — live Backend Core integration via sdk-driver.',
   icons: {
     icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }],
     apple: [{ url: '/app-icon.svg' }],

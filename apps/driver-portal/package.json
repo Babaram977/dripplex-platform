@@ -2,7 +2,7 @@
   "name": "@dripplex/driver-portal",
   "version": "1.0.0",
   "private": true,
-  "description": "Dripplex driver portal — live Backend Core integration via sdk-driver.",
+  "description": "DrippleX driver portal — live Backend Core integration via sdk-driver.",
   "license": "UNLICENSED",
   "scripts": {
     "dev": "next dev --port ${DRIVER_PORTAL_PORT:-3004}",

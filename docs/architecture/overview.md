@@ -1,8 +1,8 @@
-# Dripplex Architecture Overview
+# DrippleX Architecture Overview
 
 ## Vision
 
-Dripplex is a Nigerian Super Platform: marketplace, food delivery, parcel delivery, ride hailing, pharmacy, home services, wallet, and operator portals. The architecture must support millions of users and geographic expansion across Africa without rewriting core bounded contexts.
+DrippleX is a Nigerian Super Platform: marketplace, food delivery, parcel delivery, ride hailing, pharmacy, home services, wallet, and operator portals. The architecture must support millions of users and geographic expansion across Africa without rewriting core bounded contexts.
 
 ## Style
 

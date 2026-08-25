@@ -145,6 +145,6 @@ jobs:
         run: |
           if [ -n "${SLACK_WEBHOOK_URL:-}" ]; then
             curl -fsS -X POST -H 'Content-type: application/json' \
-              --data "{\"text\":\"*[Dripplex]* Release images published for ${GITHUB_SHA::12} → GHCR\"}" \
+              --data "{\"text\":\"*[DrippleX]* Release images published for ${GITHUB_SHA::12} → GHCR\"}" \
               "$SLACK_WEBHOOK_URL"
           fi

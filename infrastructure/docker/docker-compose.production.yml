@@ -1,4 +1,4 @@
-# Dripplex production stack (Program D1)
+# DrippleX production stack (Program D1)
 # Deploy on Hetzner private network. Do not expose Postgres/Redis publicly.
 # Usage:
 #   export COMPOSE_FILE=infrastructure/docker/docker-compose.production.yml

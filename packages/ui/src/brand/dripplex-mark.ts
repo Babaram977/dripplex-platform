@@ -1,5 +1,5 @@
 /**
- * Official Dripplex brand mark (SVG).
+ * Official DrippleX brand mark (SVG).
  *
  * Traced directly from the founder's approved brand-identity export
  * (`docs/reference/figma-super-app-source/dripplex-brand-identity.png`,

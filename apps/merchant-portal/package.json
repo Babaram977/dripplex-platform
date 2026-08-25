@@ -2,7 +2,7 @@
   "name": "@dripplex/merchant-portal",
   "version": "1.0.0",
   "private": true,
-  "description": "Dripplex merchant portal — live Backend Core integration via sdk-merchant.",
+  "description": "DrippleX merchant portal — live Backend Core integration via sdk-merchant.",
   "license": "UNLICENSED",
   "scripts": {
     "dev": "next dev --port ${MERCHANT_PORTAL_PORT:-3002}",

@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Dripplex — life, Simplified. Nigerian Super Platform monorepo.",
+  "description": "DrippleX — life, Simplified. Nigerian Super Platform monorepo.",
   "license": "UNLICENSED",
   "engines": {
     "node": ">=22.0.0",

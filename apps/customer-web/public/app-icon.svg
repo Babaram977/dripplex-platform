@@ -1,9 +1,9 @@
 <!--
-  Dripplex PWA app icon — the official traced brand mark (green speed-"D")
+  DrippleX PWA app icon — the official traced brand mark (green speed-"D")
   from packages/ui/src/brand/dripplex-mark.ts, on the locked NAVY_BASE tile.
   Mark paths locked from docs/reference/figma-super-app-source/dripplex-brand-identity.png.
 -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-label="Dripplex">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-label="DrippleX">
   <defs>
     <linearGradient id="dxApp" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#47CF72"/>

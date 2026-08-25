@@ -1,5 +1,5 @@
 ---
-description: NestJS backend module conventions for Dripplex
+description: NestJS backend module conventions for DrippleX
 globs:
   - apps/backend/**/*
 alwaysApply: false

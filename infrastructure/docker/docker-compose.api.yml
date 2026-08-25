@@ -1,4 +1,4 @@
-# Dripplex production API stack (Program D2)
+# DrippleX production API stack (Program D2)
 # Frontends run on Cloudflare Workers — this Compose file runs Backend Core only.
 #
 # Usage on host:

@@ -46,11 +46,11 @@ describe('NotificationTemplateService', () => {
   });
 
   it('renders subject and body variables', () => {
-    const rendered = service.renderTemplate(template, { name: 'Ada', app: 'Dripplex' });
+    const rendered = service.renderTemplate(template, { name: 'Ada', app: 'DrippleX' });
 
     expect(rendered).toEqual({
       subject: 'Hello Ada',
-      body: 'Welcome to Dripplex.',
+      body: 'Welcome to DrippleX.',
     });
   });
 
@@ -82,9 +82,9 @@ describe('NotificationTemplateService', () => {
   it('loads an active template before rendering', async () => {
     prisma.notificationTemplate.findFirst.mockResolvedValue(template);
 
-    await expect(service.render('welcome', { name: 'Ada', app: 'Dripplex' })).resolves.toEqual({
+    await expect(service.render('welcome', { name: 'Ada', app: 'DrippleX' })).resolves.toEqual({
       subject: 'Hello Ada',
-      body: 'Welcome to Dripplex.',
+      body: 'Welcome to DrippleX.',
     });
     expect(prisma.notificationTemplate.findFirst).toHaveBeenCalledWith({
       where: { code: 'welcome', active: true, deletedAt: null },

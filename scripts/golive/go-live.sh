@@ -25,7 +25,7 @@ export RIDER_URL="${RIDER_URL:-https://rider.dripplex.com}"
 export ADMIN_URL="${ADMIN_URL:-https://admin.dripplex.com}"
 export SMOKE_STRICT="${SMOKE_STRICT:-1}"
 
-log "=== Dripplex Go-Live v${VERSION} (tag=${IMAGE_TAG}) ==="
+log "=== DrippleX Go-Live v${VERSION} (tag=${IMAGE_TAG}) ==="
 
 chmod +x "${ROOT}/scripts/golive/"*.sh "${ROOT}/scripts/cicd/"*.sh
 

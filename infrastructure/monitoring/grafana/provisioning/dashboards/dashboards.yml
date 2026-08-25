@@ -2,7 +2,7 @@ apiVersion: 1
 providers:
   - name: dripplex
     orgId: 1
-    folder: Dripplex
+    folder: DrippleX
     type: file
     disableDeletion: false
     options:

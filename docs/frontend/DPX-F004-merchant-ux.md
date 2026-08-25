@@ -12,7 +12,7 @@
 
 ## Purpose
 
-Define merchant portal journeys for operating a store on Dripplex.
+Define merchant portal journeys for operating a store on DrippleX.
 
 ## Journeys (draft)
 

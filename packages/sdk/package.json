@@ -2,7 +2,7 @@
   "name": "@dripplex/sdk",
   "version": "1.0.0",
   "private": true,
-  "description": "Dripplex typed HTTP client for api/v1 consumers across web portals.",
+  "description": "DrippleX typed HTTP client for api/v1 consumers across web portals.",
   "license": "UNLICENSED",
   "type": "module",
   "exports": {

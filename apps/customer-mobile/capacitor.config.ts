@@ -21,7 +21,7 @@ const serverUrl = process.env['CAPACITOR_SERVER_URL'] ?? 'https://app.dripplex.c
 
 const config: CapacitorConfig = {
   appId: 'com.dripplex.customer',
-  appName: 'Dripplex',
+  appName: 'DrippleX',
   webDir: 'www',
   server: {
     url: serverUrl,
@@ -37,6 +37,8 @@ const config: CapacitorConfig = {
   },
   ios: {
     contentInset: 'automatic',
+    // Identifier, not display text — left as-is deliberately while the
+    // brand name is spelled DrippleX everywhere a person can read it.
     scheme: 'Dripplex',
     webContentsDebuggingEnabled: process.env['NODE_ENV'] !== 'production',
   },

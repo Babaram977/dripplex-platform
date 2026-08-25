@@ -1,6 +1,6 @@
 # @dripplex/customer-web
 
-Customer-facing Next.js 15 application for the Dripplex Super Platform.
+Customer-facing Next.js 15 application for the DrippleX Super Platform.
 
 Commit 3 delivers the **customer shell only** — layouts, marketing pages, auth UI, and dashboard chrome. Marketplace, wallet, orders, payments, delivery, ride, and merchant product surfaces are intentionally out of scope.
 

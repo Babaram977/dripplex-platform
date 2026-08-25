@@ -1,6 +1,6 @@
 # `@dripplex/sdk`
 
-Typed HTTP client for Dripplex REST APIs under `/api/v1`.
+Typed HTTP client for DrippleX REST APIs under `/api/v1`.
 
 ## Usage
 

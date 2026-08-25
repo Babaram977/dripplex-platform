@@ -7,7 +7,7 @@ mkdir -p "${CERT_DIR}"
 openssl req -x509 -nodes -newkey rsa:2048 -days 7 \
   -keyout "${CERT_DIR}/origin.key" \
   -out "${CERT_DIR}/origin.pem" \
-  -subj "/CN=api.dripplex.com/O=Dripplex Bootstrap/C=NG" \
+  -subj "/CN=api.dripplex.com/O=DrippleX Bootstrap/C=NG" \
   -addext "subjectAltName=DNS:api.dripplex.com"
 chmod 600 "${CERT_DIR}/origin.key"
 echo "Wrote ${CERT_DIR}/origin.pem (+ key)"

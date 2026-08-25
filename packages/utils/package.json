@@ -2,7 +2,7 @@
   "name": "@dripplex/utils",
   "version": "1.0.0",
   "private": true,
-  "description": "Dripplex shared pure utilities for formatting, class names, and helpers.",
+  "description": "DrippleX shared pure utilities for formatting, class names, and helpers.",
   "license": "UNLICENSED",
   "type": "module",
   "exports": {

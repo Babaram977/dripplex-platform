@@ -1,8 +1,8 @@
 {
-  "name": "Dripplex",
-  "short_name": "Dripplex",
+  "name": "DrippleX",
+  "short_name": "DrippleX",
   "id": "/",
-  "description": "Dripplex — life, Simplified. Nigeria’s Super Platform.",
+  "description": "DrippleX — life, Simplified. Nigeria’s Super Platform.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -29,7 +29,7 @@
     {
       "name": "Dashboard",
       "short_name": "Home",
-      "description": "Open your Dripplex dashboard",
+      "description": "Open your DrippleX dashboard",
       "url": "/dashboard",
       "icons": [{ "src": "/app-icon.svg", "sizes": "any", "type": "image/svg+xml" }]
     },
@@ -43,7 +43,7 @@
     {
       "name": "Wallet",
       "short_name": "Wallet",
-      "description": "Manage your Dripplex wallet",
+      "description": "Manage your DrippleX wallet",
       "url": "/dashboard/wallet",
       "icons": [{ "src": "/app-icon.svg", "sizes": "any", "type": "image/svg+xml" }]
     }

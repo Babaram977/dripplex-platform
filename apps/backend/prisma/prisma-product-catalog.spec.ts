@@ -68,7 +68,7 @@ describe('Product Catalog schema (Reality Stage R1.1)', () => {
       data: { name: 'Groceries', slug: `groceries-${randomUUID()}` },
     });
     const brand = await prisma.brand.create({
-      data: { name: 'Dripplex Own', slug: `dripplex-own-${randomUUID()}` },
+      data: { name: 'DrippleX Own', slug: `dripplex-own-${randomUUID()}` },
     });
 
     const product = await prisma.product.create({

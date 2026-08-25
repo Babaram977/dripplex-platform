@@ -8,7 +8,7 @@ export default function NotFound(): React.JSX.Element {
       <p className="text-accent text-sm font-semibold uppercase tracking-[0.2em]">404</p>
       <h1 className="font-display text-3xl font-semibold tracking-tight">Page not found</h1>
       <p className="text-muted-foreground max-w-md text-sm">
-        The page you requested is not part of the Dripplex customer shell.
+        The page you requested is not part of the DrippleX customer shell.
       </p>
       <Button asChild>
         <Link href="/">Back to home</Link>

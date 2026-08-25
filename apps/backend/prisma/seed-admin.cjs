@@ -87,7 +87,7 @@ async function ensureAccount(entry) {
       ? entry.roles
       : [entry.role || 'super_administrator']
   ).map((name) => String(name).trim());
-  const firstName = (entry.firstName || 'Dripplex').trim();
+  const firstName = (entry.firstName || 'DrippleX').trim();
   const lastName = (entry.lastName || 'Admin').trim();
   const phone = (entry.phone || '').trim() || null;
 

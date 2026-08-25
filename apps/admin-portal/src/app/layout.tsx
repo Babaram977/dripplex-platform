@@ -20,10 +20,10 @@ const sans = Manrope({
 
 export const metadata: Metadata = {
   title: {
-    default: 'Dripplex Admin Portal',
-    template: `%s · Dripplex Admin Portal`,
+    default: 'DrippleX Admin Portal',
+    template: `%s · DrippleX Admin Portal`,
   },
-  description: 'Dripplex admin portal — live Backend Core integration via sdk-admin.',
+  description: 'DrippleX admin portal — live Backend Core integration via sdk-admin.',
   icons: {
     icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }],
     apple: [{ url: '/app-icon.svg' }],

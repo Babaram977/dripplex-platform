@@ -2,7 +2,7 @@
   "name": "@dripplex/admin-portal",
   "version": "1.0.0",
   "private": true,
-  "description": "Dripplex admin portal — live Backend Core integration via sdk-admin.",
+  "description": "DrippleX admin portal — live Backend Core integration via sdk-admin.",
   "license": "UNLICENSED",
   "scripts": {
     "dev": "next dev --port ${ADMIN_PORTAL_PORT:-3004}",

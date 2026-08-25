@@ -2,7 +2,7 @@
   "name": "@dripplex/customer-web",
   "version": "1.0.0",
   "private": true,
-  "description": "Dripplex customer-facing web application (marketplace, food, rides, wallet).",
+  "description": "DrippleX customer-facing web application (marketplace, food, rides, wallet).",
   "license": "UNLICENSED",
   "scripts": {
     "dev": "next dev --port ${CUSTOMER_WEB_PORT:-3001}",

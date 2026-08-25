@@ -2,7 +2,7 @@
   "name": "@dripplex/ui",
   "version": "1.0.0",
   "private": true,
-  "description": "Dripplex shared UI kit built on shadcn/ui, design tokens, and accessible primitives.",
+  "description": "DrippleX shared UI kit built on shadcn/ui, design tokens, and accessible primitives.",
   "license": "UNLICENSED",
   "type": "module",
   "exports": {

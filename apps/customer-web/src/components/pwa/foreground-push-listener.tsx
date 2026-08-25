@@ -33,7 +33,7 @@ export function ForegroundPushListener(): null {
     firebaseWebConfig: isAuthenticated ? resolveFirebaseWebConfig() : undefined,
     onNotification: (payload: ForegroundPushPayload) => {
       toast({
-        title: payload.title ?? 'Dripplex',
+        title: payload.title ?? 'DrippleX',
         ...(payload.body !== undefined ? { description: payload.body } : {}),
       });
       playNotificationChime();

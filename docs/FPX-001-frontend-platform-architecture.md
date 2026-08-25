@@ -1,10 +1,10 @@
-# FPX-001 — Dripplex Frontend Platform Architecture
+# FPX-001 — DrippleX Frontend Platform Architecture
 
 | Field            | Value                                                                                         |
 | ---------------- | --------------------------------------------------------------------------------------------- |
 | **Document ID**  | FPX-001                                                                                       |
-| **Title**        | Dripplex Frontend Platform Architecture                                                       |
-| **Platform**     | Dripplex — _life,Simplified_                                                                  |
+| **Title**        | DrippleX Frontend Platform Architecture                                                       |
+| **Platform**     | DrippleX — _life,Simplified_                                                                  |
 | **Program**      | B — Frontend Platform                                                                         |
 | **Status**       | **Adopted — As-Built Frontend Architecture Reference**                                        |
 | **Scope**        | Vision, structure, boundaries, integration (reference doc)                                    |
@@ -16,9 +16,9 @@
 
 ## Executive summary
 
-FPX-001 defines the **entire frontend ecosystem** for Dripplex: Customer Web, Merchant Portal, Admin Portal, Operations Console, and the Driver and Rider portals, plus the shared packages that bind them to Backend Core.
+FPX-001 defines the **entire frontend ecosystem** for DrippleX: Customer Web, Merchant Portal, Admin Portal, Operations Console, and the Driver and Rider portals, plus the shared packages that bind them to Backend Core.
 
-Just as the **DPX** series guided the NestJS backend, the **FPX** (Frontend Platform Experience) series is the official architecture reference for every Dripplex web application.
+Just as the **DPX** series guided the NestJS backend, the **FPX** (Frontend Platform Experience) series is the official architecture reference for every DrippleX web application.
 
 > **Adoption note (2026-08-08).** This document is adopted as the **as-built** frontend architecture reference. The frontend platform — all six apps and the six shared packages — is already implemented on `main`; this doc describes and standardizes that architecture rather than gating it. It supersedes the earlier `docs/frontend/DPX-F001`–`DPX-F010` stubs. It is _not_ a pre-implementation approval gate: earlier "no UI coding until FPX-001…010 are approved" language has been removed, because the UI already exists. FPX-002…010 are **future/optional** deep-dive documents that do not yet exist (see §15).
 
@@ -57,7 +57,7 @@ Just as the **DPX** series guided the NestJS backend, the **FPX** (Frontend Plat
 
 ## 1. Frontend philosophy
 
-Dripplex frontends are **product surfaces**, not independent backends. They:
+DrippleX frontends are **product surfaces**, not independent backends. They:
 
 1. **Express Backend Core** — never reinvent identity, cart, checkout, payment, or delivery rules in the client.
 2. **Share one visual language** — all portals consume `@dripplex/ui` and FPX-002 tokens.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared helpers for Dripplex CI/CD scripts
+# Shared helpers for DrippleX CI/CD scripts
 set -euo pipefail
 
 log() { printf '[%s] %s\n' "$(date -u +%H:%M:%S)" "$*"; }
@@ -21,7 +21,7 @@ notify() {
   local message="$2"
   if [[ -n "${SLACK_WEBHOOK_URL:-}" ]]; then
     curl -fsS -X POST -H 'Content-type: application/json' \
-      --data "{\"text\":\"*[Dripplex ${DRIPPLEX_ENV:-ci}]* ${status}: ${message}\"}" \
+      --data "{\"text\":\"*[DrippleX ${DRIPPLEX_ENV:-ci}]* ${status}: ${message}\"}" \
       "${SLACK_WEBHOOK_URL}" >/dev/null || log "notify failed (non-fatal)"
   else
     log "notify[${status}]: ${message}"

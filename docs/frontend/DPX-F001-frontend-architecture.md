@@ -13,7 +13,7 @@
 
 ## Purpose
 
-Define how Dripplex web clients are structured on top of Backend Core: apps, shared packages, boundaries, and non-negotiable engineering rules.
+Define how DrippleX web clients are structured on top of Backend Core: apps, shared packages, boundaries, and non-negotiable engineering rules.
 
 ## Decisions (draft)
 

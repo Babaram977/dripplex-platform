@@ -8,7 +8,7 @@ import { VerifyOtpForm } from '@/components/forms/misc-forms';
 
 export const metadata: Metadata = {
   title: 'Verify OTP',
-  description: 'Verify your Dripplex one-time code.',
+  description: 'Verify your DrippleX one-time code.',
 };
 
 export default function VerifyOtpPage(): React.JSX.Element {

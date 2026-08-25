@@ -16,7 +16,7 @@ How web apps consume Backend Core via `@dripplex/sdk` and OpenAPI.
 
 ## Rules
 
-1. SDK is the only HTTP client for Dripplex APIs.
+1. SDK is the only HTTP client for DrippleX APIs.
 2. Types come from `@dripplex/types`; regenerate/align when OpenAPI changes.
 3. Error envelope handling is centralized (`success` / domain errors).
 4. Respect Backend Core freeze — file bugs instead of inventing parallel APIs.

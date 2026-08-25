@@ -1,6 +1,6 @@
 # `@dripplex/config`
 
-Shared TypeScript, ESLint, and Prettier baselines for the Dripplex monorepo.
+Shared TypeScript, ESLint, and Prettier baselines for the DrippleX monorepo.
 
 ## Usage
 

@@ -1,6 +1,6 @@
-# Contributing to Dripplex
+# Contributing to DrippleX
 
-Thank you for contributing. Dripplex is production software for a multi-sided Super Platform. Changes must protect maintainability, scalability, security, and long-term growth across Africa.
+Thank you for contributing. DrippleX is production software for a multi-sided Super Platform. Changes must protect maintainability, scalability, security, and long-term growth across Africa.
 
 ## Development setup
 

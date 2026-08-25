@@ -29,13 +29,13 @@ Obsolete Worker `dripplex-platform` was removed (best-effort delete step).
 
 | URL                           | HTTP | Title / content                     |
 | ----------------------------- | ---- | ----------------------------------- |
-| https://dripplex.com          | 200  | Dripplex — life, Simplified         |
-| https://www.dripplex.com      | 200  | Dripplex — life, Simplified         |
-| https://app.dripplex.com      | 200  | Dripplex — life, Simplified         |
-| https://merchant.dripplex.com | 200  | Dripplex Merchant Portal            |
-| https://rider.dripplex.com    | 200  | Dripplex Rider Portal               |
-| https://admin.dripplex.com    | 200  | Dripplex Admin Portal               |
-| https://ops.dripplex.com      | 200  | Dripplex Operations Console         |
+| https://dripplex.com          | 200  | DrippleX — life, Simplified         |
+| https://www.dripplex.com      | 200  | DrippleX — life, Simplified         |
+| https://app.dripplex.com      | 200  | DrippleX — life, Simplified         |
+| https://merchant.dripplex.com | 200  | DrippleX Merchant Portal            |
+| https://rider.dripplex.com    | 200  | DrippleX Rider Portal               |
+| https://admin.dripplex.com    | 200  | DrippleX Admin Portal               |
+| https://ops.dripplex.com      | 200  | DrippleX Operations Console         |
 | https://api.dripplex.com      | —    | **Not live** (backend not deployed) |
 
 SSL: Cloudflare edge certificates active (`cert_id` issued per hostname; HSTS present on Worker domains).
@@ -58,7 +58,7 @@ SSL: Cloudflare edge certificates active (`cert_id` issued per hostname; HSTS pr
 
 1. **Backend Core** — deploy NestJS to production (Docker/Compose/SSH) and point `api.dripplex.com` at it (or Cloudflare Containers). Until then, portal auth/API calls to `https://api.dripplex.com/api/v1` will fail.
 2. Optional: MX/TXT at apex still reference QServers IP for mail — review if email should move.
-3. Local recursive DNS may lag; Cloudflare DoH / anycast already serves Dripplex.
+3. Local recursive DNS may lag; Cloudflare DoH / anycast already serves DrippleX.
 
 ---
 

@@ -1,4 +1,4 @@
-# Android packaging — Dripplex Customer
+# Android packaging — DrippleX Customer
 
 | Field       | Value                                    |
 | ----------- | ---------------------------------------- |

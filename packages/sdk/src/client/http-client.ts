@@ -42,7 +42,7 @@ export class HttpClient {
           offline ? 'OFFLINE' : 'NETWORK',
           offline
             ? 'You appear to be offline. Check your connection and retry.'
-            : 'Unable to reach the Dripplex API. Check your connection and retry.',
+            : 'Unable to reach the DrippleX API. Check your connection and retry.',
         );
       }
       throw error;

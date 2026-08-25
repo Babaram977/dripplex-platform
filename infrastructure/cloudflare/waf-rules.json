@@ -1,5 +1,5 @@
 {
-  "description": "Dripplex WAF / rate-limit rule sketches for Cloudflare dashboard or Terraform",
+  "description": "DrippleX WAF / rate-limit rule sketches for Cloudflare dashboard or Terraform",
   "rules": [
     {
       "id": "ratelimit-auth",

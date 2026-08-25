@@ -1,8 +1,8 @@
 export const siteConfig = {
-  name: 'Dripplex',
+  name: 'DrippleX',
   tagline: 'life, Simplified',
   description:
-    'Dripplex is Nigeria’s Super Platform for marketplace, food, parcels, rides, pharmacy, home services, and wallet — built for everyday life.',
+    'DrippleX is Nigeria’s Super Platform for marketplace, food, parcels, rides, pharmacy, home services, and wallet — built for everyday life.',
   url: process.env['NEXT_PUBLIC_APP_URL'] ?? 'http://localhost:3001',
   locale: 'en_NG',
   links: {
@@ -56,7 +56,7 @@ export const featureCatalog = [
   {
     id: 'wallet',
     title: 'Wallet',
-    description: 'Pay, receive, and manage money across Dripplex services.',
+    description: 'Pay, receive, and manage money across DrippleX services.',
   },
   {
     id: 'pharmacy',

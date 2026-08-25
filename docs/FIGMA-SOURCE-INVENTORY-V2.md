@@ -81,7 +81,7 @@ inventoried before (Poppins/Inter, base-8 spacing) — no conflict there.
 ### 1.2 The wordmark itself conflicts between two things you've sent me
 
 - **`Dripplex_brand_id.png`** (in this export, a formal brand-identity
-  reference sheet, mark on white): wordmark reads **"Dripplex"** — capital D
+  reference sheet, mark on white): wordmark reads **"DrippleX"** — capital D
   only, lowercase rest including the final "x", single navy color. This
   matches what's currently implemented in the repo today.
 - **The black-background lockup photos you sent earlier this conversation**:

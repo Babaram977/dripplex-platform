@@ -102,7 +102,7 @@ log "Installing daily backup + certbot renew cron (host)"
 if [[ "$(id -u)" -eq 0 ]]; then SUDO=""; else SUDO="sudo"; fi
 $SUDO mkdir -p /var/lib/dripplex/backups
 $SUDO tee /etc/cron.d/dripplex-api >/dev/null <<CRON
-# Dripplex API maintenance
+# DrippleX API maintenance
 15 3 * * * root cd ${ROOT_DIR} && docker compose -f ${COMPOSE_FILE} --env-file ${ENV_FILE} run --rm --entrypoint certbot certbot renew --webroot -w /var/www/certbot --quiet && docker compose -f ${COMPOSE_FILE} --env-file ${ENV_FILE} exec -T nginx nginx -s reload >/dev/null 2>&1 || true
 30 3 * * * root ${ROOT_DIR}/scripts/backend/backup-postgres.sh >> /var/log/dripplex-backup.log 2>&1
 CRON

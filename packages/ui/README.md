@@ -4,7 +4,7 @@ Shared design system built on Radix UI primitives, Tailwind tokens, and shadcn-s
 
 ## Brand identity
 
-Official Dripplex colours, logo mark, and tagline (`life, Simplified`) live in:
+Official DrippleX colours, logo mark, and tagline (`life, Simplified`) live in:
 
 - `src/brand/tokens.ts`
 - `src/styles/globals.css`

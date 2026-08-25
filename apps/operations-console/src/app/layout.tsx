@@ -20,10 +20,10 @@ const sans = Manrope({
 
 export const metadata: Metadata = {
   title: {
-    default: 'Dripplex Operations Console',
-    template: `%s · Dripplex Operations Console`,
+    default: 'DrippleX Operations Console',
+    template: `%s · DrippleX Operations Console`,
   },
-  description: 'Dripplex operations console — live Backend Core integration via sdk-admin.',
+  description: 'DrippleX operations console — live Backend Core integration via sdk-admin.',
   icons: {
     icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }],
     apple: [{ url: '/app-icon.svg' }],

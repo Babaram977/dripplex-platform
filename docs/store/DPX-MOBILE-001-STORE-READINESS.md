@@ -94,7 +94,7 @@ success and verify rejection all behave; `/` and `/ops` unchanged.
 ## Shell target — RESOLVED 2026-08-24
 
 `app.dripplex.com` now serves the **super-app**, not customer-web — verified the same day by
-fetching the page (`<title>Dripplex — life, Simplified</title>`, `robots: noindex`) and by
+fetching the page (`<title>DrippleX — life, Simplified</title>`, `robots: noindex`) and by
 grepping the served bundle for code merged in #261. `capacitor.config.ts:20` defaults
 `CAPACITOR_SERVER_URL` to that host and `mobile-build.yml` passes it, so the shell finally opens
 the intended app. The three blockers listed above are closed: the super-app has its custom

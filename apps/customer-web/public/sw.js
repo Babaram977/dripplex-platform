@@ -1,4 +1,4 @@
-/* Dripplex customer-web minimal service worker (Program C4 RC1).
+/* DrippleX customer-web minimal service worker (Program C4 RC1).
  * Network-first for navigations; offline fallback page only.
  * Not a full offline commerce cache.
  *
@@ -28,7 +28,7 @@ const messaging = firebase.messaging.isSupported() ? firebase.messaging() : null
 if (messaging) {
   messaging.onBackgroundMessage((payload) => {
     const title =
-      payload.notification && payload.notification.title ? payload.notification.title : 'Dripplex';
+      payload.notification && payload.notification.title ? payload.notification.title : 'DrippleX';
     const body = payload.notification && payload.notification.body ? payload.notification.body : '';
     // `data` carries straight through to notificationclick below, since
     // that's a separate event with no access to this payload otherwise.

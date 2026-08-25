@@ -18,7 +18,7 @@ Paste everything below into Figma Make in a single run. It covers every screen s
 
 ## 1. MERCHANT — `merchantScreen.tsx` (Dx Resto) — TOP PRIORITY, closes the food loop
 
-**ADD a merchant login screen first** (the portal currently has none). Mirror the Rider/Driver login: email + password, prefilled `dxresto@dripplex.demo` / `Dripplex#Demo1` → `api.auth.loginMerchant({ email, password })` → persist → dashboard. Guard the portal so pages only load with a merchant session.
+**ADD a merchant login screen first** (the portal currently has none). Mirror the Rider/Driver login: email + password, prefilled `dxresto@dripplex.demo` / `DrippleX#Demo1` → `api.auth.loginMerchant({ email, password })` → persist → dashboard. Guard the portal so pages only load with a merchant session.
 
 - **Dashboard:** `api.merchant.getBusiness()` + `api.merchant.getWallet()` + recent `api.merchant.getOrders({ pageSize: 10 })`.
 - **Orders (poll `getOrders({ status: "CONFIRMED" })` every 5–8s; also PREPARING + READY tabs).** Row → `getOrder(id)` for items/total.

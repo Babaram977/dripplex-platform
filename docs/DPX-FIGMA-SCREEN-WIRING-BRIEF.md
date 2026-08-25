@@ -55,7 +55,7 @@ _socket.auth = { token: token ?? '' }; // RAW token, no "Bearer "
 
 On success persist tokens+user (see rule above) and route to that persona's home. `email` OR `phone` accepted.
 
-**Demo accounts** (password `Dripplex#Demo1`): Mr D `mrd@dripplex.demo` · Drip `drip@dripplex.demo` · Drippo `drippo@dripplex.demo` · Dx Resto `dxresto@dripplex.demo`.
+**Demo accounts** (password `DrippleX#Demo1`): Mr D `mrd@dripplex.demo` · Drip `drip@dripplex.demo` · Drippo `drippo@dripplex.demo` · Dx Resto `dxresto@dripplex.demo`.
 
 ---
 

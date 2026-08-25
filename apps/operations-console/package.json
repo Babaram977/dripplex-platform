@@ -2,7 +2,7 @@
   "name": "@dripplex/operations-console",
   "version": "1.0.0",
   "private": true,
-  "description": "Dripplex operations console — live Backend Core integration via sdk-admin.",
+  "description": "DrippleX operations console — live Backend Core integration via sdk-admin.",
   "license": "UNLICENSED",
   "scripts": {
     "dev": "next dev --port ${OPERATIONS_CONSOLE_PORT:-3005}",

@@ -2,7 +2,7 @@
   "name": "@dripplex/customer-mobile",
   "version": "1.0.0",
   "private": true,
-  "description": "Dripplex Customer \u2014 Capacitor shell for Android/iOS store distribution",
+  "description": "DrippleX Customer \u2014 Capacitor shell for Android/iOS store distribution",
   "type": "module",
   "scripts": {
     "cap:sync": "cap sync",

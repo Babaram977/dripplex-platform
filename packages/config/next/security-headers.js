@@ -1,5 +1,5 @@
 /**
- * Shared Next.js security headers for Dripplex portals (Program C3).
+ * Shared Next.js security headers for DrippleX portals (Program C3).
  * Keep CSP strict enough for XSS mitigation while allowing next/font and inline theme bootstraps.
  */
 

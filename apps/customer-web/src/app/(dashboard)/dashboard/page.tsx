@@ -6,7 +6,7 @@ import { CustomerBackendStatus } from '@/components/dashboard/customer-backend-s
 
 export const metadata: Metadata = {
   title: 'Dashboard',
-  description: 'Dripplex customer dashboard — live Backend Core session.',
+  description: 'DrippleX customer dashboard — live Backend Core session.',
   robots: {
     index: false,
     follow: false,

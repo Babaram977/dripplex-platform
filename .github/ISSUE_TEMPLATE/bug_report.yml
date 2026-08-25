@@ -1,6 +1,6 @@
 {
   'name': 'bug_report',
-  'description': 'Report a defect in the Dripplex platform',
+  'description': 'Report a defect in the DrippleX platform',
   'title': '[bug]: ',
   'labels': ['bug'],
   'body':

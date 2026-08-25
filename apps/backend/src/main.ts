@@ -29,7 +29,7 @@ async function bootstrap(): Promise<void> {
 
   await app.listen(appConfig.apiPort, appConfig.apiHost);
   logger.log(
-    `Dripplex API listening on http://${appConfig.apiHost}:${String(appConfig.apiPort)}/${appConfig.apiGlobalPrefix}`,
+    `DrippleX API listening on http://${appConfig.apiHost}:${String(appConfig.apiPort)}/${appConfig.apiGlobalPrefix}`,
   );
 }
 

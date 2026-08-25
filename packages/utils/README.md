@@ -1,6 +1,6 @@
 # `@dripplex/utils`
 
-Framework-agnostic utilities for Dripplex portals.
+Framework-agnostic utilities for DrippleX portals.
 
 ## Highlights
 

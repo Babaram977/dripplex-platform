@@ -213,7 +213,7 @@ export const FEATURE_GRAPHIC = {
   markCover: 0.46,
   /** Keep-clear border, as a fraction of the shorter edge. */
   safeInset: 0.11,
-  title: 'Dripplex',
+  title: 'DrippleX',
   tagline: 'life, Simplified.',
   note: 'Google Play 1024x500 feature graphic',
 };

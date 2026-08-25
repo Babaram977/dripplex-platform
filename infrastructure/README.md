@@ -1,6 +1,6 @@
 # Infrastructure — Program D1
 
-Production-grade topology for Dripplex (Cloudflare + Hetzner + Docker + optional Kubernetes).
+Production-grade topology for DrippleX (Cloudflare + Hetzner + Docker + optional Kubernetes).
 
 ## Quick links
 

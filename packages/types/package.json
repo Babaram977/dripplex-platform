@@ -2,7 +2,7 @@
   "name": "@dripplex/types",
   "version": "1.0.0",
   "private": true,
-  "description": "Dripplex shared domain types, enums, API contracts, and validation schemas.",
+  "description": "DrippleX shared domain types, enums, API contracts, and validation schemas.",
   "license": "UNLICENSED",
   "type": "module",
   "exports": {

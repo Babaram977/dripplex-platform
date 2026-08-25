@@ -132,7 +132,7 @@ export class NotificationCenterSubscriber implements OnModuleInit {
     [DOMAIN_EVENTS.CUSTOMER_REGISTERED]: {
       category: NotificationCategory.SYSTEM,
       type: NotificationType.WELCOME,
-      title: 'Welcome to Dripplex',
+      title: 'Welcome to DrippleX',
       body: (payload) =>
         `Welcome${this.text(payload, ['firstName', 'name'], '') ? `, ${this.text(payload, ['firstName', 'name'], '')}` : ''}!`,
       userKeys: ['userId', 'customerId'],

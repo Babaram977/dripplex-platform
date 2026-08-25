@@ -1,6 +1,6 @@
 # @dripplex/backend
 
-NestJS API for the Dripplex Super Platform.
+NestJS API for the DrippleX Super Platform.
 
 ## Stack
 

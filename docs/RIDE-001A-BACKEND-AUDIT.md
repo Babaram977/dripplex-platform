@@ -7,7 +7,7 @@
 
 **There is no passenger ride-hailing system in this codebase.** What exists is a mature, tested, real **package-delivery-for-marketplace-orders** system (`delivery` module), built around a courier ("Rider") fulfilling an `Order`. It is architecturally close to what ride-hailing dispatch needs — nearest-candidate matching, job lifecycle, GPS posting, fee calculation — but every part of it is modeled around delivering a package to an address, not transporting a passenger from A to B. "Ride" work is not a wiring exercise; a real subset of it is new build, informed by a reusable pattern.
 
-Separately, **`driver-portal` — the app whose own `package.json` describes it as "Dripplex driver portal for ride-hailing operations" — has zero source files.** It was created in the initial Turborepo scaffold commit and never touched again. This wasn't caught by the R1.6 audit or the earlier Implementation Audit; both only enumerated the five portals that had been actively worked on (`customer-web`, `merchant-portal`, `rider-portal`, `admin-portal`, `operations-console`). `driver-portal` is a sixth app in `apps/` that nobody has built anything in, ever.
+Separately, **`driver-portal` — the app whose own `package.json` describes it as "DrippleX driver portal for ride-hailing operations" — has zero source files.** It was created in the initial Turborepo scaffold commit and never touched again. This wasn't caught by the R1.6 audit or the earlier Implementation Audit; both only enumerated the five portals that had been actively worked on (`customer-web`, `merchant-portal`, `rider-portal`, `admin-portal`, `operations-console`). `driver-portal` is a sixth app in `apps/` that nobody has built anything in, ever.
 
 ## 1. Existing entities
 

@@ -1,5 +1,5 @@
 /**
- * Official Dripplex Brand Identity — single source of truth for hex values.
+ * Official DrippleX Brand Identity — single source of truth for hex values.
  * Locked from the founder's approved Figma Make export
  * (`docs/reference/figma-super-app-source/tokens/colors.ts`,
  * `DrippleX_Super_App_Design_Copy.zip`, 2026-08-03) — see
@@ -22,7 +22,7 @@
  *               now a dark navy tone, not a light gray)
  */
 export const DRIPPLEX_BRAND = {
-  name: 'Dripplex',
+  name: 'DrippleX',
   tagline: 'life, Simplified',
   colors: {
     primary: '#2BAC52',

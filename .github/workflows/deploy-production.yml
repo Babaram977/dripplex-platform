@@ -103,7 +103,7 @@ jobs:
         run: |
           if [ -n "${SLACK_WEBHOOK_URL:-}" ]; then
             curl -fsS -X POST -H 'Content-type: application/json' \
-              --data "{\"text\":\"*[Dripplex production]* Deploy success tag=${IMAGE_TAG}\"}" \
+              --data "{\"text\":\"*[DrippleX production]* Deploy success tag=${IMAGE_TAG}\"}" \
               "$SLACK_WEBHOOK_URL"
           fi
 
@@ -112,6 +112,6 @@ jobs:
         run: |
           if [ -n "${SLACK_WEBHOOK_URL:-}" ]; then
             curl -fsS -X POST -H 'Content-type: application/json' \
-              --data "{\"text\":\"*[Dripplex production]* Deploy FAILED tag=${IMAGE_TAG} — rollback executed\"}" \
+              --data "{\"text\":\"*[DrippleX production]* Deploy FAILED tag=${IMAGE_TAG} — rollback executed\"}" \
               "$SLACK_WEBHOOK_URL"
           fi

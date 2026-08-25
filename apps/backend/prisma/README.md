@@ -1,4 +1,4 @@
-# Dripplex Identity Database (Prisma)
+# DrippleX Identity Database (Prisma)
 
 Sprint 1 database layer for identity and authentication per [DPX-013](../../docs/DPX-013.md).
 

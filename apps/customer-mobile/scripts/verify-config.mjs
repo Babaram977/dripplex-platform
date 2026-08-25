@@ -94,7 +94,7 @@ if (existsSync(plistPath)) {
   if (!plist.includes('<key>ITSAppUsesNonExemptEncryption</key>'))
     fail('iOS export-compliance declaration missing');
   else ok('iOS export-compliance declaration');
-  if (!plist.includes('<string>Dripplex</string>')) fail('iOS display name missing');
+  if (!plist.includes('<string>DrippleX</string>')) fail('iOS display name missing');
   else ok('iOS display name');
 
   // iOS refuses to prompt without a usage string, so a missing key is a dead

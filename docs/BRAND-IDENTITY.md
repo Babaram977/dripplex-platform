@@ -1,4 +1,4 @@
-# Dripplex Brand Identity Compliance
+# DrippleX Brand Identity Compliance
 
 | Field        | Value                                              |
 | ------------ | -------------------------------------------------- |
@@ -34,7 +34,7 @@ The mark in `packages/ui/src/brand/dripplex-mark.ts` (and mirrored favicon/app-i
 
 ### TODO (required before treating branding as final)
 
-- [ ] **TODO(brand-assets):** Commit the official Dripplex vector logo (SVG preferred; AI/PDF source optional) under `packages/ui/src/brand/assets/`.
+- [ ] **TODO(brand-assets):** Commit the official DrippleX vector logo (SVG preferred; AI/PDF source optional) under `packages/ui/src/brand/assets/`.
 - [ ] Replace `dripplexMarkSvg` with the official SVG export.
 - [ ] Replace `apps/customer-web/public/favicon.svg` and `app-icon.svg` with official exports.
 - [ ] Verify `DripplexLogo` sizing/contrast on light and dark surfaces after swap.

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
-  "display": "Dripplex NestJS",
+  "display": "DrippleX NestJS",
   "extends": "./base.json",
   "compilerOptions": {
     "module": "CommonJS",

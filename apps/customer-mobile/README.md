@@ -1,4 +1,4 @@
-# Dripplex Customer — Mobile Shell
+# DrippleX Customer — Mobile Shell
 
 Capacitor 7 wrapper for **customer-web** store distribution (Android AAB/APK, iOS TestFlight).
 

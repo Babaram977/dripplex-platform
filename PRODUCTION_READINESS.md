@@ -28,8 +28,8 @@ Cloudflare account authentication, DNS ownership, and production host secrets.
 
 | URL                                         | Expected           | Observed (2026-07-22)                                       |
 | ------------------------------------------- | ------------------ | ----------------------------------------------------------- |
-| `https://www.dripplex.com`                  | Customer app       | HTTP 200 — **QServers parking page** (Apache), not Dripplex |
-| `https://app.dripplex.com`                  | Customer app       | No usable Dripplex app response                             |
+| `https://www.dripplex.com`                  | Customer app       | HTTP 200 — **QServers parking page** (Apache), not DrippleX |
+| `https://app.dripplex.com`                  | Customer app       | No usable DrippleX app response                             |
 | `https://api.dripplex.com`                  | Backend `/api/v1`  | Unreachable / no API                                        |
 | `https://merchant.dripplex.com`             | Merchant portal    | Unreachable                                                 |
 | `https://rider.dripplex.com`                | Rider portal       | Unreachable                                                 |
@@ -125,7 +125,7 @@ Repo plan: `infrastructure/cloudflare/dns.csv` (includes `app` + `ops`).
 3. Move DNS NS to Cloudflare; attach custom domains to each Worker; deploy API origin.
 4. `wrangler secret` / host env for production secrets; set `CORS_ORIGINS`.
 5. Smoke: landing, register, login, OTP, refresh, dashboard, API health.
-6. Re-run this checklist and flip verdict to **GO** only when URLs serve Dripplex.
+6. Re-run this checklist and flip verdict to **GO** only when URLs serve DrippleX.
 
 ---
 
@@ -153,7 +153,7 @@ Repo plan: `infrastructure/cloudflare/dns.csv` (includes `app` + `ops`).
 
 ### **NO-GO**
 
-The platform is **not** publicly accessible as Dripplex production. Configuration and deploy packaging are in place; cutover is blocked solely by account/DNS/host credentials outside this repository.
+The platform is **not** publicly accessible as DrippleX production. Configuration and deploy packaging are in place; cutover is blocked solely by account/DNS/host credentials outside this repository.
 
 **Do not announce launch** until:
 

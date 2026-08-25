@@ -1,15 +1,15 @@
 ---
-description: Core Dripplex architecture and engineering standards for all AI generations
+description: Core DrippleX architecture and engineering standards for all AI generations
 alwaysApply: true
 ---
 
-# Dripplex Architecture Rules
+# DrippleX Architecture Rules
 
-You are contributing to **Dripplex** (`life, Simplified`) — a production Nigerian Super Platform monorepo (Turborepo + pnpm).
+You are contributing to **DrippleX** (`life, Simplified`) — a production Nigerian Super Platform monorepo (Turborepo + pnpm).
 
 ## Non-negotiables
 
-1. **Follow the Dripplex architecture** — Clean Architecture, DDD bounded contexts, repository pattern, NestJS DI.
+1. **Follow the DrippleX architecture** — Clean Architecture, DDD bounded contexts, repository pattern, NestJS DI.
 2. **Never duplicate logic** — shared code belongs in `@dripplex/ui`, `@dripplex/sdk`, `@dripplex/types`, `@dripplex/hooks`, `@dripplex/utils`, or `@dripplex/config`.
 3. **Business logic belongs inside Services** — controllers, pages, and components orchestrate; they do not own domain rules.
 4. **Generate tests** with every behavior change (unit for services/utils; module/integration for Nest modules).

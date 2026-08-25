@@ -1,5 +1,5 @@
 ---
-description: TypeScript strictness for the Dripplex monorepo
+description: TypeScript strictness for the DrippleX monorepo
 globs:
   - "**/*.{ts,tsx}"
 alwaysApply: false

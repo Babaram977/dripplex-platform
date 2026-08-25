@@ -1,4 +1,4 @@
-# Dripplex staging stack — Postgres, Redis, Backend (RC1)
+# DrippleX staging stack — Postgres, Redis, Backend (RC1)
 # Usage:
 #   cp .env.example .env   # fill secrets
 #   docker compose -f infrastructure/docker/docker-compose.staging.yml up -d

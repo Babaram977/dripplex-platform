@@ -1,5 +1,5 @@
 {
-  "description": "Uptime Kuma monitor definitions for Dripplex (import manually or via API)",
+  "description": "Uptime Kuma monitor definitions for DrippleX (import manually or via API)",
   "monitors": [
     {
       "name": "dripplex.com",
@@ -51,12 +51,12 @@
   ],
   "statusPage": {
     "slug": "dripplex",
-    "title": "Dripplex Status",
-    "description": "Live operational status for Dripplex services",
+    "title": "DrippleX Status",
+    "description": "Live operational status for DrippleX services",
     "theme": "auto",
     "published": true,
     "showTags": true,
     "domainNameList": ["status.dripplex.com"],
-    "footerText": "Dripplex — life, Simplified."
+    "footerText": "DrippleX — life, Simplified."
   }
 }

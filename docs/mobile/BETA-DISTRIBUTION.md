@@ -20,7 +20,7 @@
 ### Release notes (template)
 
 ```
-Dripplex 1.0.0 (Beta)
+DrippleX 1.0.0 (Beta)
 
 • Customer app shell loading production/staging web
 • Sign in, browse marketplace, cart, checkout
