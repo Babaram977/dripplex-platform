@@ -25,6 +25,7 @@ import {
 } from './shared';
 import { api } from '../lib/api';
 import { auth } from '../lib/auth';
+import { capturedReferralCode, clearCapturedReferralCode } from '../lib/referralLink';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SPLASH
@@ -288,7 +289,11 @@ export function RegisterScreen({
   // RegistrationService redeems it against the referrer and the driver
   // campaign — but this screen never collected it and the API client never
   // sent it, so every code a customer shared was unusable.
-  const [referralCode, setReferralCode] = useState('');
+  // Prefilled when they arrived on a referral link — captureReferralCodeFromUrl
+  // took the code off the landing URL and stored it, which is what makes a
+  // shared link worth more than a code read out loud. Still editable, and
+  // still fine to clear.
+  const [referralCode, setReferralCode] = useState(() => capturedReferralCode());
   const [refFocused, setRefFocused] = useState(false);
   // Matches REFERRAL_CODE_PATTERN on the server (4-16 alphanumeric), so a
   // mistyped code is caught here instead of failing the whole registration.
@@ -336,6 +341,9 @@ export function RegisterScreen({
         ...(phoneValid ? { phone: e164 } : {}),
         ...(referralTrimmed ? { referralCode: referralTrimmed } : {}),
       });
+      // Spent. Leaving it stored would attach the same referrer to the next
+      // account created on this device.
+      clearCapturedReferralCode();
       onContinue({ email: trimmedEmail, phone, country, password, verifyChannel });
     } catch (e) {
       const ae = e as { status?: number; message?: string };

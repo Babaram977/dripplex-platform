@@ -197,6 +197,7 @@ import {
   gatewayReturnKindFromUrl,
   takeGatewayReturn,
 } from '../lib/gatewayReturn';
+import { captureReferralCodeFromUrl } from '../lib/referralLink';
 import { clearHistory, popPrevious, recordNavigation } from '../lib/screenHistory';
 import { installUnlockListener } from '../lib/sound';
 
@@ -570,6 +571,11 @@ const PORTAL_RESUME: Partial<Record<Screen, { role: string; screen: Screen }>> =
 };
 
 function initialScreen(): Screen {
+  // Before anything else reads the URL: a `?ref=` from a shared referral link
+  // is taken off it and remembered, so it survives the customer browsing
+  // around — or reloading — before they reach registration.
+  captureReferralCodeFromUrl();
+
   const fromGateway = returnScreenFromGateway();
   if (fromGateway) return fromGateway;
 

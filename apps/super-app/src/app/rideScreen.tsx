@@ -33,6 +33,8 @@ import {
   getCurrentPosition,
   reverseGeocode,
 } from '../lib/maps';
+import { referralShareUrl } from '../lib/referralLink';
+
 import type { AddressPrediction } from '../lib/maps';
 import type {
   CardProviderOptionDto,
@@ -5089,6 +5091,7 @@ export function PromoCodeScreen({
 // 10. ReferralScreen
 export function ReferralScreen({ onBack }: { onBack?: () => void }) {
   const [copied, setCopied] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
   // The code used to be the literal string 'DRIPX-OLA42' and the reward the
   // literal 500 — a mockup shown to every customer, for a code the server had
   // never issued and an amount nobody had approved. Both come from
@@ -5114,11 +5117,29 @@ export function ReferralScreen({ onBack }: { onBack?: () => void }) {
 
   const code = stats?.code ?? '';
   const naira = (n: number) => `₦${n.toLocaleString('en-NG')}`;
+  // A link beats a code read aloud: tapping it lands the friend in the app
+  // with the code already in the registration field, so there is nothing to
+  // remember or mistype. The code stays in the text too, for anyone who
+  // receives it somewhere links do not survive.
+  const shareLink = code ? referralShareUrl(code) : '';
   const shareMessage = code
     ? `Join me on DrippleX. Use my code ${code} when you sign up${
         stats ? ` and get ${naira(stats.refereeRewardAmount)} off your first ride` : ''
-      }.`
+      }. ${shareLink}`
     : '';
+
+  const handleCopyLink = () => {
+    if (!shareLink) return;
+    void navigator.clipboard
+      ?.writeText(shareLink)
+      .then(() => {
+        setCopiedLink(true);
+        setTimeout(() => setCopiedLink(false), 2000);
+      })
+      .catch(() => {
+        setCopiedLink(false);
+      });
+  };
 
   const handleCopy = () => {
     if (!code) return;
@@ -5217,6 +5238,40 @@ export function ReferralScreen({ onBack }: { onBack?: () => void }) {
             {copied ? 'Copied!' : 'Copy'}
           </button>
         </div>
+        {/* Share link — the thing most people will actually send */}
+        <div
+          className="mb-4 flex items-center gap-3 rounded-2xl p-3"
+          style={{ background: NAVY_CARD, border: `1px solid ${BORDER}` }}
+        >
+          <p
+            style={{
+              flex: 1,
+              fontFamily: IT,
+              fontSize: 12,
+              color: TEXT_SECONDARY,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {shareLink || 'Your invite link will appear here'}
+          </p>
+          <button
+            className="rounded-xl px-3 py-2 text-xs font-semibold transition-all active:scale-95"
+            style={{
+              background: copiedLink ? 'rgba(34,197,94,.15)' : NAVY_SURFACE,
+              color: copiedLink ? G3 : TEXT_SECONDARY,
+              fontFamily: PP,
+              border: `1px solid ${copiedLink ? G3 : BORDER}`,
+              flexShrink: 0,
+            }}
+            onClick={handleCopyLink}
+            disabled={!shareLink}
+          >
+            {copiedLink ? 'Copied!' : 'Copy link'}
+          </button>
+        </div>
+
         {/* Share row */}
         <p
           style={{ fontSize: 11, fontFamily: PP, fontWeight: 600, color: MUTED, marginBottom: 10 }}
