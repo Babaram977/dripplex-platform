@@ -60,11 +60,18 @@ const sharp = require('sharp');
 
 const g = markGeometry();
 
-/** The master's <defs> and drawing group, without its own black backdrop. */
+/**
+ * The master's <defs> and its drawable content, without any black backdrop of
+ * its own.
+ *
+ * A vector master keeps everything in one <g>. A bitmap master — an exported
+ * logo wrapped in SVG — is a single <image> instead, with no group and no
+ * defs. Both are transformable, which is all compose() needs.
+ */
 const ART = (() => {
   const defs = g.svg.match(/<defs>[\s\S]*?<\/defs>/)?.[0] ?? '';
-  const body = g.svg.match(/<g\b[\s\S]*<\/g>/)?.[0];
-  if (!body) throw new Error('master SVG has no drawing group');
+  const body = g.svg.match(/<g\b[\s\S]*<\/g>/)?.[0] ?? g.svg.match(/<image\b[^>]*\/?>/)?.[0];
+  if (!body) throw new Error('master SVG has neither a drawing group nor an image');
   return { defs, body };
 })();
 

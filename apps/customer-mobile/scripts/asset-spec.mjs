@@ -1,7 +1,9 @@
 // The one description of every native brand asset. Both the generator and the
 // verifier read this, so "what we produce" and "what we check" cannot drift.
 
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -17,9 +19,20 @@ export const FONT_DIR = resolve(ROOT, 'resources/fonts');
 export const BLACK = '#000000';
 
 /**
- * Bounds of the painted artwork inside the master's 1254 canvas, read from the
- * path data itself rather than hardcoded — the paths are absolute M/L/Z only,
- * so every coordinate pair in them is a real point on the outline.
+ * Where the painted artwork sits inside the master's canvas. Every cover
+ * fraction below is derived from this, so it has to be the real ink box and
+ * not a hardcoded guess.
+ *
+ * Two kinds of master are supported, because the brand file has been both:
+ *
+ *   • Vector — bounds come from the path data. The paths are absolute M/L/Z
+ *     only, so every coordinate pair in them is a real point on the outline.
+ *   • Bitmap wrapped in SVG — what the founder's exported logo is: a single
+ *     <image> carrying a base64 PNG and no paths at all. There is nothing to
+ *     parse, so the ink box is measured from the rendered alpha channel.
+ *
+ * Both return the same shape and the result is deterministic either way, which
+ * is what the byte-for-byte CI check depends on.
  */
 export function markGeometry() {
   const svg = readFileSync(MASTER, 'utf8');
@@ -29,23 +42,68 @@ export function markGeometry() {
     .split(/\s+/)
     .map(Number);
   if (!viewBox || viewBox.length !== 4) throw new Error('master SVG has no usable viewBox');
+  const canvas = viewBox[2];
 
   const pts = [...svg.matchAll(/<path\b[^>]*\bd="([^"]+)"/g)]
     .flatMap(([, d]) => [...d.matchAll(/(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/g)])
     .map(([, x, y]) => [Number(x), Number(y)]);
-  if (pts.length === 0) throw new Error('master SVG has no path coordinates');
 
-  const xs = pts.map((p) => p[0]),
-    ys = pts.map((p) => p[1]);
-  const x = Math.min(...xs),
-    y = Math.min(...ys);
-  const w = Math.max(...xs) - x,
-    h = Math.max(...ys) - y;
-  return { svg, viewBox, x, y, w, h, canvas: viewBox[2] };
+  if (pts.length > 0) {
+    const xs = pts.map((p) => p[0]),
+      ys = pts.map((p) => p[1]);
+    const x = Math.min(...xs),
+      y = Math.min(...ys);
+    return { svg, viewBox, x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y, canvas };
+  }
+
+  if (!/<image\b/.test(svg)) {
+    throw new Error('master SVG has neither path coordinates nor an embedded image');
+  }
+  return { svg, viewBox, ...rasterInkBounds(canvas), canvas };
 }
 
 /**
- * The approved proportion: the mark spans 75.4% of the master canvas. Legacy
+ * Ink bounds of a bitmap master, from the alpha channel of a render at canvas
+ * resolution.
+ *
+ * Run in a child process because sharp only exposes pixels asynchronously,
+ * while APPROVED_COVER and ADAPTIVE_COVER below are evaluated at import time
+ * and must be plain numbers. This is a build script, so paying for one process
+ * is cheaper than making the whole spec async and rewriting both consumers.
+ */
+function rasterInkBounds(canvas) {
+  const script = `
+    const sharp = require(${JSON.stringify(createRequire(import.meta.url).resolve('sharp'))});
+    sharp(${JSON.stringify(MASTER)}, { density: 300 })
+      .resize(${canvas}, ${canvas}, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true })
+      .then(({ data, info }) => {
+        const { width: W, height: H, channels: C } = info;
+        let x0 = W, y0 = H, x1 = -1, y1 = -1;
+        for (let y = 0; y < H; y++) {
+          for (let x = 0; x < W; x++) {
+            // 8 of 255 ignores the anti-aliased fringe, which would otherwise
+            // report a box a pixel or two larger than the artwork.
+            if (data[(y * W + x) * C + C - 1] > 8) {
+              if (x < x0) x0 = x;
+              if (x > x1) x1 = x;
+              if (y < y0) y0 = y;
+              if (y > y1) y1 = y;
+            }
+          }
+        }
+        if (x1 < 0) throw new Error('master bitmap is fully transparent');
+        process.stdout.write(JSON.stringify({ x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 }));
+      })
+      .catch((e) => { console.error(e.message); process.exit(1); });
+  `;
+  return JSON.parse(execFileSync(process.execPath, ['-e', script], { encoding: 'utf8' }));
+}
+
+/**
+ * The approved proportion: the mark spans 74.6% of the master canvas. Legacy
  * launcher icons, the App Store icon and the Play listing icon all reproduce it
  * exactly. Adaptive icons cannot — see ADAPTIVE_COVER.
  */
@@ -59,9 +117,9 @@ export const APPROVED_COVER = (() => {
  * survive the launcher mask, and a circular mask keeps only the inscribed
  * circle — 66.67% of the canvas across. A bounding box fits inside that circle
  * when its DIAGONAL is within it, so the width available is
- * 0.6667 / sqrt(1 + (h/w)^2), not 0.6667. For this mark's 1.168 aspect that is
- * ~0.507. Using the approved 0.754 here would let every round launcher clip the
- * bowl and the left-hand speed bars.
+ * 0.6667 / sqrt(1 + (h/w)^2), not 0.6667. That works out at
+ * ~0.519 for the DX mark's 0.806 aspect. Using the approved 0.746 here would
+ * let every round launcher clip the bowl and the left-hand speed bars.
  */
 export const ADAPTIVE_COVER = (() => {
   const g = markGeometry();

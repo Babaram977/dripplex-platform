@@ -222,11 +222,16 @@ async function checkFeatureGraphic(spec) {
   }
 }
 
+// The mark's share of its own canvas. This is a tripwire, not a rule: it does
+// not care what the artwork looks like, only that nobody changes how much of
+// the frame it fills without saying so. 0.7456 is the founder's DX logo
+// (2026-08-25); the traced D-only placeholder it replaced measured 0.7536.
+const APPROVED_PROPORTION = 0.7456;
 const g = markGeometry();
-if (Math.abs(g.w / g.canvas - 0.7536) > 0.001) {
+if (Math.abs(g.w / g.canvas - APPROVED_PROPORTION) > 0.001) {
   fail(
     'resources/dripplex-mark.svg',
-    `mark now covers ${(g.w / g.canvas).toFixed(4)} of its canvas; the approved proportion is 0.7536`,
+    `mark now covers ${(g.w / g.canvas).toFixed(4)} of its canvas; the approved proportion is ${APPROVED_PROPORTION}`,
   );
 }
 if (ADAPTIVE_COVER * Math.hypot(1, g.h / g.w) > 0.6667 + 1e-9) {
