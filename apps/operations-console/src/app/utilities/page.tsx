@@ -248,6 +248,22 @@ function PurchaseRow({ purchase }: { purchase: AdminUtilityPurchaseDto }): React
       {purchase.failureReason !== null ? (
         <p className="text-muted-foreground mt-1 text-xs">{purchase.failureReason}</p>
       ) : null}
+      {/* What the provider actually said, rather than the sentence the
+          customer was shown. The API has always returned this and no screen
+          rendered it, so the one record that can explain a refusal — which
+          field Peyflex objected to, whether it answered at all — was
+          reachable only by reading the database by hand. Collapsed, because
+          it is diagnosis and not the register's job. */}
+      {purchase.providerResponse !== null ? (
+        <details className="mt-1">
+          <summary className="text-muted-foreground cursor-pointer text-xs">
+            Provider response
+          </summary>
+          <pre className="text-muted-foreground mt-1 overflow-x-auto whitespace-pre-wrap text-xs">
+            {JSON.stringify(purchase.providerResponse, null, 2)}
+          </pre>
+        </details>
+      ) : null}
       {purchase.status === 'PENDING' ? <ResolveForm purchase={purchase} /> : null}
     </div>
   );

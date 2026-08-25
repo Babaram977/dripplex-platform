@@ -1,8 +1,11 @@
+import { Logger } from '@nestjs/common';
+
 import {
   composePlanId,
   decomposePlanId,
   isFloatExhausted,
   isUsableToken,
+  maskDigitRuns,
   PeyflexUtilityProvider,
   roundToKobo,
   toNumber,
@@ -75,6 +78,16 @@ describe('Peyflex wire-format helpers', () => {
     expect(isUsableToken('')).toBe(false);
     expect(isUsableToken(undefined)).toBe(false);
     expect(isUsableToken('1234-5678-9012-3456-7890')).toBe(true);
+  });
+
+  it('keeps a customer number out of the logs while leaving it recognisable', () => {
+    // Enough to match against the number you are holding; not enough to be it.
+    expect(maskDigitRuns('{"mobile_number":"08039739780"}')).toBe(
+      '{"mobile_number":"080******80"}',
+    );
+    // Short runs are not identifiers — an amount must stay readable, because
+    // the amount is one of the things a rejection can be about.
+    expect(maskDigitRuns('{"amount":1500}')).toBe('{"amount":1500}');
   });
 
   it('recognises the DrippleX float running dry, whatever the wording', () => {
@@ -223,6 +236,53 @@ describe('PeyflexUtilityProvider', () => {
     const [url, init] = mock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('https://client.peyflex.example/api/airtime/networks/');
     expect((init.headers as Record<string, string>)['Authorization']).toBe('Token test-token');
+  });
+
+  it('logs what it sent and what came back when a purchase does not succeed', async () => {
+    // The reason this exists: Peyflex answered exactly this for an airtime
+    // top-up whose body matched the documented contract field for field, and
+    // nothing anywhere recorded which field it meant. The response went to a
+    // column no screen renders and the customer got one vague sentence.
+    const logged = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    stubFetch(200, {
+      status: 'FAILED',
+      message: 'Invalid input. Please check your data.',
+      errors: { network: ['Invalid input.'] },
+    });
+    const provider = new PeyflexUtilityProvider(config);
+
+    await provider.purchaseAirtime({
+      providerCode: 'mtn',
+      customerIdentifier: '08039739780',
+      amount: 1500,
+    });
+
+    const line = String(logged.mock.calls[0]?.[0]);
+    expect(line).toContain('/api/airtime/topup/');
+    // Both halves, or the log cannot tell a payload we got wrong from a
+    // provider that is simply refusing everything.
+    expect(line).toContain('"network":"mtn"');
+    expect(line).toContain('"amount":1500');
+    expect(line).toContain('"errors":{"network":["Invalid input."]}');
+    // …and the customer's number is not in it.
+    expect(line).not.toContain('08039739780');
+    expect(line).toContain('080******80');
+    logged.mockRestore();
+  });
+
+  it('says nothing extra when the purchase succeeds', async () => {
+    const logged = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    stubFetch(200, { status: 'SUCCESS', reference: 'abc', charged: '49.5' });
+    const provider = new PeyflexUtilityProvider(config);
+
+    await provider.purchaseAirtime({
+      providerCode: 'mtn',
+      customerIdentifier: '08039739780',
+      amount: 50,
+    });
+
+    expect(logged).not.toHaveBeenCalled();
+    logged.mockRestore();
   });
 
   it('refuses to call out at all when no token is configured', async () => {
