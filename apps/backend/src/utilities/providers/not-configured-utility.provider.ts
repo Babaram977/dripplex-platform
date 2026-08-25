@@ -8,6 +8,7 @@ import type {
   UtilityDataPlan,
   UtilityEducationPlan,
   UtilityElectricityDisco,
+  UtilityAccountStatus,
   UtilityFloatBalance,
   UtilityNetwork,
   UtilityProviderPort,
@@ -97,6 +98,10 @@ export class NotConfiguredUtilityProvider implements UtilityProviderPort {
   }
 
   public getFloatBalance(): Promise<UtilityFloatBalance> {
+    return this.refuse();
+  }
+
+  public getAccountStatus(): Promise<UtilityAccountStatus> {
     return this.refuse();
   }
 

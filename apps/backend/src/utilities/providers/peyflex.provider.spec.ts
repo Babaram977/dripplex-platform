@@ -4,6 +4,7 @@ import {
   composePlanId,
   decomposePlanId,
   isFloatExhausted,
+  interpretKycStatus,
   isUsableToken,
   maskDigitRuns,
   PeyflexUtilityProvider,
@@ -78,6 +79,20 @@ describe('Peyflex wire-format helpers', () => {
     expect(isUsableToken('')).toBe(false);
     expect(isUsableToken(undefined)).toBe(false);
     expect(isUsableToken('1234-5678-9012-3456-7890')).toBe(true);
+  });
+
+  it('reads a KYC status it knows, and refuses to guess at one it does not', () => {
+    // Peyflex names the field but publishes no value list, so only the
+    // spellings actually seen are decided. Anything else is null — an alarm
+    // on a healthy account and a hidden cap on a broken one are both worse
+    // than saying "unknown".
+    expect(interpretKycStatus('verified')).toBe(true);
+    expect(interpretKycStatus('VERIFIED')).toBe(true);
+    expect(interpretKycStatus('unverified')).toBe(false);
+    expect(interpretKycStatus('pending')).toBe(false);
+    expect(interpretKycStatus('tier_2')).toBeNull();
+    expect(interpretKycStatus(undefined)).toBeNull();
+    expect(interpretKycStatus('')).toBeNull();
   });
 
   it('keeps a customer number out of the logs while leaving it recognisable', () => {
@@ -283,6 +298,17 @@ describe('PeyflexUtilityProvider', () => {
 
     expect(logged).not.toHaveBeenCalled();
     logged.mockRestore();
+  });
+
+  it('reads the account verification state off the profile endpoint', async () => {
+    const mock = stubFetch(200, { kyc_status: 'unverified', wallet_credit: '250000' });
+    const provider = new PeyflexUtilityProvider(config);
+
+    const status = await provider.getAccountStatus();
+
+    const [url] = mock.mock.calls[0] as [string];
+    expect(url).toBe('https://client.peyflex.example/api/user/profile/');
+    expect(status).toEqual({ verified: false, kycStatus: 'unverified' });
   });
 
   it('refuses to call out at all when no token is configured', async () => {

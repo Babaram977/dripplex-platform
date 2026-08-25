@@ -16,6 +16,7 @@ import type {
   UtilityDataPlan,
   UtilityEducationPlan,
   UtilityElectricityDisco,
+  UtilityAccountStatus,
   UtilityFloatBalance,
   UtilityNetwork,
   UtilityProviderPort,
@@ -420,6 +421,15 @@ export class PeyflexUtilityProvider implements UtilityProviderPort {
     return { balance: toNumber(body.wallet_credit) ?? 0, currency: 'NGN' };
   }
 
+  public async getAccountStatus(): Promise<UtilityAccountStatus> {
+    // Not cached. It changes exactly once, and reading a stale "unverified"
+    // after somebody has just fixed it is worse than one extra call on a
+    // page an operator opens by hand.
+    const body = await this.request<{ kyc_status?: string }>('GET', '/api/user/profile/');
+    const raw = body.kyc_status ?? null;
+    return { verified: interpretKycStatus(raw), kycStatus: raw };
+  }
+
   // ── Internals ─────────────────────────────────────────────────────────────
 
   /**
@@ -656,6 +666,25 @@ export function isUsableToken(token: string | undefined): token is string {
   const trimmed = token.trim();
   if (trimmed.length === 0) return false;
   return !/contact\s+admin/i.test(trimmed);
+}
+
+/**
+ * Peyflex's `kyc_status` as a yes, a no, or an honest "I don't know".
+ *
+ * The contract (DPX-UTILITIES-002) names the field but publishes no list of
+ * values, so only the two spellings actually seen are decided here and
+ * anything else stays null. Guessing that an unrecognised status means
+ * unverified would show Ops an alarm about an account that is fine; guessing
+ * it means verified would hide the one that is not.
+ */
+export function interpretKycStatus(status: string | null | undefined): boolean | null {
+  if (!status) return null;
+  const normalised = status.trim().toLowerCase();
+  if (normalised === 'verified' || normalised === 'approved') return true;
+  if (normalised === 'unverified' || normalised === 'not_verified' || normalised === 'pending') {
+    return false;
+  }
+  return null;
 }
 
 /**

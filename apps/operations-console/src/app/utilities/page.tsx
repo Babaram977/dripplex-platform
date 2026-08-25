@@ -14,7 +14,11 @@ import {
 } from '@dripplex/ui';
 import * as React from 'react';
 
-import type { AdminUtilityPurchaseDto, UtilityPurchaseStatus } from '@dripplex/types';
+import type {
+  AdminUtilityPurchaseDto,
+  UtilityFloatStatusDto,
+  UtilityPurchaseStatus,
+} from '@dripplex/types';
 
 import { AppShell } from '@/components/app-shell';
 import {
@@ -101,8 +105,56 @@ function FloatPanel(): React.JSX.Element {
           balance. The alarm is set at {naira(status.threshold)}; when it runs out, all four
           services fail at once.
         </p>
+        <AccountVerification status={status} />
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Whether the provider account is verified — a second precondition for
+ * selling airtime, and one a funded float says nothing about.
+ *
+ * Peyflex ties the ₦4,999 airtime ceiling to verification. The state was
+ * readable from their API all along and no screen showed it, so the only way
+ * to answer "is our account verified?" was to ask their support — who, on the
+ * day this was added, answered it two incompatible ways within the hour. It
+ * sits beside the balance because the two fail independently and both stop
+ * purchases.
+ */
+function AccountVerification({ status }: { status: UtilityFloatStatusDto }): React.JSX.Element {
+  if (status.accountVerified === true) {
+    return (
+      <p className="text-muted-foreground text-xs">
+        Provider account verified — airtime up to ₦4,999 per purchase.
+      </p>
+    );
+  }
+
+  if (status.accountVerified === false) {
+    return (
+      <div className="border-destructive/40 flex flex-col gap-1 rounded-md border p-3">
+        <Badge variant="accent">Provider account not verified</Badge>
+        <p className="text-muted-foreground text-sm">
+          Peyflex allows ₦4,999 per airtime purchase only on a verified account, so until this is
+          verified, larger top-ups can be refused with &quot;Invalid input&quot; — the customer is
+          charged and refunded, and nothing on their receipt explains why. Small amounts still work,
+          which is what makes it look like a customer mistake.
+          {status.kycStatus !== null ? ` Provider reports: ${status.kycStatus}.` : ''}
+        </p>
+      </div>
+    );
+  }
+
+  // Neither verified nor not — Peyflex did not say, or said something the
+  // adapter does not recognise. Stated as unknown rather than assumed either
+  // way: a false alarm and a hidden cap are both worse than a question.
+  return (
+    <p className="text-muted-foreground text-xs">
+      Provider account verification: unknown
+      {status.kycStatus !== null ? ` (reported: ${status.kycStatus})` : ''}. The airtime ceiling
+      depends on it, so it is worth confirming on the Peyflex dashboard.
+    </p>
   );
 }
 
