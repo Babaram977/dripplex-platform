@@ -820,6 +820,22 @@ function AppShell() {
         if (!cancelled) go('ordertracking');
         return;
       }
+      if (pending.kind === 'wallet') {
+        // 'wallet' has been a declared GatewayReturnKind all along and
+        // gatewayCallbackUrl('wallet') was already being sent to the gateway,
+        // but no branch here ever handled it — so a customer coming back from
+        // paying for a top-up fell straight through this handler and landed
+        // wherever the app happened to open. The reference is the id recorded
+        // by rememberGatewayReturn.
+        try {
+          await api.wallet.verifyFunding({ reference: pending.id || undefined });
+        } catch {
+          // The webhook settles it regardless; if it has not landed yet the
+          // wallet screen shows the real balance rather than a claimed one.
+        }
+        if (!cancelled) go('wallethome');
+        return;
+      }
       if (pending.kind !== 'utility') return;
       try {
         const purchase = await api.utilities.confirm(pending.id);
