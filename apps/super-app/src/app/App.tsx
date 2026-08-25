@@ -960,10 +960,22 @@ function AppShell() {
         onBack={() => goBack('otp')}
       />
     ),
+    // Registration ends here. It used to continue through Consent →
+    // Notifications → Language & Region → Accessibility: four more screens,
+    // twenty-odd controls, and not one of them saved anything. Each `save()`
+    // was setSaved(true) followed by a timer that navigated on. A new customer
+    // spent four screens configuring an account that forgot all of it before
+    // they reached the home screen.
+    //
+    // The one setting behind them that the backend can actually store —
+    // marketing preferences — lives in Account → Privacy Controls and works.
+    // Notification categories and Language & Region are designs with no
+    // backend at all (there is no i18n, and no Ghana/Kenya/UAE support); they
+    // are recorded as gaps rather than shipped as switches that lie.
     permissions: (
       <PermissionsScreen
-        onContinue={() => go('consent')}
-        onSkip={() => go('consent')}
+        onContinue={() => go('onboarddone')}
+        onSkip={() => go('onboarddone')}
         onBack={() => goBack('profile')}
       />
     ),
@@ -2025,6 +2037,13 @@ function AppShell() {
         { label: 'KYC', key: 'kyc' },
         { label: 'Account', key: 'account' },
         { label: 'Auth Summary', key: 'authsummary' },
+        // Cut from registration — see the note on the `permissions` route.
+        // They persist nothing, so they are design references only and are
+        // reachable here rather than left invisible in the codebase.
+        { label: 'Consent (unwired)', key: 'consent' },
+        { label: 'Notif. Prefs (unwired)', key: 'notifprefs' },
+        { label: 'Language & Region (unwired)', key: 'langregion' },
+        { label: 'Accessibility (unwired)', key: 'accessibility' },
       ],
     },
     {

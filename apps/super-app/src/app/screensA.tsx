@@ -1547,10 +1547,10 @@ export function ProfileSetupScreen({
               className="text-[11px]"
               style={{ fontFamily: "'Inter',sans-serif", color: MUTED }}
             >
-              Step 3 of 5
+              Step 3 of 4
             </span>
             <div className="flex gap-1">
-              {[1, 2, 3, 4, 5].map((s) => (
+              {[1, 2, 3, 4].map((s) => (
                 <div
                   key={s}
                   className="h-1 rounded-full transition-all duration-300"
@@ -1984,7 +1984,22 @@ export function ProfileSetupScreen({
 // ═══════════════════════════════════════════════════════════════════════════
 // AUTH-006 — PERMISSIONS & SMART FEATURES
 // ═══════════════════════════════════════════════════════════════════════════
-export type PermKey = 'location' | 'notifications' | 'camera' | 'photos' | 'microphone';
+/**
+ * The permissions this screen can genuinely obtain.
+ *
+ * It used to list five, and "Allow" on any of them added a string to a local
+ * Set — the browser was never asked. A customer tapped Allow on Location, the
+ * card turned green and said "Allowed", and nothing had been granted. That is
+ * why customers who "allowed" location still had no location, and why the ones
+ * who skipped had no way back: there was nothing to come back to.
+ *
+ * Camera, Photos and Microphone are gone rather than fixed. A page cannot
+ * pre-request them in a useful way — the browser asks at the moment of use, at
+ * the file picker or the getUserMedia call — so asking here could only ever
+ * have been decoration. The two that remain are the two a page can actually
+ * request up front, and now does.
+ */
+export type PermKey = 'location' | 'notifications';
 
 export const PERMS: Array<{ key: PermKey; icon: string; title: string; desc: string }> = [
   {
@@ -1998,24 +2013,6 @@ export const PERMS: Array<{ key: PermKey; icon: string; title: string; desc: str
     icon: '🔔',
     title: 'Notifications',
     desc: 'Receive ride updates, order tracking, payment alerts, and important account notifications.',
-  },
-  {
-    key: 'camera',
-    icon: '📷',
-    title: 'Camera',
-    desc: 'Upload profile photos, scan QR codes, and verify your identity when required.',
-  },
-  {
-    key: 'photos',
-    icon: '🖼',
-    title: 'Photos & Media',
-    desc: 'Choose profile pictures and upload documents securely.',
-  },
-  {
-    key: 'microphone',
-    icon: '🎤',
-    title: 'Microphone',
-    desc: 'Use voice search and interact with the DrippleX AI Assistant.',
   },
 ];
 
@@ -2037,15 +2034,54 @@ export function PermissionsScreen({
   onSkip: () => void;
   onBack: () => void;
 }) {
-  const [granted, setGranted] = useState<Set<PermKey>>(new Set());
+  // 'granted' | 'denied' | 'asking'. Absent means not asked yet. A denial is
+  // shown as a denial: the browser will not ask twice, and a card that keeps
+  // saying "Allow" invites a tap that can no longer do anything.
+  const [state, setState] = useState<Partial<Record<PermKey, 'granted' | 'denied' | 'asking'>>>({});
   const [exiting, setExiting] = useState(false);
 
+  // Reflect permissions the browser already holds, so a returning customer is
+  // not asked to grant what they granted last time.
+  useEffect(() => {
+    if (typeof navigator === 'undefined') return;
+    void navigator.permissions
+      ?.query({ name: 'geolocation' as PermissionName })
+      .then((p) => {
+        if (p.state !== 'prompt') {
+          setState((s) => ({ ...s, location: p.state === 'granted' ? 'granted' : 'denied' }));
+        }
+      })
+      .catch(() => {
+        /* Safari and older browsers do not expose this; the button still works. */
+      });
+    if (typeof Notification !== 'undefined' && Notification.permission !== 'default') {
+      setState((s) => ({
+        ...s,
+        notifications: Notification.permission === 'granted' ? 'granted' : 'denied',
+      }));
+    }
+  }, []);
+
   const allow = (key: PermKey) => {
-    setGranted((prev) => {
-      const n = new Set(prev);
-      n.add(key);
-      return n;
-    });
+    setState((s) => ({ ...s, [key]: 'asking' }));
+    const settle = (ok: boolean) => setState((s) => ({ ...s, [key]: ok ? 'granted' : 'denied' }));
+
+    if (key === 'location') {
+      if (typeof navigator === 'undefined' || !navigator.geolocation) return settle(false);
+      // Asking for a position IS the permission prompt on the web; there is no
+      // separate request API. The fix is discarded — we only wanted the grant.
+      navigator.geolocation.getCurrentPosition(
+        () => settle(true),
+        () => settle(false),
+        { enableHighAccuracy: false, timeout: 10_000, maximumAge: 600_000 },
+      );
+      return;
+    }
+
+    if (typeof Notification === 'undefined') return settle(false);
+    void Notification.requestPermission()
+      .then((result) => settle(result === 'granted'))
+      .catch(() => settle(false));
   };
 
   const handleContinue = () => {
@@ -2082,10 +2118,10 @@ export function PermissionsScreen({
               className="text-[11px]"
               style={{ fontFamily: "'Inter',sans-serif", color: MUTED }}
             >
-              Step 4 of 5
+              Step 4 of 4
             </span>
             <div className="flex gap-1">
-              {[1, 2, 3, 4, 5].map((s) => (
+              {[1, 2, 3, 4].map((s) => (
                 <div
                   key={s}
                   className="h-1 rounded-full transition-all duration-300"
@@ -2124,7 +2160,9 @@ export function PermissionsScreen({
           style={{ animation: 'slide-in-right .42s cubic-bezier(.25,.46,.45,.94) .1s both' }}
         >
           {PERMS.map(({ key, icon, title, desc }) => {
-            const isGranted = granted.has(key);
+            const status = state[key];
+            const isGranted = status === 'granted';
+            const isDenied = status === 'denied';
             return (
               <div
                 key={key}
@@ -2158,19 +2196,24 @@ export function PermissionsScreen({
                     className="mt-0.5 text-[12px] leading-relaxed"
                     style={{ fontFamily: "'Inter',sans-serif", color: MUTED }}
                   >
-                    {desc}
+                    {isDenied
+                      ? `Blocked in this browser. You can turn ${title.toLowerCase()} back on for DrippleX in your browser or phone settings.`
+                      : desc}
                   </p>
                 </div>
                 <button
-                  onClick={() => !isGranted && allow(key)}
+                  onClick={() => status === undefined && allow(key)}
+                  disabled={status !== undefined}
                   className="flex h-[34px] shrink-0 items-center gap-1.5 rounded-full px-4 text-[12px] font-semibold transition-all duration-200 active:scale-95"
                   style={{
                     fontFamily: "'Inter',sans-serif",
                     background: isGranted
                       ? `rgba(43,172,82,.2)`
-                      : `linear-gradient(135deg,${G0},${G2})`,
-                    color: isGranted ? G3 : 'white',
-                    boxShadow: isGranted ? 'none' : `0 4px 14px rgba(43,172,82,.32)`,
+                      : isDenied
+                        ? 'rgba(255,255,255,.06)'
+                        : `linear-gradient(135deg,${G0},${G2})`,
+                    color: isGranted ? G3 : isDenied ? MUTED : 'white',
+                    boxShadow: isGranted || isDenied ? 'none' : `0 4px 14px rgba(43,172,82,.32)`,
                     minWidth: 70,
                   }}
                 >
@@ -2190,6 +2233,10 @@ export function PermissionsScreen({
                       </svg>
                       Allowed
                     </>
+                  ) : isDenied ? (
+                    'Blocked'
+                  ) : status === 'asking' ? (
+                    'Asking…'
                   ) : (
                     'Allow'
                   )}
