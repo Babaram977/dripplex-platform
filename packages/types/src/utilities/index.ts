@@ -120,6 +120,13 @@ export interface UtilityPurchaseDto {
 export interface AdminUtilityPurchaseDto extends UtilityPurchaseDto {
   customerId: string;
   providerCost: number | null;
+  /// Exactly what the provider replied, verbatim. The backend has always sent
+  /// it and this contract never declared it, so the Ops Console could not
+  /// render the one field that says *why* a purchase was refused without
+  /// reaching past the type. `unknown` rather than a shape: it is a foreign
+  /// body, and pretending to know its keys is how a rendering crashes on the
+  /// first response that disagrees.
+  providerResponse: unknown;
 }
 
 export interface CreateUtilityPurchaseRequest {

@@ -457,6 +457,25 @@ export class PeyflexUtilityProvider implements UtilityProviderPort {
     const status = (response.status ?? '').toUpperCase();
     const message = response.message ?? '';
 
+    if (status !== 'SUCCESS') {
+      // The only place the provider's own words are visible.
+      //
+      // A refused purchase used to leave no trace in the logs whatsoever: the
+      // body went into UtilityPurchase.providerResponse, which no screen
+      // renders, and the customer got a one-line receipt. When Peyflex
+      // answered "Invalid input. Please check your data." for an airtime
+      // top-up that matched the documented contract field for field, there
+      // was nothing to read that could say which field it meant — and no way
+      // to tell a payload we got wrong from a service that is simply down.
+      //
+      // So both halves are logged: what we sent and what came back. Both
+      // masked, because the request carries the customer's phone or meter
+      // number and the response echoes it.
+      this.logger.error(
+        `Peyflex ${path} did not succeed. Sent ${maskDigitRuns(JSON.stringify(body))} — answered ${maskDigitRuns(JSON.stringify(response)).slice(0, 800)}`,
+      );
+    }
+
     const reference = purchaseReference(response);
 
     if (status === 'SUCCESS') {
@@ -545,7 +564,10 @@ export class PeyflexUtilityProvider implements UtilityProviderPort {
       }
 
       if (!response.ok && !(options.acceptErrorStatus && parsed !== null)) {
-        const detail = `Peyflex request failed (${String(response.status)}): ${text.slice(0, 200)}`;
+        // Masked for the same reason the purchase log is: this string becomes
+        // an exception message that is logged, and a rejected body echoes
+        // whatever identifier was sent.
+        const detail = `Peyflex request failed (${String(response.status)}): ${maskDigitRuns(text.slice(0, 200))}`;
         // 401/403 mean the token is wrong or revoked; 4xx generally means the
         // request was refused at the door. Either way Peyflex did not process
         // it, the float did not move, and the customer must get their money
@@ -634,6 +656,21 @@ export function isUsableToken(token: string | undefined): token is string {
   const trimmed = token.trim();
   if (trimmed.length === 0) return false;
   return !/contact\s+admin/i.test(trimmed);
+}
+
+/**
+ * A phone, meter, smartcard or reference number, safe to write to a log.
+ *
+ * Diagnosing a provider rejection needs the *shape* of what was sent — which
+ * fields, how many digits, what prefix — not the customer's actual number.
+ * First three and last two digits are enough to recognise a value you are
+ * holding, and not enough to be one.
+ */
+export function maskDigitRuns(text: string): string {
+  return text.replace(
+    /\d{6,}/g,
+    (run) => `${run.slice(0, 3)}${'*'.repeat(run.length - 5)}${run.slice(-2)}`,
+  );
 }
 
 /** Whether a provider message means the DrippleX float is dry rather than
