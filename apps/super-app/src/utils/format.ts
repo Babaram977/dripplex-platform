@@ -42,9 +42,13 @@ export function getGreeting(): string {
 }
 
 // Initials from full name: "Saeed Ali" → "SA"
+// Splitting on a single space turned "  " into ['', '', ''] and mapped each to
+// undefined, so a padded or empty name produced garbage rather than nothing.
+// Callers treat '' as "no initials" and fall back to a placeholder.
 export function getInitials(name: string): string {
   return name
-    .split(' ')
+    .split(/\s+/)
+    .filter(Boolean)
     .map((n) => n[0])
     .slice(0, 2)
     .join('')

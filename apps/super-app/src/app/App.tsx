@@ -29,10 +29,6 @@ import {
   AccountManagementScreen,
 } from './screensB';
 import {
-  ConsentScreen,
-  NotificationPrefsScreen,
-  LanguageRegionScreen,
-  AccessibilityScreen,
   WelcomeDrippleXScreen,
   LinkedAccountsScreen,
   VerificationStatusScreen,
@@ -201,6 +197,7 @@ import {
   gatewayReturnKindFromUrl,
   takeGatewayReturn,
 } from '../lib/gatewayReturn';
+import { captureReferralCodeFromUrl } from '../lib/referralLink';
 import { clearHistory, popPrevious, recordNavigation } from '../lib/screenHistory';
 import { installUnlockListener } from '../lib/sound';
 
@@ -340,10 +337,6 @@ type Screen =
   | 'privacy'
   | 'kyc'
   | 'account'
-  | 'consent'
-  | 'notifprefs'
-  | 'langregion'
-  | 'accessibility'
   | 'onboarddone'
   | 'linked'
   | 'verifstatus'
@@ -578,6 +571,11 @@ const PORTAL_RESUME: Partial<Record<Screen, { role: string; screen: Screen }>> =
 };
 
 function initialScreen(): Screen {
+  // Before anything else reads the URL: a `?ref=` from a shared referral link
+  // is taken off it and remembered, so it survives the customer browsing
+  // around — or reloading — before they reach registration.
+  captureReferralCodeFromUrl();
+
   const fromGateway = returnScreenFromGateway();
   if (fromGateway) return fromGateway;
 
@@ -828,6 +826,22 @@ function AppShell() {
         if (!cancelled) go('ordertracking');
         return;
       }
+      if (pending.kind === 'wallet') {
+        // 'wallet' has been a declared GatewayReturnKind all along and
+        // gatewayCallbackUrl('wallet') was already being sent to the gateway,
+        // but no branch here ever handled it — so a customer coming back from
+        // paying for a top-up fell straight through this handler and landed
+        // wherever the app happened to open. The reference is the id recorded
+        // by rememberGatewayReturn.
+        try {
+          await api.wallet.verifyFunding({ reference: pending.id || undefined });
+        } catch {
+          // The webhook settles it regardless; if it has not landed yet the
+          // wallet screen shows the real balance rather than a claimed one.
+        }
+        if (!cancelled) go('wallethome');
+        return;
+      }
       if (pending.kind !== 'utility') return;
       try {
         const purchase = await api.utilities.confirm(pending.id);
@@ -960,10 +974,23 @@ function AppShell() {
         onBack={() => goBack('otp')}
       />
     ),
+    // Registration ends here. It used to continue through Consent →
+    // Notifications → Language & Region → Accessibility: four more screens,
+    // twenty-odd controls, and not one of them saved anything. Each `save()`
+    // was setSaved(true) followed by a timer that navigated on. A new customer
+    // spent four screens configuring an account that forgot all of it before
+    // they reached the home screen. Founder decision, 2026-08-25: delete them.
+    //
+    // The one setting behind them that the backend can actually store —
+    // marketing preferences — lives in Account → Privacy Controls and works.
+    // Notification categories and Language & Region had no backend at all
+    // (NotificationType is per-event, not per-category; there is no i18n and
+    // no Ghana/Kenya/UAE support), so they are gaps to design properly if they
+    // come back, not code to keep warm. Git history holds the old screens.
     permissions: (
       <PermissionsScreen
-        onContinue={() => go('consent')}
-        onSkip={() => go('consent')}
+        onContinue={() => go('onboarddone')}
+        onSkip={() => go('onboarddone')}
         onBack={() => goBack('profile')}
       />
     ),
@@ -1041,19 +1068,6 @@ function AppShell() {
         onSuspension={() => go('suspension')}
         onAuthSummary={() => go('authsummary')}
       />
-    ),
-    consent: <ConsentScreen onAccept={() => go('notifprefs')} onLater={() => go('notifprefs')} />,
-    notifprefs: (
-      <NotificationPrefsScreen onBack={() => goBack('consent')} onSave={() => go('langregion')} />
-    ),
-    langregion: (
-      <LanguageRegionScreen
-        onBack={() => goBack('notifprefs')}
-        onSave={() => go('accessibility')}
-      />
-    ),
-    accessibility: (
-      <AccessibilityScreen onBack={() => goBack('langregion')} onApply={() => go('onboarddone')} />
     ),
     onboarddone: (
       <WelcomeDrippleXScreen
@@ -1661,6 +1675,10 @@ function AppShell() {
         rideId={activeDriverRide?.id}
         onArrived={() => go('drvverify')}
         onBack={() => goBack('drvdash')}
+        onCancelled={() => {
+          setActiveDriverRide(null);
+          go('drvdash');
+        }}
         onMessagePassenger={(rideId, passengerName) => {
           setChat({
             context: 'ride',
@@ -1677,6 +1695,10 @@ function AppShell() {
         rideId={activeDriverRide?.id}
         onVerified={() => go('drvtripactive')}
         onBack={() => goBack('drvtopickup')}
+        onCancelled={() => {
+          setActiveDriverRide(null);
+          go('drvdash');
+        }}
       />
     ),
     drvtripactive: (

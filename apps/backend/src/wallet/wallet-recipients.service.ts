@@ -3,6 +3,8 @@ import { UserStatus, WalletDirection, WalletTransactionType } from '@prisma/clie
 
 import { PrismaService } from '../prisma/prisma.service';
 
+import { phoneLookupCandidates } from './phone-lookup.util';
+
 export interface WalletRecipientDto {
   id: string;
   firstName: string;
@@ -43,10 +45,32 @@ export class WalletRecipientsService {
   constructor(private readonly prisma: PrismaService) {}
 
   public async findByPhone(callerId: string, phone: string): Promise<WalletRecipientDto | null> {
-    const user = await this.prisma.user.findUnique({ where: { phone } });
-    if (!user || user.id === callerId || user.status !== UserStatus.ACTIVE || !user.phone) {
+    // Registration stores whatever format the registering client sent, so the
+    // same number lives as "+2348033968368" or "08033968368" depending on where
+    // the account was created. Match every spelling of what the sender typed
+    // rather than the one string they happened to use — see phone-lookup.util.
+    const candidates = phoneLookupCandidates(phone);
+    if (candidates.length === 0) {
       return null;
     }
+
+    const matches = await this.prisma.user.findMany({
+      where: { phone: { in: candidates } },
+    });
+    const eligible = matches.filter(
+      (user): user is (typeof matches)[number] & { phone: string } =>
+        user.id !== callerId && user.status === UserStatus.ACTIVE && user.phone !== null,
+    );
+
+    // Two accounts answering to one number is the duplicate-registration
+    // problem the missing normalization allows. Naming either one would be
+    // guessing who receives the money, so the sender is told nobody was found
+    // and nothing moves.
+    const user = eligible.length === 1 ? eligible[0] : undefined;
+    if (!user) {
+      return null;
+    }
+
     return {
       id: user.id,
       firstName: user.firstName,

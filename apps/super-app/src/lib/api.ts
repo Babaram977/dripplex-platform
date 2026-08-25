@@ -224,6 +224,36 @@ export interface WalletDto {
   updatedAt: string;
 }
 
+// Referrals
+export interface ReferralDto {
+  id: string;
+  userId: string;
+  code: string;
+  createdAt: string;
+}
+
+export interface ReferralStatsDto {
+  code: string;
+  totalRedemptions: number;
+  pendingRedemptions: number;
+  rewardedRedemptions: number;
+  /** Naira the referred friend receives. Served by the API so a change to the
+   *  reward never needs a client release. */
+  refereeRewardAmount: number;
+  /** Naira the sharer receives once that friend completes their first ride. */
+  referrerRewardAmount: number;
+}
+
+/** GET /customer/wallet/transfer/recipients[/recent] — mirrors the backend's
+ *  WalletRecipientDto. The phone comes back masked; the API never returns a
+ *  recipient's full number. */
+export interface WalletRecipientDto {
+  id: string;
+  firstName: string;
+  lastName: string;
+  maskedPhone: string;
+}
+
 export interface WalletLedgerEntryDto {
   id: string;
   walletId: string;
@@ -2114,6 +2144,24 @@ export interface AdminUtilityPurchaseDto extends UtilityPurchaseDto {
  * could never clear, no matter how many the customer opened or how often
  * mark-all-read succeeded.
  */
+/** A channel the backend can deliver on. Mirrors the Prisma enum. */
+export type NotificationChannel = 'PUSH' | 'EMAIL' | 'SMS' | 'IN_APP' | 'WHATSAPP';
+
+export interface NotificationPreferenceInput {
+  channel: NotificationChannel;
+  /** The Prisma NotificationType. Only PROMOTION is written by the app today. */
+  type: string;
+  enabled: boolean;
+}
+
+export interface NotificationPreferenceDto extends NotificationPreferenceInput {
+  id: string;
+  userId: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
 export interface NotificationDto {
   id: string;
   userId: string;
@@ -2186,6 +2234,11 @@ export const api = {
       phone?: string;
       email?: string;
       password: string;
+      /** Redeemed server-side by RegistrationService against the referrer's
+       *  code or a driver campaign code. Omitted when the customer has none —
+       *  this field was missing from the client entirely, so the backend's
+       *  redemption branch never ran for anyone signing up in the app. */
+      referralCode?: string;
     }) => dx<RegistrationResponse>('POST', '/auth/register/customer', body),
     registerMerchant: (body: Record<string, unknown>) =>
       dx<RegistrationResponse>('POST', '/auth/register/merchant', body),
@@ -2333,13 +2386,15 @@ export const api = {
       description?: string;
     }) =>
       dx<{ source: WalletDto; destination: WalletDto }>('POST', '/customer/wallet/transfer', body),
+    // The shape the API actually returns. This was hand-written as
+    // { name, phone } — fields the endpoint has never sent — so the search
+    // result rendered a blank row and `r.name.slice(0, 2)` threw the moment a
+    // recipient was found. Nobody hit it only because the phone lookup itself
+    // never matched.
     findRecipient: (phone: string) =>
-      dx<{ id: string; name: string; phone: string }[]>(
-        'GET',
-        '/customer/wallet/transfer/recipients',
-        undefined,
-        { phone },
-      ),
+      dx<WalletRecipientDto[]>('GET', '/customer/wallet/transfer/recipients', undefined, { phone }),
+    recentRecipients: () =>
+      dx<WalletRecipientDto[]>('GET', '/customer/wallet/transfer/recipients/recent'),
     fund: (body: { amount: number; provider?: string; callbackUrl?: string }) =>
       dx<{ authorizationUrl: string; reference: string }>('POST', '/customer/wallet/fund', body),
     verifyFunding: (body: { reference?: string }) =>
@@ -3542,6 +3597,23 @@ export const api = {
       ),
     markRead: (id: string) => dx<void>('PATCH', `/customer/notifications/${id}/read`),
     markAllRead: () => dx<void>('POST', '/customer/notifications/mark-all-read'),
+
+    /**
+     * Notification preferences, one row per (channel, type). This is the only
+     * preference store the backend has — there is no general "settings" model —
+     * so it is what the Privacy Controls screen's marketing pills write to,
+     * against type PROMOTION.
+     *
+     * The controller returns raw Prisma rows, so the field names here are the
+     * column names. Declared to match, after three contract mismatches today
+     * caused by client types that were merely plausible.
+     */
+    getPreferences: () =>
+      dx<NotificationPreferenceDto[]>('GET', '/customer/notifications/preferences'),
+    updatePreferences: (preferences: NotificationPreferenceInput[]) =>
+      dx<NotificationPreferenceDto[]>('PUT', '/customer/notifications/preferences', {
+        preferences,
+      }),
   },
 
   // ── UTILITIES (customer bill payments) ──────────────────────────────────────
@@ -3552,6 +3624,21 @@ export const api = {
     /** Both Paystack and Flutterwave stay configured and the customer picks
      * (founder, 2026-08-18) — one gateway can be down while the other works. */
     providers: () => dx<CustomerPaymentProvidersDto>('GET', '/customer/payments/providers'),
+  },
+
+  /**
+   * Referrals. These endpoints have existed since the referral system shipped
+   * and this client had no methods for either of them, so the app showed
+   * invented codes instead — a hardcoded DRIPX-OLA42 on the Refer & Earn
+   * screen and a client-computed DRPX-{FIRSTNAME} in the wallet. Neither
+   * existed server-side, so no code a customer shared could ever be redeemed.
+   */
+  referrals: {
+    /** The caller's referral code, created on first read. */
+    me: () => dx<ReferralDto>('GET', '/customer/referrals/me'),
+    /** Code, redemption counts, and both reward amounts — the amounts are
+     *  served so the screen never hardcodes a naira figure. */
+    stats: () => dx<ReferralStatsDto>('GET', '/customer/referrals/stats'),
   },
 
   utilities: {

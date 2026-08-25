@@ -134,7 +134,11 @@ describe('ReferralsService', () => {
         totalRedemptions: 5,
         pendingRedemptions: 2,
         rewardedRedemptions: 3,
-        refereeRewardAmount: 500,
+        // Both amounts come from REFERRAL_REWARD_AMOUNTS rather than being
+        // repeated here, so a founder changing the reward cannot leave this
+        // test asserting the old number.
+        refereeRewardAmount: REFERRAL_REWARD_AMOUNTS.REFEREE,
+        referrerRewardAmount: REFERRAL_REWARD_AMOUNTS.REFERRER,
       });
     });
   });

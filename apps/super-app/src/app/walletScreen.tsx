@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../lib/api';
 import { auth } from '../lib/auth';
-import { gatewayCallbackUrl } from '../lib/gatewayReturn';
+import { gatewayCallbackUrl, rememberGatewayReturn } from '../lib/gatewayReturn';
 import { timeGreeting } from './shared';
 import { Icon, type IconName } from './icons';
 import type {
   CardProviderOptionDto,
   WalletDto,
   WalletLedgerEntryDto,
+  WalletRecipientDto,
   CustomerBankAccountDto,
   LoyaltyOverviewDto,
   LoyaltyLedgerEntryDto,
@@ -1168,8 +1169,6 @@ export function TopUpScreen({
   const [method, setMethod] = useState<'PAYSTACK' | 'FLUTTERWAVE' | ''>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [verifying, setVerifying] = useState(false);
-  const refRef = useRef<string | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -1209,39 +1208,28 @@ export function TopUpScreen({
       const res = await api.wallet.fund({
         amount: raw,
         ...(method !== '' ? { provider: method } : {}),
-        // The gateway opens in a second tab, and without a callback it leaves
-        // the customer parked on its own success page. This brings that tab
-        // back to the wallet; the credit itself no longer depends on either
-        // tab, because the backend settles the top-up from the webhook.
+        // Without a callback the gateway leaves the customer parked on its own
+        // success page. This brings them back here; the credit itself does not
+        // depend on their return, because the backend settles from the webhook.
         callbackUrl: gatewayCallbackUrl('wallet'),
       });
       const r = res as { authorizationUrl?: string; reference?: string };
-      refRef.current = r.reference ?? null;
       if (r.authorizationUrl) {
-        window.open(r.authorizationUrl, '_blank', 'noopener');
-        setVerifying(true);
-      } else {
-        onConfirm?.();
+        // Same tab, like every other gateway flow in the app (booking, order,
+        // ride, utility all do exactly this pair). Top-up alone used
+        // window.open(url, '_blank') and that is why tapping Top Up did
+        // nothing: the call sits after `await`, so the browser no longer
+        // counts it as user-initiated and silently blocks the popup. Even
+        // unblocked it was wrong — '_blank' with noopener gets a fresh
+        // sessionStorage, so the tab that came back from the gateway could
+        // never find the pending top-up recorded below.
+        rememberGatewayReturn('wallet', r.reference ?? '');
+        window.location.assign(r.authorizationUrl);
+        return;
       }
-    } catch (e: unknown) {
-      setError((e as { message?: string }).message ?? 'Top-up initiation failed');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleVerify = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      await api.wallet.verifyFunding({ reference: refRef.current ?? undefined });
-      setVerifying(false);
       onConfirm?.();
     } catch (e: unknown) {
-      setError(
-        (e as { message?: string }).message ??
-          'Payment could not be verified yet. Try again in a moment.',
-      );
+      setError((e as { message?: string }).message ?? 'Top-up initiation failed');
     } finally {
       setLoading(false);
     }
@@ -1258,241 +1246,182 @@ export function TopUpScreen({
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 16 }}>
-        {verifying ? (
-          <div style={{ padding: '40px 24px', textAlign: 'center' }}>
-            <div style={{ marginBottom: 16 }}>
-              <Icon name="card" size={44} color="rgba(255,255,255,.28)" />
-            </div>
+        <div className="px-4" style={{ marginBottom: 16 }}>
+          <div
+            style={{
+              background: NAVY_CARD,
+              borderRadius: 20,
+              padding: 20,
+              border: `1px solid ${BORDER}`,
+            }}
+          >
             <div
               style={{
-                fontFamily: PP,
-                fontSize: 16,
-                fontWeight: 700,
-                color: '#fff',
+                fontFamily: IT,
+                fontSize: 12,
+                color: MUTED,
+                fontWeight: 500,
+                letterSpacing: '0.05em',
+                textTransform: 'uppercase',
                 marginBottom: 8,
               }}
             >
-              Payment Window Opened
+              Amount
+            </div>
+            <div className="flex items-center">
+              <span
+                style={{
+                  fontFamily: PP,
+                  fontSize: 32,
+                  fontWeight: 700,
+                  color: G3,
+                  marginRight: 4,
+                }}
+              >
+                ₦
+              </span>
+              <input
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                style={{
+                  flex: 1,
+                  background: 'none',
+                  border: 'none',
+                  outline: 'none',
+                  fontFamily: PP,
+                  fontSize: 32,
+                  fontWeight: 700,
+                  color: '#fff',
+                  width: '100%',
+                }}
+              />
             </div>
             <div
               style={{
-                fontFamily: IT,
-                fontSize: 13,
-                color: MUTED,
-                marginBottom: 24,
-                lineHeight: 1.6,
+                height: 1,
+                background: `linear-gradient(90deg,${G2},transparent)`,
+                marginTop: 8,
               }}
-            >
-              Complete payment in the browser tab, then come back and tap "I've paid" to confirm.
-            </div>
-            {error && (
-              <div style={{ color: ERROR, fontFamily: IT, fontSize: 13, marginBottom: 16 }}>
-                {error}
-              </div>
-            )}
-            <GreenButton onClick={handleVerify} disabled={loading}>
-              {loading ? 'Verifying…' : "I've paid — Confirm"}
-            </GreenButton>
-            <button
-              onClick={() => {
-                setVerifying(false);
-                setError('');
-              }}
-              style={{
-                marginTop: 12,
-                background: 'none',
-                border: 'none',
-                color: MUTED,
-                fontFamily: IT,
-                fontSize: 13,
-                cursor: 'pointer',
-              }}
-            >
-              Cancel
-            </button>
+            />
           </div>
-        ) : (
-          <>
-            <div className="px-4" style={{ marginBottom: 16 }}>
-              <div
+        </div>
+
+        <div className="px-4" style={{ marginBottom: 20 }}>
+          <SectionLabel>Quick amounts</SectionLabel>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+            {AMOUNT_PRESETS.map((preset) => (
+              <button
+                key={preset}
+                onClick={() => setAmount(preset)}
                 style={{
-                  background: NAVY_CARD,
-                  borderRadius: 20,
-                  padding: 20,
-                  border: `1px solid ${BORDER}`,
+                  background: amount === preset ? GREEN_GRAD : NAVY_SURFACE,
+                  border: `1px solid ${amount === preset ? 'transparent' : BORDER}`,
+                  borderRadius: 10,
+                  padding: '9px 16px',
+                  color: amount === preset ? '#fff' : MUTED,
+                  fontFamily: IT,
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  boxShadow: amount === preset ? `0 2px 12px rgba(43,172,82,.35)` : 'none',
                 }}
               >
+                ₦{preset}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="px-4" style={{ marginBottom: 20 }}>
+          <SectionLabel>Payment method</SectionLabel>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+            {providers.length === 0 ? (
+              <div style={{ fontFamily: IT, fontSize: 13, color: MUTED }}>
+                Card top-up is not available right now.
+              </div>
+            ) : null}
+            {providers.map((pm) => (
+              <button
+                key={pm.provider}
+                onClick={() => setMethod(pm.provider)}
+                style={{
+                  background: method === pm.provider ? `rgba(43,172,82,.08)` : NAVY_SURFACE,
+                  border: `1.5px solid ${method === pm.provider ? G2 : BORDER}`,
+                  borderRadius: 14,
+                  padding: '14px 16px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  textAlign: 'left',
+                }}
+              >
+                <Icon name={GATEWAY_ICONS[pm.provider] ?? 'card'} size={22} color={G3} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontFamily: IT, fontSize: 14, fontWeight: 600, color: '#fff' }}>
+                    {pm.label}
+                  </div>
+                  <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>
+                    Card, bank transfer or USSD
+                  </div>
+                </div>
                 <div
                   style={{
-                    fontFamily: IT,
-                    fontSize: 12,
-                    color: MUTED,
-                    fontWeight: 500,
-                    letterSpacing: '0.05em',
-                    textTransform: 'uppercase',
-                    marginBottom: 8,
+                    width: 18,
+                    height: 18,
+                    borderRadius: 9,
+                    border: `2px solid ${method === pm.provider ? G2 : BORDER}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
                   }}
                 >
-                  Amount
+                  {method === pm.provider && (
+                    <div style={{ width: 9, height: 9, borderRadius: 4.5, background: G2 }} />
+                  )}
                 </div>
-                <div className="flex items-center">
-                  <span
-                    style={{
-                      fontFamily: PP,
-                      fontSize: 32,
-                      fontWeight: 700,
-                      color: G3,
-                      marginRight: 4,
-                    }}
-                  >
-                    ₦
-                  </span>
-                  <input
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    style={{
-                      flex: 1,
-                      background: 'none',
-                      border: 'none',
-                      outline: 'none',
-                      fontFamily: PP,
-                      fontSize: 32,
-                      fontWeight: 700,
-                      color: '#fff',
-                      width: '100%',
-                    }}
-                  />
-                </div>
-                <div
-                  style={{
-                    height: 1,
-                    background: `linear-gradient(90deg,${G2},transparent)`,
-                    marginTop: 8,
-                  }}
-                />
-              </div>
-            </div>
+              </button>
+            ))}
+          </div>
+        </div>
 
-            <div className="px-4" style={{ marginBottom: 20 }}>
-              <SectionLabel>Quick amounts</SectionLabel>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
-                {AMOUNT_PRESETS.map((preset) => (
-                  <button
-                    key={preset}
-                    onClick={() => setAmount(preset)}
-                    style={{
-                      background: amount === preset ? GREEN_GRAD : NAVY_SURFACE,
-                      border: `1px solid ${amount === preset ? 'transparent' : BORDER}`,
-                      borderRadius: 10,
-                      padding: '9px 16px',
-                      color: amount === preset ? '#fff' : MUTED,
-                      fontFamily: IT,
-                      fontSize: 14,
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      boxShadow: amount === preset ? `0 2px 12px rgba(43,172,82,.35)` : 'none',
-                    }}
-                  >
-                    ₦{preset}
-                  </button>
-                ))}
-              </div>
-            </div>
+        <div className="px-4" style={{ marginBottom: 4 }}>
+          <div
+            style={{
+              background: NAVY_SURFACE,
+              borderRadius: 10,
+              padding: '10px 14px',
+              border: `1px solid ${BORDER}`,
+              fontFamily: IT,
+              fontSize: 12,
+              color: MUTED,
+            }}
+          >
+            Card management is handled by your payment provider. You will be redirected to complete
+            the transaction securely.
+          </div>
+        </div>
 
-            <div className="px-4" style={{ marginBottom: 20 }}>
-              <SectionLabel>Payment method</SectionLabel>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
-                {providers.length === 0 ? (
-                  <div style={{ fontFamily: IT, fontSize: 13, color: MUTED }}>
-                    Card top-up is not available right now.
-                  </div>
-                ) : null}
-                {providers.map((pm) => (
-                  <button
-                    key={pm.provider}
-                    onClick={() => setMethod(pm.provider)}
-                    style={{
-                      background: method === pm.provider ? `rgba(43,172,82,.08)` : NAVY_SURFACE,
-                      border: `1.5px solid ${method === pm.provider ? G2 : BORDER}`,
-                      borderRadius: 14,
-                      padding: '14px 16px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 12,
-                      textAlign: 'left',
-                    }}
-                  >
-                    <Icon name={GATEWAY_ICONS[pm.provider] ?? 'card'} size={22} color={G3} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontFamily: IT, fontSize: 14, fontWeight: 600, color: '#fff' }}>
-                        {pm.label}
-                      </div>
-                      <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>
-                        Card, bank transfer or USSD
-                      </div>
-                    </div>
-                    <div
-                      style={{
-                        width: 18,
-                        height: 18,
-                        borderRadius: 9,
-                        border: `2px solid ${method === pm.provider ? G2 : BORDER}`,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      {method === pm.provider && (
-                        <div style={{ width: 9, height: 9, borderRadius: 4.5, background: G2 }} />
-                      )}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="px-4" style={{ marginBottom: 4 }}>
-              <div
-                style={{
-                  background: NAVY_SURFACE,
-                  borderRadius: 10,
-                  padding: '10px 14px',
-                  border: `1px solid ${BORDER}`,
-                  fontFamily: IT,
-                  fontSize: 12,
-                  color: MUTED,
-                }}
-              >
-                Card management is handled by your payment provider. You will be redirected to
-                complete the transaction securely.
-              </div>
-            </div>
-
-            {error && (
-              <div style={{ padding: '8px 16px', fontFamily: IT, fontSize: 12, color: ERROR }}>
-                {error}
-              </div>
-            )}
-          </>
+        {error && (
+          <div style={{ padding: '8px 16px', fontFamily: IT, fontSize: 12, color: ERROR }}>
+            {error}
+          </div>
         )}
       </div>
 
-      {!verifying && (
-        <div
-          className="px-4"
-          style={{
-            paddingBottom: 32,
-            paddingTop: 8,
-            borderTop: `1px solid ${BORDER}`,
-            background: NAVY_BASE,
-          }}
-        >
-          <GreenButton onClick={handleTopUp} disabled={loading}>
-            {loading ? 'Processing…' : `Top Up ₦${amount}`}
-          </GreenButton>
-        </div>
-      )}
+      <div
+        className="px-4"
+        style={{
+          paddingBottom: 32,
+          paddingTop: 8,
+          borderTop: `1px solid ${BORDER}`,
+          background: NAVY_BASE,
+        }}
+      >
+        <GreenButton onClick={handleTopUp} disabled={loading}>
+          {loading ? 'Processing…' : `Top Up ₦${amount}`}
+        </GreenButton>
+      </div>
     </Screen>
   );
 }
@@ -1940,6 +1869,27 @@ export function WithdrawScreen({
 // ─────────────────────────────────────────────────────────────────────────────
 // 5. TRANSFER SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
+
+/** A recipient's name, tolerating an account that is missing one half — the
+ *  same trap that rendered "undefined undefined" in the profile. Falls back to
+ *  the masked number so a row is never nameless before you send money to it. */
+function recipientName(r: WalletRecipientDto): string {
+  const name = [r.firstName, r.lastName]
+    .map((part) => part?.trim())
+    .filter((part): part is string => !!part)
+    .join(' ');
+  return name || r.maskedPhone;
+}
+
+function recipientInitials(r: WalletRecipientDto): string {
+  const initials = [r.firstName, r.lastName]
+    .map((part) => part?.trim()?.[0])
+    .filter(Boolean)
+    .join('')
+    .toUpperCase();
+  return initials || '#';
+}
+
 export function TransferScreen({
   onBack,
   onConfirm,
@@ -1948,10 +1898,8 @@ export function TransferScreen({
   onConfirm?: () => void;
 }) {
   const [search, setSearch] = useState('');
-  const [results, setResults] = useState<{ id: string; name: string; phone: string }[]>([]);
-  const [recipient, setRecipient] = useState<{ id: string; name: string; phone: string } | null>(
-    null,
-  );
+  const [results, setResults] = useState<WalletRecipientDto[]>([]);
+  const [recipient, setRecipient] = useState<WalletRecipientDto | null>(null);
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [searching, setSearching] = useState(false);
@@ -1971,7 +1919,7 @@ export function TransferScreen({
       setSearching(true);
       try {
         const res = await api.wallet.findRecipient(phone);
-        setResults(res as { id: string; name: string; phone: string }[]);
+        setResults(res);
       } catch {
         setResults([]);
       } finally {
@@ -2088,14 +2036,16 @@ export function TransferScreen({
                     }}
                   >
                     <span style={{ fontFamily: PP, fontSize: 14, fontWeight: 700, color: INFO }}>
-                      {r.name.slice(0, 2).toUpperCase()}
+                      {recipientInitials(r)}
                     </span>
                   </div>
                   <div style={{ flex: 1, textAlign: 'left' }}>
                     <div style={{ fontFamily: IT, fontSize: 14, fontWeight: 600, color: '#fff' }}>
-                      {r.name}
+                      {recipientName(r)}
                     </div>
-                    <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>{r.phone}</div>
+                    <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>
+                      {r.maskedPhone}
+                    </div>
                   </div>
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                     <path
@@ -2156,15 +2106,15 @@ export function TransferScreen({
                   }}
                 >
                   <span style={{ fontFamily: PP, fontSize: 18, fontWeight: 700, color: INFO }}>
-                    {recipient.name.slice(0, 2).toUpperCase()}
+                    {recipientInitials(recipient)}
                   </span>
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontFamily: PP, fontSize: 15, fontWeight: 700, color: '#fff' }}>
-                    {recipient.name}
+                    {recipientName(recipient)}
                   </div>
                   <div style={{ fontFamily: IT, fontSize: 13, color: MUTED }}>
-                    {recipient.phone}
+                    {recipient.maskedPhone}
                   </div>
                 </div>
                 <button
@@ -2495,9 +2445,27 @@ export function RewardsScreen({ onBack }: { onBack?: () => void }) {
   const [loyalty, setLoyalty] = useState<LoyaltyOverviewDto | null>(null);
   const [history, setHistory] = useState<LoyaltyLedgerEntryDto[]>([]);
   const [loading, setLoading] = useState(true);
-  const user = auth.getUser();
-  const referralCode = `DRPX-${(user?.firstName ?? 'USER').toUpperCase().slice(0, 5)}`;
+  // Was `DRPX-${firstName}`, invented in the browser. The server has never
+  // heard of it, so a friend typing it at signup would have been rejected —
+  // and two customers named Ismail shared the same "code". The real one comes
+  // from /customer/referrals/me.
+  const [referralCode, setReferralCode] = useState('');
+  useEffect(() => {
+    let live = true;
+    api.referrals
+      .me()
+      .then((r) => {
+        if (live) setReferralCode(r.code);
+      })
+      .catch(() => {
+        /* Leave it blank rather than showing a code that cannot be redeemed. */
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
   const handleCopy = () => {
+    if (!referralCode) return;
     navigator.clipboard.writeText(referralCode).catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -2728,7 +2696,7 @@ export function RewardsScreen({ onBack }: { onBack?: () => void }) {
                 marginBottom: 12,
               }}
             >
-              {referralCode}
+              {referralCode || '…'}
             </div>
             <button
               onClick={handleCopy}

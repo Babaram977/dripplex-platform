@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0 --port ${PORT:-3000}",
+    "start": "serve -s dist -l ${PORT:-3000} --config \"$PWD/serve.json\"",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run"
   },
@@ -64,6 +65,7 @@
     "react-responsive-masonry": "2.7.1",
     "react-slick": "0.31.0",
     "recharts": "2.15.2",
+    "serve": "14.2.6",
     "socket.io-client": "4.8.3",
     "sonner": "2.0.3",
     "tailwind-merge": "3.2.0",

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { getInitials } from '../utils/format';
 import { ImageWithFallback } from '@/app/components/figma/ImageWithFallback';
 import logoImg from '@/imports/C3C48FE4-A0D8-4DA3-8A0D-A09D3D9EA7FB.jpeg';
 import {
@@ -1209,17 +1210,137 @@ export function SessionManagementScreen({ onBack }: { onBack: () => void }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // AUTH-015  PRIVACY & DATA CONTROLS
 // ═══════════════════════════════════════════════════════════════════════════
-export function PrivacyControlsScreen({ onBack }: { onBack: () => void }) {
-  const [visibility, setVisibility] = useState<'Public' | 'Friends' | 'Private'>('Friends');
-  const [location, setLocation] = useState<'Always' | 'While Using' | 'Never'>('While Using');
-  const [personalization, setPersonalization] = useState(true);
-  const [analytics, setAnalytics] = useState(true);
-  const [marketing, setMarketing] = useState({ Email: true, SMS: false, Push: true, None: false });
-  const [saved, setSaved] = useState(false);
+/** Marketing pill -> the channel the backend delivers on. */
+const MARKETING_CHANNELS = {
+  Email: 'EMAIL',
+  SMS: 'SMS',
+  Push: 'PUSH',
+} as const;
+type MarketingKey = keyof typeof MARKETING_CHANNELS;
 
-  const save = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+/**
+ * Privacy controls.
+ *
+ * This screen used to save nothing at all: `save()` flashed "Saved" for two
+ * seconds and threw every choice away. Worse, most of the controls had nothing
+ * behind them to save to, so no amount of wiring would have made them work.
+ *
+ * What is left is what is real:
+ *
+ *  - Marketing preferences write to `PUT /customer/notifications/preferences`
+ *    against type PROMOTION, which is the only preference store the backend
+ *    has. They load from the same endpoint, so the screen opens showing what
+ *    is actually set rather than a hardcoded default.
+ *  - Location is the browser's permission, not a setting of ours. It is read
+ *    live and can be requested here — which is the fix for customers who
+ *    declined at registration and had no way back. A page cannot un-deny a
+ *    permission, so when it is denied we say where to change it instead of
+ *    offering a button that would silently do nothing.
+ *
+ * Removed, with reasons, logged in docs/reference/DPX-FIGMA-DIFF-REGISTER.md
+ * under "Four settings screens deleted from registration" (2026-08-25):
+ *
+ *  - Profile Visibility (Public/Friends/Private). DrippleX has no social graph
+ *    and no friends. Founder decision: identity is a phone number, there are
+ *    no usernames. The control described a product that does not exist.
+ *  - Analytics ("share anonymous usage data"). The privacy policy published
+ *    2026-08-24 states there is no analytics SDK and no crash telemetry, and
+ *    DPX-MOBILE-003 says the same to Apple and Google. A toggle implies
+ *    collection that does not happen, which is worse than no toggle.
+ *  - Personalization. No server flag exists and nothing reads one.
+ *
+ * Download My Data now opens a real request to the address the privacy policy
+ * names, rather than being a button that does nothing.
+ */
+export function PrivacyControlsScreen({ onBack }: { onBack: () => void }) {
+  const [marketing, setMarketing] = useState<Record<MarketingKey, boolean>>({
+    Email: true,
+    SMS: false,
+    Push: true,
+  });
+  const [loadingPrefs, setLoadingPrefs] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState('');
+  const [geo, setGeo] = useState<'granted' | 'denied' | 'prompt' | 'unsupported'>('prompt');
+
+  // What is actually set, not what the mock assumed.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const rows = await api.notifications.getPreferences();
+        if (cancelled) return;
+        const next = { ...{ Email: true, SMS: false, Push: true } } as Record<
+          MarketingKey,
+          boolean
+        >;
+        for (const key of Object.keys(MARKETING_CHANNELS) as MarketingKey[]) {
+          const row = rows.find(
+            (r) => r.channel === MARKETING_CHANNELS[key] && r.type === 'PROMOTION',
+          );
+          if (row) next[key] = row.enabled;
+        }
+        setMarketing(next);
+      } catch {
+        // An unreachable preferences endpoint should not blank the screen; the
+        // defaults stand and saving will surface any real failure.
+      } finally {
+        if (!cancelled) setLoadingPrefs(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Live permission state, and kept live if it changes in browser settings.
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setGeo('unsupported');
+      return undefined;
+    }
+    if (!navigator.permissions?.query) return undefined;
+    let status: PermissionStatus | null = null;
+    const onChange = () => setGeo((status?.state as typeof geo) ?? 'prompt');
+    void navigator.permissions
+      .query({ name: 'geolocation' as PermissionName })
+      .then((st) => {
+        status = st;
+        setGeo(st.state as typeof geo);
+        st.addEventListener('change', onChange);
+      })
+      .catch(() => setGeo('prompt'));
+    return () => status?.removeEventListener('change', onChange);
+  }, []);
+
+  const requestLocation = () => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      () => setGeo('granted'),
+      (e) => setGeo(e.code === e.PERMISSION_DENIED ? 'denied' : 'prompt'),
+      { timeout: 10000 },
+    );
+  };
+
+  const save = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      await api.notifications.updatePreferences(
+        (Object.keys(MARKETING_CHANNELS) as MarketingKey[]).map((key) => ({
+          channel: MARKETING_CHANNELS[key],
+          type: 'PROMOTION',
+          enabled: marketing[key],
+        })),
+      );
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not save. Try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const PillRow = ({
@@ -1349,78 +1470,59 @@ export function PrivacyControlsScreen({ onBack }: { onBack: () => void }) {
             className="flex h-10 w-10 items-center justify-center rounded-xl text-xl"
             style={{ background: 'rgba(43,172,82,.1)' }}
           >
-            👤
-          </div>
-          <div>
-            <p
-              className="text-[14px] font-semibold"
-              style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
-            >
-              Profile Visibility
-            </p>
-            <p className="text-[11px]" style={{ color: MUTED }}>
-              Who can see your profile
-            </p>
-          </div>
-        </div>
-        <PillRow
-          opts={['Public', 'Friends', 'Private']}
-          active={visibility}
-          onPick={(v) => setVisibility(v as typeof visibility)}
-        />
-      </div>
-
-      <div
-        className="mx-6 mb-3 rounded-2xl p-4"
-        style={{ background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
-      >
-        <div className="flex items-center gap-3">
-          <div
-            className="flex h-10 w-10 items-center justify-center rounded-xl text-xl"
-            style={{ background: 'rgba(43,172,82,.1)' }}
-          >
             📍
           </div>
-          <div>
+          <div className="min-w-0 flex-1">
             <p
               className="text-[14px] font-semibold"
               style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
             >
-              Location Sharing
+              Location
             </p>
             <p className="text-[11px]" style={{ color: MUTED }}>
-              When DrippleX accesses location
+              {geo === 'granted'
+                ? 'Allowed — used for delivery, pickup and nearby stores'
+                : geo === 'denied'
+                  ? 'Blocked for DrippleX in this browser'
+                  : geo === 'unsupported'
+                    ? 'This device cannot share location'
+                    : 'Not allowed yet — addresses and pickup need it'}
             </p>
           </div>
         </div>
-        <PillRow
-          opts={['Always', 'While Using', 'Never']}
-          active={location}
-          onPick={(v) => setLocation(v as typeof location)}
-        />
+
+        {geo === 'prompt' && (
+          <button
+            onClick={requestLocation}
+            className="mt-3 h-[38px] w-full rounded-xl text-[12.5px] font-semibold active:scale-[.98]"
+            style={{ background: G2, color: '#FFF' }}
+          >
+            Turn on location
+          </button>
+        )}
+        {geo === 'denied' && (
+          <p
+            className="mt-3 rounded-xl px-3 py-2.5 text-[11px] leading-relaxed"
+            style={{
+              background: 'rgba(251,191,36,.06)',
+              border: '1px solid rgba(251,191,36,.16)',
+              color: 'rgba(255,255,255,.78)',
+            }}
+          >
+            {/* A page cannot reverse a denied permission — only the browser or
+                the phone can. Saying so beats a button that does nothing, which
+                is what a customer who declined at sign-up was left with. */}
+            You said no earlier, and only your browser can undo that. Tap the padlock or ⓘ beside
+            the address bar, find <b>Location</b>, set it to Allow, then reload. On Android you may
+            also need Settings → Apps → your browser → Permissions → Location.
+          </p>
+        )}
+        {geo === 'granted' && (
+          <p className="mt-3 text-[11px]" style={{ color: MUTED }}>
+            Only while the app is open. DrippleX has no background location.
+          </p>
+        )}
       </div>
-
-      <p
-        className="px-6 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-widest"
-        style={{ color: MUTED }}
-      >
-        Data & Personalization
-      </p>
-
-      <SwitchRow
-        icon="📈"
-        title="Personalization"
-        sub="AI recommendations based on your activity"
-        on={personalization}
-        onToggle={() => setPersonalization((v) => !v)}
-      />
-      <SwitchRow
-        icon="📊"
-        title="Analytics"
-        sub="Share anonymous usage data to improve DrippleX"
-        on={analytics}
-        onToggle={() => setAnalytics((v) => !v)}
-      />
 
       <div
         className="mx-6 mb-3 rounded-2xl p-4"
@@ -1446,11 +1548,15 @@ export function PrivacyControlsScreen({ onBack }: { onBack: () => void }) {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          {(['Email', 'SMS', 'Push', 'None'] as const).map((opt) => {
+          {/* "None" is gone: it was a fourth independent boolean that could be
+              on at the same time as Email and Push, so it meant nothing.
+              Turning all three off is how you opt out. */}
+          {(['Email', 'SMS', 'Push'] as const).map((opt) => {
             const on = marketing[opt];
             return (
               <button
                 key={opt}
+                disabled={loadingPrefs}
                 onClick={() => setMarketing((m) => ({ ...m, [opt]: !m[opt] }))}
                 className="h-[30px] rounded-full px-4 text-[11px] font-semibold transition-all active:scale-95"
                 style={{
@@ -1479,16 +1585,26 @@ export function PrivacyControlsScreen({ onBack }: { onBack: () => void }) {
             Request an export of your DrippleX data
           </p>
         </div>
-        <button
+        <a
+          href="mailto:privacy@dripplex.com?subject=Data%20export%20request"
           className="rounded-xl px-3 py-1.5 text-[11px] font-semibold"
           style={{ background: 'rgba(251,191,36,.1)', color: '#FCD34D' }}
         >
           Request
-        </button>
+        </a>
       </div>
 
       <div className="mt-1 px-6 pb-10">
-        <GreenBtn label="Save Preferences" onClick={save} />
+        {error && (
+          <p className="mb-2 text-center text-[12px]" style={{ color: '#F87171' }}>
+            {error}
+          </p>
+        )}
+        <GreenBtn
+          label={saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save Preferences'}
+          disabled={saving || loadingPrefs}
+          onClick={() => void save()}
+        />
       </div>
     </div>
   );
@@ -2128,7 +2244,13 @@ export function AccountManagementScreen({
               fontFamily: "'Poppins',sans-serif",
             }}
           >
-            SD
+            {/* Was the literal string "SD" — a Figma mockup's initials, shown
+                to every customer on the platform. Same bug as the "H" avatar
+                in the home header, which came from taking charAt(0) of the
+                greeting sentence. Derived from the signed-in name now, with a
+                fallback so an empty name renders a person glyph rather than an
+                empty circle. */}
+            {getInitials(name) || '👤'}
           </div>
           <button
             className="absolute bottom-0 right-0 flex h-7 w-7 items-center justify-center rounded-full text-sm"

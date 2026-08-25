@@ -33,11 +33,14 @@ import {
   getCurrentPosition,
   reverseGeocode,
 } from '../lib/maps';
+import { referralShareUrl } from '../lib/referralLink';
+
 import type { AddressPrediction } from '../lib/maps';
 import type {
   CardProviderOptionDto,
   CustomerRideDto,
   EstimateRideFareResponse,
+  ReferralStatsDto,
   RideDto,
   RideReceiptDto,
   RideStatus,
@@ -5088,15 +5091,81 @@ export function PromoCodeScreen({
 // 10. ReferralScreen
 export function ReferralScreen({ onBack }: { onBack?: () => void }) {
   const [copied, setCopied] = useState(false);
-  const code = 'DRIPX-OLA42';
-  const handleCopy = () => {
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const [copiedLink, setCopiedLink] = useState(false);
+  // The code used to be the literal string 'DRIPX-OLA42' and the reward the
+  // literal 500 — a mockup shown to every customer, for a code the server had
+  // never issued and an amount nobody had approved. Both come from
+  // /customer/referrals/stats now, which returns the caller's real code
+  // alongside the amounts from REFERRAL_REWARD_AMOUNTS.
+  const [stats, setStats] = useState<ReferralStatsDto | null>(null);
+  const [loadError, setLoadError] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    api.referrals
+      .stats()
+      .then((s) => {
+        if (live) setStats(s);
+      })
+      .catch(() => {
+        if (live) setLoadError(true);
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const code = stats?.code ?? '';
+  const naira = (n: number) => `₦${n.toLocaleString('en-NG')}`;
+  // A link beats a code read aloud: tapping it lands the friend in the app
+  // with the code already in the registration field, so there is nothing to
+  // remember or mistype. The code stays in the text too, for anyone who
+  // receives it somewhere links do not survive.
+  const shareLink = code ? referralShareUrl(code) : '';
+  const shareMessage = code
+    ? `Join me on DrippleX. Use my code ${code} when you sign up${
+        stats ? ` and get ${naira(stats.refereeRewardAmount)} off your first ride` : ''
+      }. ${shareLink}`
+    : '';
+
+  const handleCopyLink = () => {
+    if (!shareLink) return;
+    void navigator.clipboard
+      ?.writeText(shareLink)
+      .then(() => {
+        setCopiedLink(true);
+        setTimeout(() => setCopiedLink(false), 2000);
+      })
+      .catch(() => {
+        setCopiedLink(false);
+      });
   };
+
+  const handleCopy = () => {
+    if (!code) return;
+    // This button never copied anything — it only flipped the label to
+    // "Copied!". writeText can reject (insecure context, denied permission),
+    // so the confirmation is shown only once it resolves.
+    void navigator.clipboard
+      ?.writeText(code)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(() => {
+        setCopied(false);
+      });
+  };
+
   const steps = [
     { n: 1, text: 'Share your referral code with a friend' },
     { n: 2, text: 'Your friend completes their first ride' },
-    { n: 3, text: 'You both get ₦500 credited instantly' },
+    {
+      n: 3,
+      text: stats
+        ? `They get ${naira(stats.refereeRewardAmount)}, you get ${naira(stats.referrerRewardAmount)}`
+        : 'You both get credited',
+    },
   ];
   return (
     <div
@@ -5126,12 +5195,16 @@ export function ReferralScreen({ onBack }: { onBack?: () => void }) {
               marginBottom: 6,
             }}
           >
-            Give ₦500. Get ₦500.
+            {stats
+              ? `Give ${naira(stats.refereeRewardAmount)}. Get ${naira(stats.referrerRewardAmount)}.`
+              : 'Refer & Earn'}
           </p>
           <p
             style={{ fontSize: 13, color: 'rgba(255,255,255,.7)', fontFamily: IT, lineHeight: 1.6 }}
           >
-            Your friend gets ₦500 off their first ride. You earn ₦500 when they complete it.
+            {stats
+              ? `Your friend gets ${naira(stats.refereeRewardAmount)} off their first ride. You earn ${naira(stats.referrerRewardAmount)} when they complete it.`
+              : 'Share your code and you both earn when your friend takes their first ride.'}
           </p>
         </div>
         {/* Referral code */}
@@ -5149,7 +5222,7 @@ export function ReferralScreen({ onBack }: { onBack?: () => void }) {
               letterSpacing: 2,
             }}
           >
-            {code}
+            {code || (loadError ? 'Unavailable' : 'Loading…')}
           </p>
           <button
             className="rounded-xl px-4 py-2 text-sm font-semibold transition-all active:scale-95"
@@ -5160,10 +5233,45 @@ export function ReferralScreen({ onBack }: { onBack?: () => void }) {
               border: `1px solid ${copied ? G3 : BORDER}`,
             }}
             onClick={handleCopy}
+            disabled={!code}
           >
             {copied ? 'Copied!' : 'Copy'}
           </button>
         </div>
+        {/* Share link — the thing most people will actually send */}
+        <div
+          className="mb-4 flex items-center gap-3 rounded-2xl p-3"
+          style={{ background: NAVY_CARD, border: `1px solid ${BORDER}` }}
+        >
+          <p
+            style={{
+              flex: 1,
+              fontFamily: IT,
+              fontSize: 12,
+              color: TEXT_SECONDARY,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {shareLink || 'Your invite link will appear here'}
+          </p>
+          <button
+            className="rounded-xl px-3 py-2 text-xs font-semibold transition-all active:scale-95"
+            style={{
+              background: copiedLink ? 'rgba(34,197,94,.15)' : NAVY_SURFACE,
+              color: copiedLink ? G3 : TEXT_SECONDARY,
+              fontFamily: PP,
+              border: `1px solid ${copiedLink ? G3 : BORDER}`,
+              flexShrink: 0,
+            }}
+            onClick={handleCopyLink}
+            disabled={!shareLink}
+          >
+            {copiedLink ? 'Copied!' : 'Copy link'}
+          </button>
+        </div>
+
         {/* Share row */}
         <p
           style={{ fontSize: 11, fontFamily: PP, fontWeight: 600, color: MUTED, marginBottom: 10 }}
@@ -5172,26 +5280,65 @@ export function ReferralScreen({ onBack }: { onBack?: () => void }) {
         </p>
         <div className="mb-6 flex gap-3">
           {[
-            { label: 'WhatsApp', color: '#25D366', emoji: '💬' },
-            { label: 'X', color: '#1DA1F2', emoji: '𝕏' },
-            { label: 'Instagram', color: '#E1306C', emoji: '📸' },
-            { label: 'SMS', color: '#5856D6', emoji: '✉️' },
-          ].map((s) => (
+            // These four buttons had no onClick at all. Instagram is gone
+            // rather than faked — it has no URL that accepts shared text, so
+            // the tile could only ever have done nothing. "More" hands the
+            // message to the OS share sheet, which is where Instagram
+            // actually lives on a phone.
+            {
+              label: 'WhatsApp',
+              emoji: '💬',
+              href: () => `https://wa.me/?text=${encodeURIComponent(shareMessage)}`,
+            },
+            {
+              label: 'X',
+              emoji: '𝕏',
+              href: () => `https://x.com/intent/post?text=${encodeURIComponent(shareMessage)}`,
+            },
+            {
+              label: 'SMS',
+              emoji: '✉️',
+              href: () => `sms:?body=${encodeURIComponent(shareMessage)}`,
+            },
+            { label: 'More', emoji: '📤', href: null },
+          ].map((channel) => (
             <button
-              key={s.label}
+              key={channel.label}
+              disabled={!code}
+              onClick={() => {
+                if (!code) return;
+                if (channel.href) {
+                  window.open(channel.href(), '_blank', 'noopener');
+                  return;
+                }
+                if (navigator.share) {
+                  void navigator.share({ text: shareMessage }).catch(() => {
+                    /* Dismissed by the customer — not an error. */
+                  });
+                  return;
+                }
+                handleCopy();
+              }}
               className="flex flex-1 flex-col items-center gap-1 rounded-xl p-3 transition-all active:scale-95"
-              style={{ background: NAVY_CARD, border: `1px solid ${BORDER}` }}
+              style={{
+                background: NAVY_CARD,
+                border: `1px solid ${BORDER}`,
+                opacity: code ? 1 : 0.5,
+              }}
             >
-              <span style={{ fontSize: 20 }}>{s.emoji}</span>
-              <p style={{ fontSize: 10, color: TEXT_SECONDARY, fontFamily: IT }}>{s.label}</p>
+              <span style={{ fontSize: 20 }}>{channel.emoji}</span>
+              <p style={{ fontSize: 10, color: TEXT_SECONDARY, fontFamily: IT }}>{channel.label}</p>
             </button>
           ))}
         </div>
         {/* Stats */}
         <div className="mb-6 flex gap-3">
           {[
-            ['3', 'Friends Referred'],
-            ['₦1,500', 'Earned'],
+            // Was a hardcoded 3 friends and ₦1,500 earned, shown to every
+            // customer including one who had referred nobody. Earned is
+            // rewarded redemptions times the referrer amount, both from the API.
+            [stats ? String(stats.totalRedemptions) : '—', 'Friends Referred'],
+            [stats ? naira(stats.rewardedRedemptions * stats.referrerRewardAmount) : '—', 'Earned'],
           ].map(([v, l]) => (
             <div
               key={l}

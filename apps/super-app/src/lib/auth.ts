@@ -79,10 +79,21 @@ export const auth = {
     return this.getUser()?.roles.includes(role) ?? false;
   },
 
-  // Convenience: full display name
+  /**
+   * The person's full name, or '' when we don't have one.
+   *
+   * Template-interpolating both halves rendered the literal string
+   * "undefined undefined" for any account missing a name — and `.trim()` could
+   * not help, because the words are real characters. Callers put this straight
+   * into headings and avatars, so `getInitials` then produced "UU" and every
+   * such customer wore the same monogram. Absent halves are dropped instead.
+   */
   displayName(user: DxUser | null): string {
     if (!user) return '';
-    return `${user.firstName} ${user.lastName}`.trim();
+    return [user.firstName, user.lastName]
+      .map((part) => part?.trim())
+      .filter((part): part is string => !!part)
+      .join(' ');
   },
 };
 

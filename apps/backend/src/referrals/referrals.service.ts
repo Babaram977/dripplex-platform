@@ -87,6 +87,7 @@ export class ReferralsService {
       pendingRedemptions: pending,
       rewardedRedemptions: rewarded,
       refereeRewardAmount: REFERRAL_REWARD_AMOUNTS.REFEREE,
+      referrerRewardAmount: REFERRAL_REWARD_AMOUNTS.REFERRER,
     };
   }
 

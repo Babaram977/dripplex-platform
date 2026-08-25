@@ -682,3 +682,57 @@ the font, not an emoji. Verified by rendering: no `img`, and no character in the
 **Standing gap.** `coverBg` remains in the Figma component and in `storeScreen`'s local
 `StoreMerchant` type. The override is founder-directed and deliberate; if the design is ever
 updated to drop `coverBg`, this entry can be closed rather than reconciled.
+
+---
+
+## Four settings screens deleted from registration, and the reasons — 2026-08-25
+
+Closes four "No backend — Founder decision" rows in the screen-level table above: **Consent**,
+**Language & Region**, **Accessibility**, and the settings half of **Privacy Controls**.
+
+**Why they were reopened.** Founder, on seeing them in the live app: _"Like 3 steps in the
+customer profile that makes it too tedious"_, then _"Remove those screens / Remove those steps"_.
+
+**What the code actually did.** Every one of these screens had a `save()` of the shape
+`setSaved(true)` followed by a timer that navigated on. No request, no storage. A new customer
+set four privacy toggles, twelve notification channel pills, quiet hours, a language, a region, a
+timezone, a date format and an accessibility profile, and the app discarded all of it before they
+reached the home screen. The register had these logged as "no backend" since 2026-08-07; what was
+not logged is that they shipped anyway as controls that appeared to work.
+
+**Founder decision, 2026-08-25: delete, not hide.** `ConsentScreen`,
+`NotificationPrefsScreen`, `LanguageRegionScreen` and `AccessibilityScreen` are removed from the
+codebase (1,121 lines) along with `DEFAULT_NOTIFS`, `NotifChannels`, `LANGUAGES`, `REGIONS`,
+`DATE_FORMATS` and `ColorBlindMode`. Git history holds the design if any of it is ever built
+properly.
+
+**Registration is now** Welcome → Register → OTP → Profile Setup → Permissions → Welcome.
+
+### Privacy Controls — kept, reduced to what is real
+
+| Figma control                               | Backend                                                 | Outcome                                                                                                                                                                                |
+| ------------------------------------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Marketing preferences (Email/SMS/Push)      | `/customer/notifications/preferences`, type `PROMOTION` | **Wired.** Loads and saves for real; this is the only preference store the backend has.                                                                                                |
+| Location                                    | Browser permission, not a server setting                | **Wired** to the live permission state, and can request it — the fix for customers who declined at registration and had no way back.                                                   |
+| Profile Visibility (Public/Friends/Private) | None, and none possible                                 | **Removed.** DrippleX has no social graph; identity is a phone number and there are no usernames.                                                                                      |
+| Analytics ("share anonymous usage data")    | None                                                    | **Removed.** The privacy policy published 2026-08-24 and DPX-MOBILE-003 both state there is no analytics SDK and no crash telemetry. A toggle implies collection that does not happen. |
+| Personalization                             | No server flag                                          | **Removed.**                                                                                                                                                                           |
+| Download My Data                            | No endpoint                                             | Now a real `mailto:` to the address the privacy policy names, rather than a button that did nothing.                                                                                   |
+
+### Permissions step — was theatre, now real
+
+Not previously in this register, and the more serious finding. `PermissionsScreen` listed five
+permissions and `allow(key)` added a string to a local `Set`. **The browser was never asked.** The
+card turned green and said "Allowed" while nothing had been granted — so nobody who tapped Allow
+got location either, which is why customers who skipped had nothing to come back to.
+
+It now calls `navigator.geolocation.getCurrentPosition` and `Notification.requestPermission`,
+shows the answer the browser actually gave, and reads existing grants on mount. **Camera, Photos
+and Microphone are removed** rather than wired: a page cannot usefully pre-request them — the
+browser asks at the file picker or the `getUserMedia` call — so those three rows could only ever
+have been decoration.
+
+**Correction to the record.** Three commits in this session (`d46eb91`, and the PR body for #268)
+state that this register does not exist in the repository. That was wrong — the check was run from
+the wrong working directory and the failure was read as absence. The file has been here since
+2026-08-07 and this entry is where those removals should have been logged in the first place.

@@ -48,6 +48,10 @@ export interface LocationHeartbeat {
 export function useLocationHeartbeat(
   online: boolean,
   send: (position: { latitude: number; longitude: number }) => Promise<unknown>,
+  /** Override the cadence. Two minutes is right for "stay dispatchable"; a
+   *  driver already on a trip reports far more often, because the passenger is
+   *  watching the car move and the start-ride gate measures the last fix. */
+  intervalMs: number = LOCATION_HEARTBEAT_MS,
 ): LocationHeartbeat {
   const [degraded, setDegraded] = useState(false);
   const [lastSentAt, setLastSentAt] = useState<Date | null>(null);
@@ -89,13 +93,13 @@ export function useLocationHeartbeat(
     };
 
     void beat();
-    const timer = setInterval(() => void beat(), LOCATION_HEARTBEAT_MS);
+    const timer = setInterval(() => void beat(), intervalMs);
 
     return () => {
       live = false;
       clearInterval(timer);
     };
-  }, [online]);
+  }, [online, intervalMs]);
 
   return { degraded, lastSentAt };
 }
