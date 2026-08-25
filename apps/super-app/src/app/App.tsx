@@ -29,10 +29,6 @@ import {
   AccountManagementScreen,
 } from './screensB';
 import {
-  ConsentScreen,
-  NotificationPrefsScreen,
-  LanguageRegionScreen,
-  AccessibilityScreen,
   WelcomeDrippleXScreen,
   LinkedAccountsScreen,
   VerificationStatusScreen,
@@ -340,10 +336,6 @@ type Screen =
   | 'privacy'
   | 'kyc'
   | 'account'
-  | 'consent'
-  | 'notifprefs'
-  | 'langregion'
-  | 'accessibility'
   | 'onboarddone'
   | 'linked'
   | 'verifstatus'
@@ -965,13 +957,14 @@ function AppShell() {
     // twenty-odd controls, and not one of them saved anything. Each `save()`
     // was setSaved(true) followed by a timer that navigated on. A new customer
     // spent four screens configuring an account that forgot all of it before
-    // they reached the home screen.
+    // they reached the home screen. Founder decision, 2026-08-25: delete them.
     //
     // The one setting behind them that the backend can actually store —
     // marketing preferences — lives in Account → Privacy Controls and works.
-    // Notification categories and Language & Region are designs with no
-    // backend at all (there is no i18n, and no Ghana/Kenya/UAE support); they
-    // are recorded as gaps rather than shipped as switches that lie.
+    // Notification categories and Language & Region had no backend at all
+    // (NotificationType is per-event, not per-category; there is no i18n and
+    // no Ghana/Kenya/UAE support), so they are gaps to design properly if they
+    // come back, not code to keep warm. Git history holds the old screens.
     permissions: (
       <PermissionsScreen
         onContinue={() => go('onboarddone')}
@@ -1053,19 +1046,6 @@ function AppShell() {
         onSuspension={() => go('suspension')}
         onAuthSummary={() => go('authsummary')}
       />
-    ),
-    consent: <ConsentScreen onAccept={() => go('notifprefs')} onLater={() => go('notifprefs')} />,
-    notifprefs: (
-      <NotificationPrefsScreen onBack={() => goBack('consent')} onSave={() => go('langregion')} />
-    ),
-    langregion: (
-      <LanguageRegionScreen
-        onBack={() => goBack('notifprefs')}
-        onSave={() => go('accessibility')}
-      />
-    ),
-    accessibility: (
-      <AccessibilityScreen onBack={() => goBack('langregion')} onApply={() => go('onboarddone')} />
     ),
     onboarddone: (
       <WelcomeDrippleXScreen
@@ -2037,13 +2017,6 @@ function AppShell() {
         { label: 'KYC', key: 'kyc' },
         { label: 'Account', key: 'account' },
         { label: 'Auth Summary', key: 'authsummary' },
-        // Cut from registration — see the note on the `permissions` route.
-        // They persist nothing, so they are design references only and are
-        // reachable here rather than left invisible in the codebase.
-        { label: 'Consent (unwired)', key: 'consent' },
-        { label: 'Notif. Prefs (unwired)', key: 'notifprefs' },
-        { label: 'Language & Region (unwired)', key: 'langregion' },
-        { label: 'Accessibility (unwired)', key: 'accessibility' },
       ],
     },
     {
