@@ -224,6 +224,26 @@ export interface WalletDto {
   updatedAt: string;
 }
 
+// Referrals
+export interface ReferralDto {
+  id: string;
+  userId: string;
+  code: string;
+  createdAt: string;
+}
+
+export interface ReferralStatsDto {
+  code: string;
+  totalRedemptions: number;
+  pendingRedemptions: number;
+  rewardedRedemptions: number;
+  /** Naira the referred friend receives. Served by the API so a change to the
+   *  reward never needs a client release. */
+  refereeRewardAmount: number;
+  /** Naira the sharer receives once that friend completes their first ride. */
+  referrerRewardAmount: number;
+}
+
 /** GET /customer/wallet/transfer/recipients[/recent] — mirrors the backend's
  *  WalletRecipientDto. The phone comes back masked; the API never returns a
  *  recipient's full number. */
@@ -3604,6 +3624,21 @@ export const api = {
     /** Both Paystack and Flutterwave stay configured and the customer picks
      * (founder, 2026-08-18) — one gateway can be down while the other works. */
     providers: () => dx<CustomerPaymentProvidersDto>('GET', '/customer/payments/providers'),
+  },
+
+  /**
+   * Referrals. These endpoints have existed since the referral system shipped
+   * and this client had no methods for either of them, so the app showed
+   * invented codes instead — a hardcoded DRIPX-OLA42 on the Refer & Earn
+   * screen and a client-computed DRPX-{FIRSTNAME} in the wallet. Neither
+   * existed server-side, so no code a customer shared could ever be redeemed.
+   */
+  referrals: {
+    /** The caller's referral code, created on first read. */
+    me: () => dx<ReferralDto>('GET', '/customer/referrals/me'),
+    /** Code, redemption counts, and both reward amounts — the amounts are
+     *  served so the screen never hardcodes a naira figure. */
+    stats: () => dx<ReferralStatsDto>('GET', '/customer/referrals/stats'),
   },
 
   utilities: {

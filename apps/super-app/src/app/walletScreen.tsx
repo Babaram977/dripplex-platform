@@ -2445,9 +2445,27 @@ export function RewardsScreen({ onBack }: { onBack?: () => void }) {
   const [loyalty, setLoyalty] = useState<LoyaltyOverviewDto | null>(null);
   const [history, setHistory] = useState<LoyaltyLedgerEntryDto[]>([]);
   const [loading, setLoading] = useState(true);
-  const user = auth.getUser();
-  const referralCode = `DRPX-${(user?.firstName ?? 'USER').toUpperCase().slice(0, 5)}`;
+  // Was `DRPX-${firstName}`, invented in the browser. The server has never
+  // heard of it, so a friend typing it at signup would have been rejected —
+  // and two customers named Ismail shared the same "code". The real one comes
+  // from /customer/referrals/me.
+  const [referralCode, setReferralCode] = useState('');
+  useEffect(() => {
+    let live = true;
+    api.referrals
+      .me()
+      .then((r) => {
+        if (live) setReferralCode(r.code);
+      })
+      .catch(() => {
+        /* Leave it blank rather than showing a code that cannot be redeemed. */
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
   const handleCopy = () => {
+    if (!referralCode) return;
     navigator.clipboard.writeText(referralCode).catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -2678,7 +2696,7 @@ export function RewardsScreen({ onBack }: { onBack?: () => void }) {
                 marginBottom: 12,
               }}
             >
-              {referralCode}
+              {referralCode || '…'}
             </div>
             <button
               onClick={handleCopy}

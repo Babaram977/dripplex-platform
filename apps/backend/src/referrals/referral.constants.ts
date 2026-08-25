@@ -21,14 +21,17 @@ export const REFERRAL_WALLET_REFERENCE_TYPES = {
 } as const;
 
 /**
- * Reward amounts in NGN. Placeholder pending founder approval — same
- * placeholder discipline as RIDE_FARE_RATES in ride.constants.ts.
- * TODO: confirm actual amounts before production; trivial to change since
- * every caller reads from here rather than hardcoding a number.
+ * Reward amounts in NGN.
+ *
+ * Founder decision, 2026-08-25: "350 not 500" — both sides. This was a
+ * placeholder until then, and the customer app was already promising the
+ * unapproved 500 on screen. No longer a placeholder; change it here and every
+ * caller and the API's own stats response follow, because nothing hardcodes
+ * a number.
  */
 export const REFERRAL_REWARD_AMOUNTS = {
-  REFERRER: 500,
-  REFEREE: 500,
+  REFERRER: 350,
+  REFEREE: 350,
 } as const;
 
 /**

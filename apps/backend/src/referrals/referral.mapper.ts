@@ -24,6 +24,11 @@ export interface ReferralStatsDto {
   /** What a referred friend earns for signing up with this code — read
    * from REFERRAL_REWARD_AMOUNTS so the frontend never hardcodes it. */
   refereeRewardAmount: number;
+  /** What the sharer earns when that friend completes their first ride. The
+   * referee amount was already served for exactly this reason; the screen
+   * shows both numbers, so serving only one still left the other hardcoded
+   * in the client — where it sat at the unapproved 500. */
+  referrerRewardAmount: number;
 }
 
 export function toReferralDto(referral: Referral): ReferralDto {
