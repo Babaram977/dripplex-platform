@@ -1237,9 +1237,8 @@ type MarketingKey = keyof typeof MARKETING_CHANNELS;
  *    permission, so when it is denied we say where to change it instead of
  *    offering a button that would silently do nothing.
  *
- * Removed, with reasons. (CLAUDE.md points at
- * docs/reference/DPX-FIGMA-DIFF-REGISTER.md for design differences; no such
- * file exists in this repository, so the reasons are recorded here.)
+ * Removed, with reasons, logged in docs/reference/DPX-FIGMA-DIFF-REGISTER.md
+ * under "Four settings screens deleted from registration" (2026-08-25):
  *
  *  - Profile Visibility (Public/Friends/Private). DrippleX has no social graph
  *    and no friends. Founder decision: identity is a phone number, there are
