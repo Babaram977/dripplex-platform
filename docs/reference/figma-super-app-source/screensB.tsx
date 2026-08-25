@@ -111,7 +111,7 @@ export function TwoFactorScreen({ onBack, onDone }: { onBack: () => void; onDone
           Your account is now protected with two-factor authentication.
         </p>
         <p className="text-[11px] font-semibold tracking-widest" style={{ color: G3 }}>
-          life,Simplified
+          life, Simplified
         </p>
       </div>
     );
@@ -850,7 +850,7 @@ export function SecurityCenterScreen({
           Back to Safety
         </button>
         <p className="text-[11px] font-semibold tracking-widest" style={{ color: G3 }}>
-          life,Simplified
+          life, Simplified
         </p>
       </div>
     );
@@ -930,7 +930,7 @@ export function SecurityCenterScreen({
             Your account is protected.
           </p>
           <p className="mt-1 text-[12px] font-semibold" style={{ color: G3 }}>
-            life,Simplified
+            life, Simplified
           </p>
         </div>
       </div>
@@ -2073,7 +2073,7 @@ export function AccountManagementScreen({
             Your changes have been saved successfully.
           </p>
           <p className="mt-3 text-[12px] font-semibold tracking-widest" style={{ color: G3 }}>
-            life,Simplified
+            life, Simplified
           </p>
         </div>
         <button

@@ -592,7 +592,7 @@ function DeliveredScreen({ orderNumber, onHome }: { orderNumber?: string; onHome
         </button>
       </div>
       <p className="mt-5 text-[11px] font-semibold tracking-widest" style={{ color: G2 }}>
-        life,Simplified
+        life, Simplified
       </p>
     </div>
   );

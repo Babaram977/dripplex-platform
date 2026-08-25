@@ -185,7 +185,7 @@ export function PinSetupScreen({ onBack, onDone }: { onBack: () => void; onDone:
           Your 6-digit PIN is set and ready.
         </p>
         <p className="text-[11px] font-semibold tracking-widest" style={{ color: G3 }}>
-          life,Simplified
+          life, Simplified
         </p>
       </div>
     );
@@ -407,7 +407,7 @@ export function ChangePinScreen({ onBack, onDone }: { onBack: () => void; onDone
           Your new PIN is active on all services.
         </p>
         <p className="text-[11px] font-semibold tracking-widest" style={{ color: G3 }}>
-          life,Simplified
+          life, Simplified
         </p>
       </div>
     );
@@ -525,7 +525,7 @@ export function EmailVerificationScreen({
           {email} is now linked to your account.
         </p>
         <p className="text-[11px] font-semibold tracking-widest" style={{ color: G3 }}>
-          life,Simplified
+          life, Simplified
         </p>
         <button
           onClick={onDone}
@@ -723,7 +723,7 @@ export function ChangePhoneScreen({ onBack, onDone }: { onBack: () => void; onDo
           Your new number is now your primary sign-in method.
         </p>
         <p className="text-[11px] font-semibold tracking-widest" style={{ color: G3 }}>
-          life,Simplified
+          life, Simplified
         </p>
       </div>
     );

@@ -48,7 +48,7 @@ export function SplashScreen({ onDone }: { onDone: () => void }) {
           className="text-sm font-medium tracking-[0.22em]"
           style={{ fontFamily: "'Poppins',sans-serif", color: G2 }}
         >
-          life,Simplified
+          life, Simplified
         </span>
       </div>
       <div className="relative z-10 flex w-full flex-col items-center gap-4 px-10 pb-14">
@@ -2266,7 +2266,7 @@ export function BiometricScreen({
             className="mt-0.5 text-[14px] font-semibold tracking-[0.2em]"
             style={{ fontFamily: "'Poppins',sans-serif", color: G2 }}
           >
-            life,Simplified
+            life, Simplified
           </p>
           <p
             className="mt-3 text-[12px]"

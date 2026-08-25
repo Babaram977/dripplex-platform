@@ -26,7 +26,7 @@
 Same body as `docs/store/GOOGLE-PLAY.md` full description.
 
 **Promotional text** (170 chars):  
-`Shop, eat, ride, and pay across Nigeria. One Super Platform. life, Simplified.`
+`Shop, eat, ride, and pay across Nigeria. One Super Platform. life, Simplified`
 
 **Keywords** (100 chars):  
 `nigeria,marketplace,food,delivery,wallet,rides,shopping,parcel,pharmacy`

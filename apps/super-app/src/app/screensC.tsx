@@ -146,7 +146,7 @@ export function WelcomeDrippleXScreen({
           className="text-[13px] font-semibold tracking-widest"
           style={{ color: G3, animation: 'fade-up .6s ease .4s both' }}
         >
-          life,Simplified
+          life, Simplified
         </p>
         <p
           className="mt-1 text-[22px] font-bold"

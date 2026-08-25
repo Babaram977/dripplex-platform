@@ -4,17 +4,17 @@ Use this draft when creating the Play Console listing. Replace placeholders befo
 
 ## App details
 
-| Field                            | Value                                                                   |
-| -------------------------------- | ----------------------------------------------------------------------- |
-| **Title**                        | DrippleX                                                                |
-| **Short description** (80 chars) | Nigeria’s Super Platform — shop, food, rides, wallet. life, Simplified. |
-| **Full description**             | See below                                                               |
-| **Category**                     | Shopping                                                                |
-| **Tags / keywords**              | marketplace, food delivery, Nigeria, wallet, rides, parcel, pharmacy    |
-| **Privacy Policy URL**           | `https://www.dripplex.com/privacy`                                      |
-| **Account deletion URL**         | `https://www.dripplex.com/account-deletion`                             |
-| **Support URL**                  | `https://www.dripplex.com/contact`                                      |
-| **Email**                        | support@dripplex.com                                                    |
+| Field                            | Value                                                                  |
+| -------------------------------- | ---------------------------------------------------------------------- |
+| **Title**                        | DrippleX                                                               |
+| **Short description** (80 chars) | Nigeria’s Super Platform — shop, food, rides, wallet. life, Simplified |
+| **Full description**             | See below                                                              |
+| **Category**                     | Shopping                                                               |
+| **Tags / keywords**              | marketplace, food delivery, Nigeria, wallet, rides, parcel, pharmacy   |
+| **Privacy Policy URL**           | `https://www.dripplex.com/privacy`                                     |
+| **Account deletion URL**         | `https://www.dripplex.com/account-deletion`                            |
+| **Support URL**                  | `https://www.dripplex.com/contact`                                     |
+| **Email**                        | support@dripplex.com                                                   |
 
 Listing URLs use **www**, because the bare apex 308-redirects to it
 (`apps/customer-web/next.config.ts`). The apex forms still resolve — Google
@@ -27,7 +27,7 @@ tightened.
 ```
 DrippleX is Nigeria’s Super Platform for everyday life — marketplace, food delivery, parcels, rides, pharmacy, home services, and wallet in one app.
 
-life, Simplified.
+life, Simplified
 
 • Shop local merchants and essentials
 • Order food with live delivery tracking

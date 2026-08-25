@@ -254,7 +254,7 @@ export default function HomePreviewPage(): React.JSX.Element {
         <SuperAppHeader
           greeting="Good Morning"
           name="Saeed"
-          tagline="life,Simplified"
+          tagline="life, Simplified"
           avatarInitial="S"
           searchPlaceholder="Search products, rides, pharmacies…"
           hasUnreadNotifications

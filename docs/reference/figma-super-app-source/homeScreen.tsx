@@ -277,7 +277,7 @@ function Header({
             className="mt-0.5 text-[11px] font-semibold"
             style={{ color: G3, fontFamily: "'Inter',sans-serif", letterSpacing: '0.05em' }}
           >
-            life,Simplified
+            life, Simplified
           </p>
         </div>
         <div className="flex items-center gap-2.5">

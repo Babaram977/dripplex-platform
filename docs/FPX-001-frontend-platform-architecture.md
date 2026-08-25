@@ -4,7 +4,7 @@
 | ---------------- | --------------------------------------------------------------------------------------------- |
 | **Document ID**  | FPX-001                                                                                       |
 | **Title**        | DrippleX Frontend Platform Architecture                                                       |
-| **Platform**     | DrippleX — _life,Simplified_                                                                  |
+| **Platform**     | DrippleX — _life, Simplified_                                                                 |
 | **Program**      | B — Frontend Platform                                                                         |
 | **Status**       | **Adopted — As-Built Frontend Architecture Reference**                                        |
 | **Scope**        | Vision, structure, boundaries, integration (reference doc)                                    |

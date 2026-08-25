@@ -1249,7 +1249,7 @@ export function WelcomeDrippleXScreen({
           className="text-[13px] font-semibold tracking-widest"
           style={{ color: G3, animation: 'fade-up .6s ease .4s both' }}
         >
-          life,Simplified
+          life, Simplified
         </p>
         <p
           className="mt-1 text-[22px] font-bold"
@@ -2676,7 +2676,7 @@ export function TrustCenterScreen({
             Your account has strong security. Complete the remaining steps to reach 100%.
           </p>
           <p className="text-[11px] font-semibold" style={{ color: G3 }}>
-            life,Simplified
+            life, Simplified
           </p>
         </div>
       </div>

@@ -604,7 +604,7 @@ export function SecurityCenterScreen({
           Back to Safety
         </button>
         <p className="text-[11px] font-semibold tracking-widest" style={{ color: G3 }}>
-          life,Simplified
+          life, Simplified
         </p>
       </div>
     );
@@ -2194,7 +2194,7 @@ export function AccountManagementScreen({
             Your changes have been saved successfully.
           </p>
           <p className="mt-3 text-[12px] font-semibold tracking-widest" style={{ color: G3 }}>
-            life,Simplified
+            life, Simplified
           </p>
         </div>
         <button

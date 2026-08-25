@@ -53,7 +53,7 @@ export function SplashScreen({ onDone }: { onDone: () => void }) {
           className="text-sm font-medium tracking-[0.22em]"
           style={{ fontFamily: "'Poppins',sans-serif", color: G2 }}
         >
-          life,Simplified
+          life, Simplified
         </span>
       </div>
       <div className="relative z-10 flex w-full flex-col items-center gap-4 px-10 pb-14">
