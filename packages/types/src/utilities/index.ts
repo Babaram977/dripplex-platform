@@ -176,6 +176,14 @@ export interface UtilityFloatStatusDto {
   threshold: number;
   low: boolean;
   error?: string;
+  /// Whether the provider account is verified, which decides the airtime
+  /// ceiling independently of how much float is in it. `null` means the
+  /// provider did not say, or said something the adapter cannot read — Ops is
+  /// shown "unknown" rather than a guess.
+  accountVerified: boolean | null;
+  /// The provider's own word for that state, so an unfamiliar status is
+  /// legible instead of flattened into a boolean.
+  kycStatus: string | null;
 }
 
 export interface ResolveUtilityPurchaseRequest {

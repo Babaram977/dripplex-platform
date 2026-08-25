@@ -125,6 +125,7 @@ describe('UtilitiesService', () => {
       purchaseCable: jest.fn(),
       purchaseElectricity: jest.fn(),
       getFloatBalance: jest.fn(),
+      getAccountStatus: jest.fn().mockResolvedValue({ verified: true, kycStatus: 'verified' }),
     };
 
     const auditLogRepository: jest.Mocked<AuditLogRepository> = {
@@ -1022,13 +1023,48 @@ describe('UtilitiesService', () => {
     expect((await service.getFloatStatus()).low).toBe(false);
   });
 
+  it('shows an unverified provider account beside the balance, not instead of it', async () => {
+    if (!databaseAvailable) return;
+    // A healthy float says nothing about whether purchases will go through.
+    // Peyflex caps an unverified account below the ₦4,999 it advertises and
+    // refuses the excess as "Invalid input", so the balance can read fine
+    // while every larger top-up is charged and refunded.
+    provider.getFloatBalance.mockResolvedValue({ balance: 250_000, currency: 'NGN' });
+    provider.getAccountStatus.mockResolvedValue({ verified: false, kycStatus: 'unverified' });
+
+    const status = await service.getFloatStatus();
+
+    expect(status.accountVerified).toBe(false);
+    expect(status.kycStatus).toBe('unverified');
+    expect(status.balance).toBe(250_000);
+    expect(status.low).toBe(false);
+  });
+
+  it('calls the account status unknown when the provider will not say', async () => {
+    if (!databaseAvailable) return;
+    // Neither a verdict nor an alarm. Guessing "unverified" cries wolf on a
+    // healthy account; guessing "verified" hides the cap that is failing it.
+    provider.getFloatBalance.mockResolvedValue({ balance: 250_000, currency: 'NGN' });
+    provider.getAccountStatus.mockRejectedValue(new Error('profile unreadable'));
+
+    const status = await service.getFloatStatus();
+
+    expect(status.accountVerified).toBeNull();
+    expect(status.kycStatus).toBeNull();
+    // …and it still reports the balance it did manage to read.
+    expect(status.balance).toBe(250_000);
+  });
+
   it('reports a float it cannot read rather than showing a reassuring zero', async () => {
     if (!databaseAvailable) return;
     provider.getFloatBalance.mockRejectedValue(new Error('Peyflex timed out'));
+    provider.getAccountStatus.mockResolvedValue({ verified: true, kycStatus: 'verified' });
     const status = await service.getFloatStatus();
     expect(status.balance).toBeNull();
     expect(status.error).toContain('timed out');
     expect(status.low).toBe(false);
+    // The two are read independently, so losing one does not cost the other.
+    expect(status.accountVerified).toBe(true);
   });
 
   it("keeps the customer's receipt free of DrippleX's margin", async () => {

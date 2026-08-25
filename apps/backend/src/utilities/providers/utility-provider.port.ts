@@ -143,6 +143,27 @@ export interface UtilityFloatBalance {
   currency: string;
 }
 
+/**
+ * The provider account itself, as distinct from the money in it.
+ *
+ * Peyflex ties the airtime ceiling to verification — support, 2026-08-25:
+ * "If you're verified, you can buy up to ₦4999 at once" — so it is a
+ * precondition for selling airtime exactly as much as a funded float is, and
+ * nothing here was reading it. Whether it explains the refusals in G10 is
+ * still open; that is the point of being able to see it rather than ask.
+ *
+ * `verified` is null when Peyflex answered but named a `kyc_status` this
+ * adapter does not recognise. Null is not "unverified": a status we cannot
+ * read is a thing to look at, and quietly calling it a failure would raise a
+ * false alarm on a healthy account.
+ */
+export interface UtilityAccountStatus {
+  verified: boolean | null;
+  /** Peyflex's own word for it, passed through so an unfamiliar status is
+   * legible rather than flattened into a boolean nobody can check. */
+  kycStatus: string | null;
+}
+
 export interface UtilityProviderPort {
   /** False when no credentials are configured. The service checks this
    * before offering a catalogue, so the UI can badge the tab honestly
@@ -181,6 +202,10 @@ export interface UtilityProviderPort {
   /** The DrippleX float, not a customer balance. Read by the low-balance
    * alarm. */
   getFloatBalance(): Promise<UtilityFloatBalance>;
+
+  /** Whether the provider account is verified, which is what decides the
+   * airtime ceiling. See UtilityAccountStatus. */
+  getAccountStatus(): Promise<UtilityAccountStatus>;
 }
 
 /**

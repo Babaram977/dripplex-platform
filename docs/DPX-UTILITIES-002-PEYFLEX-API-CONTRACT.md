@@ -178,6 +178,82 @@ guaranteed on every service**, so a zero spread must be a normal outcome, not an
 | **G8** | **Betting: label or code?** `/api/v1/bet/companies/` publishes `{label: "SportyBet", code: "sportybet"}`, but the only worked example of `verify`/`fund` sends `betting_company: "SportyBet"` — the **label** — and echoes `type: "SportyBet"` back. Both endpoints are auth-gated, so this could not be settled empirically. | The adapter sends the **label**, because that is the only form Peyflex has demonstrated working on a money path; the client still selects by `code` and the translation happens in one place (`bettingCompanyLabel`). If Peyflex confirms codes are accepted it is a one-line change. Worth asking on the next call. |
 | **G9** | **Education `plan_id` disagrees with itself.** The Postman sample posts `plan_id: "waecdirect"`; the live `/api/education/providers/` publishes `waec`, `neco`, `nabteb`.                                                                                                                                                     | The live catalogue wins — the platform never free-types a code, it forwards what the catalogue gave it. Recorded because a reader comparing the code against the Postman collection will otherwise think the adapter has a typo.                                                                                     |
 
+### G10 — airtime is refused at some amounts, and the message names nothing
+
+**Open.** This records what is measured and what is not. The cause is not yet established.
+
+Peyflex refuses some airtime purchases with:
+
+```json
+{ "status": "FAILED", "message": "Invalid input. Please check your data." }
+```
+
+The message is worded as a complaint about the request. The request is not the problem. Captured
+from the live adapter log, 2026-08-25 15:41 UTC:
+
+```
+Sent     {"network":"mtn","amount":1500,"mobile_number":"080******80"}
+Answered {"status":"FAILED","message":"Invalid input. Please check your data."}
+```
+
+No field-level detail, no `errors` object — the body carries that one sentence and nothing else.
+
+#### What is measured
+
+All on the live account. The three 25 Aug rows are the same account within about two hours, so
+nothing about credentials, float or deployment differs between them.
+
+| Date   | Service | Amount | Number      | Prefix        | Result         |
+| ------ | ------- | ------ | ----------- | ------------- | -------------- |
+| 25 Aug | Airtime | ₦50    | 08039739780 | 0803 (MTN)    | Delivered      |
+| 25 Aug | Airtime | ₦1,000 | 08022500051 | 0802 (Airtel) | Delivered      |
+| 25 Aug | Airtime | ₦1,500 | 08039739780 | 0803 (MTN)    | Refused, twice |
+| 23 Aug | Airtime | ₦5,000 | —           | —             | Refused        |
+| 19 Aug | Airtime | ₦1,000 | 08039739780 | 0803 (MTN)    | Refused        |
+| 19 Aug | Airtime | ₦100   | 08165598782 | 0816 (MTN)    | Refused        |
+
+A ₦50 success and a ₦1,500 refusal to the same number, with a byte-identical payload shape, rule
+out the request format entirely.
+
+#### What is not established
+
+Peyflex support said on 2026-08-25 that _"If you're verified, you can buy up to ₦4999 at once"_,
+and separately that **the account is verified**. Both cannot hold while ₦1,500 is refused, so at
+least one is wrong and neither should be treated as settled. Three hypotheses still fit every row
+above:
+
+1. **An account-wide amount cap** between ₦1,000 and ₦1,499.
+2. **An MTN-specific limit.** Airtel took ₦1,000; every refusal is 0803/0816/0703.
+3. **A per-recipient cap on `08039739780`**, which also refused ₦1,000 on 19 Aug while a fresh
+   number took ₦1,000 on 25 Aug.
+
+The discriminating test is **₦1,500 to the Airtel number**: a success eliminates (1), a refusal
+confirms it.
+
+#### What was done, and deliberately not done
+
+- **`UTILITY_AIRTIME_MAX_AMOUNT` stays at 4,999.** Nothing measured contradicts it as a ceiling,
+  and no lower bound is known well enough to replace it. But note that the reasoning recorded in
+  commit `4d41a85` (#255) — that ₦5,000 proved a 0–4,999 provider threshold — **is not supported**:
+  ₦1,500 and ₦1,000 fail the same way, so that single data point never established a threshold at
+  all. The number may still be right; the argument for it was not.
+- **No interim cap is implemented.** Peyflex publishes no number and the boundary is not yet
+  isolated from the network and per-recipient explanations. A guessed cap either keeps refusing
+  legitimate amounts or keeps taking money for doomed ones.
+- **`kyc_status` is now read and shown.** `GET /api/user/profile/` has always carried it
+  (§ Account and float) and nothing read it. The Ops Console float panel now states it, so the
+  account's verification state is something the platform can check rather than something to ask
+  support about — which matters precisely because support's two statements conflict.
+- **`isFloatExhausted()` does not and must not match this message.** A shortfall and whatever this
+  is are different failures; folding "Invalid input" into the float markers would report a platform
+  outage every time a customer mistyped a meter number.
+
+#### Also unexplained, probably unrelated
+
+Data, 20 Aug, same number `08039739780`: **₦495 delivered, ₦270 refused.** No cap refuses the
+smaller and passes the larger, so this is a different fault — G5's non-unique `plan_code` is the
+first thing to check. Not investigated yet.
+
 ### Resolved by the betting endpoints
 
 **G1 is closed for betting only.** `/api/v1/bet/fund/` is the single Peyflex

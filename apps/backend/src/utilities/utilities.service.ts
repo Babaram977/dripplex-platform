@@ -128,6 +128,21 @@ export interface UtilityFloatStatusDto {
   /** Set when the balance could not be read at all, which is itself
    * something Ops needs to see rather than a silent zero. */
   error?: string;
+  /**
+   * Whether the Peyflex account is verified, and their word for its state.
+   *
+   * A funded float is not enough to sell airtime: Peyflex ties the ₦4,999
+   * airtime ceiling to verification, so it is a second precondition, and the
+   * dashboard showed only the first. Surfaced because the account state is
+   * something the platform can read from `/api/user/profile/` rather than
+   * something to ask support about — the question that arose while chasing
+   * G10, where support's own answers conflicted.
+   *
+   * `null` on both means Peyflex did not say, or said something this adapter
+   * does not recognise. Ops sees "unknown", not a verdict.
+   */
+  accountVerified: boolean | null;
+  kycStatus: string | null;
 }
 
 /**
@@ -661,8 +676,27 @@ export class UtilitiesService {
   public async getFloatStatus(): Promise<UtilityFloatStatusDto> {
     const threshold = this.config.peyflexFloatLowBalanceThreshold;
     if (!this.provider.configured) {
-      return { configured: false, balance: null, currency: 'NGN', threshold, low: false };
+      return {
+        configured: false,
+        balance: null,
+        currency: 'NGN',
+        threshold,
+        low: false,
+        accountVerified: null,
+        kycStatus: null,
+      };
     }
+
+    // Settled independently of the balance. They fail for different reasons
+    // and either one alone stops purchases, so a profile call that errors
+    // must not cost Ops the float reading, or vice versa.
+    const account = await this.readAccountStatus();
+    if (account.accountVerified === false) {
+      this.logger.warn(
+        `The Peyflex account is not verified (kyc_status: ${account.kycStatus ?? 'unknown'}). Airtime above the unverified cap will be refused as "Invalid input", after the customer has been charged and refunded.`,
+      );
+    }
+
     try {
       const float = await this.provider.getFloatBalance();
       const low = float.balance <= threshold;
@@ -677,6 +711,7 @@ export class UtilitiesService {
         currency: float.currency,
         threshold,
         low,
+        ...account,
       };
     } catch (error) {
       return {
@@ -686,7 +721,22 @@ export class UtilitiesService {
         threshold,
         low: false,
         error: error instanceof Error ? error.message : 'The float balance could not be read',
+        ...account,
       };
+    }
+  }
+
+  /** Never throws — an unreadable profile is reported as "unknown", the same
+   * as a status we do not recognise. */
+  private async readAccountStatus(): Promise<{
+    accountVerified: boolean | null;
+    kycStatus: string | null;
+  }> {
+    try {
+      const status = await this.provider.getAccountStatus();
+      return { accountVerified: status.verified, kycStatus: status.kycStatus };
+    } catch {
+      return { accountVerified: null, kycStatus: null };
     }
   }
 
