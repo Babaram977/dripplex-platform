@@ -647,7 +647,7 @@ describe('RidesService', () => {
       });
 
       try {
-        // Push the driver's outstanding balance past the default ₦10,000
+        // Push the driver's outstanding balance past the default ₦5,000
         // credit limit — recordPayment()/accrue() both recompute
         // `blocked` after every mutation.
         await commissionAccounts.accrue({

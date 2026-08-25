@@ -56,12 +56,13 @@ describe('CommercialCreditSettingsService', () => {
     service = new CommercialCreditSettingsService(prisma, auditService);
   });
 
-  it('holds the founder-set thresholds: ₦50,000 merchant, ₦10,000 courier', () => {
+  it('holds the founder-set thresholds: ₦50,000 merchant, ₦5,000 driver', () => {
     // Pinned as figures rather than as constants referencing themselves — these
-    // are founder decisions (merchant raised to ₦50,000 on 2026-08-17) and a
-    // silent drift would change who gets blocked and when.
+    // are founder decisions (merchant raised to ₦50,000 on 2026-08-17; driver
+    // halved from ₦10,000 to ₦5,000 on 2026-08-25) and a silent drift would
+    // change who gets blocked and when.
     expect(DEFAULT_MERCHANT_CREDIT_LIMIT).toBe(50_000);
-    expect(DEFAULT_DRIVER_CREDIT_LIMIT).toBe(10_000);
+    expect(DEFAULT_DRIVER_CREDIT_LIMIT).toBe(5_000);
   });
 
   it('getEffective(MERCHANT) creates the row seeded from DEFAULT_MERCHANT_CREDIT_LIMIT on first read', async () => {

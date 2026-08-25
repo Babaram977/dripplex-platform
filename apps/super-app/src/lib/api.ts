@@ -244,6 +244,79 @@ export interface ReferralStatsDto {
   referrerRewardAmount: number;
 }
 
+// Driver Growth Campaign — the driver-side referral programme.
+//
+// A different shape from the customer one, and deliberately so: a driver
+// refers PASSENGERS, and is paid per campaign against tier thresholds rather
+// than a flat amount per head. Every figure below — thresholds, reward
+// amounts, the qualifying trip count — is served by the API, because an admin
+// sets them per campaign and a client that hardcoded them would be lying the
+// first time one changed.
+export type ReferralCampaignTier = 'NONE' | 'SILVER' | 'GOLD';
+export type DriverReferralRewardStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'PAID';
+
+export interface ReferralCampaignDto {
+  id: string;
+  name: string;
+  periodStart: string;
+  periodEnd: string;
+  status: string;
+  /** Trips a referred passenger must complete before they count. */
+  requiredTripsPerPassenger: number;
+  silverThreshold: number;
+  silverRewardAmount: number;
+  goldThreshold: number;
+  goldRewardAmount: number;
+  goldQualificationRate: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DriverReferralDto {
+  id: string;
+  campaignId: string;
+  driverId: string;
+  code: string;
+  createdAt: string;
+}
+
+export interface ReferralStatisticsDto {
+  invitesSent: number;
+  registeredCount: number;
+  qualifiedCount: number;
+  completedTrips: number;
+  currentTier: ReferralCampaignTier;
+}
+
+export interface DriverReferralRewardDto {
+  id: string;
+  campaignId: string;
+  driverId: string;
+  tier: ReferralCampaignTier;
+  amount: number;
+  qualifiedPassengerCount: number;
+  status: DriverReferralRewardStatus;
+  approvedAt: string | null;
+  paidAt: string | null;
+  rejectionReason: string | null;
+  createdAt: string;
+}
+
+/** Everything the driver's referral card needs in one read — and the only
+ *  driver campaign endpoint that does NOT 404 when no campaign is running,
+ *  which is why the screen is built on it rather than on `code`. */
+export interface DriverCampaignDashboardDto {
+  campaign: ReferralCampaignDto | null;
+  referral: DriverReferralDto | null;
+  statistics: ReferralStatisticsDto | null;
+  progressToSilver: number;
+  progressToGold: number;
+  estimatedRewardAmount: number;
+  estimatedTier: ReferralCampaignTier;
+  campaignCountdownSeconds: number | null;
+  rewardHistory: DriverReferralRewardDto[];
+}
+
 /** GET /customer/wallet/transfer/recipients[/recent] — mirrors the backend's
  *  WalletRecipientDto. The phone comes back masked; the API never returns a
  *  recipient's full number. */
@@ -3639,6 +3712,45 @@ export const api = {
     /** Code, redemption counts, and both reward amounts — the amounts are
      *  served so the screen never hardcodes a naira figure. */
     stats: () => dx<ReferralStatsDto>('GET', '/customer/referrals/stats'),
+  },
+
+  /**
+   * The driver referral programme.
+   *
+   * These four endpoints have existed, permissioned and tested, since the
+   * Driver Growth Campaign shipped, and the driver portal has screens for
+   * them. This client had none, so a driver using the app had no way to see
+   * or share the code the backend was already keeping for them — and the
+   * whole loop is otherwise wired: registration redeems a driver code before
+   * it tries a customer one, and the app already captures `?ref=` links.
+   */
+  /**
+   * The driver's commission account — the cash commission they owe.
+   *
+   * The endpoint has existed since DPX-COMMERCIAL-001 Slice 4 and going
+   * online has been gated on `blocked` for just as long, throwing "blocked
+   * from going online due to an outstanding commission balance". Nothing in
+   * the app read it, so the first a driver knew of the debt was being unable
+   * to work, with no figure and no way to see it coming.
+   */
+  driverCommercial: {
+    account: () => dx<CommissionAccountDto>('GET', '/driver/commercial/account'),
+  },
+
+  driverCampaign: {
+    /** Never 404s when no campaign is running — returns nulls instead. Read
+     *  this first; `code` throws in that state. */
+    dashboard: () => dx<DriverCampaignDashboardDto>('GET', '/driver/referral-campaign/dashboard'),
+    /** Creates the driver's code for the active campaign on first read.
+     *  404s when no campaign is running. */
+    code: () =>
+      dx<{ campaign: ReferralCampaignDto; referral: DriverReferralDto }>(
+        'GET',
+        '/driver/referral-campaign/code',
+      ),
+    /** Counts a share. The dashboard's invite figure is taps, not page
+     *  views, so this is called when the driver actually shares. */
+    recordInvite: () => dx<void>('POST', '/driver/referral-campaign/invite'),
   },
 
   utilities: {
