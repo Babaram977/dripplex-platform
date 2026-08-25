@@ -224,6 +224,16 @@ export interface WalletDto {
   updatedAt: string;
 }
 
+/** GET /customer/wallet/transfer/recipients[/recent] — mirrors the backend's
+ *  WalletRecipientDto. The phone comes back masked; the API never returns a
+ *  recipient's full number. */
+export interface WalletRecipientDto {
+  id: string;
+  firstName: string;
+  lastName: string;
+  maskedPhone: string;
+}
+
 export interface WalletLedgerEntryDto {
   id: string;
   walletId: string;
@@ -2351,13 +2361,15 @@ export const api = {
       description?: string;
     }) =>
       dx<{ source: WalletDto; destination: WalletDto }>('POST', '/customer/wallet/transfer', body),
+    // The shape the API actually returns. This was hand-written as
+    // { name, phone } — fields the endpoint has never sent — so the search
+    // result rendered a blank row and `r.name.slice(0, 2)` threw the moment a
+    // recipient was found. Nobody hit it only because the phone lookup itself
+    // never matched.
     findRecipient: (phone: string) =>
-      dx<{ id: string; name: string; phone: string }[]>(
-        'GET',
-        '/customer/wallet/transfer/recipients',
-        undefined,
-        { phone },
-      ),
+      dx<WalletRecipientDto[]>('GET', '/customer/wallet/transfer/recipients', undefined, { phone }),
+    recentRecipients: () =>
+      dx<WalletRecipientDto[]>('GET', '/customer/wallet/transfer/recipients/recent'),
     fund: (body: { amount: number; provider?: string; callbackUrl?: string }) =>
       dx<{ authorizationUrl: string; reference: string }>('POST', '/customer/wallet/fund', body),
     verifyFunding: (body: { reference?: string }) =>

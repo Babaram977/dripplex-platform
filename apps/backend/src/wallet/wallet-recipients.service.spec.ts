@@ -9,7 +9,6 @@ const recipientId = '22222222-2222-4222-8222-222222222222';
 
 interface RecipientsPrismaMock {
   user: {
-    findUnique: jest.Mock;
     findMany: jest.Mock;
   };
   walletLedgerEntry: {
@@ -34,15 +33,15 @@ describe('WalletRecipientsService', () => {
 
   beforeEach(() => {
     prisma = {
-      user: { findUnique: jest.fn(), findMany: jest.fn() },
+      user: { findMany: jest.fn() },
       walletLedgerEntry: { findMany: jest.fn() },
     };
     service = new WalletRecipientsService(prisma as unknown as PrismaService);
   });
 
   describe('findByPhone', () => {
-    it('returns a masked recipient for an exact active-user phone match', async () => {
-      prisma.user.findUnique.mockResolvedValue(user());
+    it('returns a masked recipient for an active-user phone match', async () => {
+      prisma.user.findMany.mockResolvedValue([user()]);
 
       const result = await service.findByPhone(callerId, '+2348012345678');
 
@@ -54,16 +53,48 @@ describe('WalletRecipientsService', () => {
       });
     });
 
+    // The reported bug: the app sends the digits the sender typed, and the
+    // account was stored in E.164 by super-app registration. An exact match
+    // could never succeed, so transfer by phone never worked.
+    it('finds an E.164 account from the local number the sender typed', async () => {
+      prisma.user.findMany.mockResolvedValue([user()]);
+
+      const result = await service.findByPhone(callerId, '08012345678');
+
+      expect(prisma.user.findMany).toHaveBeenCalledWith({
+        where: { phone: { in: expect.arrayContaining(['+2348012345678']) } },
+      });
+      expect(result?.id).toBe(recipientId);
+    });
+
+    it('finds a locally-stored account from an E.164 number', async () => {
+      prisma.user.findMany.mockResolvedValue([user({ phone: '08012345678' })]);
+
+      const result = await service.findByPhone(callerId, '+2348012345678');
+
+      expect(prisma.user.findMany).toHaveBeenCalledWith({
+        where: { phone: { in: expect.arrayContaining(['08012345678']) } },
+      });
+      expect(result?.maskedPhone).toBe('08012****78');
+    });
+
     it('returns null when no user matches the phone', async () => {
-      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.user.findMany.mockResolvedValue([]);
 
       const result = await service.findByPhone(callerId, '+2348099999999');
 
       expect(result).toBeNull();
     });
 
+    it('does not query at all for input too short to identify anyone', async () => {
+      const result = await service.findByPhone(callerId, '0803');
+
+      expect(result).toBeNull();
+      expect(prisma.user.findMany).not.toHaveBeenCalled();
+    });
+
     it('returns null for the caller looking up their own phone', async () => {
-      prisma.user.findUnique.mockResolvedValue(user({ id: callerId }));
+      prisma.user.findMany.mockResolvedValue([user({ id: callerId })]);
 
       const result = await service.findByPhone(callerId, '+2348012345678');
 
@@ -71,11 +102,33 @@ describe('WalletRecipientsService', () => {
     });
 
     it('returns null for a non-active user', async () => {
-      prisma.user.findUnique.mockResolvedValue(user({ status: UserStatus.BLOCKED }));
+      prisma.user.findMany.mockResolvedValue([user({ status: UserStatus.BLOCKED })]);
 
       const result = await service.findByPhone(callerId, '+2348012345678');
 
       expect(result).toBeNull();
+    });
+
+    // Registration stores the phone unnormalized, so one person can hold two
+    // accounts under two spellings. Naming either would be guessing who
+    // receives the money.
+    it('refuses to choose when two accounts answer to the same number', async () => {
+      prisma.user.findMany.mockResolvedValue([
+        user({ phone: '+2348012345678' }),
+        user({ id: '33333333-3333-4333-8333-333333333333', phone: '08012345678' }),
+      ]);
+
+      const result = await service.findByPhone(callerId, '08012345678');
+
+      expect(result).toBeNull();
+    });
+
+    it('still resolves when the only other match is the caller themselves', async () => {
+      prisma.user.findMany.mockResolvedValue([user({ id: callerId }), user()]);
+
+      const result = await service.findByPhone(callerId, '08012345678');
+
+      expect(result?.id).toBe(recipientId);
     });
   });
 

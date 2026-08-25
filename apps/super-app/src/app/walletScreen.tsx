@@ -8,6 +8,7 @@ import type {
   CardProviderOptionDto,
   WalletDto,
   WalletLedgerEntryDto,
+  WalletRecipientDto,
   CustomerBankAccountDto,
   LoyaltyOverviewDto,
   LoyaltyLedgerEntryDto,
@@ -1940,6 +1941,27 @@ export function WithdrawScreen({
 // ─────────────────────────────────────────────────────────────────────────────
 // 5. TRANSFER SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
+
+/** A recipient's name, tolerating an account that is missing one half — the
+ *  same trap that rendered "undefined undefined" in the profile. Falls back to
+ *  the masked number so a row is never nameless before you send money to it. */
+function recipientName(r: WalletRecipientDto): string {
+  const name = [r.firstName, r.lastName]
+    .map((part) => part?.trim())
+    .filter((part): part is string => !!part)
+    .join(' ');
+  return name || r.maskedPhone;
+}
+
+function recipientInitials(r: WalletRecipientDto): string {
+  const initials = [r.firstName, r.lastName]
+    .map((part) => part?.trim()?.[0])
+    .filter(Boolean)
+    .join('')
+    .toUpperCase();
+  return initials || '#';
+}
+
 export function TransferScreen({
   onBack,
   onConfirm,
@@ -1948,10 +1970,8 @@ export function TransferScreen({
   onConfirm?: () => void;
 }) {
   const [search, setSearch] = useState('');
-  const [results, setResults] = useState<{ id: string; name: string; phone: string }[]>([]);
-  const [recipient, setRecipient] = useState<{ id: string; name: string; phone: string } | null>(
-    null,
-  );
+  const [results, setResults] = useState<WalletRecipientDto[]>([]);
+  const [recipient, setRecipient] = useState<WalletRecipientDto | null>(null);
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [searching, setSearching] = useState(false);
@@ -1971,7 +1991,7 @@ export function TransferScreen({
       setSearching(true);
       try {
         const res = await api.wallet.findRecipient(phone);
-        setResults(res as { id: string; name: string; phone: string }[]);
+        setResults(res);
       } catch {
         setResults([]);
       } finally {
@@ -2088,14 +2108,16 @@ export function TransferScreen({
                     }}
                   >
                     <span style={{ fontFamily: PP, fontSize: 14, fontWeight: 700, color: INFO }}>
-                      {r.name.slice(0, 2).toUpperCase()}
+                      {recipientInitials(r)}
                     </span>
                   </div>
                   <div style={{ flex: 1, textAlign: 'left' }}>
                     <div style={{ fontFamily: IT, fontSize: 14, fontWeight: 600, color: '#fff' }}>
-                      {r.name}
+                      {recipientName(r)}
                     </div>
-                    <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>{r.phone}</div>
+                    <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>
+                      {r.maskedPhone}
+                    </div>
                   </div>
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                     <path
@@ -2156,15 +2178,15 @@ export function TransferScreen({
                   }}
                 >
                   <span style={{ fontFamily: PP, fontSize: 18, fontWeight: 700, color: INFO }}>
-                    {recipient.name.slice(0, 2).toUpperCase()}
+                    {recipientInitials(recipient)}
                   </span>
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontFamily: PP, fontSize: 15, fontWeight: 700, color: '#fff' }}>
-                    {recipient.name}
+                    {recipientName(recipient)}
                   </div>
                   <div style={{ fontFamily: IT, fontSize: 13, color: MUTED }}>
-                    {recipient.phone}
+                    {recipient.maskedPhone}
                   </div>
                 </div>
                 <button
