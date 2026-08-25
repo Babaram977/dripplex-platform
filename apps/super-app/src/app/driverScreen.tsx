@@ -19,6 +19,7 @@ import {
 } from '../tokens/colors';
 import { api, uploadFile } from '../lib/api';
 import { auth } from '../lib/auth';
+import { needsCashConfirmation } from '../lib/cashConfirmation';
 import { AccountPageHost, AccountRows, type AccountPage } from './accountPages';
 import { playNotificationSound, startIncomingRideAlarm, stopIncomingRideAlarm } from '../lib/sound';
 import { SoundSettings } from './soundSettings';
@@ -4570,14 +4571,55 @@ function DriverWalletTab({ onBack }: { onBack: () => void }) {
 function DriverTripsTab({ onBack }: { onBack: () => void }) {
   const [trips, setTrips] = useState<RideDto[]>([]);
   const [loading, setLoading] = useState(true);
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await api.driverRides.list({ status: 'COMPLETED', limit: 50 });
+      setTrips((r as { items?: RideDto[] }).items ?? []);
+    } catch {
+      // The list simply stays as it was; the driver can pull the tab again.
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    api.driverRides
-      .list({ status: 'COMPLETED', limit: 50 })
-      .then((r) => setTrips((r as { items?: RideDto[] }).items ?? []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+    void load();
+  }, [load]);
+
+  /**
+   * Settle a cash fare from the history, which is the only place a stuck one
+   * can be reached.
+   *
+   * The completed-trip screen confirms cash by itself, but only while it is
+   * mounted — and the passenger chooses cash *after* it opens. A driver who
+   * taps "Go Back Online" first leaves a ride that nothing can ever settle:
+   * no commission accrued, no earning recorded, and the passenger parked on
+   * "Waiting for your driver to confirm" with rating and tipping locked. The
+   * driver portal has always been able to settle an old ride from its own
+   * history; the app could not, and that is the gap this closes.
+   */
+  const confirmCash = async (trip: RideDto): Promise<void> => {
+    setConfirming(trip.id);
+    setConfirmError(null);
+    try {
+      await api.driverRides.confirmCash(trip.id);
+      // Re-read rather than patch the row locally: the earning and the
+      // commission split are the server's to compute, and showing a figure we
+      // guessed at is how a driver ends up disputing their own history.
+      await load();
+    } catch (cause) {
+      setConfirmError(
+        cause instanceof Error
+          ? cause.message
+          : 'That did not go through. Check your connection and try again.',
+      );
+    } finally {
+      setConfirming(null);
+    }
+  };
 
   // driverEarning is null until the fare settles, so `|| 0` quietly turned
   // "not paid yet" into "earned nothing" — a completed trip showing ₦0 next to
@@ -4624,6 +4666,20 @@ function DriverTripsTab({ onBack }: { onBack: () => void }) {
             </div>
           ))}
         </div>
+
+        {confirmError !== null ? (
+          <div
+            className="mb-3 rounded-xl p-3 text-[12px]"
+            style={{
+              background: 'rgba(239,68,68,.1)',
+              border: '1px solid rgba(239,68,68,.3)',
+              fontFamily: IT,
+              color: '#FCA5A5',
+            }}
+          >
+            {confirmError}
+          </div>
+        ) : null}
 
         {loading ? (
           <p className="py-10 text-center text-[13px]" style={{ fontFamily: IT, color: MUTED }}>
@@ -4696,6 +4752,27 @@ function DriverTripsTab({ onBack }: { onBack: () => void }) {
                   </p>
                 </div>
               </div>
+
+              {/* The way out of AWAITING PAYMENT. Worded as the assertion it
+                  is — the driver is stating they hold the cash, which accrues
+                  the commission they owe on it — rather than as a tidy-up. */}
+              {needsCashConfirmation(trip) ? (
+                <div className="mt-3 border-t pt-3" style={{ borderColor: BORDER }}>
+                  <p className="mb-2 text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
+                    The passenger is waiting on you to confirm this one. They cannot rate or tip
+                    until you do.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={confirming === trip.id}
+                    onClick={() => void confirmCash(trip)}
+                    className="w-full rounded-xl py-2.5 text-[13px] font-bold disabled:opacity-60"
+                    style={{ background: G2, color: '#fff', fontFamily: PP }}
+                  >
+                    {confirming === trip.id ? 'Confirming…' : 'I received the cash'}
+                  </button>
+                </div>
+              ) : null}
             </div>
           ))
         )}
