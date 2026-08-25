@@ -175,7 +175,7 @@ describe('DPX-COMMERCIAL-001 Slice 5 — Commercial Reconciliation Verification'
     if (!databaseAvailable) return;
 
     // No explicit credit-setting write — uses the real seed-fallback
-    // default (₦10,000, DEFAULT_DRIVER_CREDIT_LIMIT), same as a driver's
+    // default (₦5,000, DEFAULT_DRIVER_CREDIT_LIMIT), same as a driver's
     // very first cash ride in production.
 
     // Ride A cash commission accrual.
@@ -189,7 +189,7 @@ describe('DPX-COMMERCIAL-001 Slice 5 — Commercial Reconciliation Verification'
     });
 
     // Ride B cash commission accrual. Pushes outstanding (10,500) past
-    // the 10,000 default credit limit.
+    // the 5,000 default credit limit.
     const afterAccrual = await service.accrue({
       ownerType: CommissionOwnerType.DRIVER,
       ownerId: DRIVER_ID,
@@ -201,16 +201,20 @@ describe('DPX-COMMERCIAL-001 Slice 5 — Commercial Reconciliation Verification'
     expect(Number(afterAccrual.outstandingBalance)).toBe(10_500);
     expect(afterAccrual.blocked).toBe(true);
 
+    // Deliberately enough to land BELOW the limit without clearing it —
+    // that is the whole point of the assertion underneath, and at ₦5,000 the
+    // old ₦2,000 payment would have left ₦8,500 still over the line, passing
+    // for the wrong reason and quietly testing nothing.
     const afterPayment = await service.recordPayment({
       ownerType: CommissionOwnerType.DRIVER,
       ownerId: DRIVER_ID,
-      amount: 2_000,
+      amount: 6_000,
       description: 'Manual bank transfer received',
       recordedBy: ADMIN_ID,
       context: {},
     });
-    expect(Number(afterPayment.outstandingBalance)).toBe(8_500);
-    // ₦8,500 is back under the ₦10,000 limit, but a blocked DRIVER stays
+    expect(Number(afterPayment.outstandingBalance)).toBe(4_500);
+    // ₦4,500 is back under the ₦5,000 limit, but a blocked DRIVER stays
     // blocked until the balance is zero — founder decision, 2026-08-17.
     // Paying just under the limit no longer buys another limit's worth of
     // cash work. (Merchants keep the original at-or-below-limit release.)
@@ -219,7 +223,7 @@ describe('DPX-COMMERCIAL-001 Slice 5 — Commercial Reconciliation Verification'
     const afterFullPayment = await service.recordPayment({
       ownerType: CommissionOwnerType.DRIVER,
       ownerId: DRIVER_ID,
-      amount: 8_500,
+      amount: 4_500,
       description: 'Settled in full',
       recordedBy: ADMIN_ID,
       context: {},
@@ -233,8 +237,9 @@ describe('DPX-COMMERCIAL-001 Slice 5 — Commercial Reconciliation Verification'
     expect(result.paid).toBe(10_500);
     expect(result.ledgerNet).toBe(result.outstandingBalance);
     expect(result.outstandingBalance).toBe(0);
-    expect(result.creditLimit).toBe(10_000);
-    expect(result.availableCredit).toBe(10_000);
+    // The driver owner-type default, halved to ₦5,000 on 2026-08-25.
+    expect(result.creditLimit).toBe(5_000);
+    expect(result.availableCredit).toBe(5_000);
     expect(result.blocked).toBe(false);
     expect(result.blocked).toBe(result.recomputedBlocked);
   });

@@ -56,12 +56,21 @@ export const DEFAULT_PLATFORM_COMMISSION_RATE = 0.1;
 /// that owner type. Every subsequent read comes from the database row; an
 /// admin can change the limit from the Admin Portal without a code change
 /// or deploy. Never referenced directly by accrual/blocking logic.
-/// Founder decision (2026-08-17): merchants carry a ₦50,000 cash threshold,
-/// five times a courier's. A merchant's exposure builds from order volume
-/// rather than one shift's collections, and blocking a shop is a heavier
-/// consequence than standing a rider down.
+/// Founder decision (2026-08-17): merchants carry a ₦50,000 cash threshold.
+/// A merchant's exposure builds from order volume rather than one shift's
+/// collections, and blocking a shop is a heavier consequence than standing a
+/// driver down.
+///
+/// Founder decision (2026-08-25): a driver's is ₦5,000, halved from the
+/// ₦10,000 this shipped with. Roughly a shift's worth of cash commission, so
+/// a driver settles often and the platform is never owed much by anyone.
+///
+/// Read the seed-only note above before changing either of these expecting an
+/// effect: production already holds a `CommercialCreditSetting` row per owner
+/// type, and that row wins. Editing this line moves fresh environments and
+/// nothing else — a live change is an admin edit to the setting.
 export const DEFAULT_MERCHANT_CREDIT_LIMIT = 50_000;
-export const DEFAULT_DRIVER_CREDIT_LIMIT = 10_000;
+export const DEFAULT_DRIVER_CREDIT_LIMIT = 5_000;
 
 /// CommissionLedgerEntry.referenceType values used by real accrual call
 /// sites landing in Slice 2-4; declared here now so every slice references

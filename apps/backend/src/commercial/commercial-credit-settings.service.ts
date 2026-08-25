@@ -12,9 +12,11 @@ import {
 import type { CommercialCreditSetting, CommissionOwnerType } from '@prisma/client';
 
 function defaultCreditLimitFor(ownerType: CommissionOwnerType): number {
-  // DRIVER and RIDER share the founder-locked ₦10,000 default (§1.3 treats
-  // "Driver/Rider" as one credit-policy concept); MERCHANT has its own
-  // named constant per the doc's explicit two-constant instruction.
+  // DRIVER and RIDER share one default — ₦5,000 since 2026-08-25 — because
+  // §1.3 treats "Driver/Rider" as a single credit-policy concept. Worth
+  // knowing before changing it: a driver-only decision moves couriers too,
+  // and splitting them means splitting the policy, not just the constant.
+  // MERCHANT has its own, per the doc's explicit two-constant instruction.
   return ownerType === 'MERCHANT' ? DEFAULT_MERCHANT_CREDIT_LIMIT : DEFAULT_DRIVER_CREDIT_LIMIT;
 }
 

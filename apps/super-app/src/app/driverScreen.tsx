@@ -20,6 +20,7 @@ import {
 import { api, uploadFile } from '../lib/api';
 import { auth } from '../lib/auth';
 import { needsCashConfirmation } from '../lib/cashConfirmation';
+import { referralShareUrl } from '../lib/referralLink';
 import { AccountPageHost, AccountRows, type AccountPage } from './accountPages';
 import { playNotificationSound, startIncomingRideAlarm, stopIncomingRideAlarm } from '../lib/sound';
 import { SoundSettings } from './soundSettings';
@@ -31,7 +32,9 @@ import { getCurrentPosition } from '../lib/maps';
 import { LOCATION_PUSH_INTERVAL_MS } from './riderScreen';
 import type {
   AdminVehicleDto,
+  CommissionAccountDto,
   DriverActivationEligibilityDto,
+  DriverCampaignDashboardDto,
   DriverInspectionDto,
   DriverRideDto,
   InspectionCentreDto,
@@ -4435,6 +4438,253 @@ function DriverEarningsTab({ onBack }: { onBack: () => void }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // DRIVER-014 — WALLET TAB
 // ─────────────────────────────────────────────────────────────────────────────
+/**
+ * What the driver owes DrippleX on cash they collected, and whether it has
+ * stood them down.
+ *
+ * Going online has been gated on this since DPX-COMMERCIAL-001 Slice 4 —
+ * `rides.service.ts` throws "blocked from going online due to an outstanding
+ * commission balance" — and nothing in the app read the account. So the first
+ * a driver learned of the debt was being unable to work, from an error that
+ * named no figure, no ceiling, and no way to clear it. The balance builds
+ * silently: every cash fare accrues commission the driver already holds in
+ * their hand, so nothing visibly leaves the wallet as they approach the line.
+ *
+ * Shown at the top of the wallet, above the balance, whenever anything is
+ * owed — not only once blocked. A driver who can see ₦4,200 of ₦5,000 can
+ * settle before it costs them a shift; one who sees nothing until the latch
+ * closes cannot.
+ */
+function DriverCommissionCard() {
+  const [account, setAccount] = useState<CommissionAccountDto | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    api.driverCommercial
+      .account()
+      .then((a) => {
+        if (live) setAccount(a);
+      })
+      .catch(() => {
+        // Nothing to show rather than a scary empty figure. The go-online
+        // gate is enforced server-side regardless of what this card managed
+        // to read.
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  if (account === null || account.outstandingBalance <= 0) return null;
+
+  const { blocked, outstandingBalance, creditLimit } = account;
+  const accent = blocked ? '#EF4444' : '#F59E0B';
+
+  return (
+    <div
+      className="mb-5 rounded-2xl p-4"
+      style={{
+        background: blocked ? 'rgba(239,68,68,.08)' : 'rgba(245,158,11,.08)',
+        border: `1px solid ${blocked ? 'rgba(239,68,68,.35)' : 'rgba(245,158,11,.3)'}`,
+      }}
+    >
+      <p className="mb-1 text-[13px] font-bold" style={{ fontFamily: PP, color: accent }}>
+        {blocked ? 'You cannot go online until you settle' : 'Commission you owe'}
+      </p>
+      <p className="mb-2 text-[28px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
+        {naira(outstandingBalance)}
+      </p>
+      <p className="text-[12px]" style={{ fontFamily: IT, color: TEXT_SECONDARY }}>
+        {blocked
+          ? // The rule is a latch, so "pay it down a bit" is wrong advice —
+            // only zero releases the account, and saying otherwise sends a
+            // driver to pay and still find themselves stood down.
+            `This is DrippleX's commission on cash fares you collected. It passed your ${naira(creditLimit)} limit, so new trips are paused until the full balance is cleared to zero.`
+          : `DrippleX's commission on cash fares you collected. At ${naira(creditLimit)} you stop receiving new trips until it is cleared in full.`}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * The driver's referral programme, on the wallet where the reward lands.
+ *
+ * The whole loop was already built and running with no way in: the backend
+ * has kept a code per driver per campaign since the Driver Growth Campaign
+ * shipped, registration already tries a driver code before a customer one,
+ * and the app already captures `?ref=` links at boot. The driver portal has
+ * screens for it. The app — which is what drivers actually use — had nothing,
+ * so no driver could ever see the code being kept for them.
+ *
+ * Built on `dashboard` rather than `code` because `code` 404s when no
+ * campaign is running, while `dashboard` answers with nulls. Between
+ * campaigns a driver should be told that plainly, not shown an error.
+ *
+ * Every figure is the server's. Thresholds, reward amounts and the qualifying
+ * trip count are set per campaign by an admin, so a hardcoded "₦40,000 at 50
+ * referrals" would be wrong the first time one is edited.
+ */
+function DriverReferralCard() {
+  const [data, setData] = useState<DriverCampaignDashboardDto | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    api.driverCampaign
+      .dashboard()
+      .then((d) => {
+        if (live) setData(d);
+      })
+      .catch(() => {
+        // A driver who is not eligible yet — unapproved, suspended — is not
+        // an error to shout about on the wallet. The card simply stays away.
+        if (live) setFailed(true);
+      })
+      .finally(() => {
+        if (live) setLoading(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const code = data?.referral?.code ?? null;
+  const shareUrl = code !== null ? referralShareUrl(code) : null;
+
+  const share = async (): Promise<void> => {
+    if (code === null || shareUrl === null) return;
+    const message = `Join me on DrippleX — use my code ${code} when you sign up. ${shareUrl}`;
+    // Counted as a tap, not a page view: the dashboard's invite figure is
+    // meant to reflect real sharing. Recorded first and independently of the
+    // share itself, because a native share sheet the driver then cancels
+    // still tells us nothing, and a failed count must not block the share.
+    void api.driverCampaign.recordInvite().catch(() => {});
+    const canNativeShare = typeof navigator.share === 'function';
+    try {
+      if (canNativeShare) {
+        await navigator.share({ text: message, url: shareUrl });
+        return;
+      }
+      await navigator.clipboard.writeText(message);
+      setCopied(true);
+      setTimeout(() => {
+        setCopied(false);
+      }, 2000);
+    } catch {
+      // A cancelled share sheet lands here too. Nothing to report.
+    }
+  };
+
+  if (loading || failed) return null;
+
+  // Between campaigns. Said plainly — a blank space reads as a broken screen,
+  // and inventing a "coming soon" date would be a promise nobody made.
+  if (!data?.campaign || code === null) {
+    return (
+      <div
+        className="mb-5 rounded-2xl p-4"
+        style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
+      >
+        <p className="mb-1 text-[13px] font-semibold" style={{ fontFamily: PP, color: '#fff' }}>
+          Refer &amp; earn
+        </p>
+        <p className="text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
+          No referral campaign is running at the moment. When the next one opens your code appears
+          here.
+        </p>
+      </div>
+    );
+  }
+
+  const stats = data.statistics;
+  const campaign = data.campaign;
+  const daysLeft =
+    data.campaignCountdownSeconds !== null
+      ? Math.max(0, Math.ceil(data.campaignCountdownSeconds / 86400))
+      : null;
+
+  return (
+    <div
+      className="mb-5 rounded-2xl p-4"
+      style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
+    >
+      <div className="mb-3 flex items-start justify-between gap-2">
+        <div>
+          <p className="text-[13px] font-semibold" style={{ fontFamily: PP, color: '#fff' }}>
+            Refer &amp; earn
+          </p>
+          <p className="text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
+            {campaign.name}
+            {daysLeft !== null ? ` · ${String(daysLeft)} days left` : ''}
+          </p>
+        </div>
+        {data.estimatedRewardAmount > 0 ? (
+          <div className="text-right">
+            <p className="text-[15px] font-bold" style={{ fontFamily: PP, color: G3 }}>
+              {naira(data.estimatedRewardAmount)}
+            </p>
+            <p className="text-[10px] font-bold" style={{ fontFamily: IT, color: G3 }}>
+              {data.estimatedTier}
+            </p>
+          </div>
+        ) : null}
+      </div>
+
+      {/* Said in the campaign's own numbers rather than a fixed sentence —
+          an admin can change any of them between campaigns. */}
+      <p className="mb-3 text-[12px]" style={{ fontFamily: IT, color: TEXT_SECONDARY }}>
+        Passengers who sign up with your code and complete{' '}
+        {campaign.requiredTripsPerPassenger === 1
+          ? 'a trip'
+          : `${String(campaign.requiredTripsPerPassenger)} trips`}{' '}
+        count towards your reward. {naira(campaign.silverRewardAmount)} at{' '}
+        {campaign.silverThreshold}, {naira(campaign.goldRewardAmount)} at {campaign.goldThreshold}.
+      </p>
+
+      <div
+        className="mb-3 flex items-center gap-2 rounded-xl p-3"
+        style={{ background: 'rgba(43,172,82,.08)', border: '1px solid rgba(43,172,82,.2)' }}
+      >
+        <p
+          className="flex-1 text-[18px] font-bold tracking-[3px]"
+          style={{ fontFamily: PP, color: G3 }}
+        >
+          {code}
+        </p>
+        <button
+          type="button"
+          onClick={() => void share()}
+          className="rounded-lg px-4 py-2 text-[12px] font-bold"
+          style={{ background: G2, color: '#fff', fontFamily: PP }}
+        >
+          {copied ? 'Copied' : 'Share'}
+        </button>
+      </div>
+
+      {stats !== null ? (
+        <div className="flex gap-3">
+          {[
+            { v: stats.registeredCount, l: 'Signed up' },
+            { v: stats.qualifiedCount, l: 'Qualified' },
+            { v: stats.invitesSent, l: 'Invites' },
+          ].map((s) => (
+            <div key={s.l} className="flex-1 text-center">
+              <p className="text-[15px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
+                {s.v}
+              </p>
+              <p className="text-[10px]" style={{ fontFamily: IT, color: MUTED }}>
+                {s.l}
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function DriverWalletTab({ onBack }: { onBack: () => void }) {
   const [wallet, setWallet] = useState<WalletDto | null>(null);
   const [txs, setTxs] = useState<WalletLedgerEntryDto[]>([]);
@@ -4476,6 +4726,10 @@ function DriverWalletTab({ onBack }: { onBack: () => void }) {
           </p>
         </div>
 
+        {/* Above the balance deliberately: this is the number that decides
+            whether the driver can work at all. */}
+        <DriverCommissionCard />
+
         {/* Balance card */}
         <div
           className="mb-5 rounded-3xl p-5"
@@ -4513,6 +4767,8 @@ function DriverWalletTab({ onBack }: { onBack: () => void }) {
               .catch(() => {});
           }}
         />
+
+        <DriverReferralCard />
 
         {/* Transactions */}
         <p className="mb-3 text-[13px] font-semibold" style={{ fontFamily: PP, color: MUTED }}>
