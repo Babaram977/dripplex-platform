@@ -1486,6 +1486,7 @@ function AppShell() {
     ),
     ridedriver: (
       <DriverProfileSheet
+        {...(activeCustomerRideId ? { rideId: activeCustomerRideId } : {})}
         onBack={() => goBack('rideassigned')}
         onMessage={() => {
           if (activeCustomerRideId) {

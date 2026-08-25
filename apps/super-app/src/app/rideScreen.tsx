@@ -1,4 +1,4 @@
-import { PLATFORM_BASE_CENTRE } from '@dripplex/types';
+import { DRIVER_RATING_TAGS, PLATFORM_BASE_CENTRE } from '@dripplex/types';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   G0,
@@ -18,7 +18,7 @@ import {
   COLOR_INFO,
   TEXT_SECONDARY,
 } from '../tokens/colors';
-import { api } from '../lib/api';
+import { api, ApiError } from '../lib/api';
 import { gatewayCallbackUrl, rememberGatewayReturn } from '../lib/gatewayReturn';
 
 /** What the passenger can pick on the ride payment screen. The two gateway
@@ -2765,10 +2765,14 @@ export function RateDriverScreen({
   rideId?: string;
 }) {
   const [stars, setStars] = useState(5);
-  const [tags, setTags] = useState<string[]>(['Safe driving', 'Friendly']);
+  // Nothing pre-selected. This screen used to open with "Safe driving" and
+  // "Friendly" already ticked, so a passenger who tapped straight through
+  // filed praise they never gave — and "Friendly" was not even a real tag.
+  const [tags, setTags] = useState<string[]>([]);
   const [comment, setComment] = useState('');
   const [tip, setTip] = useState<number | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const [rateError, setRateError] = useState<string | null>(null);
   // Driver name comes from the post-ride receipt (only source of driver identity).
   const [receipt, setReceipt] = useState<Awaited<ReturnType<typeof api.rides.getReceipt>> | null>(
     null,
@@ -2790,31 +2794,48 @@ export function RateDriverScreen({
         .toUpperCase()
     : '🚗';
 
-  const ALL_TAGS = [
-    'Safe driving',
-    'Friendly',
-    'On time',
-    'Clean car',
-    'Great music',
-    'Quiet ride',
-    'Professional',
-    'Smooth ride',
-  ];
+  // The backend's own list, imported rather than retyped. Six of the eight
+  // chips here were invented — "Great music", "Smooth ride", "Quiet ride",
+  // "Clean car", "Professional", "Friendly" — none of which the validator
+  // accepts, so wiring the real `tags` field without this would have started
+  // rejecting ratings outright.
+  const ALL_TAGS = DRIVER_RATING_TAGS;
   const TIPS = [200, 500, 1000];
 
   const toggleTag = (t: string) =>
     setTags((p) => (p.includes(t) ? p.filter((x) => x !== t) : [...p, t]));
 
   const handleSubmit = () => {
-    setSubmitted(true);
-    if (rideId) {
-      const comboComment = [comment, ...tags].filter(Boolean).join(' · ');
-      api.rides
-        .rateDriver(rideId, { rating: stars, comment: comboComment || undefined })
-        .catch(() => {});
-      if (tip) api.rides.tip(rideId, tip).catch(() => {});
+    if (!rideId) {
+      setSubmitted(true);
+      setTimeout(onSubmit, 1600);
+      return;
     }
-    setTimeout(onSubmit, 1600);
+    setRateError(null);
+    // Tags as tags. They were being joined into the comment with " · ", which
+    // stored "Safe driving · On time" as free prose — nothing could count how
+    // often a driver is called punctual, which is the entire point of a fixed
+    // tag set.
+    api.rides
+      .rateDriver(rideId, {
+        rating: stars,
+        ...(comment.trim() !== '' ? { comment: comment.trim() } : {}),
+        ...(tags.length > 0 ? { tags } : {}),
+      })
+      .then(() => {
+        // Only claimed once the server has it. A swallowed failure used to
+        // show the passenger a tick for a rating that never left the phone.
+        setSubmitted(true);
+        setTimeout(onSubmit, 1600);
+      })
+      .catch((cause: unknown) => {
+        setRateError(
+          cause instanceof ApiError ? cause.message : 'That rating did not send. Try again.',
+        );
+      });
+    // The tip is a separate call and a separate failure: a rating that lands
+    // must not be undone because a tip did not, and vice versa.
+    if (tip) api.rides.tip(rideId, tip).catch(() => {});
   };
 
   if (submitted)
@@ -2955,6 +2976,15 @@ export function RateDriverScreen({
             }}
           />
         </div>
+
+        {rateError !== null ? (
+          <p
+            className="mb-3 text-center text-[12px]"
+            style={{ fontFamily: IT, color: COLOR_ERROR }}
+          >
+            {rateError}
+          </p>
+        ) : null}
 
         <GreenButton
           label={tip ? `Submit & Tip ₦${tip.toLocaleString()}` : 'Submit Rating'}
@@ -3487,15 +3517,49 @@ export function RideDetailScreen({
 export function DriverProfileSheet({
   onBack,
   onMessage,
+  rideId,
 }: {
   onBack?: () => void;
   onMessage?: () => void;
+  rideId?: string;
 }) {
-  const reviews = [
-    { name: 'Tunde A.', text: 'Very professional, knew the city well. 10/10!' },
-    { name: 'Ngozi F.', text: 'Smooth ride and very polite. Would book again.' },
-    { name: 'Emeka R.', text: 'Clean car, punctual and friendly. Highly recommend.' },
-  ];
+  // Was three invented passengers — "Tunde A.", "Ngozi F.", "Emeka R." —
+  // with invented praise, shown to a real passenger deciding whether to get
+  // into a real car. Reviewer identity is founder-locked as server-side only
+  // (DPX-REVIEWS-001 §6.3), so no rated-party-facing endpoint returns names
+  // and there is nothing honest to render here. The section is gone rather
+  // than faked; the aggregate below is the real signal.
+  const [driver, setDriver] = useState<RideReceiptDto['driver']>(null);
+  const [rating, setRating] = useState<{ average: number; count: number } | null>(null);
+
+  useEffect(() => {
+    if (!rideId) return;
+    let live = true;
+    void (async () => {
+      try {
+        const receipt = await api.rides.getReceipt(rideId);
+        if (!live || !receipt.driver) return;
+        setDriver(receipt.driver);
+        const summary = await api.rides.driverRating(receipt.driver.id);
+        if (live) setRating(summary);
+      } catch {
+        // Falls back to the honest empty state below.
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, [rideId]);
+
+  const driverName = driver?.name ?? null;
+  const initials = driverName
+    ? driverName
+        .split(/\s+/)
+        .map((w) => w[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase()
+    : '🚗';
   return (
     <div
       className="relative flex h-full w-full flex-col overflow-hidden"
@@ -3525,46 +3589,43 @@ export function DriverProfileSheet({
               fontFamily: PP,
             }}
           >
-            AO
+            {initials}
           </div>
           <p style={{ fontFamily: PP, fontSize: 20, fontWeight: 700, color: '#fff' }}>
-            Adeyemi Okafor
+            {driverName ?? 'Your driver'}
           </p>
-          <div
-            className="mt-1 rounded-full px-3 py-1"
-            style={{ background: 'rgba(234,179,8,.15)', border: '1px solid rgba(234,179,8,.3)' }}
-          >
-            <p style={{ fontSize: 12, color: '#EAB308', fontFamily: PP, fontWeight: 600 }}>
-              Gold Driver 🏅
+          {/* "Gold Driver 🏅" was a badge no system awards. Nothing in the
+              platform ranks drivers into tiers, so it is not shown. */}
+          {rating !== null && rating.count > 0 ? (
+            <div className="mt-2 flex items-center gap-1">
+              <StarRow rating={rating.average} size={14} />
+              <p
+                style={{
+                  fontSize: 13,
+                  color: '#fff',
+                  fontFamily: PP,
+                  fontWeight: 600,
+                  marginLeft: 4,
+                }}
+              >
+                {rating.average.toFixed(2)}
+              </p>
+              <p style={{ fontSize: 12, color: MUTED, fontFamily: IT, marginLeft: 2 }}>
+                ({rating.count})
+              </p>
+            </div>
+          ) : (
+            // A new driver has no rating, and inventing one for them is how a
+            // passenger's trust gets spent on a guess.
+            <p className="mt-2" style={{ fontSize: 12, color: MUTED, fontFamily: IT }}>
+              {rating === null ? 'Loading rating…' : 'No ratings yet'}
             </p>
-          </div>
-          <div className="mt-2 flex items-center gap-1">
-            <StarRow rating={4.92} size={14} />
-            <p
-              style={{
-                fontSize: 13,
-                color: '#fff',
-                fontFamily: PP,
-                fontWeight: 600,
-                marginLeft: 4,
-              }}
-            >
-              4.92
-            </p>
-          </div>
+          )}
           {/* Stats row */}
-          <div className="mt-4 flex w-full justify-around gap-4">
-            {[
-              ['3,847', 'Trips'],
-              ['4 yrs', 'Experience'],
-              ['Top 5%', 'Rating'],
-            ].map(([v, l]) => (
-              <div key={l} className="flex flex-col items-center">
-                <p style={{ fontFamily: PP, fontSize: 16, fontWeight: 700, color: G3 }}>{v}</p>
-                <p style={{ fontSize: 11, color: MUTED, fontFamily: IT }}>{l}</p>
-              </div>
-            ))}
-          </div>
+          {/* A trip count, years of experience and a "Top 5%" percentile
+              were shown here, all three invented. No endpoint publishes any
+              of them, so they are removed rather than approximated — a
+              passenger reads these as facts about the person driving them. */}
         </div>
         {/* Vehicle card */}
         <div
@@ -3611,26 +3672,11 @@ export function DriverProfileSheet({
           >
             Passenger Reviews
           </p>
-          {reviews.map((r) => (
-            <div
-              key={r.name}
-              className="mb-3 rounded-xl p-3"
-              style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
-            >
-              <p
-                style={{
-                  fontSize: 12,
-                  fontFamily: PP,
-                  fontWeight: 600,
-                  color: G3,
-                  marginBottom: 2,
-                }}
-              >
-                {r.name}
-              </p>
-              <p style={{ fontSize: 13, color: TEXT_SECONDARY, fontFamily: IT }}>{r.text}</p>
-            </div>
-          ))}
+          <p style={{ fontSize: 13, color: TEXT_SECONDARY, fontFamily: IT }}>
+            {rating !== null && rating.count > 0
+              ? `${String(rating.count)} ${rating.count === 1 ? 'passenger has' : 'passengers have'} rated this driver ${rating.average.toFixed(2)} out of 5.`
+              : 'No passenger has rated this driver yet.'}
+          </p>
         </div>
       </div>
       {/* Buttons */}
