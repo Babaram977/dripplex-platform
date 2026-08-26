@@ -121,21 +121,31 @@ else
 fi
 
 # Presence of the config is not proof the plugin consumed it. `apply plugin` is
-# inside an `if` in build.gradle, and a plugin that never runs leaves no error
-# behind — so verify its OUTPUT instead of its input. The google-services plugin
-# generates a values.xml carrying google_app_id and the default sender id; no
-# file, or no google_app_id in it, means the build has no Firebase config
-# compiled in whatever google-services.json said.
-GENERATED_RES="${MOBILE}/android/app/build/generated/res/google-services"
-GS_VALUES=$(find "${GENERATED_RES}" -name 'values.xml' -print 2>/dev/null | head -1 || true)
+# inside an `if` in build.gradle — and inside a `try/catch` that swallows every
+# exception at info level — so a plugin that never ran leaves nothing behind to
+# notice. Verify its OUTPUT instead of its input: it generates a values.xml
+# carrying google_app_id and the default sender id.
+#
+# Search the whole generated-resource tree rather than a fixed subdirectory. The
+# plugin's output path is not stable across versions: google-services 4.4.2 with
+# AGP 8.7 writes to `generated/res/processProductionReleaseGoogleServices`, named
+# after the task and therefore after the variant, while older versions used a
+# plain `generated/res/google-services/<variant>`. Hardcoding either one turns a
+# perfectly good build into a false failure — which is exactly what the first
+# version of this check did.
+GENERATED_RES="${MOBILE}/android/app/build/generated/res"
+GS_VALUES=$(grep -rl 'google_app_id' "${GENERATED_RES}" --include='values.xml' 2>/dev/null | head -1 || true)
 
-if [[ -n "${GS_VALUES}" ]] && grep -q 'google_app_id' "${GS_VALUES}"; then
-  echo "FCM: google-services plugin applied — $(basename "$(dirname "$(dirname "${GS_VALUES}")")")"
+if [[ -n "${GS_VALUES}" ]]; then
+  echo "FCM: google-services plugin applied — ${GS_VALUES#"${MOBILE}/android/app/build/generated/res/"}"
 elif [[ "${REQUIRE_PUSH}" == "1" ]]; then
-  echo "ERROR: the google-services plugin produced no google_app_id resource." >&2
-  echo "       ${GS_JSON} was present, so the plugin was skipped or failed to" >&2
-  echo "       match this variant. The build would ship without push." >&2
-  echo "       Looked under: ${GENERATED_RES}" >&2
+  echo "ERROR: no google_app_id resource was generated anywhere under" >&2
+  echo "       ${GENERATED_RES}" >&2
+  echo "       ${GS_JSON} was present and named the right package, so the plugin" >&2
+  echo "       was skipped or threw — build.gradle catches that silently. Check" >&2
+  echo "       the build log for a processGoogleServices task; if it ran, this" >&2
+  echo "       check is looking in the wrong place rather than the build being" >&2
+  echo "       broken." >&2
   exit 1
 else
   echo "NO FCM: no google-services resources generated — push is inert in this build"
