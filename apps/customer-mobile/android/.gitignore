@@ -62,7 +62,18 @@ captures/
 .cxx/
 
 # Google Services (e.g. APIs or Firebase)
-# google-services.json
+#
+# Uncommented deliberately (DPX-MOBILE-001). The Android Studio template ships
+# this line commented out, so the real config was never actually ignored: CI
+# writes app/google-services.json from the GOOGLE_SERVICES_JSON_BASE64 secret,
+# and a developer who downloads it from the console would have it show up as an
+# untracked file waiting to be committed. It is a per-project client config
+# rather than a credential, but a checked-in copy goes stale against the console
+# silently — the same reason the keystore is not in git either.
+#
+# `google-services.json.example` is unaffected: this pattern does not match it,
+# and the template stays tracked as the shape reference.
+google-services.json
 
 # Freeline
 freeline.py

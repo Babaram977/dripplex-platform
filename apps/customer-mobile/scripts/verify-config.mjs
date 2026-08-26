@@ -87,6 +87,40 @@ if (existsSync(manifestPath)) {
   else ok('Android background location correctly absent');
 }
 
+// DPX-MOBILE-001 — validate google-services.json WHEN PRESENT.
+//
+// Absent is normal and not a failure: the file is gitignored, and CI decodes it
+// in the Android job only, after this static check has already run. This is
+// here for the developer who downloads it from the console locally, so a wrong
+// file is caught in seconds rather than after a forty-minute build. CI's
+// authoritative check is REQUIRE_PUSH in scripts/mobile/build-android.sh.
+const googleServicesPath = join(root, 'android/app/google-services.json');
+if (existsSync(googleServicesPath)) {
+  let config = null;
+  try {
+    config = JSON.parse(readFileSync(googleServicesPath, 'utf8'));
+  } catch {
+    fail('android/app/google-services.json is not valid JSON');
+  }
+  if (config) {
+    const packages = (config.client ?? [])
+      .map((client) => client?.client_info?.android_client_info?.package_name)
+      .filter(Boolean);
+    // Firebase registers an app under whatever string is typed, and a mismatch
+    // is not a build error — the plugin just finds no matching client and push
+    // is silently dead. A real registration used "Com.dripplex.com".
+    if (!packages.includes('com.dripplex.customer')) {
+      fail(
+        `google-services.json has no client for com.dripplex.customer (declares: ${
+          packages.join(', ') || 'none'
+        }) — package names are case-sensitive and cannot be renamed in Firebase`,
+      );
+    } else ok('google-services.json package name');
+  }
+} else {
+  ok('google-services.json absent (supplied by CI secret)');
+}
+
 if (existsSync(plistPath)) {
   const plist = readFileSync(plistPath, 'utf8');
   if (!plist.includes('com.dripplex.customer')) fail('iOS bundle identifier missing');
