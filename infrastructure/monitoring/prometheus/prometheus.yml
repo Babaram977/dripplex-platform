@@ -59,7 +59,6 @@ scrape_configs:
           - https://api.dripplex.com/api/v1/health
           - https://merchant.dripplex.com/
           - https://rider.dripplex.com/
-          - https://admin.dripplex.com/
           - https://status.dripplex.com/
     relabel_configs:
       - source_labels: [__address__]

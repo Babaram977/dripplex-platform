@@ -42,6 +42,5 @@ fi
 [[ -n "${CUSTOMER_URL}" ]] && check_url "customer-web" "${CUSTOMER_URL}"
 [[ -n "${MERCHANT_URL}" ]] && check_url "merchant-portal" "${MERCHANT_URL}"
 [[ -n "${RIDER_URL}" ]] && check_url "rider-portal" "${RIDER_URL}"
-[[ -n "${ADMIN_URL}" ]] && check_url "admin-portal" "${ADMIN_URL}"
 
 log "All health checks passed"

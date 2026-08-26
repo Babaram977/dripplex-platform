@@ -16,7 +16,6 @@ credentials/secrets.
 | `customer-web`       | `www.dripplex.com`      | `8080`       | Yes — Railway's injected default, matches this service's working `targetPort: null` service-domain pattern |
 | `merchant-portal`    | `merchant.dripplex.com` | `8080`       | Yes, same pattern                                                                                          |
 | `driver-portal`      | `driver.dripplex.com`   | `3005`       | Yes — matches the explicit `PORT=3005` set during Launch Track 1 (the one service that needed an override) |
-| `admin-portal`       | `admin.dripplex.com`    | `8080`       | Yes, same pattern                                                                                          |
 | `operations-console` | `ops.dripplex.com`      | `8080`       | Yes, same pattern                                                                                          |
 
 All six custom domains are correctly attached in Railway with port
@@ -79,7 +78,7 @@ current value:
 - The 5 new custom domains the founder specified.
 
 ```
-https://www.dripplex.com,https://merchant.dripplex.com,https://driver.dripplex.com,https://admin.dripplex.com,https://ops.dripplex.com,https://dripplexcustomer-web-production.up.railway.app,https://dripplexmerchant-portal-production.up.railway.app,https://dripplexdriver-portal-production.up.railway.app,https://dripplexadmin-portal-production.up.railway.app,https://dripplexoperations-console-production.up.railway.app
+https://www.dripplex.com,https://merchant.dripplex.com,https://driver.dripplex.com,https://ops.dripplex.com,https://dripplexcustomer-web-production.up.railway.app,https://dripplexmerchant-portal-production.up.railway.app,https://dripplexdriver-portal-production.up.railway.app,https://dripplexoperations-console-production.up.railway.app
 ```
 
 Applied via a single-key variable upsert (not a full raw-editor

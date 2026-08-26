@@ -4,14 +4,13 @@ Served via Uptime Kuma status page at **https://status.dripplex.com**.
 
 ## Components to publish
 
-| Component       | Monitor                                                 |
-| --------------- | ------------------------------------------------------- |
-| Website         | www.dripplex.com                                        |
-| API             | api.dripplex.com `/api/v1/health`                       |
-| Merchant Portal | merchant.dripplex.com                                   |
-| Rider Portal    | rider.dripplex.com                                      |
-| Admin Portal    | admin.dripplex.com (optional public — may hide details) |
-| Status itself   | status.dripplex.com                                     |
+| Component       | Monitor                           |
+| --------------- | --------------------------------- |
+| Website         | www.dripplex.com                  |
+| API             | api.dripplex.com `/api/v1/health` |
+| Merchant Portal | merchant.dripplex.com             |
+| Rider Portal    | rider.dripplex.com                |
+| Status itself   | status.dripplex.com               |
 
 ## Capabilities
 

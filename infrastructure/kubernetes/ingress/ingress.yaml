@@ -1,12 +1,10 @@
-# Ingress assumes Cloudflare terminates edge TLS; origin may use HTTP inside cluster
-# or TLS via cert-manager + Origin CA. Hosts map to Services.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: dripplex
   namespace: dripplex
   annotations:
-    nginx.ingress.kubernetes.io/proxy-body-size: '25m'
+    nginx.ingress.kubernetes.io/proxy-body-size: 25m
     nginx.ingress.kubernetes.io/ssl-redirect: 'true'
 spec:
   ingressClassName: nginx
@@ -51,13 +49,3 @@ spec:
                 name: rider-portal
                 port:
                   number: 3003
-    - host: admin.dripplex.com
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: admin-portal
-                port:
-                  number: 3004

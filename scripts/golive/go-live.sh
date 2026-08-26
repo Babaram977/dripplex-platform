@@ -22,7 +22,6 @@ export API_BASE_URL="${API_BASE_URL:-https://api.dripplex.com/api/v1}"
 export CUSTOMER_URL="${CUSTOMER_URL:-https://www.dripplex.com}"
 export MERCHANT_URL="${MERCHANT_URL:-https://merchant.dripplex.com}"
 export RIDER_URL="${RIDER_URL:-https://rider.dripplex.com}"
-export ADMIN_URL="${ADMIN_URL:-https://admin.dripplex.com}"
 export SMOKE_STRICT="${SMOKE_STRICT:-1}"
 
 log "=== Dripplex Go-Live v${VERSION} (tag=${IMAGE_TAG}) ==="

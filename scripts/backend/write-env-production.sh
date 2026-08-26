@@ -14,7 +14,7 @@ require JWT_REFRESH_SECRET
 
 DATABASE_URL="${DATABASE_URL:-postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pgbouncer:5432/${POSTGRES_DB}?schema=public&pgbouncer=true}"
 REDIS_URL="${REDIS_URL:-redis://:${REDIS_PASSWORD}@redis:6379/0}"
-CORS_ORIGINS="${CORS_ORIGINS:-https://www.dripplex.com,https://app.dripplex.com,https://dripplex.com,https://merchant.dripplex.com,https://rider.dripplex.com,https://driver.dripplex.com,https://admin.dripplex.com,https://ops.dripplex.com}"
+CORS_ORIGINS="${CORS_ORIGINS:-https://www.dripplex.com,https://app.dripplex.com,https://dripplex.com,https://merchant.dripplex.com,https://rider.dripplex.com,https://driver.dripplex.com,https://ops.dripplex.com}"
 
 umask 077
 cat >"${OUT}" <<EOF

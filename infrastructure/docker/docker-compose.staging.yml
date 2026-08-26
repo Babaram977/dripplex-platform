@@ -105,14 +105,5 @@ services:
     ports:
       - '3003:3003'
 
-  admin-portal:
-    image: ${ADMIN_IMAGE:-ghcr.io/babaram977/dripplex-admin-portal:staging}
-    restart: unless-stopped
-    environment:
-      NODE_ENV: production
-      PORT: 3004
-    ports:
-      - '3004:3004'
-
 volumes:
   dripplex_pg_data:

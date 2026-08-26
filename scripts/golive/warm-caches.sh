@@ -23,7 +23,7 @@ for url in \
   "${CUSTOMER_URL:-https://www.dripplex.com}" \
   "${MERCHANT_URL:-https://merchant.dripplex.com}" \
   "${RIDER_URL:-https://rider.dripplex.com}" \
-  "${ADMIN_URL:-https://admin.dripplex.com}"; do
+; do
   code="$(warm "${url}")"
   log "  portal ${url} → ${code}"
 done

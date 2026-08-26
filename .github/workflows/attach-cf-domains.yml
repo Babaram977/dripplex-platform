@@ -78,7 +78,6 @@ jobs:
           #   railway-hikari -> Railway, leave it out.  cloudflare -> Workers.
           attach dripplex-merchant merchant.dripplex.com
           attach dripplex-rider rider.dripplex.com
-          attach dripplex-admin admin.dripplex.com
 
       # Probes every production hostname, not just the ones attached above — a
       # migrated host turning red here is the signal that something reverted it
@@ -88,7 +87,7 @@ jobs:
         if: always()
         run: |
           set +e
-          for u in https://dripplex.com https://www.dripplex.com https://app.dripplex.com https://merchant.dripplex.com https://rider.dripplex.com https://admin.dripplex.com https://ops.dripplex.com; do
+          for u in https://dripplex.com https://www.dripplex.com https://app.dripplex.com https://merchant.dripplex.com https://rider.dripplex.com https://ops.dripplex.com; do
             code=$(curl -s -o /tmp/p.html -w '%{http_code}' --max-time 25 "$u" || echo 000)
             srv=$(curl -sI --max-time 25 "$u" | tr -d '\r' | awk 'tolower($1)=="server:"{print $2; exit}')
             title=$(python3 -c "import re; t=open('/tmp/p.html','rb').read().decode('utf-8','ignore'); m=re.search(r'<title>([^<]+)',t); print(m.group(1)[:60] if m else '')")

@@ -41,7 +41,6 @@ pasting in the values this document specifies.
    - `app.dripplex.com` (or `www.dripplex.com`) → customer-web
    - `driver.dripplex.com` → driver-portal (the actively developed app —
      see note in §3 on why this isn't `rider-portal`)
-   - `admin.dripplex.com` → admin-portal
 3. This repo connected to Coolify as a GitHub source (Coolify's GitHub App,
    or a deploy key) so it can pull `claude/dripplex-coolify-deploy-fatig4`
    (or whatever branch/tag you promote to production) directly — no need to
@@ -134,7 +133,7 @@ everything" mistake documented for Railway):
 | `API_HOST`                                                                                                                                                                 | `0.0.0.0`                                                                                                                                                                                          |
 | `API_PORT`                                                                                                                                                                 | `3000`                                                                                                                                                                                             |
 | `API_GLOBAL_PREFIX`                                                                                                                                                        | `api/v1`                                                                                                                                                                                           |
-| `CORS_ORIGINS`                                                                                                                                                             | `https://app.dripplex.com,https://driver.dripplex.com,https://admin.dripplex.com` (add `https://www.dripplex.com` too if that's a separate origin from `app.dripplex.com`)                         |
+| `CORS_ORIGINS`                                                                                                                                                             | `https://app.dripplex.com,https://driver.dripplex.com` (add `https://www.dripplex.com` too if that's a separate origin from `app.dripplex.com`)                                                    |
 | `JWT_ACCESS_SECRET`                                                                                                                                                        | generate a real 32+ char secret (`openssl rand -base64 48`), never reuse the `.env.example` placeholder                                                                                            |
 | `JWT_REFRESH_SECRET`                                                                                                                                                       | same, a _different_ generated secret                                                                                                                                                               |
 | `JWT_ACCESS_TTL`                                                                                                                                                           | `15m`                                                                                                                                                                                              |
@@ -213,15 +212,6 @@ set — nothing to change there.
   non-root runtime user) since driver-portal's `next.config.ts` was already
   Docker-ready (`output: 'standalone'` behind `DOCKER_BUILD=1`).
 
-### admin-portal
-
-- Dockerfile: `apps/admin-portal/Dockerfile`
-- Port: `3004`
-- Build args:
-  - `NEXT_PUBLIC_API_BASE_URL=https://api.dripplex.com/api/v1`
-  - `NEXT_PUBLIC_APP_URL=https://admin.dripplex.com`
-- Domain: `admin.dripplex.com`.
-
 ### operations-console
 
 - Dockerfile: `apps/operations-console/Dockerfile` (added for the
@@ -252,7 +242,7 @@ set — nothing to change there.
 with the standing "Phase 1 ride-launch only, no marketplace/merchant/
 post-launch work" directive. Their Dockerfiles already exist
 (`apps/merchant-portal/Dockerfile`) if/when that changes; deploying them
-would follow the exact same recipe as admin-portal above.
+would follow the exact same recipe as the portals above.
 
 ## 4. HTTPS
 
@@ -269,7 +259,7 @@ CA certs inside Coolify) and point the DNS `A`/`CNAME` records at the VPS.
 
 - **Postgres, Redis:** handled automatically by Coolify's Database
   resources (§1) — no manual volume configuration.
-- **Backend, customer-web, driver-portal, admin-portal:** none needed. A
+- **Backend, customer-web, driver-portal:** none needed. A
   repo-wide check for file-upload/local-disk usage (`multer`,
   `diskStorage`, `uploads/`) in `apps/backend/src` found nothing — every
   upload-shaped feature in this codebase either doesn't exist yet or
@@ -285,7 +275,7 @@ CA certs inside Coolify) and point the DNS `A`/`CNAME` records at the VPS.
 2. Backend Application (§2) — first deploy will run `prisma migrate deploy`
    against a fresh database, applying the full migration history.
 3. Once backend's `/api/v1/health` responds healthy at its Coolify domain,
-   deploy customer-web, driver-portal, admin-portal (§3) — their build args
+   deploy customer-web, driver-portal (§3) — their build args
    need the backend's real `NEXT_PUBLIC_API_BASE_URL`, so backend having a
    stable domain first avoids a rebuild-just-to-fix-the-URL step.
 4. Point the Paystack Test Webhook URL at the live backend domain (§2).

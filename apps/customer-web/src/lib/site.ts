@@ -18,8 +18,8 @@ export const siteConfig = {
   /**
    * Cross-portal deep links for the role-toggle drawer (Super App shell,
    * DPX-100 Phase 1). Each role's real screens still live in their own
-   * deployed app (driver-portal, merchant-portal, operations-console,
-   * admin-portal) -- this is honest cross-app navigation for a user whose
+   * deployed app (driver-portal, merchant-portal, operations-console)
+   * -- this is honest cross-app navigation for a user whose
    * backend `roles` grant that portal, not an embedded in-app section yet.
    * See docs/reference/figma-super-app-source: the Admin/Ops screens are
    * themselves designed as a desktop console (`DesktopFrame`), not mobile.
@@ -28,7 +28,6 @@ export const siteConfig = {
     driver: process.env['NEXT_PUBLIC_DRIVER_PORTAL_URL'] ?? 'https://driver.dripplex.com',
     merchant: process.env['NEXT_PUBLIC_MERCHANT_PORTAL_URL'] ?? 'https://merchant.dripplex.com',
     operations: process.env['NEXT_PUBLIC_OPS_CONSOLE_URL'] ?? 'https://ops.dripplex.com',
-    admin: process.env['NEXT_PUBLIC_ADMIN_PORTAL_URL'] ?? 'https://admin.dripplex.com',
   },
 } as const;
 

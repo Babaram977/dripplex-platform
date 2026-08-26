@@ -11,7 +11,6 @@ APPS=(
   customer-web
   merchant-portal
   rider-portal
-  admin-portal
   operations-console
 )
 

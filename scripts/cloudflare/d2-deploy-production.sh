@@ -12,11 +12,10 @@ declare -A APP_WORKER=(
   [customer-web]=dripplex-customer-web
   [merchant-portal]=dripplex-merchant
   [rider-portal]=dripplex-rider
-  [admin-portal]=dripplex-admin
   [operations-console]=dripplex-ops
 )
 
-APPS=(customer-web merchant-portal rider-portal admin-portal operations-console)
+APPS=(customer-web merchant-portal rider-portal operations-console)
 SUCCEEDED=()
 FAILED=()
 WORKER_URLS=()
@@ -67,7 +66,6 @@ PROBES=(
   https://app.dripplex.com
   https://merchant.dripplex.com
   https://rider.dripplex.com
-  https://admin.dripplex.com
   https://ops.dripplex.com
   https://api.dripplex.com/api/v1/health
 )
@@ -111,7 +109,6 @@ done
   echo "| dripplex-customer-web | dripplex.com, www.dripplex.com, app.dripplex.com |"
   echo "| dripplex-merchant | merchant.dripplex.com |"
   echo "| dripplex-rider | rider.dripplex.com |"
-  echo "| dripplex-admin | admin.dripplex.com |"
   echo "| dripplex-ops | ops.dripplex.com |"
   echo ""
   echo "## Live probes"
