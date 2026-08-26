@@ -153,4 +153,82 @@ describe('FirebasePushProvider', () => {
 
     expect(deviceRegistry.deactivate).not.toHaveBeenCalled();
   });
+
+  describe('DPX-MOBILE-001 — Android delivery options', () => {
+    function setup(notification: Notification): {
+      provider: FirebasePushProvider;
+      sendEach: jest.Mock;
+      notification: Notification;
+    } {
+      const sendEach = jest.fn().mockResolvedValue({
+        responses: [{ success: true, messageId: 'm-1' }],
+        successCount: 1,
+        failureCount: 0,
+      });
+      const messaging = { sendEach } as unknown as Messaging;
+      const deviceRegistry = {
+        list: jest.fn().mockResolvedValue([makeDevice()]),
+        deactivate: jest.fn(),
+      } as unknown as DeviceRegistryService;
+      const provider = new FirebasePushProvider(messaging, deviceRegistry);
+      return { provider, sendEach, notification };
+    }
+
+    it('sends a CRITICAL notification at high priority so it wakes a device in Doze', async () => {
+      const expiresAt = new Date(Date.now() + 60_000).toISOString();
+      const { provider, sendEach } = setup(
+        makeNotification({ priority: 'CRITICAL', type: 'RIDE_OFFERED', payload: { expiresAt } }),
+      );
+
+      await provider.send(
+        makeNotification({ priority: 'CRITICAL', type: 'RIDE_OFFERED', payload: { expiresAt } }),
+      );
+
+      expect(sendEach.mock.calls[0][0][0].android.priority).toBe('high');
+    });
+
+    it('gives the push a TTL from the offer expiry, so a dead offer never rings', async () => {
+      const expiresAt = new Date(Date.now() + 60_000).toISOString();
+      const { provider, sendEach } = setup(makeNotification());
+
+      await provider.send(
+        makeNotification({ priority: 'CRITICAL', type: 'RIDE_OFFERED', payload: { expiresAt } }),
+      );
+
+      const ttl = sendEach.mock.calls[0][0][0].android.ttl;
+      // Wall-clock sensitive by nature; the assertion is that it is the
+      // remaining window, not a constant.
+      expect(ttl).toBeGreaterThan(50_000);
+      expect(ttl).toBeLessThanOrEqual(60_000);
+    });
+
+    it('clamps an already-expired offer to zero rather than sending a negative TTL', async () => {
+      const expiresAt = new Date(Date.now() - 5_000).toISOString();
+      const { provider, sendEach } = setup(makeNotification());
+
+      await provider.send(
+        makeNotification({ priority: 'CRITICAL', type: 'RIDE_OFFERED', payload: { expiresAt } }),
+      );
+
+      // FCM rejects a negative ttl outright, which would fail the whole send.
+      expect(sendEach.mock.calls[0][0][0].android.ttl).toBe(0);
+    });
+
+    it('omits the TTL when the payload carries no expiry', async () => {
+      const { provider, sendEach } = setup(makeNotification());
+
+      await provider.send(makeNotification({ priority: 'CRITICAL', payload: null }));
+
+      expect(sendEach.mock.calls[0][0][0].android).toEqual({ priority: 'high' });
+    });
+
+    it('leaves a NORMAL notification on FCM defaults — high priority is not the default', async () => {
+      const { provider, sendEach } = setup(makeNotification());
+
+      await provider.send(makeNotification({ priority: 'NORMAL' }));
+
+      // Google throttles senders that mark everything high-priority.
+      expect(sendEach.mock.calls[0][0][0].android).toBeUndefined();
+    });
+  });
 });

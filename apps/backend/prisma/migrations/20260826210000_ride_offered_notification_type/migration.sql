@@ -1,0 +1,15 @@
+-- DPX-MOBILE-001 — a dedicated notification type for a ride offered to a driver.
+--
+-- Its own value rather than reusing GENERIC because NotificationPreference is
+-- keyed on (channel, type): a driver muting GENERIC would otherwise mute the
+-- one notification they cannot afford to miss along with the ones they can.
+--
+-- Placed before RIDE_DRIVER_ASSIGNED so the enum reads in lifecycle order —
+-- offered, assigned, arrived, started, completed — rather than appending to the
+-- end where it would sit beside unrelated types.
+--
+-- Postgres 12+ permits ALTER TYPE ... ADD VALUE inside a transaction provided
+-- the new value is not itself used in that same transaction. Nothing below
+-- writes a row with it, so this is safe under Prisma's transactional migration
+-- runner.
+ALTER TYPE "NotificationType" ADD VALUE IF NOT EXISTS 'RIDE_OFFERED' BEFORE 'RIDE_DRIVER_ASSIGNED';

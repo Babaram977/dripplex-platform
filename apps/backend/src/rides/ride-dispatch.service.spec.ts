@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
 import { DomainEventBus } from '../events/domain-event-bus';
+import { DOMAIN_EVENTS } from '../events/domain-events';
 
 import { RideDispatchService } from './ride-dispatch.service';
 import { MAX_DISPATCH_ATTEMPTS, RIDE_SEARCH_WINDOW_MS } from './ride.constants';
@@ -38,6 +39,7 @@ describe('RideDispatchService', () => {
   let databaseAvailable = false;
   let prisma: PrismaService;
   let service: RideDispatchService;
+  let eventBus: DomainEventBus;
   let customerId: string;
   const createdDriverIds: string[] = [];
   const createdRideIds: string[] = [];
@@ -79,13 +81,8 @@ describe('RideDispatchService', () => {
       publishToRide: jest.fn(),
       publishToDriver: jest.fn(),
     };
-    service = new RideDispatchService(
-      prisma,
-      auditService,
-      notifications,
-      events,
-      new DomainEventBus(),
-    );
+    eventBus = new DomainEventBus();
+    service = new RideDispatchService(prisma, auditService, notifications, events, eventBus);
 
     const customer = await prisma.user.create({
       data: {
@@ -620,5 +617,40 @@ describe('RideDispatchService', () => {
     await expect(service.acceptOffer(driverId, offer.id, {})).rejects.toThrow(
       'Offer is no longer pending',
     );
+  });
+
+  describe('DPX-MOBILE-001 — ride offered push', () => {
+    it('emits RIDE_OFFERED with the driver, the ride and the offer expiry', async () => {
+      if (!databaseAvailable) return;
+
+      const emit = jest.spyOn(eventBus, 'emit');
+      const driverId = await createDriver(NEARBY);
+      const ride = await createRide();
+
+      await service.dispatchRide(ride.id);
+
+      const offered = emit.mock.calls.find(([name]) => name === DOMAIN_EVENTS.RIDE_OFFERED);
+      expect(offered).toBeDefined();
+      const payload = offered?.[1] as { driverId: string; rideId: string; expiresAt: string };
+      expect(payload.driverId).toBe(driverId);
+      expect(payload.rideId).toBe(ride.id);
+
+      // The expiry must be the offer's real deadline, not a fresh timestamp:
+      // the push TTL is derived from it, so a drifting copy would either expire
+      // the notification early or outlive the offer it points at.
+      const stored = await prisma.rideOffer.findFirstOrThrow({ where: { rideId: ride.id } });
+      expect(payload.expiresAt).toBe(stored.expiresAt.toISOString());
+    });
+
+    it('emits nothing when no driver is eligible — there is nobody to ring', async () => {
+      if (!databaseAvailable) return;
+
+      const emit = jest.spyOn(eventBus, 'emit');
+      const ride = await createRide();
+
+      await service.dispatchRide(ride.id);
+
+      expect(emit.mock.calls.some(([name]) => name === DOMAIN_EVENTS.RIDE_OFFERED)).toBe(false);
+    });
   });
 });

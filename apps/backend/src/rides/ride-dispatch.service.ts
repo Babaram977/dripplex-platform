@@ -113,11 +113,12 @@ export class RideDispatchService {
       return await this.keepSearching(ride);
     }
 
+    const expiresAt = new Date(Date.now() + RIDE_OFFER_TIMEOUT_MS);
     await this.prisma.rideOffer.create({
       data: {
         rideId: ride.id,
         driverId: candidate.driverId,
-        expiresAt: new Date(Date.now() + RIDE_OFFER_TIMEOUT_MS),
+        expiresAt,
       },
     });
 
@@ -133,6 +134,23 @@ export class RideDispatchService {
     );
     await this.notifyUser(candidate.driverId, 'driver', 'ride_offered', ride.id);
     this.events.publishToDriver(candidate.driverId, 'ride:offered', { rideId: ride.id });
+
+    // DPX-MOBILE-001 — the socket publish above only reaches a driver whose app
+    // is open and connected, and the email above reaches nobody who is driving.
+    // This is the path that rings a phone sitting on the home screen, which is
+    // the failure drivers actually reported.
+    //
+    // Emitted rather than calling the notification centre directly: the Rides
+    // module does not import it, and every other domain notification already
+    // goes through the bus (NotificationCenterSubscriber). `expiresAt` travels
+    // with it so delivery can be given a TTL — a ride offer that arrives after
+    // it has rotated away is worse than one that never arrives, because the
+    // driver taps it and finds nothing.
+    await this.eventBus.emit(DOMAIN_EVENTS.RIDE_OFFERED, {
+      driverId: candidate.driverId,
+      rideId: ride.id,
+      expiresAt: expiresAt.toISOString(),
+    });
 
     return toRideDto(updated);
   }
