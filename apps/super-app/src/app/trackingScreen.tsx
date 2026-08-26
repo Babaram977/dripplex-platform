@@ -1,5 +1,6 @@
+import { REVIEW_TAGS } from '@dripplex/types';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { api } from '../lib/api';
+import { api, ApiError } from '../lib/api';
 import type {
   OrderDto,
   CustomerDeliveryDto,
@@ -489,7 +490,130 @@ function DriverCard({
 // ─────────────────────────────────────────────────────────────────────────────
 // DELIVERED STATE
 // ─────────────────────────────────────────────────────────────────────────────
-function DeliveredScreen({ orderNumber, onHome }: { orderNumber?: string; onHome: () => void }) {
+/**
+ * Rate the courier who just delivered.
+ *
+ * `POST /customer/reviews/deliveries/:jobId/rate-rider` shipped with the
+ * reviews backend and no app ever called it, so customer→rider was the one
+ * founder-locked rating direction (DPX-REVIEWS-001 §1.1) with storage, an
+ * endpoint, aggregates and a rider-facing figure — and no way for anyone to
+ * actually leave one.
+ *
+ * Optional by design: the primary action stays "Continue Shopping". A
+ * delivery is not held hostage to a rating.
+ */
+function RateRiderBlock({ jobId, riderName }: { jobId: string; riderName: string | null }) {
+  const [stars, setStars] = useState<number | null>(null);
+  const [tags, setTags] = useState<string[]>([]);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+
+  const submit = async (): Promise<void> => {
+    if (stars === null) return;
+    setSending(true);
+    setError(null);
+    try {
+      await api.reviews.rateRiderForDelivery(jobId, {
+        rating: stars,
+        ...(tags.length > 0 ? { tags } : {}),
+      });
+      setDone(true);
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.message : 'That did not send. Try again.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (done) {
+    return (
+      <p className="mb-4 text-center text-[13px]" style={{ color: G3 }}>
+        Thanks — your rating helps other customers.
+      </p>
+    );
+  }
+
+  return (
+    <div className="mb-5 w-full px-7">
+      <p className="mb-2 text-center text-[13px]" style={{ color: MUTED }}>
+        How was {riderName ?? 'your rider'}?
+      </p>
+      <div className="mb-3 flex justify-center gap-2">
+        {[1, 2, 3, 4, 5].map((n) => (
+          <button
+            key={n}
+            type="button"
+            aria-label={`${String(n)} star${n === 1 ? '' : 's'}`}
+            onClick={() => {
+              setStars(n);
+            }}
+            className="text-[28px] leading-none transition-transform active:scale-90"
+            style={{ color: stars !== null && n <= stars ? '#F5B301' : 'rgba(255,255,255,.25)' }}
+          >
+            ★
+          </button>
+        ))}
+      </div>
+
+      {/* Only once a star is chosen — tags without a rating are not a review
+          the endpoint will take. The set is the server's fixed one; anything
+          else is rejected. */}
+      {stars !== null ? (
+        <>
+          <div className="mb-3 flex flex-wrap justify-center gap-2">
+            {REVIEW_TAGS.CUSTOMER_TO_RIDER.map((t) => {
+              const on = tags.includes(t);
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => {
+                    setTags((p) => (p.includes(t) ? p.filter((x) => x !== t) : [...p, t]));
+                  }}
+                  className="rounded-full px-3 py-1.5 text-[12px]"
+                  style={{
+                    background: on ? 'rgba(43,172,82,.18)' : 'rgba(255,255,255,.06)',
+                    border: `1px solid ${on ? G2 : 'rgba(255,255,255,.12)'}`,
+                    color: on ? G3 : MUTED,
+                  }}
+                >
+                  {t}
+                </button>
+              );
+            })}
+          </div>
+          {error !== null ? (
+            <p className="mb-2 text-center text-[12px]" style={{ color: '#FCA5A5' }}>
+              {error}
+            </p>
+          ) : null}
+          <button
+            type="button"
+            disabled={sending}
+            onClick={() => void submit()}
+            className="h-11 w-full rounded-2xl text-[13px] font-semibold text-white disabled:opacity-60"
+            style={{ background: G2, fontFamily: "'Poppins',sans-serif" }}
+          >
+            {sending ? 'Sending…' : 'Submit rating'}
+          </button>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function DeliveredScreen({
+  orderNumber,
+  onHome,
+  deliveryJobId,
+  riderName,
+}: {
+  orderNumber?: string;
+  onHome: () => void;
+  deliveryJobId?: string;
+  riderName?: string | null;
+}) {
   return (
     <div
       className="relative flex h-full w-full flex-col items-center justify-center overflow-hidden"
@@ -578,6 +702,10 @@ function DeliveredScreen({ orderNumber, onHome }: { orderNumber?: string; onHome
           </div>
         )}
       </div>
+      {deliveryJobId !== undefined ? (
+        <RateRiderBlock jobId={deliveryJobId} riderName={riderName ?? null} />
+      ) : null}
+
       <div className="flex w-full flex-col gap-3 px-7">
         <button
           onClick={onHome}
@@ -1064,7 +1192,13 @@ export function TrackingScreen({
   }
 
   if (isDelivered) {
-    return <DeliveredScreen orderNumber={orderNumber} onHome={onHome} />;
+    return (
+      <DeliveredScreen
+        orderNumber={orderNumber}
+        onHome={onHome}
+        {...(delivery ? { deliveryJobId: delivery.id, riderName: delivery.riderName } : {})}
+      />
+    );
   }
 
   if (isCancelled) {

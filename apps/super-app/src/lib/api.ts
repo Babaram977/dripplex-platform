@@ -2751,6 +2751,17 @@ export const api = {
     /** Mints (or returns) the public link for this trip. Idempotent. */
     share: (id: string) => dx<RideShareLinkDto>('POST', `/customer/rides/${id}/share`),
     /**
+     * A driver's real star rating, computed live from every RideRating they
+     * have received. Public — a passenger deciding whether to get in the car
+     * has not authenticated against that driver.
+     *
+     * Shipped in PR A2 of DPX-REVIEWS-001 and called by nothing since, which
+     * is why the Driver Profile screen showed a hardcoded 4.92 next to three
+     * invented passenger reviews.
+     */
+    driverRating: (driverId: string) =>
+      dx<{ average: number; count: number }>('GET', `/drivers/${driverId}/rating`),
+    /**
      * Reads a shared trip by its link token. Deliberately does NOT go through
      * dx(): whoever opens a shared link is family, not an account holder, so
      * no token is sent and a 401 handler has nothing to do here.
@@ -2764,9 +2775,19 @@ export const api = {
       }
       return payload.data;
     },
+    /** `tags` must be drawn from DRIVER_RATING_TAGS — the backend validates
+     *  each against the same fixed set and rejects anything else. It has
+     *  accepted the field since the PR A2 migration; this client did not send
+     *  it, so the app folded the chips into `comment` and every tag on the
+     *  platform ended up unqueryable prose. */
     rateDriver: (
       id: string,
-      body: { rating: number; comment?: string; categoryRatings?: Record<string, number> },
+      body: {
+        rating: number;
+        comment?: string;
+        tags?: string[];
+        categoryRatings?: Record<string, number>;
+      },
     ) => dx<unknown>('POST', `/customer/rides/${id}/rate-driver`, body),
     tip: (id: string, amount: number) =>
       dx<RideDto>('POST', `/customer/rides/${id}/tip`, { amount }),
@@ -2808,6 +2829,20 @@ export const api = {
     rateCustomer: (id: string, body: { rating: number; comment?: string }) =>
       dx<unknown>('POST', `/driver/rides/${id}/rate-customer`, body),
     getWallet: () => dx<WalletDto>('GET', '/driver/wallet'),
+    /**
+     * The driver's own completed-trip count and star rating, computed live
+     * from the RideRating rows passengers have left them.
+     *
+     * `averageRating` is null — never 0 — when nobody has rated them yet, so
+     * a new driver is shown "No ratings yet" rather than a zero that reads
+     * like a bad one. Three screens displayed a literal "—" here with a GAP
+     * comment; this is the endpoint they were waiting for.
+     */
+    performance: () =>
+      dx<{ completedTrips: number; averageRating: number | null; ratingCount: number }>(
+        'GET',
+        '/driver/profile/performance',
+      ),
     getWalletTransactions: (params?: { page?: number; pageSize?: number }) =>
       dx<PaginatedResult<WalletLedgerEntryDto>>(
         'GET',
@@ -3724,6 +3759,27 @@ export const api = {
    * whole loop is otherwise wired: registration redeems a driver code before
    * it tries a customer one, and the app already captures `?ref=` links.
    */
+  /**
+   * Reviews — the polymorphic side of DPX-REVIEWS-001 (merchant, product,
+   * rider). Driver ratings live in the separate RideRating system and are
+   * submitted through `rides.rateDriver`; the two are deliberately not
+   * merged (§1.4, founder-locked).
+   */
+  reviews: {
+    /**
+     * Rate the courier who delivered an order.
+     * `tags` must come from REVIEW_TAGS.CUSTOMER_TO_RIDER — the server
+     * validates each against that fixed set.
+     *
+     * The endpoint shipped in PR A and had no caller in any app, so a
+     * customer had no way to rate a delivery at all.
+     */
+    rateRiderForDelivery: (
+      jobId: string,
+      body: { rating: number; comment?: string; tags?: string[] },
+    ) => dx<unknown>('POST', `/customer/reviews/deliveries/${jobId}/rate-rider`, body),
+  },
+
   /**
    * The driver's commission account — the cash commission they owe.
    *

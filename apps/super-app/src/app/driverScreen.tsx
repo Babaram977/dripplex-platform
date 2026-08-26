@@ -2472,11 +2472,19 @@ export function DriverDashboardScreen({
   // Real wallet + completed-trip data for the header stat block.
   const [wallet, setWallet] = useState<WalletDto | null>(null);
   const [tripsToday, setTripsToday] = useState<number | null>(null);
+  const [rating, setRating] = useState<{
+    averageRating: number | null;
+    ratingCount: number;
+  } | null>(null);
 
   useEffect(() => {
     api.driverRides
       .getWallet()
       .then((w) => setWallet(w))
+      .catch(() => {});
+    api.driverRides
+      .performance()
+      .then((p) => setRating(p))
       .catch(() => {});
     api.driverRides
       .list({ status: 'COMPLETED', limit: 100 })
@@ -2825,8 +2833,21 @@ export function DriverDashboardScreen({
                   l: 'Trips Today',
                   color: '#fff',
                 },
-                // No driver-rating endpoint exists → honest em dash.
-                { v: '—', l: 'Rating', color: COLOR_STAR },
+                {
+                  // Real, from RideRating. The endpoint existed the whole
+                  // time; nothing called it. Still an em dash while loading
+                  // and "No ratings" when genuinely unrated — never a 0,
+                  // which a driver would read as a bad score rather than an
+                  // absent one.
+                  v:
+                    rating?.averageRating != null
+                      ? rating.averageRating.toFixed(2)
+                      : rating !== null
+                        ? 'No ratings'
+                        : '—',
+                  l: 'Rating',
+                  color: COLOR_STAR,
+                },
               ].map((s) => (
                 <div
                   key={s.l}
@@ -4829,6 +4850,25 @@ function DriverTripsTab({ onBack }: { onBack: () => void }) {
   const [loading, setLoading] = useState(true);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [confirmError, setConfirmError] = useState<string | null>(null);
+  const [performance, setPerformance] = useState<{
+    averageRating: number | null;
+    ratingCount: number;
+  } | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    api.driverRides
+      .performance()
+      .then((p) => {
+        if (live) setPerformance(p);
+      })
+      .catch(() => {
+        // Leaves the em dash. Better than a rating we could not read.
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -4899,7 +4939,9 @@ function DriverTripsTab({ onBack }: { onBack: () => void }) {
           </p>
         </div>
 
-        {/* Summary — completed count + earned are real; no rating endpoint. */}
+        {/* Summary — all three real now. The rating stayed an em dash for
+            want of a caller, not an endpoint: GET /driver/profile/performance
+            has computed it from RideRating all along. */}
         <div
           className="mb-4 flex gap-3 rounded-2xl p-4"
           style={{ background: 'rgba(43,172,82,.06)', border: '1px solid rgba(43,172,82,.12)' }}
@@ -4910,7 +4952,20 @@ function DriverTripsTab({ onBack }: { onBack: () => void }) {
               v: settledTrips.length === 0 && awaiting > 0 ? 'Pending' : naira(earned),
               l: awaiting > 0 ? `Earned · ${String(awaiting)} unpaid` : 'Earned',
             },
-            { v: '—', l: 'Rating' },
+            {
+              // null, never 0 — a driver nobody has rated yet must not be
+              // shown a zero that reads like a bad score.
+              v:
+                performance?.averageRating != null
+                  ? performance.averageRating.toFixed(2)
+                  : performance !== null
+                    ? 'No ratings'
+                    : '—',
+              l:
+                performance != null && performance.ratingCount > 0
+                  ? `Rating · ${String(performance.ratingCount)}`
+                  : 'Rating',
+            },
           ].map((s) => (
             <div key={s.l} className="flex-1 text-center">
               <p className="text-[15px] font-bold" style={{ fontFamily: PP, color: G3 }}>
