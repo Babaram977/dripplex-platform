@@ -1,6 +1,7 @@
 'use client';
 
 import { EmptyState, LoadingSpinner } from '@dripplex/ui';
+import { formatNaira } from '@dripplex/utils';
 import * as React from 'react';
 
 import { AnalyticsKpiTile } from '@/components/analytics-kpi-tile';
@@ -95,6 +96,57 @@ export default function AnalyticsOverviewPage(): React.JSX.Element {
               hint="Where rides are requested"
               href="/analytics/geography"
             />
+          </div>
+        ) : null}
+
+        {/* Revenue.
+            The backend has returned these figures since Slice 4 and this page
+            fetched them and rendered none of them, so the only question a
+            founder actually asks — are we making money — had no answer on the
+            dashboard at all. Nothing new is computed here; this is the reader
+            the numbers never had. */}
+        {overview ? (
+          <div className="flex flex-col gap-3">
+            <div>
+              <h2 className="font-display text-xl font-semibold tracking-tight">Revenue</h2>
+              <p className="text-muted-foreground mt-1 text-sm">
+                What DrippleX earned in this range — rides and marketplace orders together. Tips are
+                excluded: they belong entirely to the driver.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <AnalyticsKpiTile
+                label="Platform revenue"
+                value={formatNaira(overview.platformCommissionRevenue)}
+                hint={`${formatNaira(overview.rideCommissionRevenue)} rides · ${formatNaira(
+                  overview.orderCommissionRevenue,
+                )} orders`}
+              />
+              <AnalyticsKpiTile
+                label="Ride fares (GMV)"
+                value={formatNaira(overview.grossFareRevenue)}
+                hint="What passengers were charged"
+              />
+              <AnalyticsKpiTile
+                label="Order value (GMV)"
+                value={formatNaira(overview.orderGrossRevenue)}
+                hint="What customers spent with merchants"
+              />
+              <AnalyticsKpiTile
+                label="Paid out to drivers"
+                value={formatNaira(overview.driverEarnings)}
+                hint={`${formatNaira(overview.tipsCollected)} in tips, all to drivers`}
+              />
+            </div>
+            {/* Said plainly rather than left for someone to discover after
+                they have concluded the platform earns nothing. */}
+            {overview.orderCommissionRevenue === 0 ? (
+              <p className="text-muted-foreground text-xs">
+                No marketplace commission in this range. Order commission is recorded when an order
+                settles, and an order only completes 24 hours after it is delivered — so orders
+                delivered today appear here tomorrow.
+              </p>
+            ) : null}
           </div>
         ) : null}
 
