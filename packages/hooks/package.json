@@ -9,6 +9,10 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./notifications/native-push": {
+      "types": "./src/notifications/native-push.ts",
+      "default": "./src/notifications/native-push.ts"
     }
   },
   "scripts": {

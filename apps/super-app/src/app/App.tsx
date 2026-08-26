@@ -189,6 +189,7 @@ import type {
   UtilityServiceType,
 } from '../lib/api';
 import { auth, endSession } from '../lib/auth';
+import { registerPushDevice, signOutRequest } from '../lib/push';
 import { BookingApplyScreen, BookingStatusScreen, MyBookingsScreen } from './hotelBookingScreens';
 
 import type { BookingDraft } from './hotelBookingScreens';
@@ -600,6 +601,23 @@ function AppShell() {
   // A portal link opens that portal, a device with a live session resumes where
   // that session belongs, and a first-time visitor starts at the splash screen.
   const [screen, setScreen] = useState<Screen>(initialScreen);
+
+  // DPX-MOBILE-001 — claim this device's push token for the signed-in account.
+  //
+  // Runs on every screen change rather than once on mount, because sign-in does
+  // not remount AppShell: it stores tokens and navigates. `screen` is the only
+  // value that reliably changes across that transition, and registerPushDevice
+  // is idempotent per account — a repeat call for an account already registered
+  // on this device returns early without a prompt or a request, so the extra
+  // invocations cost nothing.
+  //
+  // Off-device this is inert: detectNativePlatform() returns null in a browser
+  // and the call returns 'not-native' before touching anything. In the APK it is
+  // what makes a driver reachable when the app is not on screen.
+  useEffect(() => {
+    void registerPushDevice();
+  }, [screen]);
+
   const [rideDetailId, setRideDetailId] = useState<string>('');
   const [fading, setFading] = useState(false);
   const [otpData, setOtpData] = useState<{
@@ -1667,7 +1685,7 @@ function AppShell() {
           go('riderjob');
         }}
         onSignOut={() => {
-          void endSession(() => api.auth.logout()).finally(() => goAfterAuthChange('drvlogin'));
+          void endSession(signOutRequest).finally(() => goAfterAuthChange('drvlogin'));
         }}
         onSignIn={() => go('drvlogin')}
       />

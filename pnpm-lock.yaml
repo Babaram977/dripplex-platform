@@ -814,6 +814,9 @@ importers:
 
   apps/super-app:
     dependencies:
+      '@dripplex/hooks':
+        specifier: workspace:*
+        version: link:../../packages/hooks
       '@dripplex/types':
         specifier: workspace:*
         version: link:../../packages/types
