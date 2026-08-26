@@ -4,6 +4,7 @@ import { DRIPPLEX_SUPPORT_EMAIL, DRIPPLEX_SUPPORT_WHATSAPP } from './shared';
 import { useNarrowViewport } from './useNarrowViewport';
 import { api, uploadFile } from '../lib/api';
 import { auth, endSession } from '../lib/auth';
+import { signOutRequest } from '../lib/push';
 import { MERCHANT_CATEGORY_LABEL, type MerchantCategory } from '../lib/api';
 import { addressPredictions, geocodeAddress, getCurrentPosition } from '../lib/maps';
 import { ImageWithFallback } from './components/figma/ImageWithFallback';
@@ -5011,7 +5012,7 @@ export function MerchantPortalScreen({
     // This only ever cleared localStorage, so the merchant's access token
     // stayed valid on the server after they had signed out. endSession revokes
     // it, and clears the device whether or not the revoke gets through.
-    void endSession(() => api.auth.logout()).finally(() => {
+    void endSession(signOutRequest).finally(() => {
       setIsLoggedIn(false);
       setBusiness(null);
       setWallet(null);

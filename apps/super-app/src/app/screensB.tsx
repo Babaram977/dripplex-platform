@@ -25,6 +25,7 @@ import {
 import { api, uploadFile } from '../lib/api';
 import type { CustomerKycStatusDto, SessionDto } from '../lib/api';
 import { auth, endSession } from '../lib/auth';
+import { signOutRequest } from '../lib/push';
 import { splitFullName } from '../lib/fullName';
 
 // AUTH-010  TWO-FACTOR AUTHENTICATION
@@ -2373,7 +2374,7 @@ export function AccountManagementScreen({
       >
         <button
           onClick={() => {
-            void endSession(() => api.auth.logout()).finally(() => onSignOut?.());
+            void endSession(signOutRequest).finally(() => onSignOut?.());
           }}
           className="flex w-full items-center gap-3 px-4 py-3 text-left transition-all active:scale-[.98]"
         >

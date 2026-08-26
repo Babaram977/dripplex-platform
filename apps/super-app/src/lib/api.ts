@@ -2264,6 +2264,20 @@ export interface NotificationPreferenceDto extends NotificationPreferenceInput {
   deletedAt: string | null;
 }
 
+/** A registered push device (DPX-MOBILE-001). `token` is the FCM/APNs
+ * registration token; `active` goes false on deactivate rather than the row
+ * being deleted, so re-registering the same device updates instead of
+ * duplicating. */
+export interface DeviceTokenDto {
+  id: string;
+  userId: string;
+  platform: 'ANDROID' | 'IOS' | 'WEB';
+  token: string;
+  active: boolean;
+  lastSeenAt: string | null;
+  createdAt: string;
+}
+
 export interface NotificationDto {
   id: string;
   userId: string;
@@ -3744,6 +3758,25 @@ export const api = {
   },
 
   // ── NOTIFICATIONS ──────────────────────────────────────────────────────────
+  /**
+   * DPX-MOBILE-001 — this device's push token.
+   *
+   * The route is under `customer/` but it is not customer-only: registration is
+   * treated as part of managing your own notification settings, and the
+   * `customer:notifications:manage` permission it requires is held by the
+   * customer, driver, rider and merchant roles alike. A driver registering here
+   * is the intended path, not a workaround.
+   */
+  devices: {
+    register: (body: { platform: 'ANDROID' | 'IOS' | 'WEB'; token: string }) =>
+      dx<DeviceTokenDto>('POST', '/customer/devices', body),
+    list: () => dx<DeviceTokenDto[]>('GET', '/customer/devices'),
+    /** 204 No Content — the token stays on the row, flagged inactive, so a
+     * later re-registration of the same device is an update rather than a
+     * duplicate. */
+    deactivate: (id: string) => dx<void>('DELETE', `/customer/devices/${id}`),
+  },
+
   notifications: {
     list: (params?: { unreadOnly?: boolean; page?: number; limit?: number }) =>
       dx<{ items: NotificationDto[]; total: number }>(

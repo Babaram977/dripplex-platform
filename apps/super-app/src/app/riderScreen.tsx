@@ -5,6 +5,7 @@ import { playNotificationSound } from '../lib/sound';
 import { SoundSettings } from './soundSettings';
 import { PayoutPanel } from './payoutPanel';
 import { auth, endSession } from '../lib/auth';
+import { signOutRequest } from '../lib/push';
 import { useLocationHeartbeat } from '../lib/locationHeartbeat';
 import { getCurrentPosition } from '../lib/maps';
 import type {
@@ -1461,7 +1462,7 @@ export function RiderAccountScreen({
     // so a network failure can never leave the rider signed in. endSession
     // also caps the wait, so a request that never settles cannot leave the
     // rider staring at a button that appears to do nothing.
-    void endSession(() => api.auth.logout()).finally(() => onSignedOut());
+    void endSession(signOutRequest).finally(() => onSignedOut());
   };
 
   const user = auth.getUser();
