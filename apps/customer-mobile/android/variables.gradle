@@ -1,7 +1,20 @@
 ext {
     minSdkVersion = 23
-    compileSdkVersion = 35
-    targetSdkVersion = 35
+    // Android 16 / API 36. Google Play requires new apps and updates submitted
+    // from 2026-08-31 to target API 36 or higher; an extension is available to
+    // 2026-11-01, but a build that already targets 36 does not need one.
+    //
+    // compileSdk moves with it because the Android Gradle Plugin refuses a
+    // targetSdk above the compileSdk — these two are not independent knobs.
+    //
+    // A green Gradle build does NOT clear this change. API 36 turns on Android
+    // 16 behaviour changes, edge-to-edge display enforcement chief among them,
+    // which move content under the status and navigation bars rather than
+    // failing to compile. This app is a WebView shell, so its headers, bottom
+    // navigation and modal sheets are exactly what that lands on. A physical
+    // device pass is mandatory before this build is treated as submittable.
+    compileSdkVersion = 36
+    targetSdkVersion = 36
     androidxActivityVersion = '1.9.2'
     androidxAppCompatVersion = '1.7.0'
     androidxCoordinatorLayoutVersion = '1.2.0'
