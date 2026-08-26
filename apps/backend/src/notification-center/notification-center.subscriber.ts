@@ -23,6 +23,19 @@ interface NotificationEventMapping {
   title: string;
   body: (payload: Record<string, unknown>) => string;
   priority?: NotificationPriority;
+  /**
+   * Which channels this event is delivered on. Defaults to IN_APP alone, which
+   * is what every mapping here did unconditionally before DPX-MOBILE-001 — so
+   * every existing event keeps its exact behaviour.
+   *
+   * IN_APP writes the row the notification centre lists and nothing more; it
+   * never reaches a device. An event that must reach a phone that is not on
+   * screen has to name PUSH explicitly. Each channel is a separate `send`, so
+   * each is independently subject to the recipient's own preference for that
+   * (channel, type) pair — a driver can silence the push and keep the in-app
+   * record, or the reverse.
+   */
+  channels?: NotificationChannel[];
   userKeys: string[];
   /** Merged into `payload.deepLink` and forwarded as FCM `data.deepLink`
    * (see firebase-push.provider.ts) so a tapped push can open the right
@@ -167,6 +180,29 @@ export class NotificationCenterSubscriber implements OnModuleInit {
       body: (payload) =>
         `${this.text(payload, ['title', 'promotionName'], 'A new promotion')} is now available.`,
       userKeys: ['userId', 'customerId'],
+    },
+    // DPX-MOBILE-001 — the only ride notification addressed to a driver rather
+    // than a passenger, and the only one with a deadline: the offer rotates
+    // after RIDE_OFFER_TIMEOUT_MS. CRITICAL is what makes the delivery
+    // high-priority at FCM (see firebase-push.provider.ts) so it wakes a device
+    // in Doze instead of being batched until the phone is next unlocked — by
+    // which time the offer is long gone.
+    //
+    // No deepLink. The super-app is a single-screen shell with no route for a
+    // pending offer, and this mapping's own contract is that a destination is
+    // omitted rather than guessed. Tapping opens the app, which lands the driver
+    // on their dashboard where the offer card already lives.
+    [DOMAIN_EVENTS.RIDE_OFFERED]: {
+      category: NotificationCategory.RIDE,
+      type: NotificationType.RIDE_OFFERED,
+      title: 'New ride request',
+      body: () => 'A passenger is waiting. Open DrippleX to accept.',
+      priority: NotificationPriority.CRITICAL,
+      // The first mapping to name PUSH. IN_APP alone would write a row the
+      // driver only sees once they have already opened the app — which is
+      // precisely the moment they no longer needed telling.
+      channels: [NotificationChannel.IN_APP, NotificationChannel.PUSH],
+      userKeys: ['driverId'],
     },
     [DOMAIN_EVENTS.RIDE_DRIVER_ASSIGNED]: {
       category: NotificationCategory.RIDE,
@@ -400,16 +436,21 @@ export class NotificationCenterSubscriber implements OnModuleInit {
       return;
     }
 
-    await this.notificationCenter.send({
-      userId,
-      category: mapping.category,
-      channel: NotificationChannel.IN_APP,
-      type: mapping.type,
-      title: mapping.title,
-      body: mapping.body(payload),
-      payload,
-      ...(mapping.priority !== undefined ? { priority: mapping.priority } : {}),
-    });
+    // Sequential, not Promise.all: `send` writes a Notification row and an
+    // audit entry per channel, and a push that fails must not prevent the
+    // in-app record from existing. Each is independently preference-gated.
+    for (const channel of mapping.channels ?? [NotificationChannel.IN_APP]) {
+      await this.notificationCenter.send({
+        userId,
+        category: mapping.category,
+        channel,
+        type: mapping.type,
+        title: mapping.title,
+        body: mapping.body(payload),
+        payload,
+        ...(mapping.priority !== undefined ? { priority: mapping.priority } : {}),
+      });
+    }
   }
 
   private objectPayload(payload: unknown): Record<string, unknown> {

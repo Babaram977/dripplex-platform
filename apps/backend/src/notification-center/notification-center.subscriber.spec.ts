@@ -236,4 +236,77 @@ describe('NotificationCenterSubscriber', () => {
 
     expect(notificationCenter.send).not.toHaveBeenCalled();
   });
+
+  describe('DPX-MOBILE-001 — ride offered', () => {
+    const offerEvent = (
+      overrides: Record<string, unknown> = {},
+    ): { name: string; payload: Record<string, unknown>; occurredAt: string } => ({
+      name: DOMAIN_EVENTS.RIDE_OFFERED,
+      payload: {
+        driverId: 'driver-9',
+        rideId: 'ride-9',
+        expiresAt: '2026-08-26T21:00:00.000Z',
+        ...overrides,
+      },
+      occurredAt: new Date().toISOString(),
+    });
+
+    it('subscribes to the ride offered event', () => {
+      subscriber.onModuleInit();
+
+      expect(eventBus.on).toHaveBeenCalledWith(DOMAIN_EVENTS.RIDE_OFFERED, expect.any(Function));
+    });
+
+    it('delivers on PUSH as well as IN_APP — an in-app row alone reaches nobody', async () => {
+      await subscriber.handle(offerEvent());
+
+      const channels = notificationCenter.send.mock.calls.map(([dto]) => dto.channel);
+      expect(channels).toEqual([NotificationChannel.IN_APP, NotificationChannel.PUSH]);
+    });
+
+    it('addresses the driver, not the passenger', async () => {
+      await subscriber.handle(offerEvent({ customerId: 'customer-1' }));
+
+      for (const [dto] of notificationCenter.send.mock.calls) {
+        expect(dto.userId).toBe('driver-9');
+      }
+    });
+
+    it('sends at CRITICAL so FCM delivery is high-priority', async () => {
+      await subscriber.handle(offerEvent());
+
+      const push = notificationCenter.send.mock.calls
+        .map(([dto]) => dto)
+        .find((dto) => dto.channel === NotificationChannel.PUSH);
+      expect(push?.priority).toBe('CRITICAL');
+      expect(push?.type).toBe(NotificationType.RIDE_OFFERED);
+      expect(push?.category).toBe(NotificationCategory.RIDE);
+    });
+
+    it('carries expiresAt through to the payload so delivery can be given a TTL', async () => {
+      await subscriber.handle(offerEvent());
+
+      const push = notificationCenter.send.mock.calls
+        .map(([dto]) => dto)
+        .find((dto) => dto.channel === NotificationChannel.PUSH);
+      expect(push?.payload).toMatchObject({ expiresAt: '2026-08-26T21:00:00.000Z' });
+    });
+
+    it('sends nothing when the event carries no driver', async () => {
+      await subscriber.handle(offerEvent({ driverId: undefined }));
+
+      expect(notificationCenter.send).not.toHaveBeenCalled();
+    });
+
+    it('leaves every other mapping on IN_APP alone — no event starts pushing by accident', async () => {
+      await subscriber.handle({
+        name: DOMAIN_EVENTS.RIDE_DRIVER_ASSIGNED,
+        payload: { customerId: 'user-1' },
+        occurredAt: new Date().toISOString(),
+      });
+
+      expect(notificationCenter.send).toHaveBeenCalledTimes(1);
+      expect(notificationCenter.send.mock.calls[0]?.[0].channel).toBe(NotificationChannel.IN_APP);
+    });
+  });
 });
