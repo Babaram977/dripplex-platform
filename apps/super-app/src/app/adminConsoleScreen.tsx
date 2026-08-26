@@ -5036,6 +5036,30 @@ function PageCommissions() {
   const [limit, setLimit] = useState<CommercialCreditSettingDto | null>(null);
   const [limitInput, setLimitInput] = useState('');
   const [limitMsg, setLimitMsg] = useState<string | null>(null);
+  // What DrippleX actually earned, on the page where what it is OWED already
+  // lives. The two answer different questions and were split across screens:
+  // outstanding balance FALLS as partners pay, so it can never tell you what
+  // was earned.
+  const [revenue, setRevenue] = useState<AdminAnalyticsOverviewDto | null>(null);
+  const [revenueDays, setRevenueDays] = useState(30);
+
+  useEffect(() => {
+    let alive = true;
+    const to = new Date();
+    const from = new Date(to.getTime() - revenueDays * 86400000);
+    api.admin
+      .getAnalyticsOverview(from.toISOString(), to.toISOString())
+      .then((o) => {
+        if (alive) setRevenue(o);
+      })
+      .catch(() => {
+        // Revenue failing must not blank the accounts table below it.
+        if (alive) setRevenue(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [revenueDays]);
 
   useEffect(() => {
     let alive = true;
@@ -5252,6 +5276,79 @@ function PageCommissions() {
             <span style={{ fontSize: 12, color: '#F87171' }}>{error}</span>
           </Card>
         )}
+
+        {/* Revenue earned, above the balances owed.
+            "Outstanding" below is a receivable and falls as partners pay, so
+            it can never answer "what did DrippleX earn". That figure lived
+            only on the Dashboard as a single day's number with no split, while
+            the API has been serving the rides/orders breakdown all along. */}
+        <Card>
+          <SectionHeader
+            title="Revenue earned"
+            action={
+              <select
+                className="dx-select"
+                style={{ color: MUTED }}
+                value={revenueDays}
+                onChange={(e) => setRevenueDays(Number(e.target.value))}
+              >
+                <option value={7}>Last 7 days</option>
+                <option value={30}>Last 30 days</option>
+                <option value={90}>Last 90 days</option>
+              </select>
+            }
+          />
+          {revenue === null ? (
+            <p style={{ fontSize: 11, color: MUTED, lineHeight: 1.5 }}>
+              Could not load revenue for this range.
+            </p>
+          ) : (
+            <>
+              <div className="dx-kpi-row">
+                <KpiCard
+                  label="Platform revenue"
+                  value={naira(revenue.platformCommissionRevenue)}
+                  sub={`${naira(revenue.rideCommissionRevenue)} rides · ${naira(
+                    revenue.orderCommissionRevenue,
+                  )} orders`}
+                  color={G2}
+                  icon="💰"
+                />
+                <KpiCard
+                  label="Ride fares"
+                  value={naira(revenue.grossFareRevenue)}
+                  sub="What passengers were charged"
+                  color={G3}
+                  icon="🚗"
+                />
+                <KpiCard
+                  label="Order value"
+                  value={naira(revenue.orderGrossRevenue)}
+                  sub="What customers spent with merchants"
+                  color={G3}
+                  icon="🛍️"
+                />
+                <KpiCard
+                  label="Paid out to drivers"
+                  value={naira(revenue.driverEarnings)}
+                  sub={`${naira(revenue.tipsCollected)} in tips, all to drivers`}
+                  color={MUTED}
+                  icon="🤝"
+                />
+              </div>
+              {/* Said plainly rather than left for someone to conclude the
+                  marketplace earns nothing. An order settles 24h after it is
+                  delivered, so today's orders land here tomorrow. */}
+              {revenue.orderCommissionRevenue === 0 && (
+                <p style={{ fontSize: 11, color: MUTED, marginTop: 8, lineHeight: 1.5 }}>
+                  No marketplace commission in this range. Order commission is recorded when an
+                  order settles, and an order settles 24 hours after delivery — so orders delivered
+                  today appear here tomorrow.
+                </p>
+              )}
+            </>
+          )}
+        </Card>
 
         {/* The credit limit is what decides who gets blocked, so it belongs on
             the page where blocks are read. A flat naira ceiling bites hard on

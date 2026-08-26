@@ -1864,11 +1864,21 @@ export interface AdminAnalyticsOverviewDto {
   repeatedOfferRideRate: number;
   openCasesCount: number;
   averageTimeToFirstResponseSeconds: number | null;
-  /** Money over rides COMPLETED in the range. `platformCommissionRevenue` is
-   * DrippleX's own cut; `grossFareRevenue` is what passengers were charged.
-   * Tips are reported separately and excluded from both — they are the
-   * driver's. */
+  /** Money in the range. `platformCommissionRevenue` is DrippleX's own cut,
+   * across BOTH rides and marketplace orders; `grossFareRevenue` is what
+   * passengers were charged and `orderGrossRevenue` what customers spent with
+   * merchants. Tips are reported separately and excluded from all of them —
+   * they are the driver's.
+   *
+   * The three split fields below have been served by the API since the
+   * marketplace was folded into revenue, but were missing from this interface,
+   * so the console could show one combined figure and no way to see whether
+   * orders contributed to it. Absent from the DTO means invisible to the app,
+   * however correct the server is. */
   grossFareRevenue: number;
+  orderGrossRevenue: number;
+  rideCommissionRevenue: number;
+  orderCommissionRevenue: number;
   platformCommissionRevenue: number;
   driverEarnings: number;
   tipsCollected: number;
