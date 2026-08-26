@@ -37,6 +37,7 @@ import type {
   DriverCampaignDashboardDto,
   DriverInspectionDto,
   DriverRideDto,
+  RiderDeliveryJobDto,
   InspectionCentreDto,
   RideOfferDto,
   RideOfferPreviewDto,
@@ -2452,8 +2453,13 @@ export function DriverDashboardScreen({
   onSignOut,
   onSignIn,
   onFinishSetup,
+  onDelivery,
 }: {
   onRequest: (offer: RideOfferDto) => void;
+  /** Opens a merchant delivery this driver has been offered or accepted.
+   *  Reuses the courier job screen — the job, its lifecycle and its proof are
+   *  identical work, and drivers now hold the same permission. */
+  onDelivery?: (job: RiderDeliveryJobDto) => void;
   onSettings: () => void;
   /** Back to the onboarding hub, so a blocked driver can clear the blocker
    *  without signing out and in again. */
@@ -2463,6 +2469,9 @@ export function DriverDashboardScreen({
   onSignIn?: () => void;
 }) {
   const [online, setOnline] = useState(false);
+  const [acceptingDeliveries, setAcceptingDeliveries] = useState(false);
+  const [deliveries, setDeliveries] = useState<RiderDeliveryJobDto[]>([]);
+  const [deliveryBusy, setDeliveryBusy] = useState(false);
   const [tab, setTab] = useState<'dash' | 'trips' | 'earnings' | 'wallet' | 'profile'>('dash');
   const [toggling, setToggling] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -2502,9 +2511,38 @@ export function DriverDashboardScreen({
       .then((a) => {
         const online = !!(a && typeof a === 'object' && (a as { online?: boolean }).online);
         setOnline(online);
+        setAcceptingDeliveries(a?.acceptingDeliveries === true);
       })
       .catch(() => {});
   }, []);
+
+  // Merchant deliveries this driver has been offered or is carrying. Polled
+  // only while opted in — a driver who wants nothing to do with parcels
+  // should not be making this request at all.
+  useEffect(() => {
+    if (!acceptingDeliveries) {
+      setDeliveries([]);
+      return;
+    }
+    let cancelled = false;
+    const load = () => {
+      api.rider
+        .getJobs()
+        .then((jobs) => {
+          if (!cancelled) setDeliveries(jobs);
+        })
+        .catch(() => {
+          // A driver whose profile is not delivery-eligible gets a 403 here.
+          // Nothing to shout about on the dashboard; the list stays empty.
+        });
+    };
+    load();
+    const iv = setInterval(load, 10_000);
+    return () => {
+      cancelled = true;
+      clearInterval(iv);
+    };
+  }, [acceptingDeliveries]);
 
   // While online, poll for ride offers; navigate to the request screen on first offer.
   useEffect(() => {
@@ -2679,6 +2717,35 @@ export function DriverDashboardScreen({
       setError(e instanceof Error ? e.message : 'Could not update availability');
     } finally {
       setToggling(false);
+    }
+  };
+
+  /**
+   * Opt in or out of merchant deliveries.
+   *
+   * Sends `acceptingDeliveries` explicitly — this is the one availability
+   * write that is ABOUT the preference. Every other call omits the field, and
+   * the server reads absence as "leave it alone", which is what stops the
+   * location heartbeat from silently opting a driver back out every few
+   * seconds.
+   */
+  const toggleDeliveries = async (next: boolean): Promise<void> => {
+    setDeliveryBusy(true);
+    setError(null);
+    try {
+      const pos = online ? await getCurrentPosition() : null;
+      await api.driverRides.setAvailability({
+        online,
+        acceptingRides: online,
+        acceptingDeliveries: next,
+        vehicleType: await resolveVehicleType(),
+        ...(pos ? { latitude: pos.latitude, longitude: pos.longitude } : {}),
+      });
+      setAcceptingDeliveries(next);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Could not update delivery preference');
+    } finally {
+      setDeliveryBusy(false);
     }
   };
 
@@ -2908,6 +2975,72 @@ export function DriverDashboardScreen({
                 </>
               )}
             </button>
+
+            {/* Merchant deliveries — opt-in, and separate from rides on purpose
+                (founder decision, 2026-08-25). A ride fare is worth more than
+                a parcel drop, so a driver online for rides is never pulled
+                onto one they did not ask for. */}
+            <div
+              className="mt-3 flex items-center justify-between gap-3 rounded-2xl px-4 py-3"
+              style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
+            >
+              <div className="min-w-0">
+                <p className="text-[13px] font-semibold" style={{ fontFamily: PP, color: '#fff' }}>
+                  Also take deliveries
+                </p>
+                <p className="text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
+                  {acceptingDeliveries
+                    ? 'You can be offered merchant parcel jobs as well as rides.'
+                    : 'Off — you will only be offered rides.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={deliveryBusy}
+                onClick={() => void toggleDeliveries(!acceptingDeliveries)}
+                aria-pressed={acceptingDeliveries}
+                className="relative h-7 w-12 flex-shrink-0 rounded-full transition-colors disabled:opacity-60"
+                style={{ background: acceptingDeliveries ? G2 : 'rgba(255,255,255,.15)' }}
+              >
+                <span
+                  className="absolute top-1 h-5 w-5 rounded-full bg-white transition-all"
+                  style={{ left: acceptingDeliveries ? 26 : 4 }}
+                />
+              </button>
+            </div>
+
+            {/* Deliveries in hand. Only rendered when there are some — an
+                empty box under the toggle would read as a broken feature
+                rather than a quiet night. */}
+            {deliveries.length > 0 ? (
+              <div className="mt-3 flex flex-col gap-2">
+                {deliveries.map((job) => (
+                  <button
+                    key={job.id}
+                    type="button"
+                    onClick={() => onDelivery?.(job)}
+                    className="flex items-center justify-between gap-3 rounded-2xl px-4 py-3 text-left active:scale-[.99]"
+                    style={{
+                      background: 'rgba(43,172,82,.08)',
+                      border: '1px solid rgba(43,172,82,.25)',
+                    }}
+                  >
+                    <div className="min-w-0">
+                      <p
+                        className="text-[13px] font-semibold"
+                        style={{ fontFamily: PP, color: '#fff' }}
+                      >
+                        Delivery · {naira(Number(job.deliveryFee))}
+                      </p>
+                      <p className="text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
+                        {job.status === 'ASSIGNED' ? 'Offered to you — tap to view' : job.status}
+                      </p>
+                    </div>
+                    <span style={{ color: G3, fontSize: 18 }}>›</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
 
             {/* Shown whenever there is something to say, not only when online.
                 `checkReadiness` runs on mount either way, so the reason a

@@ -647,6 +647,10 @@ function AppShell() {
   // The rider's own job list returns RiderDeliveryJobDto — DeliveryJobDto plus
   // `customerName`, which the job screen needs to title the chat.
   const [activeRiderJob, setActiveRiderJob] = useState<RiderDeliveryJobDto | null>(null);
+  // Where the job screen returns to. Drivers reuse the courier job screen —
+  // same endpoints, same lifecycle — so it must not always send them back to
+  // the rider dashboard, which is not their app.
+  const [riderJobReturn, setRiderJobReturn] = useState<Screen>('riderdash');
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [activeMerchantId, setActiveMerchantId] = useState<string | undefined>(undefined);
   // Hotel booking (DPX-HOTEL-002). The draft holds the room + dates + quote
@@ -1655,6 +1659,13 @@ function AppShell() {
         // out and in again. The dashboard names the blocker; this is the step
         // that clears it.
         onFinishSetup={() => go('drvkyc')}
+        onDelivery={(job) => {
+          setActiveRiderJob(job);
+          // Back to the DRIVER dashboard when they are done — the courier
+          // dashboard is not their screen and has its own role gate.
+          setRiderJobReturn('drvdash');
+          go('riderjob');
+        }}
         onSignOut={() => {
           void endSession(() => api.auth.logout()).finally(() => goAfterAuthChange('drvlogin'));
         }}
@@ -1857,6 +1868,7 @@ function AppShell() {
       <RiderDashboardScreen
         onJob={(job) => {
           setActiveRiderJob(job);
+          setRiderJobReturn('riderdash');
           go('riderjob');
         }}
         onEarnings={() => go('riderearnings')}
@@ -1867,8 +1879,8 @@ function AppShell() {
     riderjob: activeRiderJob ? (
       <RiderJobScreen
         job={activeRiderJob}
-        onBack={() => goBack('riderdash')}
-        onDone={() => go('riderdash')}
+        onBack={() => goBack(riderJobReturn)}
+        onDone={() => go(riderJobReturn)}
         onMessageCustomer={(deliveryJobId, customerName) => {
           setChat({
             context: 'delivery',

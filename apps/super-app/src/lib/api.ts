@@ -1606,6 +1606,9 @@ export interface DriverAvailabilityDto {
   driverId: string;
   online: boolean;
   acceptingRides: boolean;
+  /** Whether this driver also takes merchant delivery jobs. Independent of
+   *  `acceptingRides` — a driver may want parcels without passengers. */
+  acceptingDeliveries: boolean;
   vehicleType: RideType | null;
   latitude: number | null;
   longitude: number | null;
@@ -2808,6 +2811,11 @@ export const api = {
     setAvailability: (body: {
       online: boolean;
       acceptingRides: boolean;
+      /** Merchant delivery jobs. OMIT to leave the stored preference alone —
+       *  the server treats absence as "unchanged", so the location heartbeat
+       *  and every other availability write must not send it, or a driver
+       *  would be opted out on their next position ping. */
+      acceptingDeliveries?: boolean;
       vehicleType: RideType;
       latitude?: number;
       longitude?: number;
