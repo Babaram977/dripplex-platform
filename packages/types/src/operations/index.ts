@@ -587,7 +587,23 @@ export interface OperationsAnalyticsOverviewDto {
   orderGrossRevenue: number;
   rideCommissionRevenue: number;
   orderCommissionRevenue: number;
+  /** Commission charged across rides and orders — gross of what DrippleX spent
+   * winning the business. Not the same as money kept; see `netPlatformRevenue`. */
   platformCommissionRevenue: number;
+  /** What customer coupons cost the platform, over settled rides in the range.
+   *
+   * Ride commission is charged on the fare *before* the coupon, because the
+   * driver is paid on the gross and DrippleX funds its own promotions. So a
+   * ₦5,000 fare with a ₦1,000 coupon charges ₦500 of commission while the
+   * platform collected ₦4,000 and paid the driver ₦4,500 — a ₦500 net loss on a
+   * ride whose commission line reads positive. Counted only once a ride has
+   * settled, since that is when the discount is actually funded. */
+  promotionsFunded: number;
+  /** `platformCommissionRevenue − promotionsFunded` — what DrippleX actually
+   * kept. Reported alongside the two inputs rather than instead of them:
+   * netting silently would make an expensive promotion look like a weak take
+   * rate, and the two are different decisions by different people. */
+  netPlatformRevenue: number;
   driverEarnings: number;
   tipsCollected: number;
   /** The same money split into buckets across the range, oldest first — what
@@ -603,6 +619,10 @@ export interface RevenueBucketDto {
   bucketStart: string;
   grossFare: number;
   platformCommission: number;
+  /** Coupons funded by the platform in this bucket. Subtract from
+   * `platformCommission` to plot what DrippleX kept rather than what it
+   * charged. */
+  promotionsFunded: number;
   ridesCompleted: number;
 }
 
