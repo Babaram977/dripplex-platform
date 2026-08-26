@@ -235,6 +235,11 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
       'Read and send messages on a delivery or ride the caller is a party to (DPX-CHAT-001)',
   },
   {
+    code: 'calls:use',
+    description:
+      'Place a voice call to the other party of a delivery or ride the caller is a party to (DPX-MOBILE-002)',
+  },
+  {
     code: 'rider:wallet:withdraw',
     description: 'Request a payout of own rider earnings (DPX-PAYOUT-002)',
   },

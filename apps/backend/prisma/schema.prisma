@@ -565,6 +565,8 @@ model User {
   operationsCaseEvents        OperationsCaseEvent[]        @relation("OperationsCaseEventActor")
   sentMessages                Message[]                    @relation("MessageSender")
   receivedMessages            Message[]                    @relation("MessageRecipient")
+  placedCalls                 Call[]                       @relation("CallCaller")
+  receivedCalls               Call[]                       @relation("CallCallee")
   /// DPX-UTILITIES-001
   utilityPurchases            UtilityPurchase[]            @relation("UtilityPurchaseCustomer")
   rideOffers                  RideOffer[]
@@ -1808,33 +1810,33 @@ model CommercialCreditSetting {
 }
 
 model DeliveryJob {
-  id                       String             @id @default(uuid()) @db.Uuid
-  orderId                  String             @unique @map("order_id") @db.Uuid
-  riderId                  String?            @map("rider_id") @db.Uuid
+  id      String  @id @default(uuid()) @db.Uuid
+  orderId String  @unique @map("order_id") @db.Uuid
+  riderId String? @map("rider_id") @db.Uuid
 
   /// Null until assigned. RIDER for a Marketplace courier, DRIVER for a
   /// ride-hailing driver who opted in (founder decision, 2026-08-25).
   courierType              DeliveryCourierType? @map("courier_type")
-  merchantId               String             @map("merchant_id") @db.Uuid
-  customerId               String             @map("customer_id") @db.Uuid
-  assignmentMethod         AssignmentMethod   @default(AUTO) @map("assignment_method")
-  status                   DeliveryStatus     @default(PENDING)
-  pickupLatitude           Decimal            @map("pickup_latitude") @db.Decimal(10, 7)
-  pickupLongitude          Decimal            @map("pickup_longitude") @db.Decimal(10, 7)
-  dropoffLatitude          Decimal            @map("dropoff_latitude") @db.Decimal(10, 7)
-  dropoffLongitude         Decimal            @map("dropoff_longitude") @db.Decimal(10, 7)
-  estimatedDistanceMeters  Int?               @map("estimated_distance_meters")
-  estimatedDurationSeconds Int?               @map("estimated_duration_seconds")
-  deliveryFee              Decimal            @default(0) @map("delivery_fee") @db.Decimal(12, 2)
-  assignedAt               DateTime?          @map("assigned_at")
-  acceptedAt               DateTime?          @map("accepted_at")
-  pickedUpAt               DateTime?          @map("picked_up_at")
-  arrivedAt                DateTime?          @map("arrived_at")
-  deliveredAt              DateTime?          @map("delivered_at")
-  failedAt                 DateTime?          @map("failed_at")
-  cancelledAt              DateTime?          @map("cancelled_at")
-  returnedAt               DateTime?          @map("returned_at")
-  cancellationReason       String?            @map("cancellation_reason") @db.VarChar(500)
+  merchantId               String               @map("merchant_id") @db.Uuid
+  customerId               String               @map("customer_id") @db.Uuid
+  assignmentMethod         AssignmentMethod     @default(AUTO) @map("assignment_method")
+  status                   DeliveryStatus       @default(PENDING)
+  pickupLatitude           Decimal              @map("pickup_latitude") @db.Decimal(10, 7)
+  pickupLongitude          Decimal              @map("pickup_longitude") @db.Decimal(10, 7)
+  dropoffLatitude          Decimal              @map("dropoff_latitude") @db.Decimal(10, 7)
+  dropoffLongitude         Decimal              @map("dropoff_longitude") @db.Decimal(10, 7)
+  estimatedDistanceMeters  Int?                 @map("estimated_distance_meters")
+  estimatedDurationSeconds Int?                 @map("estimated_duration_seconds")
+  deliveryFee              Decimal              @default(0) @map("delivery_fee") @db.Decimal(12, 2)
+  assignedAt               DateTime?            @map("assigned_at")
+  acceptedAt               DateTime?            @map("accepted_at")
+  pickedUpAt               DateTime?            @map("picked_up_at")
+  arrivedAt                DateTime?            @map("arrived_at")
+  deliveredAt              DateTime?            @map("delivered_at")
+  failedAt                 DateTime?            @map("failed_at")
+  cancelledAt              DateTime?            @map("cancelled_at")
+  returnedAt               DateTime?            @map("returned_at")
+  cancellationReason       String?              @map("cancellation_reason") @db.VarChar(500)
   /// DPX-COMMERCIAL-001 Slice 3 — the rider's own confirmation of cash
   /// physically collected from the customer (only ever set for
   /// paymentMethod=CASH orders). Independent of, and not used to compute,
@@ -1843,25 +1845,25 @@ model DeliveryJob {
   /// mismatch between this figure and the order total is a reconciliation
   /// signal for ops, not a live commercial-math input. See
   /// docs/DPX-COMMERCIAL-001-SLICE-3-COD-CORRECTION.md §5.6.
-  cashCollectedAmount      Decimal?           @map("cash_collected_amount") @db.Decimal(12, 2)
-  cashConfirmedAt          DateTime?          @map("cash_confirmed_at")
+  cashCollectedAmount      Decimal?             @map("cash_collected_amount") @db.Decimal(12, 2)
+  cashConfirmedAt          DateTime?            @map("cash_confirmed_at")
   /// DPX-RIDER-006 — what the rider earned from this delivery and what
   /// DrippleX kept, both derived from deliveryFee at settlement time and
   /// frozen here. Founder decision 2026-08-15: the rider earns the delivery
   /// fee minus the platform commission rate (10% by default, Ops-adjustable).
   /// Null until settled. Before this, a completed delivery paid the rider
   /// nothing at all — the fee was collected and attributed to no one.
-  riderEarning             Decimal?           @map("rider_earning") @db.Decimal(12, 2)
-  platformCommission       Decimal?           @map("platform_commission") @db.Decimal(12, 2)
+  riderEarning             Decimal?             @map("rider_earning") @db.Decimal(12, 2)
+  platformCommission       Decimal?             @map("platform_commission") @db.Decimal(12, 2)
   /// Set once, by the settlement path. Its presence is the idempotency guard:
   /// a re-fired completion event must never pay a rider twice.
-  settledAt                DateTime?          @map("settled_at")
-  createdAt                DateTime           @default(now()) @map("created_at")
-  updatedAt                DateTime           @updatedAt @map("updated_at")
-  order                    Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  rider                    User?              @relation("DeliveryRider", fields: [riderId], references: [id], onDelete: SetNull)
-  merchant                 User               @relation("DeliveryMerchant", fields: [merchantId], references: [id], onDelete: Cascade)
-  customer                 User               @relation("DeliveryCustomer", fields: [customerId], references: [id], onDelete: Cascade)
+  settledAt                DateTime?            @map("settled_at")
+  createdAt                DateTime             @default(now()) @map("created_at")
+  updatedAt                DateTime             @updatedAt @map("updated_at")
+  order                    Order                @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  rider                    User?                @relation("DeliveryRider", fields: [riderId], references: [id], onDelete: SetNull)
+  merchant                 User                 @relation("DeliveryMerchant", fields: [merchantId], references: [id], onDelete: Cascade)
+  customer                 User                 @relation("DeliveryCustomer", fields: [customerId], references: [id], onDelete: Cascade)
   trackingPoints           DeliveryTracking[]
   proofs                   DeliveryProof[]
 
@@ -2187,9 +2189,9 @@ model RideTracking {
 }
 
 model DriverAvailability {
-  driverId       String   @id @map("driver_id") @db.Uuid
-  online         Boolean  @default(false)
-  acceptingRides Boolean  @default(false) @map("accepting_rides")
+  driverId       String  @id @map("driver_id") @db.Uuid
+  online         Boolean @default(false)
+  acceptingRides Boolean @default(false) @map("accepting_rides")
 
   /// Whether this driver also wants merchant delivery jobs (founder decision,
   /// 2026-08-25). Separate from `acceptingRides` and defaulting to false so
@@ -2199,9 +2201,9 @@ model DriverAvailability {
   /// couriers first and fall back to drivers who set this.
   acceptingDeliveries Boolean @default(false) @map("accepting_deliveries")
 
-  vehicleType    RideType @map("vehicle_type")
-  latitude       Decimal? @db.Decimal(10, 7)
-  longitude      Decimal? @db.Decimal(10, 7)
+  vehicleType RideType @map("vehicle_type")
+  latitude    Decimal? @db.Decimal(10, 7)
+  longitude   Decimal? @db.Decimal(10, 7)
 
   /// When latitude/longitude were last written. Distinct from `updatedAt`,
   /// which Prisma bumps on ANY write to this row — including activeRideCount
@@ -4107,6 +4109,74 @@ model Message {
   @@index([contextType, contextId, createdAt])
   @@index([recipientId, readAt])
   @@map("messages")
+}
+
+/// DPX-MOBILE-002 §4 — the lifecycle of one voice call.
+///
+/// `ANSWERED` is the live state; the rest are outcomes.
+enum CallStatus {
+  RINGING
+  ANSWERED
+  DECLINED
+  /// Rang out without being answered or declined. Distinct from DECLINED
+  /// because "nobody picked up" and "they said no" are different facts about
+  /// a driver's responsiveness.
+  MISSED
+  /// Never connected — a media or network failure, not a human decision.
+  /// Deliberately not folded into MISSED: DPX-MOBILE-002 §7 measures call
+  /// completion rate to decide whether the fix is TURN coverage, codec choice
+  /// or reconnection handling, and that is unanswerable if the platform's own
+  /// failures are recorded as if the callee ignored the phone.
+  FAILED
+  ENDED
+}
+
+/// Why a call stopped. Paired with CallStatus rather than replacing it: the
+/// status is what happened, this is who or what caused it.
+enum CallEndedReason {
+  CALLER_HANGUP
+  CALLEE_HANGUP
+  DECLINED
+  TIMEOUT
+  CONNECTION_FAILED
+}
+
+/// DPX-MOBILE-002 — one voice call between the two parties of a live job.
+///
+/// Anchored to a delivery or a ride exactly as `Message` is, and for the same
+/// reason: there is no person-to-person calling in DrippleX, so a call can only
+/// ever reach the other party of a job you are on. Authorisation is not stored
+/// here — it is re-read from the job on every attempt by JobParticipantsService,
+/// so a reassignment takes effect immediately.
+///
+/// **No audio is recorded** (founder decision, 2026-08-26). This row is
+/// metadata only: who called whom, when, and how it ended.
+model Call {
+  id              String             @id @default(uuid()) @db.Uuid
+  contextType     MessageContextType @map("context_type")
+  /// DeliveryJob.id or Ride.id, per contextType. Not a foreign key because it
+  /// points at one of two tables; the service resolves and authorises it.
+  contextId       String             @map("context_id") @db.Uuid
+  callerId        String             @map("caller_id") @db.Uuid
+  calleeId        String             @map("callee_id") @db.Uuid
+  status          CallStatus         @default(RINGING)
+  /// Null while the call is still ringing or never connected. This is what
+  /// makes "missed" measurable rather than inferred.
+  answeredAt      DateTime?          @map("answered_at")
+  endedAt         DateTime?          @map("ended_at")
+  /// Answered → ended, in seconds. Null when the call was never answered.
+  /// Stored rather than derived so a report cannot disagree with a receipt.
+  durationSeconds Int?               @map("duration_seconds")
+  endedReason     CallEndedReason?   @map("ended_reason")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+  caller          User               @relation("CallCaller", fields: [callerId], references: [id], onDelete: Cascade)
+  callee          User               @relation("CallCallee", fields: [calleeId], references: [id], onDelete: Cascade)
+
+  @@index([contextType, contextId, createdAt])
+  @@index([calleeId, status])
+  @@index([callerId, createdAt])
+  @@map("calls")
 }
 
 // ── Utilities (DPX-UTILITIES-001 / -002) ────────────────────────────────────

@@ -84,7 +84,12 @@ describe('Prisma schema foundation (S1-C1)', () => {
     // decides which wallet the reward is paid into, so a driver issued a code
     // under the customer permission would have their ₦350 filed as a
     // customer's.
-    expect(PERMISSION_SEEDS).toHaveLength(133);
+    // 134 as of 2026-08-26. The one added is `calls:use` (DPX-MOBILE-002),
+    // granted to exactly the roles that already hold `messaging:use`. Like
+    // that one it only says "this kind of account may call at all" — reaching
+    // a specific person is decided by JobParticipantsService from the job's
+    // own two parties, so holding it never lets anyone call a stranger.
+    expect(PERMISSION_SEEDS).toHaveLength(134);
     expect(PERMISSION_SEEDS.map((permission) => permission.code)).toEqual(
       expect.arrayContaining([
         'admin:rides:pricing:manage',

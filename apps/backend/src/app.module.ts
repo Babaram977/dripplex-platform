@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from './auth/guards/permissions.guard';
 import { BookingsModule } from './bookings/bookings.module';
+import { CallsModule } from './calls/calls.module';
 import { CartModule } from './cart/cart.module';
 import { CmsModule } from './cms/cms.module';
 import { CommercialModule } from './commercial/commercial.module';
@@ -67,6 +68,7 @@ import { WishlistModule } from './wishlist/wishlist.module';
     UsersModule,
     MerchantsModule,
     MessagingModule,
+    CallsModule,
     AddressesModule,
     CartModule,
     OrdersModule,

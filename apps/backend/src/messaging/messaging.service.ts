@@ -2,10 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { MessageContextType } from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../audit/audit.service';
-import {
-  ForbiddenDomainException,
-  NotFoundDomainException,
-} from '../common/exceptions/domain.exception';
+import { NotFoundDomainException } from '../common/exceptions/domain.exception';
+import { JobParticipantsService } from '../job-participants/job-participants.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RideGateway } from '../rides/ride.gateway';
 
@@ -22,12 +20,6 @@ export interface MessageDto {
   mine: boolean;
   readAt: string | null;
   createdAt: string;
-}
-
-/** The two people a thread belongs to, resolved from the job itself. */
-interface Participants {
-  customerId: string;
-  courierId: string | null;
 }
 
 /**
@@ -56,6 +48,7 @@ export class MessagingService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly gateway: RideGateway,
+    private readonly jobParticipants: JobParticipantsService,
   ) {}
 
   public async listMessages(
@@ -63,7 +56,7 @@ export class MessagingService {
     contextType: MessageContextType,
     contextId: string,
   ): Promise<MessageDto[]> {
-    await this.requireParticipant(userId, contextType, contextId);
+    await this.jobParticipants.requireParticipant(userId, contextType, contextId);
 
     const messages = await this.prisma.message.findMany({
       where: { contextType, contextId },
@@ -101,7 +94,11 @@ export class MessagingService {
     body: string,
     context: AuditContext = {},
   ): Promise<MessageDto> {
-    const participants = await this.requireParticipant(userId, contextType, contextId);
+    const participants = await this.jobParticipants.requireParticipant(
+      userId,
+      contextType,
+      contextId,
+    );
     const recipientId =
       userId === participants.customerId ? participants.courierId : participants.customerId;
 
@@ -153,41 +150,5 @@ export class MessagingService {
 
   public async countUnread(userId: string): Promise<number> {
     return await this.prisma.message.count({ where: { recipientId: userId, readAt: null } });
-  }
-
-  /**
-   * The whole authorisation model: you may read or write a thread if and only
-   * if you are one of the two parties on the job it is anchored to. Read fresh
-   * every time, so a reassignment takes effect immediately.
-   */
-  private async requireParticipant(
-    userId: string,
-    contextType: MessageContextType,
-    contextId: string,
-  ): Promise<Participants> {
-    const participants = await this.resolveParticipants(contextType, contextId);
-    if (userId !== participants.customerId && userId !== participants.courierId) {
-      throw new ForbiddenDomainException('You are not part of this conversation');
-    }
-    return participants;
-  }
-
-  private async resolveParticipants(
-    contextType: MessageContextType,
-    contextId: string,
-  ): Promise<Participants> {
-    if (contextType === MessageContextType.DELIVERY) {
-      const job = await this.prisma.deliveryJob.findUnique({ where: { id: contextId } });
-      if (!job) {
-        throw new NotFoundDomainException('Delivery not found');
-      }
-      return { customerId: job.customerId, courierId: job.riderId };
-    }
-
-    const ride = await this.prisma.ride.findUnique({ where: { id: contextId } });
-    if (!ride) {
-      throw new NotFoundDomainException('Ride not found');
-    }
-    return { customerId: ride.customerId, courierId: ride.driverId };
   }
 }
