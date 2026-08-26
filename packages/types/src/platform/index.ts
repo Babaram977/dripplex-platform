@@ -1237,3 +1237,5 @@ export {
   PLATFORM_BASE_COUNTRY,
   PLATFORM_BASE_STATE,
 } from './service-area.js';
+
+export { RIDE_ALERT_ANDROID_CHANNEL_ID } from './android-notification-channels.js';

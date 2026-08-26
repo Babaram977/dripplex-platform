@@ -19,10 +19,72 @@
 // Everything here is a no-op in a plain browser. `detectNativePlatform()`
 // returns null off-device, and every entry point below returns early.
 
-import { detectNativePlatform, obtainNativeToken } from '@dripplex/hooks/notifications/native-push';
+import {
+  createNativeNotificationChannel,
+  detectNativePlatform,
+  obtainNativeToken,
+} from '@dripplex/hooks/notifications/native-push';
+import { RIDE_ALERT_ANDROID_CHANNEL_ID } from '@dripplex/types';
 
 import { api } from './api';
 import { auth } from './auth';
+
+import type {
+  CreateChannelOutcome,
+  NativeNotificationChannel,
+} from '@dripplex/hooks/notifications/native-push';
+
+/**
+ * DPX-MOBILE-001 — the channel a ride offer rings on.
+ *
+ * `importance: 5` (IMPORTANCE_HIGH) is what earns the heads-up banner and the
+ * sound; at 3, the default, the notification appears silently in the shade and a
+ * driver with the phone in their pocket learns about the offer after it has
+ * rotated to someone else. Reserved for this one channel — an app that shouts
+ * about everything gets turned off entirely.
+ *
+ * `vibration: true` because the plugin defaults it to **false**, so a channel
+ * created without it is silent in the pocket even at maximum importance. It is
+ * also the half of the alert that survives a phone on silent.
+ *
+ * `visibility: 1` (public) puts the pickup on the lock screen, which is where a
+ * driver actually reads it — they are not unlocking the phone to decide whether a
+ * job is worth taking. Nothing sensitive is in a ride offer's title or body.
+ *
+ * No `sound` filename: the app ships no audio in `res/raw`, and Android gives a
+ * channel the **system default notification sound** when none is named. A
+ * distinctive DrippleX ride tone is a real improvement over that and a real
+ * decision — an asset to choose, licence and ship — so it is recorded as a gap in
+ * `docs/mobile/PUSH-NOTIFICATIONS.md` rather than invented here.
+ */
+export const RIDE_ALERT_CHANNEL: NativeNotificationChannel = {
+  id: RIDE_ALERT_ANDROID_CHANNEL_ID,
+  name: 'Ride requests',
+  description: 'Incoming trip offers. These expire in seconds, so they are loud.',
+  importance: 5,
+  visibility: 1,
+  vibration: true,
+  lights: true,
+};
+
+/**
+ * Create the ride-alert channel if this device does not already have it.
+ *
+ * Called at app start rather than at sign-in, and deliberately not folded into
+ * `registerPushDevice`: that function returns early for an account already
+ * registered on this handset, so a driver **updating** from the build that
+ * shipped registration without a channel would never reach it. Their token is
+ * already on file, the server would start naming a channel their phone has never
+ * created, and FCM would quietly deliver every ride offer to its fallback channel
+ * instead.
+ *
+ * Running it at start also gets the ordering right for free: the channel exists
+ * before any token this session could hand to the server, so there is no window
+ * in which the backend can address a channel that is not there yet.
+ */
+export function ensureRideAlertChannel(): Promise<CreateChannelOutcome> {
+  return createNativeNotificationChannel(RIDE_ALERT_CHANNEL);
+}
 
 /** Survives a reload so logout can deactivate the row it created, and so a
  * second registration for the same session is skipped. */

@@ -1,11 +1,29 @@
+import { RIDE_ALERT_ANDROID_CHANNEL_ID } from '@dripplex/types';
 import { Injectable, Logger } from '@nestjs/common';
-import { NotificationPriority } from '@prisma/client';
+import { NotificationPriority, NotificationType } from '@prisma/client';
 
 import { DeviceRegistryService } from '../device-registry.service';
 
 import type { NotificationProvider, NotificationProviderResult } from './notification-provider';
 import type { Notification } from '@prisma/client';
-import type { Messaging, SendResponse } from 'firebase-admin/messaging';
+import type { AndroidConfig, Messaging, SendResponse } from 'firebase-admin/messaging';
+
+/**
+ * DPX-MOBILE-001 — which Android notification channel each type rings on.
+ *
+ * Keyed on **type**, not on priority, because the two answer different questions.
+ * Priority is how urgently FCM should deliver the message; the channel is which
+ * category the person sees in their notification settings and can tune on its own.
+ * Sharing one channel across everything urgent would mean a driver silencing some
+ * future CRITICAL alert silences ride offers with it — so a new urgent type has to
+ * name its own channel here rather than inherit this one by being CRITICAL.
+ *
+ * A type absent from this map sends no channel at all, which is what every
+ * notification did before this: FCM falls back to its own.
+ */
+const ANDROID_CHANNEL_BY_TYPE: Partial<Record<NotificationType, string>> = {
+  [NotificationType.RIDE_OFFERED]: RIDE_ALERT_ANDROID_CHANNEL_ID,
+};
 
 /**
  * Real FCM adapter, bound in place of NotConfiguredProvider once
@@ -78,8 +96,13 @@ export class FirebasePushProvider implements NotificationProvider {
   /**
    * DPX-MOBILE-001 — Android delivery options, or null to leave FCM's defaults.
    *
-   * Two things a default-priority push cannot do, and a driver waiting for work
-   * needs both:
+   * Two independent decisions, deliberately not folded into one condition:
+   * **how urgently to deliver** (from priority) and **how loudly to present**
+   * (from type, via its channel). Either alone produces the config; a type could
+   * warrant its own channel without being CRITICAL, and CRITICAL alone still
+   * earns the delivery guarantees below.
+   *
+   * ## Delivery — CRITICAL only
    *
    * **Escape Doze.** FCM batches normal-priority messages when the device is
    * idle, which is exactly the state a phone is in when it is face-down on a
@@ -97,15 +120,38 @@ export class FirebasePushProvider implements NotificationProvider {
    * The TTL comes from `payload.expiresAt`, which the dispatcher puts on the
    * event, rather than from a constant here — the ride module owns how long an
    * offer lives, and a second copy of that number would drift from it.
+   *
+   * ## Presentation — the channel, and the devices that have none
+   *
+   * High priority gets a message delivered promptly; it does **not** make it
+   * audible. On Android 8+ the sound, the vibration and whether it interrupts at
+   * all are properties of the *channel*, so naming one is what turns a prompt
+   * delivery into an alert a driver notices. The app creates it at start-up
+   * (`ensureRideAlertChannel`) and both sides read the id from `@dripplex/types`,
+   * because a channel id the app has not created is not an error — FCM quietly
+   * falls back to its own channel, and the alert is silent again.
+   *
+   * `defaultSound` and `defaultVibrateTimings` are for the devices the channel
+   * cannot reach. This app's `minSdk` is 23, and Android 7 and below have no
+   * channels at all: there, these two fields are the only thing that makes a
+   * notification ring and buzz. On Android 8+ the channel wins and both are
+   * ignored, so they cost nothing and cover the older handsets that are common
+   * in the launch market.
    */
-  private androidConfig(notification: Notification): { priority: 'high'; ttl?: number } | null {
-    if (notification.priority !== NotificationPriority.CRITICAL) {
+  private androidConfig(notification: Notification): AndroidConfig | null {
+    const urgent = notification.priority === NotificationPriority.CRITICAL;
+    const channelId = ANDROID_CHANNEL_BY_TYPE[notification.type];
+    if (!urgent && channelId === undefined) {
       return null;
     }
-    const remainingMs = this.remainingLifetimeMs(notification.payload);
+
+    const remainingMs = urgent ? this.remainingLifetimeMs(notification.payload) : null;
     return {
-      priority: 'high',
+      ...(urgent ? { priority: 'high' as const } : {}),
       ...(remainingMs !== null ? { ttl: remainingMs } : {}),
+      ...(channelId !== undefined
+        ? { notification: { channelId, defaultSound: true, defaultVibrateTimings: true } }
+        : {}),
     };
   }
 

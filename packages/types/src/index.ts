@@ -576,6 +576,7 @@ export {
   PLATFORM_BASE_COUNTRY,
   PLATFORM_BASE_STATE,
 } from './platform/index.js';
+export { RIDE_ALERT_ANDROID_CHANNEL_ID } from './platform/index.js';
 
 export type {
   CommercialAuditAction,

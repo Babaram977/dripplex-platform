@@ -79,6 +79,13 @@ if (existsSync(manifestPath)) {
     fail(`Android ${missingPerms.join(', ')} missing — geolocation will fail on device`);
   else ok('Android location permissions');
 
+  // DPX-MOBILE-001 — the ride-alert channel enables vibration, but the system
+  // vibrates on the app's behalf and checks this permission first. Missing, the
+  // channel claims to vibrate and silently does not.
+  if (!declares('VIBRATE'))
+    fail('Android VIBRATE missing — the ride-alert channel will not vibrate on device');
+  else ok('Android VIBRATE permission');
+
   // Declaring background location triggers a Play policy review we would fail,
   // for a capability the app does not have: the heartbeat runs on
   // navigator.geolocation in a WebView, which only executes in the foreground.

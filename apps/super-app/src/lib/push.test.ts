@@ -4,9 +4,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // bind to these rather than the real Capacitor / API / auth modules.
 const detectNativePlatform = vi.fn();
 const obtainNativeToken = vi.fn();
+const createNativeNotificationChannel = vi.fn();
 vi.mock('@dripplex/hooks/notifications/native-push', () => ({
   detectNativePlatform: () => detectNativePlatform(),
   obtainNativeToken: () => obtainNativeToken(),
+  createNativeNotificationChannel: (channel: unknown) => createNativeNotificationChannel(channel),
 }));
 
 const registerDevice = vi.fn();
@@ -30,10 +32,14 @@ vi.mock('./auth', () => ({
   },
 }));
 
+import { RIDE_ALERT_ANDROID_CHANNEL_ID } from '@dripplex/types';
+
 import {
   __resetPushRegistrationForTests,
   deregisterPushDevice,
+  ensureRideAlertChannel,
   registerPushDevice,
+  RIDE_ALERT_CHANNEL,
   signOutRequest,
 } from './push';
 
@@ -150,5 +156,57 @@ describe('push registration (DPX-MOBILE-001)', () => {
 
     await expect(signOutRequest()).resolves.toBeUndefined();
     expect(logout).toHaveBeenCalled();
+  });
+});
+
+describe('ride alert channel (DPX-MOBILE-001)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    createNativeNotificationChannel.mockResolvedValue('created');
+  });
+
+  it('creates the channel the backend addresses', async () => {
+    await ensureRideAlertChannel();
+
+    // The id is shared through @dripplex/types precisely so this cannot drift:
+    // FCM does not error on a channel the app never created, it just delivers
+    // quietly on its own fallback.
+    expect(createNativeNotificationChannel).toHaveBeenCalledWith(
+      expect.objectContaining({ id: RIDE_ALERT_ANDROID_CHANNEL_ID }),
+    );
+  });
+
+  it('asks for maximum importance, so the alert interrupts', async () => {
+    // At the default importance of 3 the notification appears silently in the
+    // shade, which for an offer that expires in seconds is the same as not
+    // sending it.
+    expect(RIDE_ALERT_CHANNEL.importance).toBe(5);
+  });
+
+  it('asks for vibration explicitly, because the plugin defaults it off', async () => {
+    // NotificationChannelManager.createChannel reads
+    // `call.getBoolean(CHANNEL_VIBRATE, false)` — omitting this gives a silent
+    // channel in a pocket even at importance 5.
+    expect(RIDE_ALERT_CHANNEL.vibration).toBe(true);
+  });
+
+  it('names no sound file, which is what selects the system default sound', async () => {
+    // The app ships nothing in res/raw. Android constructs a channel with the
+    // default notification sound already set, and the plugin only overrides it
+    // when a filename is given — so omitting this is the sound, not the absence
+    // of one. A distinctive DrippleX tone is a real asset decision, recorded in
+    // docs/mobile/PUSH-NOTIFICATIONS.md rather than invented here.
+    expect(RIDE_ALERT_CHANNEL.sound).toBeUndefined();
+  });
+
+  it('puts the offer on the lock screen', async () => {
+    // A driver decides whether a job is worth taking without unlocking.
+    expect(RIDE_ALERT_CHANNEL.visibility).toBe(1);
+  });
+
+  it('never throws, whatever the platform says', async () => {
+    createNativeNotificationChannel.mockResolvedValue('failed');
+
+    await expect(ensureRideAlertChannel()).resolves.toBe('failed');
   });
 });

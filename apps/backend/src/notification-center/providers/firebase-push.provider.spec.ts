@@ -1,3 +1,5 @@
+import { RIDE_ALERT_ANDROID_CHANNEL_ID } from '@dripplex/types';
+
 import { FirebasePushProvider } from './firebase-push.provider';
 
 import type { DeviceRegistryService } from '../device-registry.service';
@@ -229,6 +231,74 @@ describe('FirebasePushProvider', () => {
 
       // Google throttles senders that mark everything high-priority.
       expect(sendEach.mock.calls[0][0][0].android).toBeUndefined();
+    });
+  });
+
+  describe('DPX-MOBILE-001 — Android notification channel', () => {
+    function setup(): { provider: FirebasePushProvider; sendEach: jest.Mock } {
+      const sendEach = jest.fn().mockResolvedValue({
+        responses: [{ success: true, messageId: 'm-1' }],
+        successCount: 1,
+        failureCount: 0,
+      });
+      const messaging = { sendEach } as unknown as Messaging;
+      const deviceRegistry = {
+        list: jest.fn().mockResolvedValue([makeDevice()]),
+        deactivate: jest.fn(),
+      } as unknown as DeviceRegistryService;
+      return { provider: new FirebasePushProvider(messaging, deviceRegistry), sendEach };
+    }
+
+    it('rings a ride offer on the ride-alert channel the app creates', async () => {
+      const { provider, sendEach } = setup();
+
+      await provider.send(makeNotification({ priority: 'CRITICAL', type: 'RIDE_OFFERED' }));
+
+      // Both sides read this id from @dripplex/types. A channel the app has not
+      // created is not an error — FCM silently uses its own fallback, and the
+      // alert is quiet again, which is the whole failure being fixed here.
+      expect(sendEach.mock.calls[0][0][0].android.notification.channelId).toBe(
+        RIDE_ALERT_ANDROID_CHANNEL_ID,
+      );
+    });
+
+    it('asks for the default sound and vibration, for handsets too old to have channels', async () => {
+      const { provider, sendEach } = setup();
+
+      await provider.send(makeNotification({ priority: 'CRITICAL', type: 'RIDE_OFFERED' }));
+
+      // minSdk is 23. Android 7 and below have no notification channels at all,
+      // so these two fields are the only thing that makes the alert audible
+      // there. On Android 8+ the channel wins and both are ignored.
+      expect(sendEach.mock.calls[0][0][0].android.notification).toEqual({
+        channelId: RIDE_ALERT_ANDROID_CHANNEL_ID,
+        defaultSound: true,
+        defaultVibrateTimings: true,
+      });
+    });
+
+    it('does not put other ride notifications on the ride-alert channel', async () => {
+      const { provider, sendEach } = setup();
+
+      // A passenger's "driver assigned" is a ride notification too, but it is not
+      // an offer expiring in seconds. Borrowing this channel would mean a driver
+      // muting one mutes the other.
+      await provider.send(makeNotification({ type: 'RIDE_DRIVER_ASSIGNED', priority: 'NORMAL' }));
+
+      expect(sendEach.mock.calls[0][0][0].android).toBeUndefined();
+    });
+
+    it('names the channel from the type alone, even when the notification is not CRITICAL', async () => {
+      const { provider, sendEach } = setup();
+
+      await provider.send(makeNotification({ type: 'RIDE_OFFERED', priority: 'NORMAL' }));
+
+      // Priority decides delivery, type decides presentation. Keeping them
+      // independent is what stops a future CRITICAL type inheriting this channel.
+      const android = sendEach.mock.calls[0][0][0].android;
+      expect(android.notification.channelId).toBe(RIDE_ALERT_ANDROID_CHANNEL_ID);
+      expect(android.priority).toBeUndefined();
+      expect(android.ttl).toBeUndefined();
     });
   });
 });

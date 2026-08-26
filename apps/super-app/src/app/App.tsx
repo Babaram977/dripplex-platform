@@ -189,7 +189,7 @@ import type {
   UtilityServiceType,
 } from '../lib/api';
 import { auth, endSession } from '../lib/auth';
-import { registerPushDevice, signOutRequest } from '../lib/push';
+import { ensureRideAlertChannel, registerPushDevice, signOutRequest } from '../lib/push';
 import { BookingApplyScreen, BookingStatusScreen, MyBookingsScreen } from './hotelBookingScreens';
 
 import type { BookingDraft } from './hotelBookingScreens';
@@ -617,6 +617,21 @@ function AppShell() {
   useEffect(() => {
     void registerPushDevice();
   }, [screen]);
+
+  // DPX-MOBILE-001 — create the ride-alert notification channel.
+  //
+  // Once per launch, not per screen: creating a channel that already exists is a
+  // no-op, so repeating it would be harmless but pointless. It runs before the
+  // registration effect above can produce a token, which is the ordering the
+  // backend depends on — it names this channel on every ride offer, and FCM
+  // silently falls back to its own quiet channel for one that does not yet exist.
+  //
+  // Not conditional on being signed in. A driver updating from the build that
+  // shipped registration without a channel is already registered, so gating this
+  // on a fresh sign-in would leave exactly the people it is for without it.
+  useEffect(() => {
+    void ensureRideAlertChannel();
+  }, []);
 
   const [rideDetailId, setRideDetailId] = useState<string>('');
   const [fading, setFading] = useState(false);

@@ -57,6 +57,14 @@
         nothing is declared "just in case", because every permission is a Play
         review question and a prompt the user has to say yes to.
 
+        Vibrate: DPX-MOBILE-001. The ride-alert notification channel is created
+        with vibration enabled, but the system performs that vibration on the
+        app's behalf and checks this permission before it does. Without the line
+        below the channel reports itself as vibrating and never does — a silent
+        failure with no log, on the half of the alert that still works when the
+        handset is on silent. Install-time and normal-level: no runtime prompt,
+        no Play policy question.
+
         Location: Capacitor bridges navigator.geolocation to the platform
         provider, which cannot be granted a permission the app never declared.
         Without these two, getCurrentPosition fails on device and takes
@@ -85,6 +93,7 @@
     -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 </manifest>
