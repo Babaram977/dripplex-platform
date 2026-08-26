@@ -1,5 +1,10 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { CommissionOwnerType, OrderPaymentMethod, WalletOwnerType } from '@prisma/client';
+import {
+  CommissionOwnerType,
+  DeliveryCourierType,
+  OrderPaymentMethod,
+  WalletOwnerType,
+} from '@prisma/client';
 
 import { COMMISSION_REFERENCE_TYPES } from '../commercial/commercial.constants';
 import { CommissionAccountService } from '../commercial/commission-account.service';
@@ -119,6 +124,18 @@ export class RiderSettlementService {
       return false;
     }
 
+    // Which account this settles against follows who actually carried it. A
+    // driver's cash commission must land on their DRIVER account — the one
+    // that gates their going online — and their earning in their DRIVER
+    // wallet, the balance their app shows. Settling a driver's delivery
+    // against RIDER accounts would create a second, invisible debt that
+    // blocks nothing and a credit they can never see or withdraw.
+    const carriedByDriver = job.courierType === DeliveryCourierType.DRIVER;
+    const commissionOwnerType = carriedByDriver
+      ? CommissionOwnerType.DRIVER
+      : CommissionOwnerType.RIDER;
+    const walletOwnerType = carriedByDriver ? WalletOwnerType.DRIVER : WalletOwnerType.RIDER;
+
     if (isCash) {
       // The rider is holding the customer's cash. What they owe DrippleX is
       // everything they collected beyond their own earning — the merchant's
@@ -131,7 +148,7 @@ export class RiderSettlementService {
       // an error, so record the split and stop.
       if (owed > 0) {
         await this.commissionAccounts.accrue({
-          ownerType: CommissionOwnerType.RIDER,
+          ownerType: commissionOwnerType,
           ownerId: job.riderId,
           amount: owed,
           referenceType: COMMISSION_REFERENCE_TYPES.DELIVERY_JOB,
@@ -143,7 +160,7 @@ export class RiderSettlementService {
     } else if (riderEarning > 0) {
       // DrippleX holds the money, so the earning is paid straight out.
       await this.walletService.credit({
-        ownerType: WalletOwnerType.RIDER,
+        ownerType: walletOwnerType,
         ownerId: job.riderId,
         amount: riderEarning,
         referenceType: COMMISSION_REFERENCE_TYPES.DELIVERY_JOB,

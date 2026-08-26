@@ -9,6 +9,26 @@ import type {
   RiderAvailability,
 } from '@prisma/client';
 
+/**
+ * Who is carrying this delivery.
+ *
+ * `RIDER` is a Marketplace courier; `DRIVER` is a ride-hailing driver who has
+ * opted in (founder decision, 2026-08-25). The distinction is not cosmetic —
+ * it selects the availability row that holds the active-job counter and the
+ * `CommissionOwnerType` a cash delivery's commission is accrued against, and
+ * getting either wrong misfiles money.
+ */
+export type CourierType = 'RIDER' | 'DRIVER';
+
+/** One dispatchable courier, flattened out of whichever availability table
+ *  they live in so the ranking code never branches on it. */
+export interface DeliveryCandidate {
+  userId: string;
+  latitude: Prisma.Decimal | null;
+  longitude: Prisma.Decimal | null;
+  courierType: CourierType;
+}
+
 export interface CreateDeliveryJobInput {
   orderId: string;
   merchantId: string;
@@ -82,6 +102,7 @@ export interface DeliveryRepository {
     id: string,
     riderId: string,
     assignmentMethod: AssignmentMethod,
+    courierType: CourierType,
   ): Promise<DeliveryJob>;
   clearRider(id: string): Promise<DeliveryJob>;
   /**
@@ -110,16 +131,43 @@ export interface DeliveryRepository {
   findProofs(deliveryJobId: string): Promise<DeliveryProof[]>;
   upsertRiderAvailability(input: UpsertRiderAvailabilityInput): Promise<RiderAvailability>;
   findRiderAvailability(riderId: string): Promise<RiderAvailability | null>;
-  listAvailableRiders(maxActiveJobs: number): Promise<RiderAvailability[]>;
   /**
-   * DPX-RIDER-004 — whether this rider may be given a delivery at all:
-   * APPROVED and every required KYC document VERIFIED. Same rule
-   * `listAvailableRiders` applies, minus the availability half, so a manual
-   * assignment from the Operations Console cannot bypass the approval gate.
+   * Everyone dispatch may offer this delivery to, couriers and opted-in
+   * drivers alike, in one normalized list.
+   *
+   * Returns `DeliveryCandidate` rather than `RiderAvailability` rows because
+   * the two pools live in different tables with different column names —
+   * `acceptingOrders`/`activeJobCount` against `acceptingRides`/
+   * `activeRideCount` — and nothing downstream should have to know which
+   * table a candidate came from. `courierType` is carried through because two
+   * things genuinely do differ later: which availability row holds the active
+   * job counter, and which `CommissionOwnerType` the cash commission lands on.
    */
-  isRiderEligibleForDelivery(riderId: string): Promise<boolean>;
-  incrementRiderActiveJobCount(riderId: string): Promise<RiderAvailability>;
-  decrementRiderActiveJobCount(riderId: string): Promise<RiderAvailability>;
+  listAvailableCouriers(maxActiveJobs: number): Promise<DeliveryCandidate[]>;
+  /**
+   * DPX-RIDER-004 — whether this person may be given a delivery at all:
+   * APPROVED and every required KYC document VERIFIED. Same rule
+   * `listAvailableCouriers` applies, minus the availability half, so a manual
+   * assignment from the Operations Console cannot bypass the approval gate.
+   *
+   * Resolves the courier type itself rather than taking it as an argument:
+   * Ops assigns a person, and asking the caller to already know which pool
+   * they belong to is how a driver gets checked against rider KYC they will
+   * never hold. Null means eligible under neither.
+   */
+  resolveEligibleCourier(userId: string): Promise<CourierType | null>;
+  /**
+   * Move a courier's active-job counter, on whichever availability row is
+   * actually theirs.
+   *
+   * Takes `courierType` rather than inferring it, because the old pair
+   * upserted `rider_availability` keyed by user id unconditionally: pointing
+   * a driver at a delivery would have silently created a phantom courier row
+   * for them — online:false, but present — quietly polluting the very pool
+   * dispatch reads from.
+   */
+  incrementActiveJobCount(userId: string, courierType: CourierType): Promise<void>;
+  decrementActiveJobCount(userId: string, courierType: CourierType): Promise<void>;
 }
 
 export const DELIVERY_REPOSITORY = Symbol('DELIVERY_REPOSITORY');

@@ -109,7 +109,7 @@ describe('PrismaDeliveryRepository.listAvailableRiders eligibility', () => {
   };
 
   const eligibleIds = async (): Promise<string[]> =>
-    (await repository.listAvailableRiders(MAX_RIDER_ACTIVE_JOBS)).map((row) => row.riderId);
+    (await repository.listAvailableCouriers(MAX_RIDER_ACTIVE_JOBS)).map((row) => row.userId);
 
   const bothDocuments = [KycDocumentType.NATIONAL_ID, KycDocumentType.GUARANTOR_ID];
 

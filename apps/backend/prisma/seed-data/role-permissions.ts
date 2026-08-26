@@ -76,6 +76,14 @@ export const ROLE_PERMISSION_GRANTS: Record<string, string[]> = {
     'driver:vehicle:manage',
     'driver:inspection:manage',
     'driver:ride:manage',
+    // A driver who opts in to merchant deliveries uses the same /rider/jobs
+    // endpoints a courier does — the job, its lifecycle and its proof are
+    // identical work, and duplicating thirteen routes under /driver would
+    // mean two implementations of one money path. The permission keeps its
+    // `rider:` prefix because renaming a seeded string is a migration across
+    // three seed sources for no behavioural gain; it reads as the delivery
+    // permission, not as a claim about who holds it.
+    'rider:delivery:manage',
     'driver:support-ticket:manage',
     'driver:incident-report:manage',
     'driver:sos-alert:manage',

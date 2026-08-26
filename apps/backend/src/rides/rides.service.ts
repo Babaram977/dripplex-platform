@@ -736,6 +736,13 @@ export class RidesService {
         driverId,
         online: dto.online,
         acceptingRides: dto.acceptingRides,
+        // Spread, not defaulted: an absent field must leave the stored
+        // preference alone. Every client that predates delivery opt-in sends
+        // this DTO without it, and reading absence as false would opt a
+        // driver back out every time they went online.
+        ...(dto.acceptingDeliveries !== undefined
+          ? { acceptingDeliveries: dto.acceptingDeliveries }
+          : {}),
         vehicleType: dto.vehicleType,
         ...(dto.latitude !== undefined ? { latitude: dto.latitude } : {}),
         ...(dto.longitude !== undefined ? { longitude: dto.longitude } : {}),
@@ -744,6 +751,9 @@ export class RidesService {
       update: {
         online: dto.online,
         acceptingRides: dto.acceptingRides,
+        ...(dto.acceptingDeliveries !== undefined
+          ? { acceptingDeliveries: dto.acceptingDeliveries }
+          : {}),
         vehicleType: dto.vehicleType,
         ...(dto.latitude !== undefined ? { latitude: dto.latitude } : {}),
         ...(dto.longitude !== undefined ? { longitude: dto.longitude } : {}),

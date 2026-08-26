@@ -1,26 +1,24 @@
 import { AssignmentService } from './assignment.service';
 import { MAX_RIDER_ACTIVE_JOBS } from './delivery.constants';
 
-import type { DeliveryRepository } from './repositories/delivery.repository';
-import type { RiderAvailability } from '@prisma/client';
-
-const now = new Date('2026-07-21T12:00:00.000Z');
+import type {
+  CourierType,
+  DeliveryCandidate,
+  DeliveryRepository,
+} from './repositories/delivery.repository';
 
 function makeAvailability(
-  riderId: string,
+  userId: string,
   latitude: number | null,
   longitude: number | null,
-  activeJobCount = 0,
-): RiderAvailability {
+  courierType: CourierType = 'RIDER',
+): DeliveryCandidate {
   return {
-    riderId,
-    online: true,
-    acceptingOrders: true,
+    userId,
     latitude,
     longitude,
-    activeJobCount,
-    updatedAt: now,
-  } as RiderAvailability;
+    courierType,
+  } as unknown as DeliveryCandidate;
 }
 
 describe('AssignmentService', () => {
@@ -45,60 +43,77 @@ describe('AssignmentService', () => {
     findProofs: jest.fn(),
     upsertRiderAvailability: jest.fn(),
     findRiderAvailability: jest.fn(),
-    listAvailableRiders: jest.fn(),
-    isRiderEligibleForDelivery: jest.fn(),
-    incrementRiderActiveJobCount: jest.fn(),
-    decrementRiderActiveJobCount: jest.fn(),
+    listAvailableCouriers: jest.fn(),
+    resolveEligibleCourier: jest.fn(),
+    incrementActiveJobCount: jest.fn(),
+    decrementActiveJobCount: jest.fn(),
   };
 
   const service = new AssignmentService(deliveryRepository);
 
   beforeEach(() => {
     jest.clearAllMocks();
-    deliveryRepository.listAvailableRiders.mockResolvedValue([]);
+    deliveryRepository.listAvailableCouriers.mockResolvedValue([]);
   });
 
-  it('returns null when no riders are available', async () => {
-    await expect(service.findNearestRider(6.5244, 3.3792)).resolves.toBeNull();
-    expect(deliveryRepository.listAvailableRiders).toHaveBeenCalledWith(MAX_RIDER_ACTIVE_JOBS);
+  it('returns null when nobody is available', async () => {
+    await expect(service.findNearestCourier(6.5244, 3.3792)).resolves.toBeNull();
+    expect(deliveryRepository.listAvailableCouriers).toHaveBeenCalledWith(MAX_RIDER_ACTIVE_JOBS);
   });
 
   it('picks the nearest available rider by haversine distance', async () => {
     const near = makeAvailability('near-rider', 6.525, 3.38);
     const far = makeAvailability('far-rider', 6.65, 3.5);
-    deliveryRepository.listAvailableRiders.mockResolvedValue([far, near]);
+    deliveryRepository.listAvailableCouriers.mockResolvedValue([far, near]);
 
-    await expect(service.findNearestRider(6.5244, 3.3792)).resolves.toEqual(near);
+    await expect(service.findNearestCourier(6.5244, 3.3792)).resolves.toEqual(near);
   });
 
   it('ignores riders without coordinates', async () => {
     const withCoordinates = makeAvailability('with-coordinates', 6.525, 3.38);
-    deliveryRepository.listAvailableRiders.mockResolvedValue([
+    deliveryRepository.listAvailableCouriers.mockResolvedValue([
       makeAvailability('no-latitude', null, 3.38),
       makeAvailability('no-longitude', 6.525, null),
       withCoordinates,
     ]);
 
-    await expect(service.findNearestRider(6.5244, 3.3792)).resolves.toEqual(withCoordinates);
+    await expect(service.findNearestCourier(6.5244, 3.3792)).resolves.toEqual(withCoordinates);
   });
 
   it('returns null when the only online rider has no coordinates', async () => {
     // The live failure: the rider app went online without sending a position,
     // so the one approved rider was online and accepting but invisible to
     // dispatch — the job was created and never assigned to anyone.
-    deliveryRepository.listAvailableRiders.mockResolvedValue([
+    deliveryRepository.listAvailableCouriers.mockResolvedValue([
       makeAvailability('online-but-unlocated', null, null),
     ]);
 
-    await expect(service.findNearestRider(6.5244, 3.3792)).resolves.toBeNull();
+    await expect(service.findNearestCourier(6.5244, 3.3792)).resolves.toBeNull();
   });
 
-  it('excludes riders that already rejected a job', async () => {
+  it('offers a delivery to the nearest opted-in DRIVER when they beat every courier', async () => {
+    // The founder's change: a driver who turned deliveries on competes on
+    // distance like anyone else. Ranking couriers first regardless would mean
+    // a driver who opted in almost never sees a job and concludes it is
+    // broken.
+    const farCourier = makeAvailability('far-courier', 6.65, 3.5, 'RIDER');
+    const nearDriver = makeAvailability('near-driver', 6.525, 3.38, 'DRIVER');
+    deliveryRepository.listAvailableCouriers.mockResolvedValue([farCourier, nearDriver]);
+
+    const chosen = await service.findNearestCourier(6.5244, 3.3792);
+
+    expect(chosen).toEqual(nearDriver);
+    // The pool it came from travels with it — settlement and the active-job
+    // counter both depend on it downstream.
+    expect(chosen?.courierType).toBe('DRIVER');
+  });
+
+  it('excludes couriers that already rejected a job', async () => {
     const excluded = makeAvailability('excluded-rider', 6.5245, 3.3793);
     const nextBest = makeAvailability('next-best-rider', 6.53, 3.39);
-    deliveryRepository.listAvailableRiders.mockResolvedValue([excluded, nextBest]);
+    deliveryRepository.listAvailableCouriers.mockResolvedValue([excluded, nextBest]);
 
-    await expect(service.findNearestRider(6.5244, 3.3792, ['excluded-rider'])).resolves.toEqual(
+    await expect(service.findNearestCourier(6.5244, 3.3792, ['excluded-rider'])).resolves.toEqual(
       nextBest,
     );
   });

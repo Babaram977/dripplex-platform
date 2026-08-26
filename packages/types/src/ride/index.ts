@@ -367,6 +367,9 @@ export interface DriverAvailabilityDto {
   driverId: string;
   online: boolean;
   acceptingRides: boolean;
+  /// Whether this driver also takes merchant delivery jobs. Independent of
+  /// `acceptingRides` — a driver may want parcels without passengers.
+  acceptingDeliveries: boolean;
   vehicleType: RideType;
   latitude: number | null;
   longitude: number | null;
@@ -376,6 +379,8 @@ export interface DriverAvailabilityDto {
 
 export interface UpdateDriverAvailabilityRequest {
   online: boolean;
+  /// Omit to leave the stored preference untouched; sending `false` opts out.
+  acceptingDeliveries?: boolean;
   acceptingRides: boolean;
   vehicleType: RideType;
   latitude?: number;
