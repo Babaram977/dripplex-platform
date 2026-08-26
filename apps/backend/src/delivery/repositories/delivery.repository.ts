@@ -69,6 +69,17 @@ export interface DeliveryRepository {
   findJobByOrderForCustomer(orderId: string, customerId: string): Promise<DeliveryJob | null>;
   listJobs(filter: ListDeliveryJobsFilter): Promise<{ items: DeliveryJob[]; total: number }>;
   listRiderJobs(riderId: string): Promise<DeliveryJob[]>;
+  /**
+   * A rider's finished deliveries, newest first — what `listRiderJobs`
+   * deliberately excludes. Riders had no history endpoint at all, so a
+   * courier could see today's queue and no record of anything they had ever
+   * completed, next to a wallet balance nothing explained.
+   */
+  listRiderJobHistory(
+    riderId: string,
+    skip: number,
+    take: number,
+  ): Promise<{ items: DeliveryJob[]; total: number }>;
   updateJobStatus(
     id: string,
     status: DeliveryStatus,

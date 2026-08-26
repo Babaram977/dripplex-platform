@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Req } from '@nestjs/common';
 
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
@@ -11,6 +11,7 @@ import {
   FailDeliveryDto,
   LocationUpdateDto,
   RiderAvailabilityDto,
+  RiderJobHistoryQueryDto,
 } from './dto/delivery.dto';
 import { TrackingService } from './tracking.service';
 
@@ -22,6 +23,7 @@ import type {
 } from './delivery.mapper';
 import type { AuthenticatedUser } from '../auth/auth.types';
 import type { ApiSuccessResponse } from '../common/dto/api-response.dto';
+import type { PaginatedResult } from '@dripplex/types';
 import type { Request } from 'express';
 
 @Controller('rider')
@@ -37,6 +39,25 @@ export class RiderDeliveryController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<ApiSuccessResponse<RiderDeliveryJobDto[]>> {
     const data = await this.deliveryService.listRiderJobs(user.id);
+    return { success: true, data };
+  }
+
+  /**
+   * Declared BEFORE `jobs/:id` on purpose — Nest matches routes in
+   * declaration order, and below it every request for the history would be
+   * read as a job whose id is the word "history" and rejected by ParseUUIDPipe.
+   */
+  @Get('jobs/history')
+  @RequirePermissions(DELIVERY_PERMISSIONS.RIDER_MANAGE)
+  public async listJobHistory(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: RiderJobHistoryQueryDto,
+  ): Promise<ApiSuccessResponse<PaginatedResult<RiderDeliveryJobDto>>> {
+    const data = await this.deliveryService.listRiderJobHistory(
+      user.id,
+      query.page,
+      query.pageSize,
+    );
     return { success: true, data };
   }
 

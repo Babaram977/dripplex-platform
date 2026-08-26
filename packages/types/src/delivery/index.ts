@@ -68,6 +68,13 @@ export interface CustomerDeliveryDto extends DeliveryJobDto {
  * assigned to them. (Founder decision, 2026-08-16.) */
 export interface RiderDeliveryJobDto extends DeliveryJobDto {
   customerName: string | null;
+  /// What the rider earned on this delivery. Null until settlement runs —
+  /// never 0, which would read as "you earned nothing for this".
+  ///
+  /// Deliberately on the RIDER view and not on `DeliveryJobDto`, which the
+  /// CUSTOMER also receives: the courier's pay and, by subtraction from the
+  /// delivery fee, the platform's margin, are not the customer's business.
+  riderEarning: number | null;
 }
 
 export interface DeliveryTrackingDto {

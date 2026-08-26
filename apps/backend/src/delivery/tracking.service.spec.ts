@@ -70,6 +70,7 @@ describe('TrackingService', () => {
     findJobByOrderForCustomer: jest.fn(),
     listJobs: jest.fn(),
     listRiderJobs: jest.fn(),
+    listRiderJobHistory: jest.fn(),
     updateJobStatus: jest.fn(),
     confirmCash: jest.fn(),
     assignRider: jest.fn(),

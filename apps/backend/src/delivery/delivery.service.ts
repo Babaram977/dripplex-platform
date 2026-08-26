@@ -580,7 +580,31 @@ export class DeliveryService {
     return jobs.map((job) => ({
       ...toDeliveryJobDto(job),
       customerName: names.get(job.customerId) ?? null,
+      riderEarning: job.riderEarning === null ? null : Number(job.riderEarning),
     }));
+  }
+
+  /** A rider's finished deliveries, newest first. Paginated because a working
+   *  courier accumulates these indefinitely. */
+  public async listRiderJobHistory(
+    riderId: string,
+    page: number,
+    pageSize: number,
+  ): Promise<PaginatedResult<RiderDeliveryJobDto>> {
+    const { items, total } = await this.deliveryRepository.listRiderJobHistory(
+      riderId,
+      (page - 1) * pageSize,
+      pageSize,
+    );
+    const names = await this.resolveDisplayNames(items.map((job) => job.customerId));
+    return {
+      items: items.map((job) => ({
+        ...toDeliveryJobDto(job),
+        customerName: names.get(job.customerId) ?? null,
+        riderEarning: job.riderEarning === null ? null : Number(job.riderEarning),
+      })),
+      meta: { total, page, limit: pageSize, totalPages: Math.ceil(total / pageSize) },
+    };
   }
 
   public async getRiderJob(riderId: string, jobId: string): Promise<RiderDeliveryJobDto> {
@@ -589,6 +613,7 @@ export class DeliveryService {
     return {
       ...toDeliveryJobDto(job),
       customerName: names.get(job.customerId) ?? null,
+      riderEarning: job.riderEarning === null ? null : Number(job.riderEarning),
     };
   }
 

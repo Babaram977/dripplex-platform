@@ -33,6 +33,21 @@ const ACTIVE_RIDER_JOB_STATUSES = [
   DeliveryStatus.ARRIVED,
 ] as const;
 
+/**
+ * A rider's finished work — everything the active queue deliberately hides.
+ *
+ * FAILED and RETURNED are included alongside DELIVERED because a courier's
+ * history is not only their successes: a job that came back is one they were
+ * paid or not paid for, and hiding it makes their wallet unexplainable.
+ * CANCELLED is not, since a job cancelled before they touched it is not their
+ * record.
+ */
+const COMPLETED_RIDER_JOB_STATUSES = [
+  DeliveryStatus.DELIVERED,
+  DeliveryStatus.FAILED,
+  DeliveryStatus.RETURNED,
+] as const;
+
 @Injectable()
 export class PrismaDeliveryRepository implements DeliveryRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -109,6 +124,29 @@ export class PrismaDeliveryRepository implements DeliveryRepository {
       },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  public async listRiderJobHistory(
+    riderId: string,
+    skip: number,
+    take: number,
+  ): Promise<{ items: DeliveryJob[]; total: number }> {
+    const where = {
+      riderId,
+      status: { in: [...COMPLETED_RIDER_JOB_STATUSES] },
+    };
+    const [items, total] = await Promise.all([
+      this.prisma.deliveryJob.findMany({
+        where,
+        // Finished-at, not created-at: a job assigned days ago and delivered
+        // this morning belongs at the top of the rider's history.
+        orderBy: [{ deliveredAt: 'desc' }, { updatedAt: 'desc' }],
+        skip,
+        take,
+      }),
+      this.prisma.deliveryJob.count({ where }),
+    ]);
+    return { items, total };
   }
 
   public async updateJobStatus(

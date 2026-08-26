@@ -145,6 +145,23 @@ export class RiderAvailabilityDto {
   public longitude?: number;
 }
 
+/** Pagination for a rider's own finished deliveries. Same bounds as the Ops
+ *  register, minus every filter that lets one person read another's work. */
+export class RiderJobHistoryQueryDto {
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => toNumber(value))
+  @IsInt()
+  @Min(1)
+  public page = 1;
+
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => toNumber(value))
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  public pageSize = 20;
+}
+
 export class AdminJobListQueryDto {
   @IsOptional()
   @IsEnum(DeliveryStatusDtoEnum)
