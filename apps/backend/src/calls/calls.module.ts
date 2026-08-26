@@ -1,9 +1,12 @@
 import { Module } from '@nestjs/common';
 
 import { AppConfigService } from '../config/app-config.service';
+import { EventsModule } from '../events/events.module';
 import { JobParticipantsModule } from '../job-participants/job-participants.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { RidesModule } from '../rides/rides.module';
 
+import { CallSweepService } from './call-sweep.service';
 import {
   CALL_TOKEN_MINTER,
   NotConfiguredCallTokenMinter,
@@ -11,6 +14,7 @@ import {
 } from './call-token.provider';
 import { CallsController } from './calls.controller';
 import { CallsService } from './calls.service';
+import { CancelledJobCallSubscriber } from './cancelled-job-call.subscriber';
 import { LiveKitCallTokenMinter } from './livekit-call-token.minter';
 
 /**
@@ -21,12 +25,18 @@ import { LiveKitCallTokenMinter } from './livekit-call-token.minter';
  * module loads, its routes exist and every authorisation path is exercised by
  * tests — a call attempt simply answers "Calling is not available" rather than
  * the process failing to boot or a driver hitting a 500 mid-shift.
+ *
+ * RidesModule supplies RideGateway, whose `user:{id}` rooms carry the ring,
+ * accept and end notifications. No new socket transport: the gateway already
+ * authenticates on connect and joins every user to their own room.
  */
 @Module({
-  imports: [PrismaModule, JobParticipantsModule],
+  imports: [PrismaModule, JobParticipantsModule, RidesModule, EventsModule],
   controllers: [CallsController],
   providers: [
     CallsService,
+    CallSweepService,
+    CancelledJobCallSubscriber,
     {
       provide: CALL_TOKEN_MINTER,
       useFactory: (config: AppConfigService): CallTokenMinter => {
