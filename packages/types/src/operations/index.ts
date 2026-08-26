@@ -566,14 +566,27 @@ export interface OperationsAnalyticsOverviewDto {
    * the range. */
   openCasesCount: number;
   averageTimeToFirstResponseSeconds: number | null;
-  /** Are we making money? Aggregated over rides COMPLETED inside the range —
-   * a ride counts on the day it finished, matching `ridesCompleted` above.
+  /** Are we making money? Rides COMPLETED inside the range, plus marketplace
+   * order settlements created inside it.
    *
-   * `grossFareRevenue` is what passengers were charged (GMV);
-   * `platformCommissionRevenue` is DrippleX's own cut and is the figure the
-   * dashboard leads with. Tips are excluded from both — they belong entirely
-   * to the driver and were never platform revenue. */
+   * `grossFareRevenue` is what passengers were charged and `orderGrossRevenue`
+   * what customers spent with merchants — both GMV, neither DrippleX's.
+   * `platformCommissionRevenue` is the platform's own cut across BOTH and is
+   * the figure the dashboard leads with; `rideCommissionRevenue` and
+   * `orderCommissionRevenue` are its two halves, so a zero can be attributed
+   * to the side that produced it instead of looking like a total outage.
+   *
+   * Tips are excluded from every revenue figure — they belong entirely to the
+   * driver and were never platform money.
+   *
+   * Order commission is read from `OrderSettlement.commissionAmount`, not the
+   * commission ledger: the ledger is a receivable that falls as partners pay,
+   * and it is only written for cash and pay-the-merchant orders, so card and
+   * wallet commission would be missing from it entirely. */
   grossFareRevenue: number;
+  orderGrossRevenue: number;
+  rideCommissionRevenue: number;
+  orderCommissionRevenue: number;
   platformCommissionRevenue: number;
   driverEarnings: number;
   tipsCollected: number;

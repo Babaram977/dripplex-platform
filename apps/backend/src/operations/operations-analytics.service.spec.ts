@@ -2,9 +2,11 @@ import { randomUUID } from 'node:crypto';
 
 import {
   DriverShiftStatus,
+  FulfillmentType,
   OperationsCaseType,
   OperationsLifecycleStatus,
   OperationsPriority,
+  OrderSettlementStatus,
   PrismaClient,
   RideCancelledBy,
   RideOfferStatus,
@@ -49,6 +51,8 @@ describe('OperationsAnalyticsService', () => {
   let customerId: string;
   const driverIds: string[] = [];
   const rideIds: string[] = [];
+  const orderIds: string[] = [];
+  const merchantIds: string[] = [];
   const caseIds: string[] = [];
 
   beforeAll(async () => {
@@ -87,6 +91,17 @@ describe('OperationsAnalyticsService', () => {
       if (rideIds.length > 0) {
         await prisma.ride.deleteMany({ where: { id: { in: rideIds } } }).catch(() => undefined);
       }
+      // Settlements first: OrderSettlement.order is onDelete: Restrict, so an
+      // order cannot be removed while its settlement still points at it.
+      if (orderIds.length > 0) {
+        await prisma.orderSettlement
+          .deleteMany({ where: { orderId: { in: orderIds } } })
+          .catch(() => undefined);
+        await prisma.order.deleteMany({ where: { id: { in: orderIds } } }).catch(() => undefined);
+      }
+      if (merchantIds.length > 0) {
+        await prisma.user.deleteMany({ where: { id: { in: merchantIds } } }).catch(() => undefined);
+      }
       if (driverIds.length > 0) {
         // DriverShift/RideOffer cascade on User delete (both declared
         // `onDelete: Cascade` on the driver relation) — no separate
@@ -109,6 +124,53 @@ describe('OperationsAnalyticsService', () => {
     });
     driverIds.push(user.id);
     return user.id;
+  }
+
+  async function createMerchantUser(): Promise<string> {
+    const user = await prisma.user.create({
+      data: {
+        email: `ops-analytics-merchant-${randomUUID()}@dripplex.test`,
+        passwordHash: 'not-a-real-hash',
+        firstName: 'Analytics',
+        lastName: 'Merchant',
+      },
+    });
+    merchantIds.push(user.id);
+    return user.id;
+  }
+
+  /** An order plus its settlement — the only shape that produces marketplace
+   *  commission. Cohorted on the settlement's createdAt, which is what the
+   *  aggregation reads. */
+  async function createSettledOrder(
+    merchantId: string,
+    at: Date,
+    money: { gross: number; commission: number; reversed?: boolean },
+  ): Promise<void> {
+    const order = await prisma.order.create({
+      data: {
+        customerId,
+        merchantId,
+        orderNumber: `OPS-${randomUUID().slice(0, 20)}`,
+        fulfillmentType: FulfillmentType.DELIVERY,
+        subtotal: money.gross,
+        total: money.gross,
+      },
+    });
+    orderIds.push(order.id);
+    await prisma.orderSettlement.create({
+      data: {
+        orderId: order.id,
+        merchantId,
+        status: OrderSettlementStatus.COMPLETED,
+        grossAmount: money.gross,
+        commissionRate: 0.1,
+        commissionAmount: money.commission,
+        merchantAmount: money.gross - money.commission,
+        createdAt: at,
+        ...(money.reversed === true ? { reversedAt: at } : {}),
+      },
+    });
   }
 
   async function createRide(overrides: {
@@ -496,6 +558,8 @@ describe('OperationsAnalyticsService', () => {
     const result = await service.getOverview(range);
 
     expect(result.grossFareRevenue).toBe(1500);
+    // Rides alone here — the marketplace half is asserted in its own test.
+    expect(result.rideCommissionRevenue).toBe(150);
     expect(result.platformCommissionRevenue).toBe(150);
     expect(result.driverEarnings).toBe(1350);
     // A tip is the driver's money and must never inflate either revenue line.
@@ -507,6 +571,41 @@ describe('OperationsAnalyticsService', () => {
     const seriesTotal = result.revenueSeries.reduce((sum, b) => sum + b.platformCommission, 0);
     expect(seriesTotal).toBeCloseTo(result.platformCommissionRevenue);
     expect(result.revenueSeries.reduce((sum, b) => sum + b.ridesCompleted, 0)).toBe(2);
+  });
+
+  it('counts marketplace commission as revenue, whatever the order was paid with', async () => {
+    if (!databaseAvailable) return;
+
+    // The reason this exists: the only revenue aggregation on the platform
+    // read the Ride table alone, so a marketplace-only day reported ₦0 and
+    // read as "we earned nothing". It is also why OrderSettlement is the
+    // source rather than the commission ledger — the ledger is a receivable
+    // that is never written at all for card and wallet orders.
+    const { range, anchor } = pinnedRange();
+    const merchantId = await createMerchantUser();
+
+    // A card order and a cash order. Only the cash one produces a commission
+    // ledger entry in production; both must count here.
+    await createSettledOrder(merchantId, anchor, { gross: 5000, commission: 500 });
+    await createSettledOrder(merchantId, anchor, { gross: 3000, commission: 300 });
+    // Reversed: the commission was given back and is not revenue.
+    await createSettledOrder(merchantId, anchor, {
+      gross: 9999,
+      commission: 999,
+      reversed: true,
+    });
+
+    const result = await service.getOverview(range);
+
+    expect(result.orderCommissionRevenue).toBe(800);
+    expect(result.orderGrossRevenue).toBe(8000);
+    // No rides in this window, so the headline is the marketplace figure
+    // alone — which is exactly the case that used to read zero.
+    expect(result.rideCommissionRevenue).toBe(0);
+    expect(result.platformCommissionRevenue).toBe(800);
+    // Order commission joins the same series the chart plots.
+    const seriesTotal = result.revenueSeries.reduce((sum, b) => sum + b.platformCommission, 0);
+    expect(seriesTotal).toBeCloseTo(800);
   });
 
   it('reports zero revenue — not null — for a range with no completed rides', async () => {

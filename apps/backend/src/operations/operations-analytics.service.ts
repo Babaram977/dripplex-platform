@@ -3,6 +3,7 @@ import {
   DriverShiftStatus,
   OperationsCaseType as PrismaOperationsCaseType,
   OperationsLifecycleStatus,
+  OrderSettlementStatus,
   RideCancelledBy,
   RideOfferStatus,
   RideStatus,
@@ -159,6 +160,9 @@ export class OperationsAnalyticsService {
       openCasesCount: operationsResponse.openCasesCount,
       averageTimeToFirstResponseSeconds: operationsResponse.averageTimeToFirstResponseSeconds,
       grossFareRevenue: revenue.grossFareRevenue,
+      orderGrossRevenue: revenue.orderGrossRevenue,
+      rideCommissionRevenue: revenue.rideCommissionRevenue,
+      orderCommissionRevenue: revenue.orderCommissionRevenue,
       platformCommissionRevenue: revenue.platformCommissionRevenue,
       driverEarnings: revenue.driverEarnings,
       tipsCollected: revenue.tipsCollected,
@@ -167,7 +171,7 @@ export class OperationsAnalyticsService {
   }
 
   /**
-   * Money over rides COMPLETED inside the range.
+   * Money the platform made inside the range — rides AND marketplace orders.
    *
    * The Ops dashboard's "Revenue Today" tile and its "Revenue Over Time" chart
    * had no backend feed at all: the tile was a hardcoded em-dash reading "No
@@ -180,24 +184,55 @@ export class OperationsAnalyticsService {
    * numbers on the dashboard always describe the same set of rides. Tips are
    * reported separately and excluded from both revenue figures: 100% of a tip
    * goes to the driver and it was never the platform's money.
+   *
+   * Marketplace commission comes from `OrderSettlement.commissionAmount`
+   * rather than from `CommissionLedgerEntry`, and the distinction matters:
+   *
+   *   - The ledger is a RECEIVABLE. It records what a partner owes DrippleX
+   *     and it FALLS when they pay, so a fully-settled merchant reads zero —
+   *     indistinguishable from one who never traded. It can never answer
+   *     "what did we earn".
+   *   - `MerchantSettlementService.accruesCommission()` only writes that
+   *     ledger for CASH and MERCHANT_DIRECT orders. A card or wallet order
+   *     never produces one, because DrippleX already holds the money and
+   *     simply pays the merchant less; the commission is real but exists
+   *     nowhere else.
+   *
+   * `commissionAmount` is written on EVERY settlement regardless of payment
+   * method, which makes it the only field that answers the question for all
+   * order types. REVERSED and FAILED settlements are excluded — a reversed
+   * order's commission was given back.
    */
   public async getRideRevenue(range: AnalyticsRange): Promise<{
     grossFareRevenue: number;
+    orderGrossRevenue: number;
+    rideCommissionRevenue: number;
+    orderCommissionRevenue: number;
     platformCommissionRevenue: number;
     driverEarnings: number;
     tipsCollected: number;
     revenueSeries: RevenueBucketDto[];
   }> {
-    const rides = await this.prisma.ride.findMany({
-      where: { status: RideStatus.COMPLETED, completedAt: { gte: range.from, lte: range.to } },
-      select: {
-        completedAt: true,
-        totalFare: true,
-        platformCommission: true,
-        driverEarning: true,
-        tipAmount: true,
-      },
-    });
+    const [rides, settlements] = await Promise.all([
+      this.prisma.ride.findMany({
+        where: { status: RideStatus.COMPLETED, completedAt: { gte: range.from, lte: range.to } },
+        select: {
+          completedAt: true,
+          totalFare: true,
+          platformCommission: true,
+          driverEarning: true,
+          tipAmount: true,
+        },
+      }),
+      this.prisma.orderSettlement.findMany({
+        where: {
+          status: OrderSettlementStatus.COMPLETED,
+          reversedAt: null,
+          createdAt: { gte: range.from, lte: range.to },
+        },
+        select: { createdAt: true, grossAmount: true, commissionAmount: true },
+      }),
+    ]);
 
     const money = (value: Prisma.Decimal | null): number => (value ? Number(value) : 0);
     const round = (value: number): number => Math.round(value * 100) / 100;
@@ -222,6 +257,8 @@ export class OperationsAnalyticsService {
     let platformCommissionRevenue = 0;
     let driverEarnings = 0;
     let tipsCollected = 0;
+    let orderCommissionRevenue = 0;
+    let orderGrossRevenue = 0;
 
     for (const ride of rides) {
       const gross = money(ride.totalFare);
@@ -244,9 +281,33 @@ export class OperationsAnalyticsService {
       buckets.set(key, bucket);
     }
 
+    for (const settlement of settlements) {
+      const gross = money(settlement.grossAmount);
+      const commission = money(settlement.commissionAmount);
+      orderGrossRevenue += gross;
+      orderCommissionRevenue += commission;
+
+      const key = floorToBucket(settlement.createdAt);
+      const bucket = buckets.get(key) ?? {
+        grossFare: 0,
+        platformCommission: 0,
+        ridesCompleted: 0,
+      };
+      // Marketplace commission joins the same series so the chart plots one
+      // revenue line rather than implying rides are the only thing that earns.
+      // `grossFare` stays rides-only — its name says so, and folding order
+      // value into it would double-count against `orderGrossRevenue`.
+      bucket.platformCommission += commission;
+      buckets.set(key, bucket);
+    }
+
     return {
       grossFareRevenue: round(grossFareRevenue),
-      platformCommissionRevenue: round(platformCommissionRevenue),
+      orderGrossRevenue: round(orderGrossRevenue),
+      rideCommissionRevenue: round(platformCommissionRevenue),
+      orderCommissionRevenue: round(orderCommissionRevenue),
+      // The headline: everything DrippleX earned, whatever produced it.
+      platformCommissionRevenue: round(platformCommissionRevenue + orderCommissionRevenue),
       driverEarnings: round(driverEarnings),
       tipsCollected: round(tipsCollected),
       revenueSeries: [...buckets.entries()]
