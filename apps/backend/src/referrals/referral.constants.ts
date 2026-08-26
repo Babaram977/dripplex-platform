@@ -6,6 +6,11 @@ export const REFERRAL_AUDIT_ACTIONS = {
 
 export const REFERRAL_PERMISSIONS = {
   CUSTOMER_USE: 'customer:referrals:use',
+  /** A driver's own referral code. Separate from the customer permission so a
+   *  driver is never issued a code whose payout would be filed as a
+   *  customer's — `Referral.ownerType` is fixed at creation and decides which
+   *  wallet the ₦350 lands in. */
+  DRIVER_USE: 'driver:referrals:use',
   ADMIN_MANAGE: 'admin:referrals:manage',
 } as const;
 

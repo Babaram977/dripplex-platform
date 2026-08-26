@@ -1,5 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Prisma, ReferralRedemptionStatus, RideStatus, WalletOwnerType } from '@prisma/client';
+import {
+  Prisma,
+  ReferralOwnerType,
+  ReferralRedemptionStatus,
+  RideStatus,
+  WalletOwnerType,
+} from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../audit/audit.service';
 import { ConflictDomainException } from '../common/exceptions/domain.exception';
@@ -37,7 +43,20 @@ export class ReferralsService {
     private readonly walletService: WalletService,
   ) {}
 
-  public async getOrCreateMyCode(userId: string, context?: AuditContext): Promise<ReferralDto> {
+  /**
+   * The caller's referral code, created on first read.
+   *
+   * `ownerType` decides which wallet their reward is eventually paid into and
+   * is fixed at creation. A user who already holds a code keeps the one they
+   * have: `Referral.userId` is unique, so there is one code per person, and
+   * silently re-pointing an existing code's payout because it was fetched
+   * from a different app would move money a referrer already earned.
+   */
+  public async getOrCreateMyCode(
+    userId: string,
+    ownerType: ReferralOwnerType = ReferralOwnerType.CUSTOMER,
+    context?: AuditContext,
+  ): Promise<ReferralDto> {
     const existing = await this.prisma.referral.findUnique({ where: { userId } });
     if (existing) {
       return toReferralDto(existing);
@@ -46,7 +65,7 @@ export class ReferralsService {
     for (let attempt = 0; attempt < REFERRAL_CODE_MAX_GENERATION_ATTEMPTS; attempt += 1) {
       try {
         const created = await this.prisma.referral.create({
-          data: { userId, code: generateReferralCode() },
+          data: { userId, ownerType, code: generateReferralCode() },
         });
         await this.auditService.record(
           REFERRAL_AUDIT_ACTIONS.CODE_GENERATED,
@@ -190,9 +209,17 @@ export class ReferralsService {
     }
 
     const referrerId = redemption.referral.userId;
+    // A driver who markets DrippleX is paid into their DRIVER wallet — the
+    // balance their app shows and the one they can withdraw. Read off the
+    // referral rather than from the referrer's profiles, so a customer who
+    // later starts driving does not have old rewards re-filed.
+    const referrerWallet =
+      redemption.referral.ownerType === ReferralOwnerType.DRIVER
+        ? WalletOwnerType.DRIVER
+        : WalletOwnerType.CUSTOMER;
 
     await this.walletService.credit({
-      ownerType: WalletOwnerType.CUSTOMER,
+      ownerType: referrerWallet,
       ownerId: referrerId,
       amount: REFERRAL_REWARD_AMOUNTS.REFERRER,
       referenceType: REFERRAL_WALLET_REFERENCE_TYPES.REFERRER_REWARD,

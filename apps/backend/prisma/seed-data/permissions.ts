@@ -54,6 +54,7 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
   { code: 'customer:wishlist:manage', description: 'Manage own wishlists' },
   { code: 'customer:promotions:use', description: 'Use platform promotions' },
   { code: 'admin:promotions:manage', description: 'Manage platform promotions' },
+  { code: 'driver:referrals:use', description: "A driver's own referral code" },
   { code: 'customer:referrals:use', description: 'Read own referral code and stats' },
   { code: 'admin:referrals:manage', description: 'View referral redemptions (admin)' },
   {

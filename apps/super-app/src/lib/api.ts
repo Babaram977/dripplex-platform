@@ -3821,6 +3821,19 @@ export const api = {
     account: () => dx<CommissionAccountDto>('GET', '/driver/commercial/account'),
   },
 
+  /**
+   * The driver's standing referral scheme — distinct from `driverCampaign`,
+   * which is a monthly promo with tiers and admin approval.
+   *
+   * Founder decision, 2026-08-26: a customer who registers with a driver's
+   * code earns that driver ₦350 of wallet cash, released on the customer's
+   * first completed ride.
+   */
+  driverReferrals: {
+    me: () => dx<ReferralDto>('GET', '/driver/referrals/me'),
+    stats: () => dx<ReferralStatsDto>('GET', '/driver/referrals/stats'),
+  },
+
   driverCampaign: {
     /** Never 404s when no campaign is running — returns nulls instead. Read
      *  this first; `code` throws in that state. */
