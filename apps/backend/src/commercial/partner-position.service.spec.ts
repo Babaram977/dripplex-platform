@@ -59,6 +59,21 @@ describe('PartnerPositionService', () => {
     createdUserIds.push(merchantId);
   });
 
+  // `commercial_credit_settings` is one row per owner type for the whole
+  // database, and these tests assert against the seeded MERCHANT default of
+  // ₦50,000. Two sibling suites move it — commercial-lifecycle.e2e sets it to
+  // ₦15,000 and commercial-credit-settings.service to ₦25,000 — and neither
+  // puts it back, so whether this file passed depended purely on which ran
+  // first. Deleting it here makes the next read re-seed from
+  // DEFAULT_MERCHANT_CREDIT_LIMIT, which is the baseline these tests mean.
+  // commission-account.service.spec and commercial-reconciliation.e2e already
+  // reset it the same way; this suite was the one that did not.
+  beforeEach(async () => {
+    if (databaseAvailable) {
+      await prisma.commercialCreditSetting.deleteMany({});
+    }
+  });
+
   afterAll(async () => {
     if (databaseAvailable) {
       await prisma.commissionLedgerEntry.deleteMany({

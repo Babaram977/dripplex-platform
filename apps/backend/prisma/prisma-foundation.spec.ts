@@ -78,7 +78,13 @@ describe('Prisma schema foundation (S1-C1)', () => {
     // able to see what a room costs without being able to hold money against
     // it. `merchant:bookings:manage` is a hotel's own rooms, calendar and book,
     // and `admin:bookings:manage` is the read-only Ops list.
-    expect(PERMISSION_SEEDS).toHaveLength(132);
+    // 133 as of 2026-08-26. The one added is `driver:referrals:use`, a
+    // driver's own standing referral code. Deliberately not the customer
+    // permission: `Referral.ownerType` is fixed when a code is created and
+    // decides which wallet the reward is paid into, so a driver issued a code
+    // under the customer permission would have their ₦350 filed as a
+    // customer's.
+    expect(PERMISSION_SEEDS).toHaveLength(133);
     expect(PERMISSION_SEEDS.map((permission) => permission.code)).toEqual(
       expect.arrayContaining([
         'admin:rides:pricing:manage',
