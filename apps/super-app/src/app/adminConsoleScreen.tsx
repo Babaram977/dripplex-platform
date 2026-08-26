@@ -1024,7 +1024,11 @@ function PageDashboard() {
           hour: '2-digit',
           minute: '2-digit',
         }),
-        revenue: bucket.platformCommission,
+        // Net of funded coupons, not commission charged. Commission is now
+        // taken on the pre-coupon fare (the driver is paid on the gross and
+        // DrippleX funds its own promotions), so plotting it raw would draw a
+        // rising revenue line through a week the platform actually spent money.
+        revenue: bucket.platformCommission - bucket.promotionsFunded,
       }));
   })();
 
@@ -4721,7 +4725,15 @@ function customerStatusChip(s: AdminCustomerDto['status']): { label: string; col
       return { label: s, color: MUTED };
   }
 }
-const naira = (n: number) => `₦${Math.round(n).toLocaleString()}`;
+/** The sign goes before the symbol: "-₦500", never "₦-500". Net platform
+ * revenue is genuinely negative in a range where funded promotions outran
+ * commission, and that is the one number on this page a reader must not
+ * misread as a large positive. A no-op for every other figure here — none of
+ * them can go below zero. */
+const naira = (n: number) => {
+  const rounded = Math.round(n);
+  return `${rounded < 0 ? '-' : ''}₦${Math.abs(rounded).toLocaleString()}`;
+};
 
 /** Dates on the commissions desk read as "12 Aug, 14:05" — an operator
  * reconciling a payment needs the day and the time, not an ISO string. */
@@ -5305,14 +5317,38 @@ function PageCommissions() {
           ) : (
             <>
               <div className="dx-kpi-row">
+                {/* The headline is what DrippleX KEPT. Commission alone stopped
+                    being that once coupons became platform-funded: it is charged
+                    on the pre-coupon fare, so a heavily promoted week shows a
+                    healthy commission line and a thinner — occasionally
+                    negative — net. Both are shown, because they are different
+                    decisions: commission is the pricing model, promotions are
+                    what marketing chose to spend. */}
                 <KpiCard
                   label="Platform revenue"
-                  value={naira(revenue.platformCommissionRevenue)}
-                  sub={`${naira(revenue.rideCommissionRevenue)} rides · ${naira(
-                    revenue.orderCommissionRevenue,
-                  )} orders`}
-                  color={G2}
+                  value={naira(revenue.netPlatformRevenue)}
+                  sub={
+                    revenue.promotionsFunded > 0
+                      ? `${naira(revenue.platformCommissionRevenue)} commission less ${naira(
+                          revenue.promotionsFunded,
+                        )} promotions`
+                      : `${naira(revenue.rideCommissionRevenue)} rides · ${naira(
+                          revenue.orderCommissionRevenue,
+                        )} orders`
+                  }
+                  color={revenue.netPlatformRevenue < 0 ? C_WARN : G2}
                   icon="💰"
+                />
+                <KpiCard
+                  label="Promotions funded"
+                  value={naira(revenue.promotionsFunded)}
+                  sub={
+                    revenue.promotionsFunded > 0
+                      ? 'Coupons DrippleX paid for, not the driver'
+                      : 'No customer coupons redeemed in this range'
+                  }
+                  color={revenue.promotionsFunded > 0 ? C_WARN : MUTED}
+                  icon="🎟️"
                 />
                 <KpiCard
                   label="Ride fares"

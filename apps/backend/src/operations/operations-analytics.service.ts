@@ -164,6 +164,8 @@ export class OperationsAnalyticsService {
       rideCommissionRevenue: revenue.rideCommissionRevenue,
       orderCommissionRevenue: revenue.orderCommissionRevenue,
       platformCommissionRevenue: revenue.platformCommissionRevenue,
+      promotionsFunded: revenue.promotionsFunded,
+      netPlatformRevenue: revenue.netPlatformRevenue,
       driverEarnings: revenue.driverEarnings,
       tipsCollected: revenue.tipsCollected,
       revenueSeries: revenue.revenueSeries,
@@ -209,6 +211,8 @@ export class OperationsAnalyticsService {
     rideCommissionRevenue: number;
     orderCommissionRevenue: number;
     platformCommissionRevenue: number;
+    promotionsFunded: number;
+    netPlatformRevenue: number;
     driverEarnings: number;
     tipsCollected: number;
     revenueSeries: RevenueBucketDto[];
@@ -222,6 +226,7 @@ export class OperationsAnalyticsService {
           platformCommission: true,
           driverEarning: true,
           tipAmount: true,
+          promoDiscount: true,
         },
       }),
       this.prisma.orderSettlement.findMany({
@@ -245,16 +250,27 @@ export class OperationsAnalyticsService {
 
     const buckets = new Map<
       number,
-      { grossFare: number; platformCommission: number; ridesCompleted: number }
+      {
+        grossFare: number;
+        platformCommission: number;
+        promotionsFunded: number;
+        ridesCompleted: number;
+      }
     >();
     // Seed every bucket in range so a quiet hour plots as zero rather than
     // vanishing and making the line lie about when money came in.
     for (let cursor = floorToBucket(range.from); cursor <= range.to.getTime(); cursor += bucketMs) {
-      buckets.set(cursor, { grossFare: 0, platformCommission: 0, ridesCompleted: 0 });
+      buckets.set(cursor, {
+        grossFare: 0,
+        platformCommission: 0,
+        promotionsFunded: 0,
+        ridesCompleted: 0,
+      });
     }
 
     let grossFareRevenue = 0;
     let platformCommissionRevenue = 0;
+    let promotionsFunded = 0;
     let driverEarnings = 0;
     let tipsCollected = 0;
     let orderCommissionRevenue = 0;
@@ -263,8 +279,16 @@ export class OperationsAnalyticsService {
     for (const ride of rides) {
       const gross = money(ride.totalFare);
       const commission = money(ride.platformCommission);
+      // DPX-PROMO-FUNDING — a coupon is only *funded* at settlement, and
+      // `platformCommission` is written at exactly that moment (markPaid). A
+      // ride that has been completed but not yet paid carries its promoDiscount
+      // from request time while having cost the platform nothing, so gating on
+      // the same signal the commission uses keeps the two figures describing
+      // one set of rides rather than drifting apart.
+      const funded = ride.platformCommission !== null ? money(ride.promoDiscount) : 0;
       grossFareRevenue += gross;
       platformCommissionRevenue += commission;
+      promotionsFunded += funded;
       driverEarnings += money(ride.driverEarning);
       tipsCollected += money(ride.tipAmount);
 
@@ -273,10 +297,12 @@ export class OperationsAnalyticsService {
       const bucket = buckets.get(key) ?? {
         grossFare: 0,
         platformCommission: 0,
+        promotionsFunded: 0,
         ridesCompleted: 0,
       };
       bucket.grossFare += gross;
       bucket.platformCommission += commission;
+      bucket.promotionsFunded += funded;
       bucket.ridesCompleted += 1;
       buckets.set(key, bucket);
     }
@@ -291,6 +317,10 @@ export class OperationsAnalyticsService {
       const bucket = buckets.get(key) ?? {
         grossFare: 0,
         platformCommission: 0,
+        // Marketplace order discounts are not platform-funded the way ride
+        // coupons are — there is no equivalent field on OrderSettlement — so an
+        // order-only bucket contributes nothing here.
+        promotionsFunded: 0,
         ridesCompleted: 0,
       };
       // Marketplace commission joins the same series so the chart plots one
@@ -306,24 +336,26 @@ export class OperationsAnalyticsService {
       orderGrossRevenue: round(orderGrossRevenue),
       rideCommissionRevenue: round(platformCommissionRevenue),
       orderCommissionRevenue: round(orderCommissionRevenue),
-      // The headline: everything DrippleX earned, whatever produced it.
-      //
-      // ⚠️ DPX-PROMO-FUNDING — this OVERSTATES net revenue on a discounted ride,
-      // and deliberately so until a promotions-cost line exists. `ride.
-      // platformCommission` is now charged on the fare *before* the coupon
-      // (RidePaymentService.computeSplit), because the driver is paid on the
-      // gross and DrippleX funds its own promotions. So a ₦5,000 fare with a
-      // ₦1,000 coupon reports ₦500 of commission while the platform's actual
-      // net on that ride is −₦500: it collected ₦4,000 and paid the driver
-      // ₦4,500.
-      //
-      // Nothing here subtracts the funded discount, because there is nowhere to
-      // put it — the DTO has no promotions-cost field and the Commissions page
-      // has no line for one. Adding both is the follow-up; until then, read this
-      // figure as "commission charged", not "money kept", whenever coupons are
-      // running. `grossFareRevenue` is unaffected: it sums `totalFare`, which is
-      // what customers actually paid.
+      // Commission charged across both sides — gross of what DrippleX spent
+      // winning the business. `netPlatformRevenue` below is what it kept.
       platformCommissionRevenue: round(platformCommissionRevenue + orderCommissionRevenue),
+      // DPX-PROMO-FUNDING — what customer coupons cost the platform.
+      //
+      // Since RidePaymentService.computeSplit charges commission on the fare
+      // *before* the coupon (the driver is paid on the gross and DrippleX funds
+      // its own promotions), commission alone stopped being "money kept": a
+      // ₦5,000 fare with a ₦1,000 coupon charges ₦500 of commission while the
+      // platform collected ₦4,000 and paid the driver ₦4,500 — a net loss of
+      // ₦500 on a ride whose commission line reads positive.
+      //
+      // Both figures are reported rather than one netted number, because they
+      // answer different questions: commission is what the pricing model earns,
+      // promotions are what marketing chose to spend. Netting them silently
+      // would make an expensive promotion look like a weak take rate.
+      promotionsFunded: round(promotionsFunded),
+      netPlatformRevenue: round(
+        platformCommissionRevenue + orderCommissionRevenue - promotionsFunded,
+      ),
       driverEarnings: round(driverEarnings),
       tipsCollected: round(tipsCollected),
       revenueSeries: [...buckets.entries()]
@@ -332,6 +364,7 @@ export class OperationsAnalyticsService {
           bucketStart: new Date(start).toISOString(),
           grossFare: round(bucket.grossFare),
           platformCommission: round(bucket.platformCommission),
+          promotionsFunded: round(bucket.promotionsFunded),
           ridesCompleted: bucket.ridesCompleted,
         })),
     };

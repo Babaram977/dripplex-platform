@@ -183,6 +183,7 @@ describe('OperationsAnalyticsService', () => {
     driverEarning?: number | null;
     totalFare?: number;
     platformCommission?: number | null;
+    promoDiscount?: number;
     tipAmount?: number | null;
     cancelledBy?: RideCancelledBy | null;
     cancellationReason?: string | null;
@@ -210,6 +211,9 @@ describe('OperationsAnalyticsService', () => {
         ...(overrides.totalFare !== undefined ? { totalFare: overrides.totalFare } : {}),
         ...(overrides.platformCommission !== undefined
           ? { platformCommission: overrides.platformCommission }
+          : {}),
+        ...(overrides.promoDiscount !== undefined
+          ? { promoDiscount: overrides.promoDiscount }
           : {}),
         ...(overrides.tipAmount !== undefined ? { tipAmount: overrides.tipAmount } : {}),
         ...(overrides.cancelledBy !== undefined ? { cancelledBy: overrides.cancelledBy } : {}),
@@ -571,6 +575,95 @@ describe('OperationsAnalyticsService', () => {
     const seriesTotal = result.revenueSeries.reduce((sum, b) => sum + b.platformCommission, 0);
     expect(seriesTotal).toBeCloseTo(result.platformCommissionRevenue);
     expect(result.revenueSeries.reduce((sum, b) => sum + b.ridesCompleted, 0)).toBe(2);
+  });
+
+  it('reports funded promotions and nets them out of platform revenue', async () => {
+    if (!databaseAvailable) return;
+
+    const { range, anchor } = pinnedRange();
+    // A ₦5,000 gross fare with a ₦1,000 coupon: the customer paid ₦4,000, the
+    // driver was paid on the gross, and commission was charged on the gross.
+    await createRide({
+      status: RideStatus.COMPLETED,
+      requestedAt: anchor,
+      completedAt: anchor,
+      totalFare: 4000,
+      promoDiscount: 1000,
+      platformCommission: 500,
+      driverEarning: 4500,
+    });
+
+    const result = await service.getOverview(range);
+
+    expect(result.promotionsFunded).toBe(1000);
+    expect(result.platformCommissionRevenue).toBe(500);
+    // The point of the whole change: commission reads +₦500 while DrippleX is
+    // ₦500 down on the ride. Net is what the dashboard leads with.
+    expect(result.netPlatformRevenue).toBe(-500);
+  });
+
+  it('does not count a coupon on a ride that has not settled — nothing has been funded yet', async () => {
+    if (!databaseAvailable) return;
+
+    const { range, anchor } = pinnedRange();
+    // Completed but unpaid: promoDiscount is set at request time, but the
+    // discount only costs the platform anything once settlement runs.
+    await createRide({
+      status: RideStatus.COMPLETED,
+      requestedAt: anchor,
+      completedAt: anchor,
+      totalFare: 4000,
+      promoDiscount: 1000,
+      platformCommission: null,
+    });
+
+    const result = await service.getOverview(range);
+
+    expect(result.promotionsFunded).toBe(0);
+    expect(result.netPlatformRevenue).toBe(0);
+  });
+
+  it('leaves revenue untouched when no coupons were redeemed', async () => {
+    if (!databaseAvailable) return;
+
+    const { range, anchor } = pinnedRange();
+    await createRide({
+      status: RideStatus.COMPLETED,
+      requestedAt: anchor,
+      completedAt: anchor,
+      totalFare: 1000,
+      platformCommission: 100,
+      driverEarning: 900,
+    });
+
+    const result = await service.getOverview(range);
+
+    expect(result.promotionsFunded).toBe(0);
+    expect(result.netPlatformRevenue).toBe(result.platformCommissionRevenue);
+  });
+
+  it('buckets funded promotions alongside the commission they offset', async () => {
+    if (!databaseAvailable) return;
+
+    const { range, anchor } = pinnedRange();
+    await createRide({
+      status: RideStatus.COMPLETED,
+      requestedAt: anchor,
+      completedAt: anchor,
+      totalFare: 4000,
+      promoDiscount: 1000,
+      platformCommission: 500,
+      driverEarning: 4500,
+    });
+
+    const result = await service.getOverview(range);
+
+    const promoTotal = result.revenueSeries.reduce((sum, b) => sum + b.promotionsFunded, 0);
+    const commissionTotal = result.revenueSeries.reduce((sum, b) => sum + b.platformCommission, 0);
+    expect(promoTotal).toBeCloseTo(result.promotionsFunded);
+    // The chart plots commission − promotions, so the series has to carry both
+    // for that subtraction to be possible at all.
+    expect(commissionTotal - promoTotal).toBeCloseTo(result.netPlatformRevenue);
   });
 
   it('counts marketplace commission as revenue, whatever the order was paid with', async () => {

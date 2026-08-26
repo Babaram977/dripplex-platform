@@ -1879,7 +1879,16 @@ export interface AdminAnalyticsOverviewDto {
   orderGrossRevenue: number;
   rideCommissionRevenue: number;
   orderCommissionRevenue: number;
+  /** Commission charged — gross of what DrippleX spent winning the business.
+   * `netPlatformRevenue` is what it kept. */
   platformCommissionRevenue: number;
+  /** What customer coupons cost the platform over settled rides in the range.
+   * Ride commission is charged on the fare *before* the coupon, because the
+   * driver is paid on the gross and DrippleX funds its own promotions — so
+   * commission alone is not money kept whenever coupons are running. */
+  promotionsFunded: number;
+  /** `platformCommissionRevenue − promotionsFunded`. */
+  netPlatformRevenue: number;
   driverEarnings: number;
   tipsCollected: number;
   revenueSeries: RevenueBucketDto[];
@@ -1891,6 +1900,8 @@ export interface RevenueBucketDto {
   bucketStart: string;
   grossFare: number;
   platformCommission: number;
+  /** Subtract from `platformCommission` to plot what DrippleX kept. */
+  promotionsFunded: number;
   ridesCompleted: number;
 }
 
