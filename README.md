@@ -16,7 +16,6 @@ dripplex-platform/
 │   ├── rider-portal          # Rider Next.js app
 │   ├── driver-portal         # Driver Next.js app
 │   ├── operations-console    # Operations Next.js app
-│   ├── admin-portal          # Admin Next.js app
 │   └── backend               # NestJS API (api/v1)
 ├── packages/
 │   ├── ui                    # Design system & shared components

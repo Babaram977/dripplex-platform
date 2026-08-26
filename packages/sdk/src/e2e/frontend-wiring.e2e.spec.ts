@@ -33,7 +33,6 @@ describe('C2 Frontend wiring validation (no UI redesign)', () => {
   it('portal apps use exclusive SDK barrels', () => {
     expect(read('apps/merchant-portal/src/lib/sdk-merchant.ts')).toContain('createMerchantSdk');
     expect(read('apps/rider-portal/src/lib/sdk-rider.ts')).toContain('createRiderSdk');
-    expect(read('apps/admin-portal/src/lib/sdk-admin.ts')).toContain('createAdminSdk');
     expect(read('apps/operations-console/src/lib/sdk-admin.ts')).toContain('createAdminSdk');
     expect(read('apps/driver-portal/src/lib/sdk-driver.ts')).toContain('createDriverSdk');
   });

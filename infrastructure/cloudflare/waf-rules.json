@@ -13,12 +13,6 @@
       }
     },
     {
-      "id": "block-bad-bots-admin",
-      "expression": "(http.host eq \"admin.dripplex.com\" and not cf.client.bot and not cf.waf.score gt 0)",
-      "action": "note",
-      "comment": "Prefer Cloudflare Access; keep WAF managed rules enabled"
-    },
-    {
       "id": "protect-api-burst",
       "expression": "(http.host eq \"api.dripplex.com\")",
       "action": "managed_challenge",

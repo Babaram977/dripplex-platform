@@ -31,7 +31,6 @@ services:
       - customer-web
       - merchant-portal
       - rider-portal
-      - admin-portal
       - backend
       - uptime-kuma
     networks:
@@ -72,16 +71,6 @@ services:
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
     networks: [app]
     expose: ['3003']
-
-  admin-portal:
-    <<: [*restart, *default-logging]
-    image: ${ADMIN_IMAGE:-ghcr.io/babaram977/dripplex-admin-portal:production}
-    environment:
-      NODE_ENV: production
-      PORT: 3004
-      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
-    networks: [app]
-    expose: ['3004']
 
   backend:
     <<: [*restart, *default-logging]

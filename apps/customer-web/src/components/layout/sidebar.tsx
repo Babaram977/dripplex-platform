@@ -8,7 +8,6 @@ import {
   Home,
   LayoutDashboard,
   LayoutGrid,
-  ShieldCheck,
   ShoppingBag,
   Store,
   UserRound,
@@ -75,15 +74,21 @@ export function Sidebar(): React.JSX.Element {
 
   const crossPortalItems = React.useMemo((): readonly CrossPortalLink[] => {
     const items = CROSS_PORTAL_ROLE_LINKS.filter((item) => roles.has(item.role));
+    // An administrator is sent to the Operations Console, the same place
+    // operations staff go. This used to point at a separate Admin Portal on
+    // its own domain; that portal is retired, and leaving the link would hand
+    // an administrator a dead host. Skipped when the operations_staff entry
+    // already added it, so an admin who is also ops staff sees one link.
     const isAdmin = roles.has('administrator') || roles.has('super_administrator');
-    return isAdmin
+    const alreadyHasOps = items.some((item) => item.href === siteConfig.crossPortalUrls.operations);
+    return isAdmin && !alreadyHasOps
       ? [
           ...items,
           {
             role: 'administrator',
-            label: 'Admin',
-            href: siteConfig.crossPortalUrls.admin,
-            icon: ShieldCheck,
+            label: 'Operations',
+            href: siteConfig.crossPortalUrls.operations,
+            icon: LayoutGrid,
           },
         ]
       : items;

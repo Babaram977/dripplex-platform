@@ -5,7 +5,7 @@ import type { SdkConfig } from './config/sdk-config.js';
 
 /**
  * Admin & Operations SDK barrel — the only public Backend Core integration point
- * for admin-portal and operations-console screens and components.
+ * for Operations Console screens and components.
  */
 export function createAdminSdk(config: Partial<SdkConfig> = {}): AdminSdk {
   const client = new DripplexClient(config);

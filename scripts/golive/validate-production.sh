@@ -12,7 +12,6 @@ export API_BASE_URL="${API_BASE_URL:-${PROD_API_BASE_URL:-https://api.dripplex.c
 export CUSTOMER_URL="${CUSTOMER_URL:-${PROD_CUSTOMER_URL:-https://www.dripplex.com}}"
 export MERCHANT_URL="${MERCHANT_URL:-${PROD_MERCHANT_URL:-https://merchant.dripplex.com}}"
 export RIDER_URL="${RIDER_URL:-${PROD_RIDER_URL:-https://rider.dripplex.com}}"
-export ADMIN_URL="${ADMIN_URL:-${PROD_ADMIN_URL:-https://admin.dripplex.com}}"
 export SMOKE_STRICT="${SMOKE_STRICT:-1}"
 
 GRAFANA_URL="${GRAFANA_URL:-https://grafana.dripplex.com}"

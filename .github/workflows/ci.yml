@@ -106,6 +106,5 @@ jobs:
           test -f apps/customer-web/Dockerfile
           test -f apps/merchant-portal/Dockerfile
           test -f apps/rider-portal/Dockerfile
-          test -f apps/admin-portal/Dockerfile
           test -f infrastructure/docker/docker-bake.hcl
           echo "Docker image sources OK"

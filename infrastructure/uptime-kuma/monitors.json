@@ -37,12 +37,6 @@
       "interval": 60
     },
     {
-      "name": "admin.dripplex.com",
-      "type": "http",
-      "url": "https://admin.dripplex.com/",
-      "interval": 60
-    },
-    {
       "name": "status.dripplex.com",
       "type": "http",
       "url": "https://status.dripplex.com/",
@@ -57,6 +51,6 @@
     "published": true,
     "showTags": true,
     "domainNameList": ["status.dripplex.com"],
-    "footerText": "Dripplex — life, Simplified."
+    "footerText": "Dripplex \u2014 life, Simplified."
   }
 }

@@ -12,7 +12,7 @@ variable "API_BASE" {
 }
 
 group "default" {
-  targets = ["backend-core", "customer-web", "merchant-portal", "rider-portal", "admin-portal"]
+  targets = ["backend-core", "customer-web", "merchant-portal", "rider-portal"]
 }
 
 target "backend-core" {
@@ -63,15 +63,3 @@ target "rider-portal" {
   ]
 }
 
-target "admin-portal" {
-  context    = "."
-  dockerfile = "apps/admin-portal/Dockerfile"
-  args = {
-    NEXT_PUBLIC_API_BASE_URL = API_BASE
-    NEXT_PUBLIC_APP_URL      = "https://admin.dripplex.com"
-  }
-  tags = [
-    "${REGISTRY}/dripplex-admin-portal:${TAG}",
-    "${REGISTRY}/dripplex-admin-portal:latest",
-  ]
-}

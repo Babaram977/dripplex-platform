@@ -1,4 +1,3 @@
-# Portal deployments (merchant / rider / admin) — same pattern as customer-web
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -78,43 +77,3 @@ spec:
   ports:
     - port: 3003
       targetPort: 3003
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: admin-portal
-  namespace: dripplex
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: admin-portal
-  template:
-    metadata:
-      labels:
-        app: admin-portal
-    spec:
-      containers:
-        - name: admin-portal
-          image: dripplex/admin-portal:1.0.0
-          ports:
-            - containerPort: 3004
-          env:
-            - name: PORT
-              value: '3004'
-          resources:
-            requests:
-              cpu: 100m
-              memory: 256Mi
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: admin-portal
-  namespace: dripplex
-spec:
-  selector:
-    app: admin-portal
-  ports:
-    - port: 3004
-      targetPort: 3004

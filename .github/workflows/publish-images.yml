@@ -64,11 +64,6 @@ jobs:
             image: dripplex-rider-portal
             api: https://api.dripplex.com/api/v1
             app: https://rider.dripplex.com
-          - name: admin-portal
-            file: apps/admin-portal/Dockerfile
-            image: dripplex-admin-portal
-            api: https://api.dripplex.com/api/v1
-            app: https://admin.dripplex.com
 
     steps:
       - uses: actions/checkout@v4

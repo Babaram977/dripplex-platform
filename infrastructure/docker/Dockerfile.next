@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 # Shared Next.js portal image (Program D2)
 # Build args:
-#   APP_NAME  = customer-web | merchant-portal | rider-portal | admin-portal
+#   APP_NAME  = customer-web | merchant-portal | rider-portal
 #   APP_PORT  = 3001 | 3002 | 3003 | 3004
 #   FILTER    = @dripplex/<app>
 #   NEXT_PUBLIC_API_BASE_URL / NEXT_PUBLIC_APP_URL

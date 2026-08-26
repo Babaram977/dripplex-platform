@@ -75,10 +75,10 @@ const DOCUMENT_ROUTES = '/((?!_next/static|_next/image).*)';
  * Next emits `Cache-Control: s-maxage=31536000` on statically prerendered
  * routes. On Vercel that is safe because the CDN is purged on every deploy.
  * These portals sit behind Cloudflare, which honours the year and is never
- * purged — so on 2026-08-26 a deploy that had genuinely succeeded served the
- * previous build's HTML at admin.dripplex.com, and because that stale HTML
- * names the previous build's hashed chunks, the whole page stayed old. The
- * origin was correct the entire time; only the edge was wrong.
+ * purged — so a deploy that has genuinely succeeded can still serve the
+ * previous build's HTML, and because that stale HTML names the previous
+ * build's hashed chunks, the whole page stays old. The origin is correct the
+ * entire time; only the edge is wrong.
  *
  * `no-cache` is not "do not store": the response is still cached, and the
  * ETag Next already sends turns the revalidation into a 304 for an unchanged

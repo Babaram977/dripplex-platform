@@ -87,9 +87,6 @@
     "apps/rider-portal/src/**/*.{ts,tsx}": [
       "eslint --fix --max-warnings=0 --config apps/rider-portal/eslint.config.mjs"
     ],
-    "apps/admin-portal/src/**/*.{ts,tsx}": [
-      "eslint --fix --max-warnings=0 --config apps/admin-portal/eslint.config.mjs"
-    ],
     "apps/operations-console/src/**/*.{ts,tsx}": [
       "eslint --fix --max-warnings=0 --config apps/operations-console/eslint.config.mjs"
     ],

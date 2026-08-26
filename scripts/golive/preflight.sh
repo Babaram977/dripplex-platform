@@ -72,7 +72,6 @@ API_URL="${PROD_API_BASE_URL:-https://api.dripplex.com/api/v1}"
 CUSTOMER_URL="${PROD_CUSTOMER_URL:-https://www.dripplex.com}"
 MERCHANT_URL="${PROD_MERCHANT_URL:-https://merchant.dripplex.com}"
 RIDER_URL="${PROD_RIDER_URL:-https://rider.dripplex.com}"
-ADMIN_URL="${PROD_ADMIN_URL:-https://admin.dripplex.com}"
 STATUS_URL="${PROD_STATUS_URL:-https://status.dripplex.com}"
 APP_URL="${PROD_APP_URL:-https://app.dripplex.com}"
 
@@ -85,7 +84,7 @@ check_http "rider" "${RIDER_URL}" 1
 check_http "admin" "${ADMIN_URL}" 1
 check_http "status-page" "${STATUS_URL}" 0
 
-for host in api.dripplex.com www.dripplex.com merchant.dripplex.com rider.dripplex.com admin.dripplex.com; do
+for host in api.dripplex.com www.dripplex.com merchant.dripplex.com rider.dripplex.com; do
   check_tls "${host}" || true
 done
 

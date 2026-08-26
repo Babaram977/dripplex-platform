@@ -8,7 +8,7 @@ on:
       apps:
         description: 'Comma-separated apps (default: all portals)'
         required: false
-        default: 'customer-web,merchant-portal,rider-portal,admin-portal,operations-console'
+        default: 'customer-web,merchant-portal,rider-portal,operations-console'
       confirm:
         description: 'Type deploy-production to confirm'
         required: true
@@ -36,7 +36,6 @@ on:
       - 'apps/customer-web/**'
       - 'apps/merchant-portal/**'
       - 'apps/rider-portal/**'
-      - 'apps/admin-portal/**'
       - 'apps/operations-console/**'
       - 'packages/**'
       - 'pnpm-lock.yaml'
@@ -68,7 +67,7 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
       NEXT_PUBLIC_API_BASE_URL: ${{ vars.PROD_API_BASE_URL || 'https://api.dripplex.com/api/v1' }}
-      DEPLOY_APPS: ${{ github.event.inputs.apps || 'customer-web,merchant-portal,rider-portal,admin-portal,operations-console' }}
+      DEPLOY_APPS: ${{ github.event.inputs.apps || 'customer-web,merchant-portal,rider-portal,operations-console' }}
       ATTACH_DOMAINS: ${{ github.event.inputs.attach_domains || 'true' }}
       WORKERS_DEV_SUBDOMAIN: danwakili
     steps:
@@ -110,7 +109,6 @@ jobs:
               customer-web) export NEXT_PUBLIC_APP_URL="${{ vars.PROD_CUSTOMER_URL || 'https://www.dripplex.com' }}" ;;
               merchant-portal) export NEXT_PUBLIC_APP_URL="${{ vars.PROD_MERCHANT_URL || 'https://merchant.dripplex.com' }}" ;;
               rider-portal) export NEXT_PUBLIC_APP_URL="${{ vars.PROD_RIDER_URL || 'https://rider.dripplex.com' }}" ;;
-              admin-portal) export NEXT_PUBLIC_APP_URL="${{ vars.PROD_ADMIN_URL || 'https://admin.dripplex.com' }}" ;;
               operations-console) export NEXT_PUBLIC_APP_URL="${{ vars.PROD_OPS_URL || 'https://ops.dripplex.com' }}" ;;
             esac
             bash "apps/${app}/scripts/cf-build.sh"
@@ -178,7 +176,6 @@ jobs:
           #   railway-hikari -> Railway, leave it out.  cloudflare -> Workers.
           attach dripplex-merchant merchant.dripplex.com
           attach dripplex-rider rider.dripplex.com
-          attach dripplex-admin admin.dripplex.com
           exit 0
 
       # Only probe when the deploy actually ran.
@@ -205,14 +202,12 @@ jobs:
             https://dripplex-customer-web.${WORKERS_DEV_SUBDOMAIN}.workers.dev \
             https://dripplex-merchant.${WORKERS_DEV_SUBDOMAIN}.workers.dev \
             https://dripplex-rider.${WORKERS_DEV_SUBDOMAIN}.workers.dev \
-            https://dripplex-admin.${WORKERS_DEV_SUBDOMAIN}.workers.dev \
             https://dripplex-ops.${WORKERS_DEV_SUBDOMAIN}.workers.dev \
             https://dripplex.com \
             https://www.dripplex.com \
             https://app.dripplex.com \
             https://merchant.dripplex.com \
             https://rider.dripplex.com \
-            https://admin.dripplex.com \
             https://ops.dripplex.com
           do
             code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$u" || echo 000)

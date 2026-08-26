@@ -24,7 +24,6 @@ export BACKEND_IMAGE="${REGISTRY}/dripplex-backend-core:${IMAGE_TAG}"
 export CUSTOMER_IMAGE="${REGISTRY}/dripplex-customer-web:${IMAGE_TAG}"
 export MERCHANT_IMAGE="${REGISTRY}/dripplex-merchant-portal:${IMAGE_TAG}"
 export RIDER_IMAGE="${REGISTRY}/dripplex-rider-portal:${IMAGE_TAG}"
-export ADMIN_IMAGE="${REGISTRY}/dripplex-admin-portal:${IMAGE_TAG}"
 
 remote() {
   if [[ "${DEPLOY_MODE}" == "local" ]]; then

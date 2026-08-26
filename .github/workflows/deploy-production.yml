@@ -57,7 +57,6 @@ jobs:
       CUSTOMER_URL: ${{ vars.PROD_CUSTOMER_URL || 'https://www.dripplex.com' }}
       MERCHANT_URL: ${{ vars.PROD_MERCHANT_URL || 'https://merchant.dripplex.com' }}
       RIDER_URL: ${{ vars.PROD_RIDER_URL || 'https://rider.dripplex.com' }}
-      ADMIN_URL: ${{ vars.PROD_ADMIN_URL || 'https://admin.dripplex.com' }}
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
       SMOKE_STRICT: '1'
     steps:

@@ -9,7 +9,7 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 /**
  * The same shape the other six apps in this monorepo already use
  * (operations-console, customer-web, merchant-portal, rider-portal,
- * admin-portal, driver-portal). super-app was the only one with no test runner
+ * driver-portal). super-app was the only one with no test runner
  * at all — which is why a Back button that trapped every customer inside their
  * profile could ship, be deployed, and only be found by a person using the app.
  *
