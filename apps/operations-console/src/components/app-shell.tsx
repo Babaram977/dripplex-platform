@@ -1,22 +1,17 @@
 'use client';
 
-import { useAuth, usePermission } from '@dripplex/hooks';
+import { useAuth } from '@dripplex/hooks';
 import { Button } from '@dripplex/ui';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import * as React from 'react';
 
 import { PortalAuthGate } from '@/components/portal-auth-gate';
-import { COMMERCIAL_MANAGE_PERMISSION } from '@/lib/commercial-permission';
 import { sdk } from '@/lib/sdk';
 
 interface NavLinkItem {
   href: string;
   label: string;
-  /** When set, the entry is hidden unless the signed-in user holds it. The
-   *  backend enforces the permission regardless; this only avoids offering a
-   *  link that would 403 on arrival. */
-  permission?: string;
 }
 
 interface NavGroupItem {
@@ -59,13 +54,6 @@ const NAV: NavEntry[] = [
   },
   { href: '/pricing', label: 'Ride Pricing' },
   { href: '/utilities', label: 'Bill Payments' },
-  // Credit-limit policy and commission accounts. Restricted: operations_staff
-  // does not hold this permission, so line staff never see the entry.
-  {
-    href: '/commercial',
-    label: 'Commercial',
-    permission: COMMERCIAL_MANAGE_PERMISSION,
-  },
   { href: '/analytics', label: 'Analytics' },
 ];
 
@@ -148,17 +136,6 @@ function AppNav(): React.JSX.Element {
   const pathname = usePathname();
   const router = useRouter();
   const { user, clearSession } = useAuth();
-  const mayManageCommercial = usePermission(COMMERCIAL_MANAGE_PERMISSION);
-
-  // Hooks cannot be called per-entry, so the one restricted permission is
-  // resolved once and matched by value. Any future gated entry adds its
-  // permission to this map rather than a hook inside the loop.
-  const granted: Record<string, boolean> = {
-    [COMMERCIAL_MANAGE_PERMISSION]: mayManageCommercial,
-  };
-  const visible = NAV.filter(
-    (entry) => isEntryGroup(entry) || entry.permission === undefined || granted[entry.permission],
-  );
 
   const onLogout = async (): Promise<void> => {
     try {
@@ -179,7 +156,7 @@ function AppNav(): React.JSX.Element {
             DrippleX Operations
           </span>
           <nav className="flex items-center gap-1">
-            {visible.map((entry) =>
+            {NAV.map((entry) =>
               isEntryGroup(entry) ? (
                 <NavGroup key={entry.label} group={entry} pathname={pathname} />
               ) : (
