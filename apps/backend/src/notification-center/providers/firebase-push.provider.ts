@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { NotificationPriority } from '@prisma/client';
 
 import { DeviceRegistryService } from '../device-registry.service';
 
@@ -44,6 +45,7 @@ export class FirebasePushProvider implements NotificationProvider {
     // registration tokens, not Firebase Installation IDs (fids), which is
     // what the newer FidMulticastMessage overload expects instead.
     const deepLink = this.extractDeepLink(notification.payload);
+    const android = this.androidConfig(notification);
     const response = await this.messaging.sendEach(
       devices.map((device) => ({
         token: device.token,
@@ -53,6 +55,7 @@ export class FirebasePushProvider implements NotificationProvider {
           type: notification.type,
           ...(deepLink !== null ? { deepLink } : {}),
         },
+        ...(android !== null ? { android } : {}),
       })),
     );
 
@@ -70,6 +73,59 @@ export class FirebasePushProvider implements NotificationProvider {
         ? { providerMessageId: firstSuccess.messageId }
         : {}),
     };
+  }
+
+  /**
+   * DPX-MOBILE-001 — Android delivery options, or null to leave FCM's defaults.
+   *
+   * Two things a default-priority push cannot do, and a driver waiting for work
+   * needs both:
+   *
+   * **Escape Doze.** FCM batches normal-priority messages when the device is
+   * idle, which is exactly the state a phone is in when it is face-down on a
+   * dashboard. `priority: 'high'` is what makes Android wake for it. Reserved
+   * for CRITICAL so it stays what it is meant to be — Google throttles apps
+   * that mark everything high-priority.
+   *
+   * **Expire.** A ride offer rotates to another driver after
+   * RIDE_OFFER_TIMEOUT_MS. A push delivered after that opens an offer that no
+   * longer exists, which is worse than silence: the driver stops what they are
+   * doing, taps, and finds nothing. `ttl` tells FCM to drop it rather than
+   * deliver it late, so a phone that was off the network through the whole
+   * offer window simply never rings.
+   *
+   * The TTL comes from `payload.expiresAt`, which the dispatcher puts on the
+   * event, rather than from a constant here — the ride module owns how long an
+   * offer lives, and a second copy of that number would drift from it.
+   */
+  private androidConfig(notification: Notification): { priority: 'high'; ttl?: number } | null {
+    if (notification.priority !== NotificationPriority.CRITICAL) {
+      return null;
+    }
+    const remainingMs = this.remainingLifetimeMs(notification.payload);
+    return {
+      priority: 'high',
+      ...(remainingMs !== null ? { ttl: remainingMs } : {}),
+    };
+  }
+
+  /** Milliseconds until `payload.expiresAt`, or null when the payload carries
+   * no expiry. Clamped at zero: a negative TTL is rejected by FCM, and an offer
+   * that expired between being queued and being sent should be dropped
+   * immediately rather than delivered. */
+  private remainingLifetimeMs(payload: Notification['payload']): number | null {
+    if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
+      return null;
+    }
+    const expiresAt = (payload as Record<string, unknown>)['expiresAt'];
+    if (typeof expiresAt !== 'string') {
+      return null;
+    }
+    const expiryMs = Date.parse(expiresAt);
+    if (Number.isNaN(expiryMs)) {
+      return null;
+    }
+    return Math.max(0, expiryMs - Date.now());
   }
 
   /** FCM `data` values must all be strings, so this reads the same

@@ -2714,6 +2714,12 @@ enum NotificationType {
   BACK_IN_STOCK
   PRICE_DROP
   GENERIC
+  /// DPX-MOBILE-001 — a ride offered to a driver. Its own type rather than
+  /// GENERIC so a driver can control ride-request alerts separately from
+  /// everything else: NotificationPreference is keyed on (channel, type), so
+  /// muting GENERIC would have muted the one notification they cannot afford
+  /// to miss along with the ones they can.
+  RIDE_OFFERED
   RIDE_DRIVER_ASSIGNED
   RIDE_DRIVER_ARRIVED
   RIDE_STARTED

@@ -67,6 +67,11 @@ export const DOMAIN_EVENTS = {
   LOGIN_LOCKED: 'LoginLocked',
   OTP_REQUESTED: 'OTPRequested',
   NOTIFICATION_FAILED: 'NotificationFailed',
+  /// DPX-MOBILE-001 — a ride has been offered to one specific driver, who has
+  /// RIDE_OFFER_TIMEOUT_MS to answer before it rotates. The only ride event
+  /// addressed to a driver rather than a passenger, and the only one with a
+  /// deadline, which is why its push is sent at CRITICAL priority with a TTL.
+  RIDE_OFFERED: 'RideOffered',
   RIDE_DRIVER_ASSIGNED: 'RideDriverAssigned',
   RIDE_DRIVER_ARRIVED: 'RideDriverArrived',
   RIDE_STARTED: 'RideStarted',
