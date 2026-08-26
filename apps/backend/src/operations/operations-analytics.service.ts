@@ -307,6 +307,22 @@ export class OperationsAnalyticsService {
       rideCommissionRevenue: round(platformCommissionRevenue),
       orderCommissionRevenue: round(orderCommissionRevenue),
       // The headline: everything DrippleX earned, whatever produced it.
+      //
+      // ⚠️ DPX-PROMO-FUNDING — this OVERSTATES net revenue on a discounted ride,
+      // and deliberately so until a promotions-cost line exists. `ride.
+      // platformCommission` is now charged on the fare *before* the coupon
+      // (RidePaymentService.computeSplit), because the driver is paid on the
+      // gross and DrippleX funds its own promotions. So a ₦5,000 fare with a
+      // ₦1,000 coupon reports ₦500 of commission while the platform's actual
+      // net on that ride is −₦500: it collected ₦4,000 and paid the driver
+      // ₦4,500.
+      //
+      // Nothing here subtracts the funded discount, because there is nowhere to
+      // put it — the DTO has no promotions-cost field and the Commissions page
+      // has no line for one. Adding both is the follow-up; until then, read this
+      // figure as "commission charged", not "money kept", whenever coupons are
+      // running. `grossFareRevenue` is unaffected: it sums `totalFare`, which is
+      // what customers actually paid.
       platformCommissionRevenue: round(platformCommissionRevenue + orderCommissionRevenue),
       driverEarnings: round(driverEarnings),
       tipsCollected: round(tipsCollected),

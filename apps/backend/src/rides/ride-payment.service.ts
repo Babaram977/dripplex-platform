@@ -66,6 +66,14 @@ interface FareSplit {
   driverEarning: number;
   /** The commission rate this split was computed at (snapshotted onto the ride). */
   platformCommissionRate: number;
+  /**
+   * The fare before any coupon — `ride.totalFare + ride.promoDiscount`. This,
+   * not the discounted fare, is what the driver is paid on and what commission
+   * is charged on. See `computeSplit`.
+   */
+  grossFare: number;
+  /** The coupon the customer redeemed, funded by the platform. Zero for most rides. */
+  promoDiscount: number;
 }
 
 /**
@@ -230,6 +238,17 @@ export class RidePaymentService {
       referenceId: ride.id,
       description: `Commission owed for ride ${ride.id} (cash)`,
     });
+
+    // DPX-PROMO-FUNDING — a cash driver is handed only the *discounted* fare,
+    // so unlike the wallet path there is no payout leg to absorb the coupon.
+    // The platform's contribution has to reach them as a real credit, or the
+    // driver funds the promotion out of the cash they were short-changed.
+    //
+    // Their position after this: they hold `totalFare` in cash, owe
+    // `platformCommission` on it, and receive `promoDiscount` — netting to
+    // `grossFare - platformCommission`, exactly the wallet-path driver's
+    // earning for the same trip. Cash and wallet drivers are paid identically.
+    await this.fundDriverPromotion(ride, driverId, split, context);
 
     // markPaid() atomically claims the PAID transition and throws
     // ConflictDomainException if a concurrent confirmCash() already won it.
@@ -547,12 +566,43 @@ export class RidePaymentService {
    * from the Ops-configurable PlatformCommissionSetting at settlement time)
    * rather than read from a constant, and is returned so callers can snapshot it
    * onto the ride — refunds then reverse the exact settled amounts/rate.
+   *
+   * DPX-PROMO-FUNDING — the split is computed on the **gross** fare, before any
+   * coupon, not on what the customer paid.
+   *
+   * `ride.totalFare` is the discounted fare (`rides.service.ts` stores
+   * `estimate.totalFare - promoDiscount`), so splitting on it made a customer
+   * coupon come out of the driver's pocket: a ₦500 coupon at a 10% commission
+   * cost the driver ₦450 and the platform ₦50 — the platform's marketing spend
+   * billed to the driver in the commission ratio, without their knowledge or
+   * agreement. A driver who never saw the coupon has no way to even notice.
+   *
+   * Splitting on `totalFare + promoDiscount` means the driver is paid exactly as
+   * if no coupon existed, and DrippleX funds its own promotion. It also matches
+   * how the market works: a real Bolt driver receipt (DPX-PRICING-001 §4A.2.2)
+   * shows the rider's ₦300 promotional credit arriving as *income* to the
+   * driver, paid by Bolt.
+   *
+   * Commission is charged on the gross too, so the platform's revenue line stays
+   * "what this ride earned" and the discount stays a separate marketing cost —
+   * netting them would hide both. The platform's net position on a discounted
+   * ride is therefore `commission − promoDiscount`, which is **negative whenever
+   * the discount exceeds the commission**. At a 10% rate that is most coupons,
+   * and it is the intended behaviour: funding a promotion means paying for it.
    */
   private computeSplit(ride: Ride, rate: number): FareSplit {
-    const total = Number(ride.totalFare);
-    const platformCommission = this.roundCurrency(total * rate);
-    const driverEarning = this.roundCurrency(total - platformCommission);
-    return { platformCommission, driverEarning, platformCommissionRate: rate };
+    const charged = Number(ride.totalFare);
+    const promoDiscount = Number(ride.promoDiscount);
+    const grossFare = this.roundCurrency(charged + promoDiscount);
+    const platformCommission = this.roundCurrency(grossFare * rate);
+    const driverEarning = this.roundCurrency(grossFare - platformCommission);
+    return {
+      platformCommission,
+      driverEarning,
+      platformCommissionRate: rate,
+      grossFare,
+      promoDiscount,
+    };
   }
 
   /**
@@ -622,6 +672,13 @@ export class RidePaymentService {
     if (driverId === null) {
       return;
     }
+    // DPX-PROMO-FUNDING — a coupon on a cash ride was paid to the driver as a
+    // real wallet credit at settlement, so a refund has to take it back. Done
+    // before the commission reversal: the clawback can fail on an insufficient
+    // driver balance, and reversing the commission first would leave the driver
+    // owing nothing while still holding the platform's promotion money.
+    await this.clawBackPromotionFunding(ride, driverId, reason, context);
+
     const commission =
       ride.platformCommission !== null
         ? Number(ride.platformCommission)
@@ -697,6 +754,82 @@ export class RidePaymentService {
     }
 
     return totalFare;
+  }
+
+  /**
+   * DPX-PROMO-FUNDING — recover a cash ride's promotion funding on refund.
+   *
+   * Mirrors `clawBackDriverEarning`'s shortfall handling: if the driver has
+   * already withdrawn the money, record the shortfall as a recoverable
+   * liability on their CommissionAccount rather than failing the refund or
+   * letting the money vanish (the founder decision D4 settled for earnings).
+   * The re-check on the insufficient path stops a concurrent refund both
+   * debiting and recording a debt for the same ride.
+   */
+  private async clawBackPromotionFunding(
+    ride: Ride,
+    driverId: string,
+    reason: string,
+    context: AuditContext,
+  ): Promise<void> {
+    const promoDiscount = Number(ride.promoDiscount);
+    if (promoDiscount <= 0) {
+      return;
+    }
+
+    try {
+      await this.withConflictRetry(() =>
+        this.walletService.debit({
+          ownerType: WalletOwnerType.DRIVER,
+          ownerId: driverId,
+          amount: promoDiscount,
+          referenceType: RIDE_WALLET_REFERENCE_TYPES.PROMO_FUNDING_REVERSAL,
+          referenceId: ride.id,
+          description: `Promotion funding reclaimed for refunded ride ${ride.id}: ${reason}`,
+          context,
+        }),
+      );
+    } catch (error) {
+      if (!(error instanceof ValidationDomainException)) {
+        throw error;
+      }
+      const alreadyReclaimed = await this.promoFundingReversalExists(driverId, ride.id);
+      if (!alreadyReclaimed) {
+        await this.recordDriverLiabilityWithRetry({
+          ownerType: CommissionOwnerType.DRIVER,
+          ownerId: driverId,
+          amount: promoDiscount,
+          referenceType: COMMISSION_RIDE_EARNING_DEBT_REFERENCE_TYPE,
+          referenceId: ride.id,
+          description: `Unrecovered promotion funding for refunded ride ${ride.id}: ${reason}`,
+          context,
+        });
+        return;
+      }
+    }
+
+    await this.withConflictRetry(() =>
+      this.walletService.credit({
+        ownerType: WalletOwnerType.PLATFORM,
+        ownerId: PLATFORM_WALLET_OWNER_ID,
+        amount: promoDiscount,
+        referenceType: RIDE_WALLET_REFERENCE_TYPES.PROMO_FUNDING_REVERSAL,
+        referenceId: ride.id,
+        description: `Promotion funding returned to platform (${ride.id}): ${reason}`,
+        context,
+      }),
+    );
+  }
+
+  private async promoFundingReversalExists(driverId: string, rideId: string): Promise<boolean> {
+    const entry = await this.prisma.walletLedgerEntry.findFirst({
+      where: {
+        wallet: { ownerType: WalletOwnerType.DRIVER, ownerId: driverId },
+        referenceType: RIDE_WALLET_REFERENCE_TYPES.PROMO_FUNDING_REVERSAL,
+        referenceId: rideId,
+      },
+    });
+    return entry !== null;
   }
 
   /** Claw the driver's earning back to the platform. If the driver's wallet
@@ -797,6 +930,51 @@ export class RidePaymentService {
     }
     // Unreachable — the loop returns or throws within maxAttempts.
     throw new ConflictDomainException('Balance changed; retry operation');
+  }
+
+  /**
+   * DPX-PROMO-FUNDING — pay the platform's share of a coupon to a CASH driver.
+   *
+   * Debit-before-credit, the same ordering `refundWalletCapturedRide` uses: a
+   * failure between the two legs briefly holds money at the platform, which is
+   * recoverable on retry, rather than creating it for the driver out of nothing.
+   * Both legs are idempotent per (wallet, PROMO_FUNDING, ride.id), so a retried
+   * or concurrent `confirmCash` funds the promotion exactly once.
+   *
+   * A no-op on the overwhelming majority of rides, which carry no coupon.
+   */
+  private async fundDriverPromotion(
+    ride: Ride,
+    driverId: string,
+    split: FareSplit,
+    context: AuditContext,
+  ): Promise<void> {
+    if (split.promoDiscount <= 0) {
+      return;
+    }
+
+    await this.withConflictRetry(() =>
+      this.walletService.debit({
+        ownerType: WalletOwnerType.PLATFORM,
+        ownerId: PLATFORM_WALLET_OWNER_ID,
+        amount: split.promoDiscount,
+        referenceType: RIDE_WALLET_REFERENCE_TYPES.PROMO_FUNDING,
+        referenceId: ride.id,
+        description: `Platform-funded promotion for cash ride (${ride.id})`,
+        context,
+      }),
+    );
+    await this.withConflictRetry(() =>
+      this.walletService.credit({
+        ownerType: WalletOwnerType.DRIVER,
+        ownerId: driverId,
+        amount: split.promoDiscount,
+        referenceType: RIDE_WALLET_REFERENCE_TYPES.PROMO_FUNDING,
+        referenceId: ride.id,
+        description: `DrippleX promotion funding for ride ${ride.id}`,
+        context,
+      }),
+    );
   }
 
   private async captureIntoPlatformWallet(ride: Ride, context: AuditContext): Promise<void> {
