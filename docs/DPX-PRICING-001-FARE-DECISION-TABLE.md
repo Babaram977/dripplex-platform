@@ -122,7 +122,7 @@ driver-viable** for the first Kano launch — competitive with the market rather
 | **Dx Ride**    | ₦350 | ₦110   | ₦15     | ₦1,500  |
 | **Dx Comfort** | ₦450 | ₦135   | ₦18     | ₦1,500  |
 | **Dx XL**      | ₦600 | ₦165   | ₦22     | ₦1,700  |
-| **Tricycle**   | ₦150 | ₦75    | ₦8      | ₦800    |
+| **Tricycle**   | ₦150 | ₦75    | ₦8      | ₦500    |
 
 Founder rationale, recorded as given:
 
@@ -133,7 +133,9 @@ Founder rationale, recorded as given:
   higher ₦1,700 floor.
 - **Tricycle** is a different market. A ₦1,500 floor would leave the product economically
   disconnected from Kano's short-distance keke trade, where published estimates put short journeys
-  around ₦300-₦1,000.
+  around ₦300-₦1,000. Set at **₦500** (revised down from an initial ₦800 on 2026-08-26, after the
+  §4A.2 analysis showed ₦800 still charged 3.3× the metered fare on a 1 km trip and bound the
+  floor out to 7.1 km).
 
 Benchmarks cited (public route examples, **not authoritative rate cards**): Bolt operating in
 Kano at roughly ₦1,900 for a ~4.5 km route; other published Kano estimates putting short app rides
@@ -142,7 +144,7 @@ at ₦1,500-₦4,500; Bolt publishing fixed Kano airport route charges of ₦3,5
 ### 3A.2 This changes a previously locked decision
 
 The 2026-08-16 founder decision set the minimum trip charge at **₦1,500 for every ride type**. The
-proposal **varies the floor by vehicle class** — ₦1,700 on Dx XL, ₦800 on Tricycle.
+proposal **varies the floor by vehicle class** — ₦1,700 on Dx XL, ₦500 on Tricycle.
 
 Recorded explicitly as a change to a locked decision rather than folded in silently. The schema
 supports it without a migration: `ride_fare_rates.minimum_fare` is a per-type column.
@@ -223,7 +225,7 @@ Applying §4's arithmetic to §3A. Effective rate per km = `perKm + 2 × perMinu
 | Dx Ride    | ₦350 | ₦140           | ₦1,500  | **8.2 km**              |
 | Dx Comfort | ₦450 | ₦171           | ₦1,500  | **6.1 km**              |
 | Dx XL      | ₦600 | ₦209           | ₦1,700  | **5.3 km**              |
-| Tricycle   | ₦150 | ₦91            | ₦800    | **7.1 km**              |
+| Tricycle   | ₦150 | ₦91            | ₦500    | **3.9 km**              |
 
 "Minimum binds up to" is the straight-line distance at which the metered fare finally reaches the
 floor. Below it, **every trip costs exactly the minimum**, regardless of distance. In road terms
@@ -249,25 +251,45 @@ Against the ₦1,900 / 4.5 km Bolt benchmark, DrippleX at ₦1,500 is genuinely 
 penetration pricing works — but it is the minimum delivering it, not the rate card.** The base,
 per-km and per-minute values are inert below 8.2 km.
 
-### 4A.2 Tricycle: ₦800 is a large improvement and still likely above the market
+### 4A.2 Tricycle at ₦500 — resolved
 
-Raising the Tricycle floor from ₦1,500 to ₦800 is directionally right and materially better. But
-against the ₦300-₦1,000 range cited for short Kano keke journeys:
+**Founder decision, 2026-08-26: the Tricycle floor is ₦500.** Revised down from ₦1,500 (the
+original blanket minimum) via ₦800, after this analysis showed ₦800 still charged 3.3× the metered
+fare on a 1 km trip and bound the floor out to 7.1 km.
+
+At ₦500, against the ₦300-₦1,000 range cited for short Kano keke journeys:
 
 | Trip   | Metered | Charged  | Multiple |
 | ------ | ------- | -------- | -------- |
-| 1 km   | ₦241    | **₦800** | 3.3×     |
-| 2 km   | ₦332    | **₦800** | 2.4×     |
-| 3 km   | ₦423    | **₦800** | 1.9×     |
-| 7.1 km | ₦796    | ₦800     | 1.0×     |
+| 1 km   | ₦241    | **₦500** | 2.1×     |
+| 2 km   | ₦332    | **₦500** | 1.5×     |
+| 3 km   | ₦423    | **₦500** | 1.2×     |
+| 3.9 km | ₦501    | ₦501     | 1.0×     |
+| 5 km   | ₦605    | ₦605     | metered  |
 
-A 1-2 km keke trip — the archetypal Kano keke journey — is charged **₦800 against a street rate
-nearer ₦300**. The product remains priced for trips the keke market does not mostly make. Worth a
-second look at whether the Tricycle floor should be lower still (₦400-₦500), or whether Tricycle
-should carry no floor at all and rely on its ₦150 base.
+The floor now binds only to **3.9 km** rather than 7.1 km, and a 2-3 km keke trip — the common
+Kano journey — prices at ₦500 against a street rate cited around ₦300-₦1,000. That sits inside the
+market band rather than above it, and Tricycle is now genuinely metered for anything beyond a
+short hop.
 
-**Flagged for decision, not changed.** The approved figure in §3A stands at ₦800 until the founder
-says otherwise.
+The 1 km case still carries a 2.1× multiple. That is the irreducible cost of having any floor at
+all: a floor exists to make a short trip worth a driver's time, and a ₦241 fare does not. ₦500 is a
+defensible place to stop.
+
+### 4A.2.1 Tricycle now behaves differently from the other three cards
+
+Worth stating, because it is a deliberate asymmetry rather than an inconsistency:
+
+| Card       | Floor binds to | Character below the floor          |
+| ---------- | -------------- | ---------------------------------- |
+| Dx Ride    | 8.2 km         | flat-rate for most urban trips     |
+| Dx Comfort | 6.1 km         | flat-rate for most urban trips     |
+| Dx XL      | 5.3 km         | flat-rate for medium trips         |
+| Tricycle   | **3.9 km**     | **metered for most of its market** |
+
+Tricycle is the only card where the rate table does the pricing rather than the floor. That is the
+right shape for a short-distance product, and it means the ₦75/km and ₦8/min values actually
+matter for Tricycle in a way they do not yet for Dx Ride.
 
 ### 4A.3 The floor distorts both sides of the market
 
@@ -284,14 +306,26 @@ rate will show it quickly.
 
 ### 4A.4 A surcharge below the floor earns nothing
 
-Because the floor is applied **after** the surcharge, a zone surcharge on a trip whose metered
-fare is under the minimum is partly or wholly absorbed. Tricycle metered ₦241 + a ₦500 surcharge =
-₦741, still below the ₦800 floor, so the passenger pays ₦800 and the surcharge yields nothing.
+Because the floor is applied **after** the surcharge, a zone surcharge on a trip whose metered fare
+plus surcharge still lands under the minimum is partly or wholly absorbed — the passenger pays the
+floor either way, and the surcharge yields nothing extra.
 
-For the airport case this mostly does not bite — an airport run is long enough to clear the floor
+Tricycle at 1 km (metered ₦241, ₦500 floor):
+
+| Zone surcharge | Metered + surcharge | Charged | Surcharge actually collected |
+| -------------- | ------------------- | ------- | ---------------------------- |
+| ₦200           | ₦441                | ₦500    | **₦0** — fully absorbed      |
+| ₦300           | ₦541                | ₦541    | ₦41                          |
+| ₦500           | ₦741                | ₦741    | ₦241                         |
+
+Dropping the Tricycle floor to ₦500 shrinks this considerably — at ₦800 a ₦500 surcharge was
+absorbed entirely — but it does not remove it.
+
+For the airport case it mostly does not bite: an airport run is long enough to clear the floor
 (Dx Ride at 15 km meters at ₦2,450, and a ₦1,000 surcharge takes it to ₦3,450, against the
-₦3,500-₦3,600 Bolt publishes for Kano airport routes). Worth knowing before any short-distance
-zone is configured.
+₦3,500-₦3,600 Bolt publishes for Kano airport routes). Tricycles are in any case restricted from
+the airport by a zone rule, so the interaction is theoretical there. Worth knowing before any
+**short-distance** zone is configured — that is where it would bite.
 
 ### 4A.5 Straight-line distance is a driver-viability question
 
@@ -343,7 +377,9 @@ None of the six exists in the platform today, so "no" requires nothing to be rem
    2026-08-26.
 3. ⬜ **Compare** §3A against the §2.1 capture. If a live card already differs from the seed,
    that difference is a decision someone took and must be understood before it is overwritten.
-4. ⬜ **Resolve** the open questions §4A raises — the Tricycle floor (§4A.2) above all.
+4. ✅ **Resolve** the Tricycle floor — set to **₦500**, founder decision 2026-08-26 (§4A.2).
+   Remaining §4A observations (§4A.3 incentive shape, §4A.5 straight-line distance) are recorded
+   as known and accepted for launch, not blocking.
 5. ⬜ **Approve** the final table, at which point §3A stops being a proposal.
 6. ⬜ **Apply** in Operations Console → Pricing & Fares. Console entry, not a deploy. Every edit
    audit-logged.
