@@ -95,6 +95,8 @@ export const ROLE_PERMISSION_GRANTS: Record<string, string[]> = {
     'messaging:use',
     'driver:commercial:read',
     'driver:referral_campaign:use',
+    // The standing referral scheme, distinct from the campaign promo above.
+    'driver:referrals:use',
     'customer:notifications:read',
     'customer:notifications:manage',
   ],

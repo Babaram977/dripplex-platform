@@ -3601,11 +3601,27 @@ enum ReferralRedemptionStatus {
   EXPIRED
 }
 
+/// Whose referral code this is, and therefore which wallet their reward is
+/// paid into.
+///
+/// Recorded on the row rather than derived from the holder's profiles at
+/// payout time: a customer who later signs up to drive must not have their
+/// past referral rewards retroactively redirected to a wallet they did not
+/// earn them in. Founder decision, 2026-08-26 — a driver's referral reward is
+/// wallet cash in their DRIVER wallet, paid on the referred customer's first
+/// completed ride.
+enum ReferralOwnerType {
+  CUSTOMER
+  DRIVER
+}
+
 /// One row per user who has generated a referral code (lazily created on
 /// first request). The code is what the referrer shares.
 model Referral {
   id          String               @id @default(uuid()) @db.Uuid
   userId      String               @unique @map("user_id") @db.Uuid
+  /// CUSTOMER unless the code was issued through the driver app.
+  ownerType   ReferralOwnerType    @default(CUSTOMER) @map("owner_type")
   code        String               @unique @db.VarChar(16)
   createdAt   DateTime             @default(now()) @map("created_at")
   updatedAt   DateTime             @updatedAt @map("updated_at")

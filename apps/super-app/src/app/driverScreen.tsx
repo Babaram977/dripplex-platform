@@ -43,6 +43,7 @@ import type {
   RideOfferPreviewDto,
   RideDto,
   RideType,
+  ReferralStatsDto,
   WalletDto,
   WalletLedgerEntryDto,
 } from '../lib/api';
@@ -4661,7 +4662,130 @@ function DriverCommissionCard() {
 }
 
 /**
- * The driver's referral programme, on the wallet where the reward lands.
+ * The driver's standing referral code — the one that is always on.
+ *
+ * Founder decision, 2026-08-26: drivers recruited from other apps market
+ * DrippleX to passengers, and a passenger who registers with a driver's code
+ * earns that driver ₦350 of wallet cash. Not on signup — on that passenger's
+ * first completed ride, because paying at signup makes self-registration free
+ * money.
+ *
+ * Deliberately separate from `DriverReferralCard` below, which is the Driver
+ * Growth Campaign: a monthly promo with tiers and thresholds that an admin
+ * opens and closes. This scheme runs whether or not a campaign does, so the
+ * two are shown as two cards rather than merged into one confusing figure.
+ *
+ * The reward amounts are the server's (`referrerRewardAmount`), not literals
+ * here — the backend was already carrying them in the stats response for
+ * exactly this reason, so changing the payout never needs an app release.
+ */
+function DriverStandingReferralCard() {
+  const [stats, setStats] = useState<ReferralStatsDto | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    // `stats` creates the code on first read and returns it, so this is the
+    // only call needed — `me` would fetch the same code a second time.
+    api.driverReferrals
+      .stats()
+      .then((s) => {
+        if (live) setStats(s);
+      })
+      .catch(() => {
+        if (live) setFailed(true);
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const share = async (): Promise<void> => {
+    if (stats === null) return;
+    const shareUrl = referralShareUrl(stats.code);
+    const message = `Join me on DrippleX — use my code ${stats.code} when you sign up. ${shareUrl}`;
+    const canNativeShare = typeof navigator.share === 'function';
+    try {
+      if (canNativeShare) {
+        await navigator.share({ text: message, url: shareUrl });
+        return;
+      }
+      await navigator.clipboard.writeText(message);
+      setCopied(true);
+      setTimeout(() => {
+        setCopied(false);
+      }, 2000);
+    } catch {
+      // A cancelled share sheet lands here too. Nothing to report.
+    }
+  };
+
+  // A driver who cannot reach the endpoint sees nothing rather than an error
+  // banner on their wallet; the balance above is the screen's real business.
+  if (failed || stats === null) return null;
+
+  return (
+    <div
+      className="mb-5 rounded-2xl p-4"
+      style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
+    >
+      <p className="mb-1 text-[13px] font-semibold" style={{ fontFamily: PP, color: '#fff' }}>
+        Your referral code
+      </p>
+      <p className="mb-3 text-[12px]" style={{ fontFamily: IT, color: TEXT_SECONDARY }}>
+        {naira(stats.referrerRewardAmount)} lands in this wallet for every passenger who signs up
+        with your code — paid when they complete their first ride. They get{' '}
+        {naira(stats.refereeRewardAmount)} too.
+      </p>
+
+      <div
+        className="mb-3 flex items-center gap-2 rounded-xl p-3"
+        style={{ background: 'rgba(43,172,82,.08)', border: '1px solid rgba(43,172,82,.2)' }}
+      >
+        <p
+          className="flex-1 text-[18px] font-bold tracking-[3px]"
+          style={{ fontFamily: PP, color: G3 }}
+        >
+          {stats.code}
+        </p>
+        <button
+          type="button"
+          onClick={() => void share()}
+          className="rounded-lg px-4 py-2 text-[12px] font-bold"
+          style={{ background: G2, color: '#fff', fontFamily: PP }}
+        >
+          {copied ? 'Copied' : 'Share'}
+        </button>
+      </div>
+
+      <div className="flex gap-3">
+        {[
+          { v: stats.totalRedemptions, l: 'Signed up' },
+          // "Awaiting first ride" rather than "Pending", which reads as
+          // "we are checking it" — the driver is owed nothing until that
+          // passenger rides, and the label should say which it is.
+          { v: stats.pendingRedemptions, l: 'Awaiting first ride' },
+          { v: stats.rewardedRedemptions, l: 'Paid' },
+        ].map((s) => (
+          <div key={s.l} className="flex-1 text-center">
+            <p className="text-[15px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
+              {s.v}
+            </p>
+            <p className="text-[10px]" style={{ fontFamily: IT, color: MUTED }}>
+              {s.l}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The Driver Growth Campaign — a promo that runs for a period, on top of the
+ * standing referral code above. Distinct programmes: this one pays tiered
+ * bonuses at thresholds an admin sets, and only while a campaign is open.
  *
  * The whole loop was already built and running with no way in: the backend
  * has kept a code per driver per campaign since the Driver Growth Campaign
@@ -4742,11 +4866,11 @@ function DriverReferralCard() {
         style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
       >
         <p className="mb-1 text-[13px] font-semibold" style={{ fontFamily: PP, color: '#fff' }}>
-          Refer &amp; earn
+          Growth campaign
         </p>
         <p className="text-[12px]" style={{ fontFamily: IT, color: MUTED }}>
-          No referral campaign is running at the moment. When the next one opens your code appears
-          here.
+          No bonus campaign is running at the moment. Your referral code above keeps earning; when a
+          campaign opens, the extra tiers appear here.
         </p>
       </div>
     );
@@ -4767,7 +4891,7 @@ function DriverReferralCard() {
       <div className="mb-3 flex items-start justify-between gap-2">
         <div>
           <p className="text-[13px] font-semibold" style={{ fontFamily: PP, color: '#fff' }}>
-            Refer &amp; earn
+            Growth campaign
           </p>
           <p className="text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
             {campaign.name}
@@ -4922,6 +5046,7 @@ function DriverWalletTab({ onBack }: { onBack: () => void }) {
           }}
         />
 
+        <DriverStandingReferralCard />
         <DriverReferralCard />
 
         {/* Transactions */}
