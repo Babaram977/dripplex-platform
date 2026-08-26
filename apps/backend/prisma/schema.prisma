@@ -456,6 +456,18 @@ enum DeliveryStatus {
   CANCELLED
 }
 
+/// Which pool the person carrying a delivery came from.
+///
+/// Recorded on the job rather than re-derived from the assignee's profiles,
+/// because the answer must not change after the fact: settlement reads it to
+/// pick the CommissionOwnerType a cash delivery is accrued against, and a
+/// courier who later also becomes a driver would otherwise retroactively
+/// re-file every delivery they ever made.
+enum DeliveryCourierType {
+  RIDER
+  DRIVER
+}
+
 enum AssignmentMethod {
   AUTO
   MANUAL
@@ -1799,6 +1811,10 @@ model DeliveryJob {
   id                       String             @id @default(uuid()) @db.Uuid
   orderId                  String             @unique @map("order_id") @db.Uuid
   riderId                  String?            @map("rider_id") @db.Uuid
+
+  /// Null until assigned. RIDER for a Marketplace courier, DRIVER for a
+  /// ride-hailing driver who opted in (founder decision, 2026-08-25).
+  courierType              DeliveryCourierType? @map("courier_type")
   merchantId               String             @map("merchant_id") @db.Uuid
   customerId               String             @map("customer_id") @db.Uuid
   assignmentMethod         AssignmentMethod   @default(AUTO) @map("assignment_method")
@@ -2174,6 +2190,15 @@ model DriverAvailability {
   driverId       String   @id @map("driver_id") @db.Uuid
   online         Boolean  @default(false)
   acceptingRides Boolean  @default(false) @map("accepting_rides")
+
+  /// Whether this driver also wants merchant delivery jobs (founder decision,
+  /// 2026-08-25). Separate from `acceptingRides` and defaulting to false so
+  /// the change is inert until a driver opts in: a ride fare is worth more
+  /// than a parcel drop, and a driver online for rides must never be pulled
+  /// onto a ₦400 delivery they did not ask for. Deliveries are offered to
+  /// couriers first and fall back to drivers who set this.
+  acceptingDeliveries Boolean @default(false) @map("accepting_deliveries")
+
   vehicleType    RideType @map("vehicle_type")
   latitude       Decimal? @db.Decimal(10, 7)
   longitude      Decimal? @db.Decimal(10, 7)
@@ -2190,6 +2215,10 @@ model DriverAvailability {
   driver          User     @relation(fields: [driverId], references: [id], onDelete: Cascade)
 
   @@index([online, acceptingRides, vehicleType])
+  /// Delivery dispatch's fallback pool: opted-in drivers, ranked by distance.
+  /// Without it every unassigned job sequentially scans every driver on the
+  /// platform, every 30 seconds.
+  @@index([online, acceptingDeliveries], map: "driver_availability_online_accepting_deliveries_idx")
   /// Dispatch filters on these four together before ranking by distance.
   /// Named explicitly: Prisma's generated name for four columns this long
   /// exceeds Postgres's 63-character identifier limit and gets truncated,

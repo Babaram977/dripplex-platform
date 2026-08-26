@@ -26,7 +26,11 @@ import type { AuditService } from '../audit/audit.service';
 import type { NotificationService } from '../notifications/notification.service';
 import type { OrdersRepository, OrderWithItems } from '../orders/repositories/orders.repository';
 import type { PrismaService } from '../prisma/prisma.service';
-import type { DeliveryRepository } from './repositories/delivery.repository';
+import type {
+  CourierType,
+  DeliveryCandidate,
+  DeliveryRepository,
+} from './repositories/delivery.repository';
 import type {
   CustomerAddress,
   DeliveryJob,
@@ -146,6 +150,16 @@ function makeRiderAvailability(
   } as unknown as RiderAvailability;
 }
 
+/** A dispatchable courier as the assignment service now returns them. */
+function makeCandidate(userId = riderId, courierType: CourierType = 'RIDER'): DeliveryCandidate {
+  return {
+    userId,
+    latitude: 6.53,
+    longitude: 3.38,
+    courierType,
+  } as unknown as DeliveryCandidate;
+}
+
 function makeTracking(overrides: Partial<DeliveryTracking> = {}): DeliveryTracking {
   return {
     id: '99999999-9999-9999-9999-999999999999',
@@ -197,10 +211,10 @@ describe('DeliveryService', () => {
     findProofs: jest.fn(),
     upsertRiderAvailability: jest.fn(),
     findRiderAvailability: jest.fn(),
-    listAvailableRiders: jest.fn(),
-    isRiderEligibleForDelivery: jest.fn(),
-    incrementRiderActiveJobCount: jest.fn(),
-    decrementRiderActiveJobCount: jest.fn(),
+    listAvailableCouriers: jest.fn(),
+    resolveEligibleCourier: jest.fn(),
+    incrementActiveJobCount: jest.fn(),
+    decrementActiveJobCount: jest.fn(),
   };
 
   const ordersRepository: jest.Mocked<OrdersRepository> = {
@@ -252,7 +266,7 @@ describe('DeliveryService', () => {
   };
 
   const assignmentService = {
-    findNearestRider: jest.fn(),
+    findNearestCourier: jest.fn(),
   } as unknown as jest.Mocked<AssignmentService>;
 
   const deliveryFeeService = {
@@ -346,19 +360,15 @@ describe('DeliveryService', () => {
       items: [makeJob({ status: DeliveryStatus.ACCEPTED })],
       total: 13,
     });
-    // Default: the rider passes the approval gate. Tests that exercise the
-    // gate override this explicitly.
-    deliveryRepository.isRiderEligibleForDelivery.mockResolvedValue(true);
+    // Default: the courier passes the approval gate as a RIDER. Tests that
+    // exercise the gate, or the driver pool, override this explicitly.
+    deliveryRepository.resolveEligibleCourier.mockResolvedValue('RIDER');
     deliveryRepository.upsertRiderAvailability.mockResolvedValue(makeRiderAvailability());
-    deliveryRepository.incrementRiderActiveJobCount.mockResolvedValue(makeRiderAvailability());
-    deliveryRepository.decrementRiderActiveJobCount.mockResolvedValue(
-      makeRiderAvailability(riderId, {
-        activeJobCount: 0,
-      }),
-    );
+    deliveryRepository.incrementActiveJobCount.mockResolvedValue(undefined);
+    deliveryRepository.decrementActiveJobCount.mockResolvedValue(undefined);
 
     addressRepository.findByIdForCustomer.mockResolvedValue(makeAddress());
-    assignmentService.findNearestRider.mockResolvedValue(null);
+    assignmentService.findNearestCourier.mockResolvedValue(null);
     deliveryFeeService.estimate.mockReturnValue({
       fee: 900,
       distanceMeters: 1000,
@@ -386,7 +396,7 @@ describe('DeliveryService', () => {
   });
 
   it('creates a delivery job for a paid order and auto-assigns the nearest rider', async () => {
-    assignmentService.findNearestRider.mockResolvedValue(makeRiderAvailability(riderId));
+    assignmentService.findNearestCourier.mockResolvedValue(makeCandidate(riderId));
 
     const result = await service.createDeliveryJob(orderId, { userId: merchantId });
 
@@ -411,11 +421,12 @@ describe('DeliveryService', () => {
         assignmentMethod: AssignmentMethod.AUTO,
       }),
     );
-    expect(assignmentService.findNearestRider).toHaveBeenCalledWith(11.99, 8.56, []);
+    expect(assignmentService.findNearestCourier).toHaveBeenCalledWith(11.99, 8.56, []);
     expect(deliveryRepository.assignRider).toHaveBeenCalledWith(
       jobId,
       riderId,
       AssignmentMethod.AUTO,
+      'RIDER',
     );
   });
 
@@ -456,7 +467,7 @@ describe('DeliveryService', () => {
   });
 
   it('creates a delivery job for a CASH order while payment is still pending (cash on delivery)', async () => {
-    assignmentService.findNearestRider.mockResolvedValue(makeRiderAvailability(riderId));
+    assignmentService.findNearestCourier.mockResolvedValue(makeCandidate(riderId));
     ordersRepository.findById.mockResolvedValue(
       makeOrder({ paymentStatus: PaymentStatus.PENDING, paymentMethod: OrderPaymentMethod.CASH }),
     );
@@ -513,6 +524,38 @@ describe('DeliveryService', () => {
     expect(deliveryFeeService.estimate).toHaveBeenCalledWith(expect.any(Number), 750);
   });
 
+  it('settles a DRIVER-carried job against the driver pool, not the courier one', async () => {
+    // The trap this guards: every counter call used to upsert
+    // rider_availability keyed by user id. Pointing a driver at a delivery
+    // would have created a phantom courier row for them — online:false, but
+    // present — quietly polluting the pool dispatch reads from.
+    deliveryRepository.resolveEligibleCourier.mockResolvedValue('DRIVER');
+    deliveryRepository.findJobById.mockResolvedValue(makeJob({ riderId: null }));
+    deliveryRepository.assignRider.mockResolvedValue(
+      makeJob({ riderId, status: DeliveryStatus.ASSIGNED }),
+    );
+
+    await service.assignRider(jobId, riderId, AssignmentMethod.MANUAL, { userId: merchantId });
+
+    expect(deliveryRepository.assignRider).toHaveBeenCalledWith(
+      jobId,
+      riderId,
+      AssignmentMethod.MANUAL,
+      'DRIVER',
+    );
+    expect(deliveryRepository.incrementActiveJobCount).toHaveBeenCalledWith(riderId, 'DRIVER');
+  });
+
+  it('refuses to assign someone who is neither an approved courier nor an approved driver', async () => {
+    deliveryRepository.resolveEligibleCourier.mockResolvedValue(null);
+    deliveryRepository.findJobById.mockResolvedValue(makeJob({ riderId: null }));
+
+    await expect(
+      service.assignRider(jobId, riderId, AssignmentMethod.MANUAL, { userId: merchantId }),
+    ).rejects.toThrow(/approved/i);
+    expect(deliveryRepository.assignRider).not.toHaveBeenCalled();
+  });
+
   it('assigns a rider manually', async () => {
     deliveryRepository.findJobById.mockResolvedValue(makeJob({ status: DeliveryStatus.PENDING }));
 
@@ -522,7 +565,7 @@ describe('DeliveryService', () => {
 
     expect(result.riderId).toBe(riderId);
     expect(result.assignmentMethod).toBe(AssignmentMethod.MANUAL);
-    expect(deliveryRepository.incrementRiderActiveJobCount).toHaveBeenCalledWith(riderId);
+    expect(deliveryRepository.incrementActiveJobCount).toHaveBeenCalledWith(riderId, 'RIDER');
     expect(auditService.record).toHaveBeenCalledWith(
       DELIVERY_AUDIT_ACTIONS.ASSIGNED,
       { userId: merchantId },
@@ -559,8 +602,8 @@ describe('DeliveryService', () => {
     const result = await service.reassignRider(jobId, nextRiderId, { userId: merchantId });
 
     expect(result.riderId).toBe(nextRiderId);
-    expect(deliveryRepository.decrementRiderActiveJobCount).toHaveBeenCalledWith(riderId);
-    expect(deliveryRepository.incrementRiderActiveJobCount).toHaveBeenCalledWith(nextRiderId);
+    expect(deliveryRepository.decrementActiveJobCount).toHaveBeenCalledWith(riderId, 'RIDER');
+    expect(deliveryRepository.incrementActiveJobCount).toHaveBeenCalledWith(nextRiderId, 'RIDER');
   });
 
   it('does not change rider capacity when assigning the same rider again', async () => {
@@ -570,8 +613,8 @@ describe('DeliveryService', () => {
 
     await service.assignRider(jobId, riderId, AssignmentMethod.MANUAL, {});
 
-    expect(deliveryRepository.decrementRiderActiveJobCount).not.toHaveBeenCalled();
-    expect(deliveryRepository.incrementRiderActiveJobCount).not.toHaveBeenCalled();
+    expect(deliveryRepository.decrementActiveJobCount).not.toHaveBeenCalled();
+    expect(deliveryRepository.incrementActiveJobCount).not.toHaveBeenCalled();
   });
 
   it('rejects assignment to terminal delivery jobs', async () => {
@@ -621,20 +664,21 @@ describe('DeliveryService', () => {
     expect(result.status).toBe(DeliveryStatus.PENDING);
     expect(result.riderId).toBeNull();
     expect(deliveryRepository.clearRider).toHaveBeenCalledWith(jobId);
-    expect(deliveryRepository.decrementRiderActiveJobCount).toHaveBeenCalledWith(riderId);
+    expect(deliveryRepository.decrementActiveJobCount).toHaveBeenCalledWith(riderId, 'RIDER');
   });
 
   it('retries auto-assignment after a rider rejects a job', async () => {
-    assignmentService.findNearestRider.mockResolvedValue(makeRiderAvailability(nextRiderId));
+    assignmentService.findNearestCourier.mockResolvedValue(makeCandidate(nextRiderId));
 
     const result = await service.rejectJob(riderId, jobId, {});
 
     expect(result.riderId).toBe(nextRiderId);
-    expect(assignmentService.findNearestRider).toHaveBeenCalledWith(11.99, 8.56, [riderId]);
+    expect(assignmentService.findNearestCourier).toHaveBeenCalledWith(11.99, 8.56, [riderId]);
     expect(deliveryRepository.assignRider).toHaveBeenCalledWith(
       jobId,
       nextRiderId,
       AssignmentMethod.AUTO,
+      'RIDER',
     );
   });
 
@@ -974,7 +1018,7 @@ describe('DeliveryService', () => {
     expect(deliveryRepository.updateJobStatus).toHaveBeenCalledWith(jobId, DeliveryStatus.FAILED, {
       cancellationReason: 'customer unavailable',
     });
-    expect(deliveryRepository.decrementRiderActiveJobCount).toHaveBeenCalledWith(riderId);
+    expect(deliveryRepository.decrementActiveJobCount).toHaveBeenCalledWith(riderId, 'RIDER');
   });
 
   it('fails an active job with a null reason when none is provided', async () => {
@@ -1002,7 +1046,7 @@ describe('DeliveryService', () => {
       DeliveryStatus.RETURNED,
       { cancellationReason: 'merchant requested return' },
     );
-    expect(deliveryRepository.decrementRiderActiveJobCount).toHaveBeenCalledWith(riderId);
+    expect(deliveryRepository.decrementActiveJobCount).toHaveBeenCalledWith(riderId, 'RIDER');
   });
 
   it('cancels a pending unassigned job without releasing rider capacity', async () => {
@@ -1013,7 +1057,7 @@ describe('DeliveryService', () => {
     const result = await service.cancelJob(jobId, 'customer cancelled', { userId: customerId });
 
     expect(result.status).toBe(DeliveryStatus.CANCELLED);
-    expect(deliveryRepository.decrementRiderActiveJobCount).not.toHaveBeenCalled();
+    expect(deliveryRepository.decrementActiveJobCount).not.toHaveBeenCalled();
     expect(auditService.record).toHaveBeenCalledWith(
       DELIVERY_AUDIT_ACTIONS.CANCELLED,
       { userId: customerId },
@@ -1030,7 +1074,7 @@ describe('DeliveryService', () => {
 
     await service.cancelJob(jobId, undefined, {});
 
-    expect(deliveryRepository.decrementRiderActiveJobCount).toHaveBeenCalledWith(riderId);
+    expect(deliveryRepository.decrementActiveJobCount).toHaveBeenCalledWith(riderId, 'RIDER');
     expect(deliveryRepository.updateJobStatus).toHaveBeenCalledWith(
       jobId,
       DeliveryStatus.CANCELLED,
@@ -1220,7 +1264,7 @@ describe('DeliveryService', () => {
     // approval gate would be one click away from being bypassed.
     deliveryRepository.findJobById.mockResolvedValue(makeJob());
     ordersRepository.findById.mockResolvedValue(makeOrder());
-    deliveryRepository.isRiderEligibleForDelivery.mockResolvedValue(false);
+    deliveryRepository.resolveEligibleCourier.mockResolvedValue(null);
 
     await expect(
       service.assignRider(jobId, riderId, AssignmentMethod.MANUAL, {}),
@@ -1233,7 +1277,7 @@ describe('DeliveryService', () => {
       makeJob({ riderId, status: DeliveryStatus.ASSIGNED }),
     );
     ordersRepository.findById.mockResolvedValue(makeOrder());
-    deliveryRepository.isRiderEligibleForDelivery.mockResolvedValue(false);
+    deliveryRepository.resolveEligibleCourier.mockResolvedValue(null);
 
     await expect(service.reassignRider(jobId, nextRiderId, {})).rejects.toBeInstanceOf(
       ValidationDomainException,
@@ -1267,7 +1311,7 @@ describe('DeliveryService', () => {
       durationSeconds: 1105,
     });
     deliveryRepository.createJob.mockResolvedValue(makeJob());
-    assignmentService.findNearestRider.mockResolvedValue(null);
+    assignmentService.findNearestCourier.mockResolvedValue(null);
 
     await service.createDeliveryJob(orderId);
 
@@ -1315,7 +1359,7 @@ describe('DeliveryService', () => {
       const waiting = makeJob();
       deliveryRepository.listUnassignedJobs.mockResolvedValue([waiting]);
       deliveryRepository.findJobById.mockResolvedValue(waiting);
-      assignmentService.findNearestRider.mockResolvedValue(makeRiderAvailability());
+      assignmentService.findNearestCourier.mockResolvedValue(makeCandidate());
       deliveryRepository.assignRider.mockResolvedValue(
         makeJob({ riderId, status: DeliveryStatus.ASSIGNED, assignedAt: now }),
       );
@@ -1328,7 +1372,7 @@ describe('DeliveryService', () => {
       const waiting = makeJob();
       deliveryRepository.listUnassignedJobs.mockResolvedValue([waiting]);
       deliveryRepository.findJobById.mockResolvedValue(waiting);
-      assignmentService.findNearestRider.mockResolvedValue(null);
+      assignmentService.findNearestCourier.mockResolvedValue(null);
 
       await expect(service.redispatchUnassignedJobs(25)).resolves.toBe(0);
       expect(deliveryRepository.assignRider).not.toHaveBeenCalled();
@@ -1339,13 +1383,13 @@ describe('DeliveryService', () => {
       deliveryRepository.listUnassignedJobs.mockResolvedValue([waiting]);
       deliveryRepository.findJobById.mockResolvedValue(waiting);
       deliveryRepository.listRejectedRiderIds.mockResolvedValue([riderId]);
-      assignmentService.findNearestRider.mockResolvedValue(null);
+      assignmentService.findNearestCourier.mockResolvedValue(null);
 
       await service.redispatchUnassignedJobs(25);
 
       // A rider who declined is passed through as an exclusion, so the next
       // tick cannot hand them straight back the same delivery.
-      expect(assignmentService.findNearestRider).toHaveBeenCalledWith(
+      expect(assignmentService.findNearestCourier).toHaveBeenCalledWith(
         expect.any(Number),
         expect.any(Number),
         [riderId],
@@ -1362,7 +1406,7 @@ describe('DeliveryService', () => {
       const waiting = makeJob();
       deliveryRepository.listUnassignedJobs.mockResolvedValue([waiting]);
       deliveryRepository.findJobById.mockResolvedValue(waiting);
-      assignmentService.findNearestRider.mockResolvedValue(null);
+      assignmentService.findNearestCourier.mockResolvedValue(null);
 
       const before = Date.now();
       await service.redispatchUnassignedJobs(25);
@@ -1385,13 +1429,13 @@ describe('DeliveryService', () => {
       deliveryRepository.listUnassignedJobs.mockResolvedValue([waiting]);
       deliveryRepository.findJobById.mockResolvedValue(waiting);
       deliveryRepository.listRejectedRiderIds.mockResolvedValue([]);
-      assignmentService.findNearestRider.mockResolvedValue(makeRiderAvailability());
+      assignmentService.findNearestCourier.mockResolvedValue(makeCandidate());
       deliveryRepository.assignRider.mockResolvedValue(
         makeJob({ riderId, status: DeliveryStatus.ASSIGNED, assignedAt: now }),
       );
 
       await expect(service.redispatchUnassignedJobs(25)).resolves.toBe(1);
-      expect(assignmentService.findNearestRider).toHaveBeenCalledWith(
+      expect(assignmentService.findNearestCourier).toHaveBeenCalledWith(
         expect.any(Number),
         expect.any(Number),
         [],
@@ -1407,7 +1451,7 @@ describe('DeliveryService', () => {
       );
 
       await expect(service.redispatchUnassignedJobs(25)).resolves.toBe(0);
-      expect(assignmentService.findNearestRider).not.toHaveBeenCalled();
+      expect(assignmentService.findNearestCourier).not.toHaveBeenCalled();
       expect(deliveryRepository.assignRider).not.toHaveBeenCalled();
     });
 
@@ -1418,7 +1462,7 @@ describe('DeliveryService', () => {
       ordersRepository.findById.mockResolvedValue(makeOrder({ status: OrderStatus.CANCELLED }));
 
       await expect(service.redispatchUnassignedJobs(25)).resolves.toBe(0);
-      expect(assignmentService.findNearestRider).not.toHaveBeenCalled();
+      expect(assignmentService.findNearestCourier).not.toHaveBeenCalled();
     });
   });
 

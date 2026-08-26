@@ -62,6 +62,7 @@ export function toDriverAvailabilityDto(availability: DriverAvailability): Drive
     driverId: availability.driverId,
     online: availability.online,
     acceptingRides: availability.acceptingRides,
+    acceptingDeliveries: availability.acceptingDeliveries,
     vehicleType: availability.vehicleType,
     latitude: availability.latitude !== null ? Number(availability.latitude) : null,
     longitude: availability.longitude !== null ? Number(availability.longitude) : null,

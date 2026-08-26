@@ -21,6 +21,19 @@ export class UpdateDriverAvailabilityDto {
   @IsBoolean()
   public acceptingRides!: boolean;
 
+  /**
+   * Whether this driver also wants merchant delivery jobs (founder decision,
+   * 2026-08-25).
+   *
+   * Optional, and omitting it LEAVES THE STORED VALUE ALONE rather than
+   * clearing it — every existing client sends this DTO without the field, and
+   * treating absence as false would silently opt a driver back out on their
+   * next ordinary go-online.
+   */
+  @IsOptional()
+  @IsBoolean()
+  public acceptingDeliveries?: boolean;
+
   @IsEnum(RideType)
   public vehicleType!: RideType;
 

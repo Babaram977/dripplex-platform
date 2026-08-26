@@ -415,6 +415,9 @@ const ROLE_PERMISSION_GRANTS = {
     'driver:vehicle:manage',
     'driver:inspection:manage',
     'driver:ride:manage',
+    // Drivers who opt in to merchant deliveries use the same /rider/jobs
+    // endpoints couriers do — see the note in seed-data/role-permissions.ts.
+    'rider:delivery:manage',
     'messaging:use',
     'driver:support-ticket:manage',
     'driver:incident-report:manage',

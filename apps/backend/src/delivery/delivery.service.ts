@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
   AssignmentMethod,
   CommissionOwnerType,
+  DeliveryCourierType,
   DeliveryStatus,
   FulfillmentType,
   OrderPaymentMethod,
@@ -57,7 +58,11 @@ import {
   type RiderLocationDto,
   type TrackingDto,
 } from './delivery.mapper';
-import { DELIVERY_REPOSITORY, type DeliveryRepository } from './repositories/delivery.repository';
+import {
+  DELIVERY_REPOSITORY,
+  type CourierType,
+  type DeliveryRepository,
+} from './repositories/delivery.repository';
 
 import type { PaginatedResult } from '@dripplex/types';
 import type { DeliveryJob } from '@prisma/client';
@@ -250,8 +255,8 @@ export class DeliveryService {
   ): Promise<DeliveryJobDto> {
     const job = await this.requireJob(jobId);
     const order = await this.requireOrder(job.orderId);
-    await this.assertRiderEligible(riderId);
-    const updated = await this.assignRiderToJob(job, riderId, method, order, context);
+    const courierType = await this.resolveCourierOrThrow(riderId);
+    const updated = await this.assignRiderToJob(job, riderId, courierType, method, order, context);
     return toDeliveryJobDto(updated);
   }
 
@@ -262,10 +267,11 @@ export class DeliveryService {
   ): Promise<DeliveryJobDto> {
     const job = await this.requireJob(jobId);
     const order = await this.requireOrder(job.orderId);
-    await this.assertRiderEligible(riderId);
+    const courierType = await this.resolveCourierOrThrow(riderId);
     const updated = await this.assignRiderToJob(
       job,
       riderId,
+      courierType,
       AssignmentMethod.MANUAL,
       order,
       context,
@@ -279,13 +285,20 @@ export class DeliveryService {
    * away from being bypassed. Auto-assignment does not need this: its candidate
    * query already selects only eligible riders.
    */
-  private async assertRiderEligible(riderId: string): Promise<void> {
-    const eligible = await this.deliveryRepository.isRiderEligibleForDelivery(riderId);
-    if (!eligible) {
+  private async resolveCourierOrThrow(userId: string): Promise<CourierType> {
+    const courierType = await this.deliveryRepository.resolveEligibleCourier(userId);
+    if (courierType === null) {
       throw new ValidationDomainException(
-        'Rider must be approved with all required KYC documents verified before taking deliveries',
+        'Courier must be approved with all required KYC documents verified before taking deliveries',
       );
     }
+    return courierType;
+  }
+
+  /** The pool a job's assignee came from. Read off the job, which records it
+   *  at assignment; RIDER for anything written before drivers could deliver. */
+  private courierTypeOf(job: DeliveryJob): CourierType {
+    return job.courierType === DeliveryCourierType.DRIVER ? 'DRIVER' : 'RIDER';
   }
 
   public async acceptJob(
@@ -312,7 +325,7 @@ export class DeliveryService {
     this.requireStatus(job, DeliveryStatus.ASSIGNED);
 
     const pending = await this.deliveryRepository.clearRider(job.id);
-    await this.deliveryRepository.decrementRiderActiveJobCount(riderId);
+    await this.deliveryRepository.decrementActiveJobCount(riderId, this.courierTypeOf(job));
     await this.auditLifecycle(DELIVERY_AUDIT_ACTIONS.REJECTED, pending, context, {
       riderId,
     });
@@ -391,7 +404,7 @@ export class DeliveryService {
       ...(proof.notes !== undefined ? { notes: proof.notes } : {}),
     });
     const updated = await this.deliveryRepository.updateJobStatus(job.id, DeliveryStatus.DELIVERED);
-    await this.deliveryRepository.decrementRiderActiveJobCount(riderId);
+    await this.deliveryRepository.decrementActiveJobCount(riderId, this.courierTypeOf(job));
     await this.ordersRepository.transition(job.orderId, {
       status: OrderStatus.DELIVERED,
       deliveredAt: new Date(),
@@ -777,7 +790,7 @@ export class DeliveryService {
 
       const ignoredBy = job.riderId;
       const pending = await this.deliveryRepository.clearRider(job.id);
-      await this.deliveryRepository.decrementRiderActiveJobCount(ignoredBy);
+      await this.deliveryRepository.decrementActiveJobCount(ignoredBy, this.courierTypeOf(job));
       await this.auditLifecycle(DELIVERY_AUDIT_ACTIONS.REJECTED, pending, context, {
         riderId: ignoredBy,
         reason: 'accept_timeout',
@@ -845,20 +858,28 @@ export class DeliveryService {
     context: AuditContext,
     excludedRiderIds: string[] = [],
   ): Promise<DeliveryJob> {
-    const rider = await this.assignmentService.findNearestRider(
+    const courier = await this.assignmentService.findNearestCourier(
       Number(job.pickupLatitude),
       Number(job.pickupLongitude),
       excludedRiderIds,
     );
-    if (!rider) {
+    if (!courier) {
       return job;
     }
-    return await this.assignRiderToJob(job, rider.riderId, AssignmentMethod.AUTO, order, context);
+    return await this.assignRiderToJob(
+      job,
+      courier.userId,
+      courier.courierType,
+      AssignmentMethod.AUTO,
+      order,
+      context,
+    );
   }
 
   private async assignRiderToJob(
     job: DeliveryJob,
     riderId: string,
+    courierType: CourierType,
     method: AssignmentMethod,
     order: OrderWithItems,
     context: AuditContext,
@@ -866,12 +887,19 @@ export class DeliveryService {
     this.requireNotTerminal(job);
 
     const previousRiderId = job.riderId;
-    const updated = await this.deliveryRepository.assignRider(job.id, riderId, method);
+    const updated = await this.deliveryRepository.assignRider(job.id, riderId, method, courierType);
     if (previousRiderId !== riderId) {
       if (previousRiderId) {
-        await this.deliveryRepository.decrementRiderActiveJobCount(previousRiderId);
+        // The OUTGOING assignee's own pool — read off the job as it was
+        // before this write, not the incoming courier's. A driver taking over
+        // a courier's job must not decrement a driver counter that was never
+        // incremented, leaving the courier permanently one job "busy".
+        await this.deliveryRepository.decrementActiveJobCount(
+          previousRiderId,
+          this.courierTypeOf(job),
+        );
       }
-      await this.deliveryRepository.incrementRiderActiveJobCount(riderId);
+      await this.deliveryRepository.incrementActiveJobCount(riderId, courierType);
     }
 
     await this.auditLifecycle(DELIVERY_AUDIT_ACTIONS.ASSIGNED, updated, context, {
@@ -972,7 +1000,7 @@ export class DeliveryService {
 
   private async releaseRiderCapacity(job: DeliveryJob): Promise<void> {
     if (job.riderId && ACTIVE_STATUSES.includes(job.status)) {
-      await this.deliveryRepository.decrementRiderActiveJobCount(job.riderId);
+      await this.deliveryRepository.decrementActiveJobCount(job.riderId, this.courierTypeOf(job));
     }
   }
 

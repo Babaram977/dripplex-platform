@@ -84,10 +84,10 @@ describe('TrackingService', () => {
     findProofs: jest.fn(),
     upsertRiderAvailability: jest.fn(),
     findRiderAvailability: jest.fn(),
-    listAvailableRiders: jest.fn(),
-    isRiderEligibleForDelivery: jest.fn(),
-    incrementRiderActiveJobCount: jest.fn(),
-    decrementRiderActiveJobCount: jest.fn(),
+    listAvailableCouriers: jest.fn(),
+    resolveEligibleCourier: jest.fn(),
+    incrementActiveJobCount: jest.fn(),
+    decrementActiveJobCount: jest.fn(),
   };
 
   const auditService = {

@@ -1,16 +1,25 @@
 import { randomUUID } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
-import { DeliveryStatus, KycVerificationStatus, RiderStatus } from '@prisma/client';
+import {
+  DeliveryCourierType,
+  DeliveryStatus,
+  DriverStatus,
+  KycVerificationStatus,
+  RiderStatus,
+} from '@prisma/client';
 
+import { REQUIRED_DRIVER_KYC_DOCUMENT_TYPES } from '../../drivers/driver.constants';
 import { PrismaService } from '../../prisma/prisma.service';
 import { REQUIRED_RIDER_KYC_DOCUMENT_TYPES } from '../../riders/rider.constants';
 import { DELIVERY_AUDIT_ACTIONS } from '../delivery.constants';
 
 import type {
+  CourierType,
   CreateDeliveryJobInput,
   CreateDeliveryProofInput,
   CreateDeliveryTrackingInput,
+  DeliveryCandidate,
   DeliveryRepository,
   ListDeliveryJobsFilter,
   UpdateDeliveryJobStatusInput,
@@ -142,11 +151,17 @@ export class PrismaDeliveryRepository implements DeliveryRepository {
     id: string,
     riderId: string,
     assignmentMethod: AssignmentMethod,
+    courierType: CourierType,
   ): Promise<DeliveryJob> {
     return await this.prisma.deliveryJob.update({
       where: { id },
       data: {
         riderId,
+        // Written with the assignee, in the same statement. A job that names
+        // a courier but not which pool they came from would settle against
+        // the wrong commission account.
+        courierType:
+          courierType === 'DRIVER' ? DeliveryCourierType.DRIVER : DeliveryCourierType.RIDER,
         assignmentMethod,
         status: DeliveryStatus.ASSIGNED,
         assignedAt: new Date(),
@@ -298,36 +313,87 @@ export class PrismaDeliveryRepository implements DeliveryRepository {
    * least one VERIFIED document of this type" for each — which is how "all
    * required documents verified" is expressed without loading the documents.
    */
-  public async listAvailableRiders(maxActiveJobs: number): Promise<RiderAvailability[]> {
-    return await this.prisma.riderAvailability.findMany({
-      where: {
-        online: true,
-        acceptingOrders: true,
-        activeJobCount: { lt: maxActiveJobs },
-        rider: {
-          deletedAt: null,
-          riderProfile: {
-            status: RiderStatus.APPROVED,
-            isApproved: true,
+  public async listAvailableCouriers(maxActiveJobs: number): Promise<DeliveryCandidate[]> {
+    // Two pools, queried separately because they are two tables with two
+    // column vocabularies, then flattened. Concurrently: neither depends on
+    // the other, and dispatch runs on a 30-second sweep.
+    const [riders, drivers] = await Promise.all([
+      this.prisma.riderAvailability.findMany({
+        where: {
+          online: true,
+          acceptingOrders: true,
+          activeJobCount: { lt: maxActiveJobs },
+          rider: {
             deletedAt: null,
-          },
-          AND: REQUIRED_RIDER_KYC_DOCUMENT_TYPES.map((documentType) => ({
-            riderKycDocuments: {
-              some: {
-                documentType,
-                verificationStatus: KycVerificationStatus.VERIFIED,
-              },
+            riderProfile: {
+              status: RiderStatus.APPROVED,
+              isApproved: true,
+              deletedAt: null,
             },
-          })),
+            AND: REQUIRED_RIDER_KYC_DOCUMENT_TYPES.map((documentType) => ({
+              riderKycDocuments: {
+                some: {
+                  documentType,
+                  verificationStatus: KycVerificationStatus.VERIFIED,
+                },
+              },
+            })),
+          },
         },
-      },
-    });
+        select: { riderId: true, latitude: true, longitude: true },
+      }),
+      // Drivers who opted in. `acceptingRides` is deliberately NOT required:
+      // a driver may want parcels without wanting passengers, and the two
+      // toggles are independent by design. `activeRideCount` is the cap here
+      // — a driver already on a fare is not offered a delivery on top of it,
+      // which is the same rule as the courier job cap by another name.
+      this.prisma.driverAvailability.findMany({
+        where: {
+          online: true,
+          acceptingDeliveries: true,
+          activeRideCount: { lt: maxActiveJobs },
+          driver: {
+            deletedAt: null,
+            driverProfile: {
+              status: DriverStatus.APPROVED,
+              isApproved: true,
+              suspendedAt: null,
+              deletedAt: null,
+            },
+            AND: REQUIRED_DRIVER_KYC_DOCUMENT_TYPES.map((documentType) => ({
+              driverKycDocuments: {
+                some: {
+                  documentType,
+                  verificationStatus: KycVerificationStatus.VERIFIED,
+                },
+              },
+            })),
+          },
+        },
+        select: { driverId: true, latitude: true, longitude: true },
+      }),
+    ]);
+
+    return [
+      ...riders.map((r) => ({
+        userId: r.riderId,
+        latitude: r.latitude,
+        longitude: r.longitude,
+        courierType: 'RIDER' as const,
+      })),
+      ...drivers.map((d) => ({
+        userId: d.driverId,
+        latitude: d.latitude,
+        longitude: d.longitude,
+        courierType: 'DRIVER' as const,
+      })),
+    ];
   }
 
-  public async isRiderEligibleForDelivery(riderId: string): Promise<boolean> {
-    const eligible = await this.prisma.user.findFirst({
+  public async resolveEligibleCourier(userId: string): Promise<CourierType | null> {
+    const asRider = await this.prisma.user.findFirst({
       where: {
-        id: riderId,
+        id: userId,
         deletedAt: null,
         riderProfile: {
           status: RiderStatus.APPROVED,
@@ -345,14 +411,51 @@ export class PrismaDeliveryRepository implements DeliveryRepository {
       },
       select: { id: true },
     });
-    return eligible !== null;
+    // Courier first. A user who is somehow both is a courier for delivery
+    // purposes — that is the identity the delivery domain was built around,
+    // and the one whose earnings and commission already reconcile here.
+    if (asRider !== null) return 'RIDER';
+
+    const asDriver = await this.prisma.user.findFirst({
+      where: {
+        id: userId,
+        deletedAt: null,
+        driverProfile: {
+          status: DriverStatus.APPROVED,
+          isApproved: true,
+          suspendedAt: null,
+          deletedAt: null,
+        },
+        AND: REQUIRED_DRIVER_KYC_DOCUMENT_TYPES.map((documentType) => ({
+          driverKycDocuments: {
+            some: {
+              documentType,
+              verificationStatus: KycVerificationStatus.VERIFIED,
+            },
+          },
+        })),
+      },
+      select: { id: true },
+    });
+    return asDriver !== null ? 'DRIVER' : null;
   }
 
-  public async incrementRiderActiveJobCount(riderId: string): Promise<RiderAvailability> {
-    return await this.prisma.riderAvailability.upsert({
-      where: { riderId },
+  public async incrementActiveJobCount(userId: string, courierType: CourierType): Promise<void> {
+    if (courierType === 'DRIVER') {
+      // updateMany, not upsert: DriverAvailability.vehicleType is required and
+      // has no sane default, so there is nothing honest to create a row from.
+      // A driver who has a delivery necessarily already went online, which is
+      // the only way that row comes into being.
+      await this.prisma.driverAvailability.updateMany({
+        where: { driverId: userId },
+        data: { activeRideCount: { increment: 1 } },
+      });
+      return;
+    }
+    await this.prisma.riderAvailability.upsert({
+      where: { riderId: userId },
       create: {
-        riderId,
+        riderId: userId,
         online: false,
         acceptingOrders: false,
         activeJobCount: 1,
@@ -363,21 +466,17 @@ export class PrismaDeliveryRepository implements DeliveryRepository {
     });
   }
 
-  public async decrementRiderActiveJobCount(riderId: string): Promise<RiderAvailability> {
+  public async decrementActiveJobCount(userId: string, courierType: CourierType): Promise<void> {
+    if (courierType === 'DRIVER') {
+      await this.prisma.driverAvailability.updateMany({
+        where: { driverId: userId, activeRideCount: { gt: 0 } },
+        data: { activeRideCount: { decrement: 1 } },
+      });
+      return;
+    }
     await this.prisma.riderAvailability.updateMany({
-      where: { riderId, activeJobCount: { gt: 0 } },
+      where: { riderId: userId, activeJobCount: { gt: 0 } },
       data: { activeJobCount: { decrement: 1 } },
-    });
-
-    return await this.prisma.riderAvailability.upsert({
-      where: { riderId },
-      create: {
-        riderId,
-        online: false,
-        acceptingOrders: false,
-        activeJobCount: 0,
-      },
-      update: {},
     });
   }
 
