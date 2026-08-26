@@ -112,6 +112,22 @@ further decision in this pass.
 > against the §2.1 production capture before anything is changed. Nothing here has been entered
 > into the Operations Console.
 
+### 3A.0 Pricing lifecycle
+
+Every rate in this document sits at exactly one of these stages. The point of the sequence is that
+**a proposal never reaches production without passing through a comparison against what is already
+there** — which is what stops an existing operational decision being overwritten unnoticed.
+
+| Stage           | Meaning                                               | State today                             |
+| --------------- | ----------------------------------------------------- | --------------------------------------- |
+| **Production**  | What the live `ride_fare_rates` rows actually hold    | ⏳ **unverified** — §2.1 blank          |
+| **Proposed**    | Founder's target rates, recorded but not applied      | ✅ §3A.1, confirmed 2026-08-26          |
+| **Approved**    | Proposed, compared against Production, and signed off | ⬜ blocked on the capture               |
+| **Implemented** | Entered in Operations Console → Pricing & Fares       | ⬜ none — **no production change made** |
+| **Verified**    | Charged fare confirmed to match the approved table    | ⬜                                      |
+
+**No production card has been changed.** PR #287 (Terms) is untouched by any pricing work.
+
 Founder pricing proposal, 2026-08-26. Stated objective: **penetration-priced but still
 driver-viable** for the first Kano launch — competitive with the market rather than a copy of it.
 
@@ -291,6 +307,125 @@ Tricycle is the only card where the rate table does the pricing rather than the 
 right shape for a short-distance product, and it means the ₦75/km and ₦8/min values actually
 matter for Tricycle in a way they do not yet for Dx Ride.
 
+**Founder ruling, 2026-08-26: this asymmetry is intended, not a defect to reconcile.** The four
+cards are four products, not one product in four sizes:
+
+| Card           | Product                        |
+| -------------- | ------------------------------ |
+| **Tricycle**   | short-distance, high-frequency |
+| **Dx Ride**    | conventional metered ride      |
+| **Dx Comfort** | premium conventional ride      |
+| **Dx XL**      | higher-capacity / premium ride |
+
+Forcing all four into identical economics would make the portfolio less coherent, not more. The
+₦500 floor protects a driver's economics on a very short trip without making a normal 2-3 km
+journey expensive — which is the whole job of a minimum on a short-distance product.
+
+### 4A.2.2 Real Bolt driver receipt — Kano, 23 Aug, 22:40
+
+A genuine Bolt driver earnings screen for a trip near **Ungogo, Kano**, supplied by the founder
+2026-08-26. This is materially better evidence than the published route estimates cited in §3A,
+and it is the only hard competitor data in this document.
+
+| Line                                        | Amount        |
+| ------------------------------------------- | ------------- |
+| Paid by rider (cash)                        | ₦6,500.00     |
+| Paid by Bolt — rider credits and promotions | ₦300.00       |
+| **Income**                                  | **₦6,800.00** |
+| — Base fare                                 | ₦6,667.17     |
+| — Booking fee                               | ₦132.83       |
+| Bolt commission                             | −₦1,333.10    |
+| Costs and fees (booking fee)                | −₦132.83      |
+| **Driver earnings**                         | **₦5,334.07** |
+
+The arithmetic is internally consistent: ₦6,500 + ₦300 = ₦6,800; ₦6,667.17 + ₦132.83 = ₦6,800;
+₦6,800 − ₦1,333.10 − ₦132.83 = ₦5,334.07.
+
+**Four things it tells us.**
+
+**1. Bolt's commission is 20% of the base fare** (₦1,333.10 ÷ ₦6,667.17 = 19.995%). DrippleX's
+proposed 10% is genuinely half. Per naira of fare, a DrippleX driver keeps **90%** against Bolt's
+**78.4%**.
+
+**2. Bolt's effective take is 21.6%, not 20%.** The booking fee is added to income and deducted
+again as a cost — net zero to the driver, paid by the rider, kept by Bolt. So Bolt advertises 20%
+and collects ₦1,465.93 on ₦6,800. The founder's decision to run **no booking fee** at launch makes
+the real gap wider than the headline: 10% against 21.6%.
+
+**3. Bolt funds its own promotions.** The rider paid ₦6,500; the driver was paid on ₦6,800. Bolt
+covered the ₦300 discount rather than passing it to the driver. **DrippleX does the opposite —
+see §4A.2.3.**
+
+**4. Cash, settled against the driver.** The rider paid cash, so Bolt is owed its ₦1,333.10 by a
+driver holding money. That is exactly DrippleX's commission-account and credit-limit design, and
+it validates that model against how the market actually operates.
+
+#### What DrippleX would have charged for the same trip
+
+The receipt does not state distance, so this is bounded rather than exact — and at 22:40 Bolt's
+base fare may include night or demand pricing that is not visible on the driver's screen.
+
+| If the trip was | DrippleX Dx Ride fare | DrippleX driver keeps (90%) | vs Bolt's ₦5,334 |
+| --------------- | --------------------- | --------------------------- | ---------------- |
+| 10 km           | ₦1,750                | ₦1,575                      | 30%              |
+| 15 km           | ₦2,450                | ₦2,205                      | 41%              |
+| 18 km           | ₦2,870                | ₦2,583                      | 48%              |
+| 20 km           | ₦3,150                | ₦2,835                      | 53%              |
+| 25 km           | ₦3,850                | ₦3,465                      | 65%              |
+
+For DrippleX's proposed card to produce Bolt's ₦6,800 fare the trip would have to be **46 km**;
+for the DrippleX driver to take home Bolt's ₦5,334 it would have to be **40 km**. Ungogo sits
+inside the Kano metropolitan area — no plausible reading of this trip is 40 km.
+
+**The conclusion is uncomfortable and worth stating plainly: the 10% commission does not
+compensate for a rate card set this far below the competitor.** A driver comparing platforms
+counts naira per trip, not commission percentage. On any plausible distance for this journey a
+DrippleX driver earns roughly **a third to a half** of what this Bolt driver earned — while
+DrippleX takes half the commission. Halving the take from a fare that is itself less than half
+still leaves the driver worse off.
+
+This does not invalidate penetration pricing. It means the proposal is priced substantially more
+aggressively than "competitive with Bolt" — closer to half Bolt's fares than to a modest discount
+— and the driver-supply consequence of that should be a deliberate choice rather than a surprise
+in week two. **Recorded as a finding for founder decision; no rate is changed on the strength of
+one receipt.**
+
+**Caveats, stated so this is not over-read:** one trip, not a sample; distance unknown; 22:40 may
+carry demand pricing; Ungogo may be a longer run than typical. Worth collecting three or four more
+receipts across different times and distances before acting on it.
+
+### 4A.2.3 DrippleX coupons are funded by the driver, not the platform
+
+Found while checking the receipt's promotion line against DrippleX's own behaviour.
+
+A ride coupon reduces the fare stored on the ride:
+
+```
+finalFare = max(0, estimate.totalFare − promoDiscount)   // rides.service.ts:244
+ride.totalFare = finalFare                                // rides.service.ts:270
+```
+
+and the driver's earning is computed from that stored fare:
+
+```
+driverEarning = totalFare − platformCommission            // ride-payment.service.ts:552-555
+```
+
+So a ₦500 customer coupon costs the **driver** ₦450 and DrippleX ₦50 — the discount is shared in
+the commission ratio rather than borne by the platform that offered it. The driver is not told,
+and did not agree to it.
+
+**Bolt does the reverse**, as the receipt shows: the ₦300 rider credit appears as _income_ to the
+driver, funded by Bolt. The driver is paid on the undiscounted fare.
+
+This is not a pricing-table question and is out of scope for this pass, but it belongs on the
+record here because it lands on the same driver economics §4A.2.2 examines, and because the two
+compound: a driver on lower base rates who also absorbs the platform's marketing spend.
+
+**Raised for founder decision, not changed.** If DrippleX should fund its own promotions, that is
+a settlement change — pay the driver on the pre-discount fare and book the discount as platform
+marketing cost — and needs its own document.
+
 ### 4A.3 The floor distorts both sides of the market
 
 Below the binding distance, fare is flat and so is driver earning. A driver nets ₦1,350 (after 10%)
@@ -326,6 +461,23 @@ For the airport case it mostly does not bite: an airport run is long enough to c
 ₦3,500-₦3,600 Bolt publishes for Kano airport routes). Tricycles are in any case restricted from
 the airport by a zone rule, so the interaction is theoretical there. Worth knowing before any
 **short-distance** zone is configured — that is where it would bite.
+
+> #### ⚠️ Operations note — read before configuring any zone
+>
+> **A zone surcharge can be partially or wholly absorbed by the minimum-fare floor on a short
+> trip.** A ₦200 surcharge does not reliably produce ₦200 of additional revenue: if the metered
+> fare plus the surcharge still lands below the card's minimum, the passenger pays the minimum and
+> the surcharge yields nothing.
+>
+> This is behaviour, not a defect — the floor has to be applied last or it would stop being a
+> floor. But it means **a zone's revenue effect depends on the trip lengths inside it**, not on
+> the surcharge figure alone.
+>
+> Before setting a zone, check it against the binding distance of every card that can serve it
+> (§4A: Dx Ride 8.2 km, Dx Comfort 6.1 km, Dx XL 5.3 km, Tricycle 3.9 km). A zone whose typical
+> trips fall below those distances will under-deliver against the configured amount.
+>
+> Founder decision, 2026-08-26: documented and accepted, not changed for launch.
 
 ### 4A.5 Straight-line distance is a driver-viability question
 
