@@ -13,7 +13,18 @@ on:
   # Every pull request is now validated, whatever it targets. The `push` trigger
   # below keeps its filter, so a feature branch does not also burn a full 45-minute
   # run on every push — the pull_request event already covers it.
+  #
+  # `types:` is spelled out rather than left to the default, and that is not
+  # cosmetic. #297 removed the `branches:` filter and left `pull_request:` with
+  # no value at all; the file still parsed, `on.pull_request` resolved to null in
+  # a YAML parser, and the workflow silently stopped triggering on pull requests
+  # **entirely** — PR #299 opened afterwards and got zero runs of any workflow.
+  # A trigger that fires nothing looks exactly like a PR nobody has pushed to
+  # yet, which is the same failure mode #297 set out to remove, made worse.
+  # These three are the defaults; naming them keeps the key from ever being
+  # empty again.
   pull_request:
+    types: [opened, synchronize, reopened]
   push:
     branches: [main, 'cursor/**']
   workflow_call:
