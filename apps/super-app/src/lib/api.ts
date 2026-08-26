@@ -994,6 +994,11 @@ export interface CustomerDeliveryDto extends DeliveryJobDto {
  * deliberately no phone number — in-app chat is the channel. */
 export interface RiderDeliveryJobDto extends DeliveryJobDto {
   customerName: string | null;
+  /** What the rider earned on this delivery. Null until settlement runs —
+   *  never 0, which would read as "you earned nothing for this". Present on
+   *  the rider's own view only; the customer's DeliveryJobDto deliberately
+   *  does not carry it. */
+  riderEarning: number | null;
 }
 
 export interface DeliveryTrackingDto {
@@ -2978,6 +2983,11 @@ export const api = {
   rider: {
     ...partnerPayouts('rider'),
     getJobs: () => dx<RiderDeliveryJobDto[]>('GET', '/rider/jobs'),
+    /** Finished deliveries, newest first. `/rider/jobs` returns only the
+     *  active queue, so without this a courier had no record of anything they
+     *  had ever completed. */
+    getJobHistory: (params?: { page?: number; pageSize?: number }) =>
+      dx<PaginatedResult<RiderDeliveryJobDto>>('GET', '/rider/jobs/history', undefined, params),
     getJob: (id: string) => dx<RiderDeliveryJobDto>('GET', `/rider/jobs/${id}`),
     acceptJob: (id: string) => dx<DeliveryJobDto>('POST', `/rider/jobs/${id}/accept`),
     rejectJob: (id: string) => dx<DeliveryJobDto>('POST', `/rider/jobs/${id}/reject`),
@@ -3008,6 +3018,16 @@ export const api = {
     // Own profile — includes the submitted KYC documents and their review state.
     getProfile: () => dx<RiderProfileDto>('GET', '/rider/profile'),
     getWallet: () => dx<WalletDto>('GET', '/rider/wallet'),
+    /** The rider's wallet history. Driver, customer and merchant wallets have
+     *  always had this pair; the rider controller stopped at a balance, so a
+     *  courier could see a number and never what made it. */
+    getWalletTransactions: (params?: { page?: number; pageSize?: number }) =>
+      dx<PaginatedResult<WalletLedgerEntryDto>>(
+        'GET',
+        '/rider/wallet/transactions',
+        undefined,
+        params,
+      ),
 
     // ── Onboarding: KYC docs (ID + Guarantor ID) + company name ───────────────
     // documentType is the KycDocumentType enum (NATIONAL_ID | GUARANTOR_ID | …);

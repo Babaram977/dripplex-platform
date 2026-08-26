@@ -13,6 +13,7 @@ import type {
   RiderDeliveryJobDto,
   RiderProfileDto,
   WalletDto,
+  WalletLedgerEntryDto,
 } from '../lib/api';
 
 /**
@@ -879,7 +880,14 @@ export function RiderJobScreen({
     setError(null);
     try {
       const updated = await fn();
-      setJob((prev) => ({ ...updated, customerName: prev.customerName }));
+      // Same reason `customerName` is carried across: the lifecycle endpoints
+      // return the plain DeliveryJobDto, so a spread would blank every
+      // rider-only field the screen already has.
+      setJob((prev) => ({
+        ...updated,
+        customerName: prev.customerName,
+        riderEarning: prev.riderEarning,
+      }));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Action failed');
     } finally {
@@ -1151,9 +1159,37 @@ export function RiderJobScreen({
 // ─────────────────────────────────────────────────────────────────────────────
 // RIDER EARNINGS
 // ─────────────────────────────────────────────────────────────────────────────
+/** A titled block on the rider's earnings screen. Two of these replaced a
+ *  screen that ended at the payout panel. */
+function RiderSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <div style={{ marginTop: 24 }}>
+      <p style={{ fontFamily: PP, fontSize: 12, fontWeight: 700, color: MUTED, marginBottom: 8 }}>
+        {title}
+      </p>
+      {children}
+    </div>
+  );
+}
+
+function RiderEmptyLine({ text }: { text: string }): React.JSX.Element {
+  return <p style={{ fontFamily: IT, fontSize: 12, color: MUTED, padding: '8px 0' }}>{text}</p>;
+}
+
 export function RiderEarningsScreen({ onBack }: { onBack: () => void }) {
   const [wallet, setWallet] = useState<WalletDto | null>(null);
   const [loading, setLoading] = useState(true);
+  // The two things a balance on its own cannot answer: what made it, and what
+  // work produced it. Riders had neither — a courier could read a number and
+  // had no way to check it against anything.
+  const [txs, setTxs] = useState<WalletLedgerEntryDto[]>([]);
+  const [history, setHistory] = useState<RiderDeliveryJobDto[]>([]);
   // The rejection was unhandled and the screen fell through to a bare "Unable
   // to load wallet", which tells a rider nothing about whether to retry, sign
   // in again, or call support.
@@ -1167,6 +1203,16 @@ export function RiderEarningsScreen({ onBack }: { onBack: () => void }) {
         setError(cause instanceof Error ? cause.message : 'Could not load your wallet');
       })
       .finally(() => setLoading(false));
+    // Loaded independently of the balance: either can fail on its own, and a
+    // rider who can see their money should not lose the ledger with it.
+    api.rider
+      .getWalletTransactions({ pageSize: 20 })
+      .then((page) => setTxs(page.items))
+      .catch(() => {});
+    api.rider
+      .getJobHistory({ pageSize: 20 })
+      .then((page) => setHistory(page.items))
+      .catch(() => {});
   }, []);
 
   return (
@@ -1270,6 +1316,98 @@ export function RiderEarningsScreen({ onBack }: { onBack: () => void }) {
                   .catch(() => {});
               }}
             />
+
+            <RiderSection title="RECENT TRANSACTIONS">
+              {txs.length === 0 ? (
+                <RiderEmptyLine text="Nothing has moved through your wallet yet." />
+              ) : (
+                txs.map((tx) => (
+                  <div
+                    key={tx.id}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      gap: 12,
+                      padding: '12px 0',
+                      borderBottom: `1px solid ${BORDER}`,
+                    }}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <p
+                        style={{
+                          fontFamily: IT,
+                          fontSize: 13,
+                          color: WHITE,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {tx.description ?? tx.referenceType ?? 'Wallet movement'}
+                      </p>
+                      <p style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>
+                        {new Date(tx.createdAt).toLocaleString('en-NG')}
+                      </p>
+                    </div>
+                    <p
+                      style={{
+                        fontFamily: PP,
+                        fontSize: 14,
+                        fontWeight: 700,
+                        whiteSpace: 'nowrap',
+                        color: tx.direction === 'CREDIT' ? G3 : '#F59E0B',
+                      }}
+                    >
+                      {tx.direction === 'CREDIT' ? '+' : '−'}₦{Number(tx.amount).toLocaleString()}
+                    </p>
+                  </div>
+                ))
+              )}
+            </RiderSection>
+
+            <RiderSection title="DELIVERY HISTORY">
+              {history.length === 0 ? (
+                <RiderEmptyLine text="No completed deliveries yet." />
+              ) : (
+                history.map((job) => (
+                  <div
+                    key={job.id}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      gap: 12,
+                      padding: '12px 0',
+                      borderBottom: `1px solid ${BORDER}`,
+                    }}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{ fontFamily: IT, fontSize: 13, color: WHITE }}>
+                        #{job.id.slice(0, 8)}
+                        {job.customerName !== null ? ` · ${job.customerName}` : ''}
+                      </p>
+                      <p style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>
+                        {job.deliveredAt !== null
+                          ? new Date(job.deliveredAt).toLocaleString('en-NG')
+                          : job.status}
+                      </p>
+                    </div>
+                    <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      {/* riderEarning is null until settlement runs. Showing
+                          ₦0 there would read as "you earned nothing for this",
+                          which is a different and untrue statement. */}
+                      <p style={{ fontFamily: PP, fontSize: 14, fontWeight: 700, color: G3 }}>
+                        {job.riderEarning != null
+                          ? `₦${Number(job.riderEarning).toLocaleString()}`
+                          : '—'}
+                      </p>
+                      <p style={{ fontFamily: IT, fontSize: 10, color: MUTED }}>
+                        {job.status === 'DELIVERED' ? 'Delivered' : job.status}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </RiderSection>
           </>
         ) : (
           <p style={{ fontFamily: IT, color: MUTED, textAlign: 'center' }}>
