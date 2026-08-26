@@ -1,31 +1,52 @@
 # DPX-MOBILE-002 — In-App Voice Calling (design)
 
-**Status:** 📐 **DESIGN — no code written.**
+**Status:** 🔒 **Architecture approved (founder, 2026-08-26). Design — no code written.**
 **Date:** 2026-08-26
-**Founder decision (2026-08-26): VoIP.** WebRTC media over a managed SFU (LiveKit), with DrippleX
-owning identity, authorisation, room lifecycle and call records.
 **Depends on:** `DPX-MOBILE-001` for Stage 2 (background/incoming). Stage 1 does not.
 
 ---
 
-## 0. The decision, and the trade it accepts
+## 0. Approved architecture (locked)
 
-The founder chose VoIP over PSTN number-masking. Recorded here with the trade stated plainly, so a
-future reader knows it was a choice and not an oversight.
+**DrippleX calling is in-app VoIP over WebRTC, with LiveKit as the media layer.** This is the
+platform's calling architecture, not one option among several.
 
-**What VoIP buys:** no telco per-minute cost, no telephony vendor, a call UI DrippleX controls
-entirely, neither party ever sees a real number, and the same realtime foundation extends to video
-later without re-architecting.
+```
+DrippleX Chat → Call button → DrippleX backend authorisation → LiveKit/WebRTC → private voice call
+```
 
-**What it costs:** a call needs working **data on both devices at the moment it is placed**. A
-driver in patchy Kano coverage can often still take a GSM call when a WebRTC session will not
-establish or will drop — and that is exactly the moment calling matters, when the driver cannot
-find the pickup. Masked PSTN also works with the app backgrounded or dead, which is precisely the
-failure DPX-MOBILE-001 exists to fix.
+Locked with it, as founder decisions:
 
-**Revisit trigger.** If call-completion rate (§7) sits below an acceptable threshold in the Kano
-pilot, masked PSTN as a _fallback path_ — not a replacement — is the obvious next move. The call
-record in §4 is deliberately shaped to measure this from day one.
+| Decision                         | Locked position                                                              |
+| -------------------------------- | ---------------------------------------------------------------------------- |
+| Media transport                  | **WebRTC over LiveKit**                                                      |
+| Phone numbers                    | **Never exposed**, to either party                                           |
+| Authorisation                    | **Contextual**, through the existing `MessagingService.requireParticipant()` |
+| Modality                         | **Voice first**, video later on the same foundation                          |
+| Recording                        | **No call recording by default**                                             |
+| Retention                        | **Call history and metadata retained — never audio**                         |
+| Parties, initially               | **Customer ↔ driver / rider**                                                |
+| Background & lock-screen calling | **After DPX-MOBILE-001 FCM is operational**                                  |
+| Native Android audio             | **Implemented where required**                                               |
+| Android 16                       | **Compatibility is a release requirement**                                   |
+
+**Masked PSTN is rejected as the primary architecture.** It is documented in §0.1 solely as a
+contingency should field testing expose serious connectivity problems. It is not an alternative
+under consideration, and nothing in this design should be built to accommodate it.
+
+### 0.1 Contingency only — masked PSTN
+
+Recorded so a future reader knows the constraint was understood, not overlooked, and so the
+contingency is already scoped if it is ever needed.
+
+VoIP requires working **data on both devices at the moment the call is placed**. A driver in patchy
+coverage can sometimes still take a GSM call when a WebRTC session will not establish. That is a
+real constraint of the approved architecture, and §4's call record is shaped to measure it in the
+field rather than argue about it in advance.
+
+**If** the Kano pilot shows a call-completion rate that makes voice unreliable in practice, masked
+PSTN becomes available as a **fallback path alongside** VoIP — never a replacement for it, and
+never a reason to defer or dilute the work in this document.
 
 ## 1. Scope
 
@@ -121,7 +142,8 @@ call's token rejoin a later conversation on the same ride.
 
 ## 4. Call record
 
-Per the founder's list, and shaped so §0's revisit trigger is measurable:
+Per the founder's list, and shaped so §7's completion-rate measurement is possible from the
+first call:
 
 | Field                       | Notes                                                                        |
 | --------------------------- | ---------------------------------------------------------------------------- |
@@ -135,9 +157,9 @@ Per the founder's list, and shaped so §0's revisit trigger is measurable:
 | `durationSeconds`           | Derived from answered→ended, null when unanswered                            |
 | `endedReason`               | `CALLER_HANGUP \| CALLEE_HANGUP \| DECLINED \| TIMEOUT \| CONNECTION_FAILED` |
 
-**`FAILED` and `CONNECTION_FAILED` are not cosmetic.** They are how DrippleX learns whether VoIP
-actually works on Kano mobile data. A completion rate computed from these fields is the evidence
-that decides whether §0's fallback is ever needed.
+**`FAILED` and `CONNECTION_FAILED` are not cosmetic.** They are how DrippleX learns its own call
+reliability on Kano mobile data — which network conditions break a call, and whether the fix is
+TURN coverage, codec choice or reconnection handling (§7).
 
 **No audio is recorded.** Founder decision. Recording would bring consent, storage, retention and
 NDPA obligations that a coordination call does not justify, and it would have to be disclosed in
@@ -230,17 +252,23 @@ rather than left running on a job that no longer exists.
 Merchant and hotel calling means new context types on both chat and calling. That widens a
 deliberately narrow model and is a founder decision, not an implementation detail.
 
-## 7. What Stage 1 must prove before Stage 2 is worth building
+## 7. Stage 1 field acceptance
+
+What Stage 1 must demonstrate before Stage 2 begins. These are acceptance criteria for the approved
+architecture, not a re-test of the decision.
 
 - A call connects between two real devices on Nigerian mobile data.
 - Answer latency is acceptable — ringing to audio.
-- **Call completion rate**, from §4's status and `endedReason`, is high enough that VoIP is the
-  right primitive. This is §0's revisit trigger.
 - Audio routing survives screen-lock, speaker toggle and a Bluetooth headset.
 - A GSM call interrupting a VoIP call leaves clean state, not a stuck room.
+- **Android 16 compatibility**, per §0's release requirement.
+- **Call completion rate** is recorded from §4's `status` and `endedReason` — measured from the
+  first day of the pilot, so the platform knows its own reliability rather than guessing at it.
 
-If completion rate is poor on real Kano data, that is the moment to weigh a masked-PSTN fallback —
-with evidence rather than prediction.
+A poor completion rate is a signal to **improve** the VoIP path first — TURN relay coverage, codec
+and bitrate choices, reconnection behaviour on a network handover — since most causes of a failed
+WebRTC call in the field are fixable within the approved architecture. Only if it remains
+unreliable after that work does §0.1's contingency come into play.
 
 ## 8. Stage 2 — what is known, deferred
 
@@ -276,5 +304,6 @@ Blocked on DPX-MOBILE-001. Recorded so it is not rediscovered:
 - It writes no code, adds no dependency, and changes no manifest, header or schema.
 - It does not specify Stage 2 beyond what §8 records as known.
 - It does not decide the open questions in §9.
-- It does not reverse the VoIP decision. §0 records the trade so it can be re-examined against
-  evidence, which is not the same thing.
+- It does not treat the architecture as open. VoIP over LiveKit is locked (§0); §0.1 exists so a
+  known constraint is measured rather than forgotten, and carries no implication that the decision
+  is provisional.
