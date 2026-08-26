@@ -297,6 +297,24 @@ export class AppConfigService {
     );
   }
 
+  public get livekitUrl(): string {
+    return this.configService.get('LIVEKIT_URL', { infer: true });
+  }
+
+  public get livekitApiKey(): string {
+    return this.configService.get('LIVEKIT_API_KEY', { infer: true });
+  }
+
+  public get livekitApiSecret(): string {
+    return this.configService.get('LIVEKIT_API_SECRET', { infer: true });
+  }
+
+  /** DPX-MOBILE-002 — all three are required. A URL without a key mints
+   * nothing, and a key without a URL leaves the client nowhere to connect. */
+  public get livekitConfigured(): boolean {
+    return this.livekitUrl !== '' && this.livekitApiKey !== '' && this.livekitApiSecret !== '';
+  }
+
   public get googleMapsServerApiKey(): string {
     return this.configService.get('GOOGLE_MAPS_SERVER_API_KEY', { infer: true });
   }

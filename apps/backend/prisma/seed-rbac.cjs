@@ -62,6 +62,7 @@ const PERMISSION_SEEDS = [
   // DPX-CHAT-001 — "may use in-app messaging at all". Access to a specific
   // thread is decided from the job's own parties, never from this grant.
   { code: 'messaging:use', description: 'Send and read in-app messages on own jobs' },
+  { code: 'calls:use', description: 'Place voice calls to the other party on own jobs' },
   { code: 'admin:delivery:manage', description: 'Manage delivery jobs (admin)' },
   { code: 'customer:loyalty:read', description: 'Read own loyalty account' },
   { code: 'customer:loyalty:redeem', description: 'Redeem own loyalty points' },
@@ -355,6 +356,7 @@ const ROLE_PERMISSION_GRANTS = {
     'customer:orders',
     'customer:delivery:read',
     'messaging:use',
+    'calls:use',
     'customer:ride:manage',
     'customer:loyalty:read',
     'customer:loyalty:redeem',
@@ -400,6 +402,7 @@ const ROLE_PERMISSION_GRANTS = {
     'rider:kyc:manage',
     'rider:delivery:manage',
     'messaging:use',
+    'calls:use',
     'rider:wallet:read',
     'rider:wallet:withdraw',
     'customer:notifications:read',
@@ -420,6 +423,7 @@ const ROLE_PERMISSION_GRANTS = {
     // endpoints couriers do — see the note in seed-data/role-permissions.ts.
     'rider:delivery:manage',
     'messaging:use',
+    'calls:use',
     'driver:support-ticket:manage',
     'driver:incident-report:manage',
     'driver:sos-alert:manage',
@@ -582,6 +586,7 @@ const ROLE_PERMISSION_GRANTS = {
     'admin:orders:manage',
     'customer:delivery:read',
     'messaging:use',
+    'calls:use',
     'customer:ride:manage',
     'driver:ride:manage',
     'rider:delivery:manage',

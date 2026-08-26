@@ -76,6 +76,14 @@ export const envSchema = z.object({
   FIREBASE_PROJECT_ID: z.string().default(''),
   FIREBASE_CLIENT_EMAIL: z.string().default(''),
   FIREBASE_PRIVATE_KEY: z.string().default(''),
+  // LiveKit — in-app voice calling (DPX-MOBILE-002). All default to ''
+  // (unconfigured), same pattern as Firebase above: CallsService checks
+  // `livekitConfigured` and answers "Calling is not available" rather than
+  // failing at the moment somebody taps Call. The SECRET signs tokens
+  // server-side and must never reach a client bundle or the APK.
+  LIVEKIT_URL: z.string().default(''),
+  LIVEKIT_API_KEY: z.string().default(''),
+  LIVEKIT_API_SECRET: z.string().default(''),
   GOOGLE_MAPS_SERVER_API_KEY: z.string().default(''),
   // Google Sign-In (OAuth 2.0) — all default to '' (unconfigured). The
   // strategy/controller check googleOAuthConfigured before ever attempting
