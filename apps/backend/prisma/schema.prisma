@@ -1356,7 +1356,10 @@ model Order {
   @@index([status])
   @@index([paymentStatus])
   @@index([createdAt])
-  @@index([orderNumber])
+  /// No @@index([orderNumber]) — `@unique` on the field already creates
+  /// orders_order_number_key, and a unique index serves equality and range
+  /// lookups exactly as a plain one would. The second index was never built by
+  /// any migration; it was redundant, not missing.
   @@map("orders")
 }
 
@@ -1546,7 +1549,7 @@ model RideFareRate {
   minimumFare Decimal @default(0) @map("minimum_fare") @db.Decimal(12, 2)
 
   updatedBy String?  @map("updated_by") @db.Uuid
-  updatedAt DateTime @updatedAt @map("updated_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
   createdAt DateTime @default(now()) @map("created_at")
 
   @@map("ride_fare_rates")
@@ -1582,14 +1585,14 @@ model RideSurchargeZone {
   ///
   /// Empty means no restriction, which is every zone until Ops sets one.
   /// Containment follows appliesTo, the same as the surcharge.
-  excludedRideTypes RideType[] @map("excluded_ride_types")
+  excludedRideTypes RideType[] @default([]) @map("excluded_ride_types")
 
   /// Deactivating keeps the zone and its name available to rides that already
   /// reference it, which deleting would not.
   active Boolean @default(true)
 
   updatedBy String?  @map("updated_by") @db.Uuid
-  updatedAt DateTime @updatedAt @map("updated_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
   createdAt DateTime @default(now()) @map("created_at")
 
   rides Ride[]
@@ -3340,7 +3343,12 @@ model Promotion {
 
   @@index([status])
   @@index([type])
-  @@index([domains])
+  /// GIN, not the default btree. `domains` is an array and every query against
+  /// it is a containment test (`has`/`hasSome`), which btree cannot serve. The
+  /// migration that created this built it as GIN; declaring the type here is
+  /// what stops `prisma migrate diff` proposing to replace it with a btree
+  /// index that would quietly stop being used.
+  @@index([domains], type: Gin)
   @@index([merchantId])
   @@index([startsAt, endsAt])
   @@index([priority])
