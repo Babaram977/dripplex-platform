@@ -22,8 +22,11 @@ import type { ApiSuccessResponse } from '../common/dto/api-response.dto';
  * all". Reaching a SPECIFIC person is decided by CallsService from the job's
  * own two parties.
  *
- * There is no route here to answer, decline or end a call. Those are signalling
- * and belong with the socket work — this is the token module only.
+ * Answering, declining and ending are POSTs rather than socket messages, even
+ * though the *notifications* they cause go out over the socket. A call's state
+ * is a database row and these are the writes to it: sent over HTTP they get the
+ * same authentication, permission guard, validation and error handling as every
+ * other write, and a client that lost its socket can still hang up.
  */
 @Controller('calls')
 @RequirePermissions(CALLS_PERMISSIONS.USE)
@@ -61,6 +64,39 @@ export class CallsController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<ApiSuccessResponse<CallToken>> {
     const data = await this.callsService.tokenFor(user.id, id);
+    return { success: true, data };
+  }
+
+  /**
+   * Answer. Returns the join token in the same response — a separate fetch
+   * between accepting and joining is another chance to fail while the caller
+   * listens to silence.
+   */
+  @Post(':id/accept')
+  public async accept(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ApiSuccessResponse<CallToken>> {
+    const data = await this.callsService.accept(user.id, id);
+    return { success: true, data };
+  }
+
+  @Post(':id/decline')
+  public async decline(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ApiSuccessResponse<CallDto>> {
+    const data = await this.callsService.decline(user.id, id);
+    return { success: true, data };
+  }
+
+  /** Hang up. Either party, ringing or answered. */
+  @Post(':id/end')
+  public async end(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ApiSuccessResponse<CallDto>> {
+    const data = await this.callsService.end(user.id, id);
     return { success: true, data };
   }
 }
