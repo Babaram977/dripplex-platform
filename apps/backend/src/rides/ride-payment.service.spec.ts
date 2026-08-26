@@ -173,11 +173,12 @@ describe('RidePaymentService', () => {
     await prisma.$disconnect();
   });
 
-  async function createCompletedRide(totalFare = 1000): Promise<Ride> {
+  async function createCompletedRide(totalFare = 1000, promoDiscount = 0): Promise<Ride> {
     const ride = await prisma.ride.create({
       data: {
         customerId,
         driverId,
+        promoDiscount,
         rideType: 'ECONOMY',
         status: 'COMPLETED',
         pickupLatitude: 6.6,
@@ -1078,6 +1079,199 @@ describe('RidePaymentService', () => {
         Number(
           (await commissionAccounts.getOrCreateAccount('DRIVER', driverId)).outstandingBalance,
         ),
+      ).toBeCloseTo(0);
+    });
+  });
+
+  describe('DPX-PROMO-FUNDING — DrippleX funds its own coupons, not the driver', () => {
+    const RATE = RIDE_PLATFORM_COMMISSION_RATE; // 10%
+
+    const balance = async (ownerType: WalletOwnerType, ownerId: string): Promise<number> =>
+      (await walletService.getWallet(ownerType, ownerId)).availableBalance;
+
+    /** The platform pays out more than it captures on a discounted ride, so it
+     * needs a float. Funding it explicitly keeps these tests independent of
+     * whatever commission earlier specs happened to leave behind. */
+    async function fundPlatform(amount: number): Promise<void> {
+      await walletService.credit({
+        ownerType: WalletOwnerType.PLATFORM,
+        ownerId: PLATFORM_WALLET_OWNER_ID,
+        amount,
+        description: 'promo float for test',
+      });
+    }
+
+    async function settleWalletRideWithCoupon(
+      charged: number,
+      promoDiscount: number,
+    ): Promise<Ride> {
+      await walletService.credit({
+        ownerType: WalletOwnerType.CUSTOMER,
+        ownerId: customerId,
+        amount: charged,
+        description: 'top-up for coupon ride',
+      });
+      const ride = await createCompletedRide(charged, promoDiscount);
+      await service.initiatePayment(customerId, ride.id, 'WALLET', undefined, {});
+      return await prisma.ride.findUniqueOrThrow({ where: { id: ride.id } });
+    }
+
+    async function settleCashRideWithCoupon(charged: number, promoDiscount: number): Promise<Ride> {
+      const ride = await createCompletedRide(charged, promoDiscount);
+      await service.initiatePayment(customerId, ride.id, 'CASH', undefined, {});
+      await service.confirmCash(driverId, ride.id, {});
+      return await prisma.ride.findUniqueOrThrow({ where: { id: ride.id } });
+    }
+
+    it('PF-1: the driver is paid on the gross fare — a coupon does not reduce their earning', async () => {
+      if (!databaseAvailable) return;
+      // ₦4,500 charged after a ₦500 coupon: gross ₦5,000.
+      await fundPlatform(2000);
+      const ride = await settleWalletRideWithCoupon(4500, 500);
+
+      // Gross 5000, commission 500, driver 4500 — exactly what an undiscounted
+      // ₦5,000 ride would pay. Before this change the driver got 90% of 4500 = 4050.
+      expect(Number(ride.platformCommission)).toBeCloseTo(500);
+      expect(Number(ride.driverEarning)).toBeCloseTo(4500);
+      expect(Number(ride.driverEarning)).toBeGreaterThan(4500 * (1 - RATE));
+    });
+
+    it('PF-2: the platform, not the driver, absorbs the discount', async () => {
+      if (!databaseAvailable) return;
+      await fundPlatform(2000);
+      const platformBefore = await balance(WalletOwnerType.PLATFORM, PLATFORM_WALLET_OWNER_ID);
+      const driverBefore = await balance(WalletOwnerType.DRIVER, driverId);
+
+      const ride = await settleWalletRideWithCoupon(4500, 500);
+
+      // Platform captured 4500 and paid out 4500: net zero. Its entire ₦500
+      // commission went into funding the coupon.
+      expect(
+        (await balance(WalletOwnerType.PLATFORM, PLATFORM_WALLET_OWNER_ID)) - platformBefore,
+      ).toBeCloseTo(0);
+      expect((await balance(WalletOwnerType.DRIVER, driverId)) - driverBefore).toBeCloseTo(
+        Number(ride.driverEarning),
+      );
+    });
+
+    it('PF-3: a discount larger than the commission is funded out of the platform float', async () => {
+      if (!databaseAvailable) return;
+      // ₦1,000 coupon on a ₦5,000 gross fare: commission is only ₦500, so the
+      // platform is ₦500 out of pocket. This is the common case at a 10% rate.
+      await fundPlatform(2000);
+      const platformBefore = await balance(WalletOwnerType.PLATFORM, PLATFORM_WALLET_OWNER_ID);
+
+      const ride = await settleWalletRideWithCoupon(4000, 1000);
+
+      expect(Number(ride.driverEarning)).toBeCloseTo(4500);
+      expect(
+        (await balance(WalletOwnerType.PLATFORM, PLATFORM_WALLET_OWNER_ID)) - platformBefore,
+      ).toBeCloseTo(-500);
+    });
+
+    it('PF-4: a cash driver is made whole for the coupon they never collected', async () => {
+      if (!databaseAvailable) return;
+      await fundPlatform(2000);
+      const driverBefore = await balance(WalletOwnerType.DRIVER, driverId);
+      const outstandingBefore = Number(
+        (await commissionAccounts.getOrCreateAccount('DRIVER', driverId)).outstandingBalance,
+      );
+
+      // Driver is handed ₦4,500 in cash; gross was ₦5,000.
+      const ride = await settleCashRideWithCoupon(4500, 500);
+
+      // Commission accrues on the gross, and the ₦500 they were short in cash
+      // arrives as a real wallet credit.
+      expect(Number(ride.platformCommission)).toBeCloseTo(500);
+      expect(
+        Number(
+          (await commissionAccounts.getOrCreateAccount('DRIVER', driverId)).outstandingBalance,
+        ) - outstandingBefore,
+      ).toBeCloseTo(500);
+      expect((await balance(WalletOwnerType.DRIVER, driverId)) - driverBefore).toBeCloseTo(500);
+    });
+
+    it('PF-5: cash and wallet drivers end up identically paid for the same trip', async () => {
+      if (!databaseAvailable) return;
+      await fundPlatform(4000);
+
+      const cashRide = await settleCashRideWithCoupon(4500, 500);
+      // Cash driver's net = cash held + promo credit − commission owed.
+      const cashNet = 4500 + Number(cashRide.promoDiscount) - Number(cashRide.platformCommission);
+
+      const walletRide = await settleWalletRideWithCoupon(4500, 500);
+      expect(cashNet).toBeCloseTo(Number(walletRide.driverEarning));
+    });
+
+    it('PF-6: a ride with no coupon is completely unaffected', async () => {
+      if (!databaseAvailable) return;
+      const ride = await settleWalletRideWithCoupon(1000, 0);
+
+      expect(Number(ride.platformCommission)).toBeCloseTo(100);
+      expect(Number(ride.driverEarning)).toBeCloseTo(900);
+
+      // No promo ledger entries are written at all for an undiscounted ride.
+      const promoEntries = await prisma.walletLedgerEntry.count({
+        where: { referenceId: ride.id, referenceType: 'ride_promo_funding' },
+      });
+      expect(promoEntries).toBe(0);
+    });
+
+    it('PF-7: refunding a cash ride reclaims the promotion funding from the driver', async () => {
+      if (!databaseAvailable) return;
+      await fundPlatform(2000);
+      const ride = await settleCashRideWithCoupon(4500, 500);
+      const driverAfterSettle = await balance(WalletOwnerType.DRIVER, driverId);
+
+      const refunded = await service.refundRide('admin-user', ride.id, 'promo refund', {});
+
+      expect(refunded.paymentStatus).toBe('REFUNDED');
+      // The ₦500 promotion credit goes back; the driver keeps nothing from a
+      // refunded ride.
+      expect(driverAfterSettle - (await balance(WalletOwnerType.DRIVER, driverId))).toBeCloseTo(
+        500,
+      );
+      // And the commission accrued on the gross is fully reversed.
+      expect(
+        Number(
+          (await commissionAccounts.getOrCreateAccount('DRIVER', driverId)).outstandingBalance,
+        ),
+      ).toBeCloseTo(0);
+    });
+
+    it('PF-8: funding a promotion is exactly-once under a duplicate cash confirmation', async () => {
+      if (!databaseAvailable) return;
+      await fundPlatform(2000);
+      const driverBefore = await balance(WalletOwnerType.DRIVER, driverId);
+      const ride = await createCompletedRide(4500, 500);
+      await service.initiatePayment(customerId, ride.id, 'CASH', undefined, {});
+
+      await service.confirmCash(driverId, ride.id, {});
+      await expect(service.confirmCash(driverId, ride.id, {})).rejects.toThrow();
+
+      // Credited once, not twice.
+      expect((await balance(WalletOwnerType.DRIVER, driverId)) - driverBefore).toBeCloseTo(500);
+      const promoEntries = await prisma.walletLedgerEntry.count({
+        where: {
+          referenceId: ride.id,
+          referenceType: 'ride_promo_funding',
+          wallet: { ownerType: WalletOwnerType.DRIVER, ownerId: driverId },
+        },
+      });
+      expect(promoEntries).toBe(1);
+    });
+
+    it('PF-9: refunding a wallet ride with a coupon returns the platform to where it started', async () => {
+      if (!databaseAvailable) return;
+      await fundPlatform(2000);
+      const platformBefore = await balance(WalletOwnerType.PLATFORM, PLATFORM_WALLET_OWNER_ID);
+      const ride = await settleWalletRideWithCoupon(4000, 1000);
+
+      await service.refundRide('admin-user', ride.id, 'coupon ride refund', {});
+
+      // Settlement cost the platform ₦500; the refund recovers exactly that.
+      expect(
+        (await balance(WalletOwnerType.PLATFORM, PLATFORM_WALLET_OWNER_ID)) - platformBefore,
       ).toBeCloseTo(0);
     });
   });

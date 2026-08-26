@@ -78,6 +78,14 @@ export const RIDE_WALLET_REFERENCE_TYPES = {
   /// never collide with the original settlement's on the same wallet.
   REFUND: 'ride_refund',
   EARNING_REVERSAL: 'ride_earning_reversal',
+  /// DPX-PROMO-FUNDING — the platform's own contribution to a coupon on a CASH
+  /// ride, and its reversal on refund. A cash driver holds only the discounted
+  /// fare physically, so the discount has to reach them as a real wallet credit
+  /// funded by the platform. On WALLET/gateway rides no separate leg is needed:
+  /// the driver's single EARNING payout is already computed on the undiscounted
+  /// fare, and the platform simply pays out more than it captured.
+  PROMO_FUNDING: 'ride_promo_funding',
+  PROMO_FUNDING_REVERSAL: 'ride_promo_funding_reversal',
 } as const;
 
 /** PromotionRedemption.referenceType for a ride fare coupon redemption,
