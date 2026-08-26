@@ -170,19 +170,43 @@ function CreditLimitRow({
   );
 }
 
+/**
+ * All three owner types, because all three are real policy.
+ *
+ * This card shipped with MERCHANT and DRIVER only, but `CommercialCreditSetting`
+ * has always been one row per owner type and `CommissionOwnerType` has always
+ * included RIDER. Riders were given the same going-Online block drivers have
+ * (delivery.service.ts — a rider over their limit cannot go online until they
+ * settle to zero), so a rider limit was being enforced with no screen anywhere
+ * that could read or change it. The only way to move it was calling the API by
+ * hand.
+ *
+ * Worth stating plainly because it is the trap here: these are three
+ * independent rows. `DEFAULT_DRIVER_CREDIT_LIMIT` seeds both the DRIVER and
+ * RIDER rows on first read, which makes them look linked, but once the rows
+ * exist editing one does not touch the other.
+ */
 function CreditLimitMonitoringCard(): React.JSX.Element {
   return (
     <Card>
       <CardHeader>
         <CardTitle>Credit-limit monitoring</CardTitle>
         <p className="text-muted-foreground text-sm">
-          The commission credit limit applied to every merchant and every driver&apos;s account —
-          exceeding it blocks new checkout (merchant) or going Online (driver) until paid down.
+          The commission credit limit applied to every merchant, driver and rider account —
+          exceeding it blocks new checkout (merchant) or going Online (driver, rider) until the
+          balance is cleared in full.
         </p>
       </CardHeader>
       <CardContent className="flex flex-col">
         <CreditLimitRow ownerType="MERCHANT" label="Merchant credit limit" />
         <CreditLimitRow ownerType="DRIVER" label="Driver credit limit" />
+        <CreditLimitRow ownerType="RIDER" label="Rider credit limit" />
+      </CardContent>
+      <CardContent className="pt-0">
+        <p className="text-muted-foreground text-xs">
+          Each is a separate policy — changing one does not change the others. Crossing a limit is a
+          latch, not a threshold: only clearing the balance to zero lifts the block.
+        </p>
       </CardContent>
     </Card>
   );
