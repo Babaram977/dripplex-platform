@@ -61,6 +61,30 @@ export function dripplexSecurityHeaders(options = {}) {
 }
 
 /**
+ * Everything that is not an immutable build asset.
+ *
+ * `/_next/static/*` and `/_next/image` are excluded because their URLs already
+ * carry a content hash: they are genuinely immutable and *should* be cached
+ * forever. Everything else — the HTML documents above all — must not be.
+ */
+const DOCUMENT_ROUTES = '/((?!_next/static|_next/image).*)';
+
+/**
+ * Stop a CDN serving a year-old copy of a deployed page.
+ *
+ * Next emits `Cache-Control: s-maxage=31536000` on statically prerendered
+ * routes. On Vercel that is safe because the CDN is purged on every deploy.
+ * These portals sit behind Cloudflare, which honours the year and is never
+ * purged — so on 2026-08-26 a deploy that had genuinely succeeded served the
+ * previous build's HTML at admin.dripplex.com, and because that stale HTML
+ * names the previous build's hashed chunks, the whole page stayed old. The
+ * origin was correct the entire time; only the edge was wrong.
+ *
+ * `no-cache` is not "do not store": the response is still cached, and the
+ * ETag Next already sends turns the revalidation into a 304 for an unchanged
+ * page. What it buys is that a deploy is visible immediately, which for an
+ * operations console holding money controls is worth one conditional request.
+ *
  * @param {{ enableHsts?: boolean, isProduction?: boolean }} [options]
  */
 export function dripplexNextHeaders(options = {}) {
@@ -68,6 +92,10 @@ export function dripplexNextHeaders(options = {}) {
     {
       source: '/:path*',
       headers: dripplexSecurityHeaders(options),
+    },
+    {
+      source: DOCUMENT_ROUTES,
+      headers: [{ key: 'Cache-Control', value: 'no-cache' }],
     },
   ];
 }
