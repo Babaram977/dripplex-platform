@@ -97,11 +97,46 @@ jobs:
       # Not committed to git: it is a per-project client config rather than a
       # secret, but keeping it in CI matches how the keystore is handled and
       # avoids a checked-in file that quietly goes stale against the console.
+      #
+      # Accepts the secret either base64-encoded or as the raw JSON. The name
+      # says base64, and that is the documented form — but the secret's job is
+      # to deliver one file, and whether it was piped through `base64` on the
+      # way in is incidental. Pasting the raw file is an easy and entirely
+      # reasonable mistake, especially from a phone, and it used to produce
+      # `base64: invalid input` and nothing else. Detect, don't lecture.
       - name: Decode google-services.json
         if: env.GOOGLE_SERVICES_JSON_BASE64 != ''
         run: |
-          echo "$GOOGLE_SERVICES_JSON_BASE64" | base64 -d \
-            > apps/customer-mobile/android/app/google-services.json
+          set -euo pipefail
+          TARGET=apps/customer-mobile/android/app/google-services.json
+
+          if printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 -d > "$TARGET" 2>/dev/null; then
+            echo "Secret decoded as base64."
+          elif printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | grep -q '^[[:space:]]*{'; then
+            printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" > "$TARGET"
+            echo "Secret was raw JSON, not base64 — written directly."
+          else
+            echo "::error::GOOGLE_SERVICES_JSON_BASE64 is neither valid base64 nor JSON."
+            echo "The secret must be either the contents of google-services.json," >&2
+            echo "or that file base64-encoded (base64 -w 0 google-services.json)." >&2
+            echo "A partial paste is the usual cause — the value is one long line" >&2
+            echo "with no spaces, and phone keyboards truncate it easily." >&2
+            exit 1
+          fi
+
+          # Fail here rather than 40 minutes into Gradle. build-android.sh
+          # re-checks this, but by then the whole sync-and-compile has run.
+          PARSE_ERROR=$(node -e "
+            const fs = require('node:fs');
+            try { JSON.parse(fs.readFileSync('$TARGET', 'utf8')); }
+            catch (error) { process.stdout.write(error.message); }
+          ")
+          if [[ -n "$PARSE_ERROR" ]]; then
+            echo "::error::google-services.json is not valid JSON: ${PARSE_ERROR}"
+            echo "The secret is almost certainly truncated — it survived $(wc -c < "$TARGET") bytes." >&2
+            exit 1
+          fi
+          echo "google-services.json written and parses ($(wc -c < "$TARGET") bytes)."
 
       # This workflow exists to produce the artifact that goes to Play, so an
       # unsigned bundle is a failure here, not a warning. build-android.sh
