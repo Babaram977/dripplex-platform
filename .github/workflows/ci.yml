@@ -1,11 +1,38 @@
 name: CI — Pull Request Validation
 
 on:
+  # No `branches:` filter here, deliberately.
+  #
+  # Scoped to [main, 'cursor/**'], this workflow ran on a pull request only when
+  # its *base* was one of those branches — so a PR stacked on another PR got no
+  # typecheck, no lint, no tests and no build. Not a red X: no run at all, which
+  # reads as "nothing to report" rather than "nothing was checked". #296 was
+  # opened against a feature branch and showed only the mobile jobs, which is how
+  # this was found.
+  #
+  # Every pull request is now validated, whatever it targets. The `push` trigger
+  # below keeps its filter, so a feature branch does not also burn a full 45-minute
+  # run on every push — the pull_request event already covers it.
   pull_request:
-    branches: [main, 'cursor/**']
   push:
     branches: [main, 'cursor/**']
   workflow_call:
+
+# KNOWN LIMITATION, recorded rather than papered over: re-targeting an existing
+# pull request (which is what GitHub does automatically when the branch it was
+# stacked on merges) fires `pull_request: edited`, and that is not one of the
+# default activity types, so it does not start a new run. The run you are looking
+# at then validated the head against its *old* base.
+#
+# Adding `types: [..., edited]` was considered and rejected: `edited` also fires
+# on every title and description edit, which would spend 45 minutes of CI on a
+# typo fix, and skipping those runs with a job-level `if` makes the check report
+# as "skipped", which branch protection can treat as unmet.
+#
+# So this stays a convention instead: before merging a PR that was stacked,
+# bring its head up to date with the new base (merge or rebase). That fires
+# `synchronize`, which does start a run — against the base it will actually
+# merge into.
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
