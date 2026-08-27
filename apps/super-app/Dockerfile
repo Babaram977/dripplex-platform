@@ -2,18 +2,29 @@
 # DrippleX Super App — Vite SPA.
 # VITE_* values are read by Vite at BUILD time, so they are baked here via ARG/ENV.
 #
-# It has two workspace dependencies:
-#   @dripplex/config — the tsconfig the app extends, resolved by Vite at build
-#     time. Leaving it out fails with "Tsconfig not found
-#     @dripplex/config/typescript/react-library", which is what happened when
-#     the app gained a tsconfig and this file still said it had no workspace
-#     deps.
-#   @dripplex/types  — PLATFORM_BASE_* (the Kano service-area constants). This
-#     one resolves to ./dist, so copying the source is not enough: it has to be
-#     BUILT in the image before the app build runs, the same way
-#     apps/customer-web/Dockerfile does it.
-# `pnpm build` at the repo root cannot catch either: the workspace is present
-# there and absent here, so the Docker build is its own gate.
+# THE WHOLE packages/ TREE IS COPIED, ON PURPOSE. Do not narrow it back to a
+# hand-listed subset.
+#
+# It used to copy @dripplex/config and @dripplex/types and nothing else, with a
+# comment above saying "it has two workspace dependencies". That was true when
+# it was written. On 2026-08-26 push.ts added a third — @dripplex/hooks — and
+# nobody thought to edit this file, because nothing makes you.
+#
+# The result: every super-app deploy failed for twelve hours with "Rolldown
+# failed to resolve import @dripplex/hooks/notifications/native-push", while
+# app.dripplex.com quietly went on serving the last image that built. CI was
+# green throughout — `pnpm build` at the repo root has the whole workspace on
+# disk, so it cannot see what this file leaves out. Twenty-four commits sat
+# merged and undeployed, including the one that registers a device for push,
+# which is why a driver's phone never rang and why there was no clue anywhere
+# that it had not been asked to.
+#
+# Copying the tree costs a slightly larger build context. A selective list
+# costs a silent production outage the next time somebody adds an import, and
+# there is no version of that list which stays correct on its own.
+#
+# @dripplex/types still has to be BUILT below rather than merely copied: it
+# resolves to ./dist, the same as apps/customer-web/Dockerfile does it.
 
 FROM node:22-bookworm-slim AS base
 ENV PNPM_HOME="/pnpm"
@@ -23,8 +34,7 @@ WORKDIR /app
 
 FROM base AS build
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
-COPY packages/config packages/config
-COPY packages/types packages/types
+COPY packages packages
 COPY apps/super-app/package.json apps/super-app/
 RUN pnpm install --filter @dripplex/super-app... --no-frozen-lockfile
 COPY apps/super-app apps/super-app

@@ -133,5 +133,21 @@ jobs:
           test -f apps/customer-web/Dockerfile
           test -f apps/merchant-portal/Dockerfile
           test -f apps/rider-portal/Dockerfile
+          test -f apps/super-app/Dockerfile
           test -f infrastructure/docker/docker-bake.hcl
           echo "Docker image sources OK"
+
+      # Actually build the image that serves app.dripplex.com.
+      #
+      # `test -f` was the whole of this job, and it is why nobody noticed that
+      # every super-app deploy failed for twelve hours on 2026-08-27. A
+      # Dockerfile copies a subset of the workspace; the repo-root `pnpm build`
+      # has all of it on disk and cannot see what the subset leaves out. So the
+      # only thing that gates a deploy is building it the way Railway does.
+      #
+      # super-app specifically because it is the one whose Dockerfile hides a
+      # partial COPY of packages/, and the one a stale deploy hurts most: the
+      # Android shell loads its UI from this origin, so a failed build here
+      # freezes the app on every phone without failing anything visible.
+      - name: Build the super-app image the way Railway does
+        run: docker build -f apps/super-app/Dockerfile -t dripplex-super-app:ci .
