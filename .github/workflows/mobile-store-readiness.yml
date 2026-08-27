@@ -63,6 +63,9 @@ jobs:
     # green with an unsigned bundle uploaded as an artifact.
     env:
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      # Job level for the same reason the keystore is: a step's `if` is
+      # evaluated before that step's own `env` exists.
+      GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
@@ -95,9 +98,60 @@ jobs:
           keyAlias=${ANDROID_KEY_ALIAS}
           keyPassword=${ANDROID_KEY_PASSWORD}
           EOF
+      # DPX-MOBILE-001. #293 added this to mobile-build.yml — and only there.
+      # **This** workflow is the one that produces the artifact people install
+      # on a device, so without it the tested APK could not obtain an FCM token
+      # and no push arrived, while the build went green and said so in a single
+      # line nobody read:
+      #
+      #   NO FCM: no google-services resources generated — push is inert
+      #
+      # Two workflows building the same app, one of them push-capable, is how a
+      # driver ends up testing a build that was never going to ring.
+      #
+      # Accepts the secret base64-encoded or as raw JSON: the secret's job is to
+      # deliver one file, and whether it was piped through `base64` on the way
+      # in is incidental. Pasting the raw file is an easy mistake, especially
+      # from a phone.
+      - name: Decode google-services.json
+        if: env.GOOGLE_SERVICES_JSON_BASE64 != ''
+        run: |
+          set -euo pipefail
+          TARGET=apps/customer-mobile/android/app/google-services.json
+
+          if printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 -d > "$TARGET" 2>/dev/null; then
+            echo "Secret decoded as base64."
+          elif printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | grep -q '^[[:space:]]*{'; then
+            printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" > "$TARGET"
+            echo "Secret was raw JSON, not base64 — written directly."
+          else
+            echo "::error::GOOGLE_SERVICES_JSON_BASE64 is neither valid base64 nor JSON."
+            echo "The secret must be either the contents of google-services.json," >&2
+            echo "or that file base64-encoded (base64 -w 0 google-services.json)." >&2
+            exit 1
+          fi
+
+          PARSE_ERROR=$(node -e "
+            const fs = require('node:fs');
+            try { JSON.parse(fs.readFileSync('$TARGET', 'utf8')); }
+            catch (error) { process.stdout.write(error.message); }
+          ")
+          if [[ -n "$PARSE_ERROR" ]]; then
+            echo "::error::google-services.json is not valid JSON: ${PARSE_ERROR}"
+            echo "The secret is almost certainly truncated — it survived $(wc -c < "$TARGET") bytes." >&2
+            exit 1
+          fi
+          echo "google-services.json written and parses ($(wc -c < "$TARGET") bytes)."
+
       - name: Build production AAB and APK
         env:
           ANDROID_FLAVOR: production
+          # Fail rather than upload a push-less artifact. This is a release
+          # build that gets installed on a real handset to decide whether the
+          # app is submittable; "green but inert" is the worst possible
+          # outcome, because it is indistinguishable from working until a
+          # driver misses a job.
+          REQUIRE_PUSH: '1'
         run: bash scripts/mobile/build-android.sh
       - name: Upload Android artifacts
         uses: actions/upload-artifact@v4
