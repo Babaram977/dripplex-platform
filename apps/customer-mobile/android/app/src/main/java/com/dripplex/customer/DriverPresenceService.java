@@ -69,6 +69,10 @@ public class DriverPresenceService extends Service {
   public static final String EXTRA_ACCEPTING_RIDES = "acceptingRides";
   public static final String EXTRA_ACCEPTING_DELIVERIES = "acceptingDeliveries";
   public static final String EXTRA_INTERVAL_MS = "intervalMs";
+  /** The fix the app already held when the driver went online. See
+   * {@link #seedFromCaller}. */
+  public static final String EXTRA_SEED_LATITUDE = "seedLatitude";
+  public static final String EXTRA_SEED_LONGITUDE = "seedLongitude";
 
   /**
    * Distinct from the ride-alert channel (DPX-MOBILE-001): this one is a
@@ -78,6 +82,10 @@ public class DriverPresenceService extends Service {
    */
   private static final String CHANNEL_ID = "dripplex_driver_presence_v1";
   private static final int NOTIFICATION_ID = 4201;
+
+  /** The healthy state's body text. Anything else means reporting is degraded
+   * and the driver is being told so. */
+  private static final String ONLINE_TEXT = "DrippleX can send you ride requests";
 
   /**
    * Default reporting cadence. The server drops a driver from dispatch after 5
@@ -89,6 +97,19 @@ public class DriverPresenceService extends Service {
   private static final long DEFAULT_INTERVAL_MS = 60_000L;
   private static final long MIN_INTERVAL_MS = 15_000L;
 
+  /**
+   * How old a fix may be and still be worth reporting.
+   *
+   * The server stamps `locationUpdatedAt` with the time it receives the write,
+   * so posting an old fix asserts the driver is there *now*. A few minutes of
+   * drift is the price of staying dispatchable while backgrounded — the
+   * WebView heartbeat has always had the same property. Beyond this, the claim
+   * stops being true enough to make: reporting a half-hour-old position sends
+   * dispatch to where the driver used to be, which is worse for the passenger
+   * than the driver being invisible.
+   */
+  private static final long LOCATION_MAX_AGE_MS = 10 * 60_000L;
+
   private final AtomicBoolean running = new AtomicBoolean(false);
   private final Handler handler = new Handler(Looper.getMainLooper());
   private ExecutorService network;
@@ -97,6 +118,9 @@ public class DriverPresenceService extends Service {
 
   private DriverPresenceOverlay overlay;
   private volatile Location lastLocation;
+  /** What the ongoing notification currently says, so it is only rewritten when
+   * the answer changes. */
+  private String notificationText;
   private String baseUrl;
   private String token;
   private String vehicleType;
@@ -148,6 +172,14 @@ public class DriverPresenceService extends Service {
       active = true;
       network = Executors.newSingleThreadExecutor();
       requestLocationUpdates();
+      // After the providers, never before: a fix the device already has beats
+      // one handed over from the WebView, and this only fills a gap.
+      if (intent.hasExtra(EXTRA_SEED_LATITUDE) && intent.hasExtra(EXTRA_SEED_LONGITUDE)) {
+        seedFromCaller(
+            intent.getDoubleExtra(EXTRA_SEED_LATITUDE, 0d),
+            intent.getDoubleExtra(EXTRA_SEED_LONGITUDE, 0d),
+            System.currentTimeMillis());
+      }
       handler.post(reportTick);
     }
 
@@ -246,12 +278,19 @@ public class DriverPresenceService extends Service {
           public void onProviderDisabled(String provider) {}
         };
 
-    // Both providers. GPS is accurate and useless indoors or under cover;
-    // network is coarse and available almost everywhere. Dispatch ranks on
-    // distance, so a coarse fix that exists beats a precise one that does not.
+    // EVERY enabled provider, not a hardcoded GPS/NETWORK pair.
+    //
+    // The pair was the 2026-08-27 field failure. The service started, showed its
+    // notification, and posted nothing for nine minutes: GPS produces no fix
+    // indoors, and on a modern handset NETWORK_PROVIDER frequently does not
+    // exist at all — Google moved coarse location into Play Services, so
+    // isProviderEnabled(NETWORK_PROVIDER) is false and requestFrom() silently
+    // subscribed to nothing. getProviders(true) asks the device what it
+    // actually has, including "fused" where the platform exposes it.
     try {
-      requestFrom(LocationManager.GPS_PROVIDER);
-      requestFrom(LocationManager.NETWORK_PROVIDER);
+      for (String provider : locationManager.getProviders(true)) {
+        requestFrom(provider);
+      }
       seedFromLastKnown();
     } catch (SecurityException e) {
       Log.w(TAG, "location permission revoked while starting");
@@ -268,20 +307,48 @@ public class DriverPresenceService extends Service {
   /**
    * A cold start has no fix yet and the first tick would report nothing, which
    * is a minute of invisibility right when the driver has just gone online.
+   *
+   * Reads every enabled provider for the same reason the subscription does, and
+   * keeps the newest. Note this can still leave `lastLocation` null on a device
+   * that has never had a fix — which is what the caller-supplied seed covers.
    */
   private void seedFromLastKnown() throws SecurityException {
     if (lastLocation != null) {
       return;
     }
-    Location gps = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
-    Location net = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
-    if (gps != null && net != null) {
-      lastLocation = gps.getTime() >= net.getTime() ? gps : net;
-    } else if (gps != null) {
-      lastLocation = gps;
-    } else {
-      lastLocation = net;
+    Location best = null;
+    for (String provider : locationManager.getProviders(true)) {
+      Location candidate = locationManager.getLastKnownLocation(provider);
+      if (candidate != null && (best == null || candidate.getTime() > best.getTime())) {
+        best = candidate;
+      }
     }
+    lastLocation = best;
+  }
+
+  /**
+   * The position the app already had when the driver tapped "Go online".
+   *
+   * `driverScreen` calls `getCurrentPosition()` and only then starts presence,
+   * so the WebView holds a real fix at exactly the moment this service begins —
+   * through Play Services' fused provider, which is why it succeeds where the
+   * platform LocationManager above can come back empty. Passing it in means the
+   * first tick reports something true rather than waiting on a provider that
+   * may never fire.
+   *
+   * Only ever used when nothing better exists: a real fix from any provider
+   * replaces it the moment one arrives, and `seedFromLastKnown` is preferred
+   * when the device does have a recent fix of its own.
+   */
+  private void seedFromCaller(double latitude, double longitude, long fixedAt) {
+    if (lastLocation != null) {
+      return;
+    }
+    Location seed = new Location("dripplex-caller");
+    seed.setLatitude(latitude);
+    seed.setLongitude(longitude);
+    seed.setTime(fixedAt);
+    lastLocation = seed;
   }
 
   private boolean hasLocationPermission() {
@@ -299,9 +366,32 @@ public class DriverPresenceService extends Service {
     final String vehicle = vehicleType;
     final boolean rides = acceptingRides;
     final Boolean deliveries = acceptingDeliveries;
-    if (location == null || url == null || bearer == null || vehicle == null || network == null) {
+    if (url == null || bearer == null || vehicle == null || network == null) {
       return;
     }
+
+    // The 2026-08-27 field failure lived here. `location == null` used to sit
+    // in the condition above and return in silence, so a
+    // service with no fix ran for nine minutes showing "You are online" while
+    // writing nothing — indistinguishable, from the outside, from a service
+    // that had never started. The driver went stale to dispatch at the
+    // five-minute mark and their own screen never stopped saying they were live.
+    //
+    // Both cases below now say so where the driver can see it, because this is
+    // exactly the class of failure the class comment promises not to have: a
+    // service that runs, shows a notification, and reports nothing.
+    if (location == null) {
+      Log.w(TAG, "no location fix available — nothing to report");
+      updateNotification("Waiting for location — you may not get requests");
+      return;
+    }
+    final long age = System.currentTimeMillis() - location.getTime();
+    if (age > LOCATION_MAX_AGE_MS) {
+      Log.w(TAG, "location is " + (age / 1000) + "s old — not reporting it");
+      updateNotification("Location is out of date — you may not get requests");
+      return;
+    }
+    updateNotification(ONLINE_TEXT);
     network.execute(
         () -> {
           HttpURLConnection connection = null;
@@ -348,9 +438,21 @@ public class DriverPresenceService extends Service {
         });
   }
 
-  private void startInForeground() {
-    createChannel();
+  /** Replace the ongoing notification's body, leaving everything else alone.
+   * No-ops when the text has not changed, so the shade is not rewritten every
+   * minute of a normal shift. */
+  private void updateNotification(String text) {
+    if (text.equals(notificationText)) {
+      return;
+    }
+    notificationText = text;
+    NotificationManager manager = getSystemService(NotificationManager.class);
+    if (manager != null) {
+      manager.notify(NOTIFICATION_ID, buildNotification(text));
+    }
+  }
 
+  private Notification buildNotification(String text) {
     Intent open = new Intent(this, MainActivity.class);
     open.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
     int flags = PendingIntent.FLAG_UPDATE_CURRENT;
@@ -359,17 +461,22 @@ public class DriverPresenceService extends Service {
     }
     PendingIntent contentIntent = PendingIntent.getActivity(this, 0, open, flags);
 
-    Notification notification =
-        new NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("You are online")
-            .setContentText("DrippleX can send you ride requests")
-            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
-            .setContentIntent(contentIntent)
-            .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setCategory(NotificationCompat.CATEGORY_SERVICE)
-            .setShowWhen(false)
-            .build();
+    return new NotificationCompat.Builder(this, CHANNEL_ID)
+        .setContentTitle("You are online")
+        .setContentText(text)
+        .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+        .setContentIntent(contentIntent)
+        .setOngoing(true)
+        .setPriority(NotificationCompat.PRIORITY_LOW)
+        .setCategory(NotificationCompat.CATEGORY_SERVICE)
+        .setShowWhen(false)
+        .build();
+  }
+
+  private void startInForeground() {
+    createChannel();
+    notificationText = ONLINE_TEXT;
+    Notification notification = buildNotification(ONLINE_TEXT);
 
     // Android 10 introduced the typed overload and Android 14 requires it for a
     // location service. Below 29 the untyped call is the only one that exists.

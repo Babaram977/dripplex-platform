@@ -51,6 +51,14 @@ public class DriverPresencePlugin extends Plugin {
     if (intervalMs != null) {
       intent.putExtra(DriverPresenceService.EXTRA_INTERVAL_MS, intervalMs.longValue());
     }
+    // The fix the WebView already holds. Both or neither — half a coordinate
+    // pair is worse than none, and the service checks for both extras.
+    Double seedLatitude = call.getDouble("latitude");
+    Double seedLongitude = call.getDouble("longitude");
+    if (seedLatitude != null && seedLongitude != null) {
+      intent.putExtra(DriverPresenceService.EXTRA_SEED_LATITUDE, seedLatitude.doubleValue());
+      intent.putExtra(DriverPresenceService.EXTRA_SEED_LONGITUDE, seedLongitude.doubleValue());
+    }
 
     try {
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

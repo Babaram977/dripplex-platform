@@ -102,6 +102,28 @@ describe('startNativeDriverPresence', () => {
     );
   });
 
+  it('forwards the seed position, which the service cannot be relied on to find', async () => {
+    const { startNativeDriverPresence } = await load();
+
+    await startNativeDriverPresence({ ...OPTIONS, latitude: 12.0120021, longitude: 8.5803975 });
+
+    expect(start).toHaveBeenCalledWith(
+      expect.objectContaining({ latitude: 12.0120021, longitude: 8.5803975 }),
+    );
+  });
+
+  it('sends neither coordinate when only one is given', async () => {
+    const { startNativeDriverPresence } = await load();
+
+    await startNativeDriverPresence({ ...OPTIONS, latitude: 12.0120021 });
+
+    // Half a pair would seed a position on the equator, which is worse than no
+    // seed at all — the service would report it as fact.
+    const sent = start.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(sent).not.toHaveProperty('latitude');
+    expect(sent).not.toHaveProperty('longitude');
+  });
+
   it('registers once across repeated calls', async () => {
     const { startNativeDriverPresence, stopNativeDriverPresence } = await load();
 

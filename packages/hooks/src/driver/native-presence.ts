@@ -29,6 +29,8 @@ interface DriverPresencePlugin {
     acceptingRides?: boolean;
     acceptingDeliveries?: boolean;
     intervalMs?: number;
+    latitude?: number;
+    longitude?: number;
   }): Promise<{ started: boolean }>;
   stop(): Promise<void>;
   isRunning(): Promise<{ running: boolean }>;
@@ -58,6 +60,23 @@ export interface NativePresenceOptions {
   vehicleType: string;
   acceptingRides?: boolean;
   acceptingDeliveries?: boolean;
+  /**
+   * The position the caller already holds, seeding the service's first report.
+   *
+   * Not a nicety — it is the fix for the 2026-08-27 field failure. The service
+   * subscribes to the platform `LocationManager`, which on a modern handset can
+   * hand back nothing at all: `NETWORK_PROVIDER` often does not exist (Google
+   * moved coarse location into Play Services) and raw GPS gets no fix indoors.
+   * It then ran for nine minutes posting nothing while its notification said
+   * the driver was online, and the driver went stale to dispatch at five.
+   *
+   * The app has a real fix at this exact moment — `driverScreen` calls
+   * `getCurrentPosition()` immediately before starting presence, through Play
+   * Services via the WebView — so it hands it over rather than letting the
+   * service start blind. A real fix from any provider replaces it at once.
+   */
+  latitude?: number;
+  longitude?: number;
 }
 
 /**
@@ -158,6 +177,11 @@ export async function startNativeDriverPresence(
       ...(options.acceptingRides !== undefined ? { acceptingRides: options.acceptingRides } : {}),
       ...(options.acceptingDeliveries !== undefined
         ? { acceptingDeliveries: options.acceptingDeliveries }
+        : {}),
+      // Both or neither: the native side needs the pair, and half a coordinate
+      // would seed a position on the equator.
+      ...(options.latitude !== undefined && options.longitude !== undefined
+        ? { latitude: options.latitude, longitude: options.longitude }
         : {}),
     });
     return 'started';

@@ -33,6 +33,12 @@ export async function startDriverPresence(options: {
   vehicleType: string;
   acceptingRides?: boolean;
   acceptingDeliveries?: boolean;
+  /** The driver's position, from the `getCurrentPosition()` the caller just
+   * made. Seeds the service's first report — see the note on
+   * `NativePresenceOptions.latitude` for why the service cannot be relied on to
+   * find one for itself. */
+  latitude?: number;
+  longitude?: number;
 }): Promise<PresenceOutcome> {
   const token = auth.getAccessToken();
   if (!token) return 'not-signed-in';

@@ -2901,7 +2901,16 @@ export function DriverDashboardScreen({
         // must not be blocked from going online because a platform call
         // failed. But the verdict is now recorded rather than dropped — see
         // `presence` above for what dropping it cost.
-        void startDriverPresence({ vehicleType, acceptingRides: true }).then(async (outcome) => {
+        void startDriverPresence({
+          vehicleType,
+          acceptingRides: true,
+          // The fix from the getCurrentPosition() above, handed to the service
+          // so its first report is real. Without it the service can start with
+          // no location at all and post nothing while claiming the driver is
+          // online — the 2026-08-27 field failure.
+          latitude: pos.latitude,
+          longitude: pos.longitude,
+        }).then(async (outcome) => {
           setPresence(outcome);
           // Only worth asking once the service is actually up: the bubble is
           // drawn by that service, so on any other outcome there is nothing
