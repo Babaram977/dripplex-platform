@@ -36,8 +36,18 @@ interface DriverPresencePlugin {
   requestOverlayPermission(): Promise<{ opened: boolean; granted: boolean }>;
 }
 
+/**
+ * `no-plugin` is separate from `not-android` on purpose, and the separation is
+ * the whole lesson of this module's first release.
+ *
+ * When the plugin could not be resolved, this reported `not-android` — on an
+ * Android phone. Anyone reading it, including the person who wrote it,
+ * concluded "expected, this is the web/iOS path" and stopped. `no-plugin` says
+ * the thing that is actually wrong: this IS Android, and the native side is not
+ * answering.
+ */
 export type NativePresenceOutcome =
-  'started' | 'stopped' | 'not-android' | 'unavailable' | 'failed';
+  'started' | 'stopped' | 'not-android' | 'no-plugin' | 'unavailable' | 'failed';
 
 export interface NativePresenceOptions {
   /** API origin the service posts availability to, e.g. the same base the web
@@ -51,24 +61,70 @@ export interface NativePresenceOptions {
 }
 
 /**
+ * The registered proxy, kept for the life of the page.
+ *
+ * `registerPlugin` refuses to register the same name twice — it logs
+ * "Cannot register plugins twice" and hands back the existing proxy
+ * (@capacitor/core 7.6.8, index.cjs.js:68-73). Harmless, but this module is
+ * called on every shift start and stop, so caching keeps that warning out of
+ * the console.
+ */
+let cached: DriverPresencePlugin | null = null;
+
+type Resolved =
+  { plugin: DriverPresencePlugin } | { plugin: null; reason: 'not-android' | 'no-plugin' };
+
+/**
  * Resolves the plugin only on a Capacitor-native **Android** build.
  *
- * The platform narrowing matters: the plugin is registered in the Android app
+ * ## Why this goes through `registerPlugin` and not `Capacitor.Plugins`
+ *
+ * It used to read `Capacitor.Plugins['DriverPresence']`, which is **always
+ * undefined**, and the whole feature was dead on device from the day it
+ * shipped: no bubble, no ongoing notification, and — the part that matters —
+ * no native heartbeat, so a minimised driver still went invisible to dispatch
+ * after four minutes, which is the exact bug DPX-MOBILE-003 exists to fix.
+ *
+ * `Capacitor.Plugins` is written in exactly one place: `Plugins[pluginName] =
+ * proxy` inside `registerPlugin` (@capacitor/core 7.6.8, index.cjs.js:178). The
+ * Android bridge does not touch it — `JSExport.java:91` injects
+ * `window.Capacitor.PluginHeaders` and nothing else. So a native plugin that
+ * JavaScript never registers has no entry there, no matter how correct the Java
+ * is. `@capacitor/push-notifications` works because the package calls
+ * `registerPlugin` for itself; `DriverPresence` has no such package, so this is
+ * the call.
+ *
+ * Nothing about that failure was visible: `startNativeDriverPresence` maps a
+ * missing plugin to `'not-android'`, which on a real Android phone is a lie
+ * that reads like a supported platform check.
+ *
+ * `isPluginAvailable` is then the real gate — it consults `PluginHeaders`, so it
+ * answers "is the Java actually in this build", which the platform check alone
+ * does not. Without it an APK built before the plugin existed would get a proxy
+ * whose every method rejects.
+ *
+ * The platform narrowing stays: the plugin is registered in the Android app
  * module and does not exist on iOS, so calling it there rejects on every shift
  * start for a feature that was never built for that platform. A plain browser
  * has no Capacitor at all.
  */
-async function resolvePlugin(): Promise<DriverPresencePlugin | null> {
+async function resolvePlugin(): Promise<Resolved> {
+  if (cached) return { plugin: cached };
   try {
-    const { Capacitor } = await import('@capacitor/core');
+    const { Capacitor, registerPlugin } = await import('@capacitor/core');
     if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') {
-      return null;
+      return { plugin: null, reason: 'not-android' };
     }
-    const plugins = (Capacitor as unknown as { Plugins?: Record<string, unknown> }).Plugins;
-    return (plugins?.['DriverPresence'] as DriverPresencePlugin | undefined) ?? null;
+    if (!Capacitor.isPluginAvailable('DriverPresence')) {
+      // The shell predates the plugin. Degrading to the WebView heartbeat beats
+      // handing back a proxy whose every method rejects.
+      return { plugin: null, reason: 'no-plugin' };
+    }
+    cached = registerPlugin<DriverPresencePlugin>('DriverPresence');
+    return { plugin: cached };
   } catch {
     // @capacitor/core unresolvable — a portal that never ships as a shell.
-    return null;
+    return { plugin: null, reason: 'not-android' };
   }
 }
 
@@ -86,8 +142,9 @@ async function resolvePlugin(): Promise<DriverPresencePlugin | null> {
 export async function startNativeDriverPresence(
   options: NativePresenceOptions,
 ): Promise<NativePresenceOutcome> {
-  const plugin = await resolvePlugin();
-  if (!plugin) return 'not-android';
+  const resolved = await resolvePlugin();
+  const plugin = resolved.plugin;
+  if (!plugin) return resolved.reason;
   if (!options.token || !options.baseUrl || !options.vehicleType) {
     // The service would show "You are online" while reporting nothing, which
     // is the exact failure this whole feature exists to remove.
@@ -117,8 +174,9 @@ export async function startNativeDriverPresence(
  * nobody is watching.
  */
 export async function stopNativeDriverPresence(): Promise<NativePresenceOutcome> {
-  const plugin = await resolvePlugin();
-  if (!plugin) return 'not-android';
+  const resolved = await resolvePlugin();
+  const plugin = resolved.plugin;
+  if (!plugin) return resolved.reason;
   try {
     await plugin.stop();
     return 'stopped';
@@ -131,7 +189,7 @@ export async function stopNativeDriverPresence(): Promise<NativePresenceOutcome>
  * platform, and on any failure — a caller must never conclude "running" from
  * an error. */
 export async function isNativeDriverPresenceRunning(): Promise<boolean> {
-  const plugin = await resolvePlugin();
+  const { plugin } = await resolvePlugin();
   if (!plugin) return false;
   try {
     const { running } = await plugin.isRunning();
@@ -151,7 +209,7 @@ export async function isNativeDriverPresenceRunning(): Promise<boolean> {
  * "granted" from an error and then promise a bubble that cannot appear.
  */
 export async function hasOverlayPermission(): Promise<boolean> {
-  const plugin = await resolvePlugin();
+  const { plugin } = await resolvePlugin();
   if (!plugin) return false;
   try {
     const { granted } = await plugin.hasOverlayPermission();
@@ -174,7 +232,7 @@ export async function requestOverlayPermission(): Promise<{
   opened: boolean;
   granted: boolean;
 }> {
-  const plugin = await resolvePlugin();
+  const { plugin } = await resolvePlugin();
   if (!plugin) return { opened: false, granted: false };
   try {
     return await plugin.requestOverlayPermission();
