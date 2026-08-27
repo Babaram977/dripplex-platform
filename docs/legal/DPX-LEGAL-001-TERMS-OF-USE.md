@@ -336,10 +336,22 @@ balance. Counsel should confirm whether the wallet as operated engages CBN payme
 regulation.
 
 **Withdrawals.** Earnings can be withdrawn to a bank account you have registered and
-verified. Withdrawals are processed subject to the payout process, and require your PIN.
-`[NEEDS FOUNDER INPUT]` — the minimum withdrawal amount, any withdrawal fee, and the payout
-timetable. None of these exist as fixed values in the code today, so the terms must not
-promise a timeframe we have not built.
+verified. Withdrawals require your PIN, and the amount must be **at least ₦100 and no more
+than ₦1,000,000** per request (`WALLET_WITHDRAWAL_MIN_AMOUNT` / `WALLET_WITHDRAWAL_MAX_AMOUNT`,
+`apps/backend/src/wallet/wallet.constants.ts`).
+
+> **Corrected 2026-08-26.** This paragraph previously said the minimum, the fee and the
+> timetable _"[do] not exist as fixed values in the code today"_. The minimum and maximum
+> above **do** exist and are enforced on every request, and hotel settlements run on a fixed
+> weekly cadence — **every Monday**, settling the seven days before (founder decision
+> 2026-08-22, `apps/backend/src/bookings/settlement-week.ts`). Stating the opposite in a
+> document whose whole purpose is to describe the software accurately was the sharpest kind
+> of error this draft can contain, and it is the reason §21 traces every claim to a file.
+
+Still `[NEEDS FOUNDER INPUT]`: whether a **withdrawal fee** should be charged (none is
+charged today), and what payout timeframe to state for driver, rider and merchant earnings.
+The Monday cadence above governs _hotel settlements_; it is not a general payout promise, and
+the terms must not turn it into one.
 
 **Card details.** Card payments are handled by a licensed payment provider. **DrippleX does
 not store your full card details.**
@@ -676,7 +688,9 @@ what a clause says but not whether it can be drafted.**
    should exist (marketplace or ride).
 9. **§6.3** — hotel cancellation and no-show policy after payment; whose policy governs.
 10. **§7.4** — whether a customer-facing service fee will exist.
-11. **§8** — minimum withdrawal, withdrawal fee, payout timetable; how wallet balances are
+11. **§8** — withdrawal fee (none today) and the payout timetable for earnings. The
+    withdrawal **minimum and maximum are settled**: ₦100 and ₦1,000,000, enforced in code.
+    Also: how wallet balances are
     held; dormant-balance treatment.
 12. **§10** — failed-delivery policy: who bears the fee, what happens to the goods, refund or
     not.
@@ -706,16 +720,16 @@ Each of these is a place where the natural wording of a term would describe some
 platform cannot currently do. **Each must be either built or written around before
 publication** — writing it in and hoping is how a platform breaches its own terms on day one.
 
-| Gap                                                                 | Consequence if published as-is                                                                                | Also blocks                            |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
-| **Account deletion not built**                                      | A deletion clause would be unfulfillable; a user cannot exercise the right the terms give them                | Google Play and Apple store submission |
-| **No age verification**                                             | An "18+" term is breached the moment anyone under 18 signs up, and we would have no way to know               | —                                      |
-| **No customer-facing dispute route for rides, hotels or utilities** | A term describing an in-app dispute process would be inaccurate for three of five service lines               | —                                      |
-| **Ride fare rates unapproved**                                      | Publishing the rate table would publish numbers the founder has not approved and the source comments disclaim | Launch pricing                         |
-| **No cancellation fee mechanism**                                   | Any cancellation-fee term would be unenforceable in practice — nothing charges it                             | —                                      |
-| **Privacy Policy itself unreviewed**                                | §18 incorporates a document that carries its own "not reviewed by a lawyer" warning                           | NDPA compliance                        |
-| **Withdrawal minimum / fee / timetable not fixed in code**          | A stated payout timeframe would be a promise nothing enforces                                                 | —                                      |
-| **Checkout's "Terms of Service" text is not a link** (§24.4)        | Agreement is collected at every checkout to a document the customer cannot open from that screen              | —                                      |
+| Gap                                                                 | Consequence if published as-is                                                                                                                                  | Also blocks                            |
+| ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| **Account deletion not built**                                      | A deletion clause would be unfulfillable; a user cannot exercise the right the terms give them                                                                  | Google Play and Apple store submission |
+| **No age verification**                                             | An "18+" term is breached the moment anyone under 18 signs up, and we would have no way to know                                                                 | —                                      |
+| **No customer-facing dispute route for rides, hotels or utilities** | A term describing an in-app dispute process would be inaccurate for three of five service lines                                                                 | —                                      |
+| **Ride fare rates unapproved**                                      | Publishing the rate table would publish numbers the founder has not approved and the source comments disclaim                                                   | Launch pricing                         |
+| **No cancellation fee mechanism**                                   | Any cancellation-fee term would be unenforceable in practice — nothing charges it                                                                               | —                                      |
+| **Privacy Policy itself unreviewed**                                | §18 incorporates a document that carries its own "not reviewed by a lawyer" warning                                                                             | NDPA compliance                        |
+| **Withdrawal fee / earnings payout timetable undecided**            | A stated payout timeframe would be a promise nothing enforces. The withdrawal minimum (₦100) and maximum (₦1,000,000) ARE enforced in code and are stated in §8 | `wallet.constants.ts`                  |
+| **Checkout's "Terms of Service" text is not a link** (§24.4)        | Agreement is collected at every checkout to a document the customer cannot open from that screen                                                                | —                                      |
 
 ## 24. What happens to the published pages
 
