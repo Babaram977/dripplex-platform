@@ -8,6 +8,12 @@ import { SHARE_LINK_GRACE_MS } from './ride.constants';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { Ride, RideStatus } from '@prisma/client';
 
+/** Ten letters, never a digit — see the note at its call site. */
+function uniquePlateSuffix(): string {
+  const letters = (randomUUID() + randomUUID()).replace(/[^a-f]/g, '').toUpperCase();
+  return letters.slice(0, 10).padEnd(10, 'F');
+}
+
 const databaseUrl =
   process.env['DATABASE_URL'] ??
   'postgresql://dripplex:dripplex@localhost:5432/dripplex?schema=public';
@@ -65,7 +71,17 @@ describe('RideShareService', () => {
     const vehicle = await prisma.vehicle.create({
       data: {
         driverId,
-        plateNumber: `KN-${String(Date.now()).slice(-6)}`,
+        // Letters only, and that is load-bearing rather than cosmetic. This
+        // was six digits of the clock, and the leak assertion below searches
+        // the serialised payload for the trip code '4729' — so any run whose
+        // millisecond happened to contain those digits failed the test for a
+        // leak that had not occurred. It fired in CI on 2026-08-27 with plate
+        // KN-424729. A fixture must never be able to spell the needle a test
+        // is looking for.
+        //
+        // plateNumber is @@unique, so it still has to differ per run: ~6^10
+        // combinations from the hex letters of two UUIDs.
+        plateNumber: `KN-${uniquePlateSuffix()}`,
         make: 'Toyota',
         model: 'Corolla',
         color: 'Silver',
@@ -175,6 +191,12 @@ describe('RideShareService', () => {
       color: 'Silver',
     });
     expect(shared.driverPosition).not.toBeNull();
+    // The code must not be in the payload under any key — asserted
+    // structurally, because a shape check cannot be defeated by a value that
+    // merely looks like the code.
+    expect(shared).not.toHaveProperty('verificationCode');
+    // And not anywhere in the serialised body either, which catches it
+    // reaching a follower inside some field nobody thought to name.
     expect(JSON.stringify(shared)).not.toContain('4729');
   });
 
