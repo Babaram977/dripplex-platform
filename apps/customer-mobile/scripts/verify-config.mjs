@@ -42,8 +42,21 @@ if (existsSync(gradlePath)) {
   if (!gradle.includes('applicationId "com.dripplex.customer"'))
     fail('Android applicationId mismatch');
   else ok('Android applicationId');
-  if (!gradle.includes('versionCode 1000100')) fail('Android versionCode is missing or unexpected');
-  else ok('Android versionCode');
+  // This used to pin the literal `versionCode 1000100`, which is precisely the
+  // state that broke: Play accepts a versionCode once per applicationId, for
+  // ever, so a fixed number here means the second upload is rejected as a
+  // duplicate — including one built to replace a bad release. CI now supplies
+  // ANDROID_VERSION_CODE (scripts/mobile/build-android.sh).
+  //
+  // So the check is the wiring, not a magic number. Pinning the new value would
+  // reintroduce the same defect one refactor later.
+  const versionCodeLine = /^\s*versionCode .*$/m.exec(gradle)?.[0]?.trim() ?? '';
+  if (!versionCodeLine) fail('Android versionCode is missing');
+  else if (!versionCodeLine.includes('ANDROID_VERSION_CODE'))
+    fail(
+      `Android versionCode is hardcoded, so Play would reject the next upload: ${versionCodeLine}`,
+    );
+  else ok('Android versionCode reads ANDROID_VERSION_CODE');
   if (!gradle.includes('versionName "1.0.0"')) fail('Android versionName is missing or unexpected');
   else ok('Android versionName');
   if (
