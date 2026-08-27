@@ -41,27 +41,39 @@ Nigeria. It provides an app and website through which customers can order goods 
 merchants, book rides, request deliveries, reserve hotel rooms, buy airtime, data and
 utility tokens, and hold a DrippleX wallet.
 
-**`[NEEDS FOUNDER INPUT]` — the legal entity and its relationship to DrippleX.** These terms
-cannot be finalised without it. Counsel needs to state, precisely:
+**Resolved by the founder, 2026-08-26 and 2026-08-27.**
 
-- The full registered name of the contracting company, its **RC number**, and its registered
-  office address.
-- Whether "DrippleX" is a **trading name / brand of Afnan Homes Ltd**, or a **separate
-  company** that Afnan Homes Ltd owns or is otherwise related to. These produce materially
-  different terms: in the first case Afnan Homes Ltd is the counterparty to every user
-  contract; in the second, it is not a party at all and should probably not appear in the
-  terms.
-- Which entity holds the money — whose bank accounts receive customer payments, whose
-  accounts pay out driver, rider and merchant earnings, and whose books the DrippleX wallet
-  balance sits on.
-- Any licence or registration the operating entity holds that a user should be told about
-  (for example CBN payment-service licensing or a state transport-operator permit, if
-  applicable).
+DrippleX is a **trading name of Afnan Homes Ltd (RC 9387949)**, unless and until a separate
+DrippleX legal entity is established. Afnan Homes Ltd is therefore the counterparty to every
+user contract, and every other clause here — liability, payment, dispute, governing law —
+attaches to it.
 
-Nothing in this section should be drafted until the founder answers the above. **The single
-most common way a platform's terms fail is naming the wrong contracting party**, because
-every other clause — liability, payment, dispute, governing law — attaches to whoever §1
-says it attaches to.
+**Where your money sits.** Customer payments, driver, rider and merchant earnings, and
+DrippleX wallet balances are all held in **Afnan Homes Ltd's operating account**. Founder
+confirmation, 2026-08-26: there is **one operating account and no segregation** — customer
+funds are not held in a separate designated or client account, and wallet balances are an
+entry in DrippleX's own books rather than money set aside for you elsewhere.
+
+That is stated plainly because it is what the payment architecture actually does. There is
+no split-payment arrangement and no sub-account per party anywhere in the code: a single
+gateway account receives, and payouts are made manually from it.
+
+> **`[NEEDS COUNSEL]` — the consequences of that arrangement, not the fact of it.**
+> The facts above are settled and verified. What is _not_ settled is what Nigerian law
+> requires DrippleX to do about them. Specifically, for counsel:
+>
+> 1. Does holding customer wallet balances in a single unsegregated operating account
+>    engage **CBN payment-services regulation**, and if so under which licence category?
+> 2. Must the terms disclose the absence of segregation, and in what words?
+> 3. What must the terms say about what happens to a wallet balance if the company becomes
+>    insolvent — which is the risk unsegregated balances actually create for a user?
+> 4. Is any licence or registration held or required that a user must be told about here?
+>
+> These are questions about exposure, not about drafting. §1 is publishable only once they
+> are answered.
+
+**Registered office address is still needed** for publication — a contracting party without
+an address is not fully identified.
 
 ## 2. What DrippleX is, and what it is not
 
@@ -667,17 +679,26 @@ and vice versa.
 Grouped by how much they block. **A blocked item stops the document; a shaping item changes
 what a clause says but not whether it can be drafted.**
 
-**Blocking — the terms cannot be finalised without these**
+### Resolved (2026-08-26 / 2026-08-27)
 
-1. **§1** — the contracting entity: full registered name, RC number, registered address, and
-   the exact DrippleX ↔ Afnan Homes Ltd relationship. Which entity holds customer money and
-   pays out earnings.
+| #   | Item                        | Decision                                                                                                                                                                                                                                                                                                                                                           |
+| --- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | **§1** contracting entity   | ✅ DrippleX is a trading name of **Afnan Homes Ltd, RC 9387949**. Funds sit in its **single unsegregated operating account**. Drafted in §1. The _consequences_ remain `[NEEDS COUNSEL]`; the facts do not.                                                                                                                                                        |
+| 5   | **§7.1** fare table         | ✅ Rates approved (Dx Ride ₦350/₦110/₦15/₦1,500 · Comfort ₦450/₦135/₦18/₦1,500 · XL ₦600/₦165/₦22/₦1,700 · Tricycle ₦150/₦75/₦8/₦500). **Not yet applied to production** — blocked only on capturing the four live cards from the Operations Console first, so an operator edit made since the 2026-08-18 seed is not silently overwritten. See `DPX-PRICING-001`. |
+| 11  | **§8** withdrawal limits    | ✅ Settled and now stated: **₦100 minimum, ₦1,000,000 maximum**, enforced in code.                                                                                                                                                                                                                                                                                 |
+| —   | **§23** implementation gaps | ✅ All four to be built rather than written around — see §23.                                                                                                                                                                                                                                                                                                      |
+
+**Still blocking — the terms cannot be finalised without these**
+
+1. **§1** — the **registered office address**. Everything else in §1 is resolved; a contracting
+   party without an address is not fully identified.
 2. **§17** — governing law and venue (which state's courts).
 3. **§19** — registered postal address; confirmation that the support email addresses and the
    WhatsApp number are live and monitored.
 4. **§20** — effective date and last-updated date (set at publication).
-5. **§7.1** — approval of the ride fare table, or a decision to replace it. The rates in code
-   are self-declared placeholders and should not be charged, let alone published.
+5. **§8** — whether a **withdrawal fee** should be charged (none is today), and what payout
+   timeframe to state for driver, rider and merchant earnings. The Monday cadence in code
+   governs _hotel settlements_ and must not be published as a general payout promise.
 
 **Shaping — a clause depends on the answer**
 
@@ -720,16 +741,29 @@ Each of these is a place where the natural wording of a term would describe some
 platform cannot currently do. **Each must be either built or written around before
 publication** — writing it in and hoping is how a platform breaches its own terms on day one.
 
-| Gap                                                                 | Consequence if published as-is                                                                                                                                  | Also blocks                            |
-| ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
-| **Account deletion not built**                                      | A deletion clause would be unfulfillable; a user cannot exercise the right the terms give them                                                                  | Google Play and Apple store submission |
-| **No age verification**                                             | An "18+" term is breached the moment anyone under 18 signs up, and we would have no way to know                                                                 | —                                      |
-| **No customer-facing dispute route for rides, hotels or utilities** | A term describing an in-app dispute process would be inaccurate for three of five service lines                                                                 | —                                      |
-| **Ride fare rates unapproved**                                      | Publishing the rate table would publish numbers the founder has not approved and the source comments disclaim                                                   | Launch pricing                         |
-| **No cancellation fee mechanism**                                   | Any cancellation-fee term would be unenforceable in practice — nothing charges it                                                                               | —                                      |
-| **Privacy Policy itself unreviewed**                                | §18 incorporates a document that carries its own "not reviewed by a lawyer" warning                                                                             | NDPA compliance                        |
-| **Withdrawal fee / earnings payout timetable undecided**            | A stated payout timeframe would be a promise nothing enforces. The withdrawal minimum (₦100) and maximum (₦1,000,000) ARE enforced in code and are stated in §8 | `wallet.constants.ts`                  |
-| **Checkout's "Terms of Service" text is not a link** (§24.4)        | Agreement is collected at every checkout to a document the customer cannot open from that screen                                                                | —                                      |
+> **Founder decision, 2026-08-27: all four implementation gaps are to be BUILT, not written
+> around.** Account deletion, the age mechanism, customer dispute routes for rides/hotels/
+> utilities, and the checkout Terms link. Each ships as its own PR; the table below tracks
+> them. Once they land, the corresponding clauses can be written as promises rather than
+> hedges — which is the whole point of resolving them before publication rather than after.
+>
+> **Account deletion carries an external deadline the others do not.** Google Play requires
+> an in-app deletion path _and_ a public web deletion URL for any app with accounts. It is a
+> store-listing requirement, so it can block or pull a submission — including the API 36
+> submission due before **2026-08-31**. A design already exists at
+> `docs/DPX-ACCOUNT-DELETION-001.md`, whose own summary is that _"nothing in this document
+> exists in code today."_
+
+| Gap                                                                        | Consequence if published as-is                                                                                                                                  | Also blocks                            |
+| -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| **Account deletion not built** — 🔨 building                               | A deletion clause would be unfulfillable; a user cannot exercise the right the terms give them                                                                  | Google Play and Apple store submission |
+| **No age verification** — 🔨 building                                      | An "18+" term is breached the moment anyone under 18 signs up, and we would have no way to know                                                                 | —                                      |
+| **No customer dispute route for rides, hotels or utilities** — 🔨 building | A term describing an in-app dispute process would be inaccurate for three of five service lines                                                                 | —                                      |
+| ~~**Ride fare rates unapproved**~~ — ✅ approved 2026-08-26                | Rates are decided; applying them to production is blocked only on capturing the four live Operations Console cards first (`DPX-PRICING-001`)                    | Launch pricing                         |
+| **No cancellation fee mechanism**                                          | Any cancellation-fee term would be unenforceable in practice — nothing charges it                                                                               | —                                      |
+| **Privacy Policy itself unreviewed**                                       | §18 incorporates a document that carries its own "not reviewed by a lawyer" warning                                                                             | NDPA compliance                        |
+| **Withdrawal fee / earnings payout timetable undecided**                   | A stated payout timeframe would be a promise nothing enforces. The withdrawal minimum (₦100) and maximum (₦1,000,000) ARE enforced in code and are stated in §8 | `wallet.constants.ts`                  |
+| **Checkout's "Terms of Service" text is not a link** (§24.4) — 🔨 building | Agreement is collected at every checkout to a document the customer cannot open from that screen                                                                | —                                      |
 
 ## 24. What happens to the published pages
 
