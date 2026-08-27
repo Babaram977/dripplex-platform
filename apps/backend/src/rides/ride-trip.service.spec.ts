@@ -108,7 +108,8 @@ describe('RideTripService', () => {
         acceptingRides: true,
         vehicleType: 'ECONOMY',
         // At the ride's pickup point (6.6, 3.35) — startTrip's GPS proximity
-        // gate needs the driver's last-known location to be within 50m.
+        // gate needs the driver's last-known location within
+        // RIDE_START_PROXIMITY_METERS of it.
         latitude: 6.6,
         longitude: 3.35,
         // Dispatch ignores a driver whose position is older than
@@ -213,6 +214,42 @@ describe('RideTripService', () => {
       where: { driverId },
       // ~1.6km from the pickup point (6.6, 3.35) — well past the 50m gate.
       data: { latitude: 6.615, longitude: 3.365 },
+    });
+
+    await expect(service.startTrip(driverId, ride.id, undefined, context)).rejects.toThrow(
+      'Driver is too far from pickup to start the ride',
+    );
+  });
+
+  it('lets a driver start from within the GPS accuracy the gate allows', async () => {
+    if (!databaseAvailable) return;
+
+    const ride = await createAssignedRide();
+    await service.markArrived(driverId, ride.id, context);
+    await prisma.driverAvailability.update({
+      where: { driverId },
+      // ~122m north of the pickup point (6.6, 3.35). Refused under the old 50m
+      // limit and allowed under 150m — the founder's revision of 2026-08-27,
+      // taken after a driver at the kerb in Kano was refused at 180m. Consumer
+      // GPS in a built-up area is routinely this far out, so 50m was rejecting
+      // drivers who were actually there.
+      data: { latitude: 6.6011, longitude: 3.35 },
+    });
+
+    const started = await service.startTrip(driverId, ride.id, undefined, context);
+    expect(started.status).toBe('IN_PROGRESS');
+  });
+
+  it('still refuses a driver who is genuinely on another street', async () => {
+    if (!databaseAvailable) return;
+
+    const ride = await createAssignedRide();
+    await service.markArrived(driverId, ride.id, context);
+    await prisma.driverAvailability.update({
+      where: { driverId },
+      // ~330m out — beyond any plausible GPS error, and a distance a passenger
+      // can see across. Widening the gate to 150m must not turn it off.
+      data: { latitude: 6.603, longitude: 3.35 },
     });
 
     await expect(service.startTrip(driverId, ride.id, undefined, context)).rejects.toThrow(
