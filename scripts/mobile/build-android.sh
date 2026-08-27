@@ -128,31 +128,49 @@ if [[ -z "${AAB}" ]]; then
   exit 1
 fi
 
-# Verify the bundle carries the code we asked for, rather than trusting that
-# the env var reached Gradle. A workflow edit that drops ANDROID_VERSION_CODE
-# silently falls back to 1000100 in build.gradle and rebuilds the exact duplicate
-# this whole mechanism exists to prevent — green here, rejected by Play later,
-# with nothing in the log to explain it. Gradle records what it actually used.
+# Verify the build carries the code we asked for, rather than trusting that the
+# env var reached Gradle. A workflow edit that drops ANDROID_VERSION_CODE falls
+# back to 1000100 in build.gradle and rebuilds the exact duplicate this whole
+# mechanism exists to prevent — green here, rejected by Play later, with nothing
+# in the log to explain it. Gradle records what it actually used.
+#
+# Search the whole outputs tree rather than one fixed path, for the same reason
+# the FCM check below does: AGP's layout is not stable. The first version of
+# this looked only in bundle/<variant>/ and printed "could not verify" on a real
+# build — AGP writes output-metadata.json next to the APK, not the bundle, on
+# 8.7. A check that cannot find its evidence is not a check.
+METADATA=$(find "${OUT}" -name 'output-metadata.json' -print 2>/dev/null | sort | head -1 || true)
 BUILT_CODE=$(node -e "
   const fs = require('node:fs');
+  const path = process.argv[1];
+  if (!path) { process.stdout.write(''); process.exit(0); }
   try {
-    const meta = JSON.parse(fs.readFileSync('${OUT}/bundle/${FLAVOR}Release/output-metadata.json', 'utf8'));
+    const meta = JSON.parse(fs.readFileSync(path, 'utf8'));
     const code = (meta.elements ?? []).map((e) => e?.versionCode).find((c) => c != null);
     process.stdout.write(code == null ? '' : String(code));
   } catch { process.stdout.write(''); }
-")
+" "${METADATA}")
 
 if [[ -z "${BUILT_CODE}" ]]; then
-  # Not a failure: the metadata file is an AGP convenience, not a guarantee.
-  echo "VERSION CODE: not recorded in output-metadata.json — could not verify"
+  # On a Play-bound build this is fatal. The check exists to stop a duplicate
+  # versionCode reaching the console, and "I could not tell" is not a pass —
+  # that is precisely how the unsigned-bundle and dead-push bugs both shipped.
+  if [[ "${REQUIRE_SIGNED}" == "1" ]]; then
+    echo "ERROR: could not read the built versionCode from any output-metadata.json" >&2
+    echo "       under ${OUT}." >&2
+    echo "       Without it there is no proof ANDROID_VERSION_CODE reached Gradle," >&2
+    echo "       and a duplicate versionCode is rejected only once it is uploaded." >&2
+    exit 1
+  fi
+  echo "VERSION CODE: no output-metadata.json under ${OUT} — could not verify"
 elif [[ "${BUILT_CODE}" != "${ANDROID_VERSION_CODE}" ]]; then
-  echo "ERROR: the bundle carries versionCode ${BUILT_CODE}, not ${ANDROID_VERSION_CODE}." >&2
+  echo "ERROR: the build carries versionCode ${BUILT_CODE}, not ${ANDROID_VERSION_CODE}." >&2
   echo "       ANDROID_VERSION_CODE did not reach Gradle. build.gradle fell back" >&2
   echo "       to its hardcoded default, which Play has already consumed — this" >&2
   echo "       artifact would be rejected as a duplicate." >&2
   exit 1
 else
-  echo "VERSION CODE: bundle carries ${BUILT_CODE}"
+  echo "VERSION CODE: build carries ${BUILT_CODE} (${METADATA#"${OUT}/"})"
 fi
 
 # An AAB is a jar; a signed one carries META-INF/*.RSA|DSA|EC.
