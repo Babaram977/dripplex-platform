@@ -32,6 +32,8 @@ interface DriverPresencePlugin {
   }): Promise<{ started: boolean }>;
   stop(): Promise<void>;
   isRunning(): Promise<{ running: boolean }>;
+  hasOverlayPermission(): Promise<{ granted: boolean }>;
+  requestOverlayPermission(): Promise<{ opened: boolean; granted: boolean }>;
 }
 
 export type NativePresenceOutcome =
@@ -136,5 +138,49 @@ export async function isNativeDriverPresenceRunning(): Promise<boolean> {
     return running;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Whether the driver has granted "Display over other apps" — the floating
+ * bubble (founder decision, 2026-08-27).
+ *
+ * SYSTEM_ALERT_WINDOW is a **special** permission: there is no runtime dialog,
+ * so the app can only check it and send the driver to Settings. False on every
+ * non-Android platform and on any failure, because a caller must never conclude
+ * "granted" from an error and then promise a bubble that cannot appear.
+ */
+export async function hasOverlayPermission(): Promise<boolean> {
+  const plugin = await resolvePlugin();
+  if (!plugin) return false;
+  try {
+    const { granted } = await plugin.hasOverlayPermission();
+    return granted;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Send the driver to the Settings screen that grants it.
+ *
+ * Resolves as soon as Settings opens. It CANNOT report the outcome — the choice
+ * is made in another app and the driver may simply walk back — so callers must
+ * re-check `hasOverlayPermission()` on resume rather than assume success.
+ *
+ * `opened: false, granted: true` means it was already on and nothing was shown.
+ */
+export async function requestOverlayPermission(): Promise<{
+  opened: boolean;
+  granted: boolean;
+}> {
+  const plugin = await resolvePlugin();
+  if (!plugin) return { opened: false, granted: false };
+  try {
+    return await plugin.requestOverlayPermission();
+  } catch {
+    // Some OEM builds ship no such Settings screen. Nothing is broken; the
+    // driver just cannot have the bubble on that handset.
+    return { opened: false, granted: false };
   }
 }

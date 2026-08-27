@@ -100,6 +100,13 @@ if (existsSync(manifestPath)) {
     fail(`Android ${missingFgs.join(', ')} missing — driver presence cannot start`);
   else ok('Android foreground-service permissions');
 
+  // The floating bubble needs this and there is no runtime dialog for it, so a
+  // missing line here means the driver is sent to a Settings screen that
+  // toggles nothing, and canDrawOverlays() returns false for ever.
+  if (!declares('SYSTEM_ALERT_WINDOW'))
+    fail('Android SYSTEM_ALERT_WINDOW missing — the floating driver bubble cannot be granted');
+  else ok('Android overlay permission');
+
   if (!manifest.includes('android:name=".DriverPresenceService"'))
     fail('Android DriverPresenceService is not declared — the plugin cannot start it');
   else if (!manifest.includes('android:foregroundServiceType="location"'))

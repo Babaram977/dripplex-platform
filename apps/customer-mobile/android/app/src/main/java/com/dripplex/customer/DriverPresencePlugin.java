@@ -89,6 +89,50 @@ public class DriverPresencePlugin extends Plugin {
     call.resolve();
   }
 
+  /**
+   * Whether "Display over other apps" is granted.
+   *
+   * SYSTEM_ALERT_WINDOW is a special permission: there is no runtime dialog for
+   * it, so the app cannot ask and get an answer. All it can do is check, and
+   * send the driver to Settings.
+   */
+  @PluginMethod
+  public void hasOverlayPermission(PluginCall call) {
+    JSObject result = new JSObject();
+    result.put("granted", DriverPresenceOverlay.canDrawOverlays(getContext()));
+    call.resolve(result);
+  }
+
+  /**
+   * Open the Settings screen that grants it.
+   *
+   * Resolves as soon as Settings is launched — it cannot report the outcome,
+   * because the user makes the choice in another app and may simply come back.
+   * Callers must re-check with hasOverlayPermission() rather than assume.
+   */
+  @PluginMethod
+  public void requestOverlayPermission(PluginCall call) {
+    if (DriverPresenceOverlay.canDrawOverlays(getContext())) {
+      JSObject already = new JSObject();
+      already.put("opened", false);
+      already.put("granted", true);
+      call.resolve(already);
+      return;
+    }
+    try {
+      getContext().startActivity(DriverPresenceOverlay.overlaySettingsIntent(getContext()));
+    } catch (Exception e) {
+      // Some OEM builds ship no such Settings screen. Nothing is broken — the
+      // driver just cannot have the bubble on that handset.
+      call.reject("Could not open the overlay permission screen");
+      return;
+    }
+    JSObject result = new JSObject();
+    result.put("opened", true);
+    result.put("granted", false);
+    call.resolve(result);
+  }
+
   @PluginMethod
   public void isRunning(PluginCall call) {
     JSObject result = new JSObject();

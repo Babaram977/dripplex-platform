@@ -130,4 +130,21 @@
     -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+
+    <!--
+        DPX-MOBILE-003, founder decision 2026-08-27: the floating driver bubble.
+
+        The one permission in this manifest the user grants BY HAND. There is no
+        runtime dialog for SYSTEM_ALERT_WINDOW — the app can only check
+        Settings.canDrawOverlays() and send the driver to
+        ACTION_MANAGE_OVERLAY_PERMISSION. So "not granted" is an ordinary state
+        the code treats as normal, never as an error: a driver who declines it
+        keeps a fully working shift and simply has no circle.
+
+        Android's own permission-free bubble API was considered and does not
+        fit: it needs API 30+ with a sharing shortcut and a conversation-style
+        notification, and this app is minSdk 23 — most handsets in the launch
+        market would get nothing.
+    -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 </manifest>
