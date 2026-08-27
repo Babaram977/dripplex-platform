@@ -1,7 +1,10 @@
 # DPX-MOBILE-003 — Driver Background Mode, Floating Ride Presence & Loud Ride Alerts
 
-**Status:** AUDIT ONLY — no implementation. Nothing in this document has been built.
-**Date:** 2026-08-26
+**Status:** 🟡 **Driver presence BUILT, not yet device-verified.** The audit below stands as written
+(with the corrections marked); §7.2's native foreground service now exists — see §0.3. Everything
+else in the document — the ride-alert sound asset, the lease-lapse behaviour, the floating-circle
+question — is still audit only.
+**Date:** 2026-08-26 (presence built 2026-08-27)
 **Baseline audited:** `main` at `acb844e` (includes #293, #294, #295; excludes #296, which is open).
 
 > **Correction, 2026-08-27.** §7.3 asserted that a location foreground service requires
@@ -53,6 +56,67 @@ should assume it has arrived.
 
 `minSdk 23` is the more load-bearing number and is easy to miss: **Android 7 and below have no notification
 channels at all**, and they are common in the launch market.
+
+---
+
+## §0.3 What was built, 2026-08-27
+
+`DriverPresenceService` — an Android foreground service of type `location` — plus the
+`DriverPresence` Capacitor plugin that starts and stops it.
+
+| Piece        | Where                                                                                                                 |
+| ------------ | --------------------------------------------------------------------------------------------------------------------- |
+| The service  | `android/app/src/main/java/com/dripplex/customer/DriverPresenceService.java`                                          |
+| The plugin   | `.../DriverPresencePlugin.java`                                                                                       |
+| Registration | `MainActivity.java` — **before** `super.onCreate()`, or the bridge is already built and the plugin is silently absent |
+| Manifest     | `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_LOCATION`, `<service … foregroundServiceType="location">`                   |
+| JS bridge    | `packages/hooks/src/driver/native-presence.ts`                                                                        |
+| App wiring   | `apps/super-app/src/lib/driverPresence.ts`, called from the Go online toggle and from `signOutRequest`                |
+
+**It reports natively rather than waking the WebView.** This is the load-bearing decision. A
+foreground service keeps the process alive, but Chromium still throttles timers in a WebView that is
+not visible — so a service that woke JavaScript to do the POST would reintroduce the exact bug it
+exists to fix. The service holds the API origin and an access token and posts to
+`/driver/rides/availability` itself, every 60s.
+
+60s, not the WebView's 120s: the server drops a driver after 5 minutes, so this leaves room for four
+consecutive failures — a tunnel, a dead cell, a backend restart — where 120s allowed one.
+
+The token is held **in memory only**: never written to disk, never logged, dropped when the service
+stops, and the service is stopped before sign-out revokes the session. A 401 or 403 from the
+availability write stops the service outright, because a presence notification on a dead token tells
+the driver they are working when the server cannot hear them.
+
+`START_NOT_STICKY`, deliberately: `START_STICKY` would have Android restart the service after a
+process kill with a null intent — no token, no origin — so it would come back as a notification
+attached to a service that can never report anything.
+
+**The WebView heartbeat is not removed.** It stays as the foreground path and as the only path on
+iOS and the web. Both writing the same coordinates is harmless: the gateway throttles to one write
+per driver per five seconds, and the REST write echoes the driver's own availability back unchanged.
+
+### What is NOT verified
+
+**The Java has never run.** This environment has no Android SDK and no handset, so CI proves it
+compiles, packages and signs — and nothing else. Every behavioural claim above is a reading of the
+platform contract, not an observation.
+
+What the device test has to establish, and nothing else can:
+
+1. The ongoing notification appears when the driver goes online, and disappears on offline and on
+   sign-out.
+2. `locationUpdatedAt` keeps advancing with the app minimised for 10+ minutes — the whole point.
+3. A ride offered while minimised reaches the driver.
+4. Battery cost over a realistic shift.
+5. It survives the OEM battery managers common in this market, which kill foreground services more
+   aggressively than stock Android does.
+
+### Still open, unchanged by this
+
+Blocker 3 (behaviour vs. a literal floating circle) is **partly** answered: the ongoing notification
+is a presence indicator reachable from anywhere in Android, and it needs no `SYSTEM_ALERT_WINDOW`.
+Whether the founder also wants a true floating overlay remains their call, and still carries the
+overlay permission it always did. Blocker 4 (lease-lapse behaviour) is untouched.
 
 ---
 

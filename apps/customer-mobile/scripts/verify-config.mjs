@@ -86,11 +86,34 @@ if (existsSync(manifestPath)) {
     fail('Android VIBRATE missing — the ride-alert channel will not vibrate on device');
   else ok('Android VIBRATE permission');
 
-  // Declaring background location triggers a Play policy review we would fail,
-  // for a capability the app does not have: the heartbeat runs on
-  // navigator.geolocation in a WebView, which only executes in the foreground.
+  // DPX-MOBILE-003 — the driver presence foreground service. Every part of
+  // this fails silently on its own: without the permissions the service throws
+  // at startForeground; without foregroundServiceType="location" Android 14
+  // refuses to start it; and a missing <service> entry means the plugin's
+  // startForegroundService targets a class the system does not know about. In
+  // every case the driver taps "Go online", sees nothing wrong, and goes
+  // invisible to dispatch four minutes later — the exact bug this replaces.
+  const missingFgs = ['FOREGROUND_SERVICE', 'FOREGROUND_SERVICE_LOCATION'].filter(
+    (p) => !declares(p),
+  );
+  if (missingFgs.length)
+    fail(`Android ${missingFgs.join(', ')} missing — driver presence cannot start`);
+  else ok('Android foreground-service permissions');
+
+  if (!manifest.includes('android:name=".DriverPresenceService"'))
+    fail('Android DriverPresenceService is not declared — the plugin cannot start it');
+  else if (!manifest.includes('android:foregroundServiceType="location"'))
+    fail('Android DriverPresenceService has no foregroundServiceType — Android 14 refuses it');
+  else ok('Android driver presence service');
+
+  // Declaring background location triggers a Play policy review we would fail.
+  // Corrected 2026-08-27: a foreground service is the sanctioned way to hold
+  // location while backgrounded and needs no such permission — it covers
+  // location with NO service, and starting one FROM the background. Presence
+  // starts from the driver tapping "Go online", on screen. So this stays absent
+  // even now that the service exists.
   if (declares('ACCESS_BACKGROUND_LOCATION'))
-    fail('Android ACCESS_BACKGROUND_LOCATION declared — not used, and a Play policy risk');
+    fail('Android ACCESS_BACKGROUND_LOCATION declared — not needed, and a Play policy risk');
   else ok('Android background location correctly absent');
 }
 

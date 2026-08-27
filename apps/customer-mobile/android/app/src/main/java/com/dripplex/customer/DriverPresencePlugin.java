@@ -1,0 +1,98 @@
+package com.dripplex.customer;
+
+import android.content.Intent;
+import android.os.Build;
+
+import com.getcapacitor.JSObject;
+import com.getcapacitor.Plugin;
+import com.getcapacitor.PluginCall;
+import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.CapacitorPlugin;
+
+/**
+ * DPX-MOBILE-003 — the JavaScript door to {@link DriverPresenceService}.
+ *
+ * Deliberately thin: start, stop, and a way to ask. Everything that decides
+ * *whether* a driver should be visible stays in the app, where the driver's
+ * role, their online toggle and their commission standing already live. This
+ * class only carries that decision across to the platform.
+ *
+ * The caller supplies the API base URL and access token. The service needs
+ * them because it reports on its own — see the note in DriverPresenceService
+ * about why waking the WebView to do it would reintroduce the bug.
+ */
+@CapacitorPlugin(name = "DriverPresence")
+public class DriverPresencePlugin extends Plugin {
+
+  @PluginMethod
+  public void start(PluginCall call) {
+    String baseUrl = call.getString("baseUrl");
+    String token = call.getString("token");
+    String vehicleType = call.getString("vehicleType");
+
+    if (baseUrl == null || token == null || vehicleType == null) {
+      call.reject("baseUrl, token and vehicleType are required");
+      return;
+    }
+
+    Intent intent = new Intent(getContext(), DriverPresenceService.class);
+    intent.setAction(DriverPresenceService.ACTION_START);
+    intent.putExtra(DriverPresenceService.EXTRA_BASE_URL, baseUrl);
+    intent.putExtra(DriverPresenceService.EXTRA_TOKEN, token);
+    intent.putExtra(DriverPresenceService.EXTRA_VEHICLE_TYPE, vehicleType);
+    intent.putExtra(
+        DriverPresenceService.EXTRA_ACCEPTING_RIDES,
+        Boolean.TRUE.equals(call.getBoolean("acceptingRides", Boolean.TRUE)));
+    Boolean deliveries = call.getBoolean("acceptingDeliveries");
+    if (deliveries != null) {
+      intent.putExtra(DriverPresenceService.EXTRA_ACCEPTING_DELIVERIES, deliveries.booleanValue());
+    }
+    Integer intervalMs = call.getInt("intervalMs");
+    if (intervalMs != null) {
+      intent.putExtra(DriverPresenceService.EXTRA_INTERVAL_MS, intervalMs.longValue());
+    }
+
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        getContext().startForegroundService(intent);
+      } else {
+        getContext().startService(intent);
+      }
+    } catch (Exception e) {
+      // Android 12+ throws ForegroundServiceStartNotAllowedException if this is
+      // ever reached from the background. It should not be — the driver taps
+      // "Go online" with the app on screen — but a rejected start must surface
+      // as a failed promise rather than crash the WebView.
+      call.reject("Could not start driver presence: " + e.getClass().getSimpleName());
+      return;
+    }
+
+    JSObject result = new JSObject();
+    result.put("started", true);
+    call.resolve(result);
+  }
+
+  @PluginMethod
+  public void stop(PluginCall call) {
+    Intent intent = new Intent(getContext(), DriverPresenceService.class);
+    intent.setAction(DriverPresenceService.ACTION_STOP);
+    // startService for the stop path, never startForegroundService: the latter
+    // promises Android a startForeground() call within five seconds and this
+    // intent's whole purpose is to not do that.
+    try {
+      getContext().startService(intent);
+    } catch (Exception ignored) {
+      // Already dead, or the process is being torn down. Either way there is
+      // nothing left to stop and a driver signing out must not see an error.
+    }
+    getContext().stopService(intent);
+    call.resolve();
+  }
+
+  @PluginMethod
+  public void isRunning(PluginCall call) {
+    JSObject result = new JSObject();
+    result.put("running", DriverPresenceService.isActive());
+    call.resolve(result);
+  }
+}

@@ -41,6 +41,30 @@
 
         </activity>
 
+        <!--
+            DPX-MOBILE-003 — driver presence.
+
+            A driver who minimised DrippleX went invisible to dispatch about
+            four minutes later: the heartbeat was a WebView setInterval, and
+            Android freezes those. This service keeps reporting natively.
+
+            foregroundServiceType="location" is required from Android 14, and
+            the typed startForeground() overload must agree with it. It needs
+            no ACCESS_BACKGROUND_LOCATION — a foreground service IS the
+            sanctioned way to hold location with the app backgrounded, and the
+            permission covers the two cases this does not do: location with no
+            service at all, and STARTING such a service from the background.
+            This one starts from the driver tapping "Go online", on screen.
+
+            exported="false": nothing outside the app may start it. It carries
+            an access token.
+        -->
+        <service
+            android:name=".DriverPresenceService"
+            android:exported="false"
+            android:stopWithTask="true"
+            android:foregroundServiceType="location" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -96,4 +120,14 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!--
+        DPX-MOBILE-003. Both are normal, install-time permissions: no runtime
+        prompt, no Play policy question, no prominent-disclosure flow. The
+        service they enable is what keeps a minimised driver visible to
+        dispatch. See the <service> declaration above for why
+        ACCESS_BACKGROUND_LOCATION is still, correctly, absent.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
 </manifest>

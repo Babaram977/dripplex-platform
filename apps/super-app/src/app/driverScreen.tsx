@@ -26,6 +26,8 @@ import { playNotificationSound, startIncomingRideAlarm, stopIncomingRideAlarm } 
 import { SoundSettings } from './soundSettings';
 import { PayoutPanel } from './payoutPanel';
 import { useLocationHeartbeat } from '../lib/locationHeartbeat';
+import { startDriverPresence, stopDriverPresence } from '../lib/driverPresence';
+
 import { pushDriverLocationNow, useDriverLocationPing } from './useDriverLocationPing';
 import { getCurrentPosition } from '../lib/maps';
 // Same cadence for both couriers — see the constant's note for why 30s.
@@ -2699,19 +2701,31 @@ export function DriverDashboardScreen({
           );
           return;
         }
+        const vehicleType = await resolveVehicleType();
         await api.driverRides.setAvailability({
           online: true,
           acceptingRides: true,
-          vehicleType: await resolveVehicleType(),
+          vehicleType,
           latitude: pos.latitude,
           longitude: pos.longitude,
         });
+        // DPX-MOBILE-003 — hand the shift to the native service, which keeps
+        // reporting once Android freezes this WebView's timers. Started here,
+        // with the app on screen, because Android 12+ refuses a foreground
+        // service started from the background. Never awaited for its verdict:
+        // a driver must not be blocked from going online because a platform
+        // call failed, and every non-Android platform returns 'not-android'.
+        void startDriverPresence({ vehicleType, acceptingRides: true });
       } else {
         await api.driverRides.setAvailability({
           online: false,
           acceptingRides: false,
           vehicleType: await resolveVehicleType(),
         });
+        // Stop before anything else can fail: a presence notification that
+        // outlives the shift tells the driver they are working when the server
+        // has them offline.
+        void stopDriverPresence();
       }
       setOnline(next);
     } catch (e: unknown) {
