@@ -4,6 +4,12 @@
 **Date:** 2026-08-26
 **Baseline audited:** `main` at `acb844e` (includes #293, #294, #295; excludes #296, which is open).
 
+> **Correction, 2026-08-27.** §7.3 asserted that a location foreground service requires
+> `ACCESS_BACKGROUND_LOCATION`, and built §4.2, §8 blocker 2 and §9 on top of that. **It does not.** The
+> permission is needed to read location with no foreground service, or to _start_ one from the background —
+> neither of which this workstream does. The Play policy cost of driver background mode is a service-type
+> declaration and nothing else. Corrections are marked inline at each of the four places.
+
 ---
 
 ## §0 — Two things to rule on before anything is built
@@ -263,17 +269,22 @@ The app is a remote-URL shell: `capacitor.config.ts` points `server.url` at `htt
 Declared: `INTERNET`, `POST_NOTIFICATIONS`, `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`.
 (#296 adds `VIBRATE`.)
 
-**Not declared, and all required for the proposed work:** `FOREGROUND_SERVICE`,
-`FOREGROUND_SERVICE_LOCATION`, `ACCESS_BACKGROUND_LOCATION`, `SYSTEM_ALERT_WINDOW`, `WAKE_LOCK`,
-`RECEIVE_BOOT_COMPLETED`.
+**Not declared:** `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_LOCATION`, `ACCESS_BACKGROUND_LOCATION`,
+`SYSTEM_ALERT_WINDOW`, `WAKE_LOCK`, `RECEIVE_BOOT_COMPLETED`.
+
+> **Corrected 2026-08-27.** This list originally read "and all required for the proposed work". Only
+> `FOREGROUND_SERVICE` and `FOREGROUND_SERVICE_LOCATION` are required — see the correction in §7.3.
+> `ACCESS_BACKGROUND_LOCATION` and `RECEIVE_BOOT_COMPLETED` are not needed and are not being added;
+> `SYSTEM_ALERT_WINDOW` was never assumed (§5).
 
 There are **no `<service>` declarations** of any kind, and **no notification channels** are created anywhere on
 `main` (#296 creates the first one). App Links for `app.dripplex.com` and the `dripplex://open` scheme are
 configured and working.
 
 `ACCESS_BACKGROUND_LOCATION` is called out in the manifest's own comment as deliberately absent because it
-would trigger a Play policy review the app would fail _for a capability it does not have_. Adding background
-location changes that calculus — see §7.3 and §9.
+would trigger a Play policy review the app would fail _for a capability it does not have_. **That comment
+stands and this workstream does not change it** — the foreground service gives the app the capability without
+the permission (§7.3).
 
 ### §4.3 `POST_NOTIFICATIONS`
 
@@ -337,16 +348,37 @@ natively so it survives backgrounding.
 
 Its ongoing notification **is** the floating presence of §5.
 
-### §7.3 The hard question this raises
+### §7.3 The permission cost — corrected
 
-A foreground service of type `location` on Android 14+ requires `FOREGROUND_SERVICE_LOCATION`, and continuing
-to receive location while backgrounded requires **`ACCESS_BACKGROUND_LOCATION`** — the permission the manifest
-currently refuses on purpose, and the single largest Play policy item in this workstream. It triggers a
-prominent-disclosure requirement, a Data Safety change, and a review in which the reviewer must see the feature
-justify itself.
+> **Corrected 2026-08-27.** This section originally said a location foreground service requires
+> `ACCESS_BACKGROUND_LOCATION`, and called that "the single largest Play policy item in this workstream". **That
+> is wrong**, and the correction removes the workstream's biggest blocker rather than adding one. Verified
+> against Android's foreground-service and location documentation. What follows replaces it.
 
-It is justified here — a driver dispatch cannot locate is the product not working — but it is a founder
-decision with a review cost, not an implementation detail. **This is the STOP point the task asked for.**
+A foreground service of type `location` requires:
+
+| Permission                                        | Cost                                                          |
+| ------------------------------------------------- | ------------------------------------------------------------- |
+| `FOREGROUND_SERVICE`                              | Normal permission, granted at install. None.                  |
+| `FOREGROUND_SERVICE_LOCATION` (Android 14+)       | Declaration plus the correct `android:foregroundServiceType`. |
+| `ACCESS_FINE_LOCATION` / `ACCESS_COARSE_LOCATION` | **Already declared and already requested.**                   |
+
+**`ACCESS_BACKGROUND_LOCATION` is not among them.** A foreground service _is_ the sanctioned mechanism for
+continuing to receive location while the app is backgrounded — that is what the service is for. The
+background-location permission covers something different: reading location with no foreground service at all,
+and **starting** a location foreground service _from the background_.
+
+DrippleX starts the service when the driver taps "Go online", with the app in the foreground and on screen. So
+the manifest's existing comment stands and nothing about it needs revisiting: `ACCESS_BACKGROUND_LOCATION`
+remains deliberately absent, and no prominent-disclosure flow, Data Safety change for background location, or
+policy review is triggered by this workstream.
+
+**The one thing that would change that** is auto-restarting the service on device boot
+(`RECEIVE_BOOT_COMPLETED`), which starts a location foreground service from the background and does need the
+permission. That is out of scope: a driver who reboots their handset can tap Go online again.
+
+**So this is no longer a STOP point, and blocker #2 in §8 is withdrawn.** The founder decisions this workstream
+actually waits on are #3 (behaviour vs. a literal floating circle) and #4 (lease-lapse behaviour).
 
 ### §7.4 Role gating
 
@@ -357,16 +389,16 @@ One APK serves every role. The service must start **only** when the authenticate
 
 ## §8 Blockers and decisions needed
 
-| #   | Item                                                                      | Type              |
-| --- | ------------------------------------------------------------------------- | ----------------- |
-| 1   | `DPX-MOBILE-003` number collision (§0.1)                                  | Founder           |
-| 2   | `ACCESS_BACKGROUND_LOCATION` + prominent disclosure + Data Safety (§7.3)  | Founder / Play    |
-| 3   | Behaviour vs. literal floating circle — `SYSTEM_ALERT_WINDOW` or not (§5) | Founder           |
-| 4   | What a driver sees when their online lease lapses (§7.1)                  | Founder / product |
-| 5   | A real ride-alert sound asset — none exists; `res/raw` is empty (§3.4)    | Founder / design  |
-| 6   | No approved Figma design for a minimised/background state (§12)           | Design            |
-| 7   | API 36 not on `main`; #286 gated on a device test (§0.2)                  | Engineering       |
-| 8   | Physical Android 16 device for acceptance — cannot be done from CI        | Founder           |
+| #     | Item                                                                                                                                                                       | Type               |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| 1     | `DPX-MOBILE-003` number collision (§0.1)                                                                                                                                   | Founder            |
+| ~~2~~ | ~~`ACCESS_BACKGROUND_LOCATION` + prominent disclosure + Data Safety~~ — **withdrawn 2026-08-27**: not required for a foreground service started from the foreground (§7.3) | ~~Founder / Play~~ |
+| 3     | Behaviour vs. literal floating circle — `SYSTEM_ALERT_WINDOW` or not (§5)                                                                                                  | Founder            |
+| 4     | What a driver sees when their online lease lapses (§7.1)                                                                                                                   | Founder / product  |
+| 5     | A real ride-alert sound asset — none exists; `res/raw` is empty (§3.4)                                                                                                     | Founder / design   |
+| 6     | No approved Figma design for a minimised/background state (§12)                                                                                                            | Design             |
+| 7     | API 36 not on `main`; #286 gated on a device test (§0.2)                                                                                                                   | Engineering        |
+| 8     | Physical Android 16 device for acceptance — cannot be done from CI                                                                                                         | Founder            |
 
 **Not a blocker:** Firebase. `dripplex-3a92d` is provisioned, `com.dripplex.customer` is registered, CI supplies
 `google-services.json`, and the backend sends real pushes. The task's contingency about `FIREBASE_PROJECT_ID`
@@ -376,13 +408,18 @@ does not apply.
 
 ## §9 Play policy summary
 
-Adding, and their cost: `FOREGROUND_SERVICE` (none) · `FOREGROUND_SERVICE_LOCATION` (declaration + correct
-type) · `ACCESS_BACKGROUND_LOCATION` (**prominent disclosure, Data Safety update, review**) · `VIBRATE`
-(none, normal permission).
+Adding, and their cost: `FOREGROUND_SERVICE` (none, normal permission) · `FOREGROUND_SERVICE_LOCATION`
+(declaration + correct type) · `VIBRATE` (none, normal permission).
 
-Explicitly **not** adding: `SYSTEM_ALERT_WINDOW`, accessibility services, device-admin, `USE_FULL_SCREEN_INTENT`.
+Explicitly **not** adding: **`ACCESS_BACKGROUND_LOCATION`** (see the correction in §7.3 — a foreground service
+started from the foreground does not need it), `SYSTEM_ALERT_WINDOW`, accessibility services, device-admin,
+`USE_FULL_SCREEN_INTENT`, `RECEIVE_BOOT_COMPLETED`.
 
-`docs/store/DPX-MOBILE-003-STORE-PRIVACY-DECLARATIONS.md` will need updating for the location change.
+**Net Play policy cost of this workstream: none beyond a service-type declaration.** The prominent-disclosure
+flow and background-location review this section previously budgeted for do not apply.
+
+`docs/store/DPX-MOBILE-003-STORE-PRIVACY-DECLARATIONS.md` still needs a look: the app will collect location
+while the driver is online, which is a Data Safety statement even without background-location permission.
 
 ---
 
