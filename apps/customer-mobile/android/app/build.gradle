@@ -7,7 +7,23 @@ android {
         applicationId "com.dripplex.customer"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1000100
+        // Play accepts a given versionCode exactly once per applicationId, for
+        // ever, across every track. This was pinned at 1000100 with nothing
+        // anywhere to bump it, so the first upload consumed the only number the
+        // repo could produce — and the next AAB had nowhere to go, including one
+        // built to REPLACE a bad release. That stopped being hypothetical on
+        // 2026-08-27, when 1.0.0 went to internal testing.
+        //
+        // scripts/mobile/build-android.sh supplies ANDROID_VERSION_CODE: minutes
+        // since the Unix epoch. Strictly increasing, unique without any shared
+        // counter, and consistent across the two workflows that both build this
+        // app — mobile-build.yml and mobile-store-readiness.yml — which a
+        // per-workflow run number could not be, since each has its own sequence.
+        //
+        // The fallback is for Gradle invoked directly (Android Studio, a manual
+        // ./gradlew), where a stable code keeps a developer's installs
+        // predictable. Such a build is not submittable anyway: 1000100 is spent.
+        versionCode (System.getenv("ANDROID_VERSION_CODE") ?: "1000100").toInteger()
         versionName "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
