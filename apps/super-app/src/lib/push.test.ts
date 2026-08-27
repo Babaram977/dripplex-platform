@@ -11,6 +11,11 @@ vi.mock('@dripplex/hooks/notifications/native-push', () => ({
   createNativeNotificationChannel: (channel: unknown) => createNativeNotificationChannel(channel),
 }));
 
+const stopPresence = vi.fn();
+vi.mock('./driverPresence', () => ({
+  stopDriverPresence: () => stopPresence(),
+}));
+
 const registerDevice = vi.fn();
 const deactivateDevice = vi.fn();
 const logout = vi.fn();
@@ -54,6 +59,7 @@ describe('push registration (DPX-MOBILE-001)', () => {
     registerDevice.mockResolvedValue({ id: 'device-1' });
     deactivateDevice.mockResolvedValue(undefined);
     logout.mockResolvedValue(undefined);
+    stopPresence.mockResolvedValue('stopped');
   });
 
   it('registers the device token against the signed-in account', async () => {
@@ -148,6 +154,40 @@ describe('push registration (DPX-MOBILE-001)', () => {
     // Reversed, the deactivate call would authenticate with a revoked token
     // and leave the row live.
     expect(order).toEqual(['deactivate', 'logout']);
+  });
+
+  it('stops the native presence service BEFORE revoking the session', async () => {
+    await registerPushDevice();
+    const order: string[] = [];
+    stopPresence.mockImplementation(() => {
+      order.push('presence');
+      return Promise.resolve('stopped');
+    });
+    deactivateDevice.mockImplementation(() => {
+      order.push('deactivate');
+      return Promise.resolve();
+    });
+    logout.mockImplementation(() => {
+      order.push('logout');
+      return Promise.resolve();
+    });
+
+    await signOutRequest();
+
+    // DPX-MOBILE-003: the service holds an access token and shows an ongoing
+    // "You are online" notification. Left running past sign-out it reports a
+    // driver who has left, on a token they no longer own.
+    expect(order).toEqual(['presence', 'deactivate', 'logout']);
+  });
+
+  it('still signs out when stopping presence fails', async () => {
+    await registerPushDevice();
+    stopPresence.mockRejectedValue(new Error('plugin gone'));
+
+    await expect(signOutRequest()).resolves.toBeUndefined();
+    // A driver who cannot sign out is worse than a service that lingers until
+    // the process dies.
+    expect(logout).toHaveBeenCalled();
   });
 
   it('still signs out when releasing the device fails', async () => {

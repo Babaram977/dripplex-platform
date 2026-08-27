@@ -1,7 +1,10 @@
 # DPX-MOBILE-003 — Driver Background Mode, Floating Ride Presence & Loud Ride Alerts
 
-**Status:** AUDIT ONLY — no implementation. Nothing in this document has been built.
-**Date:** 2026-08-26
+**Status:** 🟡 **Driver presence BUILT, not yet device-verified.** The audit below stands as written
+(with the corrections marked); §7.2's native foreground service now exists — see §0.3. Everything
+else in the document — the ride-alert sound asset, the lease-lapse behaviour, the floating-circle
+question — is still audit only.
+**Date:** 2026-08-26 (presence built 2026-08-27)
 **Baseline audited:** `main` at `acb844e` (includes #293, #294, #295; excludes #296, which is open).
 
 > **Correction, 2026-08-27.** §7.3 asserted that a location foreground service requires
@@ -53,6 +56,105 @@ should assume it has arrived.
 
 `minSdk 23` is the more load-bearing number and is easy to miss: **Android 7 and below have no notification
 channels at all**, and they are common in the launch market.
+
+---
+
+## §0.3 What was built, 2026-08-27
+
+`DriverPresenceService` — an Android foreground service of type `location` — plus the
+`DriverPresence` Capacitor plugin that starts and stops it.
+
+| Piece        | Where                                                                                                                      |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| The service  | `android/app/src/main/java/com/dripplex/customer/DriverPresenceService.java`                                               |
+| The plugin   | `.../DriverPresencePlugin.java`                                                                                            |
+| The overlay  | `.../DriverPresenceOverlay.java` — the floating circle (SYSTEM_ALERT_WINDOW)                                               |
+| Registration | `MainActivity.java` — **before** `super.onCreate()`, or the bridge is already built and the plugin is silently absent      |
+| Manifest     | `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_LOCATION`, `SYSTEM_ALERT_WINDOW`, `<service … foregroundServiceType="location">` |
+| JS bridge    | `packages/hooks/src/driver/native-presence.ts`                                                                             |
+| App wiring   | `apps/super-app/src/lib/driverPresence.ts`, called from the Go online toggle and from `signOutRequest`                     |
+
+**It reports natively rather than waking the WebView.** This is the load-bearing decision. A
+foreground service keeps the process alive, but Chromium still throttles timers in a WebView that is
+not visible — so a service that woke JavaScript to do the POST would reintroduce the exact bug it
+exists to fix. The service holds the API origin and an access token and posts to
+`/driver/rides/availability` itself, every 60s.
+
+60s, not the WebView's 120s: the server drops a driver after 5 minutes, so this leaves room for four
+consecutive failures — a tunnel, a dead cell, a backend restart — where 120s allowed one.
+
+The token is held **in memory only**: never written to disk, never logged, dropped when the service
+stops, and the service is stopped before sign-out revokes the session. A 401 or 403 from the
+availability write stops the service outright, because a presence notification on a dead token tells
+the driver they are working when the server cannot hear them.
+
+`START_NOT_STICKY`, deliberately: `START_STICKY` would have Android restart the service after a
+process kill with a null intent — no token, no origin — so it would come back as a notification
+attached to a service that can never report anything.
+
+**The WebView heartbeat is not removed.** It stays as the foreground path and as the only path on
+iOS and the web. Both writing the same coordinates is harmless: the gateway throttles to one write
+per driver per five seconds, and the REST write echoes the driver's own availability back unchanged.
+
+### What is NOT verified
+
+**The Java has never run.** This environment has no Android SDK and no handset, so CI proves it
+compiles, packages and signs — and nothing else. Every behavioural claim above is a reading of the
+platform contract, not an observation.
+
+What the device test has to establish, and nothing else can:
+
+1. The ongoing notification appears when the driver goes online, and disappears on offline and on
+   sign-out.
+2. `locationUpdatedAt` keeps advancing with the app minimised for 10+ minutes — the whole point.
+3. A ride offered while minimised reaches the driver.
+4. Battery cost over a realistic shift.
+5. It survives the OEM battery managers common in this market, which kill foreground services more
+   aggressively than stock Android does.
+
+### Blocker 3 — resolved 2026-08-27: a real floating overlay
+
+**Founder decision: build the literal floating circle**, on top of the ongoing notification rather
+than instead of it. So `SYSTEM_ALERT_WINDOW` is now declared, reversing §9's "explicitly not
+adding" — that line was written when the notification was the only presence indicator on the table.
+
+Android's own permission-free bubble API was checked first and does not fit: `Notification`
+bubbles need **API 30+** with a sharing shortcut and a conversation-style notification, and this app
+is `minSdk 23`. Most handsets in the launch market would get nothing at all.
+
+`SYSTEM_ALERT_WINDOW` is a **special** permission and this shapes the whole design: there is no
+runtime dialog for it. The app can only call `Settings.canDrawOverlays()` and send the driver to
+`ACTION_MANAGE_OVERLAY_PERMISSION`, where they toggle it by hand — and they may simply walk back
+without granting it. So:
+
+- **Nothing in the online path consults it.** Presence starts, reports and shows its notification
+  whether or not the bubble can appear. A driver who declines the overlay has a fully working
+  shift; asserted in `driverPresence.test.ts`.
+- **"Settings opened" is never reported as "granted".** The outcome happens in another app, so
+  callers must re-check on resume. Also asserted.
+- `DriverPresenceOverlay.show()` returns false rather than throwing when the permission is absent,
+  and the service ignores the result.
+
+The bubble is a 56dp circle, dragged to reposition and tapped to open the app. Drag and tap are
+told apart by **distance, not timing**: a tap that wanders a few pixels is still a tap, and timing
+alone would open the app every time a driver nudged the circle out of the way. It is added with
+`FLAG_NOT_FOCUSABLE | FLAG_NOT_TOUCH_MODAL` so it can never eat keystrokes or taps meant for the
+app underneath, and `TYPE_APPLICATION_OVERLAY` on API 26+ falling back to `TYPE_PHONE` below it.
+
+It is removed **first** in `stopPresence()`. A bubble that outlives the shift floats over every
+other app claiming the driver is online, and the only way to be rid of it is to kill DrippleX.
+
+**Not built:** showing the ride offer itself inside the bubble. Offers currently reach the app
+through FCM and the WebSocket in the WebView; putting one in the circle means routing that to
+native code, which is its own piece of work. The bubble today is presence, not dispatch.
+
+**Play policy:** `SYSTEM_ALERT_WINDOW` is a normal declaration with no Console form attached — it
+is not in the class of `MANAGE_EXTERNAL_STORAGE` or `QUERY_ALL_PACKAGES`. It is granted per-user in
+Settings and is standard for this app category.
+
+### Still open
+
+Blocker 4 (lease-lapse behaviour) is untouched.
 
 ---
 
@@ -276,6 +378,9 @@ Declared: `INTERNET`, `POST_NOTIFICATIONS`, `ACCESS_FINE_LOCATION`, `ACCESS_COAR
 > `FOREGROUND_SERVICE` and `FOREGROUND_SERVICE_LOCATION` are required — see the correction in §7.3.
 > `ACCESS_BACKGROUND_LOCATION` and `RECEIVE_BOOT_COMPLETED` are not needed and are not being added;
 > `SYSTEM_ALERT_WINDOW` was never assumed (§5).
+>
+> This list describes the manifest **as audited**. Since then §0.3 has added `FOREGROUND_SERVICE`,
+> `FOREGROUND_SERVICE_LOCATION` and — on the founder's overlay decision — `SYSTEM_ALERT_WINDOW`.
 
 There are **no `<service>` declarations** of any kind, and **no notification channels** are created anywhere on
 `main` (#296 creates the first one). App Links for `app.dripplex.com` and the `dripplex://open` scheme are
@@ -409,14 +514,22 @@ does not apply.
 ## §9 Play policy summary
 
 Adding, and their cost: `FOREGROUND_SERVICE` (none, normal permission) · `FOREGROUND_SERVICE_LOCATION`
-(declaration + correct type) · `VIBRATE` (none, normal permission).
+(declaration + correct type) · `VIBRATE` (none, normal permission) · **`SYSTEM_ALERT_WINDOW`**
+(see below — added 2026-08-27).
 
 Explicitly **not** adding: **`ACCESS_BACKGROUND_LOCATION`** (see the correction in §7.3 — a foreground service
-started from the foreground does not need it), `SYSTEM_ALERT_WINDOW`, accessibility services, device-admin,
+started from the foreground does not need it), accessibility services, device-admin,
 `USE_FULL_SCREEN_INTENT`, `RECEIVE_BOOT_COMPLETED`.
 
-**Net Play policy cost of this workstream: none beyond a service-type declaration.** The prominent-disclosure
-flow and background-location review this section previously budgeted for do not apply.
+> **Amended 2026-08-27.** This section listed `SYSTEM_ALERT_WINDOW` as explicitly not being added. The
+> founder has since chosen a real floating overlay (§0.3), so it **is** declared. Written when the
+> ongoing notification was the only presence indicator on the table; the decision changed, not the fact.
+
+**Net Play policy cost of this workstream: a service-type declaration, plus `SYSTEM_ALERT_WINDOW`.** The
+latter is an ordinary manifest declaration with no Play Console form attached — unlike
+`MANAGE_EXTERNAL_STORAGE` or `QUERY_ALL_PACKAGES` — and is granted per user, by hand, in Settings. The
+prominent-disclosure flow and background-location review this section previously budgeted for still do not
+apply.
 
 `docs/store/DPX-MOBILE-003-STORE-PRIVACY-DECLARATIONS.md` still needs a look: the app will collect location
 while the driver is online, which is a Data Safety statement even without background-location permission.

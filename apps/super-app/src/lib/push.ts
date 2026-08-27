@@ -27,6 +27,7 @@ import {
 import { RIDE_ALERT_ANDROID_CHANNEL_ID } from '@dripplex/types';
 
 import { api } from './api';
+import { stopDriverPresence } from './driverPresence';
 import { auth } from './auth';
 
 import type {
@@ -229,9 +230,19 @@ export async function deregisterPushDevice(): Promise<void> {
  *
  * Exported as one function rather than composed at each of the four sign-out
  * call sites, so a fifth one cannot quietly forget the cleanup.
+ *
+ * DPX-MOBILE-003 joins the same ordering. The native presence service holds an
+ * access token in memory and shows an ongoing "You are online" notification;
+ * left running past sign-out it would keep reporting a driver who has left, on
+ * a token they no longer own. Stopped first, and never allowed to fail the
+ * sign-out: a driver who cannot sign out is worse than a service that lingers
+ * until the process dies.
  */
 export function signOutRequest(): Promise<unknown> {
-  return deregisterPushDevice().then(() => api.auth.logout());
+  return stopDriverPresence()
+    .catch(() => undefined)
+    .then(() => deregisterPushDevice())
+    .then(() => api.auth.logout());
 }
 
 /** Test seam — resets the module-level guard between cases. */

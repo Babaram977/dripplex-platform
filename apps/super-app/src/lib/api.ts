@@ -5,7 +5,11 @@
 
 import { auth, DxUser } from './auth';
 
-const BASE =
+// Exported so the native driver-presence service (DPX-MOBILE-003) reports to
+// the same origin this client does. Duplicating the fallback there would let
+// the two drift, and a service posting to the wrong host fails silently — it
+// just looks like a driver who stopped reporting.
+export const BASE =
   (import.meta.env.VITE_API_BASE as string | undefined) ?? 'https://api.dripplex.com/api/v1';
 
 // ─── Envelope unwrapper ────────────────────────────────────────────────────────
