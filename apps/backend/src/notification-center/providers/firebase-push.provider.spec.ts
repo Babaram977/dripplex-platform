@@ -1,4 +1,4 @@
-import { RIDE_ALERT_ANDROID_CHANNEL_ID } from '@dripplex/types';
+import { CALL_ALERT_ANDROID_CHANNEL_ID, RIDE_ALERT_ANDROID_CHANNEL_ID } from '@dripplex/types';
 
 import { FirebasePushProvider } from './firebase-push.provider';
 
@@ -299,6 +299,36 @@ describe('FirebasePushProvider', () => {
       expect(android.notification.channelId).toBe(RIDE_ALERT_ANDROID_CHANNEL_ID);
       expect(android.priority).toBeUndefined();
       expect(android.ttl).toBeUndefined();
+    });
+
+    it('rings an incoming call on its own channel, not the ride-alert one', async () => {
+      // DPX-MOBILE-002. Sharing a channel would mean a driver who turns ride
+      // requests down to silent between shifts also stops hearing the passenger
+      // phoning them mid-trip — two decisions, one switch.
+      const { provider, sendEach } = setup();
+
+      await provider.send(makeNotification({ priority: 'CRITICAL', type: 'CALL_INCOMING' }));
+
+      const android = sendEach.mock.calls[0][0][0].android;
+      expect(android.notification.channelId).toBe(CALL_ALERT_ANDROID_CHANNEL_ID);
+      expect(android.notification.channelId).not.toBe(RIDE_ALERT_ANDROID_CHANNEL_ID);
+      expect(android.priority).toBe('high');
+    });
+
+    it('gives a call ring a TTL from its expiry, so a late one is dropped', async () => {
+      // The shortest deadline on the platform. A ring delivered after the caller
+      // gave up is worse than one that never arrives: the callee stops what they
+      // are doing, taps, and finds nothing.
+      const { provider, sendEach } = setup();
+      const expiresAt = new Date(Date.now() + 45_000).toISOString();
+
+      await provider.send(
+        makeNotification({ priority: 'CRITICAL', type: 'CALL_INCOMING', payload: { expiresAt } }),
+      );
+
+      const ttl = sendEach.mock.calls[0][0][0].android.ttl;
+      expect(ttl).toBeGreaterThan(40_000);
+      expect(ttl).toBeLessThanOrEqual(45_000);
     });
   });
 });

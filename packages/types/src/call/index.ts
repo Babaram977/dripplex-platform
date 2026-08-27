@@ -83,6 +83,15 @@ export interface InitiatedCallDto {
  */
 export interface CallIncomingEvent {
   call: CallDto;
+  /**
+   * Who is calling, for the ringing screen.
+   *
+   * Sent because the callee frequently cannot work it out: `CallDto` carries
+   * `callerId`, and a driver holds no record of a passenger's name. Falls back
+   * to a generic label server-side rather than being null, so no client has to
+   * decide what an anonymous ring should say.
+   */
+  callerName: string;
   /** When it stops ringing and becomes MISSED. */
   expiresAt: string;
 }

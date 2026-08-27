@@ -1,0 +1,21 @@
+-- DPX-MOBILE-002 Stage 2 — a dedicated notification type for an incoming call.
+--
+-- Its own value for the same reason RIDE_OFFERED has one: NotificationPreference
+-- is keyed on (channel, type). Folding a ring into RIDE_OFFERED would mean a
+-- driver who silences ride requests also silences the passenger phoning them
+-- mid-trip, and the two are not the same decision. Folding it into GENERIC would
+-- be worse still.
+--
+-- It also drives the Android channel (see firebase-push.provider.ts's
+-- ANDROID_CHANNEL_BY_TYPE), which is keyed on type rather than priority
+-- precisely so a second urgent type does not inherit the ride-alert channel and
+-- become un-silenceable-separately.
+--
+-- Appended rather than placed in lifecycle order: a call is not a stage of a
+-- ride, so there is no position among RIDE_* where it would read correctly.
+--
+-- Postgres 12+ permits ALTER TYPE ... ADD VALUE inside a transaction provided
+-- the new value is not itself used in that same transaction. Nothing below
+-- writes a row with it, so this is safe under Prisma's transactional migration
+-- runner.
+ALTER TYPE "NotificationType" ADD VALUE IF NOT EXISTS 'CALL_INCOMING';

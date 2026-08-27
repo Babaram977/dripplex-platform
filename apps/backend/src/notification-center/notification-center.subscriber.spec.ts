@@ -309,4 +309,100 @@ describe('NotificationCenterSubscriber', () => {
       expect(notificationCenter.send.mock.calls[0]?.[0].channel).toBe(NotificationChannel.IN_APP);
     });
   });
+
+  describe('DPX-MOBILE-002 — incoming call', () => {
+    const callEvent = (
+      overrides: Record<string, unknown> = {},
+    ): { name: string; payload: Record<string, unknown>; occurredAt: string } => ({
+      name: DOMAIN_EVENTS.CALL_INCOMING,
+      payload: {
+        calleeId: 'driver-9',
+        callerName: 'Ada Obi',
+        callId: 'call-9',
+        contextType: 'RIDE',
+        contextId: 'ride-9',
+        expiresAt: '2026-08-27T10:00:45.000Z',
+        ...overrides,
+      },
+      occurredAt: new Date().toISOString(),
+    });
+
+    type SentDto = Parameters<NotificationCenterService['send']>[0];
+    const pushOf = (): SentDto | undefined =>
+      notificationCenter.send.mock.calls
+        .map(([dto]) => dto)
+        .find((dto) => dto.channel === NotificationChannel.PUSH);
+
+    it('subscribes to the incoming call event', () => {
+      subscriber.onModuleInit();
+
+      expect(eventBus.on).toHaveBeenCalledWith(DOMAIN_EVENTS.CALL_INCOMING, expect.any(Function));
+    });
+
+    it('pushes at CRITICAL — a ring that waits for Doze to lift is not a ring', async () => {
+      await subscriber.handle(callEvent());
+
+      const push = pushOf();
+      expect(push?.priority).toBe('CRITICAL');
+      expect(push?.type).toBe(NotificationType.CALL_INCOMING);
+    });
+
+    it('carries expiresAt, which is what gives the push its TTL', async () => {
+      await subscriber.handle(callEvent());
+
+      expect(pushOf()?.payload).toMatchObject({ expiresAt: '2026-08-27T10:00:45.000Z' });
+    });
+
+    it('addresses the callee', async () => {
+      await subscriber.handle(callEvent({ callerId: 'customer-1' }));
+
+      for (const [dto] of notificationCenter.send.mock.calls) {
+        expect(dto.userId).toBe('driver-9');
+      }
+    });
+
+    it('names the caller in the body, because a ring with no name is not answerable', async () => {
+      await subscriber.handle(callEvent());
+
+      expect(pushOf()?.body).toBe('Ada Obi is calling you about your trip.');
+    });
+
+    it('files a delivery call under DELIVERY, not RIDE', async () => {
+      // One event serves both kinds of job; a static category would mislabel
+      // half of them in the recipient's own inbox.
+      await subscriber.handle(callEvent({ contextType: 'DELIVERY' }));
+
+      expect(pushOf()?.category).toBe(NotificationCategory.DELIVERY);
+      expect(pushOf()?.body).toBe('Ada Obi is calling you about your delivery.');
+    });
+
+    it('files a ride call under RIDE', async () => {
+      await subscriber.handle(callEvent());
+
+      expect(pushOf()?.category).toBe(NotificationCategory.RIDE);
+    });
+
+    it('deep-links to the call itself, with its expiry and context', async () => {
+      // The ring is the only thing that knows about this call — `call:incoming`
+      // went to a socket the callee's app was not connected to. Opening the app
+      // without this would show nothing.
+      await subscriber.handle(callEvent());
+
+      expect(pushOf()?.payload).toMatchObject({
+        deepLink: '/call/call-9?expires=2026-08-27T10%3A00%3A45.000Z&context=RIDE',
+      });
+    });
+
+    it('omits the deep link rather than linking to nothing when there is no call id', async () => {
+      await subscriber.handle(callEvent({ callId: undefined }));
+
+      expect(pushOf()?.payload).not.toHaveProperty('deepLink');
+    });
+
+    it('sends nothing when the event carries no callee', async () => {
+      await subscriber.handle(callEvent({ calleeId: undefined }));
+
+      expect(notificationCenter.send).not.toHaveBeenCalled();
+    });
+  });
 });

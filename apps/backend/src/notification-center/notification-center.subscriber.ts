@@ -18,7 +18,13 @@ import { NotificationCenterService } from './notification-center.service';
 const PAYLOAD_VERSION = 1;
 
 interface NotificationEventMapping {
-  category: NotificationCategory;
+  /**
+   * Which module this belongs to. A function where one event serves more than
+   * one — DPX-MOBILE-002's call ring is the same event whether the job is a
+   * ride or a delivery, and filing every call under RIDE would mislabel half
+   * of them in the recipient's own inbox.
+   */
+  category: NotificationCategory | ((payload: Record<string, unknown>) => NotificationCategory);
   type: NotificationType;
   title: string;
   body: (payload: Record<string, unknown>) => string;
@@ -42,7 +48,7 @@ interface NotificationEventMapping {
    * screen. Only set where a real destination route exists — omitted
    * (not a guessed fallback) rather than mapped to some page for every
    * event type. */
-  deepLink?: string;
+  deepLink?: string | ((payload: Record<string, unknown>) => string | undefined);
 }
 
 @Injectable()
@@ -203,6 +209,50 @@ export class NotificationCenterSubscriber implements OnModuleInit {
       // precisely the moment they no longer needed telling.
       channels: [NotificationChannel.IN_APP, NotificationChannel.PUSH],
       userKeys: ['driverId'],
+    },
+    // DPX-MOBILE-002 Stage 2 — the phone has to ring while the app is shut.
+    //
+    // The shortest deadline on the platform: CALL_RING_TIMEOUT_MS, not the
+    // minutes a ride offer gets. CRITICAL earns the high-priority FCM delivery
+    // that escapes Doze, and `expiresAt` on the event gives it a TTL, so a ring
+    // that would land after the caller hung up is dropped by FCM rather than
+    // delivered to somebody who taps it and finds nothing.
+    //
+    // Its own Android channel (firebase-push.provider.ts) rather than the ride
+    // one: a driver who silences ride requests between shifts has not asked to
+    // silence the passenger phoning them mid-trip.
+    //
+    // The deepLink carries the call, because the ring itself is the only thing
+    // that knows about it — `call:incoming` went out over a socket the callee's
+    // app was not connected to, so opening the app afterwards would otherwise
+    // show nothing. `expires` rides along so the client can refuse to ring for
+    // a call that is already over, which is the same guard as the TTL for the
+    // case where the push was delivered in time but tapped late.
+    [DOMAIN_EVENTS.CALL_INCOMING]: {
+      category: (payload) =>
+        this.text(payload, ['contextType'], '') === 'DELIVERY'
+          ? NotificationCategory.DELIVERY
+          : NotificationCategory.RIDE,
+      type: NotificationType.CALL_INCOMING,
+      title: 'Incoming call',
+      body: (payload) =>
+        `${this.text(payload, ['callerName'], 'Someone')} is calling you about your ${
+          this.text(payload, ['contextType'], '') === 'DELIVERY' ? 'delivery' : 'trip'
+        }.`,
+      priority: NotificationPriority.CRITICAL,
+      channels: [NotificationChannel.IN_APP, NotificationChannel.PUSH],
+      userKeys: ['calleeId'],
+      deepLink: (payload) => {
+        const callId = this.text(payload, ['callId'], '');
+        if (!callId) return undefined;
+        const expires = this.text(payload, ['expiresAt'], '');
+        const context = this.text(payload, ['contextType'], '');
+        const query = new URLSearchParams({
+          ...(expires ? { expires } : {}),
+          ...(context ? { context } : {}),
+        }).toString();
+        return `/call/${callId}${query ? `?${query}` : ''}`;
+      },
     },
     [DOMAIN_EVENTS.RIDE_DRIVER_ASSIGNED]: {
       category: NotificationCategory.RIDE,
@@ -411,16 +461,21 @@ export class NotificationCenterSubscriber implements OnModuleInit {
       return;
     }
 
+    const eventPayload = this.objectPayload(event.payload);
+    const deepLink =
+      typeof mapping.deepLink === 'function' ? mapping.deepLink(eventPayload) : mapping.deepLink;
     const payload: Record<string, unknown> = {
       version: PAYLOAD_VERSION,
-      ...this.objectPayload(event.payload),
-      ...(mapping.deepLink !== undefined ? { deepLink: mapping.deepLink } : {}),
+      ...eventPayload,
+      ...(deepLink !== undefined ? { deepLink } : {}),
     };
+    const category =
+      typeof mapping.category === 'function' ? mapping.category(payload) : mapping.category;
     const broadcastUserIds = this.stringArray(payload['userIds']);
     if (event.name === DOMAIN_EVENTS.PROMOTION_CREATED && broadcastUserIds.length > 0) {
       await this.notificationCenter.broadcast({
         userIds: broadcastUserIds,
-        category: mapping.category,
+        category,
         channel: NotificationChannel.IN_APP,
         type: mapping.type,
         title: mapping.title,
@@ -442,7 +497,7 @@ export class NotificationCenterSubscriber implements OnModuleInit {
     for (const channel of mapping.channels ?? [NotificationChannel.IN_APP]) {
       await this.notificationCenter.send({
         userId,
-        category: mapping.category,
+        category,
         channel,
         type: mapping.type,
         title: mapping.title,

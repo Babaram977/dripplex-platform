@@ -22,11 +22,13 @@
 import {
   createNativeNotificationChannel,
   detectNativePlatform,
+  listenForNativeNotificationTaps,
   obtainNativeToken,
 } from '@dripplex/hooks/notifications/native-push';
-import { RIDE_ALERT_ANDROID_CHANNEL_ID } from '@dripplex/types';
+import { CALL_ALERT_ANDROID_CHANNEL_ID, RIDE_ALERT_ANDROID_CHANNEL_ID } from '@dripplex/types';
 
 import { api } from './api';
+import { announceIncomingCall, incomingCallFromDeepLink } from './callRequests';
 import { stopDriverPresence } from './driverPresence';
 import { auth } from './auth';
 
@@ -85,6 +87,48 @@ export const RIDE_ALERT_CHANNEL: NativeNotificationChannel = {
  */
 export function ensureRideAlertChannel(): Promise<CreateChannelOutcome> {
   return createNativeNotificationChannel(RIDE_ALERT_CHANNEL);
+}
+
+/**
+ * DPX-MOBILE-002 — the channel an incoming voice call rings on.
+ *
+ * Deliberately a separate channel from the ride alert rather than a second use
+ * of it. A channel is the unit a person silences in Android's own settings: one
+ * shared channel would mean a driver turning ride requests down between shifts
+ * also stops hearing the passenger phoning them mid-trip.
+ *
+ * Same settings as the ride alert, for the same reasons — importance 5 to earn
+ * the heads-up banner and a sound, `vibration: true` because the plugin
+ * defaults it to false, `visibility: 1` because "who is calling" is what you
+ * read on the lock screen before deciding to pick up, and no `sound` filename
+ * so Android uses the system default until a DrippleX tone is chosen, licensed
+ * and shipped.
+ *
+ * It is worth being explicit that this is a *notification*, not a ringtone: it
+ * rings once per push, and stops. A call that rings continuously the way a
+ * phone call does needs CallStyle and ConnectionService — recorded in
+ * DPX-MOBILE-002 §8, not attempted here.
+ */
+export const CALL_ALERT_CHANNEL: NativeNotificationChannel = {
+  id: CALL_ALERT_ANDROID_CHANNEL_ID,
+  name: 'Incoming calls',
+  description: 'Someone on your trip or delivery is calling you. These ring for under a minute.',
+  importance: 5,
+  visibility: 1,
+  vibration: true,
+  lights: true,
+};
+
+/**
+ * Create the call-alert channel if this device does not already have it.
+ *
+ * Same reasoning as `ensureRideAlertChannel`, and the same ordering
+ * requirement: the backend names this channel on every ring, and FCM quietly
+ * delivers to its own silent fallback for a channel the app has not created —
+ * which would look exactly like the bug this fixes.
+ */
+export function ensureCallAlertChannel(): Promise<CreateChannelOutcome> {
+  return createNativeNotificationChannel(CALL_ALERT_CHANNEL);
 }
 
 /** Survives a reload so logout can deactivate the row it created, and so a
@@ -243,6 +287,35 @@ export function signOutRequest(): Promise<unknown> {
     .catch(() => undefined)
     .then(() => deregisterPushDevice())
     .then(() => api.auth.logout());
+}
+
+/**
+ * DPX-MOBILE-002 Stage 2 — act on a tapped notification.
+ *
+ * The only tap that does anything today is a call, and it has to: the ring is
+ * how the callee learns the call exists at all, because `call:incoming` went
+ * out over a socket their closed app was not connected to. Tapping it is
+ * therefore not navigation, it is the answer screen appearing.
+ *
+ * A link for a call that has already stopped ringing is dropped by
+ * `incomingCallFromDeepLink` rather than shown — a push can sit unnoticed on a
+ * lock screen long after the caller gave up, and a ringing screen for a call
+ * nobody is on is worse than no screen at all.
+ *
+ * Returns a teardown, or null off-device. Never throws.
+ */
+export async function listenForCallNotificationTaps(): Promise<(() => void) | null> {
+  try {
+    return await listenForNativeNotificationTaps(({ deepLink }) => {
+      if (!deepLink) return;
+      const announcement = incomingCallFromDeepLink(deepLink);
+      if (announcement) announceIncomingCall(announcement);
+    });
+  } catch {
+    // A listener that cannot be attached costs the tap-to-answer path. It must
+    // not cost the app its start-up.
+    return null;
+  }
 }
 
 /** Test seam — resets the module-level guard between cases. */
