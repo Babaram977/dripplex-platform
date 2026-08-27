@@ -3821,6 +3821,9 @@ export function DriverPassengerVerifyScreen({
   const [verified, setVerified] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Distance refusals are handled differently from a wrong code — see submit().
+  const [tooFar, setTooFar] = useState(false);
+  const [lastCode, setLastCode] = useState('');
   const [ride, setRide] = useState<DriverRideDto | null>(null);
   const refs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -3853,6 +3856,7 @@ export function DriverPassengerVerifyScreen({
     if (busy) return;
     setBusy(true);
     setErr(null);
+    setTooFar(false);
     try {
       // The other half of the gate is distance, and it is measured against the
       // last position this driver reported. Take a fix at the kerb and land it
@@ -3876,14 +3880,35 @@ export function DriverPassengerVerifyScreen({
       setVerified(true);
       setTimeout(onVerified, 900);
     } catch (e) {
-      setErr(
-        e instanceof Error ? e.message : 'That code was not accepted. Please check and try again.',
-      );
+      const message =
+        e instanceof Error ? e.message : 'That code was not accepted. Please check and try again.';
+      setErr(message);
+
+      // A distance refusal is not a wrong code, and clearing the boxes treats
+      // it as one — the driver retypes four digits that were right the first
+      // time, to be refused again by a satellite. Keep the code, remember that
+      // this was the distance half, and offer another fix instead. Reported
+      // 2026-08-27: a driver at the kerb was refused at 180m and the only
+      // control on screen was "Cancel trip".
+      const isDistance = /too far from pickup/i.test(message);
+      setTooFar(isDistance);
+      if (isDistance) {
+        setLastCode(code);
+        return;
+      }
       setOtp(['', '', '', '']);
       refs.current[0]?.focus();
     } finally {
       setBusy(false);
     }
+  };
+
+  /** Another go at the distance half, with the code the driver already entered.
+   * `submit` takes a fresh GPS fix each time, so this is a real retry and not
+   * a resubmission of the same reading. */
+  const retryDistance = () => {
+    if (busy || !lastCode) return;
+    void submit(lastCode);
   };
 
   const handleChange = (i: number, v: string) => {
@@ -3987,6 +4012,31 @@ export function DriverPassengerVerifyScreen({
             Your phone has stopped reporting your location. DrippleX has to confirm you are at the
             pickup before the trip can start — check that location is on for DrippleX.
           </p>
+        )}
+
+        {/* A driver refused on distance used to have exactly one control on
+            screen: Cancel trip. Standing beside the passenger with a GPS
+            reading 180m out, their only exit penalised them and stranded the
+            fare. This is the other exit — a fresh fix, keeping the code they
+            already entered correctly. */}
+        {tooFar && !verified && (
+          <div className="mb-4 mt-5">
+            <button
+              onClick={retryDistance}
+              disabled={busy}
+              className="h-12 w-full rounded-2xl text-[15px] font-semibold transition-all active:scale-[.98] disabled:opacity-60"
+              style={{
+                background: `linear-gradient(135deg,${G0},${G2})`,
+                color: '#fff',
+                fontFamily: PP,
+              }}
+            >
+              {busy ? 'Checking your location…' : "I'm here — check again"}
+            </button>
+            <p className="mt-2 text-center text-[11px]" style={{ fontFamily: IT, color: MUTED }}>
+              Move into the open if you can — a wall or a covered park throws GPS off.
+            </p>
+          </div>
         )}
 
         {!verified && (

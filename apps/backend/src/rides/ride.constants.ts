@@ -252,13 +252,27 @@ export const SHARE_LINK_GRACE_MS = 30 * 60_000;
 export const DEFAULT_RIDE_SPEED_MPS = 8.33;
 
 /**
- * Founder-locked decision (no mandatory passenger OTP/PIN before ride start):
- * a driver may only tap "Start Ride" when their last-known location is
- * within this distance of the pickup point. Founder specified 30-50m; 50m
- * chosen as the more lenient end of that explicit range, not a placeholder
- * awaiting approval like RIDE_FARE_RATES below.
+ * A driver may only tap "Start Ride" when their last-known location is within
+ * this distance of the pickup point.
+ *
+ * Founder originally specified 30-50m and 50m was chosen as the lenient end of
+ * that range. **Revised to 150m by the founder on 2026-08-27, on evidence from
+ * a real device in Kano:** a driver at the kerb was refused at 180m. The app
+ * takes a fresh GPS fix immediately before asking to start
+ * (`pushDriverLocationNow`), so that reading was not stale data — it was
+ * ordinary consumer-GPS error, which in a built-up area runs to 50-150m.
+ *
+ * At 50m the gate was rejecting drivers who were genuinely there, and its only
+ * exit was "Cancel trip" — penalising the driver and stranding the passenger
+ * for the app's inability to see a satellite. 150m is still far too tight to
+ * start a trip from another street: a passenger can see 150m.
+ *
+ * This is the accuracy floor, not a judgement about how close is close enough.
+ * If real trip data later shows drivers starting early, the lever is this
+ * number plus the distance recorded on every start (see the audit metadata in
+ * RideTripService.startTrip), not a return to a limit the hardware cannot meet.
  */
-export const RIDE_START_PROXIMITY_METERS = 50;
+export const RIDE_START_PROXIMITY_METERS = 150;
 
 /**
  * Placeholder fare constants — anchored to delivery's existing per-km pricing
