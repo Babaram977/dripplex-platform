@@ -325,7 +325,7 @@ A ride fare is a **base fare + a distance rate + a time rate**, varying by ride 
 **minimum fare** applied after the calculation. A trip that prices below the minimum is
 charged the minimum; longer trips are unaffected. Some areas carry a **surcharge**, which is
 shown to you before you book and itemised on your receipt. The estimate shown before you book
-is an estimate; the final fare reflects the actual distance and time.
+is an estimate; the final fare reflects how long the trip actually took.
 
 **Approved fare table (founder, 2026-08-26).**
 
@@ -354,11 +354,23 @@ Two properties of the calculation worth stating because they are not obvious:
 
 - **Distance is straight-line, not road distance.** The fare is computed from the direct
   distance between pickup and destination, so it does not increase because a route detours.
-- **The time component is derived from distance, not measured.** There is no live trip timer;
-  duration is estimated from the distance at a fixed assumed speed. The per-minute rate is
-  therefore a second distance rate in practice, and a trip stuck in Kano traffic costs no
-  more than the same trip on an empty road. If the intention is to charge for real elapsed
-  time, that is an engineering change, not a rate change.
+- **Time is charged on how long the trip actually took.** The quote you see before booking
+  estimates the duration from the distance at an assumed speed; the final fare replaces that
+  estimate with the real elapsed time from when the driver starts the trip to when it
+  completes. Your receipt shows both, so a trip held up in traffic explains its own price.
+  Waiting time before the trip starts is not charged. There is no cap on the time component.
+
+> **Founder decision, 2026-08-27, and a correction to what this section said before.** Until
+> DPX-PRICING-002 the time component was derived from distance at a fixed assumed speed and
+> never measured, which made the per-minute rate a second distance rate in practice — a trip
+> stuck in Kano traffic cost exactly as much as the same trip on an empty road. That is now
+> fixed in code (`docs/DPX-PRICING-002-CHARGE-REAL-TRIP-TIME.md`).
+>
+> **Gating.** The clause above must not be published before that change is deployed. Two
+> further consequences the founder should see, both recorded in DPX-PRICING-002 §5: the
+> minimum fare is applied after time, so on the current cards a short trip is charged the
+> minimum however long it is stuck; and there is no cap, so a short trip in gridlock can cost
+> more than a long one on an open road.
 
 ### 7.2 Delivery fees
 
@@ -745,6 +757,7 @@ what a clause says but not whether it can be drafted.**
 | --- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 1   | **§1** contracting entity   | ✅ DrippleX is a trading name of **Afnan Homes Ltd, RC 9387949**. Funds sit in its **single unsegregated operating account**. Drafted in §1. The _consequences_ remain `[NEEDS COUNSEL]`; the facts do not.                                                                                                                                                        |
 | 5   | **§7.1** fare table         | ✅ Rates approved (Dx Ride ₦350/₦110/₦15/₦1,500 · Comfort ₦450/₦135/₦18/₦1,500 · XL ₦600/₦165/₦22/₦1,700 · Tricycle ₦150/₦75/₦8/₦500). **Not yet applied to production** — blocked only on capturing the four live cards from the Operations Console first, so an operator edit made since the 2026-08-18 seed is not silently overwritten. See `DPX-PRICING-001`. |
+| —   | **§7.1** time charging      | ✅ Founder decision 2026-08-27: the final fare is charged on **real elapsed trip time**, not on a duration derived from distance. Built in DPX-PRICING-002; §7.1's clause is gated on that deploy. Two consequences the founder should read before publication: the minimum fare still swallows short trips, and there is no cap.                                    |
 | 11  | **§8** withdrawal limits    | ✅ Settled and now stated: **₦100 minimum, ₦1,000,000 maximum**, enforced in code.                                                                                                                                                                                                                                                                                 |
 | —   | **§23** implementation gaps | ✅ All four to be built rather than written around — see §23.                                                                                                                                                                                                                                                                                                      |
 
