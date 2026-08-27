@@ -268,9 +268,18 @@ or base URL. It never covered a missing location, which is the case that actuall
    `locationUpdatedAt` on receipt, so posting an old position asserts the driver is there _now_, and
    sending dispatch to where they used to be is worse for the passenger than being invisible.
 
-**Note for whoever ships the next native change:** `ci.yml` does not compile this Java. The Android
-build is `workflow_dispatch`-only in `mobile-build.yml`, so a syntax error or a bad API call reaches
-a handset without any check firing. Dispatch that workflow before claiming a native change works.
+**Correction, later the same evening.** An earlier version of this section, the commit message on
+`d89ef04`, and PR #318's description all said "`ci.yml` does not compile this Java — the Android
+build is `workflow_dispatch`-only, so native changes reach a handset unchecked." **That is wrong.**
+`mobile-store-readiness.yml` runs on `pull_request` for any change under `apps/customer-mobile/**`
+and includes an _Android release build_ job; it fired on #318. The claim came from grepping
+`ci.yml` alone and concluding absence from one file.
+
+It is wrong in a second way that matters more: compiling would not have caught **any** of the four
+bugs below. Every one was a logic error in code that compiled perfectly — a plugin never registered
+from JavaScript, a provider list that matched no provider, a start path never called, a token with
+no way to be renewed. The useful lesson is not "add a compile check", it is that this class of
+defect is only ever found by running the thing on a handset and measuring the server.
 
 ### Still open
 
