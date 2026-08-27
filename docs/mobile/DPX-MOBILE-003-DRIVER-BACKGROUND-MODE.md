@@ -64,14 +64,15 @@ channels at all**, and they are common in the launch market.
 `DriverPresenceService` — an Android foreground service of type `location` — plus the
 `DriverPresence` Capacitor plugin that starts and stops it.
 
-| Piece        | Where                                                                                                                 |
-| ------------ | --------------------------------------------------------------------------------------------------------------------- |
-| The service  | `android/app/src/main/java/com/dripplex/customer/DriverPresenceService.java`                                          |
-| The plugin   | `.../DriverPresencePlugin.java`                                                                                       |
-| Registration | `MainActivity.java` — **before** `super.onCreate()`, or the bridge is already built and the plugin is silently absent |
-| Manifest     | `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_LOCATION`, `<service … foregroundServiceType="location">`                   |
-| JS bridge    | `packages/hooks/src/driver/native-presence.ts`                                                                        |
-| App wiring   | `apps/super-app/src/lib/driverPresence.ts`, called from the Go online toggle and from `signOutRequest`                |
+| Piece        | Where                                                                                                                      |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| The service  | `android/app/src/main/java/com/dripplex/customer/DriverPresenceService.java`                                               |
+| The plugin   | `.../DriverPresencePlugin.java`                                                                                            |
+| The overlay  | `.../DriverPresenceOverlay.java` — the floating circle (SYSTEM_ALERT_WINDOW)                                               |
+| Registration | `MainActivity.java` — **before** `super.onCreate()`, or the bridge is already built and the plugin is silently absent      |
+| Manifest     | `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_LOCATION`, `SYSTEM_ALERT_WINDOW`, `<service … foregroundServiceType="location">` |
+| JS bridge    | `packages/hooks/src/driver/native-presence.ts`                                                                             |
+| App wiring   | `apps/super-app/src/lib/driverPresence.ts`, called from the Go online toggle and from `signOutRequest`                     |
 
 **It reports natively rather than waking the WebView.** This is the load-bearing decision. A
 foreground service keeps the process alive, but Chromium still throttles timers in a WebView that is
@@ -111,12 +112,49 @@ What the device test has to establish, and nothing else can:
 5. It survives the OEM battery managers common in this market, which kill foreground services more
    aggressively than stock Android does.
 
-### Still open, unchanged by this
+### Blocker 3 — resolved 2026-08-27: a real floating overlay
 
-Blocker 3 (behaviour vs. a literal floating circle) is **partly** answered: the ongoing notification
-is a presence indicator reachable from anywhere in Android, and it needs no `SYSTEM_ALERT_WINDOW`.
-Whether the founder also wants a true floating overlay remains their call, and still carries the
-overlay permission it always did. Blocker 4 (lease-lapse behaviour) is untouched.
+**Founder decision: build the literal floating circle**, on top of the ongoing notification rather
+than instead of it. So `SYSTEM_ALERT_WINDOW` is now declared, reversing §9's "explicitly not
+adding" — that line was written when the notification was the only presence indicator on the table.
+
+Android's own permission-free bubble API was checked first and does not fit: `Notification`
+bubbles need **API 30+** with a sharing shortcut and a conversation-style notification, and this app
+is `minSdk 23`. Most handsets in the launch market would get nothing at all.
+
+`SYSTEM_ALERT_WINDOW` is a **special** permission and this shapes the whole design: there is no
+runtime dialog for it. The app can only call `Settings.canDrawOverlays()` and send the driver to
+`ACTION_MANAGE_OVERLAY_PERMISSION`, where they toggle it by hand — and they may simply walk back
+without granting it. So:
+
+- **Nothing in the online path consults it.** Presence starts, reports and shows its notification
+  whether or not the bubble can appear. A driver who declines the overlay has a fully working
+  shift; asserted in `driverPresence.test.ts`.
+- **"Settings opened" is never reported as "granted".** The outcome happens in another app, so
+  callers must re-check on resume. Also asserted.
+- `DriverPresenceOverlay.show()` returns false rather than throwing when the permission is absent,
+  and the service ignores the result.
+
+The bubble is a 56dp circle, dragged to reposition and tapped to open the app. Drag and tap are
+told apart by **distance, not timing**: a tap that wanders a few pixels is still a tap, and timing
+alone would open the app every time a driver nudged the circle out of the way. It is added with
+`FLAG_NOT_FOCUSABLE | FLAG_NOT_TOUCH_MODAL` so it can never eat keystrokes or taps meant for the
+app underneath, and `TYPE_APPLICATION_OVERLAY` on API 26+ falling back to `TYPE_PHONE` below it.
+
+It is removed **first** in `stopPresence()`. A bubble that outlives the shift floats over every
+other app claiming the driver is online, and the only way to be rid of it is to kill DrippleX.
+
+**Not built:** showing the ride offer itself inside the bubble. Offers currently reach the app
+through FCM and the WebSocket in the WebView; putting one in the circle means routing that to
+native code, which is its own piece of work. The bubble today is presence, not dispatch.
+
+**Play policy:** `SYSTEM_ALERT_WINDOW` is a normal declaration with no Console form attached — it
+is not in the class of `MANAGE_EXTERNAL_STORAGE` or `QUERY_ALL_PACKAGES`. It is granted per-user in
+Settings and is standard for this app category.
+
+### Still open
+
+Blocker 4 (lease-lapse behaviour) is untouched.
 
 ---
 
@@ -340,6 +378,9 @@ Declared: `INTERNET`, `POST_NOTIFICATIONS`, `ACCESS_FINE_LOCATION`, `ACCESS_COAR
 > `FOREGROUND_SERVICE` and `FOREGROUND_SERVICE_LOCATION` are required — see the correction in §7.3.
 > `ACCESS_BACKGROUND_LOCATION` and `RECEIVE_BOOT_COMPLETED` are not needed and are not being added;
 > `SYSTEM_ALERT_WINDOW` was never assumed (§5).
+>
+> This list describes the manifest **as audited**. Since then §0.3 has added `FOREGROUND_SERVICE`,
+> `FOREGROUND_SERVICE_LOCATION` and — on the founder's overlay decision — `SYSTEM_ALERT_WINDOW`.
 
 There are **no `<service>` declarations** of any kind, and **no notification channels** are created anywhere on
 `main` (#296 creates the first one). App Links for `app.dripplex.com` and the `dripplex://open` scheme are
@@ -473,14 +514,22 @@ does not apply.
 ## §9 Play policy summary
 
 Adding, and their cost: `FOREGROUND_SERVICE` (none, normal permission) · `FOREGROUND_SERVICE_LOCATION`
-(declaration + correct type) · `VIBRATE` (none, normal permission).
+(declaration + correct type) · `VIBRATE` (none, normal permission) · **`SYSTEM_ALERT_WINDOW`**
+(see below — added 2026-08-27).
 
 Explicitly **not** adding: **`ACCESS_BACKGROUND_LOCATION`** (see the correction in §7.3 — a foreground service
-started from the foreground does not need it), `SYSTEM_ALERT_WINDOW`, accessibility services, device-admin,
+started from the foreground does not need it), accessibility services, device-admin,
 `USE_FULL_SCREEN_INTENT`, `RECEIVE_BOOT_COMPLETED`.
 
-**Net Play policy cost of this workstream: none beyond a service-type declaration.** The prominent-disclosure
-flow and background-location review this section previously budgeted for do not apply.
+> **Amended 2026-08-27.** This section listed `SYSTEM_ALERT_WINDOW` as explicitly not being added. The
+> founder has since chosen a real floating overlay (§0.3), so it **is** declared. Written when the
+> ongoing notification was the only presence indicator on the table; the decision changed, not the fact.
+
+**Net Play policy cost of this workstream: a service-type declaration, plus `SYSTEM_ALERT_WINDOW`.** The
+latter is an ordinary manifest declaration with no Play Console form attached — unlike
+`MANAGE_EXTERNAL_STORAGE` or `QUERY_ALL_PACKAGES` — and is granted per user, by hand, in Settings. The
+prominent-disclosure flow and background-location review this section previously budgeted for still do not
+apply.
 
 `docs/store/DPX-MOBILE-003-STORE-PRIVACY-DECLARATIONS.md` still needs a look: the app will collect location
 while the driver is online, which is a Data Safety statement even without background-location permission.

@@ -13,7 +13,9 @@
  * availability back unchanged, so a heartbeat can never flip their settings.
  */
 import {
+  hasOverlayPermission,
   isNativeDriverPresenceRunning,
+  requestOverlayPermission,
   startNativeDriverPresence,
   stopNativeDriverPresence,
   type NativePresenceOutcome,
@@ -44,3 +46,16 @@ export async function stopDriverPresence(): Promise<PresenceOutcome> {
 export async function isDriverPresenceRunning(): Promise<boolean> {
   return await isNativeDriverPresenceRunning();
 }
+
+/**
+ * The floating bubble's permission (founder decision, 2026-08-27).
+ *
+ * Re-exported rather than re-implemented: the driver screen needs to know
+ * whether to offer the prompt, and nothing about that decision depends on this
+ * app's auth or API origin.
+ *
+ * The bubble is strictly additive. A driver who never grants it has a fully
+ * working shift — the service, the reporting and the ongoing notification are
+ * all unaffected — so nothing in the online path may block on it.
+ */
+export { hasOverlayPermission, requestOverlayPermission };

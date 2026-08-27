@@ -95,6 +95,7 @@ public class DriverPresenceService extends Service {
   private LocationManager locationManager;
   private LocationListener locationListener;
 
+  private DriverPresenceOverlay overlay;
   private volatile Location lastLocation;
   private String baseUrl;
   private String token;
@@ -150,6 +151,17 @@ public class DriverPresenceService extends Service {
       handler.post(reportTick);
     }
 
+    // The floating bubble (founder decision, 2026-08-27). Deliberately after
+    // the reporting is up and never gated on: SYSTEM_ALERT_WINDOW is a special
+    // permission the driver grants by hand in Settings, so "not granted" is an
+    // ordinary state, not a failure. A driver who declines it still has a fully
+    // working shift — the service, the reporting and the notification are
+    // untouched. They simply do not get the circle.
+    if (overlay == null) {
+      overlay = new DriverPresenceOverlay(this);
+    }
+    overlay.show();
+
     // START_NOT_STICKY, deliberately. START_STICKY would have Android restart
     // this service after a process kill with a null intent — no token, no
     // base URL — so it would come back as a notification attached to a service
@@ -167,6 +179,13 @@ public class DriverPresenceService extends Service {
   private void stopPresence() {
     running.set(false);
     active = false;
+    if (overlay != null) {
+      // Before anything else can fail. A bubble outliving the shift floats over
+      // every other app saying the driver is online when they are not, and the
+      // only way to be rid of it is to kill the app.
+      overlay.hide();
+      overlay = null;
+    }
     handler.removeCallbacks(reportTick);
     if (locationManager != null && locationListener != null) {
       try {
