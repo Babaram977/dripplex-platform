@@ -27,3 +27,19 @@
  * to rediscover when the edit silently does nothing on every existing install.
  */
 export const RIDE_ALERT_ANDROID_CHANNEL_ID = 'dripplex_ride_alerts_v1';
+
+/**
+ * DPX-MOBILE-002 — the channel an incoming voice call rings on.
+ *
+ * Separate from the ride-alert channel on purpose, and not because a call is
+ * more urgent. A channel is the unit a *person* silences: sharing one would mean
+ * a driver who turns ride requests down to silent — a legitimate thing to do
+ * between shifts — also stops hearing the passenger phoning them mid-trip. Two
+ * channels is what makes those two decisions separable in the system settings.
+ *
+ * The `_v1` suffix is load-bearing for the same reason it is on the ride
+ * channel: importance, sound and vibration are fixed when the channel is
+ * created, and editing this definition would silently do nothing on every
+ * device that already has it.
+ */
+export const CALL_ALERT_ANDROID_CHANNEL_ID = 'dripplex_call_alerts_v1';

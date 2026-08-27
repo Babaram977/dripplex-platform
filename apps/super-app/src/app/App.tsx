@@ -190,7 +190,13 @@ import type {
   UtilityServiceType,
 } from '../lib/api';
 import { auth, endSession } from '../lib/auth';
-import { ensureRideAlertChannel, registerPushDevice, signOutRequest } from '../lib/push';
+import {
+  ensureCallAlertChannel,
+  ensureRideAlertChannel,
+  listenForCallNotificationTaps,
+  registerPushDevice,
+  signOutRequest,
+} from '../lib/push';
 import { BookingApplyScreen, BookingStatusScreen, MyBookingsScreen } from './hotelBookingScreens';
 
 import type { BookingDraft } from './hotelBookingScreens';
@@ -632,6 +638,33 @@ function AppShell() {
   // on a fresh sign-in would leave exactly the people it is for without it.
   useEffect(() => {
     void ensureRideAlertChannel();
+  }, []);
+
+  // DPX-MOBILE-002 Stage 2 — the same, for the channel an incoming call rings
+  // on. Separate from the ride alert so a driver who silences ride requests
+  // between shifts still hears a passenger phoning them mid-trip.
+  useEffect(() => {
+    void ensureCallAlertChannel();
+  }, []);
+
+  // Tapping that notification is how a callee whose app was closed reaches the
+  // answer screen: `call:incoming` went out over a socket nothing was connected
+  // to, so the deep link on the push is the only record of the call this device
+  // has. Attached once, for the life of the app.
+  useEffect(() => {
+    let detach: (() => void) | null = null;
+    let cancelled = false;
+    void listenForCallNotificationTaps().then((teardown) => {
+      if (cancelled) {
+        teardown?.();
+        return;
+      }
+      detach = teardown;
+    });
+    return () => {
+      cancelled = true;
+      detach?.();
+    };
   }, []);
 
   const [rideDetailId, setRideDetailId] = useState<string>('');

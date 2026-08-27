@@ -2796,6 +2796,13 @@ enum NotificationType {
   /// The booking lapsed — either the hotel never answered, or the guest did
   /// not pay inside their 24 hours. Nothing was ever charged either way.
   BOOKING_EXPIRED
+  /// DPX-MOBILE-002 — the other party to a live job is calling, right now.
+  /// Its own type for the same reason RIDE_OFFERED has one: preferences are
+  /// keyed on (channel, type), and a driver who silences ride requests has not
+  /// asked to silence the passenger phoning them mid-trip. It is also what
+  /// selects the Android channel, so a ring is separately tunable from an offer.
+  /// The shortest-lived notification on the platform — CALL_RING_TIMEOUT_MS.
+  CALL_INCOMING
 }
 
 enum DevicePlatform {

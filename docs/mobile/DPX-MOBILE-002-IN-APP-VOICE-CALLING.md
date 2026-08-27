@@ -1,8 +1,9 @@
 # DPX-MOBILE-002 — In-App Voice Calling (design)
 
-**Status:** 🔒 **Architecture approved (founder, 2026-08-26). Stage 1 client built 2026-08-27 —
-see §11. Not yet exercised on a device.**
-**Date:** 2026-08-26, §11 added 2026-08-27
+**Status:** 🔒 **Architecture approved (founder, 2026-08-26). Stage 1 client built 2026-08-27
+(§11); the incoming-call push — Stage 2's server half — built the same day (§12). Neither has been
+exercised on a device.**
+**Date:** 2026-08-26, §11 and §12 added 2026-08-27
 **Depends on:** `DPX-MOBILE-001` for Stage 2 (background/incoming). Stage 1 does not.
 
 ---
@@ -390,7 +391,10 @@ connect.
 
 ### 11.4 Still open
 
-1. **Incoming calls do not ring a backgrounded app.** `CallsService.initiate` publishes
+1. ~~**Incoming calls do not ring a backgrounded app.**~~ **Built — see §12.** The text below is
+   what it looked like before, kept because §12 answers it point by point.
+
+   **Incoming calls do not ring a backgrounded app.** `CallsService.initiate` publishes
    `call:incoming` over the socket and nothing else, so the callee learns about it only while the
    app is open. This is §8's Stage 2 and is exactly as designed — but §8's blocker on
    `DPX-MOBILE-001` looks largely spent: the notification centre already maps
@@ -405,10 +409,9 @@ connect.
    the DPX-MOBILE-003 work. If ride offers turn out not to reach a minimised driver, incoming calls
    will not either, and the two share one fix.
 
-2. **The ringing screen cannot say who is calling.** `CallDto` carries `callerId` and no name, so
-   the callee sees "Incoming call · About your trip". Adding a display name to the
-   `call:incoming` payload is a one-field backend change; guessing one on the client is not
-   available, because the callee may hold no record of the other party.
+2. ~~**The ringing screen cannot say who is calling.**~~ **Fixed in §12.** `call:incoming` now
+   carries `callerName`, resolved server-side with a `DrippleX user` fallback so no client has to
+   invent wording for an anonymous ring.
 3. **§9's open questions are still open**, and question 1 — the post-completion grace period — is
    the one this makes concrete: `isJobLive` decides it today, so a passenger who leaves a bag in
    the car cannot call about it.
@@ -417,3 +420,83 @@ connect.
    code change and neither is done.
 5. **iOS background audio.** `UIBackgroundModes` has `remote-notification` only. A call will not
    survive backgrounding on iOS without `audio`, which is a Stage 2 concern alongside CallKit.
+
+---
+
+## 12. Stage 2, server half — the ring (2026-08-27)
+
+Founder instruction, immediately after §11: _"Add the push so calls ring when the app is closed."_
+
+§8 wrote this up as blocked on `DPX-MOBILE-001`. It is not, any more. That work left behind
+everything the hard part of §8 asks for — a device registry, a real FCM adapter, CRITICAL mapping
+to `priority: 'high'`, and a TTL taken from `payload.expiresAt`. What was missing was a call event
+to put through it.
+
+### 12.1 The path
+
+`CallsService.initiate` already rang the callee over the socket. It now also emits
+`DOMAIN_EVENTS.CALL_INCOMING`, which `NotificationCenterSubscriber` maps to an IN_APP row and a
+PUSH at `CRITICAL`, which `FirebasePushProvider` sends `priority: 'high'` with a TTL and its own
+Android channel.
+
+Nothing new was built in that chain. The only additions are the event, its mapping, one enum value,
+one channel id, and two small generalisations of the mapping shape.
+
+### 12.2 What each of §8's requirements got
+
+| §8 said                                             | What it is                                             |
+| --------------------------------------------------- | ------------------------------------------------------ |
+| Delivery must be **high-priority** FCM              | `NotificationPriority.CRITICAL`, which is what sets it |
+| A ring has a deadline; a late push must not ring    | Two guards — see below                                 |
+| `CallStyle` / `ConnectionService` for a lock screen | **Not done.** Still substantial native work; see §12.5 |
+| iOS CallKit and PushKit                             | **Not done.** Different mechanism entirely; see §12.5  |
+
+**Two guards on the deadline, not one, because they catch different failures.** FCM's `ttl` — taken
+from `expiresAt`, which travels on the event — stops a push being _delivered_ after the call
+stopped ringing, which is the phone-was-offline case. The client re-checks the same expiry when the
+notification is _tapped_, because a push delivered in time can sit unnoticed on a lock screen for
+an hour. A ringing screen for a call nobody is on is worse than no screen at all, and only the
+second guard catches that one.
+
+### 12.3 Two decisions worth arguing with
+
+**Its own Android channel, `dripplex_call_alerts_v1`.** Not because a call is more urgent than a
+ride offer — because a channel is the unit a _person_ silences in Android's own settings. One
+shared channel would mean a driver turning ride requests down to silent between shifts also stops
+hearing the passenger phoning them mid-trip. Two channels is what makes those separable. The same
+argument decides `NotificationType.CALL_INCOMING`: preferences are keyed on (channel, type).
+
+**The deep link carries the call.** `/call/<id>?expires=<iso>&context=RIDE`. This is the part that
+is easy to get wrong: `call:incoming` went out over a socket the callee's closed app was not
+connected to, so opening the app afterwards finds nothing at all. The notification is the only
+record of the call that reaches the device, so tapping it is not navigation — it _is_ the answer
+screen appearing. `contextType` also decides the notification's category, so a call about a
+delivery is filed under DELIVERY rather than every call landing under RIDE.
+
+### 12.4 Verified, and how
+
+Repo typecheck, lint, 123 backend tests across calls / notification-center / events, and the
+super-app suite. Beyond "the tests pass":
+
+- **The migration was applied to a real Postgres 16**, the whole chain from empty, and
+  `prisma migrate diff` then reported no drift against the schema. `ALTER TYPE ... ADD VALUE` is
+  the one migration shape that can pass review and fail on the box.
+- **The guards were mutation-tested.** Deleting the tap-time expiry check fails two tests;
+  deleting the push/socket de-duplication fails one. The de-duplication test did **not** fail on
+  the first attempt — it asserted the ring was not restarted, which stayed true while the code
+  silently declined the call it was already ringing for. It now asserts that too.
+
+### 12.5 Still not done
+
+- **Nothing rings continuously.** This is a notification: it fires once per push and stops. A call
+  that behaves like a call on a lock screen needs `CallStyle` and `ConnectionService`, per §8, and
+  that is native work in a WebView shell that has not been started.
+- **A missed call leaves its notification in the shade.** Tapping it later opens nothing, because
+  the tap-time expiry check refuses it — correct, but silent. Clearing it needs a data message and
+  native code.
+- **iOS is untouched.** CallKit and PushKit VoIP pushes are a different mechanism, and
+  `UIBackgroundModes` still lists only `remote-notification`.
+- **None of it has rung a handset.** The same caveat as §11.3, and now the sharper one: whether
+  push reaches a backgrounded DrippleX app _at all_ is still the outstanding 90-second field test
+  from DPX-MOBILE-003. Ride offers and call rings travel the same road. If that test fails, this
+  does too, and the fix is one fix.

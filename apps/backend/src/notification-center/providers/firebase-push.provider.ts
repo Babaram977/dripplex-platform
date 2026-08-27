@@ -1,4 +1,4 @@
-import { RIDE_ALERT_ANDROID_CHANNEL_ID } from '@dripplex/types';
+import { CALL_ALERT_ANDROID_CHANNEL_ID, RIDE_ALERT_ANDROID_CHANNEL_ID } from '@dripplex/types';
 import { Injectable, Logger } from '@nestjs/common';
 import { NotificationPriority, NotificationType } from '@prisma/client';
 
@@ -23,6 +23,11 @@ import type { AndroidConfig, Messaging, SendResponse } from 'firebase-admin/mess
  */
 const ANDROID_CHANNEL_BY_TYPE: Partial<Record<NotificationType, string>> = {
   [NotificationType.RIDE_OFFERED]: RIDE_ALERT_ANDROID_CHANNEL_ID,
+  // DPX-MOBILE-002. Its own channel, exactly as the comment above requires of a
+  // new urgent type — and here the reason is concrete: a driver who turns ride
+  // requests down to silent between shifts has not asked to stop hearing the
+  // passenger phoning them mid-trip.
+  [NotificationType.CALL_INCOMING]: CALL_ALERT_ANDROID_CHANNEL_ID,
 };
 
 /**

@@ -46,3 +46,80 @@ export function onCallRequested(listener: Listener): () => void {
 export function callsAreAvailable(): boolean {
   return listeners.size > 0;
 }
+
+// ── The other direction: a call announced by a push ──────────────────────────
+//
+// DPX-MOBILE-002 Stage 2. `call:incoming` reaches a socket, and a socket needs
+// an open app — which is exactly what a ringing phone in a pocket does not
+// have. The push is what rings it, and tapping the push is how the app first
+// learns the call exists, so the notification's own deep link has to carry
+// enough to show a ringing screen and answer from it.
+
+export interface IncomingCallAnnouncement {
+  callId: string;
+  /** Null when the link did not say. The ringing screen loses a line of
+   * context; nothing else depends on it. */
+  contextType: CallContextType | null;
+  expiresAt: string | null;
+}
+
+/**
+ * Read a call out of a notification's deep link.
+ *
+ * Returns null for any link that is not a call, and — the point of the
+ * `expires` parameter — for a call that has already stopped ringing.
+ * FCM's TTL is the first guard against a late ring and this is the second: the
+ * TTL stops a *delivery* that is too late, and this stops a *tap* that is. A
+ * push can sit on a lock screen for an hour before somebody notices it.
+ *
+ * Never throws. A malformed link is not a reason to take down the app that was
+ * opened by tapping it.
+ */
+export function incomingCallFromDeepLink(
+  deepLink: string,
+  now: number = Date.now(),
+): IncomingCallAnnouncement | null {
+  let url: URL;
+  try {
+    // A base is required because the link is a path. Its host is irrelevant and
+    // never read — only the pathname and the query matter.
+    url = new URL(deepLink, 'https://app.dripplex.com');
+  } catch {
+    return null;
+  }
+
+  const match = /^\/call\/([A-Za-z0-9-]{8,64})\/?$/.exec(url.pathname);
+  const callId = match?.[1];
+  if (!callId) return null;
+
+  const expiresAt = url.searchParams.get('expires');
+  if (expiresAt !== null) {
+    const expiryMs = Date.parse(expiresAt);
+    // An unparseable expiry rings: better a screen that closes itself a moment
+    // later than a missed call thrown away over a malformed timestamp.
+    if (!Number.isNaN(expiryMs) && expiryMs <= now) return null;
+  }
+
+  const context = url.searchParams.get('context');
+  return {
+    callId,
+    contextType: context === 'RIDE' || context === 'DELIVERY' ? context : null,
+    expiresAt,
+  };
+}
+
+const announcementListeners = new Set<(announcement: IncomingCallAnnouncement) => void>();
+
+/** Tell the overlay that a push says this call is ringing. */
+export function announceIncomingCall(announcement: IncomingCallAnnouncement): void {
+  for (const listener of [...announcementListeners]) listener(announcement);
+}
+
+export function onIncomingCallAnnounced(
+  listener: (announcement: IncomingCallAnnouncement) => void,
+): () => void {
+  announcementListeners.add(listener);
+  return () => {
+    announcementListeners.delete(listener);
+  };
+}

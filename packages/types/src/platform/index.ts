@@ -1238,4 +1238,7 @@ export {
   PLATFORM_BASE_STATE,
 } from './service-area.js';
 
-export { RIDE_ALERT_ANDROID_CHANNEL_ID } from './android-notification-channels.js';
+export {
+  CALL_ALERT_ANDROID_CHANNEL_ID,
+  RIDE_ALERT_ANDROID_CHANNEL_ID,
+} from './android-notification-channels.js';

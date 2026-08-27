@@ -6,6 +6,8 @@ import {
   NotFoundDomainException,
   ValidationDomainException,
 } from '../common/exceptions/domain.exception';
+import { DomainEventBus } from '../events/domain-event-bus';
+import { DOMAIN_EVENTS } from '../events/domain-events';
 import { JobParticipantsService } from '../job-participants/job-participants.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RideGateway } from '../rides/ride.gateway';
@@ -59,6 +61,7 @@ export class CallsService {
     private readonly prisma: PrismaService,
     private readonly jobParticipants: JobParticipantsService,
     private readonly gateway: RideGateway,
+    private readonly eventBus: DomainEventBus,
     @Inject(CALL_TOKEN_MINTER) private readonly minter: CallTokenMinter,
   ) {}
 
@@ -105,7 +108,9 @@ export class CallsService {
       data: { contextType, contextId, callerId, calleeId, status: CallStatus.RINGING },
     });
 
-    const token = await this.mintFor(call, callerId);
+    const callerName = await this.displayName(callerId);
+    const token = await this.mintFor(call, callerId, callerName);
+    const expiresAt = new Date(call.createdAt.getTime() + CALL_RING_TIMEOUT_MS).toISOString();
 
     // Ring the callee. Deliberately after the token is minted: if minting
     // fails, nobody's phone has already started ringing for a call the caller
@@ -115,8 +120,39 @@ export class CallsService {
     // ringing notification sitting on a locked screen is not a credential.
     this.gateway.publishToUser(calleeId, CALL_EVENTS.INCOMING, {
       call: this.toDto(call),
-      expiresAt: new Date(call.createdAt.getTime() + CALL_RING_TIMEOUT_MS).toISOString(),
+      callerName,
+      expiresAt,
     });
+
+    // DPX-MOBILE-002 Stage 2 — the socket above only reaches a phone with the
+    // app open and connected, which is not where a passenger's phone is while
+    // they wait at the kerb. This is the path that rings a locked handset.
+    //
+    // Emitted rather than calling the notification centre directly: this module
+    // does not import it, and every other domain notification already travels
+    // the bus. `expiresAt` goes with it so FCM can be given a TTL — a ring that
+    // arrives after the caller gave up is worse than one that never arrives,
+    // because the callee stops what they are doing, taps, and finds nothing.
+    //
+    // Not awaited, and failure is logged rather than raised: the call itself is
+    // already created and the caller is already listening to a ring. A push
+    // provider having a bad minute must not turn that into a 500.
+    void this.eventBus
+      .emit(DOMAIN_EVENTS.CALL_INCOMING, {
+        calleeId,
+        callerName,
+        callId: call.id,
+        contextType,
+        contextId,
+        expiresAt,
+      })
+      .catch((error: unknown) => {
+        this.logger.warn(
+          `Call ${call.id} is ringing but its push could not be queued: ${
+            error instanceof Error ? error.message : 'unknown error'
+          }`,
+        );
+      });
 
     return { call: this.toDto(call), token };
   }
@@ -340,18 +376,29 @@ export class CallsService {
     return call;
   }
 
-  /** §3.2 — one room per call, never per ride. */
-  private async mintFor(call: Call, userId: string): Promise<CallToken> {
+  /**
+   * What to call somebody, for a LiveKit identity and for a ringing screen.
+   *
+   * Never null. A callee generally cannot work out who is ringing them —
+   * `CallDto` carries an id, and a driver holds no record of a passenger's
+   * name — so the fallback is decided once, here, rather than left to every
+   * client to invent its own wording for an anonymous call.
+   */
+  private async displayName(userId: string): Promise<string> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { firstName: true, lastName: true },
     });
     const name = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim();
+    return name.length > 0 ? name : 'DrippleX user';
+  }
 
+  /** §3.2 — one room per call, never per ride. */
+  private async mintFor(call: Call, userId: string, name?: string): Promise<CallToken> {
     const token = await this.minter.mint({
       room: `call-${call.id}`,
       identity: userId,
-      name: name.length > 0 ? name : 'DrippleX user',
+      name: name ?? (await this.displayName(userId)),
     });
     if (token === null) {
       // `configured` was checked above, so this is a minter that changed its

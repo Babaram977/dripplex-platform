@@ -1,14 +1,14 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { api } from '../lib/api';
-import { onCallRequested } from '../lib/callRequests';
+import { onCallRequested, onIncomingCallAnnounced } from '../lib/callRequests';
 import { joinCallRoom } from '../lib/callRoom';
 import { startIncomingCallRing, stopIncomingCallRing } from '../lib/sound';
 import { ws } from '../lib/ws';
 
 import type { CallRequest } from '../lib/callRequests';
 import type { CallRoomHandle } from '../lib/callRoom';
-import type { CallDto, CallEndedEvent } from '@dripplex/types';
+import type { CallContextType, CallEndedEvent } from '@dripplex/types';
 
 /**
  * DPX-MOBILE-002 — the one place in the app where a voice call is shown.
@@ -49,13 +49,30 @@ const RING_GIVE_UP_MS = 60_000;
 /** How long the outcome ("Call ended · 2:14") stays up before clearing. */
 const OUTCOME_MS = 2_600;
 
+/**
+ * Phases carry a call **id**, not a `CallDto`.
+ *
+ * A call reaches this component two ways and only one of them brings a DTO:
+ * the socket sends the whole record, and a tapped push sends a deep link with
+ * an id, an expiry and a context. Everything below needs the id; the two
+ * cosmetic fields are optional because the push path genuinely does not have
+ * one of them.
+ */
 type Phase =
   | { kind: 'idle' }
   | { kind: 'placing'; peerName: string }
-  | { kind: 'outgoing'; call: CallDto; peerName: string }
-  | { kind: 'incoming'; call: CallDto; expiresAt: string }
-  | { kind: 'answering'; call: CallDto }
-  | { kind: 'active'; call: CallDto; peerName: string; startedAt: number }
+  | { kind: 'outgoing'; callId: string; peerName: string }
+  | {
+      kind: 'incoming';
+      callId: string;
+      contextType: CallContextType | null;
+      /** Null when the call arrived by push — the deep link carries no name. */
+      callerName: string | null;
+      /** Null only for a malformed link; the local give-up timer covers it. */
+      expiresAt: string | null;
+    }
+  | { kind: 'answering'; callId: string }
+  | { kind: 'active'; callId: string; peerName: string; startedAt: number }
   | { kind: 'closed'; headline: string; detail: string | null };
 
 function messageOf(error: unknown): string | null {
@@ -139,7 +156,7 @@ export function CallLayer() {
   /** Join the room for a call, honouring a hang-up that happened while we were
    * connecting. Returns false when the call is already over. */
   const enterRoom = useCallback(
-    async (call: CallDto, token: Awaited<ReturnType<typeof api.calls.token>>) => {
+    async (callId: string, token: Awaited<ReturnType<typeof api.calls.token>>) => {
       const generation = generationRef.current;
       let handle: CallRoomHandle;
       try {
@@ -149,13 +166,13 @@ export function CallLayer() {
             if (generationRef.current !== generation) return;
             // The audio path died. End the call properly so the other side
             // stops ringing, rather than just closing this screen.
-            void api.calls.end(call.id).catch(() => undefined);
+            void api.calls.end(callId).catch(() => undefined);
             close('Call failed', 'The connection dropped.');
           },
         });
       } catch (error) {
         if (generationRef.current !== generation) return false;
-        void api.calls.end(call.id).catch(() => undefined);
+        void api.calls.end(callId).catch(() => undefined);
         close('Could not connect', messageOf(error) ?? 'Check your microphone permission.');
         return false;
       }
@@ -201,7 +218,7 @@ export function CallLayer() {
       }
 
       callIdRef.current = initiated.call.id;
-      setPhase({ kind: 'outgoing', call: initiated.call, peerName: request.peerName });
+      setPhase({ kind: 'outgoing', callId: initiated.call.id, peerName: request.peerName });
 
       // Join now, on the tap that placed the call, rather than waiting for the
       // answer. The microphone prompt then happens during a user gesture, and
@@ -209,7 +226,7 @@ export function CallLayer() {
       // connect. Nobody can hear it in the meantime: the room belongs to this
       // call alone, and the only other token that will ever be minted for it
       // is the callee's, on accept.
-      await enterRoom(initiated.call, initiated.token);
+      await enterRoom(initiated.call.id, initiated.token);
     },
     [close, enterRoom, setPhase],
   );
@@ -218,14 +235,14 @@ export function CallLayer() {
 
   // ── Answering ─────────────────────────────────────────────────────────────
   const answer = useCallback(
-    async (call: CallDto) => {
+    async (callId: string, peerName: string | null) => {
       stopIncomingCallRing();
       const generation = generationRef.current;
-      setPhase({ kind: 'answering', call });
+      setPhase({ kind: 'answering', callId });
 
       let token;
       try {
-        token = await api.calls.accept(call.id);
+        token = await api.calls.accept(callId);
       } catch (error) {
         if (generationRef.current !== generation) return;
         // Lost the race to a hang-up or to the ring timeout.
@@ -234,15 +251,20 @@ export function CallLayer() {
       }
       if (generationRef.current !== generation) return;
 
-      if (!(await enterRoom(call, token))) return;
-      setPhase({ kind: 'active', call, peerName: 'On call', startedAt: Date.now() });
+      if (!(await enterRoom(callId, token))) return;
+      setPhase({
+        kind: 'active',
+        callId,
+        peerName: peerName ?? 'On call',
+        startedAt: Date.now(),
+      });
     },
     [close, enterRoom, setPhase],
   );
 
   const decline = useCallback(
-    (call: CallDto) => {
-      void api.calls.decline(call.id).catch(() => undefined);
+    (callId: string) => {
+      void api.calls.decline(callId).catch(() => undefined);
       close('Call declined', null);
     },
     [close],
@@ -271,7 +293,46 @@ export function CallLayer() {
         generationRef.current += 1;
         callIdRef.current = event.call.id;
         startIncomingCallRing();
-        setPhase({ kind: 'incoming', call: event.call, expiresAt: event.expiresAt });
+        setPhase({
+          kind: 'incoming',
+          callId: event.call.id,
+          contextType: event.call.contextType,
+          callerName: event.callerName,
+          expiresAt: event.expiresAt,
+        });
+      }),
+    [setPhase],
+  );
+
+  // DPX-MOBILE-002 Stage 2 — the same call, arriving the other way.
+  //
+  // A tapped push is how the callee learns about a call their app was closed
+  // for: the socket event went out while nothing was connected to receive it.
+  // The deep link has already been checked for expiry by the time this fires.
+  useEffect(
+    () =>
+      onIncomingCallAnnounced((announcement) => {
+        const current = phaseRef.current;
+        if (current.kind === 'incoming' && current.callId === announcement.callId) {
+          // Already ringing from the socket — the app was open after all, and
+          // the push arrived alongside. Restarting would reset the ring.
+          return;
+        }
+        if (current.kind !== 'idle' && current.kind !== 'closed') {
+          void api.calls.decline(announcement.callId).catch(() => undefined);
+          return;
+        }
+        generationRef.current += 1;
+        callIdRef.current = announcement.callId;
+        startIncomingCallRing();
+        setPhase({
+          kind: 'incoming',
+          callId: announcement.callId,
+          contextType: announcement.contextType,
+          // The notification said who it was; the deep link does not repeat it.
+          callerName: null,
+          expiresAt: announcement.expiresAt,
+        });
       }),
     [setPhase],
   );
@@ -280,11 +341,11 @@ export function CallLayer() {
     () =>
       ws.onCallAccepted((event) => {
         const current = phaseRef.current;
-        if (current.kind !== 'outgoing' || current.call.id !== event.callId) return;
+        if (current.kind !== 'outgoing' || current.callId !== event.callId) return;
         setAudioBlocked(roomRef.current?.canPlayAudio() === false);
         setPhase({
           kind: 'active',
-          call: current.call,
+          callId: current.callId,
           peerName: current.peerName,
           // The server's answeredAt is the billable truth; this clock is only
           // the display, and starting it here rather than parsing that
@@ -312,9 +373,9 @@ export function CallLayer() {
   // only stop a client whose socket died from ringing for ever.
   useEffect(() => {
     if (phase.kind === 'outgoing') {
-      const call = phase.call;
+      const callId = phase.callId;
       const timer = setTimeout(() => {
-        void api.calls.end(call.id).catch(() => undefined);
+        void api.calls.end(callId).catch(() => undefined);
         close('No answer', null);
       }, RING_GIVE_UP_MS);
       return () => clearTimeout(timer);
@@ -322,8 +383,10 @@ export function CallLayer() {
     if (phase.kind === 'incoming') {
       // The server said exactly when it stops ringing. Trust that over a local
       // constant, plus a second so the server's own `call:ended` normally wins
-      // the race and gets to record it as MISSED.
-      const remaining = new Date(phase.expiresAt).getTime() - Date.now() + 1_000;
+      // the race and gets to record it as MISSED. Falls back to the local
+      // constant only when the expiry was missing or unreadable.
+      const remaining =
+        phase.expiresAt === null ? NaN : Date.parse(phase.expiresAt) - Date.now() + 1_000;
       const delay = Number.isFinite(remaining) ? Math.max(1_000, remaining) : RING_GIVE_UP_MS;
       const timer = setTimeout(() => close('Missed call', null), delay);
       return () => clearTimeout(timer);
@@ -373,7 +436,10 @@ export function CallLayer() {
   const ringing = phase.kind === 'incoming';
   const title =
     phase.kind === 'incoming'
-      ? 'Incoming call'
+      ? // The name when the server sent one, which is the socket path. A push
+        // deep link carries no name — the notification itself said who it was,
+        // and repeating it in the URL would put it in a place it is not needed.
+        (phase.callerName ?? 'Incoming call')
       : phase.kind === 'closed'
         ? phase.headline
         : phase.kind === 'answering'
@@ -385,9 +451,7 @@ export function CallLayer() {
       : phase.kind === 'outgoing'
         ? 'Ringing…'
         : phase.kind === 'incoming'
-          ? phase.call.contextType === 'RIDE'
-            ? 'About your trip'
-            : 'About your delivery'
+          ? incomingSubtitle(phase.callerName !== null, phase.contextType)
           : phase.kind === 'answering'
             ? null
             : phase.kind === 'active'
@@ -468,10 +532,14 @@ export function CallLayer() {
       <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
         {phase.kind === 'incoming' && (
           <>
-            <RoundButton label="Decline" tone={RED} onClick={() => decline(phase.call)}>
+            <RoundButton label="Decline" tone={RED} onClick={() => decline(phase.callId)}>
               ✕
             </RoundButton>
-            <RoundButton label="Accept" tone={G2} onClick={() => void answer(phase.call)}>
+            <RoundButton
+              label="Accept"
+              tone={G2}
+              onClick={() => void answer(phase.callId, phase.callerName)}
+            >
               ✓
             </RoundButton>
           </>
@@ -504,6 +572,26 @@ export function CallLayer() {
       </div>
     </div>
   );
+}
+
+/**
+ * The line under the name on a ringing screen.
+ *
+ * When the name is the headline, this says what the call is about. When there
+ * is no name — a call opened from a push — the headline is already "Incoming
+ * call", so this says what little the deep link knew, and nothing at all when
+ * it knew nothing.
+ */
+export function incomingSubtitle(
+  named: boolean,
+  contextType: CallContextType | null,
+): string | null {
+  if (contextType === 'RIDE') return 'About your trip';
+  if (contextType === 'DELIVERY') return 'About your delivery';
+  // Nothing to say about the job. With a name above it, "Incoming call" is the
+  // line that makes the screen readable; without one it is already the
+  // headline, and repeating it would be the whole screen saying it twice.
+  return named ? 'Incoming call' : null;
 }
 
 function RoundButton({

@@ -77,7 +77,7 @@ vi.mock('../lib/sound', () => ({
 }));
 
 import { CallLayer, formatCallDuration, outcomeOf } from './callLayer';
-import { requestCall } from '../lib/callRequests';
+import { announceIncomingCall, requestCall } from '../lib/callRequests';
 
 const CALL = {
   id: 'call-1',
@@ -94,6 +94,16 @@ const CALL = {
 };
 
 const TOKEN = { token: 'jwt', url: 'wss://livekit.example', expiresAt: new Date().toISOString() };
+
+/** What the gateway publishes on `call:incoming`. */
+function ringing(overrides: Partial<CallIncomingEvent> = {}): CallIncomingEvent {
+  return {
+    call: CALL,
+    callerName: 'Ada Obi',
+    expiresAt: new Date(Date.now() + 45_000).toISOString(),
+    ...overrides,
+  };
+}
 
 function room() {
   return { leave, setMuted, canPlayAudio: () => true, resumeAudio: vi.fn() };
@@ -144,11 +154,12 @@ describe('an incoming call', () => {
   it('rings, and answering joins the room with the token from accept', async () => {
     render(<CallLayer />);
 
-    act(() =>
-      fireIncoming!({ call: CALL, expiresAt: new Date(Date.now() + 45_000).toISOString() }),
-    );
+    act(() => fireIncoming!(ringing()));
 
-    expect(await screen.findByText('Incoming call')).toBeInTheDocument();
+    // The name, not "Incoming call" — the callee usually cannot work out who
+    // it is from an id, so the server sends it.
+    expect(await screen.findByText('Ada Obi')).toBeInTheDocument();
+    expect(screen.getByText('About your trip')).toBeInTheDocument();
     expect(startIncomingCallRing).toHaveBeenCalled();
 
     await act(async () => {
@@ -158,15 +169,13 @@ describe('an incoming call', () => {
     await waitFor(() => expect(accept).toHaveBeenCalledWith('call-1'));
     expect(stopIncomingCallRing).toHaveBeenCalled();
     expect(joinCallRoom).toHaveBeenCalledWith(expect.objectContaining({ token: TOKEN }));
-    expect(await screen.findByText('On call')).toBeInTheDocument();
+    expect(await screen.findByText('Ada Obi')).toBeInTheDocument();
   });
 
   it('declining tells the server and stops the ring, without joining anything', async () => {
     render(<CallLayer />);
 
-    act(() =>
-      fireIncoming!({ call: CALL, expiresAt: new Date(Date.now() + 45_000).toISOString() }),
-    );
+    act(() => fireIncoming!(ringing()));
     await act(async () => {
       fireEvent.click(await screen.findByLabelText('Decline'));
     });
@@ -180,23 +189,93 @@ describe('an incoming call', () => {
   it('is declined automatically when one is already in progress', async () => {
     render(<CallLayer />);
 
-    act(() =>
-      fireIncoming!({ call: CALL, expiresAt: new Date(Date.now() + 45_000).toISOString() }),
-    );
+    act(() => fireIncoming!(ringing()));
     await act(async () => {
       fireEvent.click(await screen.findByLabelText('Accept'));
     });
-    await screen.findByText('On call');
+    await screen.findByText('Ada Obi');
 
     const second = { ...CALL, id: 'call-2' };
-    act(() =>
-      fireIncoming!({ call: second, expiresAt: new Date(Date.now() + 45_000).toISOString() }),
-    );
+    act(() => fireIncoming!(ringing({ call: second })));
 
     // The caller is answered rather than left listening to silence, and the
     // conversation already happening is not interrupted.
     expect(decline).toHaveBeenCalledWith('call-2');
-    expect(screen.getByText('On call')).toBeInTheDocument();
+    expect(screen.getByText('Ada Obi')).toBeInTheDocument();
+  });
+});
+
+describe('a call announced by a tapped push (DPX-MOBILE-002 Stage 2)', () => {
+  // The callee's app was closed when `call:incoming` went out, so the socket
+  // event is gone. Everything this screen knows came off the notification.
+  const announce = (overrides: Record<string, unknown> = {}) =>
+    act(() =>
+      announceIncomingCall({
+        callId: 'call-1',
+        contextType: 'RIDE',
+        expiresAt: new Date(Date.now() + 45_000).toISOString(),
+        ...overrides,
+      }),
+    );
+
+  it('rings, and can be answered without the socket event ever arriving', async () => {
+    render(<CallLayer />);
+
+    announce();
+
+    expect(await screen.findByText('Incoming call')).toBeInTheDocument();
+    expect(screen.getByText('About your trip')).toBeInTheDocument();
+    expect(startIncomingCallRing).toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText('Accept'));
+    });
+
+    // Answering needs only the id, which is the whole reason the deep link
+    // carries one.
+    expect(accept).toHaveBeenCalledWith('call-1');
+    expect(joinCallRoom).toHaveBeenCalled();
+  });
+
+  it('says nothing it does not know when the link carried no context', async () => {
+    render(<CallLayer />);
+
+    announce({ contextType: null });
+
+    expect(await screen.findByText('Incoming call')).toBeInTheDocument();
+    expect(screen.queryByText('About your trip')).not.toBeInTheDocument();
+    expect(screen.queryByText('About your delivery')).not.toBeInTheDocument();
+  });
+
+  it('does not restart a ring already running for the same call', async () => {
+    // The app was open after all: the socket delivered it and the push arrived
+    // alongside. Re-entering the phase would reset the ring and the timer.
+    render(<CallLayer />);
+    act(() => fireIncoming!(ringing()));
+    await screen.findByText('Ada Obi');
+    startIncomingCallRing.mockClear();
+
+    announce();
+
+    expect(startIncomingCallRing).not.toHaveBeenCalled();
+    // And emphatically not treated as a second, competing call: declining here
+    // would hang up on the very caller this screen is ringing for.
+    expect(decline).not.toHaveBeenCalled();
+    // Still the socket's version, which is the one that knows who is calling.
+    expect(screen.getByText('Ada Obi')).toBeInTheDocument();
+  });
+
+  it('is declined when a different call is already in progress', async () => {
+    render(<CallLayer />);
+    act(() => fireIncoming!(ringing()));
+    await act(async () => {
+      fireEvent.click(await screen.findByLabelText('Accept'));
+    });
+    await screen.findByText('Ada Obi');
+
+    announce({ callId: 'call-2' });
+
+    expect(decline).toHaveBeenCalledWith('call-2');
   });
 });
 
@@ -259,13 +338,11 @@ describe('placing a call', () => {
 describe('ending a call', () => {
   it('closes on the server`s call:ended, using the server`s own outcome', async () => {
     render(<CallLayer />);
-    act(() =>
-      fireIncoming!({ call: CALL, expiresAt: new Date(Date.now() + 45_000).toISOString() }),
-    );
+    act(() => fireIncoming!(ringing()));
     await act(async () => {
       fireEvent.click(await screen.findByLabelText('Accept'));
     });
-    await screen.findByText('On call');
+    await screen.findByText('Ada Obi');
 
     act(() =>
       fireEnded!({
@@ -283,13 +360,11 @@ describe('ending a call', () => {
 
   it('ignores a call:ended for a different call', async () => {
     render(<CallLayer />);
-    act(() =>
-      fireIncoming!({ call: CALL, expiresAt: new Date(Date.now() + 45_000).toISOString() }),
-    );
+    act(() => fireIncoming!(ringing()));
     await act(async () => {
       fireEvent.click(await screen.findByLabelText('Accept'));
     });
-    await screen.findByText('On call');
+    await screen.findByText('Ada Obi');
 
     act(() =>
       fireEnded!({
@@ -300,19 +375,17 @@ describe('ending a call', () => {
       }),
     );
 
-    expect(screen.getByText('On call')).toBeInTheDocument();
+    expect(screen.getByText('Ada Obi')).toBeInTheDocument();
     expect(leave).not.toHaveBeenCalled();
   });
 
   it('hanging up tells the server and leaves the room', async () => {
     render(<CallLayer />);
-    act(() =>
-      fireIncoming!({ call: CALL, expiresAt: new Date(Date.now() + 45_000).toISOString() }),
-    );
+    act(() => fireIncoming!(ringing()));
     await act(async () => {
       fireEvent.click(await screen.findByLabelText('Accept'));
     });
-    await screen.findByText('On call');
+    await screen.findByText('Ada Obi');
 
     await act(async () => {
       fireEvent.click(screen.getByLabelText('Hang up'));
@@ -354,13 +427,11 @@ describe('ending a call', () => {
 
   it('releases the microphone when the app unmounts mid-call', async () => {
     const view = render(<CallLayer />);
-    act(() =>
-      fireIncoming!({ call: CALL, expiresAt: new Date(Date.now() + 45_000).toISOString() }),
-    );
+    act(() => fireIncoming!(ringing()));
     await act(async () => {
       fireEvent.click(await screen.findByLabelText('Accept'));
     });
-    await screen.findByText('On call');
+    await screen.findByText('Ada Obi');
 
     view.unmount();
 

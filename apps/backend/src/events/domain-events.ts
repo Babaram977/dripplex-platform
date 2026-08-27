@@ -72,6 +72,13 @@ export const DOMAIN_EVENTS = {
   /// addressed to a driver rather than a passenger, and the only one with a
   /// deadline, which is why its push is sent at CRITICAL priority with a TTL.
   RIDE_OFFERED: 'RideOffered',
+  /// DPX-MOBILE-002 Stage 2 — the callee's phone must ring, and the socket
+  /// only reaches an app that is open. Shorter-lived than a ride offer
+  /// (CALL_RING_TIMEOUT_MS, not RIDE_OFFER_TIMEOUT_MS) and with the same
+  /// consequence for a late delivery: a ring for a call nobody is on any more
+  /// is worse than silence. `expiresAt` travels on the payload so the push can
+  /// be given a TTL.
+  CALL_INCOMING: 'CallIncoming',
   RIDE_DRIVER_ASSIGNED: 'RideDriverAssigned',
   RIDE_DRIVER_ARRIVED: 'RideDriverArrived',
   RIDE_STARTED: 'RideStarted',

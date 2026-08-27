@@ -10,6 +10,7 @@ import { NotConfiguredCallTokenMinter } from './call-token.provider';
 import { CallsService } from './calls.service';
 
 import type { CallToken, CallTokenMinter } from './call-token.provider';
+import type { DomainEventBus } from '../events/domain-event-bus';
 import type { JobParticipantsService } from '../job-participants/job-participants.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { RideGateway } from '../rides/ride.gateway';
@@ -63,6 +64,9 @@ interface Harness {
   participants: { requireParticipant: jest.Mock; isJobLive: jest.Mock };
   minter: CallTokenMinter;
   publishToUser: jest.Mock;
+  /** DPX-MOBILE-002 Stage 2 — the push. Captured so a test can assert the ring
+   * is queued, and with an expiry, rather than only that a socket fired. */
+  emit: jest.Mock;
 }
 
 function setup(
@@ -96,13 +100,15 @@ function setup(
     isJobLive: jest.fn().mockResolvedValue(options.jobLive ?? true),
   };
   const minter = options.minter ?? makeMinter();
+  const emit = jest.fn().mockResolvedValue(undefined);
   const service = new CallsService(
     prisma as unknown as PrismaService,
     participants as unknown as JobParticipantsService,
     { publishToUser } as unknown as RideGateway,
+    { emit } as unknown as DomainEventBus,
     minter,
   );
-  return { service, prisma, participants, minter, publishToUser };
+  return { service, prisma, participants, minter, publishToUser, emit };
 }
 
 describe('CallsService (DPX-MOBILE-002)', () => {
@@ -266,6 +272,60 @@ describe('CallsService (DPX-MOBILE-002)', () => {
       // A ringing notification on a locked screen must not be a credential.
       expect(JSON.stringify(payload)).not.toContain('jwt');
       expect(payload.expiresAt).toEqual(expect.any(String));
+    });
+
+    it('names the caller, so the ringing screen is not "Incoming call" alone', async () => {
+      // The callee usually cannot work it out themselves: the DTO carries an id,
+      // and a driver holds no record of a passenger's name.
+      const { service, publishToUser } = setup();
+
+      await service.initiate(CUSTOMER, MessageContextType.RIDE, RIDE_ID);
+
+      const [, , payload] = publishToUser.mock.calls[0] as [string, string, { callerName: string }];
+      expect(payload.callerName).toBe('Ada Obi');
+    });
+
+    it('falls back to a generic name rather than ringing with an empty label', async () => {
+      const { service, prisma, publishToUser } = setup();
+      prisma.user.findUnique.mockResolvedValue({ firstName: null, lastName: null });
+
+      await service.initiate(CUSTOMER, MessageContextType.RIDE, RIDE_ID);
+
+      const [, , payload] = publishToUser.mock.calls[0] as [string, string, { callerName: string }];
+      expect(payload.callerName).toBe('DrippleX user');
+    });
+
+    it('queues a push as well, because the socket only reaches an open app', async () => {
+      // DPX-MOBILE-002 Stage 2. Without this a call to a locked phone is
+      // silent, which is the whole complaint this exists to answer.
+      const { service, emit } = setup();
+
+      await service.initiate(CUSTOMER, MessageContextType.RIDE, RIDE_ID);
+
+      expect(emit).toHaveBeenCalledWith(
+        'CallIncoming',
+        expect.objectContaining({
+          calleeId: DRIVER,
+          callId: CALL_ID,
+          callerName: 'Ada Obi',
+          contextType: MessageContextType.RIDE,
+          contextId: RIDE_ID,
+          // The TTL is computed from this; without it FCM would happily deliver
+          // a ring for a call that stopped ringing minutes ago.
+          expiresAt: expect.any(String),
+        }),
+      );
+    });
+
+    it('still places the call when the push cannot be queued', async () => {
+      // The caller is already listening to a ring by this point. A push
+      // provider having a bad minute must not turn that into a 500.
+      const { service, emit } = setup();
+      emit.mockRejectedValue(new Error('bus down'));
+
+      await expect(service.initiate(CUSTOMER, MessageContextType.RIDE, RIDE_ID)).resolves.toEqual(
+        expect.objectContaining({ token: expect.objectContaining({ token: 'jwt' }) }),
+      );
     });
 
     it('lets the callee answer and tells the caller', async () => {
