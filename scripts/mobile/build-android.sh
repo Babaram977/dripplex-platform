@@ -84,6 +84,27 @@ else
   echo "FIREBASE CONFIG: ${GS_JSON} declares ${APPLICATION_ID}"
 fi
 
+# ── versionCode ───────────────────────────────────────────────────────────────
+# Play accepts a given versionCode exactly once per applicationId, for ever,
+# across every track. It was hardcoded at 1000100 in app/build.gradle with
+# nothing to bump it, so the first upload spent the only number this repo could
+# produce and every later AAB was rejected as a duplicate — including one built
+# to replace a bad release. 1.0.0 reached internal testing on 2026-08-27, so
+# 1000100 is now spent for real.
+#
+# Minutes since the Unix epoch. Strictly increasing, unique with no shared
+# counter to keep, and the same scheme in both workflows that build this app —
+# a per-workflow run number could not be, because mobile-build.yml and
+# mobile-store-readiness.yml each have their own sequence and would collide.
+#
+# ~29.8 million today against Play's ceiling of 2,100,000,000: roughly four
+# thousand years of headroom. The one collision left is two release builds of
+# the same applicationId starting in the same minute (production and internal
+# share it — only debug carries a suffix). Play rejects the second upload by
+# name rather than doing anything silent, so it costs a rebuild, not a mystery.
+export ANDROID_VERSION_CODE="${ANDROID_VERSION_CODE:-$(( $(date -u +%s) / 60 ))}"
+echo "VERSION CODE: ${ANDROID_VERSION_CODE} (versionName carries the human number)"
+
 export CAPACITOR_SERVER_URL="${CAPACITOR_SERVER_URL:-https://app.dripplex.com}"
 pnpm exec cap sync android
 
@@ -105,6 +126,51 @@ echo "APK: ${OUT}/apk/${FLAVOR}/release/"
 if [[ -z "${AAB}" ]]; then
   echo "ERROR: no .aab produced under ${OUT}/bundle/${FLAVOR}Release" >&2
   exit 1
+fi
+
+# Verify the build carries the code we asked for, rather than trusting that the
+# env var reached Gradle. A workflow edit that drops ANDROID_VERSION_CODE falls
+# back to 1000100 in build.gradle and rebuilds the exact duplicate this whole
+# mechanism exists to prevent — green here, rejected by Play later, with nothing
+# in the log to explain it. Gradle records what it actually used.
+#
+# Search the whole outputs tree rather than one fixed path, for the same reason
+# the FCM check below does: AGP's layout is not stable. The first version of
+# this looked only in bundle/<variant>/ and printed "could not verify" on a real
+# build — AGP writes output-metadata.json next to the APK, not the bundle, on
+# 8.7. A check that cannot find its evidence is not a check.
+METADATA=$(find "${OUT}" -name 'output-metadata.json' -print 2>/dev/null | sort | head -1 || true)
+BUILT_CODE=$(node -e "
+  const fs = require('node:fs');
+  const path = process.argv[1];
+  if (!path) { process.stdout.write(''); process.exit(0); }
+  try {
+    const meta = JSON.parse(fs.readFileSync(path, 'utf8'));
+    const code = (meta.elements ?? []).map((e) => e?.versionCode).find((c) => c != null);
+    process.stdout.write(code == null ? '' : String(code));
+  } catch { process.stdout.write(''); }
+" "${METADATA}")
+
+if [[ -z "${BUILT_CODE}" ]]; then
+  # On a Play-bound build this is fatal. The check exists to stop a duplicate
+  # versionCode reaching the console, and "I could not tell" is not a pass —
+  # that is precisely how the unsigned-bundle and dead-push bugs both shipped.
+  if [[ "${REQUIRE_SIGNED}" == "1" ]]; then
+    echo "ERROR: could not read the built versionCode from any output-metadata.json" >&2
+    echo "       under ${OUT}." >&2
+    echo "       Without it there is no proof ANDROID_VERSION_CODE reached Gradle," >&2
+    echo "       and a duplicate versionCode is rejected only once it is uploaded." >&2
+    exit 1
+  fi
+  echo "VERSION CODE: no output-metadata.json under ${OUT} — could not verify"
+elif [[ "${BUILT_CODE}" != "${ANDROID_VERSION_CODE}" ]]; then
+  echo "ERROR: the build carries versionCode ${BUILT_CODE}, not ${ANDROID_VERSION_CODE}." >&2
+  echo "       ANDROID_VERSION_CODE did not reach Gradle. build.gradle fell back" >&2
+  echo "       to its hardcoded default, which Play has already consumed — this" >&2
+  echo "       artifact would be rejected as a duplicate." >&2
+  exit 1
+else
+  echo "VERSION CODE: build carries ${BUILT_CODE} (${METADATA#"${OUT}/"})"
 fi
 
 # An AAB is a jar; a signed one carries META-INF/*.RSA|DSA|EC.
