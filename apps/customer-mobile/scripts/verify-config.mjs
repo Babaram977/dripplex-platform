@@ -50,13 +50,26 @@ if (existsSync(gradlePath)) {
   //
   // So the check is the wiring, not a magic number. Pinning the new value would
   // reintroduce the same defect one refactor later.
-  const versionCodeLine = /^\s*versionCode .*$/m.exec(gradle)?.[0]?.trim() ?? '';
+  //
+  // Two assertions rather than one, because the value reaches versionCode
+  // through a local: the env var must actually be read, AND the versionCode line
+  // must not be a bare literal. Either alone passes a broken file — a literal
+  // with the variable still declared above it, or a declaration nothing uses.
+  //
+  // Comments are stripped first. The block above this line mentions
+  // ANDROID_VERSION_CODE by name, so a plain substring search over the file is
+  // satisfied by prose: swapping the getenv call for a hardcoded number left the
+  // check green until this was written.
+  const gradleCode = gradle.replace(/\/\/.*$/gm, '');
+  const versionCodeLine = /^\s*versionCode .*$/m.exec(gradleCode)?.[0]?.trim() ?? '';
   if (!versionCodeLine) fail('Android versionCode is missing');
-  else if (!versionCodeLine.includes('ANDROID_VERSION_CODE'))
+  else if (/^versionCode\s+\d+\s*$/.test(versionCodeLine))
     fail(
-      `Android versionCode is hardcoded, so Play would reject the next upload: ${versionCodeLine}`,
+      `Android versionCode is a fixed number, so Play would reject the next upload: ${versionCodeLine}`,
     );
-  else ok('Android versionCode reads ANDROID_VERSION_CODE');
+  else if (!/System\.getenv\(\s*['"]ANDROID_VERSION_CODE['"]\s*\)/.test(gradleCode))
+    fail('Android versionCode does not read ANDROID_VERSION_CODE — CI cannot bump it');
+  else ok('Android versionCode is driven by ANDROID_VERSION_CODE');
   if (!gradle.includes('versionName "1.0.0"')) fail('Android versionName is missing or unexpected');
   else ok('Android versionName');
   if (
