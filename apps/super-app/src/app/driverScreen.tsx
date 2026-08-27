@@ -33,7 +33,13 @@ import {
 import { SoundSettings } from './soundSettings';
 import { PayoutPanel } from './payoutPanel';
 import { useLocationHeartbeat } from '../lib/locationHeartbeat';
-import { startDriverPresence, stopDriverPresence } from '../lib/driverPresence';
+import {
+  hasOverlayPermission,
+  requestOverlayPermission,
+  startDriverPresence,
+  stopDriverPresence,
+  type PresenceOutcome,
+} from '../lib/driverPresence';
 
 import { pushDriverLocationNow, useDriverLocationPing } from './useDriverLocationPing';
 import { getCurrentPosition } from '../lib/maps';
@@ -124,6 +130,82 @@ export function TripAlertStatus() {
       <p style={{ fontFamily: IT, fontSize: 10, color: 'rgba(255,255,255,.35)' }}>
         alerts: {result.outcome}
       </p>
+    </div>
+  );
+}
+
+/**
+ * DPX-MOBILE-003 — whether the shift is actually being held open natively, and
+ * the one permission the driver has to grant by hand.
+ *
+ * Two separate things, deliberately in one place because they are one question
+ * to a driver ("is my shift safe if I put the phone away?"), and because they
+ * fail independently:
+ *
+ * - **The service did not start.** The WebView heartbeat is then the only path,
+ *   Android freezes it a few minutes after the app leaves the screen, and the
+ *   driver goes invisible to dispatch while their own screen still says "You
+ *   are live". They are owed a warning; this is it.
+ * - **The bubble is not permitted.** SYSTEM_ALERT_WINDOW has no runtime dialog,
+ *   so an app that never offers this prompt can never get it granted — which is
+ *   exactly why the floating icon did not appear on the first build that
+ *   shipped the Java for it. Strictly an offer, never a warning: a driver who
+ *   declines keeps a fully working shift and simply has no circle.
+ *
+ * Renders nothing on web and iOS, where 'not-android' is the correct and
+ * expected answer rather than a fault.
+ */
+export function DriverPresenceStatus({
+  outcome,
+  overlayGranted,
+  onRequestOverlay,
+}: {
+  outcome: PresenceOutcome | null;
+  overlayGranted: boolean | null;
+  onRequestOverlay: () => void;
+}) {
+  if (outcome === null || outcome === 'not-android' || outcome === 'stopped') return null;
+
+  if (outcome !== 'started') {
+    return (
+      <div
+        className="mt-2 flex flex-col items-center gap-1 rounded-xl px-3 py-2"
+        style={{ background: 'rgba(245,158,11,.10)', border: `1px solid ${COLOR_WARNING}33` }}
+      >
+        <p className="text-center" style={{ fontFamily: IT, fontSize: 12, color: COLOR_WARNING }}>
+          Keep DrippleX open. This phone stops showing you to dispatch a few minutes after you
+          minimise the app.
+        </p>
+        <p style={{ fontFamily: IT, fontSize: 10, color: 'rgba(255,255,255,.35)' }}>
+          presence: {outcome}
+        </p>
+      </div>
+    );
+  }
+
+  if (overlayGranted !== false) return null;
+
+  return (
+    <div
+      className="mt-2 flex flex-col items-center gap-2 rounded-xl px-3 py-2"
+      style={{ background: 'rgba(255,255,255,.04)', border: `1px solid ${BORDER}` }}
+    >
+      <p className="text-center" style={{ fontFamily: IT, fontSize: 12, color: TEXT_SECONDARY }}>
+        Show a floating DrippleX button over your other apps, so you can see you are online from
+        anywhere.
+      </p>
+      <button
+        onClick={onRequestOverlay}
+        className="rounded-lg px-3 py-1.5 text-[12px] font-semibold transition-all active:scale-95"
+        style={{
+          background: 'rgba(255,255,255,.08)',
+          border: `1px solid ${BORDER}`,
+          color: '#FFF',
+          fontFamily: IT,
+        }}
+      >
+        Turn on
+      </button>
     </div>
   );
 }
@@ -2546,6 +2628,42 @@ export function DriverDashboardScreen({
   const [toggling, setToggling] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * DPX-MOBILE-003 — what the native presence service actually did.
+   *
+   * This used to be discarded with a bare `void`, and that is how the plugin
+   * shipped unreachable: `startDriverPresence` returned a failure on every
+   * Android phone for a fortnight and nothing anywhere displayed it. The
+   * service is what keeps a minimised driver visible to dispatch, so a driver
+   * whose shift silently lost it is owed the same amber line as one whose
+   * phone cannot receive alerts.
+   */
+  const [presence, setPresence] = useState<PresenceOutcome | null>(null);
+  /** Whether "Display over other apps" is granted. Null until asked — which is
+   * only ever on Android, with the service running. */
+  const [overlay, setOverlay] = useState<boolean | null>(null);
+
+  /**
+   * Re-check the overlay permission whenever the driver comes back to the app.
+   *
+   * `requestOverlayPermission` cannot report its own outcome: SYSTEM_ALERT_WINDOW
+   * has no runtime dialog, so the driver leaves for Settings, flips a toggle in
+   * another app, and walks back. Returning here is the only signal we get that
+   * the answer may have changed — without this the prompt would keep offering a
+   * permission the driver has already granted.
+   */
+  useEffect(() => {
+    if (presence !== 'started') return;
+    const recheck = () => {
+      if (document.visibilityState !== 'visible') return;
+      void hasOverlayPermission().then(setOverlay);
+    };
+    document.addEventListener('visibilitychange', recheck);
+    return () => {
+      document.removeEventListener('visibilitychange', recheck);
+    };
+  }, [presence]);
+
   // Signed-in driver identity (may be null before auth resolves).
   const [driver] = useState(() => auth.getUser());
   // Real wallet + completed-trip data for the header stat block.
@@ -2779,10 +2897,17 @@ export function DriverDashboardScreen({
         // DPX-MOBILE-003 — hand the shift to the native service, which keeps
         // reporting once Android freezes this WebView's timers. Started here,
         // with the app on screen, because Android 12+ refuses a foreground
-        // service started from the background. Never awaited for its verdict:
-        // a driver must not be blocked from going online because a platform
-        // call failed, and every non-Android platform returns 'not-android'.
-        void startDriverPresence({ vehicleType, acceptingRides: true });
+        // service started from the background. Still not awaited: a driver
+        // must not be blocked from going online because a platform call
+        // failed. But the verdict is now recorded rather than dropped — see
+        // `presence` above for what dropping it cost.
+        void startDriverPresence({ vehicleType, acceptingRides: true }).then(async (outcome) => {
+          setPresence(outcome);
+          // Only worth asking once the service is actually up: the bubble is
+          // drawn by that service, so on any other outcome there is nothing
+          // for the permission to enable.
+          setOverlay(outcome === 'started' ? await hasOverlayPermission() : null);
+        });
       } else {
         await api.driverRides.setAvailability({
           online: false,
@@ -2793,6 +2918,8 @@ export function DriverDashboardScreen({
         // outlives the shift tells the driver they are working when the server
         // has them offline.
         void stopDriverPresence();
+        setPresence(null);
+        setOverlay(null);
       }
       setOnline(next);
     } catch (e: unknown) {
@@ -3183,6 +3310,19 @@ export function DriverDashboardScreen({
                   </button>
                 )}
                 <TripAlertStatus />
+                <DriverPresenceStatus
+                  outcome={presence}
+                  overlayGranted={overlay}
+                  onRequestOverlay={() => {
+                    void requestOverlayPermission().then(({ granted }) => {
+                      // `granted` is only ever true when it was already on and
+                      // no screen was shown. Otherwise Settings has just opened
+                      // and the real answer arrives on the visibilitychange
+                      // re-check, when the driver comes back.
+                      if (granted) setOverlay(true);
+                    });
+                  }}
+                />
               </div>
             )}
           </div>

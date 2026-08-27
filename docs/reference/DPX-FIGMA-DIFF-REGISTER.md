@@ -736,3 +736,22 @@ have been decoration.
 state that this register does not exist in the repository. That was wrong — the check was run from
 the wrong working directory and the failure was read as absence. The file has been here since
 2026-08-07 and this entry is where those removals should have been logged in the first place.
+
+## Driver dashboard — two status lines with no Figma source (2026-08-27)
+
+Logged because both are visible UI that the production Figma does not contain, added in response to
+a device test rather than a design.
+
+| Element                                 | Figma    | Why it exists                                                                                                                                                                                                                                                                                                                                                                   |
+| --------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TripAlertStatus` (DPX-MOBILE-001)      | No frame | An amber line under "You are live" when the phone cannot receive push. A driver whose device never registered for alerts otherwise reads a screen that says they are working and hears nothing.                                                                                                                                                                                 |
+| `DriverPresenceStatus` (DPX-MOBILE-003) | No frame | Two states on one line: a warning when the native presence service is not running (the shift stops being visible to dispatch a few minutes after the app is minimised), and an offer to enable the floating bubble, which is the only route to `SYSTEM_ALERT_WINDOW` — that permission has no runtime dialog, so an app that never offers the prompt can never have it granted. |
+
+Both sit inside the existing green "You are live" card and reuse its tokens (`COLOR_WARNING`,
+`BORDER`, `IT`) rather than introducing a visual language of their own. Neither has been reconciled
+against a Figma frame **because no such frame exists** — they are failure and permission states the
+design did not anticipate. If the driver dashboard is redesigned, these two are the ones to bring
+into the file rather than re-derive.
+
+`DriverPresenceStatus` renders nothing on web and iOS: the presence service is Android-only, and
+`not-android` there is the correct answer rather than a fault to report.

@@ -152,6 +152,73 @@ native code, which is its own piece of work. The bubble today is presence, not d
 is not in the class of `MANAGE_EXTERNAL_STORAGE` or `QUERY_ALL_PACKAGES`. It is granted per-user in
 Settings and is standard for this app category.
 
+### Device test, 2026-08-27 — the first run on hardware, and it failed
+
+The APK was installed and the founder reported two things: **no floating icon**, and **minimising
+still closes the app**. Both have one cause, and it is not in the Java.
+
+**`DriverPresence` was never reachable from JavaScript.** `native-presence.ts` resolved the plugin
+by reading `Capacitor.Plugins['DriverPresence']`, which is always `undefined`:
+
+- `Capacitor.Plugins` is written in exactly one place — `Plugins[pluginName] = proxy` inside
+  `registerPlugin` (`@capacitor/core` 7.6.8, `dist/index.cjs.js:178`).
+- The Android bridge does not touch it. `JSExport.java:91` injects
+  `window.Capacitor.PluginHeaders` and nothing else.
+- Nothing in this repo called `registerPlugin('DriverPresence')`.
+
+`@capacitor/push-notifications` works because that package registers itself. A plugin declared only
+in `MainActivity.registerPlugin(...)` has a native half and no JavaScript half until the app asks
+for one.
+
+So `startDriverPresence()` returned before touching the platform, and every claim in §0.3 about
+runtime behaviour was untested in a stronger sense than that section admitted: the Java did not
+merely go unobserved, it was never invoked. What the driver actually got:
+
+1. **No bubble** — `overlay.show()` is at `DriverPresenceService.java:163`, inside a service that
+   never started.
+2. **The app dies when minimised** — the foreground service is the only thing that would have kept
+   the process alive.
+3. **The original bug was never fixed.** No native heartbeat ran, so a minimised driver still went
+   invisible to dispatch after ~4 minutes. This is the failure DPX-MOBILE-003 exists to remove, and
+   it was silently still present in a build that claimed to fix it.
+
+**Why nothing caught it.** Two reasons, both worth keeping in mind for the next native plugin:
+
+- `resolvePlugin` had no test. `apps/super-app/src/lib/driverPresence.test.ts` mocks
+  `@dripplex/hooks/driver/native-presence` wholesale, so it exercises the wiring above the bug and
+  never the bug. The claims "asserted in `driverPresence.test.ts`" above are true of what those
+  tests cover and say nothing about whether the plugin resolves.
+- The failure reported itself as **`not-android`** — on an Android phone. Anyone reading that
+  outcome, including whoever wrote it, would conclude "expected, this is the web or iOS path".
+
+**Fixed:** `resolvePlugin` now calls `registerPlugin('DriverPresence')`, gated on
+`Capacitor.isPluginAvailable` so a shell built before the plugin existed degrades to the WebView
+heartbeat rather than getting a proxy that rejects. A missing plugin on Android now reports
+`no-plugin`, distinct from `not-android`. `native-presence.spec.ts` covers it with a mock whose
+`Capacitor.Plugins` is empty, as the bridge leaves it — 10 of its 16 tests fail against the
+implementation that shipped.
+
+### Second gap, same test: nothing ever asked for the overlay permission
+
+Independent of the above, and it would have kept the bubble off the screen even with the service
+running. `hasOverlayPermission` and `requestOverlayPermission` were built, exported from
+`driverPresence.ts` — and imported by nobody. `SYSTEM_ALERT_WINDOW` has no runtime dialog, so an app
+that never offers the prompt can never have it granted; the driver would have had to find
+"Display over other apps" in Settings unaided.
+
+The line above — "callers must re-check on resume. Also asserted" — described a contract with no
+caller on either side of it. It is true now: `driverScreen.tsx` offers the prompt once presence is
+running and the permission is absent, and re-checks on `visibilitychange`, which is the only signal
+available when the driver flips a toggle in another app and walks back.
+
+**Also fixed:** the outcome of `startDriverPresence` is no longer discarded with a bare `void`. It
+is rendered next to the push-health line, so a shift that quietly lost its native service says so
+on the driver's own screen instead of looking live.
+
+**Still not verified:** items 2-5 of the device-test list above. This change makes the service
+capable of starting; whether it survives a real shift and this market's OEM battery managers is
+still an open question that only a handset can answer.
+
 ### Still open
 
 Blocker 4 (lease-lapse behaviour) is untouched.
