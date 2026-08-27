@@ -99,10 +99,20 @@ final class DriverPresenceOverlay {
             ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
             : WindowManager.LayoutParams.TYPE_PHONE;
 
+    // An explicit square, not WRAP_CONTENT.
+    //
+    // A view added straight to the WindowManager takes its size from THESE
+    // params; the FrameLayout.LayoutParams that buildBubble() sets on the
+    // container are the wrong type for a window root and are discarded. So
+    // WRAP_CONTENT sized the bubble to the "DX" text — narrow — while the
+    // label's own params forced 56dp of height, and the oval background
+    // stretched into a visible ellipse on the first device that showed it
+    // (2026-08-27). The drawable is an OVAL; only a square box makes it a
+    // circle.
     final WindowManager.LayoutParams params =
         new WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
+            dp(56),
+            dp(56),
             type,
             // NOT_FOCUSABLE so the bubble never steals typing from the app
             // underneath — a driver texting must not have keystrokes eaten by a
@@ -141,8 +151,6 @@ final class DriverPresenceOverlay {
   }
 
   private View buildBubble() {
-    int size = dp(56);
-
     TextView label = new TextView(context);
     label.setText("DX");
     label.setTextColor(Color.WHITE);
@@ -158,9 +166,12 @@ final class DriverPresenceOverlay {
 
     FrameLayout container = new FrameLayout(context);
     container.setBackground(circle);
+    // MATCH_PARENT on both axes: the window is an explicit dp(56) square (see
+    // show()), so the label fills it and centres inside it.
     container.addView(
-        label, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, size));
-    container.setLayoutParams(new FrameLayout.LayoutParams(size, size));
+        label,
+        new FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
     container.setContentDescription("DrippleX — you are online. Tap to open.");
     return container;
   }

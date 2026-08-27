@@ -35,6 +35,7 @@ import { PayoutPanel } from './payoutPanel';
 import { useLocationHeartbeat } from '../lib/locationHeartbeat';
 import {
   hasOverlayPermission,
+  isDriverPresenceRunning,
   requestOverlayPermission,
   startDriverPresence,
   stopDriverPresence,
@@ -2872,6 +2873,48 @@ export function DriverDashboardScreen({
   // The heartbeat's callback is deliberately stable, so it reaches the
   // resolver through a ref rather than restarting the timer on every render.
   resolveVehicleTypeRef.current = resolveVehicleType;
+
+  /**
+   * DPX-MOBILE-003 — keep the native service in step with `online`, however the
+   * driver got there.
+   *
+   * Presence used to be started in one place only: inside the Go-online toggle.
+   * So a driver whose row already said `online: true` — reopened the app,
+   * reinstalled it, or never went offline last night — got a screen saying
+   * "You are live" above a service that had never been started, with the native
+   * reporting reachable only by toggling off and on again. Nothing tells a
+   * driver to do that, and on 2026-08-27 it cost a device test twenty minutes:
+   * the restore path set the toggle from the server and started nothing.
+   *
+   * Safe to run alongside the toggle's own start. A second `start` is a no-op
+   * on the native side — `running.compareAndSet` refuses a second set of
+   * timers and `DriverPresenceOverlay.show()` returns early when the bubble
+   * already exists — and `isDriverPresenceRunning()` skips it in the ordinary
+   * case anyway.
+   */
+  useEffect(() => {
+    if (!online) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        if (await isDriverPresenceRunning()) return;
+        const pos = await getCurrentPosition();
+        const outcome = await startDriverPresence({
+          vehicleType: await resolveVehicleType(),
+          acceptingRides: true,
+          ...(pos ? { latitude: pos.latitude, longitude: pos.longitude } : {}),
+        });
+        if (cancelled) return;
+        setPresence(outcome);
+        setOverlay(outcome === 'started' ? await hasOverlayPermission() : null);
+      } catch {
+        // Presence failing is a degraded shift, not a broken screen.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [online, resolveVehicleType]);
 
   const handleToggle = async () => {
     setToggling(true);
