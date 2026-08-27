@@ -13,7 +13,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
-import android.widget.TextView;
+import android.widget.ImageView;
 
 /**
  * DPX-MOBILE-003 — the floating driver bubble (founder decision, 2026-08-27).
@@ -105,7 +105,7 @@ final class DriverPresenceOverlay {
     // params; the FrameLayout.LayoutParams that buildBubble() sets on the
     // container are the wrong type for a window root and are discarded. So
     // WRAP_CONTENT sized the bubble to the "DX" text — narrow — while the
-    // label's own params forced 56dp of height, and the oval background
+    // child's own params forced 56dp of height, and the oval background
     // stretched into a visible ellipse on the first device that showed it
     // (2026-08-27). The drawable is an OVAL; only a square box makes it a
     // circle.
@@ -150,36 +150,45 @@ final class DriverPresenceOverlay {
     bubble = null;
   }
 
+  /**
+   * The app's own launcher icon, not a lettered circle.
+   *
+   * The first version was a bright green circle with "DX" in white — which at
+   * 56dp, floating over another app during a driver's shift, is the visual
+   * signature of a competitor operating in this market (founder concern,
+   * 2026-08-27). Changing the green alone was not enough: a green circle with
+   * two white letters is the resemblance, not the exact shade.
+   *
+   * `ic_launcher_round` is the mark DrippleX already ships on every home screen
+   * and in every notification, in every density the device might ask for. A
+   * driver seeing it over WhatsApp knows exactly whose it is, and no argument
+   * about whose green it resembles survives it being our actual logo.
+   *
+   * The emerald ring behind it is the brand primary from BRAND-IDENTITY.md
+   * (#0E7A3E, not the brighter #2BAC52 this started with — that one is the
+   * in-app "you are online" green, right for a status dot inside our own screen
+   * and wrong for something floating over everyone else's).
+   */
   private View buildBubble() {
-    TextView label = new TextView(context);
-    label.setText("DX");
-    label.setTextColor(Color.WHITE);
-    label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f);
-    label.setGravity(Gravity.CENTER);
-    label.setTypeface(label.getTypeface(), android.graphics.Typeface.BOLD);
+    ImageView mark = new ImageView(context);
+    mark.setImageResource(R.mipmap.ic_launcher_round);
+    mark.setScaleType(ImageView.ScaleType.FIT_CENTER);
 
     GradientDrawable circle = new GradientDrawable();
     circle.setShape(GradientDrawable.OVAL);
-    // Emerald Green #0E7A3E — the DrippleX brand primary from
-    // docs/BRAND-IDENTITY.md, not the brighter #2BAC52 this used at first.
-    //
-    // #2BAC52 is the in-app "you are online" green, which is the right colour
-    // for a status dot inside our own screen and the wrong one for a circle
-    // that floats over every other app on the phone. At that size, in that
-    // position, a bright mint circle is the visual signature of a competitor
-    // operating in this market (founder concern, 2026-08-27). The brand primary
-    // is a distinctly darker emerald and is the colour DrippleX actually owns.
     circle.setColor(Color.parseColor("#0E7A3E"));
     circle.setStroke(dp(2), Color.parseColor("#66FFFFFF"));
 
     FrameLayout container = new FrameLayout(context);
     container.setBackground(circle);
-    // MATCH_PARENT on both axes: the window is an explicit dp(56) square (see
-    // show()), so the label fills it and centres inside it.
-    container.addView(
-        label,
+    // Inset by dp(6) on each side so the emerald ring stays visible around the
+    // mark rather than the icon covering the whole circle. The window itself is
+    // an explicit dp(56) square — see show().
+    FrameLayout.LayoutParams markParams =
         new FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT);
+    markParams.setMargins(dp(6), dp(6), dp(6), dp(6));
+    container.addView(mark, markParams);
     container.setContentDescription("DrippleX — you are online. Tap to open.");
     return container;
   }
