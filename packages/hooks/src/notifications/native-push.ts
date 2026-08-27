@@ -91,37 +91,73 @@ export async function createNativeNotificationChannel(
 
 const NATIVE_REGISTRATION_TIMEOUT_MS = 15_000;
 
-/** Requests permission and resolves the native FCM/APNs registration
- * token via @capacitor/push-notifications. Resolves null (never rejects)
- * on denied permission, a registration error, or timeout — callers treat
- * "no token" as a normal, silent outcome, not a failure to surface. */
-export async function obtainNativeToken(): Promise<string | null> {
+/**
+ * Why a device ended up without a push token.
+ *
+ * Added 2026-08-27 after a field test where a driver's phone silently never
+ * registered and there was no way, from the device or the server, to tell
+ * which of these had happened. Every one of them used to collapse to `null`.
+ *
+ * - `granted` — a token was obtained.
+ * - `permission-denied` — the OS said no. On Android 13+ a second refusal is
+ *   permanent and shows no dialog, so "no prompt appeared" is consistent with
+ *   this rather than evidence against it.
+ * - `registration-error` — the OS accepted, FCM/APNs refused. Usually a
+ *   missing or wrong `google-services.json`, or no Play Services on the
+ *   handset.
+ * - `timeout` — neither callback fired inside the window. Typically no network
+ *   at the moment of registration.
+ */
+export type NativeTokenReason = 'granted' | 'permission-denied' | 'registration-error' | 'timeout';
+
+export interface NativeTokenResult {
+  token: string | null;
+  reason: NativeTokenReason;
+}
+
+/**
+ * Requests permission and resolves the native FCM/APNs registration token,
+ * **with the reason** when there isn't one.
+ *
+ * Never rejects. The reason exists so a caller can tell the person something
+ * true — "notifications are switched off" and "this phone could not reach
+ * Firebase" need different actions from them, and are indistinguishable from
+ * a bare null.
+ */
+export async function obtainNativeTokenDetailed(): Promise<NativeTokenResult> {
   const { PushNotifications } = await import('@capacitor/push-notifications');
   const permission = await PushNotifications.requestPermissions();
   if (permission.receive !== 'granted') {
-    return null;
+    return { token: null, reason: 'permission-denied' };
   }
 
-  return await new Promise<string | null>((resolve) => {
+  return await new Promise<NativeTokenResult>((resolve) => {
     let settled = false;
-    const finish = (token: string | null): void => {
+    const finish = (result: NativeTokenResult): void => {
       if (settled) {
         return;
       }
       settled = true;
-      resolve(token);
+      resolve(result);
     };
     void PushNotifications.addListener('registration', (token) => {
-      finish(token.value);
+      finish({ token: token.value, reason: 'granted' });
     });
     void PushNotifications.addListener('registrationError', () => {
-      finish(null);
+      finish({ token: null, reason: 'registration-error' });
     });
     void PushNotifications.register();
     setTimeout(() => {
-      finish(null);
+      finish({ token: null, reason: 'timeout' });
     }, NATIVE_REGISTRATION_TIMEOUT_MS);
   });
+}
+
+/** The token alone, for callers that have nothing useful to do with the
+ * reason. Resolves null (never rejects) on denied permission, a registration
+ * error, or timeout. */
+export async function obtainNativeToken(): Promise<string | null> {
+  return (await obtainNativeTokenDetailed()).token;
 }
 
 export interface NativeNotificationTapPayload {

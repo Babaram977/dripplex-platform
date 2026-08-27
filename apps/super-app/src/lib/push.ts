@@ -23,7 +23,7 @@ import {
   createNativeNotificationChannel,
   detectNativePlatform,
   listenForNativeNotificationTaps,
-  obtainNativeToken,
+  obtainNativeTokenDetailed,
 } from '@dripplex/hooks/notifications/native-push';
 import { CALL_ALERT_ANDROID_CHANNEL_ID, RIDE_ALERT_ANDROID_CHANNEL_ID } from '@dripplex/types';
 
@@ -175,11 +175,106 @@ function clearStored(): void {
  * sign-out and back in, would otherwise race two prompts and two POSTs. */
 let inFlight = false;
 
+/** Whether the stored device id has been checked against the server this
+ * session. Registration is called on every screen change, and one confirmation
+ * is enough — without this the check would be a request per navigation. */
+let verifiedThisSession = false;
+
+export type PushRegistrationOutcome =
+  | 'registered'
+  | 'not-native'
+  | 'not-signed-in'
+  | 'permission-denied'
+  | 'registration-error'
+  | 'timeout'
+  | 'already'
+  | 'failed';
+
 export interface PushRegistrationResult {
-  /** Why nothing happened, when nothing happened — for logging and tests, not
-   * for the UI. A person who declines notifications should not be nagged. */
-  outcome: 'registered' | 'not-native' | 'not-signed-in' | 'no-token' | 'already' | 'failed';
+  outcome: PushRegistrationOutcome;
   deviceId?: string;
+}
+
+/**
+ * The last thing registration did on this device, and whether a driver can
+ * actually be reached.
+ *
+ * This exists because of a field test on 2026-08-27. A driver's phone never
+ * registered a push token; the server had no device row, so
+ * `FirebasePushProvider` returned success and sent nothing; and every one of
+ * the six ways `registerPushDevice` can give up returned silently. Nobody —
+ * driver, founder or engineer — could see which had happened, and the ride
+ * offer sat pending on a phone that never rang.
+ *
+ * The original silence was deliberate and half right: somebody who declines
+ * notifications should not be nagged. But "you chose this" and "this is
+ * broken" are different facts, and collapsing them cost a day. A driver who is
+ * online and unreachable is entitled to know.
+ */
+let lastResult: PushRegistrationResult | null = null;
+
+const resultListeners = new Set<(result: PushRegistrationResult) => void>();
+
+function publishResult(result: PushRegistrationResult): PushRegistrationResult {
+  lastResult = result;
+  for (const listener of [...resultListeners]) listener(result);
+  return result;
+}
+
+/** What registration last did, or null before it has run this session. */
+export function lastPushRegistration(): PushRegistrationResult | null {
+  return lastResult;
+}
+
+export function onPushRegistrationChange(
+  listener: (result: PushRegistrationResult) => void,
+): () => void {
+  resultListeners.add(listener);
+  return () => {
+    resultListeners.delete(listener);
+  };
+}
+
+/**
+ * Whether this outcome means the person is reachable when the app is shut.
+ *
+ * `not-native` counts as reachable-enough: a browser has no push and nothing is
+ * wrong with the account, so telling a desktop user their alerts are broken
+ * would be false.
+ */
+export function pushOutcomeIsHealthy(outcome: PushRegistrationOutcome): boolean {
+  return outcome === 'registered' || outcome === 'already' || outcome === 'not-native';
+}
+
+/** One line a driver can act on. Null when there is nothing wrong to say. */
+export function pushOutcomeMessage(outcome: PushRegistrationOutcome): string | null {
+  switch (outcome) {
+    case 'permission-denied':
+      return 'Notifications are switched off for DrippleX. Turn them on in Settings or you will not hear new trips.';
+    case 'registration-error':
+      return 'This phone could not register for alerts. Check your connection and Google Play services, then retry.';
+    case 'timeout':
+      return 'Registering for alerts timed out. Check your connection and retry.';
+    case 'not-signed-in':
+      return 'Sign in again to receive trip alerts.';
+    case 'failed':
+      return 'Could not set up trip alerts on this phone. Retry, or sign out and back in.';
+    default:
+      return null;
+  }
+}
+
+/**
+ * Force a fresh registration attempt, ignoring the "already done" shortcut.
+ *
+ * The shortcut is keyed on localStorage, so a device whose server-side row was
+ * removed — or which never had one because an earlier attempt failed silently
+ * — would otherwise never try again for the life of the install.
+ */
+export async function retryPushRegistration(): Promise<PushRegistrationResult> {
+  verifiedThisSession = false;
+  clearStored();
+  return await registerPushDevice();
 }
 
 /**
@@ -197,20 +292,45 @@ export interface PushRegistrationResult {
  */
 export async function registerPushDevice(): Promise<PushRegistrationResult> {
   if (inFlight) {
+    // Not published: a concurrent call is not an outcome, and overwriting the
+    // real one with it would hide whatever the in-flight attempt concludes.
     return { outcome: 'already' };
   }
   if (!auth.isLoggedIn()) {
-    return { outcome: 'not-signed-in' };
+    return publishResult({ outcome: 'not-signed-in' });
   }
 
   const userId = auth.getUser()?.id;
   if (!userId) {
-    return { outcome: 'not-signed-in' };
+    return publishResult({ outcome: 'not-signed-in' });
   }
 
   const stored = readStored();
   if (stored && stored.userId === userId) {
-    return { outcome: 'already', deviceId: stored.id };
+    // Trust it once, then check it. localStorage saying "registered" is not
+    // the same as the server holding a row: an earlier attempt could have
+    // written the id and had the row deactivated since, and on 2026-08-27 a
+    // driver sat online and unreachable for exactly that class of reason. The
+    // shortcut is what makes this function cheap to call on every screen
+    // change, so the verification runs once per session rather than per call.
+    if (verifiedThisSession) {
+      return publishResult({ outcome: 'already', deviceId: stored.id });
+    }
+    const live = await api.devices
+      .list()
+      .catch(() => null as Awaited<ReturnType<typeof api.devices.list>> | null);
+    if (live === null) {
+      // Offline, or the endpoint is unhappy. Not evidence of anything — assume
+      // the stored id is good rather than tearing down a working registration.
+      return publishResult({ outcome: 'already', deviceId: stored.id });
+    }
+    if (live.some((device) => device.id === stored.id)) {
+      verifiedThisSession = true;
+      return publishResult({ outcome: 'already', deviceId: stored.id });
+    }
+    // The row is gone. Fall through and register again rather than believing
+    // localStorage for the life of the install.
+    clearStored();
   }
 
   inFlight = true;
@@ -219,7 +339,7 @@ export async function registerPushDevice(): Promise<PushRegistrationResult> {
     if (!platform) {
       // Plain browser. Web push needs the Firebase JS SDK and a VAPID key,
       // which this app does not carry — customer-web is where that lives.
-      return { outcome: 'not-native' };
+      return publishResult({ outcome: 'not-native' });
     }
 
     // A different account was registered on this handset. Release that row
@@ -230,18 +350,18 @@ export async function registerPushDevice(): Promise<PushRegistrationResult> {
       clearStored();
     }
 
-    const token = await obtainNativeToken();
+    const { token, reason } = await obtainNativeTokenDetailed();
     if (!token) {
-      // Permission denied, registration error, or the 15s timeout. All three
-      // are silent by design.
-      return { outcome: 'no-token' };
+      // Each of these used to be the same silent `no-token`. They need
+      // different things from the driver, so they are now different outcomes.
+      return publishResult({ outcome: reason === 'granted' ? 'failed' : reason });
     }
 
     const device = await api.devices.register({ platform, token });
     writeStored(device.id, userId);
-    return { outcome: 'registered', deviceId: device.id };
+    return publishResult({ outcome: 'registered', deviceId: device.id });
   } catch {
-    return { outcome: 'failed' };
+    return publishResult({ outcome: 'failed' });
   } finally {
     inFlight = false;
   }
@@ -257,6 +377,7 @@ export async function registerPushDevice(): Promise<PushRegistrationResult> {
  * Called before the tokens are cleared, since the request needs to authenticate.
  */
 export async function deregisterPushDevice(): Promise<void> {
+  verifiedThisSession = false;
   const stored = readStored();
   if (!stored) {
     return;
@@ -318,7 +439,10 @@ export async function listenForCallNotificationTaps(): Promise<(() => void) | nu
   }
 }
 
-/** Test seam — resets the module-level guard between cases. */
+/** Test seam — resets the module-level guard and the recorded outcome. */
 export function __resetPushRegistrationForTests(): void {
   inFlight = false;
+  verifiedThisSession = false;
+  lastResult = null;
+  resultListeners.clear();
 }

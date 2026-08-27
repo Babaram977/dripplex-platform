@@ -23,6 +23,13 @@ import { needsCashConfirmation } from '../lib/cashConfirmation';
 import { referralShareUrl } from '../lib/referralLink';
 import { AccountPageHost, AccountRows, type AccountPage } from './accountPages';
 import { playNotificationSound, startIncomingRideAlarm, stopIncomingRideAlarm } from '../lib/sound';
+import {
+  lastPushRegistration,
+  onPushRegistrationChange,
+  pushOutcomeIsHealthy,
+  pushOutcomeMessage,
+  retryPushRegistration,
+} from '../lib/push';
 import { SoundSettings } from './soundSettings';
 import { PayoutPanel } from './payoutPanel';
 import { useLocationHeartbeat } from '../lib/locationHeartbeat';
@@ -60,6 +67,66 @@ import type {
 
 const PP = "'Poppins',sans-serif";
 const IT = "'Inter',sans-serif";
+
+/**
+ * DPX-MOBILE-001 — whether this phone can actually be reached.
+ *
+ * Added 2026-08-27 after a field test. A driver was online, an offer was
+ * created for them, and their phone never rang — because it had no push token
+ * registered, and every one of the ways that can happen failed silently. The
+ * driver saw "You are live" throughout. So did we.
+ *
+ * Silent was a deliberate choice once, and half of it was right: a person who
+ * declines notifications should not be nagged. But "you turned this off" and
+ * "this is broken" are different facts, and a driver who is online and
+ * unreachable is the one person who most needs to know which.
+ *
+ * Renders nothing while push is healthy — including in a plain browser, where
+ * there is no push and nothing is wrong.
+ */
+export function TripAlertStatus() {
+  const [result, setResult] = useState(lastPushRegistration);
+  const [retrying, setRetrying] = useState(false);
+
+  useEffect(() => onPushRegistrationChange(setResult), []);
+
+  if (!result || pushOutcomeIsHealthy(result.outcome)) return null;
+  const message = pushOutcomeMessage(result.outcome);
+  if (!message) return null;
+
+  return (
+    <div
+      className="mt-2 flex flex-col items-center gap-2 rounded-xl px-3 py-2"
+      style={{ background: 'rgba(245,158,11,.10)', border: `1px solid ${COLOR_WARNING}33` }}
+    >
+      <p className="text-center" style={{ fontFamily: IT, fontSize: 12, color: COLOR_WARNING }}>
+        {message}
+      </p>
+      <button
+        onClick={() => {
+          setRetrying(true);
+          void retryPushRegistration().finally(() => setRetrying(false));
+        }}
+        disabled={retrying}
+        className="rounded-lg px-3 py-1.5 text-[12px] font-semibold transition-all active:scale-95"
+        style={{
+          background: 'rgba(255,255,255,.08)',
+          border: `1px solid ${BORDER}`,
+          color: '#FFF',
+          fontFamily: IT,
+          cursor: retrying ? 'wait' : 'pointer',
+        }}
+      >
+        {retrying ? 'Checking…' : 'Retry alerts'}
+      </button>
+      {/* The exact outcome, small and last. A driver does not need it; the
+          person they call when it still does not work does. */}
+      <p style={{ fontFamily: IT, fontSize: 10, color: 'rgba(255,255,255,.35)' }}>
+        alerts: {result.outcome}
+      </p>
+    </div>
+  );
+}
 const NAVY_BASE = '#0A1628';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -3115,6 +3182,7 @@ export function DriverDashboardScreen({
                     Finish registration
                   </button>
                 )}
+                <TripAlertStatus />
               </div>
             )}
           </div>
