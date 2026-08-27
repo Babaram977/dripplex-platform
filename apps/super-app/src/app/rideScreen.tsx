@@ -1909,6 +1909,85 @@ export function FindingDriverScreen({
   );
 }
 
+/**
+ * What the passenger sees when the trip ends without them ending it.
+ *
+ * Every post-assignment screen renders this the moment the ride reaches
+ * CANCELLED. Before it existed, none of the three handled that status at all:
+ * `useLiveRide` fetched the cancelled ride faithfully and the screen had no
+ * branch for it, so it kept showing "Driver on the way", the driver's name,
+ * their plate and the trip code — for a car that was never coming. Reported
+ * from a real device on 2026-08-27.
+ *
+ * A render guard rather than a `useRideStatusAdvance` handler on purpose: a
+ * navigation callback fires once on a status transition, so a passenger who
+ * opens the app *after* the cancellation lands on the phantom screen with no
+ * transition left to fire. This is true whenever the ride is cancelled, however
+ * the screen got there.
+ *
+ * `cancelledBy` decides the wording because the passenger already knows what
+ * they themselves did; being told "your driver cancelled" when they cancelled
+ * reads as the app losing track. Support and Operations cancellations are named
+ * as such rather than blamed on the driver.
+ */
+function RideCancelledNotice({
+  ride,
+  onDone,
+}: {
+  ride: CustomerRideDto;
+  onDone: () => void;
+}): React.JSX.Element {
+  const byDriver = ride.cancelledBy === 'DRIVER';
+  const byCustomer = ride.cancelledBy === 'CUSTOMER';
+  const title = byCustomer
+    ? 'Trip cancelled'
+    : byDriver
+      ? 'Your driver cancelled'
+      : 'This trip was cancelled';
+  const body = byCustomer
+    ? 'Nothing has been charged.'
+    : byDriver
+      ? 'They are no longer on the way. Nothing has been charged — book again and we will find you another driver.'
+      : 'Nothing has been charged. You can book again whenever you are ready.';
+
+  return (
+    <div
+      className="absolute inset-0 flex flex-col items-center justify-center px-6"
+      style={{ background: NAVY_DEEP }}
+    >
+      <div
+        className="mb-5 flex h-16 w-16 items-center justify-center rounded-full text-[30px]"
+        style={{ background: 'rgba(239,68,68,.12)' }}
+        aria-hidden="true"
+      >
+        🚫
+      </div>
+      <p
+        className="mb-2 text-center text-[20px] font-bold"
+        style={{ fontFamily: PP, color: '#fff' }}
+      >
+        {title}
+      </p>
+      <p className="mb-2 text-center text-[14px]" style={{ fontFamily: IT, color: MUTED }}>
+        {body}
+      </p>
+      {/* Only when the driver actually gave one. An empty quotation mark under
+          a cancellation is worse than no reason at all. */}
+      {!byCustomer && ride.cancellationReason ? (
+        <p
+          className="mb-2 text-center text-[13px]"
+          style={{ fontFamily: IT, color: 'rgba(255,255,255,.45)' }}
+        >
+          Reason given: {ride.cancellationReason}
+        </p>
+      ) : null}
+      <div className="mt-6 w-full max-w-[320px]">
+        <GreenButton label="Book another ride" onClick={onDone} />
+      </div>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // RIDE-006 — DRIVER ASSIGNED
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1938,6 +2017,53 @@ export function DriverAssignedScreen({
   const assigned = !!ride?.driverId;
   const typeLabel = ride ? RIDE_TYPE_LABEL[ride.rideType] : null;
   useRideStatusAdvance(ride?.status, { ARRIVED: onArrived, IN_PROGRESS: onStarted });
+
+  /**
+   * Cancelling the trip — for real, on the server.
+   *
+   * The red button next to "Message driver" used to be wired straight to
+   * `onCancel`, which is `go('ridehome')` and nothing else. It never called
+   * POST /customer/rides/:id/cancel. The passenger saw the app leave the trip
+   * screen and reasonably concluded they had cancelled; on the server the ride
+   * was still live, the driver still assigned and still driving to them, and
+   * the fare still collectable. Then the trip screen pulled them back, because
+   * the trip had in fact never ended. Reported from a real device 2026-08-27.
+   *
+   * FindingDriverScreen has always called the API on its own cancel. Only this
+   * screen — the one that exists *after* a driver is committed, where
+   * cancelling matters most — did not.
+   */
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+
+  const confirmCancel = async () => {
+    if (cancelling) return;
+    if (!rideId) {
+      // No id means nothing can be cancelled server-side. Leaving quietly would
+      // repeat the original bug in a smaller way.
+      setCancelError('We lost track of this trip. Reopen it from your home screen.');
+      return;
+    }
+    setCancelling(true);
+    setCancelError(null);
+    try {
+      await api.rides.cancel(rideId);
+      onCancel?.();
+    } catch (e) {
+      // Never navigate away on failure: that is precisely how a passenger comes
+      // to believe a live trip was cancelled.
+      setCancelError(
+        e instanceof Error ? e.message : 'We could not cancel the trip. Please try again.',
+      );
+    } finally {
+      setCancelling(false);
+    }
+  };
+
+  if (ride?.status === 'CANCELLED') {
+    return <RideCancelledNotice ride={ride} onDone={onCancel ?? onBack} />;
+  }
 
   return (
     <div
@@ -2094,7 +2220,11 @@ export function DriverAssignedScreen({
               Message {ride?.driverName ? ride.driverName.split(' ')[0] : 'driver'}
             </button>
             <button
-              onClick={onCancel}
+              onClick={() => {
+                setCancelError(null);
+                setConfirmingCancel(true);
+              }}
+              aria-label="Cancel trip"
               className="flex h-12 items-center justify-center rounded-2xl px-4 transition-all active:scale-[.97]"
               style={{ background: 'rgba(239,68,68,.08)', border: '1px solid rgba(239,68,68,.2)' }}
             >
@@ -2117,6 +2247,60 @@ export function DriverAssignedScreen({
           <ShareTripRow onShare={onShare} />
         </div>
       </BottomSheet>
+
+      {/* Cancelling once a driver is committed is worth one deliberate tap: the
+          driver has already been dispatched and is spending fuel getting here.
+          It also gives the failure somewhere honest to appear — the old button
+          navigated away unconditionally and could not report anything. */}
+      {confirmingCancel && (
+        <div
+          className="absolute inset-0 z-50 flex items-end"
+          style={{ background: 'rgba(0,0,0,.6)' }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Cancel this trip?"
+        >
+          <div
+            className="w-full rounded-t-3xl p-6"
+            style={{ background: NAVY_SURFACE, border: `1px solid ${BORDER}` }}
+          >
+            <p className="mb-2 text-[18px] font-bold" style={{ fontFamily: PP, color: '#fff' }}>
+              Cancel this trip?
+            </p>
+            <p className="mb-5 text-[14px]" style={{ fontFamily: IT, color: MUTED }}>
+              {ride?.driverName
+                ? `${ride.driverName} is on the way to you. Nothing has been charged.`
+                : 'Your driver is on the way to you. Nothing has been charged.'}
+            </p>
+            {cancelError && (
+              <p className="mb-4 text-[13px]" style={{ fontFamily: IT, color: '#EF4444' }}>
+                {cancelError}
+              </p>
+            )}
+            <button
+              onClick={() => void confirmCancel()}
+              disabled={cancelling}
+              className="mb-3 h-12 w-full rounded-2xl text-[15px] font-semibold transition-all active:scale-[.98] disabled:opacity-60"
+              style={{
+                background: 'rgba(239,68,68,.12)',
+                border: '1px solid rgba(239,68,68,.35)',
+                color: '#EF4444',
+                fontFamily: PP,
+              }}
+            >
+              {cancelling ? 'Cancelling…' : 'Yes, cancel the trip'}
+            </button>
+            <button
+              onClick={() => setConfirmingCancel(false)}
+              disabled={cancelling}
+              className="h-12 w-full rounded-2xl text-[15px] font-semibold disabled:opacity-60"
+              style={{ background: 'rgba(255,255,255,.06)', color: '#fff', fontFamily: PP }}
+            >
+              Keep my trip
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2127,6 +2311,7 @@ export function DriverAssignedScreen({
 export function DriverArrivedScreen({
   onBack,
   onStart,
+  onCancelled,
   onShare,
   rideId,
   onMessageDriver,
@@ -2135,6 +2320,10 @@ export function DriverArrivedScreen({
   /** Fired when the *driver* starts the trip, not when the passenger taps
    * anything — the passenger cannot start their own ride. */
   onStart: () => void;
+  /** Where to send the passenger when the trip is cancelled out from under
+   * them. Falls back to onBack, which is the previous trip screen and a worse
+   * destination — the trip no longer exists. */
+  onCancelled?: () => void;
   onShare?: () => void;
   rideId?: string;
   onMessageDriver?: (rideId: string, driverName: string | null) => void;
@@ -2143,10 +2332,20 @@ export function DriverArrivedScreen({
   const typeLabel = ride ? RIDE_TYPE_LABEL[ride.rideType] : null;
   const [pulse, setPulse] = useState(true);
   useRideStatusAdvance(ride?.status, { IN_PROGRESS: onStart });
+
   useEffect(() => {
     const t = setInterval(() => setPulse((p) => !p), 1200);
     return () => clearInterval(t);
   }, []);
+
+  // Below every hook in this component, deliberately. React counts hooks per
+  // render, so returning early from above `useEffect` renders fewer of them the
+  // moment a ride flips to CANCELLED and crashes the screen — "Rendered fewer
+  // hooks than expected". A white screen is a worse failure than the stuck one
+  // this guard exists to fix.
+  if (ride?.status === 'CANCELLED') {
+    return <RideCancelledNotice ride={ride} onDone={onCancelled ?? onBack} />;
+  }
 
   return (
     <div
@@ -2274,6 +2473,7 @@ export function DriverArrivedScreen({
 export function RideInProgressScreen({
   onBack,
   onComplete,
+  onCancelled,
   onSOS,
   onShare,
   rideId,
@@ -2282,6 +2482,10 @@ export function RideInProgressScreen({
   onBack: () => void;
   /** Fired when the driver completes the trip on the server — not on a timer. */
   onComplete: () => void;
+  /** Where to send the passenger when the trip is cancelled out from under
+   * them. Reachable here because Operations can cancel a stranded ride from
+   * the console after it has already started. */
+  onCancelled?: () => void;
   onSOS?: () => void;
   onShare?: () => void;
   rideId?: string;
@@ -2318,6 +2522,15 @@ export function RideInProgressScreen({
   const remaining = totalMin !== null ? Math.max(0, Math.round(totalMin * (1 - progress))) : null;
   const distLeft = totalKm !== null ? (totalKm * (1 - progress)).toFixed(1) : '—';
   const fareLabel = ride ? naira(ride.totalFare) : '—';
+
+  // Below every hook in this component, deliberately. React counts hooks per
+  // render, so returning early from above `useState`/`useEffect` renders fewer
+  // of them the moment a ride flips to CANCELLED and crashes the screen —
+  // "Rendered fewer hooks than expected". A white screen is a worse failure
+  // than the stuck one this guard exists to fix.
+  if (ride?.status === 'CANCELLED') {
+    return <RideCancelledNotice ride={ride} onDone={onCancelled ?? onBack} />;
+  }
 
   return (
     <div

@@ -1407,6 +1407,7 @@ function AppShell() {
       <DriverArrivedScreen
         onBack={() => goBack('rideassigned')}
         onStart={() => go('rideinprogress')}
+        onCancelled={() => go('ridehome')}
         onShare={() => go('rideshare')}
         rideId={activeCustomerRideId}
         onMessageDriver={(rideId, driverName) => {
@@ -1428,6 +1429,7 @@ function AppShell() {
         // to 'ridecomplete', which is why rides completed without charging
         // anyone and why tipping then failed the backend's paid-first guard.
         onComplete={() => go('ridepayment')}
+        onCancelled={() => go('ridehome')}
         onSOS={() => go('ridesos')}
         onShare={() => go('rideshare')}
         rideId={activeCustomerRideId}
