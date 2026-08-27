@@ -160,8 +160,16 @@ final class DriverPresenceOverlay {
 
     GradientDrawable circle = new GradientDrawable();
     circle.setShape(GradientDrawable.OVAL);
-    // DrippleX green, the same family the app's own online state uses.
-    circle.setColor(Color.parseColor("#2BAC52"));
+    // Emerald Green #0E7A3E — the DrippleX brand primary from
+    // docs/BRAND-IDENTITY.md, not the brighter #2BAC52 this used at first.
+    //
+    // #2BAC52 is the in-app "you are online" green, which is the right colour
+    // for a status dot inside our own screen and the wrong one for a circle
+    // that floats over every other app on the phone. At that size, in that
+    // position, a bright mint circle is the visual signature of a competitor
+    // operating in this market (founder concern, 2026-08-27). The brand primary
+    // is a distinctly darker emerald and is the colour DrippleX actually owns.
+    circle.setColor(Color.parseColor("#0E7A3E"));
     circle.setStroke(dp(2), Color.parseColor("#66FFFFFF"));
 
     FrameLayout container = new FrameLayout(context);
