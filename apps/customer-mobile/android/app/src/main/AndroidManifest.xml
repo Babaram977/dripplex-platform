@@ -110,10 +110,21 @@
           and declaring CAMERA while ungranted can actually break
           ACTION_IMAGE_CAPTURE — so adding it now would risk the capture that
           already works. Add it with the Smile Identity work, where face
-          verification opens a live stream in-app and genuinely requires it,
-          together with a runtime permission request (Capacitor's WebView does
-          not grant getUserMedia on its own). Resolved 2026-08-21; see
+          verification opens a live stream in-app and genuinely requires it.
+          Resolved 2026-08-21; see
           docs/store/DPX-MOBILE-002-PRIVACY-PERMISSIONS-AUDIT.md.
+
+          Correction, 2026-08-27: that entry used to end "together with a
+          runtime permission request (Capacitor's WebView does not grant
+          getUserMedia on its own)". Checked against the pinned bridge rather
+          than assumed, and it is wrong for this version.
+          BridgeWebChromeClient.onPermissionRequest (@capacitor/android 7.6.8,
+          lines 102-124) maps VIDEO_CAPTURE to CAMERA and AUDIO_CAPTURE to
+          RECORD_AUDIO + MODIFY_AUDIO_SETTINGS and launches the runtime request
+          itself. What it cannot do is request a permission the manifest never
+          declared — Android denies those instantly, with no dialog — which is
+          why the two lines at the end of this file are the whole of the native
+          work for calling. The CAMERA decision itself is unchanged.
     -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -147,4 +158,30 @@
         market would get nothing.
     -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!--
+        DPX-MOBILE-002 — in-app voice calls between the two parties of a live
+        job. The audio is WebRTC inside the WebView (livekit-client), so the
+        capture request comes from the page, not from native code: Capacitor's
+        BridgeWebChromeClient sees AUDIO_CAPTURE and launches the runtime
+        request for exactly this pair. Declaring them is therefore the entire
+        native change — but it IS required, because Android denies a runtime
+        request for an undeclared permission instantly and without a dialog,
+        which surfaces as a call that fails to connect with nothing shown.
+
+        RECORD_AUDIO is dangerous and prompts; MODIFY_AUDIO_SETTINGS is normal
+        and does not. Both are named by the bridge, so both are declared.
+
+        Microphone access is bounded by the call: the track is published on
+        joining a room and the room is left when the call ends, including when
+        it ends because the connection dropped. Nothing records, and no audio
+        reaches a DrippleX server — LiveKit moves the media and the backend
+        holds only who called whom, when, and for how long.
+
+        Play Data safety: this adds "Audio · Voice or sound recordings" as
+        collected-but-not-stored, in-app functionality, not shared. The console
+        entry has to be updated with the build that carries this permission.
+    -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 </manifest>

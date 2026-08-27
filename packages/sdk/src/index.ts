@@ -27,6 +27,8 @@ export {
   type ListRidesQuery,
   type NearbyDriversQuery,
 } from './rides/customer-ride-client.js';
+
+export { CallsClient } from './calls/calls-client.js';
 export {
   AdminUtilitiesClient,
   type AdminUtilityPurchaseQuery,

@@ -1,5 +1,6 @@
 import { AddressClient } from '../address/address-client.js';
 import { AuthApi } from '../auth/auth-api.js';
+import { CallsClient } from '../calls/calls-client.js';
 import { CartClient } from '../cart/cart-client.js';
 import { HttpClient } from '../client/http-client.js';
 import { AdminCommercialCreditSettingsClient } from '../commercial/admin-commercial-credit-settings-client.js';
@@ -94,6 +95,10 @@ export class DripplexClient {
   public readonly riderDelivery: RiderDeliveryClient;
   public readonly adminDelivery: AdminDeliveryClient;
   public readonly rides: CustomerRideClient;
+  /** DPX-MOBILE-002 — voice calls between the two parties of a live job.
+   * Not role-scoped: a customer, a driver and a rider all call through the
+   * same routes, and who they may reach is decided by the job, not the SDK. */
+  public readonly calls: CallsClient;
   public readonly driverRides: DriverRideClient;
   public readonly driverProfile: DriverProfileClient;
   public readonly driverRideContact: DriverRideContactClient;
@@ -173,6 +178,7 @@ export class DripplexClient {
     this.riderDelivery = new RiderDeliveryClient(this.http);
     this.adminDelivery = new AdminDeliveryClient(this.http);
     this.rides = new CustomerRideClient(this.http);
+    this.calls = new CallsClient(this.http);
     this.driverRides = new DriverRideClient(this.http);
     this.driverProfile = new DriverProfileClient(this.http);
     this.driverRideContact = new DriverRideContactClient(this.http);

@@ -1,7 +1,8 @@
 # DPX-MOBILE-002 — In-App Voice Calling (design)
 
-**Status:** 🔒 **Architecture approved (founder, 2026-08-26). Design — no code written.**
-**Date:** 2026-08-26
+**Status:** 🔒 **Architecture approved (founder, 2026-08-26). Stage 1 client built 2026-08-27 —
+see §11. Not yet exercised on a device.**
+**Date:** 2026-08-26, §11 added 2026-08-27
 **Depends on:** `DPX-MOBILE-001` for Stage 2 (background/incoming). Stage 1 does not.
 
 ---
@@ -169,6 +170,12 @@ the Privacy Policy (`DPX-LEGAL-001` §18) and the Play Data Safety declaration.
 
 ### 5.1 Microphone permission is declared nowhere
 
+**Resolved 2026-08-27** — `RECORD_AUDIO`, `MODIFY_AUDIO_SETTINGS` and
+`NSMicrophoneUsageDescription` are now declared, `verify-config.mjs` fails the build without any of
+them, and the store declarations were revised in the same change. The Privacy Policy line and the
+Play Console Data safety entry are **still outstanding** — see §11. The original text follows,
+because the reasoning is what makes the check worth keeping.
+
 `AndroidManifest.xml` declares `INTERNET`, `POST_NOTIFICATIONS`, `ACCESS_FINE_LOCATION` and
 `ACCESS_COARSE_LOCATION`. **There is no `RECORD_AUDIO`.** iOS `Info.plist` has no
 `NSMicrophoneUsageDescription`.
@@ -187,10 +194,21 @@ launch for no visible reason is a driver who cannot be called.
 
 ### 5.2 The WebView must be granted the microphone
 
-Capacitor's `BridgeWebChromeClient` handles `onPermissionRequest`, but the WebView will only be
-granted `RESOURCE_AUDIO_CAPTURE` if the app itself holds `RECORD_AUDIO` — the same silent-denial
-pattern already documented for geolocation in `DPX-MOBILE-002-PRIVACY-PERMISSIONS-AUDIT.md`.
-Android denies a runtime request for a permission absent from the manifest without prompting.
+**Confirmed against the pinned bridge, 2026-08-27, and it is better than feared.**
+`BridgeWebChromeClient.onPermissionRequest` (`@capacitor/android` 7.6.8, lines 102-124) maps
+`AUDIO_CAPTURE` to `RECORD_AUDIO` + `MODIFY_AUDIO_SETTINGS` and **launches the runtime request
+itself** — no plugin and no native code of ours. On iOS, `WebViewDelegationHandler` grants the
+WKWebView capture request outright (`@capacitor/ios` 7.6.8), which is why the usage string is the
+only thing standing between a tap on Call and a terminated process.
+
+So the manifest lines are not merely necessary, they are sufficient. The silent-denial pattern
+still holds and is exactly why they matter: Android denies a runtime request for a permission
+absent from the manifest instantly, with no prompt at all — the same failure already documented for
+geolocation in `DPX-MOBILE-002-PRIVACY-PERMISSIONS-AUDIT.md`.
+
+§5.1's requirement that the permission be asked **in context** falls out of this: the prompt
+happens on `getUserMedia`, and the client joins the room on the tap that places or answers the
+call, so the driver is asked at the only moment it makes sense to them.
 
 ### 5.3 Audio session and routing are native concerns
 
@@ -307,3 +325,95 @@ Blocked on DPX-MOBILE-001. Recorded so it is not rediscovered:
 - It does not treat the architecture as open. VoIP over LiveKit is locked (§0); §0.1 exists so a
   known constraint is measured rather than forgotten, and carries no implication that the decision
   is provisional.
+
+---
+
+## 11. Stage 1 as built (2026-08-27)
+
+Founder instruction: _"Start the calling option."_ The backend for this shipped earlier — this is
+the client, plus the two manifest lines and the store paperwork that go with it. **Nothing in the
+backend contract was changed or extended**; every route, socket event and status below was read out
+of `CallsController`, `CallsService` and `CallTokenProvider` before a line of client code was
+written.
+
+### 11.1 What was added
+
+| Layer     | File                                     | What it is                                                 |
+| --------- | ---------------------------------------- | ---------------------------------------------------------- |
+| Types     | `packages/types/src/call/index.ts`       | The DTOs and the three socket payloads                     |
+| SDK       | `packages/sdk/src/calls/calls-client.ts` | The six routes, on `DripplexClient.calls`                  |
+| Super-app | `src/lib/api.ts`                         | The same six, for the app's own fetch layer                |
+| Super-app | `src/lib/ws.ts`                          | `onCallIncoming` / `onCallAccepted` / `onCallEnded`        |
+| Super-app | `src/lib/callRoom.ts`                    | The LiveKit adapter — the only file that knows about media |
+| Super-app | `src/lib/callRequests.ts`                | "Call this person", so any screen can ask                  |
+| Super-app | `src/app/callLayer.tsx`                  | The overlay: ringing, in-call, outcome                     |
+| Super-app | `src/app/chatScreen.tsx`                 | The call button, beside the conversation                   |
+| Android   | `AndroidManifest.xml`                    | `RECORD_AUDIO`, `MODIFY_AUDIO_SETTINGS`                    |
+| iOS       | `Info.plist`, `PrivacyInfo.xcprivacy`    | `NSMicrophoneUsageDescription`, Audio Data                 |
+| Preflight | `scripts/verify-config.mjs`              | Fails the build if any of the above goes missing           |
+
+### 11.2 Decisions worth knowing about
+
+**DrippleX is authoritative, LiveKit is not.** The overlay closes on `call:ended` or on the
+response to its own hang-up — never because the media layer said something. A dropped audio path
+calls `POST /calls/:id/end` and _then_ closes, so the other side stops ringing instead of waiting
+for the sweep.
+
+**The caller joins the room on the tap, not on the answer.** That puts the microphone prompt inside
+a user gesture (§5.1's "in context") and makes the far side audible the instant they accept. Nobody
+can hear the empty room: it belongs to one call, and the only other token ever minted for it is the
+callee's, on accept.
+
+**Every exit releases the microphone**, including the one that is easy to miss — hanging up while
+the connect is still in flight. A generation counter makes the late `joinCallRoom` resolution
+abandon its own room. That path has a test, and the test was checked by removing the guard.
+
+**`livekit-client` is lazy-loaded.** Half a megabyte of WebRTC stack, on mobile data, for a session
+that will usually contain no call. The main bundle stays at 448 kB gzipped instead of 582 kB, and
+the chat screen prefetches the chunk because being on it is the best warning we get.
+
+**A second incoming call while one is in progress is declined automatically** rather than stacking
+a ringing screen over a conversation.
+
+### 11.3 Not verified
+
+CI proves this typechecks, lints, tests and builds. **No call has been placed.** Nothing here has
+touched a microphone, a LiveKit server or a handset, and everything in §7 remains untested:
+connection on Nigerian mobile data, answer latency, routing across screen-lock, speaker and
+Bluetooth, and a GSM call interrupting a VoIP one. §5.3 is untouched — audio-session and routing
+work is still native work that does not exist.
+
+The first device test also needs a **new AAB**: the app is a remote-URL shell, so the UI reaches a
+handset by web deploy, but a manifest permission does not. Calling will fail on the build currently
+in internal testing, and it will fail _silently_ — no prompt, no dialog, just a call that does not
+connect.
+
+### 11.4 Still open
+
+1. **Incoming calls do not ring a backgrounded app.** `CallsService.initiate` publishes
+   `call:incoming` over the socket and nothing else, so the callee learns about it only while the
+   app is open. This is §8's Stage 2 and is exactly as designed — but §8's blocker on
+   `DPX-MOBILE-001` looks largely spent: the notification centre already maps
+   `DOMAIN_EVENTS.RIDE_OFFERED` to `NotificationPriority.CRITICAL`
+   (`notification-center.subscriber.ts:195-200`), which is the high-priority path §8 asks for. So
+   Stage 2's server half is a contained change — a domain event on `initiate`, a
+   `NotificationType` mapping, and the expiry check §8 requires. Not made here: it is backend work
+   and a separate feature.
+
+   **One caveat, and it is not small.** That the code path exists is verified; that a push actually
+   reaches a backgrounded handset is not — it is still the outstanding 90-second field test from
+   the DPX-MOBILE-003 work. If ride offers turn out not to reach a minimised driver, incoming calls
+   will not either, and the two share one fix.
+
+2. **The ringing screen cannot say who is calling.** `CallDto` carries `callerId` and no name, so
+   the callee sees "Incoming call · About your trip". Adding a display name to the
+   `call:incoming` payload is a one-field backend change; guessing one on the client is not
+   available, because the callee may hold no record of the other party.
+3. **§9's open questions are still open**, and question 1 — the post-completion grace period — is
+   the one this makes concrete: `isJobLive` decides it today, so a passenger who leaves a bag in
+   the car cannot call about it.
+4. **Play Console Data safety** must gain "Audio · Voice or sound recordings" with the build that
+   carries `RECORD_AUDIO`, and the Privacy Policy needs the sentence §5.1 asked for. Neither is a
+   code change and neither is done.
+5. **iOS background audio.** `UIBackgroundModes` has `remote-notification` only. A call will not
+   survive backgrounding on iOS without `audio`, which is a Stage 2 concern alongside CallKit.

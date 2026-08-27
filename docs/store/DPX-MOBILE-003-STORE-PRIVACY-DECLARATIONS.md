@@ -51,7 +51,7 @@ identity data is sent there, so it is not declared as a recipient.
 
 ## 2. Apple — privacy nutrition labels
 
-Ten types, all **linked to the user**, none used for **tracking**, all for **App Functionality**
+Eleven types, all **linked to the user**, none used for **tracking**, all for **App Functionality**
 unless noted.
 
 | App Store category | Type             | Backed by                                               |
@@ -62,10 +62,18 @@ unless noted.
 | Contact Info       | Physical Address | `CustomerAddress.addressLine1/2`, `Business.address`    |
 | Location           | Precise Location | `CustomerAddress.latitude/longitude` — `Decimal(10,7)`  |
 | User Content       | Photos or Videos | profile, store and KYC images incl. verification selfie |
+| User Content       | Audio Data       | live voice on an in-app call — see the note below       |
 | Other Data         | Other Data Types | government ID number, date of birth                     |
 | Financial Info     | Payment Info     | `BankAccount.accountNumber` — merchant payouts          |
 | Purchases          | Purchase History | `Order`, `OrderItem`, wallet and settlement models      |
 | Identifiers        | Device ID        | `DeviceToken.token` — push delivery only                |
+
+**On Audio Data (DPX-MOBILE-002, added 2026-08-27).** Nothing is recorded and nothing is stored:
+the microphone track exists only while a call is joined, LiveKit relays it, and the DrippleX
+backend holds who called whom, when, and for how long — never the audio. It is declared anyway,
+because Apple's "not collected" test is _does it leave the device_, and live voice does. Declaring
+it and saying so is the honest answer; the alternative reading — "transient, therefore not
+collected" — is the kind of thing a reviewer overturns after the fact.
 
 `NSPrivacyTracking` = **false**, `NSPrivacyTrackingDomains` = **empty**. No advertising,
 attribution or analytics SDK is in the dependency tree.
@@ -94,6 +102,7 @@ feature itself is optional.
 | Financial info      | Purchase history · Other (bank account for merchant payouts). **Card data not collected** |
 | Location            | Precise location — required for delivery, pickup and dispatch                             |
 | Photos and videos   | Photos — profile, store listings, KYC documents                                           |
+| Audio               | Voice or sound recordings — live in-app calls only, never recorded or stored              |
 | App activity        | Other actions — order and in-app activity                                                 |
 | Device or other IDs | Push token                                                                                |
 
@@ -103,7 +112,7 @@ providers, not as data sharing.
 
 Recipients: Paystack, Flutterwave, Peyflex (payments) · Termii (SMS OTP) · Resend (email) ·
 Firebase (push) · Cloudflare R2 (object storage, includes KYC images) · Google Maps (server-side
-geocoding of merchant addresses).
+geocoding of merchant addresses) · LiveKit (relays in-app call audio; nothing is recorded).
 
 Content rating: Shopping; no user-generated public content in the shell. Expect Everyone / low
 maturity.
@@ -116,9 +125,16 @@ maturity.
 | Android  | `POST_NOTIFICATIONS`                  | Order and dispatch push                          |
 | Android  | `ACCESS_FINE_LOCATION`                | Delivery address, pickup, dispatch heartbeat     |
 | Android  | `ACCESS_COARSE_LOCATION`              | Same, degraded fallback                          |
+| Android  | `VIBRATE`                             | Ride-alert channel vibration (DPX-MOBILE-001)    |
+| Android  | `FOREGROUND_SERVICE`                  | Driver presence service (DPX-MOBILE-003)         |
+| Android  | `FOREGROUND_SERVICE_LOCATION`         | Same — its declared service type                 |
+| Android  | `SYSTEM_ALERT_WINDOW`                 | Floating driver bubble (DPX-MOBILE-003)          |
+| Android  | `RECORD_AUDIO`                        | In-app voice calls (DPX-MOBILE-002)              |
+| Android  | `MODIFY_AUDIO_SETTINGS`               | Same — requested alongside it by the bridge      |
 | iOS      | `NSLocationWhenInUseUsageDescription` | As above                                         |
 | iOS      | `NSCameraUsageDescription`            | KYC document photo and verification selfie       |
 | iOS      | `NSPhotoLibraryUsageDescription`      | Choosing existing photos for profile, store, KYC |
+| iOS      | `NSMicrophoneUsageDescription`        | In-app voice calls (DPX-MOBILE-002)              |
 
 **Not declared, deliberately:**
 
@@ -129,13 +145,22 @@ maturity.
 - **Android `CAMERA` — resolved 2026-08-21, and it is a "not yet", not a "no".** Camera is a real
   product requirement: receipts, documents, and face verification if Smile Identity is engaged. But
   everything shipping today is a file input (`checkoutScreen.tsx:1647`, `riderScreen.tsx:1040`,
-  `screensB.tsx:1818`), and `getUserMedia` appears nowhere in the codebase. Android satisfies file
-  inputs by intent to the camera app — no permission needed from us, and declaring it while
-  ungranted can break `ACTION_IMAGE_CAPTURE`. **Add `CAMERA` as part of the Smile Identity work**,
-  where face verification opens a live stream in-app and genuinely requires it, along with a
-  runtime permission request. See `DPX-MOBILE-002` §5. iOS is the opposite case throughout and does
-  need its strings, because WKWebView invokes the system camera and photo picker directly. The
-  asymmetry is correct, not an oversight.
+  `screensB.tsx:1818`), and no **video** `getUserMedia` appears anywhere in the codebase. Android
+  satisfies file inputs by intent to the camera app — no permission needed from us, and declaring
+  it while ungranted can break `ACTION_IMAGE_CAPTURE`. **Add `CAMERA` as part of the Smile Identity
+  work**, where face verification opens a live stream in-app and genuinely requires it. See
+  `DPX-MOBILE-002` §5. iOS is the opposite case throughout and does need its strings, because
+  WKWebView invokes the system camera and photo picker directly. The asymmetry is correct, not an
+  oversight.
+
+  **Corrected 2026-08-27.** This entry used to add "along with a runtime permission request",
+  citing that Capacitor's WebView does not grant `getUserMedia` on its own. Checked against the
+  pinned bridge rather than assumed, and that is wrong for this version:
+  `BridgeWebChromeClient.onPermissionRequest` (`@capacitor/android` 7.6.8, lines 102-124) maps
+  `VIDEO_CAPTURE` → `CAMERA` and `AUDIO_CAPTURE` → `RECORD_AUDIO` + `MODIFY_AUDIO_SETTINGS` and
+  launches the runtime request itself. What it cannot do is request a permission the manifest never
+  declared — Android denies those instantly, with no dialog. So the manifest line **is** the work,
+  and it is also the whole of the native work for calling. The CAMERA decision itself stands.
 
 ## 5. The remaining blocker
 

@@ -133,6 +133,16 @@ if (existsSync(manifestPath)) {
     fail('Android SYSTEM_ALERT_WINDOW missing — the floating driver bubble cannot be granted');
   else ok('Android overlay permission');
 
+  // DPX-MOBILE-002 — voice calls. Capacitor's BridgeWebChromeClient launches
+  // the runtime request for this exact pair when the page calls getUserMedia,
+  // but Android denies a request for an undeclared permission instantly and
+  // shows no dialog at all. Missing, a driver taps Accept, is never asked for
+  // the microphone, and the call fails to connect with nothing to explain it.
+  const missingAudio = ['RECORD_AUDIO', 'MODIFY_AUDIO_SETTINGS'].filter((p) => !declares(p));
+  if (missingAudio.length)
+    fail(`Android ${missingAudio.join(', ')} missing — voice calls cannot capture audio`);
+  else ok('Android microphone permissions');
+
   if (!manifest.includes('android:name=".DriverPresenceService"'))
     fail('Android DriverPresenceService is not declared — the plugin cannot start it');
   else if (!manifest.includes('android:foregroundServiceType="location"'))
@@ -202,6 +212,10 @@ if (existsSync(plistPath)) {
     'NSLocationWhenInUseUsageDescription',
     'NSCameraUsageDescription',
     'NSPhotoLibraryUsageDescription',
+    // DPX-MOBILE-002. Worse than a dead feature here: iOS terminates the
+    // process when an app reaches the microphone with no usage string, so a
+    // missing key is the app closing on the first tap of Call.
+    'NSMicrophoneUsageDescription',
   ].filter((key) => !plist.includes(`<key>${key}</key>`));
   if (missingUsage.length)
     fail(
@@ -245,6 +259,9 @@ if (existsSync(privacyPath)) {
     'PhysicalAddress',
     'PreciseLocation',
     'PhotosorVideos',
+    // DPX-MOBILE-002 — live call audio. Not recorded and not stored, but it
+    // leaves the device, which is Apple's test for "collected".
+    'AudioData',
     'OtherDataTypes',
     'PaymentInfo',
     'PurchaseHistory',

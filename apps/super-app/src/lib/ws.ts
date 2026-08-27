@@ -6,6 +6,8 @@
 import { io, Socket } from 'socket.io-client';
 import { auth } from './auth';
 
+import type { CallAcceptedEvent, CallEndedEvent, CallIncomingEvent } from '@dripplex/types';
+
 const SOCKET_URL =
   (import.meta.env.VITE_SOCKET_URL as string | undefined) ?? 'https://api.dripplex.com';
 
@@ -135,6 +137,43 @@ export const ws = {
     const s = getSocket();
     s.on('ride:offered', cb);
     return () => s.off('ride:offered', cb);
+  },
+
+  // ── Calls (DPX-MOBILE-002) ──────────────────────────────────────────────
+  // Delivered on the `user:{id}` room the gateway joins at connect, not on a
+  // ride room — a call is between two people, and the callee's phone may be
+  // nowhere near the ride screen when it rings.
+
+  /** Someone is calling you. Carries no token: the callee mints one on accept. */
+  onCallIncoming(cb: (evt: CallIncomingEvent) => void) {
+    const s = getSocket();
+    s.on('call:incoming', cb);
+    return () => {
+      s.off('call:incoming', cb);
+    };
+  },
+
+  /** They picked up (caller only). */
+  onCallAccepted(cb: (evt: CallAcceptedEvent) => void) {
+    const s = getSocket();
+    s.on('call:accepted', cb);
+    return () => {
+      s.off('call:accepted', cb);
+    };
+  },
+
+  /**
+   * The call is over — declined, hung up, rang out or failed.
+   *
+   * Sent to whoever did *not* cause it, so a client must also close its own UI
+   * on the response to its own decline/end rather than waiting for this.
+   */
+  onCallEnded(cb: (evt: CallEndedEvent) => void) {
+    const s = getSocket();
+    s.on('call:ended', cb);
+    return () => {
+      s.off('call:ended', cb);
+    };
   },
 
   // Refresh auth token on socket (call after token refresh)
