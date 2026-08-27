@@ -40,6 +40,7 @@ vi.mock('@capacitor/core', () => ({
 const start = vi.fn();
 const stop = vi.fn();
 const isRunning = vi.fn();
+const updateToken = vi.fn();
 const hasOverlay = vi.fn();
 const requestOverlay = vi.fn();
 
@@ -47,6 +48,7 @@ const plugin = {
   start,
   stop,
   isRunning,
+  updateToken,
   hasOverlayPermission: hasOverlay,
   requestOverlayPermission: requestOverlay,
 };
@@ -67,6 +69,7 @@ beforeEach(() => {
   start.mockResolvedValue({ started: true });
   stop.mockResolvedValue(undefined);
   isRunning.mockResolvedValue({ running: true });
+  updateToken.mockResolvedValue(undefined);
   hasOverlay.mockResolvedValue({ granted: true });
   requestOverlay.mockResolvedValue({ opened: true, granted: false });
 });
@@ -191,6 +194,40 @@ describe('stopNativeDriverPresence', () => {
     const { stopNativeDriverPresence } = await load();
 
     await expect(stopNativeDriverPresence()).resolves.toBe('failed');
+  });
+});
+
+describe('updateNativePresenceToken', () => {
+  it('hands the running service a fresh token', async () => {
+    const { updateNativePresenceToken } = await load();
+
+    await updateNativePresenceToken('fresh-token');
+
+    expect(updateToken).toHaveBeenCalledWith({ token: 'fresh-token' });
+  });
+
+  it('ignores an empty token rather than clearing a working one', async () => {
+    const { updateNativePresenceToken } = await load();
+
+    await updateNativePresenceToken('');
+
+    expect(updateToken).not.toHaveBeenCalled();
+  });
+
+  it('never throws — a failed update must not break the refresh that caused it', async () => {
+    updateToken.mockRejectedValue(new Error('not running'));
+    const { updateNativePresenceToken } = await load();
+
+    await expect(updateNativePresenceToken('fresh-token')).resolves.toBeUndefined();
+  });
+
+  it('is a no-op off Android', async () => {
+    getPlatform.mockReturnValue('ios');
+    const { updateNativePresenceToken } = await load();
+
+    await updateNativePresenceToken('fresh-token');
+
+    expect(updateToken).not.toHaveBeenCalled();
   });
 });
 

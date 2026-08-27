@@ -62,6 +62,8 @@ public class DriverPresenceService extends Service {
 
   public static final String ACTION_START = "com.dripplex.customer.PRESENCE_START";
   public static final String ACTION_STOP = "com.dripplex.customer.PRESENCE_STOP";
+  /** Swap in a fresh access token without disturbing the running service. */
+  public static final String ACTION_UPDATE_TOKEN = "com.dripplex.customer.PRESENCE_UPDATE_TOKEN";
 
   public static final String EXTRA_BASE_URL = "baseUrl";
   public static final String EXTRA_TOKEN = "token";
@@ -110,6 +112,17 @@ public class DriverPresenceService extends Service {
    */
   private static final long LOCATION_MAX_AGE_MS = 10 * 60_000L;
 
+  /**
+   * How long to keep reporting attempts alive after the token is rejected,
+   * waiting for the app to push a fresh one.
+   *
+   * Ten minutes: long enough for a WebView that Android has throttled hard to
+   * get round to its next request and refresh, short enough that a driver who
+   * has genuinely been signed out is not left with a notification claiming a
+   * shift the server will not accept.
+   */
+  private static final long TOKEN_GRACE_MS = 10 * 60_000L;
+
   private final AtomicBoolean running = new AtomicBoolean(false);
   private final Handler handler = new Handler(Looper.getMainLooper());
   private ExecutorService network;
@@ -121,6 +134,8 @@ public class DriverPresenceService extends Service {
   /** What the ongoing notification currently says, so it is only rewritten when
    * the answer changes. */
   private String notificationText;
+  /** When the token was first rejected, or 0 while it is good. Main thread. */
+  private long tokenRejectedAtMs;
   private String baseUrl;
   private String token;
   private String vehicleType;
@@ -144,6 +159,19 @@ public class DriverPresenceService extends Service {
   public int onStartCommand(Intent intent, int flags, int startId) {
     if (intent == null || ACTION_STOP.equals(intent.getAction())) {
       stopPresence();
+      return START_NOT_STICKY;
+    }
+
+    // A token refresh, not a start. Swap it in and leave everything else alone:
+    // restarting would drop and recreate the notification, and re-running
+    // requestLocationUpdates would subscribe a second listener.
+    if (ACTION_UPDATE_TOKEN.equals(intent.getAction())) {
+      String fresh = intent.getStringExtra(EXTRA_TOKEN);
+      if (fresh != null && !fresh.isEmpty() && running.get()) {
+        token = fresh;
+        tokenRejectedAtMs = 0L;
+        Log.i(TAG, "access token refreshed by the app");
+      }
       return START_NOT_STICKY;
     }
 
@@ -391,7 +419,10 @@ public class DriverPresenceService extends Service {
       updateNotification("Location is out of date — you may not get requests");
       return;
     }
-    updateNotification(ONLINE_TEXT);
+    // NOT updateNotification(ONLINE_TEXT) here — that happens on a successful
+    // response below. Setting it before the request would overwrite
+    // "Sign-in expired" on the very next tick and hide the failure it exists to
+    // show, which is the mistake this whole file keeps making.
     network.execute(
         () -> {
           HttpURLConnection connection = null;
@@ -418,11 +449,29 @@ public class DriverPresenceService extends Service {
             }
             int status = connection.getResponseCode();
             if (status == 401 || status == 403) {
-              // The token this service was handed is no longer good. Reporting
-              // on is pointless and keeping the notification up would tell the
-              // driver they are working when the server disagrees.
-              Log.w(TAG, "availability rejected (" + status + ") — stopping presence");
-              handler.post(this::stopPresence);
+              // The token this service was handed has expired.
+              //
+              // This used to call stopPresence() immediately, and that single
+              // line capped the entire feature at fifteen minutes:
+              // JWT_ACCESS_TTL is 15m, the service holds no refresh token, so
+              // the first expiry killed the shift. On 2026-08-27 the bubble and
+              // the notification vanished mid-test while the WebView — which
+              // refreshes normally — carried on reporting without a hitch.
+              //
+              // The app pushes a new token through ACTION_UPDATE_TOKEN whenever
+              // it refreshes its own, so a 401 is now a wait, not a death. The
+              // grace window exists because that refresh needs the app to be
+              // alive and to notice; if it never comes, the service still stops
+              // rather than sit there claiming a shift it cannot report.
+              handler.post(() -> onTokenRejected(status));
+            } else if (status >= 200 && status < 300) {
+              // The one place the healthy text is set, so it can only ever
+              // appear when the server has actually accepted a report.
+              handler.post(
+                  () -> {
+                    tokenRejectedAtMs = 0L;
+                    updateNotification(ONLINE_TEXT);
+                  });
             }
           } catch (Exception e) {
             // A failed report is normal — a tunnel, a dead cell. The next tick
@@ -436,6 +485,28 @@ public class DriverPresenceService extends Service {
             }
           }
         });
+  }
+
+  /**
+   * A 401/403 came back. Wait for the app to hand over a fresh token, and give
+   * up if it does not.
+   *
+   * Main thread only — it touches `tokenRejectedAtMs` and the notification.
+   */
+  private void onTokenRejected(int status) {
+    if (!running.get()) {
+      return;
+    }
+    if (tokenRejectedAtMs == 0L) {
+      tokenRejectedAtMs = System.currentTimeMillis();
+      Log.w(TAG, "availability rejected (" + status + ") — waiting for a fresh token");
+      updateNotification("Sign-in expired — open DrippleX");
+      return;
+    }
+    if (System.currentTimeMillis() - tokenRejectedAtMs > TOKEN_GRACE_MS) {
+      Log.w(TAG, "no fresh token after " + (TOKEN_GRACE_MS / 1000) + "s — stopping presence");
+      stopPresence();
+    }
   }
 
   /** Replace the ongoing notification's body, leaving everything else alone.

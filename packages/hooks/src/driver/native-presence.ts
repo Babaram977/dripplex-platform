@@ -33,6 +33,7 @@ interface DriverPresencePlugin {
     longitude?: number;
   }): Promise<{ started: boolean }>;
   stop(): Promise<void>;
+  updateToken(options: { token: string }): Promise<void>;
   isRunning(): Promise<{ running: boolean }>;
   hasOverlayPermission(): Promise<{ granted: boolean }>;
   requestOverlayPermission(): Promise<{ opened: boolean; granted: boolean }>;
@@ -187,6 +188,33 @@ export async function startNativeDriverPresence(
     return 'started';
   } catch {
     return 'failed';
+  }
+}
+
+/**
+ * Hand the running service a fresh access token.
+ *
+ * The service is given a token when the driver goes online and cannot renew it
+ * on its own — it holds no refresh token, by design, and one should not be put
+ * inside a background service. `JWT_ACCESS_TTL` is 15 minutes, so without this
+ * the whole feature had a fifteen-minute ceiling: the token expired, the
+ * availability write returned 401, and the service stopped itself. Observed on
+ * 2026-08-27, when the bubble and the ongoing notification vanished mid-test
+ * while the WebView — which refreshes normally — carried on reporting.
+ *
+ * Call it wherever the app refreshes its own token. A no-op off Android, with
+ * no service running, or on any failure: a token update that fails must never
+ * break the refresh that triggered it.
+ */
+export async function updateNativePresenceToken(token: string): Promise<void> {
+  if (!token) return;
+  const { plugin } = await resolvePlugin();
+  if (!plugin) return;
+  try {
+    await plugin.updateToken({ token });
+  } catch {
+    // The service is not running, or the platform call failed. Either way the
+    // next Go-online hands over a fresh token anyway.
   }
 }
 

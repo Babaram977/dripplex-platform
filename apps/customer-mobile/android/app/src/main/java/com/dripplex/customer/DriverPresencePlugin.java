@@ -141,6 +141,40 @@ public class DriverPresencePlugin extends Plugin {
     call.resolve(result);
   }
 
+  /**
+   * Replace the access token the running service is using.
+   *
+   * The service cannot renew its own — it holds no refresh token, and putting
+   * one inside a background service is not a trade worth making. JWT_ACCESS_TTL
+   * is 15 minutes, so without this the service died of old age mid-shift.
+   *
+   * Resolves even when nothing is running: the app calls this on every token
+   * refresh, and most of those happen with no driver online.
+   */
+  @PluginMethod
+  public void updateToken(PluginCall call) {
+    String token = call.getString("token");
+    if (token == null || token.isEmpty()) {
+      call.reject("token is required");
+      return;
+    }
+    if (!DriverPresenceService.isActive()) {
+      call.resolve();
+      return;
+    }
+    Intent intent = new Intent(getContext(), DriverPresenceService.class);
+    intent.setAction(DriverPresenceService.ACTION_UPDATE_TOKEN);
+    intent.putExtra(DriverPresenceService.EXTRA_TOKEN, token);
+    try {
+      // startService, never startForegroundService: the service is already in
+      // the foreground and this intent promises Android no new startForeground.
+      getContext().startService(intent);
+    } catch (Exception ignored) {
+      // Being torn down. The next Go-online hands over a fresh token anyway.
+    }
+    call.resolve();
+  }
+
   @PluginMethod
   public void isRunning(PluginCall call) {
     JSObject result = new JSObject();
