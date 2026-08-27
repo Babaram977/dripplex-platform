@@ -249,6 +249,65 @@ describe('RideFareService', () => {
     });
   });
 
+  /**
+   * DPX-PRICING-002. `estimate()` assumes DEFAULT_RIDE_SPEED_MPS because before
+   * the trip there is no elapsed time to charge; `price()` takes the duration
+   * from the caller so completion can charge the real one.
+   */
+  describe('price() — the same arithmetic against a supplied duration', () => {
+    it('is what estimate() is, at the assumed speed', async () => {
+      if (!databaseAvailable) return;
+
+      const estimate = await service.estimate(RideType.ECONOMY, IKEJA, VICTORIA_ISLAND);
+      const priced = await service.price(
+        RideType.ECONOMY,
+        IKEJA,
+        VICTORIA_ISLAND,
+        estimate.durationSeconds,
+      );
+
+      // If these ever diverge, a booking quote and the charge for a trip that
+      // took exactly as long as predicted would differ for no reason a
+      // passenger could be told.
+      expect(priced).toEqual(estimate);
+    });
+
+    it('charges more for the same distance when the trip took longer', async () => {
+      if (!databaseAvailable) return;
+
+      const quick = await service.price(RideType.ECONOMY, IKEJA, VICTORIA_ISLAND, 20 * 60);
+      const stuck = await service.price(RideType.ECONOMY, IKEJA, VICTORIA_ISLAND, 50 * 60);
+
+      // The whole point: at the old fixed duration these two were the same
+      // number, so ₦20/min was arithmetically just a second per-km rate.
+      expect(stuck.timeFare - quick.timeFare).toBe(
+        Math.round(30 * RIDE_FARE_RATES[RideType.ECONOMY].perMinuteRate),
+      );
+      expect(stuck.distanceFare).toBe(quick.distanceFare);
+      expect(stuck.totalFare).toBeGreaterThan(quick.totalFare);
+    });
+
+    it('charges no time at all for a zero-second duration', async () => {
+      if (!databaseAvailable) return;
+
+      const priced = await service.price(RideType.ECONOMY, IKEJA, VICTORIA_ISLAND, 0);
+
+      expect(priced.timeFare).toBe(0);
+      expect(priced.meteredFare).toBe(priced.baseFare + priced.distanceFare);
+    });
+
+    it('still floors a long slow trip at nothing less than the minimum', async () => {
+      if (!databaseAvailable) return;
+
+      // Zero distance, one second: the floor is applied after time, so this is
+      // the minimum and not ₦300.
+      const priced = await service.price(RideType.ECONOMY, IKEJA, IKEJA, 1);
+
+      expect(priced.totalFare).toBe(RIDE_MINIMUM_FARE);
+      expect(priced.minimumFareApplied).toBe(true);
+    });
+  });
+
   describe('surcharge zones', () => {
     it('adds a flat surcharge when the trip ends inside the zone', async () => {
       if (!databaseAvailable) return;

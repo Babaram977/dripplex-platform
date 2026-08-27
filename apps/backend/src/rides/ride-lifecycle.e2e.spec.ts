@@ -190,6 +190,7 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
       notifications,
       events,
       new DomainEventBus(),
+      fareService,
     );
     paymentService = new RidePaymentService(
       prisma,

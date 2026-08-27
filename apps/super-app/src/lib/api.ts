@@ -695,7 +695,13 @@ export interface RideReceiptDto {
   pickupAddress: string | null;
   dropoffAddress: string | null;
   distanceMeters: number | null;
+  /** Real elapsed trip time since DPX-PRICING-002 — the duration `timeFare`
+   * below was charged on — falling back to the booking estimate for rides
+   * completed before repricing existed. */
   durationSeconds: number | null;
+  /** What the booking assumed, kept beside the real figure so a longer, dearer
+   * trip explains itself. */
+  estimatedDurationSeconds: number | null;
   fare: {
     baseFare: number;
     distanceFare: number;
@@ -703,6 +709,9 @@ export interface RideReceiptDto {
     surchargeAmount: number;
     surchargeZoneName: string | null;
     totalFare: number;
+    /** The total quoted at booking, present only when the final charge
+     * differs from it. Null means there is one number, not two. */
+    quotedTotalFare: number | null;
     tipAmount: number | null;
     platformCommission: number | null;
     driverEarning: number | null;

@@ -6,6 +6,8 @@ import { AuditService } from '../audit/audit.service';
 import { DomainEventBus } from '../events/domain-event-bus';
 import { DOMAIN_EVENTS } from '../events/domain-events';
 
+import { RideFareService } from './ride-fare.service';
+import { RidePricingService } from './ride-pricing.service';
 import { RideTripService } from './ride-trip.service';
 
 import type { RideEventsPublisher } from './ride-events.publisher';
@@ -22,6 +24,7 @@ describe('RideTripService', () => {
   let databaseAvailable = false;
   let prisma: PrismaService;
   let service: RideTripService;
+  let fareService: RideFareService;
   let eventBus: DomainEventBus;
   let customerId: string;
   let driverId: string;
@@ -66,7 +69,18 @@ describe('RideTripService', () => {
       publishToDriver: jest.fn(),
     };
     eventBus = new DomainEventBus();
-    service = new RideTripService(prisma, auditService, notifications, events, eventBus);
+    // The real fare service against the real fare table: completion prices the
+    // trip for real now (DPX-PRICING-002), and a stub would assert the mock's
+    // arithmetic rather than the platform's.
+    fareService = new RideFareService(new RidePricingService(prisma, auditService));
+    service = new RideTripService(
+      prisma,
+      auditService,
+      notifications,
+      events,
+      eventBus,
+      fareService,
+    );
 
     const customer = await prisma.user.create({
       data: {
@@ -127,7 +141,12 @@ describe('RideTripService', () => {
     await prisma.$disconnect();
   });
 
-  async function createAssignedRide(): Promise<Ride> {
+  /** `dropoffLatitude` is a parameter because the ECONOMY minimum fare is
+   * ₦1,500 and the default 2 km hop meters out far below it: with the floor in
+   * force every fare is ₦1,500 regardless of time, which would make the
+   * DPX-PRICING-002 assertions below pass or fail on the floor rather than on
+   * the arithmetic they are testing. 6.69 is ~10 km out, clear of it. */
+  async function createAssignedRide(dropoffLatitude = 6.62): Promise<Ride> {
     const ride = await prisma.ride.create({
       data: {
         customerId,
@@ -136,7 +155,7 @@ describe('RideTripService', () => {
         status: 'DRIVER_ASSIGNED',
         pickupLatitude: 6.6,
         pickupLongitude: 3.35,
-        dropoffLatitude: 6.62,
+        dropoffLatitude,
         dropoffLongitude: 3.37,
         estimatedDistanceMeters: 2000,
         estimatedDurationSeconds: 300,
@@ -288,5 +307,150 @@ describe('RideTripService', () => {
     await expect(service.markArrived(randomUUID(), ride.id, context)).rejects.toThrow(
       'Ride not found',
     );
+  });
+
+  describe('completion prices the time the trip actually took (DPX-PRICING-002)', () => {
+    /** Drives a ride to IN_PROGRESS and then back-dates `startedAt` by
+     * `minutesAgo`, which is how a trip that took real time is simulated
+     * without one. */
+    const LONG_TRIP_DROPOFF_LAT = 6.69;
+
+    async function rideInProgressFor(minutesAgo: number): Promise<Ride> {
+      const ride = await createAssignedRide(LONG_TRIP_DROPOFF_LAT);
+      await service.markArrived(driverId, ride.id, context);
+      await service.startTrip(driverId, ride.id, undefined, context);
+      return await prisma.ride.update({
+        where: { id: ride.id },
+        data: { startedAt: new Date(Date.now() - minutesAgo * 60_000) },
+      });
+    }
+
+    it('charges a driver held up in traffic for the time they were held up', async () => {
+      if (!databaseAvailable) return;
+
+      // Same two points, same distance. The only difference between these two
+      // trips is that one took twenty minutes longer — which before this change
+      // cost the passenger nothing and paid the driver nothing.
+      const quick = await service.completeTrip(driverId, (await rideInProgressFor(5)).id, context);
+      const stuck = await service.completeTrip(driverId, (await rideInProgressFor(25)).id, context);
+
+      expect(stuck.timeFare).toBeGreaterThan(quick.timeFare);
+      expect(stuck.totalFare).toBeGreaterThan(quick.totalFare);
+      // Distance is identical, so nothing but time may move.
+      expect(stuck.distanceFare).toBe(quick.distanceFare);
+      expect(stuck.baseFare).toBe(quick.baseFare);
+    });
+
+    it('records the elapsed seconds it charged on', async () => {
+      if (!databaseAvailable) return;
+
+      const ride = await rideInProgressFor(12);
+      const completed = await service.completeTrip(driverId, ride.id, context);
+
+      // Derivable from the timestamps, and stored anyway: this is the number
+      // the receipt has to keep explaining, even if Ops later corrects one.
+      expect(completed.actualDurationSeconds).toBeGreaterThanOrEqual(12 * 60);
+      expect(completed.actualDurationSeconds).toBeLessThan(13 * 60);
+      // ...and it is not the estimate the booking assumed.
+      expect(completed.actualDurationSeconds).not.toBe(completed.estimatedDurationSeconds);
+    });
+
+    it('keeps the quote, so the receipt can show both numbers', async () => {
+      if (!databaseAvailable) return;
+
+      const ride = await rideInProgressFor(30);
+      const completed = await service.completeTrip(driverId, ride.id, context);
+
+      // 550 is what createAssignedRide books at. Overwriting totalFare without
+      // keeping this would leave the passenger with a charge and no way to see
+      // what they agreed to.
+      expect(completed.quotedTotalFare).toBe(550);
+      expect(completed.totalFare).not.toBe(550);
+    });
+
+    it('bills a fast trip down, not just a slow one up', async () => {
+      if (!databaseAvailable) return;
+
+      // The estimate assumes 30 km/h. A 2 km trip that took one minute beat
+      // that assumption, and charging the assumption anyway would be the same
+      // unfairness pointing the other way.
+      const ride = await rideInProgressFor(1);
+      const completed = await service.completeTrip(driverId, ride.id, context);
+
+      expect(completed.actualDurationSeconds).toBeLessThan(
+        completed.estimatedDurationSeconds ?? Infinity,
+      );
+      expect(completed.timeFare).toBeLessThan(50);
+    });
+
+    it('leaves the promo discount alone', async () => {
+      if (!databaseAvailable) return;
+
+      const ride = await rideInProgressFor(20);
+      await prisma.ride.update({ where: { id: ride.id }, data: { promoDiscount: 100 } });
+
+      const completed = await service.completeTrip(driverId, ride.id, context);
+
+      // Granted against the quote and already accepted by the customer;
+      // re-deriving it would reopen redemption accounting mid-completion.
+      expect(completed.promoDiscount).toBe(100);
+      const beforeDiscount =
+        completed.baseFare +
+        completed.distanceFare +
+        completed.timeFare +
+        completed.surchargeAmount;
+      expect(completed.totalFare).toBe(Math.max(0, Math.round(beforeDiscount - 100)));
+    });
+
+    it('never charges a negative fare when the discount exceeds the trip', async () => {
+      if (!databaseAvailable) return;
+
+      const ride = await rideInProgressFor(1);
+      await prisma.ride.update({ where: { id: ride.id }, data: { promoDiscount: 999_999 } });
+
+      const completed = await service.completeTrip(driverId, ride.id, context);
+
+      expect(completed.totalFare).toBe(0);
+    });
+
+    it('leaves a short trip on the minimum fare however long it is stuck', async () => {
+      if (!databaseAvailable) return;
+
+      // The floor is applied after time, not before it, so a 2 km hop at
+      // ₦300 + ₦240 + ₦20/min has to sit in traffic for roughly three quarters
+      // of an hour before the meter reaches the ₦1,500 minimum at all. Charging
+      // for time genuinely changes nothing for these trips — asserted here so
+      // that is a known property of the ₦1,500 floor rather than a surprise
+      // when a driver reports being stuck for twenty minutes and paid the same.
+      const ride = await createAssignedRide();
+      await service.markArrived(driverId, ride.id, context);
+      await service.startTrip(driverId, ride.id, undefined, context);
+      await prisma.ride.update({
+        where: { id: ride.id },
+        data: { startedAt: new Date(Date.now() - 20 * 60_000) },
+      });
+
+      const completed = await service.completeTrip(driverId, ride.id, context);
+
+      expect(completed.timeFare).toBe(400);
+      expect(completed.totalFare).toBe(1500);
+    });
+
+    it('still completes a ride whose start time was never recorded', async () => {
+      if (!databaseAvailable) return;
+
+      const ride = await createAssignedRide();
+      await service.markArrived(driverId, ride.id, context);
+      await service.startTrip(driverId, ride.id, undefined, context);
+      await prisma.ride.update({ where: { id: ride.id }, data: { startedAt: null } });
+
+      // Unreachable through the state machine, but a fare must never be priced
+      // on a null duration — the completion goes through untouched instead.
+      const completed = await service.completeTrip(driverId, ride.id, context);
+
+      expect(completed.status).toBe('COMPLETED');
+      expect(completed.actualDurationSeconds).toBeNull();
+      expect(completed.totalFare).toBe(550);
+    });
   });
 });

@@ -52,7 +52,36 @@ export class RideFareService {
     dropoff: { lat: number; lng: number },
   ): Promise<RideFareEstimate> {
     const distanceMeters = haversineMeters(pickup.lat, pickup.lng, dropoff.lat, dropoff.lng);
+    // Before the trip there is no elapsed time to charge, so duration is
+    // assumed from distance at DEFAULT_RIDE_SPEED_MPS. That makes the quoted
+    // time component a second distance rate — which is fine for a quote and
+    // wrong as a final charge, hence `price()` below.
     const durationSeconds = Math.ceil(distanceMeters / DEFAULT_RIDE_SPEED_MPS);
+    return await this.price(rideType, pickup, dropoff, durationSeconds);
+  }
+
+  /**
+   * DPX-PRICING-002 — the same fare arithmetic, against a duration the caller
+   * supplies.
+   *
+   * Split out of `estimate` so completion can price the trip on **real elapsed
+   * time** (`completedAt − startedAt`) instead of the 30 km/h assumption. Until
+   * this existed the per-minute rate was arithmetically just another per-km
+   * rate — ₦15/min at an assumed 8.33 m/s is exactly ₦30/km, every trip, so a
+   * driver stuck in traffic for half an hour earned nothing for it. That is the
+   * whole reason a time rate exists (founder, 2026-08-27).
+   *
+   * Order is unchanged and matters: metered = base + distance + time, surcharge
+   * applies to that, and the minimum is a floor under the result rather than an
+   * addition.
+   */
+  public async price(
+    rideType: RideType,
+    pickup: { lat: number; lng: number },
+    dropoff: { lat: number; lng: number },
+    durationSeconds: number,
+  ): Promise<RideFareEstimate> {
+    const distanceMeters = haversineMeters(pickup.lat, pickup.lng, dropoff.lat, dropoff.lng);
     const distanceKm = distanceMeters / 1000;
     const durationMinutes = durationSeconds / 60;
 

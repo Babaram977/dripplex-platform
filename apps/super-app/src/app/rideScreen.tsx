@@ -2523,9 +2523,12 @@ export function TripCompletedScreen({
   }, [rideId]);
 
   const typeLabel = ride ? RIDE_TYPE_LABEL[ride.rideType] : null;
-  const durationLabel = ride
-    ? `${Math.max(1, Math.round(ride.estimatedDurationSeconds / 60))} min`
-    : '—';
+  // The receipt's duration is the real elapsed trip time (DPX-PRICING-002),
+  // which is what the fare's time component was charged on. `ride`'s figure is
+  // the booking estimate and only stands in until the receipt loads.
+  const durationSeconds = receipt?.durationSeconds ?? ride?.estimatedDurationSeconds ?? null;
+  const durationLabel =
+    durationSeconds !== null ? `${Math.max(1, Math.round(durationSeconds / 60))} min` : '—';
   const distanceLabel = ride ? `${(ride.estimatedDistanceMeters / 1000).toFixed(1)} km` : '—';
   const routeLabel = ride ? `${ride.pickupAddress ?? '—'} → ${ride.dropoffAddress ?? '—'}` : '—';
   // `receipt.fare` is the fare *breakdown* object, not a number — passing it
@@ -2662,6 +2665,22 @@ export function TripCompletedScreen({
                 </p>
               </div>
             </div>
+            {receipt?.fare.quotedTotalFare != null ? (
+              /* Only present when the final charge differs from the quote —
+                 the backend nulls it when they match. A passenger who agreed
+                 to one number and was billed another is owed the reason on the
+                 receipt rather than in a support conversation. */
+              <p
+                className="border-t px-5 py-3 text-[11px]"
+                style={{ fontFamily: IT, color: MUTED, borderColor: BORDER }}
+              >
+                Quoted {naira(receipt.fare.quotedTotalFare)} for an estimated{' '}
+                {receipt.estimatedDurationSeconds !== null
+                  ? `${Math.max(1, Math.round(receipt.estimatedDurationSeconds / 60))} min`
+                  : 'trip'}
+                . Time is charged on how long the trip actually took.
+              </p>
+            ) : null}
           </div>
 
           {/* Actions. An unpaid fare comes first and alone. Tipping is refused

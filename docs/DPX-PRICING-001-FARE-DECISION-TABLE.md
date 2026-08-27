@@ -38,7 +38,10 @@ Since migration `20260818050000_ride_pricing_console` (2026-08-18):
   (`apps/super-app/src/app/adminConsoleScreen.tsx:5318`, editor at `:6560-6874`), audit-logged
   with before and after, because a fare change is a commercial act.
 - Editing a rate **never re-prices a trip that already happened** — each ride snapshots the
-  amounts and the commission rate it was priced at.
+  amounts and the commission rate it was priced at. **Amended 2026-08-27 (DPX-PRICING-002):** that
+  snapshot is now taken at **completion** rather than at booking, so a rate edited while a trip is
+  running does price that trip. A completed trip is still immutable. See
+  `docs/DPX-PRICING-002-CHARGE-REAL-TRIP-TIME.md` §5.2.
 
 **So a fare correction is a console entry, not an engineering change.** Once the values in §3 are
 decided, an administrator enters them. No deploy, no migration, no code review.
@@ -215,6 +218,10 @@ proposed rates in §3A can only be judged against the real arithmetic:
 1. **Distance** = `haversineMeters(pickup, dropoff)` — **straight-line, not road distance.**
 2. **Duration** = distance ÷ `DEFAULT_RIDE_SPEED_MPS` (8.33 m/s ≈ **30 km/h**) — a constant, **not
    measured traffic**. So time is a fixed function of distance: **2 minutes per km**.
+   **Amended 2026-08-27 (DPX-PRICING-002):** this still describes the **quote**. The **final
+   charge** re-runs steps 2-5 at completion with the real elapsed time (`completedAt − startedAt`),
+   so the per-minute rate is now an independent lever on the amount actually billed. Everything
+   below in this section describes the quote and is unchanged.
 3. **Metered fare** = base + round(km × per-km) + round(minutes × per-minute).
 4. **Surcharge**, if a zone applies, added to the metered fare. Zones do **not** stack — the
    single largest applies. (That non-stacking rule is flagged in the source as an engineering

@@ -88,6 +88,8 @@ export function TripReceiptScreen({
                 ['From', receipt.data.pickupAddress ?? '—'],
                 ['To', receipt.data.dropoffAddress ?? '—'],
                 [
+                  // The real trip duration since DPX-PRICING-002 — the figure
+                  // the time component of the fare below was charged on.
                   'Duration',
                   receipt.data.durationSeconds
                     ? `${String(Math.round(receipt.data.durationSeconds / 60))} min`
@@ -109,6 +111,21 @@ export function TripReceiptScreen({
               timeFare={receipt.data.fare.timeFare}
               totalFare={receipt.data.fare.totalFare}
             />
+            {receipt.data.fare.quotedTotalFare !== null ? (
+              // Shown only when the charge differs from the quote. A passenger
+              // who agreed to one number and was billed another is owed the
+              // reason on the receipt, not in a support conversation.
+              <p
+                className={`mt-3 text-center text-[12px] ${body}`}
+                style={{ color: 'rgba(255,255,255,.5)' }}
+              >
+                Quoted ₦{receipt.data.fare.quotedTotalFare.toLocaleString()} for an estimated{' '}
+                {receipt.data.estimatedDurationSeconds
+                  ? `${String(Math.round(receipt.data.estimatedDurationSeconds / 60))} min`
+                  : 'trip'}
+                . Time is charged on how long the trip actually took.
+              </p>
+            ) : null}
             {receipt.data.fare.tipAmount ? (
               <p
                 className={`mt-3 text-center text-[12px] ${body}`}
