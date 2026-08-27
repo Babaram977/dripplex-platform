@@ -3,11 +3,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // Mocked before the module under test is imported, so its top-level imports
 // bind to these rather than the real Capacitor / API / auth modules.
 const detectNativePlatform = vi.fn();
-const obtainNativeToken = vi.fn();
+const obtainNativeTokenDetailed = vi.fn();
 const createNativeNotificationChannel = vi.fn();
+const listenForNativeNotificationTaps = vi.fn();
 vi.mock('@dripplex/hooks/notifications/native-push', () => ({
   detectNativePlatform: () => detectNativePlatform(),
-  obtainNativeToken: () => obtainNativeToken(),
+  obtainNativeTokenDetailed: () => obtainNativeTokenDetailed(),
+  listenForNativeNotificationTaps: (cb: unknown) => listenForNativeNotificationTaps(cb),
   createNativeNotificationChannel: (channel: unknown) => createNativeNotificationChannel(channel),
 }));
 
@@ -18,12 +20,14 @@ vi.mock('./driverPresence', () => ({
 
 const registerDevice = vi.fn();
 const deactivateDevice = vi.fn();
+const listDevices = vi.fn();
 const logout = vi.fn();
 vi.mock('./api', () => ({
   api: {
     devices: {
       register: (body: unknown) => registerDevice(body),
       deactivate: (id: string) => deactivateDevice(id),
+      list: () => listDevices(),
     },
     auth: { logout: () => logout() },
   },
@@ -43,7 +47,12 @@ import {
   __resetPushRegistrationForTests,
   deregisterPushDevice,
   ensureRideAlertChannel,
+  lastPushRegistration,
+  onPushRegistrationChange,
+  pushOutcomeIsHealthy,
+  pushOutcomeMessage,
   registerPushDevice,
+  retryPushRegistration,
   RIDE_ALERT_CHANNEL,
   signOutRequest,
 } from './push';
@@ -55,8 +64,9 @@ describe('push registration (DPX-MOBILE-001)', () => {
     __resetPushRegistrationForTests();
     currentUser = { id: 'user-1' };
     detectNativePlatform.mockResolvedValue('ANDROID');
-    obtainNativeToken.mockResolvedValue('fcm-token-abc');
+    obtainNativeTokenDetailed.mockResolvedValue({ token: 'fcm-token-abc', reason: 'granted' });
     registerDevice.mockResolvedValue({ id: 'device-1' });
+    listDevices.mockResolvedValue([{ id: 'device-1' }]);
     deactivateDevice.mockResolvedValue(undefined);
     logout.mockResolvedValue(undefined);
     stopPresence.mockResolvedValue('stopped');
@@ -74,7 +84,7 @@ describe('push registration (DPX-MOBILE-001)', () => {
 
     expect(await registerPushDevice()).toEqual({ outcome: 'not-native' });
     // The permission prompt must never fire off-device.
-    expect(obtainNativeToken).not.toHaveBeenCalled();
+    expect(obtainNativeTokenDetailed).not.toHaveBeenCalled();
     expect(registerDevice).not.toHaveBeenCalled();
   });
 
@@ -85,12 +95,20 @@ describe('push registration (DPX-MOBILE-001)', () => {
     expect(detectNativePlatform).not.toHaveBeenCalled();
   });
 
-  it('treats a declined permission as a silent outcome, not a failure', async () => {
-    obtainNativeToken.mockResolvedValue(null);
+  it.each([['permission-denied' as const], ['registration-error' as const], ['timeout' as const]])(
+    'reports %s rather than a single silent "no token"',
+    async (reason) => {
+      // These used to collapse into one outcome. They need different things from
+      // the driver — switch notifications on, check the connection, retry — and a
+      // field test on 2026-08-27 was spent unable to tell which had happened.
+      obtainNativeTokenDetailed.mockResolvedValue({ token: null, reason });
 
-    expect(await registerPushDevice()).toEqual({ outcome: 'no-token' });
-    expect(registerDevice).not.toHaveBeenCalled();
-  });
+      expect(await registerPushDevice()).toEqual({ outcome: reason });
+      expect(registerDevice).not.toHaveBeenCalled();
+      expect(pushOutcomeIsHealthy(reason)).toBe(false);
+      expect(pushOutcomeMessage(reason)).toBeTruthy();
+    },
+  );
 
   it('is idempotent for the same account — the effect can run on every screen change', async () => {
     await registerPushDevice();
@@ -98,8 +116,91 @@ describe('push registration (DPX-MOBILE-001)', () => {
 
     expect(second).toEqual({ outcome: 'already', deviceId: 'device-1' });
     // The decisive part: no second OS prompt and no duplicate row.
-    expect(obtainNativeToken).toHaveBeenCalledTimes(1);
+    expect(obtainNativeTokenDetailed).toHaveBeenCalledTimes(1);
     expect(registerDevice).toHaveBeenCalledTimes(1);
+  });
+
+  describe('the stored id is a claim, not proof (field failure, 2026-08-27)', () => {
+    // A driver sat online with a pending ride offer and their phone never rang.
+    // localStorage said "registered on this device"; the server held no row. The
+    // shortcut that makes this function cheap to call on every screen change was
+    // also what made the failure permanent for the life of the install.
+
+    it('re-registers when the server does not have the stored device', async () => {
+      await registerPushDevice();
+      expect(registerDevice).toHaveBeenCalledTimes(1);
+
+      // The row is gone — deactivated, pruned, or never really created.
+      __resetPushRegistrationForTests();
+      listDevices.mockResolvedValue([]);
+      registerDevice.mockResolvedValue({ id: 'device-2' });
+
+      expect(await registerPushDevice()).toEqual({ outcome: 'registered', deviceId: 'device-2' });
+      expect(registerDevice).toHaveBeenCalledTimes(2);
+    });
+
+    it('checks the server once per session, not on every screen change', async () => {
+      await registerPushDevice();
+      await registerPushDevice();
+      await registerPushDevice();
+
+      // The verification is a network call and this function runs on every
+      // navigation; confirming it once is the whole point of the shortcut.
+      expect(listDevices).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the registration when the check itself fails', async () => {
+      // Offline is not evidence the row is gone. Tearing down a working
+      // registration on a dropped request would be the worse mistake.
+      await registerPushDevice();
+      __resetPushRegistrationForTests();
+      listDevices.mockRejectedValue(new Error('offline'));
+
+      expect(await registerPushDevice()).toEqual({ outcome: 'already', deviceId: 'device-1' });
+      expect(registerDevice).toHaveBeenCalledTimes(1);
+    });
+
+    it('retry forces a fresh attempt even when storage says otherwise', async () => {
+      await registerPushDevice();
+      registerDevice.mockResolvedValue({ id: 'device-3' });
+
+      expect(await retryPushRegistration()).toEqual({
+        outcome: 'registered',
+        deviceId: 'device-3',
+      });
+      expect(registerDevice).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('the outcome is observable', () => {
+    it('starts unknown and records what happened', async () => {
+      expect(lastPushRegistration()).toBeNull();
+
+      await registerPushDevice();
+
+      expect(lastPushRegistration()).toEqual({ outcome: 'registered', deviceId: 'device-1' });
+    });
+
+    it('tells a subscriber, so a screen can show an unreachable driver they are unreachable', async () => {
+      const seen: string[] = [];
+      const stop = onPushRegistrationChange((result) => seen.push(result.outcome));
+
+      obtainNativeTokenDetailed.mockResolvedValue({ token: null, reason: 'permission-denied' });
+      await registerPushDevice();
+      stop();
+      obtainNativeTokenDetailed.mockResolvedValue({ token: 'x', reason: 'granted' });
+      await retryPushRegistration();
+
+      expect(seen).toEqual(['permission-denied']);
+    });
+
+    it('says nothing is wrong in a plain browser', () => {
+      // No push off-device, and no fault either. Warning a desktop user their
+      // alerts are broken would be false.
+      expect(pushOutcomeIsHealthy('not-native')).toBe(true);
+      expect(pushOutcomeMessage('not-native')).toBeNull();
+      expect(pushOutcomeMessage('registered')).toBeNull();
+    });
   });
 
   it('releases the previous account when a different person signs in on the same handset', async () => {
