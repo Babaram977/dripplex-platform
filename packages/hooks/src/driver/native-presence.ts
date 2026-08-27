@@ -29,8 +29,11 @@ interface DriverPresencePlugin {
     acceptingRides?: boolean;
     acceptingDeliveries?: boolean;
     intervalMs?: number;
+    latitude?: number;
+    longitude?: number;
   }): Promise<{ started: boolean }>;
   stop(): Promise<void>;
+  updateToken(options: { token: string }): Promise<void>;
   isRunning(): Promise<{ running: boolean }>;
   hasOverlayPermission(): Promise<{ granted: boolean }>;
   requestOverlayPermission(): Promise<{ opened: boolean; granted: boolean }>;
@@ -58,6 +61,23 @@ export interface NativePresenceOptions {
   vehicleType: string;
   acceptingRides?: boolean;
   acceptingDeliveries?: boolean;
+  /**
+   * The position the caller already holds, seeding the service's first report.
+   *
+   * Not a nicety — it is the fix for the 2026-08-27 field failure. The service
+   * subscribes to the platform `LocationManager`, which on a modern handset can
+   * hand back nothing at all: `NETWORK_PROVIDER` often does not exist (Google
+   * moved coarse location into Play Services) and raw GPS gets no fix indoors.
+   * It then ran for nine minutes posting nothing while its notification said
+   * the driver was online, and the driver went stale to dispatch at five.
+   *
+   * The app has a real fix at this exact moment — `driverScreen` calls
+   * `getCurrentPosition()` immediately before starting presence, through Play
+   * Services via the WebView — so it hands it over rather than letting the
+   * service start blind. A real fix from any provider replaces it at once.
+   */
+  latitude?: number;
+  longitude?: number;
 }
 
 /**
@@ -159,10 +179,42 @@ export async function startNativeDriverPresence(
       ...(options.acceptingDeliveries !== undefined
         ? { acceptingDeliveries: options.acceptingDeliveries }
         : {}),
+      // Both or neither: the native side needs the pair, and half a coordinate
+      // would seed a position on the equator.
+      ...(options.latitude !== undefined && options.longitude !== undefined
+        ? { latitude: options.latitude, longitude: options.longitude }
+        : {}),
     });
     return 'started';
   } catch {
     return 'failed';
+  }
+}
+
+/**
+ * Hand the running service a fresh access token.
+ *
+ * The service is given a token when the driver goes online and cannot renew it
+ * on its own — it holds no refresh token, by design, and one should not be put
+ * inside a background service. `JWT_ACCESS_TTL` is 15 minutes, so without this
+ * the whole feature had a fifteen-minute ceiling: the token expired, the
+ * availability write returned 401, and the service stopped itself. Observed on
+ * 2026-08-27, when the bubble and the ongoing notification vanished mid-test
+ * while the WebView — which refreshes normally — carried on reporting.
+ *
+ * Call it wherever the app refreshes its own token. A no-op off Android, with
+ * no service running, or on any failure: a token update that fails must never
+ * break the refresh that triggered it.
+ */
+export async function updateNativePresenceToken(token: string): Promise<void> {
+  if (!token) return;
+  const { plugin } = await resolvePlugin();
+  if (!plugin) return;
+  try {
+    await plugin.updateToken({ token });
+  } catch {
+    // The service is not running, or the platform call failed. Either way the
+    // next Go-online hands over a fresh token anyway.
   }
 }
 

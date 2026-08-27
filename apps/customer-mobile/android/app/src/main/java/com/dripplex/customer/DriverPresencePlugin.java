@@ -51,6 +51,14 @@ public class DriverPresencePlugin extends Plugin {
     if (intervalMs != null) {
       intent.putExtra(DriverPresenceService.EXTRA_INTERVAL_MS, intervalMs.longValue());
     }
+    // The fix the WebView already holds. Both or neither — half a coordinate
+    // pair is worse than none, and the service checks for both extras.
+    Double seedLatitude = call.getDouble("latitude");
+    Double seedLongitude = call.getDouble("longitude");
+    if (seedLatitude != null && seedLongitude != null) {
+      intent.putExtra(DriverPresenceService.EXTRA_SEED_LATITUDE, seedLatitude.doubleValue());
+      intent.putExtra(DriverPresenceService.EXTRA_SEED_LONGITUDE, seedLongitude.doubleValue());
+    }
 
     try {
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -131,6 +139,40 @@ public class DriverPresencePlugin extends Plugin {
     result.put("opened", true);
     result.put("granted", false);
     call.resolve(result);
+  }
+
+  /**
+   * Replace the access token the running service is using.
+   *
+   * The service cannot renew its own — it holds no refresh token, and putting
+   * one inside a background service is not a trade worth making. JWT_ACCESS_TTL
+   * is 15 minutes, so without this the service died of old age mid-shift.
+   *
+   * Resolves even when nothing is running: the app calls this on every token
+   * refresh, and most of those happen with no driver online.
+   */
+  @PluginMethod
+  public void updateToken(PluginCall call) {
+    String token = call.getString("token");
+    if (token == null || token.isEmpty()) {
+      call.reject("token is required");
+      return;
+    }
+    if (!DriverPresenceService.isActive()) {
+      call.resolve();
+      return;
+    }
+    Intent intent = new Intent(getContext(), DriverPresenceService.class);
+    intent.setAction(DriverPresenceService.ACTION_UPDATE_TOKEN);
+    intent.putExtra(DriverPresenceService.EXTRA_TOKEN, token);
+    try {
+      // startService, never startForegroundService: the service is already in
+      // the foreground and this intent promises Android no new startForeground.
+      getContext().startService(intent);
+    } catch (Exception ignored) {
+      // Being torn down. The next Go-online hands over a fresh token anyway.
+    }
+    call.resolve();
   }
 
   @PluginMethod

@@ -62,6 +62,8 @@ public class DriverPresenceService extends Service {
 
   public static final String ACTION_START = "com.dripplex.customer.PRESENCE_START";
   public static final String ACTION_STOP = "com.dripplex.customer.PRESENCE_STOP";
+  /** Swap in a fresh access token without disturbing the running service. */
+  public static final String ACTION_UPDATE_TOKEN = "com.dripplex.customer.PRESENCE_UPDATE_TOKEN";
 
   public static final String EXTRA_BASE_URL = "baseUrl";
   public static final String EXTRA_TOKEN = "token";
@@ -69,6 +71,10 @@ public class DriverPresenceService extends Service {
   public static final String EXTRA_ACCEPTING_RIDES = "acceptingRides";
   public static final String EXTRA_ACCEPTING_DELIVERIES = "acceptingDeliveries";
   public static final String EXTRA_INTERVAL_MS = "intervalMs";
+  /** The fix the app already held when the driver went online. See
+   * {@link #seedFromCaller}. */
+  public static final String EXTRA_SEED_LATITUDE = "seedLatitude";
+  public static final String EXTRA_SEED_LONGITUDE = "seedLongitude";
 
   /**
    * Distinct from the ride-alert channel (DPX-MOBILE-001): this one is a
@@ -78,6 +84,10 @@ public class DriverPresenceService extends Service {
    */
   private static final String CHANNEL_ID = "dripplex_driver_presence_v1";
   private static final int NOTIFICATION_ID = 4201;
+
+  /** The healthy state's body text. Anything else means reporting is degraded
+   * and the driver is being told so. */
+  private static final String ONLINE_TEXT = "DrippleX can send you ride requests";
 
   /**
    * Default reporting cadence. The server drops a driver from dispatch after 5
@@ -89,6 +99,30 @@ public class DriverPresenceService extends Service {
   private static final long DEFAULT_INTERVAL_MS = 60_000L;
   private static final long MIN_INTERVAL_MS = 15_000L;
 
+  /**
+   * How old a fix may be and still be worth reporting.
+   *
+   * The server stamps `locationUpdatedAt` with the time it receives the write,
+   * so posting an old fix asserts the driver is there *now*. A few minutes of
+   * drift is the price of staying dispatchable while backgrounded — the
+   * WebView heartbeat has always had the same property. Beyond this, the claim
+   * stops being true enough to make: reporting a half-hour-old position sends
+   * dispatch to where the driver used to be, which is worse for the passenger
+   * than the driver being invisible.
+   */
+  private static final long LOCATION_MAX_AGE_MS = 10 * 60_000L;
+
+  /**
+   * How long to keep reporting attempts alive after the token is rejected,
+   * waiting for the app to push a fresh one.
+   *
+   * Ten minutes: long enough for a WebView that Android has throttled hard to
+   * get round to its next request and refresh, short enough that a driver who
+   * has genuinely been signed out is not left with a notification claiming a
+   * shift the server will not accept.
+   */
+  private static final long TOKEN_GRACE_MS = 10 * 60_000L;
+
   private final AtomicBoolean running = new AtomicBoolean(false);
   private final Handler handler = new Handler(Looper.getMainLooper());
   private ExecutorService network;
@@ -97,6 +131,11 @@ public class DriverPresenceService extends Service {
 
   private DriverPresenceOverlay overlay;
   private volatile Location lastLocation;
+  /** What the ongoing notification currently says, so it is only rewritten when
+   * the answer changes. */
+  private String notificationText;
+  /** When the token was first rejected, or 0 while it is good. Main thread. */
+  private long tokenRejectedAtMs;
   private String baseUrl;
   private String token;
   private String vehicleType;
@@ -120,6 +159,19 @@ public class DriverPresenceService extends Service {
   public int onStartCommand(Intent intent, int flags, int startId) {
     if (intent == null || ACTION_STOP.equals(intent.getAction())) {
       stopPresence();
+      return START_NOT_STICKY;
+    }
+
+    // A token refresh, not a start. Swap it in and leave everything else alone:
+    // restarting would drop and recreate the notification, and re-running
+    // requestLocationUpdates would subscribe a second listener.
+    if (ACTION_UPDATE_TOKEN.equals(intent.getAction())) {
+      String fresh = intent.getStringExtra(EXTRA_TOKEN);
+      if (fresh != null && !fresh.isEmpty() && running.get()) {
+        token = fresh;
+        tokenRejectedAtMs = 0L;
+        Log.i(TAG, "access token refreshed by the app");
+      }
       return START_NOT_STICKY;
     }
 
@@ -148,6 +200,14 @@ public class DriverPresenceService extends Service {
       active = true;
       network = Executors.newSingleThreadExecutor();
       requestLocationUpdates();
+      // After the providers, never before: a fix the device already has beats
+      // one handed over from the WebView, and this only fills a gap.
+      if (intent.hasExtra(EXTRA_SEED_LATITUDE) && intent.hasExtra(EXTRA_SEED_LONGITUDE)) {
+        seedFromCaller(
+            intent.getDoubleExtra(EXTRA_SEED_LATITUDE, 0d),
+            intent.getDoubleExtra(EXTRA_SEED_LONGITUDE, 0d),
+            System.currentTimeMillis());
+      }
       handler.post(reportTick);
     }
 
@@ -246,12 +306,19 @@ public class DriverPresenceService extends Service {
           public void onProviderDisabled(String provider) {}
         };
 
-    // Both providers. GPS is accurate and useless indoors or under cover;
-    // network is coarse and available almost everywhere. Dispatch ranks on
-    // distance, so a coarse fix that exists beats a precise one that does not.
+    // EVERY enabled provider, not a hardcoded GPS/NETWORK pair.
+    //
+    // The pair was the 2026-08-27 field failure. The service started, showed its
+    // notification, and posted nothing for nine minutes: GPS produces no fix
+    // indoors, and on a modern handset NETWORK_PROVIDER frequently does not
+    // exist at all — Google moved coarse location into Play Services, so
+    // isProviderEnabled(NETWORK_PROVIDER) is false and requestFrom() silently
+    // subscribed to nothing. getProviders(true) asks the device what it
+    // actually has, including "fused" where the platform exposes it.
     try {
-      requestFrom(LocationManager.GPS_PROVIDER);
-      requestFrom(LocationManager.NETWORK_PROVIDER);
+      for (String provider : locationManager.getProviders(true)) {
+        requestFrom(provider);
+      }
       seedFromLastKnown();
     } catch (SecurityException e) {
       Log.w(TAG, "location permission revoked while starting");
@@ -268,20 +335,48 @@ public class DriverPresenceService extends Service {
   /**
    * A cold start has no fix yet and the first tick would report nothing, which
    * is a minute of invisibility right when the driver has just gone online.
+   *
+   * Reads every enabled provider for the same reason the subscription does, and
+   * keeps the newest. Note this can still leave `lastLocation` null on a device
+   * that has never had a fix — which is what the caller-supplied seed covers.
    */
   private void seedFromLastKnown() throws SecurityException {
     if (lastLocation != null) {
       return;
     }
-    Location gps = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
-    Location net = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
-    if (gps != null && net != null) {
-      lastLocation = gps.getTime() >= net.getTime() ? gps : net;
-    } else if (gps != null) {
-      lastLocation = gps;
-    } else {
-      lastLocation = net;
+    Location best = null;
+    for (String provider : locationManager.getProviders(true)) {
+      Location candidate = locationManager.getLastKnownLocation(provider);
+      if (candidate != null && (best == null || candidate.getTime() > best.getTime())) {
+        best = candidate;
+      }
     }
+    lastLocation = best;
+  }
+
+  /**
+   * The position the app already had when the driver tapped "Go online".
+   *
+   * `driverScreen` calls `getCurrentPosition()` and only then starts presence,
+   * so the WebView holds a real fix at exactly the moment this service begins —
+   * through Play Services' fused provider, which is why it succeeds where the
+   * platform LocationManager above can come back empty. Passing it in means the
+   * first tick reports something true rather than waiting on a provider that
+   * may never fire.
+   *
+   * Only ever used when nothing better exists: a real fix from any provider
+   * replaces it the moment one arrives, and `seedFromLastKnown` is preferred
+   * when the device does have a recent fix of its own.
+   */
+  private void seedFromCaller(double latitude, double longitude, long fixedAt) {
+    if (lastLocation != null) {
+      return;
+    }
+    Location seed = new Location("dripplex-caller");
+    seed.setLatitude(latitude);
+    seed.setLongitude(longitude);
+    seed.setTime(fixedAt);
+    lastLocation = seed;
   }
 
   private boolean hasLocationPermission() {
@@ -299,9 +394,35 @@ public class DriverPresenceService extends Service {
     final String vehicle = vehicleType;
     final boolean rides = acceptingRides;
     final Boolean deliveries = acceptingDeliveries;
-    if (location == null || url == null || bearer == null || vehicle == null || network == null) {
+    if (url == null || bearer == null || vehicle == null || network == null) {
       return;
     }
+
+    // The 2026-08-27 field failure lived here. `location == null` used to sit
+    // in the condition above and return in silence, so a
+    // service with no fix ran for nine minutes showing "You are online" while
+    // writing nothing — indistinguishable, from the outside, from a service
+    // that had never started. The driver went stale to dispatch at the
+    // five-minute mark and their own screen never stopped saying they were live.
+    //
+    // Both cases below now say so where the driver can see it, because this is
+    // exactly the class of failure the class comment promises not to have: a
+    // service that runs, shows a notification, and reports nothing.
+    if (location == null) {
+      Log.w(TAG, "no location fix available — nothing to report");
+      updateNotification("Waiting for location — you may not get requests");
+      return;
+    }
+    final long age = System.currentTimeMillis() - location.getTime();
+    if (age > LOCATION_MAX_AGE_MS) {
+      Log.w(TAG, "location is " + (age / 1000) + "s old — not reporting it");
+      updateNotification("Location is out of date — you may not get requests");
+      return;
+    }
+    // NOT updateNotification(ONLINE_TEXT) here — that happens on a successful
+    // response below. Setting it before the request would overwrite
+    // "Sign-in expired" on the very next tick and hide the failure it exists to
+    // show, which is the mistake this whole file keeps making.
     network.execute(
         () -> {
           HttpURLConnection connection = null;
@@ -328,11 +449,29 @@ public class DriverPresenceService extends Service {
             }
             int status = connection.getResponseCode();
             if (status == 401 || status == 403) {
-              // The token this service was handed is no longer good. Reporting
-              // on is pointless and keeping the notification up would tell the
-              // driver they are working when the server disagrees.
-              Log.w(TAG, "availability rejected (" + status + ") — stopping presence");
-              handler.post(this::stopPresence);
+              // The token this service was handed has expired.
+              //
+              // This used to call stopPresence() immediately, and that single
+              // line capped the entire feature at fifteen minutes:
+              // JWT_ACCESS_TTL is 15m, the service holds no refresh token, so
+              // the first expiry killed the shift. On 2026-08-27 the bubble and
+              // the notification vanished mid-test while the WebView — which
+              // refreshes normally — carried on reporting without a hitch.
+              //
+              // The app pushes a new token through ACTION_UPDATE_TOKEN whenever
+              // it refreshes its own, so a 401 is now a wait, not a death. The
+              // grace window exists because that refresh needs the app to be
+              // alive and to notice; if it never comes, the service still stops
+              // rather than sit there claiming a shift it cannot report.
+              handler.post(() -> onTokenRejected(status));
+            } else if (status >= 200 && status < 300) {
+              // The one place the healthy text is set, so it can only ever
+              // appear when the server has actually accepted a report.
+              handler.post(
+                  () -> {
+                    tokenRejectedAtMs = 0L;
+                    updateNotification(ONLINE_TEXT);
+                  });
             }
           } catch (Exception e) {
             // A failed report is normal — a tunnel, a dead cell. The next tick
@@ -348,9 +487,43 @@ public class DriverPresenceService extends Service {
         });
   }
 
-  private void startInForeground() {
-    createChannel();
+  /**
+   * A 401/403 came back. Wait for the app to hand over a fresh token, and give
+   * up if it does not.
+   *
+   * Main thread only — it touches `tokenRejectedAtMs` and the notification.
+   */
+  private void onTokenRejected(int status) {
+    if (!running.get()) {
+      return;
+    }
+    if (tokenRejectedAtMs == 0L) {
+      tokenRejectedAtMs = System.currentTimeMillis();
+      Log.w(TAG, "availability rejected (" + status + ") — waiting for a fresh token");
+      updateNotification("Sign-in expired — open DrippleX");
+      return;
+    }
+    if (System.currentTimeMillis() - tokenRejectedAtMs > TOKEN_GRACE_MS) {
+      Log.w(TAG, "no fresh token after " + (TOKEN_GRACE_MS / 1000) + "s — stopping presence");
+      stopPresence();
+    }
+  }
 
+  /** Replace the ongoing notification's body, leaving everything else alone.
+   * No-ops when the text has not changed, so the shade is not rewritten every
+   * minute of a normal shift. */
+  private void updateNotification(String text) {
+    if (text.equals(notificationText)) {
+      return;
+    }
+    notificationText = text;
+    NotificationManager manager = getSystemService(NotificationManager.class);
+    if (manager != null) {
+      manager.notify(NOTIFICATION_ID, buildNotification(text));
+    }
+  }
+
+  private Notification buildNotification(String text) {
     Intent open = new Intent(this, MainActivity.class);
     open.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
     int flags = PendingIntent.FLAG_UPDATE_CURRENT;
@@ -359,17 +532,22 @@ public class DriverPresenceService extends Service {
     }
     PendingIntent contentIntent = PendingIntent.getActivity(this, 0, open, flags);
 
-    Notification notification =
-        new NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("You are online")
-            .setContentText("DrippleX can send you ride requests")
-            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
-            .setContentIntent(contentIntent)
-            .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setCategory(NotificationCompat.CATEGORY_SERVICE)
-            .setShowWhen(false)
-            .build();
+    return new NotificationCompat.Builder(this, CHANNEL_ID)
+        .setContentTitle("You are online")
+        .setContentText(text)
+        .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+        .setContentIntent(contentIntent)
+        .setOngoing(true)
+        .setPriority(NotificationCompat.PRIORITY_LOW)
+        .setCategory(NotificationCompat.CATEGORY_SERVICE)
+        .setShowWhen(false)
+        .build();
+  }
+
+  private void startInForeground() {
+    createChannel();
+    notificationText = ONLINE_TEXT;
+    Notification notification = buildNotification(ONLINE_TEXT);
 
     // Android 10 introduced the typed overload and Android 14 requires it for a
     // location service. Below 29 the untyped call is the only one that exists.

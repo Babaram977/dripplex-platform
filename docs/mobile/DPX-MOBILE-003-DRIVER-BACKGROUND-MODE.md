@@ -219,6 +219,68 @@ on the driver's own screen instead of looking live.
 capable of starting; whether it survives a real shift and this market's OEM battery managers is
 still an open question that only a handset can answer.
 
+### Second device test, 2026-08-27 19:00 — the service runs and reports nothing
+
+With #317 deployed, the driver reopened the app and went online. **The "You are online"
+notification appeared** — the first time any of this Java has executed on hardware. `registerPlugin`
+reached the plugin, `startForegroundService` succeeded, `startForeground()` ran. #317 was correct.
+
+Then the phone was minimised and availability sampled from the server every 30s:
+
+```
+18:54:56  ← last write ever          (app still in FOREGROUND)
+~18:56    ← minimised
+18:59:41  age=284s  fresh
+19:00:13  age=316s  STALE-TO-DISPATCH
+19:03:55  age=538s  STALE-TO-DISPATCH
+```
+
+**Zero writes in the nine minutes after minimising.** The three writes before it are ~120s apart —
+the WebView heartbeat's cadence, not the service's 60s — so the service had never reported at all,
+not even while foregrounded.
+
+**Cause: no location fix, and a silent early return.** `requestLocationUpdates` subscribed to
+exactly two hardcoded providers, `GPS_PROVIDER` and `NETWORK_PROVIDER`. On a modern handset
+`NETWORK_PROVIDER` frequently does not exist — Google moved coarse location into Play Services — so
+`isProviderEnabled` is false and `requestFrom()` subscribes to nothing; raw GPS gets no fix indoors;
+and `getLastKnownLocation` returns null for both. `lastLocation` stayed null, and `postLocation()`
+opened with `if (location == null || …) return;`. Every 60s tick returned on that line, in silence,
+for nine minutes, under a notification saying the driver was online.
+
+That is precisely the failure this class's own comment promises not to have — "a service that runs,
+shows a notification, and silently reports nothing". The guard it describes covers a missing token
+or base URL. It never covered a missing location, which is the case that actually happened.
+
+**Fixed, three ways:**
+
+1. **Subscribe to every enabled provider** (`getProviders(true)`) rather than a hardcoded pair, and
+   seed from the newest last-known fix across all of them. This picks up "fused" where the platform
+   exposes it.
+2. **Seed from the caller.** `driverScreen` calls `getCurrentPosition()` immediately before starting
+   presence — through Play Services via the WebView, which succeeds where the platform
+   `LocationManager` comes back empty — so those coordinates are passed to the service and used
+   when nothing better exists. The first tick now reports something true instead of waiting on a
+   provider that may never fire. A real fix replaces it the moment one arrives.
+3. **Never fail silently again.** A null or stale location updates the ongoing notification to
+   "Waiting for location" / "Location is out of date — you may not get requests", so the state is
+   visible on the driver's phone instead of only in a server table nobody was reading. A fix older
+   than `LOCATION_MAX_AGE_MS` (10 min) is not reported at all: the server stamps
+   `locationUpdatedAt` on receipt, so posting an old position asserts the driver is there _now_, and
+   sending dispatch to where they used to be is worse for the passenger than being invisible.
+
+**Correction, later the same evening.** An earlier version of this section, the commit message on
+`d89ef04`, and PR #318's description all said "`ci.yml` does not compile this Java — the Android
+build is `workflow_dispatch`-only, so native changes reach a handset unchecked." **That is wrong.**
+`mobile-store-readiness.yml` runs on `pull_request` for any change under `apps/customer-mobile/**`
+and includes an _Android release build_ job; it fired on #318. The claim came from grepping
+`ci.yml` alone and concluding absence from one file.
+
+It is wrong in a second way that matters more: compiling would not have caught **any** of the four
+bugs below. Every one was a logic error in code that compiled perfectly — a plugin never registered
+from JavaScript, a provider list that matched no provider, a start path never called, a token with
+no way to be renewed. The useful lesson is not "add a compile check", it is that this class of
+defect is only ever found by running the thing on a handset and measuring the server.
+
 ### Still open
 
 Blocker 4 (lease-lapse behaviour) is untouched.

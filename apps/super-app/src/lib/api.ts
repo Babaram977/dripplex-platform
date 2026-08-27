@@ -128,6 +128,23 @@ async function performRefresh(): Promise<boolean> {
     const json = await res.json();
     const tokens: AuthTokens = 'data' in json ? json.data : json;
     auth.setTokens(tokens.accessToken, tokens.refreshToken);
+    // DPX-MOBILE-003 — hand the new token to the native presence service.
+    //
+    // The service is given an access token when the driver goes online and has
+    // no way to renew it: JWT_ACCESS_TTL is 15 minutes, and a 401 used to stop
+    // the service outright. So driver presence could never outlive one token —
+    // fifteen minutes, for a feature whose whole purpose is to survive a
+    // multi-hour shift. Observed on 2026-08-27: the bubble and the ongoing
+    // notification vanished mid-test while the WebView, which refreshes here,
+    // carried on reporting perfectly.
+    //
+    // Imported dynamically because driverPresence.ts imports BASE from this
+    // module; a static import back would close the cycle. Never awaited and
+    // never able to reject — a failure to update presence must not turn a
+    // successful token refresh into a failed request.
+    void import('./driverPresence')
+      .then((m) => m.updateDriverPresenceToken(tokens.accessToken))
+      .catch(() => {});
     return true;
   } catch {
     return false;

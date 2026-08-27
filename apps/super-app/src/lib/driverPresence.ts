@@ -18,6 +18,7 @@ import {
   requestOverlayPermission,
   startNativeDriverPresence,
   stopNativeDriverPresence,
+  updateNativePresenceToken,
   type NativePresenceOutcome,
 } from '@dripplex/hooks/driver/native-presence';
 
@@ -33,6 +34,12 @@ export async function startDriverPresence(options: {
   vehicleType: string;
   acceptingRides?: boolean;
   acceptingDeliveries?: boolean;
+  /** The driver's position, from the `getCurrentPosition()` the caller just
+   * made. Seeds the service's first report — see the note on
+   * `NativePresenceOptions.latitude` for why the service cannot be relied on to
+   * find one for itself. */
+  latitude?: number;
+  longitude?: number;
 }): Promise<PresenceOutcome> {
   const token = auth.getAccessToken();
   if (!token) return 'not-signed-in';
@@ -41,6 +48,20 @@ export async function startDriverPresence(options: {
 
 export async function stopDriverPresence(): Promise<PresenceOutcome> {
   return await stopNativeDriverPresence();
+}
+
+/**
+ * Hand the running service a fresh access token, from wherever this app
+ * refreshes its own (see `performRefresh` in api.ts).
+ *
+ * Without it driver presence had a hard fifteen-minute ceiling: the service is
+ * given a token at Go-online, holds no refresh token, and `JWT_ACCESS_TTL` is
+ * 15m — so the availability write started returning 401 and the service stopped
+ * itself, taking the notification and the bubble with it, in the middle of a
+ * shift it was built to survive.
+ */
+export async function updateDriverPresenceToken(token: string): Promise<void> {
+  await updateNativePresenceToken(token);
 }
 
 export async function isDriverPresenceRunning(): Promise<boolean> {
