@@ -81,5 +81,12 @@
 	<string>DrippleX uses the camera so you can photograph your ID document and take a verification selfie during account verification.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>DrippleX lets you choose photos from your library for your profile, your store, and your verification documents.</string>
+	<!-- DPX-MOBILE-002. Not optional even though Capacitor's
+	     WebViewDelegationHandler already grants the WebView's capture request:
+	     that decision sits above the OS prompt, and iOS terminates an app that
+	     reaches the microphone with no usage string. Without this line the
+	     first tap on Call closes the app. -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>DrippleX uses your microphone so you can speak to your driver or rider about a trip or delivery that is in progress.</string>
 </dict>
 </plist>

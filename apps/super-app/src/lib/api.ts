@@ -3,6 +3,8 @@
 // Base: https://api.dripplex.com/api/v1
 // Every response is unwrapped from { success, data } before returning.
 
+import type { CallDto, CallTokenDto, InitiatedCallDto } from '@dripplex/types';
+
 import { auth, DxUser } from './auth';
 
 // Exported so the native driver-presence service (DPX-MOBILE-003) reports to
@@ -3012,6 +3014,34 @@ export const api = {
     sendForRide: (rideId: string, body: string) =>
       dx<MessageDto>('POST', `/messages/ride/${rideId}`, { body }),
     unreadCount: () => dx<{ unread: number }>('GET', '/messages/unread-count'),
+  },
+
+  // ── In-app voice calls (DPX-MOBILE-002) ─────────────────────────────────────
+  //
+  // Every one is a POST, including the token reads. A call's state is a
+  // database row and these are writes to it, so they get the same auth,
+  // permission guard and error handling as any other write — and a client
+  // whose socket has dropped can still hang up.
+  //
+  // The context type is in the path, never the body: a caller must not be able
+  // to change which kind of job they are addressing by editing a payload.
+  calls: {
+    /** Place a call. Returns the call and the CALLER's token — the callee is
+     * told over the socket and mints their own on accept, so a ringing
+     * notification on a locked screen is never a credential. */
+    startForRide: (rideId: string) => dx<InitiatedCallDto>('POST', `/calls/ride/${rideId}`),
+    startForDelivery: (deliveryJobId: string) =>
+      dx<InitiatedCallDto>('POST', `/calls/delivery/${deliveryJobId}`),
+    /** A fresh join token. Tokens are short-lived, so this is also how a slow
+     * join or a reconnect recovers instead of failing the call. */
+    token: (callId: string) => dx<CallTokenDto>('POST', `/calls/${callId}/token`),
+    /** Answer, and get the join token in the same response — a separate fetch
+     * between accepting and joining is one more chance to fail while the
+     * caller listens to silence. */
+    accept: (callId: string) => dx<CallTokenDto>('POST', `/calls/${callId}/accept`),
+    decline: (callId: string) => dx<CallDto>('POST', `/calls/${callId}/decline`),
+    /** Hang up. Either party, ringing or answered. */
+    end: (callId: string) => dx<CallDto>('POST', `/calls/${callId}/end`),
   },
 
   // ── Signed uploads (R2 object storage) ──────────────────────────────────────

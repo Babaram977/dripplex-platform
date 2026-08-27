@@ -2,6 +2,19 @@ export type { ApiErrorResponse, ApiResponse, ApiSuccessResponse } from './api/re
 export { isApiErrorResponse, isApiSuccessResponse } from './api/response.js';
 
 export type {
+  CallAcceptedEvent,
+  CallContextType,
+  CallDto,
+  CallEndedEvent,
+  CallEndedReason,
+  CallIncomingEvent,
+  CallStatus,
+  CallTokenDto,
+  InitiatedCallDto,
+} from './call/index.js';
+export { CALL_EVENT_NAMES, isCallOver, LIVE_CALL_STATUSES } from './call/index.js';
+
+export type {
   SignUploadRequest,
   SignUploadResponse,
   UploadContentType,

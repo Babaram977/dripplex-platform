@@ -175,6 +175,7 @@ import {
   PendingReviewScreen,
 } from './onboardingScreen';
 import type { PartnerPersona } from './onboardingScreen';
+import { CallLayer } from './callLayer';
 import { ChatScreen } from './chatScreen';
 import { ScreenErrorBoundary } from './errorBoundary';
 import type { NavTabKey } from '../components/navigation/BottomNavigation';
@@ -2514,6 +2515,13 @@ function AppShell() {
           )}
         </div>
       </div>
+
+      {/* DPX-MOBILE-002 — outside the phone frame and outside the screen
+          switcher on purpose. A call is not a screen: it arrives while the
+          driver is on a map and while the passenger is on a receipt, it must
+          survive navigating between them, and it must cover whichever one is
+          on the glass. Last child so it paints over everything. */}
+      <CallLayer />
     </div>
   );
 }

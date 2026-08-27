@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 
 import { api } from '../lib/api';
+import { requestCall } from '../lib/callRequests';
+import { prefetchCallRoom } from '../lib/callRoom';
 import { ws } from '../lib/ws';
 import type { MessageDto } from '../lib/api';
 
@@ -98,6 +100,13 @@ export function ChatScreen({
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Being on this screen is the best signal we get that a call is about to be
+  // possible, so fetch the WebRTC chunk now rather than in the seconds after
+  // somebody taps Call. Kept out of the initial bundle — see callRoom.ts.
+  useEffect(() => {
+    prefetchCallRoom();
+  }, []);
+
   const send = async () => {
     const body = draft.trim();
     if (!body || !contextId || sending) return;
@@ -159,6 +168,39 @@ export function ChatScreen({
           <p style={{ fontFamily: PP, fontSize: 16, fontWeight: 700, color: WHITE }}>{title}</p>
           {subtitle && <p style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>{subtitle}</p>}
         </div>
+        {/* DPX-MOBILE-002. Beside the conversation rather than instead of it:
+            the two are the same pairing on the same job, so calling belongs
+            where messaging already is. Shown whenever there is a job to call
+            about — whether calling is *possible* right now (a driver assigned,
+            the job still live, LiveKit configured) is the backend's answer,
+            and it gives a specific reason. Hiding the button would replace
+            that reason with nothing. */}
+        {contextId && (
+          <button
+            onClick={() =>
+              requestCall({
+                contextType: context === 'ride' ? 'RIDE' : 'DELIVERY',
+                contextId,
+                peerName: title,
+              })
+            }
+            aria-label={`Call ${title}`}
+            title={`Call ${title}`}
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: '50%',
+              border: 'none',
+              background: `linear-gradient(135deg,${G0},${G2})`,
+              color: WHITE,
+              fontSize: 17,
+              cursor: 'pointer',
+              flexShrink: 0,
+            }}
+          >
+            📞
+          </button>
+        )}
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
