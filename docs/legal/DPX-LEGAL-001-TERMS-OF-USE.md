@@ -122,25 +122,52 @@ and any transaction PIN to yourself — **DrippleX staff will never ask you for 
 one-time code**. You are responsible for what happens on your account. Tell us immediately
 if you believe someone else has access to it.
 
-**Age.** `[NEEDS FOUNDER INPUT]` and `[GAP — NOT BUILT]`. The seeded draft terms currently in
-the app say a user must be at least 18. **The platform does not collect a date of birth and
-does not enforce any age limit anywhere in the code.** Publishing an age requirement the
-software does not check is a term we would be breaching from day one. Either:
-(a) the founder confirms 18 as the rule and we build the check before publishing, or
-(b) the requirement is dropped from the terms, or
-(c) it is stated as a rule the user warrants rather than one we verify — which counsel should
-weigh against Nigerian consumer-protection expectations, and which still requires a founder
-decision on what the minimum age is.
+**Age.** You must be at least **18** to hold a DrippleX account.
 
-**Closing your account.** `[GAP — NOT BUILT]`. Account deletion is specified in full
-(`docs/DPX-ACCOUNT-DELETION-001.md`, founder-locked 2026-08-21) but **no part of it exists in
-code**. The locked policy is that a user can initiate deletion in-app; the request is
-evaluated against active obligations rather than executed on sight; a positive withdrawable
-wallet balance must be settled first; and legally required financial, KYC and fraud records
-survive closure. Until it is built, these terms should say that closure is requested through
-support, and the deletion clause should be written to match the shipped behaviour — not the
-design. **Google Play and Apple both require a working deletion route**, so this is a launch
-blocker independently of the terms.
+> **Being built (founder decision, 2026-08-27).** Today the platform collects no date of
+> birth and enforces no age limit anywhere in the code, so this clause is not yet backed by a
+> check. The founder chose to **build the mechanism** rather than drop the requirement or
+> soften it into a warranty. **This clause must not be published until that check ships** —
+> an age requirement the software does not enforce is a term breached on day one, and stating
+> it anyway is worse than saying nothing.
+>
+> Counsel should still confirm 18 is the right threshold for a Nigerian consumer platform
+> offering wallets and paid transport, and whether anything more than a self-declared date of
+> birth is expected of us.
+
+**Closing your account.** You can ask us to delete your DrippleX account at any time, from
+inside the app or from our website without the app installed.
+
+What happens then, in plain terms:
+
+- **We check what is outstanding first.** A deletion request is evaluated against your active
+  obligations rather than executed on sight — an order in progress, a ride under way, a
+  pending payout, or money you owe the platform.
+- **Your money is not consumed by deleting your account.** If you hold a withdrawable wallet
+  balance, we show you the amount and you settle it before closure. Deletion never silently
+  takes a balance.
+- **You keep access while you settle.** Your account stays usable until the point of closure,
+  precisely so you can withdraw what is yours.
+- **You can change your mind** up to the point where erasure begins. After that it cannot be
+  undone, and we tell you so before you confirm.
+- **Closure is not erasure of everything.** Your identifying details are deleted or
+  anonymised, your sessions end and push notifications stop. Financial, transaction, KYC and
+  fraud-prevention records are retained where the law requires, and no longer than that.
+
+> **Being built (founder decision, 2026-08-27).** The policy above is founder-locked
+> (`docs/DPX-ACCOUNT-DELETION-001.md`, 2026-08-21) and **no part of it exists in code yet**.
+> This clause must not be published until it does.
+>
+> **Google Play requires both an in-app deletion path and a public web deletion URL** for any
+> app that lets users create an account, with the Data safety form answered accordingly —
+> required since 7 December 2023 and enforced, up to app removal, since 31 May 2024. That
+> makes it a store-listing blocker independent of these terms.
+>
+> Two parts of the design remain gated on legal review and are deliberately **not** described
+> above: the **retention periods** for each retained category (§10b of that document), and
+> what happens to a **residual balance the user cannot withdraw** (§10a). Neither may be
+> guessed — one sets how long we keep a government ID, the other decides whether someone
+> loses money on closing an account.
 
 ## 4. Merchants and vendors
 
@@ -295,19 +322,43 @@ charged, the amount is returned to your **DrippleX wallet** (see §9).
 ### 7.1 Ride fares
 
 A ride fare is a **base fare + a distance rate + a time rate**, varying by ride type, with a
-**minimum fare of ₦1,500 per trip** applied after the calculation. A trip that prices below
-the minimum is charged the minimum; longer trips are unaffected. Some areas carry a
-**surcharge**, which is shown to you before you book and itemised on your receipt. The
-estimate shown before you book is an estimate; the final fare reflects the actual distance
-and time.
+**minimum fare** applied after the calculation. A trip that prices below the minimum is
+charged the minimum; longer trips are unaffected. Some areas carry a **surcharge**, which is
+shown to you before you book and itemised on your receipt. The estimate shown before you book
+is an estimate; the final fare reflects the actual distance and time.
 
-**`[NEEDS FOUNDER INPUT]` — the fare table itself.** The per-ride-type base, per-km and
-per-minute rates currently in the code are explicitly labelled in the source as _"placeholder
-fare constants … not a founder-approved fare table"_, anchored to delivery's per-km pricing
-rather than to ride economics. The **₦1,500 minimum is founder-decided (2026-08-16); the
-rates underneath it are not.** The terms should not quote unapproved numbers, and the
-platform should not charge them. This needs sign-off before launch regardless of what the
-terms say.
+**Approved fare table (founder, 2026-08-26).**
+
+| Ride type       | Base fare | Per km | Per minute | Minimum fare |
+| --------------- | --------- | ------ | ---------- | ------------ |
+| **Dx Ride**     | ₦350      | ₦110   | ₦15        | ₦1,500       |
+| **Dx Comfort**  | ₦450      | ₦135   | ₦18        | ₦1,500       |
+| **Dx XL**       | ₦600      | ₦165   | ₦22        | ₦1,700       |
+| **Dx Tricycle** | ₦150      | ₦75    | ₦8         | ₦500         |
+
+The ₦1,500 minimum on Dx Ride and Dx Comfort is the earlier founder decision of 2026-08-16,
+carried forward. Tricycle sits at ₦500 because a ₦1,500 floor on a ₦150 base would mean a
+short tricycle hop is charged ten times its metered fare.
+
+> **Not yet live.** These rates are approved but **have not been applied to production**. The
+> four live rate cards must first be read from the Operations Console and recorded in
+> `DPX-PRICING-001` §2, so that any edit an operator has made since the 2026-08-18 seed is
+> captured rather than silently overwritten. **Until that capture and the console change are
+> done, this table must not be published** — publishing a rate the platform is not charging
+> is the same failure as publishing an unapproved one, in the opposite direction.
+>
+> Rates live in the `ride_fare_rates` table and are edited from the Operations Console. A
+> fare correction is a console entry, not a deploy.
+
+Two properties of the calculation worth stating because they are not obvious:
+
+- **Distance is straight-line, not road distance.** The fare is computed from the direct
+  distance between pickup and destination, so it does not increase because a route detours.
+- **The time component is derived from distance, not measured.** There is no live trip timer;
+  duration is estimated from the distance at a fixed assumed speed. The per-minute rate is
+  therefore a second distance rate in practice, and a trip stuck in Kano traffic costs no
+  more than the same trip on an empty road. If the intention is to charge for real elapsed
+  time, that is an engineering change, not a rate change.
 
 ### 7.2 Delivery fees
 
@@ -342,10 +393,19 @@ up front.
 
 **The DrippleX wallet.** Your wallet holds a balance you can spend on the platform and, for
 drivers, riders and merchants, receives your earnings. Every movement is recorded as a ledger
-entry. `[NEEDS FOUNDER INPUT]` — whether wallet balances are held in a designated account,
-whether they earn interest (they should be stated not to), and what happens to a dormant
-balance. Counsel should confirm whether the wallet as operated engages CBN payment-services
-regulation.
+entry.
+
+**Your wallet balance is not held in a separate account.** As stated in §1, it sits in Afnan
+Homes Ltd's single operating account and is an entry in DrippleX's books, not money set aside
+for you elsewhere. Balances **do not earn interest**.
+
+Still `[NEEDS COUNSEL]`, carried in §1: whether that arrangement engages CBN payment-services
+regulation, what must be disclosed about the absence of segregation, and what these terms must
+say about a balance if the company becomes insolvent.
+
+Still `[NEEDS FOUNDER INPUT]`: what happens to a **dormant** balance — an account left untouched
+for a long period. Nothing in the platform does anything to a dormant balance today, so any
+clause here would have to be built before it could be true.
 
 **Withdrawals.** Earnings can be withdrawn to a bank account you have registered and
 verified. Withdrawals require your PIN, and the amount must be **at least ₦100 and no more
