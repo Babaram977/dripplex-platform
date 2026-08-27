@@ -55,7 +55,13 @@ export class RideReceiptService {
       pickupAddress: ride.pickupAddress,
       dropoffAddress: ride.dropoffAddress,
       distanceMeters: ride.estimatedDistanceMeters,
-      durationSeconds: ride.estimatedDurationSeconds,
+      // The real elapsed time, because that is what timeFare below was charged
+      // on (DPX-PRICING-002). Rides completed before repricing existed have no
+      // actual duration recorded and keep showing the estimate they were
+      // charged on — the receipt states the basis of its own arithmetic either
+      // way.
+      durationSeconds: ride.actualDurationSeconds ?? ride.estimatedDurationSeconds,
+      estimatedDurationSeconds: ride.estimatedDurationSeconds,
       fare: {
         baseFare: Number(ride.baseFare),
         distanceFare: Number(ride.distanceFare),
@@ -65,6 +71,13 @@ export class RideReceiptService {
         surchargeAmount: Number(ride.surchargeAmount),
         surchargeZoneName: ride.surchargeZoneName,
         totalFare: Number(ride.totalFare),
+        // Only when it actually differs. A quote line identical to the total
+        // asks the passenger to compare two equal numbers and wonder what they
+        // missed.
+        quotedTotalFare:
+          ride.quotedTotalFare !== null && Number(ride.quotedTotalFare) !== Number(ride.totalFare)
+            ? Number(ride.quotedTotalFare)
+            : null,
         tipAmount: ride.tipAmount !== null ? Number(ride.tipAmount) : null,
         platformCommission:
           ride.platformCommission !== null ? Number(ride.platformCommission) : null,

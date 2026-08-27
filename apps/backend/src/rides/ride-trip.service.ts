@@ -17,7 +17,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 
 import { RIDE_EVENTS_PUBLISHER, type RideEventsPublisher } from './ride-events.publisher';
-import { haversineMeters } from './ride-fare.service';
+import { haversineMeters, RideFareService } from './ride-fare.service';
 import { RIDE_AUDIT_ACTIONS, RIDE_START_PROXIMITY_METERS } from './ride.constants';
 import { toRideDto } from './ride.mapper';
 
@@ -42,6 +42,7 @@ export class RideTripService {
     @Inject(RIDE_EVENTS_PUBLISHER)
     private readonly events: RideEventsPublisher,
     private readonly eventBus: DomainEventBus,
+    private readonly fareService: RideFareService,
   ) {}
 
   /** Which trip-lifecycle events feed the persisted in-app notification
@@ -106,10 +107,17 @@ export class RideTripService {
     const ride = await this.requireAssignedRide(driverId, rideId);
     this.requireStatus(ride, RideStatus.IN_PROGRESS, 'completed');
 
+    const completedAt = new Date();
+    const repriced = await this.repriceOnActualDuration(ride, completedAt);
+
     const [updated] = await this.prisma.$transaction([
       this.prisma.ride.update({
         where: { id: ride.id },
-        data: { status: RideStatus.COMPLETED, completedAt: new Date() },
+        data: {
+          status: RideStatus.COMPLETED,
+          completedAt,
+          ...repriced.data,
+        },
       }),
       this.prisma.driverAvailability.update({
         where: { driverId },
@@ -120,6 +128,89 @@ export class RideTripService {
     await this.audit(RIDE_AUDIT_ACTIONS.COMPLETED, driverId, updated.id, context);
     await this.notifyAndPublish(updated, 'ride_completed');
     return toRideDto(updated);
+  }
+
+  /**
+   * DPX-PRICING-002 — charge the time the trip actually took.
+   *
+   * The fare was quoted at request from an assumed 30 km/h, which made the
+   * per-minute rate a second per-km rate: a driver held up in traffic was paid
+   * the same as one on an empty road. Founder decision 2026-08-27 — real
+   * elapsed time is charged, because that is what a time rate is for.
+   *
+   * Safe to charge more here because **payment is gated on completion**:
+   * RidePaymentService refuses both the gateway and cash paths unless the ride
+   * is already COMPLETED, so nobody has paid the quote by the time this runs.
+   * There is no second charge and no refund to reconcile. If that gate ever
+   * moves, this becomes a double-charge and the two must be changed together.
+   *
+   * Deliberately not done here:
+   *
+   * - **No cap.** A short trip in gridlock can exceed a long one on an open
+   *   road. That is the honest consequence of charging for time, and a cap is a
+   *   pricing decision to take on real Kano data rather than a guess now
+   *   (founder, 2026-08-27).
+   * - **The meter starts at `startedAt`**, when the driver taps Start with the
+   *   passenger aboard — not at acceptance. Time spent waiting at the kerb is
+   *   still unpaid; waiting fees were excluded from this launch.
+   * - **The promo discount is not rescaled.** It was granted against the quote,
+   *   and re-deriving it here would reopen the redemption accounting for a
+   *   number the customer already accepted.
+   *
+   * Known consequence, recorded rather than papered over: the whole fare is
+   * recomputed from the rates **live at completion**, so an Ops rate edit made
+   * while a trip is running applies to that trip. The window is the length of
+   * one ride and the alternative — snapshotting the four rate values onto every
+   * ride row at booking — is a schema decision that needs founder sign-off, so
+   * it is logged as a gap rather than invented here.
+   */
+  private async repriceOnActualDuration(
+    ride: Ride,
+    completedAt: Date,
+  ): Promise<{ data: Prisma.RideUncheckedUpdateInput }> {
+    if (ride.startedAt === null) {
+      // Cannot happen from IN_PROGRESS, which is the only status this is
+      // reached from — but a fare must never silently price on a null.
+      return { data: {} };
+    }
+
+    const actualDurationSeconds = Math.max(
+      0,
+      Math.round((completedAt.getTime() - ride.startedAt.getTime()) / 1_000),
+    );
+
+    const priced = await this.fareService.price(
+      ride.rideType,
+      { lat: Number(ride.pickupLatitude), lng: Number(ride.pickupLongitude) },
+      { lat: Number(ride.dropoffLatitude), lng: Number(ride.dropoffLongitude) },
+      actualDurationSeconds,
+    );
+
+    const promoDiscount = Number(ride.promoDiscount);
+    const totalFare = Math.max(0, Math.round(priced.totalFare - promoDiscount));
+
+    return {
+      data: {
+        actualDurationSeconds,
+        // Preserved once, so the receipt can show the passenger what they were
+        // quoted next to what they paid. The `??` makes the write idempotent:
+        // a second repricing would otherwise record the first repriced total
+        // as the "quote" and lose the number the passenger actually agreed to.
+        quotedTotalFare: ride.quotedTotalFare ?? ride.totalFare,
+        baseFare: priced.baseFare,
+        distanceFare: priced.distanceFare,
+        timeFare: priced.timeFare,
+        // Re-snapshotted with the amount, not left at the quote's values: a
+        // percentage surcharge scales with the metered fare, and a zone
+        // deactivated mid-trip resolves to nothing. Either way the stored
+        // amount and the stored zone name have to describe the same charge,
+        // or the receipt names a zone for money nobody added.
+        surchargeAmount: priced.surchargeAmount,
+        surchargeZoneId: priced.surchargeZoneId,
+        surchargeZoneName: priced.surchargeZoneName,
+        totalFare,
+      },
+    };
   }
 
   public async cancelByDriver(

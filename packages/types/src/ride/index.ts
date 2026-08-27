@@ -113,6 +113,14 @@ export interface RideDto {
   dropoffAddress: string | null;
   estimatedDistanceMeters: number | null;
   estimatedDurationSeconds: number | null;
+  /** DPX-PRICING-002 — seconds from `startedAt` to `completedAt`, the duration
+   * `timeFare` below was actually charged on. Null until the trip completes,
+   * and on any ride quoted before this existed. */
+  actualDurationSeconds: number | null;
+  /** The total quoted at booking, kept once the fare is recomputed on real
+   * elapsed time so a receipt can show quote and charge side by side. Null when
+   * the two are the same — i.e. no repricing has happened. */
+  quotedTotalFare: number | null;
   baseFare: number;
   distanceFare: number;
   timeFare: number;
@@ -300,7 +308,13 @@ export interface RideReceiptDto {
   pickupAddress: string | null;
   dropoffAddress: string | null;
   distanceMeters: number | null;
+  /** How long the trip took: real elapsed time once DPX-PRICING-002 has
+   * repriced it, falling back to the booking estimate for rides completed
+   * before that. This is the duration `timeFare` was charged on. */
   durationSeconds: number | null;
+  /** What the booking assumed it would take, kept beside the real figure so a
+   * longer, dearer trip explains itself rather than looking like an error. */
+  estimatedDurationSeconds: number | null;
   fare: {
     baseFare: number;
     distanceFare: number;
@@ -310,6 +324,10 @@ export interface RideReceiptDto {
     surchargeAmount: number;
     surchargeZoneName: string | null;
     totalFare: number;
+    /** The total quoted at booking, when the final charge differs from it.
+     * Null when nothing was repriced — there is then only one number and
+     * showing it twice invites the question it exists to answer. */
+    quotedTotalFare: number | null;
     tipAmount: number | null;
     platformCommission: number | null;
     driverEarning: number | null;

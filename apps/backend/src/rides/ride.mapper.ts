@@ -30,6 +30,8 @@ export function toRideDto(ride: Ride): RideDto {
     dropoffAddress: ride.dropoffAddress,
     estimatedDistanceMeters: ride.estimatedDistanceMeters,
     estimatedDurationSeconds: ride.estimatedDurationSeconds,
+    actualDurationSeconds: ride.actualDurationSeconds,
+    quotedTotalFare: ride.quotedTotalFare !== null ? Number(ride.quotedTotalFare) : null,
     baseFare: Number(ride.baseFare),
     distanceFare: Number(ride.distanceFare),
     timeFare: Number(ride.timeFare),

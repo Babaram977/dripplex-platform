@@ -149,4 +149,56 @@ describe('RideReceiptService', () => {
 
     await expect(service.getReceipt(randomUUID(), ride.id)).rejects.toThrow('Ride not found');
   });
+
+  describe('a trip repriced on real elapsed time (DPX-PRICING-002)', () => {
+    it('reports the real duration and shows the quote beside the charge', async () => {
+      if (!databaseAvailable) return;
+
+      const ride = await createRide('COMPLETED');
+      await prisma.ride.update({
+        where: { id: ride.id },
+        // What completeTrip writes when a 5-minute estimate turned into a
+        // 22-minute crawl: the fare recomputed, the quote preserved.
+        data: { actualDurationSeconds: 1320, quotedTotalFare: 550, totalFare: 890 },
+      });
+
+      const receipt = await service.getReceipt(customerId, ride.id);
+
+      // The duration that timeFare was charged on, not the one the booking
+      // guessed — a receipt whose stated duration doesn't explain its own time
+      // line reads as an overcharge.
+      expect(receipt.durationSeconds).toBe(1320);
+      expect(receipt.estimatedDurationSeconds).toBe(300);
+      expect(receipt.fare.quotedTotalFare).toBe(550);
+      expect(receipt.fare.totalFare).toBe(890);
+    });
+
+    it('omits the quote line when nothing was repriced', async () => {
+      if (!databaseAvailable) return;
+
+      const ride = await createRide('COMPLETED');
+      await prisma.ride.update({
+        where: { id: ride.id },
+        data: { actualDurationSeconds: 300, quotedTotalFare: 550 },
+      });
+
+      const receipt = await service.getReceipt(customerId, ride.id);
+
+      // Equal to totalFare, so showing it would ask the passenger to compare
+      // two identical numbers and wonder what they missed.
+      expect(receipt.fare.quotedTotalFare).toBeNull();
+    });
+
+    it('falls back to the estimate for rides completed before repricing existed', async () => {
+      if (!databaseAvailable) return;
+
+      const ride = await createRide('COMPLETED');
+      const receipt = await service.getReceipt(customerId, ride.id);
+
+      // Those rides were charged on the estimate, so the estimate is the honest
+      // basis to print. A null duration would lose the explanation entirely.
+      expect(receipt.durationSeconds).toBe(300);
+      expect(receipt.fare.quotedTotalFare).toBeNull();
+    });
+  });
 });

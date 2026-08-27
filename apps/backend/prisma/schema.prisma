@@ -2013,10 +2013,27 @@ model Ride {
   dropoffAddress           String?    @map("dropoff_address") @db.VarChar(500)
   estimatedDistanceMeters  Int?       @map("estimated_distance_meters")
   estimatedDurationSeconds Int?       @map("estimated_duration_seconds")
-  baseFare                 Decimal    @default(0) @map("base_fare") @db.Decimal(12, 2)
-  distanceFare             Decimal    @default(0) @map("distance_fare") @db.Decimal(12, 2)
-  timeFare                 Decimal    @default(0) @map("time_fare") @db.Decimal(12, 2)
-  totalFare                Decimal    @default(0) @map("total_fare") @db.Decimal(12, 2)
+
+  /// DPX-PRICING-002 — how long the trip actually took, startedAt → completedAt.
+  ///
+  /// Derivable from those two timestamps, and stored anyway: this is the number
+  /// the passenger was charged on, and a receipt has to keep explaining itself
+  /// even if a timestamp is later corrected by Ops. Null on any ride that never
+  /// started.
+  actualDurationSeconds Int? @map("actual_duration_seconds")
+
+  /// The total quoted at booking, before the trip revealed how long it took.
+  ///
+  /// `totalFare` is recomputed at completion from real elapsed time, so without
+  /// this the number the passenger agreed to would be overwritten and the
+  /// receipt could not show them why the two differ. Null for rides quoted
+  /// before DPX-PRICING-002.
+  quotedTotalFare Decimal? @map("quoted_total_fare") @db.Decimal(12, 2)
+
+  baseFare     Decimal @default(0) @map("base_fare") @db.Decimal(12, 2)
+  distanceFare Decimal @default(0) @map("distance_fare") @db.Decimal(12, 2)
+  timeFare     Decimal @default(0) @map("time_fare") @db.Decimal(12, 2)
+  totalFare    Decimal @default(0) @map("total_fare") @db.Decimal(12, 2)
 
   /// What a surcharge zone added, in naira, and which zone did it.
   ///
