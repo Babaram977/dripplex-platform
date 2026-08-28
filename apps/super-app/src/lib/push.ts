@@ -134,6 +134,8 @@ export const CALL_ALERT_CHANNEL: NativeNotificationChannel = {
   visibility: 1,
   // `res/raw/call_alert.wav` — a two-tone warble rather than the ride triplet,
   // so a driver knows which of the two it is without looking at the phone.
+  // Rises 740Hz -> 988Hz: the first cut started on the higher note and the
+  // founder's ear caught it immediately, so it opens low and climbs instead.
   sound: 'call_alert',
   vibration: true,
   lights: true,
