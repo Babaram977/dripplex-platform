@@ -1,4 +1,26 @@
-import { distanceKm, isOpenNow } from './customer-merchant.mapper';
+import { distanceKm, isOpenNow, toMerchantSummaryDto } from './customer-merchant.mapper';
+
+import type { Business } from '@prisma/client';
+
+/** Only the fields toMerchantSummaryDto reads. Building a whole Business row
+ * would say nothing extra about the distance rule under test. */
+function businessAt(latitude: number, longitude: number): Business {
+  return {
+    businessName: 'Nasara Pharmacy',
+    businessType: 'SOLE_PROPRIETORSHIP',
+    category: 'PHARMACY',
+    logoUrl: null,
+    coverPhotoUrl: null,
+    verificationStatus: 'VERIFIED',
+    city: '',
+    state: '',
+    operatingHours: null,
+    latitude,
+    longitude,
+  } as unknown as Business;
+}
+
+const KANO = { lat: 12.0022, lng: 8.592 };
 
 describe('distanceKm', () => {
   it('returns ~0 for the same point', () => {
@@ -38,5 +60,25 @@ describe('isOpenNow', () => {
   it('returns false when outside the configured window', () => {
     const wednesdayMidnight = new Date('2026-07-29T23:30:00Z');
     expect(isOpenNow({ wed: { open: '08:00', close: '20:00' } }, wednesdayMidnight)).toBe(false);
+  });
+});
+
+describe('toMerchantSummaryDto — distance to a shop we cannot place', () => {
+  it('reports no distance for a merchant sitting at 0,0', () => {
+    // 0,0 is the schema's fallback when geocoding never resolved the address,
+    // not a location. Measured literally it is 1,637 km from Kano — so three
+    // live merchants were being shown as impossibly far rather than as
+    // unplaced, and could never reach the top of a "nearest" list.
+    expect(toMerchantSummaryDto(businessAt(0, 0), 'mp-1', undefined, KANO).distanceKm).toBeNull();
+  });
+
+  it('still measures a merchant we can place', () => {
+    const dto = toMerchantSummaryDto(businessAt(12.0106, 8.5919), 'mp-2', undefined, KANO);
+    expect(dto.distanceKm).not.toBeNull();
+    expect(dto.distanceKm).toBeLessThan(5);
+  });
+
+  it('reports no distance when the customer has no location either', () => {
+    expect(toMerchantSummaryDto(businessAt(12.0106, 8.5919), 'mp-3').distanceKm).toBeNull();
   });
 });

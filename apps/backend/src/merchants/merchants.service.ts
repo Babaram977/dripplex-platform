@@ -25,6 +25,7 @@ import {
 } from '../notifications/notification.service';
 import { StorageAssetService } from '../uploads/storage-asset.service';
 
+import { geocodableAddress, hasKnownLocation } from './business-location';
 import { MERCHANT_AUDIT_ACTIONS, requiredKycDocumentTypes } from './merchant.constants';
 import {
   toBankAccountDto,
@@ -84,22 +85,33 @@ export class MerchantsService {
    * guess — at the point where a wrong location would actually cost money.
    */
   private async coordinatesFromAddress(
-    address: string,
+    place: {
+      address: string;
+      city?: string | null;
+      state?: string | null;
+      country?: string | null;
+    },
     explicitLatitude?: number,
     explicitLongitude?: number,
   ): Promise<{ latitude: number; longitude: number } | null> {
     if (explicitLatitude !== undefined || explicitLongitude !== undefined) {
       return null; // the merchant gave real coordinates; never override them
     }
-    if (address.trim() === '' || !this.geocoder) {
+    // Everything the business knows about where it is, not just the street
+    // line. Minimal onboarding collects one free-text field, so a bare street
+    // with no settlement was often all the geocoder got — and the only two live
+    // merchants that resolved were the two whose address carried its own
+    // qualifier. See geocodableAddress.
+    const query = geocodableAddress(place);
+    if (query === '' || !this.geocoder) {
       return null;
     }
     try {
-      const located = await this.geocoder.geocode(address);
+      const located = await this.geocoder.geocode(query);
       return { latitude: located.latitude, longitude: located.longitude };
     } catch (error) {
       this.logger.warn(
-        `Could not geocode business address "${address}": ${
+        `Could not geocode business address "${query}": ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -170,7 +182,11 @@ export class MerchantsService {
     const state = dto.state?.trim() ?? '';
     const city = dto.city?.trim() ?? '';
     const address = dto.address?.trim() ?? '';
-    const located = await this.coordinatesFromAddress(address, dto.latitude, dto.longitude);
+    const located = await this.coordinatesFromAddress(
+      { address, city, state, country },
+      dto.latitude,
+      dto.longitude,
+    );
     const latitude = dto.latitude ?? located?.latitude ?? 0;
     const longitude = dto.longitude ?? located?.longitude ?? 0;
 
@@ -284,7 +300,19 @@ export class MerchantsService {
     // A merchant correcting their address should move on the map with it.
     const relocated =
       dto.address !== undefined
-        ? await this.coordinatesFromAddress(dto.address, dto.latitude, dto.longitude)
+        ? await this.coordinatesFromAddress(
+            {
+              address: dto.address,
+              // The values being written in this same update, not the stale
+              // ones on the record — a merchant correcting city and address
+              // together must be geocoded against both new values.
+              city: dto.city ?? business.city,
+              state: dto.state ?? business.state,
+              country: dto.country ?? business.country,
+            },
+            dto.latitude,
+            dto.longitude,
+          )
         : null;
 
     const updated = await this.merchantsRepository.updateBusiness(business.id, {
@@ -838,6 +866,96 @@ export class MerchantsService {
       approvedAt: now.toISOString(),
       approvedBy: adminUserId,
     };
+  }
+
+  /**
+   * Re-resolve a business's coordinates from the address already on file.
+   *
+   * The repair half of the Null Island problem. Geocoding at onboarding is
+   * best-effort by design — a maps outage must never block a merchant from
+   * signing up — so a business whose address did not resolve keeps 0,0 for
+   * ever, with nothing anywhere prompting another attempt. On 2026-08-28 three
+   * of the five live merchants were in that state, each with a good Kano street
+   * address sitting unused on the record.
+   *
+   * Operations-triggered rather than automatic: a sweep that re-geocoded every
+   * business on a timer would spend money on addresses that are simply wrong,
+   * and would move a shop that someone had deliberately pinned. This is a
+   * button next to the problem, pressed by whoever can see it.
+   *
+   * Only ever writes a location it actually resolved. A failure leaves the
+   * record exactly as it was and says so — silently keeping 0,0 while
+   * reporting success is the whole bug.
+   */
+  public async relocateBusiness(
+    merchantUserId: string,
+    adminUserId: string,
+    context: AuditContext,
+  ): Promise<BusinessDto> {
+    const detail = await this.requireAdminDetail(merchantUserId);
+    if (!detail.business) {
+      throw new ValidationDomainException('Merchant has no business profile to locate');
+    }
+    if (detail.business.address.trim() === '') {
+      // Nothing to work from. Telling an operator to collect the address beats
+      // a geocoder call that cannot succeed.
+      throw new ValidationDomainException(
+        'This business has no address on file. Ask the merchant to add one, then try again.',
+      );
+    }
+    if (!this.geocoder) {
+      throw new ValidationDomainException(
+        'Address lookup is not configured on this environment, so the location cannot be resolved.',
+      );
+    }
+
+    const query = geocodableAddress(detail.business);
+    let located: { latitude: number; longitude: number };
+    try {
+      const result = await this.geocoder.geocode(query);
+      located = { latitude: result.latitude, longitude: result.longitude };
+    } catch (error) {
+      this.logger.warn(
+        `Could not relocate business ${detail.business.id} from "${query}": ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      throw new ValidationDomainException(
+        `Could not find "${query}" on the map. Check the address with the merchant, correct it, then try again.`,
+      );
+    }
+
+    // A geocoder that answers 0,0 has told us nothing, and writing it back
+    // would look like a successful repair.
+    if (!hasKnownLocation(located)) {
+      throw new ValidationDomainException(
+        `"${query}" did not resolve to a real location. Check the address with the merchant.`,
+      );
+    }
+
+    const before = hasKnownLocation(detail.business);
+    const updated = await this.merchantsRepository.updateBusiness(detail.business.id, {
+      latitude: located.latitude,
+      longitude: located.longitude,
+    });
+
+    await this.auditService.record(
+      MERCHANT_AUDIT_ACTIONS.BUSINESS_UPDATED,
+      { ...context, userId: adminUserId },
+      {
+        resource: 'business',
+        resourceId: detail.business.id,
+        metadata: {
+          action: 'relocated',
+          query,
+          hadLocation: before,
+          latitude: located.latitude,
+          longitude: located.longitude,
+        },
+      },
+    );
+
+    return toBusinessDto(updated);
   }
 
   public async rejectMerchant(
