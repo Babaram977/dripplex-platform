@@ -2501,6 +2501,28 @@ export const api = {
     logout: () => dx<{ loggedOut: boolean }>('POST', '/auth/logout'),
     logoutAll: () => dx<{ loggedOut: boolean }>('POST', '/auth/logout-all'),
     me: () => dx<DxUser>('GET', '/auth/me'),
+
+    /**
+     * What is still open on my own account — a trip that has not finished, an
+     * order in flight, money in the wallet. Read before offering to delete, so
+     * the screen can say what is holding it up instead of failing on confirm.
+     */
+    myCommitments: () =>
+      dx<{
+        activeRides: number;
+        activeDeliveries: number;
+        openOrders: number;
+        walletBalance: number;
+      }>('GET', '/auth/me/commitments'),
+
+    /**
+     * Close my own account.
+     *
+     * Every session is destroyed server-side by this call, so the caller must
+     * clear the device and land on the front door rather than trying to revoke
+     * a session that no longer exists.
+     */
+    deleteMe: () => dx<{ deleted: true }>('DELETE', '/auth/me'),
     updateMe: (body: {
       firstName?: string;
       lastName?: string;

@@ -18,6 +18,25 @@ import {
 
 import type { AuditContext } from '../audit/audit.service';
 
+/**
+ * Who is doing the deleting. A discriminated union rather than a nullable
+ * admin id, because the two callers differ in more than one field: an operator
+ * supplies a reason and must not be the account being deleted, while the
+ * account holder is by definition both and supplies no reason at all.
+ */
+export type DeletionActor =
+  { kind: 'operator'; adminUserId: string; reason: string } | { kind: 'self' };
+
+/**
+ * The reason recorded when someone closes their own account.
+ *
+ * Fixed rather than collected. The customer flow asks for a typed confirmation
+ * and nothing else — adding a "why are you leaving?" field is a product
+ * decision nobody has taken, and an empty reason would leave the audit record
+ * saying nothing at all about the most consequential action on the account.
+ */
+export const SELF_DELETION_REASON = 'Account closed by the account holder';
+
 export interface AccountDeletionResult {
   userId: string;
   deletedAt: Date;
@@ -119,12 +138,13 @@ export class AccountDeletionService {
    * than a warning: the operator clearing a stale roster is not the person who
    * knows whether a trip in progress matters, and an accidental deletion of a
    * driver mid-shift is not recoverable by re-registering them — their trip is
-   * already orphaned by then.
+   * already orphaned by then. It refuses a customer closing their own account
+   * for the same reason from the other side: nobody should be able to walk away
+   * from a trip a driver is currently driving to.
    */
   public async deleteAccount(
     userId: string,
-    adminUserId: string,
-    reason: string,
+    actor: DeletionActor,
     context: AuditContext,
   ): Promise<AccountDeletionResult> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
@@ -134,10 +154,13 @@ export class AccountDeletionService {
     if (user.deletedAt) {
       throw new ConflictDomainException('This account has already been deleted');
     }
-    if (userId === adminUserId) {
-      // Not a hypothetical: the roster shows every user, an operator's own
-      // account included, and deleting yourself ends your session with no way
-      // back in — for the one role that can undo it.
+    if (actor.kind === 'operator' && userId === actor.adminUserId) {
+      // Only a hazard for the operator path, which is why the check lives on
+      // that branch rather than on the id comparison alone. The roster shows
+      // every user, an operator's own account included, and deleting yourself
+      // there ends your session with no way back in — for one of the two roles
+      // that can undo it. A customer closing their own account is doing that on
+      // purpose and is the entire point of the self path.
       throw new ConflictDomainException('You cannot delete your own account');
     }
 
@@ -227,15 +250,20 @@ export class AccountDeletionService {
     // The audit record is the only remaining copy of who this was. The row it
     // describes no longer carries the email or the phone, by design, so losing
     // this entry would make the deletion unaccountable.
+    const reason = actor.kind === 'operator' ? actor.reason : SELF_DELETION_REASON;
     await this.auditService.record(
       USER_AUDIT_ACTIONS.ACCOUNT_DELETED,
-      { ...context, userId: adminUserId },
+      { ...context, userId: actor.kind === 'operator' ? actor.adminUserId : userId },
       {
         resource: 'user',
         resourceId: userId,
         metadata: {
           reason,
-          deletedBy: adminUserId,
+          // Who did it, in a form a later reader cannot misread. A self
+          // deletion recorded as `deletedBy: <the same id>` looks identical to
+          // an operator deleting their own account, which the operator path
+          // refuses outright — so the two must not serialise the same way.
+          deletedBy: actor.kind === 'operator' ? actor.adminUserId : 'self',
           originalEmail,
           originalPhone,
           personasClosed,
@@ -243,7 +271,11 @@ export class AccountDeletionService {
       },
     );
 
-    this.logger.log(`Account ${userId} deleted by ${adminUserId}: ${reason}`);
+    this.logger.log(
+      `Account ${userId} deleted by ${
+        actor.kind === 'operator' ? actor.adminUserId : 'the account holder'
+      }: ${reason}`,
+    );
 
     return { userId, deletedAt: now, personasClosed };
   }

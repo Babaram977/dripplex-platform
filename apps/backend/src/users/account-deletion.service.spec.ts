@@ -16,7 +16,7 @@ import {
   isDeletedEmail,
   makeDeletedEmail,
 } from './account-deletion.constants';
-import { AccountDeletionService } from './account-deletion.service';
+import { AccountDeletionService, SELF_DELETION_REASON } from './account-deletion.service';
 
 const USER_ID = '11111111-1111-4111-8111-111111111111';
 const ADMIN_ID = '22222222-2222-4222-8222-222222222222';
@@ -107,7 +107,11 @@ describe('AccountDeletionService', () => {
     it('moves the email out of the way and clears the phone', async () => {
       const { service, tx } = makeService();
 
-      await service.deleteAccount(USER_ID, ADMIN_ID, 'Never submitted documents', context);
+      await service.deleteAccount(
+        USER_ID,
+        { kind: 'operator', adminUserId: ADMIN_ID, reason: 'Never submitted documents' },
+        context,
+      );
 
       const data = tx.user.update.mock.calls[0][0].data;
       expect(data.email).toBe(makeDeletedEmail(USER_ID));
@@ -136,7 +140,11 @@ describe('AccountDeletionService', () => {
       // resurrected by signing in with Google, bypassing registration entirely.
       const { service, tx } = makeService();
 
-      await service.deleteAccount(USER_ID, ADMIN_ID, 'Abandoned signup', context);
+      await service.deleteAccount(
+        USER_ID,
+        { kind: 'operator', adminUserId: ADMIN_ID, reason: 'Abandoned signup' },
+        context,
+      );
 
       expect(tx.user.update.mock.calls[0][0].data.googleId).toBeNull();
     });
@@ -147,7 +155,11 @@ describe('AccountDeletionService', () => {
       const { service } = makeService({ ride: { count: jest.fn().mockResolvedValue(1) } });
 
       await expect(
-        service.deleteAccount(USER_ID, ADMIN_ID, 'Clearing the roster', context),
+        service.deleteAccount(
+          USER_ID,
+          { kind: 'operator', adminUserId: ADMIN_ID, reason: 'Clearing the roster' },
+          context,
+        ),
       ).rejects.toThrow(/1 trip in progress/);
     });
 
@@ -155,7 +167,11 @@ describe('AccountDeletionService', () => {
       const { service } = makeService({ deliveryJob: { count: jest.fn().mockResolvedValue(2) } });
 
       await expect(
-        service.deleteAccount(USER_ID, ADMIN_ID, 'Clearing the roster', context),
+        service.deleteAccount(
+          USER_ID,
+          { kind: 'operator', adminUserId: ADMIN_ID, reason: 'Clearing the roster' },
+          context,
+        ),
       ).rejects.toThrow(/2 deliveries in progress/);
     });
 
@@ -163,7 +179,11 @@ describe('AccountDeletionService', () => {
       const { service } = makeService({ order: { count: jest.fn().mockResolvedValue(1) } });
 
       await expect(
-        service.deleteAccount(USER_ID, ADMIN_ID, 'Clearing the roster', context),
+        service.deleteAccount(
+          USER_ID,
+          { kind: 'operator', adminUserId: ADMIN_ID, reason: 'Clearing the roster' },
+          context,
+        ),
       ).rejects.toThrow(/1 order not finished/);
     });
 
@@ -177,7 +197,11 @@ describe('AccountDeletionService', () => {
       });
 
       await expect(
-        service.deleteAccount(USER_ID, ADMIN_ID, 'Clearing the roster', context),
+        service.deleteAccount(
+          USER_ID,
+          { kind: 'operator', adminUserId: ADMIN_ID, reason: 'Clearing the roster' },
+          context,
+        ),
       ).rejects.toThrow(/wallet balance/);
     });
 
@@ -190,7 +214,11 @@ describe('AccountDeletionService', () => {
       });
 
       await expect(
-        service.deleteAccount(USER_ID, ADMIN_ID, 'Clearing the roster', context),
+        service.deleteAccount(
+          USER_ID,
+          { kind: 'operator', adminUserId: ADMIN_ID, reason: 'Clearing the roster' },
+          context,
+        ),
       ).rejects.toThrow(/1 trip in progress, 3 orders not finished/);
     });
 
@@ -200,7 +228,11 @@ describe('AccountDeletionService', () => {
       });
 
       await expect(
-        service.deleteAccount(USER_ID, ADMIN_ID, 'Clearing the roster', context),
+        service.deleteAccount(
+          USER_ID,
+          { kind: 'operator', adminUserId: ADMIN_ID, reason: 'Clearing the roster' },
+          context,
+        ),
       ).rejects.toBeInstanceOf(ConflictDomainException);
       expect(tx.user.update).not.toHaveBeenCalled();
       expect(auditService.record).not.toHaveBeenCalled();
@@ -277,7 +309,11 @@ describe('AccountDeletionService', () => {
       tx.merchantProfile.updateMany.mockResolvedValue({ count: 1 });
       tx.driverProfile.updateMany.mockResolvedValue({ count: 1 });
 
-      const result = await service.deleteAccount(USER_ID, ADMIN_ID, 'Duplicate account', context);
+      const result = await service.deleteAccount(
+        USER_ID,
+        { kind: 'operator', adminUserId: ADMIN_ID, reason: 'Duplicate account' },
+        context,
+      );
 
       expect(result.personasClosed).toEqual(['merchant', 'driver']);
       expect(tx.customerProfile.updateMany).toHaveBeenCalled();
@@ -289,7 +325,11 @@ describe('AccountDeletionService', () => {
       // expires — JWT_ACCESS_TTL is 15 minutes.
       const { service, tx } = makeService();
 
-      await service.deleteAccount(USER_ID, ADMIN_ID, 'Fraudulent signup', context);
+      await service.deleteAccount(
+        USER_ID,
+        { kind: 'operator', adminUserId: ADMIN_ID, reason: 'Fraudulent signup' },
+        context,
+      );
 
       expect(tx.authSession.deleteMany).toHaveBeenCalledWith({ where: { userId: USER_ID } });
     });
@@ -297,7 +337,11 @@ describe('AccountDeletionService', () => {
     it('marks the account deleted and inactive', async () => {
       const { service, tx } = makeService();
 
-      await service.deleteAccount(USER_ID, ADMIN_ID, 'Abandoned signup', context);
+      await service.deleteAccount(
+        USER_ID,
+        { kind: 'operator', adminUserId: ADMIN_ID, reason: 'Abandoned signup' },
+        context,
+      );
 
       const data = tx.user.update.mock.calls[0][0].data;
       expect(data.deletedAt).toBeInstanceOf(Date);
@@ -310,7 +354,11 @@ describe('AccountDeletionService', () => {
       // state on its own.
       const { service, prisma } = makeService();
 
-      await service.deleteAccount(USER_ID, ADMIN_ID, 'Abandoned signup', context);
+      await service.deleteAccount(
+        USER_ID,
+        { kind: 'operator', adminUserId: ADMIN_ID, reason: 'Abandoned signup' },
+        context,
+      );
 
       expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     });
@@ -322,7 +370,11 @@ describe('AccountDeletionService', () => {
       // the only surviving answer to "who did we delete, and why".
       const { service, auditService } = makeService();
 
-      await service.deleteAccount(USER_ID, ADMIN_ID, 'Never submitted documents', context);
+      await service.deleteAccount(
+        USER_ID,
+        { kind: 'operator', adminUserId: ADMIN_ID, reason: 'Never submitted documents' },
+        context,
+      );
 
       expect(auditService.record).toHaveBeenCalledWith(
         USER_AUDIT_ACTIONS.ACCOUNT_DELETED,
@@ -346,7 +398,11 @@ describe('AccountDeletionService', () => {
       const { service } = makeService({ user: { findUnique: jest.fn().mockResolvedValue(null) } });
 
       await expect(
-        service.deleteAccount(USER_ID, ADMIN_ID, 'Clearing the roster', context),
+        service.deleteAccount(
+          USER_ID,
+          { kind: 'operator', adminUserId: ADMIN_ID, reason: 'Clearing the roster' },
+          context,
+        ),
       ).rejects.toBeInstanceOf(NotFoundDomainException);
     });
 
@@ -361,7 +417,11 @@ describe('AccountDeletionService', () => {
       });
 
       await expect(
-        service.deleteAccount(USER_ID, ADMIN_ID, 'Clearing the roster', context),
+        service.deleteAccount(
+          USER_ID,
+          { kind: 'operator', adminUserId: ADMIN_ID, reason: 'Clearing the roster' },
+          context,
+        ),
       ).rejects.toThrow(/already been deleted/);
     });
 
@@ -374,8 +434,85 @@ describe('AccountDeletionService', () => {
       });
 
       await expect(
-        service.deleteAccount(ADMIN_ID, ADMIN_ID, 'Clearing the roster', context),
+        service.deleteAccount(
+          ADMIN_ID,
+          { kind: 'operator', adminUserId: ADMIN_ID, reason: 'Clearing the roster' },
+          context,
+        ),
       ).rejects.toThrow(/your own account/);
+    });
+  });
+
+  describe('a customer closing their own account', () => {
+    // The app's Delete Account flow was a mock — three steps, a typed DELETE,
+    // and setDeleteStep('done'). No request, nothing deleted, and a closing
+    // screen promising a 30-day cancellation window for a system that has none.
+
+    it('is allowed to delete itself, which the operator path refuses', async () => {
+      // The same id on both sides is an accident on the roster and the entire
+      // point here, so the guard has to key on WHO is asking, not on the ids
+      // matching.
+      const { service, tx } = makeService();
+
+      const result = await service.deleteAccount(USER_ID, { kind: 'self' }, context);
+
+      expect(result.userId).toBe(USER_ID);
+      expect(tx.user.update).toHaveBeenCalled();
+    });
+
+    it('releases the identity, so they can sign up again', async () => {
+      // Founder, 2026-08-28: "Deleted user can register again yes". Someone who
+      // leaves and changes their mind is the ordinary case, not an edge one.
+      const { service, tx } = makeService();
+
+      await service.deleteAccount(USER_ID, { kind: 'self' }, context);
+
+      const data = tx.user.update.mock.calls[0][0].data;
+      expect(data.email).toBe(makeDeletedEmail(USER_ID));
+      expect(data.phone).toBeNull();
+    });
+
+    it('still refuses while a trip is in progress', async () => {
+      // Nobody gets to walk away from a trip a driver is currently driving to.
+      // The protections are the service's, not the operator route's.
+      const { service } = makeService({ ride: { count: jest.fn().mockResolvedValue(1) } });
+
+      await expect(service.deleteAccount(USER_ID, { kind: 'self' }, context)).rejects.toThrow(
+        /1 trip in progress/,
+      );
+    });
+
+    it('still refuses while there is money in the wallet', async () => {
+      const { service } = makeService({
+        wallet: {
+          findMany: jest.fn().mockResolvedValue([{ availableBalance: 1200, pendingBalance: 0 }]),
+        },
+      });
+
+      await expect(service.deleteAccount(USER_ID, { kind: 'self' }, context)).rejects.toThrow(
+        /wallet balance/,
+      );
+    });
+
+    it('records a reason of its own, and does not look like an operator did it', async () => {
+      // `deletedBy: <the same id>` would be indistinguishable from an operator
+      // deleting their own account — which the operator path refuses outright,
+      // so the audit trail must not be able to describe one as the other.
+      const { service, auditService } = makeService();
+
+      await service.deleteAccount(USER_ID, { kind: 'self' }, context);
+
+      expect(auditService.record).toHaveBeenCalledWith(
+        USER_AUDIT_ACTIONS.ACCOUNT_DELETED,
+        expect.objectContaining({ userId: USER_ID }),
+        expect.objectContaining({
+          resourceId: USER_ID,
+          metadata: expect.objectContaining({
+            reason: SELF_DELETION_REASON,
+            deletedBy: 'self',
+          }),
+        }),
+      );
     });
   });
 });

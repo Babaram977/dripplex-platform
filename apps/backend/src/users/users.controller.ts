@@ -109,13 +109,17 @@ export class UsersController {
       personasClosed: string[];
     }>
   > {
-    const result = await this.accountDeletion.deleteAccount(id, admin.id, dto.reason, {
-      userId: admin.id,
-      ...(request.ip !== undefined ? { ipAddress: request.ip } : {}),
-      ...(typeof request.headers['user-agent'] === 'string'
-        ? { userAgent: request.headers['user-agent'] }
-        : {}),
-    });
+    const result = await this.accountDeletion.deleteAccount(
+      id,
+      { kind: 'operator', adminUserId: admin.id, reason: dto.reason },
+      {
+        userId: admin.id,
+        ...(request.ip !== undefined ? { ipAddress: request.ip } : {}),
+        ...(typeof request.headers['user-agent'] === 'string'
+          ? { userAgent: request.headers['user-agent'] }
+          : {}),
+      },
+    );
     return {
       success: true,
       data: {
