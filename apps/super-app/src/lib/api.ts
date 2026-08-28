@@ -435,6 +435,24 @@ export interface MerchantSummaryDto {
   isOpenNow: boolean | null;
 }
 
+/**
+ * What `GET /merchants/:id` actually returns — the summary plus the fields only
+ * the detail route carries.
+ *
+ * This route was typed as MerchantSummaryDto, which is what `GET /merchants`
+ * returns. The controller's own return type is MerchantDetailDto and the mapper
+ * fills `address` from the business record, so the street address was arriving
+ * over the wire and being thrown away by the type. Pickup needs it: a customer
+ * collecting their own order has to be told where to go.
+ */
+export interface MerchantDetailDto extends MerchantSummaryDto {
+  description: string | null;
+  address: string;
+  country: string;
+  phone: string;
+  email: string;
+}
+
 export interface ProductSummaryDto {
   id: string;
   merchantId: string;
@@ -2585,7 +2603,7 @@ export const api = {
         ...params,
       }).then((r) => r.results),
     getMerchant: (id: string, params?: { lat?: number; lng?: number }) =>
-      dx<MerchantSummaryDto & { products?: ProductSummaryDto[] }>(
+      dx<MerchantDetailDto & { products?: ProductSummaryDto[] }>(
         'GET',
         `/merchants/${id}`,
         undefined,
