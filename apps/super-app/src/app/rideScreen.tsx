@@ -1334,7 +1334,7 @@ export function PickupConfirmScreen({
             <input
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="e.g. I'm at the gate"
+              placeholder="Tell the driver where to find you"
               className="h-12 w-full rounded-2xl px-4 outline-none"
               style={{
                 background: NAVY_SURFACE,

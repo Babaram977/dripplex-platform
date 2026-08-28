@@ -234,7 +234,7 @@ export function VerifyEmailScreen({ onDone }: { onDone: () => void }) {
           autoComplete="email"
           autoCapitalize="none"
           autoCorrect="off"
-          placeholder="you@example.com"
+          placeholder="Type your email address"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           onFocus={() => setFocused(true)}
