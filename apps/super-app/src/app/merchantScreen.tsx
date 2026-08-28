@@ -3584,6 +3584,16 @@ function kycStatusUi(s: string | undefined): string {
 
 function MerchantKYCPage() {
   const [status, setStatus] = useState<MerchantKycStatusDto | null>(null);
+  // The legal structure decides which documents are actually required.
+  //
+  // A sole trader cannot obtain a CAC certificate — it is proof of registration
+  // with the Corporate Affairs Commission, and an unregistered business has
+  // none to fetch. This page used to mark it "Required" for everyone, so the
+  // small traders the launch market is made of were told to produce a document
+  // that does not exist for them, and the progress bar could never reach 100%.
+  // Founder decision 2026-08-28; the backend's approval gate reads the same
+  // structure (requiredKycDocumentTypes).
+  const [soleTrader, setSoleTrader] = useState(false);
   const [loading, setLoading] = useState(true);
   // Inline upload form state (one document at a time).
   const [openType, setOpenType] = useState<string | null>(null);
@@ -3594,14 +3604,22 @@ function MerchantKYCPage() {
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   const fetchKyc = useCallback(async () => {
-    try {
-      setStatus(await api.merchant.getKyc());
-    } catch {
-      // Not a merchant / no business yet → nothing submitted.
-      setStatus({ latest: null, items: [] });
-    } finally {
-      setLoading(false);
-    }
+    // Independent of each other on purpose: a merchant with no business profile
+    // yet still sees their documents, and a business that loads while KYC fails
+    // still labels the rows correctly.
+    const [kyc, business] = await Promise.allSettled([
+      api.merchant.getKyc(),
+      api.merchant.getBusiness(),
+    ]);
+    // Not a merchant / no business yet → nothing submitted.
+    setStatus(kyc.status === 'fulfilled' ? kyc.value : { latest: null, items: [] });
+    // Default to the full document set when the structure cannot be read. The
+    // wrong way round would tell a limited company its CAC is optional, and
+    // Operations would refuse the approval with nothing on screen explaining it.
+    setSoleTrader(
+      business.status === 'fulfilled' && business.value.businessType === 'SOLE_PROPRIETORSHIP',
+    );
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -3612,12 +3630,20 @@ function MerchantKYCPage() {
   const latestFor = (type: string): MerchantKycDto | undefined =>
     (status?.items ?? []).find((it) => it.documentType === type);
 
+  // Whether THIS merchant must produce a given document. Mirrors the backend's
+  // requiredKycDocumentTypes: the CAC is required of every structure except a
+  // sole proprietorship. The row stays visible either way — a sole trader who
+  // does happen to hold a CAC can still upload it, it just never blocks them.
+  const isRequired = (type: string): boolean => !(soleTrader && type === 'CAC_CERTIFICATE');
+
+  const requiredDocs = KYC_DOCS.filter((d) => isRequired(d.type));
+
   // Documents waiting on Operations. Each document type has its own review
   // slot, so a pending CAC certificate does not block the director's NIN.
-  const pendingCount = KYC_DOCS.filter(
+  const pendingCount = requiredDocs.filter(
     (d) => latestFor(d.type)?.verificationStatus === 'PENDING',
   ).length;
-  const outstandingCount = KYC_DOCS.filter((d) => {
+  const outstandingCount = requiredDocs.filter((d) => {
     const st = latestFor(d.type)?.verificationStatus;
     return st !== 'PENDING' && st !== 'VERIFIED';
   }).length;
@@ -3661,10 +3687,13 @@ function MerchantKYCPage() {
     }
   };
 
-  const verified = KYC_DOCS.filter(
+  // Progress counts only what this merchant actually has to produce, so 100%
+  // means approvable. Counting the CAC for a sole trader capped them at 50%
+  // for ever, against a document they could not obtain.
+  const verified = requiredDocs.filter(
     (d) => latestFor(d.type)?.verificationStatus === 'VERIFIED',
   ).length;
-  const total = KYC_DOCS.length;
+  const total = requiredDocs.length;
   const pct = total > 0 ? Math.round((verified / total) * 100) : 0;
 
   return (
@@ -3752,7 +3781,13 @@ function MerchantKYCPage() {
                       <span style={{ fontFamily: PP, fontSize: 13, fontWeight: 600, color: WHITE }}>
                         {doc.label}
                       </span>
-                      <span style={{ fontFamily: IT, fontSize: 10, color: C_ERR }}>Required</span>
+                      {isRequired(doc.type) ? (
+                        <span style={{ fontFamily: IT, fontSize: 10, color: C_ERR }}>Required</span>
+                      ) : (
+                        <span style={{ fontFamily: IT, fontSize: 10, color: MUTED }}>
+                          Not needed
+                        </span>
+                      )}
                     </div>
                     <div style={{ fontFamily: IT, fontSize: 11, color: MUTED }}>{doc.desc}</div>
                   </div>
