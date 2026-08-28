@@ -21,11 +21,17 @@
 
 import {
   createNativeNotificationChannel,
+  deleteNativeNotificationChannel,
   detectNativePlatform,
   listenForNativeNotificationTaps,
   obtainNativeTokenDetailed,
 } from '@dripplex/hooks/notifications/native-push';
-import { CALL_ALERT_ANDROID_CHANNEL_ID, RIDE_ALERT_ANDROID_CHANNEL_ID } from '@dripplex/types';
+import {
+  CALL_ALERT_ANDROID_CHANNEL_ID,
+  CALL_ALERT_ANDROID_CHANNEL_ID_V1,
+  RIDE_ALERT_ANDROID_CHANNEL_ID,
+  RIDE_ALERT_ANDROID_CHANNEL_ID_V1,
+} from '@dripplex/types';
 
 import { api } from './api';
 import { announceIncomingCall, incomingCallFromDeepLink } from './callRequests';
@@ -54,11 +60,16 @@ import type {
  * driver actually reads it — they are not unlocking the phone to decide whether a
  * job is worth taking. Nothing sensitive is in a ride offer's title or body.
  *
- * No `sound` filename: the app ships no audio in `res/raw`, and Android gives a
- * channel the **system default notification sound** when none is named. A
- * distinctive DrippleX ride tone is a real improvement over that and a real
- * decision — an asset to choose, licence and ship — so it is recorded as a gap in
- * `docs/mobile/PUSH-NOTIFICATIONS.md` rather than invented here.
+ * `sound: 'ride_alert'` — `res/raw/ride_alert.wav`, a rising triplet played
+ * twice. v1 of this channel named no sound, so Android used the handset's
+ * default notification chime, and the first real offer to reach a driver drew
+ * exactly the right complaint: "this sound is so slow" (2026-08-27). A default
+ * chime is designed not to alarm anyone; a ride offer that expires in sixty
+ * seconds needs the opposite.
+ *
+ * The plugin strips any extension and resolves the name against `res/raw`
+ * (NotificationChannelManager.java:88-97), so the bare filename is what belongs
+ * here.
  */
 export const RIDE_ALERT_CHANNEL: NativeNotificationChannel = {
   id: RIDE_ALERT_ANDROID_CHANNEL_ID,
@@ -66,6 +77,7 @@ export const RIDE_ALERT_CHANNEL: NativeNotificationChannel = {
   description: 'Incoming trip offers. These expire in seconds, so they are loud.',
   importance: 5,
   visibility: 1,
+  sound: 'ride_alert',
   vibration: true,
   lights: true,
 };
@@ -86,6 +98,11 @@ export const RIDE_ALERT_CHANNEL: NativeNotificationChannel = {
  * in which the backend can address a channel that is not there yet.
  */
 export function ensureRideAlertChannel(): Promise<CreateChannelOutcome> {
+  // v1 first, and not awaited for its result: it named no sound, so leaving it
+  // behind would show a driver two "Ride requests" entries in their notification
+  // settings, one of which is dead. Deleting a channel that was never created is
+  // a no-op, which is the ordinary case on a fresh install.
+  void deleteNativeNotificationChannel(RIDE_ALERT_ANDROID_CHANNEL_ID_V1);
   return createNativeNotificationChannel(RIDE_ALERT_CHANNEL);
 }
 
@@ -115,6 +132,9 @@ export const CALL_ALERT_CHANNEL: NativeNotificationChannel = {
   description: 'Someone on your trip or delivery is calling you. These ring for under a minute.',
   importance: 5,
   visibility: 1,
+  // `res/raw/call_alert.wav` — a two-tone warble rather than the ride triplet,
+  // so a driver knows which of the two it is without looking at the phone.
+  sound: 'call_alert',
   vibration: true,
   lights: true,
 };
@@ -128,6 +148,7 @@ export const CALL_ALERT_CHANNEL: NativeNotificationChannel = {
  * which would look exactly like the bug this fixes.
  */
 export function ensureCallAlertChannel(): Promise<CreateChannelOutcome> {
+  void deleteNativeNotificationChannel(CALL_ALERT_ANDROID_CHANNEL_ID_V1);
   return createNativeNotificationChannel(CALL_ALERT_CHANNEL);
 }
 

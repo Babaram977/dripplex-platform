@@ -89,6 +89,32 @@ export async function createNativeNotificationChannel(
   }
 }
 
+/**
+ * Remove a notification channel this app no longer uses.
+ *
+ * The counterpart to the one-way creation described above. A channel's sound
+ * and importance are fixed once it exists, so changing either means shipping a
+ * new id — and then the old channel lingers in the user's notification settings
+ * as a second, stale entry they can see and toggle, for alerts that will never
+ * arrive on it again. Deleting it is what makes a version bump a replacement
+ * rather than an accumulation.
+ *
+ * Never throws, and a channel that was never created is not an error: this runs
+ * on every start-up, so the ordinary case is that there is nothing to delete.
+ */
+export async function deleteNativeNotificationChannel(id: string): Promise<void> {
+  const platform = await detectNativePlatform();
+  if (platform !== 'ANDROID') {
+    return;
+  }
+  try {
+    const { PushNotifications } = await import('@capacitor/push-notifications');
+    await PushNotifications.deleteChannel({ id });
+  } catch {
+    // Absent, or pre-API-26 where channels do not exist at all.
+  }
+}
+
 const NATIVE_REGISTRATION_TIMEOUT_MS = 15_000;
 
 /**
