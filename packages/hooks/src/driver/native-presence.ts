@@ -25,9 +25,9 @@ interface DriverPresencePlugin {
   start(options: {
     baseUrl: string;
     token: string;
-    vehicleType: string;
-    acceptingRides?: boolean;
-    acceptingDeliveries?: boolean;
+    presencePath: string;
+    presenceBody: Record<string, string | number | boolean>;
+    onlineText?: string;
     intervalMs?: number;
     latitude?: number;
     longitude?: number;
@@ -58,9 +58,26 @@ export interface NativePresenceOptions {
   baseUrl: string;
   /** Bearer token. Held in the service's memory only — never persisted. */
   token: string;
-  vehicleType: string;
-  acceptingRides?: boolean;
-  acceptingDeliveries?: boolean;
+  /**
+   * Which availability endpoint to post to, relative to `baseUrl` — e.g.
+   * `/driver/rides/availability` or `/rider/availability`.
+   *
+   * The native service knows about neither persona. It was hardcoded to the
+   * driver's path, which is why riders were left with the WebView heartbeat
+   * that Chromium throttles and Android kills — the same failure DPX-MOBILE-003
+   * removed for drivers. Passing the path and body from here means a third
+   * persona is a web deploy rather than a new APK on every device.
+   */
+  presencePath: string;
+  /**
+   * The persona-specific half of the request body. The service merges a fresh
+   * `latitude` and `longitude` into it on every report, so do not put a
+   * position here — that is what the seed options below are for.
+   */
+  presenceBody: Record<string, string | number | boolean>;
+  /** Notification text while reporting is healthy. A rider is not waiting for
+   * ride requests, so the driver's wording would be wrong for them. */
+  onlineText?: string;
   /**
    * The position the caller already holds, seeding the service's first report.
    *
@@ -165,7 +182,7 @@ export async function startNativeDriverPresence(
   const resolved = await resolvePlugin();
   const plugin = resolved.plugin;
   if (!plugin) return resolved.reason;
-  if (!options.token || !options.baseUrl || !options.vehicleType) {
+  if (!options.token || !options.baseUrl || !options.presencePath) {
     // The service would show "You are online" while reporting nothing, which
     // is the exact failure this whole feature exists to remove.
     return 'unavailable';
@@ -174,11 +191,9 @@ export async function startNativeDriverPresence(
     await plugin.start({
       baseUrl: options.baseUrl,
       token: options.token,
-      vehicleType: options.vehicleType,
-      ...(options.acceptingRides !== undefined ? { acceptingRides: options.acceptingRides } : {}),
-      ...(options.acceptingDeliveries !== undefined
-        ? { acceptingDeliveries: options.acceptingDeliveries }
-        : {}),
+      presencePath: options.presencePath,
+      presenceBody: options.presenceBody,
+      ...(options.onlineText !== undefined ? { onlineText: options.onlineText } : {}),
       // Both or neither: the native side needs the pair, and half a coordinate
       // would seed a position on the equator.
       ...(options.latitude !== undefined && options.longitude !== undefined

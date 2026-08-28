@@ -53,7 +53,12 @@ const plugin = {
   requestOverlayPermission: requestOverlay,
 };
 
-const OPTIONS = { baseUrl: 'https://api.dripplex.com/api/v1', token: 't', vehicleType: 'ECONOMY' };
+const OPTIONS = {
+  baseUrl: 'https://api.dripplex.com/api/v1',
+  token: 't',
+  presencePath: '/driver/rides/availability',
+  presenceBody: { online: true, acceptingRides: true, vehicleType: 'ECONOMY' },
+};
 
 /** Fresh module every time — the plugin proxy is cached at module scope. */
 async function load(): Promise<typeof NativePresence> {
@@ -87,22 +92,42 @@ describe('startNativeDriverPresence', () => {
     expect(start).toHaveBeenCalledWith({
       baseUrl: OPTIONS.baseUrl,
       token: 't',
-      vehicleType: 'ECONOMY',
+      presencePath: '/driver/rides/availability',
+      presenceBody: { online: true, acceptingRides: true, vehicleType: 'ECONOMY' },
     });
   });
 
-  it('forwards the availability flags when given', async () => {
+  it('sends the rider its own endpoint and body, not the driver ones', async () => {
+    // The whole point of the generalisation. The native service was hardcoded
+    // to /driver/rides/availability, so a rider going online through it would
+    // have posted a driver's shape to a driver's endpoint under a rider's
+    // token — silently reporting nothing usable while claiming to be live.
     const { startNativeDriverPresence } = await load();
 
     await startNativeDriverPresence({
-      ...OPTIONS,
-      acceptingRides: true,
-      acceptingDeliveries: false,
+      baseUrl: OPTIONS.baseUrl,
+      token: 't',
+      presencePath: '/rider/availability',
+      presenceBody: { online: true, acceptingOrders: true },
+      onlineText: 'DrippleX can send you deliveries',
     });
 
     expect(start).toHaveBeenCalledWith(
-      expect.objectContaining({ acceptingRides: true, acceptingDeliveries: false }),
+      expect.objectContaining({
+        presencePath: '/rider/availability',
+        presenceBody: { online: true, acceptingOrders: true },
+        onlineText: 'DrippleX can send you deliveries',
+      }),
     );
+  });
+
+  it('omits onlineText when the caller names none, leaving the native default', async () => {
+    const { startNativeDriverPresence } = await load();
+
+    await startNativeDriverPresence(OPTIONS);
+
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(start.mock.calls[0]?.[0]).not.toHaveProperty('onlineText');
   });
 
   it('forwards the seed position, which the service cannot be relied on to find', async () => {

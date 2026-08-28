@@ -67,9 +67,32 @@ public class DriverPresenceService extends Service {
 
   public static final String EXTRA_BASE_URL = "baseUrl";
   public static final String EXTRA_TOKEN = "token";
-  public static final String EXTRA_VEHICLE_TYPE = "vehicleType";
-  public static final String EXTRA_ACCEPTING_RIDES = "acceptingRides";
-  public static final String EXTRA_ACCEPTING_DELIVERIES = "acceptingDeliveries";
+  /**
+   * The availability endpoint, relative to the base URL — e.g.
+   * "/driver/rides/availability" or "/rider/availability".
+   *
+   * Was hardcoded to the driver's. Riders have the same problem drivers had
+   * (DPX-MOBILE-003): they go online, minimise the app, and stop reporting,
+   * because a WebView setInterval is throttled by Chromium and the process is
+   * killed by Android. The fix is the same foreground service — so it is the
+   * path and the body that vary, not the mechanism.
+   */
+  public static final String EXTRA_PRESENCE_PATH = "presencePath";
+  /**
+   * The persona-specific half of the request body, as a JSON string. The
+   * service merges a fresh latitude and longitude into it on every tick.
+   *
+   * A driver sends {online, acceptingRides, acceptingDeliveries?, vehicleType};
+   * a rider sends {online, acceptingOrders}. Rather than teach this class about
+   * either shape, the caller supplies the whole thing and this file stays a
+   * generic "post this, with a fresh fix, every N seconds" service. A future
+   * persona is then a JavaScript change — which reaches a phone by web deploy —
+   * instead of a native change, which needs a new APK on every device.
+   */
+  public static final String EXTRA_PRESENCE_BODY = "presenceBody";
+  /** Notification body text while reporting is healthy. Differs per persona:
+   * a rider is not waiting for ride requests. */
+  public static final String EXTRA_ONLINE_TEXT = "onlineText";
   public static final String EXTRA_INTERVAL_MS = "intervalMs";
   /** The fix the app already held when the driver went online. See
    * {@link #seedFromCaller}. */
@@ -85,9 +108,9 @@ public class DriverPresenceService extends Service {
   private static final String CHANNEL_ID = "dripplex_driver_presence_v1";
   private static final int NOTIFICATION_ID = 4201;
 
-  /** The healthy state's body text. Anything else means reporting is degraded
-   * and the driver is being told so. */
-  private static final String ONLINE_TEXT = "DrippleX can send you ride requests";
+  /** The healthy state's body text when the caller names none. Anything other
+   * than this means reporting is degraded and the person is being told so. */
+  private static final String DEFAULT_ONLINE_TEXT = "DrippleX can send you requests";
 
   /**
    * Default reporting cadence. The server drops a driver from dispatch after 5
@@ -138,9 +161,9 @@ public class DriverPresenceService extends Service {
   private long tokenRejectedAtMs;
   private String baseUrl;
   private String token;
-  private String vehicleType;
-  private boolean acceptingRides = true;
-  private Boolean acceptingDeliveries;
+  private String presencePath;
+  private String presenceBody;
+  private String onlineText = DEFAULT_ONLINE_TEXT;
   private long intervalMs = DEFAULT_INTERVAL_MS;
 
   /** Whether the service is currently running, for the plugin's isRunning(). */
@@ -177,19 +200,20 @@ public class DriverPresenceService extends Service {
 
     baseUrl = trimTrailingSlash(intent.getStringExtra(EXTRA_BASE_URL));
     token = intent.getStringExtra(EXTRA_TOKEN);
-    vehicleType = intent.getStringExtra(EXTRA_VEHICLE_TYPE);
-    acceptingRides = intent.getBooleanExtra(EXTRA_ACCEPTING_RIDES, true);
-    if (intent.hasExtra(EXTRA_ACCEPTING_DELIVERIES)) {
-      acceptingDeliveries = intent.getBooleanExtra(EXTRA_ACCEPTING_DELIVERIES, false);
+    presencePath = intent.getStringExtra(EXTRA_PRESENCE_PATH);
+    presenceBody = intent.getStringExtra(EXTRA_PRESENCE_BODY);
+    String text = intent.getStringExtra(EXTRA_ONLINE_TEXT);
+    if (text != null && !text.trim().isEmpty()) {
+      onlineText = text;
     }
     long requested = intent.getLongExtra(EXTRA_INTERVAL_MS, DEFAULT_INTERVAL_MS);
     intervalMs = Math.max(MIN_INTERVAL_MS, requested);
 
-    if (baseUrl == null || token == null || vehicleType == null) {
-      // Without all three there is nothing to report and no way to authorise
-      // it. Failing loudly here beats a service that runs, shows a
-      // notification, and silently reports nothing.
-      Log.w(TAG, "start requested without baseUrl/token/vehicleType — not starting");
+    if (baseUrl == null || token == null || presencePath == null || presenceBody == null) {
+      // Without all four there is nothing to report, nowhere to report it, or
+      // no way to authorise it. Failing loudly here beats a service that runs,
+      // shows a notification, and silently reports nothing.
+      Log.w(TAG, "start requested without baseUrl/token/presencePath/presenceBody — not starting");
       stopPresence();
       return START_NOT_STICKY;
     }
@@ -391,10 +415,9 @@ public class DriverPresenceService extends Service {
     final Location location = lastLocation;
     final String url = baseUrl;
     final String bearer = token;
-    final String vehicle = vehicleType;
-    final boolean rides = acceptingRides;
-    final Boolean deliveries = acceptingDeliveries;
-    if (url == null || bearer == null || vehicle == null || network == null) {
+    final String path = presencePath;
+    final String payload = presenceBody;
+    if (url == null || bearer == null || path == null || payload == null || network == null) {
       return;
     }
 
@@ -419,7 +442,7 @@ public class DriverPresenceService extends Service {
       updateNotification("Location is out of date — you may not get requests");
       return;
     }
-    // NOT updateNotification(ONLINE_TEXT) here — that happens on a successful
+    // NOT updateNotification(onlineText) here — that happens on a successful
     // response below. Setting it before the request would overwrite
     // "Sign-in expired" on the very next tick and hide the failure it exists to
     // show, which is the mistake this whole file keeps making.
@@ -427,17 +450,14 @@ public class DriverPresenceService extends Service {
         () -> {
           HttpURLConnection connection = null;
           try {
-            JSONObject body = new JSONObject();
-            body.put("online", true);
-            body.put("acceptingRides", rides);
-            if (deliveries != null) {
-              body.put("acceptingDeliveries", deliveries.booleanValue());
-            }
-            body.put("vehicleType", vehicle);
+            // The caller's own body, with a fresh fix merged in. Parsed rather
+            // than string-spliced so a malformed payload fails here, on one
+            // tick, instead of being posted as broken JSON every minute.
+            JSONObject body = new JSONObject(payload);
             body.put("latitude", location.getLatitude());
             body.put("longitude", location.getLongitude());
 
-            connection = (HttpURLConnection) new URL(url + "/driver/rides/availability").openConnection();
+            connection = (HttpURLConnection) new URL(url + path).openConnection();
             connection.setRequestMethod("POST");
             connection.setConnectTimeout(15_000);
             connection.setReadTimeout(15_000);
@@ -470,7 +490,7 @@ public class DriverPresenceService extends Service {
               handler.post(
                   () -> {
                     tokenRejectedAtMs = 0L;
-                    updateNotification(ONLINE_TEXT);
+                    updateNotification(onlineText);
                   });
             }
           } catch (Exception e) {
@@ -546,8 +566,8 @@ public class DriverPresenceService extends Service {
 
   private void startInForeground() {
     createChannel();
-    notificationText = ONLINE_TEXT;
-    Notification notification = buildNotification(ONLINE_TEXT);
+    notificationText = onlineText;
+    Notification notification = buildNotification(onlineText);
 
     // Android 10 introduced the typed overload and Android 14 requires it for a
     // location service. Below 29 the untyped call is the only one that exists.
