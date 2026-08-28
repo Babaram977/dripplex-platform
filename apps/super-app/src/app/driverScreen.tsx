@@ -1433,9 +1433,34 @@ export function DriverUploadDocsScreen({
   const fileRef = useRef<HTMLInputElement | null>(null);
   const cameraRef = useRef<HTMLInputElement | null>(null);
 
+  /** The plate on the vehicle the driver already registered, used to pre-fill
+   * the Vehicle Paper row rather than asking for it a second time. Null while
+   * loading, and on any failure — a plate we could not read is one the driver
+   * types, which is exactly the behaviour this replaces. */
+  const [vehiclePlate, setVehiclePlate] = useState<string | null>(null);
+  useEffect(() => {
+    api.driver
+      .listVehicles()
+      .then((rows) => {
+        const active = rows.find((v) => v.isActive) ?? rows[0];
+        setVehiclePlate(active?.plateNumber ?? null);
+      })
+      .catch(() => setVehiclePlate(null));
+  }, []);
+
   const openForm = (type: string) => {
     setOpenType(type);
-    setDocNumber('');
+    // The Vehicle Paper row asks for the "Registration / plate number" — which
+    // the driver already typed into the vehicle registration screen, on a step
+    // also called vehicle registration. Asking a second time is what made the
+    // whole flow read as though it wanted the same car twice (founder,
+    // 2026-08-28: "only vehicle registration asking twice").
+    //
+    // Pre-filled rather than removed: the document is one of the three the
+    // activation gate waits on (REQUIRED_DRIVER_KYC_DOCUMENT_TYPES), so the
+    // photo is still needed. What is not needed is retyping the plate. Still
+    // editable — a driver with two cars may be papering the other one.
+    setDocNumber(type === 'VEHICLE_REGISTRATION' ? (vehiclePlate ?? '') : '');
     setFile(null);
     setFormErr('');
   };
