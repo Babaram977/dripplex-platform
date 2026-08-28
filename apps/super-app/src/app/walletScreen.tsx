@@ -1734,7 +1734,7 @@ export function WithdrawScreen({
                 label="Bank name"
                 value={addForm.bankName}
                 onChange={(v) => setAddForm((f) => ({ ...f, bankName: v }))}
-                placeholder="e.g. GTBank"
+                placeholder="Type your bank name"
                 style={{ marginBottom: 12 }}
               />
               <InputField
@@ -2202,7 +2202,7 @@ export function TransferScreen({
                 label="Note (optional)"
                 value={note}
                 onChange={setNote}
-                placeholder="e.g. For lunch"
+                placeholder="What is this for?"
               />
             </div>
 

@@ -448,7 +448,7 @@ export function RegisterScreen({
                 type="email"
                 inputMode="email"
                 autoComplete="email"
-                placeholder="you@example.com"
+                placeholder="Type your email address"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 onFocus={() => setEmailFocused(true)}
@@ -577,7 +577,7 @@ export function RegisterScreen({
               <input
                 type="tel"
                 inputMode="numeric"
-                placeholder="801 234 5678"
+                placeholder="Type your phone number"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 onFocus={() => setFocused(true)}
@@ -2540,7 +2540,7 @@ export function SignInScreen({
               type="email"
               autoCapitalize="none"
               autoCorrect="off"
-              placeholder="you@example.com"
+              placeholder="Type your email address"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               onFocus={() => setFocused('email')}
@@ -3488,7 +3488,7 @@ export function RecoveryScreen({
                 type="email"
                 autoCapitalize="none"
                 autoCorrect="off"
-                placeholder="you@example.com"
+                placeholder="Type your email address"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 onFocus={() => setFocused('email')}

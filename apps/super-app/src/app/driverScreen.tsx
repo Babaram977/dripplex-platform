@@ -1330,7 +1330,7 @@ const DRIVER_KYC_DOCS: {
     label: "Driver's Licence",
     icon: '🪪',
     numberLabel: 'Licence number',
-    numberPlaceholder: 'e.g. ABC123456',
+    numberPlaceholder: 'Type the number here',
   },
   {
     type: 'VEHICLE_REGISTRATION',
@@ -1338,7 +1338,7 @@ const DRIVER_KYC_DOCS: {
     label: 'Vehicle Paper',
     icon: '📄',
     numberLabel: 'Registration / plate number',
-    numberPlaceholder: 'e.g. LAG 482 KA',
+    numberPlaceholder: 'Type the number here',
   },
   {
     type: 'GUARANTOR_ID',
@@ -1346,21 +1346,21 @@ const DRIVER_KYC_DOCS: {
     label: 'Guarantor ID',
     icon: '🧑‍🤝‍🧑',
     numberLabel: "Guarantor's ID number",
-    numberPlaceholder: 'e.g. 12345678901',
+    numberPlaceholder: 'Type the number here',
   },
   {
     type: 'NATIONAL_ID',
     label: 'NIN / National ID',
     icon: '🪪',
     numberLabel: 'NIN / ID number',
-    numberPlaceholder: 'e.g. 12345678901',
+    numberPlaceholder: 'Type the number here',
   },
   {
     type: 'INSURANCE',
     label: 'Insurance Certificate',
     icon: '📋',
     numberLabel: 'Policy number',
-    numberPlaceholder: 'e.g. POL-000123',
+    numberPlaceholder: 'Type the number here',
   },
 ];
 
@@ -1431,10 +1431,36 @@ export function DriverUploadDocsScreen({
   const [reviewing, setReviewing] = useState(false);
   const [reviewErr, setReviewErr] = useState('');
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const cameraRef = useRef<HTMLInputElement | null>(null);
+
+  /** The plate on the vehicle the driver already registered, used to pre-fill
+   * the Vehicle Paper row rather than asking for it a second time. Null while
+   * loading, and on any failure — a plate we could not read is one the driver
+   * types, which is exactly the behaviour this replaces. */
+  const [vehiclePlate, setVehiclePlate] = useState<string | null>(null);
+  useEffect(() => {
+    api.driver
+      .listVehicles()
+      .then((rows) => {
+        const active = rows.find((v) => v.isActive) ?? rows[0];
+        setVehiclePlate(active?.plateNumber ?? null);
+      })
+      .catch(() => setVehiclePlate(null));
+  }, []);
 
   const openForm = (type: string) => {
     setOpenType(type);
-    setDocNumber('');
+    // The Vehicle Paper row asks for the "Registration / plate number" — which
+    // the driver already typed into the vehicle registration screen, on a step
+    // also called vehicle registration. Asking a second time is what made the
+    // whole flow read as though it wanted the same car twice (founder,
+    // 2026-08-28: "only vehicle registration asking twice").
+    //
+    // Pre-filled rather than removed: the document is one of the three the
+    // activation gate waits on (REQUIRED_DRIVER_KYC_DOCUMENT_TYPES), so the
+    // photo is still needed. What is not needed is retyping the plate. Still
+    // editable — a driver with two cars may be papering the other one.
+    setDocNumber(type === 'VEHICLE_REGISTRATION' ? (vehiclePlate ?? '') : '');
     setFile(null);
     setFormErr('');
   };
@@ -1539,6 +1565,32 @@ export function DriverUploadDocsScreen({
           </p>
         </div>
 
+        {/* Two inputs, because one cannot do both jobs.
+         *
+         * Capacitor's WebView routes a file input to the CAMERA only when the
+         * element carries `capture` — BridgeWebChromeClient reads
+         * `fileChooserParams.isCaptureEnabled()` and otherwise calls
+         * showFilePicker(), which is Android's document picker and offers no
+         * camera at all. This screen had one input with no `capture`, so a
+         * driver could only ever attach a photo they had already taken; there
+         * was no way to photograph a licence from inside the app (reported on
+         * device, 2026-08-28).
+         *
+         * Adding `capture` to the single input would have fixed the camera and
+         * broken the other half: the copy above promises "Photos or PDFs", and
+         * a capture-enabled input goes straight to the camera with no way to
+         * reach a stored file. So there are two, and the driver picks.
+         *
+         * `capture="environment"` selects the rear camera, which is the one
+         * pointed at a document lying on a table. */}
+        <input
+          ref={cameraRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          style={{ display: 'none' }}
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+        />
         <input
           ref={fileRef}
           type="file"
@@ -1651,10 +1703,12 @@ export function DriverUploadDocsScreen({
                       value={docNumber}
                       onChange={setDocNumber}
                     />
-                    <div className="mb-3 flex items-center gap-3">
+                    <div className="mb-3 flex items-center gap-2">
+                      {/* Camera first: a driver signing up is holding the
+                          document, not looking for a file they saved earlier. */}
                       <button
-                        onClick={() => fileRef.current?.click()}
-                        className="h-10 rounded-xl px-4 text-[13px] font-medium active:scale-[.97]"
+                        onClick={() => cameraRef.current?.click()}
+                        className="h-10 rounded-xl px-3 text-[13px] font-medium active:scale-[.97]"
                         style={{
                           background: 'rgba(255,255,255,.04)',
                           border: `1px solid ${BORDER}`,
@@ -1662,7 +1716,19 @@ export function DriverUploadDocsScreen({
                           fontFamily: IT,
                         }}
                       >
-                        {file ? 'Change file' : '📤 Choose file'}
+                        📷 Take photo
+                      </button>
+                      <button
+                        onClick={() => fileRef.current?.click()}
+                        className="h-10 rounded-xl px-3 text-[13px] font-medium active:scale-[.97]"
+                        style={{
+                          background: 'rgba(255,255,255,.04)',
+                          border: `1px solid ${BORDER}`,
+                          color: '#fff',
+                          fontFamily: IT,
+                        }}
+                      >
+                        {file ? 'Change' : '📤 File'}
                       </button>
                       <span
                         className="flex-1 truncate text-[12px]"
@@ -2507,28 +2573,38 @@ export function DriverVehicleRegScreen({
           <>
             <DInput
               label="Make (Brand)"
-              placeholder="e.g. Toyota"
+              placeholder="Type your car make"
               value={make}
               onChange={setMake}
             />
-            <DInput label="Model" placeholder="e.g. Camry" value={model} onChange={setModel} />
+            <DInput
+              label="Model"
+              placeholder="Type your car model"
+              value={model}
+              onChange={setModel}
+            />
             <DInput
               label="Year"
-              placeholder="e.g. 2019"
+              placeholder="Type the year"
               value={year}
               onChange={setYear}
               type="number"
             />
-            <DInput label="Colour" placeholder="e.g. White" value={colour} onChange={setColour} />
+            <DInput
+              label="Colour"
+              placeholder="Type the colour"
+              value={colour}
+              onChange={setColour}
+            />
             <DInput
               label="Plate Number"
-              placeholder="e.g. LAG 482 KA"
+              placeholder="Type your plate number"
               value={plate}
               onChange={setPlate}
             />
             <DInput
               label="Passenger Seats"
-              placeholder="e.g. 4"
+              placeholder="How many seats"
               value={seats}
               onChange={setSeats}
               type="number"
@@ -6170,7 +6246,7 @@ export function EmergencyContactScreen({
                 setName(e.target.value);
                 setErrors((p) => ({ ...p, name: '' }));
               }}
-              placeholder="e.g. Fatima Okafor"
+              placeholder="Type their full name"
               className="flex-1 bg-transparent outline-none"
               style={{ fontFamily: IT, fontSize: 15, color: '#fff' }}
             />
@@ -6308,7 +6384,7 @@ export function EmergencyContactScreen({
                 setPhone(e.target.value);
                 setErrors((p) => ({ ...p, phone: '' }));
               }}
-              placeholder="801 234 5678"
+              placeholder="Type their phone number"
               type="tel"
               className="flex-1 bg-transparent outline-none"
               style={{ fontFamily: IT, fontSize: 15, color: '#fff' }}
@@ -6324,7 +6400,7 @@ export function EmergencyContactScreen({
         {/* Email — optional */}
         <DInput
           label="Email Address (optional)"
-          placeholder="e.g. fatima@email.com"
+          placeholder="Type their email"
           value={email}
           onChange={setEmail}
           type="email"

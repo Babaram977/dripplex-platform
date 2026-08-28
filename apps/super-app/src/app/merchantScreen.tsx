@@ -1818,7 +1818,7 @@ function OrdersPage({ onDetail }: { onDetail: (id: string) => void }) {
         <Modal title="Reject this order?" onClose={() => setShowRejectId(null)}>
           <MxInput
             label="Reason (optional)"
-            placeholder="e.g. Item unavailable, store closed"
+            placeholder="Why are you rejecting this order?"
             value={rejectReason}
             onChange={setRejectReason}
           />
@@ -2277,7 +2277,7 @@ function OrderDetailPage({ orderId, onBack }: { orderId: string; onBack: () => v
         <Modal title="Reject this order?" onClose={() => setShowConfirm(null)}>
           <MxInput
             label="Reason (optional)"
-            placeholder="e.g. Item unavailable"
+            placeholder="Why are you rejecting this order?"
             value={reason}
             onChange={setReason}
           />
@@ -2322,7 +2322,7 @@ function OrderDetailPage({ orderId, onBack }: { orderId: string; onBack: () => v
         <Modal title="Cancel this order?" onClose={() => setShowConfirm(null)}>
           <MxInput
             label="Reason (optional)"
-            placeholder="e.g. Out of stock, store closing"
+            placeholder="Why are you cancelling this order?"
             value={reason}
             onChange={setReason}
           />
@@ -2352,7 +2352,7 @@ function OrderDetailPage({ orderId, onBack }: { orderId: string; onBack: () => v
           </p>
           <MxInput
             label="Additional minutes"
-            placeholder="e.g. 30"
+            placeholder="How many more minutes"
             value={delayMinutes}
             onChange={setDelayMinutes}
             type="number"
@@ -2738,7 +2738,7 @@ function ProductsPage() {
         >
           <MxInput
             label="Product Name *"
-            placeholder="e.g. Jollof Rice"
+            placeholder="Type the product name"
             value={form.name}
             onChange={(v) => setForm((f) => ({ ...f, name: v }))}
           />
@@ -2750,14 +2750,14 @@ function ProductsPage() {
           />
           <MxInput
             label="Base price (₦) *"
-            placeholder="e.g. 1800"
+            placeholder="Type the price"
             value={form.basePrice}
             onChange={(v) => setForm((f) => ({ ...f, basePrice: v }))}
             type="number"
           />
           <MxInput
             label="SKU (optional)"
-            placeholder="e.g. JOL-001"
+            placeholder="Type your product code"
             value={form.sku}
             onChange={(v) => setForm((f) => ({ ...f, sku: v }))}
           />
@@ -2906,7 +2906,7 @@ function ProductsPage() {
                 <div style={{ flex: 2 }}>
                   <MxInput
                     label="Name"
-                    placeholder="e.g. Large"
+                    placeholder="Type the size or option"
                     value={variantDraft.name}
                     onChange={(v) => setVariantDraft((d) => ({ ...d, name: v }))}
                   />
@@ -3556,7 +3556,7 @@ const KYC_DOCS: {
     desc: 'Corporate Affairs Commission registration certificate',
     icon: '📋',
     numberLabel: 'RC / registration number',
-    numberPlaceholder: 'e.g. RC 1234567',
+    numberPlaceholder: 'Type the number here',
   },
   {
     type: 'NATIONAL_ID',
@@ -3564,7 +3564,7 @@ const KYC_DOCS: {
     desc: 'Government-issued ID or National Identity Number of a director',
     icon: '🪪',
     numberLabel: 'NIN / ID number',
-    numberPlaceholder: 'e.g. 12345678901',
+    numberPlaceholder: 'Type the number here',
   },
 ];
 
@@ -4018,7 +4018,7 @@ function BankAccountPage() {
                 label="Bank *"
                 value={bank}
                 onChange={setBank}
-                placeholder="Type your bank name (e.g. GTBank, Opay, Kuda)"
+                placeholder="Type your bank name"
               />
               <MxInput
                 label="Account Number *"
@@ -4814,7 +4814,7 @@ function MerchantLoginScreen({
         <MxCard style={{ padding: 24 }}>
           <MxInput
             label="Email address"
-            placeholder="merchant@example.com"
+            placeholder="Type your email address"
             value={email}
             onChange={setEmail}
             type="email"
@@ -5594,13 +5594,13 @@ function RoomsPage() {
           </div>
           <MxInput
             label="Name"
-            placeholder="Deluxe"
+            placeholder="Type the room name"
             value={form.name}
             onChange={(v) => setForm((f) => ({ ...f, name: v }))}
           />
           <MxInput
             label="Description (optional)"
-            placeholder="En-suite, air conditioned, breakfast included"
+            placeholder="Describe the room"
             value={form.description}
             onChange={(v) => setForm((f) => ({ ...f, description: v }))}
           />
@@ -5614,14 +5614,14 @@ function RoomsPage() {
             <MxInput
               label="Price a night"
               type="number"
-              placeholder="20000"
+              placeholder="Type the price a night"
               value={form.basePrice}
               onChange={(v) => setForm((f) => ({ ...f, basePrice: v }))}
             />
             <MxInput
               label="How many rooms"
               type="number"
-              placeholder="5"
+              placeholder="How many rooms"
               value={form.totalRooms}
               onChange={(v) => setForm((f) => ({ ...f, totalRooms: v }))}
             />
@@ -6086,7 +6086,7 @@ function BookingsPage() {
             onKeyDown={(e) => {
               if (e.key === 'Enter') void findGuest();
             }}
-            placeholder="B7X9K"
+            placeholder="Type the check-in code"
             maxLength={12}
             aria-label="Check-in code"
             style={{
@@ -6365,7 +6365,7 @@ function BookingsPage() {
                       <div style={{ marginTop: 12 }}>
                         <MxInput
                           label="Why? (optional — the guest sees this)"
-                          placeholder="The room is out of service this week"
+                          placeholder="Why are you rejecting this booking?"
                           value={rejectReason}
                           onChange={setRejectReason}
                         />

@@ -726,7 +726,7 @@ export function BookingApplyScreen({
               onChange={(e) => setGuestPhone(e.target.value)}
               style={inputStyle}
               inputMode="tel"
-              placeholder="+234…"
+              placeholder="Type the phone number"
             />
           </Field>
           <Field label="Note for the hotel (optional)">
@@ -734,7 +734,7 @@ export function BookingApplyScreen({
               value={guestNote}
               onChange={(e) => setGuestNote(e.target.value)}
               style={inputStyle}
-              placeholder="Late arrival, ground floor…"
+              placeholder="Anything the hotel should know"
             />
           </Field>
         </div>

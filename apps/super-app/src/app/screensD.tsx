@@ -579,7 +579,7 @@ export function EmailVerificationScreen({
               <input
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@email.com"
+                placeholder="Type your email address"
                 type="email"
                 className="h-[48px] w-full rounded-2xl px-4 text-[14px] outline-none"
                 style={{
@@ -815,7 +815,7 @@ export function ChangePhoneScreen({ onBack, onDone }: { onBack: () => void; onDo
                 <input
                   value={newPhone}
                   onChange={(e) => setNewPhone(e.target.value)}
-                  placeholder="8XX XXX XXXX"
+                  placeholder="Type your phone number"
                   type="tel"
                   className="h-[48px] flex-1 rounded-xl px-4 text-[14px] outline-none"
                   style={{

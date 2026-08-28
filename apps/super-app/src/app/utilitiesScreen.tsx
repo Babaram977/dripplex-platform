@@ -955,7 +955,7 @@ export function UtilityPurchaseScreen({
             label="Amount"
             value={amount}
             onChange={setAmount}
-            placeholder="1000"
+            placeholder="Type the amount"
             maxLength={7}
             hint={
               selectedDisco !== null

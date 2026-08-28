@@ -782,7 +782,7 @@ export function MerchantSignUpScreen({
           <FieldGroup
             label="Full Name"
             id="name"
-            placeholder="Amara Obi"
+            placeholder="Type your full name"
             value={form.name}
             onChange={set('name')}
             focused={focused}
@@ -793,7 +793,7 @@ export function MerchantSignUpScreen({
             label="Email address"
             id="email"
             type="email"
-            placeholder="amara@yourbiz.ng"
+            placeholder="Type your email address"
             value={form.email}
             onChange={set('email')}
             focused={focused}
@@ -810,7 +810,7 @@ export function MerchantSignUpScreen({
           <FieldGroup
             label="Business Name"
             id="biz"
-            placeholder="Amara's Boutique"
+            placeholder="Type your business name"
             value={form.biz}
             onChange={set('biz')}
             focused={focused}
@@ -1122,9 +1122,9 @@ export function DriverSignUpScreen(props: {
       subtitle="Earn on your schedule — complete the form to get started"
       ctaLabel="Apply to drive"
       agreementLabel="Driver Agreement"
-      namePlaceholder="Chukwuemeka Adeyemi"
-      emailPlaceholder="emeka@email.com"
-      phonePlaceholder="801 234 5678"
+      namePlaceholder="Type your full name"
+      emailPlaceholder="Type your email address"
+      phonePlaceholder="Type your phone number"
       register={api.auth.registerDriver}
       {...props}
     />
@@ -1152,9 +1152,9 @@ export function RiderSignUpScreen(props: {
       subtitle="Make deliveries on your schedule, earn every day"
       ctaLabel="Apply to deliver"
       agreementLabel="Rider Agreement"
-      namePlaceholder="Tunde Balogun"
-      emailPlaceholder="tunde@email.com"
-      phonePlaceholder="810 000 0000"
+      namePlaceholder="Type your full name"
+      emailPlaceholder="Type your email address"
+      phonePlaceholder="Type your phone number"
       register={api.auth.registerRider}
       {...props}
     />
@@ -1273,7 +1273,7 @@ function DocumentCard({
         <FieldLabel>Document number</FieldLabel>
         <TextInput
           id={numId}
-          placeholder="e.g. LIC-2024-0023456"
+          placeholder="Type the number here"
           value={docNum}
           onChange={setDocNum}
           focused={focused}
@@ -1549,7 +1549,7 @@ export function DriverDocumentsScreen({
               <FieldGroup
                 label="Make"
                 id="make"
-                placeholder="Toyota"
+                placeholder="Type your car make"
                 value={vehicle.make}
                 onChange={setV('make')}
                 focused={focused}
@@ -1561,7 +1561,7 @@ export function DriverDocumentsScreen({
               <FieldGroup
                 label="Model"
                 id="model"
-                placeholder="Corolla"
+                placeholder="Type your car model"
                 value={vehicle.model}
                 onChange={setV('model')}
                 focused={focused}
@@ -1576,7 +1576,7 @@ export function DriverDocumentsScreen({
               <FieldGroup
                 label="Plate number"
                 id="plate"
-                placeholder="LAG-234-XY"
+                placeholder="Type your plate number"
                 value={vehicle.plate}
                 onChange={setV('plate')}
                 focused={focused}
@@ -1588,7 +1588,7 @@ export function DriverDocumentsScreen({
               <FieldGroup
                 label="Colour"
                 id="colour"
-                placeholder="White"
+                placeholder="Type the colour"
                 value={vehicle.colour}
                 onChange={setV('colour')}
                 focused={focused}
@@ -1616,7 +1616,7 @@ export function DriverDocumentsScreen({
                 label="Year"
                 id="year"
                 type="number"
-                placeholder="2020"
+                placeholder="Type the year"
                 value={vehicle.year}
                 onChange={setV('year')}
                 focused={focused}
@@ -1629,7 +1629,7 @@ export function DriverDocumentsScreen({
                 label="Seats"
                 id="seats"
                 type="number"
-                placeholder="4"
+                placeholder="How many seats"
                 value={vehicle.seats}
                 onChange={setV('seats')}
                 focused={focused}
@@ -1802,7 +1802,7 @@ export function RiderDocumentsScreen({
           <FieldGroup
             label="Company name"
             id="companyName"
-            placeholder="e.g. Jumia Logistics"
+            placeholder="Type the company name"
             value={companyName}
             onChange={setCompanyName}
             focused={focused}
@@ -1964,7 +1964,7 @@ export function BusinessDetailsScreen({
           <FieldGroup
             label="Business Name"
             id="name"
-            placeholder="Amara's Boutique"
+            placeholder="Type your business name"
             value={name}
             onChange={setName}
             focused={focused}
@@ -1985,7 +1985,7 @@ export function BusinessDetailsScreen({
           <FieldGroup
             label="What you sell (optional)"
             id="description"
-            placeholder="e.g. Restaurant & Food"
+            placeholder="Type what you sell"
             value={description}
             onChange={setDescription}
             focused={focused}
@@ -2016,7 +2016,7 @@ export function BusinessDetailsScreen({
               </div>
               <input
                 type="tel"
-                placeholder="801 234 5678"
+                placeholder="Type your phone number"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 onFocus={() => setFocused('bphone')}
@@ -2029,7 +2029,7 @@ export function BusinessDetailsScreen({
           <FieldGroup
             label="Business Address (optional)"
             id="address"
-            placeholder="12 Allen Avenue, Ikeja, Lagos"
+            placeholder="Type your business address"
             value={address}
             onChange={setAddress}
             focused={focused}
