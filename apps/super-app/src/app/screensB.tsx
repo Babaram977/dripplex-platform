@@ -2113,6 +2113,62 @@ export function AccountManagementScreen({
   const [deleteSheet, setDeleteSheet] = useState(false);
   const [deleteStep, setDeleteStep] = useState<'confirm' | 'type' | 'done'>('confirm');
   const [deleteInput, setDeleteInput] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  /**
+   * What is still open on this account, read when the sheet opens.
+   *
+   * The server refuses a deletion that would strand somebody — a trip in
+   * progress, an unfinished order, money in the wallet. Showing it here means
+   * the customer reads why before they type DELETE, instead of after.
+   */
+  const [deleteBlockers, setDeleteBlockers] = useState<string[] | null>(null);
+
+  const openDeleteSheet = async () => {
+    setDeleteSheet(true);
+    setDeleteStep('confirm');
+    setDeleteInput('');
+    setDeleteError(null);
+    setDeleteBlockers(null);
+    try {
+      const c = await api.auth.myCommitments();
+      setDeleteBlockers(
+        [
+          c.activeRides > 0 ? 'a trip that has not finished' : null,
+          c.activeDeliveries > 0 ? 'a delivery on the way' : null,
+          c.openOrders > 0 ? 'an order that has not finished' : null,
+          c.walletBalance > 0 ? 'money still in your wallet' : null,
+        ].filter((b): b is string => b !== null),
+      );
+    } catch {
+      // Could not check. Leave it null — the sheet says nothing rather than
+      // claiming the account is clear, and the server still refuses.
+      setDeleteBlockers(null);
+    }
+  };
+
+  /**
+   * Actually delete the account.
+   *
+   * This flow used to end at `setDeleteStep('done')` — no request, nothing
+   * deleted — above a message saying the request had been received and could
+   * be cancelled within 30 days. Somebody who wanted to leave was told they
+   * had, and their account carried on existing.
+   */
+  const confirmDelete = async () => {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await api.auth.deleteMe();
+      setDeleteStep('done');
+    } catch (e: unknown) {
+      setDeleteError(
+        (e as { message?: string }).message ?? 'Could not delete your account. Please try again.',
+      );
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   /**
    * Save the name. For real, this time.
@@ -2548,7 +2604,7 @@ export function AccountManagementScreen({
         style={{ background: NAVY_CARD, border: `1.5px solid rgba(248,113,113,.2)` }}
       >
         <button
-          onClick={() => setDeleteSheet(true)}
+          onClick={() => void openDeleteSheet()}
           className="flex w-full items-center gap-3 px-4 py-3 text-left transition-all active:scale-[.98]"
         >
           <div
@@ -2635,9 +2691,15 @@ export function AccountManagementScreen({
                     Delete Account?
                   </p>
                   <p className="text-[13px] leading-relaxed" style={{ color: MUTED }}>
-                    This requires identity verification and a confirmation step. Your data will be
-                    permanently removed after a 30-day grace period.
+                    You will be signed out and lose access straight away. Your past trips and orders
+                    stay on record. You can sign up again later with the same phone number.
                   </p>
+                  {deleteBlockers !== null && deleteBlockers.length > 0 && (
+                    <p className="mt-3 text-[12.5px] leading-relaxed" style={{ color: '#F87171' }}>
+                      You still have {deleteBlockers.join(', ')}. Finish that first — this will not
+                      go through until you do.
+                    </p>
+                  )}
                 </div>
                 <div className="flex gap-3">
                   <button
@@ -2696,6 +2758,11 @@ export function AccountManagementScreen({
                     border: '1.5px solid rgba(248,113,113,.25)',
                   }}
                 />
+                {deleteError && (
+                  <p className="mb-3 text-[12.5px] leading-relaxed" style={{ color: '#F87171' }}>
+                    {deleteError}
+                  </p>
+                )}
                 <div className="flex gap-3">
                   <button
                     onClick={() => setDeleteStep('confirm')}
@@ -2709,8 +2776,9 @@ export function AccountManagementScreen({
                     Back
                   </button>
                   <button
+                    disabled={deleteInput !== 'DELETE' || deleting}
                     onClick={() => {
-                      if (deleteInput === 'DELETE') setDeleteStep('done');
+                      if (deleteInput === 'DELETE' && !deleting) void confirmDelete();
                     }}
                     className="h-[46px] flex-1 rounded-2xl text-[14px] font-bold transition-all"
                     style={{
@@ -2720,7 +2788,7 @@ export function AccountManagementScreen({
                       color: deleteInput === 'DELETE' ? '#F87171' : 'rgba(255,255,255,.2)',
                     }}
                   >
-                    Delete Forever
+                    {deleting ? 'Deleting…' : 'Delete Forever'}
                   </button>
                 </div>
               </>
@@ -2733,17 +2801,26 @@ export function AccountManagementScreen({
                   className="mb-2 mt-3 text-[17px] font-bold"
                   style={{ fontFamily: "'Poppins',sans-serif", color: '#FFF' }}
                 >
-                  Request Submitted
+                  Account Deleted
                 </p>
                 <p className="mb-5 text-[13px] leading-relaxed" style={{ color: MUTED }}>
-                  Your account deletion request has been received. You have 30 days to cancel this
-                  request.
+                  Your account is closed and you are being signed out. You can sign up again with
+                  the same phone number whenever you like.
                 </p>
                 <button
                   onClick={() => {
+                    // Nothing to go back to — the session is already dead on the
+                    // server, so every screen behind this sheet would 401 on its
+                    // next request. Sign out locally and land on the front door.
                     setDeleteSheet(false);
                     setDeleteStep('confirm');
                     setDeleteInput('');
+                    // auth.clear(), not endSession(): the delete already
+                    // removed every AuthSession row server-side, so there is no
+                    // session left to revoke and the revoke call would only
+                    // 401 on its way out.
+                    auth.clear();
+                    onSignOut?.();
                   }}
                   className="h-[46px] w-full rounded-2xl text-[14px] font-semibold"
                   style={{

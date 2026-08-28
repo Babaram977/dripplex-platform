@@ -131,8 +131,10 @@ export class UsersService {
     };
   }
 
-  public async softDeleteUser(id: string): Promise<User> {
-    await this.getByIdOrThrow(id);
-    return await this.usersRepository.softDelete(id);
-  }
+  // softDeleteUser was removed, not moved. It set deletedAt and INACTIVE and
+  // nothing else: no reason, no audit record, no check that the person was not
+  // mid-trip, and it left the email and phone attached so the account could
+  // never be re-registered. AccountDeletionService does this safely, and
+  // leaving a second unguarded route to the same state is how the guards get
+  // bypassed by whoever wires up the next caller.
 }

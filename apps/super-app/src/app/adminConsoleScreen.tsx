@@ -295,6 +295,164 @@ function Btn({
 
 const SEP = () => <div style={{ height: 1, background: BORDER, margin: '0 16px' }} />;
 
+/**
+ * Delete a merchant, driver, rider or customer — the same control on all four
+ * rosters, because it is the same action on the same underlying account.
+ *
+ * Founder decision 2026-08-28: Operations needs to clear accounts rather than
+ * leave abandoned half-finished signups sitting in the console for ever.
+ *
+ * Three things stand between an operator and an irreversible action, in the
+ * order that makes them useful:
+ *
+ * 1. What is still open on the account, fetched and shown BEFORE the confirm.
+ *    The server refuses a deletion that would strand someone mid-trip, but
+ *    finding that out by being rejected is worse than being told up front.
+ * 2. A reason, which the server requires. It is the only surviving description
+ *    of who was removed: the account keeps no email or phone afterwards.
+ * 3. Typing DELETE. Slows the hand down on the one control in the panel that
+ *    cannot be undone by clicking again.
+ *
+ * `userId` is the USER id, never the persona profile's own id — see
+ * api.admin.deleteAccount. Each roster passes a different field for it.
+ */
+function DeleteAccountPanel({
+  userId,
+  name,
+  onDeleted,
+}: {
+  userId: string;
+  name: string;
+  onDeleted: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [commitments, setCommitments] = useState<{
+    activeRides: number;
+    activeDeliveries: number;
+    openOrders: number;
+    walletBalance: number;
+  } | null>(null);
+
+  // Re-read whenever a different account is selected, and close the form with
+  // it: leaving it open would carry a half-typed reason and a DELETE
+  // confirmation onto somebody else's account.
+  useEffect(() => {
+    setOpen(false);
+    setReason('');
+    setConfirm('');
+    setErr(null);
+    setCommitments(null);
+  }, [userId]);
+
+  const start = async () => {
+    setOpen(true);
+    setErr(null);
+    try {
+      setCommitments(await api.admin.accountCommitments(userId));
+    } catch {
+      // A failed read must not present the account as clear. Null renders as
+      // "could not check", and the server still refuses if anything is open.
+      setCommitments(null);
+    }
+  };
+
+  const blockers = commitments
+    ? [
+        commitments.activeRides > 0 ? `${commitments.activeRides} trip(s) in progress` : null,
+        commitments.activeDeliveries > 0
+          ? `${commitments.activeDeliveries} delivery(ies) in progress`
+          : null,
+        commitments.openOrders > 0 ? `${commitments.openOrders} unfinished order(s)` : null,
+        commitments.walletBalance > 0 ? `${naira(commitments.walletBalance)} in the wallet` : null,
+      ].filter((b): b is string => b !== null)
+    : [];
+
+  const ready = reason.trim().length >= 5 && confirm === 'DELETE' && !busy;
+
+  const submit = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await api.admin.deleteAccount(userId, reason.trim());
+      onDeleted();
+    } catch (e: unknown) {
+      setErr((e as { message?: string }).message ?? 'Could not delete this account.');
+      setBusy(false);
+    }
+  };
+
+  if (!open) {
+    return <Btn label="Delete Account" color={C_ERR} outline onClick={() => void start()} />;
+  }
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+        padding: 10,
+        borderRadius: 10,
+        border: `1px solid rgba(239,68,68,.35)`,
+        background: 'rgba(239,68,68,.05)',
+        fontFamily: 'Inter, sans-serif',
+        // The partner panels put their actions in a wrapping flex ROW, so an
+        // inline form would sit squeezed beside Approve and Suspend. Taking the
+        // full width drops it onto its own line there, and changes nothing in
+        // the customer panel, which is already a column.
+        width: '100%',
+      }}
+    >
+      <span style={{ fontSize: 11.5, color: WHITE, fontWeight: 600 }}>Delete {name}?</span>
+
+      {commitments === null ? (
+        <span style={{ fontSize: 10.5, color: MUTED }}>Checking what is still open…</span>
+      ) : blockers.length > 0 ? (
+        <span style={{ fontSize: 10.5, color: C_ERR, lineHeight: 1.5 }}>
+          Still open: {blockers.join(', ')}. Settle that first — this will be refused.
+        </span>
+      ) : (
+        <span style={{ fontSize: 10.5, color: MUTED, lineHeight: 1.5 }}>
+          Nothing outstanding. They lose access immediately; their trips and orders stay on record,
+          and their email and phone are freed so they can register again.
+        </span>
+      )}
+
+      <input
+        className="dx-input"
+        placeholder="Why are you deleting this account?"
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        style={{ fontSize: 11 }}
+      />
+      <input
+        className="dx-input"
+        placeholder="Type DELETE to confirm"
+        value={confirm}
+        onChange={(e) => setConfirm(e.target.value.toUpperCase())}
+        style={{ fontSize: 11 }}
+      />
+
+      {err && <span style={{ fontSize: 10.5, color: C_ERR, lineHeight: 1.5 }}>{err}</span>}
+
+      <div style={{ display: 'flex', gap: 6 }}>
+        <Btn
+          label={busy ? 'Deleting…' : 'Delete'}
+          color={C_ERR}
+          small
+          disabled={!ready}
+          onClick={() => void submit()}
+        />
+        <Btn label="Cancel" color={MUTED} outline small onClick={() => setOpen(false)} />
+      </div>
+    </div>
+  );
+}
+
 function SectionHeader({ title, action }: { title: string; action?: React.ReactNode }) {
   return (
     <div
@@ -2654,13 +2812,19 @@ function PageDrivers() {
                   onClick={() => setShowSuspend(true)}
                 />
               )}
-              <Btn
-                label="Deactivate Account"
-                color={C_ERR}
-                outline
-                onClick={() =>
-                  setNote('No permanent-deactivate endpoint yet — use Suspend to disable a driver.')
-                }
+              {/* Was a placeholder reading "No permanent-deactivate endpoint
+                  yet — use Suspend to disable a driver." There is one now.
+                  driverId, not selected.id: the latter is the DriverProfile's
+                  own primary key, and the account routes are keyed on the
+                  user. */}
+              <DeleteAccountPanel
+                userId={selected.driverId}
+                name={`${selected.firstName} ${selected.lastName}`}
+                onDeleted={() => {
+                  setSelId(null);
+                  setNote(null);
+                  void load();
+                }}
               />
               <Btn
                 label="View Trip History"
@@ -4157,6 +4321,13 @@ function MerchantReviewCard({ m, reload }: { m: AdminMerchantDto; reload: () => 
               }
             />
           )}
+          {/* merchantId, NOT m.id — m.id is the MerchantProfile's own primary
+              key and the account routes are keyed on the user. */}
+          <DeleteAccountPanel
+            userId={m.merchantId}
+            name={m.business?.businessName ?? `${m.firstName} ${m.lastName}`}
+            onDeleted={reload}
+          />
         </div>
       )}
     </Card>
@@ -4526,6 +4697,12 @@ function RiderReviewCard({ r, reload }: { r: AdminRiderDto; reload: () => void }
               }
             />
           )}
+          {/* riderId, not r.id — r.id is the RiderProfile's own primary key. */}
+          <DeleteAccountPanel
+            userId={r.riderId}
+            name={`${r.firstName} ${r.lastName}`}
+            onDeleted={reload}
+          />
         </div>
       )}
     </Card>
@@ -5007,6 +5184,18 @@ function PageCustomers() {
                     'A per-customer trip history screen isn’t wired yet — the roster shows the completed-trip count and spend.',
                   )
                 }
+              />
+              {/* AdminCustomerDto.id IS the user id here — the roster is built
+                  straight from the user table. The partner rosters are not:
+                  theirs is the persona profile's id. */}
+              <DeleteAccountPanel
+                userId={sel.id}
+                name={customerName(sel)}
+                onDeleted={() => {
+                  setSelected(null);
+                  setActionMsg(null);
+                  void load();
+                }}
               />
             </div>
           </Card>

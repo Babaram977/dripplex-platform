@@ -43,7 +43,6 @@ export interface UsersRepository {
   markEmailVerified(id: string): Promise<User>;
   markPhoneVerified(id: string): Promise<User>;
   activateIfVerificationsComplete(id: string, requiresPhoneVerification: boolean): Promise<User>;
-  softDelete(id: string): Promise<User>;
   updatePassword(id: string, passwordHash: string): Promise<User>;
   linkGoogleId(id: string, googleId: string): Promise<User>;
   updateProfile(id: string, data: UpdateProfileInput): Promise<User>;

@@ -1,8 +1,19 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Patch, Post, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Patch,
+  Post,
+  Req,
+} from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/permissions.decorator';
+import { AccountDeletionService } from '../users/account-deletion.service';
 
 import { AuthService } from './auth.service';
 import { ConfirmEmailChangeDto, RequestEmailChangeDto } from './dto/change-email.dto';
@@ -17,6 +28,7 @@ import { RefreshService } from './services/refresh.service';
 
 import type { AuthenticatedUser, AuthTokens, AuthUserProfile } from './auth.types';
 import type { ApiSuccessResponse } from '../common/dto/api-response.dto';
+import type { AccountCommitments } from '../users/account-deletion.service';
 import type { Request } from 'express';
 
 @Controller('auth')
@@ -26,6 +38,7 @@ export class AuthController {
     private readonly refreshService: RefreshService,
     private readonly logoutService: LogoutService,
     private readonly profileService: ProfileService,
+    private readonly accountDeletion: AccountDeletionService,
   ) {}
 
   @Public()
@@ -111,6 +124,50 @@ export class AuthController {
       this.auditContext(request, user.id),
     );
     return { success: true, data: profile };
+  }
+
+  /**
+   * What is still open on my own account.
+   *
+   * Same numbers the Operations Console reads, shown to the person themselves
+   * so the delete screen can say what is holding it up instead of failing on
+   * confirmation.
+   */
+  @Get('me/commitments')
+  public async myCommitments(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ApiSuccessResponse<AccountCommitments>> {
+    return { success: true, data: await this.accountDeletion.commitmentsFor(user.id) };
+  }
+
+  /**
+   * Close my own account.
+   *
+   * The app has had a Delete Account flow since it was designed. It was a
+   * mock: three steps, a typed DELETE, and `setDeleteStep('done')` — no
+   * request, nothing deleted. It then told the customer their request had been
+   * received and they had 30 days to cancel it, which described a system that
+   * does not exist. Somebody who wanted to leave was told they had.
+   *
+   * Same service as the operator path, so the same protections apply: it
+   * refuses while a trip is in progress or money is owed, releases the email
+   * and phone so the person can sign up again, and leaves an audit record.
+   * `kind: 'self'` supplies the reason and skips the guard that stops an
+   * operator deleting themselves from the roster — which is the intended
+   * action here rather than the accident it is there.
+   */
+  @Delete('me')
+  @HttpCode(HttpStatus.OK)
+  public async deleteMe(
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<{ deleted: true }>> {
+    await this.accountDeletion.deleteAccount(
+      user.id,
+      { kind: 'self' },
+      this.auditContext(request, user.id),
+    );
+    return { success: true, data: { deleted: true } };
   }
 
   @Post('me/phone/change')
