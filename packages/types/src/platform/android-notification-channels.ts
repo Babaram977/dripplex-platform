@@ -26,7 +26,22 @@
  * not editing this definition. The suffix makes that unavoidable rather than something
  * to rediscover when the edit silently does nothing on every existing install.
  */
-export const RIDE_ALERT_ANDROID_CHANNEL_ID = 'dripplex_ride_alerts_v1';
+export const RIDE_ALERT_ANDROID_CHANNEL_ID = 'dripplex_ride_alerts_v2';
+
+/**
+ * The channel v2 replaces, deleted on upgrade.
+ *
+ * v1 named no sound, so Android gave it the handset's default notification
+ * chime — which a driver described, accurately, as "so slow" the first time a
+ * real offer arrived (2026-08-27). v2 ships `ride_alert` from `res/raw`. The
+ * bump is not optional: `createChannel` on an existing id does nothing, so
+ * editing v1 in place would have changed the sound on new installs only and
+ * left every existing driver on the chime, silently.
+ *
+ * Kept as a constant rather than a literal at the delete site so that the id
+ * being retired is visible next to the id replacing it.
+ */
+export const RIDE_ALERT_ANDROID_CHANNEL_ID_V1 = 'dripplex_ride_alerts_v1';
 
 /**
  * DPX-MOBILE-002 — the channel an incoming voice call rings on.
@@ -42,4 +57,10 @@ export const RIDE_ALERT_ANDROID_CHANNEL_ID = 'dripplex_ride_alerts_v1';
  * created, and editing this definition would silently do nothing on every
  * device that already has it.
  */
-export const CALL_ALERT_ANDROID_CHANNEL_ID = 'dripplex_call_alerts_v1';
+export const CALL_ALERT_ANDROID_CHANNEL_ID = 'dripplex_call_alerts_v2';
+
+/** The channel v2 replaces, deleted on upgrade. Same reasoning as
+ * {@link RIDE_ALERT_ANDROID_CHANNEL_ID_V1}: v1 named no sound and rang on the
+ * default chime. v2 ships `call_alert`, a two-tone warble chosen to be
+ * distinguishable from the ride triplet without looking at the screen. */
+export const CALL_ALERT_ANDROID_CHANNEL_ID_V1 = 'dripplex_call_alerts_v1';

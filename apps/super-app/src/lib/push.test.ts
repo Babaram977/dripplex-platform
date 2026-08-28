@@ -5,12 +5,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const detectNativePlatform = vi.fn();
 const obtainNativeTokenDetailed = vi.fn();
 const createNativeNotificationChannel = vi.fn();
+const deleteNativeNotificationChannel = vi.fn();
 const listenForNativeNotificationTaps = vi.fn();
 vi.mock('@dripplex/hooks/notifications/native-push', () => ({
   detectNativePlatform: () => detectNativePlatform(),
   obtainNativeTokenDetailed: () => obtainNativeTokenDetailed(),
   listenForNativeNotificationTaps: (cb: unknown) => listenForNativeNotificationTaps(cb),
   createNativeNotificationChannel: (channel: unknown) => createNativeNotificationChannel(channel),
+  deleteNativeNotificationChannel: (id: unknown) => deleteNativeNotificationChannel(id),
 }));
 
 const stopPresence = vi.fn();
@@ -41,7 +43,7 @@ vi.mock('./auth', () => ({
   },
 }));
 
-import { RIDE_ALERT_ANDROID_CHANNEL_ID } from '@dripplex/types';
+import { RIDE_ALERT_ANDROID_CHANNEL_ID, RIDE_ALERT_ANDROID_CHANNEL_ID_V1 } from '@dripplex/types';
 
 import {
   __resetPushRegistrationForTests,
@@ -331,13 +333,22 @@ describe('ride alert channel (DPX-MOBILE-001)', () => {
     expect(RIDE_ALERT_CHANNEL.vibration).toBe(true);
   });
 
-  it('names no sound file, which is what selects the system default sound', async () => {
-    // The app ships nothing in res/raw. Android constructs a channel with the
-    // default notification sound already set, and the plugin only overrides it
-    // when a filename is given — so omitting this is the sound, not the absence
-    // of one. A distinctive DrippleX tone is a real asset decision, recorded in
-    // docs/mobile/PUSH-NOTIFICATIONS.md rather than invented here.
-    expect(RIDE_ALERT_CHANNEL.sound).toBeUndefined();
+  it('names the ride tone, not the handset default', async () => {
+    // This asserted `toBeUndefined()` until 2026-08-27, when the first real
+    // offer to reach a driver rang on their phone's default chime and drew the
+    // right complaint: "this sound is so slow". Android hands a channel the
+    // system default when no filename is given, and a default chime is designed
+    // not to alarm anyone — the opposite of what a sixty-second offer needs.
+    expect(RIDE_ALERT_CHANNEL.sound).toBe('ride_alert');
+  });
+
+  it('deletes v1 first, so a driver is not left with two Ride requests entries', async () => {
+    await ensureRideAlertChannel();
+
+    // A channel's sound is fixed at creation, so the new tone needs a new id.
+    // Without this delete the dead v1 channel stays visible in the driver's
+    // notification settings for alerts that will never arrive on it again.
+    expect(deleteNativeNotificationChannel).toHaveBeenCalledWith(RIDE_ALERT_ANDROID_CHANNEL_ID_V1);
   });
 
   it('puts the offer on the lock screen', async () => {

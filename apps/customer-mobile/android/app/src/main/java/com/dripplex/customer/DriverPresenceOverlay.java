@@ -151,7 +151,7 @@ final class DriverPresenceOverlay {
   }
 
   /**
-   * The app's own launcher icon, not a lettered circle.
+   * The DrippleX mark, not a lettered circle.
    *
    * The first version was a bright green circle with "DX" in white — which at
    * 56dp, floating over another app during a driver's shift, is the visual
@@ -159,25 +159,33 @@ final class DriverPresenceOverlay {
    * 2026-08-27). Changing the green alone was not enough: a green circle with
    * two white letters is the resemblance, not the exact shade.
    *
-   * `ic_launcher_round` is the mark DrippleX already ships on every home screen
-   * and in every notification, in every density the device might ask for. A
-   * driver seeing it over WhatsApp knows exactly whose it is, and no argument
-   * about whose green it resembles survives it being our actual logo.
+   * `dripplex_bubble_mark` is the full mark **including the X** (founder,
+   * 2026-08-27: "even the app home screen logo should be dx"). Every DrippleX
+   * asset in the repo before that — the launcher icon, its adaptive foreground,
+   * `resources/dripplex-mark.svg` — carried the D and the speed lines with no X
+   * at all, which is why the first attempt at this bubble, which reused
+   * `ic_launcher_round`, came out without one. The launcher icons were
+   * regenerated from the same source in the same commit, so the bubble, the
+   * home screen and every notification now carry one mark.
    *
-   * The emerald ring behind it is the brand primary from BRAND-IDENTITY.md
-   * (#0E7A3E, not the brighter #2BAC52 this started with — that one is the
-   * in-app "you are online" green, right for a status dot inside our own screen
-   * and wrong for something floating over everyone else's).
+   * No argument about whose green it resembles survives it being our own logo.
    */
   private View buildBubble() {
     ImageView mark = new ImageView(context);
-    mark.setImageResource(R.mipmap.ic_launcher_round);
+    mark.setImageResource(R.drawable.dripplex_bubble_mark);
     mark.setScaleType(ImageView.ScaleType.FIT_CENTER);
 
     GradientDrawable circle = new GradientDrawable();
     circle.setShape(GradientDrawable.OVAL);
-    circle.setColor(Color.parseColor("#0E7A3E"));
-    circle.setStroke(dp(2), Color.parseColor("#66FFFFFF"));
+    // Black, with an emerald ring.
+    //
+    // The mark is a green gradient and the brand presents it on black — the
+    // launcher icon and every notification already do. Green-on-green would
+    // have been unreadable, and a plain green circle is what resembled a
+    // competitor in the first place. Black with a green mark resembles nothing
+    // else on the phone and matches what a driver already associates with us.
+    circle.setColor(Color.parseColor("#000000"));
+    circle.setStroke(dp(2), Color.parseColor("#0E7A3E"));
 
     FrameLayout container = new FrameLayout(context);
     container.setBackground(circle);

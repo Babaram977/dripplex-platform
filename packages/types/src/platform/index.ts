@@ -1241,4 +1241,6 @@ export {
 export {
   CALL_ALERT_ANDROID_CHANNEL_ID,
   RIDE_ALERT_ANDROID_CHANNEL_ID,
+  RIDE_ALERT_ANDROID_CHANNEL_ID_V1,
+  CALL_ALERT_ANDROID_CHANNEL_ID_V1,
 } from './android-notification-channels.js';
