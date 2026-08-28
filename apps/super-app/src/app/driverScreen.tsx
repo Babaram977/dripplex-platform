@@ -1330,7 +1330,7 @@ const DRIVER_KYC_DOCS: {
     label: "Driver's Licence",
     icon: '🪪',
     numberLabel: 'Licence number',
-    numberPlaceholder: 'e.g. ABC123456',
+    numberPlaceholder: 'Type the number here',
   },
   {
     type: 'VEHICLE_REGISTRATION',
@@ -1338,7 +1338,7 @@ const DRIVER_KYC_DOCS: {
     label: 'Vehicle Paper',
     icon: '📄',
     numberLabel: 'Registration / plate number',
-    numberPlaceholder: 'e.g. LAG 482 KA',
+    numberPlaceholder: 'Type the number here',
   },
   {
     type: 'GUARANTOR_ID',
@@ -1346,21 +1346,21 @@ const DRIVER_KYC_DOCS: {
     label: 'Guarantor ID',
     icon: '🧑‍🤝‍🧑',
     numberLabel: "Guarantor's ID number",
-    numberPlaceholder: 'e.g. 12345678901',
+    numberPlaceholder: 'Type the number here',
   },
   {
     type: 'NATIONAL_ID',
     label: 'NIN / National ID',
     icon: '🪪',
     numberLabel: 'NIN / ID number',
-    numberPlaceholder: 'e.g. 12345678901',
+    numberPlaceholder: 'Type the number here',
   },
   {
     type: 'INSURANCE',
     label: 'Insurance Certificate',
     icon: '📋',
     numberLabel: 'Policy number',
-    numberPlaceholder: 'e.g. POL-000123',
+    numberPlaceholder: 'Type the number here',
   },
 ];
 
@@ -2573,28 +2573,38 @@ export function DriverVehicleRegScreen({
           <>
             <DInput
               label="Make (Brand)"
-              placeholder="e.g. Toyota"
+              placeholder="Type your car make"
               value={make}
               onChange={setMake}
             />
-            <DInput label="Model" placeholder="e.g. Camry" value={model} onChange={setModel} />
+            <DInput
+              label="Model"
+              placeholder="Type your car model"
+              value={model}
+              onChange={setModel}
+            />
             <DInput
               label="Year"
-              placeholder="e.g. 2019"
+              placeholder="Type the year"
               value={year}
               onChange={setYear}
               type="number"
             />
-            <DInput label="Colour" placeholder="e.g. White" value={colour} onChange={setColour} />
+            <DInput
+              label="Colour"
+              placeholder="Type the colour"
+              value={colour}
+              onChange={setColour}
+            />
             <DInput
               label="Plate Number"
-              placeholder="e.g. LAG 482 KA"
+              placeholder="Type your plate number"
               value={plate}
               onChange={setPlate}
             />
             <DInput
               label="Passenger Seats"
-              placeholder="e.g. 4"
+              placeholder="How many seats"
               value={seats}
               onChange={setSeats}
               type="number"
@@ -6236,7 +6246,7 @@ export function EmergencyContactScreen({
                 setName(e.target.value);
                 setErrors((p) => ({ ...p, name: '' }));
               }}
-              placeholder="e.g. Fatima Okafor"
+              placeholder="Type their full name"
               className="flex-1 bg-transparent outline-none"
               style={{ fontFamily: IT, fontSize: 15, color: '#fff' }}
             />
@@ -6374,7 +6384,7 @@ export function EmergencyContactScreen({
                 setPhone(e.target.value);
                 setErrors((p) => ({ ...p, phone: '' }));
               }}
-              placeholder="801 234 5678"
+              placeholder="Type their phone number"
               type="tel"
               className="flex-1 bg-transparent outline-none"
               style={{ fontFamily: IT, fontSize: 15, color: '#fff' }}
@@ -6390,7 +6400,7 @@ export function EmergencyContactScreen({
         {/* Email — optional */}
         <DInput
           label="Email Address (optional)"
-          placeholder="e.g. fatima@email.com"
+          placeholder="Type their email"
           value={email}
           onChange={setEmail}
           type="email"

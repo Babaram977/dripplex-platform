@@ -1273,7 +1273,7 @@ function DocumentCard({
         <FieldLabel>Document number</FieldLabel>
         <TextInput
           id={numId}
-          placeholder="e.g. LIC-2024-0023456"
+          placeholder="Type the number here"
           value={docNum}
           onChange={setDocNum}
           focused={focused}
@@ -2016,7 +2016,7 @@ export function BusinessDetailsScreen({
               </div>
               <input
                 type="tel"
-                placeholder="801 234 5678"
+                placeholder="Type your phone number"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 onFocus={() => setFocused('bphone')}

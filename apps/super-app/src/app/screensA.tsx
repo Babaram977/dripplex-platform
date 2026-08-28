@@ -577,7 +577,7 @@ export function RegisterScreen({
               <input
                 type="tel"
                 inputMode="numeric"
-                placeholder="801 234 5678"
+                placeholder="Type your phone number"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 onFocus={() => setFocused(true)}
