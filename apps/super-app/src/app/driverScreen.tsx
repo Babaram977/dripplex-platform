@@ -1431,6 +1431,7 @@ export function DriverUploadDocsScreen({
   const [reviewing, setReviewing] = useState(false);
   const [reviewErr, setReviewErr] = useState('');
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const cameraRef = useRef<HTMLInputElement | null>(null);
 
   const openForm = (type: string) => {
     setOpenType(type);
@@ -1539,6 +1540,32 @@ export function DriverUploadDocsScreen({
           </p>
         </div>
 
+        {/* Two inputs, because one cannot do both jobs.
+         *
+         * Capacitor's WebView routes a file input to the CAMERA only when the
+         * element carries `capture` — BridgeWebChromeClient reads
+         * `fileChooserParams.isCaptureEnabled()` and otherwise calls
+         * showFilePicker(), which is Android's document picker and offers no
+         * camera at all. This screen had one input with no `capture`, so a
+         * driver could only ever attach a photo they had already taken; there
+         * was no way to photograph a licence from inside the app (reported on
+         * device, 2026-08-28).
+         *
+         * Adding `capture` to the single input would have fixed the camera and
+         * broken the other half: the copy above promises "Photos or PDFs", and
+         * a capture-enabled input goes straight to the camera with no way to
+         * reach a stored file. So there are two, and the driver picks.
+         *
+         * `capture="environment"` selects the rear camera, which is the one
+         * pointed at a document lying on a table. */}
+        <input
+          ref={cameraRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          style={{ display: 'none' }}
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+        />
         <input
           ref={fileRef}
           type="file"
@@ -1651,10 +1678,12 @@ export function DriverUploadDocsScreen({
                       value={docNumber}
                       onChange={setDocNumber}
                     />
-                    <div className="mb-3 flex items-center gap-3">
+                    <div className="mb-3 flex items-center gap-2">
+                      {/* Camera first: a driver signing up is holding the
+                          document, not looking for a file they saved earlier. */}
                       <button
-                        onClick={() => fileRef.current?.click()}
-                        className="h-10 rounded-xl px-4 text-[13px] font-medium active:scale-[.97]"
+                        onClick={() => cameraRef.current?.click()}
+                        className="h-10 rounded-xl px-3 text-[13px] font-medium active:scale-[.97]"
                         style={{
                           background: 'rgba(255,255,255,.04)',
                           border: `1px solid ${BORDER}`,
@@ -1662,7 +1691,19 @@ export function DriverUploadDocsScreen({
                           fontFamily: IT,
                         }}
                       >
-                        {file ? 'Change file' : '📤 Choose file'}
+                        📷 Take photo
+                      </button>
+                      <button
+                        onClick={() => fileRef.current?.click()}
+                        className="h-10 rounded-xl px-3 text-[13px] font-medium active:scale-[.97]"
+                        style={{
+                          background: 'rgba(255,255,255,.04)',
+                          border: `1px solid ${BORDER}`,
+                          color: '#fff',
+                          fontFamily: IT,
+                        }}
+                      >
+                        {file ? 'Change' : '📤 File'}
                       </button>
                       <span
                         className="flex-1 truncate text-[12px]"
