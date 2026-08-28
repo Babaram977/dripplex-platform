@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 
 import { isSyntheticEmail } from '../auth/utils/synthetic-email.util';
 import { AppConfigService } from '../config/app-config.service';
+import { isDeletedEmail } from '../users/account-deletion.constants';
 
 import { LoggingNotificationService } from './logging-notification.service';
 import { ResendEmailSender } from './providers/resend-email.sender';
@@ -208,7 +209,12 @@ export class ProductionNotificationService implements NotificationService {
     // address (see auth/utils/synthetic-email.util.ts) -- there's no real
     // inbox behind it, so every email path (this one included) silently
     // no-ops for it rather than attempting a send or even logging one.
-    if (isSyntheticEmail(to)) {
+    //
+    // A deleted account's address is parked in its own internal domain for the
+    // same reason: nothing there is deliverable. Without this an ops deletion
+    // would start bouncing mail at Resend for every lifecycle notification the
+    // account happens to trigger afterwards.
+    if (isSyntheticEmail(to) || isDeletedEmail(to)) {
       return;
     }
     if (!this.config.resendConfigured) {

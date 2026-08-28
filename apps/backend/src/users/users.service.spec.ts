@@ -19,7 +19,6 @@ describe('UsersService', () => {
     markPhoneVerified: jest.fn(),
     activateIfVerificationsComplete: jest.fn(),
     recordLoginActivity: jest.fn(),
-    softDelete: jest.fn(),
     updatePassword: jest.fn(),
     linkGoogleId: jest.fn(),
     updateProfile: jest.fn(),
@@ -72,16 +71,9 @@ describe('UsersService', () => {
     );
   });
 
-  it('soft deletes an existing user', async () => {
-    repository.findById.mockResolvedValue(sampleUser);
-    repository.softDelete.mockResolvedValue({
-      ...sampleUser,
-      deletedAt: new Date('2026-02-01T00:00:00.000Z'),
-      status: UserStatus.INACTIVE,
-    });
-
-    const deleted = await service.softDeleteUser(sampleUser.id);
-    expect(deleted.deletedAt).not.toBeNull();
-    expect(repository.softDelete).toHaveBeenCalledWith(sampleUser.id);
-  });
+  // The soft-delete test moved to account-deletion.service.spec.ts along with
+  // the behaviour. UsersService no longer has a delete: the old one set
+  // deletedAt and nothing else, and deleting an account safely means checking
+  // for trips in progress, releasing the email and phone, and leaving an audit
+  // record — none of which belong behind a bare repository call.
 });

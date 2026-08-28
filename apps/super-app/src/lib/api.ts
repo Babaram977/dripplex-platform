@@ -3820,6 +3820,38 @@ export const api = {
         undefined,
         params,
       ),
+
+    /**
+     * What is still open on an account. Read before offering the delete, so an
+     * operator sees what they would interrupt while they can still stop.
+     *
+     * `userId`, not a profile id. The four rosters each carry both: a customer
+     * row's `id` IS the user id, but a driver's is `driverId`, a merchant's is
+     * `merchantId` and a rider's is `riderId` — their `id` is the persona
+     * profile's own primary key and passing it here finds nobody.
+     */
+    accountCommitments: (userId: string) =>
+      dx<{
+        activeRides: number;
+        activeDeliveries: number;
+        openOrders: number;
+        walletBalance: number;
+      }>('GET', `/users/${userId}/commitments`),
+
+    /**
+     * Delete a merchant, driver, rider or customer.
+     *
+     * Soft delete: rides, orders and ledger entries reference this user and
+     * outlive the account. What goes is the ability to sign in, the presence in
+     * every console roster, and the hold on the person's email and phone —
+     * which is what lets an abandoned signup come back and register properly.
+     */
+    deleteAccount: (userId: string, reason: string) =>
+      dx<{ id: string; deletedAt: string; personasClosed: string[] }>(
+        'DELETE',
+        `/users/${userId}`,
+        { reason },
+      ),
   },
 
   // ── CUSTOMER KYC ───────────────────────────────────────────────────────────
