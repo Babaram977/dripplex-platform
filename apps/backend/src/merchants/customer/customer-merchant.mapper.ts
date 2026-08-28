@@ -1,3 +1,5 @@
+import { hasKnownLocation } from '../business-location';
+
 import type {
   RatingSummaryDto,
   MerchantDetailDto,
@@ -89,14 +91,21 @@ export function toMerchantSummaryDto(
     city: business.city,
     state: business.state,
     rating,
-    distanceKm: fromLocation
-      ? Number(
-          distanceKm(fromLocation, {
-            lat: Number(business.latitude),
-            lng: Number(business.longitude),
-          }).toFixed(1),
-        )
-      : null,
+    // null when we do not know where the shop is, NOT a distance to Null
+    // Island. Three live merchants were reporting 1,637 km from Kano because
+    // their coordinates had never been resolved — see hasKnownLocation. The
+    // 'nearest' sort already scores a null distance as -Infinity, so telling
+    // the truth here also stops them jumping ahead of shops we can actually
+    // place.
+    distanceKm:
+      fromLocation && hasKnownLocation(business)
+        ? Number(
+            distanceKm(fromLocation, {
+              lat: Number(business.latitude),
+              lng: Number(business.longitude),
+            }).toFixed(1),
+          )
+        : null,
     isOpenNow: isOpenNow(business.operatingHours),
   };
 }

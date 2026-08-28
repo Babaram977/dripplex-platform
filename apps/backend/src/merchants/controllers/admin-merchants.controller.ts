@@ -90,6 +90,25 @@ export class AdminMerchantsController {
     return { success: true, data };
   }
 
+  /**
+   * Re-resolve this business's coordinates from the address on file.
+   *
+   * For a merchant sitting at 0,0 — Null Island — because geocoding was
+   * unavailable or failed when they onboarded. See
+   * MerchantsService.relocateBusiness.
+   */
+  @Post('merchant/:id/relocate')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(MERCHANT_PERMISSIONS.APPROVE)
+  public async relocateMerchant(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() req: Request,
+  ): Promise<ApiSuccessResponse<BusinessDto>> {
+    const data = await this.merchantsService.relocateBusiness(id, user.id, this.auditContext(req));
+    return { success: true, data };
+  }
+
   @Post('merchant/:id/kyc/verify')
   @HttpCode(HttpStatus.OK)
   @RequirePermissions(MERCHANT_PERMISSIONS.APPROVE)

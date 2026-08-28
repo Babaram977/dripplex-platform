@@ -4321,6 +4321,48 @@ function MerchantReviewCard({ m, reload }: { m: AdminMerchantDto; reload: () => 
               }
             />
           )}
+          {/* Null Island. A business whose address never resolved keeps 0,0,
+              which puts it 1,637 km from Kano — so it never surfaces in
+              "nearest" and shows no distance to a customer. Nothing else in
+              the console says so, which is how three of the first five live
+              merchants ended up there unnoticed. */}
+          {m.business && m.business.latitude === 0 && m.business.longitude === 0 && (
+            <div
+              style={{
+                width: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+                padding: 10,
+                borderRadius: 10,
+                border: '1px solid rgba(245,158,11,.35)',
+                background: 'rgba(245,158,11,.06)',
+                fontFamily: 'Inter, sans-serif',
+              }}
+            >
+              <span style={{ fontSize: 11.5, color: C_WARN, fontWeight: 600 }}>
+                No location on record
+              </span>
+              <span style={{ fontSize: 10.5, color: MUTED, lineHeight: 1.5 }}>
+                Customers sorting by nearest will never see this store.
+                {m.business.address
+                  ? ` Address on file: ${m.business.address}`
+                  : ' No address on file.'}
+              </span>
+              <div>
+                <Btn
+                  label={busy === 'relocate' ? 'Looking up…' : 'Find on map'}
+                  color={G2}
+                  small
+                  onClick={
+                    busy
+                      ? undefined
+                      : () => void run('relocate', () => api.admin.relocateMerchant(m.merchantId))
+                  }
+                />
+              </div>
+            </div>
+          )}
           {/* merchantId, NOT m.id — m.id is the MerchantProfile's own primary
               key and the account routes are keyed on the user. */}
           <DeleteAccountPanel

@@ -1465,6 +1465,17 @@ export interface AdminMerchantDto {
     verificationStatus: 'PENDING' | 'VERIFIED' | 'REJECTED' | 'UNDER_REVIEW';
     city: string | null;
     state: string | null;
+    /**
+     * Where the shop is — or 0,0 when nobody ever resolved it.
+     *
+     * The backend has always sent these (toBusinessDto maps them straight from
+     * the record); this type simply did not declare them, so the console could
+     * not tell a located merchant from one sitting in the Atlantic. Three of
+     * the five live merchants were in that state on 2026-08-28.
+     */
+    address: string;
+    latitude: number;
+    longitude: number;
   } | null;
   // The document Operations must act on next (oldest PENDING first), or the
   // representative one when nothing is pending. The backend returns the full
@@ -3842,6 +3853,16 @@ export const api = {
         undefined,
         params,
       ),
+
+    /**
+     * Re-resolve a merchant's coordinates from the address already on file.
+     *
+     * For a store stuck at 0,0 because geocoding was unavailable or failed when
+     * they onboarded. Only ever writes a location it actually resolved — a
+     * failure comes back as an error naming the address it could not find.
+     */
+    relocateMerchant: (merchantUserId: string) =>
+      dx<AdminMerchantDto['business']>('POST', `/admin/merchant/${merchantUserId}/relocate`),
 
     /**
      * What is still open on an account. Read before offering the delete, so an
