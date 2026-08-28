@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { G0, G2, G3, NAVY_BASE, NAVY_CARD, NAVY_DEEP, NAVY_SURFACE, BORDER, MUTED } from './shared';
 import { api, uploadFile } from '../lib/api';
 import type { OrderDto, CustomerAddressDto, CartDto, CardProviderOptionDto } from '../lib/api';
+import { totalsForFulfillment } from '../lib/fulfillmentTotals';
 import { gatewayCallbackUrl, rememberGatewayReturn } from '../lib/gatewayReturn';
 import { BottomNavigation } from '../components/navigation';
 import type { NavTabKey } from '../components/navigation/BottomNavigation';
@@ -192,6 +193,120 @@ function AddressSection({
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DELIVER OR COLLECT
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Two cards, not a dropdown or a row of chips.
+ *
+ * This is the choice that decides whether anyone has to ride anywhere, and in a
+ * market with few riders it is the difference between an order that arrives and
+ * one that waits. It also changes the price, so both options state their fee
+ * rather than making the customer switch to find out.
+ */
+function FulfillmentChoice({
+  value,
+  onChange,
+  deliveryFee,
+}: {
+  value: 'DELIVERY' | 'PICKUP';
+  onChange: (v: 'DELIVERY' | 'PICKUP') => void;
+  deliveryFee: number;
+}) {
+  const options = [
+    {
+      key: 'DELIVERY' as const,
+      icon: '🛵',
+      label: 'Deliver to me',
+      sub: deliveryFee > 0 ? fmt(deliveryFee) : 'Free',
+    },
+    { key: 'PICKUP' as const, icon: '🏪', label: 'I will collect', sub: 'No delivery fee' },
+  ];
+  return (
+    <div className="flex gap-2.5">
+      {options.map((o) => {
+        const on = value === o.key;
+        return (
+          <button
+            key={o.key}
+            type="button"
+            onClick={() => onChange(o.key)}
+            aria-pressed={on}
+            className="flex flex-1 flex-col items-center gap-1 rounded-2xl px-3 py-3.5 transition-all active:scale-95"
+            style={{
+              background: on ? 'rgba(43,172,82,.12)' : NAVY_CARD,
+              border: `1.5px solid ${on ? G2 : BORDER}`,
+            }}
+          >
+            <span className="text-[20px]">{o.icon}</span>
+            <span
+              className="text-[12.5px] font-semibold"
+              style={{ fontFamily: "'Poppins',sans-serif", color: on ? '#FFF' : MUTED }}
+            >
+              {o.label}
+            </span>
+            <span className="text-[10.5px]" style={{ color: on ? G3 : MUTED }}>
+              {o.sub}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Where to go, for an order the customer is collecting themselves.
+ *
+ * The phone is here on purpose and is not decoration: a Kano address is often a
+ * landmark rather than something a map can pin, and calling the shop is how
+ * people actually find it.
+ */
+function PickupPoint({ name, address, phone }: { name: string; address: string; phone: string }) {
+  return (
+    <div
+      className="rounded-2xl p-4"
+      style={{ background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}
+    >
+      <div className="flex items-start gap-3">
+        <div
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-xl"
+          style={{ background: 'rgba(43,172,82,.12)' }}
+        >
+          🏪
+        </div>
+        <div className="min-w-0 flex-1">
+          <p
+            className="mb-1 text-[13px] font-semibold text-white"
+            style={{ fontFamily: "'Poppins',sans-serif" }}
+          >
+            {name}
+          </p>
+          <p className="text-[12px] leading-relaxed" style={{ color: MUTED }}>
+            {address}
+          </p>
+          {phone.trim() !== '' && (
+            <a
+              href={`tel:${phone}`}
+              className="mt-1 inline-block text-[12px] font-semibold"
+              style={{ color: G3 }}
+            >
+              {phone}
+            </a>
+          )}
+        </div>
+      </div>
+      <p
+        className="mt-3 pt-3 text-[11.5px] leading-relaxed"
+        style={{ borderTop: `1px solid ${BORDER}`, color: MUTED }}
+      >
+        The store will get your order ready. Go there to collect it and pay nothing for delivery.
+      </p>
     </div>
   );
 }
@@ -717,6 +832,28 @@ export function CheckoutScreen({
   const [realCart, setRealCart] = useState<CartDto | null>(null);
   const [cartLoaded, setCartLoaded] = useState(false);
   const [cartMerchantName, setCartMerchantName] = useState<string | null>(null);
+  // Where to collect, for a pickup order. Held separately from the name because
+  // the customer needs the street address and the phone, not just who it is.
+  const [cartMerchantPickup, setCartMerchantPickup] = useState<{
+    address: string;
+    phone: string;
+  } | null>(null);
+
+  /**
+   * Deliver, or collect it yourself.
+   *
+   * The backend has supported PICKUP since checkout was written — it skips the
+   * delivery address entirely, and PricingService zeroes the delivery fee — but
+   * this screen sent `fulfillmentType: 'DELIVERY'` as a literal, so no customer
+   * could ever choose it. The only pickup control in the file sat on the
+   * logged-out design preview.
+   *
+   * Founder decision 2026-08-28, onboarding restaurants in Kano: pickup is an
+   * option. It is also what lets a restaurant trade before there are any riders
+   * in the city — a pickup order never creates a delivery job, so there is
+   * nobody to wait for.
+   */
+  const [fulfillment, setFulfillment] = useState<'DELIVERY' | 'PICKUP'>('DELIVERY');
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [cardProviders, setCardProviders] = useState<CardProviderOptionDto[]>([]);
 
@@ -750,7 +887,17 @@ export function CheckoutScreen({
         if (c?.merchantId) {
           api.marketplace
             .getMerchant(c.merchantId)
-            .then((m) => alive && setCartMerchantName(m.businessName))
+            .then((m) => {
+              if (!alive) return;
+              setCartMerchantName(m.businessName);
+              // Only offer a collection point we can actually name. A merchant
+              // with a blank address (several live ones have one) would give
+              // the customer "collect from nowhere", so pickup stays hidden
+              // for them rather than sending someone to an empty line.
+              setCartMerchantPickup(
+                m.address.trim() ? { address: m.address, phone: m.phone } : null,
+              );
+            })
             .catch(() => {});
         }
       })
@@ -974,17 +1121,28 @@ export function CheckoutScreen({
   // until a real cart loads.
   const showDemoMoney = !auth.isLoggedIn();
   const itemsTotal = t ? t.subtotal : showDemoMoney ? mockItemsTotal : 0;
-  const deliveryTotal = t ? t.deliveryFee : showDemoMoney ? mockDeliveryTotal : 0;
+  // The cart's stored totals are always computed as a DELIVERY, so a pickup
+  // order would preview a delivery fee it will not be charged. See
+  // totalsForFulfillment — it reproduces the server's arithmetic rather than
+  // estimating it, and its tests hold the two in step.
+  const pickup = fulfillment === 'PICKUP';
+  const rawDeliveryTotal = t ? t.deliveryFee : showDemoMoney ? mockDeliveryTotal : 0;
   const discountTotal = t ? t.discount : showDemoMoney ? mockPromoSavings : 0;
   const taxTotal = t ? t.tax : 0;
   // GAP: the backend has no "cashback" concept (CartTotalsDto = subtotal/discount/
   // tax/deliveryFee/total). Never fabricated for a real customer — preview only.
   const cashbackTotal = t || !showDemoMoney ? 0 : MERCHANTS.reduce((s, m) => s + m.cashback, 0);
-  const grandTotal = t
-    ? t.total
-    : showDemoMoney
-      ? mockItemsTotal + mockDeliveryTotal - mockPromoSavings
-      : 0;
+  const { deliveryFee: deliveryTotal, total: grandTotal } = totalsForFulfillment(
+    {
+      deliveryFee: rawDeliveryTotal,
+      total: t
+        ? t.total
+        : showDemoMoney
+          ? mockItemsTotal + mockDeliveryTotal - mockPromoSavings
+          : 0,
+    },
+    fulfillment,
+  );
 
   const cartItems = realCart?.items ?? [];
   const cartEmpty = auth.isLoggedIn() && cartLoaded && cartItems.length === 0;
@@ -1037,11 +1195,12 @@ export function CheckoutScreen({
       return;
     }
 
-    // A delivery address is required. Use the selected one; if the customer has
-    // none, prompt them to set it (via "Use My Location") rather than silently
-    // failing at the API.
+    // A delivery address is required — but only when we are delivering. The
+    // backend resolves an address for DELIVERY only, so demanding one for a
+    // pickup order would block a customer who has never set one, over a field
+    // the order will not use.
     let deliveryAddressId = selectedAddressId ?? selectedRealAddress?.id ?? null;
-    if (!deliveryAddressId) {
+    if (!pickup && !deliveryAddressId) {
       setError('Add a delivery address to continue.');
       setShowAddrSheet(true);
       return;
@@ -1051,8 +1210,8 @@ export function CheckoutScreen({
     setError(null);
     try {
       const { order } = await api.orders.checkout({
-        fulfillmentType: 'DELIVERY',
-        deliveryAddressId,
+        fulfillmentType: fulfillment,
+        ...(pickup || !deliveryAddressId ? {} : { deliveryAddressId }),
       });
       setPendingOrder(order);
 
@@ -1272,14 +1431,38 @@ export function CheckoutScreen({
       >
         {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
 
+        {cartMerchantPickup && (
+          <div className="mb-4">
+            <SectionLabel>How do you want it?</SectionLabel>
+            <FulfillmentChoice
+              value={fulfillment}
+              onChange={setFulfillment}
+              deliveryFee={rawDeliveryTotal}
+            />
+          </div>
+        )}
+
         <div className="mb-4">
-          <SectionLabel>Delivery Address</SectionLabel>
-          <AddressSection
-            address={address}
-            onChangeAddress={() => setShowAddrSheet(true)}
-            onUseLocation={handleUseMyLocation}
-            busy={addrBusy}
-          />
+          {pickup && cartMerchantPickup ? (
+            <>
+              <SectionLabel>Collect From</SectionLabel>
+              <PickupPoint
+                name={cartMerchantName ?? 'The store'}
+                address={cartMerchantPickup.address}
+                phone={cartMerchantPickup.phone}
+              />
+            </>
+          ) : (
+            <>
+              <SectionLabel>Delivery Address</SectionLabel>
+              <AddressSection
+                address={address}
+                onChangeAddress={() => setShowAddrSheet(true)}
+                onUseLocation={handleUseMyLocation}
+                busy={addrBusy}
+              />
+            </>
+          )}
         </div>
 
         <div className="mb-4">
@@ -1488,8 +1671,16 @@ export function CheckoutScreen({
               ? [
                   { label: 'Items Total', value: fmt(itemsTotal), color: 'rgba(255,255,255,.8)' },
                   {
-                    label: 'Delivery Fees',
-                    value: deliveryTotal === 0 ? 'FREE' : fmt(deliveryTotal),
+                    // Named for what the customer chose. "Delivery Fees: FREE"
+                    // on an order they are collecting themselves reads as a
+                    // discount they have been given, not as a fee that does not
+                    // apply.
+                    label: pickup ? 'Collection' : 'Delivery Fees',
+                    value: pickup
+                      ? 'You collect'
+                      : deliveryTotal === 0
+                        ? 'FREE'
+                        : fmt(deliveryTotal),
                     color: 'rgba(255,255,255,.7)',
                   },
                   ...(discountTotal > 0

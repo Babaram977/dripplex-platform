@@ -25,7 +25,7 @@ import {
 } from '../notifications/notification.service';
 import { StorageAssetService } from '../uploads/storage-asset.service';
 
-import { MERCHANT_AUDIT_ACTIONS, REQUIRED_MERCHANT_KYC_DOCUMENT_TYPES } from './merchant.constants';
+import { MERCHANT_AUDIT_ACTIONS, requiredKycDocumentTypes } from './merchant.constants';
 import {
   toBankAccountDto,
   toBusinessDto,
@@ -772,7 +772,12 @@ export class MerchantsService {
     // single verified document let a merchant go live with only the CAC while
     // the portal still marked the director's NIN Required. Founder decision
     // 2026-08-15.
-    const missing = REQUIRED_MERCHANT_KYC_DOCUMENT_TYPES.filter(
+    //
+    // Which documents are required depends on the business's legal structure: a
+    // sole trader cannot obtain a CAC certificate at all, so demanding one made
+    // them permanently unapprovable. See requiredKycDocumentTypes.
+    const required = requiredKycDocumentTypes(detail.business.businessType);
+    const missing = required.filter(
       (type) =>
         !detail.kycDocuments.some(
           (doc) =>

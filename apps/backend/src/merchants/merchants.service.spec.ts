@@ -770,9 +770,16 @@ describe('MerchantsService', () => {
   });
 
   describe('admin approval workflow', () => {
-    // Approval requires EVERY document in REQUIRED_MERCHANT_KYC_DOCUMENT_TYPES
-    // verified (CAC certificate + director's NIN), so the approvable fixture
-    // carries both.
+    // A REGISTERED business requires every document in
+    // REQUIRED_MERCHANT_KYC_DOCUMENT_TYPES verified (CAC certificate +
+    // director's NIN), so the approvable fixture carries both.
+    //
+    // LIMITED_LIABILITY rather than the shared `business` fixture, which is a
+    // SOLE_PROPRIETORSHIP: a sole trader is no longer asked for a CAC at all
+    // (founder decision 2026-08-28, see requiredKycDocumentTypes), so every
+    // test below that means "the CAC is missing" needs a business the CAC is
+    // genuinely required of. Sole traders have their own block underneath.
+    const registeredBusiness = { ...business, businessType: BusinessType.LIMITED_LIABILITY };
     const verifiedNin = {
       ...verifiedKyc,
       id: 'kyc-nin-verified',
@@ -782,7 +789,7 @@ describe('MerchantsService', () => {
       ...profile,
       status: MerchantStatus.UNDER_REVIEW,
       user: verifiedUser,
-      business,
+      business: registeredBusiness,
       kycDocuments: [verifiedKyc, verifiedNin],
       bankAccounts: [bankAccount],
       onboarding: { id: 'o1', status: OnboardingStatus.SUBMITTED },
@@ -891,6 +898,71 @@ describe('MerchantsService', () => {
       await expect(service.approveMerchant(merchantId, adminId, context)).rejects.toBeInstanceOf(
         ValidationDomainException,
       );
+    });
+
+    describe('a sole trader is not asked for a CAC certificate', () => {
+      // Founder decision 2026-08-28, taken to onboard 20 Kano restaurants.
+      //
+      // A CAC certificate proves a business is registered with the Corporate
+      // Affairs Commission. An unregistered trader cannot obtain one at any
+      // price, so requiring it meant the small food sellers and kiosks that
+      // make up the launch market completed every onboarding step and then sat
+      // permanently unapprovable — invisible to customers, with the portal
+      // asking for a document that does not exist for them.
+      const soleTraderDetail = {
+        ...adminDetail,
+        business: { ...business, businessType: BusinessType.SOLE_PROPRIETORSHIP },
+      };
+
+      it('approves on the NIN alone, with no CAC anywhere on the record', async () => {
+        repository.getMerchantAdminDetail.mockResolvedValue({
+          ...soleTraderDetail,
+          kycDocuments: [verifiedNin],
+        } as never);
+        repository.updateMerchantLifecycle.mockResolvedValue(soleTraderDetail as never);
+
+        const result = await service.approveMerchant(merchantId, adminId, context);
+        expect(result.status).toBe('APPROVED');
+      });
+
+      it('still refuses when the NIN itself is unverified', async () => {
+        // The relaxation narrows what we hold, it does not drop identity. A
+        // sole trader with no verified NIN is nobody we can trace.
+        repository.getMerchantAdminDetail.mockResolvedValue({
+          ...soleTraderDetail,
+          kycDocuments: [{ ...verifiedNin, verificationStatus: KycVerificationStatus.PENDING }],
+        } as never);
+
+        await expect(service.approveMerchant(merchantId, adminId, context)).rejects.toThrow(
+          /national id/i,
+        );
+        expect(repository.updateMerchantLifecycle).not.toHaveBeenCalled();
+      });
+
+      it('holds every other structure to the CAC, including OTHER', async () => {
+        // OTHER is the "I am not sure" answer — a merchant who picks it has not
+        // told us they are a sole trader, so it keeps the full set. If this ever
+        // flips, an unregistered business could go live by choosing the vaguest
+        // option on the form.
+        for (const businessType of [
+          BusinessType.PARTNERSHIP,
+          BusinessType.LIMITED_LIABILITY,
+          BusinessType.CORPORATION,
+          BusinessType.OTHER,
+        ]) {
+          repository.updateMerchantLifecycle.mockClear();
+          repository.getMerchantAdminDetail.mockResolvedValue({
+            ...adminDetail,
+            business: { ...business, businessType },
+            kycDocuments: [verifiedNin],
+          } as never);
+
+          await expect(service.approveMerchant(merchantId, adminId, context)).rejects.toThrow(
+            /cac certificate/i,
+          );
+          expect(repository.updateMerchantLifecycle).not.toHaveBeenCalled();
+        }
+      });
     });
 
     it('approves when every required document is verified, whatever the sort order', async () => {
