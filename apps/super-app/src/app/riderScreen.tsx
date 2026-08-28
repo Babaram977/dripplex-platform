@@ -7,6 +7,15 @@ import { PayoutPanel } from './payoutPanel';
 import { auth, endSession } from '../lib/auth';
 import { signOutRequest } from '../lib/push';
 import { useLocationHeartbeat } from '../lib/locationHeartbeat';
+import {
+  hasOverlayPermission,
+  isDriverPresenceRunning,
+  requestOverlayPermission,
+  startRiderPresence,
+  stopDriverPresence,
+  type PresenceOutcome,
+} from '../lib/driverPresence';
+import { DriverPresenceStatus } from './presenceStatus';
 import { getCurrentPosition } from '../lib/maps';
 import type {
   DeliveryJobDto,
@@ -378,6 +387,21 @@ export function RiderDashboardScreen({
     });
   });
   const [toggling, setToggling] = useState(false);
+  /**
+   * DPX-MOBILE-003, extended to riders.
+   *
+   * The heartbeat above is a WebView `setInterval`. Chromium clamps background
+   * timers the moment the app is hidden, and Android kills the process outright
+   * when it reclaims memory — so a rider who pockets their phone stops
+   * reporting while this screen goes on saying they are live. That is the exact
+   * failure drivers hit on 2026-08-27, from the exact same cause, and the fix
+   * is the same native foreground service.
+   *
+   * The heartbeat stays. It is the foreground path, and the only path on iOS
+   * and the web; both writing the same coordinates is harmless.
+   */
+  const [presence, setPresence] = useState<PresenceOutcome | null>(null);
+  const [overlay, setOverlay] = useState<boolean | null>(null);
   const [jobs, setJobs] = useState<RiderDeliveryJobDto[]>([]);
   const [wallet, setWallet] = useState<WalletDto | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
@@ -459,6 +483,58 @@ export function RiderDashboardScreen({
     return () => clearInterval(t);
   }, [online]);
 
+  /**
+   * Keep native presence in step with `online` however the rider got there.
+   *
+   * Presence used to start only from the toggle, so a rider whose stored
+   * availability already said online — reopening the app mid-shift, or after
+   * Android killed it — got "You are live" above a service that had never
+   * started. That was bug 2 of the four in #318 on the driver side; it would
+   * have shipped here too.
+   *
+   * Safe alongside the toggle's own start: a second `start` is a no-op
+   * natively, and `isDriverPresenceRunning()` skips it in the ordinary case.
+   */
+  useEffect(() => {
+    if (!online) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        if (await isDriverPresenceRunning()) return;
+        const pos = await getCurrentPosition();
+        const outcome = await startRiderPresence({
+          acceptingOrders: true,
+          ...(pos ? { latitude: pos.latitude, longitude: pos.longitude } : {}),
+        });
+        if (cancelled) return;
+        setPresence(outcome);
+        setOverlay(outcome === 'started' ? await hasOverlayPermission() : null);
+      } catch {
+        // Presence failing is a degraded shift, not a broken screen.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [online]);
+
+  /**
+   * Re-check the overlay permission when the rider comes back to the app.
+   *
+   * SYSTEM_ALERT_WINDOW is granted in Settings, not by a dialog, so the app is
+   * backgrounded while it happens and learns nothing on its own. Without this
+   * the prompt stays on screen after they have already granted it.
+   */
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && presence === 'started') {
+        void hasOverlayPermission().then(setOverlay);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [presence]);
+
   const handleToggle = async () => {
     setToggling(true);
     setLocationErr(null);
@@ -482,8 +558,32 @@ export function RiderDashboardScreen({
           longitude: pos.longitude,
         });
         setLocated(true);
+        // Hand the shift to the native service, which keeps reporting once
+        // Android freezes this WebView's timers. Started here with the app on
+        // screen because Android 12+ refuses a foreground service started from
+        // the background. Not awaited: a rider must not be blocked from going
+        // online because a platform call failed — but the verdict is recorded
+        // rather than dropped, which is what made the driver version of this
+        // bug invisible for a day.
+        void startRiderPresence({
+          acceptingOrders: true,
+          // The fix from the getCurrentPosition() above. Without it the service
+          // can start with no location at all and post nothing while claiming
+          // the rider is online.
+          latitude: pos.latitude,
+          longitude: pos.longitude,
+        }).then(async (outcome) => {
+          setPresence(outcome);
+          setOverlay(outcome === 'started' ? await hasOverlayPermission() : null);
+        });
       } else {
         await api.rider.setAvailability({ online: false, acceptingOrders: false });
+        // Stop before anything else can fail: a presence notification that
+        // outlives the shift tells the rider they are working when the server
+        // has them offline.
+        void stopDriverPresence();
+        setPresence(null);
+        setOverlay(null);
       }
       setOnline(next);
     } catch (e) {
@@ -649,6 +749,21 @@ export function RiderDashboardScreen({
         >
           {toggling ? '...' : online ? '⏹ Go Offline' : '▶ Go Online — Accept Deliveries'}
         </button>
+
+        {/* Reused from the driver screen rather than copied: the two personas
+            have the same failure modes and the same remedy, and its copy —
+            "this phone stops showing you to dispatch" — is already true of
+            both. A second implementation would be a second thing to keep
+            correct. */}
+        <DriverPresenceStatus
+          outcome={presence}
+          overlayGranted={overlay}
+          onRequestOverlay={() => {
+            void requestOverlayPermission().then((granted) => {
+              if (granted) setOverlay(true);
+            });
+          }}
+        />
 
         {locationErr && (
           <div

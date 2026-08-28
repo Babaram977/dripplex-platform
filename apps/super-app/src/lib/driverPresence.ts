@@ -27,25 +27,77 @@ import { auth } from './auth';
 
 export type PresenceOutcome = NativePresenceOutcome | 'not-signed-in';
 
+/** The position the caller already holds, from the `getCurrentPosition()` it
+ * just made. Seeds the service's first report — see the note on
+ * `NativePresenceOptions.latitude` for why the service cannot be relied on to
+ * find one for itself. */
+interface SeedPosition {
+  latitude?: number;
+  longitude?: number;
+}
+
 /** Start native reporting for a driver who has just gone online. Must be called
  * with the app on screen: Android 12+ refuses a foreground service started from
  * the background. */
-export async function startDriverPresence(options: {
-  vehicleType: string;
-  acceptingRides?: boolean;
-  acceptingDeliveries?: boolean;
-  /** The driver's position, from the `getCurrentPosition()` the caller just
-   * made. Seeds the service's first report — see the note on
-   * `NativePresenceOptions.latitude` for why the service cannot be relied on to
-   * find one for itself. */
-  latitude?: number;
-  longitude?: number;
-}): Promise<PresenceOutcome> {
+export async function startDriverPresence(
+  options: {
+    vehicleType: string;
+    acceptingRides?: boolean;
+    acceptingDeliveries?: boolean;
+  } & SeedPosition,
+): Promise<PresenceOutcome> {
   const token = auth.getAccessToken();
   if (!token) return 'not-signed-in';
-  return await startNativeDriverPresence({ baseUrl: BASE, token, ...options });
+  const { vehicleType, acceptingRides, acceptingDeliveries, ...seed } = options;
+  return await startNativeDriverPresence({
+    baseUrl: BASE,
+    token,
+    // Exactly the body the service used to build for itself — same endpoint,
+    // same fields, same defaults. The generalisation moved where it is
+    // assembled, not what a driver sends.
+    presencePath: '/driver/rides/availability',
+    presenceBody: {
+      online: true,
+      acceptingRides: acceptingRides ?? true,
+      ...(acceptingDeliveries !== undefined ? { acceptingDeliveries } : {}),
+      vehicleType,
+    },
+    onlineText: 'DrippleX can send you ride requests',
+    ...seed,
+  });
 }
 
+/**
+ * The same, for a rider carrying deliveries.
+ *
+ * Riders had the bug drivers had before DPX-MOBILE-003: riderScreen pushes
+ * location on a WebView `setInterval`, which Chromium throttles the moment the
+ * app is hidden and Android kills outright when it reclaims the process. The
+ * rider's own screen went on saying "online" while dispatch stopped seeing
+ * them — the exact failure, from the exact same cause.
+ *
+ * Nothing new is built for this. It is the proven service with a different
+ * endpoint and body.
+ */
+export async function startRiderPresence(
+  options: { acceptingOrders?: boolean } & SeedPosition,
+): Promise<PresenceOutcome> {
+  const token = auth.getAccessToken();
+  if (!token) return 'not-signed-in';
+  const { acceptingOrders, ...seed } = options;
+  return await startNativeDriverPresence({
+    baseUrl: BASE,
+    token,
+    presencePath: '/rider/availability',
+    presenceBody: { online: true, acceptingOrders: acceptingOrders ?? true },
+    // Not "ride requests" — a rider hearing that would reasonably think they
+    // had been signed in as a driver.
+    onlineText: 'DrippleX can send you deliveries',
+    ...seed,
+  });
+}
+
+/** Stop reporting. One service, so this ends whichever persona started it. */
 export async function stopDriverPresence(): Promise<PresenceOutcome> {
   return await stopNativeDriverPresence();
 }

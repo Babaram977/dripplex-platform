@@ -28,10 +28,15 @@ public class DriverPresencePlugin extends Plugin {
   public void start(PluginCall call) {
     String baseUrl = call.getString("baseUrl");
     String token = call.getString("token");
-    String vehicleType = call.getString("vehicleType");
+    // Which availability endpoint, and the persona-specific body to post to it.
+    // The service knows about neither drivers nor riders — see
+    // DriverPresenceService.EXTRA_PRESENCE_BODY for why that is deliberate.
+    String presencePath = call.getString("presencePath");
+    JSObject presenceBody = call.getObject("presenceBody");
+    String onlineText = call.getString("onlineText");
 
-    if (baseUrl == null || token == null || vehicleType == null) {
-      call.reject("baseUrl, token and vehicleType are required");
+    if (baseUrl == null || token == null || presencePath == null || presenceBody == null) {
+      call.reject("baseUrl, token, presencePath and presenceBody are required");
       return;
     }
 
@@ -39,13 +44,10 @@ public class DriverPresencePlugin extends Plugin {
     intent.setAction(DriverPresenceService.ACTION_START);
     intent.putExtra(DriverPresenceService.EXTRA_BASE_URL, baseUrl);
     intent.putExtra(DriverPresenceService.EXTRA_TOKEN, token);
-    intent.putExtra(DriverPresenceService.EXTRA_VEHICLE_TYPE, vehicleType);
-    intent.putExtra(
-        DriverPresenceService.EXTRA_ACCEPTING_RIDES,
-        Boolean.TRUE.equals(call.getBoolean("acceptingRides", Boolean.TRUE)));
-    Boolean deliveries = call.getBoolean("acceptingDeliveries");
-    if (deliveries != null) {
-      intent.putExtra(DriverPresenceService.EXTRA_ACCEPTING_DELIVERIES, deliveries.booleanValue());
+    intent.putExtra(DriverPresenceService.EXTRA_PRESENCE_PATH, presencePath);
+    intent.putExtra(DriverPresenceService.EXTRA_PRESENCE_BODY, presenceBody.toString());
+    if (onlineText != null) {
+      intent.putExtra(DriverPresenceService.EXTRA_ONLINE_TEXT, onlineText);
     }
     Integer intervalMs = call.getInt("intervalMs");
     if (intervalMs != null) {
