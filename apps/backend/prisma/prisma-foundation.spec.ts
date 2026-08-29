@@ -89,7 +89,15 @@ describe('Prisma schema foundation (S1-C1)', () => {
     // that one it only says "this kind of account may call at all" — reaching
     // a specific person is decided by JobParticipantsService from the job's
     // own two parties, so holding it never lets anyone call a stranger.
-    expect(PERMISSION_SEEDS).toHaveLength(134);
+    // 135 as of 2026-08-29. The one added is `operations:history:read`, the
+    // completed record of rides, deliveries, orders and utility purchases —
+    // the founder's audit / dispute / security-enquiry requirement. Its own
+    // grant rather than folding into `operations:live:read`, because the live
+    // queue is the handful of jobs in flight while this is the entire history
+    // of every customer, driver and merchant, names and phone numbers
+    // included. Revoking it must not blind an operator to live work, and
+    // granting live work must not hand over the archive.
+    expect(PERMISSION_SEEDS).toHaveLength(135);
     expect(PERMISSION_SEEDS.map((permission) => permission.code)).toEqual(
       expect.arrayContaining([
         'admin:rides:pricing:manage',

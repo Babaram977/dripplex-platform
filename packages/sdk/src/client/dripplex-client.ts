@@ -44,6 +44,7 @@ import { OperationsAnalyticsClient } from '../operations/operations-analytics-cl
 import { OperationsCasesClient } from '../operations/operations-cases-client.js';
 import { OperationsDashboardClient } from '../operations/operations-dashboard-client.js';
 import { OperationsFleetClient } from '../operations/operations-fleet-client.js';
+import { OperationsHistoryClient } from '../operations/operations-history-client.js';
 import { OperationsQueuesClient } from '../operations/operations-queues-client.js';
 import { OperationsRidesClient } from '../operations/operations-rides-client.js';
 import { OperationsStaffClient } from '../operations/operations-staff-client.js';
@@ -132,6 +133,8 @@ export class DripplexClient {
   public readonly driverCommercial: DriverCommercialClient;
   public readonly operationsRides: OperationsRidesClient;
   public readonly operationsQueues: OperationsQueuesClient;
+  /** DPX-OPS — completed record: audit, disputes, security enquiries. */
+  public readonly operationsHistory: OperationsHistoryClient;
   public readonly operationsCases: OperationsCasesClient;
   public readonly operationsDashboard: OperationsDashboardClient;
   public readonly operationsStaff: OperationsStaffClient;
@@ -212,6 +215,7 @@ export class DripplexClient {
     this.driverCommercial = new DriverCommercialClient(this.http);
     this.operationsRides = new OperationsRidesClient(this.http);
     this.operationsQueues = new OperationsQueuesClient(this.http);
+    this.operationsHistory = new OperationsHistoryClient(this.http);
     this.operationsCases = new OperationsCasesClient(this.http);
     this.operationsDashboard = new OperationsDashboardClient(this.http);
     this.operationsStaff = new OperationsStaffClient(this.http);

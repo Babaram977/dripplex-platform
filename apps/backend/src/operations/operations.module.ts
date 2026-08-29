@@ -8,6 +8,7 @@ import { OperationsAnalyticsController } from './controllers/operations-analytic
 import { OperationsCasesController } from './controllers/operations-cases.controller';
 import { OperationsDashboardController } from './controllers/operations-dashboard.controller';
 import { OperationsFleetController } from './controllers/operations-fleet.controller';
+import { OperationsHistoryController } from './controllers/operations-history.controller';
 import { OperationsQueuesController } from './controllers/operations-queues.controller';
 import { OperationsRidesController } from './controllers/operations-rides.controller';
 import { OperationsStaffController } from './controllers/operations-staff.controller';
@@ -17,6 +18,7 @@ import { OperationsDashboardService } from './operations-dashboard.service';
 import { OperationsDispatchSupportService } from './operations-dispatch-support.service';
 import { OperationsEligibilityService } from './operations-eligibility.service';
 import { OperationsFleetService } from './operations-fleet.service';
+import { OperationsHistoryService } from './operations-history.service';
 import { OperationsRideDetailService } from './operations-ride-detail.service';
 import { OperationsRideQueueService } from './operations-ride-queue.service';
 
@@ -52,6 +54,15 @@ import { OperationsRideQueueService } from './operations-ride-queue.service';
  * table, no reuse of the dormant Marketplace-scoped `analytics/` module —
  * its own permission (`operations:analytics:read`).
  *
+ * History (founder requirement, 2026-08-29 — audit, dispute and security
+ * enquiry): the completed record of rides, deliveries, orders and utility
+ * purchases. The live queues only ever showed work in flight, so Operations
+ * appeared to keep no records at all; the rows were always there and only
+ * `OperationsAnalyticsService` ever read them, to count. Read-only, direct
+ * Prisma reads like every slice before it, on its own
+ * `operations:history:read` — this reads far more personal data than the live
+ * queue and deserves a grant that can be given and taken on its own.
+ *
  * `apps/backend/src/rides/` is a frozen module and is never imported or
  * modified here; `Ride` and its related tables are read directly via
  * `PrismaService`, the same cross-module-read pattern established
@@ -66,6 +77,7 @@ import { OperationsRideQueueService } from './operations-ride-queue.service';
     OperationsDashboardController,
     OperationsStaffController,
     OperationsAnalyticsController,
+    OperationsHistoryController,
   ],
   providers: [
     OperationsFleetService,
@@ -76,6 +88,7 @@ import { OperationsRideQueueService } from './operations-ride-queue.service';
     OperationsCasesService,
     OperationsDashboardService,
     OperationsAnalyticsService,
+    OperationsHistoryService,
   ],
   exports: [
     OperationsFleetService,
@@ -86,6 +99,7 @@ import { OperationsRideQueueService } from './operations-ride-queue.service';
     OperationsCasesService,
     OperationsDashboardService,
     OperationsAnalyticsService,
+    OperationsHistoryService,
   ],
 })
 export class OperationsModule {}

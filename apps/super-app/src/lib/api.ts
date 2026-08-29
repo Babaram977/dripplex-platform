@@ -5,6 +5,20 @@
 
 import type { CallDto, CallTokenDto, InitiatedCallDto } from '@dripplex/types';
 
+/**
+ * DPX-OPS history. Re-exported from the shared contract rather than redeclared
+ * locally, because these are read straight off the Operations history
+ * endpoints and their `{ items, meta }` shape already matches `ApiPage` below
+ * — the mismatch that forced other DTOs here to be declared by hand does not
+ * apply.
+ */
+export type {
+  DeliveryHistoryDto,
+  OrderHistoryDto,
+  RideHistoryDto,
+  UtilityPurchaseHistoryDto,
+} from '@dripplex/types';
+
 import { auth, DxUser } from './auth';
 
 // Exported so the native driver-presence service (DPX-MOBILE-003) reports to
@@ -3671,6 +3685,32 @@ export const api = {
       dx<DispatchEligibilityDto>('GET', `/operations/fleet/drivers/${id}/eligibility`),
     getRiderEligibility: (id: string) =>
       dx<DispatchEligibilityDto>('GET', `/operations/fleet/riders/${id}/eligibility`),
+    /**
+     * DPX-OPS — the completed record, for audit, disputes and security
+     * enquiries. The live queue below only ever holds work in flight, which
+     * is why the Completed and Cancelled tabs used to match nothing.
+     *
+     * Blank filters are dropped rather than sent empty: `search=` is a filter
+     * on nothing, not the absence of a filter.
+     */
+    getHistory: <T>(
+      domain: 'rides' | 'deliveries' | 'orders' | 'utilities',
+      query: {
+        from?: string;
+        to?: string;
+        status?: string;
+        search?: string;
+        page?: number;
+        limit?: number;
+      } = {},
+    ) => {
+      const search = new URLSearchParams();
+      for (const [key, value] of Object.entries(query)) {
+        if (value !== undefined && value !== '') search.set(key, String(value));
+      }
+      const qs = search.toString();
+      return dx<T>('GET', `/operations/history/${domain}${qs ? `?${qs}` : ''}`);
+    },
     // Live ride queue (active rides only) for the Trips screen.
     getRideQueue: () =>
       dx<{
