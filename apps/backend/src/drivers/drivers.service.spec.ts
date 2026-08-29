@@ -639,12 +639,29 @@ describe('DriversService', () => {
       expect(after.meta.total).toBe(before.meta.total - 1);
     });
 
+    /**
+     * The deletedAt filter is ANDed with the status filter, so this guards the
+     * other direction: that adding it did not quietly narrow a status query.
+     * Uses its own driver — the suite's shared one is approved, suspended and
+     * reactivated by earlier tests, so its status is not PENDING by now.
+     */
     it('still lists a live driver when filtering by status', async () => {
       if (!databaseAvailable) return;
 
+      const pending = await prisma.user.create({
+        data: {
+          email: `driver-service-pending-${randomUUID()}@dripplex.test`,
+          passwordHash: 'not-a-real-hash',
+          firstName: 'Pending',
+          lastName: 'Driver',
+        },
+      });
+      userIds.push(pending.id);
+      await prisma.driverProfile.create({ data: { userId: pending.id } });
+
       const live = await service.listDrivers({ page: 1, limit: 200, status: 'PENDING' });
 
-      expect(live.items.some((item) => item.driverId === driverId)).toBe(true);
+      expect(live.items.some((item) => item.driverId === pending.id)).toBe(true);
     });
   });
 });
