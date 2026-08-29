@@ -14,6 +14,10 @@ import {
   type AdminFleetDriverDto,
   type AdminFleetSummaryDto,
   type AdminLiveRideDto,
+  type DeliveryHistoryDto,
+  type OrderHistoryDto,
+  type RideHistoryDto,
+  type UtilityPurchaseHistoryDto,
   type AdminCommissionAccountDto,
   type AdminCustomerDto,
   type AdminAnalyticsOverviewDto,
@@ -82,6 +86,7 @@ export type AdminPage =
   | 'dashboard'
   | 'livemap'
   | 'trips'
+  | 'history'
   | 'drivers'
   | 'drvkyc'
   | 'vehicles'
@@ -562,6 +567,7 @@ const NAV_ITEMS: { page: AdminPage; icon: string; label: string }[] = [
   { page: 'dashboard', icon: '⬛', label: 'Dashboard' },
   { page: 'livemap', icon: '🗺️', label: 'Live Map' },
   { page: 'trips', icon: '🚗', label: 'Trips' },
+  { page: 'history', icon: '🗂️', label: 'History' },
   { page: 'drivers', icon: '🧑‍✈️', label: 'Drivers' },
   { page: 'drvkyc', icon: '🪪', label: 'Driver KYC' },
   { page: 'vehicles', icon: '🔑', label: 'Vehicles' },
@@ -741,6 +747,7 @@ const PAGE_LABELS: Record<AdminPage, string> = {
   dashboard: 'Dashboard',
   livemap: 'Live Map',
   trips: 'Trips',
+  history: 'History — completed records',
   drivers: 'Drivers',
   drvkyc: 'Driver KYC',
   vehicles: 'Vehicles',
@@ -2000,6 +2007,375 @@ function lifecycleLabelFromFleet(s: AdminFleetDriverDto['status']): string {
     .split('_')
     .map((w) => w.charAt(0) + w.slice(1).toLowerCase())
     .join(' ');
+}
+
+// ─── Page: History ────────────────────────────────────────────────────────────
+// DPX-OPS — the completed record, for audit, disputes and security enquiries
+// (founder requirement, 2026-08-29). Everything else in this console shows work
+// in flight; this is the only screen that answers "what happened".
+//
+// Four domains behind one set of filters, because the question an operator
+// brings is always the same — a date, a state, and a person — and only the
+// columns differ once they land.
+type HistoryDomain = 'rides' | 'deliveries' | 'orders' | 'utilities';
+
+const HISTORY_TABS: { key: HistoryDomain; label: string }[] = [
+  { key: 'rides', label: 'Trips' },
+  { key: 'deliveries', label: 'Deliveries' },
+  { key: 'orders', label: 'Orders' },
+  { key: 'utilities', label: 'Bill Payments' },
+];
+
+const HISTORY_COLUMNS: Record<HistoryDomain, string[]> = {
+  rides: ['Trip ID', 'Passenger', 'Driver', 'Route', 'Fare', 'Status', 'When'],
+  deliveries: ['Delivery ID', 'Customer', 'Merchant', 'Rider', 'Fee', 'Status', 'When'],
+  orders: ['Order', 'Customer', 'Merchant', 'Total', 'Payment', 'Status', 'When'],
+  utilities: ['Purchase ID', 'Customer', 'Service', 'Paid for', 'Amount', 'Status', 'When'],
+};
+
+function money(value: number): string {
+  return `₦${value.toLocaleString()}`;
+}
+
+function when(...candidates: (string | null)[]): string {
+  const stamp = candidates.find((value) => value !== null && value !== undefined);
+  if (stamp === undefined || stamp === null) return '—';
+  return new Date(stamp).toLocaleString();
+}
+
+interface HistoryRow {
+  id: string;
+  cells: string[];
+  /** Why it ended this way, when there is a reason worth reading. */
+  note: string | null;
+}
+
+function PageHistory() {
+  const [domain, setDomain] = useState<HistoryDomain>('rides');
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [page, setPage] = useState(1);
+  const [rows, setRows] = useState<HistoryRow[] | null>(null);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [openNote, setOpenNote] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    setRows(null);
+    try {
+      const query = {
+        ...(search.trim() ? { search: search.trim() } : {}),
+        ...(status.trim() ? { status: status.trim().toUpperCase() } : {}),
+        // A date input gives a day; the range has to cover all of it.
+        ...(from ? { from: new Date(`${from}T00:00:00.000Z`).toISOString() } : {}),
+        ...(to ? { to: new Date(`${to}T23:59:59.999Z`).toISOString() } : {}),
+        page,
+        limit: 25,
+      };
+
+      if (domain === 'rides') {
+        const data = await api.admin.getHistory<RideHistoryDto>('rides', query);
+        setRows(
+          data.items.map((item) => ({
+            id: item.rideId,
+            cells: [
+              item.rideId.slice(0, 8),
+              item.customer.name,
+              item.driver?.name ?? '—',
+              `${item.pickupAddress ?? '—'} → ${item.dropoffAddress ?? '—'}`,
+              money(item.totalFare),
+              item.status,
+              when(item.completedAt, item.cancelledAt, item.requestedAt),
+            ],
+            note: item.cancellationReason,
+          })),
+        );
+        setTotal(data.meta.total);
+        setTotalPages(data.meta.totalPages);
+      } else if (domain === 'deliveries') {
+        const data = await api.admin.getHistory<DeliveryHistoryDto>('deliveries', query);
+        setRows(
+          data.items.map((item) => ({
+            id: item.deliveryId,
+            cells: [
+              item.deliveryId.slice(0, 8),
+              item.customer.name,
+              item.merchant.name,
+              item.rider?.name ?? '—',
+              money(item.deliveryFee),
+              item.status,
+              when(item.deliveredAt, item.cancelledAt, item.failedAt, item.createdAt),
+            ],
+            note: item.cancellationReason,
+          })),
+        );
+        setTotal(data.meta.total);
+        setTotalPages(data.meta.totalPages);
+      } else if (domain === 'orders') {
+        const data = await api.admin.getHistory<OrderHistoryDto>('orders', query);
+        setRows(
+          data.items.map((item) => ({
+            id: item.orderId,
+            cells: [
+              item.orderNumber,
+              item.customer.name,
+              item.merchant.name,
+              money(item.total),
+              item.paymentStatus,
+              item.status,
+              when(item.completedAt, item.cancelledAt, item.createdAt),
+            ],
+            note: item.cancellationReason,
+          })),
+        );
+        setTotal(data.meta.total);
+        setTotalPages(data.meta.totalPages);
+      } else {
+        const data = await api.admin.getHistory<UtilityPurchaseHistoryDto>('utilities', query);
+        setRows(
+          data.items.map((item) => ({
+            id: item.purchaseId,
+            cells: [
+              item.purchaseId.slice(0, 8),
+              item.customer.name,
+              item.serviceType,
+              // The meter or phone number is what a disputing customer quotes.
+              item.customerIdentifier,
+              money(item.amountCharged),
+              item.status,
+              when(item.completedAt, item.createdAt),
+            ],
+            note: item.failureReason,
+          })),
+        );
+        setTotal(data.meta.total);
+        setTotalPages(data.meta.totalPages);
+      }
+    } catch (e: unknown) {
+      // The server names an unknown status rather than returning nothing, so
+      // showing its message verbatim is more use than a generic failure.
+      setError((e as { message?: string }).message ?? 'Could not load the history.');
+      setRows([]);
+    }
+  }, [domain, search, status, from, to, page]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const columns = HISTORY_COLUMNS[domain];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {HISTORY_TABS.map((tab) => (
+          <Btn
+            key={tab.key}
+            label={tab.label}
+            small
+            outline={domain !== tab.key}
+            color={G3}
+            onClick={() => {
+              setDomain(tab.key);
+              setStatus('');
+              setPage(1);
+            }}
+          />
+        ))}
+      </div>
+
+      <Card style={{ padding: '14px 16px' }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <input
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
+            placeholder="Name, phone or ID"
+            style={{
+              flex: '1 1 220px',
+              padding: '8px 10px',
+              borderRadius: 8,
+              border: `1px solid ${BORDER}`,
+              background: 'transparent',
+              color: WHITE,
+              fontSize: 12.5,
+              fontFamily: 'Inter, sans-serif',
+            }}
+          />
+          <input
+            value={status}
+            onChange={(e) => {
+              setStatus(e.target.value);
+              setPage(1);
+            }}
+            placeholder="Status"
+            style={{
+              flex: '0 1 140px',
+              padding: '8px 10px',
+              borderRadius: 8,
+              border: `1px solid ${BORDER}`,
+              background: 'transparent',
+              color: WHITE,
+              fontSize: 12.5,
+              fontFamily: 'Inter, sans-serif',
+            }}
+          />
+          <input
+            type="date"
+            value={from}
+            onChange={(e) => {
+              setFrom(e.target.value);
+              setPage(1);
+            }}
+            style={{
+              padding: '8px 10px',
+              borderRadius: 8,
+              border: `1px solid ${BORDER}`,
+              background: 'transparent',
+              color: WHITE,
+              fontSize: 12.5,
+              fontFamily: 'Inter, sans-serif',
+            }}
+          />
+          <input
+            type="date"
+            value={to}
+            onChange={(e) => {
+              setTo(e.target.value);
+              setPage(1);
+            }}
+            style={{
+              padding: '8px 10px',
+              borderRadius: 8,
+              border: `1px solid ${BORDER}`,
+              background: 'transparent',
+              color: WHITE,
+              fontSize: 12.5,
+              fontFamily: 'Inter, sans-serif',
+            }}
+          />
+        </div>
+      </Card>
+
+      <Card style={{ padding: '14px 16px' }}>
+        <table
+          style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Inter, sans-serif' }}
+        >
+          <thead>
+            <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
+              {columns.map((h) => (
+                <th
+                  key={h}
+                  style={{
+                    padding: '7px 8px',
+                    textAlign: 'left',
+                    fontSize: 11,
+                    color: MUTED,
+                    fontWeight: 600,
+                  }}
+                >
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {(rows ?? []).map((row) => (
+              <tr
+                key={row.id}
+                style={{
+                  borderBottom: `1px solid ${BORDER}`,
+                  cursor: row.note ? 'pointer' : 'default',
+                }}
+                onClick={() => {
+                  setOpenNote(row.note === null ? null : `${row.id.slice(0, 8)} · ${row.note}`);
+                }}
+              >
+                {row.cells.map((cell, i) => (
+                  <td
+                    key={`${row.id}-${String(i)}`}
+                    style={{ padding: '9px 8px', fontSize: 12, color: WHITE }}
+                  >
+                    {cell}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {rows === null && !error && (
+          <div
+            style={{ marginTop: 10, fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}
+          >
+            Loading…
+          </div>
+        )}
+        {error && (
+          <div
+            style={{ marginTop: 10, fontSize: 12, color: C_ERR, fontFamily: 'Inter, sans-serif' }}
+          >
+            {error}
+          </div>
+        )}
+        {rows !== null && rows.length === 0 && !error && (
+          <div
+            style={{ marginTop: 10, fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}
+          >
+            Nothing recorded for this filter.
+          </div>
+        )}
+        {openNote && (
+          <div
+            style={{ marginTop: 10, fontSize: 11.5, color: WHITE, fontFamily: 'Inter, sans-serif' }}
+          >
+            {openNote}
+          </div>
+        )}
+        {rows !== null && total > 0 && (
+          <div
+            style={{
+              marginTop: 12,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              fontSize: 11.5,
+              color: MUTED,
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            <Btn
+              label="Previous"
+              small
+              outline
+              color={G3}
+              onClick={() => {
+                setPage((current) => Math.max(1, current - 1));
+              }}
+            />
+            <span>
+              Page {page} of {Math.max(1, totalPages)} · {total} record{total === 1 ? '' : 's'}
+            </span>
+            <Btn
+              label="Next"
+              small
+              outline
+              color={G3}
+              onClick={() => {
+                setPage((current) => (current < totalPages ? current + 1 : current));
+              }}
+            />
+          </div>
+        )}
+      </Card>
+    </div>
+  );
 }
 
 // ─── Page: Trips ──────────────────────────────────────────────────────────────
@@ -9633,6 +10009,8 @@ function renderPage(page: AdminPage) {
       return <PageLiveMap />;
     case 'trips':
       return <PageTrips />;
+    case 'history':
+      return <PageHistory />;
     case 'drivers':
       return <PageDrivers />;
     case 'drvkyc':

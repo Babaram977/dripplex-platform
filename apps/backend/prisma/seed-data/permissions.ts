@@ -230,6 +230,11 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
       'View the Operations Console analytics dashboard — driver utilization, shift, ride, dispatch, response-time, and geographic-demand analytics',
   },
   {
+    code: 'operations:history:read',
+    description:
+      'Read the completed record of rides, deliveries, orders and utility purchases in the Operations Console — for audit, dispute resolution and security enquiries',
+  },
+  {
     code: 'messaging:use',
     description:
       'Read and send messages on a delivery or ride the caller is a party to (DPX-CHAT-001)',

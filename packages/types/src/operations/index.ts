@@ -1,3 +1,4 @@
+import type { DeliveryStatus } from '../delivery/index.js';
 import type {
   DriverSupportCategory,
   DriverSupportTicketStatus,
@@ -7,6 +8,12 @@ import type {
   SosAlertStatus,
 } from '../driver/index.js';
 import type {
+  FulfillmentType,
+  OrderCancelledBy,
+  OrderStatus,
+  PaymentStatus,
+} from '../order/index.js';
+import type {
   RideCancelledBy,
   RideOfferDto,
   RidePaymentMethod,
@@ -15,6 +22,11 @@ import type {
   RideTrackingPointDto,
   RideType,
 } from '../ride/index.js';
+import type {
+  UtilityPaymentMethod,
+  UtilityPurchaseStatus,
+  UtilityServiceType,
+} from '../utilities/index.js';
 
 export type { RideType };
 
@@ -787,4 +799,139 @@ export interface GeographicDemandAnalyticsDto {
   cells: GeographicDemandCellDto[];
   totalPickups: number;
   totalDropoffs: number;
+}
+
+// ─── Operations History ──────────────────────────────────────────────────────
+
+/**
+ * DPX-OPS — the record of what already happened, across all four things
+ * DrippleX does.
+ *
+ * Founder requirement, 2026-08-29: "Those information are needed for audit
+ * purpose and dispute incase and security quaring." The live queues answer
+ * "what is happening now"; nothing answered "what happened", so a dispute,
+ * an audit, or a police enquiry had nowhere to look. The rows were always in
+ * the database — the analytics endpoints count them — there was simply no way
+ * to open one and read it.
+ *
+ * Read-only by design. This is evidence: it is looked at, not edited.
+ *
+ * Every row carries the parties by name AND phone. A security enquiry starts
+ * from a person, not from a record id, and an id nobody can tie to a human is
+ * useless in a dispute.
+ */
+export interface HistoryPartyDto {
+  id: string;
+  name: string;
+  phone: string | null;
+}
+
+export interface HistoryPageMetaDto {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface RideHistoryItemDto {
+  rideId: string;
+  status: RideStatus;
+  rideType: RideType;
+  customer: HistoryPartyDto;
+  driver: HistoryPartyDto | null;
+  pickupAddress: string | null;
+  dropoffAddress: string | null;
+  totalFare: number;
+  paymentMethod: RidePaymentMethod | null;
+  paymentStatus: RidePaymentStatus;
+  requestedAt: string;
+  completedAt: string | null;
+  cancelledAt: string | null;
+  cancelledBy: RideCancelledBy | null;
+  cancellationReason: string | null;
+}
+
+export interface DeliveryHistoryItemDto {
+  deliveryId: string;
+  orderId: string;
+  status: DeliveryStatus;
+  customer: HistoryPartyDto;
+  merchant: HistoryPartyDto;
+  rider: HistoryPartyDto | null;
+  deliveryFee: number;
+  riderEarning: number | null;
+  createdAt: string;
+  deliveredAt: string | null;
+  cancelledAt: string | null;
+  failedAt: string | null;
+  cancellationReason: string | null;
+}
+
+export interface OrderHistoryItemDto {
+  orderId: string;
+  orderNumber: string;
+  status: OrderStatus;
+  paymentStatus: PaymentStatus;
+  fulfillmentType: FulfillmentType;
+  customer: HistoryPartyDto;
+  merchant: HistoryPartyDto;
+  subtotal: number;
+  discount: number;
+  tax: number;
+  deliveryFee: number;
+  total: number;
+  createdAt: string;
+  completedAt: string | null;
+  cancelledAt: string | null;
+  cancelledBy: OrderCancelledBy | null;
+  cancellationReason: string | null;
+  refundedAt: string | null;
+}
+
+/**
+ * `deliveredToken` is deliberately absent. A delivered electricity or airtime
+ * token is a bearer value — whoever reads it can spend it — so it is not put
+ * on a list screen. `tokenDelivered` answers the question a dispute actually
+ * asks ("did they get one?") without handing the token to everyone who can
+ * open Operations. Exposing the value itself is a founder decision, and it
+ * should come with its own permission and its own audit entry.
+ */
+export interface UtilityPurchaseHistoryItemDto {
+  purchaseId: string;
+  serviceType: UtilityServiceType;
+  status: UtilityPurchaseStatus;
+  customer: HistoryPartyDto;
+  /** Meter number, phone number or smartcard the purchase was made against. */
+  customerIdentifier: string;
+  beneficiaryName: string | null;
+  providerCode: string;
+  planCode: string | null;
+  amountCharged: number;
+  paymentMethod: UtilityPaymentMethod;
+  paymentReference: string | null;
+  providerReference: string | null;
+  tokenDelivered: boolean;
+  failureReason: string | null;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export interface RideHistoryDto {
+  items: RideHistoryItemDto[];
+  meta: HistoryPageMetaDto;
+}
+
+export interface DeliveryHistoryDto {
+  items: DeliveryHistoryItemDto[];
+  meta: HistoryPageMetaDto;
+}
+
+export interface OrderHistoryDto {
+  items: OrderHistoryItemDto[];
+  meta: HistoryPageMetaDto;
+}
+
+export interface UtilityPurchaseHistoryDto {
+  items: UtilityPurchaseHistoryItemDto[];
+  meta: HistoryPageMetaDto;
 }

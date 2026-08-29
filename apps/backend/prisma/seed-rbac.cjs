@@ -269,6 +269,11 @@ const PERMISSION_SEEDS = [
       'View the Operations Console analytics dashboard — driver utilization, shift, ride, dispatch, response-time, and geographic-demand analytics',
   },
   {
+    code: 'operations:history:read',
+    description:
+      'Read the completed record of rides, deliveries, orders and utility purchases in the Operations Console — for audit, dispute resolution and security enquiries',
+  },
+  {
     code: 'admin:rides:pricing:manage',
     description: 'Edit the ride fare table and surcharge zones in the Operations Console',
   },
@@ -493,6 +498,7 @@ const ROLE_PERMISSION_GRANTS = {
     'operations:queues:read',
     'operations:queues:manage',
     'operations:analytics:read',
+    'operations:history:read',
     'users:read',
     'audit:read',
   ],
@@ -561,6 +567,7 @@ const ROLE_PERMISSION_GRANTS = {
     'operations:queues:read',
     'operations:queues:manage',
     'operations:analytics:read',
+    'operations:history:read',
     'users:read',
     'users:write',
     'users:delete',
@@ -680,6 +687,7 @@ const ROLE_PERMISSION_GRANTS = {
     'operations:queues:read',
     'operations:queues:manage',
     'operations:analytics:read',
+    'operations:history:read',
     'users:read',
     'users:write',
     'users:delete',

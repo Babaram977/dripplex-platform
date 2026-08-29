@@ -334,6 +334,16 @@ export type {
   OperationsResponseAnalyticsDto,
   GeographicDemandCellDto,
   GeographicDemandAnalyticsDto,
+  HistoryPartyDto,
+  HistoryPageMetaDto,
+  RideHistoryItemDto,
+  DeliveryHistoryItemDto,
+  OrderHistoryItemDto,
+  UtilityPurchaseHistoryItemDto,
+  RideHistoryDto,
+  DeliveryHistoryDto,
+  OrderHistoryDto,
+  UtilityPurchaseHistoryDto,
 } from './operations/index.js';
 
 export type {
