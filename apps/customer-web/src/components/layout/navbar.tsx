@@ -73,7 +73,7 @@ export function Navbar(): React.JSX.Element {
           {!hydrated ? null : isAuthenticated ? (
             <>
               <Button asChild variant="ghost" className="hidden sm:inline-flex">
-                <Link href={siteConfig.links.dashboard}>{user ? user.firstName : 'Dashboard'}</Link>
+                <Link href={siteConfig.links.getTheApp}>{user ? user.firstName : 'Open app'}</Link>
               </Button>
               <Button
                 type="button"

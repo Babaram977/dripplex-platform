@@ -4,6 +4,11 @@ export const siteConfig = {
   description:
     'DrippleX is Nigeria’s Super Platform for marketplace, food, parcels, rides, pharmacy, home services, and wallet — built for everyday life.',
   url: process.env['NEXT_PUBLIC_APP_URL'] ?? 'http://localhost:3001',
+  /**
+   * The Super App itself. The website is marketing; this is where a customer
+   * is sent to actually use DrippleX, and it is what the Android build wraps.
+   */
+  appUrl: process.env['NEXT_PUBLIC_SUPER_APP_URL'] ?? 'https://app.dripplex.com',
   locale: 'en_NG',
   links: {
     privacy: '/privacy',
@@ -12,7 +17,7 @@ export const siteConfig = {
     about: '/about',
     login: '/login',
     register: '/get-started',
-    dashboard: '/dashboard',
+    getTheApp: '/get-the-app',
     marketplace: '/marketplace',
   },
   /**

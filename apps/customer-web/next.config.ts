@@ -55,6 +55,35 @@ const nextConfig: NextConfig = {
       destination: 'https://www.dripplex.com/:path*',
       permanent: true,
     },
+
+    /**
+     * dripplex.com is marketing. Doing things happens in the app.
+     *
+     * These paths are the product that used to run on this domain: a customer
+     * dashboard, wallet, ride booking, cart and checkout, and a full driver
+     * onboarding flow with document upload. All of it also exists in the Super
+     * App, so keeping it here meant two front doors to the same account —
+     * and a driver could start onboarding in the wrong one.
+     *
+     * Redirected rather than deleted. The screens still work, so if any of
+     * this should come back to the web it is a config change, not a rebuild.
+     *
+     * 307, not 308: temporary, because this is a product decision that may be
+     * revisited, and a permanent redirect would be cached in browsers long
+     * after the decision changed. `/marketplace` browsing is NOT here — public
+     * merchant and product pages need no sign-in and earn their place as
+     * marketing.
+     */
+    ...['/dashboard', '/account', '/driver-onboarding', '/wallet', '/ride'].flatMap((base) => [
+      { source: base, destination: '/get-the-app', permanent: false },
+      { source: `${base}/:path*`, destination: '/get-the-app', permanent: false },
+    ]),
+
+    // Shopping carries a signed-in cart and payment; browsing does not.
+    ...['/marketplace/cart', '/marketplace/checkout', '/marketplace/tracking'].flatMap((base) => [
+      { source: base, destination: '/get-the-app', permanent: false },
+      { source: `${base}/:path*`, destination: '/get-the-app', permanent: false },
+    ]),
   ],
 };
 
