@@ -56,8 +56,10 @@ describe('OperationsHistoryClient', () => {
     const client = new OperationsHistoryClient(http);
 
     // The console clears its search box to an empty string; sending
-    // `search=` would be a filter on nothing rather than no filter.
-    await client.getOrderHistory({ search: '', status: undefined });
+    // `search=` would be a filter on nothing rather than no filter. An
+    // absent key covers the other half — `exactOptionalPropertyTypes` means
+    // an explicit `undefined` is not even expressible here.
+    await client.getOrderHistory({ search: '' });
 
     expect(request).toHaveBeenCalledWith('/operations/history/orders', {
       method: 'GET',
