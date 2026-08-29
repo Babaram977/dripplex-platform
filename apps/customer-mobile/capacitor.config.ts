@@ -21,7 +21,7 @@ const serverUrl = process.env['CAPACITOR_SERVER_URL'] ?? 'https://app.dripplex.c
 
 const config: CapacitorConfig = {
   appId: 'com.dripplex.customer',
-  appName: 'Dripplex',
+  appName: 'DrippleX',
   webDir: 'www',
   server: {
     url: serverUrl,

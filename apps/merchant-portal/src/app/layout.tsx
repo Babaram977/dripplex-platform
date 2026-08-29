@@ -20,10 +20,10 @@ const sans = Manrope({
 
 export const metadata: Metadata = {
   title: {
-    default: 'Dripplex Merchant Portal',
-    template: `%s · Dripplex Merchant Portal`,
+    default: 'DrippleX Merchant Portal',
+    template: `%s · DrippleX Merchant Portal`,
   },
-  description: 'Dripplex merchant portal — live Backend Core integration via sdk-merchant.',
+  description: 'DrippleX merchant portal — live Backend Core integration via sdk-merchant.',
   icons: {
     icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }],
     apple: [{ url: '/app-icon.svg' }],

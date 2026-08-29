@@ -201,7 +201,11 @@ if (existsSync(plistPath)) {
   if (!plist.includes('<key>ITSAppUsesNonExemptEncryption</key>'))
     fail('iOS export-compliance declaration missing');
   else ok('iOS export-compliance declaration');
-  if (!plist.includes('<string>Dripplex</string>')) fail('iOS display name missing');
+  // Anchored on the key, not a floating string: the old check matched
+  // <string>Dripplex</string> anywhere in the file, so any unrelated value
+  // would have satisfied it while a blank display name slipped through.
+  if (!/<key>CFBundleDisplayName<\/key>\s*<string>DrippleX<\/string>/.test(plist))
+    fail('iOS display name is not CFBundleDisplayName = DrippleX');
   else ok('iOS display name');
 
   // iOS refuses to prompt without a usage string, so a missing key is a dead
