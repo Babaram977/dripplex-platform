@@ -48,7 +48,7 @@ export default function GoogleCallbackPage(): React.JSX.Element {
           user: session.user,
           portal: 'customer',
         });
-        router.push(siteConfig.links.dashboard);
+        router.push(siteConfig.links.getTheApp);
       })
       .catch((exchangeError: unknown) => {
         if (!cancelled) {

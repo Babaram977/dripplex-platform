@@ -41,7 +41,9 @@ export function SignInFlow(): React.JSX.Element {
             user: session.user,
             portal: 'customer',
           });
-          router.push(siteConfig.links.dashboard);
+          // The website does not run the product. Whoever just signed in —
+          // customer, driver, or merchant — is handed to the app from here.
+          router.push(siteConfig.links.getTheApp);
         } catch (error) {
           setErrorMessage(describeSdkError(error).description);
         } finally {

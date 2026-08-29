@@ -9,7 +9,6 @@ import {
   LayoutDashboard,
   LayoutGrid,
   ShoppingBag,
-  Store,
   UserRound,
   Wallet,
 } from 'lucide-react';
@@ -55,9 +54,10 @@ interface CrossPortalLink {
   icon: typeof Car;
 }
 
+// Driver and merchant are deliberately absent: dripplex.com is marketing, and
+// neither role signs on here any more. Operations stays because the console is
+// a desktop tool that is not part of the app.
 const CROSS_PORTAL_ROLE_LINKS: readonly CrossPortalLink[] = [
-  { role: 'driver', label: 'Driver', href: siteConfig.crossPortalUrls.driver, icon: Car },
-  { role: 'merchant', label: 'Merchant', href: siteConfig.crossPortalUrls.merchant, icon: Store },
   {
     role: 'operations_staff',
     label: 'Operations',
@@ -139,30 +139,11 @@ export function Sidebar(): React.JSX.Element {
           );
         })}
 
-        {!roles.has('driver') ? (
-          <div className="border-border/70 mt-3 border-t pt-3">
-            {!collapsed ? (
-              <p className="text-muted-foreground px-3 pb-1 text-xs font-medium uppercase tracking-wide">
-                Get started
-              </p>
-            ) : null}
-            <Link
-              href="/driver-onboarding"
-              className={cn(
-                'hover:bg-muted text-muted-foreground inline-flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors',
-                collapsed && 'justify-center px-2',
-              )}
-              title="Become a Driver"
-            >
-              <Car className="h-4 w-4 shrink-0" aria-hidden="true" />
-              {!collapsed ? (
-                <span>Become a Driver</span>
-              ) : (
-                <span className="sr-only">Become a Driver</span>
-              )}
-            </Link>
-          </div>
-        ) : null}
+        {/*
+          "Become a Driver" used to sit here and open driver onboarding on this
+          domain. Drivers are recruited and onboarded in the app now, so the
+          website no longer offers a second way in.
+        */}
 
         {crossPortalItems.length > 0 ? (
           <div className="border-border/70 mt-3 border-t pt-3">
