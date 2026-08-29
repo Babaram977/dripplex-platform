@@ -340,7 +340,14 @@ export class RideDispatchService {
           latitude: { gte: box.minLat, lte: box.maxLat },
           longitude: { gte: box.minLng, lte: box.maxLng },
           driver: {
-            driverProfile: { status: DriverStatus.APPROVED },
+            // Deletion does not reset the availability row, so a driver who
+            // was online when their account was closed keeps a fresh location
+            // for as long as DRIVER_LOCATION_MAX_AGE_MS — long enough to be
+            // offered a real customer's trip they can no longer sign in to
+            // accept. Both halves are checked because the account and the
+            // driver profile carry their own `deletedAt`.
+            deletedAt: null,
+            driverProfile: { status: DriverStatus.APPROVED, deletedAt: null },
             rideOffers: { none: { status: RideOfferStatus.PENDING } },
           },
         },

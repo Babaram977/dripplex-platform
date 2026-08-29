@@ -3,6 +3,7 @@ import {
   DriverStatus,
   KycVerificationStatus,
   OnboardingStatus,
+  Prisma,
   RideRatingRole,
   RideStatus,
 } from '@prisma/client';
@@ -254,7 +255,19 @@ export class DriversService {
     items: DriverProfileDto[];
     meta: { page: number; limit: number; total: number; totalPages: number };
   }> {
-    const where = query.status ? { status: query.status } : {};
+    // `deletedAt: null` is not optional here. Deleting an account stamps
+    // `deletedAt` on the driver profile, but this roster used to ignore it, so
+    // a deleted driver stayed on screen looking exactly like a live pending
+    // one. An operator would delete someone, see the row still there, press
+    // delete again and get "This account has already been deleted" — which
+    // reads as the system refusing, when in fact the first delete had worked.
+    // Meanwhile the person re-registered (deletion frees their phone number on
+    // purpose) and the roster then showed the same human twice, with no way to
+    // tell the live row from the dead one.
+    const where: Prisma.DriverProfileWhereInput = {
+      deletedAt: null,
+      ...(query.status ? { status: query.status } : {}),
+    };
     const [profiles, total] = await Promise.all([
       this.prisma.driverProfile.findMany({
         where,

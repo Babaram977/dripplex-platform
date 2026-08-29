@@ -603,4 +603,48 @@ describe('DriversService', () => {
       expect(rating).toEqual({ average: 4, count: 1 });
     });
   });
+  describe('listDrivers', () => {
+    /**
+     * The dinner bug, 2026-08-29. An operator deleted a driver, the roster kept
+     * showing him, so they pressed delete again and got "This account has
+     * already been deleted" — which reads as the system refusing. The first
+     * delete had worked all along; the roster simply ignored `deletedAt`.
+     */
+    it('drops a driver from the roster once the account is deleted', async () => {
+      if (!databaseAvailable) return;
+
+      const ghost = await prisma.user.create({
+        data: {
+          email: `driver-service-ghost-${randomUUID()}@dripplex.test`,
+          passwordHash: 'not-a-real-hash',
+          firstName: 'Deleted',
+          lastName: 'Driver',
+        },
+      });
+      userIds.push(ghost.id);
+      await prisma.driverProfile.create({ data: { userId: ghost.id } });
+
+      const before = await service.listDrivers({ page: 1, limit: 200 });
+      expect(before.items.some((item) => item.driverId === ghost.id)).toBe(true);
+
+      // Exactly what AccountDeletionService stamps on the profile.
+      await prisma.driverProfile.update({
+        where: { userId: ghost.id },
+        data: { deletedAt: new Date() },
+      });
+
+      const after = await service.listDrivers({ page: 1, limit: 200 });
+      expect(after.items.some((item) => item.driverId === ghost.id)).toBe(false);
+      // The count drives pagination, so it has to agree with the rows.
+      expect(after.meta.total).toBe(before.meta.total - 1);
+    });
+
+    it('still lists a live driver when filtering by status', async () => {
+      if (!databaseAvailable) return;
+
+      const live = await service.listDrivers({ page: 1, limit: 200, status: 'PENDING' });
+
+      expect(live.items.some((item) => item.driverId === driverId)).toBe(true);
+    });
+  });
 });
