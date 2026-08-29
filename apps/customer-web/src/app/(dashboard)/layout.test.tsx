@@ -73,7 +73,7 @@ describe('DashboardLayout', () => {
       </QueryClientProvider>,
     );
 
-    expect(screen.getAllByLabelText('Search Dripplex').length).toBeGreaterThan(0);
+    expect(screen.getAllByLabelText('Search DrippleX').length).toBeGreaterThan(0);
     expect(screen.getByLabelText('Notifications')).toBeInTheDocument();
     expect(screen.getByLabelText('Open profile menu')).toBeInTheDocument();
     expect(screen.getByLabelText('Dashboard sidebar')).toBeInTheDocument();

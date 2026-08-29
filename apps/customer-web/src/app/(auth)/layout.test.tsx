@@ -24,7 +24,7 @@ describe('AuthenticationLayout', () => {
       </AuthLayout>,
     );
 
-    expect(screen.getAllByLabelText('Dripplex home').length).toBeGreaterThan(0);
+    expect(screen.getAllByLabelText('DrippleX home').length).toBeGreaterThan(0);
     expect(screen.getAllByText('life, Simplified').length).toBeGreaterThan(0);
     expect(screen.getByText('Auth child content')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Back to site' })).toHaveAttribute('href', '/');

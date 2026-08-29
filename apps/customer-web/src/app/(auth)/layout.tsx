@@ -15,7 +15,7 @@ export default function AuthLayout({
         <div className="max-w-md space-y-4">
           <DripplexTagline className="text-4xl font-semibold" />
           <p className="text-primary-foreground/85 text-base">
-            Sign in to your Dripplex account to access marketplace, delivery, rides, and wallet from
+            Sign in to your DrippleX account to access marketplace, delivery, rides, and wallet from
             one calm home.
           </p>
         </div>

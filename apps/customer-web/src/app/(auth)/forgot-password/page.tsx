@@ -7,7 +7,7 @@ import { ForgotPasswordForm } from '@/components/forms/misc-forms';
 
 export const metadata: Metadata = {
   title: 'Forgot Password',
-  description: 'Reset your Dripplex password.',
+  description: 'Reset your DrippleX password.',
 };
 
 export default function ForgotPasswordPage(): React.JSX.Element {

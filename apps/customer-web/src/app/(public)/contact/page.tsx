@@ -18,7 +18,7 @@ import type { Metadata } from 'next';
  */
 export const metadata: Metadata = {
   title: 'Contact',
-  description: 'How to reach the Dripplex team.',
+  description: 'How to reach the DrippleX team.',
 };
 
 const ROUTES = [
