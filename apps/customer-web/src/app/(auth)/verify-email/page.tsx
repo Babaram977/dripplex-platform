@@ -8,7 +8,7 @@ import { VerifyEmailForm } from '@/components/forms/misc-forms';
 
 export const metadata: Metadata = {
   title: 'Verify Email',
-  description: 'Confirm your Dripplex email address.',
+  description: 'Confirm your DrippleX email address.',
 };
 
 export default function VerifyEmailPage(): React.JSX.Element {

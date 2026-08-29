@@ -22,7 +22,7 @@
  *               now a dark navy tone, not a light gray)
  */
 export const DRIPPLEX_BRAND = {
-  name: 'Dripplex',
+  name: 'DrippleX',
   tagline: 'life, Simplified',
   colors: {
     primary: '#2BAC52',

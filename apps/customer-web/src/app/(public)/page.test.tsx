@@ -25,7 +25,7 @@ describe('LandingPage', () => {
     render(<LandingPage />);
 
     // The splash intro and hero section each render their own logo/wordmark.
-    expect(screen.getAllByText('Dripplex').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('DrippleX').length).toBeGreaterThan(0);
     expect(screen.getByText('life, Simplified')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Get Started' })).toHaveAttribute(
       'href',

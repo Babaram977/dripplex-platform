@@ -22,7 +22,7 @@ import type { Metadata } from 'next';
 export const metadata: Metadata = {
   title: 'Delete your account',
   description:
-    'How to request deletion of your Dripplex account, what is erased, and what we are required to keep.',
+    'How to request deletion of your DrippleX account, what is erased, and what we are required to keep.',
 };
 
 const ERASED = [
@@ -43,7 +43,7 @@ const RETAINED = [
 ];
 
 const BLOCKERS = [
-  'Money in your Dripplex wallet that has not been withdrawn',
+  'Money in your DrippleX wallet that has not been withdrawn',
   'A withdrawal that is still being processed',
   'An order or ride in progress',
   'A refund that has not been resolved',
@@ -78,7 +78,7 @@ export default function AccountDeletionPage(): React.JSX.Element {
     <div className="container max-w-3xl py-16">
       <h1 className="font-display text-4xl font-semibold tracking-tight">Delete your account</h1>
       <p className="text-muted-foreground mt-4">
-        You can ask us to close your Dripplex account at any time. This page explains how to make
+        You can ask us to close your DrippleX account at any time. This page explains how to make
         that request, what we erase, and what the law requires us to keep.
       </p>
 

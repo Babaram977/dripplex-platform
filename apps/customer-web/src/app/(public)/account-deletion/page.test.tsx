@@ -44,7 +44,7 @@ describe('AccountDeletionPage', () => {
 
     // Founder policy: a request is never refused outright, only deferred while
     // something is outstanding — see docs/DPX-ACCOUNT-DELETION-001.md §2.
-    expect(screen.getByText(/Money in your Dripplex wallet/)).toBeInTheDocument();
+    expect(screen.getByText(/Money in your DrippleX wallet/)).toBeInTheDocument();
     expect(screen.getByText(/Cash you are holding as a rider or driver/)).toBeInTheDocument();
   });
 

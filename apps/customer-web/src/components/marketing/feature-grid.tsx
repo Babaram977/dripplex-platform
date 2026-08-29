@@ -25,7 +25,7 @@ export function FeatureGrid(): React.JSX.Element {
           Everything you need, in one place
         </h2>
         <p className="text-muted-foreground mt-3">
-          Dripplex brings the services you use every day into a single trusted platform.
+          DrippleX brings the services you use every day into a single trusted platform.
         </p>
       </div>
       <ul className="mt-12 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
