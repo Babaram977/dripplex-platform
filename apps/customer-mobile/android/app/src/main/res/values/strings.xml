@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Dripplex</string>
-    <string name="title_activity_main">Dripplex</string>
+    <string name="app_name">DrippleX</string>
+    <string name="title_activity_main">DrippleX</string>
     <string name="package_name">com.dripplex.customer</string>
     <string name="custom_url_scheme">com.dripplex.customer</string>
 </resources>
