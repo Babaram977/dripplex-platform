@@ -34,7 +34,7 @@ pnpm exec cap open ios
 | ---------------------- | ----------------------------------------------------- |
 | Bundle identifier      | ✅                                                    |
 | Launch screen          | ✅ `LaunchScreen.storyboard`                          |
-| App icons              | ⚠️ Default asset catalog — replace                    |
+| App icons              | ✅ DrippleX mark, 1024×1024 RGB — verified 2026-08-29 |
 | Universal Links        | ✅ entitlements + intent template                     |
 | Push (APNs)            | ✅ `UIBackgroundModes` + entitlements (`development`) |
 | Privacy Manifest       | ✅ `PrivacyInfo.xcprivacy`                            |
@@ -62,12 +62,12 @@ Apple bounces it.
 
 ### Blockers that the DUNS does not remove
 
-| Blocker                                | Note                                                                                                                                                                                                                                       |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **No macOS**                           | `xcodebuild archive` cannot run on Linux. CI validates the iOS scaffold only (the "iOS project preflight" job). Reaching a `.ipa` needs Mac hardware, MacStadium or Xcode Cloud — a purchase decision, not a code change.                  |
-| **App icons**                          | Still the default asset catalog. Same blocker as the Android launcher: waiting on the DrippleX logo as VECTOR artwork. One generator run then fixes the Android launcher, the 512px Play icon, the splash and this asset catalog together. |
-| **`aps-environment` is `development`** | `App.entitlements`. The App Store requires `production`. A one-line change, deliberately not made while the only builds are internal.                                                                                                      |
-| **Signing team unset**                 | `CODE_SIGN_STYLE = Automatic`; the team is configured in Xcode, which needs the enrolled account.                                                                                                                                          |
+| Blocker                                | Note                                                                                                                                                                                                                                                                                                                                                  |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **No macOS**                           | `xcodebuild archive` cannot run on Linux. CI validates the iOS scaffold only (the "iOS project preflight" job). Reaching a `.ipa` needs Mac hardware, MacStadium or Xcode Cloud — a purchase decision, not a code change.                                                                                                                             |
+| ~~App icons~~                          | **Not a blocker — this row was wrong when written.** The iOS asset catalog holds the real DrippleX mark at 1024×1024 RGB, and `verify-icons.mjs` passes all 32 native brand assets. Founder decision 2026-08-29: ship the current mark (D + speed lines, no X). The X lives on the driver bubble; the icon is modernised once the business is stable. |
+| **`aps-environment` is `development`** | `App.entitlements`. The App Store requires `production`. A one-line change, deliberately not made while the only builds are internal.                                                                                                                                                                                                                 |
+| **Signing team unset**                 | `CODE_SIGN_STYLE = Automatic`; the team is configured in Xcode, which needs the enrolled account.                                                                                                                                                                                                                                                     |
 
 Nothing here blocks Android, which is what the launch runs on.
 
