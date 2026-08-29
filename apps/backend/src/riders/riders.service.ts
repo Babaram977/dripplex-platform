@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   KycVerificationStatus,
   OnboardingStatus,
+  Prisma,
   ReviewTargetType,
   RiderStatus,
 } from '@prisma/client';
@@ -53,7 +54,13 @@ export class RidersService {
     items: RiderProfileDto[];
     meta: { page: number; limit: number; total: number; totalPages: number };
   }> {
-    const where = query.status ? { status: query.status } : {};
+    // Same reason as the driver roster: deletion stamps `deletedAt` on the
+    // rider profile, and a roster that ignores it keeps showing people who
+    // have already been removed.
+    const where: Prisma.RiderProfileWhereInput = {
+      deletedAt: null,
+      ...(query.status ? { status: query.status } : {}),
+    };
     const [profiles, total] = await Promise.all([
       this.prisma.riderProfile.findMany({
         where,

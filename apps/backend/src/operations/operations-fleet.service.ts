@@ -103,7 +103,10 @@ export class OperationsFleetService {
 
   public async getFleetSnapshot(): Promise<OperationsFleetSnapshotDto> {
     const profiles = await this.prisma.driverProfile.findMany({
-      where: { status: { in: [DriverStatus.APPROVED, DriverStatus.SUSPENDED] } },
+      where: {
+        deletedAt: null,
+        status: { in: [DriverStatus.APPROVED, DriverStatus.SUSPENDED] },
+      },
       include: { user: true },
     });
     const driverIds = profiles.map((profile) => profile.userId);

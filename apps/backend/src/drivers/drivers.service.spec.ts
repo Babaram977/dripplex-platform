@@ -603,4 +603,65 @@ describe('DriversService', () => {
       expect(rating).toEqual({ average: 4, count: 1 });
     });
   });
+  describe('listDrivers', () => {
+    /**
+     * The dinner bug, 2026-08-29. An operator deleted a driver, the roster kept
+     * showing him, so they pressed delete again and got "This account has
+     * already been deleted" — which reads as the system refusing. The first
+     * delete had worked all along; the roster simply ignored `deletedAt`.
+     */
+    it('drops a driver from the roster once the account is deleted', async () => {
+      if (!databaseAvailable) return;
+
+      const ghost = await prisma.user.create({
+        data: {
+          email: `driver-service-ghost-${randomUUID()}@dripplex.test`,
+          passwordHash: 'not-a-real-hash',
+          firstName: 'Deleted',
+          lastName: 'Driver',
+        },
+      });
+      userIds.push(ghost.id);
+      await prisma.driverProfile.create({ data: { userId: ghost.id } });
+
+      const before = await service.listDrivers({ page: 1, limit: 200 });
+      expect(before.items.some((item) => item.driverId === ghost.id)).toBe(true);
+
+      // Exactly what AccountDeletionService stamps on the profile.
+      await prisma.driverProfile.update({
+        where: { userId: ghost.id },
+        data: { deletedAt: new Date() },
+      });
+
+      const after = await service.listDrivers({ page: 1, limit: 200 });
+      expect(after.items.some((item) => item.driverId === ghost.id)).toBe(false);
+      // The count drives pagination, so it has to agree with the rows.
+      expect(after.meta.total).toBe(before.meta.total - 1);
+    });
+
+    /**
+     * The deletedAt filter is ANDed with the status filter, so this guards the
+     * other direction: that adding it did not quietly narrow a status query.
+     * Uses its own driver — the suite's shared one is approved, suspended and
+     * reactivated by earlier tests, so its status is not PENDING by now.
+     */
+    it('still lists a live driver when filtering by status', async () => {
+      if (!databaseAvailable) return;
+
+      const pending = await prisma.user.create({
+        data: {
+          email: `driver-service-pending-${randomUUID()}@dripplex.test`,
+          passwordHash: 'not-a-real-hash',
+          firstName: 'Pending',
+          lastName: 'Driver',
+        },
+      });
+      userIds.push(pending.id);
+      await prisma.driverProfile.create({ data: { userId: pending.id } });
+
+      const live = await service.listDrivers({ page: 1, limit: 200, status: 'PENDING' });
+
+      expect(live.items.some((item) => item.driverId === pending.id)).toBe(true);
+    });
+  });
 });
