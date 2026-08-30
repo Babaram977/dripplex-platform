@@ -174,8 +174,23 @@ jobs:
           # moved back to Workers. Check what serves it first:
           #   curl -sI https://<host>/ | grep -i '^server:'
           #   railway-hikari -> Railway, leave it out.  cloudflare -> Workers.
-          attach dripplex-merchant merchant.dripplex.com
-          attach dripplex-rider rider.dripplex.com
+          # Founder decision, 2026-08-30: merchant.dripplex.com and
+          # rider.dripplex.com are retired, along with driver.dripplex.com.
+          # Every capability those portals offer — SOS, shifts, earnings,
+          # wallet, KYC, onboarding, campaign — is in the Super App the
+          # merchants and riders already use, so the separate addresses were a
+          # second front door to the same account and nothing linked to them
+          # any more.
+          #
+          # The attach calls are removed rather than the Workers themselves.
+          # `dripplex-merchant` and `dripplex-rider` still deploy and stay
+          # reachable on their workers.dev URLs, so putting a hostname back is
+          # one line here plus a DNS record — not a rebuild.
+          #
+          # Removing the DNS records is a separate, manual step. Leaving these
+          # lines in place would re-attach both hosts on the next merge and
+          # silently undo that, which is the same trap the comment above
+          # describes for the apex.
           exit 0
 
       # Only probe when the deploy actually ran.
@@ -206,8 +221,6 @@ jobs:
             https://dripplex.com \
             https://www.dripplex.com \
             https://app.dripplex.com \
-            https://merchant.dripplex.com \
-            https://rider.dripplex.com \
             https://ops.dripplex.com
           do
             code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$u" || echo 000)

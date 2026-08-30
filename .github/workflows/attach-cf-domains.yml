@@ -76,8 +76,15 @@ jobs:
           # moved back to Workers. Check what serves it first:
           #   curl -sI https://<host>/ | grep -i '^server:'
           #   railway-hikari -> Railway, leave it out.  cloudflare -> Workers.
-          attach dripplex-merchant merchant.dripplex.com
-          attach dripplex-rider rider.dripplex.com
+          # Founder decision, 2026-08-30: merchant.dripplex.com and
+          # rider.dripplex.com are retired. Both roles work in the Super App,
+          # nothing links to either host, and this repair job re-attaching them
+          # is exactly how the retirement would quietly undo itself.
+          #
+          # Nothing left to attach. `attach` is still defined above so putting
+          # a host back is one line, and the Workers still deploy, so it is a
+          # line plus a DNS record — never a rebuild.
+          echo "No Worker-served custom domains to attach."
 
       # Probes every production hostname, not just the ones attached above — a
       # migrated host turning red here is the signal that something reverted it
@@ -87,7 +94,7 @@ jobs:
         if: always()
         run: |
           set +e
-          for u in https://dripplex.com https://www.dripplex.com https://app.dripplex.com https://merchant.dripplex.com https://rider.dripplex.com https://ops.dripplex.com; do
+          for u in https://dripplex.com https://www.dripplex.com https://app.dripplex.com https://ops.dripplex.com; do
             code=$(curl -s -o /tmp/p.html -w '%{http_code}' --max-time 25 "$u" || echo 000)
             srv=$(curl -sI --max-time 25 "$u" | tr -d '\r' | awk 'tolower($1)=="server:"{print $2; exit}')
             title=$(python3 -c "import re; t=open('/tmp/p.html','rb').read().decode('utf-8','ignore'); m=re.search(r'<title>([^<]+)',t); print(m.group(1)[:60] if m else '')")
