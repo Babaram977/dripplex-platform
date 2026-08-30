@@ -5,6 +5,7 @@ import { RequirePermissions } from '../../common/decorators/permissions.decorato
 import {
   AddFleetMemberDto,
   CreateFleetDto,
+  DeactivateFleetMemberDto,
   RejectFleetDto,
   ReplaceFleetCommissionTiersDto,
   SetFleetNegotiatedRateDto,
@@ -22,6 +23,7 @@ import type {
   AdminFleetListItemDto,
   FleetCommissionTierDto,
   FleetDto,
+  FleetMemberDto,
   FleetOverviewDto,
   FleetPeriodDto,
 } from '@dripplex/types';
@@ -123,6 +125,59 @@ export class AdminFleetsController {
    * Founder's locked rule — DrippleX decides who may work — applied to the
    * company as well as to the individual rider.
    */
+  /**
+   * Operations detaching, pausing or restoring someone on a fleet.
+   *
+   * The same three actions the owner has on their own console, because
+   * Operations is the escalation path for all of them: an owner who has gone
+   * quiet, a rider who says they never worked for that company, a fleet being
+   * wound down. The service methods are shared with the owner's routes and are
+   * scoped by `fleetId`, so an operator cannot reach a member of a fleet they
+   * did not name — and the audit log records which of the two acted.
+   *
+   * As on the owner's console, none of this deletes a DrippleX account. That
+   * stays with `AccountDeletionService` and its own checks for trips in
+   * progress and money owed.
+   */
+  @Post(':fleetId/members/:memberId/remove')
+  public async removeMember(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('fleetId') fleetId: string,
+    @Param('memberId') memberId: string,
+  ): Promise<ApiSuccessResponse<FleetMemberDto[]>> {
+    await this.fleets.removeMember({ fleetId, memberId, context: { userId: user.id } });
+    const data = await this.overview.listMembers(fleetId);
+    return { success: true, data };
+  }
+
+  @Post(':fleetId/members/:memberId/deactivate')
+  public async deactivateMember(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('fleetId') fleetId: string,
+    @Param('memberId') memberId: string,
+    @Body() dto: DeactivateFleetMemberDto,
+  ): Promise<ApiSuccessResponse<FleetMemberDto[]>> {
+    await this.fleets.deactivateMember({
+      fleetId,
+      memberId,
+      ...(dto.reason !== undefined ? { reason: dto.reason } : {}),
+      context: { userId: user.id },
+    });
+    const data = await this.overview.listMembers(fleetId);
+    return { success: true, data };
+  }
+
+  @Post(':fleetId/members/:memberId/reactivate')
+  public async reactivateMember(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('fleetId') fleetId: string,
+    @Param('memberId') memberId: string,
+  ): Promise<ApiSuccessResponse<FleetMemberDto[]>> {
+    await this.fleets.reactivateMember({ fleetId, memberId, context: { userId: user.id } });
+    const data = await this.overview.listMembers(fleetId);
+    return { success: true, data };
+  }
+
   @Post(':fleetId/approve')
   public async approveFleet(
     @CurrentUser() user: AuthenticatedUser,

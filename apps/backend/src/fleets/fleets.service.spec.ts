@@ -305,6 +305,54 @@ describe('FleetsService — creating a fleet', () => {
       ).rejects.toBeInstanceOf(ConflictDomainException);
     });
 
+    it('frees a rider to join another fleet once they are detached', async () => {
+      if (!databaseAvailable) return;
+
+      const firstOwner = await makeOwner();
+      const first = await service.registerFleet({
+        ownerUserId: firstOwner,
+        name: 'Leaving Ltd',
+        context,
+      });
+      createdFleetIds.push(first.id);
+      await service.approveFleet({ fleetId: first.id, adminUserId: firstOwner, context });
+
+      const riderId = await makeRider();
+      const { member } = await service.requestToJoin({
+        fleetNumber: first.fleetNumber,
+        userId: riderId,
+        context,
+      });
+      await service.approveJoinRequest({
+        fleetId: first.id,
+        memberId: member.id,
+        ownerUserId: firstOwner,
+        context,
+      });
+      expect((await service.fleetForUser(riderId))?.fleet.id).toBe(first.id);
+
+      // Operations detaching them — the escalation path when an owner cannot
+      // or will not. `activeUserId` is cleared, which is what the database's
+      // own unique index needs before they can ride for anyone else.
+      await service.removeMember({ fleetId: first.id, memberId: member.id, context });
+      expect(await service.fleetForUser(riderId)).toBeNull();
+
+      const secondOwner = await makeOwner();
+      const second = await service.registerFleet({
+        ownerUserId: secondOwner,
+        name: 'Joining Ltd',
+        context,
+      });
+      createdFleetIds.push(second.id);
+
+      const moved = await service.requestToJoin({
+        fleetNumber: second.fleetNumber,
+        userId: riderId,
+        context,
+      });
+      expect(moved.fleet.id).toBe(second.id);
+    });
+
     it('refuses a join request from someone who is neither a rider nor a driver', async () => {
       if (!databaseAvailable) return;
 

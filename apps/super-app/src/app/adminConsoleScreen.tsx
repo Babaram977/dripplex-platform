@@ -2290,6 +2290,8 @@ function FleetDetailPanel({
   const [rateInput, setRateInput] = useState('');
   const [rateNote, setRateNote] = useState('');
   const [suspendReason, setSuspendReason] = useState('');
+  /** The member whose Detach has been armed and is one more tap from firing. */
+  const [detaching, setDetaching] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setMsg(null);
@@ -2487,7 +2489,7 @@ function FleetDetailPanel({
           >
             <thead>
               <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
-                {['Name', 'Phone', 'Role', 'Status', 'Jobs', 'Gross'].map((h) => (
+                {['Name', 'Phone', 'Role', 'Status', 'Jobs', 'Gross', 'Actions'].map((h) => (
                   <th
                     key={h}
                     style={{
@@ -2532,14 +2534,78 @@ function FleetDetailPanel({
                   <td style={{ padding: '9px 8px', fontSize: 12, color: WHITE }}>
                     {FLEET_MONEY(member.grossThisMonth)}
                   </td>
+                  <td style={{ padding: '9px 8px' }}>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {member.status === 'ACTIVE' ? (
+                        <Btn
+                          label="Pause"
+                          small
+                          outline
+                          color={MUTED}
+                          disabled={busy}
+                          onClick={() => {
+                            void run(
+                              async () =>
+                                await api.admin.deactivateFleetMemberAsOps(
+                                  row.fleet.id,
+                                  member.memberId,
+                                ),
+                              `${member.name} paused — they will not be sent work.`,
+                            );
+                          }}
+                        />
+                      ) : (
+                        <Btn
+                          label="Activate"
+                          small
+                          outline
+                          color={G3}
+                          disabled={busy}
+                          onClick={() => {
+                            void run(
+                              async () =>
+                                await api.admin.reactivateFleetMemberAsOps(
+                                  row.fleet.id,
+                                  member.memberId,
+                                ),
+                              `${member.name} is active again.`,
+                            );
+                          }}
+                        />
+                      )}
+                      <Btn
+                        label={detaching === member.memberId ? 'Confirm' : 'Detach'}
+                        small
+                        outline
+                        color={C_ERR}
+                        disabled={busy}
+                        onClick={() => {
+                          // Detaching is not reversible by the owner — they
+                          // would have to be attached again — so the button
+                          // asks once before doing it.
+                          if (detaching !== member.memberId) {
+                            setDetaching(member.memberId);
+                            return;
+                          }
+                          setDetaching(null);
+                          void run(
+                            async () =>
+                              await api.admin.removeFleetMemberAsOps(row.fleet.id, member.memberId),
+                            `${member.name} detached from ${row.fleet.fleetNumber}. Their DrippleX account is untouched.`,
+                          );
+                        }}
+                      />
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
         <div style={{ marginTop: 6, fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
-          Deactivating, reactivating and removing a member is the owner’s own control, on their My
-          Fleet console.
+          The owner manages these people day to day on their own console. Use these when the owner
+          cannot — a rider disputing they ever worked there, an owner gone quiet, a fleet winding
+          down. Detaching never deletes their DrippleX account, their earnings or their past trips.
         </div>
       </div>
 
