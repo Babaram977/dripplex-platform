@@ -28,7 +28,7 @@ export interface FleetPeriodTotals {
   periodStart: Date;
   periodEnd: Date;
   orderCount: number;
-  deliveryFeeTotal: number;
+  chargeableTotal: number;
   /** The rate the current volume would attract, if the month closed now. */
   projectedRate: number | null;
   projectedCommission: number | null;
@@ -127,7 +127,8 @@ export class FleetCommissionService {
   }
 
   /**
-   * Records one completed delivery against the fleet's running month.
+   * Records one completed job — a delivery or a ride — against the running
+   * month.
    *
    * Increments rather than recomputing: a fleet doing thousands of orders a
    * month should not re-scan its own history on every delivery, and the
@@ -136,9 +137,10 @@ export class FleetCommissionService {
    * Deliberately does NOT touch the commission account. Nothing is owed until
    * the month closes and the band is known — see the class comment.
    */
-  public async recordDelivery(input: {
+  public async recordJob(input: {
     fleetId: string;
-    deliveryFee: number | string | Prisma.Decimal;
+    /** Delivery fee for a delivery, trip fare for a ride. */
+    amount: number | string | Prisma.Decimal;
     at?: Date;
   }): Promise<void> {
     const at = input.at ?? new Date();
@@ -149,7 +151,7 @@ export class FleetCommissionService {
       // a settled figure. Refusing is wrong too — the delivery really
       // happened — so it is logged and left for Operations to reconcile.
       this.logger.warn(
-        `Delivery for fleet ${input.fleetId} at ${at.toISOString()} falls in a period ` +
+        `Job for fleet ${input.fleetId} at ${at.toISOString()} falls in a period ` +
           `settled on ${period.settledAt.toISOString()}; not counted. Reconcile manually.`,
       );
       return;
@@ -159,7 +161,7 @@ export class FleetCommissionService {
       where: { id: period.id },
       data: {
         orderCount: { increment: 1 },
-        deliveryFeeTotal: { increment: new Prisma.Decimal(input.deliveryFee) },
+        chargeableTotal: { increment: new Prisma.Decimal(input.amount) },
       },
     });
   }
@@ -171,7 +173,7 @@ export class FleetCommissionService {
   }
 
   private async toTotals(period: FleetCommissionPeriod): Promise<FleetPeriodTotals> {
-    const deliveryFeeTotal = Number(period.deliveryFeeTotal);
+    const chargeableTotal = Number(period.chargeableTotal);
     const settled = period.settledAt !== null;
     const projectedRate = settled ? null : await this.rateForVolume(period.orderCount);
 
@@ -179,10 +181,10 @@ export class FleetCommissionService {
       periodStart: period.periodStart,
       periodEnd: period.periodEnd,
       orderCount: period.orderCount,
-      deliveryFeeTotal,
+      chargeableTotal,
       projectedRate,
       projectedCommission:
-        projectedRate === null ? null : this.round(deliveryFeeTotal * projectedRate),
+        projectedRate === null ? null : this.round(chargeableTotal * projectedRate),
       settled,
       appliedRate: period.appliedRate === null ? null : Number(period.appliedRate),
       commissionAmount: period.commissionAmount === null ? null : Number(period.commissionAmount),
@@ -232,7 +234,7 @@ export class FleetCommissionService {
       );
     }
 
-    const commissionAmount = this.round(Number(period.deliveryFeeTotal) * rate);
+    const commissionAmount = this.round(Number(period.chargeableTotal) * rate);
 
     const settled = await this.prisma.fleetCommissionPeriod.update({
       where: { id: period.id },
@@ -265,7 +267,7 @@ export class FleetCommissionService {
       metadata: {
         fleetId: input.fleetId,
         orderCount: period.orderCount,
-        deliveryFeeTotal: Number(period.deliveryFeeTotal),
+        chargeableTotal: Number(period.chargeableTotal),
         appliedRate: rate,
         commissionAmount,
       },

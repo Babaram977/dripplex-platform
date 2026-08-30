@@ -8,7 +8,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { AdminFleetsController } from './controllers/admin-fleets.controller';
 import { FleetOwnerController } from './controllers/fleet-owner.controller';
 import { FleetCommissionService } from './fleet-commission.service';
-import { FleetDeliverySubscriber } from './fleet-delivery.subscriber';
+import { FleetJobSubscriber } from './fleet-job.subscriber';
 import { FleetOverviewService } from './fleet-overview.service';
 import { FleetsService } from './fleets.service';
 
@@ -32,7 +32,7 @@ import { FleetsService } from './fleets.service';
 @Module({
   imports: [PrismaModule, AuditModule, CommercialModule, EventsModule],
   controllers: [FleetOwnerController, AdminFleetsController],
-  providers: [FleetsService, FleetOverviewService, FleetCommissionService, FleetDeliverySubscriber],
+  providers: [FleetsService, FleetOverviewService, FleetCommissionService, FleetJobSubscriber],
   exports: [FleetsService, FleetOverviewService, FleetCommissionService],
 })
 export class FleetsModule {}

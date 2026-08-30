@@ -199,7 +199,7 @@ export class AdminFleetsController {
         periodStart: period.periodStart.toISOString(),
         periodEnd: period.periodEnd.toISOString(),
         orderCount: period.orderCount,
-        deliveryFeeTotal: Number(period.deliveryFeeTotal),
+        chargeableTotal: Number(period.chargeableTotal),
         projectedRate: null,
         projectedCommission: null,
         settled: period.settledAt !== null,

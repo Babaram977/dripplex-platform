@@ -202,14 +202,14 @@ describe('FleetCommissionService', () => {
       await seedTiers();
       await prisma.fleetCommissionPeriod.deleteMany({ where: { fleetId } });
 
-      await service.recordDelivery({ fleetId, deliveryFee: 1500 });
-      await service.recordDelivery({ fleetId, deliveryFee: 1500 });
-      await service.recordDelivery({ fleetId, deliveryFee: 2000 });
+      await service.recordJob({ fleetId, amount: 1500 });
+      await service.recordJob({ fleetId, amount: 1500 });
+      await service.recordJob({ fleetId, amount: 2000 });
 
       const totals = await service.periodTotals(fleetId);
 
       expect(totals.orderCount).toBe(3);
-      expect(totals.deliveryFeeTotal).toBe(5000);
+      expect(totals.chargeableTotal).toBe(5000);
       // Three orders sits in the lowest band.
       expect(totals.projectedRate).toBe(0.1);
       expect(totals.projectedCommission).toBe(500);
@@ -251,7 +251,7 @@ describe('FleetCommissionService', () => {
           periodStart,
           periodEnd,
           orderCount: 5200,
-          deliveryFeeTotal: 7_800_000,
+          chargeableTotal: 7_800_000,
         },
       });
 
@@ -293,7 +293,7 @@ describe('FleetCommissionService', () => {
       const periodEnd = new Date(Date.UTC(2026, 2, 1) - 3_600_000);
       await prisma.fleetCommissionPeriod.deleteMany({ where: { fleetId, periodStart } });
       await prisma.fleetCommissionPeriod.create({
-        data: { fleetId, periodStart, periodEnd, orderCount: 40, deliveryFeeTotal: 60_000 },
+        data: { fleetId, periodStart, periodEnd, orderCount: 40, chargeableTotal: 60_000 },
       });
 
       await expect(
@@ -306,11 +306,31 @@ describe('FleetCommissionService', () => {
       ).rejects.toBeInstanceOf(ValidationDomainException);
     });
 
+    it('counts a ride at its fare alongside deliveries at their fee', async () => {
+      if (!databaseAvailable) return;
+      await seedTiers();
+      await prisma.fleetCommissionPeriod.deleteMany({ where: { fleetId } });
+
+      // Founder decision, 2026-08-30: "rides should count too, use the trip
+      // fare". A fleet of cars and a fleet of bikes accumulate into the same
+      // month, each job at its own base.
+      await service.recordJob({ fleetId, amount: 1500 }); // a delivery fee
+      await service.recordJob({ fleetId, amount: 4200 }); // a trip fare
+
+      const totals = await service.periodTotals(fleetId);
+
+      expect(totals.orderCount).toBe(2);
+      expect(totals.chargeableTotal).toBe(5700);
+      // Both count towards the volume that picks the band, not just deliveries.
+      expect(totals.projectedRate).toBe(0.1);
+      expect(totals.projectedCommission).toBe(570);
+    });
+
     it('puts a delivery in the month it was delivered, not the month it was counted', async () => {
       if (!databaseAvailable) return;
 
       const march = new Date(Date.UTC(2026, 2, 15, 12, 0, 0));
-      await service.recordDelivery({ fleetId, deliveryFee: 1500, at: march });
+      await service.recordJob({ fleetId, amount: 1500, at: march });
 
       const totals = await service.periodTotals(fleetId, march);
 

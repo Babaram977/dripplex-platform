@@ -4498,10 +4498,12 @@ model FleetCommissionPeriod {
   /// selects the band.
   orderCount Int @default(0) @map("order_count")
 
-  /// The delivery fees those orders charged. Commission is a percentage of
-  /// this — founder decision 2026-08-30, "8% of the delivery fee the system
-  /// charges", not of the basket the merchant sold.
-  deliveryFeeTotal Decimal @default(0) @map("delivery_fee_total") @db.Decimal(14, 2)
+  /// What commission is charged on: the delivery fee for a delivery, the trip
+  /// fare for a ride. Founder decisions 2026-08-30 — "8% of the delivery fee
+  /// the system charges", then "rides should count too, use the trip fare".
+  /// Never the basket the merchant sold; the merchant's own 10% is a separate
+  /// arrangement, unaffected by who delivered.
+  chargeableTotal Decimal @default(0) @map("chargeable_total") @db.Decimal(14, 2)
 
   /// Null until the month is settled. Snapshotted so a later edit to the tier
   /// table never rewrites a period that has already been invoiced.

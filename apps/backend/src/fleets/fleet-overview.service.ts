@@ -224,7 +224,7 @@ export class FleetOverviewService {
         periodStart: totals.periodStart.toISOString(),
         periodEnd: totals.periodEnd.toISOString(),
         orderCount: totals.orderCount,
-        deliveryFeeTotal: totals.deliveryFeeTotal,
+        chargeableTotal: totals.chargeableTotal,
         projectedRate: totals.projectedRate,
         projectedCommission: totals.projectedCommission,
         settled: totals.settled,

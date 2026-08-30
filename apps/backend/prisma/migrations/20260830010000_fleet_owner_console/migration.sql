@@ -5,7 +5,7 @@
 -- itself. DrippleX takes the same shape. The fleet owner supplies the bikes
 -- and cars and agrees pay with his riders privately; DrippleX supplies the
 -- demand and charges the fleet a percentage of the delivery fees its members
--- earned.
+-- earned, and of the fares its drivers took.
 --
 -- What is NOT delegated is who may ride. KYC, identity verification and
 -- onboarding stay with Operations exactly as they are for every other rider
@@ -104,8 +104,9 @@ CREATE TABLE "fleet_commission_periods" (
     "period_start" TIMESTAMP(3) NOT NULL,
     "period_end" TIMESTAMP(3) NOT NULL,
     "order_count" INTEGER NOT NULL DEFAULT 0,
-    -- Commission is a percentage of this, not of the basket the merchant sold.
-    "delivery_fee_total" DECIMAL(14,2) NOT NULL DEFAULT 0,
+    -- What commission is charged on: the delivery fee for a delivery, the trip
+    -- fare for a ride. Never the basket the merchant sold.
+    "chargeable_total" DECIMAL(14,2) NOT NULL DEFAULT 0,
     "applied_rate" DECIMAL(5,4),
     "commission_amount" DECIMAL(14,2),
     "settled_at" TIMESTAMP(3),

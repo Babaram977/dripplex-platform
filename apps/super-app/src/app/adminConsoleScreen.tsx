@@ -2176,8 +2176,9 @@ function PageMyFleet() {
           }}
         >
           {[
-            ['Deliveries', c(period.orderCount)],
-            ['Delivery fees', money(period.deliveryFeeTotal)],
+            ['Jobs', c(period.orderCount)],
+            // Delivery fees and trip fares together — both are charged on.
+            ['Fees & fares', money(period.chargeableTotal)],
             [
               period.settled ? 'Rate charged' : 'Rate at this volume',
               pct(period.settled ? period.appliedRate : period.projectedRate),

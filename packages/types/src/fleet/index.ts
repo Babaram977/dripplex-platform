@@ -77,7 +77,8 @@ export interface FleetPeriodDto {
   periodStart: string;
   periodEnd: string;
   orderCount: number;
-  deliveryFeeTotal: number;
+  /** What commission is charged on: delivery fees plus trip fares. */
+  chargeableTotal: number;
   projectedRate: number | null;
   projectedCommission: number | null;
   settled: boolean;
