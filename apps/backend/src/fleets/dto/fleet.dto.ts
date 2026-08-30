@@ -95,3 +95,20 @@ export class SettleFleetPeriodDto {
   @IsString()
   public periodStart!: string;
 }
+
+export class SetFleetNegotiatedRateDto {
+  /**
+   * A fraction: 0.065 is 6.5%. Null clears the agreement and returns this
+   * fleet to the band table.
+   */
+  @IsOptional()
+  @IsNumber()
+  @Min(0.0001)
+  @Max(0.9999)
+  public rate?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  public note?: string;
+}

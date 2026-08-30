@@ -6,6 +6,7 @@ import {
   AddFleetMemberDto,
   CreateFleetDto,
   ReplaceFleetCommissionTiersDto,
+  SetFleetNegotiatedRateDto,
   SettleFleetPeriodDto,
   SuspendFleetDto,
 } from '../dto/fleet.dto';
@@ -177,6 +178,31 @@ export class AdminFleetsController {
         rate: Number(tier.rate),
       })),
     };
+  }
+
+  /**
+   * Agrees a rate with one fleet, or clears it back to the band table.
+   *
+   * Founder decision, 2026-08-30: "make it editable negotiable". The same
+   * principle as merchant credit limits — businesses differ, and a
+   * platform-wide table cannot express an individual agreement.
+   */
+  @Post(':fleetId/commission/rate')
+  @RequirePermissions(FLEET_PERMISSIONS.ADMIN_COMMISSION_MANAGE)
+  public async setNegotiatedRate(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('fleetId') fleetId: string,
+    @Body() dto: SetFleetNegotiatedRateDto,
+  ): Promise<ApiSuccessResponse<FleetDto>> {
+    await this.fleets.requireFleet(fleetId);
+    await this.commission.setNegotiatedRate({
+      fleetId,
+      rate: dto.rate ?? null,
+      ...(dto.note !== undefined ? { note: dto.note } : {}),
+      adminUserId: user.id,
+      context: { userId: user.id },
+    });
+    return { success: true, data: toFleetDto(await this.fleets.requireFleet(fleetId)) };
   }
 
   /** Closes a finished month and charges the fleet for it. */

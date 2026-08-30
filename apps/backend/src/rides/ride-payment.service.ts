@@ -24,6 +24,7 @@ import {
 } from '../common/exceptions/domain.exception';
 import { DomainEventBus } from '../events/domain-event-bus';
 import { DOMAIN_EVENTS } from '../events/domain-events';
+import { FleetsService } from '../fleets/fleets.service';
 import {
   NOTIFICATION_SERVICE,
   type NotificationService,
@@ -100,6 +101,7 @@ export class RidePaymentService {
     private readonly eventBus: DomainEventBus,
     private readonly commissionAccounts: CommissionAccountService,
     private readonly platformCommissionSettings: PlatformCommissionSettingsService,
+    private readonly fleets: FleetsService,
   ) {}
 
   public async initiatePayment(
@@ -208,11 +210,33 @@ export class RidePaymentService {
       return toRideDto(await this.prisma.ride.findUniqueOrThrow({ where: { id: ride.id } }));
     }
 
-    const rate = await this.platformCommissionSettings.getEffectiveRate();
+    const rate = await this.effectiveCommissionRate(ride);
     const split = this.computeSplit(ride, rate);
     await this.captureIntoPlatformWallet(ride, context);
     await this.payoutDriver(ride, split, context);
     return await this.markPaid(ride, ride.paymentMethod, split, context);
+  }
+
+  /**
+   * The platform commission rate for one ride.
+   *
+   * Zero when the driver rides for a fleet. Founder decision, 2026-08-30:
+   * "remove the driver 10% for fleet drivers". DrippleX's commercial
+   * counterparty for a fleet trip is the fleet, which is charged its own
+   * negotiated or banded rate on the fare at month end — charging the driver
+   * as well would take twice from one trip, and the driver's pay is a matter
+   * between them and the fleet owner, not DrippleX.
+   *
+   * Resolved per ride rather than stored on the driver, because a driver can
+   * join or leave a fleet: what matters is who they rode for when the trip
+   * settled, and the rate is snapshotted onto the ride either way.
+   */
+  private async effectiveCommissionRate(ride: Ride): Promise<number> {
+    if (ride.driverId !== null) {
+      const membership = await this.fleets.fleetForUser(ride.driverId);
+      if (membership !== null) return 0;
+    }
+    return await this.platformCommissionSettings.getEffectiveRate();
   }
 
   public async confirmCash(
@@ -221,7 +245,7 @@ export class RidePaymentService {
     context: AuditContext,
   ): Promise<RideDto> {
     const ride = await this.requireCashConfirmableRide(driverId, rideId);
-    const rate = await this.platformCommissionSettings.getEffectiveRate();
+    const rate = await this.effectiveCommissionRate(ride);
     const split = this.computeSplit(ride, rate);
 
     // DPX-COMMERCIAL-001 Slice 4 — cash never enters the digital ledger,
@@ -454,7 +478,7 @@ export class RidePaymentService {
     context: AuditContext,
   ): Promise<RideDto> {
     const ride = await this.requirePayableRide(customerId, rideId);
-    const rate = await this.platformCommissionSettings.getEffectiveRate();
+    const rate = await this.effectiveCommissionRate(ride);
     const split = this.computeSplit(ride, rate);
 
     try {

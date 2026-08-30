@@ -196,6 +196,80 @@ describe('FleetCommissionService', () => {
     });
   });
 
+  describe('a negotiated rate', () => {
+    it('overrides the band table for that fleet only', async () => {
+      if (!databaseAvailable) return;
+      await seedTiers();
+
+      // Founder decision, 2026-08-30: "make it editable negotiable". A fleet
+      // of six cars and a fleet of a hundred bikes cannot share one table.
+      await service.setNegotiatedRate({
+        fleetId,
+        rate: 0.055,
+        note: 'Launch partner, 15 riders',
+        adminUserId: ownerId,
+        context,
+      });
+
+      // The band for this volume is 10%; the agreement wins.
+      expect(await service.rateForVolume(3)).toBe(0.1);
+      expect(await service.rateForFleet(fleetId, 3)).toBe(0.055);
+    });
+
+    it('falls back to the band table once the agreement is cleared', async () => {
+      if (!databaseAvailable) return;
+      await seedTiers();
+
+      await service.setNegotiatedRate({
+        fleetId,
+        rate: null,
+        adminUserId: ownerId,
+        context,
+      });
+
+      expect(await service.rateForFleet(fleetId, 3)).toBe(0.1);
+    });
+
+    it('rejects a rate given as a percentage', async () => {
+      if (!databaseAvailable) return;
+
+      await expect(
+        service.setNegotiatedRate({ fleetId, rate: 6.5, adminUserId: ownerId, context }),
+      ).rejects.toBeInstanceOf(ValidationDomainException);
+    });
+
+    it('settles a finished month at the negotiated rate, not the band', async () => {
+      if (!databaseAvailable) return;
+      await seedTiers();
+      await service.setNegotiatedRate({
+        fleetId,
+        rate: 0.055,
+        adminUserId: ownerId,
+        context,
+      });
+
+      const periodStart = new Date(Date.UTC(2026, 3, 1) - 3_600_000);
+      const periodEnd = new Date(Date.UTC(2026, 4, 1) - 3_600_000);
+      await prisma.fleetCommissionPeriod.deleteMany({ where: { fleetId, periodStart } });
+      await prisma.fleetCommissionPeriod.create({
+        data: { fleetId, periodStart, periodEnd, orderCount: 5200, chargeableTotal: 7_800_000 },
+      });
+
+      const settled = await service.settlePeriod({
+        fleetId,
+        periodStart,
+        adminUserId: ownerId,
+        context,
+      });
+
+      // The 5,200-order band is 6.5%; the agreement of 5.5% is what applies.
+      expect(Number(settled.appliedRate)).toBe(0.055);
+      expect(Number(settled.commissionAmount)).toBe(429_000);
+
+      await service.setNegotiatedRate({ fleetId, rate: null, adminUserId: ownerId, context });
+    });
+  });
+
   describe('a trading month', () => {
     it('counts deliveries and their fees without charging anything yet', async () => {
       if (!databaseAvailable) return;

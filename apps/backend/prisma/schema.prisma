@@ -4372,6 +4372,23 @@ model Fleet {
 
   status FleetStatus @default(ACTIVE)
 
+  /// A rate agreed with this fleet individually, overriding the volume bands.
+  ///
+  /// Founder decision 2026-08-30, "make it editable negotiable" — the same
+  /// principle already applied to merchant credit limits on 2026-08-20:
+  /// "limit should be individually set to each merchant because of business
+  /// difference and it should be negotiated and agreed by DrippleX and
+  /// merchant". A fleet of six cars and a fleet of a hundred bikes cannot
+  /// share one table.
+  ///
+  /// Null means no individual agreement exists and the band table applies —
+  /// which is also what keeps the table meaningful rather than something that
+  /// silently overwrites a negotiated figure. Fraction, not percent.
+  negotiatedRate  Decimal?  @map("negotiated_rate") @db.Decimal(5, 4)
+  negotiatedBy    String?   @map("negotiated_by") @db.Uuid
+  negotiatedAt    DateTime? @map("negotiated_at")
+  negotiationNote String?   @map("negotiation_note") @db.VarChar(500)
+
   /// Suspending a fleet stops its members being dispatched without unpicking
   /// the membership rows, so it is reversible and leaves the history intact.
   suspendedAt     DateTime? @map("suspended_at")

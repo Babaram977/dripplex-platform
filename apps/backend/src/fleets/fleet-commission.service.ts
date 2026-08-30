@@ -102,6 +102,71 @@ export class FleetCommissionService {
     return match === null ? null : Number(match.rate);
   }
 
+  /**
+   * The rate that actually applies to one fleet.
+   *
+   * A rate negotiated with this fleet wins over the band table. Founder
+   * decision 2026-08-30, "make it editable negotiable" — the same principle
+   * already applied to merchant credit limits: businesses differ, and a
+   * platform-wide table cannot express an individual agreement. The table is
+   * what applies when no agreement has been made, which is what keeps it
+   * meaningful rather than something that quietly overwrites one.
+   */
+  public async rateForFleet(fleetId: string, orderCount: number): Promise<number | null> {
+    const fleet = await this.prisma.fleet.findUnique({
+      where: { id: fleetId },
+      select: { negotiatedRate: true },
+    });
+    const negotiated = fleet?.negotiatedRate ?? null;
+    if (negotiated !== null) return Number(negotiated);
+    return await this.rateForVolume(orderCount);
+  }
+
+  /**
+   * Agrees a rate with one fleet, or clears it back to the band table.
+   *
+   * A negotiated rate is a commercial commitment, so it carries who agreed it
+   * and on what terms rather than living only in the audit log — the same
+   * shape `CommissionAccount.negotiatedCreditLimit` already uses.
+   */
+  public async setNegotiatedRate(input: {
+    fleetId: string;
+    rate: number | null;
+    note?: string;
+    adminUserId: string;
+    context: AuditContext;
+  }): Promise<void> {
+    if (input.rate !== null && (input.rate <= 0 || input.rate >= 1)) {
+      throw new ValidationDomainException(
+        `Rate must be a fraction between 0 and 1 — 0.08 for 8%. Got ${String(input.rate)}`,
+      );
+    }
+
+    await this.prisma.fleet.update({
+      where: { id: input.fleetId },
+      data:
+        input.rate === null
+          ? {
+              negotiatedRate: null,
+              negotiatedBy: null,
+              negotiatedAt: null,
+              negotiationNote: null,
+            }
+          : {
+              negotiatedRate: new Prisma.Decimal(input.rate),
+              negotiatedBy: input.adminUserId,
+              negotiatedAt: new Date(),
+              ...(input.note !== undefined ? { negotiationNote: input.note.trim() } : {}),
+            },
+    });
+
+    await this.auditService.record(FLEET_AUDIT_ACTIONS.RATE_NEGOTIATED, input.context, {
+      resource: 'fleet',
+      resourceId: input.fleetId,
+      metadata: { rate: input.rate, note: input.note ?? null },
+    });
+  }
+
   private selectTier(tiers: FleetCommissionTier[], orderCount: number): FleetCommissionTier | null {
     for (const tier of tiers) {
       const aboveFloor = orderCount >= tier.minOrders;
@@ -175,7 +240,9 @@ export class FleetCommissionService {
   private async toTotals(period: FleetCommissionPeriod): Promise<FleetPeriodTotals> {
     const chargeableTotal = Number(period.chargeableTotal);
     const settled = period.settledAt !== null;
-    const projectedRate = settled ? null : await this.rateForVolume(period.orderCount);
+    const projectedRate = settled
+      ? null
+      : await this.rateForFleet(period.fleetId, period.orderCount);
 
     return {
       periodStart: period.periodStart,
@@ -226,7 +293,7 @@ export class FleetCommissionService {
       );
     }
 
-    const rate = await this.rateForVolume(period.orderCount);
+    const rate = await this.rateForFleet(input.fleetId, period.orderCount);
     if (rate === null) {
       throw new ValidationDomainException(
         `No commission band covers ${String(period.orderCount)} orders. ` +

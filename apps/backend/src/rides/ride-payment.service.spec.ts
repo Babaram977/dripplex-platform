@@ -13,6 +13,7 @@ import { PlatformCommissionSettingsService } from '../commercial/platform-commis
 import { ConflictDomainException } from '../common/exceptions/domain.exception';
 import { DomainEventBus } from '../events/domain-event-bus';
 import { DOMAIN_EVENTS } from '../events/domain-events';
+import { FleetsService } from '../fleets/fleets.service';
 import { PLATFORM_WALLET_OWNER_ID } from '../wallet/wallet.constants';
 import { WalletService } from '../wallet/wallet.service';
 
@@ -119,6 +120,9 @@ describe('RidePaymentService', () => {
       eventBus,
       commissionAccounts,
       platformCommissionSettings,
+      // DPX-FLEET — resolves whether a driver rides for a fleet, which is
+      // what decides between the platform rate and zero.
+      new FleetsService(prisma, auditService),
     );
 
     const customer = await prisma.user.create({

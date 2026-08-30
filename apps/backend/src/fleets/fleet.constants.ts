@@ -52,6 +52,7 @@ export const FLEET_AUDIT_ACTIONS = {
   MEMBER_REACTIVATED: 'fleet.member.reactivated',
   MEMBER_REMOVED: 'fleet.member.removed',
   TIERS_UPDATED: 'fleet.commission.tiers_updated',
+  RATE_NEGOTIATED: 'fleet.commission.rate_negotiated',
   PERIOD_SETTLED: 'fleet.commission.period_settled',
 } as const;
 

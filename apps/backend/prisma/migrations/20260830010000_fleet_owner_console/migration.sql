@@ -30,6 +30,14 @@ CREATE TABLE "fleets" (
     "name" VARCHAR(200) NOT NULL,
     "contact_phone" VARCHAR(20),
     "status" "FleetStatus" NOT NULL DEFAULT 'ACTIVE',
+    -- A rate agreed with this fleet individually, overriding the bands.
+    -- Founder decision 2026-08-30, the same principle as merchant credit
+    -- limits: a fleet of six cars and a fleet of a hundred bikes cannot share
+    -- one table. Null means the band table applies.
+    "negotiated_rate" DECIMAL(5,4),
+    "negotiated_by" UUID,
+    "negotiated_at" TIMESTAMP(3),
+    "negotiation_note" VARCHAR(500),
     "suspended_at" TIMESTAMP(3),
     "suspended_reason" VARCHAR(500),
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
