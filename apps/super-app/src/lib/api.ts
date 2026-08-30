@@ -3785,6 +3785,24 @@ export const api = {
     addFleetMember: (body: { fleetNumber: string; userId: string; role: 'RIDER' | 'DRIVER' }) =>
       dx<{ memberId: string }>('POST', '/admin/fleets/members', body),
     /**
+     * Operations' escalation path on a fleet's people — an owner who has gone
+     * quiet, a rider disputing that they ever worked there, a fleet winding
+     * down. The same three actions the owner has, scoped by fleet id.
+     *
+     * None of these deletes a DrippleX account: that is `deleteAccount`, with
+     * its own checks for trips in progress and money owed.
+     */
+    removeFleetMemberAsOps: (fleetId: string, memberId: string) =>
+      dx<FleetMemberDto[]>('POST', `/admin/fleets/${fleetId}/members/${memberId}/remove`, {}),
+    deactivateFleetMemberAsOps: (fleetId: string, memberId: string, reason?: string) =>
+      dx<FleetMemberDto[]>(
+        'POST',
+        `/admin/fleets/${fleetId}/members/${memberId}/deactivate`,
+        reason === undefined ? {} : { reason },
+      ),
+    reactivateFleetMemberAsOps: (fleetId: string, memberId: string) =>
+      dx<FleetMemberDto[]>('POST', `/admin/fleets/${fleetId}/members/${memberId}/reactivate`, {}),
+    /**
      * Lets a self-registered fleet start trading. Until this, riders can quote
      * its number but nothing counts and no commission accrues.
      */
