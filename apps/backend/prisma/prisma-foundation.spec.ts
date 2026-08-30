@@ -60,7 +60,12 @@ describe('Prisma schema foundation (S1-C1)', () => {
   });
 
   it('defines the DPX-013 Sprint 1 role and permission catalog sizes', () => {
-    expect(ROLE_SEEDS).toHaveLength(9);
+    // 10 as of 2026-08-30. The one added is `fleet_owner` (DPX-FLEET) — a
+    // company supplying riders and drivers, which is a genuinely new persona
+    // rather than a variation on an existing one: it reads only its own
+    // console, manages only its own people, and holds no permission any other
+    // role does.
+    expect(ROLE_SEEDS).toHaveLength(10);
     expect(PERMISSION_SEEDS.length).toBeGreaterThanOrEqual(37);
     // 128 as of 2026-08-18. Three are the Utilities tab —
     // `customer:utilities:read` and `customer:utilities:purchase` are split so
@@ -97,7 +102,15 @@ describe('Prisma schema foundation (S1-C1)', () => {
     // of every customer, driver and merchant, names and phone numbers
     // included. Revoking it must not blind an operator to live work, and
     // granting live work must not hand over the archive.
-    expect(PERMISSION_SEEDS).toHaveLength(135);
+    // 139 as of 2026-08-30. The four added are DPX-FLEET. `fleet:own:read` and
+    // `fleet:own:manage` are the owner's own console, split for the same
+    // reason the utilities pair is — reading your riders is not the same
+    // authority as deactivating one. `admin:fleets:manage` is Operations
+    // issuing Fleet DX numbers and attaching people, and
+    // `admin:fleets:commission:manage` is separate again because editing the
+    // volume bands changes what every fleet is charged, which is a different
+    // level of authority from attaching one rider to one fleet.
+    expect(PERMISSION_SEEDS).toHaveLength(139);
     expect(PERMISSION_SEEDS.map((permission) => permission.code)).toEqual(
       expect.arrayContaining([
         'admin:rides:pricing:manage',

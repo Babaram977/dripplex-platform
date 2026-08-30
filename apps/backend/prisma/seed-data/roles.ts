@@ -38,6 +38,11 @@ export const ROLE_SEEDS: RoleSeed[] = [
       'DPX-DRIVER-002 — records driver/vehicle inspection checklists in operations-console',
   },
   {
+    name: 'fleet_owner',
+    description:
+      'DPX-FLEET — a company supplying riders and drivers to DrippleX. Reads its own console and manages its own people; never sees another fleet, and never touches KYC',
+  },
+  {
     name: 'inspection_supervisor',
     description:
       'DPX-DRIVER-002 — approves/rejects inspections and manages inspection centres in operations-console',

@@ -269,6 +269,26 @@ const PERMISSION_SEEDS = [
       'View the Operations Console analytics dashboard — driver utilization, shift, ride, dispatch, response-time, and geographic-demand analytics',
   },
   {
+    code: 'fleet:own:read',
+    description:
+      "A fleet owner reading their own console — their riders and drivers, live positions while on shift, live jobs, and the month's running commission",
+  },
+  {
+    code: 'fleet:own:manage',
+    description:
+      'A fleet owner deactivating, reactivating and removing their own riders and drivers. Never deletes a DrippleX account — that stays with Operations',
+  },
+  {
+    code: 'admin:fleets:manage',
+    description:
+      'Operations creating fleets, issuing Fleet DX numbers, attaching riders and drivers to them, and suspending or reinstating a fleet',
+  },
+  {
+    code: 'admin:fleets:commission:manage',
+    description:
+      "Operations editing the fleet commission volume bands and settling a fleet's finished month",
+  },
+  {
     code: 'operations:history:read',
     description:
       'Read the completed record of rides, deliveries, orders and utility purchases in the Operations Console — for audit, dispute resolution and security enquiries',
@@ -336,6 +356,11 @@ const ROLE_SEEDS = [
     name: 'inspection_officer',
     description:
       'DPX-DRIVER-002 — records driver/vehicle inspection checklists in operations-console',
+  },
+  {
+    name: 'fleet_owner',
+    description:
+      'DPX-FLEET — a company supplying riders and drivers to DrippleX. Reads its own console and manages its own people; never sees another fleet, and never touches KYC',
   },
   {
     name: 'inspection_supervisor',
@@ -499,6 +524,8 @@ const ROLE_PERMISSION_GRANTS = {
     'operations:queues:manage',
     'operations:analytics:read',
     'operations:history:read',
+    'admin:fleets:manage',
+    'admin:fleets:commission:manage',
     'users:read',
     'audit:read',
   ],
@@ -568,6 +595,8 @@ const ROLE_PERMISSION_GRANTS = {
     'operations:queues:manage',
     'operations:analytics:read',
     'operations:history:read',
+    'admin:fleets:manage',
+    'admin:fleets:commission:manage',
     'users:read',
     'users:write',
     'users:delete',
@@ -688,6 +717,8 @@ const ROLE_PERMISSION_GRANTS = {
     'operations:queues:manage',
     'operations:analytics:read',
     'operations:history:read',
+    'admin:fleets:manage',
+    'admin:fleets:commission:manage',
     'users:read',
     'users:write',
     'users:delete',
@@ -699,6 +730,7 @@ const ROLE_PERMISSION_GRANTS = {
     'platform:settings:write',
   ],
   inspection_officer: ['profile:read', 'profile:write', 'inspection:checklist:manage'],
+  fleet_owner: ['profile:read', 'profile:write', 'fleet:own:read', 'fleet:own:manage'],
   inspection_supervisor: [
     'profile:read',
     'profile:write',

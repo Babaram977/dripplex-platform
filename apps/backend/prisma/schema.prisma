@@ -596,6 +596,11 @@ model User {
   deletedAt                   DateTime?                    @map("deleted_at")
   bookingsAsCustomer          Booking[]                    @relation("BookingCustomer")
 
+  /// DPX-FLEET — the fleet this person owns, and the fleet they ride for.
+  /// Separate relations: an owner is not a member of his own fleet.
+  ownedFleet       Fleet?        @relation("FleetOwner")
+  fleetMemberships FleetMember[] @relation("FleetMembership")
+
   @@index([status])
   @@index([deletedAt])
   @@index([registrationChannel])
@@ -1706,6 +1711,12 @@ enum CommissionOwnerType {
   MERCHANT
   DRIVER
   RIDER
+  /// DPX-FLEET — a fleet owner. Founder decision 2026-08-30: the fleet is
+  /// DrippleX's commercial counterparty, not the individual rider. The owner
+  /// supplies the bikes and cars and agrees pay with his riders privately;
+  /// DrippleX charges the fleet a percentage of the delivery fees its members
+  /// earned, at a rate that improves with monthly volume.
+  FLEET
 }
 
 enum CommissionEntryType {
@@ -4330,4 +4341,182 @@ model UtilityPurchase {
   @@index([serviceType, createdAt])
   @@index([providerReference])
   @@map("utility_purchases")
+}
+
+/// DPX-FLEET — a company that supplies riders or drivers to DrippleX.
+///
+/// Founder decision, 2026-08-30, after comparing Talabat's model: nearly all
+/// of Talabat's ~20,000 riders work for fleet partners rather than the
+/// platform. DrippleX takes the same shape — the fleet owns the vehicles,
+/// employs the riders and negotiates their pay; DrippleX supplies the demand
+/// and charges commission on it.
+///
+/// What DrippleX does NOT delegate is who may ride. KYC, identity
+/// verification and onboarding stay with Operations exactly as they are for
+/// every other rider and driver — the fleet decides who it employs, DrippleX
+/// still decides who may work.
+model Fleet {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// The person who signs in to the fleet console. One console per owner.
+  ownerId String @unique @map("owner_id") @db.Uuid
+
+  /// The Fleet DX number the founder specified — the identifier a rider or
+  /// driver is attached by. Human-readable and quotable over the phone,
+  /// because that is how it will actually be used: an owner reads it to
+  /// Operations, who attach the rider to it.
+  fleetNumber String @unique @map("fleet_number") @db.VarChar(20)
+
+  name         String  @db.VarChar(200)
+  contactPhone String? @map("contact_phone") @db.VarChar(20)
+
+  status FleetStatus @default(ACTIVE)
+
+  /// Suspending a fleet stops its members being dispatched without unpicking
+  /// the membership rows, so it is reversible and leaves the history intact.
+  suspendedAt     DateTime? @map("suspended_at")
+  suspendedReason String?   @map("suspended_reason") @db.VarChar(500)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  owner   User                    @relation("FleetOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members FleetMember[]
+  periods FleetCommissionPeriod[]
+
+  @@index([status])
+  @@index([deletedAt])
+  @@map("fleets")
+}
+
+enum FleetStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+/// One rider or driver working under one fleet.
+///
+/// The person keeps their own DrippleX account, their own KYC and their own
+/// wallet. This row only records who they ride for.
+model FleetMember {
+  id      String @id @default(uuid()) @db.Uuid
+  fleetId String @map("fleet_id") @db.Uuid
+  userId  String @map("user_id") @db.Uuid
+
+  role   FleetMemberRole
+  status FleetMemberStatus @default(ACTIVE)
+
+  /// Founder decision 2026-08-30: the owner may deactivate and reactivate his
+  /// own people. Deactivating stops DrippleX dispatching to them while they
+  /// remain on the fleet — a rider whose bike is in for repair, not a rider
+  /// who has left.
+  deactivatedAt     DateTime? @map("deactivated_at")
+  deactivatedReason String?   @map("deactivated_reason") @db.VarChar(500)
+
+  /// Removing detaches the person from the fleet and frees them to join
+  /// another. It never deletes their DrippleX account: closing an account is
+  /// an Operations action with its own commitments check, and one company
+  /// must not be able to erase a person's identity, earnings history or the
+  /// record of trips they have already done.
+  removedAt DateTime? @map("removed_at")
+
+  joinedAt  DateTime @default(now()) @map("joined_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  fleet Fleet @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  user  User  @relation("FleetMembership", fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Null while the membership is over, the user id while it is live — so the
+  /// database itself guarantees nobody rides for two fleets at once. Doing
+  /// this with application checks alone loses to a race between two operators.
+  activeUserId String? @map("active_user_id") @db.Uuid
+
+  @@unique([activeUserId])
+  /// A person may rejoin a fleet they previously left, so this is not unique
+  /// on its own; `activeUserId` below is what stops two live memberships.
+  @@index([fleetId, status])
+  @@index([userId])
+  @@map("fleet_members")
+}
+
+enum FleetMemberRole {
+  RIDER
+  DRIVER
+}
+
+enum FleetMemberStatus {
+  ACTIVE
+  DEACTIVATED
+  REMOVED
+}
+
+/// The volume bands that decide a fleet's commission rate.
+///
+/// Data rather than constants, deliberately. The founder gave 999-4,999 at 8%
+/// and 5,000-9,999 at 6.5% as an illustration ("something like that"), and the
+/// bands below and above those were never set. Operations enters the real
+/// table and edits it per negotiation without waiting for a deploy, which also
+/// means no band was ever invented in code.
+model FleetCommissionTier {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// Inclusive lower bound on completed orders in the calendar month.
+  minOrders Int @map("min_orders")
+
+  /// Inclusive upper bound. Null is the open-ended top band.
+  maxOrders Int? @map("max_orders")
+
+  /// Fraction, not percent: 0.08 is 8%.
+  rate Decimal @db.Decimal(5, 4)
+
+  updatedBy String?  @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([minOrders])
+  @@map("fleet_commission_tiers")
+}
+
+/// One calendar month of a fleet's trading, and the commission it owes.
+///
+/// Founder decision 2026-08-30: the whole month settles at the band the total
+/// volume reaches — cross 5,000 orders and every order that month is charged
+/// at the lower rate, not just the ones after the threshold. That cannot be
+/// known until the month closes, so the running figures here are an estimate
+/// until `settledAt`, and the rate that was finally applied is snapshotted the
+/// way `Ride.platformCommissionRate` already snapshots its own.
+model FleetCommissionPeriod {
+  id      String @id @default(uuid()) @db.Uuid
+  fleetId String @map("fleet_id") @db.Uuid
+
+  /// First instant of the month, in Lagos time, stored as UTC.
+  periodStart DateTime @map("period_start")
+  periodEnd   DateTime @map("period_end")
+
+  /// Completed orders by this fleet's members in the period. This is what
+  /// selects the band.
+  orderCount Int @default(0) @map("order_count")
+
+  /// The delivery fees those orders charged. Commission is a percentage of
+  /// this — founder decision 2026-08-30, "8% of the delivery fee the system
+  /// charges", not of the basket the merchant sold.
+  deliveryFeeTotal Decimal @default(0) @map("delivery_fee_total") @db.Decimal(14, 2)
+
+  /// Null until the month is settled. Snapshotted so a later edit to the tier
+  /// table never rewrites a period that has already been invoiced.
+  appliedRate      Decimal? @map("applied_rate") @db.Decimal(5, 4)
+  commissionAmount Decimal? @map("commission_amount") @db.Decimal(14, 2)
+
+  settledAt DateTime? @map("settled_at")
+  settledBy String?   @map("settled_by") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  fleet Fleet @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+
+  @@unique([fleetId, periodStart])
+  @@index([settledAt])
+  @@map("fleet_commission_periods")
 }
