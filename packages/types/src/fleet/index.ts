@@ -12,9 +12,37 @@ import type { RideStatus } from '../ride/index.js';
  * Who may ride is not delegated. KYC, identity verification and onboarding
  * stay with Operations for fleet riders exactly as for everyone else.
  */
-export type FleetStatus = 'ACTIVE' | 'SUSPENDED';
+/**
+ * `PENDING_APPROVAL` is a fleet an owner registered online: its DX number is
+ * issued so they can give it to their riders, but it is not a billable
+ * DrippleX partner until Operations approves it. `REJECTED` is terminal.
+ */
+export type FleetStatus = 'PENDING_APPROVAL' | 'ACTIVE' | 'SUSPENDED' | 'REJECTED';
 export type FleetMemberRole = 'RIDER' | 'DRIVER';
-export type FleetMemberStatus = 'ACTIVE' | 'DEACTIVATED' | 'REMOVED';
+/**
+ * `PENDING` is a rider who quoted this fleet's number at onboarding and whom
+ * the owner has not confirmed. Not a member: not dispatched as one, not
+ * counted, not billed.
+ */
+export type FleetMemberStatus = 'PENDING' | 'ACTIVE' | 'DEACTIVATED' | 'REMOVED' | 'REJECTED';
+
+/** What an owner sees the moment they finish registering. */
+export interface FleetRegistrationDto {
+  fleetNumber: string;
+  name: string;
+  status: FleetStatus;
+}
+
+/** A rider's own view of the fleet number they entered. */
+export interface FleetJoinRequestDto {
+  memberId: string;
+  fleetNumber: string;
+  fleetName: string;
+  role: FleetMemberRole;
+  status: FleetMemberStatus;
+  requestedAt: string;
+  rejectedReason: string | null;
+}
 
 export interface FleetDto {
   id: string;
@@ -96,11 +124,19 @@ export interface FleetConsoleSummaryDto {
   onlineMembers: number;
   onJobMembers: number;
   deactivatedMembers: number;
+  /** Riders waiting on the owner to confirm they work for this fleet. */
+  pendingRequests: number;
 }
 
 export interface FleetOverviewDto {
   fleet: FleetDto;
   members: FleetMemberDto[];
+  /**
+   * Riders who quoted this fleet's DX number and are waiting to be confirmed.
+   * Separate from `members` because they are not members yet — showing them in
+   * the same list is how an owner ends up confirming people by accident.
+   */
+  pendingRequests: FleetMemberDto[];
   liveJobs: FleetJobDto[];
   period: FleetPeriodDto;
   summary: FleetConsoleSummaryDto;

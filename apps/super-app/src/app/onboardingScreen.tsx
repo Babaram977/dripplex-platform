@@ -48,7 +48,7 @@ const IT = "'Inter',sans-serif";
 const GG = `linear-gradient(135deg,${G0} 0%,${G2} 52%,${G3} 100%)`;
 const BG = `linear-gradient(155deg,${NAVY_DEEP} 0%,${NAVY_BASE} 55%,#0B1D2F 100%)`;
 
-export type PartnerPersona = 'merchant' | 'driver' | 'rider';
+export type PartnerPersona = 'merchant' | 'driver' | 'rider' | 'fleet';
 
 // Split a "Full Name" field into the backend's required firstName + lastName.
 function splitName(full: string): { firstName: string; lastName: string } {
@@ -453,6 +453,18 @@ const ROLES: {
     copy: 'Make deliveries on your schedule, at your own pace',
     accent: G2,
     bg: 'linear-gradient(135deg,rgba(23,107,48,.55),rgba(43,172,82,.18))',
+  },
+  // DPX-FLEET, founder decision 2026-08-30: fleet owners register themselves
+  // online rather than being created by Operations. Same card as the other
+  // three — a fleet is another way to partner with DrippleX, not a new kind of
+  // thing needing its own visual language.
+  {
+    persona: 'fleet',
+    icon: '🏢',
+    title: 'Register your fleet',
+    copy: 'Run your riders and drivers on DrippleX and watch them work',
+    accent: '#A855F7',
+    bg: 'linear-gradient(135deg,rgba(76,29,149,.55),rgba(168,85,247,.18))',
   },
 ];
 
@@ -1162,6 +1174,205 @@ export function RiderSignUpScreen(props: {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// SCREEN — REGISTER A FLEET
+//
+// DPX-FLEET, founder decision 2026-08-30: "The two clients needing fleet
+// registration will go online and register themselves then the system should
+// issue a dx fleet number for them which their riders and drivers will use at
+// onboarding process."
+//
+// Two things this screen has to get right:
+//
+//   The DX number is the deliverable. The owner does not leave here with a
+//   "thanks, we'll be in touch" — they leave with the number they are going to
+//   read out to fifteen riders. So it is shown large, on its own, after
+//   submitting.
+//
+//   It says plainly that DrippleX still has to approve the fleet, and what
+//   that does and does not stop. An owner who thinks they are live and finds
+//   zero earnings a week later was misled by this screen.
+//
+// Built from the same FieldGroup / GreenBtn / ErrorNote pieces as every other
+// signup here — no new visual language.
+// ─────────────────────────────────────────────────────────────────────────────
+export function FleetRegisterScreen({
+  onBack,
+  onDone,
+}: {
+  onBack: () => void;
+  onDone: () => void;
+}) {
+  const [focused, setFocused] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [issued, setIssued] = useState<{ fleetNumber: string; name: string } | null>(null);
+
+  const ready = Boolean(name.trim().length >= 2 && !loading);
+
+  const handleSubmit = async () => {
+    setErr('');
+    setLoading(true);
+    try {
+      const fleet = await api.fleet.register({
+        name: name.trim(),
+        ...(phone.trim() === '' ? {} : { contactPhone: phone.trim() }),
+      });
+      setIssued({ fleetNumber: fleet.fleetNumber, name: fleet.name });
+    } catch (e) {
+      setErr(messageFor(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div
+      className="relative flex h-full w-full flex-col overflow-hidden"
+      style={{ background: BG }}
+    >
+      <Ambient />
+      <StatusBar />
+
+      <div
+        className="relative z-10 flex flex-1 flex-col overflow-y-auto px-7 pt-6"
+        style={{ scrollbarWidth: 'none' }}
+      >
+        <button
+          onClick={onBack}
+          className="mb-5 flex h-9 w-9 items-center justify-center rounded-full transition-opacity active:opacity-70"
+          style={{ background: NAVY_CARD, border: `1px solid ${BORDER}` }}
+          aria-label="Back"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#fff"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+        </button>
+
+        {issued === null ? (
+          <>
+            <div style={{ animation: 'fade-up .45s ease backwards' }}>
+              <h1
+                className="text-[26px] font-bold leading-tight"
+                style={{ fontFamily: PP, color: '#fff', letterSpacing: '-0.02em' }}
+              >
+                Register your fleet
+              </h1>
+              <p className="mt-1.5 text-[14px]" style={{ fontFamily: IT, color: MUTED }}>
+                You will get a Fleet DX number straight away to give your riders and drivers.
+              </p>
+            </div>
+
+            <div
+              className="mt-7 flex flex-col gap-4"
+              style={{ animation: 'fade-up .45s ease .1s backwards' }}
+            >
+              <FieldGroup
+                label="Fleet name"
+                id="fleetName"
+                placeholder="Your company name"
+                value={name}
+                onChange={setName}
+                focused={focused}
+                onFocus={setFocused}
+                onBlur={() => setFocused(null)}
+                helper="How DrippleX and your riders will see your company"
+              />
+              <FieldGroup
+                label="Contact phone"
+                id="fleetPhone"
+                placeholder="Type your phone number"
+                value={phone}
+                onChange={setPhone}
+                focused={focused}
+                onFocus={setFocused}
+                onBlur={() => setFocused(null)}
+                helper="Where DrippleX Operations reaches your fleet (optional)"
+              />
+            </div>
+
+            <div className="mt-6">
+              <ErrorNote message={err} />
+              <GreenBtn
+                label="Register fleet"
+                disabled={!ready}
+                loading={loading}
+                onClick={handleSubmit}
+                icon={<ArrowIcon />}
+              />
+            </div>
+
+            <p
+              className="mt-4 pb-10 text-center text-[12px]"
+              style={{ fontFamily: IT, color: 'rgba(255,255,255,.24)' }}
+            >
+              DrippleX Operations reviews every fleet before it starts trading
+            </p>
+          </>
+        ) : (
+          <div style={{ animation: 'fade-up .45s ease backwards' }}>
+            <h1
+              className="text-[26px] font-bold leading-tight"
+              style={{ fontFamily: PP, color: '#fff', letterSpacing: '-0.02em' }}
+            >
+              {issued.name} is registered
+            </h1>
+            <p className="mt-1.5 text-[14px]" style={{ fontFamily: IT, color: MUTED }}>
+              This is your Fleet DX number. Give it to every rider and driver who works for you —
+              they enter it when they sign up with DrippleX.
+            </p>
+
+            {/* The number is what the owner came here for, so it gets the room. */}
+            <div
+              className="mt-7 rounded-3xl px-6 py-8 text-center"
+              style={{ background: NAVY_CARD, border: `1.5px solid rgba(71,207,114,.3)` }}
+            >
+              <p
+                className="text-[11px] uppercase"
+                style={{ fontFamily: IT, color: MUTED, letterSpacing: '0.14em' }}
+              >
+                Fleet DX number
+              </p>
+              <p
+                className="mt-2 text-[30px] font-bold"
+                style={{ fontFamily: PP, color: G3, letterSpacing: '0.02em' }}
+              >
+                {issued.fleetNumber}
+              </p>
+            </div>
+
+            <div
+              className="mt-6 rounded-2xl px-5 py-4"
+              style={{ background: NAVY_CARD, border: `1px solid ${BORDER}` }}
+            >
+              <p className="text-[13px] leading-relaxed" style={{ fontFamily: IT, color: MUTED }}>
+                DrippleX Operations is reviewing your fleet. Your riders can enter this number now
+                and their requests will wait in your console for you to confirm — nothing is counted
+                or charged to you until your fleet is approved.
+              </p>
+            </div>
+
+            <div className="mt-6 pb-10">
+              <GreenBtn label="Done" onClick={onDone} icon={<ArrowIcon />} />
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // SCREEN 5 — DRIVER DOCUMENTS + VEHICLE DETAILS
 // Backend-wired: uploads each image to storage, submits the three required KYC
 // documents and registers the vehicle. (The note that used to sit here said the
@@ -1695,6 +1906,8 @@ export function RiderDocumentsScreen({
   const [gurFile, setGurFile] = useState<File | null>(null);
 
   const [companyName, setCompanyName] = useState('');
+  const [fleetNumber, setFleetNumber] = useState('');
+  const [fleetNote, setFleetNote] = useState('');
 
   const ready = Boolean(idNum && gurNum && idFile && gurFile && !loading);
 
@@ -1722,6 +1935,18 @@ export function RiderDocumentsScreen({
       });
       if (companyName.trim()) {
         await api.rider.updateProfile({ companyName: companyName.trim() });
+      }
+      // The fleet number is optional and deliberately cannot fail the
+      // submission: the rider's KYC is already in by this point, and a
+      // mistyped fleet number must not cost them their onboarding. A bad
+      // number is reported here and can be fixed with the fleet owner later.
+      if (fleetNumber.trim()) {
+        try {
+          const req = await api.fleet.requestToJoin(fleetNumber.trim().toUpperCase());
+          setFleetNote(`Sent to ${req.fleetName}. They will confirm you.`);
+        } catch (fleetError) {
+          setFleetNote(messageFor(fleetError));
+        }
       }
       setIdStatus('verified');
       setGurStatus('verified');
@@ -1810,6 +2035,26 @@ export function RiderDocumentsScreen({
             onBlur={() => setFocused(null)}
             helper="The company you deliver for (optional)"
           />
+          {/* DPX-FLEET, founder decision 2026-08-30: riders quote the number
+              their fleet owner gave them. It is not a KYC field and does not
+              gate the submission — a rider who does not have one, or types it
+              wrong, still completes onboarding exactly as before. */}
+          <FieldGroup
+            label="Fleet DX number"
+            id="fleetNumber"
+            placeholder="DX-FL-0001"
+            value={fleetNumber}
+            onChange={setFleetNumber}
+            focused={focused}
+            onFocus={setFocused}
+            onBlur={() => setFocused(null)}
+            helper="If you ride for a fleet, enter the number they gave you (optional)"
+          />
+          {fleetNote !== '' && (
+            <p className="text-[12px]" style={{ fontFamily: IT, color: 'rgba(255,255,255,.55)' }}>
+              {fleetNote}
+            </p>
+          )}
         </div>
 
         <ErrorNote message={err} />
@@ -2096,16 +2341,29 @@ const MERCHANT_STEPS: ReviewStep[] = [
   { label: 'Account approved', done: false },
 ];
 
+/**
+ * A fleet's two stages. Deliberately short: unlike a rider, a fleet submits no
+ * documents and sits through no KYC — DrippleX either recognises the company
+ * or it does not. Listing document stages here would promise a review that
+ * does not happen.
+ */
+const FLEET_STEPS: ReviewStep[] = [
+  { label: 'Fleet registered', done: true },
+  { label: 'DrippleX approval', done: false },
+];
+
 const STEP_MAP: Record<PartnerPersona, ReviewStep[]> = {
   merchant: MERCHANT_STEPS,
   driver: DRIVER_STEPS,
   rider: RIDER_STEPS,
+  fleet: FLEET_STEPS,
 };
 
 const PERSONA_META: Record<PartnerPersona, { icon: string; label: string; accent: string }> = {
   merchant: { icon: '🛍', label: 'Merchant', accent: '#F97316' },
   driver: { icon: '🚗', label: 'Driver', accent: '#3B82F6' },
   rider: { icon: '🚴', label: 'Rider', accent: G2 },
+  fleet: { icon: '🏢', label: 'Fleet', accent: '#A855F7' },
 };
 
 export function PendingReviewScreen({

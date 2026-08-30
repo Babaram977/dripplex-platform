@@ -10,7 +10,9 @@ import type {
   FleetCommissionTierDto,
   FleetDto,
   FleetJobDto,
+  FleetJoinRequestDto,
   FleetMemberDto,
+  FleetRegistrationDto,
   FleetOverviewDto,
   FleetPeriodDto,
   InitiatedCallDto,
@@ -31,6 +33,8 @@ export type {
   FleetDto,
   FleetCommissionTierDto,
   AdminFleetListItemDto,
+  FleetRegistrationDto,
+  FleetJoinRequestDto,
 };
 
 export type {
@@ -3169,6 +3173,35 @@ export const api = {
   },
 
   // ── RIDER (delivery) ────────────────────────────────────────────────────────
+  /**
+   * DPX-FLEET self-service — the two things a person does for themselves.
+   *
+   * Separate from `api.admin`'s fleet block: those routes take a fleet id and
+   * need an Operations permission, while these are scoped to whoever is signed
+   * in and carry none. Founder decision, 2026-08-30: owners register online
+   * and riders quote the DX number at onboarding.
+   */
+  fleet: {
+    /** Issues the DX number immediately; DrippleX approves the fleet after. */
+    register: (body: { name: string; contactPhone?: string }) =>
+      dx<FleetRegistrationDto>('POST', '/fleet/register', body),
+    /** Creates a request the fleet owner confirms — never a membership. */
+    requestToJoin: (fleetNumber: string) =>
+      dx<FleetJoinRequestDto>('POST', '/fleet/join', { fleetNumber }),
+    /** What the rider is waiting on, so their app can say so. */
+    joinStatus: () => dx<FleetJoinRequestDto | null>('GET', '/fleet/join/status'),
+    /** The owner's own queue of riders who quoted their number. */
+    listRequests: () => dx<FleetMemberDto[]>('GET', '/fleet/requests'),
+    approveRequest: (memberId: string) =>
+      dx<FleetMemberDto[]>('POST', `/fleet/requests/${memberId}/approve`, {}),
+    rejectRequest: (memberId: string, reason?: string) =>
+      dx<FleetMemberDto[]>(
+        'POST',
+        `/fleet/requests/${memberId}/reject`,
+        reason === undefined ? {} : { reason },
+      ),
+  },
+
   rider: {
     ...partnerPayouts('rider'),
     getJobs: () => dx<RiderDeliveryJobDto[]>('GET', '/rider/jobs'),
@@ -3751,6 +3784,13 @@ export const api = {
     /** `userId`, not a driver/rider profile id — the roster rows carry both. */
     addFleetMember: (body: { fleetNumber: string; userId: string; role: 'RIDER' | 'DRIVER' }) =>
       dx<{ memberId: string }>('POST', '/admin/fleets/members', body),
+    /**
+     * Lets a self-registered fleet start trading. Until this, riders can quote
+     * its number but nothing counts and no commission accrues.
+     */
+    approveFleet: (fleetId: string) => dx<FleetDto>('POST', `/admin/fleets/${fleetId}/approve`, {}),
+    rejectFleet: (fleetId: string, reason: string) =>
+      dx<FleetDto>('POST', `/admin/fleets/${fleetId}/reject`, { reason }),
     suspendFleet: (fleetId: string, reason: string) =>
       dx<FleetDto>('POST', `/admin/fleets/${fleetId}/suspend`, { reason }),
     reinstateFleet: (fleetId: string) =>

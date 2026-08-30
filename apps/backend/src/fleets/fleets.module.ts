@@ -7,6 +7,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 
 import { AdminFleetsController } from './controllers/admin-fleets.controller';
 import { FleetOwnerController } from './controllers/fleet-owner.controller';
+import { FleetSelfServiceController } from './controllers/fleet-self-service.controller';
 import { FleetCommissionService } from './fleet-commission.service';
 import { FleetJobSubscriber } from './fleet-job.subscriber';
 import { FleetOverviewService } from './fleet-overview.service';
@@ -31,7 +32,11 @@ import { FleetsService } from './fleets.service';
  */
 @Module({
   imports: [PrismaModule, AuditModule, CommercialModule, EventsModule],
-  controllers: [FleetOwnerController, AdminFleetsController],
+  // Self-service first: its routes are static (`/fleet/register`,
+  // `/fleet/join`) and carry no permission gate, while everything on the owner
+  // controller is behind `fleet:own:read` — which the person registering a
+  // fleet does not have yet.
+  controllers: [FleetSelfServiceController, FleetOwnerController, AdminFleetsController],
   providers: [FleetsService, FleetOverviewService, FleetCommissionService, FleetJobSubscriber],
   exports: [FleetsService, FleetOverviewService, FleetCommissionService],
 })

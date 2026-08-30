@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
-import { DeactivateFleetMemberDto } from '../dto/fleet.dto';
+import { DeactivateFleetMemberDto, RejectFleetJoinRequestDto } from '../dto/fleet.dto';
 import { FleetOverviewService } from '../fleet-overview.service';
 import { FLEET_PERMISSIONS } from '../fleet.constants';
 import { FleetsService } from '../fleets.service';
@@ -58,6 +58,58 @@ export class FleetOwnerController {
   ): Promise<ApiSuccessResponse<FleetJobDto[]>> {
     const fleet = await this.fleets.requireFleetOwnedBy(user.id);
     const data = await this.overview.listLiveJobs(fleet.id);
+    return { success: true, data };
+  }
+
+  /**
+   * Riders who quoted this fleet's DX number and are waiting on the owner.
+   *
+   * The confirmation step exists because the rider typed the number
+   * themselves. Without it, anyone could type any company's number and that
+   * company would be invoiced for their jobs.
+   */
+  @Get('requests')
+  public async listRequests(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ApiSuccessResponse<FleetMemberDto[]>> {
+    const fleet = await this.fleets.requireFleetOwnedBy(user.id);
+    const data = await this.overview.listPendingRequests(fleet.id);
+    return { success: true, data };
+  }
+
+  @Post('requests/:memberId/approve')
+  @RequirePermissions(FLEET_PERMISSIONS.OWN_MANAGE)
+  public async approveRequest(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('memberId') memberId: string,
+  ): Promise<ApiSuccessResponse<FleetMemberDto[]>> {
+    const fleet = await this.fleets.requireFleetOwnedBy(user.id);
+    await this.fleets.approveJoinRequest({
+      fleetId: fleet.id,
+      memberId,
+      ownerUserId: user.id,
+      context: { userId: user.id },
+    });
+    const data = await this.overview.listMembers(fleet.id);
+    return { success: true, data };
+  }
+
+  @Post('requests/:memberId/reject')
+  @RequirePermissions(FLEET_PERMISSIONS.OWN_MANAGE)
+  public async rejectRequest(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('memberId') memberId: string,
+    @Body() dto: RejectFleetJoinRequestDto,
+  ): Promise<ApiSuccessResponse<FleetMemberDto[]>> {
+    const fleet = await this.fleets.requireFleetOwnedBy(user.id);
+    await this.fleets.rejectJoinRequest({
+      fleetId: fleet.id,
+      memberId,
+      ...(dto.reason !== undefined ? { reason: dto.reason } : {}),
+      ownerUserId: user.id,
+      context: { userId: user.id },
+    });
+    const data = await this.overview.listPendingRequests(fleet.id);
     return { success: true, data };
   }
 

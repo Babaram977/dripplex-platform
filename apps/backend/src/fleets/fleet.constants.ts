@@ -44,10 +44,18 @@ export const FLEET_COMMISSION_REFERENCE_TYPE = 'fleet_commission_period';
 
 export const FLEET_AUDIT_ACTIONS = {
   CREATED: 'fleet.created',
+  /** An owner registering their own company online, not Operations creating it. */
+  REGISTERED: 'fleet.registered',
+  APPROVED: 'fleet.approved',
+  APPLICATION_REJECTED: 'fleet.application_rejected',
   UPDATED: 'fleet.updated',
   SUSPENDED: 'fleet.suspended',
   REINSTATED: 'fleet.reinstated',
   MEMBER_ADDED: 'fleet.member.added',
+  /** A rider quoted this fleet's DX number during their own onboarding. */
+  MEMBER_REQUESTED: 'fleet.member.requested',
+  MEMBER_REQUEST_APPROVED: 'fleet.member.request_approved',
+  MEMBER_REQUEST_REJECTED: 'fleet.member.request_rejected',
   MEMBER_DEACTIVATED: 'fleet.member.deactivated',
   MEMBER_REACTIVATED: 'fleet.member.reactivated',
   MEMBER_REMOVED: 'fleet.member.removed',

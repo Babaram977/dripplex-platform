@@ -5,6 +5,7 @@ import { RequirePermissions } from '../../common/decorators/permissions.decorato
 import {
   AddFleetMemberDto,
   CreateFleetDto,
+  RejectFleetDto,
   ReplaceFleetCommissionTiersDto,
   SetFleetNegotiatedRateDto,
   SettleFleetPeriodDto,
@@ -112,6 +113,42 @@ export class AdminFleetsController {
       context: { userId: user.id },
     });
     return { success: true, data: { memberId: member.id } };
+  }
+
+  /**
+   * Approving a fleet an owner registered online.
+   *
+   * This is the moment it becomes a billable DrippleX partner: before it,
+   * riders can quote its number but nothing counts and nothing accrues.
+   * Founder's locked rule — DrippleX decides who may work — applied to the
+   * company as well as to the individual rider.
+   */
+  @Post(':fleetId/approve')
+  public async approveFleet(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('fleetId') fleetId: string,
+  ): Promise<ApiSuccessResponse<FleetDto>> {
+    const fleet = await this.fleets.approveFleet({
+      fleetId,
+      adminUserId: user.id,
+      context: { userId: user.id },
+    });
+    return { success: true, data: toFleetDto(fleet) };
+  }
+
+  @Post(':fleetId/reject')
+  public async rejectFleet(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('fleetId') fleetId: string,
+    @Body() dto: RejectFleetDto,
+  ): Promise<ApiSuccessResponse<FleetDto>> {
+    const fleet = await this.fleets.rejectFleet({
+      fleetId,
+      reason: dto.reason,
+      adminUserId: user.id,
+      context: { userId: user.id },
+    });
+    return { success: true, data: toFleetDto(fleet) };
   }
 
   @Post(':fleetId/suspend')

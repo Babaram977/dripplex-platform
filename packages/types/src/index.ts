@@ -702,4 +702,6 @@ export type {
   FleetOverviewDto,
   FleetCommissionTierDto,
   AdminFleetListItemDto,
+  FleetRegistrationDto,
+  FleetJoinRequestDto,
 } from './fleet/index.js';

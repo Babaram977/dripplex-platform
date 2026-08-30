@@ -172,6 +172,7 @@ import {
   DriverDocumentsScreen,
   RiderDocumentsScreen,
   BusinessDetailsScreen,
+  FleetRegisterScreen,
   PendingReviewScreen,
 } from './onboardingScreen';
 import type { PartnerPersona } from './onboardingScreen';
@@ -471,6 +472,7 @@ type Screen =
   | 'partnerdocs'
   | 'riderdocs'
   | 'partnerbusiness'
+  | 'fleetregister'
   | 'partnerreview';
 
 /**
@@ -1983,6 +1985,14 @@ function AppShell() {
       <PartnerChoiceScreen
         onSelect={(p) => {
           setPartnerPersona(p);
+          // DPX-FLEET: registering a fleet is done as an existing DrippleX
+          // account — the endpoint takes the owner from the signed-in user
+          // rather than a body field, so an unauthenticated tap goes to sign
+          // in first instead of a form that could only fail.
+          if (p === 'fleet') {
+            go(auth.getAccessToken() ? 'fleetregister' : 'signin');
+            return;
+          }
           go(
             p === 'merchant'
               ? 'partnermerchant'
@@ -2062,6 +2072,14 @@ function AppShell() {
       <DriverDocumentsScreen
         onBack={() => goBack('partnerdriver')}
         onSubmit={() => go('partnerreview')}
+      />
+    ),
+    fleetregister: (
+      <FleetRegisterScreen
+        onBack={() => goBack('partnerselect')}
+        // Straight to the fleet console: the owner's DX number is issued, and
+        // what they want next is to watch for their riders' requests.
+        onDone={() => go('home')}
       />
     ),
     riderdocs: (
