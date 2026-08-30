@@ -4,7 +4,7 @@ Use this draft when creating the Play Console listing. Replace placeholders befo
 
 ## Developer account — legal entity
 
-**Founder decision 2026-08-30: DrippleX publishes under an *organization* Play
+**Founder decision 2026-08-30: DrippleX publishes under an _organization_ Play
 developer account**, in the name of AFNAN HOMES LTD — not an individual account.
 That is what makes the D-U-N-S below required rather than optional.
 
@@ -12,14 +12,14 @@ These are the values the Play Console asks for on an organization account. They
 must match the Dun & Bradstreet record exactly, character for character — Google
 verifies against it.
 
-| Field                  | Value                                                                       |
-| ---------------------- | --------------------------------------------------------------------------- |
-| Legal entity           | **AFNAN HOMES LTD** — not "DrippleX", which is its trading name             |
-| RC number              | RC 9387949                                                                   |
-| Entity type            | Private Limited Liability Company                                            |
-| **D-U-N-S number**     | **352296291**                                                                |
-| Registered address     | No. 58–60 UDB Road, By Tarauni Primary, Nasarawa, Kano, Kano State, Nigeria |
-| Telephone of record    | +234 803 973 9780                                                            |
+| Field               | Value                                                                       |
+| ------------------- | --------------------------------------------------------------------------- |
+| Legal entity        | **AFNAN HOMES LTD** — not "DrippleX", which is its trading name             |
+| RC number           | RC 9387949                                                                  |
+| Entity type         | Private Limited Liability Company                                           |
+| **D-U-N-S number**  | **352296291**                                                               |
+| Registered address  | No. 58–60 UDB Road, By Tarauni Primary, Nasarawa, Kano, Kano State, Nigeria |
+| Telephone of record | +234 803 973 9780                                                           |
 
 The D-U-N-S was issued by Dun & Bradstreet on **2026-08-28 10:09 UTC** (case
 10859055, tracking 10797660, request key BVD5Z3B3P9) and verified through the
@@ -117,16 +117,31 @@ from it, not from this page, and keep it in step with
 `ios/App/App/PrivacyInfo.xcprivacy` — Play requires the declaration to match what
 the app actually collects.
 
-Ten types, matching the Apple manifest one for one:
+The seven Play categories below cover the same collection the Apple manifest
+describes in its eleven types. They are **not** row-for-row: Play splits
+government ID and date of birth out of "Other data" and has an App activity
+category Apple has no equivalent for, so match on substance, not on count.
 
-| Play category      | Type                                                          |
-| ------------------ | ------------------------------------------------------------- |
-| Personal info      | Name, Email address, Phone number, Address                    |
-| Location           | Precise location                                              |
-| Photos and videos  | Photos (receipts, KYC documents)                              |
-| Financial info     | Payment info (merchant payout bank account), Purchase history |
-| Device or other ID | Device ID (push token)                                        |
-| App info           | Other data types                                              |
+This table used to claim ten types and omit **Audio** entirely — the app
+declares `RECORD_AUDIO` for in-app voice calls, so a Data Safety form filled in
+from the old table under-declared a dangerous permission:
+
+| Play category       | Type                                                                             |
+| ------------------- | -------------------------------------------------------------------------------- |
+| Personal info       | Name, Email address, Phone number, Address, Government ID, Other (date of birth) |
+| Location            | Precise location                                                                 |
+| Photos and videos   | Photos — profile, store listings, KYC documents                                  |
+| Audio               | Voice or sound recordings — live in-app calls only, never recorded or stored     |
+| Financial info      | Purchase history, Other (bank account for merchant payouts)                      |
+| App activity        | Other actions — order and in-app activity                                        |
+| Device or other IDs | Device ID (push token)                                                           |
+
+**On Audio.** Nothing is recorded and nothing is stored. The microphone track
+exists only while a call is joined, LiveKit relays it, and the backend holds who
+called whom, when and for how long — never the audio. Declare it as collected,
+not shared, in-app functionality. It is declared rather than treated as
+transient because the honest answer survives a reviewer's second look and
+"transient, therefore not collected" does not.
 
 **Do not declare crash logs or performance data.** An earlier version of this
 page said to, and it was wrong: Sentry's hook returns early unless `SENTRY_DSN`
@@ -136,6 +151,12 @@ is ever set, both declarations change together.
 
 **No tracking.** No advertising, attribution or analytics SDK is in the
 dependency tree.
+
+**Service providers, not sharing.** Payments, SMS, email, push, object storage,
+geocoding and call relay all run through processors acting on our instructions
+under contract — Paystack, Flutterwave and Peyflex, Termii, Resend, Firebase,
+Cloudflare R2, Google Maps and LiveKit. Play distinguishes that from sharing;
+declare them as service providers. `DPX-MOBILE-003` §3 carries the full list.
 
 Card numbers are never collected — Paystack and Flutterwave hold them, and the
 schema has no `cardNumber`/`cvv`/`pan`. "Payment info" above is the merchant
