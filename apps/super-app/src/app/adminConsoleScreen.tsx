@@ -15,6 +15,8 @@ import {
   type AdminFleetSummaryDto,
   type AdminLiveRideDto,
   type DeliveryHistoryDto,
+  type FleetMemberDto,
+  type FleetOverviewDto,
   type OrderHistoryDto,
   type RideHistoryDto,
   type UtilityPurchaseHistoryDto,
@@ -87,6 +89,7 @@ export type AdminPage =
   | 'livemap'
   | 'trips'
   | 'history'
+  | 'myfleet'
   | 'drivers'
   | 'drvkyc'
   | 'vehicles'
@@ -568,6 +571,7 @@ const NAV_ITEMS: { page: AdminPage; icon: string; label: string }[] = [
   { page: 'livemap', icon: '🗺️', label: 'Live Map' },
   { page: 'trips', icon: '🚗', label: 'Trips' },
   { page: 'history', icon: '🗂️', label: 'History' },
+  { page: 'myfleet', icon: '🚚', label: 'My Fleet' },
   { page: 'drivers', icon: '🧑‍✈️', label: 'Drivers' },
   { page: 'drvkyc', icon: '🪪', label: 'Driver KYC' },
   { page: 'vehicles', icon: '🔑', label: 'Vehicles' },
@@ -748,6 +752,7 @@ const PAGE_LABELS: Record<AdminPage, string> = {
   livemap: 'Live Map',
   trips: 'Trips',
   history: 'History — completed records',
+  myfleet: 'My Fleet',
   drivers: 'Drivers',
   drvkyc: 'Driver KYC',
   vehicles: 'Vehicles',
@@ -2007,6 +2012,408 @@ function lifecycleLabelFromFleet(s: AdminFleetDriverDto['status']): string {
     .split('_')
     .map((w) => w.charAt(0) + w.slice(1).toLowerCase())
     .join(' ');
+}
+
+// ─── Page: My Fleet ───────────────────────────────────────────────────────────
+// DPX-FLEET — the fleet owner's own console (founder decision, 2026-08-30).
+//
+// Scoped to the signed-in owner's fleet by the server: there is no fleet id in
+// any of these calls, so this screen cannot be pointed at another company.
+//
+// Deliberately built from the same Card / Btn / table pieces as every other
+// page here rather than a new visual language — a fleet owner and an operator
+// should be looking at the same product.
+function PageMyFleet() {
+  const [overview, setOverview] = useState<FleetOverviewDto | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busyMemberId, setBusyMemberId] = useState<string | null>(null);
+  const [rowMsg, setRowMsg] = useState<string | null>(null);
+  // Removing takes a rider off the fleet, so it asks first.
+  const [removing, setRemoving] = useState<FleetMemberDto | null>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      setOverview(await api.admin.getFleetOverview());
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load your fleet.');
+      setOverview(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const act = useCallback(
+    async (member: FleetMemberDto, action: 'deactivate' | 'reactivate' | 'remove') => {
+      setBusyMemberId(member.memberId);
+      setRowMsg(null);
+      try {
+        const members =
+          action === 'deactivate'
+            ? await api.admin.deactivateFleetMember(member.memberId)
+            : action === 'reactivate'
+              ? await api.admin.reactivateFleetMember(member.memberId)
+              : await api.admin.removeFleetMember(member.memberId);
+        setOverview((current) => (current === null ? current : { ...current, members }));
+        setRowMsg(
+          action === 'remove'
+            ? `${member.name} removed from your fleet. Their DrippleX account is untouched.`
+            : action === 'deactivate'
+              ? `${member.name} deactivated — they will not be sent work.`
+              : `${member.name} is active again.`,
+        );
+        setRemoving(null);
+      } catch (e: unknown) {
+        setRowMsg((e as { message?: string }).message ?? 'That did not work.');
+      } finally {
+        setBusyMemberId(null);
+      }
+    },
+    [],
+  );
+
+  if (error !== null) {
+    return (
+      <Card style={{ padding: '14px 16px' }}>
+        <div style={{ fontSize: 12.5, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>{error}</div>
+      </Card>
+    );
+  }
+
+  if (overview === null) {
+    return (
+      <Card style={{ padding: '14px 16px' }}>
+        <div style={{ fontSize: 12.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          Loading…
+        </div>
+      </Card>
+    );
+  }
+
+  const { fleet, members, liveJobs, period, summary } = overview;
+  const c = (n: number) => String(n);
+  const money = (value: number) => `₦${Math.round(value).toLocaleString()}`;
+  const pct = (rate: number | null) =>
+    rate === null ? '—' : `${String(Math.round(rate * 1000) / 10)}%`;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <Card style={{ padding: '14px 16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <div
+            style={{ fontSize: 15, fontWeight: 700, color: WHITE, fontFamily: 'Inter, sans-serif' }}
+          >
+            {fleet.name}
+          </div>
+          <Chip label={fleet.fleetNumber} bg={G3} />
+          {fleet.status === 'SUSPENDED' && <Chip label="Suspended" bg={C_ERR} />}
+        </div>
+        {fleet.suspendedReason !== null && (
+          <div
+            style={{ marginTop: 8, fontSize: 12, color: C_ERR, fontFamily: 'Inter, sans-serif' }}
+          >
+            {fleet.suspendedReason}
+          </div>
+        )}
+      </Card>
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+          gap: 12,
+        }}
+      >
+        <KpiCard
+          label="Riders & Drivers"
+          value={c(summary.totalMembers)}
+          sub="On your fleet"
+          color={G3}
+          icon="🛵"
+        />
+        <KpiCard
+          label="Online"
+          value={c(summary.onlineMembers)}
+          sub="Right now"
+          color={G3}
+          icon="🟢"
+        />
+        <KpiCard
+          label="On a job"
+          value={c(summary.onJobMembers)}
+          sub="Working"
+          color={G3}
+          icon="📦"
+        />
+        <KpiCard
+          label="Deactivated"
+          value={c(summary.deactivatedMembers)}
+          sub="Not sent work"
+          color={MUTED}
+          icon="⏸️"
+        />
+      </div>
+
+      {/* The running month. Everything here is an estimate until the month
+          closes, because the rate depends on the final volume — crossing a
+          band re-prices every order before it. The wording says so rather
+          than showing a confident number that will move. */}
+      <Card style={{ padding: '14px 16px' }}>
+        <div
+          style={{ fontSize: 12.5, fontWeight: 600, color: WHITE, fontFamily: 'Inter, sans-serif' }}
+        >
+          This month so far
+        </div>
+        <div
+          style={{
+            marginTop: 10,
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+            gap: 12,
+            fontFamily: 'Inter, sans-serif',
+          }}
+        >
+          {[
+            ['Jobs', c(period.orderCount)],
+            // Delivery fees and trip fares together — both are charged on.
+            ['Fees & fares', money(period.chargeableTotal)],
+            [
+              period.settled ? 'Rate charged' : 'Rate at this volume',
+              pct(period.settled ? period.appliedRate : period.projectedRate),
+            ],
+            [
+              period.settled ? 'Commission' : 'Estimated commission',
+              period.settled
+                ? money(period.commissionAmount ?? 0)
+                : period.projectedCommission === null
+                  ? '—'
+                  : money(period.projectedCommission),
+            ],
+          ].map(([label, value]) => (
+            <div key={label}>
+              <div style={{ fontSize: 11, color: MUTED }}>{label}</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: WHITE, marginTop: 2 }}>
+                {value}
+              </div>
+            </div>
+          ))}
+        </div>
+        {!period.settled && (
+          <div
+            style={{ marginTop: 10, fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}
+          >
+            {period.projectedRate === null
+              ? 'No commission band covers this volume yet — DrippleX Operations will confirm your rate.'
+              : 'An estimate. Your whole month is charged at the band your final volume reaches, so this can still improve.'}
+          </div>
+        )}
+      </Card>
+
+      <Card style={{ padding: '14px 16px' }}>
+        <div
+          style={{ fontSize: 12.5, fontWeight: 600, color: WHITE, fontFamily: 'Inter, sans-serif' }}
+        >
+          Working now
+        </div>
+        {liveJobs.length === 0 ? (
+          <div
+            style={{ marginTop: 8, fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}
+          >
+            Nobody is on a job right now.
+          </div>
+        ) : (
+          <table
+            style={{
+              width: '100%',
+              borderCollapse: 'collapse',
+              fontFamily: 'Inter, sans-serif',
+              marginTop: 8,
+            }}
+          >
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
+                {['Who', 'Job', 'Status', 'Amount'].map((h) => (
+                  <th
+                    key={h}
+                    style={{
+                      padding: '7px 8px',
+                      textAlign: 'left',
+                      fontSize: 11,
+                      color: MUTED,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {liveJobs.map((job) => (
+                <tr key={job.jobId} style={{ borderBottom: `1px solid ${BORDER}` }}>
+                  <td style={{ padding: '9px 8px', fontSize: 12, color: WHITE }}>
+                    {job.memberName}
+                  </td>
+                  <td style={{ padding: '9px 8px', fontSize: 12, color: MUTED }}>
+                    {job.kind === 'RIDE' ? 'Trip' : 'Delivery'}
+                  </td>
+                  <td style={{ padding: '9px 8px', fontSize: 12, color: MUTED }}>{job.status}</td>
+                  <td style={{ padding: '9px 8px', fontSize: 12, color: WHITE }}>
+                    {money(job.amount)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Card>
+
+      {removing !== null && (
+        <Card style={{ padding: '14px 16px' }}>
+          <div style={{ fontSize: 12.5, color: WHITE, fontFamily: 'Inter, sans-serif' }}>
+            Remove {removing.name} from your fleet?
+          </div>
+          <div
+            style={{ marginTop: 6, fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}
+          >
+            They stop receiving your work and can join another fleet. Their DrippleX account,
+            earnings and past trips stay exactly as they are.
+          </div>
+          <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
+            <Btn
+              label={busyMemberId === removing.memberId ? 'Removing…' : 'Yes, remove'}
+              small
+              color={C_ERR}
+              onClick={() => {
+                void act(removing, 'remove');
+              }}
+            />
+            <Btn
+              label="Cancel"
+              small
+              outline
+              color={G3}
+              onClick={() => {
+                setRemoving(null);
+              }}
+            />
+          </div>
+        </Card>
+      )}
+
+      <Card style={{ padding: '14px 16px' }}>
+        <table
+          style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Inter, sans-serif' }}
+        >
+          <thead>
+            <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
+              {['Name', 'Phone', 'Role', 'Status', 'This month', 'Gross', 'Actions'].map((h) => (
+                <th
+                  key={h}
+                  style={{
+                    padding: '7px 8px',
+                    textAlign: 'left',
+                    fontSize: 11,
+                    color: MUTED,
+                    fontWeight: 600,
+                  }}
+                >
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {members.map((member) => {
+              const busy = busyMemberId === member.memberId;
+              return (
+                <tr key={member.memberId} style={{ borderBottom: `1px solid ${BORDER}` }}>
+                  <td style={{ padding: '9px 8px', fontSize: 12, color: WHITE }}>
+                    {member.name}
+                    {member.onJob && <span style={{ color: G3 }}> · on a job</span>}
+                    {!member.onJob && member.online && <span style={{ color: G3 }}> · online</span>}
+                  </td>
+                  <td style={{ padding: '9px 8px', fontSize: 12, color: MUTED }}>
+                    {member.phone ?? '—'}
+                  </td>
+                  <td style={{ padding: '9px 8px', fontSize: 12, color: MUTED }}>
+                    {member.role === 'RIDER' ? 'Rider' : 'Driver'}
+                  </td>
+                  <td
+                    style={{
+                      padding: '9px 8px',
+                      fontSize: 12,
+                      color: member.status === 'ACTIVE' ? WHITE : MUTED,
+                    }}
+                  >
+                    {member.status === 'ACTIVE' ? 'Active' : 'Deactivated'}
+                  </td>
+                  <td style={{ padding: '9px 8px', fontSize: 12, color: WHITE }}>
+                    {c(member.completedThisMonth)}
+                  </td>
+                  <td style={{ padding: '9px 8px', fontSize: 12, color: WHITE }}>
+                    {money(member.grossThisMonth)}
+                  </td>
+                  <td style={{ padding: '9px 8px' }}>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {member.status === 'ACTIVE' ? (
+                        <Btn
+                          label={busy ? '…' : 'Deactivate'}
+                          small
+                          outline
+                          color={MUTED}
+                          onClick={() => {
+                            void act(member, 'deactivate');
+                          }}
+                        />
+                      ) : (
+                        <Btn
+                          label={busy ? '…' : 'Activate'}
+                          small
+                          outline
+                          color={G3}
+                          onClick={() => {
+                            void act(member, 'reactivate');
+                          }}
+                        />
+                      )}
+                      <Btn
+                        label="Remove"
+                        small
+                        outline
+                        color={C_ERR}
+                        onClick={() => {
+                          setRowMsg(null);
+                          setRemoving(member);
+                        }}
+                      />
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {members.length === 0 && (
+          <div
+            style={{ marginTop: 10, fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}
+          >
+            Nobody on your fleet yet. Give DrippleX Operations your fleet number {fleet.fleetNumber}{' '}
+            and they will attach your riders once each has finished their own checks.
+          </div>
+        )}
+        {rowMsg !== null && (
+          <div
+            style={{ marginTop: 10, fontSize: 11.5, color: WHITE, fontFamily: 'Inter, sans-serif' }}
+          >
+            {rowMsg}
+          </div>
+        )}
+      </Card>
+    </div>
+  );
 }
 
 // ─── Page: History ────────────────────────────────────────────────────────────
@@ -10011,6 +10418,8 @@ function renderPage(page: AdminPage) {
       return <PageTrips />;
     case 'history':
       return <PageHistory />;
+    case 'myfleet':
+      return <PageMyFleet />;
     case 'drivers':
       return <PageDrivers />;
     case 'drvkyc':

@@ -4,6 +4,7 @@ import { AuditModule } from '../audit/audit.module';
 import { AuthModule } from '../auth/auth.module';
 import { CommercialModule } from '../commercial/commercial.module';
 import { DriversModule } from '../drivers/drivers.module';
+import { FleetsModule } from '../fleets/fleets.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { PrismaModule } from '../prisma/prisma.module';
@@ -43,6 +44,9 @@ import { RidesService } from './rides.service';
     PaymentsModule,
     PromotionsModule,
     DriversModule,
+    // DPX-FLEET — a fleet driver pays no driver-side commission; the fleet is
+    // charged instead. RidePaymentService resolves that per ride.
+    FleetsModule,
     CommercialModule,
   ],
   controllers: [

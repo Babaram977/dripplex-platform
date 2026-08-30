@@ -8,7 +8,13 @@
 /// Mirrors WalletOwnerType's MERCHANT/DRIVER/RIDER split (Rider =
 /// Marketplace delivery courier, Driver = Ride-hailing driver — already
 /// distinct identities/wallets in this codebase).
-export type CommissionOwnerType = 'MERCHANT' | 'DRIVER' | 'RIDER';
+/**
+ * DPX-FLEET added `FLEET` on 2026-08-30. A fleet owner is DrippleX's
+ * commercial counterparty in the same way a merchant is: it accrues, owes and
+ * settles through the same account, so it belongs in the same union rather
+ * than a parallel one.
+ */
+export type CommissionOwnerType = 'MERCHANT' | 'DRIVER' | 'RIDER' | 'FLEET';
 
 export type CommissionEntryType = 'ACCRUAL' | 'PAYMENT' | 'ADJUSTMENT';
 

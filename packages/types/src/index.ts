@@ -689,3 +689,16 @@ export type {
   VerifyOtpFormValues,
   VerifyPhoneValues,
 } from './validation/auth.js';
+
+export type {
+  FleetStatus,
+  FleetMemberRole,
+  FleetMemberStatus,
+  FleetDto,
+  FleetMemberDto,
+  FleetJobDto,
+  FleetPeriodDto,
+  FleetConsoleSummaryDto,
+  FleetOverviewDto,
+  FleetCommissionTierDto,
+} from './fleet/index.js';

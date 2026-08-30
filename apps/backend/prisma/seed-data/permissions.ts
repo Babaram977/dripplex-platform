@@ -230,6 +230,26 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
       'View the Operations Console analytics dashboard — driver utilization, shift, ride, dispatch, response-time, and geographic-demand analytics',
   },
   {
+    code: 'fleet:own:read',
+    description:
+      "A fleet owner reading their own console — their riders and drivers, live positions while on shift, live jobs, and the month's running commission",
+  },
+  {
+    code: 'fleet:own:manage',
+    description:
+      'A fleet owner deactivating, reactivating and removing their own riders and drivers. Never deletes a DrippleX account — that stays with Operations',
+  },
+  {
+    code: 'admin:fleets:manage',
+    description:
+      'Operations creating fleets, issuing Fleet DX numbers, attaching riders and drivers to them, and suspending or reinstating a fleet',
+  },
+  {
+    code: 'admin:fleets:commission:manage',
+    description:
+      "Operations editing the fleet commission volume bands and settling a fleet's finished month",
+  },
+  {
     code: 'operations:history:read',
     description:
       'Read the completed record of rides, deliveries, orders and utility purchases in the Operations Console — for audit, dispute resolution and security enquiries',

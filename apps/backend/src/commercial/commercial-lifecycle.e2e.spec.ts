@@ -4,6 +4,7 @@ import { CommissionOwnerType, PrismaClient, WalletOwnerType } from '@prisma/clie
 
 import { AuditService } from '../audit/audit.service';
 import { DomainEventBus } from '../events/domain-event-bus';
+import { FleetsService } from '../fleets/fleets.service';
 import { MerchantCommissionSettingsService } from '../orders/merchant-commission-settings.service';
 import { MerchantSettlementService } from '../orders/merchant-settlement.service';
 import { MERCHANT_COMMISSION_SETTING_ID } from '../orders/order.constants';
@@ -134,6 +135,9 @@ describe('DPX-COMMERCIAL-001 Slice 6 — Full Commercial Lifecycle E2E', () => {
       new DomainEventBus(),
       commissionAccounts,
       new PlatformCommissionSettingsService(prisma, auditService),
+      // DPX-FLEET — resolves whether a driver rides for a fleet, which is
+      // what decides between the platform rate and zero.
+      new FleetsService(prisma, auditService),
     );
 
     // Reset the singleton commission settings to their known 10% defaults

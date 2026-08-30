@@ -7,6 +7,7 @@ import { CommercialCreditSettingsService } from '../commercial/commercial-credit
 import { CommissionAccountService } from '../commercial/commission-account.service';
 import { PlatformCommissionSettingsService } from '../commercial/platform-commission-settings.service';
 import { DomainEventBus } from '../events/domain-event-bus';
+import { FleetsService } from '../fleets/fleets.service';
 import { PromotionsService } from '../promotions/promotions.service';
 import { PLATFORM_WALLET_OWNER_ID } from '../wallet/wallet.constants';
 import { WalletService } from '../wallet/wallet.service';
@@ -202,6 +203,9 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
       new DomainEventBus(),
       commissionAccounts,
       new PlatformCommissionSettingsService(prisma, auditService),
+      // DPX-FLEET — resolves whether a driver rides for a fleet, which is
+      // what decides between the platform rate and zero.
+      new FleetsService(prisma, auditService),
     );
     ratingService = new RideRatingService(prisma, auditService);
     receiptService = new RideReceiptService(prisma);
