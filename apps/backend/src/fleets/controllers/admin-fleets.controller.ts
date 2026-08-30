@@ -18,6 +18,7 @@ import { FleetsService } from '../fleets.service';
 import type { AuthenticatedUser } from '../../auth/auth.types';
 import type { ApiSuccessResponse } from '../../common/dto/api-response.dto';
 import type {
+  AdminFleetListItemDto,
   FleetCommissionTierDto,
   FleetDto,
   FleetOverviewDto,
@@ -59,14 +60,21 @@ export class AdminFleetsController {
     private readonly commission: FleetCommissionService,
   ) {}
 
+  /**
+   * Operations' fleet dashboard.
+   *
+   * Suspended fleets are included by default here, unlike the plain list: a
+   * console that hides the fleet an operator has been asked about, precisely
+   * because something is wrong with it, is the wrong default for this screen.
+   */
   @Get()
   public async listFleets(
     @Query('includeSuspended') includeSuspended?: string,
-  ): Promise<ApiSuccessResponse<FleetDto[]>> {
-    const fleets = await this.fleets.listFleets({
-      includeSuspended: includeSuspended === 'true',
+  ): Promise<ApiSuccessResponse<AdminFleetListItemDto[]>> {
+    const data = await this.overview.listForAdmin({
+      includeSuspended: includeSuspended !== 'false',
     });
-    return { success: true, data: fleets.map(toFleetDto) };
+    return { success: true, data };
   }
 
   @Post()

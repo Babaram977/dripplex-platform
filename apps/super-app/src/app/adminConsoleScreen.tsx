@@ -15,6 +15,7 @@ import {
   type AdminFleetSummaryDto,
   type AdminLiveRideDto,
   type DeliveryHistoryDto,
+  type AdminFleetListItemDto,
   type FleetMemberDto,
   type FleetOverviewDto,
   type OrderHistoryDto,
@@ -89,6 +90,7 @@ export type AdminPage =
   | 'livemap'
   | 'trips'
   | 'history'
+  | 'fleets'
   | 'myfleet'
   | 'drivers'
   | 'drvkyc'
@@ -566,12 +568,27 @@ interface AdminSessionRow {
 const AUDIT_LOGS: AuditLogRow[] = []; // mock cleared — no ops audit-log feed yet
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
-const NAV_ITEMS: { page: AdminPage; icon: string; label: string }[] = [
+/**
+ * `requires` is the permission the page's own endpoints are gated on.
+ *
+ * Every page here was offered to every operator until 2026-08-30, when the
+ * founder opened My Fleet from an Operations account and got "Insufficient
+ * permissions". The backend was right to refuse — My Fleet is a fleet owner's
+ * console and an operator owns no fleet — but a menu that offers a page which
+ * can only ever fail for you is the console lying about what you can do.
+ *
+ * Only the two fleet pages carry a requirement so far: they are the first two
+ * whose audiences genuinely differ. Leaving `requires` off keeps every other
+ * page exactly as it was rather than inventing a permission map for screens
+ * nobody reported a problem with.
+ */
+const NAV_ITEMS: { page: AdminPage; icon: string; label: string; requires?: string }[] = [
   { page: 'dashboard', icon: '⬛', label: 'Dashboard' },
   { page: 'livemap', icon: '🗺️', label: 'Live Map' },
   { page: 'trips', icon: '🚗', label: 'Trips' },
   { page: 'history', icon: '🗂️', label: 'History' },
-  { page: 'myfleet', icon: '🚚', label: 'My Fleet' },
+  { page: 'fleets', icon: '🏢', label: 'Fleet Partners', requires: 'admin:fleets:manage' },
+  { page: 'myfleet', icon: '🚚', label: 'My Fleet', requires: 'fleet:own:read' },
   { page: 'drivers', icon: '🧑‍✈️', label: 'Drivers' },
   { page: 'drvkyc', icon: '🪪', label: 'Driver KYC' },
   { page: 'vehicles', icon: '🔑', label: 'Vehicles' },
@@ -591,6 +608,19 @@ const NAV_ITEMS: { page: AdminPage; icon: string; label: string }[] = [
   { page: 'auditlogs', icon: '🔍', label: 'Audit Logs' },
   { page: 'profile', icon: '👤', label: 'My Profile' },
 ];
+
+/**
+ * Whether the signed-in session may open a page.
+ *
+ * Reads the permission list the login response already returns — the same list
+ * the server enforces on, so the menu and the API cannot disagree. This hides
+ * a link; it is not the security boundary. Every route behind these pages is
+ * gated server-side and stays gated.
+ */
+function canSee(item: { requires?: string }): boolean {
+  if (item.requires === undefined) return true;
+  return auth.getUser()?.permissions.includes(item.requires) ?? false;
+}
 
 // Real queue counts for the sidebar badges, keyed by page. Absent/0 → no badge.
 type NavBadges = Partial<Record<AdminPage, number>>;
@@ -685,7 +715,7 @@ function Sidebar({
       </div>
       {/* Nav */}
       <div className="dx-scroll" style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
-        {NAV_ITEMS.map((item) => {
+        {NAV_ITEMS.filter(canSee).map((item) => {
           const active = item.page === page;
           return (
             <div
@@ -752,6 +782,7 @@ const PAGE_LABELS: Record<AdminPage, string> = {
   livemap: 'Live Map',
   trips: 'Trips',
   history: 'History — completed records',
+  fleets: 'Fleet Partners',
   myfleet: 'My Fleet',
   drivers: 'Drivers',
   drvkyc: 'Driver KYC',
@@ -2012,6 +2043,1060 @@ function lifecycleLabelFromFleet(s: AdminFleetDriverDto['status']): string {
     .split('_')
     .map((w) => w.charAt(0) + w.slice(1).toLowerCase())
     .join(' ');
+}
+
+// ─── Page: Fleet Partners ─────────────────────────────────────────────────────
+// DPX-FLEET — Operations' side of fleets (founder decision, 2026-08-30).
+//
+// The counterpart to My Fleet: that page is one owner looking at his own
+// company, this one is DrippleX looking at all of them. Everything Operations
+// was given endpoints for and no screen — creating a fleet, issuing its DX
+// number, attaching riders, agreeing a rate, closing a month — is here.
+//
+// Built from the same Card / Btn / Chip / table pieces as every other page
+// rather than a new visual language.
+
+const FLEET_MONEY = (value: number) => `₦${Math.round(value).toLocaleString()}`;
+const FLEET_PCT = (rate: number | null) =>
+  rate === null ? '—' : `${String(Math.round(rate * 1000) / 10)}%`;
+
+/**
+ * First instant of a Lagos calendar month, as UTC.
+ *
+ * Mirrors `FleetCommissionService.monthStart` exactly — Lagos is UTC+1 with no
+ * daylight saving, so the arithmetic is the same on both sides. It has to
+ * match to the millisecond: settling looks a period up by `(fleetId,
+ * periodStart)`, and an instant an hour out finds nothing.
+ */
+function lagosMonthStart(at: Date, monthsBack = 0): Date {
+  const lagos = new Date(at.getTime() + 3_600_000);
+  return new Date(
+    Date.UTC(lagos.getUTCFullYear(), lagos.getUTCMonth() - monthsBack, 1, 0, 0, 0, 0) - 3_600_000,
+  );
+}
+
+function monthLabel(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-NG', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'Africa/Lagos',
+  });
+}
+
+/** Onboarding a fleet partner: find the owner's account, then name the fleet. */
+function CreateFleetCard({ onCreated }: { onCreated: (fleetNumber: string) => void }) {
+  const [search, setSearch] = useState('');
+  const [results, setResults] = useState<AdminCustomerDto[]>([]);
+  const [owner, setOwner] = useState<AdminCustomerDto | null>(null);
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const find = useCallback(async () => {
+    const term = search.trim();
+    if (term === '') return;
+    setMsg(null);
+    try {
+      const res = await api.admin.listCustomers({ search: term, limit: 8 });
+      setResults(res.items);
+      if (res.items.length === 0) {
+        setMsg('No account matches that. The owner must be registered on DrippleX first.');
+      }
+    } catch (e: unknown) {
+      setMsg((e as { message?: string }).message ?? 'Search failed.');
+    }
+  }, [search]);
+
+  const create = useCallback(async () => {
+    if (owner === null || name.trim() === '' || busy) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const fleet = await api.admin.createFleet({
+        ownerUserId: owner.id,
+        name: name.trim(),
+        ...(phone.trim() === '' ? {} : { contactPhone: phone.trim() }),
+      });
+      setOwner(null);
+      setName('');
+      setPhone('');
+      setSearch('');
+      setResults([]);
+      onCreated(fleet.fleetNumber);
+    } catch (e: unknown) {
+      setMsg((e as { message?: string }).message ?? 'Could not create the fleet.');
+    } finally {
+      setBusy(false);
+    }
+  }, [owner, name, phone, busy, onCreated]);
+
+  return (
+    <Card style={{ padding: '14px 16px' }}>
+      <div
+        style={{ fontSize: 12.5, fontWeight: 600, color: WHITE, fontFamily: 'Inter, sans-serif' }}
+      >
+        Onboard a fleet partner
+      </div>
+      <div style={{ marginTop: 6, fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+        The owner needs a DrippleX account first — search for it by name or phone. Creating the
+        fleet issues its DX number and opens the owner’s own console for them.
+      </div>
+
+      <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <input
+          className="dx-input"
+          style={{ flex: 1, minWidth: 180 }}
+          placeholder="Owner’s name or phone"
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void find();
+          }}
+        />
+        <Btn
+          label="Find"
+          small
+          outline
+          color={G3}
+          onClick={() => {
+            void find();
+          }}
+        />
+      </div>
+
+      {results.length > 0 && owner === null && (
+        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {results.map((candidate) => (
+            <div
+              key={candidate.id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 8,
+                padding: '6px 8px',
+                borderRadius: 6,
+                border: `1px solid ${BORDER}`,
+                fontFamily: 'Inter, sans-serif',
+              }}
+            >
+              <div style={{ fontSize: 12, color: WHITE }}>
+                {candidate.firstName} {candidate.lastName}
+                <span style={{ color: MUTED }}> · {candidate.phone ?? candidate.email}</span>
+              </div>
+              <Btn
+                label="Select"
+                small
+                outline
+                color={G3}
+                onClick={() => {
+                  setOwner(candidate);
+                  setResults([]);
+                }}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {owner !== null && (
+        <div style={{ marginTop: 10 }}>
+          <div style={{ fontSize: 12, color: WHITE, fontFamily: 'Inter, sans-serif' }}>
+            Owner: {owner.firstName} {owner.lastName}
+            <span style={{ color: MUTED }}> · {owner.phone ?? owner.email}</span>
+          </div>
+          <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <input
+              className="dx-input"
+              style={{ flex: 1, minWidth: 160 }}
+              placeholder="Fleet name"
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+              }}
+            />
+            <input
+              className="dx-input"
+              style={{ flex: 1, minWidth: 160 }}
+              placeholder="Fleet contact phone (optional)"
+              value={phone}
+              onChange={(e) => {
+                setPhone(e.target.value);
+              }}
+            />
+          </div>
+          <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+            <Btn
+              label={busy ? 'Creating…' : 'Create fleet'}
+              small
+              color={G3}
+              disabled={busy || name.trim() === ''}
+              onClick={() => {
+                void create();
+              }}
+            />
+            <Btn
+              label="Cancel"
+              small
+              outline
+              color={MUTED}
+              onClick={() => {
+                setOwner(null);
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {msg !== null && (
+        <div
+          style={{ marginTop: 8, fontSize: 11.5, color: C_ERR, fontFamily: 'Inter, sans-serif' }}
+        >
+          {msg}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/** Attaching a rider or driver to a fleet, and everything else about one fleet. */
+function FleetDetailPanel({
+  row,
+  onChanged,
+}: {
+  row: AdminFleetListItemDto;
+  onChanged: () => void;
+}) {
+  const [detail, setDetail] = useState<FleetOverviewDto | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  // The two rosters, loaded once, so attaching someone is a search over real
+  // people rather than an operator typing a user id.
+  const [people, setPeople] = useState<
+    {
+      userId: string;
+      name: string;
+      phone: string | null;
+      role: 'RIDER' | 'DRIVER';
+      status: string;
+    }[]
+  >([]);
+  const [personSearch, setPersonSearch] = useState('');
+
+  const [rateInput, setRateInput] = useState('');
+  const [rateNote, setRateNote] = useState('');
+  const [suspendReason, setSuspendReason] = useState('');
+
+  const load = useCallback(async () => {
+    setMsg(null);
+    try {
+      setDetail(await api.admin.getFleetDetail(row.fleet.id));
+    } catch (e: unknown) {
+      setMsg((e as { message?: string }).message ?? 'Could not load this fleet.');
+    }
+  }, [row.fleet.id]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const [riders, drivers] = await Promise.all([
+          api.admin.listRiders(),
+          api.admin.listDrivers(),
+        ]);
+        setPeople([
+          ...riders.items.map((r) => ({
+            userId: r.riderId,
+            name: `${r.firstName} ${r.lastName}`.trim(),
+            phone: r.phone,
+            role: 'RIDER' as const,
+            status: r.status,
+          })),
+          ...drivers.items.map((d) => ({
+            userId: d.driverId,
+            name: `${d.firstName} ${d.lastName}`.trim(),
+            phone: d.phone,
+            role: 'DRIVER' as const,
+            status: d.status,
+          })),
+        ]);
+      } catch {
+        // The rest of the panel still works; only the add-person search is lost.
+        setPeople([]);
+      }
+    })();
+  }, []);
+
+  const run = useCallback(
+    async (action: () => Promise<unknown>, success: string) => {
+      setBusy(true);
+      setMsg(null);
+      try {
+        await action();
+        setMsg(success);
+        await load();
+        onChanged();
+      } catch (e: unknown) {
+        setMsg((e as { message?: string }).message ?? 'That did not work.');
+      } finally {
+        setBusy(false);
+      }
+    },
+    [load, onChanged],
+  );
+
+  const term = personSearch.trim().toLowerCase();
+  const matches =
+    term === ''
+      ? []
+      : people
+          .filter(
+            (person) =>
+              person.name.toLowerCase().includes(term) ||
+              (person.phone ?? '').toLowerCase().includes(term),
+          )
+          .slice(0, 6);
+
+  // The month before this one — the earliest that can be settled, because a
+  // month still running has no final volume and therefore no rate.
+  const settleableStart = lagosMonthStart(new Date(), 1);
+
+  return (
+    <Card style={{ padding: '14px 16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <div
+          style={{ fontSize: 14, fontWeight: 700, color: WHITE, fontFamily: 'Inter, sans-serif' }}
+        >
+          {row.fleet.name}
+        </div>
+        <Chip label={row.fleet.fleetNumber} bg={G3} />
+        {row.fleet.status === 'SUSPENDED' && <Chip label="Suspended" bg={C_ERR} />}
+      </div>
+      <div style={{ marginTop: 4, fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+        Owner {row.owner.name} · {row.owner.phone ?? row.owner.email}
+      </div>
+
+      {msg !== null && (
+        <div
+          style={{ marginTop: 8, fontSize: 11.5, color: WHITE, fontFamily: 'Inter, sans-serif' }}
+        >
+          {msg}
+        </div>
+      )}
+
+      {/* Attach a rider or driver */}
+      <div style={{ marginTop: 12 }}>
+        <div
+          style={{ fontSize: 12, fontWeight: 600, color: WHITE, fontFamily: 'Inter, sans-serif' }}
+        >
+          Attach a rider or driver
+        </div>
+        <div style={{ marginTop: 4, fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          They must already have finished their own onboarding. Nothing here touches KYC or identity
+          verification.
+        </div>
+        <input
+          className="dx-input"
+          style={{ marginTop: 8 }}
+          placeholder="Search riders and drivers by name or phone"
+          value={personSearch}
+          onChange={(e) => {
+            setPersonSearch(e.target.value);
+          }}
+        />
+        {matches.map((person) => (
+          <div
+            key={`${person.role}-${person.userId}`}
+            style={{
+              marginTop: 4,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+              padding: '6px 8px',
+              borderRadius: 6,
+              border: `1px solid ${BORDER}`,
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            <div style={{ fontSize: 12, color: WHITE }}>
+              {person.name}
+              <span style={{ color: MUTED }}>
+                {' '}
+                · {person.role === 'RIDER' ? 'Rider' : 'Driver'} · {person.phone ?? '—'} ·{' '}
+                {person.status}
+              </span>
+            </div>
+            <Btn
+              label="Attach"
+              small
+              outline
+              color={G3}
+              disabled={busy}
+              onClick={() => {
+                void run(
+                  async () =>
+                    await api.admin.addFleetMember({
+                      fleetNumber: row.fleet.fleetNumber,
+                      userId: person.userId,
+                      role: person.role,
+                    }),
+                  `${person.name} attached to ${row.fleet.fleetNumber}.`,
+                );
+                setPersonSearch('');
+              }}
+            />
+          </div>
+        ))}
+      </div>
+
+      {/* Who is on it */}
+      <div style={{ marginTop: 14 }}>
+        <div
+          style={{ fontSize: 12, fontWeight: 600, color: WHITE, fontFamily: 'Inter, sans-serif' }}
+        >
+          On this fleet
+        </div>
+        {detail === null ? (
+          <div
+            style={{ marginTop: 6, fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}
+          >
+            Loading…
+          </div>
+        ) : detail.members.length === 0 ? (
+          <div
+            style={{ marginTop: 6, fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}
+          >
+            Nobody attached yet.
+          </div>
+        ) : (
+          <table
+            style={{
+              width: '100%',
+              borderCollapse: 'collapse',
+              fontFamily: 'Inter, sans-serif',
+              marginTop: 6,
+            }}
+          >
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
+                {['Name', 'Phone', 'Role', 'Status', 'Jobs', 'Gross'].map((h) => (
+                  <th
+                    key={h}
+                    style={{
+                      padding: '7px 8px',
+                      textAlign: 'left',
+                      fontSize: 11,
+                      color: MUTED,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {detail.members.map((member) => (
+                <tr key={member.memberId} style={{ borderBottom: `1px solid ${BORDER}` }}>
+                  <td style={{ padding: '9px 8px', fontSize: 12, color: WHITE }}>
+                    {member.name}
+                    {member.onJob && <span style={{ color: G3 }}> · on a job</span>}
+                    {!member.onJob && member.online && <span style={{ color: G3 }}> · online</span>}
+                  </td>
+                  <td style={{ padding: '9px 8px', fontSize: 12, color: MUTED }}>
+                    {member.phone ?? '—'}
+                  </td>
+                  <td style={{ padding: '9px 8px', fontSize: 12, color: MUTED }}>
+                    {member.role === 'RIDER' ? 'Rider' : 'Driver'}
+                  </td>
+                  <td
+                    style={{
+                      padding: '9px 8px',
+                      fontSize: 12,
+                      color: member.status === 'ACTIVE' ? WHITE : MUTED,
+                    }}
+                  >
+                    {member.status === 'ACTIVE' ? 'Active' : 'Deactivated'}
+                  </td>
+                  <td style={{ padding: '9px 8px', fontSize: 12, color: WHITE }}>
+                    {String(member.completedThisMonth)}
+                  </td>
+                  <td style={{ padding: '9px 8px', fontSize: 12, color: WHITE }}>
+                    {FLEET_MONEY(member.grossThisMonth)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <div style={{ marginTop: 6, fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          Deactivating, reactivating and removing a member is the owner’s own control, on their My
+          Fleet console.
+        </div>
+      </div>
+
+      {/* Commission for this fleet */}
+      <div style={{ marginTop: 14 }}>
+        <div
+          style={{ fontSize: 12, fontWeight: 600, color: WHITE, fontFamily: 'Inter, sans-serif' }}
+        >
+          Negotiated rate
+        </div>
+        <div style={{ marginTop: 4, fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          {row.negotiatedRate === null
+            ? 'None — the volume bands below apply to this fleet.'
+            : `${FLEET_PCT(row.negotiatedRate)} agreed${row.negotiatedAt === null ? '' : ` on ${new Date(row.negotiatedAt).toLocaleDateString('en-NG')}`}. This overrides the bands.`}
+          {row.negotiationNote !== null && ` — ${row.negotiationNote}`}
+        </div>
+        <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <input
+            className="dx-input"
+            style={{ flex: 1, minWidth: 110 }}
+            placeholder="Rate %, e.g. 6.5"
+            value={rateInput}
+            onChange={(e) => {
+              setRateInput(e.target.value);
+            }}
+          />
+          <input
+            className="dx-input"
+            style={{ flex: 2, minWidth: 160 }}
+            placeholder="What was agreed (optional)"
+            value={rateNote}
+            onChange={(e) => {
+              setRateNote(e.target.value);
+            }}
+          />
+          <Btn
+            label="Save rate"
+            small
+            color={G3}
+            disabled={busy || rateInput.trim() === ''}
+            onClick={() => {
+              const percent = Number(rateInput.trim());
+              if (!Number.isFinite(percent) || percent <= 0 || percent >= 100) {
+                setMsg('Enter the rate as a percentage between 0 and 100 — 6.5 for 6.5%.');
+                return;
+              }
+              void run(
+                async () =>
+                  // Entered as a percentage because that is how it is agreed;
+                  // stored as the fraction the server validates.
+                  await api.admin.setFleetNegotiatedRate(
+                    row.fleet.id,
+                    percent / 100,
+                    rateNote.trim() === '' ? undefined : rateNote.trim(),
+                  ),
+                `${row.fleet.name} is now on ${String(percent)}%.`,
+              );
+              setRateInput('');
+              setRateNote('');
+            }}
+          />
+          {row.negotiatedRate !== null && (
+            <Btn
+              label="Clear"
+              small
+              outline
+              color={MUTED}
+              disabled={busy}
+              onClick={() => {
+                void run(
+                  async () => await api.admin.setFleetNegotiatedRate(row.fleet.id, null),
+                  `${row.fleet.name} is back on the volume bands.`,
+                );
+              }}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* Closing a month */}
+      <div style={{ marginTop: 14 }}>
+        <div
+          style={{ fontSize: 12, fontWeight: 600, color: WHITE, fontFamily: 'Inter, sans-serif' }}
+        >
+          Close a month
+        </div>
+        <div style={{ marginTop: 4, fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          Charges the fleet for {monthLabel(settleableStart.toISOString())} at the band its final
+          volume reached, and snapshots that rate so later edits never rewrite it. A month can only
+          be closed once, and only after it has finished.
+        </div>
+        <div style={{ marginTop: 8 }}>
+          <Btn
+            label={`Settle ${monthLabel(settleableStart.toISOString())}`}
+            small
+            outline
+            color={G3}
+            disabled={busy}
+            onClick={() => {
+              void run(
+                async () =>
+                  await api.admin.settleFleetPeriod(row.fleet.id, settleableStart.toISOString()),
+                `${monthLabel(settleableStart.toISOString())} settled for ${row.fleet.name}.`,
+              );
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Suspending the fleet */}
+      <div style={{ marginTop: 14 }}>
+        <div
+          style={{ fontSize: 12, fontWeight: 600, color: WHITE, fontFamily: 'Inter, sans-serif' }}
+        >
+          {row.fleet.status === 'ACTIVE' ? 'Suspend this fleet' : 'Reinstate this fleet'}
+        </div>
+        {row.fleet.status === 'ACTIVE' ? (
+          <>
+            <div
+              style={{ marginTop: 4, fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}
+            >
+              Stops new people being attached. Their riders keep their own accounts.
+            </div>
+            <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <input
+                className="dx-input"
+                style={{ flex: 1, minWidth: 180 }}
+                placeholder="Reason"
+                value={suspendReason}
+                onChange={(e) => {
+                  setSuspendReason(e.target.value);
+                }}
+              />
+              <Btn
+                label="Suspend"
+                small
+                outline
+                color={C_ERR}
+                disabled={busy || suspendReason.trim() === ''}
+                onClick={() => {
+                  void run(
+                    async () => await api.admin.suspendFleet(row.fleet.id, suspendReason.trim()),
+                    `${row.fleet.name} suspended.`,
+                  );
+                  setSuspendReason('');
+                }}
+              />
+            </div>
+          </>
+        ) : (
+          <div style={{ marginTop: 8 }}>
+            <Btn
+              label="Reinstate"
+              small
+              outline
+              color={G3}
+              disabled={busy}
+              onClick={() => {
+                void run(
+                  async () => await api.admin.reinstateFleet(row.fleet.id),
+                  `${row.fleet.name} reinstated.`,
+                );
+              }}
+            />
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+/** The volume band table. Whole-table edits, because that is what the server takes. */
+function CommissionBandsCard() {
+  const [rows, setRows] = useState<{ minOrders: string; maxOrders: string; rate: string }[]>([]);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const tiers = await api.admin.getFleetCommissionTiers();
+      setRows(
+        tiers.map((tier) => ({
+          minOrders: String(tier.minOrders),
+          maxOrders: tier.maxOrders === null ? '' : String(tier.maxOrders),
+          rate: String(Math.round(tier.rate * 1000) / 10),
+        })),
+      );
+    } catch (e: unknown) {
+      setMsg((e as { message?: string }).message ?? 'Could not load the bands.');
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const save = useCallback(async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const tiers = rows.map((row) => ({
+        minOrders: Number(row.minOrders),
+        maxOrders: row.maxOrders.trim() === '' ? null : Number(row.maxOrders),
+        rate: Number(row.rate) / 100,
+      }));
+      await api.admin.replaceFleetCommissionTiers(tiers);
+      setMsg('Bands saved. They apply to every fleet without its own negotiated rate.');
+      await load();
+    } catch (e: unknown) {
+      setMsg((e as { message?: string }).message ?? 'Could not save the bands.');
+    } finally {
+      setBusy(false);
+    }
+  }, [rows, load]);
+
+  return (
+    <Card style={{ padding: '14px 16px' }}>
+      <div
+        style={{ fontSize: 12.5, fontWeight: 600, color: WHITE, fontFamily: 'Inter, sans-serif' }}
+      >
+        Commission bands
+      </div>
+      <div style={{ marginTop: 6, fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+        A fleet’s whole month is charged at the band its final volume reaches — 5,200 orders pays
+        the 5,000+ rate on all 5,200. Bands must start at 0, meet exactly with no gaps, and the top
+        one must be open-ended (leave its “to” blank). Empty until you set them: no rate was
+        invented in code.
+      </div>
+
+      {rows.length === 0 && (
+        <div style={{ marginTop: 8, fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          No bands set. Every fleet without a negotiated rate will show “no band covers this volume”
+          until you add them.
+        </div>
+      )}
+
+      {rows.map((row, index) => (
+        <div
+          key={index}
+          style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}
+        >
+          <input
+            className="dx-input"
+            style={{ width: 90 }}
+            placeholder="From"
+            value={row.minOrders}
+            onChange={(e) => {
+              const next = [...rows];
+              next[index] = { ...row, minOrders: e.target.value };
+              setRows(next);
+            }}
+          />
+          <input
+            className="dx-input"
+            style={{ width: 90 }}
+            placeholder="To (blank = ∞)"
+            value={row.maxOrders}
+            onChange={(e) => {
+              const next = [...rows];
+              next[index] = { ...row, maxOrders: e.target.value };
+              setRows(next);
+            }}
+          />
+          <input
+            className="dx-input"
+            style={{ width: 90 }}
+            placeholder="Rate %"
+            value={row.rate}
+            onChange={(e) => {
+              const next = [...rows];
+              next[index] = { ...row, rate: e.target.value };
+              setRows(next);
+            }}
+          />
+          <Btn
+            label="Remove"
+            small
+            outline
+            color={C_ERR}
+            onClick={() => {
+              setRows(rows.filter((_, i) => i !== index));
+            }}
+          />
+        </div>
+      ))}
+
+      <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <Btn
+          label="Add band"
+          small
+          outline
+          color={G3}
+          onClick={() => {
+            setRows([...rows, { minOrders: '', maxOrders: '', rate: '' }]);
+          }}
+        />
+        <Btn
+          label={busy ? 'Saving…' : 'Save bands'}
+          small
+          color={G3}
+          disabled={busy || rows.length === 0}
+          onClick={() => {
+            void save();
+          }}
+        />
+      </div>
+
+      {msg !== null && (
+        <div
+          style={{ marginTop: 8, fontSize: 11.5, color: WHITE, fontFamily: 'Inter, sans-serif' }}
+        >
+          {msg}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function PageFleets() {
+  const [fleets, setFleets] = useState<AdminFleetListItemDto[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [banner, setBanner] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      setFleets(await api.admin.listFleets());
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load fleet partners.');
+      setFleets(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  if (error !== null) {
+    return (
+      <Card style={{ padding: '14px 16px' }}>
+        <div style={{ fontSize: 12.5, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>{error}</div>
+      </Card>
+    );
+  }
+
+  if (fleets === null) {
+    return (
+      <Card style={{ padding: '14px 16px' }}>
+        <div style={{ fontSize: 12.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          Loading…
+        </div>
+      </Card>
+    );
+  }
+
+  const selected = fleets.find((row) => row.fleet.id === selectedId) ?? null;
+  const people = fleets.reduce((sum, row) => sum + row.memberCounts.active, 0);
+  const jobs = fleets.reduce((sum, row) => sum + row.period.orderCount, 0);
+  // Settled months carry the real figure; running ones only an estimate, so
+  // the tile says "so far" rather than presenting the two as one total.
+  const commission = fleets.reduce(
+    (sum, row) => sum + (row.period.commissionAmount ?? row.period.projectedCommission ?? 0),
+    0,
+  );
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {banner !== null && (
+        <Card style={{ padding: '14px 16px' }}>
+          <div style={{ fontSize: 12.5, color: G3, fontFamily: 'Inter, sans-serif' }}>{banner}</div>
+        </Card>
+      )}
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+          gap: 12,
+        }}
+      >
+        <KpiCard
+          label="Fleet partners"
+          value={String(fleets.length)}
+          sub="Companies"
+          color={G3}
+          icon="🏢"
+        />
+        <KpiCard
+          label="Their people"
+          value={String(people)}
+          sub="Active members"
+          color={G3}
+          icon="🛵"
+        />
+        <KpiCard
+          label="Jobs this month"
+          value={String(jobs)}
+          sub="Trips & deliveries"
+          color={G3}
+          icon="📦"
+        />
+        <KpiCard
+          label="Commission"
+          value={FLEET_MONEY(commission)}
+          sub="This month so far"
+          color={G3}
+          icon="🧾"
+        />
+      </div>
+
+      <CreateFleetCard
+        onCreated={(fleetNumber) => {
+          setBanner(`Fleet created. Its Fleet DX number is ${fleetNumber}.`);
+          void load();
+        }}
+      />
+
+      <Card style={{ padding: '14px 16px' }}>
+        {fleets.length === 0 ? (
+          <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+            No fleet partners yet. Create one above — the owner needs a DrippleX account first.
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table
+              style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Inter, sans-serif' }}
+            >
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
+                  {[
+                    'Fleet DX',
+                    'Name',
+                    'Owner',
+                    'Status',
+                    'People',
+                    'Jobs',
+                    'Fees & fares',
+                    'Rate',
+                    'Commission',
+                    '',
+                  ].map((h) => (
+                    <th
+                      key={h}
+                      style={{
+                        padding: '7px 8px',
+                        textAlign: 'left',
+                        fontSize: 11,
+                        color: MUTED,
+                        fontWeight: 600,
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {fleets.map((row) => (
+                  <tr key={row.fleet.id} style={{ borderBottom: `1px solid ${BORDER}` }}>
+                    <td
+                      style={{
+                        padding: '9px 8px',
+                        fontSize: 12,
+                        color: G3,
+                        fontWeight: 600,
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {row.fleet.fleetNumber}
+                    </td>
+                    <td style={{ padding: '9px 8px', fontSize: 12, color: WHITE }}>
+                      {row.fleet.name}
+                    </td>
+                    <td style={{ padding: '9px 8px', fontSize: 12, color: MUTED }}>
+                      {row.owner.name}
+                      <div style={{ fontSize: 11 }}>{row.owner.phone ?? row.owner.email}</div>
+                    </td>
+                    <td style={{ padding: '9px 8px', fontSize: 12 }}>
+                      {row.fleet.status === 'ACTIVE' ? (
+                        <span style={{ color: G3 }}>Active</span>
+                      ) : (
+                        <span style={{ color: C_ERR }}>Suspended</span>
+                      )}
+                    </td>
+                    <td style={{ padding: '9px 8px', fontSize: 12, color: WHITE }}>
+                      {String(row.memberCounts.active)}
+                      {row.memberCounts.deactivated > 0 && (
+                        <span style={{ color: MUTED }}>
+                          {' '}
+                          +{String(row.memberCounts.deactivated)} off
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ padding: '9px 8px', fontSize: 12, color: WHITE }}>
+                      {String(row.period.orderCount)}
+                    </td>
+                    <td style={{ padding: '9px 8px', fontSize: 12, color: WHITE }}>
+                      {FLEET_MONEY(row.period.chargeableTotal)}
+                    </td>
+                    <td style={{ padding: '9px 8px', fontSize: 12, color: WHITE }}>
+                      {FLEET_PCT(
+                        row.period.settled ? row.period.appliedRate : row.period.projectedRate,
+                      )}
+                      {row.negotiatedRate !== null && (
+                        <span style={{ color: MUTED, fontSize: 11 }}> agreed</span>
+                      )}
+                    </td>
+                    <td style={{ padding: '9px 8px', fontSize: 12, color: WHITE }}>
+                      {row.period.settled
+                        ? FLEET_MONEY(row.period.commissionAmount ?? 0)
+                        : row.period.projectedCommission === null
+                          ? '—'
+                          : `~${FLEET_MONEY(row.period.projectedCommission)}`}
+                    </td>
+                    <td style={{ padding: '9px 8px' }}>
+                      <Btn
+                        label={selectedId === row.fleet.id ? 'Close' : 'Manage'}
+                        small
+                        outline
+                        color={G3}
+                        onClick={() => {
+                          setBanner(null);
+                          setSelectedId(selectedId === row.fleet.id ? null : row.fleet.id);
+                        }}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {fleets.length > 0 && (
+          <div
+            style={{ marginTop: 8, fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}
+          >
+            A rate marked “agreed” is negotiated with that fleet and overrides the bands. Commission
+            shown with ~ is an estimate until the month closes.
+          </div>
+        )}
+      </Card>
+
+      {selected !== null && (
+        <FleetDetailPanel
+          key={selected.fleet.id}
+          row={selected}
+          onChanged={() => {
+            void load();
+          }}
+        />
+      )}
+
+      <CommissionBandsCard />
+    </div>
+  );
 }
 
 // ─── Page: My Fleet ───────────────────────────────────────────────────────────
@@ -10409,6 +11494,22 @@ function PageProfile() {
 
 // ─── Page router ──────────────────────────────────────────────────────────────
 function renderPage(page: AdminPage) {
+  // The sidebar already hides what a session may not open, but the page can
+  // also be reached from restored state, so the same check is made here rather
+  // than trusting that the only way in was the menu.
+  const item = NAV_ITEMS.find((navItem) => navItem.page === page);
+  if (item !== undefined && !canSee(item)) {
+    return (
+      <Card style={{ padding: '14px 16px' }}>
+        <div style={{ fontSize: 12.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          {page === 'myfleet'
+            ? 'My Fleet is a fleet partner’s own console. This account is not a fleet owner — Operations manages fleets under Fleet Partners.'
+            : 'This account does not have access to that page.'}
+        </div>
+      </Card>
+    );
+  }
+
   switch (page) {
     case 'dashboard':
       return <PageDashboard />;
@@ -10418,6 +11519,8 @@ function renderPage(page: AdminPage) {
       return <PageTrips />;
     case 'history':
       return <PageHistory />;
+    case 'fleets':
+      return <PageFleets />;
     case 'myfleet':
       return <PageMyFleet />;
     case 'drivers':

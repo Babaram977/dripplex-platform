@@ -56,6 +56,15 @@ export const FLEET_AUDIT_ACTIONS = {
   PERIOD_SETTLED: 'fleet.commission.period_settled',
 } as const;
 
+/**
+ * The role granted to an owner when Operations creates their fleet.
+ *
+ * Must match the `fleet_owner` seeded in `seed-rbac.cjs` — it is what carries
+ * `fleet:own:read` and `fleet:own:manage`, and therefore the only thing that
+ * makes the owner's console reachable at all.
+ */
+export const FLEET_OWNER_ROLE = 'fleet_owner';
+
 export const FLEET_PERMISSIONS = {
   /** The owner's own console: his fleet, his people, his numbers. */
   OWN_READ: 'fleet:own:read',

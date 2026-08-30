@@ -4,8 +4,11 @@
 // Every response is unwrapped from { success, data } before returning.
 
 import type {
+  AdminFleetListItemDto,
   CallDto,
   CallTokenDto,
+  FleetCommissionTierDto,
+  FleetDto,
   FleetJobDto,
   FleetMemberDto,
   FleetOverviewDto,
@@ -20,7 +23,15 @@ import type {
  * — the mismatch that forced other DTOs here to be declared by hand does not
  * apply.
  */
-export type { FleetOverviewDto, FleetMemberDto, FleetJobDto, FleetPeriodDto };
+export type {
+  FleetOverviewDto,
+  FleetMemberDto,
+  FleetJobDto,
+  FleetPeriodDto,
+  FleetDto,
+  FleetCommissionTierDto,
+  AdminFleetListItemDto,
+};
 
 export type {
   DeliveryHistoryDto,
@@ -3717,6 +3728,50 @@ export const api = {
      */
     removeFleetMember: (memberId: string) =>
       dx<FleetMemberDto[]>('POST', `/fleet/members/${memberId}/remove`, {}),
+
+    /**
+     * DPX-FLEET — Operations' side. Creating fleets, issuing DX numbers,
+     * attaching riders and drivers, and what each fleet owes.
+     *
+     * Separate from the six calls above on purpose: those resolve the fleet
+     * from the signed-in owner and cannot name another company's, while every
+     * one of these takes a fleet id and is gated on an Operations permission.
+     */
+    listFleets: () => dx<AdminFleetListItemDto[]>('GET', '/admin/fleets'),
+    /**
+     * Named `...Detail` because `getFleet` above is already taken by the Live
+     * Map's snapshot of DrippleX's whole driver fleet. Two different meanings
+     * of "fleet" on one console — that one counts every driver on the
+     * platform, this one is a single partner company.
+     */
+    getFleetDetail: (fleetId: string) => dx<FleetOverviewDto>('GET', `/admin/fleets/${fleetId}`),
+    /** Also grants the owner the fleet_owner role, so their console opens. */
+    createFleet: (body: { ownerUserId: string; name: string; contactPhone?: string }) =>
+      dx<FleetDto>('POST', '/admin/fleets', body),
+    /** `userId`, not a driver/rider profile id — the roster rows carry both. */
+    addFleetMember: (body: { fleetNumber: string; userId: string; role: 'RIDER' | 'DRIVER' }) =>
+      dx<{ memberId: string }>('POST', '/admin/fleets/members', body),
+    suspendFleet: (fleetId: string, reason: string) =>
+      dx<FleetDto>('POST', `/admin/fleets/${fleetId}/suspend`, { reason }),
+    reinstateFleet: (fleetId: string) =>
+      dx<FleetDto>('POST', `/admin/fleets/${fleetId}/reinstate`, {}),
+    getFleetCommissionTiers: () =>
+      dx<FleetCommissionTierDto[]>('GET', '/admin/fleets/commission/tiers'),
+    /**
+     * Replaces the whole band table. Whole-table because the bands only mean
+     * anything together — the server refuses gaps and overlaps.
+     */
+    replaceFleetCommissionTiers: (
+      tiers: { minOrders: number; maxOrders: number | null; rate: number }[],
+    ) => dx<FleetCommissionTierDto[]>('POST', '/admin/fleets/commission/tiers', { tiers }),
+    /** `rate` null clears the agreement and returns the fleet to the bands. */
+    setFleetNegotiatedRate: (fleetId: string, rate: number | null, note?: string) =>
+      dx<FleetDto>('POST', `/admin/fleets/${fleetId}/commission/rate`, {
+        rate,
+        ...(note === undefined ? {} : { note }),
+      }),
+    settleFleetPeriod: (fleetId: string, periodStart: string) =>
+      dx<FleetPeriodDto>('POST', `/admin/fleets/${fleetId}/commission/settle`, { periodStart }),
 
     /**
      * DPX-OPS — the completed record, for audit, disputes and security

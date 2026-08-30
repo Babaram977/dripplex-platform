@@ -701,4 +701,5 @@ export type {
   FleetConsoleSummaryDto,
   FleetOverviewDto,
   FleetCommissionTierDto,
+  AdminFleetListItemDto,
 } from './fleet/index.js';
