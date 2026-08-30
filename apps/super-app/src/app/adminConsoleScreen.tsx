@@ -2649,64 +2649,129 @@ function FleetDetailPanel({
         </div>
       </div>
 
-      {/* Suspending the fleet */}
-      <div style={{ marginTop: 14 }}>
-        <div
-          style={{ fontSize: 12, fontWeight: 600, color: WHITE, fontFamily: 'Inter, sans-serif' }}
-        >
-          {row.fleet.status === 'ACTIVE' ? 'Suspend this fleet' : 'Reinstate this fleet'}
-        </div>
-        {row.fleet.status === 'ACTIVE' ? (
-          <>
-            <div
-              style={{ marginTop: 4, fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}
-            >
-              Stops new people being attached. Their riders keep their own accounts.
-            </div>
-            <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <input
-                className="dx-input"
-                style={{ flex: 1, minWidth: 180 }}
-                placeholder="Reason"
-                value={suspendReason}
-                onChange={(e) => {
-                  setSuspendReason(e.target.value);
-                }}
-              />
-              <Btn
-                label="Suspend"
-                small
-                outline
-                color={C_ERR}
-                disabled={busy || suspendReason.trim() === ''}
-                onClick={() => {
-                  void run(
-                    async () => await api.admin.suspendFleet(row.fleet.id, suspendReason.trim()),
-                    `${row.fleet.name} suspended.`,
-                  );
-                  setSuspendReason('');
-                }}
-              />
-            </div>
-          </>
-        ) : (
-          <div style={{ marginTop: 8 }}>
+      {/* An application waiting on Operations. Shown before the suspend
+          controls because it is the only thing that matters about a
+          PENDING_APPROVAL fleet — nothing else here does anything until it is
+          decided. */}
+      {row.fleet.status === 'PENDING_APPROVAL' && (
+        <div style={{ marginTop: 14 }}>
+          <div
+            style={{ fontSize: 12, fontWeight: 600, color: WHITE, fontFamily: 'Inter, sans-serif' }}
+          >
+            This fleet registered itself and is waiting on DrippleX
+          </div>
+          <div
+            style={{ marginTop: 4, fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}
+          >
+            It already has {row.fleet.fleetNumber} to give its riders, but it is not a billable
+            partner and nothing it does counts until you approve it.
+          </div>
+          <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <Btn
-              label="Reinstate"
+              label="Approve fleet"
               small
-              outline
               color={G3}
               disabled={busy}
               onClick={() => {
                 void run(
-                  async () => await api.admin.reinstateFleet(row.fleet.id),
-                  `${row.fleet.name} reinstated.`,
+                  async () => await api.admin.approveFleet(row.fleet.id),
+                  `${row.fleet.name} approved — they can trade now.`,
                 );
               }}
             />
+            <input
+              className="dx-input"
+              style={{ flex: 1, minWidth: 170 }}
+              placeholder="Reason, if declining"
+              value={suspendReason}
+              onChange={(e) => {
+                setSuspendReason(e.target.value);
+              }}
+            />
+            <Btn
+              label="Decline"
+              small
+              outline
+              color={C_ERR}
+              disabled={busy || suspendReason.trim().length < 5}
+              onClick={() => {
+                void run(
+                  async () => await api.admin.rejectFleet(row.fleet.id, suspendReason.trim()),
+                  `${row.fleet.name} declined.`,
+                );
+                setSuspendReason('');
+              }}
+            />
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* Suspending the fleet. Only meaningful once a fleet is trading — an
+          application is approved or declined above, not suspended. */}
+      {(row.fleet.status === 'ACTIVE' || row.fleet.status === 'SUSPENDED') && (
+        <div style={{ marginTop: 14 }}>
+          <div
+            style={{ fontSize: 12, fontWeight: 600, color: WHITE, fontFamily: 'Inter, sans-serif' }}
+          >
+            {row.fleet.status === 'ACTIVE' ? 'Suspend this fleet' : 'Reinstate this fleet'}
+          </div>
+          {row.fleet.status === 'ACTIVE' ? (
+            <>
+              <div
+                style={{
+                  marginTop: 4,
+                  fontSize: 11,
+                  color: MUTED,
+                  fontFamily: 'Inter, sans-serif',
+                }}
+              >
+                Stops new people being attached. Their riders keep their own accounts.
+              </div>
+              <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <input
+                  className="dx-input"
+                  style={{ flex: 1, minWidth: 180 }}
+                  placeholder="Reason"
+                  value={suspendReason}
+                  onChange={(e) => {
+                    setSuspendReason(e.target.value);
+                  }}
+                />
+                <Btn
+                  label="Suspend"
+                  small
+                  outline
+                  color={C_ERR}
+                  disabled={busy || suspendReason.trim() === ''}
+                  onClick={() => {
+                    void run(
+                      async () => await api.admin.suspendFleet(row.fleet.id, suspendReason.trim()),
+                      `${row.fleet.name} suspended.`,
+                    );
+                    setSuspendReason('');
+                  }}
+                />
+              </div>
+            </>
+          ) : (
+            <div style={{ marginTop: 8 }}>
+              <Btn
+                label="Reinstate"
+                small
+                outline
+                color={G3}
+                disabled={busy}
+                onClick={() => {
+                  void run(
+                    async () => await api.admin.reinstateFleet(row.fleet.id),
+                    `${row.fleet.name} reinstated.`,
+                  );
+                }}
+              />
+            </div>
+          )}
+        </div>
+      )}
     </Card>
   );
 }
@@ -2897,6 +2962,7 @@ function PageFleets() {
   }
 
   const selected = fleets.find((row) => row.fleet.id === selectedId) ?? null;
+  const awaiting = fleets.filter((row) => row.fleet.status === 'PENDING_APPROVAL').length;
   const people = fleets.reduce((sum, row) => sum + row.memberCounts.active, 0);
   const jobs = fleets.reduce((sum, row) => sum + row.period.orderCount, 0);
   // Settled months carry the real figure; running ones only an estimate, so
@@ -2950,6 +3016,22 @@ function PageFleets() {
           icon="🧾"
         />
       </div>
+
+      {/* Fleets that registered themselves and are waiting on Operations.
+          Called out above the table because it is work, not status: until it
+          is decided the owner has a DX number that does nothing. */}
+      {awaiting > 0 && (
+        <Card style={{ padding: '14px 16px' }}>
+          <div style={{ fontSize: 12.5, color: WHITE, fontFamily: 'Inter, sans-serif' }}>
+            {awaiting === 1
+              ? '1 fleet registered online and is waiting for you to approve it.'
+              : `${String(awaiting)} fleets registered online and are waiting for you to approve them.`}{' '}
+            <span style={{ color: MUTED }}>
+              They already have their DX numbers; nothing they do counts until you decide.
+            </span>
+          </div>
+        </Card>
+      )}
 
       <CreateFleetCard
         onCreated={(fleetNumber) => {
@@ -3022,6 +3104,10 @@ function PageFleets() {
                     <td style={{ padding: '9px 8px', fontSize: 12 }}>
                       {row.fleet.status === 'ACTIVE' ? (
                         <span style={{ color: G3 }}>Active</span>
+                      ) : row.fleet.status === 'PENDING_APPROVAL' ? (
+                        <span style={{ color: WHITE }}>Awaiting approval</span>
+                      ) : row.fleet.status === 'REJECTED' ? (
+                        <span style={{ color: MUTED }}>Declined</span>
                       ) : (
                         <span style={{ color: C_ERR }}>Suspended</span>
                       )}
@@ -3159,6 +3245,29 @@ function PageMyFleet() {
     [],
   );
 
+  // Confirming a request is what turns a claim into a membership, so it
+  // reloads the whole overview rather than patching one list: accepting moves
+  // a row out of the requests table and into the members table, and the
+  // month's figures start counting them.
+  const decide = async (request: FleetMemberDto, action: 'approve' | 'reject') => {
+    setBusyMemberId(request.memberId);
+    setRowMsg(null);
+    try {
+      if (action === 'approve') {
+        await api.fleet.approveRequest(request.memberId);
+        setRowMsg(`${request.name} is on your fleet.`);
+      } else {
+        await api.fleet.rejectRequest(request.memberId);
+        setRowMsg(`${request.name}’s request was turned down.`);
+      }
+      await load();
+    } catch (e: unknown) {
+      setRowMsg((e as { message?: string }).message ?? 'That did not work.');
+    } finally {
+      setBusyMemberId(null);
+    }
+  };
+
   if (error !== null) {
     return (
       <Card style={{ padding: '14px 16px' }}>
@@ -3177,7 +3286,7 @@ function PageMyFleet() {
     );
   }
 
-  const { fleet, members, liveJobs, period, summary } = overview;
+  const { fleet, members, pendingRequests, liveJobs, period, summary } = overview;
   const c = (n: number) => String(n);
   const money = (value: number) => `₦${Math.round(value).toLocaleString()}`;
   const pct = (rate: number | null) =>
@@ -3194,12 +3303,26 @@ function PageMyFleet() {
           </div>
           <Chip label={fleet.fleetNumber} bg={G3} />
           {fleet.status === 'SUSPENDED' && <Chip label="Suspended" bg={C_ERR} />}
+          {fleet.status === 'PENDING_APPROVAL' && <Chip label="Awaiting DrippleX" bg={MUTED} />}
+          {fleet.status === 'REJECTED' && <Chip label="Declined" bg={C_ERR} />}
         </div>
         {fleet.suspendedReason !== null && (
           <div
             style={{ marginTop: 8, fontSize: 12, color: C_ERR, fontFamily: 'Inter, sans-serif' }}
           >
             {fleet.suspendedReason}
+          </div>
+        )}
+        {/* Says plainly what a pending fleet can and cannot do, so an owner
+            whose figures are all zero knows why rather than assuming the
+            console is broken. */}
+        {fleet.status === 'PENDING_APPROVAL' && (
+          <div
+            style={{ marginTop: 8, fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}
+          >
+            DrippleX Operations is reviewing your registration. You can give your riders{' '}
+            {fleet.fleetNumber} now and their requests will appear below — nothing is counted or
+            charged until your fleet is approved.
           </div>
         )}
       </Card>
@@ -3295,6 +3418,103 @@ function PageMyFleet() {
           </div>
         )}
       </Card>
+
+      {/* DPX-FLEET, founder decision 2026-08-30: riders type the fleet number
+          themselves during onboarding, so the owner confirms it. Kept above
+          the member table and visually separate — these are claims, not
+          members, and merging the two lists is how somebody gets confirmed by
+          accident. */}
+      {pendingRequests.length > 0 && (
+        <Card style={{ padding: '14px 16px' }}>
+          <div
+            style={{
+              fontSize: 12.5,
+              fontWeight: 600,
+              color: WHITE,
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            Waiting for you to confirm ({String(pendingRequests.length)})
+          </div>
+          <div
+            style={{ marginTop: 4, fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}
+          >
+            These people entered {fleet.fleetNumber} during their own DrippleX onboarding. They are
+            not on your fleet, and nothing they do is charged to you, until you confirm them.
+          </div>
+          <table
+            style={{
+              width: '100%',
+              borderCollapse: 'collapse',
+              fontFamily: 'Inter, sans-serif',
+              marginTop: 8,
+            }}
+          >
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
+                {['Name', 'Phone', 'Role', 'Asked', ''].map((h) => (
+                  <th
+                    key={h}
+                    style={{
+                      padding: '7px 8px',
+                      textAlign: 'left',
+                      fontSize: 11,
+                      color: MUTED,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {pendingRequests.map((request) => {
+                const busy = busyMemberId === request.memberId;
+                return (
+                  <tr key={request.memberId} style={{ borderBottom: `1px solid ${BORDER}` }}>
+                    <td style={{ padding: '9px 8px', fontSize: 12, color: WHITE }}>
+                      {request.name}
+                    </td>
+                    <td style={{ padding: '9px 8px', fontSize: 12, color: MUTED }}>
+                      {request.phone ?? '—'}
+                    </td>
+                    <td style={{ padding: '9px 8px', fontSize: 12, color: MUTED }}>
+                      {request.role === 'RIDER' ? 'Rider' : 'Driver'}
+                    </td>
+                    <td style={{ padding: '9px 8px', fontSize: 12, color: MUTED }}>
+                      {new Date(request.joinedAt).toLocaleDateString('en-NG')}
+                    </td>
+                    <td style={{ padding: '9px 8px' }}>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <Btn
+                          label={busy ? '…' : 'Confirm'}
+                          small
+                          color={G3}
+                          disabled={busy}
+                          onClick={() => {
+                            void decide(request, 'approve');
+                          }}
+                        />
+                        <Btn
+                          label="Not mine"
+                          small
+                          outline
+                          color={C_ERR}
+                          disabled={busy}
+                          onClick={() => {
+                            void decide(request, 'reject');
+                          }}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </Card>
+      )}
 
       <Card style={{ padding: '14px 16px' }}>
         <div

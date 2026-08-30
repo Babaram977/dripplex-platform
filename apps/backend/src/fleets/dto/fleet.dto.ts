@@ -34,6 +34,51 @@ export class CreateFleetDto {
   public contactPhone?: string;
 }
 
+/**
+ * An owner registering their own company. No `ownerUserId` — it is the signed
+ * in user, and taking it from the body would let anyone register a fleet in
+ * someone else's name.
+ */
+export class RegisterFleetDto {
+  @IsString()
+  @MinLength(2)
+  @MaxLength(200)
+  public name!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  public contactPhone?: string;
+}
+
+/**
+ * A rider or driver quoting a fleet's DX number at onboarding. No role: it is
+ * derived from the profiles they actually hold, because a claimed role is one
+ * more unverified claim.
+ */
+export class RequestFleetJoinDto {
+  @IsString()
+  @Matches(FLEET_NUMBER_PATTERN, {
+    message: 'Fleet number must look like DX-FL-0001',
+  })
+  public fleetNumber!: string;
+}
+
+export class RejectFleetJoinRequestDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  public reason?: string;
+}
+
+export class RejectFleetDto {
+  /** Required: an owner turned down is owed a reason they can act on. */
+  @IsString()
+  @MinLength(5)
+  @MaxLength(500)
+  public reason!: string;
+}
+
 export class AddFleetMemberDto {
   /** The Fleet DX number the owner quoted, e.g. `DX-FL-0001`. */
   @IsString()

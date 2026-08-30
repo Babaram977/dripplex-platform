@@ -38,6 +38,18 @@ const LIVE_DELIVERY_STATUSES: DeliveryStatus[] = [
 ];
 
 /**
+ * Who counts as being on the fleet.
+ *
+ * PENDING is a claim awaiting the owner's confirmation and REJECTED is one
+ * they refused; neither belongs in the member list, the member counts, or the
+ * volume figures.
+ */
+const MEMBER_STATUSES: FleetMemberStatus[] = [
+  FleetMemberStatus.ACTIVE,
+  FleetMemberStatus.DEACTIVATED,
+];
+
+/**
  * DPX-FLEET — everything the fleet owner's console shows.
  *
  * Scoped to one fleet throughout. Every query here is filtered by the fleet's
@@ -72,8 +84,26 @@ export class FleetOverviewService {
 
   /** Members, their live position where there is one, and their volume. */
   public async listMembers(fleetId: string): Promise<FleetMemberDto[]> {
+    return await this.listByStatus(fleetId, MEMBER_STATUSES);
+  }
+
+  /**
+   * Riders who quoted this fleet's DX number and are waiting to be confirmed.
+   *
+   * A separate call from `listMembers` rather than a flag on it, because these
+   * are not members: they are claims. Mixing them into one list is how an
+   * owner ends up confirming somebody by accident.
+   */
+  public async listPendingRequests(fleetId: string): Promise<FleetMemberDto[]> {
+    return await this.listByStatus(fleetId, [FleetMemberStatus.PENDING]);
+  }
+
+  private async listByStatus(
+    fleetId: string,
+    statuses: FleetMemberStatus[],
+  ): Promise<FleetMemberDto[]> {
     const members = await this.prisma.fleetMember.findMany({
-      where: { fleetId, status: { not: FleetMemberStatus.REMOVED } },
+      where: { fleetId, status: { in: statuses } },
       include: { user: true },
       orderBy: { joinedAt: 'asc' },
     });
@@ -300,8 +330,9 @@ export class FleetOverviewService {
   /** The console's landing view. */
   public async getOverview(fleetId: string): Promise<FleetOverviewDto> {
     const fleet = await this.fleets.requireFleet(fleetId);
-    const [members, liveJobs, totals] = await Promise.all([
+    const [members, pendingRequests, liveJobs, totals] = await Promise.all([
       this.listMembers(fleetId),
+      this.listPendingRequests(fleetId),
       this.listLiveJobs(fleetId),
       this.commission.periodTotals(fleetId),
     ]);
@@ -309,6 +340,7 @@ export class FleetOverviewService {
     return {
       fleet: this.toFleetDto(fleet),
       members,
+      pendingRequests,
       liveJobs,
       period: {
         periodStart: totals.periodStart.toISOString(),
@@ -328,6 +360,7 @@ export class FleetOverviewService {
         deactivatedMembers: members.filter(
           (member) => member.status === FleetMemberStatus.DEACTIVATED,
         ).length,
+        pendingRequests: pendingRequests.length,
       },
     };
   }

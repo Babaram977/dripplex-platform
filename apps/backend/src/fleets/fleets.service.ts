@@ -20,6 +20,29 @@ import type { AuditContext } from '../audit/audit.service';
 import type { Fleet, FleetMember } from '@prisma/client';
 
 /**
+ * The member states that mean "this person rides for this fleet".
+ *
+ * PENDING is a claim the owner has not confirmed and REJECTED is one they
+ * refused; neither is a membership. Spelled out as a list rather than
+ * `{ not: REMOVED }` because that shape silently swallowed each new state as
+ * it was added — PENDING would have counted as a member on the day it landed.
+ */
+const LIVE_MEMBER_STATUSES: FleetMemberStatus[] = [
+  FleetMemberStatus.ACTIVE,
+  FleetMemberStatus.DEACTIVATED,
+];
+
+/**
+ * The fleet states in which work counts and commission accrues.
+ *
+ * SUSPENDED is deliberately included, preserving the behaviour that shipped
+ * before self-registration: suspending stops new people being attached, and
+ * changing what it does to money is a separate decision, not a side effect of
+ * this change.
+ */
+const TRADING_FLEET_STATUSES: FleetStatus[] = [FleetStatus.ACTIVE, FleetStatus.SUSPENDED];
+
+/**
  * DPX-FLEET — fleets, and who rides for them.
  *
  * Two audiences, and the split between them is the point:
@@ -62,10 +85,47 @@ export class FleetsService {
     return formatFleetNumber(current + 1);
   }
 
+  /**
+   * Operations creating a fleet directly. Live immediately: an operator
+   * creating it *is* the approval.
+   */
   public async createFleet(input: {
     ownerUserId: string;
     name: string;
     contactPhone?: string;
+    context: AuditContext;
+  }): Promise<Fleet> {
+    return await this.openFleet({ ...input, status: FleetStatus.ACTIVE });
+  }
+
+  /**
+   * An owner registering their own company online.
+   *
+   * Founder decision, 2026-08-30: "The two clients needing fleet registration
+   * will go online and register themselves then the system should issue a dx
+   * fleet number for them which their riders and drivers will use at
+   * onboarding process."
+   *
+   * The DX number is issued immediately, because the whole point of it is to
+   * be handed to riders — an owner who leaves the form with nothing has
+   * nothing to give them. The fleet itself waits: it does not become a
+   * billable DrippleX partner until Operations has checked it, which keeps the
+   * founder's locked rule that DrippleX decides who may work.
+   */
+  public async registerFleet(input: {
+    ownerUserId: string;
+    name: string;
+    contactPhone?: string;
+    context: AuditContext;
+  }): Promise<Fleet> {
+    return await this.openFleet({ ...input, status: FleetStatus.PENDING_APPROVAL });
+  }
+
+  private async openFleet(input: {
+    ownerUserId: string;
+    name: string;
+    contactPhone?: string;
+    status: FleetStatus;
     context: AuditContext;
   }): Promise<Fleet> {
     const owner = await this.prisma.user.findFirst({
@@ -79,8 +139,12 @@ export class FleetsService {
       where: { ownerId: input.ownerUserId, deletedAt: null },
     });
     if (existing) {
+      // A rejected application is terminal, so say so plainly rather than
+      // "you already own a fleet" about something that was turned down.
       throw new ConflictDomainException(
-        `${owner.firstName} ${owner.lastName} already owns fleet ${existing.fleetNumber}`,
+        existing.status === FleetStatus.REJECTED
+          ? `${owner.firstName} ${owner.lastName} has an application that DrippleX declined. Operations must clear it before another can be registered.`
+          : `${owner.firstName} ${owner.lastName} already owns fleet ${existing.fleetNumber}`,
       );
     }
 
@@ -102,14 +166,17 @@ export class FleetsService {
           ownerId: input.ownerUserId,
           fleetNumber: await this.nextFleetNumber(tx),
           name: input.name.trim(),
+          status: input.status,
           ...(input.contactPhone !== undefined ? { contactPhone: input.contactPhone.trim() } : {}),
         },
       });
 
       // Granted here rather than left as a separate step an operator has to
       // remember: a fleet whose owner cannot open their own console is not a
-      // fleet that has been created. Idempotent — an owner who somehow already
-      // holds the role keeps their single grant.
+      // fleet that has been created. Granted even while PENDING_APPROVAL, so
+      // the owner can watch their own application rather than being locked
+      // out of the thing they just registered. Idempotent — an owner who
+      // somehow already holds the role keeps their single grant.
       await tx.userRole.upsert({
         where: { userId_roleId: { userId: input.ownerUserId, roleId: ownerRole.id } },
         create: { userId: input.ownerUserId, roleId: ownerRole.id },
@@ -119,13 +186,86 @@ export class FleetsService {
       return created;
     });
 
-    await this.auditService.record(FLEET_AUDIT_ACTIONS.CREATED, input.context, {
-      resource: 'fleet',
-      resourceId: fleet.id,
-      metadata: { fleetNumber: fleet.fleetNumber, name: fleet.name, ownerId: input.ownerUserId },
-    });
+    await this.auditService.record(
+      input.status === FleetStatus.PENDING_APPROVAL
+        ? FLEET_AUDIT_ACTIONS.REGISTERED
+        : FLEET_AUDIT_ACTIONS.CREATED,
+      input.context,
+      {
+        resource: 'fleet',
+        resourceId: fleet.id,
+        metadata: { fleetNumber: fleet.fleetNumber, name: fleet.name, ownerId: input.ownerUserId },
+      },
+    );
 
     return fleet;
+  }
+
+  /** Operations letting a self-registered fleet start trading. */
+  public async approveFleet(input: {
+    fleetId: string;
+    adminUserId: string;
+    context: AuditContext;
+  }): Promise<Fleet> {
+    const fleet = await this.requireFleet(input.fleetId);
+    if (fleet.status !== FleetStatus.PENDING_APPROVAL) {
+      throw new ConflictDomainException(
+        fleet.status === FleetStatus.ACTIVE
+          ? 'That fleet is already approved'
+          : `That fleet is ${fleet.status.toLowerCase()}, not awaiting approval`,
+      );
+    }
+
+    const updated = await this.prisma.fleet.update({
+      where: { id: fleet.id },
+      data: {
+        status: FleetStatus.ACTIVE,
+        approvedAt: new Date(),
+        approvedBy: input.adminUserId,
+        rejectedAt: null,
+        rejectedReason: null,
+      },
+    });
+
+    await this.auditService.record(FLEET_AUDIT_ACTIONS.APPROVED, input.context, {
+      resource: 'fleet',
+      resourceId: fleet.id,
+      metadata: { fleetNumber: fleet.fleetNumber },
+    });
+
+    return updated;
+  }
+
+  /** Operations declining an application. Terminal — see the enum comment. */
+  public async rejectFleet(input: {
+    fleetId: string;
+    reason: string;
+    adminUserId: string;
+    context: AuditContext;
+  }): Promise<Fleet> {
+    const fleet = await this.requireFleet(input.fleetId);
+    if (fleet.status !== FleetStatus.PENDING_APPROVAL) {
+      throw new ConflictDomainException(
+        `That fleet is ${fleet.status.toLowerCase()}, not awaiting approval. Suspend it instead.`,
+      );
+    }
+
+    const updated = await this.prisma.fleet.update({
+      where: { id: fleet.id },
+      data: {
+        status: FleetStatus.REJECTED,
+        rejectedAt: new Date(),
+        rejectedReason: input.reason.trim(),
+      },
+    });
+
+    await this.auditService.record(FLEET_AUDIT_ACTIONS.APPLICATION_REJECTED, input.context, {
+      resource: 'fleet',
+      resourceId: fleet.id,
+      metadata: { fleetNumber: fleet.fleetNumber, reason: input.reason },
+    });
+
+    return updated;
   }
 
   public async requireFleet(fleetId: string): Promise<Fleet> {
@@ -190,6 +330,16 @@ export class FleetsService {
         `Fleet ${fleet.fleetNumber} is suspended. Reinstate it before adding people.`,
       );
     }
+    if (fleet.status === FleetStatus.PENDING_APPROVAL) {
+      throw new ConflictDomainException(
+        `Fleet ${fleet.fleetNumber} is still awaiting approval. Approve it before attaching people.`,
+      );
+    }
+    if (fleet.status === FleetStatus.REJECTED) {
+      throw new ConflictDomainException(
+        `Fleet ${fleet.fleetNumber} was declined and cannot take members.`,
+      );
+    }
 
     const user = await this.prisma.user.findFirst({
       where: { id: input.userId, deletedAt: null },
@@ -220,7 +370,7 @@ export class FleetsService {
     }
 
     const live = await this.prisma.fleetMember.findFirst({
-      where: { userId: input.userId, status: { not: FleetMemberStatus.REMOVED } },
+      where: { userId: input.userId, status: { in: LIVE_MEMBER_STATUSES } },
       include: { fleet: true },
     });
     if (live) {
@@ -231,13 +381,24 @@ export class FleetsService {
       );
     }
 
-    const member = await this.prisma.fleetMember.create({
-      data: {
-        fleetId: fleet.id,
-        userId: input.userId,
-        role: input.role,
-        activeUserId: input.userId,
-      },
+    const member = await this.prisma.$transaction(async (tx) => {
+      // Attaching someone directly settles any request they had outstanding —
+      // otherwise the owner is left with a pending row for a rider who is
+      // already on their fleet, and the console shows them twice.
+      await tx.fleetMember.updateMany({
+        where: { userId: input.userId, status: FleetMemberStatus.PENDING },
+        data: { status: FleetMemberStatus.REJECTED, rejectedAt: new Date() },
+      });
+
+      return await tx.fleetMember.create({
+        data: {
+          fleetId: fleet.id,
+          userId: input.userId,
+          role: input.role,
+          activeUserId: input.userId,
+          approvedAt: new Date(),
+        },
+      });
     });
 
     await this.auditService.record(FLEET_AUDIT_ACTIONS.MEMBER_ADDED, input.context, {
@@ -252,6 +413,208 @@ export class FleetsService {
     });
 
     return member;
+  }
+
+  /**
+   * A rider or driver quoting a fleet's DX number during their own onboarding.
+   *
+   * Founder decision, 2026-08-30: riders type the number themselves. That
+   * means the claim is unverified, so this creates a *request*, never a
+   * membership — the owner confirms it. Without that step anyone could type
+   * any company's number and that company would be invoiced for their jobs.
+   *
+   * The role is derived from the profiles the person actually holds rather
+   * than taken from the request: a claimed role is another unverified claim,
+   * and a "driver" with no driver profile can never be dispatched anyway.
+   *
+   * A fleet still awaiting DrippleX approval accepts requests. The owner is
+   * given their number precisely so they can start collecting riders, and
+   * nothing counts for either party until both are approved.
+   */
+  public async requestToJoin(input: {
+    fleetNumber: string;
+    userId: string;
+    context: AuditContext;
+  }): Promise<{ member: FleetMember; fleet: Fleet }> {
+    const fleet = await this.findByNumber(input.fleetNumber);
+
+    if (fleet.status === FleetStatus.REJECTED) {
+      throw new ValidationDomainException(
+        `Fleet ${fleet.fleetNumber} is not accepting riders. Check the number with your fleet owner.`,
+      );
+    }
+    if (fleet.status === FleetStatus.SUSPENDED) {
+      throw new ConflictDomainException(
+        `Fleet ${fleet.fleetNumber} is suspended. Speak to DrippleX Operations.`,
+      );
+    }
+
+    const user = await this.prisma.user.findFirst({
+      where: { id: input.userId, deletedAt: null },
+      include: { riderProfile: true, driverProfile: true },
+    });
+    if (!user) {
+      throw new NotFoundDomainException('That account does not exist');
+    }
+
+    const role =
+      user.riderProfile !== null
+        ? FleetMemberRole.RIDER
+        : user.driverProfile !== null
+          ? FleetMemberRole.DRIVER
+          : null;
+    if (role === null) {
+      throw new ValidationDomainException(
+        'Only a rider or a driver can join a fleet. Finish your own onboarding first.',
+      );
+    }
+
+    if (fleet.ownerId === input.userId) {
+      throw new ValidationDomainException(
+        'A fleet owner cannot also be a member of their own fleet',
+      );
+    }
+
+    const live = await this.prisma.fleetMember.findFirst({
+      where: { userId: input.userId, status: { in: LIVE_MEMBER_STATUSES } },
+      include: { fleet: true },
+    });
+    if (live) {
+      throw new ConflictDomainException(
+        live.fleetId === fleet.id
+          ? `You are already on fleet ${fleet.fleetNumber}`
+          : `You already ride for fleet ${live.fleet.fleetNumber}. Leave it before joining another.`,
+      );
+    }
+
+    const pending = await this.prisma.fleetMember.findFirst({
+      where: { userId: input.userId, status: FleetMemberStatus.PENDING },
+      include: { fleet: true },
+    });
+    if (pending) {
+      throw new ConflictDomainException(
+        pending.fleetId === fleet.id
+          ? `You have already asked to join ${fleet.fleetNumber}. ${fleet.name} has not confirmed it yet.`
+          : `You are waiting on fleet ${pending.fleet.fleetNumber} to confirm you. Only one request at a time.`,
+      );
+    }
+
+    const member = await this.prisma.fleetMember.create({
+      data: {
+        fleetId: fleet.id,
+        userId: input.userId,
+        role,
+        status: FleetMemberStatus.PENDING,
+        // Deliberately null: a request is not a membership, so it must not
+        // occupy the one-live-fleet slot the unique index guards. A rider who
+        // typed the wrong number is not locked out of the right one.
+        activeUserId: null,
+      },
+    });
+
+    await this.auditService.record(FLEET_AUDIT_ACTIONS.MEMBER_REQUESTED, input.context, {
+      resource: 'fleet_member',
+      resourceId: member.id,
+      metadata: { fleetId: fleet.id, fleetNumber: fleet.fleetNumber, userId: input.userId, role },
+    });
+
+    return { member, fleet };
+  }
+
+  /** The request this person has outstanding, or null. Drives their app. */
+  public async pendingRequestFor(
+    userId: string,
+  ): Promise<{ member: FleetMember; fleet: Fleet } | null> {
+    const member = await this.prisma.fleetMember.findFirst({
+      where: { userId, status: FleetMemberStatus.PENDING },
+      include: { fleet: true },
+      orderBy: { joinedAt: 'desc' },
+    });
+    if (!member) return null;
+    return { member, fleet: member.fleet };
+  }
+
+  /**
+   * The owner confirming that this person really does work for them.
+   *
+   * Only here does a request become a membership, and only here does
+   * `activeUserId` get set — which is the moment the database starts
+   * guaranteeing they ride for one fleet and no other.
+   */
+  public async approveJoinRequest(input: {
+    fleetId: string;
+    memberId: string;
+    ownerUserId: string;
+    context: AuditContext;
+  }): Promise<FleetMember> {
+    const member = await this.requireMemberOfFleet(input.fleetId, input.memberId);
+    if (member.status !== FleetMemberStatus.PENDING) {
+      throw new ConflictDomainException('That is not an outstanding request');
+    }
+
+    const stillFree = await this.prisma.fleetMember.findFirst({
+      where: { userId: member.userId, status: { in: LIVE_MEMBER_STATUSES } },
+      include: { fleet: true },
+    });
+    if (stillFree) {
+      throw new ConflictDomainException(
+        `They joined fleet ${stillFree.fleet.fleetNumber} while this request was waiting.`,
+      );
+    }
+
+    const updated = await this.prisma.fleetMember.update({
+      where: { id: member.id },
+      data: {
+        status: FleetMemberStatus.ACTIVE,
+        activeUserId: member.userId,
+        approvedAt: new Date(),
+        approvedBy: input.ownerUserId,
+      },
+    });
+
+    await this.auditService.record(FLEET_AUDIT_ACTIONS.MEMBER_REQUEST_APPROVED, input.context, {
+      resource: 'fleet_member',
+      resourceId: member.id,
+      metadata: { fleetId: input.fleetId, userId: member.userId },
+    });
+
+    return updated;
+  }
+
+  /** The owner saying this person does not work for them. */
+  public async rejectJoinRequest(input: {
+    fleetId: string;
+    memberId: string;
+    reason?: string;
+    ownerUserId: string;
+    context: AuditContext;
+  }): Promise<FleetMember> {
+    const member = await this.requireMemberOfFleet(input.fleetId, input.memberId);
+    if (member.status !== FleetMemberStatus.PENDING) {
+      throw new ConflictDomainException('That is not an outstanding request');
+    }
+
+    const updated = await this.prisma.fleetMember.update({
+      where: { id: member.id },
+      data: {
+        status: FleetMemberStatus.REJECTED,
+        rejectedAt: new Date(),
+        ...(input.reason !== undefined ? { rejectedReason: input.reason.trim() } : {}),
+      },
+    });
+
+    await this.auditService.record(FLEET_AUDIT_ACTIONS.MEMBER_REQUEST_REJECTED, input.context, {
+      resource: 'fleet_member',
+      resourceId: member.id,
+      metadata: {
+        fleetId: input.fleetId,
+        userId: member.userId,
+        reason: input.reason ?? null,
+        ownerUserId: input.ownerUserId,
+      },
+    });
+
+    return updated;
   }
 
   private async requireMemberOfFleet(fleetId: string, memberId: string): Promise<FleetMember> {
@@ -423,14 +786,21 @@ export class FleetsService {
    * A DEACTIVATED member still belongs to the fleet, so this returns it — the
    * caller decides what deactivation means for what it is doing. Dispatch
    * treats it as "do not offer"; the console still lists them.
+   *
+   * PENDING and REJECTED do not count, and neither does a fleet that has not
+   * been approved. This is a money path — it is what makes a fleet driver skip
+   * the platform's 10% and what attributes a job to a fleet's monthly volume —
+   * so an unconfirmed claim must never reach it. A rider who typed a number
+   * yesterday is not on that fleet until its owner says so.
    */
   public async fleetForUser(userId: string): Promise<{ fleet: Fleet; member: FleetMember } | null> {
     const member = await this.prisma.fleetMember.findFirst({
-      where: { userId, status: { not: FleetMemberStatus.REMOVED } },
+      where: { userId, status: { in: LIVE_MEMBER_STATUSES } },
       include: { fleet: true },
     });
     if (!member) return null;
     if (member.fleet.deletedAt !== null) return null;
+    if (!TRADING_FLEET_STATUSES.includes(member.fleet.status)) return null;
     return { fleet: member.fleet, member };
   }
 }

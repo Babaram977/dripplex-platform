@@ -4394,6 +4394,20 @@ model Fleet {
   suspendedAt     DateTime? @map("suspended_at")
   suspendedReason String?   @map("suspended_reason") @db.VarChar(500)
 
+  /// When Operations let a self-registered fleet start trading.
+  ///
+  /// Founder decision 2026-08-30: an owner registers online and is issued
+  /// their DX number immediately — they need it to give to their riders — but
+  /// the fleet does not become a billable partner until DrippleX has checked
+  /// it. Until then no rider is attached, no job counts and no commission
+  /// accrues. Null on a fleet Operations created directly: creating it there
+  /// *is* the approval.
+  approvedAt DateTime? @map("approved_at")
+  approvedBy String?   @map("approved_by") @db.Uuid
+
+  rejectedAt     DateTime? @map("rejected_at")
+  rejectedReason String?   @map("rejected_reason") @db.VarChar(500)
+
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
@@ -4408,8 +4422,14 @@ model Fleet {
 }
 
 enum FleetStatus {
+  /// Registered online, DX number issued, waiting for Operations to check it.
+  /// Nothing counts and nothing is billed in this state.
+  PENDING_APPROVAL
   ACTIVE
   SUSPENDED
+  /// Operations declined the application. Terminal — the owner registers again
+  /// rather than a rejected fleet being quietly revived.
+  REJECTED
 }
 
 /// One rider or driver working under one fleet.
@@ -4438,6 +4458,20 @@ model FleetMember {
   /// record of trips they have already done.
   removedAt DateTime? @map("removed_at")
 
+  /// A rider who quoted this fleet's DX number during their own onboarding is
+  /// a request, not a member.
+  ///
+  /// Founder decision 2026-08-30: riders type the number themselves, so the
+  /// fleet owner has to confirm it. Without that, anyone could type any
+  /// company's number and that company would be invoiced for their jobs.
+  /// PENDING rows carry no `activeUserId`, so a mistyped number never blocks
+  /// the rider from requesting the right fleet.
+  approvedAt DateTime? @map("approved_at")
+  approvedBy String?   @map("approved_by") @db.Uuid
+
+  rejectedAt     DateTime? @map("rejected_at")
+  rejectedReason String?   @map("rejected_reason") @db.VarChar(500)
+
   joinedAt  DateTime @default(now()) @map("joined_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -4463,9 +4497,15 @@ enum FleetMemberRole {
 }
 
 enum FleetMemberStatus {
+  /// The rider quoted this fleet's number at onboarding; the owner has not
+  /// confirmed it yet. Not dispatched as a fleet rider, not counted, not
+  /// billed.
+  PENDING
   ACTIVE
   DEACTIVATED
   REMOVED
+  /// The owner said this person does not work for them.
+  REJECTED
 }
 
 /// The volume bands that decide a fleet's commission rate.
