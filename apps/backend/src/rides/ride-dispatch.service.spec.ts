@@ -7,7 +7,11 @@ import { DomainEventBus } from '../events/domain-event-bus';
 import { DOMAIN_EVENTS } from '../events/domain-events';
 
 import { RideDispatchService } from './ride-dispatch.service';
-import { MAX_DISPATCH_ATTEMPTS, RIDE_SEARCH_WINDOW_MS } from './ride.constants';
+import {
+  MAX_DISPATCH_ATTEMPTS,
+  RIDE_REQUESTED_AT_FUTURE_TOLERANCE_MS,
+  RIDE_SEARCH_WINDOW_MS,
+} from './ride.constants';
 
 import type { RideEventsPublisher } from './ride-events.publisher';
 import type { AuditLogRepository } from '../audit/repositories/audit-log.repository';
@@ -162,11 +166,12 @@ describe('RideDispatchService', () => {
 
   /** `requestedAgoMs` models a ride that has been looking for a while — the
    * search window is measured from requestedAt. */
+  /** Negative `requestedAgoMs` puts `requestedAt` in the future on purpose. */
   async function createRide(requestedAgoMs = 0): Promise<Ride> {
     const ride = await prisma.ride.create({
       data: {
         customerId,
-        ...(requestedAgoMs > 0 ? { requestedAt: new Date(Date.now() - requestedAgoMs) } : {}),
+        ...(requestedAgoMs !== 0 ? { requestedAt: new Date(Date.now() - requestedAgoMs) } : {}),
         rideType: 'ECONOMY',
         pickupLatitude: PICKUP.lat,
         pickupLongitude: PICKUP.lng,
@@ -652,5 +657,42 @@ describe('RideDispatchService', () => {
 
       expect(emit.mock.calls.some(([name]) => name === DOMAIN_EVENTS.RIDE_OFFERED)).toBe(false);
     });
+  });
+  /**
+   * The Kano launch incident, 2026-08-29. One ride swept every five seconds for
+   * hours, reaching every driver in the fleet, and nothing could end it: the
+   * search window is measured as `now - requestedAt`, so a timestamp in the
+   * future makes that negative and it can never reach thirty minutes.
+   */
+  it('stops searching when requestedAt is in the future, instead of running for ever', async () => {
+    if (!databaseAvailable) return;
+
+    // No driver is created, so dispatch finds nobody and reaches the window
+    // check — the exact path the stuck ride was taking.
+    const ride = await createRide(-(RIDE_REQUESTED_AT_FUTURE_TOLERANCE_MS + 60_000));
+
+    const dispatched = await service.dispatchRide(ride.id);
+
+    expect(dispatched.status).toBe('NO_DRIVERS_FOUND');
+
+    // And it stays ended: the sweep must not pick it back up, which is what
+    // the old behaviour did on the very next tick. Asserted on this ride
+    // rather than on the sweep's return count — that count is global, and
+    // these specs share one database with every other suite's SEARCHING rides.
+    await service.retryStalledSearches();
+    const after = await prisma.ride.findUnique({ where: { id: ride.id } });
+    expect(after?.status).toBe('NO_DRIVERS_FOUND');
+  });
+
+  it('keeps searching through ordinary clock skew rather than killing the booking', async () => {
+    if (!databaseAvailable) return;
+
+    // A few seconds of forward skew between the API server and the database is
+    // normal. A real passenger who has just booked must not be told nobody came.
+    const ride = await createRide(-5_000);
+
+    const dispatched = await service.dispatchRide(ride.id);
+
+    expect(dispatched.status).toBe('SEARCHING');
   });
 });

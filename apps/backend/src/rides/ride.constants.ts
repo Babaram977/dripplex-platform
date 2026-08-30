@@ -145,6 +145,24 @@ export const MAX_DISPATCH_ATTEMPTS = 60;
  */
 export const RIDE_SEARCH_WINDOW_MS = 30 * 60_000;
 
+/**
+ * How far ahead of now a ride's `requestedAt` may sit before the timestamp is
+ * treated as untrustworthy rather than as a very young ride.
+ *
+ * The search window is measured as `now - requestedAt`. A timestamp in the
+ * future makes that negative, so it can never reach the window and the ride
+ * searches for ever — re-dispatched every RIDE_OFFER_SWEEP_INTERVAL_MS, to
+ * every driver in turn, with nothing able to stop it. That is not theoretical:
+ * on 2026-08-29 one ride swept continuously for hours and reached every driver
+ * at the Kano launch.
+ *
+ * A minute of slack, because a small forward skew between the API server's
+ * clock and the database's is ordinary and must not kill a real booking. Past
+ * that, a ride "requested" in the future is bad data, and bad data must not be
+ * able to spin for ever.
+ */
+export const RIDE_REQUESTED_AT_FUTURE_TOLERANCE_MS = 60_000;
+
 /** How often the background sweep checks for expired offers. */
 export const RIDE_OFFER_SWEEP_INTERVAL_MS = 5_000;
 

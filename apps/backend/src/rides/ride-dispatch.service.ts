@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { DriverStatus, RideOfferStatus, RideStatus } from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../audit/audit.service';
@@ -22,6 +22,7 @@ import {
   RIDE_AUDIT_ACTIONS,
   RIDE_DISPATCH_RADIUS_BANDS_METERS,
   RIDE_OFFER_TIMEOUT_MS,
+  RIDE_REQUESTED_AT_FUTURE_TOLERANCE_MS,
   RIDE_SEARCH_WINDOW_MS,
 } from './ride.constants';
 import { toRideDto, toRideOfferDto, toRideOfferPreviewDto } from './ride.mapper';
@@ -41,6 +42,8 @@ import type { DriverAvailability, Ride, RideOffer } from '@prisma/client';
  */
 @Injectable()
 export class RideDispatchService {
+  private readonly logger = new Logger(RideDispatchService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
@@ -382,7 +385,27 @@ export class RideDispatchService {
    * again, until the search window closes.
    */
   private async keepSearching(ride: Ride): Promise<RideDto> {
-    if (Date.now() - ride.requestedAt.getTime() >= RIDE_SEARCH_WINDOW_MS) {
+    const elapsed = Date.now() - ride.requestedAt.getTime();
+
+    if (elapsed >= RIDE_SEARCH_WINDOW_MS) {
+      return await this.giveUp(ride);
+    }
+
+    // A ride whose `requestedAt` is in the future has a negative elapsed time,
+    // so the check above can never fire and the ride searches for ever — swept
+    // back here every RIDE_OFFER_SWEEP_INTERVAL_MS and offered to every driver
+    // in turn, with nothing able to end it. One ride did exactly that for hours
+    // during the Kano launch on 2026-08-29.
+    //
+    // Stopped rather than clamped: the window exists so a passenger is told
+    // within half an hour that nobody came, and a timestamp this wrong cannot
+    // be used to measure that. Better to close the ride and leave a record than
+    // to leave it circling the fleet.
+    if (elapsed < -RIDE_REQUESTED_AT_FUTURE_TOLERANCE_MS) {
+      this.logger.warn(
+        `Ride ${ride.id} has requestedAt ${ride.requestedAt.toISOString()}, ` +
+          `which is in the future. Ending the search rather than letting it run for ever.`,
+      );
       return await this.giveUp(ride);
     }
 
