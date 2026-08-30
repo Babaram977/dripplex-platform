@@ -675,11 +675,13 @@ describe('RideDispatchService', () => {
 
     expect(dispatched.status).toBe('NO_DRIVERS_FOUND');
 
-    // And it stays ended: the sweep must not pick it back up.
-    const stalled = await service.retryStalledSearches();
+    // And it stays ended: the sweep must not pick it back up, which is what
+    // the old behaviour did on the very next tick. Asserted on this ride
+    // rather than on the sweep's return count — that count is global, and
+    // these specs share one database with every other suite's SEARCHING rides.
+    await service.retryStalledSearches();
     const after = await prisma.ride.findUnique({ where: { id: ride.id } });
     expect(after?.status).toBe('NO_DRIVERS_FOUND');
-    expect(stalled).toBe(0);
   });
 
   it('keeps searching through ordinary clock skew rather than killing the booking', async () => {
