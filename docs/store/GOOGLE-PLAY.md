@@ -4,9 +4,13 @@ Use this draft when creating the Play Console listing. Replace placeholders befo
 
 ## Developer account — legal entity
 
-These are the values the Play Console asks for when the developer account is an
-**organization** rather than an individual. They must match the Dun & Bradstreet
-record exactly, character for character — Google verifies against it.
+**Founder decision 2026-08-30: DrippleX publishes under an *organization* Play
+developer account**, in the name of AFNAN HOMES LTD — not an individual account.
+That is what makes the D-U-N-S below required rather than optional.
+
+These are the values the Play Console asks for on an organization account. They
+must match the Dun & Bradstreet record exactly, character for character — Google
+verifies against it.
 
 | Field                  | Value                                                                       |
 | ---------------------- | --------------------------------------------------------------------------- |
@@ -24,12 +28,14 @@ days** after resolution — so from **2026-09-02**. Do not start verification
 before then: a lookup against a record that has not propagated returns nothing,
 which stalls the application rather than queuing it.
 
-⚠️ **Confirm before relying on this.** Google requires a D-U-N-S number for new
-*organization* developer accounts; an individual account does not use one. Which
-account type DrippleX publishes under is a founder decision that is not recorded
-anywhere in this repo, and this page previously said nothing about the account at
-all. Check the current requirement in the Play Console at enrolment rather than
-treating this paragraph as authority.
+⚠️ **One consequence to check at enrolment.** Google publishes a verified
+developer's contact details on the store listing, which for an organization
+account means the legal name and, depending on the current policy, the
+registered address and a contact email are shown to anyone viewing the app on
+Play. If that address being public is not wanted, the time to raise it is before
+verification, not after. This paragraph is a prompt to check the Console's
+current requirements — it is not authority on them, and no Play policy text is
+quoted anywhere in this repo.
 
 The internal-testing track in `docs/mobile/BETA-DISTRIBUTION.md` runs on whatever
 account is already in use and is **not** blocked by any of this.
