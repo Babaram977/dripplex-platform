@@ -2,6 +2,38 @@
 
 Use this draft when creating the Play Console listing. Replace placeholders before public release.
 
+## Developer account — legal entity
+
+These are the values the Play Console asks for when the developer account is an
+**organization** rather than an individual. They must match the Dun & Bradstreet
+record exactly, character for character — Google verifies against it.
+
+| Field                  | Value                                                                       |
+| ---------------------- | --------------------------------------------------------------------------- |
+| Legal entity           | **AFNAN HOMES LTD** — not "DrippleX", which is its trading name             |
+| RC number              | RC 9387949                                                                   |
+| Entity type            | Private Limited Liability Company                                            |
+| **D-U-N-S number**     | **352296291**                                                                |
+| Registered address     | No. 58–60 UDB Road, By Tarauni Primary, Nasarawa, Kano, Kano State, Nigeria |
+| Telephone of record    | +234 803 973 9780                                                            |
+
+The D-U-N-S was issued by Dun & Bradstreet on **2026-08-28 10:09 UTC** (case
+10859055, tracking 10797660, request key BVD5Z3B3P9) and verified through the
+national registry. D&B says the record becomes visible **2–3 business working
+days** after resolution — so from **2026-09-02**. Do not start verification
+before then: a lookup against a record that has not propagated returns nothing,
+which stalls the application rather than queuing it.
+
+⚠️ **Confirm before relying on this.** Google requires a D-U-N-S number for new
+*organization* developer accounts; an individual account does not use one. Which
+account type DrippleX publishes under is a founder decision that is not recorded
+anywhere in this repo, and this page previously said nothing about the account at
+all. Check the current requirement in the Play Console at enrolment rather than
+treating this paragraph as authority.
+
+The internal-testing track in `docs/mobile/BETA-DISTRIBUTION.md` runs on whatever
+account is already in use and is **not** blocked by any of this.
+
 ## App details
 
 | Field                            | Value                                                                   |

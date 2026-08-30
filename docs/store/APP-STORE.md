@@ -1,5 +1,36 @@
 # Apple App Store — metadata (draft)
 
+## Developer account — legal entity
+
+Apple Developer Program **organization** enrolment verifies the applicant against
+the Dun & Bradstreet record. The legal name below is what goes in the
+application; *Dripplex* is the app name, not the applicant.
+
+| Field                  | Value                                                                       |
+| ---------------------- | --------------------------------------------------------------------------- |
+| Legal entity           | **AFNAN HOMES LTD** — not "DrippleX", which is its trading name             |
+| RC number              | RC 9387949                                                                   |
+| Entity type            | Private Limited Liability Company                                            |
+| **D-U-N-S number**     | **352296291**                                                                |
+| Registered address     | No. 58–60 UDB Road, By Tarauni Primary, Nasarawa, Kano, Kano State, Nigeria |
+| Telephone of record    | +234 803 973 9780                                                            |
+
+The D-U-N-S was issued by Dun & Bradstreet on **2026-08-28 10:09 UTC** (case
+10859055, tracking 10797660, request key BVD5Z3B3P9) and verified through the
+national registry. D&B says the record becomes visible **2–3 business working
+days** after resolution — so from **2026-09-02**. Do not start verification
+before then: a lookup against a record that has not propagated returns nothing,
+which stalls the application rather than queuing it.
+
+The name matches: the D-U-N-S was issued to AFNAN HOMES LTD, the same entity that
+`docs/legal/DPX-LEGAL-001-TERMS-OF-USE.md` §1 names as the contracting party. A
+mismatch here is the usual cause of a stalled enrolment, so it was worth checking.
+
+Enrolment itself is **parked** — founder decision 2026-08-28, revisit after the
+driver dinner. `docs/mobile/IOS.md` lists the blockers the D-U-N-S does not
+remove (no macOS build host, `aps-environment` still `development`, no signing
+team).
+
 ## App Information
 
 | Field                   | Value                                |
