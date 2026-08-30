@@ -3,7 +3,15 @@
 // Base: https://api.dripplex.com/api/v1
 // Every response is unwrapped from { success, data } before returning.
 
-import type { CallDto, CallTokenDto, InitiatedCallDto } from '@dripplex/types';
+import type {
+  CallDto,
+  CallTokenDto,
+  FleetJobDto,
+  FleetMemberDto,
+  FleetOverviewDto,
+  FleetPeriodDto,
+  InitiatedCallDto,
+} from '@dripplex/types';
 
 /**
  * DPX-OPS history. Re-exported from the shared contract rather than redeclared
@@ -12,6 +20,8 @@ import type { CallDto, CallTokenDto, InitiatedCallDto } from '@dripplex/types';
  * — the mismatch that forced other DTOs here to be declared by hand does not
  * apply.
  */
+export type { FleetOverviewDto, FleetMemberDto, FleetJobDto, FleetPeriodDto };
+
 export type {
   DeliveryHistoryDto,
   OrderHistoryDto,
@@ -3685,6 +3695,29 @@ export const api = {
       dx<DispatchEligibilityDto>('GET', `/operations/fleet/drivers/${id}/eligibility`),
     getRiderEligibility: (id: string) =>
       dx<DispatchEligibilityDto>('GET', `/operations/fleet/riders/${id}/eligibility`),
+    /**
+     * DPX-FLEET — a fleet owner's own console. Every route resolves the fleet
+     * from the signed-in user, so there is no fleet id to pass and no way to
+     * point a request at another company's riders.
+     */
+    getFleetOverview: () => dx<FleetOverviewDto>('GET', '/fleet/overview'),
+    getFleetMembers: () => dx<FleetMemberDto[]>('GET', '/fleet/members'),
+    deactivateFleetMember: (memberId: string, reason?: string) =>
+      dx<FleetMemberDto[]>(
+        'POST',
+        `/fleet/members/${memberId}/deactivate`,
+        reason === undefined ? {} : { reason },
+      ),
+    reactivateFleetMember: (memberId: string) =>
+      dx<FleetMemberDto[]>('POST', `/fleet/members/${memberId}/reactivate`, {}),
+    /**
+     * Detaches a rider from the fleet. Never deletes their DrippleX account —
+     * that is an Operations action with its own checks for trips in progress
+     * and money owed.
+     */
+    removeFleetMember: (memberId: string) =>
+      dx<FleetMemberDto[]>('POST', `/fleet/members/${memberId}/remove`, {}),
+
     /**
      * DPX-OPS — the completed record, for audit, disputes and security
      * enquiries. The live queue below only ever holds work in flight, which
