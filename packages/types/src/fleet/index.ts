@@ -117,3 +117,35 @@ export interface FleetCommissionTierDto {
   maxOrders: number | null;
   rate: number;
 }
+
+/**
+ * One row of Operations' fleet dashboard.
+ *
+ * Carries more than `FleetDto` because the question an operator actually has
+ * is never "does this fleet exist" — it is who runs it, how many people they
+ * have out, and what they owe this month. A list of names and DX numbers would
+ * send them into each fleet one at a time to find that out.
+ */
+export interface AdminFleetListItemDto {
+  fleet: FleetDto;
+  owner: {
+    userId: string;
+    name: string;
+    phone: string | null;
+    email: string;
+  };
+  memberCounts: {
+    total: number;
+    active: number;
+    deactivated: number;
+  };
+  /** The running month — the same figures the owner sees on their own console. */
+  period: FleetPeriodDto;
+  /**
+   * A rate agreed with this fleet, overriding the band table. Null means the
+   * table applies, which is a different thing from a rate of zero.
+   */
+  negotiatedRate: number | null;
+  negotiationNote: string | null;
+  negotiatedAt: string | null;
+}

@@ -9,7 +9,12 @@ import {
 } from '../common/exceptions/domain.exception';
 import { PrismaService } from '../prisma/prisma.service';
 
-import { FLEET_AUDIT_ACTIONS, formatFleetNumber, normaliseFleetNumber } from './fleet.constants';
+import {
+  FLEET_AUDIT_ACTIONS,
+  FLEET_OWNER_ROLE,
+  formatFleetNumber,
+  normaliseFleetNumber,
+} from './fleet.constants';
 
 import type { AuditContext } from '../audit/audit.service';
 import type { Fleet, FleetMember } from '@prisma/client';
@@ -79,8 +84,20 @@ export class FleetsService {
       );
     }
 
+    // The role has to exist before the fleet does. Without it the owner can
+    // sign in and reach nothing: every route on their console is gated on
+    // `fleet:own:read`, which only this role carries.
+    const ownerRole = await this.prisma.role.findFirst({
+      where: { name: FLEET_OWNER_ROLE, deletedAt: null },
+    });
+    if (!ownerRole) {
+      throw new NotFoundDomainException(
+        `The ${FLEET_OWNER_ROLE} role is not configured. Run the RBAC seed before creating fleets.`,
+      );
+    }
+
     const fleet = await this.prisma.$transaction(async (tx) => {
-      return await tx.fleet.create({
+      const created = await tx.fleet.create({
         data: {
           ownerId: input.ownerUserId,
           fleetNumber: await this.nextFleetNumber(tx),
@@ -88,6 +105,18 @@ export class FleetsService {
           ...(input.contactPhone !== undefined ? { contactPhone: input.contactPhone.trim() } : {}),
         },
       });
+
+      // Granted here rather than left as a separate step an operator has to
+      // remember: a fleet whose owner cannot open their own console is not a
+      // fleet that has been created. Idempotent — an owner who somehow already
+      // holds the role keeps their single grant.
+      await tx.userRole.upsert({
+        where: { userId_roleId: { userId: input.ownerUserId, roleId: ownerRole.id } },
+        create: { userId: input.ownerUserId, roleId: ownerRole.id },
+        update: {},
+      });
+
+      return created;
     });
 
     await this.auditService.record(FLEET_AUDIT_ACTIONS.CREATED, input.context, {

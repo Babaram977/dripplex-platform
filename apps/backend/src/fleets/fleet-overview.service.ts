@@ -6,7 +6,13 @@ import { PrismaService } from '../prisma/prisma.service';
 import { FleetCommissionService } from './fleet-commission.service';
 import { FleetsService } from './fleets.service';
 
-import type { FleetDto, FleetJobDto, FleetMemberDto, FleetOverviewDto } from '@dripplex/types';
+import type {
+  AdminFleetListItemDto,
+  FleetDto,
+  FleetJobDto,
+  FleetMemberDto,
+  FleetOverviewDto,
+} from '@dripplex/types';
 import type { Fleet } from '@prisma/client';
 
 /**
@@ -205,6 +211,90 @@ export class FleetOverviewService {
       select: { userId: true },
     });
     return members.map((member) => member.userId);
+  }
+
+  /**
+   * Operations' fleet dashboard — every fleet, with who runs it and what it
+   * owes.
+   *
+   * Deliberately answers the whole question in one call. The operator's
+   * question is never "does DX-FL-0002 exist" but "who runs it, how many
+   * people has it got out, what does it owe this month" — and a bare list of
+   * names would make them open each fleet in turn to find out.
+   */
+  public async listForAdmin(query: {
+    includeSuspended?: boolean;
+  }): Promise<AdminFleetListItemDto[]> {
+    const fleets = await this.fleets.listFleets(
+      query.includeSuspended === undefined ? {} : { includeSuspended: query.includeSuspended },
+    );
+    if (fleets.length === 0) return [];
+
+    const fleetIds = fleets.map((fleet) => fleet.id);
+    const [owners, memberRows] = await Promise.all([
+      this.prisma.user.findMany({
+        where: { id: { in: fleets.map((fleet) => fleet.ownerId) } },
+        select: { id: true, firstName: true, lastName: true, phone: true, email: true },
+      }),
+      this.prisma.fleetMember.groupBy({
+        by: ['fleetId', 'status'],
+        where: { fleetId: { in: fleetIds }, status: { not: FleetMemberStatus.REMOVED } },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const ownerById = new Map(owners.map((owner) => [owner.id, owner]));
+
+    // The running month is per-fleet and cheap (one row each), so it is read
+    // in parallel rather than turned into a single clever aggregate — the
+    // projected rate depends on each fleet's own negotiated rate. Carried
+    // alongside its fleet rather than as a parallel array, so nothing depends
+    // on two lists staying in the same order.
+    const withTotals = await Promise.all(
+      fleets.map(async (fleet) => ({
+        fleet,
+        totals: await this.commission.periodTotals(fleet.id),
+      })),
+    );
+
+    return withTotals.map(({ fleet, totals }) => {
+      const owner = ownerById.get(fleet.ownerId);
+      const counts = memberRows.filter((row) => row.fleetId === fleet.id);
+      const active =
+        counts.find((row) => row.status === FleetMemberStatus.ACTIVE)?._count._all ?? 0;
+      const deactivated =
+        counts.find((row) => row.status === FleetMemberStatus.DEACTIVATED)?._count._all ?? 0;
+
+      return {
+        fleet: this.toFleetDto(fleet),
+        owner: {
+          userId: fleet.ownerId,
+          // A deleted owner leaves the fleet standing; the row says so rather
+          // than rendering "undefined undefined".
+          name:
+            owner === undefined
+              ? 'Owner account not found'
+              : `${owner.firstName} ${owner.lastName}`.trim(),
+          phone: owner?.phone ?? null,
+          email: owner?.email ?? '',
+        },
+        memberCounts: { total: active + deactivated, active, deactivated },
+        period: {
+          periodStart: totals.periodStart.toISOString(),
+          periodEnd: totals.periodEnd.toISOString(),
+          orderCount: totals.orderCount,
+          chargeableTotal: totals.chargeableTotal,
+          projectedRate: totals.projectedRate,
+          projectedCommission: totals.projectedCommission,
+          settled: totals.settled,
+          appliedRate: totals.appliedRate,
+          commissionAmount: totals.commissionAmount,
+        },
+        negotiatedRate: fleet.negotiatedRate === null ? null : Number(fleet.negotiatedRate),
+        negotiationNote: fleet.negotiationNote,
+        negotiatedAt: fleet.negotiatedAt === null ? null : fleet.negotiatedAt.toISOString(),
+      };
+    });
   }
 
   /** The console's landing view. */
