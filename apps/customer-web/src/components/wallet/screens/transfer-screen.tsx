@@ -44,7 +44,6 @@ function recipientSubtitle(recipient: WalletRecipientDto): string {
  * search plus a mocked "Recent recipients" list has no real backend
  * counterpart — there's no customer-facing user directory and no username
  * concept. Adapted to what's real: exact phone-number or email lookup (a
- * narrowly-scoped
  * narrowly-scoped `GET /customer/wallet/transfer/recipients` endpoint —
  * never a listing/enumeration of users) and recent recipients derived from
  * the caller's own past TRANSFER ledger entries (also new this slice).
@@ -120,7 +119,7 @@ export function TransferScreen({
             </p>
             {recipient ? (
               <p className={`mt-1 text-[13px] ${body}`} style={{ color: 'rgba(255,255,255,.5)' }}>
-                to {recipient.firstName} {recipient.lastName} · {recipient.maskedPhone}
+                to {recipient.firstName} {recipient.lastName} · {recipientSubtitle(recipient)}
               </p>
             ) : null}
           </div>

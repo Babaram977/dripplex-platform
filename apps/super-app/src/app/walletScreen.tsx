@@ -2168,7 +2168,7 @@ export function TransferScreen({
             </div>
             {recipient && (
               <div style={{ fontFamily: IT, fontSize: 13, color: MUTED, marginTop: 4 }}>
-                to {recipientName(recipient)} · {recipient.maskedPhone}
+                to {recipientName(recipient)} · {recipientIdentifier(recipient)}
               </div>
             )}
           </div>
