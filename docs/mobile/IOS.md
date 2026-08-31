@@ -46,19 +46,26 @@ pnpm exec cap open ios
 
 Founder decision 2026-08-28: not now, revisit after Saturday.
 
-**The D-U-N-S number has been issued** (Dun & Bradstreet, 2026-08-28), activating
-in 2–3 days. That was the gate on Apple Developer Program **organization**
-enrolment — the difference between publishing as DrippleX and publishing as an
-individual.
+**The D-U-N-S number has been issued** — **352296291**, Dun & Bradstreet case
+10859055 (tracking 10797660, request key BVD5Z3B3P9), resolved 2026-08-28 10:09
+UTC and verified through the national registry. That was the gate on Apple
+Developer Program **organization** enrolment — the difference between publishing
+as DrippleX and publishing as an individual. The full set of values to hand
+Apple is in `docs/store/APP-STORE.md`.
 
-### Check before applying to Apple
+### Check before applying to Apple — closed
 
 Apple verifies the applicant's legal entity name against the D&B record, and a
-mismatch is the most common cause of a stalled enrolment. DrippleX is a
-**trading name of Afnan Homes Ltd (RC 9387949)** (see
-`docs/legal/DPX-LEGAL-001-TERMS-OF-USE.md` §1), so confirm with D&B which legal
-name the DUNS was issued under and correct it there BEFORE applying, not after
-Apple bounces it.
+mismatch is the most common cause of a stalled enrolment. **It matches.** The
+D-U-N-S was issued to **AFNAN HOMES LTD**, which is the entity
+`docs/legal/DPX-LEGAL-001-TERMS-OF-USE.md` §1 names — DrippleX is its trading
+name (RC 9387949). Apply as Afnan Homes Ltd; DrippleX is the app name, not the
+applicant.
+
+**Not before 2026-09-02.** D&B says the record is visible 2–3 business working
+days after resolution, and the 28th was a Friday. Applying against a record that
+has not propagated returns nothing and stalls the enrolment rather than queuing
+it.
 
 ### Blockers that the DUNS does not remove
 
