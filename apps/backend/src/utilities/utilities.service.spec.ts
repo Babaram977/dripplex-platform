@@ -473,6 +473,17 @@ describe('UtilitiesService', () => {
     // dashboard listed no transaction at all — because there was none.
     expect(result.purchase.status).toBe(UtilityPurchaseStatus.REVERSED);
     expect(await balanceOf(customerId)).toBe(5_000);
+
+    // And the provider's own words survive on the row. They used to live only
+    // in a log line, which rolls over — so a week later there was nothing left
+    // to put in front of the provider when they disputed the failure.
+    const row = await prisma.utilityPurchase.findUniqueOrThrow({
+      where: { id: result.purchase.id },
+    });
+    expect(row.providerResponse).toMatchObject({
+      kind: 'provider_rejected',
+      detail: 'Peyflex request failed (401): Invalid token.',
+    });
   });
 
   it('still refuses to reverse a genuine timeout — a delivered purchase must not be refunded', async () => {
@@ -497,6 +508,16 @@ describe('UtilitiesService', () => {
 
     expect(result.purchase.status).toBe(UtilityPurchaseStatus.PENDING);
     expect(await balanceOf(customerId)).toBe(3_000);
+
+    // This is the row a human has to reconcile by hand against the provider
+    // dashboard, so what went wrong has to be readable from the row itself.
+    const row = await prisma.utilityPurchase.findUniqueOrThrow({
+      where: { id: result.purchase.id },
+    });
+    expect(row.providerResponse).toMatchObject({
+      kind: 'provider_no_response',
+      detail: 'fetch failed: aborted',
+    });
   });
 
   it('lets an operator resolve an unanswered purchase, either way', async () => {

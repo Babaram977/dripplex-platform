@@ -9071,6 +9071,68 @@ const RESOLVABLE_STATUSES: UtilityPurchaseStatus[] = ['PENDING', 'AWAITING_PAYME
  */
 const TOKEN_BEARING_SERVICES = ['ELECTRICITY', 'EDUCATION'];
 
+/**
+ * Whether the provider account is verified — a second precondition for
+ * selling airtime, and one a funded float says nothing about.
+ *
+ * Peyflex ties the ₦4,999 airtime ceiling to verification. The backend has
+ * read this from their API since the ceiling work and warns about it in the
+ * logs, but this console — the one Operations actually uses — showed only the
+ * balance, so the two failures were indistinguishable from here: a healthy
+ * float beside refused purchases looked like a provider outage. Founder,
+ * 2026-08-31, on ₦1,485 and ₦2,000 refusals against ₦24,489 of float and
+ * ₦1,000 purchases that go through: "peyflex keep denying the error".
+ *
+ * It sits beside the balance because the two fail independently and either
+ * one alone stops purchases.
+ */
+function AccountVerification({ status }: { status: UtilityFloatStatusDto }): React.ReactElement {
+  if (status.accountVerified === true) {
+    return (
+      <p style={{ fontSize: 11, color: MUTED, marginTop: 8, fontFamily: 'Inter, sans-serif' }}>
+        Provider account verified — airtime up to ₦4,999 per purchase.
+      </p>
+    );
+  }
+
+  if (status.accountVerified === false) {
+    return (
+      <div
+        style={{
+          marginTop: 10,
+          padding: 10,
+          border: `1px solid ${C_WARN}`,
+          borderRadius: 8,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 6,
+        }}
+      >
+        <Chip label="Provider account not verified" color={C_WARN} />
+        <p style={{ fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif', margin: 0 }}>
+          Peyflex allows ₦4,999 per airtime purchase only on a verified account. Until this is
+          verified, larger amounts can be refused with &quot;Invalid input&quot; or &quot;An error
+          occurred&quot; — the customer is charged and refunded, and nothing on their receipt
+          explains why. Small amounts still work, which is what makes it look like a customer
+          mistake or a provider outage.
+          {status.kycStatus !== null ? ` Provider reports: ${status.kycStatus}.` : ''}
+        </p>
+      </div>
+    );
+  }
+
+  // Neither verified nor not — Peyflex did not say, or said something the
+  // adapter does not recognise. Stated as unknown rather than assumed either
+  // way: a false alarm and a hidden cap are both worse than a question.
+  return (
+    <p style={{ fontSize: 11, color: MUTED, marginTop: 8, fontFamily: 'Inter, sans-serif' }}>
+      Provider account verification: unknown
+      {status.kycStatus !== null ? ` (reported: ${status.kycStatus})` : ''}. The airtime ceiling
+      depends on it, so it is worth confirming on the Peyflex dashboard.
+    </p>
+  );
+}
+
 interface DeliveryDraft {
   purchase: AdminUtilityPurchaseDto;
   token: string;
@@ -9185,6 +9247,7 @@ function PageBillPayments() {
               ? (float.error ?? 'The provider balance could not be read.')
               : `₦${float.balance.toLocaleString()} ${float.currency} available. Every airtime, data, cable and electricity purchase is paid from this.`}
         </p>
+        {float !== null && float.configured && <AccountVerification status={float} />}
       </Card>
 
       {deliver !== null && (
