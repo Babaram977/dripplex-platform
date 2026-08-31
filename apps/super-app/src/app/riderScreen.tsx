@@ -51,11 +51,25 @@ const C_ERR = '#EF4444';
 const C_WARN = '#F59E0B';
 const WHITE = '#FFFFFF';
 
+/**
+ * Top spacer for the device's own status bar.
+ *
+ * `dx-status-mock` is not decoration — it is what the theme keys off to hide
+ * this row's contents on a real device (`.dx-status-mock > * { visibility:
+ * hidden }`, both branches in shared.tsx). Every other screen's status bar
+ * carries it; this one did not, so riders alone saw a second clock and a
+ * painted signal and battery under the ones their phone already draws.
+ * Reported from the field, 2026-08-30.
+ *
+ * `visibility: hidden` keeps the layout box, so the row still provides exactly
+ * the spacing it always did — which is the only part of it that was ever real.
+ */
 function RStatusBar() {
   const now = new Date();
   const t = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   return (
     <div
+      className="dx-status-mock"
       style={{
         paddingTop: 52,
         paddingBottom: 8,

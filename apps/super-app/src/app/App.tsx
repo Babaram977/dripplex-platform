@@ -172,6 +172,7 @@ import {
   DriverDocumentsScreen,
   RiderDocumentsScreen,
   BusinessDetailsScreen,
+  FleetSignUpScreen,
   FleetRegisterScreen,
   PendingReviewScreen,
 } from './onboardingScreen';
@@ -472,6 +473,7 @@ type Screen =
   | 'partnerdocs'
   | 'riderdocs'
   | 'partnerbusiness'
+  | 'partnerfleet'
   | 'fleetregister'
   | 'partnerreview';
 
@@ -680,7 +682,7 @@ function AppShell() {
     password?: string;
     // Which portal to log in through after the email code verifies. 'customer'
     // (default) for consumer signup; a partner persona for partner onboarding.
-    persona?: 'customer' | 'merchant' | 'driver' | 'rider';
+    persona?: 'customer' | 'merchant' | 'driver' | 'rider' | 'fleet';
   }>({
     // Never pre-fill a demo phone number — the customer types their own.
     phone: '',
@@ -690,6 +692,13 @@ function AppShell() {
   // Where the partner hub was opened from, so its back button returns there.
   // null when the hub is reached mid-onboarding (no back affordance then).
   const [partnerFrom, setPartnerFrom] = useState<Screen | null>(null);
+  /**
+   * Where to land after signing in, when sign-in was a detour rather than the
+   * destination. An owner who taps "Register your fleet", is asked to sign in,
+   * and is then dropped on the home screen has lost the thing they came to do.
+   * Cleared as soon as it is used, so it never redirects a later sign-in.
+   */
+  const [postAuthTarget, setPostAuthTarget] = useState<Screen | null>(null);
   // Which login the password-reset flow was opened from, so it returns there.
   const [recoveryFrom, setRecoveryFrom] = useState<Screen>('returning');
   // Emergency contact and the driver agreement are reachable from two places —
@@ -1035,7 +1044,9 @@ function AppShell() {
                 ? 'partnerdocs'
                 : otpData.persona === 'rider'
                   ? 'riderdocs'
-                  : 'profile',
+                  : otpData.persona === 'fleet'
+                    ? 'fleetregister'
+                    : 'profile',
           )
         }
       />
@@ -1075,6 +1086,7 @@ function AppShell() {
         onSuccess={() => goAfterAuthChange('home')}
         onMerchant={() => go('mxdash')}
         onDriver={() => go('drvlogin')}
+        onRider={() => go('riderlogin')}
         onBecomePartner={() => {
           setPartnerFrom('returning');
           go('partnerselect');
@@ -1090,14 +1102,36 @@ function AppShell() {
     ),
     signin: (
       <SignInScreen
-        onBack={() => goBack('welcome')}
-        onSuccess={() => goAfterAuthChange('home')}
+        // Both exits clear the partner-flow marker, so it only suppresses the
+        // link for the one hop it describes rather than for the rest of the
+        // session.
+        onBack={() => {
+          setPartnerFrom(null);
+          setPostAuthTarget(null);
+          goBack('welcome');
+        }}
+        onSuccess={() => {
+          setPartnerFrom(null);
+          const target = postAuthTarget;
+          setPostAuthTarget(null);
+          goAfterAuthChange(target ?? 'home');
+        }}
         onMerchant={() => go('mxdash')}
         onDriver={() => go('drvlogin')}
-        onBecomePartner={() => {
-          setPartnerFrom('signin');
-          go('partnerselect');
-        }}
+        onRider={() => go('riderlogin')}
+        // Suppressed when sign-in was reached from the partner hub. Tapping
+        // "Become a partner", landing on sign-in, and being offered "Become a
+        // partner" again is a loop back to the screen you just left — reported
+        // from the field, 2026-08-30. Everywhere else the link still leads
+        // somewhere new.
+        {...(partnerFrom === null
+          ? {
+              onBecomePartner: () => {
+                setPartnerFrom('signin');
+                go('partnerselect');
+              },
+            }
+          : {})}
         onForgot={() => {
           setRecoveryFrom('signin');
           go('recovery');
@@ -1990,7 +2024,11 @@ function AppShell() {
           // rather than a body field, so an unauthenticated tap goes to sign
           // in first instead of a form that could only fail.
           if (p === 'fleet') {
-            go(auth.getAccessToken() ? 'fleetregister' : 'signin');
+            // Signed out, this used to go to the customer sign-in screen — a
+            // password prompt for an account the owner has not got, with
+            // nothing on it about fleets. It now goes to a fleet sign-up, the
+            // same as the other three personas, and comes back here after.
+            go(auth.getAccessToken() ? 'fleetregister' : 'partnerfleet');
             return;
           }
           go(
@@ -2072,6 +2110,30 @@ function AppShell() {
       <DriverDocumentsScreen
         onBack={() => goBack('partnerdriver')}
         onSubmit={() => go('partnerreview')}
+      />
+    ),
+    partnerfleet: (
+      <FleetSignUpScreen
+        onBack={() => goBack('partnerselect')}
+        onNext={({ email, password }) => {
+          setPartnerPersona('fleet');
+          setOtpData({
+            email,
+            phone: '',
+            country: COUNTRIES[0],
+            password,
+            verifyChannel: 'email',
+            persona: 'fleet',
+          });
+          go('otp');
+        }}
+        // An owner who already has a DrippleX account signs in and is returned
+        // here rather than dropped on the home screen with the fleet they came
+        // to register forgotten.
+        onSignIn={() => {
+          setPostAuthTarget('fleetregister');
+          go('signin');
+        }}
       />
     ),
     fleetregister: (
