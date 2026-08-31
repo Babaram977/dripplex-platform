@@ -23,12 +23,28 @@ import {
 import { describeSdkError } from '@/lib/sdk';
 
 const PHONE_PATTERN = /^\+?[0-9]{7,15}$/;
+const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+/** A recipient can be named by phone number or email address. Anything
+ *  containing an `@` is treated as an address; the SDK sends whichever field
+ *  the backend should match on. */
+function isLookupable(search: string): boolean {
+  const trimmed = search.trim();
+  return trimmed.includes('@') ? EMAIL_PATTERN.test(trimmed) : PHONE_PATTERN.test(trimmed);
+}
+
+/** Phone where there is one, masked email otherwise — `maskedPhone` is null for
+ *  an account registered without a phone number. */
+function recipientSubtitle(recipient: WalletRecipientDto): string {
+  return recipient.maskedPhone ?? recipient.maskedEmail;
+}
 
 /**
  * DPX-100 Wallet Slice 2. The Figma source's "Phone number or @username"
  * search plus a mocked "Recent recipients" list has no real backend
  * counterpart — there's no customer-facing user directory and no username
- * concept. Adapted to what's real: exact phone-number lookup (a new,
+ * concept. Adapted to what's real: exact phone-number or email lookup (a
+ * narrowly-scoped
  * narrowly-scoped `GET /customer/wallet/transfer/recipients` endpoint —
  * never a listing/enumeration of users) and recent recipients derived from
  * the caller's own past TRANSFER ledger entries (also new this slice).
@@ -58,9 +74,9 @@ export function TransferScreen({
   const { body } = useSuperAppFonts();
 
   React.useEffect(() => {
-    if (!PHONE_PATTERN.test(search)) return;
+    if (!isLookupable(search)) return;
     const timer = setTimeout(() => {
-      lookupRecipient.mutate(search);
+      lookupRecipient.mutate(search.trim());
     }, 400);
     return () => {
       clearTimeout(timer);
@@ -77,7 +93,7 @@ export function TransferScreen({
       !search ||
       `${candidate.firstName} ${candidate.lastName}`.toLowerCase().includes(search.toLowerCase()),
   );
-  const lookupResults = PHONE_PATTERN.test(search) ? (lookupRecipient.data ?? []) : [];
+  const lookupResults = isLookupable(search) ? (lookupRecipient.data ?? []) : [];
 
   return (
     <div
@@ -94,11 +110,11 @@ export function TransferScreen({
               <SuperAppWalletSearchInput
                 value={search}
                 onChange={setSearch}
-                placeholder="Recipient's phone number"
+                placeholder="Recipient's phone number or email"
               />
             </div>
 
-            {PHONE_PATTERN.test(search) ? (
+            {isLookupable(search) ? (
               <div className="px-4 pb-4">
                 {lookupRecipient.isPending ? (
                   <p className={`text-[13px] ${body}`} style={{ color: 'rgba(255,255,255,.5)' }}>
@@ -107,14 +123,15 @@ export function TransferScreen({
                 ) : null}
                 {lookupRecipient.isSuccess && lookupResults.length === 0 ? (
                   <p className={`text-[13px] ${body}`} style={{ color: 'rgba(255,255,255,.5)' }}>
-                    No DrippleX customer found with that phone number.
+                    No DrippleX customer found with that{' '}
+                    {search.includes('@') ? 'email' : 'phone number'}.
                   </p>
                 ) : null}
                 {lookupResults.map((found) => (
                   <SuperAppWalletRecipientRow
                     key={found.id}
                     name={`${found.firstName} ${found.lastName}`}
-                    subtitle={found.maskedPhone}
+                    subtitle={recipientSubtitle(found)}
                     onClick={() => {
                       setRecipient(found);
                     }}
@@ -131,7 +148,7 @@ export function TransferScreen({
                     <SuperAppWalletRecipientRow
                       key={candidate.id}
                       name={`${candidate.firstName} ${candidate.lastName}`}
-                      subtitle={candidate.maskedPhone}
+                      subtitle={recipientSubtitle(candidate)}
                       onClick={() => {
                         setRecipient(candidate);
                       }}
@@ -160,7 +177,7 @@ export function TransferScreen({
                     {recipient.firstName} {recipient.lastName}
                   </p>
                   <p className={`text-[13px] ${body}`} style={{ color: 'rgba(255,255,255,.5)' }}>
-                    {recipient.maskedPhone}
+                    {recipientSubtitle(recipient)}
                   </p>
                 </div>
                 <button

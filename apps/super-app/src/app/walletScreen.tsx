@@ -1870,15 +1870,46 @@ export function WithdrawScreen({
 // 5. TRANSFER SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * What to send to the recipient lookup for what the sender has typed, or null
+ * while the input cannot identify anybody yet.
+ *
+ * An `@` means an email address, which goes through untouched — trimmed only,
+ * since the field is `citext` and an exact match is what resolves it. Anything
+ * else is treated as a phone number and reduced to its digits, so spacing or
+ * dashes do not matter. The seven-digit floor mirrors MIN_NSN_DIGITS in the
+ * backend's phone-lookup.util: fewer digits than that cannot name a subscriber,
+ * and searching on them would only ask the server about every partial number as
+ * it is typed.
+ */
+function searchQuery(input: string): string | null {
+  const trimmed = input.trim();
+  if (trimmed.includes('@')) {
+    // Shortest credible address is a@b.co — below that there is nothing to look
+    // up, and the backend would reject it as malformed anyway.
+    return trimmed.length >= 6 && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(trimmed) ? trimmed : null;
+  }
+  const digits = trimmed.replace(/\D/g, '');
+  return digits.length >= 7 ? digits : null;
+}
+
+/** The masked identifier to show under a recipient's name. Prefers the phone
+ *  number, which is how most accounts are recognised, and falls back to the
+ *  masked email for an account that has no phone — `maskedPhone` is null for
+ *  those, and rendering null would leave the row's second line blank. */
+function recipientIdentifier(r: WalletRecipientDto): string {
+  return r.maskedPhone ?? r.maskedEmail;
+}
+
 /** A recipient's name, tolerating an account that is missing one half — the
  *  same trap that rendered "undefined undefined" in the profile. Falls back to
- *  the masked number so a row is never nameless before you send money to it. */
+ *  the masked identifier so a row is never nameless before you send money. */
 function recipientName(r: WalletRecipientDto): string {
   const name = [r.firstName, r.lastName]
     .map((part) => part?.trim())
     .filter((part): part is string => !!part)
     .join(' ');
-  return name || r.maskedPhone;
+  return name || recipientIdentifier(r);
 }
 
 function recipientInitials(r: WalletRecipientDto): string {
@@ -1910,15 +1941,19 @@ export function TransferScreen({
   const handleSearchChange = (v: string) => {
     setSearch(v);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    const phone = v.replace(/\D/g, '');
-    if (phone.length < 7) {
+    // A phone number is reduced to its digits, because a sender may type
+    // spaces or dashes. An email address must be sent exactly as typed — the
+    // old handler stripped every non-digit unconditionally, which turned an
+    // address into a meaningless run of numbers.
+    const query = searchQuery(v);
+    if (query === null) {
       setResults([]);
       return;
     }
     debounceRef.current = setTimeout(async () => {
       setSearching(true);
       try {
-        const res = await api.wallet.findRecipient(phone);
+        const res = await api.wallet.findRecipient(query);
         setResults(res);
       } catch {
         setResults([]);
@@ -1986,7 +2021,7 @@ export function TransferScreen({
             <input
               value={search}
               onChange={(e) => handleSearchChange(e.target.value)}
-              placeholder="Phone number to search"
+              placeholder="Phone number or email"
               style={{
                 flex: 1,
                 background: 'none',
@@ -2044,7 +2079,7 @@ export function TransferScreen({
                       {recipientName(r)}
                     </div>
                     <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>
-                      {r.maskedPhone}
+                      {recipientIdentifier(r)}
                     </div>
                   </div>
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -2062,10 +2097,10 @@ export function TransferScreen({
           </div>
         )}
 
-        {!recipient && !results.length && search.length >= 7 && !searching && (
+        {!recipient && !results.length && searchQuery(search) !== null && !searching && (
           <div style={{ padding: '20px 16px', textAlign: 'center' }}>
             <div style={{ fontFamily: IT, fontSize: 13, color: MUTED }}>
-              No DrippleX user found for this phone number
+              No DrippleX user found for this {search.includes('@') ? 'email' : 'phone number'}
             </div>
           </div>
         )}
@@ -2074,7 +2109,7 @@ export function TransferScreen({
           <div style={{ padding: '20px 16px', textAlign: 'center' }}>
             <Icon name="airtime" size={30} color="rgba(255,255,255,.32)" />
             <div style={{ fontFamily: IT, fontSize: 13, color: MUTED, marginTop: 8 }}>
-              Enter the recipient's phone number to find them
+              Enter the recipient's phone number or email to find them
             </div>
           </div>
         )}
@@ -2114,7 +2149,7 @@ export function TransferScreen({
                     {recipientName(recipient)}
                   </div>
                   <div style={{ fontFamily: IT, fontSize: 13, color: MUTED }}>
-                    {recipient.maskedPhone}
+                    {recipientIdentifier(recipient)}
                   </div>
                 </div>
                 <button
