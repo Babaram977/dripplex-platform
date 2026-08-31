@@ -1173,6 +1173,58 @@ export function RiderSignUpScreen(props: {
   );
 }
 
+/**
+ * Creating the DrippleX account a fleet owner registers their fleet from.
+ *
+ * Tapping "Register your fleet" while signed out used to land on the customer
+ * sign-in screen — a page that asks a fleet owner for a password to an account
+ * they have not got, with nothing on it about fleets. Reported from the field,
+ * 2026-08-30.
+ *
+ * Registers a plain DrippleX account, deliberately: a fleet is attached to a
+ * person, and there is no separate fleet registration endpoint to invent. The
+ * fleet itself is created on the next screen, which is where the DX number is
+ * issued.
+ */
+export function FleetSignUpScreen(props: {
+  onBack: () => void;
+  onNext: (r: PartnerSignupResult) => void;
+  onSignIn: () => void;
+}) {
+  return (
+    <PhonePersonaSignUp
+      persona="fleet"
+      badge="Fleet"
+      badgeColors={{
+        bg: 'rgba(168,85,247,.12)',
+        color: '#A855F7',
+        border: 'rgba(168,85,247,.22)',
+      }}
+      emoji="🏢"
+      title={
+        <>
+          Register your fleet
+          <br />
+          on DrippleX
+        </>
+      }
+      subtitle="Create your account, then name your fleet and get its DX number"
+      ctaLabel="Create account"
+      agreementLabel="Fleet Partner Agreement"
+      namePlaceholder="Type your full name"
+      emailPlaceholder="Type your email address"
+      phonePlaceholder="Type your phone number"
+      // Widened to the shared signature: registerCustomer's own parameter type
+      // is narrower than `Record<string, unknown>`, and PhonePersonaSignUp
+      // passes exactly the fields it declares.
+      register={(body) =>
+        api.auth.registerCustomer(body as Parameters<typeof api.auth.registerCustomer>[0])
+      }
+      {...props}
+    />
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // SCREEN — REGISTER A FLEET
 //

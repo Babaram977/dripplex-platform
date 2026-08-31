@@ -879,7 +879,7 @@ export function OTPScreen({
   // Which portal to log in through after verification. Customer for consumer
   // signup; merchant/driver/rider for partner onboarding (they activate on the
   // email code while PORTAL_EMAIL_ACTIVATION is on, then land in pending review).
-  persona?: 'customer' | 'merchant' | 'driver' | 'rider';
+  persona?: 'customer' | 'merchant' | 'driver' | 'rider' | 'fleet';
   onBack: () => void;
   onChangeNumber: () => void;
   onVerified: () => void;
