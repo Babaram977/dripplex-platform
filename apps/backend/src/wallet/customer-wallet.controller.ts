@@ -9,11 +9,14 @@ import {
   Query,
   Req,
   Res,
+  UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { WalletOwnerType } from '@prisma/client';
 
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
+import { UserScopedThrottlerGuard } from '../common/guards/user-scoped-throttler.guard';
 
 import {
   LookupRecipientQueryDto,
@@ -69,8 +72,24 @@ export class CustomerWalletController {
     return { success: true, data };
   }
 
+  /**
+   * Rate-limited per authenticated caller, not per IP.
+   *
+   * This endpoint answers, for any phone number or address, whether a DrippleX
+   * account exists and what that person is called. Adding email lookup widened
+   * that: an address is far easier to guess than a phone number. Thirty a
+   * minute is generous for a debounced search box — a sender typing one
+   * recipient produces a handful — and turns bulk probing into something that
+   * costs an attacker a fresh verified account for every bucket.
+   *
+   * The limit does not stop a patient attacker spread across accounts and
+   * time. Nothing short of removing the lookup would, and the lookup is the
+   * feature. It stops the cheap version.
+   */
   @Get('transfer/recipients')
   @RequirePermissions(WALLET_PERMISSIONS.CUSTOMER_TRANSFER)
+  @UseGuards(UserScopedThrottlerGuard)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   public async lookupRecipient(
     @CurrentUser() user: AuthenticatedUser,
     @Query() query: LookupRecipientQueryDto,
