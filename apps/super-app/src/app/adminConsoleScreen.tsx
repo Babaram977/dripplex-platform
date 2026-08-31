@@ -4500,7 +4500,12 @@ function PageTrips() {
  * activation gate demands all three VERIFIED; anything less does not activate
  * anyone, so nothing less may be labelled "Verified" on this desk.
  */
-const REQUIRED_DRIVER_KYC_DOCS = ['DRIVER_LICENSE', 'VEHICLE_REGISTRATION', 'GUARANTOR_ID'];
+// Mirrors REQUIRED_DRIVER_KYC_DOCUMENT_TYPES on the backend, which is the
+// gate that actually decides activation. The guarantor's ID left both on
+// 2026-08-31 (founder: "it is not needed both uber, bolt and in-drive doesnt
+// have it"); an operator seeing a document here the server no longer requires
+// would chase a driver for nothing.
+const REQUIRED_DRIVER_KYC_DOCS = ['DRIVER_LICENSE', 'VEHICLE_REGISTRATION'];
 
 /**
  * This read "any one document verified → Verified", which is why every driver

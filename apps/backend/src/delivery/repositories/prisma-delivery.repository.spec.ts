@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { KycDocumentType, KycVerificationStatus, PrismaClient, RiderStatus } from '@prisma/client';
 
+import { REQUIRED_RIDER_KYC_DOCUMENT_TYPES } from '../../riders/rider.constants';
 import { MAX_RIDER_ACTIVE_JOBS } from '../delivery.constants';
 
 import { PrismaDeliveryRepository } from './prisma-delivery.repository';
@@ -111,14 +112,21 @@ describe('PrismaDeliveryRepository.listAvailableRiders eligibility', () => {
   const eligibleIds = async (): Promise<string[]> =>
     (await repository.listAvailableCouriers(MAX_RIDER_ACTIVE_JOBS)).map((row) => row.userId);
 
-  const bothDocuments = [KycDocumentType.NATIONAL_ID, KycDocumentType.GUARANTOR_ID];
+  /**
+   * Every document a rider must have verified. Just the one since 2026-08-31,
+   * when the guarantor's ID was dropped — founder decision, "it is not needed
+   * both uber, bolt and in-drive doesnt have it". Read from the constant
+   * rather than listed here, so this suite follows the gate it is testing
+   * instead of drifting from it the next time the list changes.
+   */
+  const requiredDocuments = [...REQUIRED_RIDER_KYC_DOCUMENT_TYPES];
 
   it('offers deliveries to an approved rider with every required document verified', async () => {
     if (!databaseAvailable) return;
     const riderId = await makeRider({
       status: RiderStatus.APPROVED,
       isApproved: true,
-      verifiedDocumentTypes: bothDocuments,
+      verifiedDocumentTypes: requiredDocuments,
     });
 
     expect(await eligibleIds()).toContain(riderId);
@@ -129,7 +137,7 @@ describe('PrismaDeliveryRepository.listAvailableRiders eligibility', () => {
     const riderId = await makeRider({
       status: RiderStatus.PENDING,
       isApproved: false,
-      verifiedDocumentTypes: bothDocuments,
+      verifiedDocumentTypes: requiredDocuments,
     });
 
     expect(await eligibleIds()).not.toContain(riderId);
@@ -140,14 +148,28 @@ describe('PrismaDeliveryRepository.listAvailableRiders eligibility', () => {
     const riderId = await makeRider({
       status: RiderStatus.SUSPENDED,
       isApproved: false,
-      verifiedDocumentTypes: bothDocuments,
+      verifiedDocumentTypes: requiredDocuments,
     });
 
     expect(await eligibleIds()).not.toContain(riderId);
   });
 
-  it('excludes an approved rider whose guarantor ID is still pending review', async () => {
+  it('excludes an approved rider whose ID is still pending review', async () => {
     if (!databaseAvailable) return;
+    const riderId = await makeRider({
+      status: RiderStatus.APPROVED,
+      isApproved: true,
+      verifiedDocumentTypes: [],
+      pendingDocumentTypes: [KycDocumentType.NATIONAL_ID],
+    });
+
+    expect(await eligibleIds()).not.toContain(riderId);
+  });
+
+  it('offers deliveries despite an unverified guarantor ID, which is no longer required', async () => {
+    if (!databaseAvailable) return;
+    // Riders who submitted one before 2026-08-31 still have the row. It must
+    // not keep gating them now that DrippleX has stopped asking for it.
     const riderId = await makeRider({
       status: RiderStatus.APPROVED,
       isApproved: true,
@@ -155,7 +177,7 @@ describe('PrismaDeliveryRepository.listAvailableRiders eligibility', () => {
       pendingDocumentTypes: [KycDocumentType.GUARANTOR_ID],
     });
 
-    expect(await eligibleIds()).not.toContain(riderId);
+    expect(await eligibleIds()).toContain(riderId);
   });
 
   it('excludes an approved rider who submitted no documents at all', async () => {
@@ -174,7 +196,7 @@ describe('PrismaDeliveryRepository.listAvailableRiders eligibility', () => {
     const riderId = await makeRider({
       status: RiderStatus.APPROVED,
       isApproved: true,
-      verifiedDocumentTypes: bothDocuments,
+      verifiedDocumentTypes: requiredDocuments,
       online: false,
     });
 
@@ -186,7 +208,7 @@ describe('PrismaDeliveryRepository.listAvailableRiders eligibility', () => {
     const riderId = await makeRider({
       status: RiderStatus.APPROVED,
       isApproved: true,
-      verifiedDocumentTypes: bothDocuments,
+      verifiedDocumentTypes: requiredDocuments,
       activeJobCount: MAX_RIDER_ACTIVE_JOBS,
     });
 

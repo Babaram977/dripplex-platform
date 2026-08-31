@@ -2040,15 +2040,19 @@ function AppShell() {
           );
         }}
         onSignIn={() => go('signin')}
-        onBack={
-          partnerFrom
-            ? () => {
-                const dest = partnerFrom;
-                setPartnerFrom(null);
-                goBack(dest);
-              }
-            : undefined
-        }
+        // Always present. It used to render only when `partnerFrom` was set,
+        // and the welcome screen's "Become a partner" does not set it — so
+        // anyone arriving that way had no way back to sign-in or home and was
+        // stranded on this page. Reported from the field, 2026-08-31.
+        //
+        // With no marker the fallback is decided by whether there is a
+        // session: a signed-in user came from inside the app, a signed-out one
+        // came from the welcome screen.
+        onBack={() => {
+          const dest = partnerFrom ?? (auth.getAccessToken() ? 'home' : 'welcome');
+          setPartnerFrom(null);
+          goBack(dest);
+        }}
       />
     ),
     partnermerchant: (
