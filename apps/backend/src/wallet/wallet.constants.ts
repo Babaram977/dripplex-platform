@@ -57,6 +57,23 @@ export const WALLET_WITHDRAWAL_REFERENCE_TYPE = 'wallet_withdrawal';
  * (walletId, referenceType, referenceId) uniqueness constraint. */
 export const WALLET_WITHDRAWAL_REVERSAL_REFERENCE_TYPE = 'wallet_withdrawal_reversal';
 
+/**
+ * WalletLedgerEntry.referenceType for a customer-to-customer wallet transfer,
+ * paired with referenceId = a UUID minted per transfer.
+ *
+ * A transfer writes two ledger rows — the sender's DEBIT and the recipient's
+ * CREDIT — and until this existed they were related only by having been written
+ * inside the same database transaction and by metadata naming the other party.
+ * Nothing named *the transfer itself*, so there was no id to quote on a receipt
+ * or to search on when the two sides disagree about what happened.
+ *
+ * The same referenceId sits on both rows. That is safe under
+ * WalletLedgerEntry's (walletId, referenceType, referenceId) uniqueness
+ * constraint because the two rows belong to different wallets, and it is what
+ * makes the two legs of one transfer findable together.
+ */
+export const WALLET_TRANSFER_REFERENCE_TYPE = 'wallet_transfer';
+
 /// DPX-PAYOUT-002 — the slice of a payout request that goes to clearing what a
 /// rider or driver owes DrippleX on cash jobs, rather than to their bank. Its
 /// own reference type so the wallet ledger shows plainly where the money went:

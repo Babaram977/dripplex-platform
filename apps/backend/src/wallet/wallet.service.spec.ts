@@ -5,6 +5,7 @@ import {
   ValidationDomainException,
 } from '../common/exceptions/domain.exception';
 
+import { WALLET_TRANSFER_REFERENCE_TYPE } from './wallet.constants';
 import { WalletService } from './wallet.service';
 
 import type { AuditService } from '../audit/audit.service';
@@ -350,6 +351,80 @@ describe('WalletService', () => {
     expect(result.source.availableBalance).toBe(70);
     expect(result.destination.availableBalance).toBe(30);
     expect(prisma.walletLedgerEntry.create).toHaveBeenCalledTimes(2);
+  });
+
+  // A transfer is one event with two halves. Until both rows carried the same
+  // reference, nothing named the event itself — so a receipt had no id to show
+  // and support had no key to search on when the two parties disagreed.
+  it('writes one shared reference onto both legs and returns it as the receipt', async () => {
+    prisma.wallet.upsert
+      .mockResolvedValueOnce(wallet({ availableBalance: new Prisma.Decimal(100) }))
+      .mockResolvedValueOnce(
+        wallet({
+          id: destinationWalletId,
+          ownerId: toOwnerId,
+          availableBalance: new Prisma.Decimal(0),
+        }),
+      );
+    prisma.wallet.updateMany.mockResolvedValue({ count: 1 });
+    prisma.walletLedgerEntry.findFirst.mockResolvedValue(null);
+    prisma.walletLedgerEntry.create
+      .mockResolvedValueOnce(
+        ledger({
+          type: WalletTransactionType.TRANSFER,
+          direction: WalletDirection.DEBIT,
+          amount: new Prisma.Decimal(30),
+          balanceAfter: new Prisma.Decimal(70),
+          description: 'Lunch',
+        }),
+      )
+      .mockResolvedValueOnce(
+        ledger({
+          walletId: destinationWalletId,
+          type: WalletTransactionType.TRANSFER,
+          direction: WalletDirection.CREDIT,
+          amount: new Prisma.Decimal(30),
+          balanceAfter: new Prisma.Decimal(30),
+          description: 'Lunch',
+        }),
+      );
+    prisma.wallet.findUniqueOrThrow
+      .mockResolvedValueOnce(wallet({ availableBalance: new Prisma.Decimal(70) }))
+      .mockResolvedValueOnce(
+        wallet({
+          id: destinationWalletId,
+          ownerId: toOwnerId,
+          availableBalance: new Prisma.Decimal(30),
+        }),
+      );
+
+    const result = await service.transfer({
+      fromOwnerType: WalletOwnerType.CUSTOMER,
+      fromOwnerId: ownerId,
+      toOwnerType: WalletOwnerType.CUSTOMER,
+      toOwnerId,
+      amount: 30,
+      description: 'Lunch',
+    });
+
+    const [debitCall, creditCall] = prisma.walletLedgerEntry.create.mock.calls as [
+      [{ data: { referenceType: string; referenceId: string } }],
+      [{ data: { referenceType: string; referenceId: string } }],
+    ];
+    expect(debitCall[0].data.referenceType).toBe(WALLET_TRANSFER_REFERENCE_TYPE);
+    expect(creditCall[0].data.referenceType).toBe(WALLET_TRANSFER_REFERENCE_TYPE);
+    // The point of the whole change: one id, both halves.
+    expect(debitCall[0].data.referenceId).toBe(creditCall[0].data.referenceId);
+
+    expect(result.receipt).toEqual({
+      reference: debitCall[0].data.referenceId,
+      entryId: '55555555-5555-4555-8555-555555555555',
+      amount: 30,
+      currency: 'NGN',
+      description: 'Lunch',
+      balanceAfter: 70,
+      createdAt: now.toISOString(),
+    });
   });
 
   it('rejects transfers to the same wallet', async () => {

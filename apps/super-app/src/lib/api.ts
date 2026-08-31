@@ -403,6 +403,19 @@ export interface WalletLedgerEntryDto {
   createdAt: string;
 }
 
+/** POST /customer/wallet/transfer — the evidence half of the response. The
+ *  reference names the transfer itself and is written to both ledger legs, so
+ *  it is the id to quote in a dispute; entryId is the sender's own row. */
+export interface WalletTransferReceiptDto {
+  reference: string;
+  entryId: string;
+  amount: number;
+  currency: string;
+  description: string | null;
+  balanceAfter: number;
+  createdAt: string;
+}
+
 export interface CustomerBankAccountDto {
   id: string;
   bankName: string;
@@ -2623,7 +2636,11 @@ export const api = {
       currency?: string;
       description?: string;
     }) =>
-      dx<{ source: WalletDto; destination: WalletDto }>('POST', '/customer/wallet/transfer', body),
+      dx<{ source: WalletDto; destination: WalletDto; receipt: WalletTransferReceiptDto }>(
+        'POST',
+        '/customer/wallet/transfer',
+        body,
+      ),
     // The shape the API actually returns. This was hand-written as
     // { name, phone } — fields the endpoint has never sent — so the search
     // result rendered a blank row and `r.name.slice(0, 2)` threw the moment a
