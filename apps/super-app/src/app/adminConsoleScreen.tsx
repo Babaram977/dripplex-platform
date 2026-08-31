@@ -91,7 +91,6 @@ export type AdminPage =
   | 'trips'
   | 'history'
   | 'fleets'
-  | 'myfleet'
   | 'drivers'
   | 'drvkyc'
   | 'vehicles'
@@ -588,7 +587,6 @@ const NAV_ITEMS: { page: AdminPage; icon: string; label: string; requires?: stri
   { page: 'trips', icon: '🚗', label: 'Trips' },
   { page: 'history', icon: '🗂️', label: 'History' },
   { page: 'fleets', icon: '🏢', label: 'Fleet Partners', requires: 'admin:fleets:manage' },
-  { page: 'myfleet', icon: '🚚', label: 'My Fleet', requires: 'fleet:own:read' },
   { page: 'drivers', icon: '🧑‍✈️', label: 'Drivers' },
   { page: 'drvkyc', icon: '🪪', label: 'Driver KYC' },
   { page: 'vehicles', icon: '🔑', label: 'Vehicles' },
@@ -618,10 +616,6 @@ const NAV_ITEMS: { page: AdminPage; icon: string; label: string; requires?: stri
  * gated server-side and stays gated.
  */
 function canSee(item: { page: AdminPage; requires?: string }): boolean {
-  // A fleet partner sees their own pages only. Checked before `requires`,
-  // because most Operations pages declare no permission at all and would
-  // otherwise all be offered to them.
-  if (isFleetOwnerOnly()) return FLEET_OWNER_PAGES.includes(item.page);
   if (item.requires === undefined) return true;
   return auth.getUser()?.permissions.includes(item.requires) ?? false;
 }
@@ -712,9 +706,7 @@ function Sidebar({
                 letterSpacing: 0.5,
               }}
             >
-              {/* A fleet partner is not Operations and should not be told they
-                  are looking at the Operations Console. */}
-              {isFleetOwnerOnly() ? 'FLEET CONSOLE' : 'OPERATIONS CONSOLE'}
+              OPERATIONS CONSOLE
             </div>
           </div>
         </div>
@@ -789,7 +781,6 @@ const PAGE_LABELS: Record<AdminPage, string> = {
   trips: 'Trips',
   history: 'History — completed records',
   fleets: 'Fleet Partners',
-  myfleet: 'My Fleet',
   drivers: 'Drivers',
   drvkyc: 'Driver KYC',
   vehicles: 'Vehicles',
@@ -3253,542 +3244,6 @@ function PageFleets() {
       )}
 
       <CommissionBandsCard />
-    </div>
-  );
-}
-
-// ─── Page: My Fleet ───────────────────────────────────────────────────────────
-// DPX-FLEET — the fleet owner's own console (founder decision, 2026-08-30).
-//
-// Scoped to the signed-in owner's fleet by the server: there is no fleet id in
-// any of these calls, so this screen cannot be pointed at another company.
-//
-// Deliberately built from the same Card / Btn / table pieces as every other
-// page here rather than a new visual language — a fleet owner and an operator
-// should be looking at the same product.
-function PageMyFleet() {
-  const [overview, setOverview] = useState<FleetOverviewDto | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busyMemberId, setBusyMemberId] = useState<string | null>(null);
-  const [rowMsg, setRowMsg] = useState<string | null>(null);
-  // Removing takes a rider off the fleet, so it asks first.
-  const [removing, setRemoving] = useState<FleetMemberDto | null>(null);
-
-  const load = useCallback(async () => {
-    setError(null);
-    try {
-      setOverview(await api.admin.getFleetOverview());
-    } catch (e: unknown) {
-      setError((e as { message?: string }).message ?? 'Could not load your fleet.');
-      setOverview(null);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const act = useCallback(
-    async (member: FleetMemberDto, action: 'deactivate' | 'reactivate' | 'remove') => {
-      setBusyMemberId(member.memberId);
-      setRowMsg(null);
-      try {
-        const members =
-          action === 'deactivate'
-            ? await api.admin.deactivateFleetMember(member.memberId)
-            : action === 'reactivate'
-              ? await api.admin.reactivateFleetMember(member.memberId)
-              : await api.admin.removeFleetMember(member.memberId);
-        setOverview((current) => (current === null ? current : { ...current, members }));
-        setRowMsg(
-          action === 'remove'
-            ? `${member.name} removed from your fleet. Their DrippleX account is untouched.`
-            : action === 'deactivate'
-              ? `${member.name} deactivated — they will not be sent work.`
-              : `${member.name} is active again.`,
-        );
-        setRemoving(null);
-      } catch (e: unknown) {
-        setRowMsg((e as { message?: string }).message ?? 'That did not work.');
-      } finally {
-        setBusyMemberId(null);
-      }
-    },
-    [],
-  );
-
-  // Confirming a request is what turns a claim into a membership, so it
-  // reloads the whole overview rather than patching one list: accepting moves
-  // a row out of the requests table and into the members table, and the
-  // month's figures start counting them.
-  const decide = async (request: FleetMemberDto, action: 'approve' | 'reject') => {
-    setBusyMemberId(request.memberId);
-    setRowMsg(null);
-    try {
-      if (action === 'approve') {
-        await api.fleet.approveRequest(request.memberId);
-        setRowMsg(`${request.name} is on your fleet.`);
-      } else {
-        await api.fleet.rejectRequest(request.memberId);
-        setRowMsg(`${request.name}’s request was turned down.`);
-      }
-      await load();
-    } catch (e: unknown) {
-      setRowMsg((e as { message?: string }).message ?? 'That did not work.');
-    } finally {
-      setBusyMemberId(null);
-    }
-  };
-
-  if (error !== null) {
-    return (
-      <Card style={{ padding: '14px 16px' }}>
-        <div style={{ fontSize: 12.5, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>{error}</div>
-      </Card>
-    );
-  }
-
-  if (overview === null) {
-    return (
-      <Card style={{ padding: '14px 16px' }}>
-        <div style={{ fontSize: 12.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
-          Loading…
-        </div>
-      </Card>
-    );
-  }
-
-  const { fleet, members, pendingRequests, liveJobs, period, summary } = overview;
-  const c = (n: number) => String(n);
-  const money = (value: number) => `₦${Math.round(value).toLocaleString()}`;
-  const pct = (rate: number | null) =>
-    rate === null ? '—' : `${String(Math.round(rate * 1000) / 10)}%`;
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <Card style={{ padding: '14px 16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <div
-            style={{ fontSize: 15, fontWeight: 700, color: WHITE, fontFamily: 'Inter, sans-serif' }}
-          >
-            {fleet.name}
-          </div>
-          <Chip label={fleet.fleetNumber} bg={G3} />
-          {fleet.status === 'SUSPENDED' && <Chip label="Suspended" bg={C_ERR} />}
-          {fleet.status === 'PENDING_APPROVAL' && <Chip label="Awaiting DrippleX" bg={MUTED} />}
-          {fleet.status === 'REJECTED' && <Chip label="Declined" bg={C_ERR} />}
-        </div>
-        {fleet.suspendedReason !== null && (
-          <div
-            style={{ marginTop: 8, fontSize: 12, color: C_ERR, fontFamily: 'Inter, sans-serif' }}
-          >
-            {fleet.suspendedReason}
-          </div>
-        )}
-        {/* Says plainly what a pending fleet can and cannot do, so an owner
-            whose figures are all zero knows why rather than assuming the
-            console is broken. */}
-        {fleet.status === 'PENDING_APPROVAL' && (
-          <div
-            style={{ marginTop: 8, fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}
-          >
-            DrippleX Operations is reviewing your registration. You can give your riders{' '}
-            {fleet.fleetNumber} now and their requests will appear below — nothing is counted or
-            charged until your fleet is approved.
-          </div>
-        )}
-      </Card>
-
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-          gap: 12,
-        }}
-      >
-        <KpiCard
-          label="Riders & Drivers"
-          value={c(summary.totalMembers)}
-          sub="On your fleet"
-          color={G3}
-          icon="🛵"
-        />
-        <KpiCard
-          label="Online"
-          value={c(summary.onlineMembers)}
-          sub="Right now"
-          color={G3}
-          icon="🟢"
-        />
-        <KpiCard
-          label="On a job"
-          value={c(summary.onJobMembers)}
-          sub="Working"
-          color={G3}
-          icon="📦"
-        />
-        <KpiCard
-          label="Deactivated"
-          value={c(summary.deactivatedMembers)}
-          sub="Not sent work"
-          color={MUTED}
-          icon="⏸️"
-        />
-      </div>
-
-      {/* The running month. Everything here is an estimate until the month
-          closes, because the rate depends on the final volume — crossing a
-          band re-prices every order before it. The wording says so rather
-          than showing a confident number that will move. */}
-      <Card style={{ padding: '14px 16px' }}>
-        <div
-          style={{ fontSize: 12.5, fontWeight: 600, color: WHITE, fontFamily: 'Inter, sans-serif' }}
-        >
-          This month so far
-        </div>
-        <div
-          style={{
-            marginTop: 10,
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
-            gap: 12,
-            fontFamily: 'Inter, sans-serif',
-          }}
-        >
-          {[
-            ['Jobs', c(period.orderCount)],
-            // Delivery fees and trip fares together — both are charged on.
-            ['Fees & fares', money(period.chargeableTotal)],
-            [
-              period.settled ? 'Rate charged' : 'Rate at this volume',
-              pct(period.settled ? period.appliedRate : period.projectedRate),
-            ],
-            [
-              period.settled ? 'Commission' : 'Estimated commission',
-              period.settled
-                ? money(period.commissionAmount ?? 0)
-                : period.projectedCommission === null
-                  ? '—'
-                  : money(period.projectedCommission),
-            ],
-          ].map(([label, value]) => (
-            <div key={label}>
-              <div style={{ fontSize: 11, color: MUTED }}>{label}</div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: WHITE, marginTop: 2 }}>
-                {value}
-              </div>
-            </div>
-          ))}
-        </div>
-        {!period.settled && (
-          <div
-            style={{ marginTop: 10, fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}
-          >
-            {period.projectedRate === null
-              ? 'No commission band covers this volume yet — DrippleX Operations will confirm your rate.'
-              : 'An estimate. Your whole month is charged at the band your final volume reaches, so this can still improve.'}
-          </div>
-        )}
-      </Card>
-
-      {/* DPX-FLEET, founder decision 2026-08-30: riders type the fleet number
-          themselves during onboarding, so the owner confirms it. Kept above
-          the member table and visually separate — these are claims, not
-          members, and merging the two lists is how somebody gets confirmed by
-          accident. */}
-      {pendingRequests.length > 0 && (
-        <Card style={{ padding: '14px 16px' }}>
-          <div
-            style={{
-              fontSize: 12.5,
-              fontWeight: 600,
-              color: WHITE,
-              fontFamily: 'Inter, sans-serif',
-            }}
-          >
-            Waiting for you to confirm ({String(pendingRequests.length)})
-          </div>
-          <div
-            style={{ marginTop: 4, fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}
-          >
-            These people entered {fleet.fleetNumber} during their own DrippleX onboarding. They are
-            not on your fleet, and nothing they do is charged to you, until you confirm them.
-          </div>
-          <table
-            style={{
-              width: '100%',
-              borderCollapse: 'collapse',
-              fontFamily: 'Inter, sans-serif',
-              marginTop: 8,
-            }}
-          >
-            <thead>
-              <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
-                {['Name', 'Phone', 'Role', 'Asked', ''].map((h) => (
-                  <th
-                    key={h}
-                    style={{
-                      padding: '7px 8px',
-                      textAlign: 'left',
-                      fontSize: 11,
-                      color: MUTED,
-                      fontWeight: 600,
-                    }}
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {pendingRequests.map((request) => {
-                const busy = busyMemberId === request.memberId;
-                return (
-                  <tr key={request.memberId} style={{ borderBottom: `1px solid ${BORDER}` }}>
-                    <td style={{ padding: '9px 8px', fontSize: 12, color: WHITE }}>
-                      {request.name}
-                    </td>
-                    <td style={{ padding: '9px 8px', fontSize: 12, color: MUTED }}>
-                      {request.phone ?? '—'}
-                    </td>
-                    <td style={{ padding: '9px 8px', fontSize: 12, color: MUTED }}>
-                      {request.role === 'RIDER' ? 'Rider' : 'Driver'}
-                    </td>
-                    <td style={{ padding: '9px 8px', fontSize: 12, color: MUTED }}>
-                      {new Date(request.joinedAt).toLocaleDateString('en-NG')}
-                    </td>
-                    <td style={{ padding: '9px 8px' }}>
-                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                        <Btn
-                          label={busy ? '…' : 'Confirm'}
-                          small
-                          color={G3}
-                          disabled={busy}
-                          onClick={() => {
-                            void decide(request, 'approve');
-                          }}
-                        />
-                        <Btn
-                          label="Not mine"
-                          small
-                          outline
-                          color={C_ERR}
-                          disabled={busy}
-                          onClick={() => {
-                            void decide(request, 'reject');
-                          }}
-                        />
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </Card>
-      )}
-
-      <Card style={{ padding: '14px 16px' }}>
-        <div
-          style={{ fontSize: 12.5, fontWeight: 600, color: WHITE, fontFamily: 'Inter, sans-serif' }}
-        >
-          Working now
-        </div>
-        {liveJobs.length === 0 ? (
-          <div
-            style={{ marginTop: 8, fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}
-          >
-            Nobody is on a job right now.
-          </div>
-        ) : (
-          <table
-            style={{
-              width: '100%',
-              borderCollapse: 'collapse',
-              fontFamily: 'Inter, sans-serif',
-              marginTop: 8,
-            }}
-          >
-            <thead>
-              <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
-                {['Who', 'Job', 'Status', 'Amount'].map((h) => (
-                  <th
-                    key={h}
-                    style={{
-                      padding: '7px 8px',
-                      textAlign: 'left',
-                      fontSize: 11,
-                      color: MUTED,
-                      fontWeight: 600,
-                    }}
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {liveJobs.map((job) => (
-                <tr key={job.jobId} style={{ borderBottom: `1px solid ${BORDER}` }}>
-                  <td style={{ padding: '9px 8px', fontSize: 12, color: WHITE }}>
-                    {job.memberName}
-                  </td>
-                  <td style={{ padding: '9px 8px', fontSize: 12, color: MUTED }}>
-                    {job.kind === 'RIDE' ? 'Trip' : 'Delivery'}
-                  </td>
-                  <td style={{ padding: '9px 8px', fontSize: 12, color: MUTED }}>{job.status}</td>
-                  <td style={{ padding: '9px 8px', fontSize: 12, color: WHITE }}>
-                    {money(job.amount)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Card>
-
-      {removing !== null && (
-        <Card style={{ padding: '14px 16px' }}>
-          <div style={{ fontSize: 12.5, color: WHITE, fontFamily: 'Inter, sans-serif' }}>
-            Remove {removing.name} from your fleet?
-          </div>
-          <div
-            style={{ marginTop: 6, fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}
-          >
-            They stop receiving your work and can join another fleet. Their DrippleX account,
-            earnings and past trips stay exactly as they are.
-          </div>
-          <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
-            <Btn
-              label={busyMemberId === removing.memberId ? 'Removing…' : 'Yes, remove'}
-              small
-              color={C_ERR}
-              onClick={() => {
-                void act(removing, 'remove');
-              }}
-            />
-            <Btn
-              label="Cancel"
-              small
-              outline
-              color={G3}
-              onClick={() => {
-                setRemoving(null);
-              }}
-            />
-          </div>
-        </Card>
-      )}
-
-      <Card style={{ padding: '14px 16px' }}>
-        <table
-          style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Inter, sans-serif' }}
-        >
-          <thead>
-            <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
-              {['Name', 'Phone', 'Role', 'Status', 'This month', 'Gross', 'Actions'].map((h) => (
-                <th
-                  key={h}
-                  style={{
-                    padding: '7px 8px',
-                    textAlign: 'left',
-                    fontSize: 11,
-                    color: MUTED,
-                    fontWeight: 600,
-                  }}
-                >
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {members.map((member) => {
-              const busy = busyMemberId === member.memberId;
-              return (
-                <tr key={member.memberId} style={{ borderBottom: `1px solid ${BORDER}` }}>
-                  <td style={{ padding: '9px 8px', fontSize: 12, color: WHITE }}>
-                    {member.name}
-                    {member.onJob && <span style={{ color: G3 }}> · on a job</span>}
-                    {!member.onJob && member.online && <span style={{ color: G3 }}> · online</span>}
-                  </td>
-                  <td style={{ padding: '9px 8px', fontSize: 12, color: MUTED }}>
-                    {member.phone ?? '—'}
-                  </td>
-                  <td style={{ padding: '9px 8px', fontSize: 12, color: MUTED }}>
-                    {member.role === 'RIDER' ? 'Rider' : 'Driver'}
-                  </td>
-                  <td
-                    style={{
-                      padding: '9px 8px',
-                      fontSize: 12,
-                      color: member.status === 'ACTIVE' ? WHITE : MUTED,
-                    }}
-                  >
-                    {member.status === 'ACTIVE' ? 'Active' : 'Deactivated'}
-                  </td>
-                  <td style={{ padding: '9px 8px', fontSize: 12, color: WHITE }}>
-                    {c(member.completedThisMonth)}
-                  </td>
-                  <td style={{ padding: '9px 8px', fontSize: 12, color: WHITE }}>
-                    {money(member.grossThisMonth)}
-                  </td>
-                  <td style={{ padding: '9px 8px' }}>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      {member.status === 'ACTIVE' ? (
-                        <Btn
-                          label={busy ? '…' : 'Deactivate'}
-                          small
-                          outline
-                          color={MUTED}
-                          onClick={() => {
-                            void act(member, 'deactivate');
-                          }}
-                        />
-                      ) : (
-                        <Btn
-                          label={busy ? '…' : 'Activate'}
-                          small
-                          outline
-                          color={G3}
-                          onClick={() => {
-                            void act(member, 'reactivate');
-                          }}
-                        />
-                      )}
-                      <Btn
-                        label="Remove"
-                        small
-                        outline
-                        color={C_ERR}
-                        onClick={() => {
-                          setRowMsg(null);
-                          setRemoving(member);
-                        }}
-                      />
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        {members.length === 0 && (
-          <div
-            style={{ marginTop: 10, fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}
-          >
-            Nobody on your fleet yet. Give DrippleX Operations your fleet number {fleet.fleetNumber}{' '}
-            and they will attach your riders once each has finished their own checks.
-          </div>
-        )}
-        {rowMsg !== null && (
-          <div
-            style={{ marginTop: 10, fontSize: 11.5, color: WHITE, fontFamily: 'Inter, sans-serif' }}
-          >
-            {rowMsg}
-          </div>
-        )}
-      </Card>
     </div>
   );
 }
@@ -11799,9 +11254,7 @@ function renderPage(page: AdminPage) {
     return (
       <Card style={{ padding: '14px 16px' }}>
         <div style={{ fontSize: 12.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
-          {page === 'myfleet'
-            ? 'My Fleet is a fleet partner’s own console. This account is not a fleet owner — Operations manages fleets under Fleet Partners.'
-            : 'This account does not have access to that page.'}
+          This account does not have access to that page.
         </div>
       </Card>
     );
@@ -11818,8 +11271,6 @@ function renderPage(page: AdminPage) {
       return <PageHistory />;
     case 'fleets':
       return <PageFleets />;
-    case 'myfleet':
-      return <PageMyFleet />;
     case 'drivers':
       return <PageDrivers />;
     case 'drvkyc':
@@ -11871,40 +11322,9 @@ function isOpsAuthed(): boolean {
   return (
     u.roles.includes('operations_staff') ||
     u.roles.includes('admin') ||
-    u.permissions.some((p) => p.startsWith('operations:')) ||
-    // A fleet owner is not Operations, but this shell is where their console
-    // lives. Without this they were turned away at the door of the only screen
-    // built for them — reported from the field, 2026-08-31, by an owner who
-    // registered a fleet and then had nowhere to go. `isFleetOwnerOnly` below
-    // is what keeps them out of every Operations page once inside.
-    u.permissions.includes(FLEET_OWN_READ)
+    u.permissions.some((p) => p.startsWith('operations:'))
   );
 }
-
-/** The permission that carries a fleet owner's own console. */
-const FLEET_OWN_READ = 'fleet:own:read';
-
-/**
- * A fleet owner, and nothing more.
- *
- * The console shell is shared, so this is what decides which product a session
- * is actually looking at. An Operations account that also happened to own a
- * fleet keeps the full console; a fleet partner gets their own pages and no
- * others — every Operations endpoint would refuse them anyway, and a menu full
- * of pages that can only fail is the fault this same file was fixing a day ago.
- */
-function isFleetOwnerOnly(): boolean {
-  const u = auth.getUser();
-  if (!u) return false;
-  const operations =
-    u.roles.includes('operations_staff') ||
-    u.roles.includes('admin') ||
-    u.permissions.some((p) => p.startsWith('operations:') || p.startsWith('admin:'));
-  return !operations && u.permissions.includes(FLEET_OWN_READ);
-}
-
-/** What a fleet partner sees. Their fleet, and their own account. */
-const FLEET_OWNER_PAGES: AdminPage[] = ['myfleet', 'profile'];
 
 // Ops sign-in — the console's front door. Reuses the existing Card/Btn/dx-input
 // visual language (no new design) and the real POST /auth/login/operations.
@@ -11997,11 +11417,7 @@ function OpsSignIn({ onSignedIn }: { onSignedIn: () => void }) {
 }
 
 export function AdminConsoleScreen({ initialPage = 'dashboard' }: { initialPage?: AdminPage }) {
-  // A fleet partner opens on their fleet whatever page the caller asked for:
-  // the default is `dashboard`, which is an Operations page they cannot read.
-  const [page, setPage] = useState<AdminPage>(() =>
-    isFleetOwnerOnly() && !FLEET_OWNER_PAGES.includes(initialPage) ? 'myfleet' : initialPage,
-  );
+  const [page, setPage] = useState<AdminPage>(initialPage);
   const [authed, setAuthed] = useState<boolean>(() => isOpsAuthed());
   const [badges, setBadges] = useState<NavBadges>({});
   const narrow = useNarrowViewport();
@@ -12019,12 +11435,8 @@ export function AdminConsoleScreen({ initialPage = 'dashboard' }: { initialPage?
 
   // Real sidebar badge counts. Each source is independent so one failing queue
   // never blanks the others; absent/0 simply shows no badge.
-  //
-  // Skipped entirely for a fleet partner: every one of these is an Operations
-  // endpoint that would 403 for them, and none of the badges they count belong
-  // to a page they can open.
   useEffect(() => {
-    if (!authed || isFleetOwnerOnly()) return;
+    if (!authed) return;
     let cancelled = false;
     void (async () => {
       const next: NavBadges = {};
@@ -12137,13 +11549,3 @@ export const AdminReportsScreen = () => <AdminConsoleScreen initialPage="reports
 export const AdminSettingsScreen = () => <AdminConsoleScreen initialPage="settings" />;
 export const AdminAuditScreen = () => <AdminConsoleScreen initialPage="auditlogs" />;
 export const AdminProfileScreen = () => <AdminConsoleScreen initialPage="profile" />;
-
-/**
- * A fleet partner's own console — the same shell, opened on their fleet.
- *
- * Reached at app.dripplex.com/fleet, the same way /merchant, /rider and
- * /driver reach theirs. Until 2026-08-31 an owner who registered a fleet had
- * no route to this screen at all: signing in put them on the customer home and
- * nothing anywhere led here.
- */
-export const FleetConsoleScreen = () => <AdminConsoleScreen initialPage="myfleet" />;
