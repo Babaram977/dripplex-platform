@@ -146,7 +146,6 @@ import {
   AdminSettingsScreen,
   AdminAuditScreen,
   AdminProfileScreen,
-  FleetConsoleScreen,
 } from '../features/ADMIN';
 import {
   MerchantDashboardScreen,
@@ -178,6 +177,7 @@ import {
   PendingReviewScreen,
 } from './onboardingScreen';
 import type { PartnerPersona } from './onboardingScreen';
+import { FleetDashboardScreen } from './fleetScreen';
 import { CallLayer } from './callLayer';
 import { ChatScreen } from './chatScreen';
 import { ScreenErrorBoundary } from './errorBoundary';
@@ -2140,7 +2140,7 @@ function AppShell() {
         onSubmit={() => go('partnerreview')}
       />
     ),
-    fleetconsole: <FleetConsoleScreen />,
+    fleetconsole: <FleetDashboardScreen />,
     partnerfleet: (
       <FleetSignUpScreen
         onBack={() => goBack('partnerselect')}
