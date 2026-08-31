@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Header, Post, Put, Query, Req, Res } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Header,
+  Post,
+  Put,
+  Query,
+  Req,
+  Res,
+} from '@nestjs/common';
 import { WalletOwnerType } from '@prisma/client';
 
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -64,7 +75,20 @@ export class CustomerWalletController {
     @CurrentUser() user: AuthenticatedUser,
     @Query() query: LookupRecipientQueryDto,
   ): Promise<ApiSuccessResponse<WalletRecipientDto[]>> {
-    const recipient = await this.walletRecipientsService.findByPhone(user.id, query.phone);
+    // Exactly one identifier. Neither is a malformed request; both would make
+    // the server choose which one names the recipient, and money is moving on
+    // the answer — so the caller is told rather than guessed at. Written as
+    // two narrowing branches rather than a ternary over booleans so the types
+    // carry the guarantee instead of an assertion.
+    const { phone, email } = query;
+    let recipient: WalletRecipientDto | null;
+    if (phone !== undefined && email === undefined) {
+      recipient = await this.walletRecipientsService.findByPhone(user.id, phone);
+    } else if (email !== undefined && phone === undefined) {
+      recipient = await this.walletRecipientsService.findByEmail(user.id, email);
+    } else {
+      throw new BadRequestException('Provide exactly one of phone or email');
+    }
     return { success: true, data: recipient ? [recipient] : [] };
   }
 

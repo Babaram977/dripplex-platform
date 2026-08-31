@@ -44,7 +44,8 @@ export function useLookupTransferRecipient(): UseMutationResult<
   string
 > {
   return useMutation({
-    mutationFn: (phone: string) => sdk.wallet.lookupTransferRecipient(phone),
+    // Phone number or email — the SDK decides which field to send.
+    mutationFn: (search: string) => sdk.wallet.lookupTransferRecipient(search),
   });
 }
 

@@ -10,6 +10,7 @@ const recipientId = '22222222-2222-4222-8222-222222222222';
 interface RecipientsPrismaMock {
   user: {
     findMany: jest.Mock;
+    findUnique: jest.Mock;
   };
   walletLedgerEntry: {
     findMany: jest.Mock;
@@ -22,6 +23,7 @@ function user(overrides: Partial<Record<string, unknown>> = {}): Record<string, 
     firstName: 'Chidi',
     lastName: 'Okoro',
     phone: '+2348012345678',
+    email: 'chidi.okoro@example.com',
     status: UserStatus.ACTIVE,
     ...overrides,
   };
@@ -33,7 +35,7 @@ describe('WalletRecipientsService', () => {
 
   beforeEach(() => {
     prisma = {
-      user: { findMany: jest.fn() },
+      user: { findMany: jest.fn(), findUnique: jest.fn() },
       walletLedgerEntry: { findMany: jest.fn() },
     };
     service = new WalletRecipientsService(prisma as unknown as PrismaService);
@@ -50,6 +52,7 @@ describe('WalletRecipientsService', () => {
         firstName: 'Chidi',
         lastName: 'Okoro',
         maskedPhone: '+2348012****78',
+        maskedEmail: 'c****o@example.com',
       });
     });
 
@@ -132,6 +135,91 @@ describe('WalletRecipientsService', () => {
     });
   });
 
+  describe('findByEmail', () => {
+    it('returns a masked recipient for an active-user email match', async () => {
+      prisma.user.findUnique.mockResolvedValue(user());
+
+      const result = await service.findByEmail(callerId, 'chidi.okoro@example.com');
+
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { email: 'chidi.okoro@example.com' },
+      });
+      expect(result).toEqual({
+        id: recipientId,
+        firstName: 'Chidi',
+        lastName: 'Okoro',
+        maskedPhone: '+2348012****78',
+        maskedEmail: 'c****o@example.com',
+      });
+    });
+
+    // User.email is @db.Citext, so the database compares case-insensitively.
+    // The service must not lowercase or otherwise rewrite what was typed —
+    // doing so would only mask whether that guarantee actually holds.
+    it('passes the address through untouched apart from trimming', async () => {
+      prisma.user.findUnique.mockResolvedValue(user());
+
+      await service.findByEmail(callerId, '  Chidi.Okoro@Example.com  ');
+
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { email: 'Chidi.Okoro@Example.com' },
+      });
+    });
+
+    it('returns null when no account holds the address', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      const result = await service.findByEmail(callerId, 'nobody@example.com');
+
+      expect(result).toBeNull();
+    });
+
+    it('returns null for the caller looking up their own email', async () => {
+      prisma.user.findUnique.mockResolvedValue(user({ id: callerId }));
+
+      const result = await service.findByEmail(callerId, 'chidi.okoro@example.com');
+
+      expect(result).toBeNull();
+    });
+
+    it('returns null for a non-active user', async () => {
+      prisma.user.findUnique.mockResolvedValue(user({ status: UserStatus.BLOCKED }));
+
+      const result = await service.findByEmail(callerId, 'chidi.okoro@example.com');
+
+      expect(result).toBeNull();
+    });
+
+    it('does not query at all for an empty address', async () => {
+      const result = await service.findByEmail(callerId, '   ');
+
+      expect(result).toBeNull();
+      expect(prisma.user.findUnique).not.toHaveBeenCalled();
+    });
+
+    // User.phone is nullable, so an account can exist with an email and no
+    // number. Both lookup and recents used to drop those accounts entirely,
+    // which made them impossible to send money to.
+    it('resolves an account that has no phone number', async () => {
+      prisma.user.findUnique.mockResolvedValue(user({ phone: null }));
+
+      const result = await service.findByEmail(callerId, 'chidi.okoro@example.com');
+
+      expect(result?.maskedPhone).toBeNull();
+      expect(result?.maskedEmail).toBe('c****o@example.com');
+    });
+
+    // A short local part would otherwise be published whole by the masking
+    // rule that keeps its first and last character.
+    it('masks a short local part completely', async () => {
+      prisma.user.findUnique.mockResolvedValue(user({ email: 'ab@example.com' }));
+
+      const result = await service.findByEmail(callerId, 'ab@example.com');
+
+      expect(result?.maskedEmail).toBe('****@example.com');
+    });
+  });
+
   describe('listRecent', () => {
     it("derives distinct recipients from the caller's own TRANSFER debit ledger metadata", async () => {
       prisma.walletLedgerEntry.findMany.mockResolvedValue([
@@ -157,6 +245,7 @@ describe('WalletRecipientsService', () => {
           firstName: 'Chidi',
           lastName: 'Okoro',
           maskedPhone: '+2348012****78',
+          maskedEmail: 'c****o@example.com',
         },
       ]);
     });

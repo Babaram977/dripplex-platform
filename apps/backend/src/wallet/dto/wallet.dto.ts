@@ -1,6 +1,7 @@
 import { WalletOwnerType, WalletTransactionType } from '@prisma/client';
 import { Transform } from 'class-transformer';
 import {
+  IsEmail,
   IsEnum,
   IsNumber,
   IsOptional,
@@ -61,10 +62,29 @@ export class SetWalletLimitsDto {
   public singleTransactionLimit?: number | null;
 }
 
+/**
+ * Recipient lookup accepts a phone number or an email address, never both.
+ *
+ * Both are optional here and the controller rejects a request that supplies
+ * neither or both, because "exactly one of" is not something class-validator
+ * expresses without a custom constraint, and a silent preference for one field
+ * would move money to whoever the other field named.
+ *
+ * Email is the safer of the two to match on: `User.email` is required, unique
+ * and `citext`, so one address means one account and case never matters.
+ * `User.phone` is nullable and stored in whichever format the registering
+ * client sent — see phone-lookup.util.
+ */
 export class LookupRecipientQueryDto {
+  @IsOptional()
   @IsString()
   @Matches(/^\+?[0-9]{7,15}$/, { message: 'phone must be a valid E.164-like number' })
-  public phone!: string;
+  public phone?: string;
+
+  @IsOptional()
+  @IsEmail({}, { message: 'email must be a valid email address' })
+  @MaxLength(255)
+  public email?: string;
 }
 
 export class TransferWalletDto {
