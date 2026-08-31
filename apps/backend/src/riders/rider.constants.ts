@@ -11,19 +11,27 @@ import { KycDocumentType } from '@prisma/client';
 
 /**
  * Documents a rider must have VERIFIED before dispatch will offer them a
- * delivery. These are exactly the two the rider onboarding collects
- * (RiderDocumentsScreen): the rider's own ID and a guarantor's ID.
+ * delivery. Exactly what the rider onboarding collects
+ * (RiderDocumentsScreen): the rider's own ID.
  *
  * Until DPX-RIDER-004 dispatch ignored rider state entirely — AssignmentService
  * filtered on online/accepting/active-job-count only — so approving a rider
  * gated nothing and an unapproved rider who toggled online was auto-assigned
  * real customer orders. Founder decision 2026-08-15: APPROVED **and** every
  * required document verified.
+ *
+ * The guarantor's ID was dropped on 2026-08-31. Founder decision: "remove
+ * guarantor option completely with his documents, it is not needed both uber,
+ * bolt and in-drive doesnt have it". It was a second person's document
+ * standing between a rider and their first delivery, and no competitor asks
+ * for one.
+ *
+ * `GUARANTOR_ID` deliberately stays in the Prisma enum and in every label map.
+ * Riders and drivers have already submitted them, those rows still exist, and
+ * an operator opening one should see "Guarantor ID" rather than a broken read.
+ * Nothing asks for a new one, and nothing is gated on it.
  */
-export const REQUIRED_RIDER_KYC_DOCUMENT_TYPES = [
-  KycDocumentType.NATIONAL_ID,
-  KycDocumentType.GUARANTOR_ID,
-] as const;
+export const REQUIRED_RIDER_KYC_DOCUMENT_TYPES = [KycDocumentType.NATIONAL_ID] as const;
 
 export const RIDER_AUDIT_ACTIONS = {
   APPROVED: 'rider.approved',

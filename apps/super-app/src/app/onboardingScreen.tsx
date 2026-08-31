@@ -476,8 +476,13 @@ export function PartnerChoiceScreen({
 }: {
   onSelect: (p: PartnerPersona) => void;
   onSignIn: () => void;
-  // Shown only when the hub is reached from somewhere it can return to (e.g. the
-  // Home "Become a Partner" card). Omitted on the pre-auth onboarding flow.
+  /**
+   * Always supply this. It was optional, and the one caller that omitted it —
+   * the welcome screen — left anyone who tapped "Become a partner" on a page
+   * with no way back to sign-in or home. Reported from the field, 2026-08-31.
+   * Kept optional in the type only so no existing call site breaks; every
+   * caller in App.tsx passes it.
+   */
   onBack?: () => void;
   // Optional live partner counts (from the API); the stats strip is hidden when
   // absent rather than showing zeros.
@@ -1636,9 +1641,6 @@ export function DriverDocumentsScreen({
   const [regNum, setRegNum] = useState('');
   const [regStatus, setRegStatus] = useState<DocStatus>('pending');
   const [regFile, setRegFile] = useState<File | null>(null);
-  const [gurNum, setGurNum] = useState('');
-  const [gurStatus, setGurStatus] = useState<DocStatus>('pending');
-  const [gurFile, setGurFile] = useState<File | null>(null);
 
   const [vehicle, setVehicle] = useState({
     make: '',
@@ -1659,15 +1661,13 @@ export function DriverDocumentsScreen({
     vehicle.category &&
     vehicle.seats &&
     vehicle.year;
-  const ready =
-    licNum && regNum && gurNum && licFile && regFile && gurFile && vehicleReady && !loading;
+  const ready = licNum && regNum && licFile && regFile && vehicleReady && !loading;
 
   // Precise, user-facing list of what still blocks submission, so a disabled
   // button never leaves the driver guessing which field is incomplete.
   const missing: string[] = [];
   if (!licNum || !licFile) missing.push("Driver's Licence (number + file)");
   if (!regNum || !regFile) missing.push('Vehicle Registration (number + file)');
-  if (!gurNum || !gurFile) missing.push('Guarantor ID (number + file)');
   if (!vehicleReady) missing.push('all vehicle details');
 
   const CATEGORY_TO_RIDE_TYPE: Record<string, string> = {
@@ -1677,19 +1677,21 @@ export function DriverDocumentsScreen({
     Tricycle: 'TRICYCLE',
   };
 
-  // Uploads each document image to R2 (signed PUT), submits the three KYC docs
-  // (DRIVER_LICENSE / VEHICLE_REGISTRATION / GUARANTOR_ID), then registers the
-  // vehicle. Requires the driver to be logged in (they are, post-OTP) with
+  // Uploads each document image to R2 (signed PUT), submits the two KYC docs
+  // (DRIVER_LICENSE / VEHICLE_REGISTRATION), then registers the vehicle.
+  // Requires the driver to be logged in (they are, post-OTP) with
   // driver:kyc:manage + driver:vehicle:manage. Real backend — no fake gap.
+  //
+  // The guarantor's ID was the third document until 2026-08-31. Founder
+  // decision: "it is not needed both uber, bolt and in-drive doesnt have it".
   const handleSubmit = async () => {
-    if (!licFile || !regFile || !gurFile) return;
+    if (!licFile || !regFile) return;
     setErr('');
     setLoading(true);
     try {
-      const [licUrl, regUrl, gurUrl] = await Promise.all([
+      const [licUrl, regUrl] = await Promise.all([
         uploadFile(licFile, 'kyc-documents'),
         uploadFile(regFile, 'kyc-documents'),
-        uploadFile(gurFile, 'kyc-documents'),
       ]);
       await api.driver.submitKyc({
         documentType: 'DRIVER_LICENSE',
@@ -1700,11 +1702,6 @@ export function DriverDocumentsScreen({
         documentType: 'VEHICLE_REGISTRATION',
         documentNumber: regNum.trim(),
         frontImage: regUrl,
-      });
-      await api.driver.submitKyc({
-        documentType: 'GUARANTOR_ID',
-        documentNumber: gurNum.trim(),
-        frontImage: gurUrl,
       });
       await api.driver.createVehicle({
         plateNumber: vehicle.plate.trim(),
@@ -1719,7 +1716,6 @@ export function DriverDocumentsScreen({
       });
       setLicStatus('verified');
       setRegStatus('verified');
-      setGurStatus('verified');
       onSubmit();
     } catch (e) {
       setErr(messageFor(e));
@@ -1782,19 +1778,6 @@ export function DriverDocumentsScreen({
             status={regStatus}
             setStatus={setRegStatus}
             onFile={setRegFile}
-            focused={focused}
-            onFocus={setFocused}
-            onBlur={() => setFocused(null)}
-          />
-          <DocumentCard
-            icon="🪪"
-            title="Guarantor ID"
-            docKey="gur"
-            docNum={gurNum}
-            setDocNum={setGurNum}
-            status={gurStatus}
-            setStatus={setGurStatus}
-            onFile={setGurFile}
             focused={focused}
             onFocus={setFocused}
             onBlur={() => setFocused(null)}
@@ -1935,9 +1918,12 @@ export function DriverDocumentsScreen({
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RIDER DOCUMENTS (post-login) — wired: POST /rider/kyc ×2 + PATCH /rider/profile
-// The delivery rider uploads an ID and a Guarantor ID and enters the company
-// they deliver for (name only — founder scope). Runs while the rider is logged
-// in (post-OTP) with rider:kyc:manage. Real backend — DPX-RIDER-002.
+// The delivery rider uploads an ID and enters the company they deliver for
+// (name only — founder scope). Runs while the rider is logged in (post-OTP)
+// with rider:kyc:manage. Real backend — DPX-RIDER-002.
+//
+// A guarantor's ID was required alongside until 2026-08-31. Founder decision:
+// "it is not needed both uber, bolt and in-drive doesnt have it".
 // ─────────────────────────────────────────────────────────────────────────────
 export function RiderDocumentsScreen({
   onBack,
@@ -1953,37 +1939,26 @@ export function RiderDocumentsScreen({
   const [idNum, setIdNum] = useState('');
   const [idStatus, setIdStatus] = useState<DocStatus>('pending');
   const [idFile, setIdFile] = useState<File | null>(null);
-  const [gurNum, setGurNum] = useState('');
-  const [gurStatus, setGurStatus] = useState<DocStatus>('pending');
-  const [gurFile, setGurFile] = useState<File | null>(null);
 
   const [companyName, setCompanyName] = useState('');
   const [fleetNumber, setFleetNumber] = useState('');
   const [fleetNote, setFleetNote] = useState('');
 
-  const ready = Boolean(idNum && gurNum && idFile && gurFile && !loading);
+  const ready = Boolean(idNum && idFile && !loading);
 
-  // Uploads the two document images to R2 (signed PUT), submits the two KYC
-  // docs (NATIONAL_ID / GUARANTOR_ID), then saves the company name. Requires
+  // Uploads the document image to R2 (signed PUT), submits the KYC
+  // doc (NATIONAL_ID), then saves the company name. Requires
   // the rider to be logged in (post-OTP) with rider:kyc:manage.
   const handleSubmit = async () => {
-    if (!idFile || !gurFile) return;
+    if (!idFile) return;
     setErr('');
     setLoading(true);
     try {
-      const [idUrl, gurUrl] = await Promise.all([
-        uploadFile(idFile, 'kyc-documents'),
-        uploadFile(gurFile, 'kyc-documents'),
-      ]);
+      const idUrl = await uploadFile(idFile, 'kyc-documents');
       await api.rider.submitKyc({
         documentType: 'NATIONAL_ID',
         documentNumber: idNum.trim(),
         frontImage: idUrl,
-      });
-      await api.rider.submitKyc({
-        documentType: 'GUARANTOR_ID',
-        documentNumber: gurNum.trim(),
-        frontImage: gurUrl,
       });
       if (companyName.trim()) {
         await api.rider.updateProfile({ companyName: companyName.trim() });
@@ -2001,7 +1976,6 @@ export function RiderDocumentsScreen({
         }
       }
       setIdStatus('verified');
-      setGurStatus('verified');
       onSubmit();
     } catch (e) {
       setErr(messageFor(e));
@@ -2051,19 +2025,6 @@ export function RiderDocumentsScreen({
             status={idStatus}
             setStatus={setIdStatus}
             onFile={setIdFile}
-            focused={focused}
-            onFocus={setFocused}
-            onBlur={() => setFocused(null)}
-          />
-          <DocumentCard
-            icon="🧑‍⚖️"
-            title="Guarantor ID"
-            docKey="gur"
-            docNum={gurNum}
-            setDocNum={setGurNum}
-            status={gurStatus}
-            setStatus={setGurStatus}
-            onFile={setGurFile}
             focused={focused}
             onFocus={setFocused}
             onBlur={() => setFocused(null)}
@@ -2514,7 +2475,7 @@ export function PendingReviewScreen({
               ? 'Documents — rejected, re-upload'
               : state === 'NONE'
                 ? 'Documents — not uploaded yet'
-                : 'Identity & guarantor documents',
+                : 'Identity documents',
           done: state === 'VERIFIED',
           active: state === 'PENDING',
         },

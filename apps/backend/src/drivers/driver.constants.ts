@@ -2,11 +2,25 @@ import { KycDocumentType } from '@prisma/client';
 
 /** DPX-DRIVER-002 Phase 4 — a driver must have a VERIFIED document of each of
  * these types before activation. Single source of truth, read by
- * DriverActivationService — not duplicated anywhere else. */
+ * DriverActivationService — not duplicated anywhere else.
+ *
+ * The guarantor's ID was dropped on 2026-08-31. Founder decision: "remove
+ * guarantor option completely with his documents, it is not needed both uber,
+ * bolt and in-drive doesnt have it". It was a second person's document
+ * standing between a driver and their first trip.
+ *
+ * Worth knowing: this is retroactive. A driver blocked today on an unverified
+ * guarantor ID becomes activatable the moment this ships, because activation
+ * reads this list rather than a snapshot taken at signup. That is the intent —
+ * they are no longer being asked for the document — but it does change who is
+ * eligible without anyone touching their record.
+ *
+ * `GUARANTOR_ID` stays in the Prisma enum and in the label maps: the documents
+ * already submitted are still there, and an operator opening one should see a
+ * name rather than a broken read. Nothing asks for a new one. */
 export const REQUIRED_DRIVER_KYC_DOCUMENT_TYPES: readonly KycDocumentType[] = [
   KycDocumentType.DRIVER_LICENSE,
   KycDocumentType.VEHICLE_REGISTRATION,
-  KycDocumentType.GUARANTOR_ID,
 ];
 
 export const DRIVER_AUDIT_ACTIONS = {

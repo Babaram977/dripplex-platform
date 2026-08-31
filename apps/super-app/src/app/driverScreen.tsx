@@ -1002,11 +1002,11 @@ export function DriverKYCStatusScreen({
     {
       key: 'requiredDocumentsApproved',
       label: 'Document review',
-      done: "Driver's licence, vehicle paper and guarantor ID, all verified.",
+      done: "Driver's licence and vehicle paper, both verified.",
       pending:
         allRequiredDocsSent === true
           ? 'All three documents are with Operations and waiting to be verified.'
-          : "Driver's licence, vehicle paper or guarantor ID is missing or not yet verified.",
+          : "Driver's licence or vehicle paper is missing or not yet verified.",
       owner: allRequiredDocsSent === true ? 'ops' : 'you',
       action: {
         label: allRequiredDocsSent === true ? 'View your documents' : 'Upload / update documents',
@@ -1271,14 +1271,6 @@ const DRIVER_KYC_DOCS: {
     label: 'Vehicle Paper',
     icon: '📄',
     numberLabel: 'Registration / plate number',
-    numberPlaceholder: 'Type the number here',
-  },
-  {
-    type: 'GUARANTOR_ID',
-    required: true,
-    label: 'Guarantor ID',
-    icon: '🧑‍🤝‍🧑',
-    numberLabel: "Guarantor's ID number",
     numberPlaceholder: 'Type the number here',
   },
   {
@@ -6087,6 +6079,12 @@ export function EmergencyContactScreen({
   const [relationship, setRelationship] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
+  // DPX-FLEET. Riders got this field on 2026-08-30; drivers did not, so a
+  // fleet of cars had no way to join the company that employs them and
+  // Operations had to attach every one by hand. Founder asked for it here,
+  // 2026-08-31.
+  const [fleetNumber, setFleetNumber] = useState('');
+  const [fleetNote, setFleetNote] = useState('');
   const [relOpen, setRelOpen] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
@@ -6117,6 +6115,22 @@ export function EmergencyContactScreen({
         emergencyContactRelationship: relationship,
         ...(email.trim() ? { emergencyContactEmail: email.trim() } : {}),
       });
+      // Optional, and deliberately cannot fail this step: the emergency
+      // contact is already saved by now, and a mistyped fleet number must not
+      // cost the driver their onboarding. A bad one reports itself here and is
+      // sorted out with the fleet owner afterwards.
+      if (fleetNumber.trim()) {
+        try {
+          const req = await api.fleet.requestToJoin(fleetNumber.trim().toUpperCase());
+          setFleetNote(`Sent to ${req.fleetName}. They will confirm you.`);
+        } catch (fleetError) {
+          setFleetNote(
+            (fleetError as { message?: string }).message ??
+              'That fleet number was not accepted. You can add it later.',
+          );
+          return;
+        }
+      }
       onContinue();
     } catch (e: unknown) {
       setSubmitErr(
@@ -6338,6 +6352,22 @@ export function EmergencyContactScreen({
           onChange={setEmail}
           type="email"
         />
+
+        {/* Fleet DX number — optional, and not a KYC field. A driver who works
+            for a fleet enters the number their owner gave them; the owner
+            confirms it before they are on that fleet. */}
+        <DInput
+          label="Fleet DX number (optional)"
+          placeholder="DX-FL-0001"
+          value={fleetNumber}
+          onChange={setFleetNumber}
+        />
+        <p
+          className="mb-5 mt-[-8px] text-[11.5px]"
+          style={{ fontFamily: IT, color: fleetNote ? '#fff' : MUTED, lineHeight: 1.5 }}
+        >
+          {fleetNote || 'If you drive for a fleet, enter the number they gave you.'}
+        </p>
 
         {/* Privacy card */}
         <div

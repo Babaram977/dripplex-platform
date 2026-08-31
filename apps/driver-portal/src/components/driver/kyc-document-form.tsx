@@ -12,7 +12,6 @@ const DOCUMENT_TYPES: { value: KycDocumentType; label: string }[] = [
   { value: 'PASSPORT', label: 'Passport' },
   { value: 'DRIVER_LICENSE', label: "Driver's license" },
   { value: 'VEHICLE_REGISTRATION', label: 'Vehicle registration' },
-  { value: 'GUARANTOR_ID', label: "Guarantor's ID" },
 ];
 
 /** frontImage/backImage are validated as URLs on the backend

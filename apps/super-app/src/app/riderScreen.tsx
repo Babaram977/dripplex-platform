@@ -1630,16 +1630,6 @@ export function RiderAccountScreen({
             : 'Submitted, awaiting review.',
     },
     {
-      label: 'Guarantor ID verified',
-      ok: docStatus('GUARANTOR_ID') === 'VERIFIED',
-      detail:
-        docStatus('GUARANTOR_ID') === 'MISSING'
-          ? 'Not submitted yet.'
-          : docStatus('GUARANTOR_ID') === 'REJECTED'
-            ? 'Rejected — submit a new one.'
-            : 'Submitted, awaiting review.',
-    },
-    {
       label: 'Online and accepting jobs',
       ok: (availability?.online ?? false) && (availability?.acceptingOrders ?? false),
       detail: 'Use the Go Online button on your dashboard.',

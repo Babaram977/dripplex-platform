@@ -100,9 +100,10 @@ describe('OperationsEligibilityService', () => {
   it('names the document that is blocking a rider, not just "not eligible"', async () => {
     if (!databaseAvailable) return;
     // Approved, online, accepting, positioned — and still invisible to
-    // dispatch, because the guarantor ID was never verified. This is the
-    // shape of the live incident.
-    const riderId = await makeRider({ verifiedDocuments: [KycDocumentType.NATIONAL_ID] });
+    // dispatch, because no document was ever verified. This is the shape of
+    // the live incident. It used to be pinned on the guarantor ID, which
+    // stopped being required on 2026-08-31.
+    const riderId = await makeRider({ verifiedDocuments: [] });
 
     const result = await service.getRiderEligibility(riderId);
 
@@ -110,7 +111,7 @@ describe('OperationsEligibilityService', () => {
     const kyc = result.gates.find((entry) => entry.key === 'KYC_VERIFIED');
     expect(kyc?.passed).toBe(false);
     // The whole point: an operator can read this and know what to open.
-    expect(kyc?.detail).toContain('Guarantor ID');
+    expect(kyc?.detail).toContain('National ID');
     expect(kyc?.fixableBy).toBe('OPERATIONS');
     // And the gates the rider HAS cleared are not muddled in with it.
     expect(result.gates.find((entry) => entry.key === 'ONLINE')?.passed).toBe(true);
@@ -120,7 +121,7 @@ describe('OperationsEligibilityService', () => {
   it('says a rider is dispatchable only when every gate passes', async () => {
     if (!databaseAvailable) return;
     const riderId = await makeRider({
-      verifiedDocuments: [KycDocumentType.NATIONAL_ID, KycDocumentType.GUARANTOR_ID],
+      verifiedDocuments: [KycDocumentType.NATIONAL_ID],
     });
 
     const result = await service.getRiderEligibility(riderId);
@@ -136,7 +137,7 @@ describe('OperationsEligibilityService', () => {
     // side: online and accepting, but unplaceable, so findNearestRider returns
     // null and the job is never assigned to anybody.
     const riderId = await makeRider({
-      verifiedDocuments: [KycDocumentType.NATIONAL_ID, KycDocumentType.GUARANTOR_ID],
+      verifiedDocuments: [KycDocumentType.NATIONAL_ID],
       withPosition: false,
     });
 
@@ -153,7 +154,7 @@ describe('OperationsEligibilityService', () => {
   it('reports a signed-off rider as offline rather than as a compliance problem', async () => {
     if (!databaseAvailable) return;
     const riderId = await makeRider({
-      verifiedDocuments: [KycDocumentType.NATIONAL_ID, KycDocumentType.GUARANTOR_ID],
+      verifiedDocuments: [KycDocumentType.NATIONAL_ID],
       online: false,
     });
 
