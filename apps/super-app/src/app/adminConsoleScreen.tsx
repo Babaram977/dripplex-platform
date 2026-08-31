@@ -617,7 +617,11 @@ const NAV_ITEMS: { page: AdminPage; icon: string; label: string; requires?: stri
  * a link; it is not the security boundary. Every route behind these pages is
  * gated server-side and stays gated.
  */
-function canSee(item: { requires?: string }): boolean {
+function canSee(item: { page: AdminPage; requires?: string }): boolean {
+  // A fleet partner sees their own pages only. Checked before `requires`,
+  // because most Operations pages declare no permission at all and would
+  // otherwise all be offered to them.
+  if (isFleetOwnerOnly()) return FLEET_OWNER_PAGES.includes(item.page);
   if (item.requires === undefined) return true;
   return auth.getUser()?.permissions.includes(item.requires) ?? false;
 }
@@ -708,7 +712,9 @@ function Sidebar({
                 letterSpacing: 0.5,
               }}
             >
-              OPERATIONS CONSOLE
+              {/* A fleet partner is not Operations and should not be told they
+                  are looking at the Operations Console. */}
+              {isFleetOwnerOnly() ? 'FLEET CONSOLE' : 'OPERATIONS CONSOLE'}
             </div>
           </div>
         </div>
@@ -11865,9 +11871,40 @@ function isOpsAuthed(): boolean {
   return (
     u.roles.includes('operations_staff') ||
     u.roles.includes('admin') ||
-    u.permissions.some((p) => p.startsWith('operations:'))
+    u.permissions.some((p) => p.startsWith('operations:')) ||
+    // A fleet owner is not Operations, but this shell is where their console
+    // lives. Without this they were turned away at the door of the only screen
+    // built for them — reported from the field, 2026-08-31, by an owner who
+    // registered a fleet and then had nowhere to go. `isFleetOwnerOnly` below
+    // is what keeps them out of every Operations page once inside.
+    u.permissions.includes(FLEET_OWN_READ)
   );
 }
+
+/** The permission that carries a fleet owner's own console. */
+const FLEET_OWN_READ = 'fleet:own:read';
+
+/**
+ * A fleet owner, and nothing more.
+ *
+ * The console shell is shared, so this is what decides which product a session
+ * is actually looking at. An Operations account that also happened to own a
+ * fleet keeps the full console; a fleet partner gets their own pages and no
+ * others — every Operations endpoint would refuse them anyway, and a menu full
+ * of pages that can only fail is the fault this same file was fixing a day ago.
+ */
+function isFleetOwnerOnly(): boolean {
+  const u = auth.getUser();
+  if (!u) return false;
+  const operations =
+    u.roles.includes('operations_staff') ||
+    u.roles.includes('admin') ||
+    u.permissions.some((p) => p.startsWith('operations:') || p.startsWith('admin:'));
+  return !operations && u.permissions.includes(FLEET_OWN_READ);
+}
+
+/** What a fleet partner sees. Their fleet, and their own account. */
+const FLEET_OWNER_PAGES: AdminPage[] = ['myfleet', 'profile'];
 
 // Ops sign-in — the console's front door. Reuses the existing Card/Btn/dx-input
 // visual language (no new design) and the real POST /auth/login/operations.
@@ -11960,7 +11997,11 @@ function OpsSignIn({ onSignedIn }: { onSignedIn: () => void }) {
 }
 
 export function AdminConsoleScreen({ initialPage = 'dashboard' }: { initialPage?: AdminPage }) {
-  const [page, setPage] = useState<AdminPage>(initialPage);
+  // A fleet partner opens on their fleet whatever page the caller asked for:
+  // the default is `dashboard`, which is an Operations page they cannot read.
+  const [page, setPage] = useState<AdminPage>(() =>
+    isFleetOwnerOnly() && !FLEET_OWNER_PAGES.includes(initialPage) ? 'myfleet' : initialPage,
+  );
   const [authed, setAuthed] = useState<boolean>(() => isOpsAuthed());
   const [badges, setBadges] = useState<NavBadges>({});
   const narrow = useNarrowViewport();
@@ -11978,8 +12019,12 @@ export function AdminConsoleScreen({ initialPage = 'dashboard' }: { initialPage?
 
   // Real sidebar badge counts. Each source is independent so one failing queue
   // never blanks the others; absent/0 simply shows no badge.
+  //
+  // Skipped entirely for a fleet partner: every one of these is an Operations
+  // endpoint that would 403 for them, and none of the badges they count belong
+  // to a page they can open.
   useEffect(() => {
-    if (!authed) return;
+    if (!authed || isFleetOwnerOnly()) return;
     let cancelled = false;
     void (async () => {
       const next: NavBadges = {};
@@ -12092,3 +12137,13 @@ export const AdminReportsScreen = () => <AdminConsoleScreen initialPage="reports
 export const AdminSettingsScreen = () => <AdminConsoleScreen initialPage="settings" />;
 export const AdminAuditScreen = () => <AdminConsoleScreen initialPage="auditlogs" />;
 export const AdminProfileScreen = () => <AdminConsoleScreen initialPage="profile" />;
+
+/**
+ * A fleet partner's own console — the same shell, opened on their fleet.
+ *
+ * Reached at app.dripplex.com/fleet, the same way /merchant, /rider and
+ * /driver reach theirs. Until 2026-08-31 an owner who registered a fleet had
+ * no route to this screen at all: signing in put them on the customer home and
+ * nothing anywhere led here.
+ */
+export const FleetConsoleScreen = () => <AdminConsoleScreen initialPage="myfleet" />;

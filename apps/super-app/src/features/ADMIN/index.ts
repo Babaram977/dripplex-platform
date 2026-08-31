@@ -16,4 +16,5 @@ export {
   AdminSettingsScreen,
   AdminAuditScreen,
   AdminProfileScreen,
+  FleetConsoleScreen,
 } from '../../app/adminConsoleScreen';
