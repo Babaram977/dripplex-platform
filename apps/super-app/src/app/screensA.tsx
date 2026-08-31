@@ -2447,6 +2447,7 @@ export function SignInScreen({
   onSuccess,
   onMerchant,
   onDriver,
+  onRider,
   onBecomePartner,
   onForgot,
 }: {
@@ -2454,6 +2455,13 @@ export function SignInScreen({
   onSuccess?: () => void;
   onMerchant?: () => void;
   onDriver?: () => void;
+  /**
+   * Riders had no way in here. The row offered Merchant and Driver only, so a
+   * rider who tapped "partner sign-in" was shown two doors, neither of them
+   * theirs — reported from the field, 2026-08-30. The rider login screen has
+   * existed and been routed all along; nothing linked to it.
+   */
+  onRider?: () => void;
   onBecomePartner?: () => void;
   onForgot?: () => void;
 }) {
@@ -2613,7 +2621,7 @@ export function SignInScreen({
             Continue with Google
           </span>
         </button>
-        {(onMerchant || onDriver) && (
+        {(onMerchant || onDriver || onRider) && (
           <>
             <Divider label="partner sign-in" />
             <div className="flex gap-3">
@@ -2644,6 +2652,21 @@ export function SignInScreen({
                     style={{ fontFamily: "'Inter',sans-serif" }}
                   >
                     Driver
+                  </span>
+                </button>
+              )}
+              {onRider && (
+                <button
+                  onClick={onRider}
+                  className="flex h-[52px] flex-1 items-center justify-center gap-2 rounded-xl transition-all active:scale-95"
+                  style={{ background: 'rgba(255,255,255,.04)', border: `1.5px solid ${BORDER}` }}
+                >
+                  <span className="text-base">🛵</span>
+                  <span
+                    className="text-sm font-semibold text-white"
+                    style={{ fontFamily: "'Inter',sans-serif" }}
+                  >
+                    Rider
                   </span>
                 </button>
               )}

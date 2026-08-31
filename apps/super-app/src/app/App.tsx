@@ -1075,6 +1075,7 @@ function AppShell() {
         onSuccess={() => goAfterAuthChange('home')}
         onMerchant={() => go('mxdash')}
         onDriver={() => go('drvlogin')}
+        onRider={() => go('riderlogin')}
         onBecomePartner={() => {
           setPartnerFrom('returning');
           go('partnerselect');
@@ -1090,14 +1091,33 @@ function AppShell() {
     ),
     signin: (
       <SignInScreen
-        onBack={() => goBack('welcome')}
-        onSuccess={() => goAfterAuthChange('home')}
+        // Both exits clear the partner-flow marker, so it only suppresses the
+        // link for the one hop it describes rather than for the rest of the
+        // session.
+        onBack={() => {
+          setPartnerFrom(null);
+          goBack('welcome');
+        }}
+        onSuccess={() => {
+          setPartnerFrom(null);
+          goAfterAuthChange('home');
+        }}
         onMerchant={() => go('mxdash')}
         onDriver={() => go('drvlogin')}
-        onBecomePartner={() => {
-          setPartnerFrom('signin');
-          go('partnerselect');
-        }}
+        onRider={() => go('riderlogin')}
+        // Suppressed when sign-in was reached from the partner hub. Tapping
+        // "Become a partner", landing on sign-in, and being offered "Become a
+        // partner" again is a loop back to the screen you just left — reported
+        // from the field, 2026-08-30. Everywhere else the link still leads
+        // somewhere new.
+        {...(partnerFrom === null
+          ? {
+              onBecomePartner: () => {
+                setPartnerFrom('signin');
+                go('partnerselect');
+              },
+            }
+          : {})}
         onForgot={() => {
           setRecoveryFrom('signin');
           go('recovery');
