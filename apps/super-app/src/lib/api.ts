@@ -2340,6 +2340,16 @@ export interface UtilityFloatStatusDto {
   threshold: number;
   low: boolean;
   error?: string;
+  /** Whether Peyflex considers the DrippleX account verified. A funded float
+   * says nothing about this, and the two stop purchases independently:
+   * Peyflex ties the ₦4,999 airtime ceiling to verification, so an
+   * unverified account refuses larger amounts while small ones still go
+   * through. Null when Peyflex did not say, or named a status the adapter
+   * does not recognise — which is a question, not a failure. */
+  accountVerified: boolean | null;
+  /** Peyflex's own word for the state, passed through so an unfamiliar
+   * status is legible rather than flattened into a boolean. */
+  kycStatus: string | null;
 }
 
 export interface AdminUtilityPurchaseDto extends UtilityPurchaseDto {

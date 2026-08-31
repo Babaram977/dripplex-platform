@@ -460,11 +460,24 @@ export class UtilitiesService {
         result = {
           outcome: 'FAILED',
           providerMessage: 'We could not reach our provider for that purchase',
+          // `raw` is what `reverse` persists as `providerResponse`, and it was
+          // absent on both throw paths — so a purchase that failed because the
+          // provider threw left nothing on the row and only a log line, which
+          // rolls over. Founder, 2026-08-31: "peyflex keep denying the error".
+          // Winning that argument means keeping the provider's own words, and
+          // for a thrown rejection those words are in the exception message
+          // (see UtilityProviderRejectedError: `message` carries the full
+          // provider detail, `publicMessage` is the sanitised one).
+          raw: { kind: 'provider_rejected', detail, at: new Date().toISOString() },
         };
       } else {
         // A timeout or a provider-side error. It may still have been
         // delivered, so nothing is reversed — see the class comment.
-        result = { outcome: 'UNKNOWN', providerMessage: 'The provider did not respond' };
+        result = {
+          outcome: 'UNKNOWN',
+          providerMessage: 'The provider did not respond',
+          raw: { kind: 'provider_no_response', detail, at: new Date().toISOString() },
+        };
       }
     }
 
