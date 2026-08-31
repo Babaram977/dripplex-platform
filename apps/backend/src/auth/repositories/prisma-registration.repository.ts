@@ -15,6 +15,16 @@ import type {
   RegistrationRepository,
 } from './registration.repository';
 
+/**
+ * Portals whose users are also customers.
+ *
+ * Founder rule, 2026-08-31. `customer` itself is absent because it is already
+ * one, and the staff portals are absent because an operations or admin account
+ * is not a shopper.
+ */
+const PARTNER_PORTALS: readonly string[] = ['merchant', 'rider', 'driver'];
+const CUSTOMER_ROLE = 'customer';
+
 @Injectable()
 export class PrismaRegistrationRepository implements RegistrationRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -28,6 +38,35 @@ export class PrismaRegistrationRepository implements RegistrationRepository {
 
     if (!role) {
       throw new NotFoundDomainException(`Role ${input.roleName} is not configured`);
+    }
+
+    /**
+     * Every partner is also a customer.
+     *
+     * Founder rule, 2026-08-31: "driver, merchant or rider can be a customer,
+     * his login details should work on customers page". Until now a partner
+     * registering through their own portal was given exactly one role and no
+     * customer profile, and `/auth/login/customer` admits only the `customer`
+     * role — so a rider could not use DrippleX to order his own lunch with the
+     * account he already had.
+     *
+     * Granting the role alone is not enough: the customer surface needs both
+     * the `customer:*` permissions it carries AND a CustomerProfile, which
+     * cart, addresses and orders all hang off. A login that succeeded without
+     * the profile would land them in a half-broken app. Both, or neither.
+     *
+     * The reverse direction — a customer becoming a driver — already worked
+     * through `addPortalRole`. Staff portals are deliberately excluded: an
+     * operations or admin account is not a shopper.
+     */
+    const alsoCustomer = PARTNER_PORTALS.includes(input.portal);
+    const customerRole = alsoCustomer
+      ? await this.prisma.role.findFirst({ where: { name: CUSTOMER_ROLE, deletedAt: null } })
+      : null;
+    if (alsoCustomer && customerRole === null) {
+      throw new NotFoundDomainException(
+        `Role ${CUSTOMER_ROLE} is not configured. Run the RBAC seed before registering partners.`,
+      );
     }
 
     return await this.prisma.$transaction(async (tx) => {
@@ -45,12 +84,19 @@ export class PrismaRegistrationRepository implements RegistrationRepository {
             : {}),
           ...(input.googleId !== undefined ? { googleId: input.googleId } : {}),
           roles: {
-            create: {
-              roleId: role.id,
-            },
+            create:
+              customerRole === null
+                ? [{ roleId: role.id }]
+                : [{ roleId: role.id }, { roleId: customerRole.id }],
           },
         },
       });
+
+      // See the comment above: the role without the profile is a broken
+      // customer, so the two are created together or not at all.
+      if (customerRole !== null) {
+        await tx.customerProfile.create({ data: { userId: user.id } });
+      }
 
       let profileId: string | undefined;
       let onboardingId: string | undefined;
