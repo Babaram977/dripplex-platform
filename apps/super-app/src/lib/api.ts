@@ -380,13 +380,16 @@ export interface DriverCampaignDashboardDto {
 }
 
 /** GET /customer/wallet/transfer/recipients[/recent] — mirrors the backend's
- *  WalletRecipientDto. The phone comes back masked; the API never returns a
- *  recipient's full number. */
+ *  WalletRecipientDto. Both identifiers come back masked; the API never returns
+ *  a recipient's full number or address. */
 export interface WalletRecipientDto {
   id: string;
   firstName: string;
   lastName: string;
-  maskedPhone: string;
+  /** Null when the account has no phone number — `User.phone` is optional. */
+  maskedPhone: string | null;
+  /** Always present — `User.email` is required and unique. */
+  maskedEmail: string;
 }
 
 export interface WalletLedgerEntryDto {
@@ -2646,8 +2649,18 @@ export const api = {
     // result rendered a blank row and `r.name.slice(0, 2)` threw the moment a
     // recipient was found. Nobody hit it only because the phone lookup itself
     // never matched.
-    findRecipient: (phone: string) =>
-      dx<WalletRecipientDto[]>('GET', '/customer/wallet/transfer/recipients', undefined, { phone }),
+    // Takes whatever the sender typed and decides which identifier it is on the
+    // one rule that separates them: an email address contains an `@`, a phone
+    // number cannot. The backend rejects a request carrying neither or both.
+    findRecipient: (search: string) => {
+      const trimmed = search.trim();
+      return dx<WalletRecipientDto[]>(
+        'GET',
+        '/customer/wallet/transfer/recipients',
+        undefined,
+        trimmed.includes('@') ? { email: trimmed } : { phone: trimmed },
+      );
+    },
     recentRecipients: () =>
       dx<WalletRecipientDto[]>('GET', '/customer/wallet/transfer/recipients/recent'),
     fund: (body: { amount: number; provider?: string; callbackUrl?: string }) =>

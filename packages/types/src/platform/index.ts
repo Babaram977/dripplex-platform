@@ -899,7 +899,10 @@ export interface WalletRecipientDto {
   id: string;
   firstName: string;
   lastName: string;
-  maskedPhone: string;
+  /** Null when the account has no phone number — `User.phone` is optional. */
+  maskedPhone: string | null;
+  /** Always present — `User.email` is required and unique. */
+  maskedEmail: string;
 }
 
 /**

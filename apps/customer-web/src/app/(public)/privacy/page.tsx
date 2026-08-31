@@ -51,7 +51,7 @@ const CONTROLLER = {
   privacyEmail: 'privacy@dripplex.com',
 } as const;
 
-const LAST_UPDATED = '24 August 2026';
+const LAST_UPDATED = '30 August 2026';
 
 const COLLECTED: { what: string; why: string }[] = [
   {
@@ -83,6 +83,10 @@ const COLLECTED: { what: string; why: string }[] = [
     why: 'To show you what you bought, where you travelled and what you were charged, to settle payouts, and to resolve disputes and refunds.',
   },
   {
+    what: 'Live audio while you are on an in-app call',
+    why: 'To carry a voice call between you and the driver, rider or merchant on a live job. Nothing is recorded and nothing is stored — your microphone is used only while a call is connected, and the audio passes straight through to the other person. What we keep is who called whom, when, and for how long.',
+  },
+  {
     what: 'A push notification token for your device',
     why: 'To send you order, delivery and trip notifications. It identifies the device, not you personally, and it is used for nothing else.',
   },
@@ -111,6 +115,11 @@ const PERMISSIONS: { permission: string; purpose: string }[] = [
     purpose: 'Choosing an existing photo for your profile, your store, or an identity document.',
   },
   {
+    permission: 'Microphone',
+    purpose:
+      'Speaking on an in-app voice call with the driver, rider or merchant on a live job. Requested only when a call starts, and used only while it is connected.',
+  },
+  {
     permission: 'Notifications',
     purpose:
       'Order updates, trip updates, payment confirmations and — for partners — job offers. You can turn these off in your device settings at any time.',
@@ -127,6 +136,10 @@ const PROCESSORS: { name: string; role: string }[] = [
     role: 'Storing uploaded files, including identity documents and product images',
   },
   { name: 'Google Maps', role: 'Converting addresses into coordinates' },
+  {
+    name: 'LiveKit',
+    role: 'Carrying in-app voice calls between you and a driver, rider or merchant. It relays the call; nothing is recorded',
+  },
 ];
 
 const RIGHTS = [

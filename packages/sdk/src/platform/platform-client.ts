@@ -704,9 +704,20 @@ export class WalletClient {
     );
   }
 
-  public lookupTransferRecipient(phone: string): Promise<WalletRecipientDto[]> {
+  /**
+   * Look a transfer recipient up by phone number or email address.
+   *
+   * The caller passes whatever the sender typed and this decides which field it
+   * is, on the one rule that separates them: an email address contains an `@`
+   * and a phone number cannot. Keeping that decision here means the two front
+   * ends cannot disagree about it, and the backend still validates whichever
+   * field arrives — it rejects a request carrying neither or both.
+   */
+  public lookupTransferRecipient(search: string): Promise<WalletRecipientDto[]> {
+    const trimmed = search.trim();
+    const params = trimmed.includes('@') ? { email: trimmed } : { phone: trimmed };
     return this.http.request<WalletRecipientDto[]>(
-      `/customer/wallet/transfer/recipients${toQuery({ phone })}`,
+      `/customer/wallet/transfer/recipients${toQuery(params)}`,
     );
   }
 

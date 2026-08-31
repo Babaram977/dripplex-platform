@@ -146,6 +146,7 @@ import {
   AdminSettingsScreen,
   AdminAuditScreen,
   AdminProfileScreen,
+  FleetConsoleScreen,
 } from '../features/ADMIN';
 import {
   MerchantDashboardScreen,
@@ -474,6 +475,7 @@ type Screen =
   | 'riderdocs'
   | 'partnerbusiness'
   | 'partnerfleet'
+  | 'fleetconsole'
   | 'fleetregister'
   | 'partnerreview';
 
@@ -494,6 +496,10 @@ const PORTAL_ROUTES: Record<string, Screen> = {
   merchant: 'mxdash',
   rider: 'riderlogin',
   driver: 'drvlogin',
+  // DPX-FLEET. An owner who registered a fleet had no route to their own
+  // console: signing in put them on the customer home and nothing anywhere
+  // led there. Reported from the field, 2026-08-31.
+  fleet: 'fleetconsole',
 };
 
 /**
@@ -2024,11 +2030,29 @@ function AppShell() {
           // rather than a body field, so an unauthenticated tap goes to sign
           // in first instead of a form that could only fail.
           if (p === 'fleet') {
-            // Signed out, this used to go to the customer sign-in screen — a
-            // password prompt for an account the owner has not got, with
-            // nothing on it about fleets. It now goes to a fleet sign-up, the
-            // same as the other three personas, and comes back here after.
-            go(auth.getAccessToken() ? 'fleetregister' : 'partnerfleet');
+            // Three cases, and each used to be wrong in its own way.
+            //
+            // Already owns a fleet → their console. Sending them to the
+            // register form only produced "you already own fleet DX-FL-0001",
+            // and this card was the one visible route an owner had to their
+            // own fleet after signing in — reported from the field,
+            // 2026-08-31, by an owner who landed on the customer home and
+            // could get no further.
+            //
+            // Signed in without a fleet → the register form.
+            //
+            // Signed out → a fleet sign-up, like the other three personas. It
+            // used to be the customer sign-in screen: a password prompt for an
+            // account they have not got.
+            if (!auth.getAccessToken()) {
+              go('partnerfleet');
+              return;
+            }
+            go(
+              auth.getUser()?.permissions.includes('fleet:own:read')
+                ? 'fleetconsole'
+                : 'fleetregister',
+            );
             return;
           }
           go(
@@ -2116,6 +2140,7 @@ function AppShell() {
         onSubmit={() => go('partnerreview')}
       />
     ),
+    fleetconsole: <FleetConsoleScreen />,
     partnerfleet: (
       <FleetSignUpScreen
         onBack={() => goBack('partnerselect')}
@@ -2143,9 +2168,10 @@ function AppShell() {
     fleetregister: (
       <FleetRegisterScreen
         onBack={() => goBack('partnerselect')}
-        // Straight to the fleet console: the owner's DX number is issued, and
-        // what they want next is to watch for their riders' requests.
-        onDone={() => go('home')}
+        // Straight to their own console: the DX number is issued, and what
+        // they want next is to watch for their riders' requests. This used to
+        // go to the customer home, which is where an owner got stranded.
+        onDone={() => go('fleetconsole')}
       />
     ),
     riderdocs: (
