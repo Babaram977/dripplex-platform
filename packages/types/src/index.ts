@@ -584,6 +584,7 @@ export type {
   WalletStatementDto,
   WalletTransactionType,
   WalletTransferDto,
+  WalletTransferReceiptDto,
   WalletTransferRequest,
   WithdrawalHistoryQuery,
   WithdrawalRequestDto,

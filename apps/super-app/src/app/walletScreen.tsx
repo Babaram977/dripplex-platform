@@ -9,6 +9,7 @@ import type {
   WalletDto,
   WalletLedgerEntryDto,
   WalletRecipientDto,
+  WalletTransferReceiptDto,
   CustomerBankAccountDto,
   LoyaltyOverviewDto,
   LoyaltyLedgerEntryDto,
@@ -533,6 +534,7 @@ export function WalletHomeScreen({
   const [txs, setTxs] = useState<WalletLedgerEntryDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [detailTx, setDetailTx] = useState<WalletLedgerEntryDto | null>(null);
 
   const displayName = auth.greetingName();
 
@@ -864,7 +866,13 @@ export function WalletHomeScreen({
                 txs.map((tx, i) => (
                   <div key={tx.id}>
                     {i > 0 && <div style={{ height: 1, background: BORDER, margin: '0 16px' }} />}
-                    <div className="flex items-center justify-between px-5 py-3">
+                    <div
+                      onClick={() => {
+                        setDetailTx(tx);
+                      }}
+                      className="flex items-center justify-between px-5 py-3"
+                      style={{ cursor: 'pointer' }}
+                    >
                       <div className="flex items-center gap-3">
                         <TxIcon type={tx.type} />
                         <div>
@@ -913,7 +921,126 @@ export function WalletHomeScreen({
           </div>
         </>
       )}
+
+      {detailTx && (
+        <TxDetailSheet
+          tx={detailTx}
+          onClose={() => {
+            setDetailTx(null);
+          }}
+        />
+      )}
     </Screen>
+  );
+}
+
+/**
+ * One line of a receipt or a transaction's detail. Values are rendered
+ * selectable so a reference can be copied out of the app and pasted into a
+ * support message — the whole point of showing it.
+ */
+function DetailRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div
+      className="flex items-start justify-between"
+      style={{ gap: 16, padding: '10px 0', borderBottom: `1px solid ${BORDER}` }}
+    >
+      <span style={{ fontFamily: IT, fontSize: 12, color: MUTED, flexShrink: 0 }}>{label}</span>
+      <span
+        style={{
+          fontFamily: mono ? 'ui-monospace, SFMono-Regular, Menlo, monospace' : IT,
+          fontSize: mono ? 11 : 13,
+          color: '#fff',
+          textAlign: 'right',
+          wordBreak: 'break-all',
+          userSelect: 'text',
+        }}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * What a transaction actually was, for the customer who has to explain it to
+ * somebody else. The list rows show a description and an amount, which is
+ * enough to recognise a payment and not enough to dispute one — this carries
+ * the ids, the exact time, and the balance the transaction left behind.
+ *
+ * `referenceId` is present on a transfer and on anything else that was written
+ * against a reference; it is null for older entries written before transfers
+ * carried one, so the row is omitted rather than showing an empty value.
+ */
+function TxDetailSheet({ tx, onClose }: { tx: WalletLedgerEntryDto; onClose: () => void }) {
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,.6)',
+        zIndex: 60,
+        display: 'flex',
+        alignItems: 'flex-end',
+      }}
+    >
+      <div
+        onClick={(e) => {
+          e.stopPropagation();
+        }}
+        style={{
+          width: '100%',
+          background: NAVY_CARD,
+          borderTopLeftRadius: 20,
+          borderTopRightRadius: 20,
+          border: `1px solid ${BORDER}`,
+          padding: '20px 20px 32px',
+          maxHeight: '80vh',
+          overflowY: 'auto',
+        }}
+      >
+        <div className="flex items-center justify-between" style={{ marginBottom: 16 }}>
+          <span style={{ fontFamily: PP, fontSize: 16, fontWeight: 700, color: '#fff' }}>
+            Transaction details
+          </span>
+          <button
+            onClick={onClose}
+            style={{
+              background: NAVY_SURFACE,
+              border: `1px solid ${BORDER}`,
+              borderRadius: 8,
+              width: 30,
+              height: 30,
+              cursor: 'pointer',
+              color: MUTED,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+
+        <div
+          style={{
+            fontFamily: PP,
+            fontSize: 28,
+            fontWeight: 700,
+            color: tx.direction === 'CREDIT' ? SUCCESS : '#fff',
+            marginBottom: 16,
+          }}
+        >
+          {tx.direction === 'CREDIT' ? '+' : '−'}₦{tx.amount.toLocaleString()}
+        </div>
+
+        <DetailRow label="Description" value={tx.description ?? tx.type} />
+        <DetailRow label="Type" value={tx.type} />
+        <DetailRow label="Direction" value={tx.direction === 'CREDIT' ? 'Credit' : 'Debit'} />
+        <DetailRow label="Date" value={new Date(tx.createdAt).toLocaleString()} />
+        <DetailRow label="Balance after" value={`₦${tx.balanceAfter.toLocaleString()}`} />
+        {tx.referenceId !== null && <DetailRow label="Reference" value={tx.referenceId} mono />}
+        <DetailRow label="Transaction ID" value={tx.id} mono />
+      </div>
+    </div>
   );
 }
 
@@ -925,6 +1052,7 @@ const FILTER_TABS = ['All', 'Ride', 'Refund', 'Top-up', 'Withdrawal', 'Transfer'
 export function TransactionHistoryScreen({ onBack }: { onBack?: () => void }) {
   const [activeTab, setActiveTab] = useState('All');
   const [search, setSearch] = useState('');
+  const [detailTx, setDetailTx] = useState<WalletLedgerEntryDto | null>(null);
   const [txs, setTxs] = useState<WalletLedgerEntryDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -1071,7 +1199,13 @@ export function TransactionHistoryScreen({ onBack }: { onBack?: () => void }) {
               {list.map((tx, i) => (
                 <div key={tx.id}>
                   {i > 0 && <div style={{ height: 1, background: BORDER, margin: '0 20px' }} />}
-                  <div className="flex items-center justify-between px-5 py-3">
+                  <div
+                    onClick={() => {
+                      setDetailTx(tx);
+                    }}
+                    className="flex items-center justify-between px-5 py-3"
+                    style={{ cursor: 'pointer' }}
+                  >
                     <div className="flex items-center gap-3">
                       <TxIcon type={tx.type} />
                       <div>
@@ -1138,6 +1272,15 @@ export function TransactionHistoryScreen({ onBack }: { onBack?: () => void }) {
         )}
         <div style={{ height: 24 }} />
       </div>
+
+      {detailTx && (
+        <TxDetailSheet
+          tx={detailTx}
+          onClose={() => {
+            setDetailTx(null);
+          }}
+        />
+      )}
     </Screen>
   );
 }
@@ -1936,6 +2079,10 @@ export function TransferScreen({
   const [searching, setSearching] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  // Held so the transfer can be evidenced after it succeeds. The screen used
+  // to navigate straight back to the wallet, which left the sender with no
+  // confirmation, no reference and nothing to quote in a dispute.
+  const [receipt, setReceipt] = useState<WalletTransferReceiptDto | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleSearchChange = (v: string) => {
@@ -1972,18 +2119,89 @@ export function TransferScreen({
     setSubmitting(true);
     setError('');
     try {
-      await api.wallet.transfer({
+      const res = await api.wallet.transfer({
         toUserId: recipient.id,
         amount: raw,
         description: note || undefined,
       });
-      onConfirm?.();
+      setReceipt(res.receipt);
     } catch (e: unknown) {
       setError((e as { message?: string }).message ?? 'Transfer failed');
     } finally {
       setSubmitting(false);
     }
   };
+
+  // The transfer has gone through: show what happened rather than dropping the
+  // sender back on the wallet with nothing but a changed balance. Money left
+  // the account, so the confirmation is the deliverable, not a nicety.
+  if (receipt) {
+    return (
+      <Screen>
+        <StatusBar />
+        <div style={{ flex: 1, overflowY: 'auto', padding: '8px 16px 16px' }}>
+          <div style={{ textAlign: 'center', padding: '24px 0 8px' }}>
+            <div
+              style={{
+                width: 64,
+                height: 64,
+                borderRadius: 32,
+                background: 'rgba(43,172,82,.15)',
+                border: `1px solid ${G2}`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 16px',
+                fontSize: 28,
+                color: SUCCESS,
+              }}
+            >
+              ✓
+            </div>
+            <div style={{ fontFamily: PP, fontSize: 20, fontWeight: 700, color: '#fff' }}>
+              Transfer successful
+            </div>
+            <div
+              style={{ fontFamily: PP, fontSize: 32, fontWeight: 700, color: '#fff', marginTop: 8 }}
+            >
+              ₦{receipt.amount.toLocaleString()}
+            </div>
+            {recipient && (
+              <div style={{ fontFamily: IT, fontSize: 13, color: MUTED, marginTop: 4 }}>
+                to {recipientName(recipient)} · {recipientIdentifier(recipient)}
+              </div>
+            )}
+          </div>
+
+          <div
+            style={{
+              background: NAVY_CARD,
+              borderRadius: 16,
+              border: `1px solid ${BORDER}`,
+              padding: '4px 16px 12px',
+              marginTop: 16,
+            }}
+          >
+            <DetailRow label="Status" value="Completed" />
+            <DetailRow label="Date" value={new Date(receipt.createdAt).toLocaleString()} />
+            {receipt.description !== null && <DetailRow label="Note" value={receipt.description} />}
+            <DetailRow label="New balance" value={`₦${receipt.balanceAfter.toLocaleString()}`} />
+            <DetailRow label="Reference" value={receipt.reference} mono />
+            <DetailRow label="Transaction ID" value={receipt.entryId} mono />
+          </div>
+
+          <div style={{ fontFamily: IT, fontSize: 11, color: MUTED, marginTop: 12 }}>
+            Keep the reference. It identifies this transfer on both sides and is what support needs
+            to resolve a dispute.
+          </div>
+        </div>
+
+        <div className="px-4" style={{ paddingBottom: 32, paddingTop: 8 }}>
+          <GreenButton onClick={() => onConfirm?.()}>Done</GreenButton>
+        </div>
+      </Screen>
+    );
+  }
 
   return (
     <Screen>

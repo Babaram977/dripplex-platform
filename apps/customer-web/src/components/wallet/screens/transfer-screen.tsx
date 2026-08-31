@@ -12,7 +12,7 @@ import {
 } from '@dripplex/ui';
 import * as React from 'react';
 
-import type { WalletRecipientDto } from '@dripplex/types';
+import type { WalletRecipientDto, WalletTransferReceiptDto } from '@dripplex/types';
 
 import {
   useRecentTransferRecipients,
@@ -44,7 +44,6 @@ function recipientSubtitle(recipient: WalletRecipientDto): string {
  * search plus a mocked "Recent recipients" list has no real backend
  * counterpart — there's no customer-facing user directory and no username
  * concept. Adapted to what's real: exact phone-number or email lookup (a
- * narrowly-scoped
  * narrowly-scoped `GET /customer/wallet/transfer/recipients` endpoint —
  * never a listing/enumeration of users) and recent recipients derived from
  * the caller's own past TRANSFER ledger entries (also new this slice).
@@ -68,6 +67,9 @@ export function TransferScreen({
   const [note, setNote] = React.useState('');
   const [confirming, setConfirming] = React.useState(false);
   const wallet = useWallet();
+  // Held so the sender can see what happened. Navigating away on success left
+  // them with a changed balance and nothing to quote in a dispute.
+  const [receipt, setReceipt] = React.useState<WalletTransferReceiptDto | null>(null);
   const recentRecipients = useRecentTransferRecipients();
   const lookupRecipient = useLookupTransferRecipient();
   const transferWallet = useTransferWallet();
@@ -94,6 +96,79 @@ export function TransferScreen({
       `${candidate.firstName} ${candidate.lastName}`.toLowerCase().includes(search.toLowerCase()),
   );
   const lookupResults = isLookupable(search) ? (lookupRecipient.data ?? []) : [];
+
+  // The transfer went through: show the evidence instead of navigating away.
+  // The reference is on both ledger legs, so it is what support searches on
+  // when the two parties disagree about what happened.
+  if (receipt) {
+    return (
+      <div
+        className="absolute inset-0 flex flex-col overflow-hidden"
+        style={{ background: '#0A1628' }}
+      >
+        <SuperAppWalletStatusBar />
+        {/* Back leaves the receipt the same way Done does: the transfer is
+            finished, so there is nothing to return to. */}
+        <SuperAppWalletScreenHeader title="Transfer" onBack={onSent} />
+
+        <div className="flex-1 overflow-y-auto px-4 pb-4">
+          <div className="pb-2 pt-6 text-center">
+            <p className={`text-[17px] font-semibold text-white ${body}`}>Transfer successful</p>
+            <p className={`mt-2 text-[30px] font-bold text-white ${body}`}>
+              ₦{receipt.amount.toLocaleString()}
+            </p>
+            {recipient ? (
+              <p className={`mt-1 text-[13px] ${body}`} style={{ color: 'rgba(255,255,255,.5)' }}>
+                to {recipient.firstName} {recipient.lastName} · {recipientSubtitle(recipient)}
+              </p>
+            ) : null}
+          </div>
+
+          <dl
+            className="mt-4 rounded-2xl px-4 py-1"
+            style={{ background: '#112238', border: '1px solid rgba(255,255,255,.08)' }}
+          >
+            {(
+              [
+                ['Status', 'Completed', false],
+                ['Date', new Date(receipt.createdAt).toLocaleString(), false],
+                ...(receipt.description !== null
+                  ? ([['Note', receipt.description, false]] as [string, string, boolean][])
+                  : []),
+                ['New balance', `₦${receipt.balanceAfter.toLocaleString()}`, false],
+                ['Reference', receipt.reference, true],
+                ['Transaction ID', receipt.entryId, true],
+              ] as [string, string, boolean][]
+            ).map(([label, value, mono]) => (
+              <div
+                key={label}
+                className="flex items-start justify-between gap-4 py-2.5"
+                style={{ borderBottom: '1px solid rgba(255,255,255,.06)' }}
+              >
+                <dt className={`text-[12px] ${body}`} style={{ color: 'rgba(255,255,255,.5)' }}>
+                  {label}
+                </dt>
+                <dd
+                  className={`select-text break-all text-right text-white ${mono ? 'font-mono text-[11px]' : `text-[13px] ${body}`}`}
+                >
+                  {value}
+                </dd>
+              </div>
+            ))}
+          </dl>
+
+          <p className={`mt-3 text-[11px] ${body}`} style={{ color: 'rgba(255,255,255,.5)' }}>
+            Keep the reference. It identifies this transfer on both sides and is what support needs
+            to resolve a dispute.
+          </p>
+        </div>
+
+        <div className="px-4 pb-8 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,.08)' }}>
+          <SuperAppWalletButton onClick={onSent}>Done</SuperAppWalletButton>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -271,7 +346,11 @@ export function TransferScreen({
                           amount: numericAmount,
                           ...(note ? { description: note } : {}),
                         },
-                        { onSuccess: onSent },
+                        {
+                          onSuccess: (result) => {
+                            setReceipt(result.receipt);
+                          },
+                        },
                       );
                     }}
                   >

@@ -36,7 +36,7 @@ import {
 
 import type { AuthenticatedUser } from '../auth/auth.types';
 import type { ApiSuccessResponse } from '../common/dto/api-response.dto';
-import type { PaginatedResult } from '@dripplex/types';
+import type { PaginatedResult, WalletTransferDto } from '@dripplex/types';
 import type { Request, Response } from 'express';
 
 @Controller('customer/wallet')
@@ -126,7 +126,7 @@ export class CustomerWalletController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: TransferWalletDto,
     @Req() request: Request,
-  ): Promise<ApiSuccessResponse<{ source: WalletDto; destination: WalletDto }>> {
+  ): Promise<ApiSuccessResponse<WalletTransferDto>> {
     await this.walletService.assertWithinLimits(
       WalletOwnerType.CUSTOMER,
       user.id,

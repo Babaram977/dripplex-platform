@@ -905,9 +905,32 @@ export interface WalletRecipientDto {
   maskedEmail: string;
 }
 
+/**
+ * Everything needed to evidence one wallet transfer after the fact: what a
+ * receipt shows the sender, and what support quotes back when the two parties
+ * disagree.
+ *
+ * `reference` names the transfer itself and is written to BOTH ledger rows —
+ * the sender's debit and the recipient's credit — so the two legs can be found
+ * together. `entryId` is the sender's own ledger row.
+ */
+export interface WalletTransferReceiptDto {
+  /** Shared by both legs. Quote this in a dispute. */
+  reference: string;
+  /** The sender's ledger entry id. */
+  entryId: string;
+  amount: number;
+  currency: string;
+  description: string | null;
+  /** The sender's balance once the transfer had been applied. */
+  balanceAfter: number;
+  createdAt: string;
+}
+
 export interface WalletTransferDto {
   source: WalletDto;
   destination: WalletDto;
+  receipt: WalletTransferReceiptDto;
 }
 
 export interface AdminWalletMutationRequest {

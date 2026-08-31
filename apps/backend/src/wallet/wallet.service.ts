@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { Injectable } from '@nestjs/common';
 import { Prisma, WalletDirection, WalletOwnerType, WalletTransactionType } from '@prisma/client';
 
@@ -10,9 +12,13 @@ import { DomainEventBus } from '../events/domain-event-bus';
 import { DOMAIN_EVENTS } from '../events/domain-events';
 import { PrismaService } from '../prisma/prisma.service';
 
-import { WALLET_AUDIT_ACTIONS, WALLET_DEFAULT_CURRENCY } from './wallet.constants';
+import {
+  WALLET_AUDIT_ACTIONS,
+  WALLET_DEFAULT_CURRENCY,
+  WALLET_TRANSFER_REFERENCE_TYPE,
+} from './wallet.constants';
 
-import type { PaginatedResult } from '@dripplex/types';
+import type { PaginatedResult, WalletTransferDto } from '@dripplex/types';
 import type { Wallet, WalletLedgerEntry } from '@prisma/client';
 
 type WalletTx = Prisma.TransactionClient;
@@ -204,13 +210,18 @@ export class WalletService {
     currency?: string;
     description?: string;
     context?: AuditContext;
-  }): Promise<{ source: WalletDto; destination: WalletDto }> {
+  }): Promise<WalletTransferDto> {
     if (input.fromOwnerType === input.toOwnerType && input.fromOwnerId === input.toOwnerId) {
       throw new ValidationDomainException('Cannot transfer to the same wallet');
     }
 
     const currency = this.normalizeCurrency(input.currency);
     const amount = this.toPositiveDecimal(input.amount);
+    // Names the transfer itself, and goes onto both ledger rows. Minted here
+    // rather than derived from either wallet so neither side's row is the
+    // "real" one — a dispute is about a single event with two halves.
+    const reference = randomUUID();
+    const description = input.description ?? 'Wallet transfer';
     const result = await this.prisma.$transaction(async (tx) => {
       const source = await this.applyMutation(tx, {
         ownerType: input.fromOwnerType,
@@ -219,8 +230,10 @@ export class WalletService {
         amount,
         type: WalletTransactionType.TRANSFER,
         direction: WalletDirection.DEBIT,
-        description: input.description ?? 'Wallet transfer',
-        metadata: { toOwnerType: input.toOwnerType, toOwnerId: input.toOwnerId },
+        description,
+        referenceType: WALLET_TRANSFER_REFERENCE_TYPE,
+        referenceId: reference,
+        metadata: { toOwnerType: input.toOwnerType, toOwnerId: input.toOwnerId, reference },
       });
       const destination = await this.applyMutation(tx, {
         ownerType: input.toOwnerType,
@@ -229,8 +242,10 @@ export class WalletService {
         amount,
         type: WalletTransactionType.TRANSFER,
         direction: WalletDirection.CREDIT,
-        description: input.description ?? 'Wallet transfer',
-        metadata: { fromOwnerType: input.fromOwnerType, fromOwnerId: input.fromOwnerId },
+        description,
+        referenceType: WALLET_TRANSFER_REFERENCE_TYPE,
+        referenceId: reference,
+        metadata: { fromOwnerType: input.fromOwnerType, fromOwnerId: input.fromOwnerId, reference },
       });
       return { source, destination };
     });
@@ -242,6 +257,7 @@ export class WalletService {
         resource: 'wallet',
         resourceId: result.source.wallet.id,
         metadata: {
+          reference,
           destinationWalletId: result.destination.wallet.id,
           amount: amount.toNumber(),
           currency,
@@ -265,6 +281,17 @@ export class WalletService {
     return {
       source: toWalletDto(result.source.wallet),
       destination: toWalletDto(result.destination.wallet),
+      // The sender's leg is the receipt: it is their money that moved, and
+      // their balance afterwards that they will check against it.
+      receipt: {
+        reference,
+        entryId: result.source.ledger.id,
+        amount: Number(result.source.ledger.amount),
+        currency,
+        description: result.source.ledger.description,
+        balanceAfter: Number(result.source.ledger.balanceAfter),
+        createdAt: result.source.ledger.createdAt.toISOString(),
+      },
     };
   }
 
