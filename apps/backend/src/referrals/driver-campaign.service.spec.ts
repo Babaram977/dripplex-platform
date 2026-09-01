@@ -17,11 +17,23 @@ import type { DomainEventBus } from '../events/domain-event-bus';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { WalletService } from '../wallet/wallet.service';
 
+const DAY_MS = 24 * 60 * 60_000;
+
+/**
+ * The window is relative to now, not a fixed month.
+ *
+ * It used to be hardcoded to August 2026, and `handleRidePaymentSucceeded`
+ * short-circuits on `new Date() > campaign.periodEnd` (driver-campaign
+ * .service.ts:318). So at 00:00 UTC on 2026-09-01 three tests began failing on
+ * every branch at once — main's last run on 31 August was green and nothing
+ * had changed. A test whose result depends on the date it is run tells you
+ * about the calendar, not the code.
+ */
 const campaign = {
   id: 'campaign-1',
-  name: 'August Growth',
-  periodStart: new Date('2026-08-01T00:00:00.000Z'),
-  periodEnd: new Date('2026-08-31T23:59:59.999Z'),
+  name: 'Growth',
+  periodStart: new Date(Date.now() - 30 * DAY_MS),
+  periodEnd: new Date(Date.now() + 30 * DAY_MS),
   status: ReferralCampaignStatus.ACTIVE,
   requiredTripsPerPassenger: 5,
   silverThreshold: 50,
