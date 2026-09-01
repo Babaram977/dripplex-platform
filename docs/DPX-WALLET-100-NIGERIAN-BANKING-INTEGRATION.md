@@ -44,7 +44,16 @@ reference or fails it with a reason that reverses the debit.
 
 ---
 
-## 2. Correction to the premise — the ledger is already double-entry
+## 2. The ledger — partly right, and corrected in DPX-WALLET-001
+
+> **Revised 2026-09-01.** This section originally concluded the ledger "is already
+> double-entry" and needed no work. That was measured on `WalletService.transfer()`, which
+> is genuinely atomic and paired — but multi-leg flows (ride settlement, refunds,
+> clawbacks) are assembled from separate single-leg calls with a documented window between
+> them, and nothing enforces that debits equal credits. The conclusion below is too strong.
+> **`DPX-WALLET-001` §1.2 supersedes it** and specifies the transaction header, chart of
+> accounts and deferred balancing constraint that close the gap. What follows remains
+> accurate about what exists; it was wrong about what that is sufficient for.
 
 The founder's note proposed replacing a pattern described as:
 
