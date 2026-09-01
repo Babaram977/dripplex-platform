@@ -36,6 +36,7 @@ function account(overrides: Partial<Record<string, unknown>> = {}): Record<strin
     accountName: 'Stab Tester',
     accountNumber: '0123456789',
     isDefault: true,
+    accountNameVerifiedAt: null,
     createdAt: new Date('2026-08-04T00:00:00.000Z'),
     deletedAt: null,
     ...overrides,
@@ -45,6 +46,7 @@ function account(overrides: Partial<Record<string, unknown>> = {}): Record<strin
 describe('BankAccountsService', () => {
   let prisma: BankAccountsPrismaMock;
   let auditService: { record: jest.Mock };
+  let resolver: { configured: boolean; resolveAccountName: jest.Mock; listBanks: jest.Mock };
   let service: BankAccountsService;
 
   beforeEach(() => {
@@ -61,10 +63,106 @@ describe('BankAccountsService', () => {
       $transaction: jest.fn(),
     };
     auditService = { record: jest.fn().mockResolvedValue(undefined) };
+    // Unconfigured by default, which is the pre-Phase-0 world: the existing
+    // tests below describe behaviour that must not change when no resolver is
+    // available.
+    resolver = { configured: false, resolveAccountName: jest.fn(), listBanks: jest.fn() };
     service = new BankAccountsService(
       prisma as unknown as PrismaService,
       auditService as unknown as AuditService,
+      resolver,
     );
+  });
+
+  describe('name enquiry', () => {
+    it('stores the name the bank returns, not the one the customer typed', async () => {
+      resolver.configured = true;
+      resolver.resolveAccountName.mockResolvedValue({ accountName: 'IBRAHIM SAEED ABDULLAHI' });
+      prisma.customerBankAccount.findFirst.mockResolvedValue(null);
+      prisma.customerBankAccount.count.mockResolvedValue(0);
+      prisma.customerBankAccount.create.mockImplementation(
+        ({ data }: { data: Record<string, unknown> }) => account(data),
+      );
+
+      const result = await service.add(userId, {
+        bankName: 'GTBank',
+        bankCode: '058',
+        // What the customer typed. The bank disagrees, and the bank wins.
+        accountName: 'saeed',
+        accountNumber: '0123456789',
+      });
+
+      expect(resolver.resolveAccountName).toHaveBeenCalledWith({
+        accountNumber: '0123456789',
+        bankCode: '058',
+      });
+      expect(result.accountName).toBe('IBRAHIM SAEED ABDULLAHI');
+      expect(result.accountNameVerified).toBe(true);
+    });
+
+    it('does not save an account the bank refuses to confirm', async () => {
+      resolver.configured = true;
+      resolver.resolveAccountName.mockRejectedValue(
+        new ValidationDomainException('Could not resolve account name'),
+      );
+      prisma.customerBankAccount.findFirst.mockResolvedValue(null);
+      prisma.customerBankAccount.count.mockResolvedValue(0);
+
+      await expect(
+        service.add(userId, {
+          bankName: 'GTBank',
+          bankCode: '058',
+          accountName: 'Stab Tester',
+          // One digit off a real account is still a valid-looking number.
+          // Refusing it here is the entire point of Phase 0.
+          accountNumber: '0123456788',
+        }),
+      ).rejects.toBeInstanceOf(ValidationDomainException);
+
+      expect(prisma.customerBankAccount.create).not.toHaveBeenCalled();
+    });
+
+    it('refuses to save unverified when a resolver is live but no bank was chosen', async () => {
+      resolver.configured = true;
+      prisma.customerBankAccount.findFirst.mockResolvedValue(null);
+      prisma.customerBankAccount.count.mockResolvedValue(0);
+
+      await expect(
+        service.add(userId, {
+          bankName: 'GTBank',
+          accountName: 'Stab Tester',
+          accountNumber: '0123456789',
+        }),
+      ).rejects.toBeInstanceOf(ValidationDomainException);
+
+      // Silently downgrading to self-attested is how the guarantee would rot.
+      expect(resolver.resolveAccountName).not.toHaveBeenCalled();
+      expect(prisma.customerBankAccount.create).not.toHaveBeenCalled();
+    });
+
+    it('still saves self-attested when no resolver is configured', async () => {
+      prisma.customerBankAccount.findFirst.mockResolvedValue(null);
+      prisma.customerBankAccount.count.mockResolvedValue(0);
+      prisma.customerBankAccount.create.mockImplementation(
+        ({ data }: { data: Record<string, unknown> }) => account(data),
+      );
+
+      const result = await service.add(userId, {
+        bankName: 'GTBank',
+        accountName: 'Stab Tester',
+        accountNumber: '0123456789',
+      });
+
+      // Null is "nobody asked", not "the bank said no" — and it must not
+      // block an environment that has no Paystack credentials.
+      expect(result.accountNameVerified).toBe(false);
+      expect(result.accountName).toBe('Stab Tester');
+    });
+
+    it('offers no banks when no resolver is configured', async () => {
+      await expect(service.listBanks()).resolves.toEqual([]);
+      expect(resolver.listBanks).not.toHaveBeenCalled();
+    });
   });
 
   describe('add', () => {
