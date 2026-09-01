@@ -9363,6 +9363,36 @@ function PageBillPayments() {
                       {p.failureReason}
                     </p>
                   )}
+                  {/* The provider's own order ID — the single thing their
+                      support asks for and the only one that identifies the
+                      purchase on their side. Peyflex, 2026-09-01, shown a
+                      DrippleX receipt: "Please, send us order ID from Peyflex
+                      transactions. That's what we need to check. This is not
+                      from Peyflex."
+                      It was stored on every purchase and rendered nowhere —
+                      it existed only pre-filled inside the resolve form,
+                      which is not where anyone answering that question looks.
+                      Its ABSENCE is evidence too: data purchases send no
+                      reference of ours (only betting does), so the provider
+                      mints it and returns it. Nothing to show means nothing
+                      came back — which is what a purchase that never became
+                      an order on their side looks like. */}
+                  {p.status !== 'AWAITING_PAYMENT' && (
+                    <p
+                      style={{
+                        fontSize: 10,
+                        color: MUTED,
+                        marginTop: 4,
+                        maxWidth: 260,
+                        fontFamily: 'monospace',
+                        wordBreak: 'break-all',
+                      }}
+                    >
+                      {p.providerReference !== null && p.providerReference !== ''
+                        ? `Peyflex ref: ${p.providerReference}`
+                        : 'No Peyflex reference — they returned none.'}
+                    </p>
+                  )}
                 </td>
                 <td
                   style={{
