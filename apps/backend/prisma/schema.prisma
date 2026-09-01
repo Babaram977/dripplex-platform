@@ -3578,8 +3578,17 @@ model CustomerBankAccount {
   userId        String              @map("user_id") @db.Uuid
   bankName      String              @map("bank_name") @db.VarChar(150)
   bankCode      String?             @map("bank_code") @db.VarChar(20)
+  /// What the bank says, when name enquiry ran — not what the customer
+  /// typed. See `accountNameVerifiedAt`.
   accountName   String              @map("account_name") @db.VarChar(150)
   accountNumber String              @map("account_number") @db.VarChar(20)
+  /// When the account holder's name was confirmed with the bank.
+  ///
+  /// Null means the name is self-attested: either the row predates name
+  /// enquiry (DPX-WALLET-001 Phase 0) or no resolver was configured when it
+  /// was added. Null is **not** "failed verification" — a rejected account is
+  /// never saved at all.
+  accountNameVerifiedAt DateTime?   @map("account_name_verified_at")
   isDefault     Boolean             @default(false) @map("is_default")
   createdAt     DateTime            @default(now()) @map("created_at")
   deletedAt     DateTime?           @map("deleted_at")

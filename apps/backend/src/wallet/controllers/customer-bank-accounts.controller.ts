@@ -33,6 +33,18 @@ export class CustomerBankAccountsController {
     return { success: true, data };
   }
 
+  /** The bank list for the picker. A bank code is what makes name enquiry
+   * possible, and a customer cannot type one — so the list has to come from
+   * here before an account can be added. Empty when no resolver is
+   * configured; the client then falls back to a free-text bank name, exactly
+   * as before Phase 0. */
+  @Get('banks')
+  @RequirePermissions(WALLET_PERMISSIONS.CUSTOMER_READ)
+  public async banks(): Promise<ApiSuccessResponse<{ name: string; code: string }[]>> {
+    const data = await this.bankAccountsService.listBanks();
+    return { success: true, data };
+  }
+
   @Post()
   @RequirePermissions(WALLET_PERMISSIONS.CUSTOMER_WITHDRAW)
   public async add(
