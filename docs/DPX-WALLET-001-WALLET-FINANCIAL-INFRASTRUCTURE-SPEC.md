@@ -13,6 +13,24 @@ invariant is correct. This document specifies it.
 
 ---
 
+## 0. Scope boundary — read this before writing any code
+
+**The ledger is an accounting layer, not a replacement for the existing wallet
+primitives.** The existing wallet holds (`HOLD` / `HOLD_COMMIT` / `HOLD_RELEASE`),
+idempotency controls and webhook authentication remain the **authoritative operational
+mechanisms** throughout and after this work. The ledger becomes the authoritative
+**financial record** progressively, through the migration in §2 — not on day one, and not
+by displacing anything that currently works.
+
+Concretely: nothing in this specification asks you to change how money is held, how a
+replayed event is rejected, or how a webhook is authenticated. It asks you to record what
+happens in a second, stricter place, and then — only after §2 Step 4 proves the two agree
+— to treat that place as the books.
+
+If a task in this document reads like "replace the wallet", it has been misread.
+
+---
+
 ## 1. Verified baseline
 
 ### 1.1 What already exists and must **not** be rebuilt
@@ -467,14 +485,14 @@ because nothing compared anything.
 
 ## 10. Sequencing
 
-| Phase | Work                                                                     | Blocked by                    |
-| ----- | ------------------------------------------------------------------------ | ----------------------------- |
-| 0     | **Name enquiry on bank accounts.** Ship independently, now.              | nothing                       |
-| 1     | Ledger tables + deferred balance constraint + dual-write + backfill (§2) | nothing                       |
-| 2     | Reconciliation engine and Operations exception queue                     | Phase 1                       |
-| 3     | Virtual accounts, `provider_transactions`, deposit-by-transfer           | **counsel** (`WALLET-100` §4) |
-| 4     | Automated payouts via `PaystackTransferProvider`                         | Phase 0 + counsel             |
-| 5     | BVN/NIN capture and CBN KYC tiering                                      | counsel                       |
+| Phase | Work                                                                                                                                                   | Blocked by                    |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------- |
+| 0     | **Name enquiry on bank accounts.** Ship independently, now.                                                                                            | nothing                       |
+| 1     | Ledger tables + deferred balance constraint + dual-write + backfill (§2), and the withdrawal `pendingBalance` change **behind a feature flag** (§11.3) | nothing                       |
+| 2     | Reconciliation engine and Operations exception queue                                                                                                   | Phase 1                       |
+| 3     | Virtual accounts, `provider_transactions`, deposit-by-transfer                                                                                         | **counsel** (`WALLET-100` §4) |
+| 4     | Automated payouts via `PaystackTransferProvider`                                                                                                       | Phase 0 + counsel             |
+| 5     | BVN/NIN capture and CBN KYC tiering                                                                                                                    | counsel                       |
 
 Phases 0–2 are pure engineering hygiene on money that is **already** moving through the
 platform, and carry no licensing implication. Phases 3–5 must wait on
@@ -482,11 +500,42 @@ platform, and carry no licensing implication. Phases 3–5 must wait on
 
 ---
 
-## 11. Open questions
+## 11. Founder decisions (2026-09-01)
 
-1. Which PSP is primary for virtual accounts, and is the fallback provider real at launch
-   or deferred? Multi-provider orchestration doubles the reconciliation surface.
-2. How long is the ride dispute window before escrow releases to the driver? This is a
-   product decision with a direct cash-flow consequence for drivers.
-3. Does the founder want the withdrawal debit moved from request-time to
-   `pendingBalance` (§5) as part of Phase 1? It is a behaviour change to a live flow.
+The three questions this section previously held are answered. Recorded as decisions, not
+suggestions.
+
+1. **Paystack is the proposed primary wallet PSP.** "Proposed" is deliberate — it is not
+   contracted, and the commercial terms are not settled. The `VirtualAccountProvider` /
+   `PayoutProvider` / `BankAccountResolver` abstractions in §7 exist precisely so this can
+   change without touching the wallet or the ledger. **No Paystack-specific vocabulary may
+   reach the ledger, the wallet, or any API contract in §6.** A second provider is not
+   required at launch; the abstraction is, because retrofitting it later is what makes a
+   PSP switch a rewrite.
+
+2. **The ride dispute window is configurable, defaulting to 15 minutes.** Implement as
+   configuration (`AppConfigService`), not a constant — the right value is a commercial
+   judgement that will move with fraud experience and driver pressure, and it must be
+   changeable without a deploy. Escrow (`200003`) holds the fare for the window; the
+   `RIDE_SETTLEMENT` posting in §4.2 fires when it closes.
+
+3. **The withdrawal migration to `pendingBalance` ships in Phase 1, behind a feature
+   flag.** This changes behaviour on a live flow that is currently moving real money, so
+   the flag is not optional. Both paths must be exercised before the flag is removed: with
+   it off, the request-time debit behaves exactly as today; with it on, the balance moves
+   available → pending and returns to available on failure. Retire the flag only after a
+   full settlement cycle with no reconciliation exception attributable to withdrawals.
+
+4. **Paybeta is the leading bill-payment candidate**, subject to its enterprise commercial
+   offer. This does **not** change the current Peyflex integration or `DPX-PAYBILL-001`.
+   It does mean the bill-payment provider port must stay genuinely provider-neutral, on
+   the same reasoning as decision 1 — and the `Provider Float` account (`400002`) is
+   already modelled per-provider so a second bill provider does not disturb the chart of
+   accounts.
+
+### Still open
+
+- **The `DPX-WALLET-100` §4 regulatory question.** Blocking for Phases 3–5. Unchanged.
+- **Whether a fallback PSP is in scope after launch**, and if so when. Multi-provider
+  orchestration roughly doubles the reconciliation surface in §8, so it is a real cost,
+  not a free redundancy win.
