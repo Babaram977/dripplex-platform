@@ -40,6 +40,53 @@ quoted anywhere in this repo.
 The internal-testing track in `docs/mobile/BETA-DISTRIBUTION.md` runs on whatever
 account is already in use and is **not** blocked by any of this.
 
+### D-U-N-S propagation window has passed
+
+The record resolved 2026-08-28 and D&B quoted 2–3 business days to become visible, so
+**2026-09-02 is the earliest date a Google lookup can succeed**. That date has arrived.
+Starting verification earlier would have stalled the application rather than queuing it.
+
+### ⚠️ `com.dripplex.customer` is already claimed — settle this before creating anything
+
+**A new organization account cannot publish the existing app.** On Play an
+`applicationId` is globally unique and permanently bound to the account that first
+published it, and `com.dripplex.customer` has already been published: `versionCode`
+`1000100` reached internal testing on 2026-08-27 (recorded in
+`scripts/mobile/build-android.sh`). A brand-new account is a different account.
+
+So the signed AAB built for submission — `versionCode 29805597`, run 33606040775 — can
+only be uploaded from **the account that already holds the app**, unless one of the
+routes below is taken first.
+
+**Check this before creating a second account:** whether the existing developer account
+can simply be **converted** to an organization account. If Google allows it, that is
+strictly better than everything below — the package name, the Play App Signing key, the
+internal testing track and the built AAB all survive untouched, with no transfer and no
+rebuild. Look under the account's identity/verification settings in the Console.
+
+> Not verified here. Play's account-identity policy is not quoted anywhere in this repo,
+> it changes, and no agent session can read the Console. Treat this as the first thing to
+> check, not as an assurance that it is available.
+
+**If conversion is not available**, order matters:
+
+1. Create the organization account with the identity values above.
+2. **Complete verification first.** Do not transfer into an unverified account.
+3. Transfer `com.dripplex.customer` to it via Google's app-transfer process.
+4. Only then upload `versionCode 29805597`.
+
+**Do not create a second app under a new `applicationId`** unless transfer is genuinely
+closed off. It costs the internal testing track, the Play App Signing key and any install
+base, it starts a fresh listing with no history, and it invalidates the current AAB —
+`applicationId` is compiled in, so it needs a code change and a rebuild.
+
+### Recorded gap — which account holds the app today
+
+**Nothing in this repository records which Play account currently owns
+`com.dripplex.customer`.** That detail becomes load-bearing during a transfer or a
+conversion, and it currently lives only in the founder's memory. Write it here when
+known.
+
 ## App details
 
 | Field                            | Value                                                                   |
