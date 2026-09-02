@@ -35,13 +35,18 @@ application shell, not a page anyone should reach from search.
 
 > **Superseded — what this table said before, and why it is worth keeping.**
 > As verified on 2026-08-20, `app.dripplex.com` served **customer-web** from a
-> **Cloudflare Worker**, byte-identical to `www.dripplex.com`, with `robots: index,
-follow`; the super-app was reachable only at `super-app-production-2345.up.railway.app`
-> with no custom domain. Every one of those three facts is now false. The reason to
-> record that rather than quietly overwrite it: a stale hosting table in a store-readiness
-> doc is exactly the kind of thing a submission decision gets made from, and this one was
-> stale for thirteen days across a hosting migration nobody thought to reflect here.
-> **Re-verify by fetching the host before trusting this table again.**
+> **Cloudflare Worker**, byte-identical to `www.dripplex.com`, with `robots: index, follow`;
+> the super-app was reachable only at `super-app-production-2345.up.railway.app` with no
+> custom domain. Every one of those three facts is now false.
+>
+> The change was in fact recorded on 2026-08-24, in _Shell target — RESOLVED 2026-08-24_
+> further down this document — but **this table was left standing and was never edited**,
+> so the doc carried its own contradiction for nine days, with the stale version first.
+> The two sections are now consistent; this one holds the live-verified hosting facts and
+> that one holds the history of when they changed.
+>
+> A hosting table in a store-readiness doc is what a submission decision gets made from.
+> **Re-verify by fetching the host before trusting it again.**
 
 The super-app already calls the production API (`VITE_API_BASE` / `VITE_SOCKET_URL` default to
 `api.dripplex.com` — `apps/super-app/src/lib/api.ts:9`, `src/lib/ws.ts:10`), and the backend's
@@ -113,7 +118,10 @@ success and verify rejection all behave; `/` and `/ops` unchanged.
 - DNS for `dripplex.com` is on Cloudflare and is founder-side; no tooling available to the
   agent session can change it.
 
-## Shell target — RESOLVED 2026-08-24
+## Shell target — RESOLVED 2026-08-24 (history of the change)
+
+_Live hosting facts are in the first Shell target section above, re-verified 2026-09-02.
+This section records when and how the move happened._
 
 `app.dripplex.com` now serves the **super-app**, not customer-web — verified the same day by
 fetching the page (`<title>Dripplex — life, Simplified</title>`, `robots: noindex`) and by
