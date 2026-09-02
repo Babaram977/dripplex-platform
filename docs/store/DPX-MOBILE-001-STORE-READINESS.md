@@ -153,12 +153,21 @@ split — was run against production on 2026-08-24.
       (2026-08-22, `4984d3b`), `:app:signProductionReleaseBundle` executed and logged SIGNED.
       **That artifact is stale**: it was built when `app.dripplex.com` still served
       customer-web. Re-run recorded below.
-- [x] **Current signed AAB + APK — run #4, 2026-08-24, `b229331`, against the corrected shell
-      target.** All three jobs green (packaging verify, iOS project preflight, Android build);
-      `CAPACITOR_SERVER_URL=https://app.dripplex.com`, flavor `production`, `REQUIRE_SIGNED=1`.
-      Artifacts `dripplex-customer-production-aab` / `-apk` on
+- [x] Signed AAB + APK — run #4, 2026-08-24, `b229331`, against the corrected shell target.
+      Artifacts on
       [run 32704498517](https://github.com/Babaram977/dripplex-platform/actions/runs/32704498517).
-      **This is the build to upload.** Not yet installed on real hardware — Gate C is unrun.
+      Superseded by run #20 below.
+- [x] **Current signed AAB + APK — run #20, 2026-09-02, `5ce8621`. This is the build to
+      upload.** All three jobs green (packaging verify, iOS project preflight, Android build);
+      `CAPACITOR_SERVER_URL=https://app.dripplex.com`, flavor `production`. - **versionCode `29805597`**, read back out of the built artifact's
+      `output-metadata.json` rather than assumed — the script fails the build if what
+      Gradle produced does not match what was asked for. - `SIGNED: …/bundle/productionRelease/app-production-release.aab` — asserted by
+      inspecting the bundle, not inferred from the task having run. - `FCM: google-services plugin applied`. - Artifacts `dripplex-customer-production-aab` (3,615,702 bytes) and
+      `-apk` (3,580,993 bytes) on
+      [run 33606040775](https://github.com/Babaram977/dripplex-platform/actions/runs/33606040775). - The native shell is byte-for-byte the same source as run #4: nothing under
+      `apps/customer-mobile/**` or `scripts/mobile/**` changed between `b229331` and
+      `5ce8621`. This build exists to carry a fresh `versionCode` and to be built from
+      current `main`, not because the app changed. - **Still not installed on real hardware — Gate C remains unrun.**
 - [ ] Successful iOS Release simulator build recorded
 - [ ] Signed iOS archive/TestFlight build recorded
 
