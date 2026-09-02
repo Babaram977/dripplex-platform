@@ -11,29 +11,51 @@ Prepare the DrippleX customer mobile application for controlled Android and iOS 
 - Android application ID: `com.dripplex.customer`
 - iOS bundle identifier: `com.dripplex.customer`
 - Android channels: `production`, `internal`, `closedBeta`
-- Production customer URL: `https://app.dripplex.com` — the Capacitor default, **not a settled choice**; see _Shell target_ below
+- Production customer URL: `https://app.dripplex.com` — the Capacitor default, and **settled**: it serves the super-app. See _Shell target_ below.
 - Android release artifacts: AAB + APK
 - iOS release validation: unsigned simulator Release build in CI; signed App Store archive requires Apple signing credentials on macOS
 
-## Shell target — open founder decision (2026-08-20)
+## Shell target — RESOLVED (re-verified live 2026-09-02)
 
 `CAPACITOR_SERVER_URL` is the page the WebView **loads**. It is a different thing from
-`VITE_API_BASE`, the API that loaded page **calls**. Verified live on 2026-08-20:
+`VITE_API_BASE`, the API that loaded page **calls**.
 
-| Host                                               | Verified state                                                                                                        |
-| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `https://app.dripplex.com`                         | HTTP 200 — serves **customer-web** (Cloudflare Worker), byte-identical to `www.dripplex.com`, `robots: index, follow` |
-| `https://super-app-production-2345.up.railway.app` | HTTP 200 — serves **super-app**, `robots: noindex, nofollow`; no custom domain attached                               |
-| `https://api.dripplex.com/`                        | HTTP 404 `application/json` — an API root, never a valid `CAPACITOR_SERVER_URL`                                       |
+**The move described in this section has happened.** `app.dripplex.com` now serves the
+super-app, so the shell ships the super-app and the default needs no change. Re-verified
+by fetching each host on 2026-09-02:
+
+| Host                       | Verified state (2026-09-02)                                                                                                                |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `https://app.dripplex.com` | HTTP 200 — serves **super-app** from **Railway** (`server: railway-hikari`, Vite bundle `/assets/index-*.js`), `robots: noindex, nofollow` |
+| `https://www.dripplex.com` | HTTP 200 — serves **customer-web** from **Railway** (`server: railway-hikari`, Next.js `/_next/static/...`). Marketing only, per #327      |
+| `https://api.dripplex.com` | An API root. Never a valid `CAPACITOR_SERVER_URL`                                                                                          |
+
+`noindex, nofollow` on `app.dripplex.com` is correct and not a store problem: it is an
+application shell, not a page anyone should reach from search.
+
+> **Superseded — what this table said before, and why it is worth keeping.**
+> As verified on 2026-08-20, `app.dripplex.com` served **customer-web** from a
+> **Cloudflare Worker**, byte-identical to `www.dripplex.com`, with `robots: index,
+follow`; the super-app was reachable only at `super-app-production-2345.up.railway.app`
+> with no custom domain. Every one of those three facts is now false. The reason to
+> record that rather than quietly overwrite it: a stale hosting table in a store-readiness
+> doc is exactly the kind of thing a submission decision gets made from, and this one was
+> stale for thirteen days across a hosting migration nobody thought to reflect here.
+> **Re-verify by fetching the host before trusting this table again.**
 
 The super-app already calls the production API (`VITE_API_BASE` / `VITE_SOCKET_URL` default to
 `api.dripplex.com` — `apps/super-app/src/lib/api.ts:9`, `src/lib/ws.ts:10`), and the backend's
 live CORS allowlist already admits both the super-app Railway host and `app.dripplex.com`
 (unknown origins receive no `access-control-allow-origin` header).
 
-So the shell as configured ships **customer-web**, not the super-app. Repointing it is a CI
-input (`server_url` on `mobile-build.yml` and `mobile-store-readiness.yml`), not a code change
-— but it is blocked on the item below, which is not a matter of configuration.
+So the shell as configured ships **the super-app**, and no repointing is required: the default
+`server_url` on both `mobile-build.yml` and `mobile-store-readiness.yml` is already
+`https://app.dripplex.com`, and that host now serves the super-app.
+
+One consequence worth stating plainly, because it changes what a release _is_: the shell loads
+its page at runtime. Web changes deployed to `app.dripplex.com` reach installed apps with **no
+rebuild and no store submission** — a new AAB is needed only for native changes (Capacitor
+config, plugins, permissions, icons, `scripts/mobile/**`) or to occupy a new `versionCode`.
 
 ### Resolved — the super-app now owns both auth landing routes
 
