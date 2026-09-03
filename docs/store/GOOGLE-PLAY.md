@@ -63,26 +63,53 @@ warnings, review rejections, suspension notices — goes there and nowhere else.
 
 ### Console signup — values entered
 
-| Console field        | Value                                                                   |
-| -------------------- | ----------------------------------------------------------------------- |
-| Organization size    | 1–10                                                                    |
-| Organization website | `https://www.dripplex.com`                                              |
-| Organization phone   | see the discrepancy below — **do not assume the table at the top wins** |
+| Console field        | Value                                     |
+| -------------------- | ----------------------------------------- |
+| Organization size    | 1–10                                      |
+| Organization website | `https://www.dripplex.com` — **verified** |
+| Organization phone   | `+2347038888300` (app support line)       |
 
 **Organization website is `https://www.dripplex.com`**, not `app.dripplex.com`.
 `www` serves the marketing site (customer-web); `app` serves the application shell and is
-`noindex, nofollow`, which is not an organization's website. Google requires proving
-ownership of whatever is entered here before apps can be published — DNS for
-`dripplex.com` is on Cloudflare, so a Search Console DNS TXT verification covers it.
+`noindex, nofollow`, which is not an organization's website.
 
-> ⚠️ **Phone number discrepancy, unresolved 2026-09-02.** The Console signup was filled in
-> with **`+2347038888300`**. The table at the top of this document records the telephone of
-> record as **`+234 803 973 9780`** (`+2348039739780`). These are different numbers.
->
-> Only one can match the Dun & Bradstreet record, and Google verifies organization details
-> against D&B. Whichever is on the D&B record is the one that belongs in both places.
-> **This document does not know which.** Resolve it against D&B and correct the loser —
-> here, in the Console, or both.
+**The two phone numbers are both correct and serve different purposes** (founder,
+2026-09-02): `+2347038888300` is the **app support line** and is what the Play Console
+carries; `+234 803 973 9780` in the identity table above is the **founder's direct
+contact**. They were briefly flagged here as a possible Dun & Bradstreet mismatch — they
+are not one. Do not "reconcile" them to a single value.
+
+### Website ownership verified — 2026-09-02
+
+Verified as a Search Console **Domain property** on `dripplex.com`, using Google's
+Cloudflare DNS integration. A domain property was chosen over URL-prefix because it covers
+the apex and **every** subdomain in one verification, and because the file and meta-tag
+methods would each have required a code change and a Railway deploy to customer-web
+(`apps/customer-web/public/` carries no verification file, and no `google-site-verification`
+meta tag exists anywhere in the app).
+
+The token written to the apex:
+
+```
+google-site-verification=Ngyh9dOP2JKN1zJN6SHCDWDpaP0O45bgCkUg1ILjunk
+```
+
+> ⛔ **Do not delete this TXT record.** Removing it un-verifies the domain in Search
+> Console, and the Play developer account's website verification lapses with it.
+
+**Confirmed by external DNS lookup after the integration ran**, because a tool writing to
+a live zone is exactly when to check rather than assume. The apex went from one TXT record
+to two — Google's token was **added alongside** the SPF, not in place of it — and `_dmarc`,
+`send.dripplex.com`, the MX and `mail.dripplex.com` were all unchanged. Had the integration
+replaced the apex TXT instead, every transactional email would have started failing SPF
+silently, and it would have surfaced days later as bounced verification mail rather than as
+an error anyone could see.
+
+**Follow-up if not already done:** the Search Console property must list
+`play@dripplex.com` as an **Owner** (Settings → Users and permissions). Play sends the
+website-verification request to the property's registered owner, so if the property was
+verified under a personal Google account, the developer account's verification depends on
+that personal account remaining accessible.
 
 ### D-U-N-S propagation window has passed
 
