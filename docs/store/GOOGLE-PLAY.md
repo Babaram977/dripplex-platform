@@ -40,6 +40,50 @@ quoted anywhere in this repo.
 The internal-testing track in `docs/mobile/BETA-DISTRIBUTION.md` runs on whatever
 account is already in use and is **not** blocked by any of this.
 
+### Account email — `play@dripplex.com`
+
+The Play developer account is held by **`play@dripplex.com`**, a role address on the
+company's own mail server (`mail.dripplex.com`), **not** a personal Gmail.
+
+A Google account does not have to be a `@gmail.com` address — "use my current email
+address instead" at signup creates one against an address you already own. That mattered
+practically (Gmail signup was failing: SMS verification codes never arrived, the usual
+symptom of a phone number that has hit Google's per-number account cap), but it is the
+right choice regardless of that:
+
+- **It survives people.** A developer account on an individual's Gmail dies with that
+  person's access — and takes the app, the signing key and the ability to ship updates
+  with it. That is not quickly recoverable through Google support.
+- Access can be reset through DrippleX's own mail server rather than depending on someone's
+  personal phone.
+- It matches AFNAN HOMES LTD as the account holder rather than an individual.
+
+Keep the mailbox alive and monitored. Everything Google sends about this account — policy
+warnings, review rejections, suspension notices — goes there and nowhere else.
+
+### Console signup — values entered
+
+| Console field        | Value                                                                   |
+| -------------------- | ----------------------------------------------------------------------- |
+| Organization size    | 1–10                                                                    |
+| Organization website | `https://www.dripplex.com`                                              |
+| Organization phone   | see the discrepancy below — **do not assume the table at the top wins** |
+
+**Organization website is `https://www.dripplex.com`**, not `app.dripplex.com`.
+`www` serves the marketing site (customer-web); `app` serves the application shell and is
+`noindex, nofollow`, which is not an organization's website. Google requires proving
+ownership of whatever is entered here before apps can be published — DNS for
+`dripplex.com` is on Cloudflare, so a Search Console DNS TXT verification covers it.
+
+> ⚠️ **Phone number discrepancy, unresolved 2026-09-02.** The Console signup was filled in
+> with **`+2347038888300`**. The table at the top of this document records the telephone of
+> record as **`+234 803 973 9780`** (`+2348039739780`). These are different numbers.
+>
+> Only one can match the Dun & Bradstreet record, and Google verifies organization details
+> against D&B. Whichever is on the D&B record is the one that belongs in both places.
+> **This document does not know which.** Resolve it against D&B and correct the loser —
+> here, in the Console, or both.
+
 ### D-U-N-S propagation window has passed
 
 The record resolved 2026-08-28 and D&B quoted 2–3 business days to become visible, so
