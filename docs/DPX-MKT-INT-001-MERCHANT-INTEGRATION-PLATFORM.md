@@ -469,21 +469,42 @@ When a merchant's POS sends status updates back:
 - In Catalog schema, add `external_sku` field mapping to merchant's POS SKU
 - Integration layer resolves: POS SKU → external_sku → product_id
 
-### 2. One Catalog, One Source of Truth
+### 2. Domain-Based Source of Truth (NOT Universal)
 
-**Decision:** The merchant's POS remains the source of truth for pricing, availability, and inventory. DrippleX catalog reflects it, not the reverse.
+**Decision:** Source of truth varies by domain. POS is NOT universally authoritative.
 
 **Rationale:**
 
-- Merchants already maintain their POS as the operational source
-- Forcing merchants to re-enter data into DrippleX defeats the purpose
-- Real-time sync requires one authoritative system per merchant
+- Merchants' POS owns merchant-side data (catalog, inventory, pricing)
+- DrippleX must own platform-side data (orders, payments, commissions, fulfillment)
+- Creating universal "POS authority" would corrupt DrippleX's transaction ledger and merchant balances
+
+**Source of Truth by Domain:**
+
+| Domain                         | Authoritative System | Details                                                                  |
+| ------------------------------ | -------------------- | ------------------------------------------------------------------------ |
+| **Merchant Catalog**           | POS/Merchant System  | Products, SKUs, prices, descriptions, availability                       |
+| **Merchant Inventory**         | POS/Merchant System  | Stock levels, warehouse counts, real-time adjustments                    |
+| **DrippleX Orders**            | DrippleX Platform    | Order ID, customer, items, payment status, platform lifecycle            |
+| **Order Status (Fulfillment)** | Shared (See below)   | POS updates status, DrippleX records & communicates to customer          |
+| **Payments & Wallet**          | DrippleX Platform    | Customer payments, wallet balance, refunds, ledger                       |
+| **Platform Commissions**       | DrippleX Platform    | Commission amounts, settlement calculations, merchant payouts            |
+| **Ride Transactions**          | DrippleX Platform    | Ride orders, driver assignments, delivery state (POS has ZERO authority) |
+| **Customer Data**              | DrippleX Platform    | Customer identity, KYC status, account security                          |
+
+**Order Status Synchronization (Shared Authority):**
+
+- POS/Merchant publishes status changes: RECEIVED → ACCEPTED → PREPARING → READY → PICKED_UP
+- DrippleX receives and records these, then communicates to customer
+- DrippleX adds platform-specific states: PAYMENT_PROCESSED, DISPATCH_ASSIGNED, DELIVERED
+- **Conflict Rule:** If POS says READY and DrippleX says PAYMENT_FAILED, DrippleX state wins (payment must succeed before fulfillment)
 
 **Implementation:**
 
-- Integrations push product/inventory changes TO DrippleX (not the other way)
-- Merchant Portal can display the current state, but edits happen in the POS
-- Prevent data conflicts with idempotency keys and timestamp-based reconciliation
+- Integrations push catalog/inventory TO DrippleX (read-only into merchant system)
+- Integrations push order status FROM POS, DrippleX validates before accepting
+- Prevent conflicts with timestamp-based versioning and validation rules
+- DrippleX remains the authoritative ledger for all platform transactions
 
 ### 3. No Separate Integration Catalog
 
@@ -515,6 +536,23 @@ When a merchant's POS sends status updates back:
 - Require `idempotency_key` header on all requests
 - Store processed keys in cache (Redis, 24h TTL)
 - Webhooks include `idempotency_key` so POS can deduplicate retries
+
+### 5. Ride Independence
+
+**Decision:** POS integration has ZERO authority over Ride transactions.
+
+**Rationale:**
+
+- Ride is a separate product line (driver + customer + delivery)
+- POS integration is for Marketplace mini stores only
+- A merchant's POS outage cannot affect Ride operations
+- Ride payments, driver assignments, and delivery state are DrippleX-only
+
+**Implementation:**
+
+- Ride endpoints and schemas remain completely separate
+- POS integration cannot create, modify, or read Ride orders
+- Ride has its own fulfillment state machine (independent of POS status)
 
 ---
 
