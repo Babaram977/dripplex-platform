@@ -4588,3 +4588,258 @@ model FleetCommissionPeriod {
   @@index([settledAt])
   @@map("fleet_commission_periods")
 }
+
+// ── MKT-INT-001 Merchant Integration Platform ──────────────────────────────
+
+/// MKT-INT-001 — Configured POS integration for a merchant. One merchant may
+/// have multiple POS systems integrated (e.g., multiple branches), but each
+/// integration is scoped to a single merchant and carries its own credentials.
+/// Soft-delete only — archived_at is set when the integration is retired,
+/// never destructively deleted.
+model MerchantIntegration {
+  id                     String    @id @default(uuid()) @db.Uuid
+  /// The merchant this integration belongs to. Multi-tenant isolation scoping.
+  merchantId             String    @map("merchant_id") @db.Uuid
+  /// Human-readable name for this integration (e.g., "Branch A POS", "Main Inventory System")
+  integrationName        String    @map("integration_name") @db.VarChar(150)
+  /// POS system provider (e.g., "TALABAT", "JUMIA", "CUSTOM_POS")
+  posProvider            String    @map("pos_provider") @db.VarChar(100)
+  /// Integration status: ACTIVE (operational), PAUSED (temporarily disabled), or ARCHIVED (retired)
+  status                 String    @default("ACTIVE") @map("status") @db.VarChar(50)
+  /// Webhook endpoint where DrippleX sends events (order status, inventory updates, etc)
+  webhookUrl             String?   @map("webhook_url") @db.VarChar(2048)
+  /// Reference to the stored API credential
+  credentialId           String?   @map("credential_id") @db.Uuid
+  /// When was this integration last synchronized
+  lastSyncedAt           DateTime? @map("last_synced_at")
+  /// Soft-delete timestamp (null = active)
+  archivedAt             DateTime? @map("archived_at")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+
+  credential             IntegrationCredential? @relation(fields: [credentialId], references: [id], onDelete: SetNull)
+  logs                   IntegrationLog[]
+  conflicts              IntegrationConflict[]
+  catalogSyncJobs        CatalogSyncJob[]
+  productSyncs           ProductSync[]
+  inventoryUpdates       InventoryUpdate[]
+  orderStatusUpdates     OrderStatusUpdate[]
+
+  @@index([merchantId])
+  @@index([status])
+  @@index([archivedAt])
+  @@map("merchant_integrations")
+}
+
+/// MKT-INT-001 — API credentials for POS→DrippleX authentication.
+/// Stored hashed and encrypted. Scoped credentials with fine-grained permissions.
+model IntegrationCredential {
+  id              String    @id @default(uuid()) @db.Uuid
+  integrationId   String    @map("integration_id") @db.Uuid
+  /// API key (hashed), OAuth2 access token (encrypted), or other credential type
+  credentialHash  String    @map("credential_hash") @db.Text
+  /// Scopes: integrations:read, integrations:write, catalog:read, catalog:write, inventory:read, inventory:write, orders:read, orders:write
+  scopes          String[]  @default([]) @map("scopes")
+  /// When this credential expires (for OAuth2 tokens, etc). Null = doesn't expire.
+  expiresAt       DateTime? @map("expires_at")
+  /// When this credential was last rotated
+  rotatedAt       DateTime? @map("rotated_at")
+  /// Soft-delete timestamp
+  archivedAt      DateTime? @map("archived_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  integrations    MerchantIntegration[]
+
+  @@index([integrationId])
+  @@index([expiresAt])
+  @@index([archivedAt])
+  @@map("integration_credentials")
+}
+
+/// MKT-INT-001 — Audit trail of all integration API activity.
+/// Append-only: never updated or deleted. Every request/response logged for compliance.
+model IntegrationLog {
+  id              String    @id @default(uuid()) @db.Uuid
+  integrationId   String    @map("integration_id") @db.Uuid
+  /// API endpoint called (e.g., "/api/v1/catalog/sync", "/webhooks/order-status")
+  endpoint        String    @map("endpoint") @db.VarChar(255)
+  /// HTTP method (GET, POST, PUT, PATCH, DELETE)
+  method          String    @map("method") @db.VarChar(10)
+  /// Request body (truncated if very large)
+  requestBody     String?   @map("request_body") @db.Text
+  /// HTTP status code (200, 400, 401, 403, 500, etc)
+  responseStatus  Int?      @map("response_status")
+  /// Response body (truncated if very large)
+  responseBody    String?   @map("response_body") @db.Text
+  /// Error message if request failed
+  errorMessage    String?   @map("error_message") @db.Text
+  /// Caller's IP address
+  ipAddress       String?   @map("ip_address") @db.VarChar(45)
+  /// Correlation ID for tracing across distributed calls
+  correlationId   String?   @map("correlation_id") @db.VarChar(64)
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  integration     MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@index([integrationId, createdAt(sort: Desc)])
+  @@index([responseStatus])
+  @@map("integration_logs")
+}
+
+/// MKT-INT-001 — Reconciliation conflicts that require manual review.
+/// Records catalog mismatches, inventory discrepancies, order state conflicts.
+model IntegrationConflict {
+  id               String    @id @default(uuid()) @db.Uuid
+  integrationId    String    @map("integration_id") @db.Uuid
+  /// Type of conflict: CATALOG_PRICE_DIFF, INVENTORY_MISMATCH, ORDER_STATE_MISMATCH, PRODUCT_ARCHIVED, etc.
+  conflictType     String    @map("conflict_type") @db.VarChar(100)
+  /// ID of the source item (product, order, etc.)
+  sourceId         String?   @map("source_id") @db.Uuid
+  /// External identifier from POS system
+  externalId       String?   @map("external_id") @db.VarChar(255)
+  /// What DrippleX has
+  dripplexValue    String?   @map("dripplex_value") @db.Text
+  /// What the external system has
+  externalValue    String?   @map("external_value") @db.Text
+  /// Status: OPEN (needs review), RESOLVED (fixed), ESCALATED (requires ops intervention)
+  status           String    @default("OPEN") @map("status") @db.VarChar(50)
+  /// How the conflict was resolved (null if still OPEN)
+  resolution       String?   @map("resolution") @db.VarChar(1000)
+  /// When the conflict was resolved
+  resolvedAt       DateTime? @map("resolved_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  integration      MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@index([integrationId, status])
+  @@index([conflictType])
+  @@index([status])
+  @@map("integration_conflicts")
+}
+
+/// MKT-INT-001 — Catalog synchronization job tracking.
+/// Tracks batches of product syncs, their status, and outcomes.
+model CatalogSyncJob {
+  id            String    @id @default(uuid()) @db.Uuid
+  integrationId String    @map("integration_id") @db.Uuid
+  /// Job status: PENDING, IN_PROGRESS, COMPLETED, FAILED
+  jobStatus     String    @default("PENDING") @map("job_status") @db.VarChar(50)
+  /// Direction: POS_TO_DRIPPLEX (import) or DRIPPLEX_TO_POS (export)
+  syncDirection String    @map("sync_direction") @db.VarChar(50)
+  /// When the job started processing
+  startedAt     DateTime? @map("started_at")
+  /// When the job completed (null if still in progress)
+  completedAt   DateTime? @map("completed_at")
+  /// Number of products processed
+  productCount  Int       @default(0) @map("product_count")
+  /// Why the job failed (if applicable)
+  failureReason String?   @map("failure_reason") @db.VarChar(500)
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  integration   MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@index([integrationId, jobStatus])
+  @@index([jobStatus])
+  @@index([completedAt])
+  @@map("catalog_sync_jobs")
+}
+
+/// MKT-INT-001 — SKU ↔ Product mapping.
+/// Maps external POS SKU to internal DrippleX Product for catalog synchronization.
+/// This is the bridge that enables product-level operations between systems.
+model ProductSync {
+  id                   String    @id @default(uuid()) @db.Uuid
+  integrationId        String    @map("integration_id") @db.Uuid
+  /// External SKU from the POS system (e.g., "SKU-12345")
+  externalSku          String    @map("external_sku") @db.VarChar(100)
+  /// Internal DrippleX Product ID
+  productId            String?   @map("product_id") @db.Uuid
+  /// When this mapping was last synchronized
+  lastSyncedAt         DateTime? @map("last_synced_at")
+  /// Status: ACTIVE (mapped and in use), ARCHIVED (soft-deleted), FAILED (mapping error)
+  mappingStatus        String    @default("ACTIVE") @map("mapping_status") @db.VarChar(50)
+  /// External catalog ID or collection this product belongs to (for reporting)
+  externalCatalogId    String?   @map("external_catalog_id") @db.VarChar(100)
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  integration          MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  inventoryUpdates     InventoryUpdate[]
+
+  @@unique([integrationId, externalSku])
+  @@index([integrationId, mappingStatus])
+  @@index([productId])
+  @@map("product_syncs")
+}
+
+/// MKT-INT-001 — Inventory update event tracking.
+/// Tracks webhook deliveries and API polls for inventory changes.
+/// Uses idempotencyKey to prevent duplicate quantity updates.
+model InventoryUpdate {
+  id                String    @id @default(uuid()) @db.Uuid
+  integrationId     String    @map("integration_id") @db.Uuid
+  productSyncId     String    @map("product_sync_id") @db.Uuid
+  /// External SKU (denormalized for query efficiency)
+  externalSku       String    @map("external_sku") @db.VarChar(100)
+  /// Previous quantity (before this update)
+  previousQuantity  Int       @map("previous_quantity")
+  /// New quantity (after this update)
+  newQuantity       Int       @map("new_quantity")
+  /// Whether this is a soft-delete (product archived in POS)
+  isSoftDelete      Boolean   @default(false) @map("is_soft_delete")
+  /// Source: WEBHOOK (pushed by POS) or API_POLL (pulled by DrippleX)
+  sourceType        String    @map("source_type") @db.VarChar(50)
+  /// Delivery status: PENDING, DELIVERED, FAILED
+  deliveryStatus    String    @default("PENDING") @map("delivery_status") @db.VarChar(50)
+  /// How many delivery attempts made
+  attemptCount      Int       @default(0) @map("attempt_count")
+  /// When the last delivery attempt was made
+  lastAttemptAt     DateTime? @map("last_attempt_at")
+  /// Idempotency key (UUID from external system) — prevents duplicate updates
+  idempotencyKey    String    @map("idempotency_key") @db.VarChar(100)
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  integration       MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  productSync       ProductSync         @relation(fields: [productSyncId], references: [id], onDelete: Cascade)
+
+  @@unique([integrationId, idempotencyKey])
+  @@index([integrationId, deliveryStatus])
+  @@index([productSyncId])
+  @@map("inventory_updates")
+}
+
+/// MKT-INT-001 — External order status updates from POS.
+/// Tracks when POS notifies DrippleX of order state changes.
+/// Uses idempotencyKey to prevent duplicate state transitions.
+model OrderStatusUpdate {
+  id                    String    @id @default(uuid()) @db.Uuid
+  integrationId         String    @map("integration_id") @db.Uuid
+  /// External order ID from POS system
+  externalOrderId       String    @map("external_order_id") @db.VarChar(255)
+  /// Internal DrippleX Order ID (may be null if not yet matched)
+  internalOrderId       String?   @map("internal_order_id") @db.Uuid
+  /// Previous order status
+  previousStatus        String?   @map("previous_status") @db.VarChar(50)
+  /// New order status
+  newStatus             String    @map("new_status") @db.VarChar(50)
+  /// Timestamp from the external system (for conflict detection)
+  sourceTimestamp       DateTime  @map("source_timestamp")
+  /// When DrippleX processed this update
+  processedAt           DateTime? @map("processed_at")
+  /// Reconciliation status: ACCEPTED (matched and processed), CONFLICT (state mismatch), PENDING (awaiting order creation)
+  reconciliationStatus  String    @default("PENDING") @map("reconciliation_status") @db.VarChar(50)
+  /// Idempotency key (prevents duplicate state transitions)
+  idempotencyKey        String    @map("idempotency_key") @db.VarChar(100)
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  integration           MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@unique([integrationId, idempotencyKey])
+  @@index([integrationId, reconciliationStatus])
+  @@index([internalOrderId])
+  @@map("order_status_updates")
+}
