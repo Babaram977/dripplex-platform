@@ -8,7 +8,10 @@ import {
   CreateIntegrationDto,
   UpdateIntegrationDto,
   IntegrationResponseDto,
-} from '../dtos/integration.dto';
+  CreateIntegrationCDto,
+  UpdateIntegrationCDto,
+  TestIntegrationResponseCDto,
+} from '../dtos';
 
 /**
  * Integration management service with merchant isolation and soft-delete support.
@@ -234,6 +237,299 @@ export class IntegrationsService {
 
     if (!integration) {
       throw new ForbiddenDomainException('Access denied');
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // MKT-INT-001-C: Integration CRUD API Methods
+  // ─────────────────────────────────────────────────────────────────
+
+  /**
+   * MKT-INT-001-C: Create integration with C API contract
+   *
+   * Creates integration record with vendorName, vendorVersion, etc.
+   * Does NOT create credentials (caller handles credential generation via CredentialsService).
+   */
+  public async createIntegrationC(
+    merchantId: string,
+    input: CreateIntegrationCDto,
+  ): Promise<any> {
+    const integration = await this.prisma.merchantIntegration.create({
+      data: {
+        merchantId,
+        vendorName: input.vendorName,
+        vendorVersion: input.vendorVersion ?? null,
+        merchantContactEmail: input.merchantContactEmail ?? null,
+        webhookUrl: input.webhookUrl ?? null,
+        metadata: input.metadata ?? null, // Prisma handles JSON serialization
+        // Legacy fields (will be deprecated)
+        integrationName: input.vendorName,
+        posProvider: input.vendorVersion ?? 'CUSTOM',
+        status: 'ACTIVE',
+      },
+    });
+
+    await this.auditService.record(
+      'integration.created',
+      { userId: merchantId },
+      {
+        resource: 'integration',
+        resourceId: integration.id,
+        metadata: {
+          vendorName: input.vendorName,
+          vendorVersion: input.vendorVersion,
+        },
+      },
+    );
+
+    return integration;
+  }
+
+  /**
+   * MKT-INT-001-C: Get integration with C API contract
+   *
+   * Returns null if merchant doesn't own this integration (caller should throw 403).
+   */
+  public async getIntegrationC(merchantId: string, integrationId: string): Promise<any> {
+    return await this.prisma.merchantIntegration.findFirst({
+      where: {
+        id: integrationId,
+        merchantId,
+        archivedAt: null,
+      },
+    });
+  }
+
+  /**
+   * MKT-INT-001-C: List integrations with C API contract
+   */
+  public async listIntegrationsC(
+    merchantId: string,
+    limit: number,
+    offset: number,
+    includeArchived: boolean,
+    statusFilter?: string,
+  ): Promise<{ integrations: any[]; total: number }> {
+    const where: Prisma.MerchantIntegrationWhereInput = {
+      merchantId,
+    };
+
+    if (!includeArchived) {
+      where.archivedAt = null;
+    }
+
+    if (statusFilter) {
+      where.status = statusFilter;
+    }
+
+    const [integrations, total] = await Promise.all([
+      this.prisma.merchantIntegration.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        skip: offset,
+      }),
+      this.prisma.merchantIntegration.count({ where }),
+    ]);
+
+    return { integrations, total };
+  }
+
+  /**
+   * MKT-INT-001-C: Update integration with C API contract
+   *
+   * Returns null if merchant doesn't own this integration (caller should throw 403).
+   */
+  public async updateIntegrationC(
+    merchantId: string,
+    integrationId: string,
+    input: UpdateIntegrationCDto,
+  ): Promise<any> {
+    // Verify merchant access
+    const existing = await this.getIntegrationC(merchantId, integrationId);
+    if (!existing) {
+      return null;
+    }
+
+    const data: Prisma.MerchantIntegrationUpdateInput = {};
+
+    if (input.vendorName !== undefined) {
+      data.vendorName = input.vendorName;
+    }
+    if (input.vendorVersion !== undefined) {
+      data.vendorVersion = input.vendorVersion;
+    }
+    if (input.merchantContactEmail !== undefined) {
+      data.merchantContactEmail = input.merchantContactEmail;
+    }
+    if (input.webhookUrl !== undefined) {
+      data.webhookUrl = input.webhookUrl;
+    }
+    if (input.metadata !== undefined) {
+      data.metadata = input.metadata;
+    }
+    if (input.status !== undefined) {
+      data.status = input.status;
+    }
+
+    const updated = await this.prisma.merchantIntegration.update({
+      where: { id: integrationId },
+      data,
+    });
+
+    await this.auditService.record(
+      'integration.updated',
+      { userId: merchantId },
+      {
+        resource: 'integration',
+        resourceId: integrationId,
+        metadata: Object.fromEntries(
+          Object.entries(input).filter(([, v]) => v !== undefined),
+        ),
+      },
+    );
+
+    return updated;
+  }
+
+  /**
+   * MKT-INT-001-C: Delete integration (soft-delete)
+   *
+   * Returns true if deleted, false if merchant doesn't own this integration.
+   */
+  public async deleteIntegrationC(merchantId: string, integrationId: string): Promise<boolean> {
+    // Verify merchant access
+    const existing = await this.getIntegrationC(merchantId, integrationId);
+    if (!existing) {
+      return false;
+    }
+
+    // Soft-delete integration
+    await this.prisma.merchantIntegration.update({
+      where: { id: integrationId },
+      data: {
+        archivedAt: new Date(),
+        status: 'ARCHIVED',
+      },
+    });
+
+    // Archive all credentials
+    await this.prisma.integrationCredential.updateMany({
+      where: { integrationId },
+      data: { archivedAt: new Date() },
+    });
+
+    await this.auditService.record(
+      'integration.deleted',
+      { userId: merchantId },
+      {
+        resource: 'integration',
+        resourceId: integrationId,
+        metadata: { merchantId },
+      },
+    );
+
+    return true;
+  }
+
+  /**
+   * MKT-INT-001-C: Test integration connectivity
+   *
+   * Tests webhook connectivity by sending HTTP GET to configured webhook URL.
+   * Returns null if merchant doesn't own this integration.
+   */
+  public async testIntegrationC(
+    merchantId: string,
+    integrationId: string,
+  ): Promise<TestIntegrationResponseCDto | null> {
+    const integration = await this.getIntegrationC(merchantId, integrationId);
+    if (!integration) {
+      return null;
+    }
+
+    const testedAt = new Date();
+
+    // If no webhook URL configured, return UNCONFIGURED
+    if (!integration.webhookUrl) {
+      await this.auditService.record(
+        'integration.test',
+        { userId: merchantId },
+        {
+          resource: 'integration',
+          resourceId: integrationId,
+          metadata: { status: 'UNCONFIGURED' },
+        },
+      );
+
+      return {
+        status: 'UNCONFIGURED',
+        message: 'Webhook URL not configured for this integration',
+        testedAt: testedAt.toISOString(),
+      };
+    }
+
+    // Test webhook connectivity
+    try {
+      const startTime = Date.now();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
+      const response = await fetch(integration.webhookUrl, {
+        method: 'GET',
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+      const latencyMs = Date.now() - startTime;
+      const isSuccess = response.status >= 200 && response.status < 300;
+
+      await this.auditService.record(
+        'integration.test',
+        { userId: merchantId },
+        {
+          resource: 'integration',
+          resourceId: integrationId,
+          metadata: {
+            status: isSuccess ? 'SUCCESS' : 'FAILED',
+            httpStatus: response.status,
+            latencyMs,
+          },
+        },
+      );
+
+      const status = response.status as number;
+      return {
+        status: isSuccess ? 'SUCCESS' : 'FAILED',
+        message: isSuccess
+          ? `Webhook responded successfully (HTTP ${String(status)})`
+          : `Webhook returned HTTP ${String(status)}`,
+        latencyMs,
+        httpStatus: status,
+        testedAt: testedAt.toISOString(),
+      };
+    } catch (error) {
+      const isTimeout = error instanceof Error && error.name === 'AbortError';
+
+      await this.auditService.record(
+        'integration.test',
+        { userId: merchantId },
+        {
+          resource: 'integration',
+          resourceId: integrationId,
+          metadata: {
+            status: 'FAILED',
+            error: isTimeout ? 'timeout' : 'connection_error',
+          },
+        },
+      );
+
+      return {
+        status: 'FAILED',
+        message: isTimeout
+          ? 'Webhook unreachable: request timeout after 5 seconds'
+          : 'Webhook unreachable: connection error',
+        testedAt: testedAt.toISOString(),
+      };
     }
   }
 

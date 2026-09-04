@@ -4614,6 +4614,14 @@ model MerchantIntegration {
   lastSyncedAt           DateTime? @map("last_synced_at")
   /// Soft-delete timestamp (null = active)
   archivedAt             DateTime? @map("archived_at")
+  /// MKT-INT-001-C: Vendor name (required by C API contract)
+  vendorName             String    @map("vendor_name") @db.VarChar(100)
+  /// MKT-INT-001-C: Vendor version (optional by C API contract)
+  vendorVersion          String?   @map("vendor_version") @db.VarChar(100)
+  /// MKT-INT-001-C: Merchant contact email (optional by C API contract)
+  merchantContactEmail   String?   @map("merchant_contact_email") @db.VarChar(255)
+  /// MKT-INT-001-C: Integration metadata (JSON-serializable by C API contract)
+  metadata               Json?     @map("metadata")
   createdAt              DateTime  @default(now()) @map("created_at")
   updatedAt              DateTime  @updatedAt @map("updated_at")
 
@@ -4628,6 +4636,7 @@ model MerchantIntegration {
   @@index([merchantId])
   @@index([status])
   @@index([archivedAt])
+  @@index([vendorName])
   @@map("merchant_integrations")
 }
 
