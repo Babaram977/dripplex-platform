@@ -119,7 +119,8 @@ export class EncryptionService {
    */
   public getPublicSuffix(plaintext: string, suffixLength = 4): string {
     if (!plaintext || plaintext.length <= suffixLength) {
-      return '*'.repeat(Math.max(1, plaintext.length - 1)) + plaintext.charAt(plaintext.length - 1);
+      // For short credentials, mask all but the last character (but don't mask single char)
+      return '*'.repeat(Math.max(0, plaintext.length - 1)) + plaintext.charAt(plaintext.length - 1);
     }
     return '*'.repeat(plaintext.length - suffixLength) + plaintext.slice(-suffixLength);
   }
