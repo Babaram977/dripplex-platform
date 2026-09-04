@@ -305,13 +305,33 @@ export class IntegrationsCController {
     @MerchantScoped() merchantId: string,
     @Param('integrationId') integrationId: string,
   ): Promise<IntegrationResponseCDto> {
-    const integration = await this.integrationsService.getIntegrationC(merchantId, integrationId);
+    let integration;
+    try {
+      integration = await this.integrationsService.getIntegrationC(merchantId, integrationId);
+    } catch (error) {
+      // Prisma errors on invalid UUID format or other DB issues
+      throw new ForbiddenException('Integration not found or access denied');
+    }
 
     if (!integration) {
       throw new ForbiddenException('Integration not found or access denied');
     }
 
-    return this.toResponseDto(integration);
+    // Load credentials for this integration
+    let credentials: any[] = [];
+    try {
+      credentials = await this.credentialsService.listCredentials(merchantId, integrationId);
+    } catch (error) {
+      // If credential loading fails, continue with empty credentials
+      // (this prevents a single credential loading failure from breaking the entire GET)
+      console.error(
+        `Failed to load credentials for integration ${integrationId}:`,
+        error instanceof Error ? error.message : error,
+      );
+      credentials = [];
+    }
+
+    return this.toResponseDtoWithCredentials(integration, credentials);
   }
 
   /**
@@ -476,6 +496,63 @@ export class IntegrationsCController {
   // ─────────────────────────────────────────────────────────────────
 
   /**
+   * Convert database integration record to IntegrationResponseCDto with credentials
+   */
+  private toResponseDtoWithCredentials(
+    integration: {
+      id: string;
+      merchantId: string;
+      vendorName: string;
+      vendorVersion: string | null;
+      merchantContactEmail: string | null;
+      status: string;
+      webhookUrl: string | null;
+      metadata: Record<string, unknown> | null;
+      createdAt: Date;
+      updatedAt: Date;
+      archivedAt: Date | null;
+    },
+    credentials: any[],
+  ): IntegrationResponseCDto {
+    const response: IntegrationResponseCDto = {
+      integrationId: integration.id,
+      merchantId: integration.merchantId,
+      vendorName: integration.vendorName,
+      status: integration.status as 'ACTIVE' | 'PAUSED' | 'REVOKED' | 'ERROR',
+      createdAt: integration.createdAt.toISOString(),
+      updatedAt: integration.updatedAt.toISOString(),
+      credentials: credentials.map((c) => ({
+        id: c.id,
+        createdAt: c.createdAt.toISOString(),
+        status: c.status as 'ACTIVE' | 'REVOKED',
+        publicSuffix: c.publicSuffix,
+        scopes: c.scopes,
+      })),
+    };
+
+    // Add optional fields if they have values
+    if (integration.vendorVersion) {
+      response.vendorVersion = integration.vendorVersion;
+    }
+    if (integration.merchantContactEmail) {
+      response.merchantContactEmail = integration.merchantContactEmail;
+    }
+    if (integration.webhookUrl) {
+      response.webhookUrl = integration.webhookUrl;
+    }
+    if (integration.metadata) {
+      response.metadata = integration.metadata;
+    }
+    if (integration.archivedAt) {
+      response.archivedAt = integration.archivedAt.toISOString();
+    } else {
+      response.archivedAt = null;
+    }
+
+    return response;
+  }
+
+  /**
    * Convert database integration record to IntegrationResponseCDto
    */
   private toResponseDto(integration: {
@@ -498,7 +575,7 @@ export class IntegrationsCController {
       status: integration.status as 'ACTIVE' | 'PAUSED' | 'REVOKED' | 'ERROR',
       createdAt: integration.createdAt.toISOString(),
       updatedAt: integration.updatedAt.toISOString(),
-      credentials: [], // TODO: Load credentials from database
+      credentials: [],
     };
 
     // Add optional fields if they have values

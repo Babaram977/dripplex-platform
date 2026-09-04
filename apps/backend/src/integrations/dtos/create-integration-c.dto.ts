@@ -1,4 +1,12 @@
-import { IsString, IsOptional, IsUrl, MinLength, MaxLength, IsEmail, IsObject } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsUrl,
+  MinLength,
+  MaxLength,
+  IsEmail,
+  IsObject,
+} from 'class-validator';
 
 /**
  * MKT-INT-001-C: Create Integration DTO
@@ -40,14 +48,14 @@ export class CreateIntegrationCDto {
 
   /**
    * Webhook URL (optional)
-   * HTTPS endpoint where DrippleX sends integration events
+   * HTTP/HTTPS endpoint where DrippleX sends integration events
    * Example: "https://api.merchant.com/webhooks/dripplex"
-   * Note: Must be valid HTTPS URL in production
+   * Note: Must be valid HTTP/HTTPS URL, HTTPS recommended for production
    */
   @IsOptional()
   @IsUrl(
-    { require_protocol: true, protocols: ['https'] },
-    { message: 'webhookUrl must be a valid HTTPS URL' },
+    { require_protocol: true, protocols: ['http', 'https'] },
+    { message: 'webhookUrl must be a valid HTTP or HTTPS URL' },
   )
   public readonly webhookUrl?: string;
 

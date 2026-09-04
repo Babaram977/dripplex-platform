@@ -371,9 +371,11 @@ export class IntegrationsService {
 
     const data: Prisma.MerchantIntegrationUpdateInput = {};
 
-    if (input.vendorName !== undefined) {
-      data.vendorName = input.vendorName;
-    }
+    // vendorName is readonly - cannot be updated after creation
+    // if (input.vendorName !== undefined) {
+    //   data.vendorName = input.vendorName;
+    // }
+
     if (input.vendorVersion !== undefined) {
       data.vendorVersion = input.vendorVersion;
     }
@@ -381,10 +383,11 @@ export class IntegrationsService {
       data.merchantContactEmail = input.merchantContactEmail;
     }
     if (input.webhookUrl !== undefined) {
+      // Validate webhook URL for SSRF protection
+      this.ssrfProtection.validateUrl(input.webhookUrl);
       data.webhookUrl = input.webhookUrl;
     }
     if (input.metadata !== undefined) {
-       
       data.metadata = input.metadata as any;
     }
     if (input.status !== undefined) {
@@ -524,7 +527,9 @@ export class IntegrationsService {
     try {
       const startTime = Date.now();
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => { controller.abort(); }, 5000); // 5 second timeout
+      const timeoutId = setTimeout(() => {
+        controller.abort();
+      }, 5000); // 5 second timeout
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       const response = await fetch(integration.webhookUrl, {

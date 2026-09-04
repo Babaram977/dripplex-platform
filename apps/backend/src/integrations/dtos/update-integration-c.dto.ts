@@ -38,13 +38,13 @@ export class UpdateIntegrationCDto {
 
   /**
    * Webhook URL (optional)
-   * HTTPS endpoint where DrippleX sends integration events
-   * Must be valid HTTPS URL if provided
+   * HTTP/HTTPS endpoint where DrippleX sends integration events
+   * Must be valid HTTP/HTTPS URL if provided
    */
   @IsOptional()
   @IsUrl(
-    { require_protocol: true, protocols: ['https'] },
-    { message: 'webhookUrl must be a valid HTTPS URL' },
+    { require_protocol: true, protocols: ['http', 'https'] },
+    { message: 'webhookUrl must be a valid HTTP or HTTPS URL' },
   )
   public readonly webhookUrl?: string;
 
