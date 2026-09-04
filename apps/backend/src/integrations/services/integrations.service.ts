@@ -405,10 +405,11 @@ export class IntegrationsService {
 
     const data: Prisma.MerchantIntegrationUpdateInput = {};
 
-    // vendorName is readonly - cannot be updated after creation
-    // if (input.vendorName !== undefined) {
-    //   data.vendorName = input.vendorName;
-    // }
+    // C-PLAN line 1249: vendorName is updatable
+    // "Create with vendorName='Square'; update to 'Toast'; verify updated record returned"
+    if (input.vendorName !== undefined) {
+      data.vendorName = input.vendorName;
+    }
 
     if (input.vendorVersion !== undefined) {
       data.vendorVersion = input.vendorVersion;

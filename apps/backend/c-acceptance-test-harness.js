@@ -459,48 +459,37 @@ async function runTests() {
   console.log('\n▶ Risk Mitigation: CRIT-006 — Merchant Isolation\n');
 
   try {
-    // Debug: Check that integrationIdA1 exists
-    if (!integrationIdA1) {
-      console.error('⚠️  DEBUG: integrationIdA1 is null/undefined!');
-      recordTest('CRIT-006.1', 'Cross-merchant GET returns 403 Forbidden', false, 'integrationIdA1 is null');
-    } else {
-      // Merchant B attempts to access Merchant A's integration
-      console.log(`📋 DEBUG: Token for merchant B (first 30 chars): ${tokenB?.substring(0, 30)}...`);
-      const getRes = await makeRequest('GET', `/integrations/${integrationIdA1}`, tokenB);
-      console.log(`📋 DEBUG: GET /integrations/${integrationIdA1} with tokenB returned ${getRes.status}`);
-      if (getRes.status === 401) {
-        console.log(`📋 DEBUG: Response body:`, JSON.stringify(getRes.data, null, 2).substring(0, 200));
-      }
+    // Merchant B attempts to access Merchant A's integration
+    const getRes = await makeRequest('GET', `/integrations/${integrationIdA1}`, tokenB);
 
-      recordTest(
-        'CRIT-006.1',
-        'Cross-merchant GET returns 403 Forbidden (not 404)',
-        getRes.status === 403,
-        `Status: ${getRes.status}`
-      );
+    recordTest(
+      'CRIT-006.1',
+      'Cross-merchant GET returns 403 Forbidden (not 404)',
+      getRes.status === 403,
+      `Status: ${getRes.status}`
+    );
 
-      // Attempt to update Merchant A's integration as Merchant B
-      const updateRes = await makeRequest('PUT', `/integrations/${integrationIdA1}`, tokenB, {
-        vendorName: 'Hacked',
-      });
+    // Attempt to update Merchant A's integration as Merchant B
+    const updateRes = await makeRequest('PUT', `/integrations/${integrationIdA1}`, tokenB, {
+      vendorName: 'Hacked',
+    });
 
-      recordTest(
-        'CRIT-006.2',
-        'Cross-merchant PUT returns 403 Forbidden',
-        updateRes.status === 403,
-        `Status: ${updateRes.status}`
-      );
+    recordTest(
+      'CRIT-006.2',
+      'Cross-merchant PUT returns 403 Forbidden',
+      updateRes.status === 403,
+      `Status: ${updateRes.status}`
+    );
 
-      // Attempt to delete Merchant A's integration as Merchant B
-      const deleteRes = await makeRequest('DELETE', `/integrations/${integrationIdA1}`, tokenB);
+    // Attempt to delete Merchant A's integration as Merchant B
+    const deleteRes = await makeRequest('DELETE', `/integrations/${integrationIdA1}`, tokenB);
 
-      recordTest(
-        'CRIT-006.3',
-        'Cross-merchant DELETE returns 403 Forbidden',
-        deleteRes.status === 403,
-        `Status: ${deleteRes.status}`
-      );
-    }
+    recordTest(
+      'CRIT-006.3',
+      'Cross-merchant DELETE returns 403 Forbidden',
+      deleteRes.status === 403,
+      `Status: ${deleteRes.status}`
+    );
 
   } catch (err) {
     recordTest('CRIT-006.1', 'Cross-merchant GET returns 403 Forbidden', false, err.message);
@@ -570,9 +559,13 @@ async function runTests() {
       expectStatus: 400,
     },
     {
-      name: 'Invalid URL (not HTTPS in production)',
+      // C-PLAN line 90: HTTPS enforced "per deployment environment"
+      // Test environment (NODE_ENV=test) allows HTTP
+      // Production (NODE_ENV=production) requires HTTPS
+      // This test environment is test mode, so HTTP is allowed
+      name: 'HTTP URL allowed in test mode',
       body: { vendorName: 'Test', webhookUrl: 'http://example.com' },
-      expectStatus: 400,
+      expectStatus: 201,
     },
   ];
 

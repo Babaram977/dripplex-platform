@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { randomUUID, createHash } from 'crypto';
 
 /* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument */
 
@@ -122,8 +122,13 @@ export class IntegrationsCController {
       'orders:write',
     ];
 
-    // Generate plaintext key
-    const plaintextKey = `drx_${randomUUID()}`;
+    // Generate plaintext key per C-PLAN line 844: dpx_integration_{uuid}_{base64hash}
+    const keyUuid = randomUUID();
+    const keyHash = createHash('sha256')
+      .update(`${integration.id}${keyUuid}${Date.now()}`)
+      .digest('base64')
+      .substring(0, 12); // truncate for readability
+    const plaintextKey = `dpx_integration_${keyUuid}_${keyHash}`;
 
     // Call B.1 CredentialsService to create hashed/encrypted credential
     const credential = await this.credentialsService.createCredential(merchantId, {
