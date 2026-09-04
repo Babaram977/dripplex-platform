@@ -369,10 +369,10 @@ export class RidePricingService {
 
 function toRateValues(row: RideFareRate): FareRateValues {
   return {
-    baseFare: Number(row.baseFare),
-    perKmRate: Number(row.perKmRate),
-    perMinuteRate: Number(row.perMinuteRate),
-    minimumFare: Number(row.minimumFare),
+    baseFare: parseFloat(String(row.baseFare)),
+    perKmRate: parseFloat(String(row.perKmRate)),
+    perMinuteRate: parseFloat(String(row.perMinuteRate)),
+    minimumFare: parseFloat(String(row.minimumFare)),
   };
 }
 
