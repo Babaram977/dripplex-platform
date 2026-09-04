@@ -21,7 +21,7 @@ import {
   ApiBody,
   ApiQuery,
 } from '@nestjs/swagger';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
@@ -122,7 +122,7 @@ export class IntegrationsCController {
     ];
 
     // Generate plaintext key
-    const plaintextKey = `drx_${uuidv4()}`;
+    const plaintextKey = `drx_${randomUUID()}`;
 
     // Call B.1 CredentialsService to create hashed/encrypted credential
     const credential = await this.credentialsService.createCredential(merchantId, {
@@ -137,14 +137,8 @@ export class IntegrationsCController {
       integrationId: integration.id,
       merchantId: integration.merchantId,
       vendorName: integration.vendorName,
-      vendorVersion: integration.vendorVersion ?? undefined,
-      merchantContactEmail: integration.merchantContactEmail ?? undefined,
       status: (integration.status ?? 'ACTIVE') as 'ACTIVE' | 'PAUSED' | 'REVOKED' | 'ERROR',
-      webhookUrl: integration.webhookUrl ?? undefined,
-      metadata: integration.metadata as Record<string, unknown> | undefined,
       createdAt: integration.createdAt.toISOString(),
-      updatedAt: integration.updatedAt.toISOString(),
-      archivedAt: integration.archivedAt?.toISOString() ?? null,
       credentials: [
         {
           id: credential.id,
@@ -162,6 +156,28 @@ export class IntegrationsCController {
         scopes: defaultScopes,
       },
     };
+
+    // Add optional fields if they have values
+    if (integration.vendorVersion) {
+      response.vendorVersion = integration.vendorVersion;
+    }
+    if (integration.merchantContactEmail) {
+      response.merchantContactEmail = integration.merchantContactEmail;
+    }
+    if (integration.webhookUrl) {
+      response.webhookUrl = integration.webhookUrl;
+    }
+    if (integration.metadata) {
+      response.metadata = integration.metadata as Record<string, unknown>;
+    }
+    if (integration.updatedAt) {
+      response.updatedAt = integration.updatedAt.toISOString();
+    }
+    if (integration.archivedAt) {
+      response.archivedAt = integration.archivedAt.toISOString();
+    } else {
+      response.archivedAt = null;
+    }
 
     return response;
   }
@@ -494,16 +510,31 @@ export class IntegrationsCController {
       integrationId: integration.id,
       merchantId: integration.merchantId,
       vendorName: integration.vendorName,
-      vendorVersion: integration.vendorVersion ?? undefined,
-      merchantContactEmail: integration.merchantContactEmail ?? undefined,
       status: (integration.status ?? 'ACTIVE') as 'ACTIVE' | 'PAUSED' | 'REVOKED' | 'ERROR',
-      webhookUrl: integration.webhookUrl ?? undefined,
-      metadata: integration.metadata ?? undefined,
       createdAt: integration.createdAt.toISOString(),
       updatedAt: integration.updatedAt.toISOString(),
-      archivedAt: integration.archivedAt?.toISOString() ?? null,
       credentials: [], // TODO: Load credentials from database
     };
+
+    // Add optional fields if they have values
+    if (integration.vendorVersion) {
+      response.vendorVersion = integration.vendorVersion;
+    }
+    if (integration.merchantContactEmail) {
+      response.merchantContactEmail = integration.merchantContactEmail;
+    }
+    if (integration.webhookUrl) {
+      response.webhookUrl = integration.webhookUrl;
+    }
+    if (integration.metadata) {
+      response.metadata = integration.metadata;
+    }
+    if (integration.archivedAt) {
+      response.archivedAt = integration.archivedAt.toISOString();
+    } else {
+      response.archivedAt = null;
+    }
+
     return response;
   }
 }

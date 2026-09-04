@@ -34,6 +34,7 @@ export interface CredentialResponse {
   rotatedAt: Date | null;
   status: 'ACTIVE' | 'EXPIRED' | 'REVOKED';
   createdAt: Date;
+  scopes: string[]; // ← Added for C API contract
 }
 
 /**
@@ -356,6 +357,8 @@ export class CredentialsService {
       rotatedAt: credential.rotatedAt,
       status,
       createdAt: credential.createdAt,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
+      scopes: (credential as any).scopes ?? [],
     };
   }
 }

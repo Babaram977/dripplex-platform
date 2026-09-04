@@ -254,19 +254,31 @@ export class IntegrationsService {
     merchantId: string,
     input: CreateIntegrationCDto,
   ): Promise<any> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const createData: any = {
+      merchantId,
+      vendorName: input.vendorName,
+      // Legacy fields (will be deprecated)
+      integrationName: input.vendorName,
+      posProvider: input.vendorVersion ?? 'CUSTOM',
+      status: 'ACTIVE',
+    };
+
+    if (input.vendorVersion) {
+      createData.vendorVersion = input.vendorVersion;
+    }
+    if (input.merchantContactEmail) {
+      createData.merchantContactEmail = input.merchantContactEmail;
+    }
+    if (input.webhookUrl) {
+      createData.webhookUrl = input.webhookUrl;
+    }
+    if (input.metadata) {
+      createData.metadata = input.metadata;
+    }
+
     const integration = await this.prisma.merchantIntegration.create({
-      data: {
-        merchantId,
-        vendorName: input.vendorName,
-        vendorVersion: input.vendorVersion ?? null,
-        merchantContactEmail: input.merchantContactEmail ?? null,
-        webhookUrl: input.webhookUrl ?? null,
-        metadata: input.metadata ?? null, // Prisma handles JSON serialization
-        // Legacy fields (will be deprecated)
-        integrationName: input.vendorName,
-        posProvider: input.vendorVersion ?? 'CUSTOM',
-        status: 'ACTIVE',
-      },
+      data: createData,
     });
 
     await this.auditService.record(
@@ -366,7 +378,8 @@ export class IntegrationsService {
       data.webhookUrl = input.webhookUrl;
     }
     if (input.metadata !== undefined) {
-      data.metadata = input.metadata;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      data.metadata = input.metadata as any;
     }
     if (input.status !== undefined) {
       data.status = input.status;
