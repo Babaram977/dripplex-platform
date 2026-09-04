@@ -4680,7 +4680,9 @@ model IntegrationLog {
   correlationId   String?   @map("correlation_id") @db.VarChar(64)
   createdAt       DateTime  @default(now()) @map("created_at")
 
-  integration     MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  /// RESTRICT delete: audit logs must never be deleted when integration disconnects.
+  /// History is immutable; soft-delete via archivedAt is the only removal mechanism.
+  integration     MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Restrict)
 
   @@index([integrationId, createdAt(sort: Desc)])
   @@index([responseStatus])
@@ -4711,7 +4713,9 @@ model IntegrationConflict {
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
-  integration      MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  /// RESTRICT delete: conflicts are audit records and must survive integration disconnect.
+  /// Merchants need the history to understand past issues and reconciliations.
+  integration      MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Restrict)
 
   @@index([integrationId, status])
   @@index([conflictType])
@@ -4738,7 +4742,9 @@ model CatalogSyncJob {
   failureReason String?   @map("failure_reason") @db.VarChar(500)
   createdAt     DateTime  @default(now()) @map("created_at")
 
-  integration   MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  /// RESTRICT delete: sync job history documents what was synchronized and when.
+  /// Disconnecting an integration must not erase this historical record.
+  integration   MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Restrict)
 
   @@index([integrationId, jobStatus])
   @@index([jobStatus])
@@ -4765,7 +4771,9 @@ model ProductSync {
   createdAt            DateTime  @default(now()) @map("created_at")
   updatedAt            DateTime  @updatedAt @map("updated_at")
 
-  integration          MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  /// RESTRICT delete: SKU mappings are audit records that child inventory updates depend on.
+  /// When an integration disconnects, mappings should be archived, not deleted.
+  integration          MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Restrict)
   inventoryUpdates     InventoryUpdate[]
 
   @@unique([integrationId, externalSku])
@@ -4802,8 +4810,12 @@ model InventoryUpdate {
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
 
-  integration       MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
-  productSync       ProductSync         @relation(fields: [productSyncId], references: [id], onDelete: Cascade)
+  /// RESTRICT delete: inventory events are audit records essential for reconciliation.
+  /// Disconnecting an integration must preserve this audit trail.
+  integration       MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Restrict)
+  /// RESTRICT delete: inventory updates depend on product mappings.
+  /// When mapping changes, updates referencing it must be retained.
+  productSync       ProductSync         @relation(fields: [productSyncId], references: [id], onDelete: Restrict)
 
   @@unique([integrationId, idempotencyKey])
   @@index([integrationId, deliveryStatus])
@@ -4836,7 +4848,9 @@ model OrderStatusUpdate {
   createdAt             DateTime  @default(now()) @map("created_at")
   updatedAt             DateTime  @updatedAt @map("updated_at")
 
-  integration           MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  /// RESTRICT delete: order status updates are audit records critical for order reconciliation.
+  /// Integration disconnection must not erase this historical record.
+  integration           MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Restrict)
 
   @@unique([integrationId, idempotencyKey])
   @@index([integrationId, reconciliationStatus])

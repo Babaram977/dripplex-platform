@@ -83,7 +83,7 @@ CREATE TABLE "integration_logs" (
   CONSTRAINT "integration_logs_integration_id_fk"
     FOREIGN KEY ("integration_id")
     REFERENCES "merchant_integrations"("id")
-    ON DELETE CASCADE
+    ON DELETE RESTRICT
 );
 
 CREATE INDEX "integration_logs_integration_id_created_at_idx" ON "integration_logs"("integration_id", "created_at" DESC);
@@ -108,7 +108,7 @@ CREATE TABLE "integration_conflicts" (
   CONSTRAINT "integration_conflicts_integration_id_fk"
     FOREIGN KEY ("integration_id")
     REFERENCES "merchant_integrations"("id")
-    ON DELETE CASCADE
+    ON DELETE RESTRICT
 );
 
 CREATE INDEX "integration_conflicts_integration_id_status_idx" ON "integration_conflicts"("integration_id", "status");
@@ -131,7 +131,7 @@ CREATE TABLE "catalog_sync_jobs" (
   CONSTRAINT "catalog_sync_jobs_integration_id_fk"
     FOREIGN KEY ("integration_id")
     REFERENCES "merchant_integrations"("id")
-    ON DELETE CASCADE
+    ON DELETE RESTRICT
 );
 
 CREATE INDEX "catalog_sync_jobs_integration_id_job_status_idx" ON "catalog_sync_jobs"("integration_id", "job_status");
@@ -154,7 +154,7 @@ CREATE TABLE "product_syncs" (
   CONSTRAINT "product_syncs_integration_id_fk"
     FOREIGN KEY ("integration_id")
     REFERENCES "merchant_integrations"("id")
-    ON DELETE CASCADE,
+    ON DELETE RESTRICT,
   CONSTRAINT "product_syncs_integration_id_external_sku_unique"
     UNIQUE ("integration_id", "external_sku")
 );
@@ -183,11 +183,11 @@ CREATE TABLE "inventory_updates" (
   CONSTRAINT "inventory_updates_integration_id_fk"
     FOREIGN KEY ("integration_id")
     REFERENCES "merchant_integrations"("id")
-    ON DELETE CASCADE,
+    ON DELETE RESTRICT,
   CONSTRAINT "inventory_updates_product_sync_id_fk"
     FOREIGN KEY ("product_sync_id")
     REFERENCES "product_syncs"("id")
-    ON DELETE CASCADE,
+    ON DELETE RESTRICT,
   CONSTRAINT "inventory_updates_integration_id_idempotency_key_unique"
     UNIQUE ("integration_id", "idempotency_key")
 );
@@ -214,7 +214,7 @@ CREATE TABLE "order_status_updates" (
   CONSTRAINT "order_status_updates_integration_id_fk"
     FOREIGN KEY ("integration_id")
     REFERENCES "merchant_integrations"("id")
-    ON DELETE CASCADE,
+    ON DELETE RESTRICT,
   CONSTRAINT "order_status_updates_integration_id_idempotency_key_unique"
     UNIQUE ("integration_id", "idempotency_key")
 );
