@@ -361,7 +361,15 @@ export class IntegrationsCController {
       credentials = [];
     }
 
-    return this.toResponseDtoWithCredentials(integration, credentials);
+    // Cast metadata to Record<string, unknown> for the DTO
+    /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+    return this.toResponseDtoWithCredentials(
+      {
+        ...integration,
+        metadata: integration.metadata as any,
+      },
+      credentials,
+    );
   }
 
   /**
