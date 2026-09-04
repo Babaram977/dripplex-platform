@@ -51,7 +51,7 @@ This plan specifies MKT-INT-001-C (Integration CRUD API) implementation scope, c
 - Endpoints verified against locked backlog (DPX-MKT-INT-001-IMPLEMENTATION-BACKLOG.md, Section MKT-INT-001-C)
 - HTTP methods: 6 endpoints, all exact paths confirmed
 - PUT (not PATCH) for update endpoint
-- `/test` endpoint confirmed in C scope (per backlog: "GET /api/integrations/{integrationId}/test")
+- `/test` endpoint confirmed in C scope (per backlog: "GET /api/v1/integrations/{integrationId}/test")
 
 ✅ **AMENDMENT 2: C vs D BOUNDARY — CREDENTIAL LIFECYCLE CLARIFICATION**
 
@@ -120,7 +120,7 @@ See "Exact Endpoint Contract Matrix" section below with all HTTP methods, paths,
 | Attribute               | Value                                                                                                                      |
 | ----------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | **HTTP Method**         | `POST`                                                                                                                     |
-| **Exact Path**          | `/api/integrations`                                                                                                        |
+| **Exact Path**          | `/api/v1/integrations`                                                                                                     |
 | **Authentication**      | JWT Bearer token (BearerAuth guard)                                                                                        |
 | **Authorization**       | Authenticated merchant (extracted via @CurrentMerchant)                                                                    |
 | **Request DTO**         | `CreateIntegrationDto` (vendorName, vendorVersion?, merchantContactEmail?, webhookUrl?, metadata?)                         |
@@ -139,7 +139,7 @@ See "Exact Endpoint Contract Matrix" section below with all HTTP methods, paths,
 | Attribute                | Value                                                                                                                                          |
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | **HTTP Method**          | `GET`                                                                                                                                          |
-| **Exact Path**           | `/api/integrations`                                                                                                                            |
+| **Exact Path**           | `/api/v1/integrations`                                                                                                                         |
 | **Query Parameters**     | includeArchived? (bool, default: false); limit? (1–100, default: 20); offset? (≥0, default: 0); status? (enum: ACTIVE, PAUSED, REVOKED, ERROR) |
 | **Authentication**       | JWT Bearer token (BearerAuth guard)                                                                                                            |
 | **Authorization**        | Authenticated merchant; can only list own integrations; includeArchived=true requires admin role                                               |
@@ -156,7 +156,7 @@ See "Exact Endpoint Contract Matrix" section below with all HTTP methods, paths,
 | Attribute              | Value                                                                                                                        |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | **HTTP Method**        | `GET`                                                                                                                        |
-| **Exact Path**         | `/api/integrations/{integrationId}`                                                                                          |
+| **Exact Path**         | `/api/v1/integrations/{integrationId}`                                                                                       |
 | **Path Parameter**     | integrationId: UUID                                                                                                          |
 | **Authentication**     | JWT Bearer token (BearerAuth guard)                                                                                          |
 | **Authorization**      | Authenticated merchant; can only access own integrations                                                                     |
@@ -173,7 +173,7 @@ See "Exact Endpoint Contract Matrix" section below with all HTTP methods, paths,
 | Attribute                   | Value                                                                                                                       |
 | --------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | **HTTP Method**             | `PUT` (not PATCH)                                                                                                           |
-| **Exact Path**              | `/api/integrations/{integrationId}`                                                                                         |
+| **Exact Path**              | `/api/v1/integrations/{integrationId}`                                                                                      |
 | **Path Parameter**          | integrationId: UUID                                                                                                         |
 | **Authentication**          | JWT Bearer token (BearerAuth guard)                                                                                         |
 | **Authorization**           | Authenticated merchant; can only update own integrations                                                                    |
@@ -193,7 +193,7 @@ See "Exact Endpoint Contract Matrix" section below with all HTTP methods, paths,
 | Attribute                 | Value                                                                                                       |
 | ------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | **HTTP Method**           | `DELETE`                                                                                                    |
-| **Exact Path**            | `/api/integrations/{integrationId}`                                                                         |
+| **Exact Path**            | `/api/v1/integrations/{integrationId}`                                                                      |
 | **Path Parameter**        | integrationId: UUID                                                                                         |
 | **Authentication**        | JWT Bearer token (BearerAuth guard)                                                                         |
 | **Authorization**         | Authenticated merchant; can only delete own integrations                                                    |
@@ -211,7 +211,7 @@ See "Exact Endpoint Contract Matrix" section below with all HTTP methods, paths,
 | Attribute          | Value                                                                                                  |
 | ------------------ | ------------------------------------------------------------------------------------------------------ |
 | **HTTP Method**    | `GET`                                                                                                  |
-| **Exact Path**     | `/api/integrations/{integrationId}/test`                                                               |
+| **Exact Path**     | `/api/v1/integrations/{integrationId}/test`                                                            |
 | **Path Parameter** | integrationId: UUID                                                                                    |
 | **Authentication** | JWT Bearer token (BearerAuth guard)                                                                    |
 | **Authorization**  | Authenticated merchant; can only test own integrations                                                 |
@@ -230,7 +230,7 @@ See "Exact Endpoint Contract Matrix" section below with all HTTP methods, paths,
 
 ### Feature Requirements (From Backlog)
 
-#### Create Integration (`POST /api/integrations`)
+#### Create Integration (`POST /api/v1/integrations`)
 
 **Input**:
 
@@ -288,7 +288,7 @@ See "Exact Endpoint Contract Matrix" section below with all HTTP methods, paths,
 - 401: Unauthenticated
 - 403: Merchant context missing (should not occur if B.1 guards work)
 
-#### List Integrations (`GET /api/integrations`)
+#### List Integrations (`GET /api/v1/integrations`)
 
 **Query Parameters**:
 
@@ -344,7 +344,7 @@ See "Exact Endpoint Contract Matrix" section below with all HTTP methods, paths,
 - 401: Unauthenticated
 - 403: includeArchived=true but not admin
 
-#### Get Integration (`GET /api/integrations/{integrationId}`)
+#### Get Integration (`GET /api/v1/integrations/{integrationId}`)
 
 **Processing**:
 
@@ -390,7 +390,7 @@ See "Exact Endpoint Contract Matrix" section below with all HTTP methods, paths,
 - 401: Unauthenticated
 - 404: Integration not found (including cross-merchant check)
 
-#### Update Integration (`PUT /api/integrations/{integrationId}`)
+#### Update Integration (`PUT /api/v1/integrations/{integrationId}`)
 
 **Input**:
 
@@ -419,7 +419,7 @@ See "Exact Endpoint Contract Matrix" section below with all HTTP methods, paths,
 7. Audit log: `integration.updated` with old/new values
 8. Return updated record
 
-**Output** (200 OK): Same as GET /api/integrations/{integrationId}
+**Output** (200 OK): Same as GET /api/v1/integrations/{integrationId}
 
 **Error Cases**:
 
@@ -428,7 +428,7 @@ See "Exact Endpoint Contract Matrix" section below with all HTTP methods, paths,
 - 404: Integration not found
 - **Note**: Cannot update credentials via this endpoint; use D (Credentials Management) for that
 
-#### Delete Integration (`DELETE /api/integrations/{integrationId}`)
+#### Delete Integration (`DELETE /api/v1/integrations/{integrationId}`)
 
 **Processing**:
 
@@ -447,7 +447,7 @@ See "Exact Endpoint Contract Matrix" section below with all HTTP methods, paths,
 - 401: Unauthenticated
 - 404: Integration not found
 
-#### Test Integration (`GET /api/integrations/{integrationId}/test`)
+#### Test Integration (`GET /api/v1/integrations/{integrationId}/test`)
 
 **Processing**:
 
@@ -918,13 +918,13 @@ async getIntegration(merchantId: string, integrationId: string) {
 
 **Integration Lifecycle**:
 
-| Event                             | Trigger                                              | Logged Data                                                              | Severity |
-| --------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------ | -------- |
-| `integration.created`             | POST /api/integrations succeeds                      | integrationId, vendorName, merchantId, timestamp                         | INFO     |
-| `integration.updated`             | PUT /api/integrations/{id} succeeds                  | integrationId, merchantId, old values, new values, timestamp             | INFO     |
-| `integration.deleted`             | DELETE /api/integrations/{id} succeeds (soft-delete) | integrationId, merchantId, timestamp                                     | INFO     |
-| `integration.test`                | GET /api/integrations/{id}/test succeeds or fails    | integrationId, merchantId, result (success/failure), latency, timestamp  | INFO     |
-| `integration.unauthorized_access` | Merchant A tries to access Merchant B's integration  | attempter merchantId, target integrationId, target merchantId, timestamp | WARN     |
+| Event                             | Trigger                                                 | Logged Data                                                              | Severity |
+| --------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------ | -------- |
+| `integration.created`             | POST /api/v1/integrations succeeds                      | integrationId, vendorName, merchantId, timestamp                         | INFO     |
+| `integration.updated`             | PUT /api/v1/integrations/{id} succeeds                  | integrationId, merchantId, old values, new values, timestamp             | INFO     |
+| `integration.deleted`             | DELETE /api/v1/integrations/{id} succeeds (soft-delete) | integrationId, merchantId, timestamp                                     | INFO     |
+| `integration.test`                | GET /api/v1/integrations/{id}/test succeeds or fails    | integrationId, merchantId, result (success/failure), latency, timestamp  | INFO     |
+| `integration.unauthorized_access` | Merchant A tries to access Merchant B's integration     | attempter merchantId, target integrationId, target merchantId, timestamp | WARN     |
 
 **Audit Log Structure**:
 
@@ -1143,11 +1143,11 @@ describe('IntegrationsController', () => {
     // Add BearerAuth guard with mocked JWT validation
   });
 
-  describe('POST /api/integrations', () => {
+  describe('POST /api/v1/integrations', () => {
     it('should return 201 with plaintext API key', async () => {
       const jwt = createJWT({ sub: 'merchant-1' });
       const response = await request(app.getHttpServer())
-        .post('/api/integrations')
+        .post('/api/v1/integrations')
         .set('Authorization', `Bearer ${jwt}`)
         .send({ vendorName: 'Square' });
 
@@ -1158,18 +1158,18 @@ describe('IntegrationsController', () => {
 
     it('should return 401 if unauthenticated', async () => {
       const response = await request(app.getHttpServer())
-        .post('/api/integrations')
+        .post('/api/v1/integrations')
         .send({ vendorName: 'Square' });
 
       expect(response.status).toBe(401);
     });
   });
 
-  describe('GET /api/integrations', () => {
+  describe('GET /api/v1/integrations', () => {
     it('should return 200 with pagination', async () => {
       const jwt = createJWT({ sub: 'merchant-1' });
       const response = await request(app.getHttpServer())
-        .get('/api/integrations?limit=10&offset=0')
+        .get('/api/v1/integrations?limit=10&offset=0')
         .set('Authorization', `Bearer ${jwt}`);
 
       expect(response.status).toBe(200);
@@ -1177,24 +1177,24 @@ describe('IntegrationsController', () => {
     });
   });
 
-  describe('GET /api/integrations/{id}', () => {
+  describe('GET /api/v1/integrations/{id}', () => {
     it('should return 404 for cross-merchant access', async () => {
       // Create integration for merchant-1
       // Query as merchant-2
       const jwt2 = createJWT({ sub: 'merchant-2' });
       const response = await request(app.getHttpServer())
-        .get(`/api/integrations/${merchant1IntegrationId}`)
+        .get(`/api/v1/integrations/${merchant1IntegrationId}`)
         .set('Authorization', `Bearer ${jwt2}`);
 
       expect(response.status).toBe(404);
     });
   });
 
-  describe('PUT /api/integrations/{id}', () => {
+  describe('PUT /api/v1/integrations/{id}', () => {
     it('should update integration metadata', async () => {
       const jwt = createJWT({ sub: 'merchant-1' });
       const response = await request(app.getHttpServer())
-        .put(`/api/integrations/${integrationId}`)
+        .put(`/api/v1/integrations/${integrationId}`)
         .set('Authorization', `Bearer ${jwt}`)
         .send({ vendorName: 'Toast' });
 
@@ -1203,11 +1203,11 @@ describe('IntegrationsController', () => {
     });
   });
 
-  describe('DELETE /api/integrations/{id}', () => {
+  describe('DELETE /api/v1/integrations/{id}', () => {
     it('should return 204 and soft-delete', async () => {
       const jwt = createJWT({ sub: 'merchant-1' });
       const response = await request(app.getHttpServer())
-        .delete(`/api/integrations/${integrationId}`)
+        .delete(`/api/v1/integrations/${integrationId}`)
         .set('Authorization', `Bearer ${jwt}`);
 
       expect(response.status).toBe(204);
@@ -1215,11 +1215,11 @@ describe('IntegrationsController', () => {
     });
   });
 
-  describe('GET /api/integrations/{id}/test', () => {
+  describe('GET /api/v1/integrations/{id}/test', () => {
     it('should test webhook connectivity', async () => {
       const jwt = createJWT({ sub: 'merchant-1' });
       const response = await request(app.getHttpServer())
-        .get(`/api/integrations/${integrationId}/test`)
+        .get(`/api/v1/integrations/${integrationId}/test`)
         .set('Authorization', `Bearer ${jwt}`);
 
       expect(response.status).toBe(200);
@@ -1233,25 +1233,25 @@ describe('IntegrationsController', () => {
 
 From DPX-MKT-INT-001-IMPLEMENTATION-BACKLOG.md, MKT-INT-001-C:
 
-1. ✅ **POST /api/integrations returns 201 with credentials (API key, scopes)**
+1. ✅ **POST /api/v1/integrations returns 201 with credentials (API key, scopes)**
    - Test: Create integration → verify status=201, apiKey returned, scopes=default
 
 2. ✅ **Credentials returned only once (subsequent GET returns masked key)**
    - Test: Create → get plaintext key; Call GET endpoint → verify publicSuffix (masked), never plaintext
 
-3. ✅ **GET /api/integrations returns only authenticated merchant's integrations (pagination)**
+3. ✅ **GET /api/v1/integrations returns only authenticated merchant's integrations (pagination)**
    - Test: Create 25 integrations for merchant-1; query as merchant-1 with limit=10 → verify 10 returned, hasMore=true; query as merchant-2 → verify 0 returned
 
-4. ✅ **GET /api/integrations/{id} returns full integration metadata**
+4. ✅ **GET /api/v1/integrations/{id} returns full integration metadata**
    - Test: Create integration with metadata; call GET → verify all fields present (vendorName, status, createdAt, credentials)
 
-5. ✅ **PUT /api/integrations/{id} updates name/description successfully**
+5. ✅ **PUT /api/v1/integrations/{id} updates name/description successfully**
    - Test: Create with vendorName="Square"; update to "Toast"; verify updated record returned
 
-6. ✅ **DELETE /api/integrations/{id} sets archived_at and excludes from list**
+6. ✅ **DELETE /api/v1/integrations/{id} sets archived_at and excludes from list**
    - Test: Create integration; delete; verify archivedAt set; query list → verify deleted integration not returned; verify GET returns 404
 
-7. ✅ **GET /api/integrations/{id}/test calls webhook URL and returns {success, latency_ms}**
+7. ✅ **GET /api/v1/integrations/{id}/test calls webhook URL and returns {success, latency_ms}**
    - Test: Create with webhookUrl; call test endpoint → verify status=SUCCESS, latencyMs>0; mock 500 error → verify status=FAILED
    - **Note**: /test endpoint confirmed in C scope (per DPX-MKT-INT-001-IMPLEMENTATION-BACKLOG.md)
 
@@ -1436,7 +1436,7 @@ C is **COMPLETE and READY for D phase** only when ALL 9 gates pass:
 
 - [ ] All 6 endpoints implemented per exact contract (POST, GET list, GET single, PUT, DELETE, GET /test)
 - [ ] HTTP methods correct (PUT not PATCH; GET not POST)
-- [ ] Paths exact (e.g., `/api/integrations/{integrationId}`, not `/api/integrations/{id}`)
+- [ ] Paths exact (e.g., `/api/v1/integrations/{integrationId}`, not `/api/integrations/{id}`)
 - [ ] Request/response DTOs match contract
 - [ ] All error codes implemented (401, 403, 404, 400, 500)
 
