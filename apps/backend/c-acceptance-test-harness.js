@@ -23,7 +23,8 @@ const assert = require('assert');
 // ─────────────────────────────────────────────────────────────────
 
 const BASE_URL = 'http://localhost:3000/api/v1';
-const JWT_SECRET = 'test-access-secret-with-at-least-32-chars';
+// Must match backend's JWT_ACCESS_SECRET from .env
+const JWT_SECRET = 'test-access-secret-with-at-least-32-chars-for-testing';
 
 // Test merchants (different JWT identities)
 const MERCHANT_A = {

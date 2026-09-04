@@ -271,6 +271,8 @@ export class IntegrationsService {
       createData.merchantContactEmail = input.merchantContactEmail;
     }
     if (input.webhookUrl) {
+      // Validate webhook URL for SSRF protection
+      this.ssrfProtection.validateUrl(input.webhookUrl);
       createData.webhookUrl = input.webhookUrl;
     }
     if (input.metadata) {
@@ -328,11 +330,19 @@ export class IntegrationsService {
    * Check if an integration exists globally (for distinguishing 404 vs 403 errors).
    * Returns true if the integration exists (regardless of merchant ownership),
    * false if it doesn't exist at all.
+   * Excludes archived (soft-deleted) integrations by default.
    */
-   
-  public async integrationExists(integrationId: string): Promise<boolean> {
+
+  public async integrationExists(integrationId: string, includeArchived = false): Promise<boolean> {
+    const where: Prisma.MerchantIntegrationWhereInput = { id: integrationId };
+
+    // Exclude archived integrations unless explicitly requested
+    if (!includeArchived) {
+      where.archivedAt = null;
+    }
+
     const integration = await this.prisma.merchantIntegration.findFirst({
-      where: { id: integrationId },
+      where,
       select: { id: true },
     });
     return !!integration;
