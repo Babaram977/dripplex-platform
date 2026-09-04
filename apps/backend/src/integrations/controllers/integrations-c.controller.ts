@@ -321,6 +321,10 @@ export class IntegrationsCController {
     let credentials: any[] = [];
     try {
       credentials = await this.credentialsService.listCredentials(merchantId, integrationId);
+      console.log(`✓ Loaded ${credentials.length} credentials for integration ${integrationId}`);
+      if (credentials.length > 0) {
+        console.log(`  First credential: id=${credentials[0].id}, publicSuffix=${credentials[0].publicSuffix}`);
+      }
     } catch (error) {
       // If credential loading fails, continue with empty credentials
       // (this prevents a single credential loading failure from breaking the entire GET)
@@ -331,7 +335,9 @@ export class IntegrationsCController {
       credentials = [];
     }
 
-    return this.toResponseDtoWithCredentials(integration, credentials);
+    const response = this.toResponseDtoWithCredentials(integration, credentials);
+    console.log(`✓ GET response credentials count: ${response.credentials.length}`);
+    return response;
   }
 
   /**
