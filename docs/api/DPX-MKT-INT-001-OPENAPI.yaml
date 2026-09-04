@@ -1,0 +1,1568 @@
+openapi: 3.1.0
+
+info:
+  title: DrippleX Merchant Integration Platform API
+  description: |
+    # DrippleX Merchant Integration Platform (MKT-INT-001)
+
+    Enables merchants' existing POS/order-management systems to communicate directly with DrippleX without manual data re-entry.
+
+    ## Key Principles
+
+    - **Domain-based source of truth**: POS owns catalog/inventory; DrippleX owns orders/payments/commissions
+    - **Idempotent operations**: All endpoints support safe retry via `Idempotency-Key`
+    - **Webhook-driven events**: POS systems receive real-time order/status updates
+    - **Merchant isolation**: APIs enforce strict tenant boundaries
+    - **Ride independence**: Zero authority over Ride transactions
+    - **Audit trail**: All integration events logged for compliance
+
+    ## Authentication
+
+    ### OAuth2 (Recommended for POS partners)
+    ```
+    POST /api/v1/integrations/oauth/token
+    Authorization: Basic <base64(client_id:client_secret)>
+    ```
+
+    ### API Key (Simpler systems)
+    ```
+    Authorization: ApiKey <api_key>
+    X-Webhook-Secret: <webhook_secret>
+    ```
+
+    Both methods return bearer tokens for subsequent API calls.
+
+    ## Source of Truth by Domain
+
+    | Domain | Authority | Flow |
+    |--------|-----------|------|
+    | Merchant Catalog | POS → DrippleX | POS publishes; DrippleX subscribes |
+    | Merchant Inventory | POS → DrippleX | Real-time sync via webhooks |
+    | DrippleX Orders | DrippleX → Customer/POS | DrippleX creates; POS receives |
+    | Order Fulfillment Status | Shared | POS updates status; DrippleX validates & broadcasts |
+    | Payments & Wallet | DrippleX only | POS has zero authority |
+    | Platform Commissions | DrippleX only | POS cannot modify |
+    | Ride Transactions | DrippleX only | **POS has ZERO access** |
+
+    ## Idempotency
+
+    All mutation endpoints accept `Idempotency-Key` header:
+    ```
+    POST /api/v1/integrations/orders/:id/status
+    Idempotency-Key: <uuid>
+    ```
+
+    **First request**: Returns 201/200 with created/updated resource
+    **Repeated request with same key**: Returns same response without duplicate operation
+
+    ## Error Responses
+
+    All errors follow the format:
+    ```json
+    {
+      "success": false,
+      "statusCode": 400,
+      "errorCode": "VALIDATION_ERROR",
+      "message": "Invalid input",
+      "path": "/api/v1/integrations/orders",
+      "timestamp": "2026-09-04T10:30:00.000Z",
+      "correlationId": "req_123abc",
+      "details": { "field": "price", "reason": "must be positive" }
+    }
+    ```
+
+  version: '1.0.0'
+  contact:
+    name: DrippleX Platform Team
+  license:
+    name: Proprietary
+
+servers:
+  - url: 'https://api.dripplex.com/api/v1'
+    description: Production
+  - url: 'http://localhost:3000/api/v1'
+    description: Local development
+
+tags:
+  - name: Integration Management
+    description: Create, configure, and manage merchant integrations
+  - name: Catalog Sync
+    description: Synchronize product catalog from POS to DrippleX
+  - name: Inventory Sync
+    description: Real-time inventory synchronization
+  - name: Order Integration
+    description: Order flow from DrippleX to POS and status updates
+  - name: Webhooks
+    description: Inbound webhook events from POS systems
+  - name: Integration Logs
+    description: View integration history and debug issues
+  - name: Conflicts
+    description: Resolve synchronization conflicts
+
+paths:
+  /integrations:
+    get:
+      summary: List merchant integrations
+      description: |
+        Returns all integrations for the authenticated merchant.
+        Admin users see integrations they manage.
+      operationId: listIntegrations
+      tags:
+        - Integration Management
+      security:
+        - BearerAuth: [integrations:read]
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [CONNECTED, CONNECTING, DISCONNECTED, FAILED]
+          description: Filter by connection status
+        - name: provider
+          in: query
+          schema:
+            type: string
+          description: Filter by POS provider name
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: List of merchant integrations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MerchantIntegration'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      summary: Create a new merchant integration
+      description: |
+        Initiates setup of a new POS integration.
+        Returns initial connection credentials (Client ID, Client Secret, API Key).
+        Merchant must then configure their POS system to connect back.
+      operationId: createIntegration
+      tags:
+        - Integration Management
+      security:
+        - BearerAuth: [integrations:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateIntegrationRequest'
+      responses:
+        '201':
+          description: Integration created with connection credentials
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/MerchantIntegrationWithCredentials'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Integration already exists for this provider
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /integrations/{integrationId}:
+    get:
+      summary: Get merchant integration details
+      operationId: getIntegration
+      tags:
+        - Integration Management
+      security:
+        - BearerAuth: [integrations:read]
+      parameters:
+        - name: integrationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Integration details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/MerchantIntegration'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      summary: Update merchant integration
+      description: Update integration configuration (webhook URL, sync frequency, etc.)
+      operationId: updateIntegration
+      tags:
+        - Integration Management
+      security:
+        - BearerAuth: [integrations:write]
+      parameters:
+        - name: integrationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateIntegrationRequest'
+      responses:
+        '200':
+          description: Integration updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/MerchantIntegration'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      summary: Disconnect merchant integration
+      description: |
+        Disconnects the integration. POS system stops receiving webhooks.
+        Historical data and logs are retained for audit.
+      operationId: disconnectIntegration
+      tags:
+        - Integration Management
+      security:
+        - BearerAuth: [integrations:write]
+      parameters:
+        - name: integrationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Integration disconnected
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /integrations/{integrationId}/test:
+    post:
+      summary: Test integration connection
+      description: |
+        Sends a test webhook to the POS system to verify connectivity.
+        Useful for diagnosing connection issues during setup.
+      operationId: testIntegration
+      tags:
+        - Integration Management
+      security:
+        - BearerAuth: [integrations:write]
+      parameters:
+        - name: integrationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Test initiated; check webhook delivery status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      testEventId:
+                        type: string
+                        format: uuid
+                      status:
+                        type: string
+                        enum: [PENDING, DELIVERED, FAILED]
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /integrations/{integrationId}/status:
+    get:
+      summary: Get integration connection status
+      description: Real-time status of the integration connection.
+      operationId: getIntegrationStatus
+      tags:
+        - Integration Management
+      security:
+        - BearerAuth: [integrations:read]
+      parameters:
+        - name: integrationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Integration status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/IntegrationStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /integrations/{integrationId}/catalog/sync:
+    post:
+      summary: Trigger catalog synchronization
+      description: |
+        Forces an immediate catalog sync from POS to DrippleX.
+        Returns a sync job ID. Poll the sync status endpoint for progress.
+      operationId: triggerCatalogSync
+      tags:
+        - Catalog Sync
+      security:
+        - BearerAuth: [catalog:write]
+      parameters:
+        - name: integrationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fullSync:
+                  type: boolean
+                  description: If true, re-sync all products. If false, only changed products.
+                  default: false
+      responses:
+        '202':
+          description: Sync job created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      syncJobId:
+                        type: string
+                        format: uuid
+                      status:
+                        type: string
+                        enum: [QUEUED, PROCESSING, COMPLETED, FAILED]
+                      createdAt:
+                        type: string
+                        format: date-time
+                      statusUrl:
+                        type: string
+                        format: uri
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /integrations/{integrationId}/catalog/sync/{syncJobId}:
+    get:
+      summary: Get catalog sync job status
+      operationId: getCatalogSyncStatus
+      tags:
+        - Catalog Sync
+      security:
+        - BearerAuth: [catalog:read]
+      parameters:
+        - name: integrationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: syncJobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Sync job status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/CatalogSyncJob'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /integrations/{integrationId}/products/sync:
+    post:
+      summary: Synchronize products from POS
+      description: |
+        POS system calls this to push product catalog to DrippleX.
+        Idempotent: multiple calls with same Idempotency-Key produce the same result.
+
+        **Merchant Catalog Authority:**
+        - POS is authoritative for: product name, SKU, price, description, availability, modifiers
+        - DrippleX maps external SKU to internal product ID
+        - DrippleX maintains independent commission, fulfillment, and audit data
+      operationId: syncProducts
+      tags:
+        - Catalog Sync
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: integrationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: UUID to prevent duplicate syncs
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                products:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/ProductSync'
+                  minItems: 1
+                  maxItems: 1000
+      responses:
+        '200':
+          description: Products synchronized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      created:
+                        type: integer
+                      updated:
+                        type: integer
+                      failed:
+                        type: integer
+                      errors:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            externalSku:
+                              type: string
+                            reason:
+                              type: string
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Conflict (e.g., SKU mapping conflict)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /integrations/{integrationId}/inventory/sync:
+    post:
+      summary: Synchronize inventory from POS
+      description: |
+        POS system calls this to push inventory levels to DrippleX.
+        Idempotent via Idempotency-Key.
+
+        **Merchant Inventory Authority:**
+        - POS is authoritative for stock levels
+        - DrippleX updates customer-facing availability in real time
+        - Inventory conflicts are logged and can be queried
+      operationId: syncInventory
+      tags:
+        - Inventory Sync
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: integrationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                inventory:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/InventoryUpdate'
+                  minItems: 1
+                  maxItems: 1000
+      responses:
+        '200':
+          description: Inventory synchronized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      updated:
+                        type: integer
+                      failed:
+                        type: integer
+                      errors:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            externalSku:
+                              type: string
+                            reason:
+                              type: string
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Inventory conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /integrations/{integrationId}/orders/{externalOrderId}/status:
+    post:
+      summary: Update order status from POS
+      description: |
+        POS system calls this to report order status changes.
+        Idempotent: calling twice with the same Idempotency-Key returns the same result.
+
+        **Status Flow:**
+        - RECEIVED: POS acknowledged the order
+        - ACCEPTED: Kitchen accepted; beginning preparation
+        - PREPARING: Food/items being prepared
+        - READY: Order ready for pickup
+        - PICKED_UP: Driver picked up the order
+        - DELIVERED: Customer received order (optional if driver delivers)
+
+        **Authority Rules:**
+        - POS updates fulfillment status
+        - DrippleX validates state transitions
+        - Payment status (PAID, FAILED) cannot be changed by POS (DrippleX-only)
+        - If POS says READY but DrippleX says PAYMENT_FAILED, payment status wins
+      operationId: updateOrderStatus
+      tags:
+        - Order Integration
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: integrationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: externalOrderId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Order ID from the POS system
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderStatusUpdate'
+      responses:
+        '200':
+          description: Order status updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      orderId:
+                        type: string
+                        format: uuid
+                      externalOrderId:
+                        type: string
+                      status:
+                        type: string
+                      updatedAt:
+                        type: string
+                        format: date-time
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict (invalid status transition)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /integrations/{integrationId}/logs:
+    get:
+      summary: List integration event logs
+      description: |
+        Returns audit trail of all integration events: sync jobs, order syncs, errors, retries.
+        Useful for debugging and compliance.
+      operationId: listIntegrationLogs
+      tags:
+        - Integration Logs
+      security:
+        - BearerAuth: [integrations:read]
+      parameters:
+        - name: integrationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: eventType
+          in: query
+          schema:
+            type: string
+            enum:
+              [
+                CATALOG_SYNC,
+                INVENTORY_SYNC,
+                ORDER_CREATED,
+                ORDER_STATUS_UPDATE,
+                WEBHOOK_DELIVERED,
+                WEBHOOK_FAILED,
+                CONFLICT_DETECTED,
+                RETRY_ATTEMPT,
+              ]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PENDING, SUCCESS, FAILED, CONFLICT]
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Integration event logs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/IntegrationLog'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /integrations/{integrationId}/logs/{logId}:
+    get:
+      summary: Get integration log event details
+      operationId: getIntegrationLog
+      tags:
+        - Integration Logs
+      security:
+        - BearerAuth: [integrations:read]
+      parameters:
+        - name: integrationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: logId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Log event details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/IntegrationLogDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /integrations/{integrationId}/conflicts:
+    get:
+      summary: List unresolved conflicts
+      description: |
+        Returns synchronization conflicts (price mismatches, inventory discrepancies, SKU mapping issues).
+        Useful for reconciliation and debugging.
+      operationId: listConflicts
+      tags:
+        - Conflicts
+      security:
+        - BearerAuth: [integrations:read]
+      parameters:
+        - name: integrationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [PRICE_CONFLICT, INVENTORY_CONFLICT, SKU_MAPPING_CONFLICT, ORDER_STATUS_CONFLICT]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [UNRESOLVED, RESOLVED]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Conflicts list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/IntegrationConflict'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /integrations/{integrationId}/conflicts/{conflictId}/resolve:
+    post:
+      summary: Resolve a conflict
+      description: |
+        Marks a conflict as resolved and applies the specified resolution rule.
+      operationId: resolveConflict
+      tags:
+        - Conflicts
+      security:
+        - BearerAuth: [integrations:write]
+      parameters:
+        - name: integrationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: conflictId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                resolution:
+                  type: string
+                  enum: [ACCEPT_DRIPPLEX, ACCEPT_POS, MANUAL_OVERRIDE]
+                  description: |
+                    - ACCEPT_DRIPPLEX: Use DrippleX value as source of truth
+                    - ACCEPT_POS: Use POS value as source of truth
+                    - MANUAL_OVERRIDE: Use a manually specified value
+                overrideValue:
+                  oneOf:
+                    - type: number
+                    - type: string
+                    - type: boolean
+                  description: Required when resolution is MANUAL_OVERRIDE
+      responses:
+        '200':
+          description: Conflict resolved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/IntegrationConflict'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: OAuth2 bearer token (JWT) for Merchant Portal and admin endpoints
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: |
+        API Key authentication for POS systems.
+        Format: `ApiKey dpx_api_<merchant_id>_<random>`
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid authentication
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            statusCode: 401
+            errorCode: UNAUTHORIZED
+            message: Missing or invalid authentication credentials
+            path: /api/v1/integrations
+            timestamp: '2026-09-04T10:30:00.000Z'
+
+    Forbidden:
+      description: Authenticated but insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            statusCode: 403
+            errorCode: FORBIDDEN
+            message: You do not have permission to access this resource
+            path: /api/v1/integrations
+            timestamp: '2026-09-04T10:30:00.000Z'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            statusCode: 404
+            errorCode: NOT_FOUND
+            message: Integration not found
+            path: /api/v1/integrations/xyz
+            timestamp: '2026-09-04T10:30:00.000Z'
+
+    ValidationError:
+      description: Validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            statusCode: 422
+            errorCode: VALIDATION_ERROR
+            message: Validation failed
+            path: /api/v1/integrations/orders/sync
+            timestamp: '2026-09-04T10:30:00.000Z'
+            details:
+              - field: price
+                message: Price must be positive
+
+  schemas:
+    # ─── Core Domain Schemas ───
+
+    MerchantIntegration:
+      type: object
+      required:
+        - id
+        - merchant_id
+        - provider
+        - status
+        - connection_status
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Integration ID
+        merchant_id:
+          type: string
+          format: uuid
+          description: Merchant ID
+        provider:
+          type: string
+          description: POS provider name (e.g., Square, Toast, Vend)
+          example: square
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE, PAUSED]
+        connection_status:
+          type: string
+          enum: [CONNECTED, CONNECTING, DISCONNECTED, FAILED]
+        last_sync_at:
+          type: string
+          format: date-time
+          nullable: true
+        sync_stats:
+          type: object
+          properties:
+            products_synced:
+              type: integer
+            inventory_synced:
+              type: integer
+            orders_synced:
+              type: integer
+            last_error:
+              type: string
+              nullable: true
+        webhook_url:
+          type: string
+          format: uri
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    MerchantIntegrationWithCredentials:
+      allOf:
+        - $ref: '#/components/schemas/MerchantIntegration'
+        - type: object
+          properties:
+            credentials:
+              type: object
+              properties:
+                client_id:
+                  type: string
+                  description: OAuth2 client ID
+                client_secret:
+                  type: string
+                  description: 'OAuth2 client secret (returned only once)'
+                api_key:
+                  type: string
+                  description: 'API key for simple systems (returned only once)'
+                webhook_secret:
+                  type: string
+                  description: 'HMAC signing key for webhooks (returned only once)'
+
+    IntegrationStatus:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [CONNECTED, CONNECTING, DISCONNECTED, FAILED]
+        last_heartbeat:
+          type: string
+          format: date-time
+          nullable: true
+        uptime_percent:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 100
+          description: 'Connection uptime over last 24 hours'
+        pending_syncs:
+          type: integer
+          description: Number of pending sync jobs
+        failed_operations:
+          type: integer
+          description: Number of failed operations in last hour
+        next_scheduled_sync:
+          type: string
+          format: date-time
+          nullable: true
+
+    CreateIntegrationRequest:
+      type: object
+      required:
+        - provider
+        - webhook_url
+      properties:
+        provider:
+          type: string
+          description: POS provider type
+          example: square
+        webhook_url:
+          type: string
+          format: uri
+          description: URL where POS will send webhook events
+          example: 'https://pos-system.local/dripplex/webhooks'
+        sync_frequency:
+          type: string
+          enum: [REAL_TIME, HOURLY, DAILY]
+          default: REAL_TIME
+        excluded_ride_types:
+          type: boolean
+          description: Exclude Ride transactions from this integration
+          default: true
+
+    UpdateIntegrationRequest:
+      type: object
+      properties:
+        webhook_url:
+          type: string
+          format: uri
+        sync_frequency:
+          type: string
+          enum: [REAL_TIME, HOURLY, DAILY]
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE, PAUSED]
+
+    CatalogSyncJob:
+      type: object
+      required:
+        - id
+        - integration_id
+        - status
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        integration_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [QUEUED, PROCESSING, COMPLETED, FAILED]
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        full_sync:
+          type: boolean
+        product_count:
+          type: integer
+        created:
+          type: integer
+          description: Number of products created
+        updated:
+          type: integer
+          description: Number of products updated
+        failed:
+          type: integer
+          description: Number of products failed
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              sku:
+                type: string
+              error:
+                type: string
+
+    ProductSync:
+      type: object
+      required:
+        - sku
+        - name
+        - price
+        - availability
+      properties:
+        sku:
+          type: string
+          description: External POS SKU (stable identifier)
+          example: SHA-001
+        name:
+          type: string
+          example: Chicken Shawarma
+        description:
+          type: string
+          nullable: true
+        price:
+          type: number
+          format: float
+          minimum: 0
+          example: 4500
+        cost:
+          type: number
+          format: float
+          minimum: 0
+          nullable: true
+          description: Cost to merchant (for reporting)
+        currency:
+          type: string
+          default: NGN
+        availability:
+          type: boolean
+          example: true
+        stock_quantity:
+          type: integer
+          minimum: 0
+          nullable: true
+        categories:
+          type: array
+          items:
+            type: string
+          example: ['main_course', 'shawarma']
+        modifiers:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductModifier'
+        metadata:
+          type: object
+          additionalProperties: true
+          description: POS-specific metadata (internal tracking)
+
+    ProductModifier:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          example: 'Sauce'
+        type:
+          type: string
+          enum: [SINGLE_SELECT, MULTI_SELECT, BOOLEAN, NUMERIC]
+        options:
+          type: array
+          items:
+            type: string
+          description: For SINGLE_SELECT / MULTI_SELECT
+        price:
+          type: number
+          format: float
+          nullable: true
+          description: Upcharge for this modifier
+
+    InventoryUpdate:
+      type: object
+      required:
+        - sku
+        - stock_quantity
+      properties:
+        sku:
+          type: string
+          example: SHA-001
+        stock_quantity:
+          type: integer
+          minimum: 0
+          example: 12
+        reserved_quantity:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Items reserved for pending orders
+        last_counted_at:
+          type: string
+          format: date-time
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+
+    OrderStatusUpdate:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [RECEIVED, ACCEPTED, PREPARING, READY, PICKED_UP, DELIVERED, CANCELLED]
+          example: PREPARING
+        expected_ready_time:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the order is expected to be ready
+        notes:
+          type: string
+          nullable: true
+          example: 'Preparing now, will be ready in 15 minutes'
+        cancellation_reason:
+          type: string
+          nullable: true
+          description: Required if status is CANCELLED
+
+    IntegrationLog:
+      type: object
+      required:
+        - id
+        - integration_id
+        - event_type
+        - status
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        integration_id:
+          type: string
+          format: uuid
+        event_type:
+          type: string
+          enum:
+            [
+              CATALOG_SYNC,
+              INVENTORY_SYNC,
+              ORDER_CREATED,
+              ORDER_STATUS_UPDATE,
+              WEBHOOK_DELIVERED,
+              WEBHOOK_FAILED,
+              CONFLICT_DETECTED,
+              RETRY_ATTEMPT,
+            ]
+        status:
+          type: string
+          enum: [PENDING, SUCCESS, FAILED, CONFLICT]
+        resource_type:
+          type: string
+          nullable: true
+          enum: [PRODUCT, INVENTORY, ORDER, INTEGRATION]
+        resource_id:
+          type: string
+          nullable: true
+        external_id:
+          type: string
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    IntegrationLogDetail:
+      allOf:
+        - $ref: '#/components/schemas/IntegrationLog'
+        - type: object
+          properties:
+            request_payload:
+              type: object
+              nullable: true
+              description: Request sent to POS or from POS
+            response_payload:
+              type: object
+              nullable: true
+              description: Response received
+            retry_count:
+              type: integer
+            next_retry_at:
+              type: string
+              format: date-time
+              nullable: true
+            details:
+              type: object
+              nullable: true
+              description: Additional context for debugging
+
+    IntegrationConflict:
+      type: object
+      required:
+        - id
+        - integration_id
+        - conflict_type
+        - status
+        - detected_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        integration_id:
+          type: string
+          format: uuid
+        conflict_type:
+          type: string
+          enum: [PRICE_CONFLICT, INVENTORY_CONFLICT, SKU_MAPPING_CONFLICT, ORDER_STATUS_CONFLICT]
+        status:
+          type: string
+          enum: [UNRESOLVED, RESOLVED]
+        entity_type:
+          type: string
+          enum: [PRODUCT, INVENTORY, ORDER]
+        entity_id:
+          type: string
+          nullable: true
+        external_entity_id:
+          type: string
+          nullable: true
+        dripplex_value:
+          oneOf:
+            - type: number
+            - type: string
+            - type: boolean
+            - type: object
+        pos_value:
+          oneOf:
+            - type: number
+            - type: string
+            - type: boolean
+            - type: object
+        resolution:
+          type: string
+          nullable: true
+          enum: [ACCEPT_DRIPPLEX, ACCEPT_POS, MANUAL_OVERRIDE]
+        resolved_at:
+          type: string
+          format: date-time
+          nullable: true
+        detected_at:
+          type: string
+          format: date-time
+
+    # ─── Pagination & Error Schemas ───
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+          minimum: 1
+        limit:
+          type: integer
+          minimum: 1
+        total:
+          type: integer
+          minimum: 0
+        has_more:
+          type: boolean
+
+    ErrorResponse:
+      type: object
+      required:
+        - success
+        - statusCode
+        - errorCode
+        - message
+        - path
+        - timestamp
+      properties:
+        success:
+          type: boolean
+          example: false
+        statusCode:
+          type: integer
+          example: 400
+        errorCode:
+          type: string
+          example: VALIDATION_ERROR
+        message:
+          type: string
+          example: 'Validation failed'
+        path:
+          type: string
+          format: uri
+          example: '/api/v1/integrations/orders'
+        timestamp:
+          type: string
+          format: date-time
+          example: '2026-09-04T10:30:00.000Z'
+        correlationId:
+          type: string
+          nullable: true
+          description: Request correlation ID for tracing
+        details:
+          type: object
+          nullable: true
+          description: Additional error details
