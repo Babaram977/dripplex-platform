@@ -9,6 +9,7 @@ import { IntegrationsController } from './controllers/integrations.controller';
 import { CredentialsService } from './services/credentials.service';
 import { EncryptionService } from './services/encryption.service';
 import { IntegrationsService } from './services/integrations.service';
+import { SsrfProtectionService } from './services/ssrf-protection.service';
 
 @Module({
   imports: [PrismaModule, AuditModule, AuthModule],
@@ -16,7 +17,7 @@ import { IntegrationsService } from './services/integrations.service';
     IntegrationsCController, // MKT-INT-001-C: Integration CRUD API (6 endpoints)
     IntegrationsController, // Legacy: Credential management endpoints (D phase, future)
   ],
-  providers: [IntegrationsService, CredentialsService, EncryptionService],
-  exports: [IntegrationsService, CredentialsService, EncryptionService],
+  providers: [IntegrationsService, CredentialsService, EncryptionService, SsrfProtectionService],
+  exports: [IntegrationsService, CredentialsService, EncryptionService, SsrfProtectionService],
 })
 export class IntegrationsModule {}

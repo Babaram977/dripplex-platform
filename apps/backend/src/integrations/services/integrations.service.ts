@@ -13,6 +13,8 @@ import {
   TestIntegrationResponseCDto,
 } from '../dtos';
 
+import { SsrfProtectionService } from './ssrf-protection.service';
+
 /**
  * Integration management service with merchant isolation and soft-delete support.
  *
@@ -24,6 +26,7 @@ export class IntegrationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly ssrfProtection: SsrfProtectionService,
   ) {}
 
   /**
@@ -250,11 +253,8 @@ export class IntegrationsService {
    * Creates integration record with vendorName, vendorVersion, etc.
    * Does NOT create credentials (caller handles credential generation via CredentialsService).
    */
-  public async createIntegrationC(
-    merchantId: string,
-    input: CreateIntegrationCDto,
-  ): Promise<any> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment */
+  public async createIntegrationC(merchantId: string, input: CreateIntegrationCDto): Promise<any> {
     const createData: any = {
       merchantId,
       vendorName: input.vendorName,
@@ -296,12 +296,14 @@ export class IntegrationsService {
 
     return integration;
   }
+  /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment */
 
   /**
    * MKT-INT-001-C: Get integration with C API contract
    *
    * Returns null if merchant doesn't own this integration (caller should throw 403).
    */
+  /* eslint-disable @typescript-eslint/no-explicit-any */
   public async getIntegrationC(merchantId: string, integrationId: string): Promise<any> {
     return await this.prisma.merchantIntegration.findFirst({
       where: {
@@ -311,10 +313,12 @@ export class IntegrationsService {
       },
     });
   }
+  /* eslint-enable @typescript-eslint/no-explicit-any */
 
   /**
    * MKT-INT-001-C: List integrations with C API contract
    */
+  /* eslint-disable @typescript-eslint/no-explicit-any */
   public async listIntegrationsC(
     merchantId: string,
     limit: number,
@@ -346,12 +350,14 @@ export class IntegrationsService {
 
     return { integrations, total };
   }
+  /* eslint-enable @typescript-eslint/no-explicit-any */
 
   /**
    * MKT-INT-001-C: Update integration with C API contract
    *
    * Returns null if merchant doesn't own this integration (caller should throw 403).
    */
+  /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment */
   public async updateIntegrationC(
     merchantId: string,
     integrationId: string,
@@ -378,7 +384,7 @@ export class IntegrationsService {
       data.webhookUrl = input.webhookUrl;
     }
     if (input.metadata !== undefined) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       data.metadata = input.metadata as any;
     }
     if (input.status !== undefined) {
@@ -396,20 +402,20 @@ export class IntegrationsService {
       {
         resource: 'integration',
         resourceId: integrationId,
-        metadata: Object.fromEntries(
-          Object.entries(input).filter(([, v]) => v !== undefined),
-        ),
+        metadata: Object.fromEntries(Object.entries(input).filter(([, v]) => v !== undefined)),
       },
     );
 
     return updated;
   }
+  /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment */
 
   /**
    * MKT-INT-001-C: Delete integration (soft-delete)
    *
    * Returns true if deleted, false if merchant doesn't own this integration.
    */
+  /* eslint-disable @typescript-eslint/no-unsafe-assignment */
   public async deleteIntegrationC(merchantId: string, integrationId: string): Promise<boolean> {
     // Verify merchant access
     const existing = await this.getIntegrationC(merchantId, integrationId);
@@ -444,13 +450,18 @@ export class IntegrationsService {
 
     return true;
   }
+  /* eslint-enable @typescript-eslint/no-unsafe-assignment */
 
   /**
    * MKT-INT-001-C: Test integration connectivity
    *
    * Tests webhook connectivity by sending HTTP GET to configured webhook URL.
    * Returns null if merchant doesn't own this integration.
+   *
+   * SSRF Protection: Validates destination URL before making any request.
+   * Blocks loopback, private IPs, cloud metadata endpoints, and other internal ranges.
    */
+  /* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment */
   public async testIntegrationC(
     merchantId: string,
     integrationId: string,
@@ -481,12 +492,41 @@ export class IntegrationsService {
       };
     }
 
+    // SSRF Protection: Validate URL before making request
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      this.ssrfProtection.validateUrl(integration.webhookUrl);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'URL validation failed';
+
+      await this.auditService.record(
+        'integration.test',
+        { userId: merchantId },
+        {
+          resource: 'integration',
+          resourceId: integrationId,
+          metadata: {
+            status: 'BLOCKED',
+            error: 'ssrf_protection',
+            reason: errorMessage,
+          },
+        },
+      );
+
+      return {
+        status: 'FAILED',
+        message: `Webhook validation failed: ${errorMessage}`,
+        testedAt: testedAt.toISOString(),
+      };
+    }
+
     // Test webhook connectivity
     try {
       const startTime = Date.now();
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+      const timeoutId = setTimeout(() => { controller.abort(); }, 5000); // 5 second timeout
 
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       const response = await fetch(integration.webhookUrl, {
         method: 'GET',
         signal: controller.signal,
@@ -510,7 +550,7 @@ export class IntegrationsService {
         },
       );
 
-      const status = response.status as number;
+      const status = response.status;
       return {
         status: isSuccess ? 'SUCCESS' : 'FAILED',
         message: isSuccess
@@ -545,6 +585,7 @@ export class IntegrationsService {
       };
     }
   }
+  /* eslint-enable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment */
 
   /**
    * Internal: Convert database model to DTO
