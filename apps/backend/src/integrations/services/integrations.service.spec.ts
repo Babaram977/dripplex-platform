@@ -1,8 +1,11 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { IntegrationsService } from './integrations.service';
-import { PrismaService } from '../../prisma/prisma.service';
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/ban-ts-comment */
+import { Test, type TestingModule } from '@nestjs/testing';
+
 import { AuditService } from '../../audit/audit.service';
 import { ForbiddenDomainException } from '../../common/exceptions/domain.exception';
+import { PrismaService } from '../../prisma/prisma.service';
+
+import { IntegrationsService } from './integrations.service';
 
 describe('IntegrationsService', () => {
   let service: IntegrationsService;
@@ -15,17 +18,18 @@ describe('IntegrationsService', () => {
   beforeEach(async () => {
     prisma = {
       merchantIntegration: {
-        findMany: jest.fn(),
-        findFirst: jest.fn(),
-        create: jest.fn(),
-        update: jest.fn(),
+        findMany: jest.fn() as any,
+        findFirst: jest.fn() as any,
+        create: jest.fn() as any,
+        update: jest.fn() as any,
       },
       integrationCredential: {
-        updateMany: jest.fn(),
+        updateMany: jest.fn() as any,
       },
     } as unknown as jest.Mocked<PrismaService>;
 
     audit = {
+      // @ts-ignore
       record: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<AuditService>;
 
@@ -55,12 +59,13 @@ describe('IntegrationsService', () => {
         archivedAt: null,
       };
 
+      // @ts-ignore
       prisma.merchantIntegration.findFirst.mockResolvedValue(null); // Merchant A cannot see B's integration
 
       // Merchant A attempts to access Merchant B's integration
-      await expect(
-        service.getIntegration(merchantA, integrationB.id),
-      ).rejects.toThrow(ForbiddenDomainException);
+      await expect(service.getIntegration(merchantA, integrationB.id)).rejects.toThrow(
+        ForbiddenDomainException,
+      );
 
       // Verify the query was correctly scoped
       expect(prisma.merchantIntegration.findFirst).toHaveBeenCalledWith({
@@ -86,6 +91,7 @@ describe('IntegrationsService', () => {
         updatedAt: new Date(),
       };
 
+      // @ts-ignore
       prisma.merchantIntegration.findFirst.mockResolvedValue(integrationA);
 
       const result = await service.getIntegration(merchantA, integrationA.id);
@@ -115,6 +121,7 @@ describe('IntegrationsService', () => {
         },
       ];
 
+      // @ts-ignore
       prisma.merchantIntegration.findMany.mockResolvedValue(integrationsA as any);
 
       await service.listIntegrations(merchantA);
@@ -140,12 +147,12 @@ describe('IntegrationsService', () => {
         updatedAt: new Date(),
       };
 
+      // @ts-ignore
       prisma.merchantIntegration.create.mockResolvedValue(newIntegration);
 
       await service.createIntegration(merchantA, {
         integrationName: 'New POS',
         posProvider: 'SHOPIFY' as any,
-        webhookUrl: undefined,
       });
 
       // Verify merchantId was forced from context, not from input
@@ -161,12 +168,13 @@ describe('IntegrationsService', () => {
 
   describe('getIntegration', () => {
     it('should return 403 (not 404) when integration not found', async () => {
+      // @ts-ignore
       prisma.merchantIntegration.findFirst.mockResolvedValue(null);
 
       // Attempt to access a non-existent integration (or one from another merchant)
-      const error = await service
+      const error = (await service
         .getIntegration(merchantA, 'nonexistent-id')
-        .catch((e) => e);
+        .catch((e: unknown) => e)) as any;
 
       expect(error).toBeInstanceOf(ForbiddenDomainException);
       expect(error.statusCode).toBe(403); // Not 404
@@ -182,11 +190,12 @@ describe('IntegrationsService', () => {
         archivedAt: new Date(),
       };
 
+      // @ts-ignore
       prisma.merchantIntegration.findFirst.mockResolvedValue(null); // Archived not returned
 
-      await expect(
-        service.getIntegration(merchantA, archivedIntegration.id),
-      ).rejects.toThrow(ForbiddenDomainException);
+      await expect(service.getIntegration(merchantA, archivedIntegration.id)).rejects.toThrow(
+        ForbiddenDomainException,
+      );
     });
   });
 
@@ -205,6 +214,7 @@ describe('IntegrationsService', () => {
         updatedAt: new Date(),
       };
 
+      // @ts-ignore
       prisma.merchantIntegration.create.mockResolvedValue(newInt);
 
       const result = await service.createIntegration(merchantA, {
@@ -214,7 +224,11 @@ describe('IntegrationsService', () => {
       });
 
       expect(result.merchantId).toBe(merchantA);
-      expect(audit.record).toHaveBeenCalledWith('integration.created', expect.any(Object), expect.any(Object));
+      expect(audit.record).toHaveBeenCalledWith(
+        'integration.created',
+        expect.any(Object),
+        expect.any(Object),
+      );
     });
 
     it('should support idempotent creates', async () => {
@@ -232,6 +246,7 @@ describe('IntegrationsService', () => {
       };
 
       // Simulate: same merchant, same name, same provider already exists
+      // @ts-ignore
       prisma.merchantIntegration.findFirst.mockResolvedValue(existingInt);
 
       const result = await service.createIntegration(
@@ -264,7 +279,9 @@ describe('IntegrationsService', () => {
         updatedAt: new Date(),
       };
 
+      // @ts-ignore
       prisma.merchantIntegration.findFirst.mockResolvedValue(integration);
+      // @ts-ignore
       prisma.merchantIntegration.update.mockResolvedValue({
         ...integration,
         status: 'ARCHIVED',
@@ -297,11 +314,12 @@ describe('IntegrationsService', () => {
     });
 
     it('should enforce merchant access before disconnecting', async () => {
+      // @ts-ignore
       prisma.merchantIntegration.findFirst.mockResolvedValue(null); // Different merchant
 
-      await expect(
-        service.disconnectIntegration(merchantA, 'someone-elses-int'),
-      ).rejects.toThrow(ForbiddenDomainException);
+      await expect(service.disconnectIntegration(merchantA, 'someone-elses-int')).rejects.toThrow(
+        ForbiddenDomainException,
+      );
 
       // Should not attempt to update credentials
       expect(prisma.integrationCredential.updateMany).not.toHaveBeenCalled();
@@ -316,6 +334,7 @@ describe('IntegrationsService', () => {
         archivedAt: null,
       };
 
+      // @ts-ignore
       prisma.merchantIntegration.findMany.mockResolvedValue([activeInt] as any);
 
       await service.listIntegrations(merchantA);
@@ -337,6 +356,7 @@ describe('IntegrationsService', () => {
         archivedAt: new Date(),
       };
 
+      // @ts-ignore
       prisma.merchantIntegration.findMany.mockResolvedValue([archivedInt] as any);
 
       await service.listIntegrations(merchantA, true);
@@ -351,6 +371,7 @@ describe('IntegrationsService', () => {
 
   describe('isIntegrationActive', () => {
     it('should return true for active integrations', async () => {
+      // @ts-ignore
       prisma.merchantIntegration.findFirst.mockResolvedValue({
         id: 'int-1',
         status: 'ACTIVE',
@@ -362,6 +383,7 @@ describe('IntegrationsService', () => {
     });
 
     it('should return false for archived integrations', async () => {
+      // @ts-ignore
       prisma.merchantIntegration.findFirst.mockResolvedValue(null);
 
       const isActive = await service.isIntegrationActive('int-archived');

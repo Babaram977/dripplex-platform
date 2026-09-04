@@ -1,9 +1,15 @@
-import { Test, TestingModule } from '@nestjs/testing';
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/ban-ts-comment, @typescript-eslint/no-non-null-assertion, @typescript-eslint/restrict-template-expressions, @typescript-eslint/restrict-plus-operands */
+import { Test, type TestingModule } from '@nestjs/testing';
+
+import { AuditService } from '../../audit/audit.service';
+import {
+  ForbiddenDomainException,
+  NotFoundDomainException,
+} from '../../common/exceptions/domain.exception';
+import { PrismaService } from '../../prisma/prisma.service';
+
 import { CredentialsService } from './credentials.service';
 import { EncryptionService } from './encryption.service';
-import { PrismaService } from '../../prisma/prisma.service';
-import { AuditService } from '../../audit/audit.service';
-import { ForbiddenDomainException, NotFoundDomainException } from '../../common/exceptions/domain.exception';
 
 describe('CredentialsService', () => {
   let service: CredentialsService;
@@ -17,13 +23,14 @@ describe('CredentialsService', () => {
   beforeEach(async () => {
     prisma = {
       merchantIntegration: {
-        findFirst: jest.fn(),
+        findFirst: jest.fn() as any,
       },
       integrationCredential: {
-        upsert: jest.fn(),
-        update: jest.fn(),
-        findFirst: jest.fn(),
-        findMany: jest.fn(),
+        upsert: jest.fn() as any,
+        update: jest.fn() as any,
+        findFirst: jest.fn() as any,
+        findMany: jest.fn() as any,
+        create: jest.fn() as any,
       },
     } as unknown as jest.Mocked<PrismaService>;
 
@@ -34,6 +41,7 @@ describe('CredentialsService', () => {
     } as unknown as jest.Mocked<EncryptionService>;
 
     audit = {
+      // @ts-ignore
       record: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<AuditService>;
 
@@ -55,11 +63,13 @@ describe('CredentialsService', () => {
 
   describe('createCredential', () => {
     it('should create an outgoing credential (encrypted)', async () => {
+      // @ts-ignore
       prisma.merchantIntegration.findFirst.mockResolvedValue({
         id: integrationId,
         merchantId,
       } as any);
 
+      // @ts-ignore
       prisma.integrationCredential.upsert.mockResolvedValue({
         id: 'cred-1',
         integrationId,
@@ -84,11 +94,13 @@ describe('CredentialsService', () => {
     });
 
     it('should create an incoming credential (hashed)', async () => {
+      // @ts-ignore
       prisma.merchantIntegration.findFirst.mockResolvedValue({
         id: integrationId,
         merchantId,
       } as any);
 
+      // @ts-ignore
       prisma.integrationCredential.upsert.mockResolvedValue({
         id: 'cred-2',
         integrationId,
@@ -109,6 +121,7 @@ describe('CredentialsService', () => {
     });
 
     it('should throw ForbiddenDomainException if integration not found', async () => {
+      // @ts-ignore
       prisma.merchantIntegration.findFirst.mockResolvedValue(null);
 
       await expect(
@@ -121,6 +134,7 @@ describe('CredentialsService', () => {
     });
 
     it('should throw ForbiddenDomainException if merchant does not own integration', async () => {
+      // @ts-ignore
       prisma.merchantIntegration.findFirst.mockResolvedValue(null); // Simulate wrong merchant
 
       await expect(
@@ -144,16 +158,20 @@ describe('CredentialsService', () => {
         scopes: ['integrations:read'],
       };
 
+      // @ts-ignore
       prisma.merchantIntegration.findFirst.mockResolvedValue({
         id: integrationId,
         merchantId,
       } as any);
 
+      // @ts-ignore
       prisma.integrationCredential.findFirst.mockResolvedValue(oldCred as any);
+      // @ts-ignore
       prisma.integrationCredential.update.mockResolvedValue({
         ...oldCred,
         archivedAt: new Date(),
       } as any);
+      // @ts-ignore
       prisma.integrationCredential.upsert.mockResolvedValue({
         id: 'new-cred',
         integrationId,
@@ -162,7 +180,12 @@ describe('CredentialsService', () => {
         createdAt: new Date(),
       } as any);
 
-      await service.rotateCredential(merchantId, integrationId, 'OUTGOING_OAUTH_TOKEN', 'new-secret');
+      await service.rotateCredential(
+        merchantId,
+        integrationId,
+        'OUTGOING_OAUTH_TOKEN',
+        'new-secret',
+      );
 
       // Verify old was archived
       expect(prisma.integrationCredential.update).toHaveBeenCalledWith(
@@ -174,10 +197,12 @@ describe('CredentialsService', () => {
     });
 
     it('should throw NotFoundDomainException if credential does not exist', async () => {
+      // @ts-ignore
       prisma.merchantIntegration.findFirst.mockResolvedValue({
         id: integrationId,
         merchantId,
       } as any);
+      // @ts-ignore
       prisma.integrationCredential.findFirst.mockResolvedValue(null);
 
       await expect(
@@ -188,16 +213,19 @@ describe('CredentialsService', () => {
 
   describe('revokeCredential', () => {
     it('should archive a credential', async () => {
+      // @ts-ignore
       prisma.merchantIntegration.findFirst.mockResolvedValue({
         id: integrationId,
         merchantId,
       } as any);
 
+      // @ts-ignore
       prisma.integrationCredential.findFirst.mockResolvedValue({
         id: 'cred-1',
         integrationId,
       } as any);
 
+      // @ts-ignore
       prisma.integrationCredential.update.mockResolvedValue({
         id: 'cred-1',
         archivedAt: new Date(),
@@ -217,10 +245,12 @@ describe('CredentialsService', () => {
     });
 
     it('should throw if credential not found', async () => {
+      // @ts-ignore
       prisma.merchantIntegration.findFirst.mockResolvedValue({
         id: integrationId,
         merchantId,
       } as any);
+      // @ts-ignore
       prisma.integrationCredential.findFirst.mockResolvedValue(null);
 
       await expect(
@@ -231,11 +261,13 @@ describe('CredentialsService', () => {
 
   describe('listCredentials', () => {
     it('should list active credentials for integration', async () => {
+      // @ts-ignore
       prisma.merchantIntegration.findFirst.mockResolvedValue({
         id: integrationId,
         merchantId,
       } as any);
 
+      // @ts-ignore
       prisma.integrationCredential.findMany.mockResolvedValue([
         {
           id: 'cred-1',
@@ -248,27 +280,30 @@ describe('CredentialsService', () => {
       const result = await service.listCredentials(merchantId, integrationId);
 
       expect(result).toHaveLength(1);
-      expect(result[0].credentialType).toBe('OUTGOING_OAUTH_TOKEN');
+      expect(result[0]!.credentialType).toBe('OUTGOING_OAUTH_TOKEN');
       // Should NOT expose the actual secret
-      expect(result[0].publicSuffix).not.toContain('token');
+      expect(result[0]!.publicSuffix).not.toContain('token');
     });
 
     it('should throw ForbiddenDomainException if merchant does not own integration', async () => {
+      // @ts-ignore
       prisma.merchantIntegration.findFirst.mockResolvedValue(null);
 
-      await expect(
-        service.listCredentials('wrong-merchant', integrationId),
-      ).rejects.toThrow(ForbiddenDomainException);
+      await expect(service.listCredentials('wrong-merchant', integrationId)).rejects.toThrow(
+        ForbiddenDomainException,
+      );
     });
   });
 
   describe('decryptOutgoingCredential', () => {
     it('should decrypt and return outgoing credential', async () => {
+      // @ts-ignore
       prisma.merchantIntegration.findFirst.mockResolvedValue({
         id: integrationId,
         merchantId,
       } as any);
 
+      // @ts-ignore
       prisma.integrationCredential.findFirst.mockResolvedValue({
         id: 'cred-1',
         integrationId,
@@ -288,11 +323,13 @@ describe('CredentialsService', () => {
     });
 
     it('should throw if credential is expired', async () => {
+      // @ts-ignore
       prisma.merchantIntegration.findFirst.mockResolvedValue({
         id: integrationId,
         merchantId,
       } as any);
 
+      // @ts-ignore
       prisma.integrationCredential.findFirst.mockResolvedValue({
         id: 'cred-1',
         credentialType: 'OUTGOING_OAUTH_TOKEN',
@@ -308,6 +345,7 @@ describe('CredentialsService', () => {
 
   describe('merchant isolation', () => {
     it('should prevent access to other merchants integrations', async () => {
+      // @ts-ignore
       prisma.merchantIntegration.findFirst.mockResolvedValue(null); // Simulate different merchant
 
       await expect(
@@ -318,12 +356,16 @@ describe('CredentialsService', () => {
         }),
       ).rejects.toThrow(ForbiddenDomainException);
 
-      await expect(
-        service.listCredentials('attacker-merchant', integrationId),
-      ).rejects.toThrow(ForbiddenDomainException);
+      await expect(service.listCredentials('attacker-merchant', integrationId)).rejects.toThrow(
+        ForbiddenDomainException,
+      );
 
       await expect(
-        service.decryptOutgoingCredential('attacker-merchant', integrationId, 'OUTGOING_OAUTH_TOKEN'),
+        service.decryptOutgoingCredential(
+          'attacker-merchant',
+          integrationId,
+          'OUTGOING_OAUTH_TOKEN',
+        ),
       ).rejects.toThrow(ForbiddenDomainException);
     });
   });

@@ -9,17 +9,23 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
-  Header,
+  Headers,
   Query,
 } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags, ApiBearerAuth, ApiParam, ApiBody, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+  ApiBearerAuth,
+  ApiParam,
+  ApiBody,
+  ApiQuery,
+} from '@nestjs/swagger';
 
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 import { MerchantScoped } from '../decorators/merchant-scoped.decorator';
-import { IntegrationsService } from '../services/integrations.service';
-import { CredentialsService } from '../services/credentials.service';
 import {
   CreateIntegrationDto,
   UpdateIntegrationDto,
@@ -27,6 +33,8 @@ import {
   RotateCredentialDto,
   IDEMPOTENCY_KEY_HEADER,
 } from '../dtos/integration.dto';
+import { CredentialsService } from '../services/credentials.service';
+import { IntegrationsService } from '../services/integrations.service';
 
 /**
  * Integration management API endpoints.
@@ -62,10 +70,10 @@ export class IntegrationsController {
     },
   })
   @ApiQuery({ name: 'includeArchived', required: false, type: Boolean })
-  async list(
+  public async list(
     @MerchantScoped() merchantId: string,
     @Query('includeArchived') includeArchived?: string,
-  ) {
+  ): Promise<{ data: unknown[]; count: number }> {
     const data = await this.integrationsService.listIntegrations(
       merchantId,
       includeArchived === 'true',
@@ -83,8 +91,11 @@ export class IntegrationsController {
   @ApiResponse({ status: 200, description: 'Integration details' })
   @ApiResponse({ status: 403, description: 'Access denied' })
   @ApiResponse({ status: 404, description: 'Not found' })
-  async getOne(@MerchantScoped() merchantId: string, @Param('id') integrationId: string) {
-    return this.integrationsService.getIntegration(merchantId, integrationId);
+  public async getOne(
+    @MerchantScoped() merchantId: string,
+    @Param('id') integrationId: string,
+  ): Promise<unknown> {
+    return await this.integrationsService.getIntegration(merchantId, integrationId);
   }
 
   /**
@@ -98,12 +109,17 @@ export class IntegrationsController {
   @ApiResponse({ status: 201, description: 'Integration created' })
   @ApiResponse({ status: 400, description: 'Invalid input' })
   @ApiResponse({ status: 409, description: 'Idempotency conflict' })
-  async create(
+  public async create(
     @MerchantScoped() merchantId: string,
     @Body() input: CreateIntegrationDto,
-    @Header(IDEMPOTENCY_KEY_HEADER) idempotencyKey?: string,
-  ) {
-    return this.integrationsService.createIntegration(merchantId, input, idempotencyKey);
+    @Headers() headers: Record<string, string | string[] | undefined>,
+  ): Promise<unknown> {
+    const idempotencyKey = headers[IDEMPOTENCY_KEY_HEADER];
+    return await this.integrationsService.createIntegration(
+      merchantId,
+      input,
+      idempotencyKey as string | undefined,
+    );
   }
 
   /**
@@ -117,12 +133,12 @@ export class IntegrationsController {
   @ApiResponse({ status: 200, description: 'Integration updated' })
   @ApiResponse({ status: 403, description: 'Access denied' })
   @ApiResponse({ status: 404, description: 'Not found' })
-  async update(
+  public async update(
     @MerchantScoped() merchantId: string,
     @Param('id') integrationId: string,
     @Body() input: UpdateIntegrationDto,
-  ) {
-    return this.integrationsService.updateIntegration(merchantId, integrationId, input);
+  ): Promise<unknown> {
+    return await this.integrationsService.updateIntegration(merchantId, integrationId, input);
   }
 
   /**
@@ -136,7 +152,10 @@ export class IntegrationsController {
   @ApiResponse({ status: 204, description: 'Integration disconnected' })
   @ApiResponse({ status: 403, description: 'Access denied' })
   @ApiResponse({ status: 404, description: 'Not found' })
-  async disconnect(@MerchantScoped() merchantId: string, @Param('id') integrationId: string) {
+  public async disconnect(
+    @MerchantScoped() merchantId: string,
+    @Param('id') integrationId: string,
+  ): Promise<void> {
     await this.integrationsService.disconnectIntegration(merchantId, integrationId);
   }
 
@@ -156,12 +175,12 @@ export class IntegrationsController {
   @ApiResponse({ status: 201, description: 'Credential created' })
   @ApiResponse({ status: 403, description: 'Access denied' })
   @ApiResponse({ status: 404, description: 'Integration not found' })
-  async createCredential(
+  public async createCredential(
     @MerchantScoped() merchantId: string,
     @Param('id') integrationId: string,
     @Body() input: CreateCredentialDto,
-  ) {
-    return this.credentialsService.createCredential(merchantId, {
+  ): Promise<unknown> {
+    return await this.credentialsService.createCredential(merchantId, {
       integrationId,
       credentialType: input.credentialType,
       secret: input.secret,
@@ -190,10 +209,10 @@ export class IntegrationsController {
   })
   @ApiResponse({ status: 403, description: 'Access denied' })
   @ApiResponse({ status: 404, description: 'Integration not found' })
-  async listCredentials(
+  public async listCredentials(
     @MerchantScoped() merchantId: string,
     @Param('id') integrationId: string,
-  ) {
+  ): Promise<{ data: unknown[]; count: number }> {
     const data = await this.credentialsService.listCredentials(merchantId, integrationId);
     return { data, count: data.length };
   }
@@ -211,15 +230,15 @@ export class IntegrationsController {
   @ApiResponse({ status: 201, description: 'Credential rotated' })
   @ApiResponse({ status: 403, description: 'Access denied' })
   @ApiResponse({ status: 404, description: 'Not found' })
-  async rotateCredential(
+  public async rotateCredential(
     @MerchantScoped() merchantId: string,
     @Param('id') integrationId: string,
-    @Param('credentialId') credentialId: string,
+    @Param('credentialId') _credentialId: string,
     @Body() input: RotateCredentialDto,
-  ) {
+  ): Promise<unknown> {
     // Note: credentialId is for future use if we support multiple creds per type
     // For now, rotation is by type
-    return this.credentialsService.rotateCredential(
+    return await this.credentialsService.rotateCredential(
       merchantId,
       integrationId,
       input.credentialType,
@@ -239,11 +258,11 @@ export class IntegrationsController {
   @ApiResponse({ status: 204, description: 'Credential revoked' })
   @ApiResponse({ status: 403, description: 'Access denied' })
   @ApiResponse({ status: 404, description: 'Not found' })
-  async revokeCredential(
+  public async revokeCredential(
     @MerchantScoped() merchantId: string,
     @Param('id') integrationId: string,
     @Param('credentialId') _credentialId: string,
-  ) {
+  ): Promise<void> {
     await this.credentialsService.revokeCredential(merchantId, integrationId, _credentialId);
   }
 }

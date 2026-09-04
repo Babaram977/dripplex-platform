@@ -1,4 +1,13 @@
-import { IsString, IsOptional, IsUrl, IsEnum, MinLength, MaxLength, IsArray, IsDateString } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsUrl,
+  IsEnum,
+  MinLength,
+  MaxLength,
+  IsArray,
+  IsDateString,
+} from 'class-validator';
 
 export enum PosProvider {
   SQUARE = 'SQUARE',
@@ -28,14 +37,14 @@ export class CreateIntegrationDto {
   @IsString()
   @MinLength(1)
   @MaxLength(150)
-  integrationName: string;
+  public readonly integrationName!: string;
 
   @IsEnum(PosProvider)
-  posProvider: PosProvider;
+  public readonly posProvider!: PosProvider;
 
   @IsOptional()
   @IsUrl()
-  webhookUrl?: string;
+  public readonly webhookUrl?: string;
 }
 
 /**
@@ -44,26 +53,26 @@ export class CreateIntegrationDto {
 export class UpdateIntegrationDto {
   @IsOptional()
   @IsEnum(IntegrationStatus)
-  status?: IntegrationStatus;
+  public readonly status?: IntegrationStatus;
 
   @IsOptional()
   @IsUrl()
-  webhookUrl?: string;
+  public readonly webhookUrl?: string;
 }
 
 /**
  * Integration Response DTO
  */
 export class IntegrationResponseDto {
-  id: string;
-  merchantId: string;
-  integrationName: string;
-  posProvider: string;
-  status: string;
-  webhookUrl: string | null;
-  lastSyncedAt: Date | null;
-  createdAt: Date;
-  updatedAt: Date;
+  public readonly id!: string;
+  public readonly merchantId!: string;
+  public readonly integrationName!: string;
+  public readonly posProvider!: string;
+  public readonly status!: string;
+  public readonly webhookUrl!: string | null;
+  public readonly lastSyncedAt!: Date | null;
+  public readonly createdAt!: Date;
+  public readonly updatedAt!: Date;
 }
 
 /**
@@ -71,20 +80,20 @@ export class IntegrationResponseDto {
  */
 export class CreateCredentialDto {
   @IsEnum(CredentialType)
-  credentialType: CredentialType;
+  public readonly credentialType!: CredentialType;
 
   @IsString()
   @MinLength(8)
-  secret: string;
+  public readonly secret!: string;
 
   @IsOptional()
   @IsDateString()
-  expiresAt?: string;
+  public readonly expiresAt?: string;
 
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
-  scopes?: string[];
+  public readonly scopes?: string[];
 }
 
 /**
@@ -92,24 +101,24 @@ export class CreateCredentialDto {
  */
 export class RotateCredentialDto {
   @IsEnum(CredentialType)
-  credentialType: CredentialType;
+  public readonly credentialType!: CredentialType;
 
   @IsString()
   @MinLength(8)
-  newSecret: string;
+  public readonly newSecret!: string;
 }
 
 /**
  * Credential Response DTO
  */
 export class CredentialResponseDto {
-  id: string;
-  credentialType: string;
-  publicSuffix: string;
-  expiresAt: Date | null;
-  rotatedAt: Date | null;
-  status: 'ACTIVE' | 'EXPIRED' | 'REVOKED';
-  createdAt: Date;
+  public readonly id!: string;
+  public readonly credentialType!: string;
+  public readonly publicSuffix!: string;
+  public readonly expiresAt!: Date | null;
+  public readonly rotatedAt!: Date | null;
+  public readonly status!: 'ACTIVE' | 'EXPIRED' | 'REVOKED';
+  public readonly createdAt!: Date;
 }
 
 /**

@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'crypto';
 
-import { AppConfigService } from '../../config/app-config.service';
+import { Injectable } from '@nestjs/common';
+
 import { ValidationDomainException } from '../../common/exceptions/domain.exception';
+import { AppConfigService } from '../../config/app-config.service';
 
 /**
  * Encryption service for outbound credentials (OAuth tokens, API secrets).
@@ -24,7 +25,9 @@ export class EncryptionService {
   constructor(private readonly appConfig: AppConfigService) {
     // Derive a stable encryption key from app secret
     // In production, consider using a dedicated key management service
-    const secret = (this.appConfig as any).appSecret || 'default-insecure-key';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
+    const secret = (this.appConfig as any).appSecret ?? 'default-insecure-key';
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
     this.encryptionKey = scryptSync(secret, 'integration-credentials', 32);
   }
 
@@ -55,12 +58,7 @@ export class EncryptionService {
       const authTag = cipher.getAuthTag();
 
       // Combine: IV || ciphertext || authTag
-      const combined = Buffer.concat([
-        iv,
-        encrypted,
-        final,
-        authTag,
-      ]);
+      const combined = Buffer.concat([iv, encrypted, final, authTag]);
 
       // Return as base64
       return combined.toString('base64');
@@ -88,9 +86,9 @@ export class EncryptionService {
       const combined = Buffer.from(encrypted, 'base64');
 
       // Extract components
-      const iv = combined.slice(0, 16);
-      const authTag = combined.slice(-16);
-      const ciphertext = combined.slice(16, -16);
+      const iv = combined.subarray(0, 16);
+      const authTag = combined.subarray(combined.length - 16);
+      const ciphertext = combined.subarray(16, combined.length - 16);
 
       if (iv.length !== 16 || authTag.length !== 16 || ciphertext.length === 0) {
         throw new Error('Invalid encrypted credential format');
@@ -101,10 +99,7 @@ export class EncryptionService {
       decipher.setAuthTag(authTag);
 
       // Decrypt
-      const plaintext = Buffer.concat([
-        decipher.update(ciphertext),
-        decipher.final(),
-      ]);
+      const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
 
       return plaintext.toString('utf8');
     } catch (error) {

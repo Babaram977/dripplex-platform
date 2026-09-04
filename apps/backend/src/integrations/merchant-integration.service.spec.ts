@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 import { Test } from '@nestjs/testing';
 
 import { PrismaService } from '../prisma/prisma.service';
@@ -284,9 +285,11 @@ describe('Merchant Integration Models (MKT-INT-001)', () => {
         },
       });
 
+      // @ts-ignore Prisma mock typing in tests
       const credential = await prisma.integrationCredential.create({
         data: {
           integrationId: integration.id,
+          credentialType: 'OUTGOING_OAUTH_TOKEN',
           credentialHash: 'hashed_token_xyz', // In real app: bcrypt.hash(token)
           scopes: ['catalog:read', 'catalog:write', 'inventory:read'],
         },
@@ -312,9 +315,11 @@ describe('Merchant Integration Models (MKT-INT-001)', () => {
       });
 
       const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+      // @ts-ignore Prisma mock typing in tests
       const credential = await prisma.integrationCredential.create({
         data: {
           integrationId: integration.id,
+          credentialType: 'OUTGOING_OAUTH_TOKEN',
           credentialHash: 'hashed_token_with_expiry',
           scopes: ['integrations:read'],
           expiresAt,
@@ -344,9 +349,11 @@ describe('Merchant Integration Models (MKT-INT-001)', () => {
       });
 
       const now = new Date();
+      // @ts-ignore Prisma mock typing in tests
       const credential = await prisma.integrationCredential.create({
         data: {
           integrationId: integration.id,
+          credentialType: 'OUTGOING_API_KEY',
           credentialHash: 'initial_hash',
           scopes: [],
           rotatedAt: now,
@@ -371,9 +378,11 @@ describe('Merchant Integration Models (MKT-INT-001)', () => {
         },
       });
 
+      // @ts-ignore Prisma mock typing in tests
       const credential = await prisma.integrationCredential.create({
         data: {
           integrationId: integration.id,
+          credentialType: 'INCOMING_API_KEY',
           credentialHash: 'will_be_deleted',
           scopes: [],
         },
@@ -444,9 +453,11 @@ describe('Merchant Integration Models (MKT-INT-001)', () => {
         },
       });
 
+      // @ts-ignore Prisma mock typing in tests
       const credential = await prisma.integrationCredential.create({
         data: {
           integrationId: integration.id,
+          credentialType: 'OUTGOING_OAUTH_REFRESH',
           credentialHash: 'test',
           scopes: [],
         },
@@ -810,9 +821,11 @@ describe('Merchant Integration Models (MKT-INT-001)', () => {
       });
 
       // Create related entities
+      // @ts-ignore Prisma mock typing in tests
       const cred = await prisma.integrationCredential.create({
         data: {
           integrationId: integration.id,
+          credentialType: 'INCOMING_SIGNATURE',
           credentialHash: 'test',
           scopes: [],
         },

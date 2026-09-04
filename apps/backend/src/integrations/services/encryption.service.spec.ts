@@ -1,6 +1,8 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { EncryptionService } from './encryption.service';
+import { Test, type TestingModule } from '@nestjs/testing';
+
 import { AppConfigService } from '../../config/app-config.service';
+
+import { EncryptionService } from './encryption.service';
 
 describe('EncryptionService', () => {
   let service: EncryptionService;
@@ -85,7 +87,10 @@ describe('EncryptionService', () => {
 
       // Tamper with the encrypted data
       const buffer = Buffer.from(encrypted, 'base64');
-      buffer[buffer.length - 1] ^= 0xff; // Flip last byte (auth tag)
+      const lastIndex = buffer.length - 1;
+      if (lastIndex >= 0 && buffer[lastIndex] !== undefined) {
+        buffer[lastIndex] ^= 0xff; // Flip last byte (auth tag)
+      }
       const tampered = buffer.toString('base64');
 
       expect(() => service.decrypt(tampered)).toThrow();
@@ -130,8 +135,10 @@ describe('EncryptionService', () => {
       const encrypted1 = service.encrypt(plaintext);
 
       // Create new service instance with same config
-      appConfigService.appSecret = 'test-secret-key-for-encryption';
-      const service2 = new EncryptionService(appConfigService);
+      const appConfigService2 = {
+        appSecret: 'test-secret-key-for-encryption',
+      } as unknown as AppConfigService;
+      const service2 = new EncryptionService(appConfigService2);
 
       // Should be able to decrypt with same key
       const decrypted = service2.decrypt(encrypted1);

@@ -1,4 +1,5 @@
-import { createParamDecorator, ExecutionContext, BadRequestException } from '@nestjs/common';
+import { createParamDecorator, type ExecutionContext, BadRequestException } from '@nestjs/common';
+
 import type { AuthenticatedUser } from '../../auth/auth.types';
 
 /**

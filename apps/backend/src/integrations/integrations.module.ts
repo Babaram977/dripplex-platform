@@ -1,13 +1,13 @@
 import { Module } from '@nestjs/common';
 
-import { PrismaModule } from '../prisma/prisma.module';
 import { AuditModule } from '../audit/audit.module';
 import { AuthModule } from '../auth/auth.module';
+import { PrismaModule } from '../prisma/prisma.module';
 
 import { IntegrationsController } from './controllers/integrations.controller';
-import { IntegrationsService } from './services/integrations.service';
 import { CredentialsService } from './services/credentials.service';
 import { EncryptionService } from './services/encryption.service';
+import { IntegrationsService } from './services/integrations.service';
 
 @Module({
   imports: [PrismaModule, AuditModule, AuthModule],

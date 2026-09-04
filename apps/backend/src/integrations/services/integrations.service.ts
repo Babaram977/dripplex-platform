@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
-import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { ForbiddenDomainException } from '../../common/exceptions/domain.exception';
+import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreateIntegrationDto,
   UpdateIntegrationDto,
@@ -26,7 +26,10 @@ export class IntegrationsService {
   /**
    * List all active integrations for a merchant.
    */
-  async listIntegrations(merchantId: string, includeArchived = false): Promise<IntegrationResponseDto[]> {
+  public async listIntegrations(
+    merchantId: string,
+    includeArchived = false,
+  ): Promise<IntegrationResponseDto[]> {
     const where: Prisma.MerchantIntegrationWhereInput = { merchantId };
 
     if (!includeArchived) {
@@ -46,7 +49,10 @@ export class IntegrationsService {
    *
    * @throws ForbiddenDomainException if merchant doesn't have access (not NotFoundException!)
    */
-  async getIntegration(merchantId: string, integrationId: string): Promise<IntegrationResponseDto> {
+  public async getIntegration(
+    merchantId: string,
+    integrationId: string,
+  ): Promise<IntegrationResponseDto> {
     const integration = await this.prisma.merchantIntegration.findFirst({
       where: {
         id: integrationId,
@@ -70,7 +76,7 @@ export class IntegrationsService {
    * @param input Integration creation data
    * @param idempotencyKey Optional idempotency key for safe retries
    */
-  async createIntegration(
+  public async createIntegration(
     merchantId: string,
     input: CreateIntegrationDto,
     idempotencyKey?: string,
@@ -98,22 +104,26 @@ export class IntegrationsService {
         merchantId, // ← Force from context
         integrationName: input.integrationName,
         posProvider: input.posProvider,
-        webhookUrl: input.webhookUrl || null,
+        webhookUrl: input.webhookUrl ?? null,
         status: 'ACTIVE',
       },
     });
 
     // Audit
-    await this.auditService.record('integration.created', {
-      userId: merchantId,
-    }, {
-      resource: 'integration',
-      resourceId: integration.id,
-      metadata: {
-        integrationName: integration.integrationName,
-        posProvider: integration.posProvider,
+    await this.auditService.record(
+      'integration.created',
+      {
+        userId: merchantId,
       },
-    });
+      {
+        resource: 'integration',
+        resourceId: integration.id,
+        metadata: {
+          integrationName: integration.integrationName,
+          posProvider: integration.posProvider,
+        },
+      },
+    );
 
     return this.toResponseDto(integration);
   }
@@ -121,7 +131,7 @@ export class IntegrationsService {
   /**
    * Update integration status or webhook URL.
    */
-  async updateIntegration(
+  public async updateIntegration(
     merchantId: string,
     integrationId: string,
     input: UpdateIntegrationDto,
@@ -145,13 +155,17 @@ export class IntegrationsService {
     });
 
     // Audit
-    await this.auditService.record('integration.updated', {
-      userId: merchantId,
-    }, {
-      resource: 'integration',
-      resourceId: integration.id,
-      metadata: Object.fromEntries(Object.entries(input).filter(([, v]) => v !== undefined)),
-    });
+    await this.auditService.record(
+      'integration.updated',
+      {
+        userId: merchantId,
+      },
+      {
+        resource: 'integration',
+        resourceId: integration.id,
+        metadata: Object.fromEntries(Object.entries(input).filter(([, v]) => v !== undefined)),
+      },
+    );
 
     return this.toResponseDto(integration);
   }
@@ -162,7 +176,7 @@ export class IntegrationsService {
    * This prevents the integration from being used but preserves audit history.
    * All related credentials are also archived.
    */
-  async disconnectIntegration(merchantId: string, integrationId: string): Promise<void> {
+  public async disconnectIntegration(merchantId: string, integrationId: string): Promise<void> {
     // Verify access
     await this.getIntegration(merchantId, integrationId);
 
@@ -182,19 +196,23 @@ export class IntegrationsService {
     });
 
     // Audit
-    await this.auditService.record('integration.disconnected', {
-      userId: merchantId,
-    }, {
-      resource: 'integration',
-      resourceId: integrationId,
-      metadata: { merchantId },
-    });
+    await this.auditService.record(
+      'integration.disconnected',
+      {
+        userId: merchantId,
+      },
+      {
+        resource: 'integration',
+        resourceId: integrationId,
+        metadata: { merchantId },
+      },
+    );
   }
 
   /**
    * Check if an integration is active (not archived, not expired).
    */
-  async isIntegrationActive(integrationId: string): Promise<boolean> {
+  public async isIntegrationActive(integrationId: string): Promise<boolean> {
     const integration = await this.prisma.merchantIntegration.findFirst({
       where: {
         id: integrationId,
@@ -209,7 +227,7 @@ export class IntegrationsService {
   /**
    * Verify merchant access to an integration (throws if no access).
    */
-  async verifyMerchantAccess(merchantId: string, integrationId: string): Promise<void> {
+  public async verifyMerchantAccess(merchantId: string, integrationId: string): Promise<void> {
     const integration = await this.prisma.merchantIntegration.findFirst({
       where: { id: integrationId, merchantId },
     });
@@ -222,7 +240,8 @@ export class IntegrationsService {
   /**
    * Internal: Convert database model to DTO
    */
-  private toResponseDto(integration: any): IntegrationResponseDto {
+  /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
+  private readonly toResponseDto = (integration: any): IntegrationResponseDto => {
     return {
       id: integration.id,
       merchantId: integration.merchantId,
@@ -234,5 +253,6 @@ export class IntegrationsService {
       createdAt: integration.createdAt,
       updatedAt: integration.updatedAt,
     };
-  }
+  };
+  /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
 }

@@ -1,18 +1,28 @@
 import { Injectable } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 
-import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
-import { NotFoundDomainException, ForbiddenDomainException, ValidationDomainException } from '../../common/exceptions/domain.exception';
+import {
+  NotFoundDomainException,
+  ForbiddenDomainException,
+  ValidationDomainException,
+} from '../../common/exceptions/domain.exception';
+import { PrismaService } from '../../prisma/prisma.service';
+
 import { EncryptionService } from './encryption.service';
 
 import type { IntegrationCredential } from '@prisma/client';
 
 export interface CreateCredentialInput {
   integrationId: string;
-  credentialType: 'INCOMING_API_KEY' | 'INCOMING_SIGNATURE' | 'OUTGOING_API_KEY' | 'OUTGOING_OAUTH_TOKEN' | 'OUTGOING_OAUTH_REFRESH';
+  credentialType:
+    | 'INCOMING_API_KEY'
+    | 'INCOMING_SIGNATURE'
+    | 'OUTGOING_API_KEY'
+    | 'OUTGOING_OAUTH_TOKEN'
+    | 'OUTGOING_OAUTH_REFRESH';
   secret: string;
-  expiresAt?: Date | undefined;
+  expiresAt?: Date | null | undefined;
   scopes?: string[] | undefined;
 }
 
@@ -46,7 +56,7 @@ export class CredentialsService {
    * Create a new credential for an integration.
    * Incoming credentials are hashed; outgoing are encrypted.
    */
-  async createCredential(
+  public async createCredential(
     merchantId: string,
     input: CreateCredentialInput,
   ): Promise<CredentialResponse> {
@@ -91,7 +101,7 @@ export class CredentialsService {
           where: { id: existing.id },
           data: {
             credentialHash,
-            expiresAt: input.expiresAt || null,
+            expiresAt: input.expiresAt ?? null,
             rotatedAt: new Date(),
             archivedAt: null, // Un-archive if was archived
           },
@@ -101,22 +111,26 @@ export class CredentialsService {
             integrationId: input.integrationId,
             credentialType: input.credentialType,
             credentialHash,
-            expiresAt: input.expiresAt || null,
-            scopes: input.scopes || [],
+            expiresAt: input.expiresAt ?? null,
+            scopes: input.scopes ?? [],
           },
         });
 
     // Audit
-    await this.auditService.record('integration.credential_created', {
-      userId: merchantId,
-    }, {
-      resource: 'credential',
-      resourceId: credential.id,
-      metadata: {
-        integrationId: input.integrationId,
-        credentialType: input.credentialType,
+    await this.auditService.record(
+      'integration.credential_created',
+      {
+        userId: merchantId,
       },
-    });
+      {
+        resource: 'credential',
+        resourceId: credential.id,
+        metadata: {
+          integrationId: input.integrationId,
+          credentialType: input.credentialType,
+        },
+      },
+    );
 
     return this.toResponse(credential, input.secret);
   }
@@ -124,7 +138,7 @@ export class CredentialsService {
   /**
    * Rotate an existing credential (create new, mark old as archived).
    */
-  async rotateCredential(
+  public async rotateCredential(
     merchantId: string,
     integrationId: string,
     credentialType: string,
@@ -155,19 +169,21 @@ export class CredentialsService {
     });
 
     // Create new credential
-    return this.createCredential(merchantId, {
+    /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment */
+    return await this.createCredential(merchantId, {
       integrationId,
       credentialType: credentialType as any,
       secret: newSecret,
       expiresAt: oldCredential.expiresAt,
       scopes: oldCredential.scopes,
     });
+    /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment */
   }
 
   /**
    * Revoke a credential (soft-delete via archivedAt).
    */
-  async revokeCredential(
+  public async revokeCredential(
     merchantId: string,
     integrationId: string,
     credentialId: string,
@@ -196,19 +212,23 @@ export class CredentialsService {
     });
 
     // Audit
-    await this.auditService.record('integration.credential_revoked', {
-      userId: merchantId,
-    }, {
-      resource: 'credential',
-      resourceId: credentialId,
-      metadata: { integrationId },
-    });
+    await this.auditService.record(
+      'integration.credential_revoked',
+      {
+        userId: merchantId,
+      },
+      {
+        resource: 'credential',
+        resourceId: credentialId,
+        metadata: { integrationId },
+      },
+    );
   }
 
   /**
    * List active credentials for an integration.
    */
-  async listCredentials(
+  public async listCredentials(
     merchantId: string,
     integrationId: string,
   ): Promise<CredentialResponse[]> {
@@ -231,14 +251,14 @@ export class CredentialsService {
     });
 
     // Convert to response (without revealing secret)
-    return credentials.map(cred => this.toResponse(cred, ''));
+    return credentials.map((cred) => this.toResponse(cred, ''));
   }
 
   /**
    * Get and decrypt an outgoing credential.
    * Use this only when making API calls to external systems.
    */
-  async decryptOutgoingCredential(
+  public async decryptOutgoingCredential(
     merchantId: string,
     integrationId: string,
     credentialType: string,
@@ -277,7 +297,7 @@ export class CredentialsService {
   /**
    * Verify an incoming credential (e.g., webhook signature).
    */
-  async verifyIncomingCredential(
+  public async verifyIncomingCredential(
     merchantId: string,
     integrationId: string,
     credentialType: string,
@@ -316,7 +336,10 @@ export class CredentialsService {
   /**
    * Convert credential to response DTO (without exposing secrets).
    */
-  private toResponse(credential: IntegrationCredential & { credentialType?: string }, plaintext: string): CredentialResponse {
+  private toResponse(
+    credential: IntegrationCredential & { credentialType?: string },
+    plaintext: string,
+  ): CredentialResponse {
     const now = new Date();
     const status = credential.archivedAt
       ? 'REVOKED'
@@ -326,7 +349,8 @@ export class CredentialsService {
 
     return {
       id: credential.id,
-      credentialType: (credential as any).credentialType || 'UNKNOWN',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+      credentialType: (credential as any).credentialType ?? 'UNKNOWN',
       publicSuffix: plaintext ? this.encryptionService.getPublicSuffix(plaintext) : '****',
       expiresAt: credential.expiresAt,
       rotatedAt: credential.rotatedAt,
