@@ -102,7 +102,8 @@ describe('EncryptionService', () => {
       const token = 'sk_live_abc123xyz789';
       const suffix = service.getPublicSuffix(token, 4);
 
-      expect(suffix).toBe('*' + '*'.repeat(token.length - 5) + '789');
+      // Token is 20 chars, last 4 are 'z789', prefix is asterisks for 16 chars
+      expect(suffix).toBe('*'.repeat(token.length - 4) + 'z789');
       expect(suffix).not.toContain('abc');
     });
 

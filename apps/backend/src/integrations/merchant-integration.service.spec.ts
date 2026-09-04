@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 import { Test } from '@nestjs/testing';
+import { Logger } from 'nestjs-pino';
 
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -24,7 +25,18 @@ describe('Merchant Integration Models (MKT-INT-001)', () => {
 
   beforeAll(async () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
-      providers: [PrismaService],
+      providers: [
+        PrismaService,
+        {
+          provide: Logger,
+          useValue: {
+            log: jest.fn(),
+            error: jest.fn(),
+            warn: jest.fn(),
+            debug: jest.fn(),
+          },
+        },
+      ],
     }).compile();
 
     prisma = moduleRef.get<PrismaService>(PrismaService);

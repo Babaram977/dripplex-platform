@@ -69,8 +69,13 @@ describe('CredentialsService', () => {
         merchantId,
       } as any);
 
+      // Mock findFirst (no existing credential)
       // @ts-ignore
-      prisma.integrationCredential.upsert.mockResolvedValue({
+      prisma.integrationCredential.findFirst.mockResolvedValue(null);
+
+      // Mock create (new credential)
+      // @ts-ignore
+      prisma.integrationCredential.create.mockResolvedValue({
         id: 'cred-1',
         integrationId,
         credentialType: 'OUTGOING_OAUTH_TOKEN',
@@ -100,8 +105,13 @@ describe('CredentialsService', () => {
         merchantId,
       } as any);
 
+      // Mock findFirst (no existing credential)
       // @ts-ignore
-      prisma.integrationCredential.upsert.mockResolvedValue({
+      prisma.integrationCredential.findFirst.mockResolvedValue(null);
+
+      // Mock create (new credential)
+      // @ts-ignore
+      prisma.integrationCredential.create.mockResolvedValue({
         id: 'cred-2',
         integrationId,
         credentialType: 'INCOMING_API_KEY',
