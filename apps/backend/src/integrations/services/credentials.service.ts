@@ -227,13 +227,16 @@ export class CredentialsService {
   }
 
   /**
-   * List active credentials for an integration.
+   * List credentials for an integration.
+   * By default, lists only active (non-archived) credentials.
+   * Set includeArchived=true to include archived credentials.
    */
   public async listCredentials(
     merchantId: string,
     integrationId: string,
+    includeArchived = false,
   ): Promise<CredentialResponse[]> {
-    // Verify integration
+    // Verify integration (allow listing archived credentials if includeArchived=true)
     const integration = await this.prisma.merchantIntegration.findFirst({
       where: { id: integrationId, merchantId },
     });
@@ -242,17 +245,31 @@ export class CredentialsService {
       throw new ForbiddenDomainException('Integration not found or access denied');
     }
 
-    // List active credentials
+    // List credentials with optional archived filter
+    const where: { integrationId: string; archivedAt?: null } = { integrationId };
+    if (!includeArchived) {
+      where.archivedAt = null;
+    }
+
     const credentials = await this.prisma.integrationCredential.findMany({
-      where: {
-        integrationId,
-        archivedAt: null,
-      },
+      where,
       orderBy: { createdAt: 'desc' },
     });
 
     // Convert to response (without revealing secret)
-    return credentials.map((cred) => this.toResponse(cred, ''));
+    return credentials.map((cred) => {
+      // Decrypt outgoing credentials to compute public suffix
+      let plaintext = '';
+      if (cred.credentialType.startsWith('OUTGOING_')) {
+        try {
+          plaintext = this.encryptionService.decrypt(cred.credentialHash);
+        } catch {
+          // If decryption fails, use default masking
+          plaintext = '';
+        }
+      }
+      return this.toResponse(cred, plaintext);
+    });
   }
 
   /**

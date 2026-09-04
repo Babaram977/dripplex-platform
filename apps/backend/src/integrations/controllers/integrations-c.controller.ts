@@ -15,6 +15,7 @@ import {
   HttpStatus,
   Query,
   ForbiddenException,
+  NotFoundException,
 } from '@nestjs/common';
 import {
   ApiOperation,
@@ -290,6 +291,12 @@ export class IntegrationsCController {
     description: 'Integration UUID',
     format: 'uuid',
   })
+  @ApiQuery({
+    name: 'includeArchived',
+    required: false,
+    type: Boolean,
+    description: 'Include soft-deleted (archived) integrations in results',
+  })
   @ApiResponse({
     status: 200,
     description: 'Integration details',
@@ -304,24 +311,52 @@ export class IntegrationsCController {
   public async getOne(
     @MerchantScoped() merchantId: string,
     @Param('integrationId') integrationId: string,
+    @Query('includeArchived') includeArchived?: string,
   ): Promise<IntegrationResponseCDto> {
+    const include = includeArchived === 'true' || includeArchived === '1';
     let integration;
     try {
-      integration = await this.integrationsService.getIntegrationC(merchantId, integrationId);
-    } catch (error) {
+      integration = await this.integrationsService.getIntegrationC(
+        merchantId,
+        integrationId,
+        include,
+      );
+    } catch (_error) {
       // Prisma errors on invalid UUID format or other DB issues
       throw new ForbiddenException('Integration not found or access denied');
     }
 
     if (!integration) {
-      throw new ForbiddenException('Integration not found or access denied');
+      // Check if the integration exists globally to distinguish 404 vs 403
+      try {
+        const exists = await this.integrationsService.integrationExists(integrationId);
+        if (exists) {
+          // Integration exists but belongs to a different merchant (cross-merchant access)
+          throw new ForbiddenException('Integration not found or access denied');
+        } else {
+          // Integration doesn't exist at all
+          throw new NotFoundException('Integration not found');
+        }
+      } catch (error) {
+        // If it's a NotFoundException or ForbiddenException, re-throw it
+        if (error instanceof NotFoundException || error instanceof ForbiddenException) {
+          throw error;
+        }
+        // For any other error, default to 403
+        throw new ForbiddenException('Integration not found or access denied');
+      }
     }
 
-    // Load credentials for this integration
+    // Load credentials for this integration (including archived if requested)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let credentials: any[] = [];
     try {
-      credentials = await this.credentialsService.listCredentials(merchantId, integrationId);
-    } catch (error) {
+      credentials = await this.credentialsService.listCredentials(
+        merchantId,
+        integrationId,
+        include,
+      );
+    } catch (_error) {
       // If credential loading fails, continue with empty credentials
       credentials = [];
     }
@@ -493,6 +528,7 @@ export class IntegrationsCController {
   /**
    * Convert database integration record to IntegrationResponseCDto with credentials
    */
+  /* eslint-disable @typescript-eslint/no-explicit-any */
   private toResponseDtoWithCredentials(
     integration: {
       id: string;
@@ -509,6 +545,7 @@ export class IntegrationsCController {
     },
     credentials: any[],
   ): IntegrationResponseCDto {
+    /* eslint-enable @typescript-eslint/no-explicit-any */
     const response: IntegrationResponseCDto = {
       integrationId: integration.id,
       merchantId: integration.merchantId,

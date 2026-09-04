@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, MerchantIntegration } from '@prisma/client';
 
 import { AuditService } from '../../audit/audit.service';
 import { ForbiddenDomainException } from '../../common/exceptions/domain.exception';
@@ -301,19 +301,43 @@ export class IntegrationsService {
   /**
    * MKT-INT-001-C: Get integration with C API contract
    *
-   * Returns null if merchant doesn't own this integration (caller should throw 403).
+   * Returns the integration if it exists and belongs to the merchant.
+   * Returns null if merchant doesn't own this integration.
+   * By default, excludes archived (soft-deleted) integrations. Set includeArchived=true
+   * to include archived items (e.g., for retrieving deleted integration data).
    */
-  /* eslint-disable @typescript-eslint/no-explicit-any */
-  public async getIntegrationC(merchantId: string, integrationId: string): Promise<any> {
-    return await this.prisma.merchantIntegration.findFirst({
-      where: {
-        id: integrationId,
-        merchantId,
-        archivedAt: null,
-      },
-    });
+  public async getIntegrationC(
+    merchantId: string,
+    integrationId: string,
+    includeArchived = false,
+  ): Promise<MerchantIntegration | null> {
+    const where: Prisma.MerchantIntegrationWhereInput = {
+      id: integrationId,
+      merchantId,
+    };
+
+    // Only filter for active items if not including archived
+    if (!includeArchived) {
+      where.archivedAt = null;
+    }
+
+    return await this.prisma.merchantIntegration.findFirst({ where });
   }
-  /* eslint-enable @typescript-eslint/no-explicit-any */
+
+  /**
+   * Check if an integration exists globally (for distinguishing 404 vs 403 errors).
+   * Returns true if the integration exists (regardless of merchant ownership),
+   * false if it doesn't exist at all.
+   */
+   
+  public async integrationExists(integrationId: string): Promise<boolean> {
+    const integration = await this.prisma.merchantIntegration.findFirst({
+      where: { id: integrationId },
+      select: { id: true },
+    });
+    return !!integration;
+  }
+   
 
   /**
    * MKT-INT-001-C: List integrations with C API contract
@@ -418,7 +442,7 @@ export class IntegrationsService {
    *
    * Returns true if deleted, false if merchant doesn't own this integration.
    */
-  /* eslint-disable @typescript-eslint/no-unsafe-assignment */
+   
   public async deleteIntegrationC(merchantId: string, integrationId: string): Promise<boolean> {
     // Verify merchant access
     const existing = await this.getIntegrationC(merchantId, integrationId);
@@ -453,7 +477,7 @@ export class IntegrationsService {
 
     return true;
   }
-  /* eslint-enable @typescript-eslint/no-unsafe-assignment */
+   
 
   /**
    * MKT-INT-001-C: Test integration connectivity
@@ -464,7 +488,7 @@ export class IntegrationsService {
    * SSRF Protection: Validates destination URL before making any request.
    * Blocks loopback, private IPs, cloud metadata endpoints, and other internal ranges.
    */
-  /* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment */
+   
   public async testIntegrationC(
     merchantId: string,
     integrationId: string,
@@ -497,7 +521,7 @@ export class IntegrationsService {
 
     // SSRF Protection: Validate URL before making request
     try {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+       
       this.ssrfProtection.validateUrl(integration.webhookUrl);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'URL validation failed';
@@ -531,7 +555,7 @@ export class IntegrationsService {
         controller.abort();
       }, 5000); // 5 second timeout
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+       
       const response = await fetch(integration.webhookUrl, {
         method: 'GET',
         signal: controller.signal,
@@ -590,7 +614,7 @@ export class IntegrationsService {
       };
     }
   }
-  /* eslint-enable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment */
+   
 
   /**
    * Internal: Convert database model to DTO
