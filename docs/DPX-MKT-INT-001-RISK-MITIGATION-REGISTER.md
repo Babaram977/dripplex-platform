@@ -94,6 +94,24 @@ where:
 | 6–11  | **MEDIUM**     | Awareness and mitigation; regular testing |
 | 1–5   | **LOW**        | Monitor; contingency plan                 |
 
+### Risk Score vs Release Blocker Status
+
+**CRITICAL DISTINCTION**: Risk Score is a **numerical rating** based on Likelihood × Severity × Detection Gap. **Release Blocker status is determined by business/architectural impact**, independent of numerical score.
+
+A **low-probability risk can still be a release blocker** if its impact is architecturally unacceptable. Examples:
+
+- **Ride Boundary Violation** (Score: 5): Low probability if properly isolated, but **CRITICAL RELEASE BLOCKER** because exposing Ride data to POS violates architectural boundaries. Must not proceed without explicit protection.
+
+- **Credential Compromise** (Score: 15): High probability of occurrence; also a **critical blocker** because impact (complete system compromise) is unacceptable.
+
+- **Network Latency** (Score: 5–8): May be medium risk, but **not a release blocker** because mitigation (timeout + retry) is acceptable.
+
+**Therefore**:
+
+- Every **Critical score (20–25) is a release blocker**.
+- Every **architectural boundary violation is a release blocker**, regardless of score.
+- **Release blocker status is explicitly stated for each critical risk** in the register.
+
 ### Owner Assignment
 
 - **Ticket Owner**: Person implementing the ticket
@@ -866,18 +884,92 @@ where:
    - Alert if >5 failed deliveries for integration in 24h
    - Alert merchant: "Webhook delivery issues; manual sync recommended"
 
-### Automated vs Manual Corrections
+### Deterministic Reconciliation Model
 
-| Scenario                   | Action                                                 |
-| -------------------------- | ------------------------------------------------------ |
-| Inventory drift <2%        | Auto-correct (accept POS)                              |
-| Inventory drift 2–10%      | Alert merchant; require approval                       |
-| Inventory drift >10%       | Alert, no auto-correct; manual review required         |
-| Product archived on POS    | Auto-archive DrippleX copy                             |
-| Product price conflict     | Alert merchant; require approval (do not auto-correct) |
-| Order status mismatch      | Alert; do not auto-correct financial states            |
-| Duplicate webhook delivery | Auto-skip (idempotency)                                |
-| Missing webhook delivery   | Alert; offer manual retry                              |
+**Principle**: Never automatically correct based solely on percentage drift. Every discrepancy must be:
+
+1. **DETECTED** — identify mismatch (actual vs expected)
+2. **CLASSIFIED** — categorize type of discrepancy (data loss, concurrent update, stale sync, etc.)
+3. **DETERMINE SOURCE OF TRUTH** — which system is authoritative for this field?
+4. **CHECK WHETHER AUTOMATIC RESOLUTION IS SAFE** — is the correction deterministic and non-destructive?
+5. **RESOLVE OR ESCALATE** — apply correction OR require merchant approval
+6. **AUDIT** — log all reconciliation actions with timestamp, classification, resolution
+
+#### Automatically Resolvable Discrepancies
+
+Only correct if DrippleX has **explicit architecture authority** and correction is deterministic:
+
+| Scenario                                       | Detection                                               | Classification    | Action                                  | Rationale                                       |
+| ---------------------------------------------- | ------------------------------------------------------- | ----------------- | --------------------------------------- | ----------------------------------------------- |
+| Product archived on POS                        | ProductSync.archived_at NULL but POS shows deleted      | Catalog lifecycle | Auto-archive DrippleX copy              | POS deletes → DrippleX archives (deterministic) |
+| Duplicate webhook delivery (same delivery_id)  | Webhook delivery already processed                      | Idempotency       | Auto-skip (return 200, don't reprocess) | Same delivery_id = skip; no state change        |
+| Order status already at target                 | POS requests READY; DrippleX already READY              | Idempotency       | Skip, return 200 OK                     | No state change needed; not an error            |
+| External order ID collision (across merchants) | external_order_id exists for Merchant B, not Merchant A | Data integrity    | Reject and alert                        | Isolation violation; manual review required     |
+
+#### Approval-Required Discrepancies
+
+Discrepancy exists but automatic correction is NOT safe. Require merchant review and approval:
+
+| Scenario                                                  | Detection                                            | Classification      | Action                                       | Rationale                                                             |
+| --------------------------------------------------------- | ---------------------------------------------------- | ------------------- | -------------------------------------------- | --------------------------------------------------------------------- |
+| Product price conflict (POS price ≠ DrippleX price)       | Product mapped; prices differ                        | Pricing authority   | Alert merchant; require approval to override | Price change affects revenue; must verify intent                      |
+| Low inventory (POS reports <5 units; DrippleX shows more) | Stock levels don't match                             | Inventory authority | Alert merchant; wait for approval            | Could indicate POS misconfiguration or real loss; need verification   |
+| Inventory drift <5% but high-value product                | E.g., 1% drift on ₦50,000 product = ₦500 discrepancy | Inventory authority | Alert merchant; require approval             | Percentage-based threshold ignores product value; human review needed |
+
+#### Manual Review Required
+
+Discrepancy indicates potential system failure, data loss, or conflict. No automatic resolution possible:
+
+| Scenario                                                        | Detection                                        | Classification                        | Action                                        | Rationale                                                                       |
+| --------------------------------------------------------------- | ------------------------------------------------ | ------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------- |
+| Inventory drift >5% on ANY product                              | DrippleX stock differs >5% from POS              | Potential data loss or race condition | Alert merchant; manual investigation required | Large drift suggests system failure; may indicate overselling or missed updates |
+| Concurrent update conflict (version mismatch)                   | DrippleX.inventory_version ≠ POS.version         | Race condition                        | Reject update; alert merchant                 | Cannot deterministically resolve; POS may have stale view                       |
+| Order status mismatch (POS says READY; DrippleX says CANCELLED) | External order mapped but states conflict        | Order state corruption                | Alert; require manual reconciliation          | Indicates inconsistency; need audit log review to determine truth               |
+| Missing external order mapping                                  | DrippleX order exists; no external_order_id link | Data integrity failure                | Alert; require manual matching                | Cannot auto-link; merchant must verify which POS order matches                  |
+
+#### Inventory Protection: Special Case
+
+**Inventory discrepancies NEVER auto-corrected due to:**
+
+- Concurrent orders against same inventory
+- Order reservations that reduce available stock
+- Delayed POS updates creating stale snapshots
+- Race conditions between POS write and DrippleX read
+
+**Reconciliation for inventory:**
+
+```
+DETECT discrepancy
+  ↓
+CHECK: Is discrepancy in reserved/held inventory?
+  YES → Alert merchant; manual review (reservations complex)
+  NO → proceed
+  ↓
+CHECK: Are there pending orders against this product?
+  YES → Alert merchant; manual review (orders may fail)
+  NO → proceed
+  ↓
+CHECK: Is discrepancy a recent sync (within last 5 min)?
+  YES → Alert; wait for next sync to see if corrects
+  NO → proceed
+  ↓
+CHECK: Is discrepancy on high-value product (>threshold)?
+  YES → Alert merchant; require approval
+  NO → proceed
+  ↓
+ALERT MERCHANT: "Inventory mismatch detected. POS shows X units; DrippleX shows Y units.
+  Reason: [reserved orders | pending updates | data loss detected]
+  Action: Verify POS is correct, then click 'Accept POS inventory' to sync."
+
+Merchant clicks approval
+  ↓
+UPDATE DrippleX inventory = POS inventory
+  ↓
+LOG: "Reconciliation: Merchant [name] approved inventory correction on [product].
+  Before: {dripplex_qty}
+  After: {pos_qty}
+  Timestamp: [ISO]"
+```
 
 ---
 
@@ -976,7 +1068,18 @@ CONVERGENCE:
 Streams 1, 2, 3 → L (Order Integration)
 ```
 
-**Wall-clock time reduction**: Sequential (A→B→C→...→L = 42–48 days) vs Parallel (A→B, then Streams 1/2/3 in parallel, then L = 25–30 days)
+**Timeline Estimate (Engineering Only)**:
+
+- **Sequential approach** (if required): 42–48 days (A→B→C→...→L)
+- **Parallel approach** (preferred): 25–30 days (A→B, then Streams 1/2/3 in parallel, then L)
+
+⚠️ **This is an engineering estimate, NOT a delivery commitment.** Actual implementation duration depends on:
+
+- Ticket A discovery: validation of existing infrastructure (external mapping, webhook delivery, idempotency, sync tracking models)
+- Amount of existing DrippleX code that can be reused vs new code required
+- Test complexity and pass rates
+- Provider integration challenges (POS API compatibility, webhook reliability)
+- Architectural decisions made during implementation
 
 **Risk reduction**: Parallel development means catalog and inventory teams test independently; fewer integration surprises at L.
 
